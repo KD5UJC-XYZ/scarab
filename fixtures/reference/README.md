@@ -1,5 +1,8 @@
 # Cases decided by the reference node
 
+Spending-datum admission and optional argument construction are covered separately by
+[18 complete reference spending cases](spending-datum/README.md), including all languages and both flags (#177).
+
 Transactions that `python3 scripts/devnet.py v1-context` built and submitted to the Haskell
 `cardano-node` 11.1.3 cluster of the devnet, each with the outputs it reads and what the reference did with it.
 They are replayed without Docker by `V1ContextSuite` (phase 2, the transaction rule of the era, a block) and

@@ -10,6 +10,10 @@ respective owners.
 Original code, 2026, Apache-2.0, except the explicitly attributed MIT adaptations
 crypto/src/main/java/xyz/kd5ujc/scarab/crypto/vrf/Ed25519Point.java and Draft03Math.java. Their source
 notices and fixtures/vrf/licenses/CCL-LICENSE are retained unchanged.
+
+fixtures/reference/spending-datum contains generated throwaway private-network transactions
+and original reference-node verdicts, produced by this project's Apache-2.0 tooling. Only public
+verification keys and signatures are retained; no signing keys are distributed.
 Third-party dependencies retain their own licenses.
 
 This source distribution includes test fixtures derived from Cardano Ledger,

@@ -132,6 +132,23 @@ Whole-transaction context findings REF-01/02/03 have their own recorded referenc
 regressions. Four binary-DST validity-tag reference transactions additionally agree at phase2,
 LEDGER and BBODY, using the same harness. `BoundaryTransactionsSuite` separately replays complete
 V3 boundary submissions, including phase-1 decode refusals that cannot supply a collateral verdict.
-The malformed Byron reference transaction gap in #171 belongs to that separate oracle;
-this Plutus API matrix does not claim to resolve it. IN-74 to IN-77 are decided in
+The malformed Byron reference transactions are covered by the separate #171 oracle;
+this Plutus API matrix does not replace it. IN-74 to IN-77 are decided in
 [implementer-notes.md](implementer-notes.md); filing upstream remains the owner's decision.
+
+## Spending-datum admission and arguments (#177)
+
+Context construction preserves the reference's optional datum. An absent datum witness becomes
+two V1/V2 arguments or V3 spending info with `Nothing`, matching `getAlonzoSpendingDatum`
+(`Alonzo/UTxO.hs:229–240`), `toLegacyPlutusArgs` (`Alonzo/Plutus/TxInfo.hs:184–194`) and
+`toPlutusArgs` (`Conway/TxInfo.hs:754–766`) at cardano-ledger `f649f975`.
+The phase1 required-hash check remains independent of translation and of the validity flag.
+
+The [retained actual reference corpus](../fixtures/reference/spending-datum/README.md) has18
+complete Conway/protocol10 transactions: V1/V2/V3 missing/supplied/no-datum cases with both flags.
+All six missing-witness cases are refused with `MissingRequiredDatums`; V1/V2 no-datum cases
+are unspendable, while the valid V3 no-datum control enters a block. Four controls are included
+with shared-chain confirmation and14 cases are refused; original signed bytes, raw refusal
+CBOR and funding/script/collateral effects are retained. `SpendingDatumSuite` checks standalone
+context arguments separately from phase1 and complete LEDGER/BBODY verdicts. Translation-error
+payload parity remains #176.

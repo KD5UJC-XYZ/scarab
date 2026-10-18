@@ -24,8 +24,8 @@ enum DataSite:
   *
   * The cases the reference has no constructor for (it holds the data decoded and the cost models
   * complete) are the node's own: [[Undecodable]], [[NoScriptBytes]],
-  * [[CostModelParameterTooLarge]], [[NoEraHistory]], [[NoClockSample]], [[NativeScriptRedeemer]],
-  * [[SpentOutputHasNoDatum]] and [[DatumNotInWitnesses]].
+  * [[CostModelParameterTooLarge]], [[NoEraHistory]], [[NoClockSample]] and
+  * [[NativeScriptRedeemer]].
   */
 enum TranslationError:
   /** A redeemer names no purpose of the transaction (`RedeemerPointerPointsToNothing`). */
@@ -67,14 +67,6 @@ enum TranslationError:
   /** A Plutus V1 or V2 context cannot carry the governance fields of a Conway body. */
   case GovernanceFieldsNotSupported
 
-  /** The datum of a spent output is not in the witnesses (`MissingRequiredDatums` is checked
-    * earlier in UTXOW; the context is built from what the witnesses hold).
-    */
-  case DatumNotInWitnesses(hash: Bytes)
-
-  /** A spent output with a datum hash carries none the script could be given. */
-  case SpentOutputHasNoDatum
-
   /** Data of the transaction that does not decode as the context needs it. */
   case Undecodable(site: DataSite)
 
@@ -109,8 +101,6 @@ enum TranslationError:
     case DelegationWithoutDelegatee           => "delegation without a delegatee"
     case GovernanceFieldsNotSupported =>
       "governance fields in a Plutus V1 or V2 script context"
-    case DatumNotInWitnesses(h)     => s"datum ${h.hex} is not in the witnesses"
-    case SpentOutputHasNoDatum      => "spent output has no datum"
     case Undecodable(site)          => s"the ${site.toString.toLowerCase} does not decode"
     case NoScriptBytes(script)      => s"script ${script.hex} has no bytes"
     case NativeScriptRedeemer       => "a redeemer names a native script"

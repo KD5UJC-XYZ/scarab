@@ -554,12 +554,7 @@ object ScriptContexts:
             ctxPurpose <- purposeV1(purpose)
             datum <- spendingDatum(tx, purpose)
             context = constr(0, info, ctxPurpose)
-            needsDatum = purpose.isInstanceOf[Purpose.Spending]
-            ds <-
-              if needsDatum then
-                datum.toRight(TranslationError.SpentOutputHasNoDatum).map(Vector(_))
-              else Right(Vector.empty)
-          yield ds ++ Vector(rdmr, context)
+          yield datum.toVector ++ Vector(rdmr, context)
     }
 
   /** The datum of a spent output: inline, or found by hash among the witnesses. */
@@ -574,7 +569,9 @@ object ScriptContexts:
             .map(Some(_))
         case Datum.Hash(h) =>
           tx.witnesses.datums.find(d => Blake2b32.hash(d) == h) match
-            case None => fail(TranslationError.DatumNotInWitnesses(h))
+            // getSpendingDatum returns Nothing for an absent witness; the phase-1 rule checks
+            // MissingRequiredDatums (Alonzo/Plutus/TxInfo.hs:175-194, Alonzo/UTxO.hs).
+            case None => Right(None)
             case Some(d) =>
               PlutusData
                 .decode(d)

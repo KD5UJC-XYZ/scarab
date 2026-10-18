@@ -34,25 +34,26 @@ def present(utxo, output):
 
 
 def confirmed_setup(driver, count, security, *, timeout=180, resubmit_after=5,
-                    now=time.monotonic, pause=time.sleep, tips=None):
+                    now=time.monotonic, pause=time.sleep, tips=None, specials=None, utxo=None):
     """Before any case, confirm all funding on a shared chain k+1 blocks beyond observation.
 
     An early private-cluster fork can remove setup after one UTxO observation. Only this
     setup transaction may be resubmitted, with identical bytes and its source still unspent.
     Script transactions retain their original, strict reference-verdict checks.
     """
-    prepared = driver.prepare_setup({}, count)
+    prepared = driver.prepare_setup(specials or {}, count)
     accepted, detail = driver.submit(prepared.transaction, "setup")
     if not accepted:
         raise RuntimeError(f"setup refused: {detail}")
     deadline, submitted = now() + timeout, now()
     anchor, resubmissions = None, 0
     read_tips = tips or (lambda: [query(driver.name, "tip", node=n) for n in (1, 2, 3)])
+    read_utxo = utxo or driver.utxo
     while now() < deadline:
-        before = driver.utxo()
+        before = read_utxo()
         observed = read_tips()
-        utxo = driver.utxo()
-        outputs = [present(utxo, out) for out in prepared.outputs.values()]
+        observed_utxo = read_utxo()
+        outputs = [present(observed_utxo, out) for out in prepared.outputs.values()]
         shared = len(observed) == 3 and len({(tip["block"], tip["hash"]) for tip in observed}) == 1
         if all(outputs):
             if not shared or not all(present(before, out) for out in prepared.outputs.values()):
@@ -70,7 +71,7 @@ def confirmed_setup(driver, count, security, *, timeout=180, resubmit_after=5,
             raise RuntimeError("setup outputs partially absent before any boundary case")
         else:
             anchor = None
-            if (prepared.source[0], str(prepared.source[1])) not in utxo:
+            if (prepared.source[0], str(prepared.source[1])) not in observed_utxo:
                 raise RuntimeError("setup and its original input are both absent before boundary cases")
             if now() - submitted >= resubmit_after and resubmissions < 3:
                 accepted, detail = driver.submit(prepared.transaction, "setup")

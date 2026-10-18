@@ -84,6 +84,18 @@ class SetupConfirmationTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "never reached shared"):
             boundary.confirmed_setup(driver, 1, 1, **options)
 
+    def test_script_outputs_use_the_supplied_utxo_reader_and_original_setup(self):
+        driver, _, options = self.environment([(self.common(2), {}), (self.common(4), {})])
+        original = driver.prepare_setup({}, 1)
+        requested = []
+        driver.prepare_setup = lambda specials, count: (requested.append((specials, count)) or original)
+        specials = {"script": [b"script address", 10]}
+        made, proof = boundary.confirmed_setup(driver, 1, 1, specials=specials,
+                                               utxo=lambda: self.present, **options)
+        self.assertEqual(requested, [(specials, 1)])
+        self.assertEqual(made, self.outputs)
+        self.assertEqual(proof["confirmedBlock"], 4)
+
     def test_split_tips_reset_the_shared_confirmation_window(self):
         split = [{"block": 4, "hash": name} for name in ("one", "two", "three")]
         snapshots = [(self.common(2), self.present), (split, self.present),

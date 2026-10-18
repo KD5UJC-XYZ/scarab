@@ -1,0 +1,13 @@
+{
+  "referenceNode": "11.1.3",
+  "referenceCli": "11.2.3.0",
+  "referenceGitRevision": "938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+  "ledgerSourceRevision": "f649f975",
+  "protocolMajor": 10,
+  "cases": 18,
+  "included": 4,
+  "refused": 14,
+  "files": {
+    "conway-pv10.json": "a5e397397e3a7a72bd0414de38c3a0161539f1387595da267b7c712244ada108"
+  }
+}
