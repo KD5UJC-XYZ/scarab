@@ -175,11 +175,11 @@ class LocalSubmissionSuite extends CatsEffectSuite:
       referenceScript = Some(script.kind -> code)
     )
     val decoder: xyz.kd5ujc.scarab.plutus.ScriptDecoder[cats.Id] = (_, _, _) =>
-      Left(xyz.kd5ujc.scarab.plutus.ScriptDecodeFailure.Unavailable("injected backend limit"))
+      Left(xyz.kd5ujc.scarab.plutus.ScriptDecodeFailure.Unavailable(xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted))
     val failure = xyz.kd5ujc.scarab.ledger.LedgerFailure.Unavailable(
       id,
       xyz.kd5ujc.scarab.ledger.ScriptLocation.Phase1(script.hash),
-      xyz.kd5ujc.scarab.plutus.EvalFailure.Unsupported("injected backend limit")
+      xyz.kd5ujc.scarab.plutus.EvalFailure.Unsupported(xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted)
     )
     LocalSubmission
       .reasonItem(Rejection.Ledger(failure))
