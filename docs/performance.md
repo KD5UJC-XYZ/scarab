@@ -1267,3 +1267,23 @@ The whole table in one cold pass: 186.1 bytes an output in MemPack, 185.8 for th
 `TxOut` 2,747 ns, encode 2,339 ns. The MemPack value is no smaller and decoding to the `TxOut` is no faster, since the
 original encoding that the rules re-read (`raw`) and the `Address` are rebuilt (2.1 of the 2.66 microseconds). Adoption is
 not recommended; converting at an import or an export costs about 5 microseconds an output.
+
+
+## 23. Ledger peers at the Preview tip (G1.3b, #137)
+
+Historical acceptance run on d05e38d8, 2026-10-18: official Preview configuration and topology,
+no explicit peer, 1,860 seconds of observation after restoring a copied snapshot; Docker JDK21,
+3 CPUs, 3GiB heap, MALLOC_ARENA_MAX=2. The original database was unchanged. This retained run
+is reused during integration; no new public-network sync was started for these measurements.
+
+The tip was reached in29 seconds. The governor held20 ordinary hot peers plus5 big-ledger hot
+peers, with big-ledger known/established/active15/10/5. Container CPU after the first100 seconds
+averaged7.5% of one CPU; whole-run CPU averaged14.3% and peaked229% during restore/replay/catch-up.
+RSS averaged1.44GiB and peaked1.59GiB. The earlier single-peer G1.1 run averaged5.4% CPU at the tip
+and1.74GiB RSS, so this run shows roughly2 percentage points more CPU for the extra sessions.
+These are separate observations, not a controlled memory experiment.
+
+One twelve-step churn round ran. Steps1–10 met their targets; steps11/12 timed out below the
+known/established targets. Long-duration behavior and repeated churn remain broader G1/K4 coverage.
+Source selection, traces, exact pool counts and remaining differences are in the
+[peer-selection design](design/peer-selection.md), sections7d/7e.
