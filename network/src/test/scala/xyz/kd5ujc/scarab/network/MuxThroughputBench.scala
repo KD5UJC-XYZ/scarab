@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult
   * xyz.kd5ujc.scarab.network.MuxThroughputBench"`; it prints the median microseconds per message
   * and the throughput. It uses only the surface the multiplexer had before issue 132 (`channel`,
   * `send`, `recv`), so the same file runs against both builds; the figures are in
-  * `docs/performance.md` section 21.
+  * `docs/performance.md` section 22.
   */
 object MuxThroughputBench extends IOApp.Simple:
   private def exactly(n: Int)(bytes: Bytes): DecodeResult[Bytes] =

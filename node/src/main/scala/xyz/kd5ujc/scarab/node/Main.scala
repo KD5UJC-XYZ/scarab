@@ -396,7 +396,11 @@ object Main extends IOApp:
       // is logged where it happens, and the run ends like a signal does (the stores close, the
       // shutdown snapshot is taken) with an exit code of its own
       faulted <- Deferred[IO, Fatal]
-      fatalSink = (fault: Fatal) => logged(NodeEvent.Faulted(fault)) *> faulted.complete(fault).void
+      fatalReporter <- FatalReporter.create[IO](
+        fault => logged(NodeEvent.Faulted(fault)),
+        fault => faulted.complete(fault).void
+      )
+      fatalSink = (fault: Fatal) => fatalReporter.report(fault)
       watchdog <- StallWatchdog.create[IO](
         BigInt(0),
         options.stallMinutes.minutes,
@@ -720,10 +724,12 @@ object Main extends IOApp:
             )
             hot = OutboundPeers.Hot[IO](
               magic = genesis.networkMagic,
-              network = NodeToNode.Settings(
-                offerPeerSharing = setup.config.settings.peerSharing.contains(true),
-                maxVersion = setup.config.settings.maxNtnVersion
-              ).pipelining(options.readAhead),
+              network = NodeToNode
+                .Settings(
+                  offerPeerSharing = setup.config.settings.peerSharing.contains(true),
+                  maxVersion = setup.config.settings.maxNtnVersion
+                )
+                .pipelining(options.readAhead),
               peer = Peer.Settings(
                 SocketAddress(Host.fromString("0.0.0.0").get, Port.fromInt(0).get),
                 genesis.networkMagic,
@@ -826,7 +832,11 @@ object Main extends IOApp:
                           txMonitor = Some(LocalMonitor.source(mempool))
                         )
                       )
-                      .rescue(e => IO.pure(e.message))
+                      .rescue {
+                        case NetworkError.Defect(cause) =>
+                          fatalSink(Fatal.Defect(cause)).as(NetworkError.Defect(cause).message)
+                        case other => IO.pure(other.message)
+                      }
                       // A failure that is not a network error still ends the connection: say so,
                       // where the listener would drop it unseen.
                       .attempt
@@ -958,9 +968,10 @@ object Main extends IOApp:
     * (`consensusRethrowPolicy`, `ShutdownNode`).
     */
   def FaultExitCode(fault: Fatal): ExitCode = fault match
-    case _: Fatal.Storage  => ExitCode(5)
-    case _: Fatal.Internal => ExitCode(6)
-    case _: Fatal.Defect   => ExitCode(7)
+    case _: Fatal.Unavailable => ExitCode(8)
+    case _: Fatal.Storage     => ExitCode(5)
+    case _: Fatal.Internal    => ExitCode(6)
+    case _: Fatal.Defect      => ExitCode(7)
 
   /** `30s`, `10m`, `2h`: a positive whole number of seconds, minutes or hours. */
   private[node] def parseDuration(text: String): Option[FiniteDuration] =

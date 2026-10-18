@@ -32,8 +32,9 @@ object FailurePolicy:
       classify(error) match
         case FailureClass.Misbehaved => Disposition.Forget
         case FailureClass.Transient  => Disposition.Backoff
-    case _: SessionEnd.Rejected => Disposition.Forget
-    case SessionEnd.Storage(e)  => Disposition.StopNode(Fatal.Storage(e))
-    case SessionEnd.Internal(e) => Disposition.StopNode(Fatal.Internal(e))
-    case SessionEnd.Defect(t)   => Disposition.StopNode(Fatal.Defect(t))
+    case _: SessionEnd.Rejected    => Disposition.Forget
+    case SessionEnd.Unavailable(e) => Disposition.StopNode(Fatal.Unavailable(e))
+    case SessionEnd.Storage(e)     => Disposition.StopNode(Fatal.Storage(e))
+    case SessionEnd.Internal(e)    => Disposition.StopNode(Fatal.Internal(e))
+    case SessionEnd.Defect(t)      => Disposition.StopNode(Fatal.Defect(t))
     case SessionEnd.Returned | SessionEnd.Cancelled | _: SessionEnd.Stopped => Disposition.Settled

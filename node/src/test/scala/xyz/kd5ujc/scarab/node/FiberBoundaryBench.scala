@@ -11,7 +11,7 @@ import xyz.kd5ujc.scarab.node.forge.ForgedChain
 /** The cost of what issue 132 put on the per-batch path of a session, next to the cost of decoding
   * the block it belongs to. Not part of `check`: run it with
   * `sbt "node/Test/runMain xyz.kd5ujc.scarab.node.FiberBoundaryBench"`; it prints the median
-  * nanoseconds per operation. The figures are in `docs/performance.md` section 21.
+  * nanoseconds per operation. The figures are in `docs/performance.md` section 22.
   *
   * What a session pays, per batch of headers (and per header for the decode): a fiber that ends
   * with an `Either` (`Fault.fiber`) instead of a bare fiber, the blame check in `pull`

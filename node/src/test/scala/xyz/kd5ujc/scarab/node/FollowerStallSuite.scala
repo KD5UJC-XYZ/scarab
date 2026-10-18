@@ -4,7 +4,15 @@ package xyz.kd5ujc.scarab.node
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, FollowerEvent, FollowerEvents}
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
-import xyz.kd5ujc.scarab.ledger.{Block, ChainError, NodeError, PeerError, StorageError}
+import xyz.kd5ujc.scarab.ledger.{
+  Block,
+  BlockFailure,
+  ChainError,
+  NodeError,
+  PeerError,
+  StorageError,
+  ValidationError
+}
 import xyz.kd5ujc.scarab.storage.ChainPersistence
 import cats.effect.{IO, Ref}
 import cats.mtl.{Handle, Stateful}
@@ -12,6 +20,8 @@ import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import com.comcast.ip4s.*
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.plutus.{EvalFailure, ExUnits}
+import xyz.kd5ujc.scarab.ledger.{LedgerFailure, Redeemer}
 import xyz.kd5ujc.scarab.protocol.NtNHeader
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.network.*
@@ -346,117 +356,156 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
-  test(
-    "a storage error injected during a session stops the node: it is reported, and no peer is blamed"
-  ) {
-    node {
-      for
-        chainRef <- Ref.of[IO, VolatileChain[MirrorState]](
-          VolatileChain.genesis(ForgedChain.geometry.securityParam, forged.genesis)
-        )
-        given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(chainRef)
-        seen <- Ref.of[IO, Vector[FollowerEvent]](Vector.empty)
-        events = new FollowerEvents[IO]:
-          def emit(event: FollowerEvent) = seen.update(_ :+ event)
-        stored <- Ref.of[IO, Int](0)
-        failing = new ChainPersistence[IO, MirrorState]:
-          def extended(
-              ref: BlockRef,
-              raw: Bytes,
-              immutable: Vector[BlockRef],
-              anchor: Anchor[MirrorState]
-          ) = stored.getAndUpdate(_ + 1).flatMap { n =>
-            if n == 4 then
-              summon[Handle[IO, NodeError]]
-                .raise[NodeError, Unit](StorageError.Io("volatile", "injected"))
-            else IO.unit
+  private enum FatalCase:
+    case Storage, Unavailable, Defect, NetworkDefect
+
+  for injected <- FatalCase.values.toList
+  do
+    test(s"an injected $injected stops without reconnecting or blaming the peer") {
+      node {
+        for
+          chainRef <- Ref.of[IO, VolatileChain[MirrorState]](
+            VolatileChain.genesis(ForgedChain.geometry.securityParam, forged.genesis)
+          )
+          given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(chainRef)
+          seen <- Ref.of[IO, Vector[FollowerEvent]](Vector.empty)
+          events = new FollowerEvents[IO]:
+            def emit(event: FollowerEvent) = seen.update(_ :+ event)
+          stored <- Ref.of[IO, Int](0)
+          failing = new ChainPersistence[IO, MirrorState]:
+            def extended(
+                ref: BlockRef,
+                raw: Bytes,
+                immutable: Vector[BlockRef],
+                anchor: Anchor[MirrorState]
+            ) = stored.getAndUpdate(_ + 1).flatMap { n =>
+              if n != 4 then IO.unit
+              else
+                injected match
+                  case FatalCase.Storage =>
+                    summon[Handle[IO, NodeError]].raise[NodeError, Unit](
+                      StorageError.Io("volatile", "injected")
+                    )
+                  case FatalCase.Unavailable =>
+                    val failure = LedgerFailure.Unavailable(
+                      Bytes.empty,
+                      Redeemer(0, 0, Bytes.empty, ExUnits.zero),
+                      EvalFailure.Unsupported("injected")
+                    )
+                    summon[Handle[IO, NodeError]].raise[NodeError, Unit](
+                      ValidationError(
+                        ref.point,
+                        BlockFailure.Tx(failure)
+                      )
+                    )
+                  case FatalCase.Defect | FatalCase.NetworkDefect =>
+                    IO.raiseError(new IllegalStateException("injected"))
+            }
+            def rolledBack(to: Point) = IO.unit
+          follower <- Follower.create[IO, MirrorState](
+            ForgedChain.rules,
+            events,
+            ForgedChain.geometry,
+            persistence = Some(failing)
+          )
+          fatals <- Ref.of[IO, Vector[Fatal]](Vector.empty)
+          pool <- BlockPool.create[IO]
+          good <- serving(forged.raws)
+          peers <- InMemoryPeers.create(magic)
+          first = InMemoryPeers.address(1)
+          _ <- peers.serve(first, good)
+          transport: Transport[IO, PeerNetwork.Addr] =
+            if injected != FatalCase.NetworkDefect then peers
+            else
+              new Transport[IO, PeerNetwork.Addr]:
+                def resolve(peer: PeerNetwork.Addr) = peers.resolve(peer)
+                def bearer(peer: PeerNetwork.Addr, remote: SocketAddress[IpAddress])(using
+                    cats.mtl.Raise[IO, NetworkError]
+                ) =
+                  cats.effect.Resource.pure[IO, Bearer[IO]](new Bearer[IO]:
+                    def reads =
+                      fs2.Stream.raiseError[IO](new IllegalStateException("injected network"))
+                    def write(bytes: fs2.Chunk[Byte]) = IO.unit
+                    def close = IO.unit)
+          manager <- ConnectionManager.create[IO]()
+          last = forged.headers.last
+          hot = OutboundPeers.Hot[IO](
+            magic = magic,
+            network = NodeToNode.Settings(),
+            peer = Peer.Settings(
+              tcp,
+              magic,
+              readAhead = 8,
+              byronEpochSlots = ForgedChain.geometry.byron.epochSlots
+            ),
+            follow = (peer, track) => follower.session(peer, track),
+            prepare = _ => IO.unit,
+            headers = None,
+            transactions = None,
+            observe = None,
+            pool = pool,
+            versus = follower.versus,
+            lost = error => events.emit(FollowerEvent.Reconnecting(error, 1)),
+            fatal = f => fatals.update(_ :+ f)
+          )
+          view = new PeerNetwork.ChainView[IO]:
+            def tip = chainRef.get.map(c => c.tipRef.map(t => (t.slot, t.hash.hashCode.toLong)))
+            def geometry = IO.pure(ForgedChain.geometry)
+          local = RootConfig(false, DiffusionMode.InitiatorAndResponder, Provenance.Outbound, false)
+          roots = PeerNetwork.Roots(
+            List(RootGroupSpec(1, 1, List(first -> local))),
+            Set.empty,
+            None,
+            UseLedgerPeers.Disabled
+          )
+          modeRef <- Ref.of[IO, FetchMode](FetchMode.BulkSync)
+          network = PeerNetwork.resource[IO](
+            PeerNetwork.Settings(roots, Targets.relay, seed = 7L),
+            transport,
+            manager,
+            OutboundPeers.Config(repromoteDelay = 1.second),
+            hot,
+            view,
+            modeRef,
+            _ => IO.unit,
+            (_, _) => IO.unit,
+            _ => IO.unit,
+            _ => IO.unit,
+            GsmRunner.Marker.none[IO],
+            LedgerPeersSource.none[IO]
+          )
+          _ <- network.use { net =>
+            net.run.background.use { _ =>
+              // the fifth block cannot be stored: the node is told to stop, with the storage error
+              eventually("the node is told to stop")(fatals.get)(_.nonEmpty)
+            }
           }
-          def rolledBack(to: Point) = IO.unit
-        follower <- Follower.create[IO, MirrorState](
-          ForgedChain.rules,
-          events,
-          ForgedChain.geometry,
-          persistence = Some(failing)
-        )
-        fatals <- Ref.of[IO, Vector[Fatal]](Vector.empty)
-        pool <- BlockPool.create[IO]
-        good <- serving(forged.raws)
-        peers <- InMemoryPeers.create(magic)
-        first = InMemoryPeers.address(1)
-        _ <- peers.serve(first, good)
-        manager <- ConnectionManager.create[IO]()
-        last = forged.headers.last
-        hot = OutboundPeers.Hot[IO](
-          magic = magic,
-          network = NodeToNode.Settings(),
-          peer = Peer.Settings(
-            tcp,
-            magic,
-            readAhead = 8,
-            byronEpochSlots = ForgedChain.geometry.byron.epochSlots
-          ),
-          follow = (peer, track) => follower.session(peer, track),
-          prepare = _ => IO.unit,
-          headers = None,
-          transactions = None,
-          observe = None,
-          pool = pool,
-          versus = follower.versus,
-          lost = error => events.emit(FollowerEvent.Reconnecting(error, 1)),
-          fatal = f => fatals.update(_ :+ f)
-        )
-        view = new PeerNetwork.ChainView[IO]:
-          def tip = chainRef.get.map(c => c.tipRef.map(t => (t.slot, t.hash.hashCode.toLong)))
-          def geometry = IO.pure(ForgedChain.geometry)
-        local = RootConfig(false, DiffusionMode.InitiatorAndResponder, Provenance.Outbound, false)
-        roots = PeerNetwork.Roots(
-          List(RootGroupSpec(1, 1, List(first -> local))),
-          Set.empty,
-          None,
-          UseLedgerPeers.Disabled
-        )
-        modeRef <- Ref.of[IO, FetchMode](FetchMode.BulkSync)
-        network = PeerNetwork.resource[IO](
-          PeerNetwork.Settings(roots, Targets.relay, seed = 7L),
-          peers,
-          manager,
-          OutboundPeers.Config(repromoteDelay = 1.second),
-          hot,
-          view,
-          modeRef,
-          _ => IO.unit,
-          (_, _) => IO.unit,
-          _ => IO.unit,
-          _ => IO.unit,
-          GsmRunner.Marker.none[IO],
-          LedgerPeersSource.none[IO]
-        )
-        _ <- network.use { net =>
-          net.run.background.use { _ =>
-            // the fifth block cannot be stored: the node is told to stop, with the storage error
-            eventually("the node is told to stop")(fatals.get)(_.nonEmpty)
-          }
-        }
-        stopped <- fatals.get
-        tipNow <- chainRef.get.map(_.tip)
-        lostEvents <- seen.get
-      yield
-        stopped match
-          case Vector(Fatal.Storage(StorageError.Io("volatile", "injected"))) => ()
-          case other => fail(s"unexpected $other")
-        // the tip that was published is one that is stored: never past the block that failed
-        assert(tipNow != last.point, "the chain went past the block that could not be stored")
-        // nobody is blamed: the loss is not a rejection or a protocol error of the peer
-        assert(
-          !lostEvents.exists {
-            case FollowerEvent.Reconnecting(_: (PeerError.InvalidBlock | PeerError.Protocol), _) =>
-              true
-            case _ => false
-          },
-          lostEvents.toString
-        )
+          stopped <- fatals.get
+          tipNow <- chainRef.get.map(_.tip)
+          lostEvents <- seen.get
+        yield
+          stopped match
+            case Vector(Fatal.Storage(StorageError.Io("volatile", "injected")))
+                if injected == FatalCase.Storage =>
+              ()
+            case Vector(Fatal.Unavailable(_)) if injected == FatalCase.Unavailable => ()
+            case Vector(Fatal.Defect(cause)) if injected == FatalCase.Defect =>
+              assertEquals(cause.getMessage, "injected")
+            case Vector(Fatal.Defect(cause)) if injected == FatalCase.NetworkDefect =>
+              assertEquals(cause.getMessage, "injected network")
+            case other => fail(s"unexpected $other")
+          // the tip that was published is one that is stored: never past the block that failed
+          assert(tipNow != last.point, "the chain went past the block that could not be stored")
+          // nobody is blamed: the loss is not a rejection or a protocol error of the peer
+          assert(
+            !lostEvents.exists {
+              case FollowerEvent.Reconnecting(_, _) => true
+              case _                                => false
+            },
+            lostEvents.toString
+          )
+      }
     }
-  }
 
   test("a peer error raised in a fiber of the connection is a value, raised again in the session") {
     Handle

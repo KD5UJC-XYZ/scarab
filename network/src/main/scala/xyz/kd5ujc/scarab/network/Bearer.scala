@@ -46,7 +46,11 @@ object Bearer:
             case Right(allocated) => allocated.pure[F]
             case Left(e) =>
               val reason = Option(e.getMessage).getOrElse(e.getClass.getSimpleName)
-              NetworkError.Connect(address.toString, reason).raise[F, (Socket[F], F[Unit])]
+              val error = e match
+                case _: java.io.IOException | _: java.util.concurrent.TimeoutException =>
+                  NetworkError.Connect(address.toString, reason)
+                case other => NetworkError.Defect(other)
+              error.raise[F, (Socket[F], F[Unit])]
           }
       )(_._2)
       .map(allocated => fromSocket(allocated._1))

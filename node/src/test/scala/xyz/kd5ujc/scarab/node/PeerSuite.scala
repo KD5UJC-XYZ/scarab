@@ -75,10 +75,11 @@ class PeerSuite extends ScalaCheckSuite:
   }
 
   test("what the network layer raises is a peer error, and a peer that broke a rule is forgotten") {
-    import xyz.kd5ujc.scarab.ledger.PeerError
     import xyz.kd5ujc.scarab.network.NetworkError
     import xyz.kd5ujc.scarab.network.selection.FailureClass
-    def classified(error: NetworkError) = FailurePolicy.classify(Peer.peerError(error))
+    def classified(error: NetworkError) = Peer.networkFault(error) match
+      case Fault.Failed(failure) => FailurePolicy.classify(failure)
+      case Fault.Defect(cause)   => fail(s"unexpected defect $cause")
     // a lost or slow connection is tried again
     assertEquals(classified(NetworkError.Connect("peer", "refused")), FailureClass.Transient)
     assertEquals(classified(NetworkError.Timeout(2, "StNext")), FailureClass.Transient)
@@ -97,5 +98,13 @@ class PeerSuite extends ScalaCheckSuite:
       FailureClass.Misbehaved
     )
     assertEquals(classified(NetworkError.Framing("EOF in mux payload")), FailureClass.Misbehaved)
-    assert(Peer.peerError(NetworkError.IngressLimit(2, 1L)).isInstanceOf[PeerError.Protocol])
+    assert(Peer.networkFault(NetworkError.IngressLimit(2, 1L)).isInstanceOf[Fault.Failed])
+  }
+
+  test("network defects keep their original cause outside peer policy") {
+    val cause = new IllegalStateException("injected")
+    assertEquals(
+      Peer.networkFault(xyz.kd5ujc.scarab.network.NetworkError.Defect(cause)),
+      Fault.Defect(cause)
+    )
   }

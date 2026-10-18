@@ -4,7 +4,15 @@ package xyz.kd5ujc.scarab.node
 import cats.{ApplicativeThrow, MonadThrow}
 import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.ledger.{NodeError, PeerError, StorageError, ValidationError}
+import xyz.kd5ujc.scarab.ledger.{
+  BlockFailure,
+  EvaluationUnavailable,
+  LedgerFailure,
+  NodeError,
+  PeerError,
+  StorageError,
+  ValidationError
+}
 import xyz.kd5ujc.scarab.network.Fibers
 
 /** What a fiber of the pipeline of a session ends with, as a value: the peer or the connection
@@ -54,6 +62,11 @@ enum SessionEnd:
     */
   case Rejected(error: ValidationError)
 
+  /** This implementation cannot evaluate the block: there is no ledger verdict. The node stops
+    * without peer blame; reconnecting cannot supply a missing implementation.
+    */
+  case Unavailable(error: EvaluationUnavailable)
+
   /** The storage failed under the session. Nothing a reconnect can repair: the node stops and
     * recovers from disk on the next start.
     */
@@ -83,10 +96,17 @@ object SessionEnd:
     * case of [[NodeError]] is placed; none defaults to a failure of the peer.
     */
   def of(error: NodeError): SessionEnd = error match
-    case e: PeerError       => Failed(e)
-    case e: ValidationError => Rejected(e)
-    case e: StorageError    => Storage(e)
-    case other              => Internal(other)
+    case PeerError.InvalidBlock(
+          ValidationError(point, BlockFailure.Tx(failure: LedgerFailure.Unavailable))
+        ) =>
+      Unavailable(EvaluationUnavailable(point, failure))
+    case ValidationError(point, BlockFailure.Tx(failure: LedgerFailure.Unavailable)) =>
+      Unavailable(EvaluationUnavailable(point, failure))
+    case e: EvaluationUnavailable => Unavailable(e)
+    case e: PeerError             => Failed(e)
+    case e: ValidationError       => Rejected(e)
+    case e: StorageError          => Storage(e)
+    case other                    => Internal(other)
 
   /** `body` as a session: in an error scope of its own that has the outcome as its error, and
     * finishing with the outcome as a value. `node` is the scope of the whole node, which the rules,
@@ -118,14 +138,17 @@ object SessionEnd:
 
 /** What the node must do about an outcome that no peer-selection policy can handle. */
 enum Fatal:
+  case Unavailable(error: EvaluationUnavailable)
+
   case Storage(error: StorageError)
   case Internal(error: NodeError)
   case Defect(cause: Throwable)
 
   def message: String = this match
-    case Storage(e)  => s"storage: ${e.message}"
-    case Internal(e) => s"internal: ${e.message}"
-    case Defect(t)   => s"defect: ${Option(t.getMessage).getOrElse(t.getClass.getName)}"
+    case Unavailable(e) => e.message
+    case Storage(e)     => s"storage: ${e.message}"
+    case Internal(e)    => s"internal: ${e.message}"
+    case Defect(t)      => s"defect: ${Option(t.getMessage).getOrElse(t.getClass.getName)}"
 
 /** What the node does with a peer after its session ended: the one place the outcomes are given a
   * policy (owner decision 8 for peers; the reference's `consensusRethrowPolicy` for the rest).

@@ -78,9 +78,7 @@ object KeepAliveClient:
       settings: Settings
   ): F[Unit] =
     Fibers
-      .scoped[F, NetworkError, Unit](t =>
-        NetworkError.BearerClosed(s"keep-alive: ${Option(t.getMessage).getOrElse(t.toString)}")
-      ) {
+      .scoped[F, NetworkError, Unit](t => NetworkError.fromThrowable("keep-alive", t)) {
         apply[F](channel, settings)
           .flatMap(client => (client.ping *> Temporal[F].sleep(settings.interval)).foreverM[Unit])
       }

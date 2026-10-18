@@ -256,9 +256,10 @@ object NodeEvent:
     case Faulted(fault) =>
       EventKind.Fatal.line(
         "kind" -> (fault match
-          case _: Fatal.Storage  => "storage"
-          case _: Fatal.Internal => "internal"
-          case _: Fatal.Defect   => "defect"
+          case _: Fatal.Unavailable => "unavailable"
+          case _: Fatal.Storage     => "storage"
+          case _: Fatal.Internal    => "internal"
+          case _: Fatal.Defect      => "defect"
         ).asJson,
         "message" -> fault.message.asJson,
         "exitCode" -> Main.FaultExitCode(fault).code.asJson

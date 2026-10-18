@@ -16,6 +16,9 @@ enum NetworkError:
   case QueryRefused(refusal: LocalStateQueryServer.Refusal)
   case BearerClosed(reason: String)
 
+  /** An unexpected library failure or bug; never a recoverable failure of the peer. */
+  case Defect(cause: Throwable)
+
   /** The peer's bytes are not a well-formed multiplexer frame (a header that cannot be read, a
     * payload past the limit): the multiplexer cannot tell which protocol was meant.
     */
@@ -33,7 +36,17 @@ enum NetworkError:
     case QueryRefused(r) =>
       s"${Protocols.name(Protocols.LocalStateQuery)} query not answered: ${r.message}"
     case BearerClosed(r) => s"connection closed: $r"
+    case Defect(t)       => s"network defect: ${Option(t.getMessage).getOrElse(t.getClass.getName)}"
     case Framing(r)      => s"multiplexer framing: $r"
+
+object NetworkError:
+  /** Only operating-system transport failures are connection failures. Preserve every unexpected
+    * exception itself for the owning node's fatal boundary.
+    */
+  def fromThrowable(context: String, cause: Throwable): NetworkError = cause match
+    case io: java.io.IOException =>
+      BearerClosed(s"$context: ${Option(io.getMessage).getOrElse(io.getClass.getName)}")
+    case other => Defect(other)
 
 /** Mini-protocol numbers: the node-to-node ones and the node-to-client ones (5, 6, 7 and 9). */
 object Protocols:

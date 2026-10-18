@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.network
 import cats.effect.{Async, Resource}
 import cats.effect.syntax.all.*
 import cats.mtl.{Handle, Raise}
+import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Handshake, NtnVersion}
 import scala.concurrent.duration.*
@@ -72,9 +73,7 @@ object NodeToNodeServer:
     // each server fiber runs in an error scope of its own and ends the connection with the reason
     def guarded(name: String)(program: Handle[F, NetworkError] ?=> F[Unit]): F[Unit] =
       Fibers
-        .scoped[F, NetworkError, Unit](t =>
-          NetworkError.BearerClosed(s"$name: ${Option(t.getMessage).getOrElse(t.toString)}")
-        )(program)
+        .scoped[F, NetworkError, Unit](t => NetworkError.fromThrowable(name, t))(program)
         .flatMap(_.fold(mux.abort, _ => Async[F].unit))
     def channel(protocol: Int) = Resource.eval(mux.channel(protocol, Mux.Role.Responder))
     for
@@ -137,5 +136,8 @@ object NodeToNodeServer:
         reason <- (
           start(mux, handlers, settings, agreed.data.peerSharing) *> negotiated(agreed, mux)
         ).surround(mux.closed)
-      yield reason.message
+        result <- reason match
+          case defect: NetworkError.Defect => defect.raise[F, String]
+          case other                       => Async[F].pure(other.message)
+      yield result
     }

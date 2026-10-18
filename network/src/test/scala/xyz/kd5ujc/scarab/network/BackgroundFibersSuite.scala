@@ -47,3 +47,42 @@ class BackgroundFibersSuite extends FailsOnUncaught:
       case Left(error)    => fail(s"unexpected $error")
     }
   }
+
+  for unexpected <- List(false, true)
+  do
+    test(
+      s"a scoped keep-alive fiber preserves ${if unexpected then "defect" else "transport closure"}"
+    ) {
+      val cause =
+        if unexpected then new IllegalStateException("injected")
+        else new java.io.IOException("closed")
+      val broken = new MuxChannel[IO]:
+        def protocol = 8
+        def send(bytes: xyz.kd5ujc.scarab.codec.Bytes)(using cats.mtl.Raise[IO, NetworkError]) =
+          IO.raiseError[Unit](cause)
+        def flush = IO.unit
+        def recv[A](maxBytes: Int)(
+            decode: xyz.kd5ujc.scarab.codec.Bytes => xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult[
+              A
+            ]
+        )(using cats.mtl.Raise[IO, NetworkError]): IO[A] = IO.never
+      for
+        ended <- cats.effect.Deferred[IO, NetworkError]
+        mux = new Mux[IO]:
+          def channel(protocol: Int)(using cats.mtl.Raise[IO, NetworkError]) = IO.pure(broken)
+          def channel(protocol: Int, role: Mux.Role)(using cats.mtl.Raise[IO, NetworkError]) =
+            IO.pure(broken)
+          def closed = ended.get
+          def abort(reason: NetworkError) = ended.complete(reason).void
+        outcome <- KeepAliveClient
+          .pinger(broken, mux, KeepAliveClient.Settings())
+          .start
+          .flatMap(_.join)
+        reason <- ended.get
+      yield
+        assert(outcome.isSuccess)
+        reason match
+          case NetworkError.Defect(found) if unexpected    => assert(found eq cause)
+          case _: NetworkError.BearerClosed if !unexpected => ()
+          case other                                       => fail(s"unexpected $other")
+    }

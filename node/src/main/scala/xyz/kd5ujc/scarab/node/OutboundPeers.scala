@@ -114,7 +114,11 @@ final class OutboundPeers[F[_]: Async, A] private (
               _ <- table.update(_ + (peer -> link))
               _ <- ready.complete(None)
               closed <- F.race(release.get, warm.mux.closed)
-              _ <- closed.traverse_(reason => lost(peer, link, Peer.peerError(reason)))
+              _ <- closed.traverse_(reason =>
+                Peer.networkFault(reason) match
+                  case Fault.Failed(error) => lost(peer, link, error)
+                  case Fault.Defect(cause) => stop(link, Fatal.Defect(cause))
+              )
             yield ()
           }
 
@@ -130,13 +134,20 @@ final class OutboundPeers[F[_]: Async, A] private (
           .flatMap {
             case Right(_)                  => F.unit
             case Left(Fault.Failed(error)) => failed(error)
-            // not ours: the node stops, and the governor is told the connection is gone
+            // not ours: release the link and stop, without a peer-failure observation
             case Left(Fault.Defect(cause)) =>
               val fatal = Fatal.Defect(cause)
-              hot.fatal(fatal) *> failed(PeerError.Unavailable(s"the node stops: ${fatal.message}"))
+              ready.complete(None).void *>
+                linked.get.flatMap(_.fold(hot.fatal(fatal))(stop(_, fatal)))
           }
           .guarantee(table.update(_ - peer) *> gone.complete(()).void)
     }
+
+  /** Fatal outcomes release the transport without entering peer-selection failure policy. */
+  private def stop(link: Link[F], fatal: Fatal): F[Unit] =
+    F.uncancelable(_ =>
+      link.phase.set(Phase.Ending()) *> link.release.complete(()).void *> hot.fatal(fatal)
+    )
 
   /** The connection is going without the governor having asked: say so, once. */
   private def lost(peer: A, link: Link[F], error: PeerError): F[Unit] =
@@ -276,19 +287,20 @@ final class OutboundPeers[F[_]: Async, A] private (
     // a cancelled session still tells whoever waits for it
     run
       .onCancel(
-        started.complete(Some(FailureClass.Transient)).void *>
-          session.ended.complete(SessionEnd.Cancelled).void
+        link.phase.get.flatMap {
+          case Phase.Ending() => started.complete(None).void
+          case _              => started.complete(Some(FailureClass.Transient)).void
+        } *> session.ended.complete(SessionEnd.Cancelled).void
       )
       .flatMap { end =>
         val disposition = FailurePolicy.disposition(end)
         val failure: Option[PeerError] = disposition match
           case Disposition.Forget | Disposition.Backoff => SessionEnd.peerError(end)
-          case Disposition.StopNode(fatal) =>
-            Some(PeerError.Unavailable(s"the node stops: ${fatal.message}"))
+          case Disposition.StopNode(_)                  => None
           case Disposition.Settled =>
             Option.when(end == SessionEnd.Returned)(PeerError.Unavailable("the session ended"))
         val stopNode = disposition match
-          case Disposition.StopNode(fatal) => hot.fatal(fatal)
+          case Disposition.StopNode(fatal) => stop(link, fatal)
           case _                           => F.unit
         // a start that failed tells the governor; a session that ends on its own is a loss
         stopNode *> started.complete(failure.map(FailurePolicy.classify)).flatMap { startedHere =>

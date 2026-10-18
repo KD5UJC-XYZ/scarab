@@ -66,11 +66,15 @@ object Peer:
       def raise[E3 <: E2, A](e: E3): F[A] = scope.raise[E1, A](f(e))
 
   /** Network failures as peer errors: where a fiber raises a [[PeerError]] it can call the network
-    * layer, and what the network layer raises is classified by [[peerError]]. Import it where the
-    * clients are called.
+    * layer, and what the network layer raises is classified by [[networkFault]]. Import it where
+    * the clients are called.
     */
-  given networkAsPeer[F[_]](using peer: Raise[F, PeerError]): Raise[F, NetworkError] =
-    contramapped[F, PeerError, NetworkError](peer)(peerError)
+  given networkAsPeer[F[_]: cats.ApplicativeThrow](using
+      peer: Raise[F, PeerError]
+  ): Raise[F, NetworkError] =
+    new Raise[F, NetworkError]:
+      def functor = peer.functor
+      def raise[E <: NetworkError, A](error: E): F[A] = Fault.land(Left(networkFault(error)))
 
   /** What a session measured of its peer, for the log. */
   enum Observation:
@@ -179,18 +183,20 @@ object Peer:
     SocketAddress.fromString(text).toRight(s"invalid peer address '$text', expected <host>:<port>")
 
   /** The node-level classification of a network failure. */
-  def peerError(error: NetworkError): PeerError = error match
+  def networkFault(error: NetworkError): Fault = error match
+    case NetworkError.Defect(cause) => Fault.Defect(cause)
     case _: NetworkError.Connect | _: NetworkError.Timeout | _: NetworkError.BearerClosed =>
-      PeerError.Unavailable(error.message)
+      Fault.Failed(PeerError.Unavailable(error.message))
     case _: NetworkError.HandshakeRefused | _: NetworkError.VersionMismatch =>
-      PeerError.Handshake(error.message)
+      Fault.Failed(PeerError.Handshake(error.message))
     case _: NetworkError.IngressLimit | _: NetworkError.Decode | _: NetworkError.IllegalTransition |
         _: NetworkError.QueryRefused | _: NetworkError.Framing =>
-      PeerError.Protocol(error.message)
+      Fault.Failed(PeerError.Protocol(error.message))
 
   /** Node-to-node interpreter over `network`: ChainSync and BlockFetch share one multiplexed
-    * connection (KeepAlive runs in the background). Every network failure surfaces as a typed
-    * [[PeerError]], raised in the fiber that opens the connection or that calls the peer.
+    * connection (KeepAlive runs in the background). Expected network failures surface as typed
+    * [[PeerError]] values in the calling fiber; an unexpected defect preserves its original cause
+    * for the session's fatal boundary.
     */
   def nodeToNode[F[_]: Async](
       settings: Settings,

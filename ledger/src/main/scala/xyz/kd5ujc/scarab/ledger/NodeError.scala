@@ -65,6 +65,11 @@ final case class ValidationError(point: ChainSync.Point, failure: BlockFailure) 
   def reason: String = failure.reason
   def message: String = s"${Points.show(point)} rejected by $rule: $reason"
 
+/** The implementation cannot evaluate this block. It is no verdict on the block or its peer. */
+final case class EvaluationUnavailable(point: ChainSync.Point, failure: LedgerFailure.Unavailable)
+    extends NodeError:
+  def message: String = s"${Points.show(point)} evaluation unavailable: ${failure.message}"
+
 /** Why a UTxO checkpoint of the RocksDB store cannot be restored by this build. */
 enum CheckpointProblem:
   /** The keys are in two layouts (an older build, then this one, wrote to the same store): the

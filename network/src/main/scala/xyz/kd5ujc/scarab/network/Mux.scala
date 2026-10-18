@@ -140,7 +140,6 @@ object Mux:
       case WireMux.Direction.Responder => Role.Initiator
 
     def failure[A](reason: String): F[A] = NetworkError.BearerClosed(reason).raise[F, A]
-    def describe(t: Throwable): String = Option(t.getMessage).getOrElse(t.getClass.getSimpleName)
 
     val setup = for
       done <- Resource.eval(Deferred[F, NetworkError])
@@ -214,7 +213,7 @@ object Mux:
             case None => closedByPeer
           }
           // a transport failure is the library's exception: it becomes a typed reason here
-          .handleError(t => NetworkError.BearerClosed(s"bearer failed: ${describe(t)}"))
+          .handleError(t => NetworkError.fromThrowable("bearer failed", t))
 
       def writeLoop: F[NetworkError] =
         outbound.take.flatMap {
@@ -238,7 +237,7 @@ object Mux:
             }
         }
       val writer: F[NetworkError] =
-        writeLoop.handleError(t => NetworkError.BearerClosed(s"bearer failed: ${describe(t)}"))
+        writeLoop.handleError(t => NetworkError.fromThrowable("bearer failed", t))
 
       for
         _ <- F.background(reader.flatMap(done.complete))

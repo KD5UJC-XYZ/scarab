@@ -6,6 +6,8 @@ import cats.effect.std.Queue
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.plutus.{EvalFailure, ExUnits}
+import xyz.kd5ujc.scarab.ledger.{LedgerFailure, Redeemer}
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, BlockRules, FollowerEvents, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.{
   BlockFailure,
@@ -62,7 +64,8 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       refuse: Option[Int] = None,
       breakStorage: Option[Int] = None,
       breakTip: Option[Int] = None,
-      explode: Option[Int] = None
+      explode: Option[Int] = None,
+      unavailable: Option[Int] = None
   ): IO[Result] =
     NodeScope.resource.use { node =>
       given Handle[IO, NodeError] = node
@@ -87,6 +90,20 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         rules: BlockRules[IO, BigInt] = (_, header, _) =>
           if explode.contains(header.blockNo.toInt) then
             IO.raiseError(new IllegalStateException("a bug in the rules"))
+          else if unavailable.contains(header.blockNo.toInt) then
+            node.raise[NodeError, BigInt](
+              ValidationError(
+                header.point,
+                BlockFailure.Tx(
+                  LedgerFailure.Unavailable(
+                    Bytes.empty,
+                    Redeemer(0, 0, Bytes.empty, ExUnits.zero),
+                    EvalFailure
+                      .Unsupported("injected implementation limit")
+                  )
+                )
+              )
+            )
           else if refuse.contains(header.blockNo.toInt) then
             node.raise[NodeError, BigInt](ValidationError(header.point, BlockFailure.HeaderDiffers))
           else IO.pure(header.blockNo)
@@ -203,4 +220,21 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertEquals(FailurePolicy.disposition(broken.end), Disposition.Forget)
       assertEquals(FailurePolicy.disposition(lost.end), Disposition.Backoff)
       assertEquals(broken.chain.tip, headers(0).point)
+  }
+
+  test("an implementation limit stops without a ledger verdict or peer failure, exit eight") {
+    session(unavailable = Some(2)).map { left =>
+      left.end match
+        case SessionEnd.Unavailable(error) =>
+          assertEquals(error.point, headers(2).point)
+          assertEquals(Main.FaultExitCode(Fatal.Unavailable(error)).code, 8)
+          assertEquals(
+            FailurePolicy.disposition(left.end),
+            Disposition.StopNode(Fatal.Unavailable(error))
+          )
+        case other => fail(s"unexpected $other")
+      assertEquals(SessionEnd.peerError(left.end), None)
+      assertEquals(left.chain.tip, headers(1).point)
+      assertEquals(blockNos(left.stored), Vector(0, 1))
+    }
   }

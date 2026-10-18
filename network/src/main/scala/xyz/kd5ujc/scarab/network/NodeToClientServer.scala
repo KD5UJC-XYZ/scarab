@@ -35,9 +35,9 @@ object NodeToClientServer:
     // the connection's protocols run in fibers of their own; each in an error scope of its own, and
     // the first to fail ends the others (`Fibers.failFast`)
     def child(program: Handle[F, NetworkError] ?=> F[Unit]): F[Either[NetworkError, Unit]] =
-      Fibers.scoped[F, NetworkError, Unit](t =>
-        NetworkError.BearerClosed(s"node-to-client: ${Option(t.getMessage).getOrElse(t.toString)}")
-      )(program)
+      Fibers.scoped[F, NetworkError, Unit](t => NetworkError.fromThrowable("node-to-client", t))(
+        program
+      )
     Mux
       .resource(
         bearer,
@@ -74,7 +74,11 @@ object NodeToClientServer:
               child(LocalTxSubmissionServer.run(submission, submit, settings)),
               child(querying.fold(Async[F].unit) { (c, source) =>
                 LocalStateQueryServer
-                  .run(c, source.forVersion(version), LocalStateQueryServer.Settings(settings.idleTimeout))
+                  .run(
+                    c,
+                    source.forVersion(version),
+                    LocalStateQueryServer.Settings(settings.idleTimeout)
+                  )
               }),
               child(following.fold(Async[F].unit) { (c, source) =>
                 source.use(
@@ -95,7 +99,10 @@ object NodeToClientServer:
           ended <- Async[F].race(served, mux.closed)
           reason <- ended.fold(
             result => Fibers.land[F, NetworkError, Unit](result).as("client finished"),
-            closed => Async[F].pure(closed.message)
+            closed =>
+              closed match
+                case defect: NetworkError.Defect => defect.raise[F, String]
+                case other                       => Async[F].pure(other.message)
           )
         yield reason
       }

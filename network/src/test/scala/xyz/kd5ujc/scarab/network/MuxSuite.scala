@@ -311,3 +311,29 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
   test("channel lookup fails for a protocol that was not registered"):
     typed(linked(protocols = Set(2)).use((client, _) => client.channel(5)).void)
       .map(r => assert(r.left.exists(_.isInstanceOf[NetworkError.IllegalTransition]), r.toString))
+
+  for
+    writing <- List(false, true)
+    unexpected <- List(false, true)
+  do
+    test(s"mux ${
+        if writing then "writer" else "reader"
+      } preserves ${if unexpected then "defect" else "transport closure"}") {
+      val cause =
+        if unexpected then new IllegalStateException("injected")
+        else new java.io.IOException("closed")
+      val bearer = new Bearer[IO]:
+        def reads = if writing then fs2.Stream.never[IO] else fs2.Stream.raiseError[IO](cause)
+        def write(bytes: Chunk[Byte]) = IO.raiseError[Unit](cause)
+        def close = IO.unit
+      typed {
+        Mux.resource(bearer, Set(2)).use { mux =>
+          (if writing then mux.channel(2).flatMap(_.send(Bytes(Vector(0.toByte)))) else IO.unit) *>
+            mux.closed
+        }
+      }.map {
+        case Right(NetworkError.Defect(found)) if unexpected    => assert(found eq cause)
+        case Right(_: NetworkError.BearerClosed) if !unexpected => ()
+        case other                                              => fail(s"unexpected $other")
+      }
+    }

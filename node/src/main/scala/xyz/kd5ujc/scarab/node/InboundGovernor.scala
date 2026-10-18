@@ -106,7 +106,11 @@ final class InboundGovernor[F[_]: Async] private (
                   negotiated = (agreed, mux) => negotiated(connection, remote, agreed, mux)
                 )
               }
-              .rescue(e => F.pure(e.message))
+              .rescue {
+                case NetworkError.Defect(cause) =>
+                  fatal(Fatal.Defect(cause)).as(NetworkError.Defect(cause).message)
+                case other => F.pure(other.message)
+              }
               .flatTap(reason => connection.close(reason))
         }
       }
