@@ -91,5 +91,44 @@ class KeyFilesSuite extends munit.FunSuite:
       oc,
       cold
     )
-    assert(PoolCredentials.check(credentials).left.exists(_.isInstanceOf[ForgeError.KeyMismatch]))
+    assertEquals(
+      PoolCredentials.check(credentials),
+      Left(ForgeError.KesKeyNotCertified(oc.hotVkey, credentials.kes.verificationKey))
+    )
+  }
+
+  test(
+    "credential checks retain malformed certificate causes and distinguish signature rejection"
+  ) {
+    val kes = Sum6KesSigning.generate(hex("02" * 32)).fold(e => fail(e.message), identity)
+    val c = PoolCredentials(
+      Draft03Prover.SigningKey.fromSeed(hex("01" * 32)).fold(e => fail(e.toString), identity),
+      kes,
+      xyz.kd5ujc.scarab.ledger.Header.OpCert(kes.verificationKey, 0, 0, Bytes.empty),
+      hex("03" * 32)
+    )
+    assertEquals(
+      PoolCredentials.check(c),
+      Left(
+        ForgeError.CertificateFailure(
+          OperationalCertificate.Failure.Signature(
+            xyz.kd5ujc.scarab.crypto.witness.WitnessInputError.MalformedSignatureLength(0)
+          )
+        )
+      )
+    )
+    assertEquals(
+      PoolCredentials.check(c.copy(opCert = c.opCert.copy(sequence = -1))),
+      Left(
+        ForgeError.CertificateFailure(
+          OperationalCertificate.Failure.InvalidCounter(
+            OperationalCertificate.UInt64.Error.OutOfRange(-1)
+          )
+        )
+      )
+    )
+    assertEquals(
+      PoolCredentials.check(c.copy(opCert = c.opCert.copy(sigma = hex("00" * 64)))),
+      Left(ForgeError.CertificateSignatureRejected)
+    )
   }

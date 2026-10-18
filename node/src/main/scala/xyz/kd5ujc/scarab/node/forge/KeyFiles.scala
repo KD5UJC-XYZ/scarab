@@ -53,15 +53,15 @@ object PoolCredentials:
       _ <- Either.cond(
         c.kes.verificationKey == c.opCert.hotVkey,
         (),
-        ForgeError.KeyMismatch("the operational certificate names another KES verification key")
+        ForgeError.KesKeyNotCertified(c.opCert.hotVkey, c.kes.verificationKey)
       )
       verdict <- OperationalCertificate
         .verify(c.coldVkey, c.opCert.hotVkey, c.opCert.sequence, c.opCert.kesPeriod, c.opCert.sigma)
-        .leftMap(e => ForgeError.KeyMismatch(s"operational certificate: $e"))
+        .leftMap(ForgeError.CertificateFailure(_))
       _ <- Either.cond(
         verdict == OperationalCertificate.Result.OperationalCertificateSignatureVerified,
         (),
-        ForgeError.KeyMismatch("the operational certificate is not signed by its cold key")
+        ForgeError.CertificateSignatureRejected
       )
     yield ()
 

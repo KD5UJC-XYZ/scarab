@@ -25,6 +25,9 @@ enum ReloadRefusal:
   /** The KES key is not the one the certificate names. */
   case KeyNotCertified
 
+  /** Malformed certificate input or a verifier failure, distinct from signature rejection. */
+  case CertificateFailure(cause: OperationalCertificate.Failure)
+
   /** The certificate's signature does not verify under its cold key. */
   case BadCertificateSignature
 
@@ -44,6 +47,7 @@ enum ReloadRefusal:
     case Unreadable(e)        => e.message
     case WrongPool(want, got) => s"certificate of pool ${got.hex}, this node forges for ${want.hex}"
     case KeyNotCertified      => "the certificate names another KES verification key"
+    case CertificateFailure(e)   => s"operational certificate: ${e.message}"
     case BadCertificateSignature => "the certificate is not signed by the pool's cold key"
     case NotYetValid(p, s)       => s"the certificate starts at KES period $s, now is $p"
     case Expired(p, s, e)        => s"KES period $p is past the certificate's window [$s, ${s + e})"
@@ -255,15 +259,17 @@ object HotKeys:
         (),
         ReloadRefusal.KeyNotCertified
       )
-      signed = OperationalCertificate.verify(
-        candidate.coldVkey,
-        candidate.opCert.hotVkey,
-        candidate.opCert.sequence,
-        start,
-        candidate.opCert.sigma
-      )
+      signed <- OperationalCertificate
+        .verify(
+          candidate.coldVkey,
+          candidate.opCert.hotVkey,
+          candidate.opCert.sequence,
+          start,
+          candidate.opCert.sigma
+        )
+        .leftMap(ReloadRefusal.CertificateFailure(_))
       _ <- Either.cond(
-        signed == Right(OperationalCertificate.Result.OperationalCertificateSignatureVerified),
+        signed == OperationalCertificate.Result.OperationalCertificateSignatureVerified,
         (),
         ReloadRefusal.BadCertificateSignature
       )

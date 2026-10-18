@@ -7,6 +7,7 @@ import xyz.kd5ujc.scarab.crypto.witness.{
   Signature64,
   StrictEd25519,
   VerificationError,
+  WitnessInputError,
   VerificationResult
 }
 import scala.util.control.NonFatal
@@ -16,22 +17,54 @@ import scala.util.control.NonFatal
   */
 object OperationalCertificate:
   enum Failure:
-    case Malformed(reason: String)
-    case InternalFailure(kind: String)
+    case MissingColdKey, MissingHotKey, MissingSignature, MissingCertificate
+    case InvalidHotKeyLength(actual: Int)
+    case InvalidCounter(cause: UInt64.Error)
+    case InvalidStartPeriod(cause: UInt64.Error)
+    case ColdKey(cause: WitnessInputError)
+    case Signature(cause: WitnessInputError)
+    case PrimitiveFailure(cause: VerificationError)
+    case PrimitiveContractViolation(reply: PrimitiveReply)
+    case Defect(cause: Throwable)
+
+    def message: String = this match
+      case MissingColdKey                => "null cold key"
+      case MissingHotKey                 => "null hot KES key"
+      case MissingSignature              => "null signature"
+      case MissingCertificate            => "null certificate"
+      case InvalidHotKeyLength(n)        => s"hot KES key must be 32 bytes (got $n)"
+      case InvalidCounter(e)             => s"certificate counter: ${e.message}"
+      case InvalidStartPeriod(e)         => s"certificate start period: ${e.message}"
+      case ColdKey(e)                    => s"cold key: $e"
+      case Signature(e)                  => s"certificate signature: $e"
+      case PrimitiveFailure(e)           => s"certificate signature verifier failed: $e"
+      case PrimitiveContractViolation(r) => s"certificate signature verifier broke its contract: $r"
+      case Defect(e)                     => s"certificate verifier defect: ${e.getClass.getName}"
+
+  enum PrimitiveReply:
+    case MissingResult, MissingVerdict, MissingError
 
   final class UInt64 private (val value: BigInt)
   object UInt64:
     val MaxValue: BigInt = (BigInt(1) << 64) - 1
-    def fromBigInt(value: BigInt): Either[Failure, UInt64] =
-      if value == null || value < 0 || value > MaxValue then
-        Left(Failure.Malformed("value must be unsigned Word64"))
+    enum Error:
+      case MissingValue
+      case OutOfRange(value: BigInt)
+
+      def message: String = this match
+        case MissingValue  => "missing unsigned Word64"
+        case OutOfRange(n) => s"value $n must be unsigned Word64"
+
+    def fromBigInt(value: BigInt): Either[Error, UInt64] =
+      if value == null then Left(Error.MissingValue)
+      else if value < 0 || value > MaxValue then Left(Error.OutOfRange(value))
       else Right(new UInt64(value))
 
   final class HotKesKey32 private (val bytes: Bytes)
   object HotKesKey32:
     def fromBytes(bytes: Bytes): Either[Failure, HotKesKey32] = protect {
-      if bytes == null || bytes.size != 32 then
-        Left(Failure.Malformed("hot KES key must be 32 bytes"))
+      if bytes == null then Left(Failure.MissingHotKey)
+      else if bytes.size != 32 then Left(Failure.InvalidHotKeyLength(bytes.size))
       else Right(new HotKesKey32(bytes))
     }
 
@@ -48,8 +81,10 @@ object OperationalCertificate:
         startPeriod: UInt64,
         signature: Signature64
     ): Either[Failure, Certificate] =
-      if hotKey == null || counter == null || startPeriod == null || signature == null then
-        Left(Failure.Malformed("null certificate component"))
+      if hotKey == null then Left(Failure.MissingHotKey)
+      else if counter == null then Left(Failure.InvalidCounter(UInt64.Error.MissingValue))
+      else if startPeriod == null then Left(Failure.InvalidStartPeriod(UInt64.Error.MissingValue))
+      else if signature == null then Left(Failure.MissingSignature)
       else Right(new Certificate(hotKey, counter, startPeriod, signature))
 
     def fromBytes(
@@ -60,11 +95,11 @@ object OperationalCertificate:
     ): Either[Failure, Certificate] = protect {
       for
         hot <- HotKesKey32.fromBytes(hotKey)
-        n <- UInt64.fromBigInt(counter)
-        start <- UInt64.fromBigInt(startPeriod)
+        n <- UInt64.fromBigInt(counter).left.map(Failure.InvalidCounter(_))
+        start <- UInt64.fromBigInt(startPeriod).left.map(Failure.InvalidStartPeriod(_))
         sig <-
-          if signature == null then Left(Failure.Malformed("null signature"))
-          else Signature64.create(signature).left.map(e => Failure.Malformed(e.toString))
+          if signature == null then Left(Failure.MissingSignature)
+          else Signature64.create(signature).left.map(Failure.Signature(_))
         cert <- create(hot, n, start, sig)
       yield cert
     }
@@ -75,11 +110,11 @@ object OperationalCertificate:
 
   private def protect[A](body: => Either[Failure, A]): Either[Failure, A] =
     try body
-    catch case NonFatal(e) => Left(Failure.InternalFailure(e.getClass.getName))
+    catch case NonFatal(e) => Left(Failure.Defect(e))
 
   /** Exactly rawHotKey32 || counterBE8 || startPeriodBE8. No CBOR, hash, prefix or prehash. */
   def signableBytes(cert: Certificate): Either[Failure, Bytes] = protect {
-    if cert == null then Left(Failure.Malformed("null certificate"))
+    if cert == null then Left(Failure.MissingCertificate)
     else
       def be8(n: UInt64): Array[Byte] =
         Array.tabulate[Byte](8)(i => ((n.value >> (8 * (7 - i))) & 255).toByte)
@@ -101,8 +136,8 @@ object OperationalCertificate:
   ): Either[Failure, Result] = protect {
     for
       key <-
-        if coldKey == null then Left(Failure.Malformed("null cold key"))
-        else PublicKey32.create(coldKey).left.map(e => Failure.Malformed(e.toString))
+        if coldKey == null then Left(Failure.MissingColdKey)
+        else PublicKey32.create(coldKey).left.map(Failure.ColdKey(_))
       cert <- Certificate.fromBytes(hotKey, counter, startPeriod, signature)
       result <- verifySignature(key, cert)
     yield result
@@ -114,15 +149,17 @@ object OperationalCertificate:
       cert: Certificate,
       primitive: (PublicKey32, Signature64, Bytes) => Either[VerificationError, VerificationResult]
   ): Either[Failure, Result] = protect {
-    if coldKey == null then Left(Failure.Malformed("null cold key"))
+    if coldKey == null then Left(Failure.MissingColdKey)
     else
       signableBytes(cert).flatMap { message =>
         primitive(coldKey, cert.signature, message) match
           case Right(VerificationResult.SignatureVerified) =>
             Right(Result.OperationalCertificateSignatureVerified)
           case Right(VerificationResult.SignatureRejected) => Right(Result.SignatureRejected)
-          case Left(VerificationError.ImplementationFailure(kind)) =>
-            Left(Failure.InternalFailure(kind))
-          case _ => Left(Failure.InternalFailure("primitive-contract"))
+          case null => Left(Failure.PrimitiveContractViolation(PrimitiveReply.MissingResult))
+          case Right(null) =>
+            Left(Failure.PrimitiveContractViolation(PrimitiveReply.MissingVerdict))
+          case Left(null)  => Left(Failure.PrimitiveContractViolation(PrimitiveReply.MissingError))
+          case Left(error) => Left(Failure.PrimitiveFailure(error))
       }
   }
