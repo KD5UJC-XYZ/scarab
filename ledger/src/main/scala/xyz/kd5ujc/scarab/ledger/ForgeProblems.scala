@@ -52,13 +52,13 @@ enum KeyShape:
 
 object KeyShape:
   def of(value: Value): KeyShape = value match
-    case Value.UInt(_) => KeyShape.Unsigned
-    case Value.NInt(_) => KeyShape.Negative
+    case Value.UInt(_)           => KeyShape.Unsigned
+    case Value.NInt(_)           => KeyShape.Negative
     case Value.ByteString(bytes) => KeyShape.Bytes(bytes.size)
-    case Value.Text(_) => KeyShape.Text
-    case Value.Bool(_) => KeyShape.Boolean
-    case Value.Float(_, _) => KeyShape.Float
-    case Value.Null => KeyShape.Null
-    case Value.Arr(items) => KeyShape.Array(items.size)
-    case Value.Map(items) => KeyShape.Map(items.size)
-    case Value.Tag(number, _) => KeyShape.Tag(number)
+    case Value.Text(_)           => KeyShape.Text
+    case Value.Bool(_)           => KeyShape.Boolean
+    case Value.Float(_, _)       => KeyShape.Float
+    case Value.Null              => KeyShape.Null
+    case Value.Arr(items)        => KeyShape.Array(items.size)
+    case Value.Map(items)        => KeyShape.Map(items.size)
+    case Value.Tag(number, _)    => KeyShape.Tag(number)

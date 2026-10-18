@@ -305,9 +305,13 @@ object MempoolState:
 
   /** Split `[body, witnesses, is_valid, aux]` keeping each component's original bytes. */
   def parse(raw: Bytes): Either[Rejection, (Bytes, Tx)] =
-    def malformed[A](detail: TransactionDecodeProblem): Either[Rejection, A] = Left(Rejection.Malformed(detail))
+    def malformed[A](detail: TransactionDecodeProblem): Either[Rejection, A] = Left(
+      Rejection.Malformed(detail)
+    )
     for
-      root <- Cbor.decode(raw, limits).leftMap(e => Rejection.Malformed(TransactionDecodeProblem.Syntax(e)))
+      root <- Cbor
+        .decode(raw, limits)
+        .leftMap(e => Rejection.Malformed(TransactionDecodeProblem.Syntax(e)))
       parts <- root.value match
         case Value.Arr(xs) if xs.size == 4 => Right(xs)
         case _ => malformed(TransactionDecodeProblem.Envelope(root.value))
@@ -318,5 +322,7 @@ object MempoolState:
         case Value.Null => None
         case _          => Some(parts(3).original)
       transaction = Block.Transaction(parts(0).original, parts(1).original, aux, valid)
-      tx <- Tx.fromBlock(transaction, Era.Conway).leftMap(e => Rejection.Malformed(TransactionDecodeProblem.Ledger(e)))
+      tx <- Tx
+        .fromBlock(transaction, Era.Conway)
+        .leftMap(e => Rejection.Malformed(TransactionDecodeProblem.Ledger(e)))
     yield (Blake2b.hash256.hash(parts(0).original), tx)

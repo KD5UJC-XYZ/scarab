@@ -97,7 +97,8 @@ object KeyFiles:
     Cbor.decode(raw).leftMap(e => ForgeError.KeyFile(file, ForgeKeyProblem.Cbor(e))).flatMap { n =>
       n.value match
         case Value.ByteString(b) => Right(b)
-        case _ => Left(ForgeError.KeyFile(file, ForgeKeyProblem.ExpectedByteString(KeyShape.of(n.value))))
+        case _ =>
+          Left(ForgeError.KeyFile(file, ForgeKeyProblem.ExpectedByteString(KeyShape.of(n.value))))
     }
 
   def vrfSigningKey(file: String, text: String): Either[ForgeError, Draft03Prover.SigningKey] =
@@ -156,14 +157,19 @@ object KeyFiles:
       cold <- fixed(outer(1).value, 32, bad)
     yield (Header.OpCert(hot, sequence, period, sigma), cold)
 
-  private def fixed(v: Value, size: Int, bad: ForgeKeyProblem => ForgeError): Either[ForgeError, Bytes] =
+  private def fixed(
+      v: Value,
+      size: Int,
+      bad: ForgeKeyProblem => ForgeError
+  ): Either[ForgeError, Bytes] =
     v match
       case Value.ByteString(b) if b.size == size => Right(b)
-      case _                                     => Left(bad(ForgeKeyProblem.FixedBytes(size, KeyShape.of(v))))
+      case _ => Left(bad(ForgeKeyProblem.FixedBytes(size, KeyShape.of(v))))
 
-  private def uint(v: Value, bad: ForgeKeyProblem => ForgeError): Either[ForgeError, BigInt] = v match
-    case Value.UInt(n) => Right(n)
-    case _             => Left(bad(ForgeKeyProblem.UnsignedInteger(KeyShape.of(v))))
+  private def uint(v: Value, bad: ForgeKeyProblem => ForgeError): Either[ForgeError, BigInt] =
+    v match
+      case Value.UInt(n) => Right(n)
+      case _             => Left(bad(ForgeKeyProblem.UnsignedInteger(KeyShape.of(v))))
 
   /** The text of a file, or why it cannot be read. */
   private[forge] def read(p: Path): Either[ForgeError, String] =

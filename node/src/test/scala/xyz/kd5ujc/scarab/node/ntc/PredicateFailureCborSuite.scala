@@ -87,7 +87,9 @@ class PredicateFailureCborSuite extends FunSuite:
 
   test("an output below the minimum travels with the minimum it missed") {
     val address =
-      Address.decode(Bytes(Vector(0x60.toByte) ++ keyHash.value)).fold(e => fail(e.message), identity)
+      Address
+        .decode(Bytes(Vector(0x60.toByte) ++ keyHash.value))
+        .fold(e => fail(e.message), identity)
     assertEquals(
       reason(
         PredicateFailure.utxo(UtxoFailure.BabbageOutputTooSmall(Vector(out(address, 1) -> 831830)))

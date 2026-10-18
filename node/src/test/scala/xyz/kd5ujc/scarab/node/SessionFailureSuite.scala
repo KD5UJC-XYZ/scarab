@@ -84,7 +84,9 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               anchor: Anchor[BigInt]
           ) =
             if breakStorage.contains(block.blockNo.toInt) then
-              node.raise[NodeError, Unit](StorageError.Io("volatile", new java.io.IOException("disk full")))
+              node.raise[NodeError, Unit](
+                StorageError.Io("volatile", new java.io.IOException("disk full"))
+              )
             else stored.update(_ :+ block)
           def rolledBack(to: ChainSync.Point) = IO.unit
         rules: BlockRules[IO, BigInt] = (_, header, _) =>

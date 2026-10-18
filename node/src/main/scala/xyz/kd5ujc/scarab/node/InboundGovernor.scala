@@ -137,7 +137,9 @@ final class InboundGovernor[F[_]: Async] private (
               )
               .as(true)
           }
-          .rescue(error => mux.abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error))).as(false))
+          .rescue(error =>
+            mux.abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error))).as(false)
+          )
       )
       .flatMap { admitted =>
         if !admitted then Resource.unit[F]
@@ -210,16 +212,19 @@ final class InboundGovernor[F[_]: Async] private (
         case Disposition.Settled                      => None
       drop = disposition == Disposition.Forget
       _ <- reason.traverse_ { why =>
-        val closure = SessionEnd.peerError(end).fold[NetworkError.Closure](
-          NetworkError.Closure.Aborted
-        )(NetworkError.Closure.AbortedBy(_))
+        val closure = SessionEnd
+          .peerError(end)
+          .fold[NetworkError.Closure](
+            NetworkError.Closure.Aborted
+          )(NetworkError.Closure.AbortedBy(_))
         update(remote)(_.copy(ended = Some(why))) *>
           emit(remote, InboundEvent.SessionEnded(why, drop)) *>
           mux.abort(NetworkError.BearerClosed(closure)).whenA(drop)
       }
       _ <- disposition match
-        case Disposition.StopNode(f) => fatal(f) *> mux.abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(f)))
-        case _                       => F.unit
+        case Disposition.StopNode(f) =>
+          fatal(f) *> mux.abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(f)))
+        case _ => F.unit
     yield ()
 
   /** Follow the peer over `connection`; while it shares no point with our chain, try again after

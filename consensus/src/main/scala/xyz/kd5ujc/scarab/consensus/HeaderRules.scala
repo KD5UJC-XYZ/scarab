@@ -31,18 +31,21 @@ object HeaderRules:
     case Horizon(slot: BigInt, tipSlot: BigInt)
     case ParentStateUnknown
     def message: String = this match
-      case ShelleyLedgerNotReady => "the Shelley ledger exists once the first Shelley block is applied"
-      case Horizon(slot, tip) => s"slot $slot is beyond the forecast horizon of the ledger at slot $tip"
+      case ShelleyLedgerNotReady =>
+        "the Shelley ledger exists once the first Shelley block is applied"
+      case Horizon(slot, tip) =>
+        s"slot $slot is beyond the forecast horizon of the ledger at slot $tip"
       case ParentStateUnknown => "the parent's header state is not known yet"
   enum UncheckedReason:
     case Byron, FirstShelley, ParentInBatch, NoCommonLedger
     case ForecastFallback(cause: ForecastReason)
     def message: String = this match
-      case Byron => "Byron header: validated with its block"
-      case FirstShelley => "first Shelley block after the Byron era: validated with its block"
-      case ParentInBatch => "the parent is in the same batch and was not validated header-first"
+      case Byron          => "Byron header: validated with its block"
+      case FirstShelley   => "first Shelley block after the Byron era: validated with its block"
+      case ParentInBatch  => "the parent is in the same batch and was not validated header-first"
       case NoCommonLedger => "no common ledger state"
-      case ForecastFallback(cause) => s"not validated header-first, nothing left to wait for: ${cause.message}"
+      case ForecastFallback(cause) =>
+        s"not validated header-first, nothing left to wait for: ${cause.message}"
   enum Outcome[+H]:
     /** Every header rule holds; the header state after the header. */
     case Valid(next: H)

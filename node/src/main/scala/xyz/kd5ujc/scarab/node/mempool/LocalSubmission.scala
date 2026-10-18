@@ -20,23 +20,30 @@ object LocalSubmission:
 
   /** The original transaction bytes inside a wrapped one. */
   def unwrap(item: Bytes): Either[Rejection, Bytes] =
-    Cbor.decode(item).left.map(e => Rejection.Malformed(TransactionDecodeProblem.Syntax(e))).flatMap { root =>
-      root.value match
-        case Value.Arr(Vector(era, payload)) =>
-          era.value match
-            case Value.UInt(e) if e == ConwayEra =>
-              payload.value match
-                case Value.Tag(t, inner) if t == 24 =>
-                  inner.value match
-                    case Value.ByteString(b) => Right(b)
-                    case _ => Left(Rejection.Malformed(TransactionDecodeProblem.TaggedPayload(inner.value)))
-                case _ => Right(payload.original)
-            case Value.UInt(e) if e.isValidInt => Left(Rejection.WrongEra(e.toInt))
-            case Value.UInt(e) =>
-              Left(Rejection.Malformed(TransactionDecodeProblem.EraOutOfRange(e)))
-            case _ => Left(Rejection.Malformed(TransactionDecodeProblem.EraExpected(era.value)))
-        case _ => Left(Rejection.Malformed(TransactionDecodeProblem.EraEnvelope(root.value)))
-    }
+    Cbor
+      .decode(item)
+      .left
+      .map(e => Rejection.Malformed(TransactionDecodeProblem.Syntax(e)))
+      .flatMap { root =>
+        root.value match
+          case Value.Arr(Vector(era, payload)) =>
+            era.value match
+              case Value.UInt(e) if e == ConwayEra =>
+                payload.value match
+                  case Value.Tag(t, inner) if t == 24 =>
+                    inner.value match
+                      case Value.ByteString(b) => Right(b)
+                      case _ =>
+                        Left(
+                          Rejection.Malformed(TransactionDecodeProblem.TaggedPayload(inner.value))
+                        )
+                  case _ => Right(payload.original)
+              case Value.UInt(e) if e.isValidInt => Left(Rejection.WrongEra(e.toInt))
+              case Value.UInt(e) =>
+                Left(Rejection.Malformed(TransactionDecodeProblem.EraOutOfRange(e)))
+              case _ => Left(Rejection.Malformed(TransactionDecodeProblem.EraExpected(era.value)))
+          case _ => Left(Rejection.Malformed(TransactionDecodeProblem.EraEnvelope(root.value)))
+      }
 
   /** The rejection as sent to the client: the ledger's `ApplyTxErr` for a refused transaction (the
     * predicate failures `cardano-cli` renders), the hard-fork combinator's era mismatch for a
@@ -62,9 +69,12 @@ object LocalSubmission:
     case Rejection.Full(size, free) => Right(text(MempoolProblem.Capacity(size, free)))
     case Rejection.NoLedger(why) =>
       val cause = why match
-        case xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.InByron => MempoolLedgerProblem.InByron
-        case xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.InEarlier(era) => MempoolLedgerProblem.Earlier(era)
-        case xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.Refused(error) => MempoolLedgerProblem.Refused(error)
+        case xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.InByron =>
+          MempoolLedgerProblem.InByron
+        case xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.InEarlier(era) =>
+          MempoolLedgerProblem.Earlier(era)
+        case xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.Refused(error) =>
+          MempoolLedgerProblem.Refused(error)
       Right(text(MempoolProblem.NoLedger(cause)))
 
   private def text(message: MempoolProblem): Bytes =

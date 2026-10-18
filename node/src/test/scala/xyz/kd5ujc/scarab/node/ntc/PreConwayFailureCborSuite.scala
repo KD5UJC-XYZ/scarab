@@ -150,7 +150,9 @@ class PreConwayFailureCborSuite extends FunSuite:
     )
     // an output too big has no size in Allegra: [12 OutputTooBigUTxO, [output]]
     val address =
-      Address.decode(Bytes(Vector(0x60.toByte) ++ keyHash.value)).fold(e => fail(e.message), identity)
+      Address
+        .decode(Bytes(Vector(0x60.toByte) ++ keyHash.value))
+        .fold(e => fail(e.message), identity)
     assertEquals(
       reason(
         Era.Mary,
@@ -247,7 +249,9 @@ class PreConwayFailureCborSuite extends FunSuite:
 
   test("Babbage: UTXO is UTXOW tag 2, Alonzo's constructors are held at 1 and 0") {
     val address =
-      Address.decode(Bytes(Vector(0x60.toByte) ++ keyHash.value)).fold(e => fail(e.message), identity)
+      Address
+        .decode(Bytes(Vector(0x60.toByte) ++ keyHash.value))
+        .fold(e => fail(e.message), identity)
     // [2 UtxoFailure, [3 BabbageOutputTooSmallUTxO, [[output, minimum 831830]]]]
     assertEquals(
       reason(
@@ -321,7 +325,9 @@ class PreConwayFailureCborSuite extends FunSuite:
     earlier.foreach { f =>
       assert(!PredicateFailureCbor.inConway(f), s"$f")
       val decoded =
-        Cbor.decode(PredicateFailureCbor.applyTxError(Vector(f))).fold(e => fail(e.message), identity)
+        Cbor
+          .decode(PredicateFailureCbor.applyTxError(Vector(f)))
+          .fold(e => fail(e.message), identity)
       // [[6, [[7 ConwayMempoolFailure, text]]]]
       decoded.value match
         case CborValue.Arr(Vector(wrapper)) =>

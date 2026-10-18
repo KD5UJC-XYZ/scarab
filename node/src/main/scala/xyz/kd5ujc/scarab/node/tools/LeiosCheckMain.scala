@@ -32,10 +32,10 @@ object LeiosCheckMain extends IOApp:
     case UnrecognisedEra(index: BigInt)
     case Header(cause: xyz.kd5ujc.scarab.ledger.ChainError)
     def message: String = this match
-      case Hex(cause) => s"bad hex: ${cause.message}"
-      case Envelope(cause) => s"envelope: $cause"
+      case Hex(cause)             => s"bad hex: ${cause.message}"
+      case Envelope(cause)        => s"envelope: $cause"
       case UnrecognisedEra(index) => s"unrecognised era index $index"
-      case Header(cause) => cause.message
+      case Header(cause)          => cause.message
   def run(args: List[String]): IO[ExitCode] =
     val flags = args.drop(1).grouped(2).collect { case List(k, v) => k.drop(2) -> v }.toMap
     (flags.get("headers").map(Path.of(_)), flags.get("config").map(Path.of(_))) match
@@ -101,7 +101,8 @@ object LeiosCheckMain extends IOApp:
         header <- LeiosHeader.decode(raw).left.map(DecodeProblem.Header(_))
       yield header
       decoded match
-        case Left(reason) => summary(state, kinds, s"block ${cols(1)}: cannot decode: ${reason.message}")
+        case Left(reason) =>
+          summary(state, kinds, s"block ${cols(1)}: cannot decode: ${reason.message}")
         case Right(header) =>
           LeiosHeaderChain.step(config, policy)(state, header) match
             case Left(fault) =>

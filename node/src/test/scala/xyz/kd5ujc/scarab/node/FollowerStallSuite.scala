@@ -436,7 +436,8 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                       if injected == FatalCase.UnavailablePhase1 then
                         ScriptLocation.Phase1(Bytes.empty)
                       else ScriptLocation.Phase2(Redeemer(0, 0, Bytes.empty, ExUnits.zero)),
-                      EvalFailure.Unsupported(xyz.kd5ujc.scarab.plutus.BackendFailure.BinaryDstUnavailable)
+                      EvalFailure
+                        .Unsupported(xyz.kd5ujc.scarab.plutus.BackendFailure.BinaryDstUnavailable)
                     )
                     summon[Handle[IO, NodeError]].raise[NodeError, Unit](
                       ValidationError(

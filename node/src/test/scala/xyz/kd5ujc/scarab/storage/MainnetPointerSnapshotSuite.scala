@@ -36,7 +36,9 @@ class MainnetPointerSnapshotSuite extends CatsEffectSuite:
     val parts = tx.value match
       case Value.Arr(xs) => xs
       case other         => fail(s"unexpected $other")
-    TxBody.decode(parts.head.original, Address.Mode.of(Era.Mary)).fold(e => fail(e.message), identity)
+    TxBody
+      .decode(parts.head.original, Address.Mode.of(Era.Mary))
+      .fold(e => fail(e.message), identity)
 
   private val fixtures = Path.of("fixtures/eras")
   private val setup: NodeSetup =

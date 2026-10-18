@@ -430,7 +430,10 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
       referenceScript = Some(script.kind -> code)
     )
     val stopped: xyz.kd5ujc.scarab.plutus.ScriptDecoder[cats.Id] = (_, _, _) =>
-      Left(xyz.kd5ujc.scarab.plutus.ScriptDecodeFailure.Unavailable(xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted))
+      Left(
+        xyz.kd5ujc.scarab.plutus.ScriptDecodeFailure
+          .Unavailable(xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted)
+      )
     val unavailableEnv = env.copy(decoder = stopped)
     val base = ledger(2)
     for

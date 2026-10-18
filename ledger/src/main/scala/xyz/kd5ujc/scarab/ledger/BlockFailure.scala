@@ -184,4 +184,4 @@ enum HandoverProblem:
   case MissingByronRules
   def message: String = this match
     case MissingShelleyContext => "the Shelley genesis gives no hand-over context"
-    case MissingByronRules => "a Byron state, and no Byron rules to leave it"
+    case MissingByronRules     => "a Byron state, and no Byron rules to leave it"

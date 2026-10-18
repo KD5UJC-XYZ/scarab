@@ -46,7 +46,8 @@ class DevnetRefusedTxSuite extends FunSuite:
   private def funded(base: LedgerState, tx: Tx): LedgerState =
     val body = tx.body
     val owner = xyz.kd5ujc.scarab.ledger.Verdicts.Direct.keyHash(tx.witnesses.vkeys.head._1)
-    val address = Address.decode(Bytes(0x60.toByte +: owner.value)).fold(e => fail(e.message), identity)
+    val address =
+      Address.decode(Bytes(0x60.toByte +: owner.value)).fold(e => fail(e.message), identity)
     val needed = body.outputs.map(_.value.coin).sum + body.fee
     val spare = BigInt(3000000)
     val inputs = body.inputs.distinct

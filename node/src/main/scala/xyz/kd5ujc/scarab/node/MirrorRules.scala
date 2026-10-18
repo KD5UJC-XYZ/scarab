@@ -188,7 +188,9 @@ object MirrorRules:
       case NodeRules.Entry.Within(_, _) =>
         MirrorStep
           .nesOf(state)
-          .toRight(BlockFailure.Handover(xyz.kd5ujc.scarab.ledger.HandoverProblem.MissingByronRules))
+          .toRight(
+            BlockFailure.Handover(xyz.kd5ujc.scarab.ledger.HandoverProblem.MissingByronRules)
+          )
           .map(nes => Pre(nes, state.protocol, state.consensus, state.plutus, false))
 
   /** The state after `header` and its block, or why it is refused: a Byron block by the Byron

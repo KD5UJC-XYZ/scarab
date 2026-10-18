@@ -54,7 +54,10 @@ class BlockFailureSuite extends FunSuite:
       rendered(BlockFailure.ShelleyBeforeTransition(BigInt(2), BigInt(3), BigInt(99))),
       "byron" -> "Shelley block in epoch 2, the transition is to epoch 3 after Byron slot 99"
     )
-    assertEquals(rendered(BlockFailure.Byron(ByronChainError.SignatureRejected)), "byron" -> "block signature rejected")
+    assertEquals(
+      rendered(BlockFailure.Byron(ByronChainError.SignatureRejected)),
+      "byron" -> "block signature rejected"
+    )
     assertEquals(
       rendered(
         BlockFailure.Praos(
@@ -68,7 +71,10 @@ class BlockFailureSuite extends FunSuite:
       rendered(BlockFailure.Lite(LedgerDecodeError.Empty("z"))),
       "ledger" -> LedgerDecodeError.Empty("z").message
     )
-    assertEquals(rendered(BlockFailure.Handover(HandoverProblem.MissingByronRules)), "ledger" -> "a Byron state, and no Byron rules to leave it")
+    assertEquals(
+      rendered(BlockFailure.Handover(HandoverProblem.MissingByronRules)),
+      "ledger" -> "a Byron state, and no Byron rules to leave it"
+    )
     val id = Bytes.fromHex("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")
     assertEquals(
       id.map(i => rendered(BlockFailure.TxDecode(i, LedgerDecodeError.Empty("bad")))),

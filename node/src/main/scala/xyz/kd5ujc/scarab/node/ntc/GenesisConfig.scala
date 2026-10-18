@@ -28,10 +28,10 @@ object GenesisConfig:
     case InvalidSystemStart(value: String, cause: Throwable)
 
     def message: String = this match
-      case InvalidField(field, detail) => s"genesis $field: $detail"
-      case InvalidHex(field, detail)   => s"genesis $field: $detail"
-      case InvalidDecimal(field)       => s"genesis $field"
-      case InvalidSystemStart(value, _)   => s"systemStart $value"
+      case InvalidField(field, detail)  => s"genesis $field: $detail"
+      case InvalidHex(field, detail)    => s"genesis $field: $detail"
+      case InvalidDecimal(field)        => s"genesis $field"
+      case InvalidSystemStart(value, _) => s"systemStart $value"
 
   private type R[A] = Either[Error, A]
 

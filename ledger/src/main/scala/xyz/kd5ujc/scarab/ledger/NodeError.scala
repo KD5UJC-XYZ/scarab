@@ -71,33 +71,39 @@ object PeerError:
     case BlockCount(expected: Int, actual: Int)
     def message: String = this match
       case HeaderDecode(cause) => cause.message
-      case HeaderDoesNotExtend(point, _) => s"header ${Points.show(point)} does not extend the peer's chain"
+      case HeaderDoesNotExtend(point, _) =>
+        s"header ${Points.show(point)} does not extend the peer's chain"
       case HeaderValidationDidNotSettle => "header validation did not settle"
       case BlockCount(expected, actual) => s"expected $expected block, received $actual"
   enum Unavailability:
-    case Network(cause: NetworkError.Connect | NetworkError.Timeout | NetworkError.SduTimeout | NetworkError.BearerClosed)
+    case Network(
+        cause: NetworkError.Connect | NetworkError.Timeout | NetworkError.SduTimeout |
+          NetworkError.BearerClosed
+    )
     case Connection(cause: xyz.kd5ujc.scarab.protocol.ConnectionError)
     case Resolution(host: String, cause: java.io.IOException)
     case SessionEnded
     case MissingAnnouncedBlock(point: ChainSync.Point)
     def message: String = this match
-      case Network(cause) => cause.message
-      case Connection(cause) => cause.message
-      case Resolution(host, cause) => s"cannot resolve $host: ${cause.getMessage}"
-      case SessionEnded => "the session ended"
+      case Network(cause)           => cause.message
+      case Connection(cause)        => cause.message
+      case Resolution(host, cause)  => s"cannot resolve $host: ${cause.getMessage}"
+      case SessionEnded             => "the session ended"
       case MissingAnnouncedBlock(_) => "peer does not have the announced block"
   enum Divergence:
     case RollbackOutsideChain(point: ChainSync.Point)
     case DetachedCandidate(base: ChainSync.Point)
     case ForeignBlock(cause: ValidationError)
     def message: String = this match
-      case RollbackOutsideChain(point) => s"peer rolled back to ${Points.show(point)}, outside our chain"
-      case DetachedCandidate(base) => s"the peer's chain no longer joins ours at ${Points.show(base)}"
+      case RollbackOutsideChain(point) =>
+        s"peer rolled back to ${Points.show(point)}, outside our chain"
+      case DetachedCandidate(base) =>
+        s"the peer's chain no longer joins ours at ${Points.show(base)}"
       case ForeignBlock(cause) => s"a block fetched by another peer: ${cause.message}"
   def protocolMessage(cause: ProtocolFailure): String = cause match
-    case error: ProtocolError => error.message
+    case error: ProtocolError   => error.message
     case error: ProtocolProblem => error.message
-    case error: NetworkError => error.message
+    case error: NetworkError    => error.message
 
 /** Failures of the local chain model. These are not recoverable by reconnecting. */
 enum ChainError extends NodeError:
@@ -276,9 +282,9 @@ enum ForgeError extends NodeError:
     case LedgerViewUnavailable(slot, r) => s"no ledger view for slot $slot: $r"
     case UnsupportedProtocol(r)         => s"cannot forge: $r"
     case Assembly(r)                    => s"block assembly: $r"
-    case SelfRejected(e) => s"our own ${e.rule} rules refuse the forged block: ${e.reason}"
+    case SelfRejected(e)   => s"our own ${e.rule} rules refuse the forged block: ${e.reason}"
     case ServiceFailure(e) => e.message
-    case Defect(cause) => s"forger defect: $cause"
+    case Defect(cause)     => s"forger defect: $cause"
 
 enum KesFileOperation:
   case StageWrite, StageSync, StageReadback, DirectorySyncBeforeErase

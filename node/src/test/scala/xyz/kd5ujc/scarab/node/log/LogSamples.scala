@@ -212,7 +212,13 @@ object LogSamples:
 
   val mempool: List[MempoolEvent] = List(
     MempoolEvent.Added(hash, 300, 2, 600L),
-    MempoolEvent.Rejected(None, Rejection.Malformed(xyz.kd5ujc.scarab.ledger.TransactionDecodeProblem.Envelope(xyz.kd5ujc.scarab.codec.Value.Null))),
+    MempoolEvent.Rejected(
+      None,
+      Rejection.Malformed(
+        xyz.kd5ujc.scarab.ledger.TransactionDecodeProblem
+          .Envelope(xyz.kd5ujc.scarab.codec.Value.Null)
+      )
+    ),
     MempoolEvent.Rejected(Some(hash), Rejection.Full(300, 100L)),
     MempoolEvent.Dropped(hash, Rejection.AlreadyHeld(hash)),
     MempoolEvent.Adopted(hash),
@@ -268,7 +274,13 @@ object LogSamples:
     ForgeEvent.KesEvolved(BigInt(33), 2),
     ForgeEvent.KesReloaded(BigInt(4), BigInt(30), BigInt(62), BigInt(33)),
     ForgeEvent.KesReloadRefused(ReloadRefusal.Counter(OCertError.CounterTooSmall(5, 3))),
-    ForgeEvent.KesPersistFailed(BigInt(33), ForgeError.KeyFile("kes.skey", xyz.kd5ujc.scarab.ledger.ForgeKeyProblem.Io(new java.io.IOException("disk full")))),
+    ForgeEvent.KesPersistFailed(
+      BigInt(33),
+      ForgeError.KeyFile(
+        "kes.skey",
+        xyz.kd5ujc.scarab.ledger.ForgeKeyProblem.Io(new java.io.IOException("disk full"))
+      )
+    ),
     ForgeEvent.Skipped(BigInt(4201), "busy"),
     ForgeEvent.Failed(BigInt(4202), ForgeError.KeyPeriodOutOfRange(33, 0, 32)),
     ForgeEvent.EpochSummary(BigInt(3), forgeStats),
@@ -293,7 +305,15 @@ object LogSamples:
     FollowerEvent.RolledBack(point, ChainSync.Point.Origin, 2),
     FollowerEvent.EpochEntered(BigInt(4), block),
     FollowerEvent.Immutable(block),
-    FollowerEvent.Reconnecting(PeerError.Unavailable(PeerError.Unavailability.Network(xyz.kd5ujc.scarab.protocol.NetworkError.Connect("10.0.0.1:3001", new java.io.IOException("connection refused")))), 3),
+    FollowerEvent.Reconnecting(
+      PeerError.Unavailable(
+        PeerError.Unavailability.Network(
+          xyz.kd5ujc.scarab.protocol.NetworkError
+            .Connect("10.0.0.1:3001", new java.io.IOException("connection refused"))
+        )
+      ),
+      3
+    ),
     FollowerEvent.EraEntered(None, Era.Byron, block, BigInt(0)),
     FollowerEvent.EraEntered(Some(Era.Babbage), Era.Conway, block, BigInt(5)),
     FollowerEvent.EpochValidated(BigInt(2), Era.Shelley, 10L, 20L, 3L),
@@ -318,7 +338,10 @@ object LogSamples:
     StorageEvent.FormatMigrated(
       Migrated(FileKind.SnapshotFile, FormatVersion.V3, FormatVersion.V4, 3)
     ),
-    StorageEvent.SnapshotSkipped("4200-abab", StorageError.Corrupt("snapshot", xyz.kd5ujc.scarab.codec.BinaryError.UnexpectedEnd(0))),
+    StorageEvent.SnapshotSkipped(
+      "4200-abab",
+      StorageError.Corrupt("snapshot", xyz.kd5ujc.scarab.codec.BinaryError.UnexpectedEnd(0))
+    ),
     StorageEvent.SnapshotRestored("4200-abab", anchor),
     StorageEvent.SnapshotRestored("genesis", None),
     StorageEvent.SnapshotWritten("4200-abab", anchor, 2048L, 15L),
@@ -340,7 +363,11 @@ object LogSamples:
 
   val errors: List[xyz.kd5ujc.scarab.ledger.NodeError] = List(
     PeerError.NoIntersection,
-    ChainError.Decode("block", xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Syntax(xyz.kd5ujc.scarab.codec.Cbor.Error.UnexpectedEnd)),
+    ChainError.Decode(
+      "block",
+      xyz.kd5ujc.scarab.ledger.LedgerDecodeError
+        .Syntax(xyz.kd5ujc.scarab.codec.Cbor.Error.UnexpectedEnd)
+    ),
     StorageError.Missing("immutable/format")
   )
 

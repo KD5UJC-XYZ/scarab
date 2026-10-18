@@ -36,7 +36,9 @@ object NetworkIdentity:
       what: String,
       text: String
   ): Either[StorageError, (FormatVersion, NetworkIdentity)] =
-    def corrupt(reason: StorageStructureError): Either[StorageError, (FormatVersion, NetworkIdentity)] =
+    def corrupt(
+        reason: StorageStructureError
+    ): Either[StorageError, (FormatVersion, NetworkIdentity)] =
       Left(StorageError.Corrupt(what, reason))
     def hash(value: String): Option[Bytes] =
       Bytes.fromHex(value).toOption.filter(_.size == 32)

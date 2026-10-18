@@ -213,9 +213,7 @@ final class Forger[F[_]: Async, S](
   private[forge] def step(slot: BigInt): F[Unit] =
     hot
       .advance(kesPeriodOf(slot))
-      .handleErrorWith(t =>
-        failed(slot, ForgeError.KesFailure(t))
-      ) *> handle
+      .handleErrorWith(t => failed(slot, ForgeError.KesFailure(t))) *> handle
       .attempt(attempt(slot))
       .flatMap {
         case Right(_)                      => F.unit
@@ -223,9 +221,7 @@ final class Forger[F[_]: Async, S](
         case Left(e: ForgeError)           => failed(slot, e)
         case Left(other)                   => failed(slot, ForgeError.ServiceFailure(other))
       }
-      .handleErrorWith(t =>
-        failed(slot, ForgeError.Defect(t))
-      ) *> watch
+      .handleErrorWith(t => failed(slot, ForgeError.Defect(t))) *> watch
 
   private def failed(slot: BigInt, error: ForgeError): F[Unit] =
     stats.failed(geometry.epochOf(slot)) *> events.emit(ForgeEvent.Failed(slot, error))
@@ -452,7 +448,9 @@ final class Forger[F[_]: Async, S](
         )
         .left
         .map(f => ForgeError.LedgerViewUnavailable(slot, ForgeLedgerProblem.Tick(f)))
-      conway <- ConwayView.of(state).toRight(ForgeError.UnsupportedProtocol(ForgeProtocolProblem.LeftConway))
+      conway <- ConwayView
+        .of(state)
+        .toRight(ForgeError.UnsupportedProtocol(ForgeProtocolProblem.LeftConway))
     yield conway
 
   /** The ledger and Praos state of the tip carried to `epoch` (cached per tip and epoch: the epoch
@@ -479,9 +477,9 @@ final class Forger[F[_]: Async, S](
           nes <- lift(
             ConwayView(state, current.tipRef).left.map(why =>
               ForgeError.UnsupportedProtocol(why match
-                case ConwayView.Unavailable.InByron => ForgeProtocolProblem.InByron
+                case ConwayView.Unavailable.InByron        => ForgeProtocolProblem.InByron
                 case ConwayView.Unavailable.InEarlier(era) => ForgeProtocolProblem.Earlier(era)
-                case ConwayView.Unavailable.Refused(e) => ForgeProtocolProblem.Mirror(e))
+                case ConwayView.Unavailable.Refused(e)     => ForgeProtocolProblem.Mirror(e))
             )
           )
           _ <- lift(

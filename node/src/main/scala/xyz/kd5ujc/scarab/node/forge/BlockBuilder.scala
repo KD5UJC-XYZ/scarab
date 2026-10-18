@@ -55,7 +55,9 @@ object BlockBuilder:
 
   def piece(entry: Entry): Either[ForgeError, Piece] =
     for
-      root <- Cbor.decode(entry.raw, limits).leftMap(e => ForgeError.Assembly(ForgeAssemblyProblem.Cbor(e)))
+      root <- Cbor
+        .decode(entry.raw, limits)
+        .leftMap(e => ForgeError.Assembly(ForgeAssemblyProblem.Cbor(e)))
       parts <- root.value match
         case Value.Arr(xs) if xs.size == 4 => Right(xs)
         case _ =>

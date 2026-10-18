@@ -267,7 +267,12 @@ class EraTransitionSuite extends CatsEffectSuite:
   test("a configured Byron genesis hash that differs from the file's is a configuration error") {
     val text = Files.readString(fixtures.resolve("genesis/byron-genesis.json"))
     val wrong = Some(Bytes(Vector.fill(32)(7)))
-    assert(ByronGenesisFile.parse(text, wrong).left.exists(_.problem.isInstanceOf[xyz.kd5ujc.scarab.ledger.ConfigProblem.GenesisHashMismatch]))
+    assert(
+      ByronGenesisFile
+        .parse(text, wrong)
+        .left
+        .exists(_.problem.isInstanceOf[xyz.kd5ujc.scarab.ledger.ConfigProblem.GenesisHashMismatch])
+    )
     assertEquals(
       ByronGenesisFile.parse(text, setup.origin).map(_.hash),
       Right(setup.origin.get)
@@ -466,7 +471,10 @@ class EraTransitionSuite extends CatsEffectSuite:
       )
     )
     val result = byronUpdate(5, bad)
-    assert(result.left.exists(_ == xyz.kd5ujc.scarab.ledger.ByronChainError.SignatureRejected), result.toString)
+    assert(
+      result.left.exists(_ == xyz.kd5ujc.scarab.ledger.ByronChainError.SignatureRejected),
+      result.toString
+    )
   }
 
   test("a Byron header signed over different content is rejected") {
@@ -529,7 +537,12 @@ class EraTransitionSuite extends CatsEffectSuite:
       b,
       setup.byronRules.get
     )
-    assert(result.left.exists(_.isInstanceOf[xyz.kd5ujc.scarab.ledger.ByronChainError.SignatureThreshold]), result.toString)
+    assert(
+      result.left.exists(
+        _.isInstanceOf[xyz.kd5ujc.scarab.ledger.ByronChainError.SignatureThreshold]
+      ),
+      result.toString
+    )
   }
 
   test("the first Shelley block is rejected under a different initial nonce") {

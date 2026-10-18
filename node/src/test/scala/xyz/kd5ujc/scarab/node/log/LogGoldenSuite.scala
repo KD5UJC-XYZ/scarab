@@ -62,7 +62,11 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- node(NodeEvent.SlowFetch(300L))
         _ <- node(NodeEvent.Stalled(10.minutes, BigInt(6809207), BigInt(10200000)))
         _ <- node(NodeEvent.StallExit(30.minutes, BigInt(6809207), BigInt(10200000)))
-        _ <- node(NodeEvent.Faulted(Fatal.Storage(StorageError.Io("volatile", new java.io.IOException("disk full")))))
+        _ <- node(
+          NodeEvent.Faulted(
+            Fatal.Storage(StorageError.Io("volatile", new java.io.IOException("disk full")))
+          )
+        )
         _ <- node(NodeEvent.Faulted(Fatal.Internal(ChainError.NoIntersection)))
         _ <- node(NodeEvent.Faulted(Fatal.Defect(new IllegalStateException("a bug in the rules"))))
         _ <- inbound.traverse_(Log.inbound[IO].emit("10.0.0.1:3001", _))

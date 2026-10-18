@@ -26,19 +26,21 @@ enum ByronChainError:
   case SignatureFailure(cause: VerificationError)
 
   def message: String = this match
-    case ProtocolMagic(a, e) => s"protocol magic $a differs from the genesis $e"
-    case PreviousHash(a, e) => s"previous hash ${a.fold("none")(_.hex)} is not the tip ${e.hex}"
+    case ProtocolMagic(a, e)    => s"protocol magic $a differs from the genesis $e"
+    case PreviousHash(a, e)     => s"previous hash ${a.fold("none")(_.hex)} is not the tip ${e.hex}"
     case SlotOutsideEpoch(s, n) => s"slot $s outside a $n-slot epoch"
-    case MissingConsensusData => "main header without consensus data"
-    case UnknownDelegate(d) => s"signer ${d.hex.take(16)} is not a delegate of any genesis key"
-    case Vocabulary(e) => e.toString
+    case MissingConsensusData   => "main header without consensus data"
+    case UnknownDelegate(d)     => s"signer ${d.hex.take(16)} is not a delegate of any genesis key"
+    case Vocabulary(e)          => e.toString
     case SlotBeforeLastSigned(s, l) => s"slot $s is below the last signed slot $l"
-    case SignatureThreshold(k, s, w, t) => s"genesis key ${k.hex.take(16)} signed $s of the last $w blocks, above the threshold $t"
-    case Body(e) => e.message
-    case Ledger(e) => e.message
+    case SignatureThreshold(k, s, w, t) =>
+      s"genesis key ${k.hex.take(16)} signed $s of the last $w blocks, above the threshold $t"
+    case Body(e)                 => e.message
+    case Ledger(e)               => e.message
     case InitialBoundaryRequired => "the chain must start with the epoch 0 boundary"
-    case BoundaryOrder(e, p, b) => s"boundary block of epoch $e after epoch $p${if b then " boundary" else ""}"
-    case SlotOrder(s, p) => s"slot $s does not follow $p"
-    case SignatureRejected => "block signature rejected"
-    case SignatureInput(e) => s"signature input failed: $e"
+    case BoundaryOrder(e, p, b) =>
+      s"boundary block of epoch $e after epoch $p${if b then " boundary" else ""}"
+    case SlotOrder(s, p)     => s"slot $s does not follow $p"
+    case SignatureRejected   => "block signature rejected"
+    case SignatureInput(e)   => s"signature input failed: $e"
     case SignatureFailure(e) => s"signature check failed: $e"

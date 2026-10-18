@@ -100,9 +100,11 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     val zero = bytesOf(_.uint(0L))
     assertEquals(
       failure(nonZero[Word64], zero).kind,
-      Kind.Domain(xyz.kd5ujc.scarab.ledger.state.VocabError.Zero(
-        xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.NonZero
-      ))
+      Kind.Domain(
+        xyz.kd5ujc.scarab.ledger.state.VocabError.Zero(
+          xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.NonZero
+        )
+      )
     )
   }
 

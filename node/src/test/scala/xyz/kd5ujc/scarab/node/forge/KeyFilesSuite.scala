@@ -76,12 +76,14 @@ class KeyFilesSuite extends munit.FunSuite:
     )
     assertEquals(
       result,
-      Left(ForgeError.KeyFile(
-        "synthetic.skey",
-        xyz.kd5ujc.scarab.ledger.ForgeKeyProblem.ExpectedByteString(
-          xyz.kd5ujc.scarab.ledger.KeyShape.Array(1)
+      Left(
+        ForgeError.KeyFile(
+          "synthetic.skey",
+          xyz.kd5ujc.scarab.ledger.ForgeKeyProblem.ExpectedByteString(
+            xyz.kd5ujc.scarab.ledger.KeyShape.Array(1)
+          )
         )
-      ))
+      )
     )
     assert(!result.toString.contains(payload.hex))
   }
