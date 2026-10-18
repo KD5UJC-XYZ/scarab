@@ -125,6 +125,9 @@ reference-proven setup, scope, budget and runtime script failures.
 
 Whole-transaction context findings REF-01/02/03 have their own recorded reference transactions and
 regressions. Four binary-DST validity-tag reference transactions additionally agree at phase2,
-LEDGER and BBODY, using the same harness. The malformed Byron reference transaction gap in #171 belongs to that separate oracle;
+LEDGER and BBODY, using the same harness. These four transactions cover binary DST only; the
+wide-index/scope and protocol-11 decode-limit probes still need complete reference transactions,
+both validity flags and funding/collateral effects. Until that evidence is retained, #155, #166,
+#167 and #175 remain open. The malformed Byron reference transaction gap in #171 belongs to that separate oracle;
 this Plutus API matrix does not claim to resolve it. IN-74 to IN-77 are decided in
 [implementer-notes.md](implementer-notes.md); filing upstream remains the owner's decision.

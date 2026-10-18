@@ -27,6 +27,10 @@ with isValid=true (FailedUnexpectedly) and accepted with isValid=false via colla
 transactions were observed in blocks. `V1ContextSuite` reuses its phase2/LEDGER/BBODY harness for
 these fixtures and agrees at all three levels. No public network or follower was involved.
 
+These are binary-DST transactions only. The direct API's wide-index/scope and protocol-11
+decode-limit cases still require complete reference transactions with both validity flags and
+funding/collateral observations (#166, #167, #175); the477 API rows do not establish that coverage.
+
 `transaction-scripts.jsonl` preserves the two exact scripts. Their only transformation from the
 closed hash-G1-90 probe in scripts.jsonl was the context lambda, and, for the failure control, a
 strict application that evaluates the probe then returns `error`. The recorded scripts are well
