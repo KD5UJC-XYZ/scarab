@@ -309,7 +309,7 @@ enum KesStageMismatch:
   * (`BootstrapPeersCriticalTimeoutError`, ouroboros-network `Governor/Types.hs` 1863-1869).
   */
 enum GovernorFault extends NodeError:
-  case InvariantBroken(violations: List[String])
+  case InvariantBroken[E <: Product](violations: List[E]) extends GovernorFault
   case BootstrapPeersCriticalTimeout
 
   def message: String = this match

@@ -249,7 +249,7 @@ enum PredicateFailure:
   case WdrlNotDelegatedToDRep(credentials: Vector[Bytes])
   case TreasuryValueMismatch(mismatch: Mismatch[BigInt])
   case TxRefScriptsSizeTooBig(mismatch: Mismatch[Int])
-  case Mempool(text: String)
+  case Mempool(cause: MempoolProblem)
   case WithdrawalsMissingAccounts(withdrawals: Map[RewardAccount, BigInt])
   case IncompleteWithdrawals(mismatches: Map[RewardAccount, Mismatch[BigInt]])
 

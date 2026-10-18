@@ -44,6 +44,7 @@ final case class DecodeError(
 
 object DecodeError:
   enum Kind:
+    case Domain[E <: Product](cause: E) extends Kind
     /** The bytes are not well-formed CBOR (the CBOR layer reports a message only). */
     case Syntax(cause: xyz.kd5ujc.scarab.codec.Cbor.Error)
     case TypeMismatch(expected: String, found: String)
@@ -70,6 +71,7 @@ object DecodeError:
     case Internal(cause: Throwable)
 
   def describe(kind: Kind): String = kind match
+    case Kind.Domain(cause) => cause.toString
     case Kind.Syntax(m)             => s"malformed CBOR: ${m.message}"
     case Kind.TypeMismatch(e, f)    => s"expected $e, found $f"
     case Kind.BadSize(e, a)         => s"expected size $e, got $a"

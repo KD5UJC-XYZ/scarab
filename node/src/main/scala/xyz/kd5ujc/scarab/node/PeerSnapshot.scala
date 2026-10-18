@@ -21,8 +21,8 @@ import xyz.kd5ujc.scarab.network.selection.{
 
 /** Why a peer snapshot file could not be read. `where` is the JSON path of the part at fault. */
 enum PeerSnapshotError:
-  case Unreadable(path: String, reason: String)
-  case NotJson(detail: String)
+  case Unreadable(path: String, cause: Throwable)
+  case NotJson(cause: io.circe.ParsingFailure)
 
   /** A required field is absent. */
   case Missing(where: String)
@@ -103,7 +103,7 @@ object PeerSnapshot:
   def read(path: Path): Result[LedgerPeerSnapshot[LedgerRelay]] =
     Either
       .catchNonFatal(new String(Files.readAllBytes(path), "UTF-8"))
-      .leftMap(e => PeerSnapshotError.Unreadable(path.toString, e.getMessage))
+      .leftMap(e => PeerSnapshotError.Unreadable(path.toString, e))
       .flatMap(decode)
 
   /** The snapshot the node starts with, as `updateLedgerPeerSnapshot` decides it (Praos mode): none
@@ -135,7 +135,7 @@ object PeerSnapshot:
       case _ => Right(SnapshotUse.Unused)
 
   def decode(text: String): Result[LedgerPeerSnapshot[LedgerRelay]] =
-    parser.parse(text).leftMap(e => PeerSnapshotError.NotJson(e.message)).flatMap { json =>
+    parser.parse(text).leftMap(e => PeerSnapshotError.NotJson(e)).flatMap { json =>
       val root = json.hcursor
       for
         version <- version(root)

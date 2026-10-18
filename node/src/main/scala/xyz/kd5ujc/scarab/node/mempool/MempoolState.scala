@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.ledger.{TransactionDecodeProblem, MempoolProblem}
 import cats.syntax.all.*
 import cats.Id
 import xyz.kd5ujc.scarab.plutus.{ScalusEvaluator, ScriptDecoder, ScriptEvaluator}
@@ -26,7 +27,7 @@ import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway, LedgerState, NewEpochState,
 /** Why a transaction is not (or no longer) in the mempool. */
 enum Rejection:
   /** The bytes are not a Conway transaction `[body, witnesses, is_valid, auxiliary_data]`. */
-  case Malformed(detail: String)
+  case Malformed(cause: TransactionDecodeProblem)
 
   /** The same transaction is already held. */
   case AlreadyHeld(id: Bytes)
@@ -46,7 +47,7 @@ enum Rejection:
   case NoLedger(why: ConwayView.Unavailable)
 
   def message: String = this match
-    case Malformed(d)    => s"malformed transaction: $d"
+    case Malformed(d)    => s"malformed transaction: ${d.message}"
     case AlreadyHeld(id) => s"tx ${id.hex.take(16)} is already in the mempool"
     case Ledger(f)       => f.message
     case Full(s, free)   => s"mempool full: $s bytes needed, $free free"
@@ -156,7 +157,7 @@ final case class MempoolState(
         pv < 9 || tx.body.inputs.exists(ledger.utxo.contains),
         (),
         Rejection.Ledger(
-          LedgerFailure.Rejected(id, PredicateFailure.Mempool(MempoolState.AllInputsSpent))
+          LedgerFailure.Rejected(id, PredicateFailure.Mempool(MempoolProblem.AllInputsSpent))
         )
       )
       unelected = MempoolState.unelectedCommitteeVoters(ledger, tx.body)
@@ -167,8 +168,7 @@ final case class MempoolState(
           LedgerFailure.Rejected(
             id,
             PredicateFailure.Mempool(
-              "Unelected committee members are not allowed to cast votes: " +
-                unelected.map(MempoolState.showCredential).mkString("[", ",", "]")
+              MempoolProblem.UnelectedCommittee(unelected)
             )
           )
         )
@@ -305,18 +305,18 @@ object MempoolState:
 
   /** Split `[body, witnesses, is_valid, aux]` keeping each component's original bytes. */
   def parse(raw: Bytes): Either[Rejection, (Bytes, Tx)] =
-    def malformed[A](detail: String): Either[Rejection, A] = Left(Rejection.Malformed(detail))
+    def malformed[A](detail: TransactionDecodeProblem): Either[Rejection, A] = Left(Rejection.Malformed(detail))
     for
-      root <- Cbor.decode(raw, limits).leftMap(e => Rejection.Malformed(e))
+      root <- Cbor.decode(raw, limits).leftMap(e => Rejection.Malformed(TransactionDecodeProblem.Syntax(e)))
       parts <- root.value match
         case Value.Arr(xs) if xs.size == 4 => Right(xs)
-        case _ => malformed("expected [body, witnesses, is_valid, auxiliary_data]")
+        case _ => malformed(TransactionDecodeProblem.Envelope(root.value))
       valid <- parts(2).value match
         case Value.Bool(b) => Right(b)
-        case _             => malformed("is_valid is not a boolean")
+        case _             => malformed(TransactionDecodeProblem.ValidityFlag(parts(2).value))
       aux = parts(3).value match
         case Value.Null => None
         case _          => Some(parts(3).original)
       transaction = Block.Transaction(parts(0).original, parts(1).original, aux, valid)
-      tx <- Tx.fromBlock(transaction, Era.Conway).leftMap(Rejection.Malformed(_))
+      tx <- Tx.fromBlock(transaction, Era.Conway).leftMap(e => Rejection.Malformed(TransactionDecodeProblem.Ledger(e)))
     yield (Blake2b.hash256.hash(parts(0).original), tx)

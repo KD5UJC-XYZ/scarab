@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.ledger.{TransactionDecodeProblem, MempoolProblem, MempoolLedgerProblem}
 import cats.Applicative
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
@@ -19,7 +20,7 @@ object LocalSubmission:
 
   /** The original transaction bytes inside a wrapped one. */
   def unwrap(item: Bytes): Either[Rejection, Bytes] =
-    Cbor.decode(item).left.map(Rejection.Malformed(_)).flatMap { root =>
+    Cbor.decode(item).left.map(e => Rejection.Malformed(TransactionDecodeProblem.Syntax(e))).flatMap { root =>
       root.value match
         case Value.Arr(Vector(era, payload)) =>
           era.value match
@@ -28,13 +29,13 @@ object LocalSubmission:
                 case Value.Tag(t, inner) if t == 24 =>
                   inner.value match
                     case Value.ByteString(b) => Right(b)
-                    case _ => Left(Rejection.Malformed("tag 24 does not hold a byte string"))
+                    case _ => Left(Rejection.Malformed(TransactionDecodeProblem.TaggedPayload(inner.value)))
                 case _ => Right(payload.original)
             case Value.UInt(e) if e.isValidInt => Left(Rejection.WrongEra(e.toInt))
             case Value.UInt(e) =>
-              Left(Rejection.Malformed(s"era $e is not Conway ($ConwayEra)"))
-            case _ => Left(Rejection.Malformed("era is not an integer"))
-        case _ => Left(Rejection.Malformed("expected [era, transaction]"))
+              Left(Rejection.Malformed(TransactionDecodeProblem.EraOutOfRange(e)))
+            case _ => Left(Rejection.Malformed(TransactionDecodeProblem.EraExpected(era.value)))
+        case _ => Left(Rejection.Malformed(TransactionDecodeProblem.EraEnvelope(root.value)))
     }
 
   /** The rejection as sent to the client: the ledger's `ApplyTxErr` for a refused transaction (the
@@ -55,10 +56,17 @@ object LocalSubmission:
     case Rejection.Ledger(LedgerFailure.Rejected(_, failure)) =>
       Right(PredicateFailureCbor.applyTxError(Vector(failure)))
     case Rejection.AlreadyHeld(_) =>
-      Right(text(MempoolState.AllInputsSpent))
-    case other => Right(text(other.message))
+      Right(text(MempoolProblem.AllInputsSpent))
+    case Rejection.Malformed(cause) => Right(text(MempoolProblem.Malformed(cause)))
+    case Rejection.Full(size, free) => Right(text(MempoolProblem.Capacity(size, free)))
+    case Rejection.NoLedger(why) =>
+      val cause = why match
+        case xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.InByron => MempoolLedgerProblem.InByron
+        case xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.InEarlier(era) => MempoolLedgerProblem.Earlier(era)
+        case xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.Refused(error) => MempoolLedgerProblem.Refused(error)
+      Right(text(MempoolProblem.NoLedger(cause)))
 
-  private def text(message: String): Bytes =
+  private def text(message: MempoolProblem): Bytes =
     PredicateFailureCbor.applyTxError(Vector(PredicateFailure.Mempool(message)))
 
   /** Service unavailability has no ledger rejection bytes. The transport closes this connection;
@@ -68,7 +76,7 @@ object LocalSubmission:
     reasonItem(rejection).fold(
       error =>
         LocalTxSubmissionServer.Response.ServiceUnavailable(
-          LocalTxSubmissionServer.Unavailable.ScriptEvaluation(error.message)
+          LocalTxSubmissionServer.Unavailable.ScriptEvaluation(error)
         ),
       LocalTxSubmissionServer.Response.Rejected(_)
     )

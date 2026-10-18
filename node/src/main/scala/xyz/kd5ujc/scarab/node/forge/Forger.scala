@@ -420,7 +420,7 @@ final class Forger[F[_]: Async, S](
                 }
               case Follower.Adoption.Lost(reason) =>
                 stats.lost(epoch) *>
-                  events.emit(ForgeEvent.Lost(slot, h.hash, reason)).as(Right(()))
+                  events.emit(ForgeEvent.Lost(slot, h.hash, reason.message)).as(Right(()))
               case Follower.Adoption.Invalid(e) =>
                 F.pure(Left(ForgeError.SelfRejected(e)))
             }

@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 /** Basic persisted-file identities, independent of the storage interpreter. */
 enum StorageStructureError:
+  case VolatileImmutableMismatch
   case WrongFileKind(kind: FileKind)
   case InvalidIdentityFields
   case UnexpectedIdentityLines

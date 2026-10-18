@@ -95,14 +95,14 @@ object NtcQuery:
 
   enum Error:
     case UnsupportedVersion(version: NtcVersion)
-    case MalformedCbor(detail: String)
+    case MalformedCbor(cause: Cbor.Error)
     case ExpectedArray(field: String)
     case ExpectedUnsigned(field: String)
     case ExpectedBytes(field: String)
     case InvalidHash(field: String)
     case InvalidCredential
     case InvalidDRep
-    case InvalidTxIn(detail: String)
+    case InvalidTxIn(cause: xyz.kd5ujc.scarab.ledger.LedgerDecodeError)
     case InvalidNonMyopicCredential
     case ExpectedCoin
     case Empty(field: String)
