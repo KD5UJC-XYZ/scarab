@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import xyz.kd5ujc.scarab.protocol.ProtocolError
+
 import cats.effect.{IO, Ref, Resource}
 import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
@@ -28,7 +30,7 @@ object Peers:
   def block(n: Int): Bytes = Bytes(Vector.fill(100 + n)(n.toByte))
 
   private def fail[A](reason: String): IO[A] = IO.raiseError(new IllegalStateException(reason))
-  private def lift[A](either: Either[String, A]): IO[A] = either.fold(fail, IO.pure)
+  private def lift[A](either: Either[ProtocolError, A]): IO[A] = either.fold(e => fail(e.message), IO.pure)
 
   /** Two multiplexers joined by an in-memory bearer pair. */
   def linked(
@@ -48,7 +50,7 @@ object Peers:
       Handshake.decodePrefix(Handshake.Suite.NodeToNode, Handshake.State.Propose, bytes) match
         case Right((m, rest))        => DecodeResult.Decoded(m, bytes.size - rest.size)
         case Left(e) if e.incomplete => DecodeResult.NeedMore
-        case Left(e)                 => DecodeResult.Failed(e.message)
+        case Left(e)                 => DecodeResult.Failed(e.cause)
     for
       proposal <- channel.recv(Handshake.MaxMessageBytes)(decode)
       answer <- lift(Handshake.responder(Handshake.Suite.NodeToNode, offers, proposal))

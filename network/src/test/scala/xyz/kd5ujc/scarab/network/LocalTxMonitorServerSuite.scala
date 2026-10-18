@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import xyz.kd5ujc.scarab.protocol.ProtocolError
+
 import cats.effect.{IO, Ref, Resource}
 import cats.mtl.Handle
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -78,9 +80,9 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
 
   private def sendTo[A](
       ch: MuxChannel[IO],
-      encoded: Either[String, Bytes]
+      encoded: Either[ProtocolError, Bytes]
   )(using Handle[IO, NetworkError]): IO[Unit] =
-    IO.fromEither(encoded.left.map(RuntimeException(_))).flatMap(ch.send)
+    IO.fromEither(encoded.left.map(e => RuntimeException(e.toString))).flatMap(ch.send)
 
   private def monitorSend(ch: MuxChannel[IO], state: State, m: Message)(using
       Handle[IO, NetworkError]

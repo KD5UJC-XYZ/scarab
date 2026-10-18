@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+
 import cats.effect.IO
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.Handshake
@@ -33,7 +34,7 @@ class HandshakeSuite extends FailsOnUncaught:
 
   test("a different network magic is refused with the peer's reason"):
     negotiate(Handshake.defaultNodeToNode(7L)).map {
-      case Left(NetworkError.HandshakeRefused(reason)) => assert(reason.contains("magic"), reason)
+      case Left(NetworkError.HandshakeRefused(reason)) => assertEquals(reason, NetworkError.HandshakeFailure.Remote(Handshake.Reason.Refused(15, "network magic mismatch")))
       case other                                       => fail(s"unexpected $other")
     }
 

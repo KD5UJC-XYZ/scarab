@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import xyz.kd5ujc.scarab.protocol.ProtocolError
+
 import cats.effect.{ExitCode, IO, IOApp}
 import cats.mtl.Handle
 import cats.syntax.all.*
@@ -23,8 +25,8 @@ import scala.concurrent.duration.*
 object LeiosChainProbe extends IOApp:
   /** The payload as it arrives: a single bounded CBOR item the codec layer already checked. */
   private val raw: ChainSync.PayloadCodec[Bytes] = new ChainSync.PayloadCodec[Bytes]:
-    def encode(value: Bytes): Either[String, Bytes] = Right(value)
-    def decode(bytes: Bytes): Either[String, Bytes] = Right(bytes)
+    def encode(value: Bytes): Either[ProtocolError, Bytes] = Right(value)
+    def decode(bytes: Bytes): Either[ProtocolError, Bytes] = Right(bytes)
 
   private val limits = Cbor.Limits(70000, 16, 256, 70000)
 

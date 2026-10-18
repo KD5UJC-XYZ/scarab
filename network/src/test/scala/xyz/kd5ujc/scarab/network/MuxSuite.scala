@@ -217,7 +217,7 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
           s <- server.channel(2)
           _ <- c.send(payload(5))
           _ <- IO.sleep(50.millis)
-          _ <- server.abort(NetworkError.BearerClosed("test"))
+          _ <- server.abort(NetworkError.BearerClosed(NetworkError.Closure.Aborted))
           first <- s.recv(100)(exactly(5)).attempt
         yield first.isRight
       }
@@ -237,7 +237,7 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
         }
       }
     }.map {
-      case Left(NetworkError.BearerClosed(reason)) => assertEquals(reason, "closed by peer")
+      case Left(NetworkError.BearerClosed(reason)) => assertEquals(reason, NetworkError.Closure.PeerClosed)
       case other                                   => fail(s"unexpected $other")
     }
 
@@ -292,9 +292,9 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
       case Right((unknown, wrongMode)) =>
         assertEquals(
           unknown,
-          NetworkError.IllegalTransition(9, "data on unexpected mini-protocol 9")
+          NetworkError.IllegalTransition(9, NetworkError.RuntimeViolation.UnexpectedProtocol(9))
         )
-        assertEquals(wrongMode, NetworkError.IllegalTransition(2, "SDU with the wrong mode bit"))
+        assertEquals(wrongMode, NetworkError.IllegalTransition(2, NetworkError.RuntimeViolation.WrongModeBit))
       case Left(e) => fail(e.message)
     }
 

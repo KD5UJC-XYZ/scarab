@@ -61,7 +61,7 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
   private def send(ch: MuxChannel[IO], state: State, m: Message)(using
       Handle[IO, NetworkError]
   ): IO[Unit] =
-    IO.fromEither(LocalStateQuery.encode(state, Role.Client, m).left.map(RuntimeException(_)))
+    IO.fromEither(LocalStateQuery.encode(state, Role.Client, m).left.map(e => RuntimeException(e.toString)))
       .flatMap(ch.send)
 
   private def receive(ch: MuxChannel[IO], state: State)(using Handle[IO, NetworkError]) =
@@ -107,7 +107,7 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
                         LocalTxSubmission.Message.Done
                       )
                       .left
-                      .map(RuntimeException(_))
+                      .map(e => RuntimeException(e.toString))
                   )
                   _ <- tx.send(done)
                   _ <- lsq.flush
