@@ -198,8 +198,9 @@ object PlutusBoundaryCorpus:
         EvalRequest(language, protocol, probe.script, Vector.empty, model, budget)
       )
       val stage = outcome match
-        case EvalResult.Success(_, _)                             => "success"
-        case EvalResult.Failure(EvalFailure.Decode(_), _, _)      => "decode"
+        case EvalResult.Success(_, _) => "success"
+        case EvalResult.Failure(EvalFailure.Decode(_), _, _) =>
+          if admitted then "setup" else "decode"
         case EvalResult.Failure(EvalFailure.OpenTerm(_), _, _)    => "scope"
         case EvalResult.Failure(EvalFailure.Unsupported(_), _, _) => "unsupported"
         case EvalResult.Failure(EvalFailure.OutOfBudget, _, _)    => "budget"

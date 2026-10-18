@@ -16,10 +16,11 @@ import scalus.uplc.eval.{Log, MachineParams, PlutusVM, RestrictingBudgetSpender}
   * 1.70.0.0, vendored under `src/test/resources/plutus-conformance-1.70.0.0`, see the README there)
   * run through [[ScalusEvaluator]].
   *
-  * Each case is a textual UPLC program (with original Flat sidecars for malformed Value constants), the expected result (a program, `evaluation failure` or
-  * `parse/decode error`) and the expected budget. The reference runs them with the default cost
-  * model for testing, which is semantics variant E (`defaultCostModelParamsForTesting`), the
-  * latest: Plutus V3 at protocol 11 in this node. Here a case passes when
+  * Each case is a textual UPLC program (with original Flat sidecars for malformed Value constants),
+  * the expected result (a program, `evaluation failure` or `parse/decode error`) and the expected
+  * budget. The reference runs them with the default cost model for testing, which is semantics
+  * variant E (`defaultCostModelParamsForTesting`), the latest: Plutus V3 at protocol 11 in this
+  * node. Here a case passes when
   *   - the text parses (else the suite must expect a parse error),
   *   - [[ScalusEvaluator]] evaluates the flat-encoded program through the same path as a ledger
   *     script, with the variant E cost model as on-chain parameters, with the verdict the suite

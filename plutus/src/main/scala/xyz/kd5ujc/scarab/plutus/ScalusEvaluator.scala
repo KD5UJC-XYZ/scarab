@@ -223,7 +223,13 @@ object ScalusEvaluator:
             .flatOf(bytes)
             .toRight("script is not a CBOR byte string")
             .flatMap(flat => FlatScan.scan(flat).left.map(_.message))
-            .map(scan => Decoded(p, builtinsOf(p.term), bytes.length - used, scan))
+            .map { scan =>
+              val preserved = scalus.uplc.ScarabProgramView.withTerm(
+                p,
+                WideIndices.repair(p.term, scan.wideVariables)
+              )
+              Decoded(preserved, builtinsOf(preserved.term), bytes.length - used, scan)
+            }
         catch case NonFatal(e) => Left(Option(e.getMessage).getOrElse(e.getClass.getName))
       )
 
@@ -256,7 +262,7 @@ object ScalusEvaluator:
         (vm(request), program(request.script).flatMap(admitted(_, request))) match
           case (Left(reason), _) => failure(EvalFailure.Unsupported(reason))
           case (_, Left(reason)) => failure(EvalFailure.Decode(reason))
-          case (Right(_), Right(Decoded(_, _, _, FlatScan(_, _, _, Some(index))))) =>
+          case (Right(_), Right(Decoded(_, _, _, FlatScan(_, _, _, Some(index), _)))) =>
             // `mkTermToEvaluate` checks the scope of the applied term before the machine starts
             failure(EvalFailure.OpenTerm(index))
           case (Right(machine), Right(Decoded(script, _, _, _))) =>

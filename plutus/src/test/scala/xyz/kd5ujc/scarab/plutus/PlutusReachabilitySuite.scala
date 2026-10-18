@@ -248,3 +248,46 @@ class PlutusReachabilitySuite extends FunSuite:
     val inField = Ap(Lam(unit), Delay(Constr(0, Vector(Var(9)))))
     assert(run(11, inField).isSuccess)
   }
+
+  test("wide indices below skipped scope subterms fail only when the VM evaluates them") {
+    // Actual plutus-1.70.0.0 verdicts; Cek.lookupVarName rejects -1 before environment indexing.
+    val wide = BigInt(4294967298L)
+    for pv <- Vector(9, 10, 11) do
+      assert(run(pv, Ap(Lam(unit), Delay(Constr(0, Vector(Var(wide)))))).isSuccess)
+    assert(run(11, Case(integer(0), Vector(unit, Var(wide)))).isSuccess)
+    run(11, Ap(Lam(unit), Constr(0, Vector(Var(wide))))) match
+      case EvalResult.Failure(EvalFailure.Script(_), _, _) => ()
+      case other => fail(s"evaluated wide variable: $other")
+  }
+
+  test("the internal wide-index repair walks 20000 levels on a small stack") {
+    import scalus.uplc.NamedDeBruijn
+    val leaf = UplcTerm.Var(NamedDeBruijn("wide", 2))
+    val deep = (0 until 20000).foldLeft[UplcTerm](leaf)((term, _) => UplcTerm.Delay(term))
+    val result = new java.util.concurrent.atomic.AtomicReference[Either[Throwable, Boolean]](
+      Right(false)
+    )
+    val worker = new Thread(
+      null,
+      () => result.set(
+        try
+          val repaired = WideIndices.repair(deep, Set(0))
+          val inner = (0 until 20000).foldLeft(repaired) { (term, _) =>
+            term match
+              case UplcTerm.Delay(body, _) => body
+              case _ => term
+          }
+          Right(inner match
+            case UplcTerm.Var(name, _) => name.index == -1
+            case _ => false)
+        catch case error: Throwable => Left(error)
+      ),
+      "wide-index-small-stack",
+      256 * 1024
+    )
+    worker.start()
+    worker.join()
+    result.get() match
+      case Right(correct) => assert(correct)
+      case Left(error) => throw error
+  }

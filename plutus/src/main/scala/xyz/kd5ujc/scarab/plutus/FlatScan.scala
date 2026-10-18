@@ -25,15 +25,18 @@ import scala.util.control.ControlThrowable
   *   the most fields of any `constr`
   * @param openVariable
   *   the first variable the ledger's scope check refuses (an index of 0 or above the number of
-  *   enclosing lambdas), or an index that does not fit an `Int` anywhere (Scalus would read another
-  *   variable). The reference checks neither `constr` fields nor `case` scrutinee and branches, so
-  *   nothing under them is a scope violation, only a too-wide index is
+  *   enclosing lambdas). The reference checks neither `constr` fields nor `case` scrutinee and
+  *   branches.
+  * @param wideVariables
+  *   preorder variable ordinals whose original Word64 cannot fit Scalus's positive Int index;
+  *   [[WideIndices]] keeps them explicitly open in the internal VM view without narrowing them
   */
 final case class FlatScan(
     malformedValue: Option[FlatScan.ValueFault],
     maxTypeHeader: Int,
     maxConstrFields: Int,
-    openVariable: Option[BigInt]
+    openVariable: Option[BigInt],
+    wideVariables: Set[Int]
 )
 
 object FlatScan:
@@ -106,6 +109,8 @@ object FlatScan:
     private var typeHeader = 0
     private var constrFields = 0
     private var open: Option[BigInt] = None
+    private var variableOrdinal = 0
+    private var wideVariables = Set.empty[Int]
     private val tasks = ArrayDeque.empty[Task]
 
     private def abort(failure: Failure): Nothing = throw Abort(failure)
@@ -214,13 +219,15 @@ object FlatScan:
 
     private def variable(index: BigInt, depth: Long, checked: Boolean): Unit =
       val scopeViolation = checked && (index <= 0 || index > BigInt(depth))
-      if open.isEmpty && (scopeViolation || index >= IntIndexLimit) then open = Some(index)
+      if open.isEmpty && scopeViolation then open = Some(index)
+      if index >= IntIndexLimit then wideVariables += variableOrdinal
+      variableOrdinal += 1
 
     def run(): FlatScan =
       natural(); natural(); natural() // the program version
       tasks.append(Term(0L, checked = true))
       while tasks.nonEmpty do step(tasks.removeLast())
-      FlatScan(malformed, typeHeader, constrFields, open)
+      FlatScan(malformed, typeHeader, constrFields, open, wideVariables)
 
     private def step(task: Task): Unit = task match
       case Term(depth, checked) =>
