@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.codec.DomainError
+
 import xyz.kd5ujc.scarab.ledger.{Block, Header, PeerError, ValidationError}
 import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.effect.syntax.all.*
@@ -171,7 +173,7 @@ object Peer:
   type Prepare[F[_]] = Vector[Bytes] => F[Unit]
 
   /** `host:port` where host is a DNS name or an IP literal. */
-  enum AddressError:
+  enum AddressError extends DomainError:
     case Invalid(text: String)
     def message: String = this match
       case Invalid(text) => s"invalid peer address '$text', expected <host>:<port>"

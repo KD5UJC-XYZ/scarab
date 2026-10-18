@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network.selection
 
+import xyz.kd5ujc.scarab.codec.DomainError
+
 import scala.collection.immutable.{SortedMap, SortedSet}
 
 /** The state of the governor (`PeerSelectionState`, `Governor/Types.hs` 609-705 with the Cardano
@@ -197,7 +199,7 @@ object GovernorState:
       )
     ).flatten
 
-  enum Violation:
+  enum Violation extends DomainError:
     case LocalRootNotKnown
     case OriginDisagreesWithLocalRoots
     case RootNotConfigured

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.codec.DomainError
+
 import cats.Monad
 import cats.syntax.all.*
 import scala.annotation.tailrec
@@ -93,7 +95,7 @@ object NtcQuery:
       s"IfCurrent($era,$shown)".take(120)
     case other => other.toString.take(120)
 
-  enum Error:
+  enum Error extends DomainError:
     case UnsupportedVersion(version: NtcVersion)
     case MalformedCbor(cause: Cbor.Error)
     case ExpectedArray(field: String)

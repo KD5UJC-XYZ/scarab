@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.codec.DomainError
+
 /** Basic persisted-file identities, independent of the storage interpreter. */
-enum StorageStructureError:
+enum StorageStructureError extends DomainError:
   case VolatileImmutableMismatch
   case WrongFileKind(kind: FileKind)
   case InvalidIdentityFields

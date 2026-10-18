@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.codec.DomainError
+
 import io.circe.{DecodingFailure, ParsingFailure}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold as Leader
@@ -38,11 +40,11 @@ enum ConfigProblem:
   case ConflictingFields(fields: Set[String])
   case RenamedField(previous: String, current: String)
   case MempoolCapacity(actual: io.circe.Json)
-  case PeerTargets[E <: Product](cause: E)
-  case PeerAddress[E <: Product](cause: E)
-  case PeerSnapshot[E <: Product](cause: E)
-  case StateMirror[E <: Product](cause: E)
-  case Ancillary[E <: Product](cause: E)
+  case PeerTargets[E <: DomainError](cause: E)
+  case PeerAddress[E <: DomainError](cause: E)
+  case PeerSnapshot[E <: DomainError](cause: E)
+  case StateMirror[E <: DomainError](cause: E)
+  case Ancillary[E <: DomainError](cause: E)
   case FileRead(file: String, cause: Throwable)
   case InvalidPath(value: String, cause: Throwable)
   case MissingGenesis

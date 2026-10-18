@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.codec
 
 /** Failures of the length-prefixed snapshot binary representation. */
-enum BinaryError:
+enum BinaryError extends DomainError:
   case BadMagic
   case UnexpectedEnd(position: Long)
   case LengthExceedsRemaining(length: Long, remaining: Long)

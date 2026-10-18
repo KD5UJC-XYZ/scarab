@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.codec.DomainError
+
 import cats.{Eq, Show}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.ExUnits
@@ -122,7 +124,7 @@ enum BlockFailure:
     * be extended into the era, a value is outside the range of the Haskell type). A total refusal:
     * a state the rules made is always in the range, and the era history is consistent with it.
     */
-  case Mirror[E <: Product](cause: E) extends BlockFailure
+  case Mirror[E <: DomainError](cause: E) extends BlockFailure
 
   /** The rule family, as the log names it. */
   def rule: BlockRule = this match

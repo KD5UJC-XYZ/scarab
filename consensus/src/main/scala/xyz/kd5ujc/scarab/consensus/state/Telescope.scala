@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus.state
 
+import xyz.kd5ujc.scarab.codec.DomainError
+
 import xyz.kd5ujc.scarab.ledger.state.Diff
 import cats.{Eq, Show}
 import cats.derived.*
@@ -55,7 +57,7 @@ object Current:
   def state[A]: Lens[Current[A], A] = Focus[Current[A]](_.state)
 
 /** Why a telescope cannot be built. */
-enum TelescopeError derives Eq, Show, Diff:
+enum TelescopeError extends DomainError derives Eq, Show, Diff:
   /** More past eras than the chain has eras before the last (Byron and six Shelley-based eras). */
   case TooManyPast(count: Int)
 

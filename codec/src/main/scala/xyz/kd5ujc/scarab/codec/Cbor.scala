@@ -28,7 +28,7 @@ object Cbor:
       allowFloats: Boolean = false
   )
   private val MaxUInt = (BigInt(1) << 64) - 1
-  enum Error:
+  enum Error extends DomainError:
     case InvalidLimits
     case InputLimitExceeded
     case UnexpectedEnd

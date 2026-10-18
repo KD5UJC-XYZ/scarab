@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.codec.DomainError
+
 import cats.data.NonEmptyVector
 import cats.syntax.all.*
 import com.comcast.ip4s.IpAddress
@@ -20,7 +22,7 @@ import xyz.kd5ujc.scarab.network.selection.{
 }
 
 /** Why a peer snapshot file could not be read. `where` is the JSON path of the part at fault. */
-enum PeerSnapshotError:
+enum PeerSnapshotError extends DomainError:
   case Unreadable(path: String, cause: Throwable)
   case NotJson(cause: io.circe.ParsingFailure)
 
@@ -40,7 +42,7 @@ enum PeerSnapshotError:
   * `cardano-node/src/Cardano/Node/Run.hs` 705-760, at startup: the reference stops with each of
   * these).
   */
-enum PeerSnapshotRefusal:
+enum PeerSnapshotRefusal extends DomainError:
   /** A version 1 or 2 file: "Unsupported legacy peer snapshot version." */
   case LegacyVersion
 

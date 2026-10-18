@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.codec.DomainError
+
 import cats.effect.{Ref, Sync}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -133,11 +135,11 @@ object UtxoStore:
 
   /** Value encoding shared by the stores: the original CBOR when it round-trips, else the codec. */
   object Coding:
-    enum ValueError:
+    enum ValueError extends DomainError:
       case Empty
       case Cbor(cause: xyz.kd5ujc.scarab.ledger.LedgerDecodeError)
       case Binary(cause: xyz.kd5ujc.scarab.codec.BinaryError)
-    final case class EntryError(input: TxIn, cause: ValueError)
+    final case class EntryError(input: TxIn, cause: ValueError) extends DomainError
     import NodeCodecs.given
 
     def encodeValue(out: TxOut): Array[Byte] =

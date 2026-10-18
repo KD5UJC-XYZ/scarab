@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import xyz.kd5ujc.scarab.codec.DomainError
+
 import NetworkError.RuntimeViolation
 
 import cats.effect.Temporal
@@ -17,7 +19,7 @@ import scala.concurrent.duration.*
   */
 object LocalTxSubmissionServer:
   enum Unavailable:
-    case ScriptEvaluation[E <: Product & Serializable](cause: E)
+    case ScriptEvaluation[E <: DomainError](cause: E)
 
     def message: String = this match
       case ScriptEvaluation(cause) => s"script evaluation unavailable: $cause"

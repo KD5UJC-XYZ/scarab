@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
+import xyz.kd5ujc.scarab.codec.DomainError
+
 /** Semantic failures of mini-protocol framing, agency and payload validation. */
-enum ProtocolError:
+enum ProtocolError extends DomainError:
   case AckExceedsOutstandingInventory(acknowledged: Int, outstanding: Int)
   case ArrayLimitExceeded
   case BatchLimitExceeded(actual: Int, maximum: Int)

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.codec.DomainError
+
 import cats.effect.Sync
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -28,7 +30,7 @@ private[storage] object SnapshotPoint:
     val F = Sync[F]
     val root = db / "immutable"
     val slots = FileImmutableStore.DefaultChunkSlots
-    def corrupt[E <: Product](detail: E): StorageError =
+    def corrupt[E <: DomainError](detail: E): StorageError =
       StorageError.Corrupt("snapshot immutable point", detail)
     for
       recorded <- NetworkIdentityFile.verify[F](db, identity)

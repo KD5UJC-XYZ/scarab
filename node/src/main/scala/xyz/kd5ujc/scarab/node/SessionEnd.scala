@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.codec.DomainError
+
 import cats.{ApplicativeThrow, MonadThrow}
 import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
@@ -137,7 +139,7 @@ object SessionEnd:
     Peer.contramapped[F, SessionEnd, PeerError](scope)(Failed(_))
 
 /** What the node must do about an outcome that no peer-selection policy can handle. */
-enum Fatal:
+enum Fatal extends DomainError:
   case Unavailable(error: EvaluationUnavailable)
 
   case Storage(error: StorageError)

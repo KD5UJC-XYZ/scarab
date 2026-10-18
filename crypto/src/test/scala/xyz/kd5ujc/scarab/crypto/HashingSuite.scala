@@ -56,7 +56,7 @@ class HashingSuite extends munit.FunSuite:
   }
 
   test("hashing an encoded value preserves the encoder's error type and value") {
-    enum EncodingError:
+    enum EncodingError extends xyz.kd5ujc.scarab.codec.DomainError:
       case Rejected(value: Int)
     val encoder = new Encoder[Int]:
       type Error = EncodingError

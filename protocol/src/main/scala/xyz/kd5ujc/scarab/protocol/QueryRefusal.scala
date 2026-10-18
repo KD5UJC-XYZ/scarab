@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
+import xyz.kd5ujc.scarab.codec.DomainError
+
 /** A service keeps its domain-specific decoder/state/writer cause at the generic query boundary. */
-enum QueryRefusal[+E <: Product]:
+enum QueryRefusal[+E <: DomainError] extends DomainError:
   case Undecodable(cause: E, prefix: String)
   case Unsupported(query: String)
   case Unwritable(query: String, cause: E)

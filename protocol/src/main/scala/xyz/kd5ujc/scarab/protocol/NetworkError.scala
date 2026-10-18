@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
+import xyz.kd5ujc.scarab.codec.DomainError
+
 import xyz.kd5ujc.scarab.protocol.Mux as WireMux
 
 /** Closed set of network runtime failures. Algebras raise these through cats-mtl `Raise`; because
   * `Raise` is contravariant in its error, any `Raise[F, E]` with `NetworkError <: E` serves them.
   * `protocol` is a mini-protocol number, see [[Protocols]].
   */
-enum NetworkError:
+enum NetworkError extends DomainError:
   case Connect(address: String, cause: Throwable)
   case Timeout(protocol: Int, state: String)
   case SduTimeout(operation: NetworkError.SduOperation)
@@ -60,7 +62,7 @@ object NetworkError:
   enum Closure:
     case PeerClosed
     case Aborted
-    case AbortedBy[E <: Product](cause: E)
+    case AbortedBy[E <: DomainError](cause: E)
     case Transport(context: String, cause: java.io.IOException)
     def message: String = this match
       case PeerClosed                => "closed by peer"

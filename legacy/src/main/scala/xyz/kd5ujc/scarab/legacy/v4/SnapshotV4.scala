@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.legacy.v4
 
+import xyz.kd5ujc.scarab.codec.DomainError
+
 import xyz.kd5ujc.scarab.codec.BinaryError
 import xyz.kd5ujc.scarab.legacy.SnapshotFramingError
 import cats.syntax.all.*
@@ -43,7 +45,7 @@ object SnapshotV4:
     * fingerprint have been checked.
     */
   def sections(content: Array[Byte]): Either[StorageError, (SnapshotSidecar, Bytes)] =
-    def corrupt[E <: Product](cause: E): StorageError = StorageError.Corrupt("snapshot", cause)
+    def corrupt[E <: DomainError](cause: E): StorageError = StorageError.Corrupt("snapshot", cause)
     if content.length < HeaderSize || !content.startsWith(Magic) then
       Left(corrupt(BinaryError.BadMagic))
     else

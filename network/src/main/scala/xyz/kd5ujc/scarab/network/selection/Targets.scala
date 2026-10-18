@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network.selection
 
+import xyz.kd5ujc.scarab.codec.DomainError
+
 /** The seven targets of the governor (`PeerSelectionTargets`, ouroboros-network 1.2.0.0
   * `Ouroboros/Network/PeerSelection/Governor/Types.hs` 189-233): how many root, known, established
   * and active peers it works towards, and the same three for big ledger peers, which are in
@@ -49,7 +51,7 @@ object Targets:
     case Ordinary, BigLedger
 
   /** Why a set of targets is refused: closed, so the configuration check reports it exactly. */
-  enum Problem:
+  enum Problem extends DomainError:
     /** A target is negative. */
     case Negative(kind: Kind)
 

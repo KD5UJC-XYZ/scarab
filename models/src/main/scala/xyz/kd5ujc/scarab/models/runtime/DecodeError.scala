@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.models.runtime
 
+import xyz.kd5ujc.scarab.codec.DomainError
+
 import xyz.kd5ujc.scarab.codec.{Bytes as CborBytes, Node as CborNode}
 
 type Bytes = CborBytes
@@ -19,7 +21,7 @@ final case class DecodeError(
     path: List[String],
     offset: Int,
     rooted: Boolean = false
-):
+) extends DomainError:
   /** Prefix the path with the member `segment` this error was found under. */
   def at(segment: String): DecodeError = copy(path = segment :: path)
 
@@ -44,7 +46,7 @@ final case class DecodeError(
 
 object DecodeError:
   enum Kind:
-    case Domain[E <: Product](cause: E) extends Kind
+    case Domain[E <: DomainError](cause: E) extends Kind
     /** The bytes are not well-formed CBOR (the CBOR layer reports a message only). */
     case Syntax(cause: xyz.kd5ujc.scarab.codec.Cbor.Error)
     case TypeMismatch(expected: String, found: String)

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage.haskell.state
 
+import xyz.kd5ujc.scarab.codec.DomainError
+
 import cats.syntax.all.*
 import java.nio.charset.StandardCharsets.UTF_8
 import java.security.MessageDigest
@@ -56,7 +58,7 @@ object AncillaryManifest:
     case WrongLength(actual: Int)
     case OctetOutOfRange(index: Int, actual: Int)
     case Input(cause: WitnessInputError)
-  enum Error:
+  enum Error extends DomainError:
     case JsonSyntax(cause: io.circe.ParsingFailure)
     case DataMissing
     case DataNotObject(actual: io.circe.Json)

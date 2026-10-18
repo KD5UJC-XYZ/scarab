@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.codec.DomainError
+
 import xyz.kd5ujc.scarab.blst.BlstProblem
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
@@ -15,7 +17,7 @@ import xyz.kd5ujc.scarab.protocol.{ChainSync, Mux as WireMux, NetworkError, Prot
 /** Closed hierarchy of node failures. Algebras raise the narrowest subtype; because cats-mtl
   * `Raise` is contravariant in its error, one `Raise[F, NodeError]` serves them all.
   */
-sealed trait NodeError extends Product with Serializable:
+sealed trait NodeError extends DomainError:
   def message: String
 
 /** Failures attributable to the remote peer or the connection. These are recoverable by
@@ -151,7 +153,7 @@ enum StorageError extends NodeError:
   case DatabaseInUse(database: String)
 
   /** The stored bytes fail validation (bad checksum, truncation, impossible structure). */
-  case Corrupt[E <: Product](what: String, cause: E) extends StorageError
+  case Corrupt[E <: DomainError](what: String, cause: E) extends StorageError
 
   /** An operating-system failure reading or writing `what`. */
   case Io(what: String, cause: Throwable)
@@ -311,7 +313,7 @@ enum KesStageMismatch:
   * (`BootstrapPeersCriticalTimeoutError`, ouroboros-network `Governor/Types.hs` 1863-1869).
   */
 enum GovernorFault extends NodeError:
-  case InvariantBroken[E <: Product](violations: List[E]) extends GovernorFault
+  case InvariantBroken[E <: DomainError](violations: List[E]) extends GovernorFault
   case BootstrapPeersCriticalTimeout
 
   def message: String = this match

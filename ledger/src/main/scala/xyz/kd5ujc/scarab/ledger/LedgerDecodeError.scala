@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.codec.DomainError
+
 import xyz.kd5ujc.scarab.codec.{Cbor, Value}
 import xyz.kd5ujc.scarab.ledger.byron.{ByronVersion, DelegationError}
 
 /** Failures while reading ledger values. Context names identify fields; cases identify failures. */
-enum LedgerDecodeError:
+enum LedgerDecodeError extends DomainError:
   case Protocol(cause: xyz.kd5ujc.scarab.protocol.ProtocolError)
   case Transaction(id: xyz.kd5ujc.scarab.codec.Bytes, cause: LedgerDecodeError)
   case Syntax(cause: Cbor.Error)

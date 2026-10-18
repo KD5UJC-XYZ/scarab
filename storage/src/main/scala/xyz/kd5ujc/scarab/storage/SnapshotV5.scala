@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.codec.DomainError
+
 import cats.data.Kleisli
 import cats.effect.Sync
 import cats.mtl.Ask
@@ -209,7 +211,7 @@ object SnapshotV5:
 
   // ---- read
 
-  private def corrupt[E <: Product](reason: E): StorageError =
+  private def corrupt[E <: DomainError](reason: E): StorageError =
     StorageError.Corrupt("snapshot", reason)
 
   private def read(
