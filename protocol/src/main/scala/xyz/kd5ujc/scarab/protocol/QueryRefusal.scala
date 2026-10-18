@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.protocol
 
 /** A service keeps its domain-specific decoder/state/writer cause at the generic query boundary. */
-enum QueryRefusal[+E]:
+enum QueryRefusal[+E <: Product]:
   case Undecodable(cause: E, prefix: String)
   case Unsupported(query: String)
   case Unwritable(query: String, cause: E)

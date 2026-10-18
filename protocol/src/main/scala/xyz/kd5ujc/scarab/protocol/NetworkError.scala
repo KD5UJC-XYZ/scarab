@@ -65,7 +65,7 @@ object NetworkError:
     def message: String = this match
       case PeerClosed                => "closed by peer"
       case Aborted                   => "aborted"
-      case AbortedBy(cause) => s"aborted: $cause"
+      case AbortedBy(cause)          => s"aborted: $cause"
       case Transport(context, cause) => s"$context: ${cause.getMessage}"
   enum HandshakeFailure:
     case Local(cause: ProtocolError)
