@@ -141,3 +141,19 @@ def read: Either[
         self.assertTrue(GUARD.violations("type Result[String,A] = Either[String,A]; def read: Either[String,Bytes]"))
         self.assertTrue(GUARD.violations("def first[String]: Either[String,A] = value; def read: Either[String,Bytes]"))
         self.assertFalse(GUARD.violations("type Error = String match { case _ => DecodeError }; def read: Either[Error,Bytes]"))
+
+    def test_method_local_aliases_do_not_escape_their_lexical_scope(self):
+        self.assertFalse(GUARD.violations("""object API:
+  enum Error:
+    case Missing
+  def first: Unit =
+    type Error = String
+    ()
+  def read: Either[Error,Bytes]
+"""))
+        self.assertTrue(GUARD.violations("""object API:
+  def first: Unit =
+    type Error = String
+    val read: Either[Error,Bytes] = value
+    ()
+"""))

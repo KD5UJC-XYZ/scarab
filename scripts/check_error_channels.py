@@ -262,6 +262,9 @@ def make_source(text: str) -> Source:
             name = ""
             if token.text in {"object", "class", "trait", "enum"}:
                 name = ".".join(filter(None, (source.owner(i), ts[i + 1].text)))
+            elif token.text == "def":
+                # Local aliases cannot escape a method or leak to a sibling method.
+                name = ".".join(filter(None, (source.owner(i), f"$local${ts[i + 1].text}${i}")))
             source.scopes.append(Scope(i, end, name, params))
     for i, token in enumerate(ts):
         if token.text != "import":
