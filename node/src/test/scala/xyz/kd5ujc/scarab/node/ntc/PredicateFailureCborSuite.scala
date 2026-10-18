@@ -66,6 +66,25 @@ class PredicateFailureCborSuite extends FunSuite:
     )
   }
 
+  test("a withdrawal on another network: the network of the ledger, then the accounts") {
+    val account = RewardAccount(
+      1,
+      Credential.Key(hex("471db3352ca9d734922746e1b842782ba42ce45014b38408e77f6df6"))
+    )
+    val wrong = PredicateFailure.utxo(UtxoFailure.WrongNetworkWithdrawal(0, Set(account)))
+    // the reason of the reference node on the devnet (`ntc`, the case with the validity flag false)
+    assertEquals(
+      reason(wrong),
+      "8182068182018200830800d9010281581de1471db3352ca9d734922746e1b842782ba42ce45014b38408e77f6df6"
+    )
+    // and the two failures it lists when LEDGER's own check of the withdrawals refuses the
+    // transaction first: the accounts that are missing, then this one
+    assertEquals(
+      reason(PredicateFailure.WithdrawalsMissingAccounts(Map(account -> BigInt(0))), wrong),
+      "818206828208a1581de1471db3352ca9d734922746e1b842782ba42ce45014b38408e77f6df60082018200830800d9010281581de1471db3352ca9d734922746e1b842782ba42ce45014b38408e77f6df6"
+    )
+  }
+
   test("an output below the minimum travels with the minimum it missed") {
     val address =
       Address.decode(Bytes(Vector(0x60.toByte) ++ keyHash.value)).fold(fail(_), identity)

@@ -9,6 +9,7 @@ CERTS, GOV, UTXOW; a case with one violation has one failure, which is what the 
 import json
 from dataclasses import dataclass
 
+from . import eratx
 from .util import ENV, MAGIC, in_ref
 
 CLI = "cardano-cli conway"
@@ -21,6 +22,9 @@ class Case:
     label: str
     tx: bytes
     ledger_rule: str  # the constructor the reference reports (checked against its text)
+    # the reference lists every failure of the rule that refused the transaction and the Scala rules the
+    # first: only the first failure is compared
+    first_only: bool = False
 
 
 class Builder:
@@ -59,6 +63,41 @@ class Builder:
         return bytes.fromhex(json.loads(self.sh(f"cat {base}.signed"))["cborHex"])
 
 
+# Plutus V3 policies as script files: `\ctx -> ()` and `\ctx -> error` (flat, wrapped twice)
+SUCCEEDS = {"type": "PlutusScriptV3", "description": "", "cborHex": eratx.enc(eratx.plutus_always_succeeds()).hex()}
+FAILS = {"type": "PlutusScriptV3", "description": "",
+         "cborHex": eratx.enc(eratx.enc(bytes.fromhex("0101002601"))).hex()}
+
+
+def script_tx(b, w, collateral, script, account="testnet", invalid=False, fee=1500000):
+    """A transaction that mints one token under the Plutus policy `script`, with a withdrawal of nothing
+    from the reward account of the delegator `delegator1` on the network `account` ("testnet" or
+    "mainnet"); `collateral` (a wallet other than `w`) pays the collateral. `invalid` sets the validity
+    flag of the transaction. Returns the signed bytes and the collateral input."""
+    b.n += 1
+    n = b.n
+    d1 = f"{ENV}/stake-delegators/delegator1"
+    network = f"--testnet-magic {MAGIC}" if account == "testnet" else "--mainnet"
+    stake = b.sh(f"{CLI} stake-address build --stake-verification-key-file {d1}/staking.vkey {network}")
+    b.sh(f"echo '{json.dumps(script)}' > /work/script{n}.plutus")
+    policy = b.sh(f"{CLI} transaction policyid --script-file /work/script{n}.plutus")
+    token = f"1 {policy}.746f6b656e"
+    b.sh(f"{CLI} query protocol-parameters --testnet-magic {MAGIC} --socket-path {b.socket} "
+         f"--out-file /work/pp{n}.json")
+    held, kept = 3000000, collateral["lovelace"] - 3000000
+    base = f"/work/case{n}"
+    b.sh(f"{CLI} transaction build-raw --tx-in {w['txin']} "
+         f"--tx-out '{w['addr']}+{held}+{token}' --tx-out {w['addr']}+{w['lovelace'] - fee - held} "
+         f"--fee {fee} --mint '{token}' --mint-script-file /work/script{n}.plutus --mint-redeemer-value 0 "
+         f"--mint-execution-units '(1000000000,2000000)' --tx-in-collateral {collateral['txin']} "  # (steps, memory)
+         f"--tx-total-collateral {held} --tx-out-return-collateral {collateral['addr']}+{kept} "
+         f"--withdrawal {stake}+0 --protocol-params-file /work/pp{n}.json "
+         f"{'--script-invalid' if invalid else ''} --out-file {base}.body")
+    keys = " ".join(f"--signing-key-file {k}" for k in (w["skey"], collateral["skey"], f"{d1}/staking.skey"))
+    b.sh(f"{CLI} transaction sign --tx-body-file {base}.body {keys} --out-file {base}.signed")
+    return bytes.fromhex(json.loads(b.sh(f"cat {base}.signed"))["cborHex"]), collateral["txin"]
+
+
 def corpus(name, socket):
     """The refusal cases, in a fixed order."""
     b = Builder(name, socket)
@@ -74,8 +113,8 @@ def corpus(name, socket):
     main_addr = b.sh(f"{CLI} address build --payment-verification-key-file {w['vkey']} --mainnet")
     cases = []
 
-    def add(label, rule, tx):
-        cases.append(Case(label, tx, rule))
+    def add(label, rule, tx, first_only=False):
+        cases.append(Case(label, tx, rule, first_only))
 
     add("fee-too-small", "FeeTooSmallUTxO", b.tx(w, fee=1))
     add("all-inputs-spent", "ConwayMempoolFailure",
@@ -125,4 +164,9 @@ def corpus(name, socket):
     words = ", ".join(f'"{"x" * 60}"' for _ in range(300))
     b.sh(f"echo '{{\"1\": [{words}]}}' > /work/big.json")
     add("tx-too-large", "MaxTxSizeUTxO", b.tx(w, extra="--metadata-json-file /work/big.json"))
+    # the network of a withdrawal, under each value of the validity flag
+    add("withdrawal-network-flag-false", "WrongNetworkWithdrawal",
+        script_tx(b, w, other, FAILS, account="mainnet", invalid=True)[0])
+    add("withdrawal-network-flag-true", "Withdrawals",
+        script_tx(b, w, other, SUCCEEDS, account="mainnet")[0], first_only=True)
     return cases

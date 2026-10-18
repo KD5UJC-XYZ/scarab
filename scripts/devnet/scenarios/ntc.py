@@ -9,7 +9,8 @@ Three comparisons on one cluster, the Scala node following it with `--local-sock
   2. `cardano-cli conway query ...` against both sockets: the commands run back to back and a pair
      counts only when the tip read before and after is the same block on both nodes, so the two
      outputs describe one state. Reported per command, matched / total.
-  3. Submission: a valid transaction through the Scala socket (it must reach a block), and each
+  3. Submission: a valid transaction through the Scala socket (it must reach a block), one with the
+     validity flag false (it must take its collateral on both nodes), and each
      refused transaction of `ntccases` to both nodes, comparing the raw rejection and the text
      `cardano-cli transaction submit` prints.
   4. Local ChainSync, byte for byte: while the load runs, both sockets are followed from Origin (the
@@ -32,7 +33,7 @@ import subprocess
 import sys
 import time
 
-from .. import gapmask, ntccli, ntcquery
+from .. import cborspan, gapmask, ntccli, ntcquery
 from ..ntclocal import Session, compare_follow, live_follow, monitor_rounds, await_wakes, tx_id
 from ..cluster import freeze_classes, scala_container, up
 from ..ntccases import CLI, Builder, corpus
@@ -255,6 +256,17 @@ def reasons(args, root, tx):
     return got
 
 
+def first_failure(reason):
+    """The bytes of the first failure of a rejection `[[era, [failure, ...]]]` (None if it is not one)."""
+    try:
+        outer = cborspan.children(reason, 0)
+        era_and_failures = cborspan.children(reason, outer[0][0])
+        failures = cborspan.children(reason, era_and_failures[1][0])
+        return reason[failures[0][0]:failures[0][1]]
+    except (cborspan.Malformed, IndexError):
+        return None
+
+
 def submissions(args, root):
     cases = corpus(args.name, f"{ENV}/socket/node1/sock")
     results = []
@@ -264,9 +276,14 @@ def submissions(args, root):
         # the slot a transaction is judged at differs by a block or two between the nodes
         same_text = rendered(text["h"][1], case.ledger_rule) == rendered(text["s"][1], case.ledger_rule)
         same_raw = raw["h"] == raw["s"]
+        if case.first_only:
+            same_text = rendered(text["h"][1]).split(" :| ")[0] == rendered(text["s"][1]).split(" :| ")[0]
+            same_raw = first_failure(raw["h"]) == first_failure(raw["s"])
         named = case.ledger_rule in text["h"][1]
         row = {"case": case.label, "rule": case.ledger_rule, "referenceNamesRule": named, "rawEqual": same_raw,
                "textEqual": same_text}
+        if case.label.startswith("withdrawal-network"):
+            row["referenceRaw"] = raw["h"].hex()  # kept as a test vector of the failure encoding
         if not (same_raw and same_text):
             row["reference"] = rendered(text["h"][1])[:500]
             row["scala"] = rendered(text["s"][1])[:500]
@@ -307,6 +324,38 @@ def valid_submission(args, root):
         result["scalaHolds"] = cli(args, "s", f"query utxo --tx-in {w['txin']} --output-json")[1][:200]
         result["tips"] = {"reference": point_of(args, "h", root), "scala": point_of(args, "s", root)}
         print(json.dumps({"validSubmissionRetry": result}), flush=True)
+    return result
+
+
+def flagged_submission(args):
+    """A transaction with the validity flag false and a withdrawal on the ledger's own network, through
+    the Scala socket: it must be accepted and reach a block of the reference node (which validates it),
+    where its collateral is taken and the input it spends stays; the Scala node must hold the same."""
+    from ..ntccases import FAILS, Builder, script_tx
+    b = Builder(args.name, f"{ENV}/socket/node1/sock")
+    result = {}
+    # the wallets the load uses may have transactions in flight: a refusal for spent inputs tries the next
+    for spend, pay in ((3, 2), (2, 3), (1, 3)):
+        w, c = b.wallet(spend), b.wallet(pay)
+        tx, collateral = script_tx(b, w, c, FAILS, invalid=True)
+        text = submit_scala_cli(args, tx)
+        accepted = text["s"][0] == 0
+        result = {"spend": w["txin"], "collateral": collateral, "acceptedByScala": accepted,
+                  "output": text["s"][1][:300], "collateralTaken": False, "spendKept": False}
+        deadline = time.monotonic() + 90
+        while accepted and time.monotonic() < deadline:
+            held = {which: json.loads(cli(args, which, f"query utxo --tx-in {collateral} --output-json")[1] or "{}")
+                    for which in ("h", "s")}
+            if not held["h"] and not held["s"]:
+                result["collateralTaken"] = True
+                break
+            time.sleep(1)
+        if result["collateralTaken"]:
+            kept = {which: cli(args, which, f"query utxo --tx-in {w['txin']} --output-json")[1] for which in ("h", "s")}
+            result["spendKept"] = all(w["txin"] in text for text in kept.values())
+        if accepted:
+            break
+        print(json.dumps({"flaggedSubmissionRetry": result}), flush=True)
     return result
 
 
@@ -487,6 +536,8 @@ def ntc(args):
         sub_results = submissions(args, root)
         valid = valid_submission(args, root)
         print(json.dumps({"validSubmission": valid}), flush=True)
+        flagged = flagged_submission(args)
+        print(json.dumps({"flaggedSubmission": flagged}), flush=True)
         # what a user runs against the Scala socket: queries, then build, sign and submit
         mark = len(read_log(root / "follower.jsonl")[0])
         user_queries = ntccli.queries(args, info["addr"], info["txin"])
@@ -518,6 +569,7 @@ def ntc(args):
                             "differences": [r for r in sub_results if not (r["rawEqual"] and r["textEqual"])]},
             "ledgerState": {"gaps": list(gapmask.GAPS), "perQuery": masks},
             "validSubmission": valid,
+            "flaggedSubmission": flagged,
             "userCli": {"queries": user_queries, "build": user_build,
                         "unexpectedCloses": [c["reason"] for c in user_closes]},
             "chainSync": chain_sync,
@@ -545,6 +597,8 @@ def ntc(args):
             failures.append("a rejection differs from the reference's")
         if not (valid["acceptedByScala"] and valid["reachedABlock"]):
             failures.append(f"the valid transaction did not reach a block: {valid}")
+        if not (flagged["acceptedByScala"] and flagged["collateralTaken"] and flagged["spendKept"]):
+            failures.append(f"the transaction with the flag false did not take its collateral: {flagged}")
         for key in ("fromOrigin", "live", "backlog"):
             part = chain_sync.get(key)
             if part is None or part["differing"] or part["compared"] == 0 or part["scala"]["error"] \
