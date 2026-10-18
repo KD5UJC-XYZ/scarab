@@ -33,18 +33,15 @@ def start_scala_relay(args, root, peers):
                "--listen", f"127.0.0.1:{SCALA_PORT}", "--db", "/db", "--local-socket", "/sock/node.socket"]
     for port in peers:
         program += ["--peer", f"127.0.0.1:{port}"]
-    experimental = getattr(args, "max_ntn_version", 15) > 15
-    if getattr(args, "peer_sharing", True) or experimental:
-        # The Scala node takes part in peer sharing, as the Haskell relay does by default (a node
-        # without producer credentials). With --max-ntn-version 16 it also reads
-        # ExperimentalProtocolsEnabled, which is what makes it offer node-to-node version 16. The pools keep
-        # their own configuration.
-        config = json.loads((root / "genesis" / "configuration.yaml").read_text())
-        config["PeerSharing"] = bool(getattr(args, "peer_sharing", True))
-        if experimental:
-            config["ExperimentalProtocolsEnabled"] = True
-        (root / "genesis" / "scala-configuration.json").write_text(json.dumps(config, indent=2))
-        program += ["--config", "/genesis/scala-configuration.json"]
+    # The Scala node takes part in peer sharing, as the Haskell relay does by default (a node without producer
+    # credentials), and reads ExperimentalProtocolsEnabled, which decides the highest node-to-node version it
+    # offers: cardano-testnet writes `true`, so the key is set from --max-ntn-version either way (15, the
+    # reference's latest release, unless 16 is asked for). The pools keep their own configuration.
+    config = json.loads((root / "genesis" / "configuration.yaml").read_text())
+    config["PeerSharing"] = bool(getattr(args, "peer_sharing", True))
+    config["ExperimentalProtocolsEnabled"] = getattr(args, "max_ntn_version", 15) > 15
+    (root / "genesis" / "scala-configuration.json").write_text(json.dumps(config, indent=2))
+    program += ["--config", "/genesis/scala-configuration.json"]
     command = scala_container(args, root, classpath, "xyz.kd5ujc.scarab.node.Main", program,
                               mounts=[f"{root / 'genesis'}:/genesis:ro", f"{db}:/db", f"{sock}:/sock"],
                               name=f"{args.name}-scala")
@@ -67,9 +64,9 @@ def start_haskell_relay(args):
     # whose genesis file names are relative to it) that turns it on. The pools keep theirs.
     config = read_json(args.name, f"{ENV}/configuration.yaml")
     config["PeerSharing"] = bool(getattr(args, "peer_sharing", True))
-    if getattr(args, "max_ntn_version", 15) > 15:
-        # the reference offers versions above its latest release (15) only with this key (Run.hs 555 to 565)
-        config["ExperimentalProtocolsEnabled"] = True
+    # the reference offers versions above its latest release (15) only with this key (Run.hs 555 to 565);
+    # cardano-testnet writes `true`, so a run at 15 turns it off
+    config["ExperimentalProtocolsEnabled"] = getattr(args, "max_ntn_version", 15) > 15
     # the relay's handshake traces: the version its connection to the Scala node came out with
     config.setdefault("TraceOptions", {}).setdefault("Net.Handshake.Remote", {})["severity"] = "Debug"
     # the governor's peer-sharing traces, to see when the relay asks us (after `policyPeerShareActivationDelay`, 300 s)
@@ -161,6 +158,24 @@ def submit_through_local_socket(args, root):
                "--socket-path", "/sock/node.socket", "--tx-file", "/tx/ntc.signed", check=False, timeout=60)
     return {"txid": txid, "txin": txin, "exitCode": r.returncode, "stdout": r.stdout.strip()[:300],
             "stderr": r.stderr.strip()[:600]}
+
+
+def relay_handshakes(log_text):
+    """The handshake messages in the Haskell relay's log (`Net.Handshake.Remote` at Debug): what it proposed and
+    what came back, as the reference prints them."""
+    proposed, accepted = [], []
+    for line in log_text.splitlines():
+        if '"ns":"Net.Handshake.Remote.' not in line:
+            continue
+        try:
+            msg = json.loads(line)["data"]["event"]["msg"]["msg"]
+        except (json.JSONDecodeError, KeyError, TypeError):
+            continue
+        if msg.startswith("MsgProposeVersions"):
+            proposed.append(msg)
+        elif msg.startswith("MsgAcceptVersion"):
+            accepted.append(msg)
+    return {"proposed": proposed, "accepted": accepted}
 
 
 def relay(args):
@@ -260,6 +275,8 @@ def relay(args):
         # catches when it lasts long enough)
         relay_errors = [line for line in in_ref(args.name, f"cat {RELAY_DIR}/node.log").stdout.splitlines()
                         if "DecoderFailure" in line and "ExceptionExit" in line]
+        # the versions the Haskell relay proposed to us and the one we accepted (its handshake trace)
+        handshakes = relay_handshakes(in_ref(args.name, f"cat {RELAY_DIR}/node.log").stdout)
         final_connections = scala_connections(args)
         first, last = inbound_session(at_sync), inbound_session(final_connections)
         local["adopted"] = any(e["event"] == "mempoolAdopted" and e["tx"] == local["txid"] for e in events)
@@ -285,6 +302,7 @@ def relay(args):
             "scalaEvents": {k: counts.get(k, 0) for k in
                             ("extended", "rolledBack", "reconnecting", "error", "inbound", "mempoolAdded",
                              "mempoolAdopted", "mempoolRejected", "mempoolDropped")},
+            "relayHandshake": handshakes,
             "unparsedScalaOutput": other[:10],
             "inbound": {
                 "mode": args.relay_mode,
@@ -332,6 +350,9 @@ def relay(args):
                                     f"is behind the pool's ({pool_tip})")
             if summary["inbound"]["events"]["duplex"] < 1 or summary["inbound"]["events"]["following"] < 1:
                 failures.append(f"missing inbound events: {summary['inbound']['events']}")
+        wanted = f"NodeToNodeV_{getattr(args, 'max_ntn_version', 15)}"
+        if not handshakes["accepted"] or any(not a.startswith(f"MsgAcceptVersion {wanted} ") for a in handshakes["accepted"]):
+            failures.append(f"the relay's connection to the Scala node was not accepted as {wanted}: {handshakes}")
         if relay_errors:
             failures.append(f"the Haskell relay failed to decode {len(relay_errors)} message(s) from us: "
                             f"{relay_errors[0][-300:]}")

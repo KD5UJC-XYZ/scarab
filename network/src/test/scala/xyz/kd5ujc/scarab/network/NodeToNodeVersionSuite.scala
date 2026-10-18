@@ -6,6 +6,7 @@ import cats.syntax.all.*
 import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ChainSyncFixtures, NtnVersion}
+
 import Peers.*
 
 /** The node-to-node version a whole connection comes out with, for every pair of maxima the client

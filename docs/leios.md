@@ -199,9 +199,12 @@ The testnet relay answers a version query with exactly versions 14, 15 and 16 (s
 new handshake version number was observed for Leios. Whether the Leios mini-protocols are gated
 by a version, by the Dijkstra era, or by a node-side feature flag could not be established
 without opening them, and this note makes no claim. That is the first thing N3 must resolve.
-It also bears on G4 (our client offers only version 14 today; the pure `Handshake` already models
-14 to 16 including the Peras flag). Answered in section 11.5 item 3: the release the testnet runs does
-not gate the Leios protocols on the version at all; what the relay does with them is 11.7.
+It also bore on G4, done 2026-10-17: the node now offers 14 and 15, and 16 with `ExperimentalProtocolsEnabled`, which the
+testnet configuration sets (X9 of section 11.6). Version 16 adds only the Peras flag to the version data (cardano-diffusion
+`NodeToNode/Version.hs` 85 to 95 and 187 to 189, identical at `c5117705` that cardano-node 11.1.3 pins and at `96ee6e0e` that
+the Leios prototype's `cardano-node` branch pins); the Leios mini-protocols have no version of their own. Answered in section
+11.5 item 3: the release the testnet runs does not gate the Leios protocols on the version at all; what the relay does with
+them is 11.7.
 
 ### 4.4 Other network-side changes
 
@@ -234,7 +237,7 @@ A proposal, mostly not built: of the rows below only the BLS keys (N2) and the p
 | Leios change | Where it lands | Notes and reuse |
 |---|---|---|
 | Protocol ids 18, 19; pure codecs and state machines | `protocol/` (pure codecs, like `ChainSync`, `TxSubmission2`); `network` (`Protocols`, new `LeiosNotifyClient/Server`, `LeiosFetchClient/Server`, registered in `NodeToNodeServer.Protocol` and `NodeToNode.over`) | `Mux`, `MuxChannel.recv` with incremental decoders and `Timed` are reusable as is. Credit and pipelining do not exist for these two, so keep them simple. Per-protocol agency and size limits as for the existing ones |
-| Handshake versions and flags | `network/Handshake.scala`, `HandshakeClient` | Today the client proposes version 14 only (`NodeToNode.over`); see G4 |
+| Handshake versions and flags | `network/Handshake.scala`, `HandshakeClient` | Done in G4: `protocol/ProtocolVersion.scala` (`NtnVersion`, `NtcVersion`), offers up to `NodeToNode.Settings.maxVersion`, 16 with `ExperimentalProtocolsEnabled`; the Peras flag is never set |
 | Dijkstra headers (announcement, cert flag, version info) | `node/Header.scala`, `Block.scala` | New era variant next to Conway; header hash and KES body-signature validation reuse `Praos`; body hash must cover the new body fields (L1 to confirm) |
 | Certificate verification in block validation | `LedgerRules.scala` (`NodeRules`), `consensus/` | A new pure `LeiosCertificate` rule: committee lookup in the ledger view, signer-stake sum against `tau`, aggregate-signature check. The committee is a pure function of the mark snapshot, so it belongs in the ledger state with `ledger/Stake.scala` and `consensus/LedgerView.scala` |
 | Committee and pool BLS keys | `ledger/Stake.scala`, certificate decoding in `ledger/Tx.scala`, `ledger/ProtocolParams.scala` (keys 40 to 48; Peras adds 49 and 50) | Pool-registration CDDL has `bls_key`; SNAP-time seating with the stable sort (stake descending, pool id ascending) |
@@ -287,8 +290,8 @@ if it can resolve certified EBs; a node that does not validate certificates shou
 
 Dependencies: **L1** (Dijkstra era: header, body, pool parameters, protocol parameters 40 to
 48, `LEDGER`/`BBODY` for the new body hash and transactions) is a prerequisite for N3 and N4.
-**G4** (handshake versions 15 and 16, client side) is a prerequisite for N3 if the testnet
-requires them; today the client offers 14 only. N2 depends on neither.
+**G4** (handshake versions 15 and 16) was a prerequisite for N3 if the testnet required them; it is done (X9), and the
+testnet accepted version 16 from us. N2 depends on neither.
 
 **N2: BLS keys, votes and certificates (pure, in `crypto`).** Done 2026-10-14, results and deviations in section 9. Acceptance:
 
@@ -666,10 +669,10 @@ these). "Cited" is the source read, at the revisions of sections 1 and 11.2 and,
 | **X6** | `peras_certificate` is carried as bytes; the ledger's `validatePerasCert` is a placeholder that returns `False` | Peras | cardano-ledger `BlockBody/Internal.hs` 235 to 246 (pinned) |
 | **X7** | Endorser blocks: an announcement is recognised in a header (65,469 on this chain) but no EB is fetched, stored, hashed against the announced hash or applied; there is no EB store, no closure, no inlining for node-to-client, no chain selection with a missing closure | storage, consensus, `ntc` | sections 4.4 and 5; `dijkstra.cddl` 105 to 108 |
 | **X8** | Mini-protocols 18 and 19 were never answered by the relay (11.7), and the node's multiplexer and servers do not carry protocols 18 and 19 at all (11.5 item 6) | network | consensus `NodeToNode.hs` of the release |
-| **X9** | Handshake: the node offers version 14 only; the relay accepts 14 to 16, 16 adding the Peras flag | handshake | section 8 |
+| **X9** | ~~Handshake: the node offers version 14 only; the relay accepts 14 to 16, 16 adding the Peras flag~~ Resolved (G4, [#34](https://github.com/KD5UJC-XYZ/scarab/issues/34)): both sides offer 14 and 15 by default, as cardano-node 11.1.3 (`latestReleasedNodeVersion` is 15, `Cardano/Node.hs` 456 of consensus 4.2.1.0), and 16 with `ExperimentalProtocolsEnabled` (`limitToLatestReleasedVersion`, diffusion `Node.hs` 1152 to 1165). The Peras flag is off, so version 16 differs from 15 only by the fifth element of the version data. The public Leios testnet sets the key, so its relay is offered 14 to 16 and answers 16 | handshake | section 8; `LeiosTestnetHandshakeSuite`, `HandshakeNegotiationSuite` |
 | **X10** | `TxSubmissionLogicVersion: TxSubmissionLogicV2` and the Leios mempool (an EB reservation; section 4.4) are not modelled | mempool, TxSubmission2 | `config.json` |
 | **X11** | `ConsensusMode: PraosMode` with ledger peers after slot 151,200 and a peer snapshot: no ledger peers, no peer snapshot, one bootstrap relay only | topology | `topology.json`, `peer-snapshot.json` |
-| **X12** | The CDDL pipeline (`models-gen`) takes the Leios CDDL it was given: `dijkstra:header` (12-element body, round trip byte for byte, `LeiosTestnetHeaderSuite`) and consensus' `leiosNotify.cddl` (a module `leios-notify`; its `;# import header as header` needs `header.cddl` as a second module of that name; `LeiosNotifyCddlSuite` compares the generated reader with the hand-written codec, sixteen votes included). Not generated: `dijkstra:block` and `pool_params` (the 12 rules with a required member after an optional one, `docs/models.md` section 8), and the Blueprint's `leios-fetch/messages.cddl`, which imports the Blueprint's own `base` (a name the consensus `base` module already has) and `tx.tx` (any ledger transaction). Codec 19 stays hand-written, tested against the prototype source and the Blueprint. The nightly cuddle cross-check (`scripts/cddl_crosscheck.py`, `models/cuddle-allowlist.tsv`) was **not run** for the two new modules; it may need allowlist entries | `models` | `models/src/main/cddl/models.conf` |
+| **X12** | The CDDL pipeline (`models-gen`) takes the Leios CDDL it was given: `dijkstra:header` (12-element body, round trip byte for byte, `LeiosTestnetHeaderSuite`), consensus' `leiosNotify.cddl` (a module `leios-notify`; its `;# import header as header` needs `header.cddl` as a second module of that name; `LeiosNotifyCddlSuite` compares the generated reader with the hand-written codec, sixteen votes included) and, since G4, the Blueprint's `leios-fetch/messages.cddl` at `fe4cceb9` (a module `leios-fetch`; no consensus or network branch has a LeiosFetch CDDL; its `base` is the consensus `base` module plus `word16` in `overrides/base-word16.cddl`, its `tx` a module of ours that says `tx = any` because the codec keeps each transaction as the bytes it came with and the Blueprint marks `tx` underspecified; `LeiosFetchCddlSuite`, the cuddle root `leios-fetch:leiosBlockFetchMessage` with one allowlisted float divergence, fuzz targets `leios-fetch` and `leios-notify`). Not generated: `dijkstra:block` and `pool_params` (the 12 rules with a required member after an optional one, `docs/models.md` section 8). The Blueprint moved on 2026-10-16 (`MsgLeiosBlockTxs` is `[4, tx_list]`, transactions are tag 24, non-empty endorser blocks, following consensus#2416): the codec and the pinned copy stay on the older form until the testnet release moves, [#174](https://github.com/KD5UJC-XYZ/scarab/issues/174). The cross-check was run for both new modules (G4) | `models` | `models/src/main/cddl/models.conf` |
 | **X13** | `header_version_info` is not interpreted: nothing compares `highest_supported_major_version` with the chain's version or the node's maximum; the earlier eras' `protocol_version` is checked against the ledger's on mainnet | envelope checks | cardano-ledger-core `Block.hs` 147 to 156 |
 
 ### 11.7 The Leios mini-protocols against the relay

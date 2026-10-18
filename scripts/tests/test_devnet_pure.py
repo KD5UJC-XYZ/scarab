@@ -16,6 +16,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from devnet import cbor, cluster, compare, encoding, eraload, eratx, eraview, govextra, govview, ntccli, ntclocal, ntcqueries, ntcquery, refused_fixture, util  # noqa: E402
 from devnet.scenarios import ntc  # noqa: E402
 from devnet.scenarios import pool  # noqa: E402
+from devnet.scenarios import relay as relay_scenario  # noqa: E402
 
 RFC8032_SEED = bytes.fromhex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
 RFC8032_PUB = "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
@@ -346,6 +347,23 @@ class BoundaryHelperTests(unittest.TestCase):
         plan = cluster.era_plan(A)
         self.assertEqual(plan[:4], [("shelley", 2)] * 3 + [("allegra", 3)])
         self.assertEqual(cluster.era_plan(object()), cluster.ERA_PLAN)
+
+
+class RelayHandshakeTest(unittest.TestCase):
+    def line(self, ns, msg):
+        return json.dumps({"ns": ns, "data": {"event": {"kind": "Send", "msg": {"msg": msg}}}}, separators=(",", ":"))
+
+    def test_proposals_and_acceptances_are_read_from_the_handshake_trace(self):
+        log = "\n".join([
+            "not json",
+            self.line("Net.PeerSelection.Churn", "MsgAcceptVersion NodeToNodeV_9 []"),
+            self.line("Net.Handshake.Remote.Send.ProposeVersions", "MsgProposeVersions (fromList [(NodeToNodeV_14,TList [])])"),
+            self.line("Net.Handshake.Remote.Receive.AcceptVersion", "MsgAcceptVersion NodeToNodeV_15 (TList [])"),
+            '{"ns":"Net.Handshake.Remote.Receive.AcceptVersion","data":{}}',
+        ])
+        got = relay_scenario.relay_handshakes(log)
+        self.assertEqual(got["proposed"], ["MsgProposeVersions (fromList [(NodeToNodeV_14,TList [])])"])
+        self.assertEqual(got["accepted"], ["MsgAcceptVersion NodeToNodeV_15 (TList [])"])
 
 
 if __name__ == "__main__":
