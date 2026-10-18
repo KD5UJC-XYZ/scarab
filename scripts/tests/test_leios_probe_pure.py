@@ -34,6 +34,22 @@ class LeiosProbeTest(unittest.TestCase):
         text = "not json\n" + json.dumps(event, separators=(",", ":"))
         self.assertEqual(probe.trace_reasons(text), [(18, "unexpected key (3, 1)")])
 
+    def test_listener_requires_the_exact_typed_protocol_18_closure(self):
+        expected = "connection ended: leios-notify protocol violation: data on unexpected mini-protocol 18"
+        self.assertTrue(probe.unexpected_leios_channel("inbound handshake\n" + expected + "\n" + expected))
+        wrong = [
+            "connection ended: data on unexpected mini-protocol 18",
+            "connection ended: leios-fetch protocol violation: data on unexpected mini-protocol 19",
+            expected.replace("18", "180"),
+            "connection ended: leios-notify protocol violation: wrong state",
+            "connection ended: network defect: data on unexpected mini-protocol 18",
+            "connection ended: evaluation unavailable: data on unexpected mini-protocol 18",
+            "ENDED leios-notify protocol violation: data on unexpected mini-protocol 18",
+        ]
+        for text in wrong:
+            self.assertFalse(probe.unexpected_leios_channel(text), text)
+            self.assertFalse(probe.unexpected_leios_channel(expected + "\n" + text), text)
+
     def test_timed_out_docker_client_does_not_leave_probe_container(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)

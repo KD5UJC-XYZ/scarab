@@ -107,6 +107,15 @@ def trace_reasons(logs):
     return found
 
 
+def unexpected_leios_channel(text):
+    """Every observed closure is the typed first-SDU violation on protocol 18."""
+    lines = text.splitlines()
+    closed = [line for line in lines if line.startswith("connection ended:")]
+    expected = "connection ended: leios-notify protocol violation: data on unexpected mini-protocol 18"
+    return bool(closed) and all(line == expected for line in closed) and not any(
+        line.startswith("ENDED ") for line in lines)
+
+
 def read_logs(root):
     return "\n".join(p.read_text(errors="replace") for p in sorted((root / "logs").glob("node*.log")))
 
@@ -227,7 +236,7 @@ class Run:
             if proc.returncode:
                 raise subprocess.CalledProcessError(proc.returncode, proc.args, output=text)
             if leios == "no":
-                self.check("connection ended: data on unexpected mini-protocol 18" in text,
+                self.check(unexpected_leios_channel(text),
                            "a multiplexer without 18 and 19 ends the connection at the reference's first SDU on 18")
             else:
                 first = [r for r in rows((self.root / "probes" / f"{label}.tsv").read_text())

@@ -7,3 +7,5 @@
   Dijkstra following and committee/protocol integration remain the later stages of #73.
 - Unexpected probe process failures retain their diagnostic output and fail the scenario; printed
   network-refusal text alone cannot count as a successful probe.
+- Listener checks require the exact typed protocol-18 closure, including its protocol and reason;
+  other failures cannot satisfy the expected first-SDU observation.

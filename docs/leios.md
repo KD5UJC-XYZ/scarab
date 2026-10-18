@@ -820,3 +820,19 @@ time tests cover silence, either arrival and observer failure. Filtered trace ch
 Captured message fixtures and their decoder expectations preserve the differences above. Remaining
 follower work stays in #73's staged checklist and the X1–X8 table, rather than being implied by a
 successful research probe.
+
+The final post-fiber-boundary w38a observations were recorded from runtime source `61d19c0d`.
+Its runner exited 1 because the listener assertion still expected the old untyped closure text;
+the actual output was `connection ended: leios-notify protocol violation: data on unexpected
+mini-protocol 18`. All twelve observed closures have that exact typed reason, both listener
+processes exited 0, and the listener carrying Leios received `8100` on protocol 18. The remaining
+chain, message, credit and silence checks passed. The corrected assertion accepts only that full
+typed closure for every observed connection and refuses wrong protocols, reasons, defects and
+unavailability; replaying the retained output passes. The original failed runner result is retained,
+not relabeled as a successful invocation. No whole-profile repeat was needed for this diagnostic
+assertion correction; the measured runtime and original committed capture bytes are unchanged.
+
+Docker `check`, including formatting, every module's tests and scalafix, passed on that runtime.
+The capture suite requires all six retained server kinds, raw framing passes 400,000 seeded byte
+inputs and 20,000 nested arrays on a 256 KiB stack, and the corrected Python suite passes 166 tests.
+The 76 relative file links in the changed documents and both capture-file hashes were checked.
