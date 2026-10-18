@@ -405,6 +405,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   for injected <- FatalCase.values.toList
   do
     test(s"an injected $injected stops without reconnecting or blaming the peer") {
+      val storageCause = new java.io.IOException("injected")
       node {
         for
           chainRef <- Ref.of[IO, VolatileChain[MirrorState]](
@@ -427,7 +428,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 injected match
                   case FatalCase.Storage =>
                     summon[Handle[IO, NodeError]].raise[NodeError, Unit](
-                      StorageError.Io("volatile", "injected")
+                      StorageError.Io("volatile", storageCause)
                     )
                   case FatalCase.Unavailable | FatalCase.UnavailablePhase1 =>
                     val failure = LedgerFailure.Unavailable(
@@ -435,7 +436,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                       if injected == FatalCase.UnavailablePhase1 then
                         ScriptLocation.Phase1(Bytes.empty)
                       else ScriptLocation.Phase2(Redeemer(0, 0, Bytes.empty, ExUnits.zero)),
-                      EvalFailure.Unsupported("injected")
+                      EvalFailure.Unsupported(xyz.kd5ujc.scarab.plutus.BackendFailure.BinaryDstUnavailable)
                     )
                     summon[Handle[IO, NodeError]].raise[NodeError, Unit](
                       ValidationError(
@@ -547,9 +548,9 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           lostEvents <- seen.get
         yield
           stopped match
-            case Vector(Fatal.Storage(StorageError.Io("volatile", "injected")))
+            case Vector(Fatal.Storage(StorageError.Io("volatile", cause)))
                 if injected == FatalCase.Storage =>
-              ()
+              assert(cause eq storageCause)
             case Vector(Fatal.Unavailable(error))
                 if injected == FatalCase.Unavailable || injected == FatalCase.UnavailablePhase1 =>
               val phase1 = error.failure.location.isInstanceOf[ScriptLocation.Phase1]

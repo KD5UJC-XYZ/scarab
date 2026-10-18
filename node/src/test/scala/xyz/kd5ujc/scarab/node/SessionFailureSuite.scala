@@ -84,7 +84,7 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               anchor: Anchor[BigInt]
           ) =
             if breakStorage.contains(block.blockNo.toInt) then
-              node.raise[NodeError, Unit](StorageError.Io("volatile", "disk full"))
+              node.raise[NodeError, Unit](StorageError.Io("volatile", new java.io.IOException("disk full")))
             else stored.update(_ :+ block)
           def rolledBack(to: ChainSync.Point) = IO.unit
         rules: BlockRules[IO, BigInt] = (_, header, _) =>
@@ -99,7 +99,7 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                     Bytes.empty,
                     ScriptLocation.Phase2(Redeemer(0, 0, Bytes.empty, ExUnits.zero)),
                     EvalFailure
-                      .Unsupported("injected implementation limit")
+                      .Unsupported(xyz.kd5ujc.scarab.plutus.BackendFailure.BinaryDstUnavailable)
                   )
                 )
               )
