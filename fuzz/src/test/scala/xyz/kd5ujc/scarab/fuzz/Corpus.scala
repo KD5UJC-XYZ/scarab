@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.fuzz
 
 import cats.syntax.all.*
-
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.protocol.{Era, NtNHeader}
