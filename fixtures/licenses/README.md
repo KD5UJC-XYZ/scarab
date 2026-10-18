@@ -7,6 +7,8 @@ Upstream licenses and notices for the test vectors under `fixtures/`:
   ouroboros-consensus (`ouroboros-network-*`, `network-mux-NOTICE`,
   `ouroboros-framework-NOTICE`, `cardano-diffusion-NOTICE`, `block-fetch-*`).
   The `scalus-*.hex` vectors come from Scalus-node (`scalus-node-LICENSE`).
+- The CDDL under `models/src/main/cddl/upstream/cardano-blueprint` (the Blueprint's LeiosFetch messages) is
+  Apache-2.0: `cardano-blueprint-LICENSE` and `cardano-blueprint-NOTICE`.
 - `opcert/`, `praos/`, `sum6/`, `vrf/`: header, VRF, KES and operational-certificate
   vectors from public Cardano chain data and IntersectMBO cardano-base and
   cardano-ledger (`cardano-ledger-LICENSE`, `cardano-ledger-NOTICE`).

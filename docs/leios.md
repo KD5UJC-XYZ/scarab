@@ -201,8 +201,9 @@ by a version, by the Dijkstra era, or by a node-side feature flag could not be e
 without opening them, and this note makes no claim. That is the first thing N3 must resolve.
 It also bore on G4, done 2026-10-17: the node now offers 14 and 15, and 16 with `ExperimentalProtocolsEnabled`, which the
 testnet configuration sets (X9 of section 11.6). Version 16 adds only the Peras flag to the version data (cardano-diffusion
-`NodeToNode/Version.hs` 85 to 95 and 187 to 189, identical at `c5117705` that cardano-node 11.1.3 pins and at `96ee6e0e` that
-the Leios prototype's `cardano-node` branch pins); the Leios mini-protocols have no version of their own. Answered in section
+`NodeToNode/Version.hs` 85 to 95 and 187 to 189, identical at `c5117705` that cardano-node 11.1.3 pins, at `4b3ab766` that the testnet release `8c44d145` pins and at `96ee6e0e`
+that the tip of the prototype's `cardano-node` branch pins; `latestReleasedNodeVersion` is 15 in consensus 4.2.1.0 and in the
+release's `27fa649f` alike); the Leios mini-protocols have no version of their own. Answered in section
 11.5 item 3: the release the testnet runs does not gate the Leios protocols on the version at all; what the relay does with
 them is 11.7.
 
