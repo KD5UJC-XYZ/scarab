@@ -107,8 +107,11 @@ class LeiosHeaderChainSuite extends munit.FunSuite:
       ProtocolState.initial(Era.Conway, Bytes(Vector.fill(32)(7.toByte)))
     )
     run(headers.take(3), other) match
-      case Left((0, LeiosHeaderChain.Fault.Praos(reason))) => assert(reason.contains("VRF"), reason)
-      case other                                           => fail(other.toString)
+      case Left(
+            (0, LeiosHeaderChain.Fault.Praos(_: xyz.kd5ujc.scarab.ledger.PraosError.VrfRejected))
+          ) =>
+        ()
+      case other => fail(other.toString)
   }
 
   test("a missing header, a repeated header and a swapped pair break the chain link") {

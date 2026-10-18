@@ -91,7 +91,7 @@ enum BlockFailure:
   case TPraos(error: TPraosError)
 
   /** A Praos header rule (`text` is its text). */
-  case Praos(text: String)
+  case Praos(error: PraosError)
 
   // ---- ledger
 
@@ -159,7 +159,7 @@ enum BlockFailure:
     case Byron(text)     => text
     case Envelope(error) => error.message
     case TPraos(error)   => error.message
-    case Praos(text)     => text
+    case Praos(error)    => error.message
     case Lite(text)      => text
     case Handover(text)  => text
     case SupplyInvariant(epoch, total, maximum) =>

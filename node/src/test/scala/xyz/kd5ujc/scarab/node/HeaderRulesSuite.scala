@@ -5,7 +5,11 @@ import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf}
 import cats.effect.unsafe.implicits.global
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.HeaderError
+import xyz.kd5ujc.scarab.ledger.{HeaderError, PraosError, OCertError, PoolDistribution, StakeView}
+import xyz.kd5ujc.scarab.consensus.Praos
+import xyz.kd5ujc.scarab.crypto.Blake2b
+import xyz.kd5ujc.scarab.crypto.vrf.{PraosLeaderThreshold as Leader, PraosVrfCertificate as Vrf}
+import xyz.kd5ujc.scarab.ledger.state.VocabError
 import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, EraLedgerState, MirrorState, ProtocolState}
 import xyz.kd5ujc.scarab.ledger.state.EpochNo
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
@@ -126,8 +130,12 @@ class HeaderRulesSuite extends ScalaCheckSuite:
       case other => fail(s"not a Praos state: $other")
     assert(before(i).counters.nonEmpty)
     rules.validate(state, tip, ahead, forged.headers(i)) match
-      case Outcome.Invalid(HeaderError.Praos(r)) => assert(r.contains("counter"), r)
-      case other                                 => fail(other.toString)
+      case Outcome.Invalid(
+            HeaderError.Praos(PraosError.OCert(OCertError.CounterOutOfRange(current, got)))
+          ) =>
+        assertEquals(current, forged.headers(i).opCert.sequence + 5)
+        assertEquals(got, forged.headers(i).opCert.sequence)
+      case other => fail(other.toString)
   }
 
   test("a header beyond the stability window of the anchor has to wait for the chain to advance") {
@@ -223,4 +231,73 @@ class HeaderRulesSuite extends ScalaCheckSuite:
           prev = next
         case other => fail(s"block $i: $other")
     }
+  }
+
+  test("Praos preserves threshold, registration, vocabulary and certificate causes") {
+    val h = forged.headers.head
+    val state = before(0)
+    val pool = Blake2b.hash224.hash(h.issuerVkey)
+    val vrf = Blake2b.hash256.hash(h.vrfVkey)
+    val known = PoolDistribution(Map(pool -> BigInt(1)), Map(pool -> vrf))
+    def validate(
+        header: Header.Shelley = h,
+        pools: PoolDistribution = known,
+        config: xyz.kd5ujc.scarab.consensus.PraosConfig = ForgedChain.config
+    ) =
+      Praos.update(state, header, pools, config)
+    assertEquals(
+      Praos.update(
+        ProtocolState.initial(xyz.kd5ujc.scarab.protocol.Era.Shelley, Bytes.empty),
+        h,
+        known,
+        ForgedChain.config
+      ),
+      Left(PraosError.WrongState(h.era))
+    )
+    assertEquals(
+      validate(pools = known.copy(stake = Map.empty)),
+      Left(PraosError.IssuerWithoutStake(pool))
+    )
+    assertEquals(
+      validate(pools = known.copy(vrf = Map.empty)),
+      Left(PraosError.UnregisteredPool(pool))
+    )
+    val wrong = Bytes(Vector.fill(32)(0.toByte))
+    assertEquals(
+      validate(pools = known.copy(vrf = Map(pool -> wrong))),
+      Left(PraosError.VrfKeyMismatch(pool, vrf, Set(wrong)))
+    )
+    assertEquals(
+      Praos.validate(state, h, StakeView.Unknown(Map.empty), ForgedChain.config),
+      Left(PraosError.UnregisteredPool(pool))
+    )
+    assertEquals(
+      Praos.validate(state, h, StakeView.Unknown(Map(pool -> Set(wrong))), ForgedChain.config),
+      Left(PraosError.VrfKeyMismatch(pool, vrf, Set(wrong)))
+    )
+    assertEquals(
+      validate(pools = known.copy(stake = Map(pool -> BigInt(-1)))),
+      Left(PraosError.LeaderThreshold(Leader.Error.InvalidFraction(-1, -1)))
+    )
+    val active = Leader.Fraction.checked(3, 4).fold(e => fail(e.message), identity)
+    assertEquals(
+      validate(config = ForgedChain.config.copy(activeSlotsCoeff = active)),
+      Left(PraosError.LeaderThreshold(Leader.Error.UnsupportedActiveSlotsCoefficient(3, 4)))
+    )
+    assertEquals(
+      validate(header = h.copy(slot = -1)),
+      Left(PraosError.Vocabulary(VocabError.Negative(VocabError.Kind.SlotNo, -1)))
+    )
+    assertEquals(
+      validate(header = h.copy(opCert = h.opCert.copy(sequence = -1))),
+      Left(PraosError.Vocabulary(VocabError.Negative(VocabError.Kind.OcertCounter, -1)))
+    )
+    assertEquals(
+      validate(header = tampered(h, 1, 0)),
+      Left(PraosError.VrfRejected(Vrf.Result.OutputMismatch))
+    )
+    assertEquals(
+      validate(header = tampered(h, 2, 0)),
+      Left(PraosError.OCert(OCertError.KesSignatureRejected))
+    )
   }

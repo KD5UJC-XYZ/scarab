@@ -55,7 +55,15 @@ class BlockFailureSuite extends FunSuite:
       "byron" -> "Shelley block in epoch 2, the transition is to epoch 3 after Byron slot 99"
     )
     assertEquals(rendered(BlockFailure.Byron("x")), "byron" -> "x")
-    assertEquals(rendered(BlockFailure.Praos("y")), "praos" -> "y")
+    assertEquals(
+      rendered(
+        BlockFailure.Praos(
+          PraosError
+            .NotElected(42, xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold.Decision.Ineligible)
+        )
+      ),
+      "praos" -> "issuer not elected for slot 42: Ineligible"
+    )
     assertEquals(rendered(BlockFailure.Lite("z")), "ledger" -> "z")
     assertEquals(rendered(BlockFailure.Handover("h")), "ledger" -> "h")
     val id = Bytes.fromHex("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")

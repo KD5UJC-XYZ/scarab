@@ -65,10 +65,10 @@ object TPraos:
       alpha: Bytes,
       vkey: Bytes,
       cert: VrfCert
-  ): Either[String, Unit] =
+  ): Either[Vrf.Result, Unit] =
     verdicts.tpraosVrf(alpha, vkey, cert.proof, cert.output) match
       case Vrf.Result.VerifiedCertificate(_) => Right(())
-      case other                             => Left(other.toString)
+      case other                             => Left(other)
 
   /** Validate `header` against `view` (the ledger view of its epoch) and `state` (already ticked to
     * that epoch, see [[Praos.tick]]).
@@ -90,10 +90,10 @@ object TPraos:
                 )
               case _ =>
                 Left(
-                  TPraosError.NotTPraos(s"${h.era} (the chain-dependent state is not TPraos's)")
+                  TPraosError.WrongState(h.era)
                 )
-          case _: HeaderVrf.Praos => Left(TPraosError.NotTPraos(s"${h.era} (Praos)"))
-      case h => Left(TPraosError.NotTPraos(h.era.toString))
+          case _: HeaderVrf.Praos => Left(TPraosError.PraosHeader(h.era))
+      case h => Left(TPraosError.NotTPraos(h.era))
 
   private def run(
       state: TPraosState,
@@ -126,9 +126,9 @@ object TPraos:
       case StakeView.Known(pools)      => pools.stake.contains(issuer)
       case StakeView.Unknown(registry) => registry.contains(issuer)
     for
-      issuerKey <- Praos.issuerKey(header.issuerVkey).leftMap(TPraosError.Malformed(_))
-      sequence <- Praos.counterOf(header.opCert.sequence).leftMap(TPraosError.Malformed(_))
-      lastSlot <- Praos.slotOf(slot).leftMap(TPraosError.Malformed(_))
+      issuerKey <- Praos.issuerKey(header.issuerVkey).leftMap(TPraosError.Vocabulary(_))
+      sequence <- Praos.counterOf(header.opCert.sequence).leftMap(TPraosError.Vocabulary(_))
+      lastSlot <- Praos.slotOf(slot).leftMap(TPraosError.Vocabulary(_))
       leader <-
         if !isOverlaySlot(firstSlot, view.d, slot) then
           for
@@ -152,13 +152,13 @@ object TPraos:
                 for
                   value <- Leader
                     .rawLeaderValue(leaderCert.output)
-                    .leftMap(TPraosError.Malformed(_))
+                    .leftMap(TPraosError.LeaderThreshold(_))
                   fraction <- Leader.Fraction
                     .checked(pools.stake(issuer), pools.total)
-                    .leftMap(TPraosError.Malformed(_))
+                    .leftMap(TPraosError.LeaderThreshold(_))
                   decision <- Leader
                     .check(value, fraction, config.activeSlotsCoeff, Leader.Range512)
-                    .leftMap(TPraosError.Malformed(_))
+                    .leftMap(TPraosError.LeaderThreshold(_))
                   _ <- Either.cond(
                     decision == Leader.Decision.Eligible,
                     (),

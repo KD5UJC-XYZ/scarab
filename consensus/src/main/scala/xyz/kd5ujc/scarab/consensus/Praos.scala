@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus
 
-import xyz.kd5ujc.scarab.ledger.{LeaderCheck, Nonce, OCertRules, PoolDistribution, StakeView}
+import xyz.kd5ujc.scarab.ledger.{
+  PraosError,
+  LeaderCheck,
+  Nonce,
+  OCertRules,
+  PoolDistribution,
+  StakeView
+}
 import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash, SlotNo, VocabError, Word64, WithOrigin}
 import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, PraosState, ProtocolState}
 import xyz.kd5ujc.scarab.protocol.Era
@@ -74,7 +81,7 @@ object Praos:
       header: Header,
       pools: PoolDistribution,
       config: PraosConfig
-  ): Either[String, ProtocolState] =
+  ): Either[PraosError, ProtocolState] =
     validate(state, header, StakeView.Known(pools), config).map(_._1)
 
   /** As [[update]], also reporting how leadership was established. With an unknown stake view every
@@ -86,7 +93,7 @@ object Praos:
       stake: StakeView,
       config: PraosConfig,
       nonceWindow: BigInt = BigInt(-1)
-  ): Either[String, (ProtocolState, LeaderCheck)] =
+  ): Either[PraosError, (ProtocolState, LeaderCheck)] =
     val window =
       if nonceWindow >= 0 then nonceWindow else config.geometry.randomnessStabilisationWindow
     header match
@@ -99,21 +106,21 @@ object Praos:
                   ProtocolState(ChainDepState.Praos(next), state.extras) -> leader
                 }
               case _ =>
-                Left(s"${h.era} headers use Praos, but the chain-dependent state is not Praos's")
-          case _: HeaderVrf.TPraos => Left(s"${h.era} headers use TPraos, not Praos")
-      case h => Left(s"${h.era} headers are not Praos headers")
+                Left(PraosError.WrongState(h.era))
+          case _: HeaderVrf.TPraos => Left(PraosError.TPraosHeader(h.era))
+      case h => Left(PraosError.NotPraos(h.era))
 
   /** The issuer of a header, as the key of the operational certificate counters. */
-  private[consensus] def issuerKey(vkey: Bytes): Either[String, KeyHash[BlockIssuer]] =
-    KeyHash.fromBytes[BlockIssuer](Blake2b.hash224.hash(vkey)).leftMap(_.toString)
+  private[consensus] def issuerKey(vkey: Bytes): Either[VocabError, KeyHash[BlockIssuer]] =
+    KeyHash.fromBytes[BlockIssuer](Blake2b.hash224.hash(vkey))
 
   /** The slot of a header, as the last slot of the chain-dependent state. */
-  private[consensus] def slotOf(slot: BigInt): Either[String, WithOrigin[SlotNo]] =
-    SlotNo.fromBigInt(slot).map(WithOrigin.At(_)).leftMap(_.toString)
+  private[consensus] def slotOf(slot: BigInt): Either[VocabError, WithOrigin[SlotNo]] =
+    SlotNo.fromBigInt(slot).map(WithOrigin.At(_))
 
   /** The sequence number of an operational certificate, as a counter. */
-  private[consensus] def counterOf(sequence: BigInt): Either[String, Word64] =
-    Word64.fromBigInt(VocabError.Kind.OcertCounter, sequence).leftMap(_.toString)
+  private[consensus] def counterOf(sequence: BigInt): Either[VocabError, Word64] =
+    Word64.fromBigInt(VocabError.Kind.OcertCounter, sequence)
 
   private def updatePraos(
       state: PraosState,
@@ -122,57 +129,59 @@ object Praos:
       stakeView: StakeView,
       config: PraosConfig,
       window: BigInt
-  ): Either[String, (PraosState, LeaderCheck)] =
+  ): Either[PraosError, (PraosState, LeaderCheck)] =
     val pool = Blake2b.hash224.hash(header.issuerVkey)
     val vrfHash = Blake2b.hash256.hash(header.vrfVkey)
     for
-      issuer <- issuerKey(header.issuerVkey)
-      lastSlot <- slotOf(header.slot)
-      sequence <- counterOf(header.opCert.sequence)
+      issuer <- issuerKey(header.issuerVkey).leftMap(PraosError.Vocabulary(_))
+      lastSlot <- slotOf(header.slot).leftMap(PraosError.Vocabulary(_))
+      sequence <- counterOf(header.opCert.sequence).leftMap(PraosError.Vocabulary(_))
       registered <- stakeView match
         case StakeView.Known(pools) =>
           for
             stake <- pools.stake
               .get(pool)
-              .toRight(s"issuer ${pool.hex} has no stake in the pool distribution")
+              .toRight(PraosError.IssuerWithoutStake(pool))
             registeredVrf <- pools.vrf
               .get(pool)
-              .toRight(s"issuer ${pool.hex} is not a registered pool")
+              .toRight(PraosError.UnregisteredPool(pool))
             _ <- Either.cond(
               vrfHash == registeredVrf,
               (),
-              "VRF key is not the pool's registered key"
+              PraosError.VrfKeyMismatch(pool, vrfHash, Set(registeredVrf))
             )
           yield Some(stake -> pools.total)
         case StakeView.Unknown(registry) =>
           for
-            keys <- registry.get(pool).toRight(s"issuer ${pool.hex} is not a registered pool")
+            keys <- registry.get(pool).toRight(PraosError.UnregisteredPool(pool))
             _ <- Either.cond(
               keys.contains(vrfHash),
               (),
-              "VRF key is not the pool's registered key"
+              PraosError.VrfKeyMismatch(pool, vrfHash, keys)
             )
           yield None
-      input <- vrfInput(state.epochNonce, header.slot)
+      input <- vrfInput(state.epochNonce, header.slot).leftMap(PraosError.VrfInput(_))
       output <- config.verdicts.praosVrf(input, header.vrfVkey, vrf.proof, vrf.output) match
         case Vrf.Result.VerifiedCertificate(o) => Right(o)
-        case other                             => Left(s"VRF proof rejected: $other")
+        case other                             => Left(PraosError.VrfRejected(other))
       leader <- registered match
         case Some((stake, total)) =>
           for
-            value <- Leader.leaderValue(output)
-            fraction <- Leader.Fraction.checked(stake, total)
-            decision <- Leader.check(value, fraction, config.activeSlotsCoeff)
+            value <- Leader.leaderValue(output).leftMap(PraosError.LeaderThreshold(_))
+            fraction <- Leader.Fraction.checked(stake, total).leftMap(PraosError.LeaderThreshold(_))
+            decision <- Leader
+              .check(value, fraction, config.activeSlotsCoeff)
+              .leftMap(PraosError.LeaderThreshold(_))
             _ <- Either.cond(
               decision == Leader.Decision.Eligible,
               (),
-              s"issuer not elected for slot ${header.slot}: $decision"
+              PraosError.NotElected(header.slot, decision)
             )
           yield LeaderCheck.Threshold
         case None => Right(LeaderCheck.Unchecked("stake distribution unknown (bootstrap)"))
       _ <- config.verdicts
         .opCert(header, config.slotsPerKesPeriod, config.maxKesEvolutions)
-        .leftMap(_.message)
+        .leftMap(PraosError.OCert(_))
       _ <- OCertRules
         .checkCounter(
           state.ocertCounters.get(issuer).map(_.toBigInt),
@@ -181,7 +190,7 @@ object Praos:
           known = true, // reaching here means the pool is in the stake view
           bounded = true
         )
-        .leftMap(_.message)
+        .leftMap(PraosError.OCert(_))
     yield
       val evolving = state.evolvingNonce.combine(nonceValue(output))
       val nextEpoch = config.geometry.firstSlot(config.geometry.epochOf(header.slot) + 1)
@@ -196,13 +205,13 @@ object Praos:
       ) -> leader
 
   /** The VRF input of a slot under an epoch nonce. */
-  def vrfInput(epochNonce: Nonce, slot: BigInt): Either[String, Vrf.Input] =
+  def vrfInput(epochNonce: Nonce, slot: BigInt): Either[Vrf.Failure, Vrf.Input] =
     for
       nonce <- epochNonce match
         case Nonce.Neutral => Right(Vrf.NeutralNonce)
-        case Nonce.Hash(b) => Vrf.Hash32.fromBytes(b).leftMap(_.toString)
-      s <- Vrf.Slot.fromBigInt(slot).leftMap(_.toString)
-      input <- Vrf.Input.create(s, nonce).leftMap(_.toString)
+        case Nonce.Hash(b) => Vrf.Hash32.fromBytes(b)
+      s <- Vrf.Slot.fromBigInt(slot)
+      input <- Vrf.Input.create(s, nonce)
     yield input
 
   /** A block's nonce contribution: the doubly hashed "N"-prefixed VRF output. */
