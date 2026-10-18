@@ -1,7 +1,7 @@
 # Domain and service errors
 
-**Status: As built for the runtime migration and declared-channel guard; integration gates are
-recorded separately in the feature PR.** Tracked under M11-E / [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82).
+**Status: As built for the runtime migration and declared-channel guard; private integration gates are
+recorded in [compatibility.md](../compatibility.md).** Tracked under M11-E / [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82).
 This implements the error discipline of [ADR 0002](../adr/0002-tagless-final-and-cats-mtl.md).
 
 ## Scope and contracts
