@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import cats.{Id, Monad}
+import cats.syntax.traverse.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.*
 
@@ -57,8 +58,8 @@ object Phase2:
     def info(language: PlutusLanguage) =
       infos.getOrElseUpdate(language, ScriptContexts.txInfo(language, tx, env))
 
-    /** One redeemer against its script: the evaluation result, or why it cannot be set up. */
-    def evaluateOne(r: Redeemer): Either[TranslationError, EvalResult] =
+    /** One redeemer against its script: the request to evaluate, or why it cannot be set up. */
+    def prepare(r: Redeemer): Either[TranslationError, (Redeemer, EvalRequest)] =
       for
         purpose <- Purpose
           .resolve(tx.body, spent, r.tag, r.index)
@@ -72,26 +73,29 @@ object Phase2:
         model <- costModel(pp, language)
         txInfo <- info(language)
         args <- ScriptContexts.arguments(language, txInfo, tx, r, purpose, pp.protocolMajor.toInt)
-      yield evaluator.evaluate(
-        EvalRequest(language, pp.protocolMajor.toInt, code, args, model, r.exUnits)
-      )
+      yield r -> EvalRequest(language, pp.protocolMajor.toInt, code, args, model, r.exUnits)
 
-    // A transaction can carry well over a hundred redeemers. The loop is `tailRecM` over a typed
-    // state, so the stack does not grow with their number (and a failure to set one up ends it).
-    val start = Progress(redeemers.toList, 0)
-    Monad[Translated].tailRecM(start) {
-      case Progress(Nil, done) => Right(Right(Outcome.Passed(done)))
-      case Progress(r :: tail, done) =>
-        evaluateOne(r).map {
-          case EvalResult.Success(_, _)         => Left(Progress(tail, done + 1))
-          case EvalResult.Failure(reason, _, _) => Right(Outcome.Failed(done, r, reason))
-        }
+    // The reference builds the context of every script before it runs any of them
+    // (`collectPlutusScriptsWithContext`, `Alonzo/Plutus/Evaluate.hs:128-185`) and refuses the
+    // transaction on any failure to do so (`Babbage/Rules/Utxos.hs:142-143`, `:205-206`), whatever
+    // the validity flag says. So a script that fails first does not spare a later one whose context
+    // cannot be built.
+    redeemers.traverse(prepare).flatMap { requests =>
+      // A transaction can carry well over a hundred redeemers. The loop is `tailRecM` over a typed
+      // state, so the stack does not grow with their number.
+      Monad[Translated].tailRecM(Progress(requests.toList, 0)) {
+        case Progress(Nil, done) => Right(Right(Outcome.Passed(done)))
+        case Progress((r, request) :: tail, done) =>
+          Right(evaluator.evaluate(request) match
+            case EvalResult.Success(_, _)         => Left(Progress(tail, done + 1))
+            case EvalResult.Failure(reason, _, _) => Right(Outcome.Failed(done, r, reason)))
+      }
     }
 
   private type Translated[A] = Either[TranslationError, A]
 
   /** The loop state of [[evaluate]]: the redeemers still to run and how many have passed. */
-  private final case class Progress(rest: List[Redeemer], done: Int)
+  private final case class Progress(rest: List[(Redeemer, EvalRequest)], done: Int)
 
   private[ledger] def languageOf(script: Script): Either[TranslationError, PlutusLanguage] =
     script.kind match

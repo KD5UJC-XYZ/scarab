@@ -40,10 +40,10 @@ enum TranslationError:
   /** An input of the transaction is not in the set the context is built from. */
   case UnresolvedInput(input: TxIn)
 
-  /** A Plutus V1 context cannot show an inline datum. */
+  /** A Plutus V1 context cannot show an inline datum (in any era, in a reference input too). */
   case InlineDatumsNotSupported
 
-  /** A Plutus V1 context cannot show a reference script. */
+  /** A Plutus V1 context cannot show a reference script (Babbage; Conway leaves the field out). */
   case ReferenceScriptsNotSupported
 
   /** A Plutus V1 context cannot show a reference input (Babbage). */

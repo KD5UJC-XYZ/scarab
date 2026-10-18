@@ -27,7 +27,9 @@ object ScriptContexts:
       spent: Map[TxIn, TxOut],
       references: Map[TxIn, TxOut],
       posix: BigInt => Either[TranslationError, BigInt]
-  )
+  ):
+    /** The Conway era (protocol 9 on), where the V1 translation drops Babbage's restrictions. */
+    def conway: Boolean = protocolMajor >= 9
 
   private type Result[A] = Either[TranslationError, A]
 
@@ -121,9 +123,17 @@ object ScriptContexts:
     case Datum.Hash(h) => Some(B(h))
     case _             => None
 
+  /** The Plutus V1 form of an output (`transTxOutV1`): Babbage (`Babbage/TxInfo.hs:119-126`)
+    * refuses a reference script, then an inline datum, then a Byron address; Conway
+    * (`Conway/TxInfo.hs:315-320`) no longer refuses the reference script, which the V1 output has
+    * no field for and so leaves out. The restriction follows the era, which the protocol major
+    * version selects (Babbage 7 and 8, Conway 9 on).
+    */
   private def outputV1(out: TxOut, env: Environment): Result[Option[PlutusData]] =
-    if out.datum.isInstanceOf[Datum.Inline] then fail(TranslationError.InlineDatumsNotSupported)
-    else if out.scriptRef.isDefined then fail(TranslationError.ReferenceScriptsNotSupported)
+    if out.scriptRef.isDefined && !env.conway then
+      fail(TranslationError.ReferenceScriptsNotSupported)
+    else if out.datum.isInstanceOf[Datum.Inline] then
+      fail(TranslationError.InlineDatumsNotSupported)
     else
       address(out.address) match
         case None =>
@@ -414,19 +424,20 @@ object ScriptContexts:
     language match
       case PlutusLanguage.V1 =>
         for
-          // Babbage refuses a Plutus V1 script in a transaction with reference inputs; from Conway
-          // they are simply not part of the V1 context (a V1 spend with a reference input is on
-          // Preview, slot 65493476).
+          // Babbage refuses a Plutus V1 script in a transaction with reference inputs
+          // (`Babbage/TxInfo.hs:329`). Conway does not show them in the V1 context but still
+          // translates each one as an input to check it can be shown (`Conway/TxInfo.hs:411`).
           _ <- Either.cond(
-            body.referenceInputs.isEmpty || env.protocolMajor >= 9,
+            body.referenceInputs.isEmpty || env.conway,
             (),
             TranslationError.ReferenceInputsNotSupported
           )
           _ <- guardNoConway(body)
+          range <- interval(body, env)
           ins <- inputs(body.inputs, env.spent, language, env)
+          _ <- inputs(body.referenceInputs, env.references, language, env)
           outs <- outputs(body.outputs, language, env)
           certs <- body.certificates.traverse(dcert)
-          range <- interval(body, env)
           data <- datumMap(tx.witnesses, v2 = false)
         yield constr(
           0,
@@ -444,11 +455,11 @@ object ScriptContexts:
       case PlutusLanguage.V2 =>
         for
           _ <- guardNoConway(body)
+          range <- interval(body, env)
           ins <- inputs(body.inputs, env.spent, language, env)
           refs <- inputs(body.referenceInputs, env.references, language, env)
           outs <- outputs(body.outputs, language, env)
           certs <- body.certificates.traverse(dcert)
-          range <- interval(body, env)
           redeemers <- redeemerMap(tx, env, purposeV1)
           data <- datumMap(tx.witnesses, v2 = true)
         yield constr(
@@ -468,9 +479,9 @@ object ScriptContexts:
         )
       case PlutusLanguage.V3 =>
         for
+          range <- interval(body, env)
           ins <- inputs(body.inputs, env.spent, language, env)
           refs <- inputs(body.referenceInputs, env.references, language, env)
-          outs <- outputs(body.outputs, language, env)
           _ <- Either.cond(
             env.protocolMajor < 11 || body.inputs.toSet
               .intersect(body.referenceInputs.toSet)
@@ -478,8 +489,8 @@ object ScriptContexts:
             (),
             TranslationError.ReferenceInputsNotDisjointFromInputs
           )
+          outs <- outputs(body.outputs, language, env)
           certs <- body.certificates.traverse(txCert(_, env.protocolMajor == 9))
-          range <- interval(body, env)
           redeemers <- redeemerMap(tx, env, purposeV3(_, env.protocolMajor == 9))
           data <- datumMap(tx.witnesses, v2 = true)
           proposals <- body.proposals.traverse(proposalData)
