@@ -1,0 +1,15 @@
+{
+  "actualSubmissions": 24,
+  "included": 12,
+  "refused": 12,
+  "apiCases": 145,
+  "originalApiInputs": 66,
+  "derivedApiInputs": 79,
+  "collectionFailures": 91,
+  "certificateConstructorControls": 14,
+  "files": {
+    "submissions/conway-pv10.json": "35437f7541e519a072d9f7e5a1e0eab7feb31890b52bad9657f04e02dd57dd7d",
+    "collection.json": "d0715074d583e81a39a153b82306708b1a3d32cfcc5299a2f6511c4447cd6596",
+    "provenance.json": "a49194dc3eaa67e81ba369dbd65e21fefd0d10682485865402534ef21f25d6dd"
+  }
+}

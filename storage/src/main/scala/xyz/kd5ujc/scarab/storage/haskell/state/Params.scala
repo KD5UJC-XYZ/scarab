@@ -2,8 +2,16 @@
 package xyz.kd5ujc.scarab.storage.haskell.state
 
 import scala.annotation.tailrec
+import cats.syntax.all.*
+import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.codec.Rational
-import xyz.kd5ujc.scarab.ledger.{DRepVotingThresholds, Nonce, PoolVotingThresholds, ProtocolParams}
+import xyz.kd5ujc.scarab.ledger.{
+  DRepVotingThresholds,
+  Nonce,
+  ParamUpdate,
+  PoolVotingThresholds,
+  ProtocolParams
+}
 import xyz.kd5ujc.scarab.ledger.state.{ShelleyBasedEra, EraTag}
 import xyz.kd5ujc.scarab.models.runtime.{
   Arr,
@@ -48,6 +56,7 @@ object Params:
     def refuses(p: ProtocolParams): Option[ConstraintViolation] =
       codec.check(get(p)).map(_.at(name))
     def copyValue(from: ProtocolParams, into: ProtocolParams): ProtocolParams = set(into, get(from))
+    def canonical(raw: Bytes): Decoded[Bytes] = codec.decodeBytes(raw).map(codec.encodeUnchecked)
 
   private def param[A](name: String, codec: Codec[A])(
       get: ProtocolParams => A
@@ -314,6 +323,54 @@ object Params:
     drepActivity,
     minFeeRefScriptCostPerByte
   )
+
+  /** The typed projection used only when reporting a Conway context error. Transaction and state
+    * values keep their original parameter bytes; the reference's diagnostic `PParamsUpdate`
+    * re-encodes its typed fields (`Conway/PParams.hs`, `conwayPParamsHKDPairs`).
+    */
+  def canonicalConwayUpdate(update: ParamUpdate): Decoded[ParamUpdate] =
+    val fields = (Vector(
+      0 -> txFeePerByte,
+      1 -> txFeeFixed,
+      2 -> maxBBSize,
+      3 -> maxTxSize,
+      4 -> maxBHSize,
+      5 -> keyDeposit,
+      6 -> poolDeposit,
+      7 -> eMax,
+      8 -> nOpt,
+      9 -> a0,
+      10 -> rho,
+      11 -> tau,
+      16 -> minPoolCost,
+      17 -> coinsPerUTxOByte,
+      18 -> costModelsParam,
+      19 -> pricesParam,
+      20 -> maxTxExUnits,
+      21 -> maxBlockExUnits,
+      22 -> maxValSize,
+      23 -> collateralPercentage,
+      24 -> maxCollateralInputs,
+      25 -> poolVotingThresholds,
+      26 -> drepVotingThresholds,
+      27 -> committeeMinSize,
+      28 -> committeeMaxTermLength,
+      29 -> govActionLifetime,
+      30 -> govActionDeposit,
+      31 -> drepDeposit,
+      32 -> drepActivity,
+      33 -> minFeeRefScriptCostPerByte
+    ): Vector[(Int, Param[?])]).toMap
+    update.fields.toVector
+      .sortBy(_._1)
+      .traverse { case (key, raw) =>
+        fields
+          .get(key)
+          .toRight(DecodeError(Kind.UnexpectedKey(key.toString), Nil, 0))
+          .flatMap(_.canonical(raw))
+          .map(key -> _)
+      }
+      .map(values => ParamUpdate(values.toMap))
 
   private def listCodec(params: Vector[Param[?]]): Codec[ProtocolParams] =
     new Codec[ProtocolParams]:

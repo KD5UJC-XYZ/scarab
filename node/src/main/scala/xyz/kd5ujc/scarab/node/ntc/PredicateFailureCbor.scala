@@ -58,8 +58,8 @@ object PredicateFailureCbor:
 
   /** Whether Conway's ledger has a constructor for the failure that this encoding writes. The
     * failures of the rules of the earlier eras (`ExpiredUTxO`, PPUP, `MIRInsufficientGenesisSigs`,
-    * the Shelley DELEG failures) are not; `CollectErrors` is, but its payload (`ContextError`) is
-    * not written.
+    * the Shelley DELEG failures) are not. Reference-shaped `CollectErrors` payloads are written;
+    * implementation-specific translation failures retain their text fallback.
     */
   def inConway(f: PredicateFailure): Boolean = f match
     case PredicateFailure.Utxow(u)                                       => utxowInConway(u)
@@ -68,10 +68,9 @@ object PredicateFailureCbor:
 
   private def utxowInConway(u: UtxowFailure): Boolean = u match
     case UtxowFailure.MIRInsufficientGenesisSigs(_) => false
-    case UtxowFailure.Utxo(
-          UtxoFailure.ExpiredUTxO(_) | UtxoFailure.Update(_) |
-          UtxoFailure.Utxos(UtxosFailure.CollectErrors(_))
-        ) =>
+    case UtxowFailure.Utxo(UtxoFailure.Utxos(UtxosFailure.CollectErrors(errors))) =>
+      ContextFailureCbor.utxos(errors).isDefined
+    case UtxowFailure.Utxo(UtxoFailure.ExpiredUTxO(_) | UtxoFailure.Update(_)) =>
       false
     case _ => true
 
@@ -305,7 +304,8 @@ object PredicateFailureCbor:
         case Some(fs) =>
           w.array(2).uint(1)
           list(w, fs) { case (k, (text, detail)) => k.array(3).uint(1).text(text).bytes(detail) }
-    case UtxosFailure.CollectErrors(_) => notInConway(w)
+    case UtxosFailure.CollectErrors(errors) =>
+      ContextFailureCbor.utxos(errors).fold(notInConway(w))(raw => { w.raw(raw); () })
 
   // ---- CERTS, CERT, DELEG, POOL, GOVCERT
 

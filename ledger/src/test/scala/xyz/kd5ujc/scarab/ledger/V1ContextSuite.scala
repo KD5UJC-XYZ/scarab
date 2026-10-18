@@ -27,13 +27,26 @@ class V1ContextSuite extends FunSuite:
   /** What the reference did with a case. */
   private final case class Verdict(accepted: Boolean, text: String):
     /** The context error the reference's refusal names, if it names one. */
-    def translation: Option[TranslationError] =
-      Vector(
-        "InlineDatumsNotSupported" -> TranslationError.InlineDatumsNotSupported,
-        "ByronTxOutInContext" -> TranslationError.ByronTxOutInContext,
-        "ReferenceScriptsNotSupported" -> TranslationError.ReferenceScriptsNotSupported,
-        "ReferenceInputsNotSupported" -> TranslationError.ReferenceInputsNotSupported
-      ).collectFirst { case (name, error) if text.contains(name) => error }
+    def translation(c: PlutusCase): Option[TranslationError] =
+      val inputSource = (c.spent.keys ++ c.references.keys)
+        .find { in =>
+          text.contains(in.id.hex) && text.contains(s"unTxIx = ${in.index}")
+        }
+        .map(TxOutSource.TxOutFromInput(_))
+      val outputSource = "TxOutFromOutput.*?unTxIx = ([0-9]+)".r
+        .findFirstMatchIn(text)
+        .map(m => TxOutSource.TxOutFromOutput(m.group(1).toInt))
+      val source = inputSource.orElse(outputSource)
+      if text.contains("ReferenceInputsNotSupported") then
+        Some(TranslationError.ReferenceInputsNotSupported(c.tx.body.referenceInputs.toSet))
+      else
+        source.flatMap { from =>
+          Vector(
+            "InlineDatumsNotSupported" -> TranslationError.InlineDatumsNotSupported(from),
+            "ByronTxOutInContext" -> TranslationError.ByronTxOutInContext(from),
+            "ReferenceScriptsNotSupported" -> TranslationError.ReferenceScriptsNotSupported(from)
+          ).collectFirst { case (name, error) if text.contains(name) => error }
+        }
 
     /** The refusal is a disagreement between the validity flag and the outcome of the scripts. */
     def mismatch: Boolean = !accepted && text.contains("ValidationTagMismatch")
@@ -42,6 +55,7 @@ class V1ContextSuite extends FunSuite:
 
   private val directories = Vector(
     Path.of("fixtures/reference/v1-context"),
+    Path.of("fixtures/reference/context-errors/submissions"),
     // The same transaction/ledger/block harness also checks the executed binary-DST controls.
     Path.of("fixtures/reference/plutus-boundaries/transactions")
   )
@@ -63,7 +77,7 @@ class V1ContextSuite extends FunSuite:
             cases.map { j =>
               val reference = j.hcursor.downField("reference")
               Recorded(
-                path.getFileName.toString,
+                path.toString,
                 PlutusCase.fromJson(j),
                 Verdict(
                   reference.get[Boolean]("accepted").toOption.get,
@@ -94,7 +108,7 @@ class V1ContextSuite extends FunSuite:
   // ---- level 1: phase 2 ------------------------------------------------------------------------
   recorded.foreach { r =>
     val c = r.plutus
-    test(s"${c.name}: phase 2 does what the reference did") {
+    test(s"${r.file}: ${c.name}: phase 2 does what the reference did") {
       val outcome =
         Phase2.evaluate(
           c.tx,
@@ -105,8 +119,12 @@ class V1ContextSuite extends FunSuite:
           c.posix,
           ScalusEvaluator.default
         )
-      r.verdict.translation match
-        case Some(error) => assertEquals(outcome.map(_.passed), Left(error))
+      r.verdict.translation(c) match
+        case Some(error) =>
+          assertEquals(
+            outcome.map(_.passed),
+            Left(cats.data.NonEmptyVector.one(CollectError.BadTranslation(error)))
+          )
         // the reference accepts a transaction whose flag agrees with the scripts' outcome
         case None => assertEquals(outcome.map(_.passed), Right(r.verdict.accepted == c.tx.isValid))
     }
@@ -116,13 +134,19 @@ class V1ContextSuite extends FunSuite:
   /** The refusal the reference gave, as the rule of this node gives it. */
   private def refusalOf(c: PlutusCase, r: Verdict, failure: LedgerFailure): Unit =
     val id = c.tx.body.id
-    r.translation match
+    r.translation(c) match
       case Some(error) =>
         assertEquals(
           failure,
           LedgerFailure.Rejected(
             id,
-            PredicateFailure.utxo(UtxoFailure.Utxos(UtxosFailure.CollectErrors(Vector(error))))
+            PredicateFailure.utxo(
+              UtxoFailure.Utxos(
+                UtxosFailure.CollectErrors(
+                  cats.data.NonEmptyVector.one(CollectError.BadTranslation(error))
+                )
+              )
+            )
           )
         )
       case None =>
@@ -168,7 +192,7 @@ class V1ContextSuite extends FunSuite:
 
   recorded.foreach { r =>
     val c = r.plutus
-    test(s"${c.name}: the transaction rule of the era does what the reference did") {
+    test(s"${r.file}: ${c.name}: the transaction rule of the era does what the reference did") {
       val result =
         if c.protocolMajor >= 9 then conwayTx(c)
         else if c.protocolMajor >= 7 then eraTx[Babbage](c)
@@ -209,7 +233,9 @@ class V1ContextSuite extends FunSuite:
 
   recorded.foreach { r =>
     val c = r.plutus
-    test(s"${c.name}: a block of the transaction is accepted or refused as the reference did") {
+    test(
+      s"${r.file}: ${c.name}: a block of the transaction is accepted or refused as the reference did"
+    ) {
       val result =
         if c.protocolMajor >= 9 then conwayBlock(c)
         else if c.protocolMajor >= 7 then eraBlock[Babbage](c)

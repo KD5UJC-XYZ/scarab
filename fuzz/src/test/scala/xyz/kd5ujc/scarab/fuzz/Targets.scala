@@ -652,6 +652,13 @@ object Targets:
         }
       ),
       Target(
+        "voting-procedures",
+        () => Corpus.sampled("conway:voting_procedures", 40) ++ Corpus.tricky,
+        probe("voting-procedures") { b =>
+          Cbor.decode(b).foreach(n => seen("voting-procedures", VotingProcedures.decode(n).isRight))
+        }
+      ),
+      Target(
         "script",
         () =>
           Corpus.sampled("conway:native_script", 40) ++ Corpus

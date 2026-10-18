@@ -162,7 +162,13 @@ object Ledger extends Sts[LedgerEnv, ConwayLedger, Tx, LedgerFailure]:
       _ <- Sts.trans[F, GovEnv, Proposals, ConwayLedger, GovSignal, LedgerFailure, LedgerFailure](
         Gov,
         GovEnv(id, epoch, pp, gov.constitution.script, certAfter, gov.committee),
-        GovSignal(body.votes, body.proposals, body.certificates)
+        GovSignal(
+          body.votes.map { case (voter, procedures) =>
+            voter -> procedures.map { case (id, procedure) => id -> procedure.vote }
+          },
+          body.proposals,
+          body.certificates
+        )
       )
     yield ()
 

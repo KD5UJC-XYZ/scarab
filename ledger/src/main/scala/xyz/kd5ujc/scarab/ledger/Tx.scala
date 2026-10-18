@@ -241,7 +241,7 @@ final case class TxBody(
     update: Option[Update] = None,
     collateralReturn: Option[TxOut] = None,
     totalCollateral: Option[BigInt] = None,
-    votes: Vector[(Voter, Vector[(GovActionId, Vote)])] = Vector.empty,
+    votes: Vector[(Voter, Vector[(GovActionId, VotingProcedure)])] = Vector.empty,
     proposals: Vector[Proposal] = Vector.empty,
     currentTreasury: Option[BigInt] = None
 ):
@@ -323,7 +323,7 @@ object TxBody:
       refs <- f
         .get(18)
         .traverse(CborRead.set(_, "reference inputs").flatMap(_.traverse(TxIn.decode)))
-      votes <- f.get(19).traverse(VotingProcedures.decode)
+      votes <- f.get(19).traverse(VotingProcedures.decode(_).leftMap(_.message))
       proposals <- f
         .get(20)
         .traverse(CborRead.list(_, "proposal procedures").flatMap(_.traverse(Proposal.decode)))

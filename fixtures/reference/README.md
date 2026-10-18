@@ -33,3 +33,8 @@ python3 scripts/devnet.py --name <yours> v1-context          # conway-pv10.json,
 python3 scripts/devnet.py --name <yours> v1-context --eras   # Alonzo 5 and 6, Babbage 7 and 8, Conway 9
 python3 scripts/devnet.py --name <yours> down
 ```
+
+
+[Context collection and failure payloads](context-errors/README.md) (#176) retain 24 actual signed
+submissions and 145 unchanged-reference API cases. Derived probes, direct constructor encodings and
+whole-transaction admission evidence have separate provenance and assertions.

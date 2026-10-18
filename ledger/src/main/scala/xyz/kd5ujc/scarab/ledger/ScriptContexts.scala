@@ -129,15 +129,19 @@ object ScriptContexts:
     * no field for and so leaves out. The restriction follows the era, which the protocol major
     * version selects (Babbage 7 and 8, Conway 9 on).
     */
-  private def outputV1(out: TxOut, env: Environment): Result[Option[PlutusData]] =
+  private def outputV1(
+      out: TxOut,
+      source: TxOutSource,
+      env: Environment
+  ): Result[Option[PlutusData]] =
     if out.scriptRef.isDefined && !env.conway then
-      fail(TranslationError.ReferenceScriptsNotSupported)
+      fail(TranslationError.ReferenceScriptsNotSupported(source))
     else if out.datum.isInstanceOf[Datum.Inline] then
-      fail(TranslationError.InlineDatumsNotSupported)
+      fail(TranslationError.InlineDatumsNotSupported(source))
     else
       address(out.address) match
         case None =>
-          if env.protocolMajor >= 7 then fail(TranslationError.ByronTxOutInContext)
+          if env.protocolMajor >= 7 then fail(TranslationError.ByronTxOutInContext(source))
           else Right(None)
         case Some(a) =>
           Right(
@@ -151,10 +155,14 @@ object ScriptContexts:
             )
           )
 
-  private def outputV2(out: TxOut, env: Environment): Result[Option[PlutusData]] =
+  private def outputV2(
+      out: TxOut,
+      source: TxOutSource,
+      env: Environment
+  ): Result[Option[PlutusData]] =
     address(out.address) match
       case None =>
-        if env.protocolMajor >= 7 then fail(TranslationError.ByronTxOutInContext)
+        if env.protocolMajor >= 7 then fail(TranslationError.ByronTxOutInContext(source))
         else Right(None)
       case Some(a) =>
         val datum = out.datum match
@@ -187,7 +195,8 @@ object ScriptContexts:
     ins.sorted
       .traverse { in =>
         known.get(in).toRight(TranslationError.UnresolvedInput(in)).flatMap { out =>
-          (if language == PlutusLanguage.V1 then outputV1(out, env) else outputV2(out, env))
+          (if language == PlutusLanguage.V1 then outputV1(out, TxOutSource.TxOutFromInput(in), env)
+           else outputV2(out, TxOutSource.TxOutFromInput(in), env))
             .map(_.map(o => constr(0, outRef(in, v3), o)))
         }
       }
@@ -198,8 +207,12 @@ object ScriptContexts:
       language: PlutusLanguage,
       env: Environment
   ): Result[PlutusData] =
-    outs
-      .traverse(o => if language == PlutusLanguage.V1 then outputV1(o, env) else outputV2(o, env))
+    outs.zipWithIndex
+      .traverse { case (out, index) =>
+        val source = TxOutSource.TxOutFromOutput(index)
+        if language == PlutusLanguage.V1 then outputV1(out, source, env)
+        else outputV2(out, source, env)
+      }
       .map(xs => PlutusData.List(xs.flatten))
 
   // -------------------------------------------------------------------------------------------
@@ -388,7 +401,7 @@ object ScriptContexts:
     val byVoter = body.votes.toMap
     PlutusData.Map(voters.map { v =>
       val inner = byVoter(v).sortBy(e => (e._1.txId.hex, e._1.index)).map { case (id, vote) =>
-        (govActionId(id): PlutusData) -> (constr(vote match
+        (govActionId(id): PlutusData) -> (constr(vote.vote match
           case Vote.No      => 0
           case Vote.Yes     => 1
           case Vote.Abstain => 2): PlutusData)
@@ -402,9 +415,13 @@ object ScriptContexts:
   private def decodeRedeemer(r: Redeemer): Result[PlutusData] =
     PlutusData.decode(r.data).leftMap(_ => TranslationError.Undecodable(DataSite.Redeemer))
 
-  private def purposes(tx: Tx, env: Environment): Vector[(Redeemer, Purpose)] =
-    tx.witnesses.redeemers.sortBy(r => (r.tag, r.index)).flatMap { r =>
-      Purpose.resolve(tx.body, env.spent, r.tag, r.index).map(r -> _)
+  private def purposes(tx: Tx, env: Environment): Result[Vector[(Redeemer, Purpose)]] =
+    val indexed = Purpose.all(tx.body, env.spent).map(p => (p.tag, BigInt(p.index)) -> p).toMap
+    tx.witnesses.redeemers.sortBy(r => (r.tag, r.index)).traverse { r =>
+      indexed
+        .get((r.tag, r.index))
+        .toRight(TranslationError.RedeemerPointerPointsToNothing(r.tag, r.index))
+        .map(r -> _)
     }
 
   private def redeemerMap(
@@ -413,7 +430,7 @@ object ScriptContexts:
       purpose: Purpose => Result[PlutusData]
   ): Result[PlutusData] =
     purposes(tx, env)
-      .traverse { case (r, p) => (purpose(p), decodeRedeemer(r)).mapN((a, b) => a -> b) }
+      .flatMap(_.traverse { case (r, p) => (purpose(p), decodeRedeemer(r)).mapN((a, b) => a -> b) })
       .map(PlutusData.Map(_))
 
   @unused private val signatoriesOrder = summon[Ordering[Bytes]]
@@ -430,7 +447,7 @@ object ScriptContexts:
           _ <- Either.cond(
             body.referenceInputs.isEmpty || env.conway,
             (),
-            TranslationError.ReferenceInputsNotSupported
+            TranslationError.ReferenceInputsNotSupported(body.referenceInputs.toSet)
           )
           _ <- guardNoConway(body)
           range <- interval(body, env)
@@ -482,13 +499,14 @@ object ScriptContexts:
           range <- interval(body, env)
           ins <- inputs(body.inputs, env.spent, language, env)
           refs <- inputs(body.referenceInputs, env.references, language, env)
-          _ <- Either.cond(
-            env.protocolMajor < 11 || body.inputs.toSet
-              .intersect(body.referenceInputs.toSet)
-              .isEmpty,
-            (),
-            TranslationError.ReferenceInputsNotDisjointFromInputs
+          overlap = cats.data.NonEmptyVector.fromVector(
+            body.inputs.toSet.intersect(body.referenceInputs.toSet).toVector.sorted
           )
+          _ <- overlap
+            .filter(_ => env.protocolMajor >= 11)
+            .fold[Result[Unit]](Right(()))(ins =>
+              Left(TranslationError.ReferenceInputsNotDisjointFromInputs(ins))
+            )
           outs <- outputs(body.outputs, language, env)
           certs <- body.certificates.traverse(txCert(_, env.protocolMajor == 9))
           redeemers <- redeemerMap(tx, env, purposeV3(_, env.protocolMajor == 9))
@@ -517,9 +535,15 @@ object ScriptContexts:
         )
 
   private def guardNoConway(body: TxBody): Result[Unit] =
-    if body.votes.nonEmpty || body.proposals.nonEmpty || body.donation != 0 || body.currentTreasury.isDefined
-    then fail(TranslationError.GovernanceFieldsNotSupported)
-    else Right(())
+    if body.votes.nonEmpty then fail(TranslationError.VotingProceduresFieldNotSupported(body.votes))
+    else if body.proposals.nonEmpty then
+      fail(TranslationError.ProposalProceduresFieldNotSupported(body.proposals))
+    else if body.donation != 0 then
+      fail(TranslationError.TreasuryDonationFieldNotSupported(body.donation))
+    else
+      body.currentTreasury.fold[Result[Unit]](Right(()))(coin =>
+        fail(TranslationError.CurrentTreasuryFieldNotSupported(coin))
+      )
 
   /** V1/V2 withdrawals: a list of pairs (V1) or a map (V2) keyed by staking credential in the order
     * of the Plutus credential (public keys before scripts). The V3 field and the redeemer index use

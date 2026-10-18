@@ -42,7 +42,7 @@ enum UtxosFailure:
   /** The evaluation of a script could not be set up (`CollectErrors`,
     * `Alonzo/Rules/Utxos.hs:94-100`); a phase-1 failure.
     */
-  case CollectErrors(errors: Vector[TranslationError])
+  case CollectErrors(errors: cats.data.NonEmptyVector[CollectError])
 
 /** UTXO failures, named and numbered as `ConwayUtxoPredFailure` has them; the cases of the eras
   * before Conway are those of `ShelleyUtxoPredFailure` (`Shelley/Rules/Utxo.hs:166-189`),
@@ -263,7 +263,7 @@ enum PredicateFailure:
     */
   def detail: String = this match
     case Utxow(UtxowFailure.Utxo(UtxoFailure.Utxos(UtxosFailure.CollectErrors(es)))) =>
-      s"$ruleName: ${es.map(_.message).mkString("; ")}"
+      s"$ruleName: ${es.toVector.map(_.message).mkString("; ")}"
     case other => s"$ruleName: ${other.toString.take(400)}"
 
 object PredicateFailure:

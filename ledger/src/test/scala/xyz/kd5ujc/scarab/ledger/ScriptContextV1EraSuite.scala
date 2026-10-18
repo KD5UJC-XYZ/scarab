@@ -114,7 +114,7 @@ class ScriptContextV1EraSuite extends FunSuite:
     for pv <- babbage do
       assertEquals(
         info(pv, references = Vector(plain), spent = Vector(byron)),
-        Left(TranslationError.ReferenceInputsNotSupported),
+        Left(TranslationError.ReferenceInputsNotSupported(Set(in(100)))),
         s"pv $pv"
       )
   }
@@ -123,12 +123,12 @@ class ScriptContextV1EraSuite extends FunSuite:
     for pv <- babbage do
       assertEquals(
         info(pv, spent = Vector(withScript)),
-        Left(TranslationError.ReferenceScriptsNotSupported),
+        Left(TranslationError.ReferenceScriptsNotSupported(TxOutSource.TxOutFromInput(in(0)))),
         s"input, pv $pv"
       )
       assertEquals(
         info(pv, outputs = Vector(withScript)),
-        Left(TranslationError.ReferenceScriptsNotSupported),
+        Left(TranslationError.ReferenceScriptsNotSupported(TxOutSource.TxOutFromOutput(0))),
         s"output, pv $pv"
       )
   }
@@ -138,7 +138,7 @@ class ScriptContextV1EraSuite extends FunSuite:
     for pv <- babbage do
       assertEquals(
         info(pv, outputs = Vector(both)),
-        Left(TranslationError.ReferenceScriptsNotSupported),
+        Left(TranslationError.ReferenceScriptsNotSupported(TxOutSource.TxOutFromOutput(0))),
         s"pv $pv"
       )
   }
@@ -147,12 +147,12 @@ class ScriptContextV1EraSuite extends FunSuite:
     for pv <- babbage do
       assertEquals(
         info(pv, spent = Vector(inline)),
-        Left(TranslationError.InlineDatumsNotSupported),
+        Left(TranslationError.InlineDatumsNotSupported(TxOutSource.TxOutFromInput(in(0)))),
         s"pv $pv"
       )
       assertEquals(
         info(pv, outputs = Vector(byron)),
-        Left(TranslationError.ByronTxOutInContext),
+        Left(TranslationError.ByronTxOutInContext(TxOutSource.TxOutFromOutput(0))),
         s"pv $pv"
       )
   }
@@ -171,12 +171,12 @@ class ScriptContextV1EraSuite extends FunSuite:
     for pv <- conway do
       assertEquals(
         info(pv, references = Vector(inline)),
-        Left(TranslationError.InlineDatumsNotSupported),
+        Left(TranslationError.InlineDatumsNotSupported(TxOutSource.TxOutFromInput(in(100)))),
         s"pv $pv"
       )
       assertEquals(
         info(pv, references = Vector(byron)),
-        Left(TranslationError.ByronTxOutInContext),
+        Left(TranslationError.ByronTxOutInContext(TxOutSource.TxOutFromInput(in(100)))),
         s"pv $pv"
       )
   }
@@ -201,14 +201,20 @@ class ScriptContextV1EraSuite extends FunSuite:
     for pv <- conway do
       assertEquals(
         info(pv, spent = Vector(inline)),
-        Left(TranslationError.InlineDatumsNotSupported)
+        Left(TranslationError.InlineDatumsNotSupported(TxOutSource.TxOutFromInput(in(0))))
       )
       assertEquals(
         info(pv, outputs = Vector(inline)),
-        Left(TranslationError.InlineDatumsNotSupported)
+        Left(TranslationError.InlineDatumsNotSupported(TxOutSource.TxOutFromOutput(0)))
       )
-      assertEquals(info(pv, spent = Vector(byron)), Left(TranslationError.ByronTxOutInContext))
-      assertEquals(info(pv, outputs = Vector(byron)), Left(TranslationError.ByronTxOutInContext))
+      assertEquals(
+        info(pv, spent = Vector(byron)),
+        Left(TranslationError.ByronTxOutInContext(TxOutSource.TxOutFromInput(in(0))))
+      )
+      assertEquals(
+        info(pv, outputs = Vector(byron)),
+        Left(TranslationError.ByronTxOutInContext(TxOutSource.TxOutFromOutput(0)))
+      )
   }
 
   test(
@@ -246,11 +252,11 @@ class ScriptContextV1EraSuite extends FunSuite:
     // an input before a reference input before an output
     assertEquals(
       info(10, spent = Vector(byron), references = Vector(inline), outputs = Vector(inline)),
-      Left(TranslationError.ByronTxOutInContext)
+      Left(TranslationError.ByronTxOutInContext(TxOutSource.TxOutFromInput(in(0))))
     )
     assertEquals(
       info(10, references = Vector(byron), outputs = Vector(inline)),
-      Left(TranslationError.ByronTxOutInContext)
+      Left(TranslationError.ByronTxOutInContext(TxOutSource.TxOutFromInput(in(100))))
     )
   }
 
@@ -270,6 +276,6 @@ class ScriptContextV1EraSuite extends FunSuite:
       ScriptContexts.Environment(10, Map(in(0) -> plain), Map(in(100) -> byron), s => Right(s))
     assertEquals(
       ScriptContexts.txInfo(PlutusLanguage.V2, tx, byronRef),
-      Left(TranslationError.ByronTxOutInContext)
+      Left(TranslationError.ByronTxOutInContext(TxOutSource.TxOutFromInput(in(100))))
     )
   }

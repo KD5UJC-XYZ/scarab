@@ -74,7 +74,7 @@ object TxChecks:
           .map(e =>
             LedgerFailure.Rejected(
               id,
-              PredicateFailure.utxo(UtxoFailure.Utxos(UtxosFailure.CollectErrors(Vector(e))))
+              PredicateFailure.utxo(UtxoFailure.Utxos(UtxosFailure.CollectErrors(e)))
             )
           )
           .flatMap {

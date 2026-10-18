@@ -148,7 +148,33 @@ The [retained actual reference corpus](../fixtures/reference/spending-datum/READ
 complete Conway/protocol10 transactions: V1/V2/V3 missing/supplied/no-datum cases with both flags.
 All six missing-witness cases are refused with `MissingRequiredDatums`; V1/V2 no-datum cases
 are unspendable, while the valid V3 no-datum control enters a block. Four controls are included
-with shared-chain confirmation and14 cases are refused; original signed bytes, raw refusal
+with shared-chain confirmation and 14 cases are refused; original signed bytes, raw refusal
 CBOR and funding/script/collateral effects are retained. `SpendingDatumSuite` checks standalone
 context arguments separately from phase1 and complete LEDGER/BBODY verdicts. Translation-error
-payload parity remains #176.
+payload parity is covered by the context-collection corpus below (#176).
+
+## Context collection and failure payloads (#176)
+
+`CollectError` retains the reference's closed `NoRedeemer`, `NoWitness`, `NoCostModel` and
+`BadTranslation` envelope. Translation errors retain input/output sources, the four distinct
+Conway governance fields with full payloads, reference-input sets and invalid redeemer pointers.
+Voting procedures retain the ballot and optional anchor; ledger governance projects only the ballot.
+Original `TxBody.raw` remains the transaction-ID source, and the persisted vote/snapshot format is unchanged.
+
+The collector mirrors `Alonzo/Plutus/Evaluate.hs:141–185` at `f649f975`: visit required scripts in
+reference purpose order, prepend successes and missing-redeemer errors, and skip subsequent model/context
+preparation after any error. Missing redeemers still prepend after a setup error. Cost-model lookup is
+per prepared purpose, including multiple languages; there is no global model preflight. Missing script
+witnesses are filtered by the reference resolver and rejected separately by phase1; `NoWitness` is not
+reachable through this collector. Every context is prepared before evaluation. Implementation
+unavailability remains a separate typed outcome and cannot become a script or predicate failure.
+
+The [reference corpus](../fixtures/reference/context-errors/README.md) records 24 actual signed PV10
+submissions (12 included/12 refused), plus 145 unchanged-source API cases including the original 24 and
+42 retained Conway transactions. The 79 derived probes are API-only and explicitly do not claim signature
+revalidation or ledger admission. All 91 measured collection failures and 14 direct certificate-purpose
+constructor encodings agree byte-for-byte; ten actual full context refusals agree with LocalTxSubmission.
+Noncanonical pool relay/metadata and proposal parameter-update controls establish typed diagnostic
+normalization while preserving original signed bytes and body hashes. Reference lists keep the measured
+nonempty-list framing. Small-stack regressions exercise 20,000 errors, distinct pointers and anchored votes.
+Broader CEK aggregation/log behavior is separate from this context-collection boundary.

@@ -231,7 +231,12 @@ class PreConwayFailureCborSuite extends FunSuite:
       reason(
         Era.Alonzo,
         PredicateFailure.utxo(
-          UtxoFailure.Utxos(UtxosFailure.CollectErrors(Vector(TranslationError.NoEraHistory)))
+          UtxoFailure.Utxos(
+            UtxosFailure.CollectErrors(
+              cats.data.NonEmptyVector
+                .one(CollectError.BadTranslation(TranslationError.NoEraHistory))
+            )
+          )
         )
       ),
       None
@@ -306,7 +311,11 @@ class PreConwayFailureCborSuite extends FunSuite:
       PredicateFailure.utxow(UtxowFailure.MIRInsufficientGenesisSigs(Set(keyHash))),
       PredicateFailure.deleg(DelegFailure.MIRNegativeTransfer(Pot.Treasury, -1)),
       PredicateFailure.utxo(
-        UtxoFailure.Utxos(UtxosFailure.CollectErrors(Vector(TranslationError.NoEraHistory)))
+        UtxoFailure.Utxos(
+          UtxosFailure.CollectErrors(
+            cats.data.NonEmptyVector.one(CollectError.BadTranslation(TranslationError.NoEraHistory))
+          )
+        )
       )
     )
     earlier.foreach { f =>

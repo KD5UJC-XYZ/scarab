@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import cats.{Id, Monad}
-import cats.data.StateT
+import cats.data.{EitherT, NonEmptyVector, State}
 import cats.mtl.Stateful
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -26,7 +26,7 @@ object Phase2:
       spent: Map[TxIn, TxOut],
       references: Map[TxIn, TxOut],
       clock: Option[BigInt => BigInt],
-      outcome: Either[TranslationError, Outcome]
+      outcome: Collected[Outcome]
   )
 
   /** The first script that failed, or the number of scripts that all succeeded. */
@@ -42,7 +42,94 @@ object Phase2:
       case Passed(_) => true
       case _         => false
 
-  /** `posix` converts a slot to POSIX milliseconds; a failure is a translation error. */
+  type Collected[A] = Either[NonEmptyVector[CollectError], A]
+
+  /** Every required, provided Plutus script in the reference's collection order, reversed on
+    * success. Missing redeemers keep accumulating after a setup failure, but later contexts are not
+    * built (`Alonzo/Plutus/Evaluate.hs:141-185`). This is deliberately not an accumulating
+    * traversal of every context error.
+    */
+  def collect(
+      tx: Tx,
+      pp: ProtocolParams,
+      scripts: Map[Bytes, Script],
+      spent: Map[TxIn, TxOut],
+      references: Map[TxIn, TxOut],
+      posix: BigInt => Either[TranslationError, BigInt]
+  ): Collected[Vector[(Redeemer, EvalRequest)]] =
+    val env = ScriptContexts.Environment(pp.protocolMajor.toInt, spent, references, posix)
+    lazy val referenceScripts: Map[Bytes, Bytes] =
+      (spent.valuesIterator ++ references.valuesIterator)
+        .flatMap(_.referenceScript)
+        .flatMap(s => s.plutus.map(s.hash -> _))
+        .toMap
+    val redeemers = tx.witnesses.redeemers.map(r => (r.tag, r.index) -> r).toMap
+    val needed = Purpose.collection(tx.body, spent, pp.protocolMajor >= 9).flatMap { purpose =>
+      purpose.scriptHash.flatMap(scripts.get).filter(_.kind.isPlutus).map(purpose -> _)
+    }
+    type Infos = Map[PlutusLanguage, Either[TranslationError, PlutusData]]
+    type Prepared[A] = State[Infos, A]
+    type Setup[A] = EitherT[Prepared, CollectError, A]
+    val cache = Stateful[Prepared, Infos]
+    def lift[A](value: Either[CollectError, A]): Setup[A] = EitherT.fromEither[Prepared](value)
+    def translated[A](value: Either[TranslationError, A]): Setup[A] =
+      lift(value.leftMap(CollectError.BadTranslation(_)))
+    def info(language: PlutusLanguage): Setup[PlutusData] =
+      EitherT(
+        cache.get
+          .flatMap { infos =>
+            infos
+              .get(language)
+              .fold {
+                val result = ScriptContexts.txInfo(language, tx, env)
+                cache.modify(_.updated(language, result)).as(result)
+              }(_.pure[Prepared])
+          }
+          .map(_.leftMap(CollectError.BadTranslation(_)))
+      )
+
+    def prepare(purpose: Purpose, script: Script, r: Redeemer): Setup[(Redeemer, EvalRequest)] =
+      for
+        language <- translated(languageOf(script))
+        code <- translated(
+          script.plutus
+            .orElse(purpose.scriptHash.flatMap(referenceScripts.get))
+            .toRight(TranslationError.NoScriptBytes(script.hash))
+        )
+        model <- lift(costModel(pp, language))
+        txInfo <- info(language)
+        args <- translated(
+          ScriptContexts.arguments(language, txInfo, tx, r, purpose, pp.protocolMajor.toInt)
+        )
+      yield r -> EvalRequest(language, pp.protocolMajor.toInt, code, args, model, r.exUnits)
+
+    type Requests = List[(Redeemer, EvalRequest)]
+    needed
+      .foldLeftM[Prepared, Collected[Requests]](Right(Nil)) { case (collected, (purpose, script)) =>
+        redeemers.get((purpose.tag, BigInt(purpose.index))) match
+          case None =>
+            val missing = CollectError.NoRedeemer(purpose)
+            Left(
+              collected.fold(
+                errors => NonEmptyVector(missing, errors.toVector),
+                _ => NonEmptyVector.one(missing)
+              )
+            )
+              .pure[Prepared]
+          case Some(redeemer) =>
+            collected match
+              case Left(errors) => Left(errors).pure[Prepared]
+              case Right(requests) =>
+                prepare(purpose, script, redeemer).value
+                  .map(_.leftMap(NonEmptyVector.one).map(_ :: requests))
+      }
+      .runA(Map.empty)
+      .value
+      .map(_.toVector)
+
+  /** `posix` converts a slot to POSIX milliseconds. All contexts are prepared before evaluation; a
+    * script failure cannot hide a later setup failure, whichever validity flag the tx carries.
+    */
   def evaluate(
       tx: Tx,
       pp: ProtocolParams,
@@ -51,57 +138,9 @@ object Phase2:
       references: Map[TxIn, TxOut],
       posix: BigInt => Either[TranslationError, BigInt],
       evaluator: ScriptEvaluator[Id]
-  ): Either[TranslationError, Outcome] =
-    val env = ScriptContexts.Environment(pp.protocolMajor.toInt, spent, references, posix)
-    lazy val referenceScripts: Map[Bytes, Bytes] =
-      (spent.valuesIterator ++ references.valuesIterator)
-        .flatMap(_.referenceScript)
-        .flatMap(s => s.plutus.map(s.hash -> _))
-        .toMap
-    val redeemers = tx.witnesses.redeemers.sortBy(r => (r.tag, r.index))
-    // Preparation shares each language's context through a pure, typed state interpreter.
-    type Infos = Map[PlutusLanguage, PlutusData]
-    type Prepared[A] = StateT[Translated, Infos, A]
-    val cache = Stateful[Prepared, Infos]
-    def lift[A](value: Translated[A]): Prepared[A] = StateT.liftF(value)
-    def info(language: PlutusLanguage): Prepared[PlutusData] =
-      cache.get.flatMap { infos =>
-        infos
-          .get(language)
-          .fold(
-            lift(ScriptContexts.txInfo(language, tx, env))
-              .flatTap(value => cache.modify(_.updated(language, value)))
-          )(_.pure[Prepared])
-      }
-
-    /** One redeemer against its script: the request to evaluate, or why it cannot be set up. */
-    def prepare(r: Redeemer): Prepared[(Redeemer, EvalRequest)] =
-      for
-        purpose <- lift(
-          Purpose
-            .resolve(tx.body, spent, r.tag, r.index)
-            .toRight(TranslationError.NoRedeemer(r.tag, r.index))
-        )
-        hash <- lift(purpose.scriptHash.toRight(TranslationError.NoRedeemer(r.tag, r.index)))
-        script <- lift(scripts.get(hash).toRight(TranslationError.NoWitness(hash)))
-        language <- lift(languageOf(script))
-        code <- lift(
-          script.plutus
-            .orElse(referenceScripts.get(hash))
-            .toRight(TranslationError.NoScriptBytes(hash))
-        )
-        model <- lift(costModel(pp, language))
-        txInfo <- info(language)
-        args <- lift(
-          ScriptContexts.arguments(language, txInfo, tx, r, purpose, pp.protocolMajor.toInt)
-        )
-      yield r -> EvalRequest(language, pp.protocolMajor.toInt, code, args, model, r.exUnits)
-
-    // The reference builds every script context before it evaluates any script
-    // (collectPlutusScriptsWithContext, Alonzo/Plutus/Evaluate.hs:128-185). A first script failure
-    // cannot hide a later context error, whichever validity flag the transaction carries.
-    redeemers.traverse(prepare).runA(Map.empty).flatMap { requests =>
-      Monad[Translated].tailRecM(Progress(requests.toList, 0)) {
+  ): Collected[Outcome] =
+    collect(tx, pp, scripts, spent, references, posix).flatMap { requests =>
+      Monad[Collected].tailRecM(Progress(requests.toList, 0)) {
         case Progress(Nil, done) => Right(Right(Outcome.Passed(done)))
         case Progress((redeemer, request) :: tail, done) =>
           Right(evaluator.evaluate(request) match
@@ -111,8 +150,6 @@ object Phase2:
             case EvalResult.Failure(reason, _, _) => Right(Outcome.Failed(done, redeemer, reason)))
       }
     }
-
-  private type Translated[A] = Either[TranslationError, A]
 
   /** Prepared requests still to run, and how many have passed. */
   private final case class Progress(rest: List[(Redeemer, EvalRequest)], done: Int)
@@ -127,14 +164,14 @@ object Phase2:
   private def costModel(
       pp: ProtocolParams,
       language: PlutusLanguage
-  ): Either[TranslationError, Vector[Long]] =
+  ): Either[CollectError, Vector[Long]] =
     pp.costModels
       .get(language.id)
-      .toRight(TranslationError.NoCostModel(language))
+      .toRight(CollectError.NoCostModel(language))
       .flatMap(m =>
         Either.cond(
           m.forall(_.isValidLong),
           m.map(_.toLong),
-          TranslationError.CostModelParameterTooLarge
+          CollectError.BadTranslation(TranslationError.CostModelParameterTooLarge)
         )
       )

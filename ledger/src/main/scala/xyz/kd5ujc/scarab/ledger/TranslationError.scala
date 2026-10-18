@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.plutus.PlutusLanguage
 
 /** A piece of data the translation to a script context reads from the transaction and cannot
   * decode. The reference ledger holds all of these decoded already (the transaction decoder refuses
@@ -17,10 +16,14 @@ enum DataSite:
   /** A field of a parameter update, as the `ChangedParameters` of a V3 context carries it. */
   case ParameterUpdate
 
-/** Why the ledger refused to set up the evaluation of a script: `CollectError` (`NoRedeemer`,
-  * `NoWitness`, `NoCostModel`, `BadTranslation`; `Alonzo/Plutus/Context.hs:357-362`) with the
-  * context errors of the eras (`ContextError`: `Alonzo/Plutus/TxInfo.hs:213-216`,
-  * `Babbage/TxInfo.hs:253-260`, `Conway/TxInfo.hs:180-189`). A phase-1 failure in the reference.
+/** The output named by a context translation error (`Plutus/TxInfo.hs:90-103`). */
+enum TxOutSource:
+  case TxOutFromInput(input: TxIn)
+  case TxOutFromOutput(index: Int)
+
+/** A context translation failure, carried by [[CollectError.BadTranslation]]. The reference
+  * `ContextError` belongs to its era ( `Alonzo/Plutus/TxInfo.hs:213-216`,
+  * `Babbage/TxInfo.hs:253-260`, `Conway/TxInfo.hs:180-189`). It is a phase-1 failure.
   *
   * The cases the reference has no constructor for (it holds the data decoded and the cost models
   * complete) are the node's own: [[Undecodable]], [[NoScriptBytes]],
@@ -29,31 +32,25 @@ enum DataSite:
   */
 enum TranslationError:
   /** A redeemer names no purpose of the transaction (`RedeemerPointerPointsToNothing`). */
-  case NoRedeemer(tag: Int, index: BigInt)
-
-  /** The script a redeemer needs is not among the witnesses or the reference scripts. */
-  case NoWitness(script: Bytes)
-
-  /** The parameters hold no cost model for the language. */
-  case NoCostModel(language: PlutusLanguage)
+  case RedeemerPointerPointsToNothing(tag: Int, index: BigInt)
 
   /** An input of the transaction is not in the set the context is built from. */
   case UnresolvedInput(input: TxIn)
 
   /** A Plutus V1 context cannot show an inline datum (in any era, in a reference input too). */
-  case InlineDatumsNotSupported
+  case InlineDatumsNotSupported(source: TxOutSource)
 
   /** A Plutus V1 context cannot show a reference script (Babbage; Conway leaves the field out). */
-  case ReferenceScriptsNotSupported
+  case ReferenceScriptsNotSupported(source: TxOutSource)
 
   /** A Plutus V1 context cannot show a reference input (Babbage). */
-  case ReferenceInputsNotSupported
+  case ReferenceInputsNotSupported(inputs: Set[TxIn])
 
   /** A reference input is also an input (Plutus V3 from protocol version 11). */
-  case ReferenceInputsNotDisjointFromInputs
+  case ReferenceInputsNotDisjointFromInputs(inputs: cats.data.NonEmptyVector[TxIn])
 
   /** A Byron address in an output of a context built from protocol version 7 on. */
-  case ByronTxOutInContext
+  case ByronTxOutInContext(source: TxOutSource)
 
   /** The language's context has no form for the certificate (`CertificateNotSupported`). */
   case CertificateNotSupported(certificate: Certificate)
@@ -65,7 +62,12 @@ enum TranslationError:
   case DelegationWithoutDelegatee
 
   /** A Plutus V1 or V2 context cannot carry the governance fields of a Conway body. */
-  case GovernanceFieldsNotSupported
+  case VotingProceduresFieldNotSupported(
+      procedures: Vector[(Voter, Vector[(GovActionId, VotingProcedure)])]
+  )
+  case ProposalProceduresFieldNotSupported(procedures: Vector[Proposal])
+  case TreasuryDonationFieldNotSupported(coin: BigInt)
+  case CurrentTreasuryFieldNotSupported(coin: BigInt)
 
   /** Data of the transaction that does not decode as the context needs it. */
   case Undecodable(site: DataSite)
@@ -87,20 +89,28 @@ enum TranslationError:
 
   /** The text of the failure for the log, derived from the case. */
   def message: String = this match
-    case NoRedeemer(tag, index)               => s"redeemer ($tag, $index) names no purpose"
-    case NoWitness(script)                    => s"script ${script.hex} is missing"
-    case NoCostModel(language)                => s"no cost model for $language"
-    case UnresolvedInput(input)               => s"unresolved input ${input.render}"
-    case InlineDatumsNotSupported             => "inline datums are not supported in Plutus V1"
-    case ReferenceScriptsNotSupported         => "reference scripts are not supported in Plutus V1"
-    case ReferenceInputsNotSupported          => "reference inputs are not supported in Plutus V1"
-    case ReferenceInputsNotDisjointFromInputs => "a reference input is also an input"
-    case ByronTxOutInContext                  => "Byron address in a Plutus script context"
-    case CertificateNotSupported(c)           => s"certificate $c in this language's script context"
-    case PlutusPurposeNotSupported(p)         => s"purpose $p in this language's script context"
-    case DelegationWithoutDelegatee           => "delegation without a delegatee"
-    case GovernanceFieldsNotSupported =>
-      "governance fields in a Plutus V1 or V2 script context"
+    case RedeemerPointerPointsToNothing(tag, index) => s"redeemer ($tag, $index) names no purpose"
+    case UnresolvedInput(input)                     => s"unresolved input ${input.render}"
+    case InlineDatumsNotSupported(source) =>
+      s"inline datums are not supported in Plutus V1: $source"
+    case ReferenceScriptsNotSupported(source) =>
+      s"reference scripts are not supported in Plutus V1: $source"
+    case ReferenceInputsNotSupported(inputs) =>
+      s"reference inputs are not supported in Plutus V1: ${inputs.toVector.sorted.map(_.render).mkString(", ")}"
+    case ReferenceInputsNotDisjointFromInputs(inputs) =>
+      s"reference inputs are also inputs: ${inputs.toVector.map(_.render).mkString(", ")}"
+    case ByronTxOutInContext(source)  => s"Byron address in a Plutus script context: $source"
+    case CertificateNotSupported(c)   => s"certificate $c in this language's script context"
+    case PlutusPurposeNotSupported(p) => s"purpose $p in this language's script context"
+    case DelegationWithoutDelegatee   => "delegation without a delegatee"
+    case VotingProceduresFieldNotSupported(_) =>
+      "voting procedures in a Plutus V1 or V2 script context"
+    case ProposalProceduresFieldNotSupported(_) =>
+      "proposal procedures in a Plutus V1 or V2 script context"
+    case TreasuryDonationFieldNotSupported(coin) =>
+      s"treasury donation $coin in a Plutus V1 or V2 script context"
+    case CurrentTreasuryFieldNotSupported(coin) =>
+      s"current treasury $coin in a Plutus V1 or V2 script context"
     case Undecodable(site)          => s"the ${site.toString.toLowerCase} does not decode"
     case NoScriptBytes(script)      => s"script ${script.hex} has no bytes"
     case NativeScriptRedeemer       => "a redeemer names a native script"

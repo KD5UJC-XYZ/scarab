@@ -148,7 +148,7 @@ class PreviewConwayGovernanceSuite extends FunSuite:
       val id = text(entry, "id")
       val body = tx(id).body
       val cast = body.votes.flatMap { case (voter, ps) =>
-        ps.map { case (aid, v) => (voter, aid, v) }
+        ps.map { case (aid, v) => (voter, aid, v.vote) }
       }
       array(entry, "votes").foreach { v =>
         val hash = text(v, "voterHash")

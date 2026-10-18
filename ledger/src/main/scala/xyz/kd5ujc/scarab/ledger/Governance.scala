@@ -167,26 +167,49 @@ object Proposal:
     }
 
 /** `{ + voter => { + gov_action_id => [vote, anchor / null] } }`. */
+final case class VotingProcedure(vote: Vote, anchor: Option[Anchor])
+
 object VotingProcedures:
-  def decode(n: Node): Either[String, Vector[(Voter, Vector[(GovActionId, Vote)])]] =
+  enum DecodeError:
+    case InvalidStructure(detail: String)
+    case InvalidVote(value: BigInt)
+
+    def message: String = this match
+      case InvalidStructure(detail) => detail
+      case InvalidVote(value)       => s"vote $value"
+
+  def decode(
+      n: Node
+  ): Either[DecodeError, Vector[(Voter, Vector[(GovActionId, VotingProcedure)])]] =
     CborRead
       .map(n, "voting procedures")
+      .leftMap(DecodeError.InvalidStructure(_))
       .flatMap(_.traverse { case (voter, inner) =>
         for
-          v <- Voter.decode(voter)
+          v <- Voter.decode(voter).leftMap(DecodeError.InvalidStructure(_))
           votes <- CborRead
             .map(inner, "votes")
+            .leftMap(DecodeError.InvalidStructure(_))
             .flatMap(_.traverse { case (id, procedure) =>
               for
-                actionId <- GovActionId.decode(id)
-                p <- CborRead.arrayN(procedure, 2, "voting procedure")
-                vote <- CborRead.uint(p(0), "vote").flatMap {
-                  case x if x == 0 => Right(Vote.No)
-                  case x if x == 1 => Right(Vote.Yes)
-                  case x if x == 2 => Right(Vote.Abstain)
-                  case x           => Left(s"vote $x")
-                }
-              yield actionId -> vote
+                actionId <- GovActionId.decode(id).leftMap(DecodeError.InvalidStructure(_))
+                p <- CborRead
+                  .arrayN(procedure, 2, "voting procedure")
+                  .leftMap(DecodeError.InvalidStructure(_))
+                vote <- CborRead
+                  .uint(p(0), "vote")
+                  .leftMap(DecodeError.InvalidStructure(_))
+                  .flatMap {
+                    case x if x == 0 => Right(Vote.No)
+                    case x if x == 1 => Right(Vote.Yes)
+                    case x if x == 2 => Right(Vote.Abstain)
+                    case x           => Left(DecodeError.InvalidVote(x))
+                  }
+                anchor <- p(1).value match
+                  case CborValue.Null => Right(None)
+                  case _ =>
+                    Anchor.decode(p(1)).leftMap(DecodeError.InvalidStructure(_)).map(Some(_))
+              yield actionId -> VotingProcedure(vote, anchor)
             })
         yield v -> votes
       })

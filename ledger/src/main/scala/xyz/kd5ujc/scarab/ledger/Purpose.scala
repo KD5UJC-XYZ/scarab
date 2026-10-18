@@ -96,3 +96,30 @@ object Purpose:
   /** The purpose a redeemer pointer names. */
   def resolve(body: TxBody, spent: Map[TxIn, TxOut], tag: Int, index: BigInt): Option[Purpose] =
     all(body, spent).find(p => p.tag == tag && BigInt(p.index) == index)
+
+  /** `getAlonzoScriptsNeeded` / `getConwayScriptsNeeded`: spending, withdrawing, certifying,
+    * minting, voting, proposing. Before Conway a duplicate certificate reuses its first index while
+    * still occupying its place in the sequence (`Alonzo/UTxO.hs:313-365`).
+    */
+  private[ledger] def collection(
+      body: TxBody,
+      spent: Map[TxIn, TxOut],
+      conway: Boolean
+  ): Vector[Purpose] =
+    val purposes = all(body, spent)
+    val certs = purposes.collect { case p: Certifying => p }
+    val indexed =
+      if conway then certs
+      else
+        certs
+          .foldLeft((Map.empty[Certificate, Int], Vector.empty[Certifying])) {
+            case ((seen, rest), p) =>
+              val index = seen.getOrElse(p.certificate, p.index)
+              (seen.updated(p.certificate, index), rest :+ Certifying(index, p.certificate))
+          }
+          ._2
+    purposes.collect { case p: Spending => p } ++
+      purposes.collect { case p: Rewarding => p } ++ indexed ++
+      purposes.collect { case p: Minting => p } ++
+      purposes.collect { case p: Voting => p } ++
+      purposes.collect { case p: Proposing => p }

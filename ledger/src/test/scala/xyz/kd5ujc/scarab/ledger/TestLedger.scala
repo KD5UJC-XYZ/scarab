@@ -162,7 +162,9 @@ object TestLedger:
       hasGovernance = votes.nonEmpty || proposals.nonEmpty,
       donation = donation,
       update = update,
-      votes = votes,
+      votes = votes.map { case (voter, ballots) =>
+        voter -> ballots.map { case (id, vote) => id -> VotingProcedure(vote, None) }
+      },
       proposals = proposals,
       currentTreasury = currentTreasury,
       collateralReturn = collateralReturn

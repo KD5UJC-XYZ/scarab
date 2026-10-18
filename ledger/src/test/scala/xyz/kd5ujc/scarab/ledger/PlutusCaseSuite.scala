@@ -56,7 +56,7 @@ class PlutusCaseSuite extends FunSuite:
         case Right(Phase2.Outcome.Failed(_, r, reason)) =>
           assert(!c.tx.isValid, s"redeemer ${r.tag}.${r.index} failed: ${reason.message}")
         case Right(Phase2.Outcome.Unavailable(_, _, why)) => fail(why.message)
-        case Left(e)                                      => fail(e.message)
+        case Left(es) => fail(es.toVector.map(_.message).mkString("; "))
     }
   }
 

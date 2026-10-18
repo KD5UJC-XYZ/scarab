@@ -141,3 +141,9 @@ scripts/oracle/byron/Main.hs originate in cardano-ledger (Intersect), revision
 f649f9751074d2ab3de033fc3912f29c9862c1f5, under Apache-2.0. Original notices and
 licence are retained as fixtures/licenses/cardano-ledger-NOTICE and cardano-ledger-LICENSE.
 These excerpts are an optional reference oracle, not production code.
+
+fixtures/reference/context-errors contains generated throwaway private-network signed transactions
+and outputs of unchanged released Cardano Ledger context-collection/encoding APIs. Derived API inputs
+are explicitly distinguished from ledger admission. Public keys/signatures only; no signing keys.
+The thin oracle wrapper is original Apache-2.0 code; upstream package licenses/notices remain under
+fixtures/licenses and in the fetched source distributions.
