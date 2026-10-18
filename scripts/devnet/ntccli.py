@@ -22,7 +22,7 @@ SCALA_SOCKET = "/sock/node.socket"
 REFERENCE_SOCKET = f"{ENV}/socket/node1/sock"
 
 # why an inbound connection of the Scala node may end during the scenario: the client finished
-EXPECTED_CLOSES = {"closed by peer", "client finished"}
+EXPECTED_CLOSES = {"closed by peer", "connection closed: closed by peer", "client finished"}
 
 
 def on_scala(args, text, env_socket=False, timeout=90):

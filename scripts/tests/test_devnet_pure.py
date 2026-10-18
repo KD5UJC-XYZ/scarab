@@ -635,11 +635,12 @@ class UserCliVerdictTest(unittest.TestCase):
         self.assertEqual(len(ntccli.failures({}, {**self.ok_build, "reachedABlock": False}, [])), 1)
 
     def test_only_a_client_finishing_is_an_expected_close(self):
+        bad = ["connection closed: read: broken pipe", "failed: IllegalArgumentException: boom",
+               "network defect: boom", "service unavailable: script evaluation"]
         events = [{"event": "inbound", "state": "closed", "reason": r}
-                  for r in ("closed by peer", "client finished", "failed: IllegalArgumentException: boom")]
+                  for r in ["closed by peer", "connection closed: closed by peer", "client finished"] + bad]
         events.append({"event": "inbound", "state": "accepted", "reason": None})
-        self.assertEqual([e["reason"] for e in ntccli.unexpected_closes(events)],
-                         ["failed: IllegalArgumentException: boom"])
+        self.assertEqual([e["reason"] for e in ntccli.unexpected_closes(events)], bad)
         self.assertEqual(len(ntccli.failures({}, self.ok_build, ntccli.unexpected_closes(events))), 1)
 
 
