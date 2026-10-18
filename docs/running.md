@@ -763,6 +763,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `stateDumpRefused` | `Node.StateDumpRefused` | Warning | `slot`, `hash`, `epoch`, `error` |
 | `verificationCache` | `Node.VerificationCache` | Debug | `summary` |
 | `error` | `Node.Error` | Error | `kind`, `message` |
+| `fatal` | `Node.Fatal` | Error | `kind` (`storage`, `internal` or `defect`), `message`, `exitCode` |
 | `finished` | `Node.Finished` | Notice | `tip`, `retained` |
 | `connected` | `Chain.Connected` | Info | `intersection` |
 | `extended` | `Chain.Extended` | Info | `block`, `epoch`, `era`, `peerTip` |
@@ -1171,6 +1172,31 @@ error, 2 a bad command line; 3 was a halt on a rules divergence and is no longer
 restart from the newest snapshot. It cannot loop on a healthy start: the watchdog starts counting only when the
 node is following (not while it restores or replays), only a peer's announced tip ahead of ours counts, and
 every block extended starts the count again. The time must be longer than `--stall-minutes`.
+
+### Failures that stop the node (#154)
+
+A peer session ends in one of a closed set of ways ([ADR 0017](adr/0017-fibers-end-with-values.md)), and the
+node does something different for each. A peer that breaks the protocol, sends an invalid header, an invalid
+block (a block our rules refuse) or more unread bytes on a mini-protocol than its ingress limit allows is
+forgotten by the governor (`reconnecting` with a `protocol:` or `invalid block` reason, `peerSelectionDemote`
+with `forgotten`). A lost connection, a timeout, a peer behind us and a block that another peer delivered and our
+rules refuse are tried again after the exit policy's delay. Three outcomes are not the peer's and stop the node:
+
+| Outcome | `fatal` kind | Exit code |
+|---|---|---|
+| the storage failed under the session (a write, a read, a corrupt file) | `storage` | 5 |
+| the node failed itself (a local chain model that does not hold, a forging fault, ...) | `internal` | 6 |
+| an exception nobody expected (a bug, a library that threw) | `defect` | 7 |
+
+The run closes down as it does for a stall (the stores close, the shutdown snapshot is taken), logs one `fatal`
+event, and exits with the code; a supervisor that restarts the node (Docker `unless-stopped`) brings it back from
+the database, where the storage layer recovers as the reference's does (`consensusRethrowPolicy` makes a storage
+failure `ShutdownNode`). Exit code 4 stays the stall's, 1 an error, 2 a bad command line.
+
+The multiplexer's ingress limits are the reference's and are not configurable
+(`IngressLimits`, ouroboros-network 1.2.0.0, network-mux 0.11.0.0): ChainSync 462,000 bytes, BlockFetch
+23,068,694, TxSubmission2 721,424, KeepAlive 1,408, Handshake 5,760; node-to-client queues are unbounded. A
+`--read-ahead` above the reference's pipelining high mark of 300 raises the ChainSync limit with it.
 
 ## Monitoring long runs
 

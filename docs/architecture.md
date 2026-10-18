@@ -646,6 +646,19 @@ client and a server of the same protocol number never see each other's traffic;
 is registered and the other mode bit closes the connection. `Mux.flush` waits until everything
 queued has been written, used so that a handshake refusal is not lost when the connection closes.
 
+The multiplexer's fibers and its channels follow [ADR 0017](adr/0017-fibers-end-with-values.md). A channel
+holds no error capability: `send`, `recv` and the clients over it (`ChainSyncClient`, `BlockFetchClient`,
+`KeepAliveClient`) raise through the `Raise` of the fiber that calls them. The reader routes each SDU into the
+ingress queue of its mini-protocol and side, counted in bytes with the limit of the reference
+(`IngressLimits`: ChainSync 462,000, BlockFetch 23,068,694, TxSubmission2 721,424, KeepAlive 1,408, from
+`Cardano.Network.NodeToNode` of ouroboros-network 1.2.0.0); it never waits for a slow protocol, and a peer past
+the limit ends the connection with `NetworkError.IngressLimit`, the reference's `IngressQueueOverRun`. The
+writer's queue is bounded in messages and `send` waits for room. `Mux.closed` is the typed reason the
+connection ended with (a closed bearer, a framing error, an overrun, a limit of the protocol), and every
+pending operation raises it. Each fiber the connection starts (the KeepAlive pinger, the TxSubmission2 client,
+the four server fibers) runs in an error scope of its own (`Fibers.scoped`) and, when it fails, aborts the
+multiplexer with the error as a value.
+
 **Handshake** (`HandshakeServer`). Reads the proposal, answers through the pure
 `Handshake.responder` (highest common version of 14 and 15 here, 16 to 23 for node-to-client) and
 reports the agreed data. `initiatorOnly` in the agreed data is false only if both sides allow a
@@ -758,8 +771,12 @@ KeepAlive and the TxSubmission2 client on the side of the mini-protocols that is
 session of `Follower`, so the peer's chain competes in chain selection like any other candidate.
 The session is a background fiber of the connection: when the multiplexer closes the clients, the
 producer and every supervised fiber are released with it. A session that ends because the peer broke
-the protocol or announced an invalid header aborts the connection; one that ends for any other reason
-(the peer does not serve ChainSync, say) leaves the serving side running. Each session counts the
+the protocol, announced an invalid header or sent a block our rules refuse aborts the connection; one that ends
+for any other reason of the peer (the peer does not serve ChainSync, say) leaves the serving side running. A
+session ends with a `SessionEnd` (a value: `SessionEnd.scoped` runs it in an error scope of its own and catches
+the node's scope, which the rules and the stores raise through), and `FailurePolicy.disposition` says what is
+done about it: forget the peer, try it again later, or stop the node (storage, an internal failure, a defect;
+exit codes 5, 6, 7, `running.md` "Failures that stop the node"). Each session counts the
 headers and rollbacks it saw and the peer's tip (`GET /connections`, `inbound` log events
 `accepted`, `duplex`, `following`, `sessionEnded`, `sessionDropped`, `closed`).
 

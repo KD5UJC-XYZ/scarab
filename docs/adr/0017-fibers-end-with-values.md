@@ -1,0 +1,80 @@
+# 0017. A fiber ends with a value; a typed error does not cross a fiber as an exception
+
+- **Status**: Accepted
+- **Date**: 2026-10-17
+- **Issue**: [#132](https://github.com/KD5UJC-XYZ/scarab/issues/132), [#154](https://github.com/KD5UJC-XYZ/scarab/issues/154)
+
+## Context
+
+A cats-mtl `Raise` that comes from `Handle.allow` is valid in the fibers of its scope. Raised in any
+other fiber it is an exception, `cats.mtl.Handle$Submarine`, that no scope catches: the fiber dies
+unobserved and whatever it held stays held. This is what stopped the mainnet follower in issue 130. The
+fix of that issue carried a `PeerError` across the fibers of a connection inside an exception we
+defined (`PeerFailure`), a deviation from "no `throw` for domain errors" that the owner accepted as a
+bridge, not as the design.
+
+The cause was that a `MuxChannel` and the clients over it held the `Raise` of whoever opened the
+connection, so the fibers that used them (the keep-alive, TxSubmission2, the four servers, the
+pipeline of a session) raised through a scope that was not theirs.
+
+The owner's decision (2026-10-17) is the Haskell way. Inside a fiber the typed error becomes a value
+(`Either[PeerError, A]`, `runExceptT`). Across the fiber boundary only values travel (`Deferred`, a
+bounded `Queue`, `Fiber.joinWith`). The owning session turns the value back into a typed raise
+(`Raise[F, PeerError].fromEither`, `either throwError pure`).
+
+An independent audit (issue 154) found the same mechanism one level up: the catch-all around a session
+classified every failure that was not a `PeerFailure` as the peer being unavailable, so a block our
+rules refused, a storage failure and a bug in the node were all retried like a lost connection.
+
+## Decision
+
+1. **A capability is given where it is used.** `MuxChannel.send` and `recv`, the clients' operations
+   (`ChainSyncClient`, `BlockFetchClient`, `KeepAliveClient.ping`) and `Peer.intersect`, `next` and
+   `fetch` take the `Raise` of their caller as a `using` clause. A channel holds no error capability, so a
+   fiber cannot raise through the scope of the fiber that made it.
+2. **A fiber runs its body in an error scope of its own and finishes with an `Either`.** `Fibers.scoped`
+   (network) runs `Handle.allow` and returns the error as a value, wrapping an exception that is not ours
+   (a library, a bug) into a case the caller chose. `Fault.fiber` (node) is the same for the fibers of a
+   session's pipeline. The fiber hands the value to its owner through a `Deferred`, the queue of batches or
+   `Mux.closed`; the owner raises it again in its own fiber (`Fibers.land`, `Fault.land`). `PeerFailure`,
+   `Peer.carrying`, `Peer.carryingNetwork` and `Peer.landed` are gone.
+3. **A fiber that the owner joins at once may use the owner's capabilities** (`race`, `parSequence`,
+   `Compute.within`, an `evalOn(...).start` that is joined): the exception is rethrown in the owner's
+   fiber, inside the scope. A fiber that outlives the call (`background`, `supervise`, a `start` that is
+   kept) may not. Where such a fiber is a child of a session and meets a peer error, it is wrapped in
+   `Fault.fiber`.
+4. **The close of a connection is typed.** `Mux.closed` is a `NetworkError`, and `abort` takes one.
+   Whichever fiber meets the close raises the original cause, so an ingress overrun is classified as the
+   peer's protocol violation wherever it is seen.
+5. **A session ends with a closed set of outcomes.** `SessionEnd` is `Returned | Failed(PeerError) |
+   Rejected(ValidationError) | Storage(StorageError) | Internal(NodeError) | Defect(Throwable) | Cancelled
+   | Stopped`. What the node's own scope raises (the rules, the stores, the follower's capabilities, which
+   are fixed when the node is built) is caught in the session's fiber by `Handle#attempt` on that scope
+   and placed by `SessionEnd.of`, which has no default case. An exception that is not ours is `Defect`,
+   never an unavailable peer. `FailurePolicy.disposition` gives each a policy: a peer that broke the
+   protocol, sent an invalid header or an invalid block is forgotten; a failed connection is tried again
+   after a delay; storage, an internal failure and a defect stop the node with exit codes 5, 6 and 7, as
+   the reference stops its node for a storage failure (`consensusRethrowPolicy`, `ShutdownNode`).
+6. **The tip is published after the blocks are stored.** `Follower.commit` persists, then replaces the
+   chain, as the reference writes a block to the VolatileDB before chain selection moves the tip. A
+   failure of the storage leaves the published chain as it was.
+7. **The ingress queues of the multiplexer are counted in bytes and never wait.** Each mini-protocol has
+   the limit of the reference (`IngressLimits`); a peer with more unread bytes queued than the limit
+   allows ends the connection with `IngressLimit`, a protocol violation (the peer is forgotten). What
+   holds a fast peer back is the protocol and the session's pipeline (`Peer.Depth` batches ahead of the
+   one being applied), and the queue of the writer, which is bounded in messages.
+
+## Consequences
+
+- The rule is in `AGENTS.md`: a fiber never raises through a capability it did not create.
+  `FailsOnUncaught` stays as the guard in the suites that start fibers: no unobserved fiber failure may
+  occur.
+- Every `Peer` implementation takes the `Raise` as a `using` clause; the tests that script peers say so.
+- A block that another session delivered through the shared `BlockPool` and our rules refuse is the
+  deliverer's fault, not the fault of the session that took it: the pool remembers who delivered each
+  block, the session that took it ends as `Failed(Diverged)` (tried again, it fetches the block itself),
+  and the deliverer is told (`BlockPool.Claims.blamed`) and ends as `Failed(InvalidBlock)`.
+- Not done, and tracked: the capabilities of the rules and the stores are still fixed when the node is
+  built (`Raise` of `Main`'s scope); the session catches them with the scope's own `Handle`, which is
+  sound while the scope lives, the whole run. Passing them per call, as for the network, needs a change
+  to the rule algebras and is left to an issue.

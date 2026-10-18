@@ -43,6 +43,16 @@ scala code … I love the use of type parameters when I can use them"*.
   `Raise`, `Handle`, `Tell`). `IO` only in `Main` and tools.
 - Closed error ADTs. No `Either[String, …]`, no string-based control flow, no `throw` for domain
   errors, no `.get` on values that are not provably present.
+- A fiber never raises through a capability it did not create ([ADR 0017](docs/adr/0017-fibers-end-with-values.md)).
+  A `Raise` from `Handle.allow` is valid in the fibers of its scope only; raised in any other fiber it
+  is an exception that nobody catches. A fiber that outlives the call (`background`, `supervise`, a kept
+  `start`) runs its body in a scope of its own and returns `Either` at its boundary (`Fibers.scoped`,
+  `Fault.fiber`), its owner raises the value again in its own fiber (`Fibers.land`, `Fault.land`), and a
+  channel or client takes the caller's `Raise` as a `using` clause instead of holding one. Example:
+  `Fibers.scoped[F, NetworkError, Unit](defect)(client.ping).flatMap(_.fold(mux.abort, _ => F.unit))`.
+  A fiber that its owner joins at once (`race`, `parSequence`, `Compute.within`) may use the owner's
+  capabilities. An exception that is not ours is wrapped at the boundary into a typed case that says
+  it is a defect; it is never "the peer is unavailable". Suites that start fibers extend `FailsOnUncaught`.
 - Opaque types, type classes with extension syntax, instances in companions, `derives` where it
   works, Monocle optics for nested state. Type parameters for roles and eras (`KeyHash[StakePool]`,
   `LedgerState[Conway]`).

@@ -323,8 +323,8 @@ worked) was checked against the pinned upstream sources and against the relay:
 ### What was found: the receive path
 
 Looking for what can hold a ChainSync reply for 10 s on the connection that ChainSync shares with
-BlockFetch (the multiplexer reads one socket; a full ingress queue of any mini-protocol stops the
-reads for all of them), the receive path turned out to be quadratic. `ProtocolWire.Reader` read every
+BlockFetch (the multiplexer reads one socket; until #132 a full ingress queue of any mini-protocol stopped the
+reads for all of them, now the queues are counted in bytes and never wait, see section 21), the receive path turned out to be quadratic. `ProtocolWire.Reader` read every
 byte through `Bytes.value`, which builds a `Vector[Byte]` of the whole buffer, and the multiplexer
 and its decoder copied through `Vector`s as well. A range of 100 blocks of 90 KB (9 MB) through
 `BlockFetchClient` over an in-memory bearer took **12.6 s (0.72 MB/s)** on a host at load 40; after
