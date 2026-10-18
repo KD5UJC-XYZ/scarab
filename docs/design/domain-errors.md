@@ -1,7 +1,9 @@
 # Domain and service errors
 
 **Status: As built for the runtime migration and declared-channel guard; private integration gates are
-recorded in [compatibility.md](../compatibility.md).** Tracked under M11-E / [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82).
+recorded in [compatibility.md](../compatibility.md). Semantic contracts are being completed under
+[#189](https://github.com/KD5UJC-XYZ/scarab/issues/189), following the runtime migration in #188
+and the closed reorganisation issue [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82).**
 This implements the error discipline of [ADR 0002](../adr/0002-tagless-final-and-cats-mtl.md).
 
 ## Scope and contracts
@@ -81,9 +83,31 @@ semantics or fully resolve inferred `Left` types, type lambdas, implicit convers
 path-dependent or match types. Compiler/AST checking and review of generic message wrappers
 remain necessary follow-ups.
 
-M11-E also retains the build-time `models-gen` cleanup: `GenError` still contains message-oriented
-cases and `GenException` still carries domain failures through generator internals. Replacing
-those paths must preserve generated output and useful diagnostics. These gaps and the Scalus
-callback seam keep the rollup explicit; this document does not close #82. Era-indexed consensus
+The semantic follow-up [#189](https://github.com/KD5UJC-XYZ/scarab/issues/189) completes the five
+bounded contracts identified after #188:
+
+- `PlutusFailure` retains the `EvalFailure` and reconstruction bytes inside
+  `UtxosFailure.ValidationTagMismatch`; only the rejection encoder renders the cause. Byron
+  proof components, lovelace contexts and attribute owners are closed enums, with the previous
+  diagnostic labels retained at presentation.
+- `ForgeSkip` retains the detailed reason, including an old tip, and `ForgeSkip.Kind` keys the
+  counters. Metrics map those cases directly; the legacy `Other` series remains at zero for
+  compatibility. Logs and JSON render the existing field names and keys.
+- `ConnectionEnd` distinguishes normal release, transport closure, protocol failure, admission
+  refusal and defects. The manager, inbound server, session state and events retain typed
+  values and original causes. `InboundEnd` also retains local-client outcomes until logging.
+  Recovery and fiber ownership policies are unchanged; #180 still owns their broader review.
+- The model generator returns `Either[GenError, A]` from configuration, resolution, emission and
+  sampling. `ConfigProblem` and `UnsupportedFeature` distinguish cases and retain source data;
+  I/O errors retain `IOException`, and unexpected defects retain their original `Throwable`.
+  `EitherT[Eval, ...]` trampolines recursive generation and immutable `StateT` carries emitter
+  state. Unsupported syntax diagnostics use a bounded structural renderer, so presenting an error
+  does not recurse through its full AST. There is no `GenException` domain exception. The parser grammar stays unchanged, and
+  every file emitted from the pinned configuration is compared byte for byte with the previous
+  generator before this change is handed back.
+
+Compiler/AST enforcement and the Scalus callback seam remain explicit M11-E follow-ups; absence
+of declared `Either[String, ...]` alone does not establish semantic completeness. The original
+reorganisation issue #82 is closed. Era-indexed consensus
 [#85](https://github.com/KD5UJC-XYZ/scarab/issues/85) and generated-model node adoption
 [#87](https://github.com/KD5UJC-XYZ/scarab/issues/87) remain separate work.
