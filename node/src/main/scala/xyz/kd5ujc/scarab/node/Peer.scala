@@ -179,8 +179,12 @@ object Peer:
   type Prepare[F[_]] = Vector[Bytes] => F[Unit]
 
   /** `host:port` where host is a DNS name or an IP literal. */
-  def parseAddress(text: String): Either[String, SocketAddress[Host]] =
-    SocketAddress.fromString(text).toRight(s"invalid peer address '$text', expected <host>:<port>")
+  enum AddressError:
+    case Invalid(text: String)
+    def message: String = this match
+      case Invalid(text) => s"invalid peer address '$text', expected <host>:<port>"
+  def parseAddress(text: String): Either[AddressError, SocketAddress[Host]] =
+    SocketAddress.fromString(text).toRight(AddressError.Invalid(text))
 
   /** The node-level classification of a network failure. */
   def networkFault(error: NetworkError): Fault = error match
@@ -188,14 +192,12 @@ object Peer:
     case NetworkError.Framing(cause)  => Fault.Failed(PeerError.Framing(cause))
     case NetworkError.MuxSetup(cause) => Fault.Failed(PeerError.MuxSetup(cause))
     case NetworkError.MuxWrite(cause) => Fault.Failed(PeerError.MuxWrite(cause))
-    case _: NetworkError.Connect | _: NetworkError.Timeout | _: NetworkError.SduTimeout |
-        _: NetworkError.BearerClosed =>
-      Fault.Failed(PeerError.Unavailable(error.message))
-    case _: NetworkError.HandshakeRefused | _: NetworkError.VersionMismatch =>
-      Fault.Failed(PeerError.Handshake(error.message))
-    case _: NetworkError.IngressLimit | _: NetworkError.Decode | _: NetworkError.IllegalTransition |
-        _: NetworkError.QueryRefused | _: NetworkError.TxSubmission =>
-      Fault.Failed(PeerError.Protocol(error.message))
+    case cause: (NetworkError.Connect | NetworkError.Timeout | NetworkError.SduTimeout | NetworkError.BearerClosed) =>
+      Fault.Failed(PeerError.Unavailable(PeerError.Unavailability.Network(cause)))
+    case cause: (NetworkError.HandshakeRefused | NetworkError.VersionMismatch) =>
+      Fault.Failed(PeerError.Handshake(cause))
+    case cause: (NetworkError.IngressLimit | NetworkError.Decode | NetworkError.IllegalTransition | NetworkError.QueryRefused | NetworkError.TxSubmission) =>
+      Fault.Failed(PeerError.Protocol(cause))
 
   /** Node-to-node interpreter over `network`: ChainSync and BlockFetch share one multiplexed
     * connection (KeepAlive runs in the background). Expected network failures surface as typed
@@ -253,7 +255,7 @@ object Peer:
   ): Resource[F, Controlled[F]] =
     val F = Async[F]
     val currentMode: F[FetchMode] = fetchMode.getOrElse(F.pure(FetchMode.BulkSync))
-    def protocol[A](reason: String)(using Raise[F, PeerError]): F[A] =
+    def protocol[A](reason: PeerError.ProtocolFailure)(using Raise[F, PeerError]): F[A] =
       PeerError.Protocol(reason).raise[F, A]
 
     // The session's claims on the pool come first, so they are released last: after the supervisor
@@ -293,7 +295,7 @@ object Peer:
             case ChainSyncClient.Update.RollForward(h, tip) =>
               Header
                 .fromNtN(h, settings.byronEpochSlots)
-                .fold(e => protocol(e.message), h => F.pure(SyncEvent.RollForward(h, tip)))
+                .fold(e => protocol(PeerError.ProtocolProblem.HeaderDecode(e)), h => F.pure(SyncEvent.RollForward(h, tip)))
             case ChainSyncClient.Update.RollBackward(point, tip) =>
               F.pure(SyncEvent.RollBackward(point, tip))
 
@@ -478,9 +480,9 @@ object Peer:
                       .flatMap {
                         case Some(Vector(block)) => F.pure(block)
                         case Some(other) =>
-                          protocol(s"expected one block, received ${other.size}")
+                          protocol(PeerError.ProtocolProblem.BlockCount(1, other.size))
                         case None =>
-                          PeerError.Unavailable("peer does not have the announced block").raise
+                          PeerError.Unavailable(PeerError.Unavailability.MissingAnnouncedBlock(header.point)).raise
                       }
             }
 

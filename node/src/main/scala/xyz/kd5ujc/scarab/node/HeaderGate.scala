@@ -86,7 +86,7 @@ object HeaderCheck:
     ): F[A] =
       PeerError.InvalidHeader(header.point, error).raise[F, A]
 
-    private def protocol[A](reason: String)(using Raise[F, PeerError]): F[A] =
+    private def protocol[A](reason: PeerError.ProtocolFailure)(using Raise[F, PeerError]): F[A] =
       PeerError.Protocol(reason).raise[F, A]
 
     /** `released` counts the entries of the candidate chain that belong to earlier batches: their
@@ -160,14 +160,14 @@ object HeaderCheck:
               case Outcome.Unchecked(_, next) =>
                 record(header, next) *> tally.update(c => c.copy(unchecked = c.unchecked + 1))
               case Outcome.Invalid(error) => invalid(header, error)
-              case Outcome.Later(_)       => protocol("header validation did not settle")
+              case Outcome.Later(_)       => protocol(PeerError.ProtocolProblem.HeaderValidationDidNotSettle)
           }
 
         private def record(header: Header, next: Option[H])(using Raise[F, PeerError]): F[Unit] =
           state.get.flatMap(hc =>
             hc.extend(header, next)
               .fold(
-                protocol[Unit],
+                _ => protocol[Unit](PeerError.ProtocolProblem.HeaderDoesNotExtend(header.point, hc.tipPoint)),
                 g =>
                   val kept = g.pruned(retained)
                   val dropped = g.entries.size - kept.entries.size
@@ -189,7 +189,7 @@ object HeaderCheck:
             result <-
               if !hc.canExtend(header) then
                 protocol[(Outcome[H], Boolean)](
-                  s"header ${Points.show(header.point)} does not extend the peer's chain"
+                  PeerError.ProtocolProblem.HeaderDoesNotExtend(header.point, hc.tipPoint)
                 )
               else
                 val tipState = hc.tipState.orElse(appliedState(current, hc))
@@ -207,7 +207,7 @@ object HeaderCheck:
                         F.pure(
                           (
                             Outcome.Unchecked(
-                              "the parent is in the same batch and was not validated header-first",
+                              HeaderRules.UncheckedReason.ParentInBatch,
                               None
                             ): Outcome[H]
                           ) -> waited
@@ -215,7 +215,7 @@ object HeaderCheck:
                       else
                         wait(
                           header,
-                          "the parent's header state is not known yet",
+                          HeaderRules.ForecastReason.ParentStateUnknown,
                           since,
                           current,
                           hc
@@ -225,7 +225,7 @@ object HeaderCheck:
                     // no ledger state of ours lies on the peer's chain: the follower deals with it
                     F.pure(
                       (
-                        Outcome.Unchecked("no common ledger state", None): Outcome[H]
+                        Outcome.Unchecked(HeaderRules.UncheckedReason.NoCommonLedger, None): Outcome[H]
                       ) -> waited
                     )
           yield result
@@ -248,7 +248,7 @@ object HeaderCheck:
 
         private def wait(
             header: Header,
-            reason: String,
+            reason: HeaderRules.ForecastReason,
             since: Option[(Option[BlockRef], FiniteDuration)],
             current: VolatileChain[S],
             hc: HeaderChain[H]
@@ -275,7 +275,7 @@ object HeaderCheck:
                 F.pure(
                   (
                     Outcome.Unchecked(
-                      s"not validated header-first, nothing left to wait for: $reason",
+                      HeaderRules.UncheckedReason.ForecastFallback(reason),
                       None
                     ): Outcome[H]
                   ) -> true

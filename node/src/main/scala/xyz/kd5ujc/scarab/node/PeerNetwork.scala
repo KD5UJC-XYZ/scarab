@@ -433,7 +433,7 @@ object PeerNetwork:
 
   /** The reason text of a failed resolution. */
   def unresolved(host: Host, t: Throwable): PeerError =
-    PeerError.Unavailable(s"cannot resolve $host: ${Option(t.getMessage).getOrElse(t.toString)}")
+    PeerError.Unavailable(PeerError.Unavailability.Resolution(host.toString, t))
 
   /** The TCP transport: the first address a name resolves to, and a plain connection to it. */
   def tcp[F[_]: Async](connectTimeout: FiniteDuration): Transport[F, Addr] = new Transport[F, Addr]:

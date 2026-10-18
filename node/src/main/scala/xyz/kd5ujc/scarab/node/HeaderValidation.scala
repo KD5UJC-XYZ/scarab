@@ -54,23 +54,23 @@ final class NodeHeaderRules[S](config: PraosConfig, globals: LedgerGlobals)(usin
       header: Header
   ): Outcome[ProtocolState] = header match
     case _: Header.Byron =>
-      Outcome.Unchecked("Byron header: validated with its block", Some(prev))
+      Outcome.Unchecked(HeaderRules.UncheckedReason.Byron, Some(prev))
     case h: Header.Shelley =>
       val byron = anchor.consensus.byron
       if byron.ledger.isDefined && byron.firstShelleyEpoch.isEmpty then
         // the anchor is a Byron state: no Shelley ledger to forecast from
         if tip.exists(t => h.prevHash.contains(t.hash)) then
           Outcome.Unchecked(
-            "first Shelley block after the Byron era: validated with its block",
+            HeaderRules.UncheckedReason.FirstShelley,
             None
           )
-        else Outcome.Later("the Shelley ledger exists once the first Shelley block is applied")
+        else Outcome.Later(HeaderRules.ForecastReason.ShelleyLedgerNotReady)
       else
         anchor.ledger(tip) match
           case Left(refused) =>
-            Outcome.Invalid(HeaderError.Structure(s"the ledger state cannot be read: $refused"))
+            Outcome.Invalid(HeaderError.Structure(HeaderStructureProblem.LedgerRead(refused)))
           case Right(None) =>
-            Outcome.Later("the Shelley ledger exists once the first Shelley block is applied")
+            Outcome.Later(HeaderRules.ForecastReason.ShelleyLedgerNotReady)
           case Right(Some(InEra.Of(_, ledger))) => shelley(anchor, ledger, tip, prev, h)
 
   private def shelley[E <: EraTag](
@@ -91,13 +91,13 @@ final class NodeHeaderRules[S](config: PraosConfig, globals: LedgerGlobals)(usin
     val tipSlot = tip.fold(BigInt(0))(_.slot)
     if epoch < ledgerEpoch then
       Outcome.Invalid(
-        HeaderError.Structure(s"header epoch $epoch precedes the ledger epoch $ledgerEpoch")
+        HeaderError.Structure(HeaderStructureProblem.EpochPrecedes(epoch, ledgerEpoch))
       )
     else if (tip.isDefined && h.slot > tipSlot + geometry.stabilityWindow) ||
       epoch > ledgerEpoch + 1
     then
       Outcome.Later(
-        s"slot ${h.slot} is beyond the forecast horizon of the ledger at slot $tipSlot"
+        HeaderRules.ForecastReason.Horizon(h.slot, tipSlot)
       )
     else
       val sameEpoch = epoch == ledgerEpoch

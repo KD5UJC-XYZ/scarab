@@ -17,10 +17,10 @@ import scala.concurrent.duration.*
   */
 object LocalTxSubmissionServer:
   enum Unavailable:
-    case ScriptEvaluation(diagnostic: String)
+    case ScriptEvaluation[E <: Product & Serializable](cause: E)
 
     def message: String = this match
-      case ScriptEvaluation(diagnostic) => s"script evaluation unavailable: $diagnostic"
+      case ScriptEvaluation(cause) => s"script evaluation unavailable: $cause"
 
   enum Response:
     case Accepted

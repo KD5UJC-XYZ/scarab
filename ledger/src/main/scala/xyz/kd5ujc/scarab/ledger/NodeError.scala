@@ -10,7 +10,7 @@ import xyz.kd5ujc.scarab.crypto.vrf.{
   PraosLeaderThreshold as Leader,
   PraosVrfCertificate as Vrf
 }
-import xyz.kd5ujc.scarab.protocol.{ChainSync, Mux as WireMux}
+import xyz.kd5ujc.scarab.protocol.{ChainSync, Mux as WireMux, NetworkError, ProtocolError}
 
 /** Closed hierarchy of node failures. Algebras raise the narrowest subtype; because cats-mtl
   * `Raise` is contravariant in its error, one `Raise[F, NodeError]` serves them all.
@@ -22,12 +22,12 @@ sealed trait NodeError extends Product with Serializable:
   * reconnecting and re-intersecting.
   */
 enum PeerError extends NodeError:
-  case Handshake(reason: String)
-  case Protocol(reason: String)
+  case Handshake(cause: NetworkError.HandshakeRefused | NetworkError.VersionMismatch)
+  case Protocol(cause: PeerError.ProtocolFailure)
   case Framing(cause: WireMux.Error)
   case MuxSetup(cause: WireMux.Error)
   case MuxWrite(cause: WireMux.Error)
-  case Unavailable(reason: String)
+  case Unavailable(cause: PeerError.Unavailability)
 
   /** The peer's chain shares no point with ours (it is behind, or on another network). */
   case NoIntersection
@@ -36,7 +36,7 @@ enum PeerError extends NodeError:
     * what we keep, or our chain moved on so that its candidate no longer joins it. The session
     * starts again; the peer did nothing wrong.
     */
-  case Diverged(reason: String)
+  case Diverged(cause: PeerError.Divergence)
 
   /** A header the peer announced breaks a header rule; its block was not fetched (G6). */
   case InvalidHeader(point: ChainSync.Point, error: xyz.kd5ujc.scarab.ledger.HeaderError)
@@ -47,16 +47,53 @@ enum PeerError extends NodeError:
   case InvalidBlock(error: ValidationError)
 
   def message: String = this match
-    case Handshake(r)        => s"handshake: $r"
-    case Protocol(r)         => s"protocol: $r"
+    case Handshake(r)        => s"handshake: ${r.message}"
+    case Protocol(r)         => s"protocol: ${PeerError.protocolMessage(r)}"
     case Framing(e)          => s"protocol: multiplexer framing: ${e.message}"
     case MuxSetup(e)         => s"multiplexer setup: ${e.message}"
     case MuxWrite(e)         => s"multiplexer write: ${e.message}"
-    case Unavailable(r)      => s"unavailable: $r"
+    case Unavailable(r)      => s"unavailable: ${r.message}"
     case NoIntersection      => "the peer's chain shares no point with ours"
-    case Diverged(r)         => s"diverged: $r"
+    case Diverged(r)         => s"diverged: ${r.message}"
     case InvalidHeader(p, e) => s"invalid header ${Points.show(p)}: ${e.message}"
     case InvalidBlock(e)     => s"invalid block ${e.message}"
+
+object PeerError:
+  type ProtocolFailure = ProtocolError | ProtocolProblem | NetworkError.IngressLimit |
+    NetworkError.Decode | NetworkError.IllegalTransition | NetworkError.QueryRefused |
+    NetworkError.TxSubmission
+  enum ProtocolProblem:
+    case HeaderDecode(cause: ChainError)
+    case HeaderDoesNotExtend(point: ChainSync.Point, tip: ChainSync.Point)
+    case HeaderValidationDidNotSettle
+    case BlockCount(expected: Int, actual: Int)
+    def message: String = this match
+      case HeaderDecode(cause) => cause.message
+      case HeaderDoesNotExtend(point, _) => s"header ${Points.show(point)} does not extend the peer's chain"
+      case HeaderValidationDidNotSettle => "header validation did not settle"
+      case BlockCount(expected, actual) => s"expected $expected block, received $actual"
+  enum Unavailability:
+    case Network(cause: NetworkError.Connect | NetworkError.Timeout | NetworkError.SduTimeout | NetworkError.BearerClosed)
+    case Connection(cause: xyz.kd5ujc.scarab.protocol.ConnectionError)
+    case Resolution(host: String, cause: Throwable)
+    case SessionEnded
+    case MissingAnnouncedBlock(point: ChainSync.Point)
+    def message: String = this match
+      case Network(cause) => cause.message
+      case Connection(cause) => cause.message
+      case Resolution(host, cause) => s"cannot resolve $host: ${cause.getMessage}"
+      case SessionEnded => "the session ended"
+      case MissingAnnouncedBlock(_) => "peer does not have the announced block"
+  enum Divergence:
+    case RollbackOutsideChain(point: ChainSync.Point)
+    case DetachedCandidate(base: ChainSync.Point)
+    def message: String = this match
+      case RollbackOutsideChain(point) => s"peer rolled back to ${Points.show(point)}, outside our chain"
+      case DetachedCandidate(base) => s"the peer's chain no longer joins ours at ${Points.show(base)}"
+  def protocolMessage(cause: ProtocolFailure): String = cause match
+    case error: ProtocolError => error.message
+    case error: ProtocolProblem => error.message
+    case error: NetworkError => error.message
 
 /** Failures of the local chain model. These are not recoverable by reconnecting. */
 enum ChainError extends NodeError:
