@@ -164,6 +164,33 @@ class GenErrorSuite extends munit.FunSuite:
     }
   }
 
+  test(
+    "deep unsupported syntax retains its payload and renders bounded diagnostics on a small stack"
+  ) {
+    smallStack {
+      val ast = (0 until 12000).foldLeft[Ast.Ty](Ast.Ty.Name("uint", Vector.empty))((t, _) =>
+        Ast.Ty.Tag(6, Some(1), Some(t))
+      )
+      val resolved = (0 until 12000).foldLeft[RT](RT.Prim(PrimKind.Uint))((t, _) => RT.Tagged(1, t))
+      val errors = Vector(
+        GenError.Unsupported("t:r", UnsupportedFeature.NonLiteralBound(ast)),
+        GenError.Unsupported("t:r", UnsupportedFeature.Enumeration(ast)),
+        GenError.Unsupported("t:r", UnsupportedFeature.TypeInPosition(resolved))
+      )
+      errors.foreach { error =>
+        val text = error.message
+        assert(text.startsWith("unsupported CDDL feature in `t:r`: "))
+        assert(text.contains("Tag"))
+        assert(text.contains("…"))
+        assert(text.length < 650)
+      }
+      errors.head match
+        case GenError.Unsupported(_, UnsupportedFeature.NonLiteralBound(kept)) =>
+          assert(kept.asInstanceOf[AnyRef] eq ast.asInstanceOf[AnyRef])
+        case _ => fail("typed syntax payload was discarded")
+    }
+  }
+
   test("every pinned generated source is byte-for-byte equal to the pre-migration output") {
     val dir = Vector(Paths.get("models/src/main/cddl"), Paths.get("../models/src/main/cddl"))
       .find(Files.isDirectory(_))
