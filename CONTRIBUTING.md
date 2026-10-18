@@ -94,11 +94,20 @@ with a pattern that matches your own shell command line.
   chosen in `Main`. `IO` appears only in `Main` and tools. No hidden global state:
   the memoising caches are instances created in a `Resource` (`VerificationCache`) and handed to
   the pure rules through a read interface (`Verdicts`); tools live under `xyz.kd5ujc.scarab.node.tools`.
-- **Closed error ADTs through cats-mtl.** Domain errors are values of a closed ADT (`PeerError`,
-  `ChainError`, `ValidationError`, `StorageError`, `ForgeError`, `ConfigError`) raised with
-  `Raise[F, E]` and handled with lexically scoped `Handle.allow`. Never use `raiseError`/`throw` for
-  a domain error; IO exceptions are mapped to `StorageError`/`PeerError` at the boundary only. No
-  `.get`/`.toOption.get` on values that are not provably present.
+- **Closed, domain/service-specific error ADTs.** Pure failures use `Either[DomainError, A]`;
+  effect boundaries use cats-mtl `Raise[F, E]` and lexically scoped `Handle.allow` (`PeerError`,
+  `ChainError`, `ValidationError`, `StorageError`, `ForgeError`, `ConfigError`). Preserve typed causes
+  across layers and render them only for logs, CLI output or wire presentation. This applies to test
+  helpers too: no `Either[String, …]`, string-based control flow or generic `Failure(message: String)`
+  wrapper standing in for domain cases. Never use `raiseError`/`throw` for a domain error; IO
+  exceptions are mapped to `StorageError`/`PeerError` at the boundary only. No `.get`/`.toOption.get`
+  on values that are not provably present. The remaining sweep and CI guard are tracked by M11-E
+  in [the roadmap](docs/roadmap.md), under [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82).
+- **Functional code by default.** Imperative, side-effecting implementations are an exception only
+  for performance-critical paths. Support each exception with profiling or benchmark evidence and
+  a written reason; record measurements in [performance.md](docs/performance.md). Keep mutation
+  local behind a pure interface or an effect interpreter. The exception changes implementation style
+  only; typed errors, capability scope and original-byte guarantees still apply.
 - **Pure rules.** Ledger, consensus, mempool and chain-selection rules are pure functions over
   values. Effects wrap them, not the other way around.
 - **Laws and properties.** New algebras and stateful structures get cats-laws or ScalaCheck
