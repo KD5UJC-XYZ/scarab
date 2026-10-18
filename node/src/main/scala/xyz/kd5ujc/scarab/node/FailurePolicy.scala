@@ -16,12 +16,13 @@ object FailurePolicy:
   def classify(error: PeerError): FailureClass = error match
     // the peer did something it must not: a malformed or oversize message, a message the protocol
     // does not allow in the state, a header that breaks a rule
-    case _: PeerError.Protocol | _: PeerError.InvalidHeader | _: PeerError.InvalidBlock =>
+    case _: PeerError.Protocol | _: PeerError.Framing | _: PeerError.InvalidHeader |
+        _: PeerError.InvalidBlock =>
       FailureClass.Misbehaved
     // the network failed, the peer is on another network or version, behind us, or has parted
     // from our chain through nobody's fault
     case _: PeerError.Unavailable | _: PeerError.Handshake | PeerError.NoIntersection |
-        _: PeerError.Diverged =>
+        _: PeerError.Diverged | _: PeerError.MuxSetup | _: PeerError.MuxWrite =>
       FailureClass.Transient
 
   /** What the node does about the end of a hot session. Every outcome has an answer here; a failure

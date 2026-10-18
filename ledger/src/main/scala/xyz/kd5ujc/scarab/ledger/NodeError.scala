@@ -8,7 +8,7 @@ import xyz.kd5ujc.scarab.crypto.vrf.{
   PraosLeaderThreshold as Leader,
   PraosVrfCertificate as Vrf
 }
-import xyz.kd5ujc.scarab.protocol.ChainSync
+import xyz.kd5ujc.scarab.protocol.{ChainSync, Mux as WireMux}
 
 /** Closed hierarchy of node failures. Algebras raise the narrowest subtype; because cats-mtl
   * `Raise` is contravariant in its error, one `Raise[F, NodeError]` serves them all.
@@ -22,6 +22,9 @@ sealed trait NodeError extends Product with Serializable:
 enum PeerError extends NodeError:
   case Handshake(reason: String)
   case Protocol(reason: String)
+  case Framing(cause: WireMux.Error)
+  case MuxSetup(cause: WireMux.Error)
+  case MuxWrite(cause: WireMux.Error)
   case Unavailable(reason: String)
 
   /** The peer's chain shares no point with ours (it is behind, or on another network). */
@@ -44,6 +47,9 @@ enum PeerError extends NodeError:
   def message: String = this match
     case Handshake(r)        => s"handshake: $r"
     case Protocol(r)         => s"protocol: $r"
+    case Framing(e)          => s"protocol: multiplexer framing: ${e.message}"
+    case MuxSetup(e)         => s"multiplexer setup: ${e.message}"
+    case MuxWrite(e)         => s"multiplexer write: ${e.message}"
     case Unavailable(r)      => s"unavailable: $r"
     case NoIntersection      => "the peer's chain shares no point with ours"
     case Diverged(r)         => s"diverged: $r"

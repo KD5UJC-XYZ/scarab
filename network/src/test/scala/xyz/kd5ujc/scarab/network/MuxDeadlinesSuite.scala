@@ -20,7 +20,7 @@ class MuxDeadlinesSuite extends FailsOnUncaught:
   private def frame(n: Int): Bytes =
     WireMux
       .encode(WireMux.Sdu(0, 2, WireMux.Direction.Responder, Bytes(Vector.fill(n)(1.toByte))))
-      .fold(fail(_), identity)
+      .fold(e => fail(e.message), identity)
 
   private def bytes(value: Bytes): Stream[IO, Byte] = Stream.chunk(Chunk.array(value.toArray))
 
@@ -93,7 +93,7 @@ class MuxDeadlinesSuite extends FailsOnUncaught:
 
   test("EOF in a partial frame remains a framing error, before the deadline"):
     TestControl.executeEmbed(read(bytes(frame(100).take(9)))).map { (reason, elapsed, _) =>
-      assertEquals(reason, NetworkError.Framing("EOF in mux payload"))
+      assertEquals(reason, NetworkError.Framing(WireMux.Error.TruncatedPayload(100, 1)))
       assertEquals(elapsed, Duration.Zero)
     }
 

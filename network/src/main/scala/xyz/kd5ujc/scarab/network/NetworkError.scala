@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import xyz.kd5ujc.scarab.protocol.Mux as WireMux
+
 /** Closed set of network runtime failures. Algebras raise these through cats-mtl `Raise`; because
   * `Raise` is contravariant in its error, any `Raise[F, E]` with `NetworkError <: E` serves them.
   * `protocol` is a mini-protocol number, see [[Protocols]].
@@ -24,7 +26,11 @@ enum NetworkError:
   /** The peer's bytes are not a well-formed multiplexer frame (a header that cannot be read, a
     * payload past the limit): the multiplexer cannot tell which protocol was meant.
     */
-  case Framing(reason: String)
+  case Framing(cause: WireMux.Error)
+
+  /** Local setup/encoding failures, distinct from malformed peer input. */
+  case MuxSetup(cause: WireMux.Error)
+  case MuxWrite(cause: WireMux.Error)
 
   def message: String = this match
     case Connect(a, r)       => s"connect $a: $r"
@@ -41,7 +47,9 @@ enum NetworkError:
       s"${Protocols.name(Protocols.LocalStateQuery)} query not answered: ${r.message}"
     case BearerClosed(r) => s"connection closed: $r"
     case Defect(t)       => s"network defect: ${Option(t.getMessage).getOrElse(t.getClass.getName)}"
-    case Framing(r)      => s"multiplexer framing: $r"
+    case Framing(e)      => s"multiplexer framing: ${e.message}"
+    case MuxSetup(e)     => s"multiplexer setup: ${e.message}"
+    case MuxWrite(e)     => s"multiplexer write: ${e.message}"
 
 object NetworkError:
   enum SduOperation:

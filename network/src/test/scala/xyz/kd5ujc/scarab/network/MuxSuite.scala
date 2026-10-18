@@ -86,7 +86,7 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
           for
             c <- mux.channel(2)
             sdu = WireMux.Sdu(5L, 2, WireMux.Direction.Responder, payload(6))
-            encoded <- IO.fromEither(WireMux.encode(sdu).leftMap(new Exception(_)))
+            encoded <- IO.fromEither(WireMux.encode(sdu).leftMap(e => new Exception(e.message)))
             _ <- raw.write(Chunk.array(encoded.toArray))
             got <- c.recv(100)(exactly(6))
           yield (got, encoded.value(4) & 0x80)
@@ -264,12 +264,14 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
           ) *> raw.close *> mux.closed
         }
       }
-    }.map(r => assertEquals(r, Right(NetworkError.Framing("EOF in mux payload"))))
+    }.map(r => assertEquals(r, Right(NetworkError.Framing(WireMux.Error.TruncatedPayload(9, 1)))))
 
   test("data on an unregistered mini-protocol or with the wrong mode bit closes the bearer"):
     def sduBytes(protocol: Int, direction: WireMux.Direction) =
       IO.fromEither(
-        WireMux.encode(WireMux.Sdu(0, protocol, direction, payload(3))).leftMap(new Exception(_))
+        WireMux
+          .encode(WireMux.Sdu(0, protocol, direction, payload(3)))
+          .leftMap(e => new Exception(e.message))
       )
     typed {
       for
@@ -295,6 +297,38 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
         assertEquals(wrongMode, NetworkError.IllegalTransition(2, "SDU with the wrong mode bit"))
       case Left(e) => fail(e.message)
     }
+
+  test("invalid local SDU limits preserve a setup cause through the caller's scope"):
+    typed {
+      Bearer.inMemory[IO]().flatMap { (ours, _) =>
+        Mux.resource(ours, Set(2), Mux.Config(maxSduPayload = 0)).use(_ => IO.unit)
+      }
+    }.map(r => assertEquals(r, Left(NetworkError.MuxSetup(WireMux.Error.InvalidPayloadLimit(0)))))
+
+  test("local encoding failures close with a typed write cause"):
+    typed {
+      Bearer.inMemory[IO]().flatMap { (ours, _) =>
+        Mux.resource(ours, Set(2), Mux.Config(maxMessageBytes = 2500001)).use { mux =>
+          mux.channel(2).flatMap(_.send(payload(3))) *> mux.closed
+        }
+      }
+    }.map(r =>
+      assertEquals(
+        r,
+        Right(NetworkError.MuxWrite(WireMux.Error.InvalidMessageLimit(2500001, 2500000)))
+      )
+    )
+
+  test("a zero-length peer frame retains its rejected length and configured limit"):
+    typed {
+      Bearer.inMemory[IO]().flatMap { (ours, raw) =>
+        Mux.resource(ours, Set(2)).use { mux =>
+          raw.write(Chunk.array(Array[Byte](0, 0, 0, 0, -128, 2, 0, 0))) *> mux.closed
+        }
+      }
+    }.map(r =>
+      assertEquals(r, Right(NetworkError.Framing(WireMux.Error.PayloadLengthOutOfRange(0, 65535))))
+    )
 
   test("an oversized ingress is a typed error"):
     typed {

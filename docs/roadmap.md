@@ -72,10 +72,10 @@ Each open item links to its GitHub issue, which carries its state (`status:` lab
 - **D3** [#22](https://github.com/KD5UJC-XYZ/scarab/issues/22) (P1, done) ChainSync pipelining depth. The 256 timeout was not reproduced: 16 runs of 12 to 15 minutes against the public Preview relay at depths 64, 128, 200 and 256 (base build, this build, header-first on and off, and the pre-D8 scheduling on 2 CPUs) had no timeout; the upstream limits do not forbid 256 (reference client high mark 300, ChainSync ingress queue 462,000 bytes against 2 bytes per request, `shortWait` 10 s, the same as ours) and the relay answers a 256-header round in 0.26 s on average, 0.8 s at most. What was found and fixed: the receive path was quadratic (every byte read through a `Vector` of the whole buffer), 0.7 MB/s on 100 blocks of 90 KB, which on the connection shared with BlockFetch can hold ChainSync replies past the 10 s wait; 48 MB/s now. The default `--read-ahead` is **128** (64 is 6 to 10% slower, 128 to 256 are equal); the node logs the round times (`chainSyncRounds`) and slow single-block fetches (`slowFetch`). Details and numbers: [performance.md](performance.md) section 7. Remaining: the chain regions with large blocks (mainnet) were not reached; the reference client keeps up to 300 requests outstanding and collects down to 200, ours sends a round and collects all of it.
 - **D4** [#23](https://github.com/KD5UJC-XYZ/scarab/issues/23) (done) Volatile blocks. The last k blocks are logged (`VolatileStore`) and applied again on start, and a graceful stop snapshots the immutable tip. Tested: restart equivalence with and without the log, a stop followed by a start that replays 0 blocks, copies of a running database at 12 points, the log torn at every record boundary; Preview restarts in [performance.md](performance.md). Remaining: no fault injection at the filesystem level (only truncated and flipped bytes), and a SIGKILL during the shutdown snapshot is the ordinary `kill -9` case.
 - **D5** [#24](https://github.com/KD5UJC-XYZ/scarab/issues/24) (done) DB network identity: `<db>/network-identity` (magic, Shelley and Byron genesis hashes) is written at creation and checked on open (`StorageError.NetworkMismatch`); a database without it is adopted when its first block names the configured genesis. Remaining: the Alonzo and Conway genesis hashes are verified against the configuration (J1) but not part of the identity, and on a Shelley-start network the adoption check cannot tell two networks apart.
-- **D6** [#25](https://github.com/KD5UJC-XYZ/scarab/issues/25) Mainnet sync. About 12M blocks: measure throughput and memory, then optimise.
-- **D7** [#26](https://github.com/KD5UJC-XYZ/scarab/issues/26) Ed25519 throughput. Only parallelism is used. A faster path that can only accept was correctly rejected as a security weakening, so any speedup must keep strict semantics.
-- **D8** [#65](https://github.com/KD5UJC-XYZ/scarab/issues/65) (P1, mostly done; open: the forger-busy misses at 1 CPU; numbers in [performance.md](performance.md) section 6) Scheduling fairness: the peer session runs on its own work-stealing pool (`Compute[F]`, `--cpu-threads`) instead of the cats-effect compute pool; timer lateness and the longest CPU-bound step per epoch are measured and logged (`scheduling` on the epoch lines, `GET /scheduling`). Evidence: Preview from genesis for 31 min, started together with the base build, -3.2% blocks at 6 CPUs and +0.2% at 1 CPU, 0 starvation warnings in both; devnet `pool --scala-cpus 1` 0 missed leader slots in 11 of 14 runs (the base build: 5 of 6); the others missed 16 to 19 of 69 to 88 scheduled slots because the node's slot clock was 1.0 s behind the network's (cause found and fixed under H6; the pool summary reports `slotClock`). Remaining ([#65](https://github.com/KD5UJC-XYZ/scarab/issues/65) stays open): the forger-busy misses at 1 CPU, which the pool scenario reports as missed leader slots (the slot-clock misses are fixed, H6); the 1-CPU starvation warnings were the serial collector's pauses and need `-XX:+UseG1GC -XX:MaxGCPauseMillis=20`; a step is one uninterrupted pure call (the longest is reported, not bounded: 167 ms at 6 CPUs, 512 ms at 1 CPU); the mempool revalidation and the forger still run on the compute pool; the measurements are exported at `/metrics` (`scarab_scheduling_*`, `scarab_cpu_*`, J3).
-- **D9** [#69](https://github.com/KD5UJC-XYZ/scarab/issues/69) (P1) Mainnet: start from a Mithril snapshot (E1), follow to the tip and stay there for a week, comparing the ledger at every epoch boundary (K7).
+- **D6** [#25](https://github.com/KD5UJC-XYZ/scarab/issues/25) (v0.3) Mainnet sync. About 12M blocks: measure throughput and memory, then optimise.
+- **D7** [#26](https://github.com/KD5UJC-XYZ/scarab/issues/26) (done) Ed25519 throughput: the strict canonical-y check under [#147](https://github.com/KD5UJC-XYZ/scarab/issues/147) reduced mean verification time by 8.7% (134.0 to 122.3 microseconds; [performance.md](performance.md) section 19). Differential tests retain the prior strict verifier's edge-case verdicts; the archived pinned sodium source-profile corpus and historical Preview acceptance are linked in [compatibility.md](compatibility.md). Native or batch verification is optional future profiling work, not a prerequisite for D7.
+- **D8** [#65](https://github.com/KD5UJC-XYZ/scarab/issues/65) (P1, mostly done; open: the forger-busy misses at 1 CPU; numbers in [performance.md](performance.md) section 6) Scheduling fairness: the peer session runs on its own work-stealing pool (`Compute[F]`, `--cpu-threads`) instead of the cats-effect compute pool; timer lateness and the longest CPU-bound step per epoch are measured and logged (`scheduling` on the epoch lines, `GET /scheduling`). Evidence: Preview from genesis for 31 min, started together with the base build, -3.2% blocks at 6 CPUs and +0.2% at 1 CPU, 0 starvation warnings in both; devnet `pool --scala-cpus 1` 0 missed leader slots in 11 of 14 runs (the base build: 5 of 6); the others missed 16 to 19 of 69 to 88 scheduled slots because the node's slot clock was 1.0 s behind the network's (cause found and fixed under H6; the pool summary reports `slotClock`). Remaining ([#65](https://github.com/KD5UJC-XYZ/scarab/issues/65) stays open): the forger-busy misses at 1 CPU, which the pool scenario reports as missed leader slots (the slot-clock misses are fixed, H6); the 1-CPU starvation warnings were the serial collector's pauses and need `-XX:+UseG1GC -XX:MaxGCPauseMillis=20`; a step is one uninterrupted pure call (the longest is reported, not bounded: 167 ms at 6 CPUs, 512 ms at 1 CPU); mempool add/sync and several forger hot paths already use `blocking`, while the remaining long steps and forger-busy misses still need profiling and bounds; the measurements are exported at `/metrics` (`scarab_scheduling_*`, `scarab_cpu_*`, J3).
+- **D9** [#69](https://github.com/KD5UJC-XYZ/scarab/issues/69) (P1, v0.3) Mainnet: start from a Mithril snapshot (E1), follow to the tip and stay there for a week, comparing the ledger at every epoch boundary (K7).
 - **D10** [#83](https://github.com/KD5UJC-XYZ/scarab/issues/83) (P1, in progress) Versioned ledger snapshots with migrations: an additive change of the persisted state should not force a full replay ([ADR 0006](adr/0006-versioned-formats-migrate-on-open.md)). Done: every persisted file kind is versioned (`FormatVersion`, `FileKind`) and migrates on open, the ledger snapshot from formats 1 to 4 to format 5, one way, with no replay (architecture.md, "Format versions and migration"). Open: the registry written up with a golden per version, and the sunset of the frozen readers in `legacy` (J3.9 of the [step 2 design](design/ledger-mirror-step2.md)).
 - **D11** [#124](https://github.com/KD5UJC-XYZ/scarab/issues/124) (P2, in progress) Live sync is about 4x slower than replay over the same blocks and well behind the reference in Mary. Profiled stage by stage ([performance.md](performance.md) section 13); a mainnet A/B in Alonzo reached about 203,000 blocks an hour. Follow-ups [#126](https://github.com/KD5UJC-XYZ/scarab/issues/126) (the k-block window kept incrementally) and [#127](https://github.com/KD5UJC-XYZ/scarab/issues/127) (snapshot interval while far behind the tip) are done.
 - **D12** [#125](https://github.com/KD5UJC-XYZ/scarab/issues/125) (P2, idea) Signature verification is about half the CPU of live sync after D11: cache checked public-key points, a native or batched strict Ed25519 that keeps the speccheck behaviour, and the same for VRF (see D7, [performance.md](performance.md) section 14).
@@ -156,12 +156,12 @@ Each open item links to its GitHub issue, which carries its state (`status:` lab
 - **K2** [#49](https://github.com/KD5UJC-XYZ/scarab/issues/49) Upstream conformance suites: the cardano-ledger conformance tests, ouroboros-network tests, and the Plutus suite (I.1).
 - **K3** [#50](https://github.com/KD5UJC-XYZ/scarab/issues/50) (done) Fuzzing: the CBOR decoders, tx and block decoding, and the mini-protocol codecs. The `fuzz` project (running.md, "Fuzzing"): ScalaCheck generators mutate the committed fixtures and valid items sampled from the pinned CDDL (models-gen sampler) against 53 decoder entry points (raw CBOR, the handshakes, mux, ChainSync, BlockFetch, TxSubmission2, KeepAlive, LocalStateQuery, LocalTxSubmission, LocalTxMonitor, headers and blocks per era, transaction bodies, witnesses and submitted transactions per era, addresses, scripts, Plutus data, node-to-client queries, protocol-parameter updates); properties: no exception, time and allocation bounds, decode-encode round trips; `check` runs a one-minute budget, `fuzz <cases> <seed> <seeds>` and the nightly `fuzz.yml` run more. Findings and fixes in [findings.md](findings.md#decoders-under-hostile-input-k3). Not covered: storage files and the JSON configuration.
   - **K3a** [#179](https://github.com/KD5UJC-XYZ/scarab/issues/179) (P2, backlog) Valid whole-transaction fuzz seeds for Shelley, Allegra and Mary; remove their current empty-corpus exemptions and record actual valid-input coverage.
-- **K4** [#51](https://github.com/KD5UJC-XYZ/scarab/issues/51) Long-run stability: days at the tip, checking for memory growth, file handles and reconnect behaviour.
-- **K5** [#52](https://github.com/KD5UJC-XYZ/scarab/issues/52) Single-build evidence. Keep running uninterrupted genesis-to-tip syncs on tagged builds.
+- **K4** [#51](https://github.com/KD5UJC-XYZ/scarab/issues/51) (v0.3) Long-run stability: days at the tip, checking for memory growth, file handles and reconnect behaviour.
+- **K5** [#52](https://github.com/KD5UJC-XYZ/scarab/issues/52) (v0.3) Single-build evidence. Keep running uninterrupted genesis-to-tip syncs on tagged builds.
 - **K6** [#53](https://github.com/KD5UJC-XYZ/scarab/issues/53) (done) Memory profile of the RSS growth to 5.66 GB: it was glibc's per-thread malloc arenas (0.9 GB of growth in 30 minutes with the heap and the RocksDB cache at their caps), not the heap, RocksDB or direct buffers; `MALLOC_ARENA_MAX=2` (image, devnet, docs) stops it. `--memory-report-seconds` logs where the memory is; RocksDB has one block cache that the memtables are charged to (`--utxo-cache-mb`); the UTxO key is the Haskell node's `txid ++ be16 ix`; `RssAnon` is the heap limit plus about 0.8 GB, the recommended container limit is `-Xmx` plus 2 GiB ([performance.md](performance.md) section 8). Remaining: the cost of a small block cache at the tip's database size, the value in the Haskell MemPack `TxOut` form, mainnet.
-- **K7** [#68](https://github.com/KD5UJC-XYZ/scarab/issues/68) (P1) Continuous ledger-state verification on a live network: the K1 oracle at every epoch boundary, side by side with a Haskell node, with an append-only evidence log and an alert on the first divergence.
+- **K7** [#68](https://github.com/KD5UJC-XYZ/scarab/issues/68) (P1, v0.3) Continuous ledger-state verification on a live network: the K1 oracle at every epoch boundary, side by side with a Haskell node, with an append-only evidence log and an alert on the first divergence.
 - **K8** [#77](https://github.com/KD5UJC-XYZ/scarab/issues/77) (P1) Align the ledger-state projection with the canonical ledger state CIP.
-- **K9** [#78](https://github.com/KD5UJC-XYZ/scarab/issues/78) (P2) Deterministic simulation of several nodes under adversarial schedules (Antithesis-style).
+- **K9** [#78](https://github.com/KD5UJC-XYZ/scarab/issues/78) (P2, v0.2) Deterministic simulation of several nodes under adversarial schedules (Antithesis-style).
 - **K10** [#81](https://github.com/KD5UJC-XYZ/scarab/issues/81) (P1, done) Cross-check the generated CDDL codecs against cuddle (upstream's CDDL tool) in CI, in both directions. `cuddle-crosscheck.yml` (on changes to the vendored CDDL, the generator or the runtime, and nightly) builds cuddle 1.8.1.0 from `docker/cuddle.Dockerfile` and runs `scripts/cddl_crosscheck.py`: 23 targets, cuddle-generated terms decode and re-encode byte-exactly, our sampler's terms validate in cuddle, rule names and arities agree on all 27 vendored files, and every divergence is in `models/cuddle-allowlist.tsv` and asserted ([models.md](models.md), section 13).
 - **K11** [#96](https://github.com/KD5UJC-XYZ/scarab/issues/96) (P2, idea) `Credential` ordering renders a hex string per comparison; order by tag and raw bytes (follow-up of #94, see K6).
 - **K12** [#97](https://github.com/KD5UJC-XYZ/scarab/issues/97) (P2, idea) Finish credential sharing on decode: `.interned` per role for the typed credentials, the DRep pulser's proposals, the initial table size (follow-up of #94).
@@ -229,41 +229,50 @@ state. This section is rewritten when the order changes.
 
 **v0.2, reference-grade evidence**
 
-1. *Under way now.* The peer governor stages G1.3b and G1.4b/G1.5 (G1; ledger peers first, peer sharing
-   after, because both edit the decision function); G7 (#132) with the typed failure outcomes of AUD-02
-   (#154); the header wall-clock check AUD-01 (#153, P0); the storage and gate items AUD-04 and AUD-08
-   (#156, #160). The test-network pool: the first block (H1a, H1; the stake becomes active at epoch 321),
-   and the pool monitoring deployment (J3c, #117, completed 2026-10-18).
-2. *Security and stability, before any audit candidate.* G5 limits and budgets (#35, after G7), the Plutus
-   conformance triage AUD-03 (#155), AUD-05 to AUD-07 (#157 to #159), the merge-protection decision AUD-09
-   (#161, owner), the monitoring agent's access AUD-10 (#162), the operating envelope K4 (#51) and the
-   frozen evidence bundles K5 (#52).
-3. *Fast start and the long-run evidence.* The MemPack UTxO value (D16, #143) and the Haskell snapshot
-   layout (E2, #140), then Mithril import (E1, #27), then D9 (#69, start from a Mithril snapshot and follow
-   to the tip for a week) with K7 (#68, the ledger compared at every epoch boundary) and D6 (#25, mainnet to
-   the tip); the upstream conformance suites K2 (#49) and the ledger-state projection K8 (#77); O4 (#80)
-   once there is something to publish.
-4. *Throughput, in parallel with 2 and 3.* The checklist of #124: the Plutus machine first (decide I2, #43:
-   an upstream fix is small, our own evaluator is large), then the reward-update pulse (D15, #135), D2
-   (#21) and D8 (#65). Parallel transaction application within a block is excluded.
+1. *Correctness and safety.* The remaining audit follow-ups AUD-05 to AUD-07 (#157 to #159),
+   and the collateral predicate (#178). These retain their reference-backed regression and persistence
+   requirements; completed fixes and their evidence remain recorded above.
+2. *Reference coverage and implementation.* The upstream conformance suites K2 (#49), canonical
+   ledger-state projection K8 (#77), ecosystem contributions O4 (#80), the remaining M11 checklist (#82),
+   format registry and reader policy D10 (#83), observability J3 (#47), Genesis governor hooks (#139),
+   governor follow-ups (#142), and deterministic simulation K9 (#78).
+3. *Throughput and scheduling, in parallel.* Optimised apply D2 (#21), scheduling fairness D8 (#65),
+   the sync/replay gap D11 (#124), and reward-update pulsing D15 (#135). Strict Ed25519 D7 (#26) is done.
+   Parallel transaction application within a block is excluded. The stored-value decision under D16
+   retains CBOR; MemPack is used at the import/export boundary.
+4. *Final public gate and maintainer decision.* The first Scala-forged preprod block adopted on chain
+   (H1/H1a, #37/#115; one shared outcome) and AUD-09's merge-protection decision (#161, owner).
+   Pool monitoring J3c (#117) is complete. Stake becomes active at epoch 321; actual block production
+   depends on the leader schedule.
 
-*Exit of v0.2 = functional equivalence with cardano-node.* When items 1 to 4 hold (the ledger equal to the
-Haskell node's at every epoch, full preprod and mainnet syncs including a Mithril start, the upstream
-conformance suites, fuzzing, block production on a public test network, bounded memory, and the v0.2 audit
-tickets closed or accepted as stated limitations), the project stops pushing straight to `main`: the
-gates and branch protection of AUD-09 ([#161](https://github.com/KD5UJC-XYZ/scarab/issues/161)) are
-turned on, with required CI checks, pull requests and independent review for consensus, cryptography,
-persistence and key handling. Until then development keeps the rapid direct-push flow (owner decision,
-2026-10-18).
+*Exit of v0.2 = the remaining milestone work and an adopted preprod block.* Reference-backed
+correctness and conformance, bounded resource behaviour, the normal per-change gates and nightly CI
+remain required. Retained evidence includes the completed Preview epoch comparisons (K1), preprod
+sync (C4), memory investigation (K6), Mithril bootstrap (E1), and snapshot interoperability (E2).
+The adopted preprod block is the final public-network gate. Dedicated genesis/performance and
+observation campaigns D6, K4, K5, K7 and D9 move to v0.3 with their acceptance criteria unchanged
+(owner decision, 2026-10-18); no new public synchronization or operational change is authorized by
+this release-scope decision.
+
+At v0.2 completion, the maintainer applies AUD-09's
+[merge-protection decision](https://github.com/KD5UJC-XYZ/scarab/issues/161): required CI checks,
+pull requests and independent review for consensus, cryptography, persistence and key handling.
+Repository settings remain the maintainer's responsibility. Until then development keeps the
+research-phase landing flow in [CONTRIBUTING.md](../CONTRIBUTING.md#landing-in-parallel).
 
 **v0.3, Leios and audit readiness**
 
 1. *Review readiness first:* the threat model O1 (#74), reproducible signed releases and the SBOM O2 (#75),
    packaging O3 (#76), and whatever v0.2 audit tickets are still open. The audit candidate is cut after
    this.
-2. *Protocol:* G4 (#34, handshake v15/v16 and NtC versions; Leios needs it) and Ouroboros Genesis G3
+2. *Dedicated public-chain evidence:* mainnet genesis-to-tip throughput and memory D6 (#25),
+   multi-day stability K4 (#51), exact tagged-build genesis sync K5 (#52), at least 30 consecutive live
+   Preview epochs K7 (#68), and a mainnet Mithril start followed by at least a week at tip D9 (#69).
+   These issues stay open with their existing acceptance criteria; moving them does not claim their
+   evidence exists or waive correctness gates for v0.2.
+3. *Protocol:* G4 (#34, handshake v15/v16 and NtC versions; Leios needs it) and Ouroboros Genesis G3
    (#33, on the G1.5 hooks).
-3. *Leios, built against the testnet and the reference node and refactored as the design moves* (owner,
+4. *Leios, built against the testnet and the reference node and refactored as the design moves* (owner,
    2026-10-18): the plan is [leios.md](leios.md) 11.8 for N4 ([#73](https://github.com/KD5UJC-XYZ/scarab/issues/73)):
    get the Leios team's reference node (pinned), settle the mini-protocol gating on a loopback network with its
    trace, follow the Dijkstra chain (X1, X2), the committee and certificates (X5), mini-protocols 18 and 19
@@ -278,10 +287,14 @@ persistence and key handling. Until then development keeps the rapid direct-push
    ([#54](https://github.com/KD5UJC-XYZ/scarab/issues/54)) and the Leios mempool N5
    ([#79](https://github.com/KD5UJC-XYZ/scarab/issues/79)) follow the follower.
 
-**Later (no milestone yet):** deterministic simulation K9 (#78); mainnet-pool readiness (#120, the
-offline cold key and a KES agent) and an external audit, both after the v0.3 audit candidate.
+**Later (no milestone yet):** mainnet-pool readiness (#120, the offline cold key and a KES agent)
+and an external audit, both after the v0.3 audit candidate.
 
 ## Milestones
 
-- **v0.2, reference-grade evidence**: ledger-state identity with the Haskell node at every epoch (K1 and K7), full preprod (C4) and mainnet (D6, D9) syncs, upstream conformance suites (K2, I1), fuzzing (K3), public-network block production (H1), bounded memory (K6), fast start (E1), metrics (J3), peer governance and limits (G1, G5).
-- **v0.3, Leios and audit readiness**: Leios (N1 to N4), Dijkstra (L1), Ouroboros Genesis (G3), our own Plutus evaluator decision (I2), protocol versions (G4), review readiness and packaging (O1 to O3).
+- **v0.2, reference-grade evidence**: complete the remaining correctness, conformance, resource,
+  format and implementation work above, with the existing reference evidence and normal CI/private
+  gates; the final public gate is an adopted Scala-forged preprod block (H1/H1a).
+- **v0.3, Leios and audit readiness**: dedicated public campaigns D6, K4, K5, K7 and D9; Leios
+  (N1 to N4), Dijkstra (L1), Ouroboros Genesis (G3), our own Plutus evaluator decision (I2), protocol
+  versions (G4), review readiness and packaging (O1 to O3).

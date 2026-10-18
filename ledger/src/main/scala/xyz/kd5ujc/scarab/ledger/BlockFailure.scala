@@ -90,7 +90,7 @@ enum BlockFailure:
   /** A TPraos header rule. */
   case TPraos(error: TPraosError)
 
-  /** A Praos header rule (`text` is its text). */
+  /** A Praos header rule, retaining its typed cause. */
   case Praos(error: PraosError)
 
   // ---- ledger
