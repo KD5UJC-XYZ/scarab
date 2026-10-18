@@ -118,7 +118,7 @@ class ConfigSuite extends FunSuite:
               else b :+ ' '.toByte
             )
           NodeSetup.verifyHashes(config, altered) match
-            case Left(ConfigError(_, ConfigProblem.GenesisHashMismatch(r, f, expected, actual))) =>
+            case Left(ConfigError(ConfigProblem.GenesisHashMismatch(r, f, expected, actual))) =>
               assertEquals((r, f), (role, file))
               assertNotEquals(expected, actual)
             case other => fail(s"$network $role: $other")
@@ -218,7 +218,7 @@ class ConfigSuite extends FunSuite:
       .toOption
       .get
       .deepMerge(Json.obj("GenesisFile" -> Json.fromString("g.json")))
-    assert(NodeConfig.parse(both.noSpaces).left.exists(_.message.contains("not both")))
+    assertEquals(NodeConfig.parse(both.noSpaces).left.map(_.problem), Left(ConfigProblem.ConflictingFields(Set("ByronGenesisFile", "GenesisFile"))))
     val old = Json.obj(
       "GenesisFile" -> Json.fromString("shelley-genesis.json"),
       "AlonzoGenesisFile" -> Json.fromString("a"),
@@ -377,7 +377,7 @@ class ConfigSuite extends FunSuite:
     // an address without a port is an SRV name
     assertEquals(
       topology(group("""{"address": "_cardano._tcp.example"}""")).left.map(_.problem),
-      Left(ConfigProblem.UnsupportedTopology)
+      Left(ConfigProblem.SrvAccessPoint("_cardano._tcp.example"))
     )
     assert(topology(group("""{"address": "relay.example", "port": 70000}""")).isLeft)
     assert(topology(group("""{"address": "relay.example", "port": "3001"}""")).isLeft)
@@ -505,7 +505,7 @@ class ConfigSuite extends FunSuite:
       .parse(List("follow", "--config", config.toString, "--topology", empty.toString))
       .toOption
       .get
-    assert(Main.configured(nobody).left.exists(_.message.contains("no peer to follow")))
+    assertEquals(Main.configured(nobody).left.map(_.problem), Left(ConfigProblem.NoPeers))
     // the same settings in a genesis directory's configuration are not applied
     val directoryMode = Main
       .parse(List("follow", "--genesis-dir", withSettings.toString, "--peer", "127.0.0.1:9"))

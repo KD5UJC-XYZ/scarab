@@ -55,18 +55,15 @@ final case class Topology(
     all.map(_.socketAddress).distinct
 
 object Topology:
-  private def bad[A](reason: String): Either[ConfigError, A] =
-    Left(ConfigError(s"topology: $reason"))
-
-  private def unsupported[A](reason: String): Either[ConfigError, A] =
-    Left(ConfigError(s"topology: $reason", ConfigProblem.UnsupportedTopology))
+  private def bad[A](problem: ConfigProblem): Either[ConfigError, A] =
+    Left(ConfigError(problem))
 
   private def field[A: Decoder](c: ACursor, name: String): Either[ConfigError, A] =
-    c.downField(name).as[A].leftMap(e => ConfigError(s"topology $name: ${e.message}"))
+    c.downField(name).as[A].leftMap(e => ConfigError(ConfigProblem.JsonField("topology", name, e)))
 
   private def optional[A: Decoder](c: ACursor, name: String): Either[ConfigError, Option[A]] =
     c.downField(name).focus.filterNot(_.isNull).traverse { j =>
-      j.as[A].leftMap(e => ConfigError(s"topology $name: ${e.message}"))
+      j.as[A].leftMap(e => ConfigError(ConfigProblem.JsonField("topology", name, e)))
     }
 
   /** `{"address": ..., "port": ...}`. An address without a port is a DNS SRV name, which this node
@@ -79,19 +76,19 @@ object Topology:
       given_ <- optional[Json](c, "port")
       port <- given_ match
         case None =>
-          unsupported(s"$address has no port: DNS SRV access points are not supported")
+          bad(ConfigProblem.SrvAccessPoint(address))
         case Some(p) =>
           // a number, as for the reference ("The port and valency fields should be numerical")
           p.asNumber
             .flatMap(_.toInt)
             .flatMap(Port.fromInt)
-            .toRight(ConfigError(s"topology: port ${p.noSpaces} is not a port number"))
+            .toRight(ConfigError(ConfigProblem.TopologyPort(p)))
       host <- Host
         .fromString(address.stripSuffix("."))
-        .toRight(ConfigError(s"topology: $address is not a host name or an IP address"))
+        .toRight(ConfigError(ConfigProblem.TopologyHost(address)))
       _ <- host match
         case ip: IpAddress if ip.toBytes.forall(_ == 0) =>
-          bad(s"$ip is not a valid destination address")
+          bad(ConfigProblem.UnspecifiedDestination(ip.toString))
         case _ => Right(())
     yield AccessPoint(host, port)
 
@@ -105,7 +102,7 @@ object Topology:
       hot <- (optional[Int](c, "valency"), optional[Int](c, "hotValency")).tupled.flatMap {
         case (Some(v), _) => Right(v)
         case (_, Some(v)) => Right(v)
-        case _            => bad("a local root group needs valency (or hotValency)")
+        case _            => bad(ConfigProblem.MissingValency)
       }
       advertise <- optional[Boolean](c, "advertise").map(_.getOrElse(false))
       firewall <- optional[Boolean](c, "behindFirewall").map(_.getOrElse(false))
@@ -115,7 +112,11 @@ object Topology:
         Set("InitiatorOnly", "InitiatorAndResponder")(mode),
         (),
         ConfigError(
-          s"topology diffusionMode $mode: expected InitiatorOnly or InitiatorAndResponder"
+          ConfigProblem.Selection(
+            "topology diffusionMode",
+            mode,
+            Set("InitiatorOnly", "InitiatorAndResponder")
+          )
         )
       )
       trustable <- optional[Boolean](c, "trustable").map(_.getOrElse(false))
@@ -139,17 +140,17 @@ object Topology:
     */
   def parse(text: String): Either[ConfigError, Topology] =
     for
-      json <- parser.parse(text).leftMap(e => ConfigError(s"topology is not JSON: ${e.message}"))
+      json <- parser.parse(text).leftMap(e => ConfigError(ConfigProblem.JsonSyntax("topology", e)))
       c = json.hcursor
-      _ <- Either.cond(json.isObject, (), ConfigError("topology is not a JSON object"))
+      _ <- Either.cond(
+        json.isObject,
+        (),
+        ConfigError(ConfigProblem.ExpectedObject("topology", json))
+      )
       _ <- Either.cond(
         c.downField("Producers").focus.isEmpty,
         (),
-        ConfigError(
-          "topology: the legacy format (Producers) is not supported, expected the P2P format " +
-            "(localRoots, publicRoots, bootstrapPeers)",
-          ConfigProblem.UnsupportedTopology
-        )
+        ConfigError(ConfigProblem.UnsupportedTopology)
       )
       locals <- field[Vector[Json]](c, "localRoots").flatMap(_.traverse(localRoots))
       publics <- field[Vector[Json]](c, "publicRoots").flatMap(_.traverse(publicRoots))
@@ -161,20 +162,12 @@ object Topology:
       _ <- Either.cond(
         bootstrap.forall(_.nonEmpty) || locals.exists(_.trustable),
         (),
-        ConfigError(
-          "topology: bootstrapPeers is empty and no local root is trustable, so there is no " +
-            "peer to make progress from"
-        )
+        ConfigError(ConfigProblem.UntrustedBootstrap)
       )
     yield Topology(locals, publics, bootstrap, ledger, snapshot)
 
   def read(path: Path): Either[ConfigError, Topology] =
     Either
       .catchNonFatal(new String(Files.readAllBytes(path), "UTF-8"))
-      .leftMap(e =>
-        ConfigError(
-          s"cannot read the topology $path: ${e.getMessage}",
-          ConfigProblem.FileMissing("topology", path.toString)
-        )
-      )
+      .leftMap(e => ConfigError(ConfigProblem.FileRead(path.toString, e)))
       .flatMap(parse)

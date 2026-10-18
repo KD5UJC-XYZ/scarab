@@ -294,7 +294,7 @@ object Main extends IOApp:
         case Some(file) => NodeSetup.fromConfigFile(file, options.genesisDir)
         case None =>
           options.genesisDir
-            .toRight(ConfigError("neither --config nor --genesis-dir given"))
+            .toRight(ConfigError(ConfigProblem.RequiredOneOf(Set("--config", "--genesis-dir"))))
             .flatMap(NodeSetup.fromDirectory)
       topology <- options.topologyFile.traverse(Topology.read)
       // `peerSnapshotFile` is relative to the topology file, as the reference reads it
@@ -308,7 +308,7 @@ object Main extends IOApp:
           setup.genesis.networkMagic.toLong,
           topology.fold[UseLedgerPeers](UseLedgerPeers.Disabled)(_.useLedgerAfterSlot)
         )
-        .leftMap(r => ConfigError(s"topology peerSnapshotFile: ${r.message}"))
+        .leftMap(r => ConfigError(ConfigProblem.PeerSnapshot(r)))
       settings = setup.config.settings
       fromFile = options.configFile.isDefined
       peers = (options.peers ++ topology.toList.flatMap(_.peers)).distinct
@@ -316,7 +316,7 @@ object Main extends IOApp:
       _ <- Either.cond(
         roots.hasPeers,
         (),
-        ConfigError("no peer to follow: the topology names no local root, bootstrap or public root")
+        ConfigError(ConfigProblem.NoPeers)
       )
     yield (
       options.copy(
@@ -1037,10 +1037,7 @@ object Main extends IOApp:
     case ReproDir extends RemovedFlag("repro-dir", "the differential rules are gone; drop the flag")
 
     def refusal(usage: String): ConfigError =
-      ConfigError(
-        s"--$flag was removed (ledger-mirror step 2, J2.9): $instead\n$usage",
-        ConfigProblem.RemovedFlag(flag)
-      )
+      ConfigError(ConfigProblem.WithUsage(ConfigProblem.RemovedFlag(flag), usage))
 
   private object RemovedFlag:
     def named(argument: String): Option[RemovedFlag] =
@@ -1087,9 +1084,9 @@ object Main extends IOApp:
   )
 
   private[node] def parse(args: List[String]): Either[ConfigError, Options] =
-    def bad[A](reason: String): Either[ConfigError, A] =
-      Left(ConfigError(s"$reason\n$Usage"))
-    val usage = ConfigError(Usage)
+    def bad[A](problem: ConfigProblem): Either[ConfigError, A] =
+      Left(ConfigError(ConfigProblem.WithUsage(problem, Usage)))
+    val usage = ConfigError(ConfigProblem.WithUsage(ConfigProblem.Usage("follow"), Usage))
     @annotation.tailrec
     def go(
         rest: List[String],
@@ -1098,111 +1095,153 @@ object Main extends IOApp:
       rest match
         case Nil => Right(acc)
         case "--forge" :: tail =>
-          if acc.contains("forge") then bad("duplicate flag --forge")
+          if acc.contains("forge") then bad(ConfigProblem.DuplicateFlag("--forge"))
           else go(tail, acc.updated("forge", List("true")))
         case flag :: _ if RemovedFlag.named(flag).isDefined =>
           Left(RemovedFlag.named(flag).fold(usage)(_.refusal(Usage)))
         case "--dump-state-full" :: tail =>
-          if acc.contains("dump-state-full") then bad("duplicate flag --dump-state-full")
+          if acc.contains("dump-state-full") then
+            bad(ConfigProblem.DuplicateFlag("--dump-state-full"))
           else go(tail, acc.updated("dump-state-full", List("true")))
         case flag :: value :: tail if RepeatedFlags(flag.drop(2)) && flag.startsWith("--") =>
           val name = flag.drop(2)
           go(tail, acc.updated(name, acc.getOrElse(name, Nil) :+ value))
         case flag :: value :: tail if flag.startsWith("--") =>
           val name = flag.drop(2)
-          if !ValueFlags.contains(name) then bad(s"unknown flag $flag")
-          else if acc.contains(name) then bad(s"duplicate flag $flag")
+          if !ValueFlags.contains(name) then bad(ConfigProblem.UnknownFlag(flag))
+          else if acc.contains(name) then bad(ConfigProblem.DuplicateFlag(flag))
           else go(tail, acc.updated(name, List(value)))
-        case flag :: Nil if flag.startsWith("--") => bad(s"flag $flag needs a value")
-        case other :: _                           => bad(s"unexpected argument $other")
+        case flag :: Nil if flag.startsWith("--") => bad(ConfigProblem.MissingFlagValue(flag))
+        case other :: _                           => bad(ConfigProblem.UnexpectedArgument(other))
     args match
       case "follow" :: rest =>
         for
           multi <- go(rest, Map.empty)
           flags = multi.view.mapValues(_.last).toMap
+          invalid = (flag: String) =>
+            ConfigError(
+              ConfigProblem.WithUsage(
+                ConfigProblem.FlagValue(flag, flags.getOrElse(flag, "")),
+                Usage
+              )
+            )
           dir = flags.get("genesis-dir").map(Path.of(_))
           config = flags.get("config").map(Path.of(_))
           topology = flags.get("topology").map(Path.of(_))
-          _ <- Either.cond(dir.isDefined || config.isDefined, (), usage)
+          _ <- Either.cond(
+            dir.isDefined || config.isDefined,
+            (),
+            ConfigError(ConfigProblem.RequiredOneOf(Set("--genesis-dir", "--config")))
+          )
           peerTexts = multi.getOrElse("peer", Nil)
-          _ <- Either.cond(peerTexts.nonEmpty || topology.isDefined, (), usage)
-          peers <- peerTexts.traverse(t => Peer.parseAddress(t).leftMap(ConfigError(_)))
-          seconds <- flags.get("seconds").traverse(_.toLongOption.toRight(usage))
-          port <- flags.get("query-port").fold(Right(7071))(_.toIntOption.toRight(usage))
+          _ <- Either.cond(
+            peerTexts.nonEmpty || topology.isDefined,
+            (),
+            ConfigError(ConfigProblem.RequiredOneOf(Set("--peer", "--topology")))
+          )
+          peers <- peerTexts.traverse(t =>
+            Peer.parseAddress(t).leftMap(e => ConfigError(ConfigProblem.PeerAddress(e)))
+          )
+          seconds <- flags.get("seconds").traverse(_.toLongOption.toRight(invalid("seconds")))
+          port <- flags
+            .get("query-port")
+            .fold(Right(7071))(_.toIntOption.toRight(invalid("query-port")))
           metricsListen <- flags
             .get("metrics-listen")
-            .traverse(t => Peer.parseAddress(t).leftMap(ConfigError(_)))
+            .traverse(t =>
+              Peer.parseAddress(t).leftMap(e => ConfigError(ConfigProblem.PeerAddress(e)))
+            )
           interval <- flags
             .get("snapshot-every")
-            .traverse(t => SnapshotInterval.parse(t).toRight(usage))
+            .traverse(t => SnapshotInterval.parse(t).toRight(invalid("snapshot-every")))
           keep <- flags
             .get("keep-snapshots")
-            .fold(Right(SnapshotPolicy.ReferenceKeep))(_.toIntOption.filter(_ > 0).toRight(usage))
+            .fold(Right(SnapshotPolicy.ReferenceKeep))(
+              _.toIntOption.filter(_ > 0).toRight(invalid("keep-snapshots"))
+            )
           check <- flags
             .get("snapshot-check")
-            .fold(Right(SnapshotCheck.Structure))(t => SnapshotCheck.parse(t).toRight(usage))
-          listen <- flags.get("listen").traverse(t => Peer.parseAddress(t).leftMap(ConfigError(_)))
+            .fold(Right(SnapshotCheck.Structure))(t =>
+              SnapshotCheck.parse(t).toRight(invalid("snapshot-check"))
+            )
+          listen <- flags
+            .get("listen")
+            .traverse(t =>
+              Peer.parseAddress(t).leftMap(e => ConfigError(ConfigProblem.PeerAddress(e)))
+            )
           localSocket = flags.get("local-socket").map(Path.of(_))
           mempool <- flags
             .get("mempool-bytes")
-            .traverse(_.toLongOption.filter(_ > 0).toRight(usage))
+            .traverse(_.toLongOption.filter(_ > 0).toRight(invalid("mempool-bytes")))
           forge <-
             if !flags.contains("forge") then Right(None)
             else
               (
-                flags.get("vrf-skey").toRight(usage),
-                flags.get("kes-skey").toRight(usage),
-                flags.get("opcert").toRight(usage)
+                flags.get("vrf-skey").toRight(invalid("vrf-skey")),
+                flags.get("kes-skey").toRight(invalid("kes-skey")),
+                flags.get("opcert").toRight(invalid("opcert"))
               ).mapN((v, k, o) => Some(ForgeFiles(Path.of(v), Path.of(k), Path.of(o))))
           utxoKind <- flags
             .get("utxo-store")
-            .traverse(k => Either.cond(Set("memory", "rocksdb")(k), k, usage))
+            .traverse(k => Either.cond(Set("memory", "rocksdb")(k), k, invalid("utxo-store")))
           cacheMb <- flags
             .get("utxo-cache-mb")
-            .fold(Right(256))(_.toIntOption.filter(_ > 0).toRight(usage))
+            .fold(Right(256))(_.toIntOption.filter(_ > 0).toRight(invalid("utxo-cache-mb")))
           memoryReport <- flags
             .get("memory-report-seconds")
-            .fold(Right(0))(_.toIntOption.filter(_ >= 0).toRight(usage))
+            .fold(Right(0))(_.toIntOption.filter(_ >= 0).toRight(invalid("memory-report-seconds")))
           stallMinutes <- flags
             .get("stall-minutes")
-            .fold(Right(10))(_.toIntOption.filter(_ >= 0).toRight(usage))
+            .fold(Right(10))(_.toIntOption.filter(_ >= 0).toRight(invalid("stall-minutes")))
           stallExit <- flags
             .get("stall-exit-after")
             .traverse(v =>
               parseDuration(v)
                 .filter(d => stallMinutes > 0 && d > stallMinutes.minutes)
-                .toRight(usage)
+                .toRight(invalid("stall-exit-after"))
             )
           churnInterval <- flags
             .get("churn-interval")
-            .traverse(v => parseDuration(v).filter(_ > Duration.Zero).toRight(usage))
+            .traverse(v =>
+              parseDuration(v).filter(_ > Duration.Zero).toRight(invalid("churn-interval"))
+            )
           readAhead <- flags
             .get("read-ahead")
-            .fold(Right(128))(_.toIntOption.filter(_ > 0).toRight(usage))
+            .fold(Right(128))(_.toIntOption.filter(_ > 0).toRight(invalid("read-ahead")))
           headerFirst <- flags
             .get("header-first")
-            .fold(Right(true))(v => Map("on" -> true, "off" -> false).get(v).toRight(usage))
+            .fold(Right(true))(v =>
+              Map("on" -> true, "off" -> false).get(v).toRight(invalid("header-first"))
+            )
           maxInbound <- flags
             .get("max-inbound")
-            .fold(Right(64))(_.toIntOption.filter(_ > 0).toRight(usage))
+            .fold(Right(64))(_.toIntOption.filter(_ > 0).toRight(invalid("max-inbound")))
           inboundSync <- flags
             .get("inbound-sync")
-            .fold(Right(true))(v => Map("on" -> true, "off" -> false).get(v).toRight(usage))
+            .fold(Right(true))(v =>
+              Map("on" -> true, "off" -> false).get(v).toRight(invalid("inbound-sync"))
+            )
           cpuThreads <- flags
             .get("cpu-threads")
             .fold(Right(math.max(1, Runtime.getRuntime.availableProcessors())))(
-              _.toIntOption.filter(_ >= 0).toRight(usage)
+              _.toIntOption.filter(_ >= 0).toRight(invalid("cpu-threads"))
             )
           dump <- flags.get("dump-state").traverse { d =>
             flags
               .get("dump-state-at")
               .fold(Right(StateDump.Targets.EpochBoundaries(1)))(t =>
-                StateDump.Targets.parse(t).toRight(usage)
+                StateDump.Targets.parse(t).toRight(invalid("dump-state-at"))
               )
               .map(Path.of(d) -> _)
           }
-          _ <- Either.cond(dump.isDefined || !flags.contains("dump-state-at"), (), usage)
-          log <- LogSettings.parse(flags, multi).leftMap(e => ConfigError(s"${e.message}\n$Usage"))
+          _ <- Either.cond(
+            dump.isDefined || !flags.contains("dump-state-at"),
+            (),
+            invalid("dump-state-at")
+          )
+          log <- LogSettings
+            .parse(flags, multi)
+            .leftMap(e => ConfigError(ConfigProblem.WithUsage(e.problem, Usage)))
         yield Options(
           dir,
           peers,

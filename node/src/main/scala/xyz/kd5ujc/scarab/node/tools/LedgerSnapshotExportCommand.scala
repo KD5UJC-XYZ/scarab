@@ -6,7 +6,7 @@ import cats.mtl.Handle
 import cats.syntax.all.*
 import fs2.io.file.Path
 import io.circe.Json
-import xyz.kd5ujc.scarab.ledger.ConfigError
+import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
 import xyz.kd5ujc.scarab.ledger.state.SlotNo
 import xyz.kd5ujc.scarab.storage.LedgerSnapshotExport
 
@@ -15,7 +15,9 @@ object LedgerSnapshotExportCommand:
   private val Flags = Set("--db", "--out", "--slot")
 
   def parse(args: List[String]): Either[ConfigError, LedgerSnapshotExport.Config] =
-    def bad[A](detail: String): Either[ConfigError, A] = Left(ConfigError(s"$detail\n$Usage"))
+    def bad[A](problem: ConfigProblem): Either[ConfigError, A] = Left(
+      ConfigError(ConfigProblem.WithUsage(problem, Usage))
+    )
     @annotation.tailrec
     def loop(
         rest: List[String],
@@ -25,29 +27,34 @@ object LedgerSnapshotExportCommand:
       case flag :: value :: tail
           if Flags.contains(flag) && !values.contains(flag) && !value.startsWith("--") =>
         loop(tail, values.updated(flag, value))
-      case flag :: _ => bad(s"unknown, duplicate or incomplete argument $flag")
+      case flag :: _ if values.contains(flag) => bad(ConfigProblem.DuplicateFlag(flag))
+      case flag :: _ if Flags.contains(flag)  => bad(ConfigProblem.MissingFlagValue(flag))
+      case flag :: _                          => bad(ConfigProblem.UnknownFlag(flag))
     def path(text: String): Either[ConfigError, Path] =
       Either
         .catchNonFatal(java.nio.file.Path.of(text))
-        .leftMap(_ => ConfigError("invalid filesystem path"))
+        .leftMap(e => ConfigError(ConfigProblem.InvalidPath(text, e)))
         .map(Path.fromNioPath)
     for
       values <- loop(args, Map.empty)
-      db <- values.get("--db").toRight(ConfigError("--db is required")).flatMap(path)
-      out <- values.get("--out").toRight(ConfigError("--out is required")).flatMap(path)
+      db <- values.get("--db").toRight(ConfigError(ConfigProblem.MissingFlag("--db"))).flatMap(path)
+      out <- values
+        .get("--out")
+        .toRight(ConfigError(ConfigProblem.MissingFlag("--out")))
+        .flatMap(path)
       slot <- values.get("--slot").traverse { text =>
         for
           _ <- Either.cond(
             text.nonEmpty && text.forall(c => c >= '0' && c <= '9'),
             (),
-            ConfigError("--slot requires an unsigned 64-bit slot number")
+            ConfigError(ConfigProblem.FlagValue("--slot", text))
           )
           number <- Either
             .catchNonFatal(BigInt(text))
-            .leftMap(_ => ConfigError("--slot requires an unsigned 64-bit slot number"))
+            .leftMap(_ => ConfigError(ConfigProblem.FlagValue("--slot", text)))
           slot <- SlotNo
             .fromBigInt(number)
-            .leftMap(_ => ConfigError("--slot requires an unsigned 64-bit slot number"))
+            .leftMap(_ => ConfigError(ConfigProblem.FlagValue("--slot", text)))
         yield slot
       }
     yield LedgerSnapshotExport.Config(db, out, slot)

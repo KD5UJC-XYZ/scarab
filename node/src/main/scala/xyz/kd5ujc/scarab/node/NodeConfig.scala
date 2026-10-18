@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.ledger.ConfigError
+import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
 import cats.syntax.all.*
 import io.circe.{Decoder, HCursor, Json, parser}
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -71,7 +71,7 @@ final case class PeerTargetOverrides(
         establishedBig.getOrElse(defaults.establishedBig),
         activeBig.getOrElse(defaults.activeBig)
       )
-      .leftMap(p => ConfigError(s"the peer selection targets are not sane: ${p.message}"))
+      .leftMap(p => ConfigError(ConfigProblem.PeerTargets(p)))
 
 /** The remaining configuration keys the node reads or records. What it does not act on is kept so
   * the log can say what was configured; `unsupported` lists the settings that ask for something the
@@ -159,17 +159,19 @@ object NodeConfig:
       c.downField(name)
         .focus
         .filterNot(_.isNull)
-        .traverse(_.as[A].leftMap(e => ConfigError(s"$name: ${e.message}")))
+        .traverse(
+          _.as[A].leftMap(e => ConfigError(ConfigProblem.JsonField("configuration", name, e)))
+        )
 
     def hash(name: String): Either[ConfigError, Option[Bytes]] =
       opt[String](name).flatMap(
         _.traverse(h =>
           Bytes
             .fromHex(h)
-            .leftMap(e => ConfigError(s"$name: $e"))
+            .leftMap(e => ConfigError(ConfigProblem.Hex(e)))
             .filterOrElse(
               _.size == 32,
-              ConfigError(s"$name: $h is not 32 bytes (64 hexadecimal digits)")
+              ConfigError(ConfigProblem.ByteLength(name, 32, h.length / 2))
             )
         )
       )
@@ -183,7 +185,7 @@ object NodeConfig:
       Either.cond(
         allowed(v),
         v,
-        ConfigError(s"$name $v: expected ${allowed.toList.sorted.mkString(" or ")}")
+        ConfigError(ConfigProblem.Selection(name, v, allowed))
       )
     )
 
@@ -192,7 +194,9 @@ object NodeConfig:
   private def fileName(k: Keys, role: String): Either[ConfigError, Option[String]] =
     (k.opt[String](s"${role}GenesisFile"), k.opt[String]("GenesisFile")).tupled.flatMap {
       case (Some(_), Some(_)) =>
-        Left(ConfigError(s"specify either ${role}GenesisFile or GenesisFile, but not both"))
+        Left(
+          ConfigError(ConfigProblem.ConflictingFields(Set(s"${role}GenesisFile", "GenesisFile")))
+        )
       case (a, b) => Right(a.orElse(b))
     }
 
@@ -206,7 +210,7 @@ object NodeConfig:
       Either.cond(
         previous.forall(value.contains),
         value,
-        ConfigError(s"$old has been renamed to $name in the configuration file")
+        ConfigError(ConfigProblem.RenamedField(old, name))
       )
     }
 
@@ -219,9 +223,7 @@ object NodeConfig:
           case None if j.asString.contains("NoOverride") => Right(None)
           case None =>
             Left(
-              ConfigError(
-                s"MempoolCapacityBytesOverride: expected a byte count or NoOverride, got ${j.noSpaces}"
-              )
+              ConfigError(ConfigProblem.MempoolCapacity(j))
             )
     }
 
@@ -236,8 +238,12 @@ object NodeConfig:
     for
       json <- parser
         .parse(text)
-        .leftMap(e => ConfigError(s"configuration is not JSON: ${e.message}"))
-      _ <- Either.cond(json.isObject, (), ConfigError("configuration is not a JSON object"))
+        .leftMap(e => ConfigError(ConfigProblem.JsonSyntax("configuration", e)))
+      _ <- Either.cond(
+        json.isObject,
+        (),
+        ConfigError(ConfigProblem.ExpectedObject("configuration", json))
+      )
       k = Keys(json.hcursor)
       byronHash <- k.hash("ByronGenesisHash")
       forks <- Eras.traverse(era =>
@@ -270,7 +276,7 @@ object NodeConfig:
       _ <- Either.cond(
         protocol.forall(_ == "Cardano"),
         (),
-        ConfigError(s"Protocol ${protocol.getOrElse("")}: only Cardano is supported")
+        ConfigError(ConfigProblem.Selection("Protocol", protocol.getOrElse(""), Set("Cardano")))
       )
       major <- k.opt[Int]("LastKnownBlockVersion-Major")
       minor <- k.opt[Int]("LastKnownBlockVersion-Minor")
@@ -305,11 +311,19 @@ object NodeConfig:
         .opt[Int]("MaxConcurrencyDeadline")
         .flatMap(n =>
           n.traverse(c =>
-            Either.cond(c >= 1, c, ConfigError(s"MaxConcurrencyDeadline: $c is not positive"))
+            Either.cond(
+              c >= 1,
+              c,
+              ConfigError(ConfigProblem.NonPositive("MaxConcurrencyDeadline", BigDecimal(c)))
+            )
           )
         )
       required = (name: String, present: Boolean) =>
-        Either.cond(present || !strict, (), ConfigError(s"missing required field $name"))
+        Either.cond(
+          present || !strict,
+          (),
+          ConfigError(ConfigProblem.MissingField("configuration", name))
+        )
       _ <- required("ByronGenesisFile (or GenesisFile)", byronFile.isDefined)
       _ <- required("ShelleyGenesisFile (or GenesisFile)", shelleyFile.isDefined)
       _ <- required("AlonzoGenesisFile", alonzoFile.isDefined)

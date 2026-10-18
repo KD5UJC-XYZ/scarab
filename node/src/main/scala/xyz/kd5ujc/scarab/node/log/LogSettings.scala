@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node.log
 
 import java.nio.file.Path
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.ledger.ConfigError
+import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
 
 /** Where the log goes. */
 enum Sink:
@@ -132,7 +132,7 @@ object LogSettings:
       text: String,
       value: String => Option[A]
   ): Either[ConfigError, List[((Sink, Scope), A)]] =
-    def bad(why: String) = ConfigError(s"--$flag $text: $why")
+    def bad(problem: ConfigProblem) = ConfigError(problem)
     val (target, rest) = text.span(_ != '=')
     val (sinkText, namespace) =
       if target.contains(':') then
@@ -140,9 +140,9 @@ object LogSettings:
         (Some(s), n.drop(1))
       else (None, target)
     for
-      sinks <- sinkText.traverse(s => sinkOf(s).toRight(bad(s"no sink $s (stdout, stderr, file)")))
-      scope <- Scope.parse(namespace).toRight(bad(s"no namespace $namespace"))
-      a <- value(rest.drop(1)).toRight(bad(s"cannot use ${rest.drop(1)}"))
+      sinks <- sinkText.traverse(s => sinkOf(s).toRight(bad(ConfigProblem.LogSink(s))))
+      scope <- Scope.parse(namespace).toRight(bad(ConfigProblem.LogNamespace(namespace)))
+      a <- value(rest.drop(1)).toRight(bad(ConfigProblem.FlagValue(flag, rest.drop(1))))
     yield sinks.fold(Sink.values.toList)(List(_)).map(s => (s -> scope) -> a)
 
   /** The settings the log flags give, from the flags of the command line (`one`: the last value of
@@ -153,7 +153,7 @@ object LogSettings:
       many: Map[String, List[String]]
   ): Either[ConfigError, LogSettings] =
     def value[A](flag: String, read: String => Option[A]): Either[ConfigError, Option[A]] =
-      one.get(flag).traverse(t => read(t).toRight(ConfigError(s"--$flag: cannot use $t")))
+      one.get(flag).traverse(t => read(t).toRight(ConfigError(ConfigProblem.FlagValue(flag, t))))
     for
       stdout <- value("log-stdout", switch)
       stderr <- value("log-stderr", switch)
@@ -164,7 +164,12 @@ object LogSettings:
       _ <- Either.cond(
         path.isDefined || !(format.isDefined || size.isDefined || keep.isDefined),
         (),
-        ConfigError("--log-file-format, --log-file-size and --log-file-keep need --log-file")
+        ConfigError(
+          ConfigProblem.FlagDependency(
+            Set("log-file-format", "log-file-size", "log-file-keep"),
+            "log-file"
+          )
+        )
       )
       severity <- many
         .getOrElse("log-severity", Nil)

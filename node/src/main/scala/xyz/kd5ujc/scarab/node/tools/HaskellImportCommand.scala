@@ -8,7 +8,7 @@ import cats.syntax.all.*
 import fs2.io.file.Path as FsPath
 import io.circe.Json
 import java.nio.file.Path
-import xyz.kd5ujc.scarab.ledger.ConfigError
+import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
 import xyz.kd5ujc.scarab.node.NodeSetup
 
 /** `import-haskell-db --haskell-db <dir> (--genesis-dir <dir> | --config <config.json>) --db <dir>
@@ -35,31 +35,46 @@ object HaskellImportCommand:
   private val Flags = Set("haskell-db", "genesis-dir", "config", "db", "stop-slot")
 
   def parse(args: List[String]): Either[ConfigError, Options] =
-    def bad[A](reason: String): Either[ConfigError, A] = Left(ConfigError(s"$reason\n$Usage"))
+    def bad[A](problem: ConfigProblem): Either[ConfigError, A] = Left(
+      ConfigError(ConfigProblem.WithUsage(problem, Usage))
+    )
     @annotation.tailrec
     def go(rest: List[String], acc: Map[String, String]): Either[ConfigError, Map[String, String]] =
       rest match
         case Nil => Right(acc)
         case flag :: value :: tail if flag.startsWith("--") =>
           val name = flag.drop(2)
-          if !Flags.contains(name) then bad(s"unknown flag $flag")
-          else if acc.contains(name) then bad(s"duplicate flag $flag")
+          if !Flags.contains(name) then bad(ConfigProblem.UnknownFlag(flag))
+          else if acc.contains(name) then bad(ConfigProblem.DuplicateFlag(flag))
           else go(tail, acc.updated(name, value))
-        case flag :: Nil if flag.startsWith("--") => bad(s"flag $flag needs a value")
-        case other :: _                           => bad(s"unexpected argument $other")
+        case flag :: Nil if flag.startsWith("--") => bad(ConfigProblem.MissingFlagValue(flag))
+        case other :: _                           => bad(ConfigProblem.UnexpectedArgument(other))
     for
       flags <- go(args, Map.empty)
-      haskell <- flags.get("haskell-db").toRight(ConfigError(s"--haskell-db is required\n$Usage"))
-      db <- flags.get("db").toRight(ConfigError(s"--db is required\n$Usage"))
+      haskell <- flags
+        .get("haskell-db")
+        .toRight(
+          ConfigError(ConfigProblem.WithUsage(ConfigProblem.MissingFlag("--haskell-db"), Usage))
+        )
+      db <- flags
+        .get("db")
+        .toRight(ConfigError(ConfigProblem.WithUsage(ConfigProblem.MissingFlag("--db"), Usage)))
       _ <- Either.cond(
         flags.contains("genesis-dir") || flags.contains("config"),
         (),
-        ConfigError(s"--genesis-dir or --config is required\n$Usage")
+        ConfigError(
+          ConfigProblem.WithUsage(
+            ConfigProblem.RequiredOneOf(Set("--genesis-dir", "--config")),
+            Usage
+          )
+        )
       )
       stop <- flags.get("stop-slot").traverse { t =>
         t.toLongOption
           .filter(_ >= 0)
-          .toRight(ConfigError(s"--stop-slot needs a slot number\n$Usage"))
+          .toRight(
+            ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue("--stop-slot", t), Usage))
+          )
       }
     yield Options(
       Path.of(haskell),
@@ -117,13 +132,15 @@ object HaskellImportCommand:
       setup <- options.config match
         case Some(file) => NodeSetup.fromConfigFile(file, options.genesisDir)
         case None =>
-          options.genesisDir.toRight(ConfigError("no genesis")).flatMap(NodeSetup.fromDirectory)
+          options.genesisDir
+            .toRight(ConfigError(ConfigProblem.MissingGenesis))
+            .flatMap(NodeSetup.fromDirectory)
       chunkSlots <- ChunkSlots
         .fromSecurityParam(
           // 10 * k of the first era: the Byron genesis when the chain starts in Byron.
           setup.byron.fold(setup.genesis.geometry.securityParam.toLong)(_.securityParam.toLong)
         )
-        .toRight(ConfigError("the genesis security parameter gives no chunk size"))
+        .toRight(ConfigError(ConfigProblem.MissingChunkSize))
     yield (setup, chunkSlots)
 
   private def progress(p: HaskellImport.Progress): IO[Unit] =
