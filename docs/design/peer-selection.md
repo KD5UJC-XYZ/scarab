@@ -1360,7 +1360,8 @@ and the roots; `ChurnLoopSuite` the twelve steps with `bigLedger`; `PeerSnapshot
   ledger peers for the trusted state: G1.5 ([#139](https://github.com/KD5UJC-XYZ/scarab/issues/139)).
 - A reload of the snapshot file on SIGHUP (`Monitor.ledgerPeerSnapshotChange`) with the topology reload: G1.6 ([#142](https://github.com/KD5UJC-XYZ/scarab/issues/142)).
 - The rename of `LedgerPeerStake` to `LedgerPeers`: not needed once the enum is gone, and the churn in the diff buys nothing.
-- No churn round ran in the live Preview run (the first round comes after 3300 s plus the fuzz); the twelve steps are shown on `TestControl` only.
+- DNS answer selection/re-resolution and the big-ledger fallback to configured public roots remain G1.6 ([#142](https://github.com/KD5UJC-XYZ/scarab/issues/142)); current differences are listed above. Registered non-public addresses are dialled as the reference does; an optional operator filtering policy belongs to the same follow-up, without changing ledger decoding.
+- One live Preview churn round exercised all twelve steps (section 7e); steps 11 and 12 timed out below their targets. More rounds and transitions back into the sensitive state remain nightly/long-run coverage.
 
 ## 7e. G1.3b acceptance run
 
