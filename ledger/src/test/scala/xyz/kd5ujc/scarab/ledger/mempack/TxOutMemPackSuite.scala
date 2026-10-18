@@ -543,7 +543,8 @@ class TxOutMemPackSuite extends ScalaCheckSuite:
     property(s"$name: the tag is the one mkTxOut chooses") {
       forAll(gen) { p =>
         val ada = p.value.assets.isEmpty
-        val base = p.address.size == 57
+        // A Byron CBOR address can also have 57 bytes. Shelley base address kinds are 0–3.
+        val base = p.address.size == 57 && ((p.address(0) & 0xff) >>> 4) <= 3
         val expected =
           if p.script.nonEmpty then 5
           else
@@ -554,6 +555,22 @@ class TxOutMemPackSuite extends ScalaCheckSuite:
         tagOf[E](p) == expected
       }
     }
+
+  test("a 57-byte Byron address keeps the general constructor, with or without a datum hash") {
+    val address = hex(
+      "82016f782e4b02d98d8b3f21ff3d6c5ce8e0f384d72499579032648873b89d51cf13d87527e1020681a808d1c611a6262cb39579527bbc6888"
+    )
+    val hash = hex("dc7c045673cee08286b141cc723ba7e30c38d47aab966a8f57b666cbb6484390")
+    assertEquals(address.size, 57)
+    val hashed = TxOutParts(address, Value.coin(BigInt(90416459)), Datum.Hash(hash), None)
+    val bare = hashed.copy(datum = Datum.NoDatum)
+    assertEquals(tagOf[Alonzo](hashed), 1)
+    assertEquals(tagOf[Babbage](hashed), 1)
+    assertEquals(tagOf[Conway](hashed), 1)
+    assertEquals(tagOf[Alonzo](bare), 0)
+    assertEquals(tagOf[Babbage](bare), 0)
+    assertEquals(tagOf[Conway](bare), 0)
+  }
 
   era[Shelley](
     "Shelley",
