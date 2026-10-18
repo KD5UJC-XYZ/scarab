@@ -6,7 +6,8 @@
   both new JNI entry points. Other platforms retain explicit unavailable evaluation.
 - Keep implementation unavailability separate from a script failure and from consensus predicate
   failures, for either transaction validity flag. Prepare every context before evaluating scripts,
-  with a pure cats-mtl state cache.
+  with a pure cats-mtl state cache. Decoder/VM backend unavailability remains retryable and is never
+  retained as a cached input verdict.
 
 ### Added (executed Plutus oracle evidence, #175)
 - Retain477 real-crypto Haskell API verdicts over53 original-byte probes at protocols9/10/11 in

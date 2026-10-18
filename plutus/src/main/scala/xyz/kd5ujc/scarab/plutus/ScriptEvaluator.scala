@@ -97,6 +97,11 @@ enum ScriptDecodeFailure:
     case Malformed(diagnostic)   => diagnostic
     case Unavailable(diagnostic) => diagnostic
 
+object ScriptDecodeFailure:
+  private[plutus] def cacheable[A](result: Either[ScriptDecodeFailure, A]): Boolean = result match
+    case Left(_: ScriptDecodeFailure.Unavailable) => false
+    case _                                        => true
+
 object ScriptDecoder:
   /** Accepts every script; for tests whose scripts are placeholders. */
   def lenient[F[_]](using F: cats.Applicative[F]): ScriptDecoder[F] =

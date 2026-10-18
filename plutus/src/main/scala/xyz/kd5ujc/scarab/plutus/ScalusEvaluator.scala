@@ -4,7 +4,6 @@ package xyz.kd5ujc.scarab.plutus
 import cats.Id
 import cats.effect.kernel.Sync
 import java.util.concurrent.{
-  ConcurrentHashMap,
   ExecutionException,
   SynchronousQueue,
   ThreadFactory,
@@ -112,9 +111,9 @@ object ScalusEvaluator:
   private final class Interpreter extends ScriptEvaluator[Id] with ScriptDecoder[Id]:
     // Deliberate instance-scoped caches (one Interpreter per evaluator value, not hidden in an object;
     // `default` shares one): `evaluate` is a pure function of its request, and the caches only memoise
-    // PlutusVM construction and program decoding. ConcurrentHashMap.computeIfAbsent is atomic and
-    // BoundedCache is synchronized, so concurrent evaluations are safe and results are unaffected.
-    private val vms = ConcurrentHashMap[VmKey, Either[EvalFailure.Unsupported, PlutusVM]]()
+    // PlutusVM construction and program decoding. RetryingMemo shares construction atomically and
+    // BoundedCache is synchronized. Unavailable attempts are never retained as input verdicts.
+    private val vms = RetryingMemo[VmKey, EvalFailure.Unsupported, PlutusVM]()
     private val programs = BoundedCache[Bytes, Either[ScriptDecodeFailure, Decoded]](512)
 
     def evaluate(request: EvalRequest): EvalResult =
@@ -179,7 +178,7 @@ object ScalusEvaluator:
 
     private def vm(request: EvalRequest): Either[EvalFailure.Unsupported, PlutusVM] =
       val key = VmKey(request.language, request.protocolMajor, request.costModel)
-      vms.computeIfAbsent(key, _ => buildVm(key))
+      vms.getOrElseUpdate(key)(buildVm(key))
 
     private def buildVm(key: VmKey): Either[EvalFailure.Unsupported, PlutusVM] =
       try
@@ -263,7 +262,7 @@ object ScalusEvaluator:
           case _: StackOverflowError =>
             Left(ScriptDecodeFailure.Unavailable("decoder stack exhausted"))
           case NonFatal(error) => Left(ScriptDecodeFailure.Unavailable(diagnostic(error)))
-      )
+      )(ScriptDecodeFailure.cacheable)
 
     /** The builtins a term mentions (iterative: terms can be deeply nested). */
     private def builtinsOf(term: Term): Set[DefaultFun] =
@@ -523,14 +522,15 @@ object ScalusEvaluator:
     }
 
   /** A small synchronised LRU map. */
-  private final class BoundedCache[K, V](limit: Int):
+  private[plutus] final class BoundedCache[K, V](limit: Int):
     private val map = new java.util.LinkedHashMap[K, V](16, 0.75f, true):
       override def removeEldestEntry(e: java.util.Map.Entry[K, V]): Boolean = size() > limit
     def get(key: K): Option[V] = map.synchronized(Option(map.get(key)))
-    def getOrElseUpdate(key: K, compute: => V): V =
+    def getOrElseUpdate(key: K, compute: => V)(cacheable: V => Boolean): V =
       val hit = map.synchronized(Option(map.get(key)))
       hit.getOrElse {
         val value = compute
-        map.synchronized(map.put(key, value))
+        if cacheable(value) then
+          val _ = map.synchronized(map.put(key, value))
         value
       }

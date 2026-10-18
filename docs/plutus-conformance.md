@@ -116,7 +116,11 @@ reference known answers. The suite now passes996/1009 cases, with13 documented h
 
 An implementation limit is `Phase2.Outcome.Unavailable` and `LedgerFailure.Unavailable`, regardless
 of the transaction validity flag. It supplies no script verdict and no consensus predicate failure.
-The node's supervision boundary handles it as unavailable validation. This remains distinct from
+Unavailable decoder attempts are not retained by the bounded program cache. VM memoisation
+shares one lazy construction per key, retaining successful values; a failed attempt removes only
+its own cache entry atomically, so recovery remains retryable and cannot evict a newer success.
+Known malformed input remains memoised. The node's supervision boundary handles unavailability as
+unavailable validation. This remains distinct from
 reference-proven setup, scope, budget and runtime script failures.
 
 Whole-transaction context findings REF-01/02/03 have their own recorded reference transactions and
