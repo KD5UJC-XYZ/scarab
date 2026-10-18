@@ -294,7 +294,8 @@ class FollowerSuite extends CatsEffectSuite:
       // on every reconnect, until the retries are used up
       assert(
         outcome.left.exists {
-          case PeerError.Protocol(r) => r.contains("does not extend"); case _ => false
+          case PeerError.Protocol(_: PeerError.ProtocolProblem.HeaderDoesNotExtend) => true;
+          case _                                                                    => false
         },
         outcome.toString
       )
@@ -317,7 +318,9 @@ class FollowerSuite extends CatsEffectSuite:
 
   test("reconnects after a peer failure and resumes from the local tip") {
     val main = Fixtures.chain(6)
-    val first = main.take(4).map(forward).toList :+ Left(PeerError.Unavailable("reset"))
+    val first = main.take(4).map(forward).toList :+ Left(
+      PeerError.Unavailable(PeerError.Unavailability.SessionEnded)
+    )
     val second = main.drop(4).map(forward).toList
     run(List(first, second)).map { case (outcome, chain, offers) =>
       assertEquals(outcome, Right(()))
@@ -328,9 +331,9 @@ class FollowerSuite extends CatsEffectSuite:
   }
 
   test("gives up after the configured number of consecutive peer failures") {
-    val fail = List(Left(PeerError.Unavailable("down")))
+    val fail = List(Left(PeerError.Unavailable(PeerError.Unavailability.SessionEnded)))
     run(List.fill(4)(fail)).map { case (outcome, chain, _) =>
-      assertEquals(outcome, Left(PeerError.Unavailable("down")))
+      assertEquals(outcome, Left(PeerError.Unavailable(PeerError.Unavailability.SessionEnded)))
       assertEquals(chain.tip, ChainSync.Point.Origin)
     }
   }

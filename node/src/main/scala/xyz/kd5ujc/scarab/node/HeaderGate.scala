@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.consensus.{BlockRef, Compute, VolatileChain}
-import xyz.kd5ujc.scarab.ledger.{Header, PeerError, Points}
+import xyz.kd5ujc.scarab.ledger.{Header, PeerError}
 import cats.Applicative
 import cats.effect.{Async, Ref}
 import cats.mtl.{Raise, Stateful}
@@ -160,14 +160,18 @@ object HeaderCheck:
               case Outcome.Unchecked(_, next) =>
                 record(header, next) *> tally.update(c => c.copy(unchecked = c.unchecked + 1))
               case Outcome.Invalid(error) => invalid(header, error)
-              case Outcome.Later(_)       => protocol(PeerError.ProtocolProblem.HeaderValidationDidNotSettle)
+              case Outcome.Later(_) =>
+                protocol(PeerError.ProtocolProblem.HeaderValidationDidNotSettle)
           }
 
         private def record(header: Header, next: Option[H])(using Raise[F, PeerError]): F[Unit] =
           state.get.flatMap(hc =>
             hc.extend(header, next)
               .fold(
-                _ => protocol[Unit](PeerError.ProtocolProblem.HeaderDoesNotExtend(header.point, hc.tipPoint)),
+                _ =>
+                  protocol[Unit](
+                    PeerError.ProtocolProblem.HeaderDoesNotExtend(header.point, hc.tipPoint)
+                  ),
                 g =>
                   val kept = g.pruned(retained)
                   val dropped = g.entries.size - kept.entries.size
@@ -225,7 +229,8 @@ object HeaderCheck:
                     // no ledger state of ours lies on the peer's chain: the follower deals with it
                     F.pure(
                       (
-                        Outcome.Unchecked(HeaderRules.UncheckedReason.NoCommonLedger, None): Outcome[H]
+                        Outcome
+                          .Unchecked(HeaderRules.UncheckedReason.NoCommonLedger, None): Outcome[H]
                       ) -> waited
                     )
           yield result

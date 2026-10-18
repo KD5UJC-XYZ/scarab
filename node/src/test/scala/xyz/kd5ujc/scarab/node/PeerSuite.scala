@@ -81,12 +81,18 @@ class PeerSuite extends ScalaCheckSuite:
       case Fault.Failed(failure) => FailurePolicy.classify(failure)
       case Fault.Defect(cause)   => fail(s"unexpected defect $cause")
     // a lost or slow connection is tried again
-    assertEquals(classified(NetworkError.Connect("peer", "refused")), FailureClass.Transient)
+    assertEquals(
+      classified(NetworkError.Connect("peer", new java.io.IOException("refused"))),
+      FailureClass.Transient
+    )
     assertEquals(classified(NetworkError.Timeout(2, "StNext")), FailureClass.Transient)
     List(NetworkError.SduOperation.Read, NetworkError.SduOperation.Write).foreach(operation =>
       assertEquals(classified(NetworkError.SduTimeout(operation)), FailureClass.Transient)
     )
-    assertEquals(classified(NetworkError.BearerClosed("closed by peer")), FailureClass.Transient)
+    assertEquals(
+      classified(NetworkError.BearerClosed(NetworkError.Closure.PeerClosed)),
+      FailureClass.Transient
+    )
     assertEquals(
       classified(NetworkError.VersionMismatch(Vector(14), Vector(13))),
       FailureClass.Transient
@@ -103,9 +109,22 @@ class PeerSuite extends ScalaCheckSuite:
       ),
       FailureClass.Misbehaved
     )
-    assertEquals(classified(NetworkError.Decode(3, "not a block")), FailureClass.Misbehaved)
     assertEquals(
-      classified(NetworkError.IllegalTransition(2, "pipelined request")),
+      classified(
+        NetworkError
+          .Decode(3, xyz.kd5ujc.scarab.protocol.ProtocolError.ExpectedSerializedBlockTag24)
+      ),
+      FailureClass.Misbehaved
+    )
+    assertEquals(
+      classified(
+        NetworkError.IllegalTransition(
+          2,
+          NetworkError.RuntimeViolation.PipelinedRequest(
+            xyz.kd5ujc.scarab.protocol.ChainSync.State.Idle
+          )
+        )
+      ),
       FailureClass.Misbehaved
     )
     assertEquals(
@@ -144,4 +163,20 @@ class PeerSuite extends ScalaCheckSuite:
       PeerError.Framing(truncated).message,
       "protocol: multiplexer framing: EOF in mux payload"
     )
+  }
+
+  test("network-to-peer classification retains the original typed cause") {
+    val malformed = xyz.kd5ujc.scarab.protocol.ProtocolError.ExpectedSerializedBlockTag24
+    val network = xyz.kd5ujc.scarab.network.NetworkError.Decode(3, malformed)
+    assertEquals(Peer.networkFault(network), Fault.Failed(PeerError.Protocol(network)))
+    val cause = new java.io.IOException("connection refused")
+    val connect = xyz.kd5ujc.scarab.network.NetworkError.Connect("peer", cause)
+    assertEquals(
+      Peer.networkFault(connect),
+      Fault.Failed(PeerError.Unavailable(PeerError.Unavailability.Network(connect)))
+    )
+  }
+
+  test("peer address validation retains the rejected input") {
+    assertEquals(Peer.parseAddress("invalid"), Left(Peer.AddressError.Invalid("invalid")))
   }

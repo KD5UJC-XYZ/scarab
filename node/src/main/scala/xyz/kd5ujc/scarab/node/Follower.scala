@@ -377,8 +377,10 @@ object Follower:
     case DetachedPredecessor(tip: ChainSync.Point, predecessor: Option[Bytes])
     case SelectionPrefersTip(tip: ChainSync.Point)
     def message: String = this match
-      case DetachedPredecessor(tip, _) => s"the tip moved to ${Points.show(tip)} and the block's predecessor is not on our chain"
-      case SelectionPrefersTip(tip) => s"the tip moved to ${Points.show(tip)}, which chain selection prefers to the block"
+      case DetachedPredecessor(tip, _) =>
+        s"the tip moved to ${Points.show(tip)} and the block's predecessor is not on our chain"
+      case SelectionPrefersTip(tip) =>
+        s"the tip moved to ${Points.show(tip)}, which chain selection prefers to the block"
 
   enum Adoption:
     case Adopted(block: BlockRef)

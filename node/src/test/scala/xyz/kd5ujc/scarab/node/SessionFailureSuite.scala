@@ -212,10 +212,16 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       broken <- session(script =
         List(
           Right(SyncEvent.RollForward(headers(0), tip)),
-          Left(PeerError.Protocol("a message the protocol does not allow"))
+          Left(
+            PeerError.Protocol(
+              xyz.kd5ujc.scarab.protocol.ProtocolError.UnknownTagOrWrongExactOuterArity
+            )
+          )
         )
       )
-      lost <- session(script = List(Left(PeerError.Unavailable("timed out"))))
+      lost <- session(script =
+        List(Left(PeerError.Unavailable(PeerError.Unavailability.SessionEnded)))
+      )
     yield
       assertEquals(FailurePolicy.disposition(broken.end), Disposition.Forget)
       assertEquals(FailurePolicy.disposition(lost.end), Disposition.Backoff)

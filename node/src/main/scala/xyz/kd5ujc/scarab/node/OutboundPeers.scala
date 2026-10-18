@@ -325,7 +325,9 @@ final class OutboundPeers[F[_]: Async, A] private (
           case Disposition.Forget | Disposition.Backoff => SessionEnd.peerError(end)
           case Disposition.StopNode(_)                  => None
           case Disposition.Settled =>
-            Option.when(end == SessionEnd.Returned)(PeerError.Unavailable(PeerError.Unavailability.SessionEnded))
+            Option.when(end == SessionEnd.Returned)(
+              PeerError.Unavailable(PeerError.Unavailability.SessionEnded)
+            )
         val stopNode = disposition match
           case Disposition.StopNode(fatal) => stop(link, fatal)
           case _                           => F.unit

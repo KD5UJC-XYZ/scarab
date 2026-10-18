@@ -577,11 +577,17 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       .allow[PeerError] {
         for
           // how a failed fiber of the connection reaches the session: as a value, not a Submarine
-          fiber <- Fault.fiber[IO, Unit](PeerError.Unavailable("lost").raise[IO, Unit]).start
+          fiber <- Fault
+            .fiber[IO, Unit](
+              PeerError.Unavailable(PeerError.Unavailability.SessionEnded).raise[IO, Unit]
+            )
+            .start
           failed <- fiber.joinWithNever
           _ <- Fault.land[IO, Unit](failed)
         yield Option.empty[PeerError]
       }
       .rescue(error => IO.pure(Some(error)))
-      .map(raised => assertEquals(raised, Some(PeerError.Unavailable("lost"))))
+      .map(raised =>
+        assertEquals(raised, Some(PeerError.Unavailable(PeerError.Unavailability.SessionEnded)))
+      )
   }

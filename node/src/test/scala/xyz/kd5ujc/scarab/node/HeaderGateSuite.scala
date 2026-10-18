@@ -35,9 +35,19 @@ class HeaderGateSuite extends CatsEffectSuite with ScalaCheckSuite:
         prev: Int,
         header: Header
     ): Outcome[Int] =
-      if bad(header.hash) then Outcome.Invalid(HeaderError.Structure("model"))
-      else if unchecked(header.hash) then Outcome.Unchecked("model: left to the block", None)
-      else if header.blockNo > anchor + horizon then Outcome.Later("beyond the horizon")
+      if bad(header.hash) then
+        Outcome.Invalid(
+          HeaderError.Structure(xyz.kd5ujc.scarab.ledger.HeaderStructureProblem.EpochPrecedes(0, 1))
+        )
+      else if unchecked(header.hash) then
+        Outcome.Unchecked(
+          xyz.kd5ujc.scarab.consensus.HeaderRules.UncheckedReason.ParentInBatch,
+          None
+        )
+      else if header.blockNo > anchor + horizon then
+        Outcome.Later(
+          xyz.kd5ujc.scarab.consensus.HeaderRules.ForecastReason.Horizon(header.slot, anchor)
+        )
       else Outcome.Valid(prev + 1)
 
   @unused private def ref(h: Header) = BlockRef(h.slot, h.hash, h.blockNo)
@@ -132,7 +142,14 @@ class HeaderGateSuite extends CatsEffectSuite with ScalaCheckSuite:
     }.map(result =>
       assertEquals(
         result,
-        Left(PeerError.InvalidHeader(main(5).point, HeaderError.Structure("model")))
+        Left(
+          PeerError.InvalidHeader(
+            main(5).point,
+            HeaderError.Structure(
+              xyz.kd5ujc.scarab.ledger.HeaderStructureProblem.EpochPrecedes(0, 1)
+            )
+          )
+        )
       )
     )
   }
