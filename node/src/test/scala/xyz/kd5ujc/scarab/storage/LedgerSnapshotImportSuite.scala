@@ -473,3 +473,19 @@ class LedgerSnapshotImportSuite extends CatsEffectSuite:
       }
     }
   }
+
+  test("metadata field errors survive import and leave the database unchanged") {
+    tempDir.use { root =>
+      for
+        input <- source(root, Era.Conway)
+        (ledger, db, _, _) = input
+        before <- IO(fingerprint(db))
+        _ <- IO.blocking(JFiles.writeString((ledger / "meta").toNioPath, "{}"))
+        result <- attempt(LedgerSnapshotImport.run[IO](config(ledger, db)))
+        after <- IO(fingerprint(db))
+      yield
+        assertEquals(result, Left(Error.Metadata(MetaError.MissingField(MetaField.Backend))))
+        assertEquals(after, before)
+        assert(!JFiles.exists((db / "snapshots").toNioPath))
+    }
+  }

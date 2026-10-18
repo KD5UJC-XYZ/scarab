@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.storage.haskell.state
 import cats.{Eq, Show}
 import cats.derived.*
 import cats.syntax.all.*
-import io.circe.Json
+import io.circe.{Json, ParsingFailure}
 
 /** Where the UTxO of a snapshot is kept (`SnapshotBackend`, `LedgerDB/Snapshots.hs:245-262`); its
   * name is in the `meta` file.
@@ -17,10 +17,18 @@ enum SnapshotBackend(val name: String) derives Eq, Show:
 object SnapshotBackend:
   def named(name: String): Option[SnapshotBackend] = values.find(_.name == name)
 
+/** The three fields of the reference's snapshot metadata. */
+enum MetaField(val name: String) derives Eq, Show:
+  case Backend extends MetaField("backend")
+  case Checksum extends MetaField("checksum")
+  case TablesCodecVersion extends MetaField("tablesCodecVersion")
+
 /** Why a `meta` file is not read. */
 enum MetaError derives Eq, Show:
-  /** Not JSON, or not an object with the three fields. */
-  case Malformed(message: String)
+  case JsonSyntax(cause: ParsingFailure)
+  case ExpectedObject(actual: Json)
+  case MissingField(field: MetaField)
+  case FieldTypeMismatch(field: MetaField, actual: Json)
 
   /** A backend this reader does not know. */
   case UnknownBackend(name: String)
@@ -33,6 +41,10 @@ enum MetaError derives Eq, Show:
 
   case UnsupportedBackend(backend: SnapshotBackend)
   case ChecksumMismatch(expected: Long, actual: Long)
+
+object MetaError:
+  private given Eq[ParsingFailure] = Eq.fromUniversalEquals
+  private given Show[ParsingFailure] = Show.fromToString
 
 /** The `meta` file of a ledger snapshot (`SnapshotMetadata`, `LedgerDB/Snapshots.hs:223-243`): a
   * JSON object `{"backend": ..., "checksum": <word32>, "tablesCodecVersion": 1}`. The checksum is
@@ -93,19 +105,24 @@ object SnapshotMeta:
   /** The fields of the file, or what is wrong with it. */
   def parse(text: String): Either[MetaError, SnapshotMeta] =
     for
-      json <- io.circe.parser.parse(text).left.map(e => MetaError.Malformed(e.message))
-      obj <- json.asObject.toRight(MetaError.Malformed("not a JSON object"))
-      name <- field(obj.apply("backend"), "backend")(_.asString)
+      json <- io.circe.parser.parse(text).left.map(e => MetaError.JsonSyntax(e))
+      obj <- json.asObject.toRight(MetaError.ExpectedObject(json))
+      name <- field(obj.apply(MetaField.Backend.name), MetaField.Backend)(_.asString)
       backend <- SnapshotBackend.named(name).toRight(MetaError.UnknownBackend(name))
-      crc <- field(obj.apply("checksum"), "checksum")(_.asNumber.flatMap(_.toBigInt))
+      crc <- field(obj.apply(MetaField.Checksum.name), MetaField.Checksum)(
+        _.asNumber.flatMap(_.toBigInt)
+      )
       _ <- Either.cond(crc.signum >= 0 && crc.bitLength <= 32, (), MetaError.BadChecksum(crc))
-      version <- field(obj.apply("tablesCodecVersion"), "tablesCodecVersion")(
+      version <- field(obj.apply(MetaField.TablesCodecVersion.name), MetaField.TablesCodecVersion)(
         _.asNumber.flatMap(_.toBigInt)
       )
       _ <- Either.cond(version == 1, (), MetaError.UnknownTablesCodecVersion(version))
     yield SnapshotMeta(backend, crc.toLong, version.toInt)
 
-  private def field[A](value: Option[Json], name: String)(
+  private def field[A](value: Option[Json], field: MetaField)(
       read: Json => Option[A]
   ): Either[MetaError, A] =
-    value.flatMap(read).toRight(MetaError.Malformed(s"missing or mistyped field $name"))
+    for
+      json <- value.toRight(MetaError.MissingField(field))
+      result <- read(json).toRight(MetaError.FieldTypeMismatch(field, json))
+    yield result

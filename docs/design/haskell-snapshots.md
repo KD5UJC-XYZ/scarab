@@ -315,6 +315,17 @@ codec version and checksum mismatch through closed errors. Callers must verify m
 consuming the table, and keep sink writes staged until that succeeds. Ancillary authentication remains
 the S3 import requirement of D4; CRCs establish integrity, not provenance.
 
+**Metadata errors as built (M11-E/#82).** `MetaError` distinguishes `JsonSyntax` (retaining
+Circe's `ParsingFailure`), `ExpectedObject` (the actual JSON), `MissingField` and
+`FieldTypeMismatch` (the named `MetaField` and actual JSON). Backend, Word32 checksum,
+tables-version and CRC verification errors keep their existing cases. Import/export retain the
+cause in `Error.Metadata`; a refused import does not publish a snapshot or alter the database.
+The reference JSON bytes, field-validation order, integral-decimal and extra-field acceptance,
+CRC rule, V5 and stored UTxO values are unchanged. `SnapshotMetaSuite` covers the error cases and
+boundaries; `snapshot-meta` fuzzing starts from all six Shelley-based fixture metadata files and
+checks parse/encode/parse identity. Other storage codec and ancillary-manifest message cases
+remain tracked by M11-E; this slice does not complete #82.
+
 S2 validation: 22 focused tests pass, including all 4,526,058 outputs of the pinned preprod table
 converted and streamed to a byte-identical 1,014,553,955-byte file (50.1 s). Full `check`, scalafix
 and the 64-target four-seed decoder campaign pass (25.6 million cases), including the new table

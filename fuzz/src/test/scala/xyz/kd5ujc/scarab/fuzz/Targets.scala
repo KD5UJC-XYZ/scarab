@@ -803,6 +803,44 @@ object Targets:
       )
     )
 
+  private val snapshotMeta: Vector[Target] =
+    import java.nio.charset.StandardCharsets.UTF_8
+    import xyz.kd5ujc.scarab.storage.haskell.state.SnapshotMeta
+    Vector(
+      Target(
+        "snapshot-meta",
+        () =>
+          val fixtures = Vector(
+            "shelley-1000",
+            "allegra-1800",
+            "mary-2308",
+            "alonzo-3013",
+            "babbage-4000",
+            "conway-4593"
+          ).map(era =>
+            java.nio.file.Files
+              .readAllBytes(java.nio.file.Path.of("fixtures/haskell-state", era, "meta"))
+          )
+          fixtures ++ Vector(
+            "{}",
+            "[]",
+            "{",
+            """{"backend":"utxohd-mem","checksum":"1","tablesCodecVersion":1}"""
+          )
+            .map(_.getBytes(UTF_8)) ++ Corpus.tricky
+        ,
+        probe("snapshot-meta") { bytes =>
+          SnapshotMeta.parse(new String(bytes.toArray, UTF_8)).foreach { meta =>
+            hit("snapshot-meta")
+            req(
+              SnapshotMeta.encode(meta).flatMap(SnapshotMeta.parse) == Right(meta),
+              "snapshot metadata round trip changes its fields"
+            )
+          }
+        }
+      )
+    )
+
   private val snapshotTables: Vector[Target] =
     import xyz.kd5ujc.scarab.storage.haskell.state.SnapshotTables
     def seeds: Vector[Array[Byte]] =
@@ -929,4 +967,4 @@ object Targets:
     )
 
   val all: Vector[Target] =
-    network ++ node ++ ledgerPeers ++ mempackTxOut ++ snapshotTables ++ ancillary ++ mithril
+    network ++ node ++ ledgerPeers ++ mempackTxOut ++ snapshotMeta ++ snapshotTables ++ ancillary ++ mithril
