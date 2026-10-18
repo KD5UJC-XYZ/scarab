@@ -19,7 +19,7 @@ import xyz.kd5ujc.scarab.ledger as flat
 import xyz.kd5ujc.scarab.node.read.{ChainRead, EraRead, EraViews, InEra, Read}
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.codec.Rational
-import org.http4s.{HttpRoutes, Response, Status}
+import org.http4s.{HttpRoutes, Query, Response, Status}
 import org.http4s.circe.*
 import org.http4s.dsl.Http4sDsl
 import org.http4s.ember.server.EmberServerBuilder
@@ -482,6 +482,51 @@ object QueryServer:
         */
       metrics: Option[F[String]] = None
   )(using read: ChainRead[S]): Resource[F, Server] =
+    EmberServerBuilder
+      .default[F]
+      .withHost(Host.fromString("127.0.0.1").get)
+      .withPort(Port.fromInt(port).get)
+      .withHttpApp(routes(view, utxoStore, scheduling, connections, forging, metrics).orNotFound)
+      .build
+
+  private enum StateTarget:
+    case Tip
+    case At(point: ChainSync.Point)
+
+  private enum PointError:
+    case Parameters, Slot, Hash
+
+  private def parseSlot(raw: String): Either[PointError, ChainSync.UInt64] =
+    if raw.isEmpty then Left(PointError.Slot)
+    else
+      raw.toList.foldLeftM(ChainSync.UInt64.saturating(0)) { (slot, digit) =>
+        if digit >= '0' && digit <= '9' then
+          ChainSync.UInt64.from(slot.value * 10 + (digit - '0')).leftMap(_ => PointError.Slot)
+        else Left(PointError.Slot)
+      }
+
+  private def stateTarget(query: Query): Either[PointError, StateTarget] =
+    val params = query.multiParams
+    def single(name: String): Either[PointError, String] =
+      params.get(name).collect { case Seq(value) => value }.toRight(PointError.Parameters)
+    if !params.contains("slot") && !params.contains("hash") then Right(StateTarget.Tip)
+    else
+      for
+        rawSlot <- single("slot")
+        rawHash <- single("hash")
+        slot <- parseSlot(rawSlot)
+        hash <- Bytes.fromHex(rawHash).leftMap(_ => PointError.Hash)
+        _ <- Either.cond(hash.size == 32, (), PointError.Hash)
+      yield StateTarget.At(ChainSync.Point.Block(slot, hash))
+
+  private[node] def routes[F[_]: Async, S](
+      view: ChainView[F, S],
+      utxoStore: Option[xyz.kd5ujc.scarab.storage.UtxoStore[F]] = None,
+      scheduling: Option[F[Json]] = None,
+      connections: Option[F[Json]] = None,
+      forging: Option[F[Json]] = None,
+      metrics: Option[F[String]] = None
+  )(using read: ChainRead[S]): HttpRoutes[F] =
     val dsl = Http4sDsl[F]
     import dsl.*
     // With the UTxO set in a backing store the state holds only its recent changes: the whole set
@@ -498,9 +543,7 @@ object QueryServer:
           case Right(json)   => Ok(json)
           case Left(refused) => InternalServerError(s"the state cannot be projected: $refused")
       }
-    object SlotParam extends QueryParamDecoderMatcher[Long]("slot")
-    object HashParam extends QueryParamDecoderMatcher[String]("hash")
-    val routes = HttpRoutes.of[F] {
+    HttpRoutes.of[F] {
       case GET -> Root / "tip" =>
         view.tip.flatMap { case (p, s) =>
           Ok(Json.obj("point" -> Projection.point(p), "epoch" -> s.ledgerEpoch.asJson))
@@ -515,26 +558,17 @@ object QueryServer:
         )
       case GET -> Root / "scheduling" =>
         scheduling.fold(Async[F].pure(Response[F](Status.NotFound)))(_.flatMap(j => Ok(j)))
-      case GET -> Root / "state" :? SlotParam(slot) +& HashParam(hash) =>
-        Bytes
-          .fromHex(hash)
-          .toOption
-          .flatMap(h => ChainSync.UInt64.from(slot).toOption.map(ChainSync.Point.Block(_, h))) match
-          case None => BadRequest("slot and 32-byte hex hash required")
-          case Some(p) =>
+      case request @ GET -> Root / "state" =>
+        stateTarget(request.uri.query) match
+          case Left(_) => BadRequest("slot and 32-byte hex hash required")
+          case Right(StateTarget.Tip) =>
+            view.tip.flatMap { case (p, s) => projected(p, s) }
+          case Right(StateTarget.At(p)) =>
             view.at(p).flatMap {
               case Some(s) => projected(p, s)
               case None    => Async[F].pure(Response[F](Status.NotFound))
             }
-      case GET -> Root / "state" =>
-        view.tip.flatMap { case (p, s) => projected(p, s) }
     }
-    EmberServerBuilder
-      .default[F]
-      .withHost(Host.fromString("127.0.0.1").get)
-      .withPort(Port.fromInt(port).get)
-      .withHttpApp(routes.orNotFound)
-      .build
 
 /** The Prometheus endpoint on its own: `GET /metrics` and nothing else, on an address of its
   * choice. The query server answers on loopback only and also serves the whole ledger state; this

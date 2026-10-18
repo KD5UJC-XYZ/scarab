@@ -647,6 +647,10 @@ total (`slotsChecked`, `leaderSlots`, `forged`, `adopted`, `lostSlotBattles`, `f
 logged as a `forgeEpoch` line when the next epoch begins. `GET /metrics` serves the Prometheus text format
 (next section).
 
+`GET /state` without point parameters reads the tip. An explicit point requires one unsigned 64-bit
+`slot` and one 32-byte hex `hash`: missing, duplicate or malformed point parameters return HTTP 400.
+A well-formed point outside the retained chain returns HTTP 404.
+
 The slot clock starts at the Byron genesis' `startTime` when `byron-genesis.json` has one (as the
 reference's does), else at the Shelley `systemStart`; the `started` line logs it as `systemStart`.
 Write both identically in a network you make yourself.
