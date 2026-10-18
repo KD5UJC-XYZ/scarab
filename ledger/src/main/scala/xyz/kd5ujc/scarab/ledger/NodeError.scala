@@ -75,7 +75,7 @@ object PeerError:
   enum Unavailability:
     case Network(cause: NetworkError.Connect | NetworkError.Timeout | NetworkError.SduTimeout | NetworkError.BearerClosed)
     case Connection(cause: xyz.kd5ujc.scarab.protocol.ConnectionError)
-    case Resolution(host: String, cause: Throwable)
+    case Resolution(host: String, cause: java.io.IOException)
     case SessionEnded
     case MissingAnnouncedBlock(point: ChainSync.Point)
     def message: String = this match
