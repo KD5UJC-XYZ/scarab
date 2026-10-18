@@ -1,6 +1,6 @@
 # Ledger snapshots in the Haskell node's directory layout (Step D)
 
-**Status**: Proposal (2026-10-17). Stage S1 (the MemPack `TxOut` codec, [#143](https://github.com/KD5UJC-XYZ/scarab/issues/143))
+**Status**: Accepted (owner approved D1-D9, 2026-10-18). Stage S1 (the MemPack `TxOut` codec, [#143](https://github.com/KD5UJC-XYZ/scarab/issues/143))
 is built and measured (section 8: the codec is checked against the 4,526,058 outputs of a real preprod table and 1,731,810 of this node's own stored outputs, and is not adopted as the stored value); S2 to S5 are not started. Tracked in
 [#140](https://github.com/KD5UJC-XYZ/scarab/issues/140) (roadmap E2, D16); the first consumer is the Mithril import
 ([#27](https://github.com/KD5UJC-XYZ/scarab/issues/27), E1), then mainnet from a Mithril snapshot
@@ -17,7 +17,12 @@ instances; the format is confirmed byte for byte on real files below). Mithril i
 repository; `OC` is `ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus`, `OCC` is
 `ouroboros-consensus-cardano/src`, `CL` is `cardano-ledger`.
 
-## 0. Summary and decisions for the owner
+## 0. Summary and accepted decisions
+
+The owner approved all nine recommendations below on 2026-10-18. They govern S2-S5: keep V5 and
+the stored CBOR values, and convert to the reference snapshot layout and MemPack at import/export
+boundaries. The initial backend, offline operation and Byron restrictions are explicit scope limits;
+consensus and ledger validation do not change.
 
 What a Haskell ledger snapshot is, in one paragraph: a directory `ledger/<slot>[_<suffix>]/` of three files. `state` is
 the `ExtLedgerState` without the UTxO (CBOR, `[1, ...]`), which Scarab already reads and writes byte for byte (it is the
