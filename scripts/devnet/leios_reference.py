@@ -193,7 +193,7 @@ def capture_logs(name, root):
     logs.mkdir(exist_ok=True)
     followers = []
     for n in POOLS:
-        out = (logs / f"node{n}.log").open("w")
+        out = (logs / f"node{n}.log").open("w", buffering=1)
         follower = subprocess.Popen(["docker", "logs", "-f", node(name, n)], stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT, text=True, errors="replace")
 
@@ -268,8 +268,10 @@ def run_probe(name, root, classpath, main_class, program, label, timeout):
     out.mkdir(exist_ok=True)
     out.chmod(0o777)
     container = f"{name}-probe-{label}"
-    done = subprocess.run(["docker", *probe_command(name, root, classpath, main_class, program, container, out)],
-                          text=True, capture_output=True, timeout=timeout)
-    docker("rm", "-f", container, check=False)
+    try:
+        done = subprocess.run(["docker", *probe_command(name, root, classpath, main_class, program, container, out)],
+                              text=True, capture_output=True, timeout=timeout)
+    finally:
+        docker("rm", "-f", container, check=False)
     (out / f"{label}.out").write_text(done.stdout + done.stderr)
     return done.stdout + done.stderr
