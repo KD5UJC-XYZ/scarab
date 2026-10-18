@@ -15,28 +15,32 @@ class GeneratorSuite extends munit.FunSuite:
       .flatMap(Generator.load(cddlDir, _))
       .fold(e => fail(e.message), identity)
 
+  private def resolved(q: QName): RuleDef = schema.rule(q).fold(e => fail(e.message), identity)
+
   /** Generate from an inline schema in a temporary directory. */
   private def generateFrom(cddl: String, conf: String): Either[GenError, Map[String, String]] =
     val dir = Files.createTempDirectory("models-gen-test")
     Files.writeString(dir.resolve("t.cddl"), cddl)
-    Generator.generate(dir, Config.parse(s"package test.models\nmodule t t t.cddl\n$conf"))
+    Config
+      .parse(s"package test.models\nmodule t t t.cddl\n$conf")
+      .flatMap(Generator.generate(dir, _))
 
   test("conway.cddl: the spliced header body has ten members, the Babbage-style nested layout") {
-    val RuleBody.Type(RT.Arr(es)) = schema.rule(QName("conway", "header_body")).body: @unchecked
+    val RuleBody.Type(RT.Arr(es)) = resolved(QName("conway", "header_body")).body: @unchecked
     assertEquals(es.size, 10)
     assertEquals(es.head.label, Some("block_number"))
   }
 
   test("alonzo.cddl: operational_cert and protocol_version are group rules spliced into the body") {
-    val RuleBody.Type(RT.Arr(es)) = schema.rule(QName("alonzo", "header_body")).body: @unchecked
+    val RuleBody.Type(RT.Arr(es)) = resolved(QName("alonzo", "header_body")).body: @unchecked
     assertEquals(es.size, 11)
     assert(es.takeRight(2).forall(_.value.isInstanceOf[RT.GroupRef]))
-    assert(schema.rule(QName("alonzo", "operational_cert")).body.isInstanceOf[RuleBody.GroupBody])
+    assert(resolved(QName("alonzo", "operational_cert")).body.isInstanceOf[RuleBody.GroupBody])
   }
 
   test("generics expand: the hard-fork-combinator header is a choice of eight tagged pairs") {
     val RuleBody.Type(RT.Choice(alts)) =
-      schema.rule(QName("chainsync-header", "header")).body: @unchecked
+      resolved(QName("chainsync-header", "header")).body: @unchecked
     assertEquals(alts.size, 8)
     val RT.Arr(Vector(tag, payload)) = alts(1): @unchecked
     assertEquals(tag.value, RT.LitInt(6))
@@ -45,16 +49,16 @@ class GeneratorSuite extends munit.FunSuite:
   }
 
   test("controls are interpreted: .size, ranges, .lt and .cbor") {
-    assertEquals(schema.rule(QName("conway", "hash32")).body, RuleBody.Type(RT.SizedBytes(32, 32)))
+    assertEquals(resolved(QName("conway", "hash32")).body, RuleBody.Type(RT.SizedBytes(32, 32)))
     assertEquals(
-      schema.rule(QName("conway", "major_protocol_version")).body,
+      resolved(QName("conway", "major_protocol_version")).body,
       RuleBody.Type(RT.IntRange(0, 12))
     )
     assertEquals(
-      schema.rule(QName("conway", "slot")).body,
+      resolved(QName("conway", "slot")).body,
       RuleBody.Type(RT.IntRange(0, (BigInt(1) << 64) - 1))
     )
-    assertEquals(schema.rule(QName("byron", "u16")).body, RuleBody.Type(RT.IntRange(0, 65535)))
+    assertEquals(resolved(QName("byron", "u16")).body, RuleBody.Type(RT.IntRange(0, 65535)))
   }
 
   test(
@@ -62,7 +66,7 @@ class GeneratorSuite extends munit.FunSuite:
   ) {
     // byron.cddl uses `bigint` and `encoded-cbor` without defining them
     // resolving used to throw UnresolvedName("byron", "bigint")
-    assert(schema.rule(QName("byron", "bvermod")).body.isInstanceOf[RuleBody.Type])
+    assert(resolved(QName("byron", "bvermod")).body.isInstanceOf[RuleBody.Type])
     val out = generateFrom(
       "r = [bigint, encoded-cbor, tdate, uri]\n",
       "root t:r\n"
@@ -74,7 +78,7 @@ class GeneratorSuite extends munit.FunSuite:
 
   test("sockets accumulate: $x /= a, $x /= b is a choice") {
     assertEquals(
-      schema.rule(QName("features", "$crypto_alg")).body,
+      resolved(QName("features", "$crypto_alg")).body,
       RuleBody.Type(RT.Choice(Vector(RT.LitInt(0), RT.LitInt(1), RT.LitInt(2))))
     )
   }
@@ -145,16 +149,12 @@ class GeneratorSuite extends munit.FunSuite:
           external = Set.empty,
           cases = Map.empty
         )
-        val result =
-          try
-            new Emitter(schema, single).generate()
-            None
-          catch case GenException(e) => Some(e)
+        val result = new Emitter(schema, single).generate().left.toOption
         result match
           case None => ok += 1
           case Some(e) =>
             val key = e match
-              case GenError.Unsupported(_, f) => f.takeWhile(_ != '$').take(60)
+              case GenError.Unsupported(_, f) => f.productPrefix
               case other                      => other.getClass.getSimpleName
             reasons(key) += 1
       }

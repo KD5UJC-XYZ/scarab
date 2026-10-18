@@ -25,7 +25,11 @@ class PeerSharingEquivalenceSuite extends munit.FunSuite:
   private def sampled(count: Int, seed: Long): Vector[Bytes] =
     val rnd = new Random(seed)
     Vector.fill(count)(
-      Bytes.fromArray(sampler.sample(QName("peer-sharing-v14", "peerSharingMessage"), rnd))
+      Bytes.fromArray(
+        sampler
+          .sample(QName("peer-sharing-v14", "peerSharingMessage"), rnd)
+          .fold(e => fail(e.message), identity)
+      )
     )
 
   private def address(a: PeerAddress): PeerSharing.Address = a match

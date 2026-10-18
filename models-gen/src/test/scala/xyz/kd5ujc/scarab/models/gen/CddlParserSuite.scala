@@ -7,7 +7,7 @@ import xyz.kd5ujc.scarab.models.gen.Ast.*
 
 class CddlParserSuite extends munit.FunSuite:
   private def parse(text: String): File =
-    CddlParser.parse(text).fold(e => fail(e.getMessage), identity)
+    CddlParser.parse(text).fold(e => fail(e.message), identity)
   private def body(text: String): Ty = parse(text).rules.head.body
 
   test("rules, size control and bytes") {
@@ -103,6 +103,6 @@ class CddlParserSuite extends munit.FunSuite:
     files.foreach { f =>
       CddlParser.parse(Files.readString(f)) match
         case Right(parsed) => assert(parsed.rules.nonEmpty, s"$f has no rules")
-        case Left(e)       => fail(s"$f: ${e.getMessage}")
+        case Left(e)       => fail(s"$f: ${e.message}")
     }
   }

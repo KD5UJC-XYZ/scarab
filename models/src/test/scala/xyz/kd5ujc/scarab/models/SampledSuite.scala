@@ -42,7 +42,9 @@ class SampledSuite extends munit.FunSuite:
 
   private def samples(rule: String, count: Int, seed: Long): Vector[Bytes] =
     val rnd = new Random(seed)
-    Vector.fill(count)(Bytes.fromArray(sampler.sample(qname(rule), rnd)))
+    Vector.fill(count)(
+      Bytes.fromArray(sampler.sample(qname(rule), rnd).fold(e => fail(e.message), identity))
+    )
 
   private def roundTrip[A](codec: Codec[A], bytes: Bytes): Unit =
     val decoded =
@@ -121,7 +123,9 @@ class SampledSuite extends munit.FunSuite:
     // produces are accepted by the independently written hand codec.
     val rnd = new Random(11)
     (0 until 200).foreach { _ =>
-      val tipBytes = Bytes.fromArray(sampler.sample(qname("network.base:tip"), rnd))
+      val tipBytes = Bytes.fromArray(
+        sampler.sample(qname("network.base:tip"), rnd).fold(e => fail(e.message), identity)
+      )
       assert(
         xyz.kd5ujc.scarab.protocol.ChainSync
           .decodeTip(tipBytes)

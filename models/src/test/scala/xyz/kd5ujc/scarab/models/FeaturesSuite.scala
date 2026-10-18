@@ -33,7 +33,9 @@ class FeaturesSuite extends munit.FunSuite:
     ) {
       val rnd = new Random(rule.hashCode.toLong)
       (0 until 400).foreach { _ =>
-        val bytes = Bytes.fromArray(sampler.sample(QName("features", rule), rnd))
+        val bytes = Bytes.fromArray(
+          sampler.sample(QName("features", rule), rnd).fold(e => fail(e.message), identity)
+        )
         val value =
           codec.decodeBytes(bytes).fold(e => fail(s"${e.render} for ${bytes.hex}"), identity)
         val again = codec.encodeUnchecked(value)

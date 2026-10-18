@@ -12,7 +12,6 @@ import xyz.kd5ujc.scarab.models.gen.{
   Config,
   Emitter,
   GenError,
-  GenException,
   Generator,
   QName,
   Schema
@@ -101,7 +100,9 @@ object CuddleCrossCheck:
       val rnd = new Random(seed ^ id.hashCode.toLong)
       write(
         dir.resolve("ours").resolve(fileName(id)),
-        Vector.fill(count)(Bytes.fromArray(sampler.sample(QName(m, n), rnd)).hex)
+        Vector.fill(count)(
+          Bytes.fromArray(sampler.sample(QName(m, n), rnd).fold(e => die(e.message), identity)).hex
+        )
       )
     }
     // Rule names and arities as our parser reads each vendored file (cuddle reads the same files).
@@ -109,7 +110,7 @@ object CuddleCrossCheck:
     val rows = files.sorted.flatMap { f =>
       val rel = cddlDir.relativize(f).toString
       CddlParser.parse(Files.readString(f, UTF_8)) match
-        case Left(e) => Vector(s"$rel\t!parse-error\t0\t${e.getMessage.replace('\t', ' ')}")
+        case Left(e) => Vector(s"$rel\t!parse-error\t0\t${e.message.replace('\t', ' ')}")
         case Right(parsed) =>
           parsed.rules.map(r => (r.name, r.params.size)).distinct.map((n, a) => s"$rel\t$n\t$a\t")
     }
@@ -141,13 +142,11 @@ object CuddleCrossCheck:
     yield s"$m\t$n\t$reason"
 
   private def failure(schema: Schema, config: Config): Option[String] =
-    try
-      new Emitter(schema, config).generate()
-      None
-    catch
-      case GenException(GenError.Unsupported(_, f))    => Some(f.takeWhile(_ != '$').take(60))
-      case GenException(GenError.UnresolvedName(_, n)) => Some(s"unresolved name `$n`")
-      case GenException(other)                         => Some(other.getClass.getSimpleName)
+    new Emitter(schema, config).generate().left.toOption.map {
+      case GenError.Unsupported(_, f)    => f.message.takeWhile(_ != '$').take(60)
+      case GenError.UnresolvedName(_, n) => s"unresolved name `$n`"
+      case other                         => other.getClass.getSimpleName
+    }
 
   private def check(dir: Path): Unit =
     val rows = for

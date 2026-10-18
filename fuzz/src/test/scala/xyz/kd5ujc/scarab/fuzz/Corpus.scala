@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.fuzz
 
+import cats.syntax.all.*
+
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.protocol.{Era, NtNHeader}
@@ -9,12 +11,12 @@ import xyz.kd5ujc.scarab.ledger.byron.ByronBody
 import xyz.kd5ujc.scarab.ledger.{Address, TxBody}
 import scala.jdk.CollectionConverters.*
 import scala.util.Random
-import xyz.kd5ujc.scarab.models.gen.{CddlSampler, Config, GenException, Generator, QName}
+import xyz.kd5ujc.scarab.models.gen.{CddlSampler, Config, GenError, Generator, QName}
 
 /** The seeds the mutations start from: committed fixtures, and valid CBOR sampled from the pinned
   * CDDL.
   */
-object Corpus:
+object Corpus extends munit.Assertions:
   /** Hex lines of the committed block fixtures (`[era tag, block]`), Byron to Conway. */
   private val blockFiles = Vector(
     "fixtures/preview/alonzo-first-20.hex",
@@ -200,17 +202,26 @@ object Corpus:
 
   private lazy val sampler: CddlSampler =
     val dir = Path.of("models/src/main/cddl")
-    val schema = Generator
-      .load(dir, Config.parse(conf))
-      .fold(e => throw new IllegalStateException(e.message), identity)
-    new CddlSampler(schema)
+    Config
+      .parse(conf)
+      .flatMap(Generator.load(dir, _))
+      .map(new CddlSampler(_))
+      .fold(e => fail(e.message), identity)
 
   /** Valid items of a CDDL rule (`module:rule`); empty when the sampler cannot express the rule. */
   def sampled(rule: String, count: Int = 60, seed: Long = 11): Vector[Array[Byte]] =
     val Array(m, n) = rule.split(":", 2): @unchecked
     val rnd = new Random(seed ^ rule.hashCode)
-    try Vector.fill(count)(sampler.sample(QName(m, n), rnd))
-    catch case _: GenException => Vector.empty
+    Vector
+      .fill(count)(())
+      .traverse(_ => sampler.sample(QName(m, n), rnd))
+      .fold(
+        {
+          case GenError.Unsupported(_, _) => Vector.empty
+          case other                      => fail(other.message)
+        },
+        identity
+      )
 
   def sampledEras(rule: String, from: String = "shelley"): Vector[Array[Byte]] =
     eras.dropWhile(_ != from).flatMap(e => sampled(s"$e:$rule", 25)).toVector

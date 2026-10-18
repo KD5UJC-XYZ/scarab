@@ -11,8 +11,8 @@ import xyz.kd5ujc.scarab.models.gen.Ast.*
   * `$$` names) and `/=`, `//=` extensions. Floating-point literals are parsed, never interpreted.
   */
 object CddlParser:
-  final case class ParseFailure(message: String, line: Int, column: Int)
-      extends Exception(s"CDDL parse error at $line:$column: $message")
+  final case class ParseFailure(detail: String, line: Int, column: Int):
+    def message: String = s"CDDL parse error at $line:$column: $detail"
 
   // Lexical ------------------------------------------------------------------------------------
   private val comment: Parser[Unit] = (Parser.char(';') *> Parser.charsWhile0(_ != '\n')).void
