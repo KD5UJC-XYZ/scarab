@@ -167,6 +167,9 @@ enum ForgeError extends NodeError:
   /** A key or certificate file is missing, malformed or of the wrong type. */
   case KeyFile(file: String, reason: String)
 
+  /** A failure at one of the durability boundaries for an evolved KES key. */
+  case KesFileFailure(file: String, operation: KesFileOperation, cause: KesFileFailureCause)
+
   /** A KES signing key was decoded, but its material is invalid. */
   case KesKey(file: String, cause: Sum6KesSigning.Failure)
 
@@ -210,7 +213,9 @@ enum ForgeError extends NodeError:
 
   def message: String = this match
     case KeyFile(f, r) => s"key file $f: $r"
-    case KesKey(f, e)  => s"key file $f: ${e.message}"
+    case KesFileFailure(f, op, cause) =>
+      s"KES key file $f during ${op.toString}: ${cause.message}"
+    case KesKey(f, e) => s"key file $f: ${e.message}"
     case KesKeyNotCertified(_, _) =>
       "keys do not match: the operational certificate names another KES verification key"
     case CertificateFailure(e) => s"operational certificate: ${e.message}"
@@ -228,6 +233,34 @@ enum ForgeError extends NodeError:
     case UnsupportedProtocol(r)         => s"cannot forge: $r"
     case Assembly(r)                    => s"block assembly: $r"
     case SelfRejected(rule, r)          => s"our own $rule rules refuse the forged block: $r"
+
+enum KesFileOperation:
+  case StageWrite, StageSync, StageReadback, DirectorySyncBeforeErase
+  case ScrubWrite, ScrubSync, Rename, DirectorySyncAfterRename, Cleanup
+
+enum KesFileFailureCause:
+  case FileSystem(cause: Throwable)
+  case NoWriteProgress
+  case StageReadback(cause: ForgeError)
+  case StagedKeyMismatch(mismatch: KesStageMismatch)
+  case StageStillPresentAfterRecovery
+
+  def message: String = this match
+    case FileSystem(cause)              => Option(cause.getMessage).getOrElse(cause.toString)
+    case NoWriteProgress                => "file channel made no write progress"
+    case StageReadback(cause)           => cause.message
+    case StagedKeyMismatch(value)       => value.message
+    case StageStillPresentAfterRecovery => "staged key remains after successful recovery"
+
+enum KesStageMismatch:
+  case Period(expected: Int, actual: Int)
+  case VerificationKey(expected: Bytes, actual: Bytes)
+  case SerializedKeyBytes
+
+  def message: String = this match
+    case Period(expected, actual) => s"staged KES period $actual, expected $expected"
+    case VerificationKey(_, _)    => "staged KES verification key does not match the evolved key"
+    case SerializedKeyBytes       => "staged KES serialized key bytes do not match the evolved key"
 
 /** The peer governor stopped the node, as the reference's `abortGovernor` does: its state broke an
   * invariant (a bug), or the node did not reach a clean state with only trusted peers in time

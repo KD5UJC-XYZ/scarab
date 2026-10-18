@@ -19,11 +19,18 @@ test-network pool (#116).
 ## Decision
 
 1. When the KES key moves to a new period it is written back to the `--kes-skey` file before it signs in
-   that period, and the key it replaces is overwritten: stage the new key beside the file, force it, overwrite
-   the old key with zeros, rename atomically, force the directory. The file stays a `cardano-cli` envelope;
+   that period, and the key it replaces is overwritten: create the staged file beside it, write every byte,
+   force the file, decode and validate its structure, verification key, period and serialized bytes, then
+   force the containing directory. Only then overwrite every predecessor byte with zeros and force that
+   file, atomically rename the staged file over it, and force the directory again. Directory-sync failures
+   are typed persistence failures and are retried with the evolved key on later slots. The file stays a
+   `cardano-cli` envelope;
    the period is read off the key (the erased `r1` seeds spell it in binary), so no persisted format changes
-   and [ADR 0006](0006-versioned-formats-migrate-on-open.md) needs no migration. A crash at any step leaves
-   a complete key and the next start finishes or discards the interrupted replacement.
+   and [ADR 0006](0006-versioned-formats-migrate-on-open.md) needs no migration. For a process crash, the
+   validated stage and its directory entry are durable before erasure, so after erasure recovery still has
+   the replacement until rename. The next start finishes a valid replacement or discards a torn or foreign
+   stage. If rename succeeded but its directory force failed, a retry forces the directory even when the
+   requested key is already at the main path.
 2. On SIGHUP the node reads the key and certificate again and switches only after checks that mirror the
    chain's own rules (the cold key is the pool's, the certificate names the key and carries the cold
    signature, the period is inside the window, the key is not past the period, the counter is the chain's or
@@ -34,8 +41,14 @@ test-network pool (#116).
 
 ## Consequences
 
-- Forward security holds on disk for the node's key. A copy-on-write or journalling file system may keep
-  overwritten blocks; the docs say to use an encrypted volume where that matters.
+- The process-crash guarantee follows from the operation order and recovery checks. Power-loss durability
+  depends on the file system, mount, device and storage controller honoring file and directory force and
+  same-filesystem atomic rename. A failed or unsupported directory force is reported; persistence is not
+  called durable in that case. Injected tests cover process-crash boundaries and sync failures, not physical
+  power loss.
+- Forward security holds for the key visible through the live file path after successful persistence. A
+  copy-on-write or journalling file system may retain overwritten blocks, so overwrite is not a physical
+  secure-erase guarantee; use an encrypted volume where that matters.
 - The key file must be writable by the node. A write failure is reported (`kesPersistFailed`) and does not stop
   forging.
 - A bad rotation cannot take the pool off the air: the node keeps what it has and the driver restores the

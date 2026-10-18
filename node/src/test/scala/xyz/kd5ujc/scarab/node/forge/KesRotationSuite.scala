@@ -5,11 +5,23 @@ import cats.effect.{IO, Ref}
 import cats.effect.testkit.TestControl
 import cats.syntax.all.*
 import java.nio.file.{Files, Path}
+import java.nio.ByteBuffer
+import java.nio.channels.FileChannel
+import java.io.IOException
+import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration.*
 import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
-import xyz.kd5ujc.scarab.ledger.{Block, ForgeError, Header, OCertError}
+import xyz.kd5ujc.scarab.ledger.{
+  Block,
+  ForgeError,
+  Header,
+  KesFileFailureCause,
+  KesFileOperation,
+  KesStageMismatch,
+  OCertError
+}
 import xyz.kd5ujc.scarab.ledger.TestLedger
 import xyz.kd5ujc.scarab.ledger.TestLedger.Key
 
@@ -87,6 +99,9 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
       case s: Header.Shelley => s.opCert.sequence
       case other             => fail(s"not a Praos header: $other")
 
+  private def rightOrFail[A](value: Either[ForgeError, A]): A =
+    value.fold(error => fail(error.message), identity)
+
   // ---- the key file: replacement and recovery
 
   test("an evolved key replaces the key in the file, which no longer holds the earlier one") {
@@ -144,6 +159,303 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         assertEquals(KesFiles.recover(f.kes).map(_.period), Right(12))
         assert(!Files.exists(f.next))
         assertEquals(f.onDisk.period, 12)
+      }
+    }
+  }
+
+  test("staging and predecessor scrub finish deterministic short writes") {
+    withDir { f =>
+      IO {
+        val h = hotFor(TestLedger.key(), 51, 0, 0)
+        f.install(h)
+        val evolved = f.onDisk
+        evolved.evolveTo(6)
+        val writes = ArrayBuffer.empty[Int]
+        val short = new KesFiles.FileOps:
+          override def write(channel: FileChannel, bytes: ByteBuffer, position: Long): Int =
+            val originalLimit = bytes.limit()
+            bytes.limit(math.min(originalLimit, bytes.position() + 7))
+            val count = channel.write(bytes, position)
+            bytes.limit(originalLimit)
+            writes += count
+            count
+        assertEquals(KesFiles.persistWith(f.kes, evolved, short), Persisted.Written)
+        assert(writes.size > 2, s"expected repeated partial writes, saw ${writes.size}")
+        assertEquals(f.onDisk.period, 6)
+        assert(Files.readAllBytes(f.kes).exists(_ != 0), "the replacement key is complete")
+        assert(!Files.exists(f.next))
+      }
+    }
+  }
+
+  test("a zero-progress staged write is a typed failure and leaves the predecessor intact") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 52, 0, 0))
+        val before = Files.readAllBytes(f.kes).toVector
+        val evolved = f.onDisk
+        evolved.evolveTo(4)
+        val stalled = new KesFiles.FileOps:
+          override def write(channel: FileChannel, bytes: ByteBuffer, position: Long): Int = 0
+        KesFiles.persistWith(f.kes, evolved, stalled) match
+          case Persisted.Failed(
+                ForgeError.KesFileFailure(
+                  _,
+                  KesFileOperation.StageWrite,
+                  KesFileFailureCause.NoWriteProgress
+                )
+              ) =>
+            ()
+          case other => fail(s"expected typed staged-write failure, found $other")
+        assertEquals(Files.readAllBytes(f.kes).toVector, before)
+      }
+    }
+  }
+
+  test("staged readback rejects a different KES period") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 56, 0, 0))
+        val expected = f.onDisk
+        expected.evolveTo(7)
+        val wrongPeriod = f.onDisk
+        wrongPeriod.evolveTo(6)
+        val wrongPeriodText = rightOrFail(KeyFiles.kesEnvelope("staged", wrongPeriod))
+        val wrongPeriodOps = new KesFiles.FileOps:
+          override def readStage(file: Path): String = wrongPeriodText
+        KesFiles.stageWith(f.kes, expected, wrongPeriodOps) match
+          case Left(
+                ForgeError.KesFileFailure(
+                  _,
+                  KesFileOperation.StageReadback,
+                  KesFileFailureCause.StagedKeyMismatch(KesStageMismatch.Period(7, 6))
+                )
+              ) =>
+            ()
+          case other => fail(s"expected staged period mismatch, found $other")
+        expected.forget()
+        wrongPeriod.forget()
+      }
+    }
+  }
+
+  test("staged readback rejects a different verification key") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 57, 0, 0))
+        val expected = f.onDisk
+        expected.evolveTo(7)
+        val foreign = hotFor(TestLedger.key(), 58, 0, 0).kes
+        foreign.evolveTo(7)
+        val foreignText = rightOrFail(KeyFiles.kesEnvelope("staged", foreign))
+        val foreignOps = new KesFiles.FileOps:
+          override def readStage(file: Path): String = foreignText
+        KesFiles.stageWith(f.kes, expected, foreignOps) match
+          case Left(
+                ForgeError.KesFileFailure(
+                  _,
+                  KesFileOperation.StageReadback,
+                  KesFileFailureCause.StagedKeyMismatch(
+                    KesStageMismatch.VerificationKey(_, _)
+                  )
+                )
+              ) =>
+            ()
+          case other => fail(s"expected staged identity mismatch, found $other")
+        expected.forget()
+        foreign.forget()
+      }
+    }
+  }
+
+  test("staged readback preserves malformed-envelope causes as typed failures") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 59, 0, 0))
+        val evolved = f.onDisk
+        evolved.evolveTo(3)
+        val malformed = new KesFiles.FileOps:
+          override def readStage(file: Path): String = "not a KES envelope"
+        KesFiles.stageWith(f.kes, evolved, malformed) match
+          case Left(
+                ForgeError.KesFileFailure(
+                  _,
+                  KesFileOperation.StageReadback,
+                  KesFileFailureCause.StageReadback(_)
+                )
+              ) =>
+            ()
+          case other => fail(s"expected typed staged readback failure, found $other")
+        evolved.forget()
+      }
+    }
+  }
+
+  test("a pre-erasure directory sync failure leaves the predecessor intact and recovery retries") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 53, 0, 0))
+        val before = Files.readAllBytes(f.kes).toVector
+        val evolved = f.onDisk
+        evolved.evolveTo(5)
+        val refuse = new KesFiles.FileOps:
+          override def forceDirectoryBeforeErase(channel: FileChannel): Unit =
+            throw new IOException("injected directory sync refusal")
+        KesFiles.persistWith(f.kes, evolved, refuse) match
+          case Persisted.Failed(
+                ForgeError.KesFileFailure(_, KesFileOperation.DirectorySyncBeforeErase, _)
+              ) =>
+            ()
+          case other => fail(s"expected typed pre-erase sync failure, found $other")
+        assertEquals(Files.readAllBytes(f.kes).toVector, before)
+        assert(Files.exists(f.next), "the validated replacement remains staged")
+        assertEquals(KesFiles.recoverWith(f.kes, new KesFiles.FileOps {}).map(_.period), Right(5))
+      }
+    }
+  }
+
+  test("a failed rename after scrub recovers the sole valid staged key on retry") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 54, 0, 0))
+        val evolved = f.onDisk
+        evolved.evolveTo(8)
+        var failed = false
+        val failFirstRename = new KesFiles.FileOps:
+          override def rename(next: Path, file: Path): Unit =
+            if !failed then
+              failed = true
+              throw new IOException("injected atomic rename refusal")
+            else super.rename(next, file)
+        KesFiles.persistWith(f.kes, evolved, failFirstRename) match
+          case Persisted.Failed(ForgeError.KesFileFailure(_, KesFileOperation.Rename, _)) => ()
+          case other => fail(s"expected injected rename boundary failure, found $other")
+        assert(Files.readAllBytes(f.kes).forall(_ == 0), "the predecessor was scrubbed")
+        assert(Files.exists(f.next), "the staged key is the only valid key")
+        assertEquals(KesFiles.persistWith(f.kes, evolved, failFirstRename), Persisted.Unchanged)
+        assertEquals(f.onDisk.period, 8)
+        assert(!Files.exists(f.next))
+      }
+    }
+  }
+
+  test("a post-rename directory sync failure is retried when the key is already in place") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 55, 0, 0))
+        val evolved = f.onDisk
+        evolved.evolveTo(9)
+        var failSync = true
+        var syncAttempts = 0
+        val failOnce = new KesFiles.FileOps:
+          override def forceDirectoryAfterRename(channel: FileChannel): Unit =
+            syncAttempts += 1
+            if failSync then
+              failSync = false
+              throw new IOException("injected post-rename sync failure")
+        KesFiles.persistWith(f.kes, evolved, failOnce) match
+          case Persisted.Failed(
+                ForgeError.KesFileFailure(_, KesFileOperation.DirectorySyncAfterRename, _)
+              ) =>
+            ()
+          case other => fail(s"expected typed post-rename sync failure, found $other")
+        assertEquals(f.onDisk.period, 9)
+        assertEquals(KesFiles.persistWith(f.kes, evolved, failOnce), Persisted.Unchanged)
+        assertEquals(syncAttempts, 2)
+      }
+    }
+  }
+
+  test("every persist durability boundary leaves an intact or recoverable key") {
+    val cases = Vector(
+      (KesFileBoundary.StagedWriteCompleted, 0, true),
+      (KesFileBoundary.StagedFileForced, 0, true),
+      (KesFileBoundary.StagedReadbackValidated, 0, true),
+      (KesFileBoundary.DirectoryForcedBeforeErase, 0, true),
+      (KesFileBoundary.PredecessorScrubCompleted, -1, true),
+      (KesFileBoundary.PredecessorFileForced, -1, true),
+      (KesFileBoundary.AtomicRenameCompleted, 8, false),
+      (KesFileBoundary.DirectoryForcedAfterRename, 8, false)
+    )
+    cases.traverse_ { case (boundary, mainPeriod, hasStage) =>
+      withDir { f =>
+        IO {
+          f.install(hotFor(TestLedger.key(), 61, 0, 0))
+          val evolved = f.onDisk
+          evolved.evolveTo(8)
+          val crash = new KesFiles.FileOps:
+            override def checkpoint(at: KesFileBoundary): Unit =
+              if at == boundary then throw new IOException(s"crash at $at")
+          KesFiles.persistWith(f.kes, evolved, crash) match
+            case Persisted.Failed(_) => ()
+            case other => fail(s"expected injected failure at $boundary, found $other")
+          if mainPeriod == -1 then
+            assert(Files.readAllBytes(f.kes).forall(_ == 0), s"predecessor scrubbed at $boundary")
+          else if mainPeriod == 0 then assertEquals(f.onDisk.period, 0)
+          else assertEquals(f.onDisk.period, mainPeriod)
+          assertEquals(Files.exists(f.next), hasStage, s"stage presence at $boundary")
+          val recovered = rightOrFail(KesFiles.recover(f.kes))
+          assertEquals(recovered.period, 8, s"recovery after $boundary")
+          recovered.forget()
+          assert(!Files.exists(f.next))
+        }
+      }
+    }
+  }
+
+  test("every recovery durability boundary is retryable") {
+    val boundaries = Vector(
+      KesFileBoundary.StagedFileForced,
+      KesFileBoundary.StagedReadbackValidated,
+      KesFileBoundary.DirectoryForcedBeforeErase,
+      KesFileBoundary.PredecessorScrubCompleted,
+      KesFileBoundary.PredecessorFileForced,
+      KesFileBoundary.AtomicRenameCompleted,
+      KesFileBoundary.DirectoryForcedAfterRename
+    )
+    boundaries.traverse_ { boundary =>
+      withDir { f =>
+        IO {
+          f.install(hotFor(TestLedger.key(), 62, 0, 0))
+          val evolved = f.onDisk
+          evolved.evolveTo(9)
+          assertEquals(KesFiles.stage(f.kes, evolved), Right(()))
+          val crash = new KesFiles.FileOps:
+            override def checkpoint(at: KesFileBoundary): Unit =
+              if at == boundary then throw new IOException(s"crash at $at")
+          KesFiles.recoverWith(f.kes, crash) match
+            case Left(ForgeError.KesFileFailure(_, _, _)) => ()
+            case other => fail(s"expected injected recovery failure at $boundary, found $other")
+          if boundary == KesFileBoundary.PredecessorScrubCompleted ||
+            boundary == KesFileBoundary.PredecessorFileForced
+          then
+            assert(Files.readAllBytes(f.kes).forall(_ == 0), s"predecessor scrubbed at $boundary")
+          else if boundary == KesFileBoundary.AtomicRenameCompleted ||
+            boundary == KesFileBoundary.DirectoryForcedAfterRename
+          then assertEquals(f.onDisk.period, 9)
+          else assertEquals(f.onDisk.period, 0)
+          val recovered = rightOrFail(KesFiles.recover(f.kes))
+          assertEquals(recovered.period, 9, s"retry after $boundary")
+          recovered.forget()
+          assert(!Files.exists(f.next))
+        }
+      }
+    }
+  }
+
+  test("retry recovers an older sole-valid stage before writing a newer in-memory key") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 63, 0, 0))
+        val older = f.onDisk
+        older.evolveTo(4)
+        assertEquals(KesFiles.stage(f.kes, older), Right(()))
+        assertEquals(KesFiles.scrub(f.kes), Right(()))
+        val newer = older.copy
+        newer.evolveTo(7)
+        assertEquals(KesFiles.persist(f.kes, newer), Persisted.Written)
+        assertEquals(f.onDisk.period, 7)
+        assert(!Files.exists(f.next))
       }
     }
   }

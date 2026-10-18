@@ -674,13 +674,19 @@ has to change both before they run out. The node does four things for that; a dr
   is overwritten, before the key signs in the new period. The file stays a `cardano-cli` envelope: the period
   is read off the key itself (the erased seeds of the tree spell it), so there is no new format and no
   migration. A restart needs no earlier key than the one on disk, and a copy of the disk gets no earlier
-  period's key. The write is crash-safe: the new key goes to `<file>.next` and is forced to disk, the old key
-  is overwritten with zeros, `<file>.next` is renamed over the file (atomic) and the directory is forced; at
-  the next start a leftover `.next` is finished or destroyed (a torn one), so at every point one complete key is
-  on disk. If the write fails the node reports `kesPersistFailed` (once per period), counts
+  period's key after successful persistence. The replacement protocol writes every byte to `<file>.next`,
+  forces the file, decodes it again to check the key structure, verification key, period and serialized bytes,
+  then forces its directory entry before it erases any predecessor byte. It overwrites the predecessor fully,
+  forces that file, renames `.next` over the file atomically and forces the directory again. Recovery applies
+  the same readback and pre-erasure directory force; a valid `.next` is retained and retried if rename fails,
+  and a retry after a post-rename sync failure forces the main directory entry again. Thus process-crash recovery
+  has a complete replacement after predecessor erasure. Power-loss durability depends on the filesystem,
+  mount, device and storage controller honoring file and directory force and same-filesystem atomic rename;
+  unsupported or failed directory force is surfaced as a typed persistence failure. Injected tests do not
+  reproduce physical power loss. If persistence fails the node reports `kesPersistFailed` (once per period), counts
   `scarab_kes_persist_failures_total`, keeps forging with the key in memory and writes again at each slot. A
-  file system that keeps old blocks (copy-on-write, journalling) may keep the overwritten key: put the key
-  directory on an encrypted volume where that matters. The key signs only after the lock that also guards a
+  file system that keeps old blocks (copy-on-write, journalling) may keep the overwritten key; overwriting is
+  not physical secure erasure, so put the key directory on an encrypted volume where that matters. The key signs only after the lock that also guards a
   reload is held, so a block is never signed with a key and certificate of two different reloads, and the key
   only moves forward, so it never signs one period with two states.
 - **Reload on SIGHUP.** `kill -HUP` (or `docker kill -s HUP`) makes the node read the KES key and the
