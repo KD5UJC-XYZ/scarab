@@ -41,8 +41,18 @@ scala code … I love the use of type parameters when I can use them"*.
 
 - Tagless final at effect boundaries; capabilities through cats-mtl (`Ask`, `Local`, `Stateful`,
   `Raise`, `Handle`, `Tell`). `IO` only in `Main` and tools.
-- Closed error ADTs. No `Either[String, …]`, no string-based control flow, no `throw` for domain
-  errors, no `.get` on values that are not provably present.
+- Closed, domain/service-specific error ADTs, including pure functions and test helpers. Use
+  `Either[DomainError, A]` for pure failures and cats-mtl capabilities at effect boundaries. Preserve
+  typed causes across layers; render text only for logs, CLI output or wire presentation. A generic
+  `Failure(message: String)` wrapper is not a migration to domain error cases. No `Either[String, …]`,
+  no string-based control flow, no `throw` for domain errors, no `.get` on values that are not
+  provably present. The remaining migration and CI guard are tracked by M11-E in
+  [the roadmap](docs/roadmap.md) under [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82).
+- Functional code is the default. Imperative, side-effecting implementations are allowed only in
+  performance-critical code, with profiling or benchmark evidence and a written reason for the
+  specific path (record measurements in [performance.md](docs/performance.md)). Keep mutation local
+  behind a pure interface or an effect interpreter. This exception changes implementation style
+  only: typed errors, capability scope and original-byte guarantees still apply.
 - A fiber never raises through a capability it did not create ([ADR 0017](docs/adr/0017-fibers-end-with-values.md)).
   A `Raise` from `Handle.allow` is valid in the fibers of its scope only; raised in any other fiber it
   is an exception that nobody catches. A fiber that outlives the call (`background`, `supervise`, a kept
