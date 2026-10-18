@@ -12,12 +12,14 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import time
-from prepare_leios_reference_image import DEFAULT_TAG, OUROBOROS_LEIOS_REVISION
 from .util import REPO, USER, cache_dir, data_root, docker, jdk_image
 
 MAGIC = 164
 NODE_PORT = 3001
+# the engine keeps a container's output without bound by default; the traces are captured as they are written (capture_logs)
+LOG_OPTS = ("--log-opt", "max-size=50m", "--log-opt", "max-file=2")
 POOLS = (1, 2, 3)
 REPOSITORY = "https://github.com/input-output-hk/ouroboros-leios.git"
 DEVNET = "demo/proto-devnet"
@@ -33,16 +35,16 @@ def node(name, n):
     return f"{name}-n{n}"
 
 
-def fetch_sources(root):
-    """The pinned revision of the `ouroboros-leios` repository in `<root>/src`, fetched by commit id
-    (git checks the content against it)."""
+def fetch_sources(root, profile):
+    """The profile's pinned revision of the `ouroboros-leios` repository in `<root>/src`, fetched by
+    commit id (the content is checked against it)."""
     src = root / "src"
     if not (src / ".git").exists():
         src.mkdir(parents=True)
         subprocess.run(["git", "-C", str(src), "init", "-q"], check=True)
     head = subprocess.run(["git", "-C", str(src), "rev-parse", "HEAD"], text=True, capture_output=True).stdout.strip()
-    if head != OUROBOROS_LEIOS_REVISION:
-        subprocess.run(["git", "-C", str(src), "fetch", "-q", "--depth", "1", REPOSITORY, OUROBOROS_LEIOS_REVISION],
+    if head != profile.config_revision:
+        subprocess.run(["git", "-C", str(src), "fetch", "-q", "--depth", "1", REPOSITORY, profile.config_revision],
                        check=True)
         subprocess.run(["git", "-C", str(src), "checkout", "-q", "FETCH_HEAD"], check=True)
     return src / DEVNET / "config"
@@ -69,10 +71,10 @@ def node_config(text, n):
     return text
 
 
-def prepare(root, start_delay):
+def prepare(root, profile, start_delay):
     """`<root>/devnet`: the pinned genesis with a fresh start time, and a directory per node with its
     configuration, topology and keys."""
-    config = fetch_sources(root)
+    config = fetch_sources(root, profile)
     devnet = root / "devnet"
     shutil.rmtree(devnet, ignore_errors=True)
     shutil.copytree(config / "genesis", devnet / "genesis")
@@ -100,7 +102,7 @@ def prepare(root, start_delay):
     return start
 
 
-def start_nodes(name, root):
+def start_nodes(name, root, profile):
     """The network and the three nodes. Topologies name the peers by their container names."""
     docker("network", "create", "--internal", network(name))
     for n in POOLS:
@@ -109,13 +111,49 @@ def start_nodes(name, root):
             text = text.replace(f"NODE{m}", node(name, m))
         (root / "devnet" / f"node{n}" / "topology.json").write_text(text)
         docker("run", "-d", "--name", node(name, n), "--network", network(name), "--pull=never",
-               "--cpus=1", "--memory=3g", "--user", USER, "-v", f"{root / 'devnet'}:/data",
+               "--cpus=1", "--memory=3g", *LOG_OPTS, "--user", USER, "-v", f"{root / 'devnet'}:/data",
                "-w", f"/data/node{n}", "-e", "LEIOS_VOL_DB_PATH=leios.db.vol", "-e", "LEIOS_IMM_DB_PATH=leios.db.imm",
-               DEFAULT_TAG, "cardano-node", "run", "--config", "config.yaml", "--host-addr", "0.0.0.0",
+               profile.tag, "cardano-node", "run", "--config", "config.yaml", "--host-addr", "0.0.0.0",
                "--port", str(NODE_PORT), "--topology", "topology.json", "--database-path", "db",
                "--socket-path", "node.socket", "--shelley-vrf-key", "keys/vrf.skey",
                "--shelley-kes-key", "keys/kes.skey", "--shelley-bls-key", "keys/bls.skey",
                "--shelley-operational-certificate", "keys/opcert.cert")
+
+
+def start_relay(name, root, profile, extra_peer):
+    """A fourth node without keys (a relay) that has the three pools and `extra_peer` (a container
+    name on the network, port 3001) as local roots, so it connects to that peer and makes it hot."""
+    directory = root / "devnet" / "node4"
+    shutil.rmtree(directory, ignore_errors=True)
+    directory.mkdir()
+    source = root / "devnet" / "node1"
+    (directory / "config.yaml").write_text(node_config((root / "src" / DEVNET / "config" / "config.yaml").read_text(), 4))
+    topology = json.loads((root / "src" / DEVNET / "config" / "topology.template.json").read_text())
+    topology["localRoots"][0]["accessPoints"] = [
+        {"address": node(name, m), "port": NODE_PORT} for m in POOLS] + [{"address": extra_peer, "port": NODE_PORT}]
+    # all four hot: the template's valency of 2 would leave the extra peer unselected
+    topology["localRoots"][0]["hotValency"] = topology["localRoots"][0]["warmValency"] = 4
+    (directory / "topology.json").write_text(json.dumps(topology, indent=2))
+    for genesis in ("byron", "shelley", "alonzo", "conway", "dijkstra"):
+        os.symlink(f"../genesis/{genesis}-genesis.json", directory / f"{genesis}-genesis.json")
+    assert source.exists()
+    docker("run", "-d", "--name", node(name, 4), "--network", network(name), "--pull=never",
+           "--cpus=1", "--memory=3g", *LOG_OPTS, "--user", USER, "-v", f"{root / 'devnet'}:/data",
+           "-w", "/data/node4", "-e", "LEIOS_VOL_DB_PATH=leios.db.vol", "-e", "LEIOS_IMM_DB_PATH=leios.db.imm",
+           profile.tag, "cardano-node", "run", "--config", "config.yaml", "--host-addr", "0.0.0.0",
+           "--port", str(NODE_PORT), "--topology", "topology.json", "--database-path", "db",
+           "--socket-path", "node.socket")
+
+
+def start_firehose(name, root, profile, tps):
+    """The transaction load generator of the profile's build, pushing to node 1 over its node-to-client
+    socket with the proto-devnet's first delegator keys. Without load the nodes make no endorser blocks."""
+    keys = root / "src" / DEVNET / "config" / "stake-delegators" / "delegator1"
+    docker("run", "-d", "--name", f"{name}-firehose", "--network", network(name), "--pull=never",
+           "--user", USER, "-v", f"{root / 'devnet'}:/data", "-v", f"{keys}:/keys:ro", "--entrypoint", "tx-firehose",
+           profile.tag, "--socket-path", "/data/node1/node.socket", "--testnet-magic", str(MAGIC),
+           "--signing-key-file", "/keys/payment.skey", "--staking-key-file", "/keys/staking.skey",
+           "--tps", str(tps), "--color", "ff0000", "--fee", "1000000")
 
 
 def tip(name, n=1):
@@ -139,17 +177,47 @@ def wait_for_block(name, block, timeout):
     raise SystemExit(f"no block {block} within {timeout} s")
 
 
-def save_logs(name, root, suffix=""):
-    """The traces of each node (stdout of its container) in `<root>/logs`."""
+# The namespaces whose lines are kept. At Debug the multiplexer traces every SDU (gigabytes in minutes),
+# so the traces are filtered while they are written; the bearer and channel events are not kept.
+KEPT = re.compile(
+    r'"ns":"(Net\.(Handshake|InboundGovernor|Server|ConnectionManager\.Remote\.(ConnectionHandler|IncludeConnection)'
+    r'|Mux\.Remote\.(State|ExceptionExit|NewMux|Starting|StartOnDemand|StartedOnDemand|StartEagerly|Terminating)'
+    r'|PeerSelection\.Actions)|LeiosNotify|LeiosFetch|Consensus\.LeiosPeer|Consensus\.LeiosKernel\.(Certified|EbValidated)'
+    r'|Version\.NodeVersion)')
+
+
+def capture_logs(name, root):
+    """Follow the traces of every node and write the kept lines to `<root>/logs/node<N>.log`. Returns
+    the followers; `stop_capture` ends them."""
     logs = root / "logs"
     logs.mkdir(exist_ok=True)
+    followers = []
     for n in POOLS:
-        done = docker("logs", node(name, n), check=False)
-        (logs / f"node{n}{suffix}.log").write_text(done.stdout + done.stderr)
+        out = (logs / f"node{n}.log").open("w")
+        follower = subprocess.Popen(["docker", "logs", "-f", node(name, n)], stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, text=True, errors="replace")
+
+        def pump(source=follower.stdout, sink=out):
+            for line in source:
+                if KEPT.search(line):
+                    sink.write(line)
+            sink.close()
+
+        thread = threading.Thread(target=pump, daemon=True)
+        thread.start()
+        followers.append((follower, thread))
+    return followers
+
+
+def stop_capture(followers):
+    for follower, thread in followers:
+        follower.terminate()
+        thread.join(timeout=10)
 
 
 def stop(name):
-    for n in POOLS:
+    docker("rm", "-f", f"{name}-firehose", check=False)
+    for n in (*POOLS, 4):
         docker("rm", "-f", node(name, n), check=False)
     docker("network", "rm", network(name), check=False)
 

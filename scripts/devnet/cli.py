@@ -36,6 +36,10 @@
     devnet.py restart              up + follow --db, stop it with SIGTERM (the JVM must exit within 30 s, issue 89),
                                    start it again (it must restore the snapshot, and the files are V5);
                                    --migrate-from CLASSES: first a run of an older build, whose snapshots must migrate
+    devnet.py leios-probe [--profile P]
+                                   the Leios mini-protocols (18, 19) against a private network of the Leios team's reference
+                                   node (docs/leios.md section 12); needs scripts/prepare_leios_reference_image.py
+    devnet.py leios-probe-down     remove what leios-probe left (after --keep or a crash)
     devnet.py down                 remove containers and the run directory
 
 Run data lives in ${SCARAB_DATA_DIR:-/tmp/scarab}/<name>. The Scala node shares the
@@ -43,6 +47,7 @@ reference container's network namespace because the reference nodes bind to loop
 """
 import argparse
 import os
+import pathlib
 from .chaindep import assemble, sample
 from .cluster import down, tip, up, up_eras
 from .compare import compare
@@ -52,6 +57,7 @@ from .oracle_cmd import oracle
 from .refused_fixture import DEFAULT_OUT, refused_fixture
 from .scenarios.e2e import CONWAY_EPOCHS, capture_eras, e2e
 from .scenarios.governor import governor
+from .scenarios.leios_probe import leios_probe, leios_probe_down
 from .scenarios.ntc import ntc
 from .scenarios.peercut import peercut
 from .scenarios.pool import kes_rotate_scenario, pool
@@ -281,9 +287,16 @@ def main():
                                ("--pool-margin", "0", "margin of the three pools")):
         vc.add_argument(opt, type=type(default), default=default, help=f"with --eras: {text}")
     vc.set_defaults(run=v1_context)
+    lp = sub.add_parser("leios-probe", help="the Leios mini-protocols against a private network of the Leios team's reference node")
+    lp.add_argument("--profile", choices=["w38a", "main", "all"], default="w38a",
+                    help="w38a: the build the public testnet runs (default); main: the newest published build; all: both, one after the other")
+    lp.add_argument("--capture", type=pathlib.Path, help="write the first message of each kind as fixtures into this directory")
+    lp.add_argument("--keep", action="store_true", help="leave the network running")
+    lp.set_defaults(run=leios_probe)
+    sub.add_parser("leios-probe-down", help="remove the containers, network and run directories of leios-probe").set_defaults(run=leios_probe_down)
     sub.add_parser("oracle", help="compare Scala state digests with db-analyser states of the reference node"
                    ).set_defaults(run=oracle)
     sub.add_parser("down", help="remove the containers and the run directory").set_defaults(run=down)
     args = p.parse_args()
-    args.name = args.name or ("scarab-eras" if args.command in ("up-eras", "capture-eras", "e2e", "sample-chain-dep", "assemble-chain-dep") else "scarab-pool" if args.command == "pool" else "scarab-kes-rotate" if args.command == "kes-rotate" else "scarab-devnet")
+    args.name = args.name or ("scarab-eras" if args.command in ("up-eras", "capture-eras", "e2e", "sample-chain-dep", "assemble-chain-dep") else "scarab-pool" if args.command == "pool" else "scarab-kes-rotate" if args.command == "kes-rotate" else "scarab-leios-probe" if args.command in ("leios-probe", "leios-probe-down") else "scarab-devnet")
     args.run(args)
