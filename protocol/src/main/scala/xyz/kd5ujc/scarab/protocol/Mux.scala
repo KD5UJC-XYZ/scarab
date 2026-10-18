@@ -12,6 +12,42 @@ object Mux:
   val WireMaxPayloadBytes = 65535
   val HandshakeMaxMessageBytes = 5760
 
+  /** Framing and local limit failures. Payloads retain the values needed by callers; messages are
+    * rendered only for presentation.
+    */
+  enum Error:
+    case InvalidPayloadLimit(actual: Int)
+    case TimestampOutOfRange(actual: Long)
+    case ProtocolOutOfRange(actual: Int)
+    case PayloadLengthOutOfRange(actual: Int, limit: Int)
+    case HeaderLength(actual: Int)
+    case FrameLength(expected: Int, actual: Int)
+    case HandshakeLength(actual: Int)
+    case InvalidMessageLimit(actual: Int, maximum: Int)
+    case MessageLength(actual: Int, limit: Int)
+    case FeedInputLimit(actual: Int, limit: Int)
+    case FeedFrameLimit(actual: Int, limit: Int)
+    case TruncatedHeader(received: Int)
+    case TruncatedPayload(expected: Int, received: Int)
+    case InvalidInputLimit(actual: Int)
+    case InvalidFrameLimit(actual: Int)
+
+    def message: String = this match
+      case InvalidPayloadLimit(_)        => "invalid local mux payload limit"
+      case TimestampOutOfRange(_)        => "mux timestamp outside unsigned 32-bit range"
+      case ProtocolOutOfRange(_)         => "mux protocol outside unsigned 15-bit range"
+      case PayloadLengthOutOfRange(_, _) => "mux payload length is zero or exceeds local/wire limit"
+      case HeaderLength(_)               => "mux header must contain exactly 8 bytes"
+      case FrameLength(_, _)             => "mux payload is truncated or has trailing bytes"
+      case HandshakeLength(_)            => "handshake message is empty or exceeds 5760 bytes"
+      case InvalidMessageLimit(_, _) | MessageLength(_, _) => "message byte limit exceeded"
+      case FeedInputLimit(_, _)   => "mux feed exceeds local input byte limit"
+      case FeedFrameLimit(_, _)   => "mux feed exceeds local frame count limit"
+      case TruncatedHeader(_)     => "EOF in mux header"
+      case TruncatedPayload(_, _) => "EOF in mux payload"
+      case InvalidInputLimit(_)   => "invalid mux input byte limit"
+      case InvalidFrameLimit(_)   => "invalid mux frame count limit"
+
   enum Direction:
     case Initiator, Responder
 
@@ -28,30 +64,30 @@ object Mux:
       maxFramesPerFeed: Int = 4096
   )
 
-  private def validPayloadLimit(limit: Int): Either[String, Unit] =
-    Either.cond(limit >= 1 && limit <= WireMaxPayloadBytes, (), "invalid local mux payload limit")
+  private def validPayloadLimit(limit: Int): Either[Error, Unit] =
+    Either.cond(limit >= 1 && limit <= WireMaxPayloadBytes, (), Error.InvalidPayloadLimit(limit))
 
-  private def validate(header: Header, limit: Int): Either[String, Unit] =
+  private def validate(header: Header, limit: Int): Either[Error, Unit] =
     for
       _ <- validPayloadLimit(limit)
       _ <- Either.cond(
         header.timestamp >= 0 && header.timestamp <= 0xffffffffL,
         (),
-        "mux timestamp outside unsigned 32-bit range"
+        Error.TimestampOutOfRange(header.timestamp)
       )
       _ <- Either.cond(
         header.protocol >= 0 && header.protocol <= 0x7fff,
         (),
-        "mux protocol outside unsigned 15-bit range"
+        Error.ProtocolOutOfRange(header.protocol)
       )
       _ <- Either.cond(
         header.payloadLength > 0 && header.payloadLength <= limit,
         (),
-        "mux payload length is zero or exceeds local/wire limit"
+        Error.PayloadLengthOutOfRange(header.payloadLength, limit)
       )
     yield ()
 
-  def encodeHeader(header: Header): Either[String, Bytes] =
+  def encodeHeader(header: Header): Either[Error, Bytes] =
     validate(header, WireMaxPayloadBytes).map { _ =>
       // Follow putNumAndMode/getDir, not the reversed prose comment in the pinned source.
       val protocol =
@@ -76,8 +112,8 @@ object Mux:
   def decodeHeader(
       bytes: Bytes,
       maxPayloadBytes: Int = WireMaxPayloadBytes
-  ): Either[String, Header] =
-    if bytes.size != HeaderBytes then Left("mux header must contain exactly 8 bytes")
+  ): Either[Error, Header] =
+    if bytes.size != HeaderBytes then Left(Error.HeaderLength(bytes.size))
     else
       def u(index: Int): Int = bytes(index) & 0xff
       val timestamp = (u(0).toLong << 24) | (u(1).toLong << 16) | (u(2).toLong << 8) | u(3).toLong
@@ -90,20 +126,20 @@ object Mux:
       )
       validate(header, maxPayloadBytes).map(_ => header)
 
-  def encode(sdu: Sdu): Either[String, Bytes] =
+  def encode(sdu: Sdu): Either[Error, Bytes] =
     encodeHeader(sdu.header).map(header => header ++ sdu.payload)
 
   /** Exact single-frame decode; trailing bytes are an error. For a stream use Decoder. */
   def decode(
       bytes: Bytes,
       maxPayloadBytes: Int = WireMaxPayloadBytes
-  ): Either[String, Sdu] =
+  ): Either[Error, Sdu] =
     for
       header <- decodeHeader(bytes.take(HeaderBytes), maxPayloadBytes)
       _ <- Either.cond(
         bytes.size == HeaderBytes + header.payloadLength,
         (),
-        "mux payload is truncated or has trailing bytes"
+        Error.FrameLength(HeaderBytes + header.payloadLength, bytes.size)
       )
     yield Sdu(
       header.timestamp,
@@ -121,13 +157,13 @@ object Mux:
       direction: Direction,
       maxPayloadBytes: Int,
       protocol: Int = 0
-  ): Either[String, Vector[Sdu]] =
+  ): Either[Error, Vector[Sdu]] =
     for
       _ <- validPayloadLimit(maxPayloadBytes)
       _ <- Either.cond(
         payload.size > 0 && payload.size <= HandshakeMaxMessageBytes,
         (),
-        "handshake message is empty or exceeds 5760 bytes"
+        Error.HandshakeLength(payload.size)
       )
       _ <- validate(
         Header(timestamp, protocol, direction, math.min(payload.size, maxPayloadBytes)),
@@ -144,8 +180,8 @@ object Mux:
       maxPayloadBytes: Int,
       protocol: Int,
       maxMessageBytes: Int
-  ): Either[String, Vector[Sdu]] =
-    if maxMessageBytes > 65535 then Left("message byte limit exceeded")
+  ): Either[Error, Vector[Sdu]] =
+    if maxMessageBytes > 65535 then Left(Error.InvalidMessageLimit(maxMessageBytes, 65535))
     else
       segmentProtocolMessage(
         payload,
@@ -166,14 +202,18 @@ object Mux:
       maxPayloadBytes: Int,
       protocol: Int,
       maxMessageBytes: Int
-  ): Either[String, Vector[Sdu]] =
+  ): Either[Error, Vector[Sdu]] =
     for
       _ <- validPayloadLimit(maxPayloadBytes)
       _ <- Either.cond(
-        maxMessageBytes > 0 && maxMessageBytes <= 2500000 &&
-          payload.size > 0 && payload.size <= maxMessageBytes,
+        maxMessageBytes > 0 && maxMessageBytes <= 2500000,
         (),
-        "message byte limit exceeded"
+        Error.InvalidMessageLimit(maxMessageBytes, 2500000)
+      )
+      _ <- Either.cond(
+        payload.size > 0 && payload.size <= maxMessageBytes,
+        (),
+        Error.MessageLength(payload.size, maxMessageBytes)
       )
       _ <- validate(
         Header(timestamp, protocol, direction, math.min(payload.size, maxPayloadBytes)),
@@ -196,8 +236,9 @@ object Mux:
     def pendingBytes: Int =
       partialHeader.size + activeHeader.fold(0)(_ => HeaderBytes) + partialPayload.size
 
-    def feed(bytes: Bytes): Either[String, (Decoder, Vector[Sdu])] =
-      if bytes.size > limits.maxInputBytes then Left("mux feed exceeds local input byte limit")
+    def feed(bytes: Bytes): Either[Error, (Decoder, Vector[Sdu])] =
+      if bytes.size > limits.maxInputBytes then
+        Left(Error.FeedInputLimit(bytes.size, limits.maxInputBytes))
       else if bytes.size == 0 then Right((this, Vector.empty))
       else
         var headerBytes = partialHeader
@@ -205,7 +246,7 @@ object Mux:
         var payload = partialPayload
         var offset = 0
         var emitted = 0
-        var error: Option[String] = None
+        var error: Option[Error] = None
         val output = Vector.newBuilder[Sdu]
         while offset < bytes.size && error.isEmpty do
           header match
@@ -225,7 +266,7 @@ object Mux:
               offset += count
               if payload.size == current.payloadLength then
                 if emitted >= limits.maxFramesPerFeed then
-                  error = Some("mux feed exceeds local frame count limit")
+                  error = Some(Error.FeedFrameLimit(emitted + 1, limits.maxFramesPerFeed))
                 else
                   output += Sdu(
                     current.timestamp,
@@ -240,15 +281,24 @@ object Mux:
           case Some(reason) => Left(reason)
           case None => Right((new Decoder(limits, headerBytes, header, payload), output.result()))
 
-    def finish: Either[String, Unit] =
-      if activeHeader.nonEmpty then Left("EOF in mux payload")
-      else if partialHeader.nonEmpty then Left("EOF in mux header")
-      else Right(())
+    def finish: Either[Error, Unit] =
+      activeHeader match
+        case Some(header) => Left(Error.TruncatedPayload(header.payloadLength, partialPayload.size))
+        case None if partialHeader.nonEmpty => Left(Error.TruncatedHeader(partialHeader.size))
+        case None                           => Right(())
 
   object Decoder:
-    def create(limits: Limits = Limits()): Either[String, Decoder] =
+    def create(limits: Limits = Limits()): Either[Error, Decoder] =
       for
         _ <- validPayloadLimit(limits.maxPayloadBytes)
-        _ <- Either.cond(limits.maxInputBytes > 0, (), "invalid mux input byte limit")
-        _ <- Either.cond(limits.maxFramesPerFeed > 0, (), "invalid mux frame count limit")
+        _ <- Either.cond(
+          limits.maxInputBytes > 0,
+          (),
+          Error.InvalidInputLimit(limits.maxInputBytes)
+        )
+        _ <- Either.cond(
+          limits.maxFramesPerFeed > 0,
+          (),
+          Error.InvalidFrameLimit(limits.maxFramesPerFeed)
+        )
       yield new Decoder(limits, Bytes.empty, None, Bytes.empty)

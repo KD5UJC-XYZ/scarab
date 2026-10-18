@@ -144,8 +144,6 @@ object Mux:
       case WireMux.Direction.Initiator => Role.Responder
       case WireMux.Direction.Responder => Role.Initiator
 
-    def failure[A](reason: String): F[A] = NetworkError.BearerClosed(reason).raise[F, A]
-
     val setup = for
       done <- Resource.eval(Deferred[F, NetworkError])
       inbound <- Resource.eval(
@@ -163,7 +161,7 @@ object Mux:
       decoder <- Resource.eval(
         WireMux.Decoder
           .create(WireMux.Limits(maxPayloadBytes = config.maxSduPayload))
-          .fold(r => failure[WireMux.Decoder](r), F.pure)
+          .fold(e => NetworkError.MuxSetup(e).raise[F, WireMux.Decoder], F.pure)
       )
     yield (done, inbound, outbound, decoder)
 
@@ -250,7 +248,7 @@ object Mux:
                 )
                 .flatMap(_.traverse(WireMux.encode))
               frames match
-                case Left(reason)   => F.pure(NetworkError.BearerClosed(s"mux write: $reason"))
+                case Left(reason)   => F.pure(NetworkError.MuxWrite(reason))
                 case Right(encoded) =>
                   // Socket.hs:190-230 gives a batch one SDU budget per frame, not per byte or
                   // per progress notification. Handshake flushes are bounded on the writer too.

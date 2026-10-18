@@ -92,6 +92,20 @@ already arrive as typed values. The transaction background fiber establishes
 its own typed scope under [ADR0017](../adr/0017-fibers-end-with-values.md). Broader independent
 session/storage/listener work remains tracked by [#180](https://github.com/KD5UJC-XYZ/scarab/issues/180).
 
+## Mux error values (#82)
+
+The framing codec returns `Either[Mux.Error, A]`, with distinct cases and numeric payloads for
+header fields, local limits, exact frame lengths and partial-header/payload EOF. Stream failures
+publish neither a new decoder nor partially decoded output. Wire bytes, limit values, validation
+precedence and the existing per-frame implementation are unchanged.
+
+The reader retains that cause in `NetworkError.Framing`; local decoder setup and writer encoding
+retain it in `MuxSetup` and `MuxWrite`. The node carries the same value in the corresponding
+`PeerError` case instead of rendering it into `Protocol` or `Unavailable` text. Framing remains
+misbehaviour; setup/write retain their previous transient/backoff policy. This is an error-value
+migration, not a change to that policy; the rest of the error-channel migration remains [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82).
+The scoped fiber ownership and SDU timer rules above still apply; only presentation calls `message`.
+
 ## Validation
 
 `MuxDeadlinesSuite` runs on `TestControl`: idle 90 s, partial header/payload, 5 s slow-loris progress,
