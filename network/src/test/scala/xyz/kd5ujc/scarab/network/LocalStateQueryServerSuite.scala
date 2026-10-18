@@ -9,7 +9,7 @@ import xyz.kd5ujc.scarab.protocol.{
   Handshake,
   LocalStateQuery,
   LocalTxSubmission,
-  NodeToClientVersion
+  NtcVersion
 }
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, Role, UInt64}
 import xyz.kd5ujc.scarab.protocol.LocalStateQuery.{Failure, Message, State, Target}
@@ -30,10 +30,10 @@ class LocalStateQueryServerSuite extends CatsEffectSuite:
   private final class Toy(
       val acquired: Ref[IO, Vector[Target]],
       val tip: Ref[IO, Int],
-      val versions: Ref[IO, Vector[NodeToClientVersion]]
+      val versions: Ref[IO, Vector[NtcVersion]]
   ):
     val source: LocalStateQueryServer.Source[IO] = new LocalStateQueryServer.Source[IO]:
-      override def forVersion(version: NodeToClientVersion): LocalStateQueryServer.Source[IO] =
+      override def forVersion(version: NtcVersion): LocalStateQueryServer.Source[IO] =
         new LocalStateQueryServer.Source[IO]:
           def acquire(target: Target) = versions.update(_ :+ version) *> source.acquire(target)
 
@@ -60,7 +60,7 @@ class LocalStateQueryServerSuite extends CatsEffectSuite:
     (
       Ref.of[IO, Vector[Target]](Vector.empty),
       Ref.of[IO, Int](3),
-      Ref.of[IO, Vector[NodeToClientVersion]](Vector.empty)
+      Ref.of[IO, Vector[NtcVersion]](Vector.empty)
     ).mapN(new Toy(_, _, _))
 
   private def send(ch: MuxChannel[IO], state: State, m: Message): IO[Unit] =
@@ -191,7 +191,7 @@ class LocalStateQueryServerSuite extends CatsEffectSuite:
     }
   }
 
-  NodeToClientVersion.values.foreach { version =>
+  NtcVersion.All.foreach { version =>
     test(s"the negotiated ${version.number} governs every acquired session") {
       toy.flatMap { t =>
         session(t, Vector(version.number)) { (ch, _) =>

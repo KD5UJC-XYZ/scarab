@@ -5,14 +5,14 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, UInt64}
-import xyz.kd5ujc.scarab.protocol.NodeToClientVersion
+import xyz.kd5ujc.scarab.protocol.NtcVersion
 
 /** The reference's supported-version table and V20/V21 result boundary. Live byte comparisons
   * against the pinned cardano-node are part of the `ntc` scenario (`ntcversions.py`).
   */
 class QueryVersionSuite extends FunSuite:
   import LedgerQuery.*
-  import NodeToClientVersion.*
+  import NtcVersion.*
 
   private def query(q: LedgerQuery): NtcQuery = NtcQuery.IfCurrent(6, q)
 
@@ -33,7 +33,7 @@ class QueryVersionSuite extends FunSuite:
       (GetDRepDelegations(Set.empty), 23, 23)
     )
     cases.foreach { (q, first, last) =>
-      NodeToClientVersion.values.foreach { v =>
+      NtcVersion.All.foreach { v =>
         val expected = v.number >= first && v.number <= last
         assertEquals(QueryVersion.supports(v, query(q)), expected, s"$q / $v")
         assertEquals(QueryVersion.supports(v, query(GetCBOR(q))), expected, s"GetCBOR / $q / $v")
@@ -45,13 +45,13 @@ class QueryVersionSuite extends FunSuite:
     def hex(s: String) = Bytes.fromHex(s).fold(fail(_), identity)
     val pools = hex("820082008206821580") // QueryIfCurrent Conway (GetPoolDistr Nothing)
     assertEquals(NtcQuery.decode(pools, V20), Right(query(GetPoolDistr(None))))
-    assertEquals(NtcQuery.decode(pools, V21), Left(NtcQuery.Error.UnsupportedVersion(21)))
+    assertEquals(NtcQuery.decode(pools, V21), Left(NtcQuery.Error.UnsupportedVersion(V21)))
     val legacyPeers = hex("820082008206811822")
     assertEquals(NtcQuery.decode(legacyPeers, V19), Right(query(GetLedgerPeerSnapshotLegacy)))
-    assertEquals(NtcQuery.decode(legacyPeers, V18), Left(NtcQuery.Error.UnsupportedVersion(18)))
+    assertEquals(NtcQuery.decode(legacyPeers, V18), Left(NtcQuery.Error.UnsupportedVersion(V18)))
     val allPeers = hex("82008200820682182200")
     assertEquals(NtcQuery.decode(allPeers, V23), Right(query(GetLedgerPeerSnapshot(0))))
-    assertEquals(NtcQuery.decode(allPeers, V22), Left(NtcQuery.Error.UnsupportedVersion(22)))
+    assertEquals(NtcQuery.decode(allPeers, V22), Left(NtcQuery.Error.UnsupportedVersion(V22)))
     assert(NtcQuery.decode(hex("82008200820682182202"), V23).isLeft)
   }
 

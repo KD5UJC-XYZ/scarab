@@ -6,7 +6,7 @@ import scala.annotation.unused
 import scala.collection.immutable.SortedMap
 import java.time.{Instant, ZoneOffset}
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.{Era, NodeToClientVersion}
+import xyz.kd5ujc.scarab.protocol.{Era, NtcVersion}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.consensus.{BlockRef, HardForkConfig}
@@ -216,7 +216,7 @@ object QueryAnswers:
       view: QueryView[S],
       utxo: Map[TxIn, TxOut],
       query: NtcQuery,
-      version: NodeToClientVersion = NodeToClientVersion.latest
+      version: NtcVersion = NtcVersion.LatestReleased
   ): Option[Bytes] = answerOrWhy(env, view, utxo, query, version).toOption
 
   /** The result item of the answer, or why there is none. */
@@ -225,7 +225,7 @@ object QueryAnswers:
       view: QueryView[S],
       utxo: Map[TxIn, TxOut],
       query: NtcQuery,
-      version: NodeToClientVersion = NodeToClientVersion.latest
+      version: NtcVersion = NtcVersion.LatestReleased
   ): Either[Unanswered, Bytes] =
     if !QueryVersion.supports(version, query) then Left(Unanswered.Unsupported)
     else answerSupported(env, view, utxo, query, version)
@@ -235,7 +235,7 @@ object QueryAnswers:
       view: QueryView[S],
       utxo: Map[TxIn, TxOut],
       query: NtcQuery,
-      version: NodeToClientVersion
+      version: NtcVersion
   ): Either[Unanswered, Bytes] = query match
     case NtcQuery.SystemStart => Right(CborOut.build(systemStart(_, env.systemStart)))
     case NtcQuery.ChainBlockNo =>
@@ -403,12 +403,12 @@ object QueryAnswers:
       view: QueryView[S],
       utxo: Map[TxIn, TxOut],
       q: LedgerQuery,
-      version: NodeToClientVersion
+      version: NtcVersion
   ): Either[Unanswered, Bytes] =
     val (depth, leaf) = LedgerQuery.cborLayers(q)
     // GetCBOR intentionally assumes the latest result encoding, independent of the connection
     // (`answerPureBlockQuery`, Shelley/Ledger/Query.hs:427-433 at the pinned consensus).
-    val encodingVersion = if depth == 0 then version else NodeToClientVersion.latest
+    val encodingVersion = if depth == 0 then version else NtcVersion.LatestReleased
     ledgerLeafAnswer(env, view, utxo, leaf, encodingVersion).map { answer =>
       // Build inside out, then emit outside in once: repeatedly copying the encoded inner
       // result would make a legal deeply nested query quadratic in time and allocation.
@@ -428,7 +428,7 @@ object QueryAnswers:
       view: QueryView[S],
       utxo: Map[TxIn, TxOut],
       q: LedgerQuery,
-      version: NodeToClientVersion
+      version: NtcVersion
   ): Either[Unanswered, Bytes] =
     import LedgerQuery.*
     def conway[A](f: ConwayFacts => Either[Unanswered, A]): Either[Unanswered, A] =

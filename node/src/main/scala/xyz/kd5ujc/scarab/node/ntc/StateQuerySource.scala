@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.node.ntc
 import cats.effect.{Ref, Sync}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.NodeToClientVersion
+import xyz.kd5ujc.scarab.protocol.NtcVersion
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.protocol.LocalStateQuery.{Failure, Target}
 import xyz.kd5ujc.scarab.network.LocalStateQueryServer
@@ -28,9 +28,9 @@ object StateQuerySource:
       chain: Ref[F, VolatileChain[S]],
       env: F[QueryEnv],
       store: UtxoStore[F],
-      version: NodeToClientVersion = NodeToClientVersion.latest
+      version: NtcVersion = NtcVersion.LatestReleased
   ): LocalStateQueryServer.Source[F] = new LocalStateQueryServer.Source[F]:
-    override def forVersion(agreed: NodeToClientVersion): LocalStateQueryServer.Source[F] =
+    override def forVersion(agreed: NtcVersion): LocalStateQueryServer.Source[F] =
       StateQuerySource(chain, env, store, agreed)
 
     def acquire(target: Target): F[Either[Failure, LocalStateQueryServer.Session[F]]] =

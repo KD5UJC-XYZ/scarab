@@ -6,7 +6,7 @@ import io.circe.{ACursor, Json}
 import java.time.{Instant, ZoneOffset}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.codec.Rational
-import xyz.kd5ujc.scarab.protocol.NodeToClientVersion
+import xyz.kd5ujc.scarab.protocol.NtcVersion
 import xyz.kd5ujc.scarab.ledger.Nonce
 import xyz.kd5ujc.scarab.ledger.state.{ProtVer, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.storage.haskell.state.{NodeOrders, Versions, Wire}
@@ -47,7 +47,7 @@ object GenesisConfig:
     c.downField(name).as[BigDecimal].map(Rational.fromDecimal).leftMap(_ => s"genesis $name")
 
   /** The result item, from the Shelley genesis JSON. */
-  def encode(shelley: Json, version: NodeToClientVersion = NodeToClientVersion.latest): R[Bytes] =
+  def encode(shelley: Json, version: NtcVersion = NtcVersion.LatestReleased): R[Bytes] =
     val c = shelley.hcursor
     val p = c.downField("protocolParams")
     for
@@ -96,7 +96,8 @@ object GenesisConfig:
     }
 
   /** The 17 Shelley protocol parameters of the genesis file. */
-  private def shelleyParams(p: ACursor, version: NodeToClientVersion): R[CborOut => Unit] =
+  private def shelleyParams(p: ACursor, version: NtcVersion): R[CborOut => Unit] =
+    val legacy = version.number < NtcVersion.V21.number
     for
       minFeeA <- get[BigInt](p, "minFeeA")
       minFeeB <- get[BigInt](p, "minFeeB")
@@ -125,11 +126,11 @@ object GenesisConfig:
       minUtxo <- get[BigInt](p, "minUTxOValue")
       minPool <- get[BigInt](p, "minPoolCost")
     yield (w: CborOut) =>
-      w.array(if version.legacyPParams then 18 else 17)
+      w.array(if legacy then 18 else 17)
       w.uint(minFeeA).uint(minFeeB).uint(maxBody).uint(maxTx).uint(maxHeader)
       w.uint(keyDeposit).uint(poolDeposit).uint(eMax).uint(nOpt)
       List(a0, rho, tau, d).foreach(r => w.raw(Wire.ratio.encodeUnchecked(r)))
       w.raw(Wire.nonce.encodeUnchecked(entropy.fold[Nonce](Nonce.Neutral)(Nonce.Hash(_))))
-      if !version.legacyPParams then w.array(2)
+      if !legacy then w.array(2)
       w.uint(major).uint(minor)
       w.uint(minUtxo).uint(minPool)

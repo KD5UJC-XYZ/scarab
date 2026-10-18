@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node.ntc
 
 import scala.annotation.tailrec
-import xyz.kd5ujc.scarab.protocol.NodeToClientVersion
+import xyz.kd5ujc.scarab.protocol.NtcVersion
 
 /** The supported query contract of cardano-node 11.1.3: `blockQueryIsSupportedOnVersion`,
   * `Shelley/Ledger/Query.hs:541-593` at ouroboros-consensus
@@ -11,11 +11,11 @@ import xyz.kd5ujc.scarab.protocol.NodeToClientVersion
   * agreed contract (`Shelley/Node/Serialisation.hs:368-373` leaves the reference decoder ungated).
   */
 object QueryVersion:
-  def supports(version: NodeToClientVersion, query: NtcQuery): Boolean = query match
+  def supports(version: NtcVersion, query: NtcQuery): Boolean = query match
     case NtcQuery.IfCurrent(_, inner) => ledger(version, inner)
     case _                            => true
 
-  @tailrec private def ledger(version: NodeToClientVersion, query: LedgerQuery): Boolean =
+  @tailrec private def ledger(version: NtcVersion, query: LedgerQuery): Boolean =
     import LedgerQuery.*
     val v = version.number
     query match

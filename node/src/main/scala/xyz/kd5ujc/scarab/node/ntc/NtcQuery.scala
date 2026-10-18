@@ -6,7 +6,7 @@ import cats.syntax.all.*
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{Credential, DRep, GovActionId, TxIn}
-import xyz.kd5ujc.scarab.protocol.NodeToClientVersion
+import xyz.kd5ujc.scarab.protocol.NtcVersion
 
 /** A ledger (Shelley-based era) query as `Ouroboros.Consensus.Shelley.Ledger.Query` numbers them.
   * `Unsupported(tag)` is a query this node understands the framing of but does not answer.
@@ -94,7 +94,7 @@ object NtcQuery:
     case other => other.toString.take(120)
 
   enum Error:
-    case UnsupportedVersion(version: Int)
+    case UnsupportedVersion(version: NtcVersion)
     case MalformedCbor(detail: String)
     case ExpectedArray(field: String)
     case ExpectedUnsigned(field: String)
@@ -112,7 +112,7 @@ object NtcQuery:
 
     def message: String = this match
       case UnsupportedVersion(version) =>
-        s"query is not supported at node-to-client version $version"
+        s"query is not supported at node-to-client version ${version.number}"
       case MalformedCbor(detail)          => s"invalid query CBOR: $detail"
       case ExpectedArray(field)           => s"$field: expected array"
       case ExpectedUnsigned(field)        => s"$field: expected small unsigned integer"
@@ -139,12 +139,12 @@ object NtcQuery:
     Cbor.decode(raw, limits).leftMap(Error.MalformedCbor(_)).flatMap(top)
 
   /** Apply the reference client codec's supported-version contract to an incoming query. */
-  def decode(raw: Bytes, version: NodeToClientVersion): R[NtcQuery] =
+  def decode(raw: Bytes, version: NtcVersion): R[NtcQuery] =
     decode(raw).flatMap { query =>
       Either.cond(
         QueryVersion.supports(version, query),
         query,
-        Error.UnsupportedVersion(version.number)
+        Error.UnsupportedVersion(version)
       )
     }
 

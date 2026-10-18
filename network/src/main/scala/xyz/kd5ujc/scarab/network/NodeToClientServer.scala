@@ -8,7 +8,7 @@ import cats.effect.implicits.*
 import cats.syntax.all.*
 import cats.effect.Resource
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.NodeToClientVersion
+import xyz.kd5ujc.scarab.protocol.NtcVersion
 import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch
 import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.RawNtNBlock
 
@@ -46,12 +46,12 @@ object NodeToClientServer:
                 suite = xyz.kd5ujc.scarab.protocol.Handshake.Suite.NodeToClient
               )
             )
-          version <- NodeToClientVersion
+          version <- NtcVersion
             .fromNumber(agreed.version)
             .fold(
               NetworkError
                 .IllegalTransition(Protocols.Handshake, "unoffered node-to-client version")
-                .raise[F, NodeToClientVersion]
+                .raise[F, NtcVersion]
             )(Async[F].pure)
           submission <- mux.channel(Protocols.LocalTxSubmission)
           querying <- stateQuery.traverse(source =>

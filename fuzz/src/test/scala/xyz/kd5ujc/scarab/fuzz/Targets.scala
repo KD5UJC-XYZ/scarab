@@ -527,10 +527,13 @@ object Targets:
       Target(
         "ntc-query-versioned",
         () => Corpus.ntcQueries ++ Corpus.tricky,
-        probe("ntc-query-versioned") { b =>
-          val accepted = NodeToClientVersion.values.map(v => NtcQuery.decode(b, v).isRight)
-          seen("ntc-query-versioned", accepted.exists(identity))
-        }
+        in =>
+          // Eight decoder calls retain the normal linear allocation allowance per call.
+          Probe.run("ntc-query-versioned", in, perByte = 1000L * NtcVersion.All.size) {
+            val b = raw(in)
+            val accepted = NtcVersion.All.map(v => NtcQuery.decode(b, v).isRight)
+            seen("ntc-query-versioned", accepted.exists(identity))
+          }
       ),
       Target(
         "plutus-data",

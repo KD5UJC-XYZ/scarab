@@ -6,7 +6,7 @@ import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.NodeToClientVersion
+import xyz.kd5ujc.scarab.protocol.NtcVersion
 import xyz.kd5ujc.scarab.protocol.LocalStateQuery
 import xyz.kd5ujc.scarab.protocol.LocalStateQuery.{Failure, Message, State, Target}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Role
@@ -45,7 +45,7 @@ object LocalStateQueryServer:
     /** Bind subsequent acquisitions to the version agreed on this connection. Sources whose answers
       * do not depend on the version may keep their existing interpreter.
       */
-    def forVersion(version: NodeToClientVersion): Source[F] = this
+    def forVersion(version: NtcVersion): Source[F] = this
 
     def acquire(target: Target): F[Either[Failure, Session[F]]]
 
