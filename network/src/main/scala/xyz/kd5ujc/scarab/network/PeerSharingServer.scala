@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import xyz.kd5ujc.scarab.protocol.ProtocolError
+import NetworkError.RuntimeViolation
+
 import cats.effect.Temporal
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -57,7 +60,7 @@ object PeerSharingServer:
       settings: Settings = Settings()
   )(using Raise[F, NetworkError]): F[Unit] =
     val id = Protocols.PeerSharing
-    def illegal[A](detail: String): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: NetworkError.Violation): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
     val step: F[Boolean] =
       channel
         .recv(settings.limits.maxMessageBytes)(
@@ -73,10 +76,10 @@ object PeerSharingServer:
                   fitting(peers, amount, settings),
                   settings.limits
                 )
-                .fold(e => illegal[Unit](e.message), channel.send)
+                .fold(e => illegal[Unit](ProtocolError.PeerSharing(e)), channel.send)
                 .as(true)
             }
           case PeerSharing.Message.Done => Temporal[F].pure(false)
-          case other                    => illegal[Boolean](s"unexpected $other")
+          case other                    => illegal[Boolean](RuntimeViolation.PeerSharingUnexpected(other))
         }
     step.iterateWhile(identity).void

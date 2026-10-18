@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import NetworkError.RuntimeViolation
+
 import cats.effect.Temporal
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -21,7 +23,7 @@ object KeepAliveServer:
       Raise[F, NetworkError]
   ): F[Unit] =
     val id = Protocols.KeepAlive
-    def illegal[A](detail: String): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: NetworkError.Violation): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
     val loop: F[Boolean] =
       Timed
         .within(settings.idleTimeout, id, "client")(
@@ -46,6 +48,6 @@ object KeepAliveServer:
               .fold(illegal, channel.send)
               .as(true)
           case KeepAlive.Message.Done => Temporal[F].pure(false)
-          case other                  => illegal(s"unexpected $other")
+          case other                  => illegal(RuntimeViolation.KeepAliveUnexpected(other))
         }
     loop.iterateWhile(identity).void

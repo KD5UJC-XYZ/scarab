@@ -59,7 +59,7 @@ object NodeToClientServer:
             .fromNumber(agreed.version)
             .fold(
               NetworkError
-                .IllegalTransition(Protocols.Handshake, "unoffered node-to-client version")
+                .IllegalTransition(Protocols.Handshake, NetworkError.RuntimeViolation.UnofferedLocalVersion(agreed.version))
                 .raise[F, NtcVersion]
             )(Async[F].pure)
           unavailable <- Deferred[F, LocalTxSubmissionServer.Unavailable]

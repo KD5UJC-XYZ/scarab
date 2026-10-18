@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import NetworkError.RuntimeViolation
+
 import cats.effect.Temporal
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -43,7 +45,7 @@ object LocalTxSubmissionServer:
       settings: Settings = Settings()
   )(using Raise[F, NetworkError]): F[Option[Unavailable]] =
     val id = Protocols.LocalTxSubmission
-    def illegal[A](detail: String): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: NetworkError.Violation): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
     def send(state: LocalTxSubmission.State, message: LocalTxSubmission.Message): F[Unit] =
       LocalTxSubmission.encode(state, Role.Server, message).fold(illegal, channel.send)
     val step: F[Either[Unit, Option[Unavailable]]] =
@@ -64,7 +66,7 @@ object LocalTxSubmissionServer:
               case Response.ServiceUnavailable(error) => Temporal[F].pure(Right(Some(error)))
             }
           case LocalTxSubmission.Message.Done => Temporal[F].pure(Right(None))
-          case other                          => illegal(s"unexpected client message $other")
+          case other                          => illegal(RuntimeViolation.LocalTxSubmissionUnexpected(other))
         }
     Temporal[F].tailRecM(())(_ => step)
 

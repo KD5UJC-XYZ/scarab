@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import xyz.kd5ujc.scarab.protocol.ProtocolError
+import NetworkError.RuntimeViolation
+
 import cats.effect.{Ref, Temporal}
 import cats.effect.std.Mutex
 import cats.mtl.Raise
@@ -35,14 +38,14 @@ object PeerSharingClient:
   ): F[PeerSharingClient[F]] =
     val F = Temporal[F]
     val id = Protocols.PeerSharing
-    def illegal[A](detail: String)(using Raise[F, NetworkError]): F[A] =
+    def illegal[A](detail: NetworkError.Violation)(using Raise[F, NetworkError]): F[A] =
       NetworkError.IllegalTransition(id, detail).raise[F, A]
     def send(state: PeerSharing.State, message: PeerSharing.Message)(using
         Raise[F, NetworkError]
     ): F[Unit] =
       PeerSharing
         .encode(state, PeerSharing.Role.Client, message, settings.limits)
-        .fold(e => illegal(e.message), channel.send)
+        .fold(e => illegal(ProtocolError.PeerSharing(e)), channel.send)
 
     (Mutex[F], Ref.of[F, PeerSharing.State](PeerSharing.State.Idle)).mapN { (lock, state) =>
       new PeerSharingClient[F]:
@@ -64,10 +67,10 @@ object PeerSharingClient:
               peers <- answer match
                 case PeerSharing.Message.SharePeers(peers) if peers.size > amount.value =>
                   illegal[Vector[Address]](
-                    PeerSharing.Violation.TooManyPeers(amount, peers.size).message
+                    RuntimeViolation.PeerSharingPolicy(PeerSharing.Violation.TooManyPeers(amount, peers.size))
                   )
                 case PeerSharing.Message.SharePeers(peers) => F.pure(peers)
-                case other => illegal[Vector[Address]](s"unexpected $other")
+                case other => illegal[Vector[Address]](RuntimeViolation.PeerSharingUnexpected(other))
               _ <- state.set(PeerSharing.State.Idle)
             yield peers
           }

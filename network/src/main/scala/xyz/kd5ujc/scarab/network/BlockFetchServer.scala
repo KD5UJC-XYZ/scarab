@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import NetworkError.RuntimeViolation
+
 import cats.effect.Temporal
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -38,7 +40,7 @@ object BlockFetchServer:
     val id = Protocols.BlockFetch
     val codec = CardanoBlockFetch.payloadCodec()
     type Msg = BlockFetch.Message[CardanoBlockFetch.RawNtNBlock]
-    def illegal[A](detail: String): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: NetworkError.Violation): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
 
     def send(state: BlockFetch.State, message: Msg): F[Unit] =
       BlockFetch
@@ -84,6 +86,6 @@ object BlockFetchServer:
                     send(BlockFetch.State.Streaming, BlockFetch.Message.BatchDone).as(true)
               }
             }
-          case other => illegal(s"unexpected client message $other")
+          case other => illegal(RuntimeViolation.BlockFetchUnexpected(other))
         }
     step.iterateWhile(identity).void

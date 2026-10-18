@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+
 import cats.effect.{Clock, Ref, Resource, Temporal}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -27,7 +28,7 @@ object KeepAliveClient:
   ): F[KeepAliveClient[F]] =
     val F = Temporal[F]
     val id = Protocols.KeepAlive
-    def illegal[A](detail: String)(using Raise[F, NetworkError]): F[A] =
+    def illegal[A](detail: NetworkError.Violation)(using Raise[F, NetworkError]): F[A] =
       NetworkError.IllegalTransition(id, detail).raise[F, A]
 
     Ref.of[F, Int](0).map { counter =>

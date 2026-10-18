@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import NetworkError.RuntimeViolation
+
 import cats.effect.Temporal
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -91,7 +93,7 @@ object LocalTxMonitorServer:
   )(using Raise[F, NetworkError]): F[Unit] =
     val F = Temporal[F]
     val id = Protocols.LocalTxMonitor
-    def illegal[A](detail: String): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: NetworkError.Violation): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
     def send(state: State, message: Message): F[Unit] =
       LocalTxMonitor.encode(state, Role.Server, message).fold(illegal, channel.send)
     def receive(state: State, name: String): F[Message] =
@@ -123,13 +125,13 @@ object LocalTxMonitorServer:
           ) *> serving(snapshot, remaining)
         case Message.AwaitAcquire => source.awaitChange(snapshot).flatMap(acquired)
         case Message.Release      => F.pure(true)
-        case other                => illegal(s"unexpected client message $other")
+        case other                => illegal(RuntimeViolation.LocalTxMonitorUnexpected(other))
       }
 
     val idle: F[Boolean] =
       receive(State.Idle, "idle").flatMap {
         case Message.Acquire => source.acquire.flatMap(acquired)
         case Message.Done    => F.pure(false)
-        case other           => illegal(s"unexpected client message $other")
+        case other           => illegal(RuntimeViolation.LocalTxMonitorUnexpected(other))
       }
     idle.iterateWhile(identity).void

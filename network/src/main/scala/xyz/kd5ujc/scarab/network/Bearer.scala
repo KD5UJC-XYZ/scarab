@@ -45,10 +45,9 @@ object Bearer:
           .flatMap {
             case Right(allocated) => allocated.pure[F]
             case Left(e) =>
-              val reason = Option(e.getMessage).getOrElse(e.getClass.getSimpleName)
               val error = e match
                 case _: java.io.IOException | _: java.util.concurrent.TimeoutException =>
-                  NetworkError.Connect(address.toString, reason)
+                  NetworkError.Connect(address.toString, e)
                 case other => NetworkError.Defect(other)
               error.raise[F, (Socket[F], F[Unit])]
           }

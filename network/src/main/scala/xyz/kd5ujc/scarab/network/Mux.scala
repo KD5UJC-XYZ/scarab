@@ -175,7 +175,7 @@ object Mux:
               Some(
                 NetworkError.IllegalTransition(
                   sdu.protocol,
-                  s"data on unexpected mini-protocol ${sdu.protocol}"
+                  NetworkError.RuntimeViolation.UnexpectedProtocol(sdu.protocol)
                 )
               )
             )
@@ -183,7 +183,7 @@ object Mux:
             inbound.get((sdu.protocol, receiverOf(sdu.direction))) match
               case None =>
                 F.pure(
-                  Some(NetworkError.IllegalTransition(sdu.protocol, "SDU with the wrong mode bit"))
+                  Some(NetworkError.IllegalTransition(sdu.protocol, NetworkError.RuntimeViolation.WrongModeBit))
                 )
               case Some(ingress) =>
                 ingress.offer(sdu.payload).flatMap {
@@ -192,7 +192,7 @@ object Mux:
                   case None => route(rest)
                 }
 
-      val closedByPeer = NetworkError.BearerClosed("closed by peer")
+      val closedByPeer = NetworkError.BearerClosed(NetworkError.Closure.PeerClosed)
       // Socket.hs:72-102: wait indefinitely for the first header bytes, then one absolute SDU
       // deadline. Pull.timed owns its source and timer; continuing a partial SDU never resets it.
       // Pull's suspended bind, rather than the JVM stack, owns this externally sized loop.
@@ -291,7 +291,7 @@ object Mux:
               NetworkError
                 .IllegalTransition(
                   protocol,
-                  s"mini-protocol is not registered as $role on this connection"
+                  NetworkError.RuntimeViolation.NotRegistered(role)
                 )
                 .raise[F, MuxChannel[F]]
         def closed = done.get
@@ -323,7 +323,7 @@ object Mux:
 
     def send(message: Bytes)(using Raise[F, NetworkError]): F[Unit] =
       if message.size == 0 || message.size > config.maxMessageBytes then
-        NetworkError.IllegalTransition(id, s"message of ${message.size} bytes cannot be sent").raise
+        NetworkError.IllegalTransition(id, NetworkError.RuntimeViolation.OutgoingMessageSize(message.size, config.maxMessageBytes)).raise
       else
         closed.tryGet.flatMap {
           case Some(reason) => reason.raise[F, Unit]

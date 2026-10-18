@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import NetworkError.RuntimeViolation
+
 import cats.effect.Temporal
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -49,7 +51,7 @@ object ChainSyncServer:
   )(using Raise[F, NetworkError]): F[Unit] =
     val F = Temporal[F]
     val id = settings.protocol
-    def illegal[A](detail: String): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: NetworkError.Violation): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
 
     def send(state: State, message: Message[P]): F[State] =
       ChainSync
@@ -86,6 +88,6 @@ object ChainSyncServer:
                 )
             }
           case Message.Done => F.pure(false)
-          case other        => illegal(s"unexpected client message $other")
+          case other        => illegal(RuntimeViolation.ChainSyncUnexpected(other))
         }
     step.iterateWhile(identity).void
