@@ -494,7 +494,7 @@ object LeiosRefProbe extends IOApp:
                   val leios =
                     if withLeios then
                       (watch(Protocols.LeiosNotify), watch(Protocols.LeiosFetch)).parTupled.void
-                    else IO.unit
+                    else IO.never[Unit]
                   IO.race(mux.closed, IO.race(IO.sleep(duration), leios)).flatMap {
                     case Left(reason) => IO.println(s"connection ended: $reason")
                     case Right(_)     => IO.println("listener: window over, connection still open")
