@@ -6,16 +6,19 @@ import io.circe.{ACursor, Json}
 import java.time.{Instant, ZoneOffset}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.codec.Rational
+import xyz.kd5ujc.scarab.protocol.NodeToClientVersion
 import xyz.kd5ujc.scarab.ledger.Nonce
 import xyz.kd5ujc.scarab.ledger.state.{ProtVer, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.storage.haskell.state.{NodeOrders, Versions, Wire}
 
 /** `GetGenesisConfig`: the compact Shelley genesis (`CompactGenesis`, whose initial funds and
-  * staking are dropped) in the 15-field encoding of node-to-client version 15 and later (the one
-  * without the extra configuration): system start, network magic and id, active slot coefficient,
-  * security parameter, epoch length, KES period and evolutions, slot length in microseconds, update
-  * quorum, maximum supply, the Shelley protocol parameters, the genesis delegates, and two empty
-  * maps.
+  * staking are dropped) in the 15-field encoding of node-to-client versions 16–23 (the one without
+  * the extra configuration): system start, network magic and id, active slot coefficient, security
+  * parameter, epoch length, KES period and evolutions, slot length in microseconds, update quorum,
+  * maximum supply, the Shelley protocol parameters, the genesis delegates, and two empty maps.
+  * Before NTC 21 the Shelley protocol version occupies two contiguous fields instead of one pair
+  * (`Query/LegacyShelleyGenesis.hs:34-57`, `LegacyPParams.hs:46-68` at ouroboros-consensus
+  * 82ecba329d7d054340bf707d44fe6e9ac27cec40).
   */
 object GenesisConfig:
   private type R[A] = Either[String, A]
@@ -44,7 +47,7 @@ object GenesisConfig:
     c.downField(name).as[BigDecimal].map(Rational.fromDecimal).leftMap(_ => s"genesis $name")
 
   /** The result item, from the Shelley genesis JSON. */
-  def encode(shelley: Json): R[Bytes] =
+  def encode(shelley: Json, version: NodeToClientVersion = NodeToClientVersion.latest): R[Bytes] =
     val c = shelley.hcursor
     val p = c.downField("protocolParams")
     for
@@ -74,7 +77,7 @@ object GenesisConfig:
             yield genesis -> (delegate, vrf)
           }
         )
-      params <- shelleyParams(p)
+      params <- shelleyParams(p, version)
     yield CborOut.build { w =>
       w.array(15)
       val utc = start.atZone(ZoneOffset.UTC)
@@ -93,7 +96,7 @@ object GenesisConfig:
     }
 
   /** The 17 Shelley protocol parameters of the genesis file. */
-  private def shelleyParams(p: ACursor): R[CborOut => Unit] =
+  private def shelleyParams(p: ACursor, version: NodeToClientVersion): R[CborOut => Unit] =
     for
       minFeeA <- get[BigInt](p, "minFeeA")
       minFeeB <- get[BigInt](p, "minFeeB")
@@ -122,10 +125,11 @@ object GenesisConfig:
       minUtxo <- get[BigInt](p, "minUTxOValue")
       minPool <- get[BigInt](p, "minPoolCost")
     yield (w: CborOut) =>
-      w.array(17)
+      w.array(if version.legacyPParams then 18 else 17)
       w.uint(minFeeA).uint(minFeeB).uint(maxBody).uint(maxTx).uint(maxHeader)
       w.uint(keyDeposit).uint(poolDeposit).uint(eMax).uint(nOpt)
       List(a0, rho, tau, d).foreach(r => w.raw(Wire.ratio.encodeUnchecked(r)))
       w.raw(Wire.nonce.encodeUnchecked(entropy.fold[Nonce](Nonce.Neutral)(Nonce.Hash(_))))
-      w.array(2).uint(major).uint(minor)
+      if !version.legacyPParams then w.array(2)
+      w.uint(major).uint(minor)
       w.uint(minUtxo).uint(minPool)

@@ -6,6 +6,7 @@ import cats.syntax.all.*
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{Credential, DRep, GovActionId, TxIn}
+import xyz.kd5ujc.scarab.protocol.NodeToClientVersion
 
 /** A ledger (Shelley-based era) query as `Ouroboros.Consensus.Shelley.Ledger.Query` numbers them.
   * `Unsupported(tag)` is a query this node understands the framing of but does not answer.
@@ -15,6 +16,8 @@ enum LedgerQuery:
   case GetEpochNo
   case GetNonMyopicMemberRewards(credentials: Vector[Either[BigInt, Credential]])
   case GetCurrentPParams
+  case GetProposedPParamsUpdates
+  case GetStakeDistribution
   case GetUTxOByAddress(addresses: Set[Bytes])
   case GetUTxOWhole
   case DebugEpochState
@@ -30,6 +33,7 @@ enum LedgerQuery:
   case GetRewardInfoPools
   case GetPoolState(pools: Option[Set[Bytes]])
   case GetStakeSnapshots(pools: Option[Set[Bytes]])
+  case GetPoolDistr(pools: Option[Set[Bytes]])
   case GetStakeDelegDeposits(credentials: Set[Credential])
   case GetConstitution
   case GetGovState
@@ -42,6 +46,7 @@ enum LedgerQuery:
   case GetProposals(ids: Set[GovActionId])
   case GetRatifyState
   case GetFuturePParams
+  case GetLedgerPeerSnapshotLegacy
   case GetLedgerPeerSnapshot(kind: Int)
   case QueryStakePoolDefaultVote(pool: Bytes)
   case GetPoolDistr2(pools: Option[Set[Bytes]])
@@ -89,6 +94,7 @@ object NtcQuery:
     case other => other.toString.take(120)
 
   enum Error:
+    case UnsupportedVersion(version: Int)
     case MalformedCbor(detail: String)
     case ExpectedArray(field: String)
     case ExpectedUnsigned(field: String)
@@ -105,6 +111,8 @@ object NtcQuery:
     case Constructor(field: String, tag: Int, arity: Int)
 
     def message: String = this match
+      case UnsupportedVersion(version) =>
+        s"query is not supported at node-to-client version $version"
       case MalformedCbor(detail)          => s"invalid query CBOR: $detail"
       case ExpectedArray(field)           => s"$field: expected array"
       case ExpectedUnsigned(field)        => s"$field: expected small unsigned integer"
@@ -129,6 +137,16 @@ object NtcQuery:
 
   def decode(raw: Bytes): R[NtcQuery] =
     Cbor.decode(raw, limits).leftMap(Error.MalformedCbor(_)).flatMap(top)
+
+  /** Apply the reference client codec's supported-version contract to an incoming query. */
+  def decode(raw: Bytes, version: NodeToClientVersion): R[NtcQuery] =
+    decode(raw).flatMap { query =>
+      Either.cond(
+        QueryVersion.supports(version, query),
+        query,
+        Error.UnsupportedVersion(version.number)
+      )
+    }
 
   private def arr(n: Node, what: String): R[Vector[Node]] = n.value match
     case Value.Arr(xs) => Right(xs)
@@ -290,6 +308,8 @@ object NtcQuery:
                 )
               ).map(s => GetNonMyopicMemberRewards(s.toVector))
             case 3 => none(GetCurrentPParams)
+            case 4 => none(GetProposedPParamsUpdates)
+            case 5 => none(GetStakeDistribution)
             case 6 => arg1(set(_, "addresses")(bytes(_, "address"))).map(GetUTxOByAddress(_))
             case 7 => none(GetUTxOWhole)
             case 8 => none(DebugEpochState)
@@ -307,6 +327,7 @@ object NtcQuery:
             case 18 => none(GetRewardInfoPools)
             case 19 => arg1(maybeSet(_, "pools")(keyHash)).map(GetPoolState(_))
             case 20 => arg1(maybeSet(_, "pools")(keyHash)).map(GetStakeSnapshots(_))
+            case 21 => arg1(maybeSet(_, "pools")(keyHash)).map(GetPoolDistr(_))
             case 22 => arg1(set(_, "credentials")(credential)).map(GetStakeDelegDeposits(_))
             case 23 => none(GetConstitution)
             case 24 => none(GetGovState)
@@ -320,13 +341,19 @@ object NtcQuery:
                   set(xs(2), "hot credentials")(credential),
                   set(xs(3), "statuses")(uint(_, "member status"))
                 ).mapN(GetCommitteeMembersState(_, _, _))
-            case 28    => arg1(set(_, "credentials")(credential)).map(GetFilteredVoteDelegatees(_))
-            case 29    => none(GetAccountState)
-            case 30    => arg1(set(_, "pools")(keyHash)).map(GetSPOStakeDistr(_))
-            case 31    => arg1(set(_, "ids")(govActionId)).map(GetProposals(_))
-            case 32    => none(GetRatifyState)
-            case 33    => none(GetFuturePParams)
-            case 34    => arg1(uint(_, "peer kind")).map(GetLedgerPeerSnapshot(_))
+            case 28 => arg1(set(_, "credentials")(credential)).map(GetFilteredVoteDelegatees(_))
+            case 29 => none(GetAccountState)
+            case 30 => arg1(set(_, "pools")(keyHash)).map(GetSPOStakeDistr(_))
+            case 31 => arg1(set(_, "ids")(govActionId)).map(GetProposals(_))
+            case 32 => none(GetRatifyState)
+            case 33 => none(GetFuturePParams)
+            case 34 =>
+              if xs.size == 1 then Right(GetLedgerPeerSnapshotLegacy)
+              else
+                arg1(uint(_, "peer kind")).flatMap {
+                  case kind @ (0 | 1) => Right(GetLedgerPeerSnapshot(kind))
+                  case kind           => Left(Error.UnknownTag("ledger peer kind", kind))
+                }
             case 35    => arg1(keyHash).map(QueryStakePoolDefaultVote(_))
             case 36    => arg1(maybeSet(_, "pools")(keyHash)).map(GetPoolDistr2(_))
             case 37    => none(GetStakeDistribution2)

@@ -177,8 +177,9 @@ class LocalStateQuery:
 
     VERSIONS = [32784 + i for i in range(0, 10)]
 
-    def __init__(self, container, socket, magic, host=False):
+    def __init__(self, container, socket, magic, host=False, version=None):
         self.container, self.socket, self.magic, self.host = container, socket, magic, host
+        self.version = version
 
     def __enter__(self):
         if self.host:
@@ -188,10 +189,14 @@ class LocalStateQuery:
                 ["docker", "exec", "-i", self.container, "socat", "-", f"UNIX-CONNECT:{self.socket}"],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
         self.buffers = {}
-        self._send(0, enc([0, {v: [self.magic, False] for v in self.VERSIONS}]))
+        versions = self.VERSIONS if self.version is None else [32768 + self.version]
+        self._send(0, enc([0, {v: [self.magic, False] for v in versions}]))
         reply = self._recv(0)
         if reply[0] != 1:
             raise RuntimeError(f"handshake refused: {reply}")
+        self.agreed_version = reply[1] - 32768
+        if self.version is not None and self.agreed_version != self.version:
+            raise RuntimeError(f"handshake agreed {self.agreed_version}, requested {self.version}")
         return self
 
     def __exit__(self, *exc):

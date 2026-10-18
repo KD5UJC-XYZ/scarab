@@ -38,6 +38,7 @@ from ..ntclocal import Session, compare_follow, live_follow, monitor_rounds, awa
 from ..cluster import freeze_classes, scala_container, up
 from ..ntccases import CLI, Builder, corpus
 from ..ntcqueries import compare_round
+from ..ntcversions import compare_versions
 from ..util import ENTRY, ENV, MAGIC, QUERY_PORT, REFERENCE_IMAGE, USER, data_root, docker, in_ref, query, read_log, ref
 import threading
 
@@ -522,6 +523,12 @@ def ntc(args):
             loader.wait()
         loaders = []
         print(json.dumps({"settled": settle(args, root)}), flush=True)
+        versions = compare_versions(args.name, f"{ENV}/socket/node1/sock",
+                                   str(root / "scala-sock" / "node.socket"), root)
+        print(json.dumps({"queryVersions": versions}), flush=True)
+        if versions["matched"] != versions["compared"] or versions["rejected"] != versions["expectedRejections"] \
+                or not all(versions["boundary"].values()):
+            failures.append("node-to-client version-specific query answers or support gates differ")
         # the last queries describe the final state, and the CLI comparisons run on a quiet pool of wallets
         info = {}
         funded = json.loads(in_ref(args.name, f"{CLI} query utxo --whole-utxo --testnet-magic {MAGIC} "
@@ -555,6 +562,7 @@ def ntc(args):
         gaps = {k: v for k, v in stats.items() if not v["implemented"]}
         summary = {
             "rounds": rounds,
+            "queryVersions": versions,
             "queries": {"matched": sum(v["matched"] for v in implemented.values()),
                         "total": sum(v["total"] for v in implemented.values()),
                         "perQuery": {k: f"{v['matched']}/{v['total']}" for k, v in sorted(implemented.items())},

@@ -6,7 +6,7 @@ import scala.annotation.unused
 import scala.collection.immutable.SortedMap
 import java.time.{Instant, ZoneOffset}
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, NodeToClientVersion}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.consensus.{BlockRef, HardForkConfig}
@@ -215,15 +215,27 @@ object QueryAnswers:
       env: QueryEnv,
       view: QueryView[S],
       utxo: Map[TxIn, TxOut],
-      query: NtcQuery
-  ): Option[Bytes] = answerOrWhy(env, view, utxo, query).toOption
+      query: NtcQuery,
+      version: NodeToClientVersion = NodeToClientVersion.latest
+  ): Option[Bytes] = answerOrWhy(env, view, utxo, query, version).toOption
 
   /** The result item of the answer, or why there is none. */
   def answerOrWhy[S](
       env: QueryEnv,
       view: QueryView[S],
       utxo: Map[TxIn, TxOut],
-      query: NtcQuery
+      query: NtcQuery,
+      version: NodeToClientVersion = NodeToClientVersion.latest
+  ): Either[Unanswered, Bytes] =
+    if !QueryVersion.supports(version, query) then Left(Unanswered.Unsupported)
+    else answerSupported(env, view, utxo, query, version)
+
+  private def answerSupported[S](
+      env: QueryEnv,
+      view: QueryView[S],
+      utxo: Map[TxIn, TxOut],
+      query: NtcQuery,
+      version: NodeToClientVersion
   ): Either[Unanswered, Bytes] = query match
     case NtcQuery.SystemStart => Right(CborOut.build(systemStart(_, env.systemStart)))
     case NtcQuery.ChainBlockNo =>
@@ -269,7 +281,7 @@ object QueryAnswers:
       val era = view.era
       if index != era.index then Right(CborOut.build(mismatch(_, index, era)))
       else if era != Era.Conway && !inEveryEra(inner) then Left(Unanswered.Unsupported)
-      else ledgerAnswer(env, view, utxo, inner).map(r => CborOut.build(_.array(1).raw(r)))
+      else ledgerAnswer(env, view, utxo, inner, version).map(r => CborOut.build(_.array(1).raw(r)))
 
   /** The queries answered in every Shelley-based era: the ledger state as the Haskell node writes
     * it, and the chain-dependent state (the others are Conway's).
@@ -350,6 +362,20 @@ object QueryAnswers:
   private val poolDistribution: Codec[(Map[Bytes, PoolShare], BigInt)] =
     Record.of[(Map[Bytes, PoolShare], BigInt)]((Wire.sortedMapOf(poolId, poolShare), coin))
 
+  /** The retired `PoolDistr`: the map alone and each pool's ratio and VRF hash, with no stake or
+    * total (`Query/Types.hs:32-72` at ouroboros-consensus
+    * 82ecba329d7d054340bf707d44fe6e9ac27cec40).
+    */
+  private val legacyPoolDistribution: Codec[Map[Bytes, (Rational, Bytes)]] =
+    Wire.sortedMapOf(poolId, Record.of[(Rational, Bytes)]((Wire.ratio, Wire.hash(32))))
+
+  private def legacyDistribution(
+      distribution: (Map[Bytes, PoolShare], BigInt)
+  ): Either[Unanswered, Bytes] =
+    legacyPoolDistribution.answer(distribution._1.map { case (id, share) =>
+      id -> (share.ratio, share.vrf)
+    })
+
   private def restrict[K, V](m: Map[K, V], keys: Set[K]): Map[K, V] =
     if keys.isEmpty then m else m.filter { case (k, _) => keys(k) }
 
@@ -376,10 +402,14 @@ object QueryAnswers:
       env: QueryEnv,
       view: QueryView[S],
       utxo: Map[TxIn, TxOut],
-      q: LedgerQuery
+      q: LedgerQuery,
+      version: NodeToClientVersion
   ): Either[Unanswered, Bytes] =
     val (depth, leaf) = LedgerQuery.cborLayers(q)
-    ledgerLeafAnswer(env, view, utxo, leaf).map { answer =>
+    // GetCBOR intentionally assumes the latest result encoding, independent of the connection
+    // (`answerPureBlockQuery`, Shelley/Ledger/Query.hs:427-433 at the pinned consensus).
+    val encodingVersion = if depth == 0 then version else NodeToClientVersion.latest
+    ledgerLeafAnswer(env, view, utxo, leaf, encodingVersion).map { answer =>
       // Build inside out, then emit outside in once: repeatedly copying the encoded inner
       // result would make a legal deeply nested query quadratic in time and allocation.
       val (_, headers) = (0 until depth).foldLeft((answer.size, List.empty[Bytes])) {
@@ -397,7 +427,8 @@ object QueryAnswers:
       env: QueryEnv,
       view: QueryView[S],
       utxo: Map[TxIn, TxOut],
-      q: LedgerQuery
+      q: LedgerQuery,
+      version: NodeToClientVersion
   ): Either[Unanswered, Bytes] =
     import LedgerQuery.*
     def conway[A](f: ConwayFacts => Either[Unanswered, A]): Either[Unanswered, A] =
@@ -406,11 +437,14 @@ object QueryAnswers:
         case None        => Left(Unanswered.Unsupported)
       }
     q match
-      case GetLedgerTip      => Right(CborOut.build(point(_, view.point)))
-      case GetEpochNo        => conway(f => coin.answer(f.epoch))
-      case GetCurrentPParams => conway(f => protocolParams.answer(f.l.params))
+      case GetLedgerTip => Right(CborOut.build(point(_, view.point)))
+      case GetEpochNo   => conway(f => coin.answer(f.epoch))
+      // The reference's LegacyPParams Conway instance delegates to the current codec, so unlike
+      // the Shelley genesis parameters these bytes do not change at NTC 21.
+      case GetCurrentPParams         => conway(f => protocolParams.answer(f.l.params))
+      case GetProposedPParamsUpdates => Right(CborOut.build(_.map(0)))
       case GetGenesisConfig =>
-        GenesisConfig.encode(env.shelleyGenesis).leftMap(_ => Unanswered.Unwritable)
+        GenesisConfig.encode(env.shelleyGenesis, version).leftMap(_ => Unanswered.Unwritable)
       case DebugChainDepState => chainDepState(view)
       case DebugEpochState    => MirrorAnswers.epochState(view)
       case DebugNewEpochState => MirrorAnswers.newEpochState(view)
@@ -538,6 +572,21 @@ object QueryAnswers:
         conway(f =>
           Codec.intRange(0, 2).answerRead((f.pools, f.accounts).mapN(defaultVote(_, _, pool)))
         )
+      case GetPoolDistr(ids) =>
+        conway(f => legacyDistribution(poolDistr(f.l.leaderPools(nextEpoch = false), ids, None)))
+      case GetStakeDistribution =>
+        conway { f =>
+          (f.currentStake, f.scalars).tupled.leftMap(Unanswered.Refused(_)).flatMap {
+            (current, scalars) =>
+              legacyDistribution(
+                poolDistr(
+                  leaders(current),
+                  None,
+                  Some(env.maxSupply - scalars.chainAccount.reserves.value)
+                )
+              )
+          }
+        }
       case GetPoolDistr2(ids) =>
         conway { f =>
           poolDistribution.answer(poolDistr(f.l.leaderPools(nextEpoch = false), ids, None))

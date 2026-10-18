@@ -525,6 +525,14 @@ object Targets:
         probe("ntc-query") { b => seen("ntc-query", NtcQuery.decode(b).isRight) }
       ),
       Target(
+        "ntc-query-versioned",
+        () => Corpus.ntcQueries ++ Corpus.tricky,
+        probe("ntc-query-versioned") { b =>
+          val accepted = NodeToClientVersion.values.map(v => NtcQuery.decode(b, v).isRight)
+          seen("ntc-query-versioned", accepted.exists(identity))
+        }
+      ),
+      Target(
         "plutus-data",
         () => Corpus.plutusData ++ Corpus.tricky,
         probe("plutus-data") { b => seen("plutus-data", PlutusData.decode(b).isRight) }

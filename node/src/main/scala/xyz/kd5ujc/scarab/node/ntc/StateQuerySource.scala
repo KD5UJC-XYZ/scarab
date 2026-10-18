@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.node.ntc
 import cats.effect.{Ref, Sync}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.protocol.NodeToClientVersion
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.protocol.LocalStateQuery.{Failure, Target}
 import xyz.kd5ujc.scarab.network.LocalStateQueryServer
@@ -26,8 +27,12 @@ object StateQuerySource:
   def apply[F[_]: Sync, S: ChainRead](
       chain: Ref[F, VolatileChain[S]],
       env: F[QueryEnv],
-      store: UtxoStore[F]
+      store: UtxoStore[F],
+      version: NodeToClientVersion = NodeToClientVersion.latest
   ): LocalStateQueryServer.Source[F] = new LocalStateQueryServer.Source[F]:
+    override def forVersion(agreed: NodeToClientVersion): LocalStateQueryServer.Source[F] =
+      StateQuerySource(chain, env, store, agreed)
+
     def acquire(target: Target): F[Either[Failure, LocalStateQueryServer.Session[F]]] =
       chain.get.map(select(_, target)).map(_.map(session))
 
@@ -57,7 +62,7 @@ object StateQuerySource:
     private def session(view: QueryView[S]): LocalStateQueryServer.Session[F] =
       new LocalStateQueryServer.Session[F]:
         def answer(raw: Bytes): F[Either[Refusal, Bytes]] =
-          NtcQuery.decode(raw) match
+          NtcQuery.decode(raw, version) match
             case Left(error) =>
               Sync[F].pure(Left(Refusal.Undecodable(error.message, raw.hex.take(80))))
             case Right(query) =>
@@ -68,7 +73,7 @@ object StateQuerySource:
                 // A value outside its encoding makes the writer throw; the connection ends with the
                 // query named, never silently.
                 answered <- Sync[F]
-                  .delay(QueryAnswers.answerOrWhy(e, view, entries, query))
+                  .delay(QueryAnswers.answerOrWhy(e, view, entries, query, version))
                   .attempt
               yield answered match
                 case Right(Right(result))                => Right(result)
