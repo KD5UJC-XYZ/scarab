@@ -411,14 +411,13 @@ class ConfigSuite extends FunSuite:
     )
   }
 
-  test("an unreadable topology file is a typed FileMissing") {
-    assertEquals(
-      Topology
-        .read(Path.of("/nonexistent/topology.json"))
-        .left
-        .map(_.problem.getClass.getSimpleName),
-      Left("FileMissing")
-    )
+  test("an unreadable topology retains the path and original file-system cause") {
+    val path = Path.of("/nonexistent/topology.json")
+    assert(Topology.read(path).left.exists {
+      case ConfigError(ConfigProblem.FileRead(file, cause: java.nio.file.NoSuchFileException)) =>
+        file == path.toString && cause.getFile == path.toString
+      case _ => false
+    })
   }
 
   test(

@@ -259,7 +259,7 @@ class InboundGovernorSuite extends CatsEffectSuite:
       sessions <- us.governor.sessions
       table <- us.manager.snapshot
     yield
-      assert(outcome._2.contains("invalid header"), outcome._2)
+      assert(outcome._2.contains("InvalidHeader("), outcome._2)
       assertEquals(ranges, Vector.empty[(Point, Point)])
       assertEquals(chain.tip, ChainSync.Point.Origin)
       assert(sessions.head.ended.exists(_.contains("invalid header")), sessions.toString)
@@ -295,9 +295,9 @@ class InboundGovernorSuite extends CatsEffectSuite:
       sessions <- us.governor.sessions
       table <- us.manager.snapshot
     yield
-      // the typed error ended the session, naming the clock skew
-      assert(outcome._2.contains("invalid header"), outcome._2)
-      assert(outcome._2.contains("clock skew"), outcome._2)
+      // The connection diagnostic renders the retained error cases.
+      assert(outcome._2.contains("InvalidHeader("), outcome._2)
+      assert(outcome._2.contains("FarFuture("), outcome._2)
       assert(sessions.exists(_.ended.exists(_.contains("clock skew"))), sessions.toString)
       // no block of the batch with a future header was requested, and nothing in the future applied
       assert(chain.tip != forged.headers.last.point)
@@ -318,7 +318,7 @@ class InboundGovernorSuite extends CatsEffectSuite:
       ranges <- remoteNode.ranges.get
       chain <- us.chain.get
     yield
-      assert(outcome._2.contains("invalid header"), outcome._2)
+      assert(outcome._2.contains("InvalidHeader("), outcome._2)
       assert(ranges.forall { case (_, to) => to != badHeader.point }, ranges.toString)
       // headers are checked a batch at a time, before any block of the batch: the batch with the
       // bad header is not fetched at all (how many blocks the batches before it held depends on the
