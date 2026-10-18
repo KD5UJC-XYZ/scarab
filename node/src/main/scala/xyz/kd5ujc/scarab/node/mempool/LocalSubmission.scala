@@ -7,6 +7,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.{LedgerFailure, PredicateFailure}
 import xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
+import xyz.kd5ujc.scarab.network.LocalTxSubmissionServer
 
 /** Transactions submitted by local clients (`cardano-cli transaction submit` over the
   * node-to-client socket). The client sends the hard-fork-combinator wrapped transaction
@@ -39,23 +40,43 @@ object LocalSubmission:
   /** The rejection as sent to the client: the ledger's `ApplyTxErr` for a refused transaction (the
     * predicate failures `cardano-cli` renders), the hard-fork combinator's era mismatch for a
     * transaction of another era. What the ledger does not report as a predicate failure (a
-    * malformed transaction, a full mempool) is sent as its free-text `ConwayMempoolFailure`.
+    * malformed transaction, a full mempool) is sent as its free-text `ConwayMempoolFailure`. An
+    * implementation limit remains a typed value and has no rejection bytes.
     */
-  def reasonItem(rejection: Rejection): Bytes = rejection match
+  def reasonItem(rejection: Rejection): Either[LedgerFailure.Unavailable, Bytes] = rejection match
+    case Rejection.Ledger(error: LedgerFailure.Unavailable) => Left(error)
     case Rejection.WrongEra(era) =>
-      PredicateFailureCbor.eraMismatch(era, Era.fromIndex(BigInt(era)).fold("Unknown")(_.toString))
+      Right(
+        PredicateFailureCbor.eraMismatch(
+          era,
+          Era.fromIndex(BigInt(era)).fold("Unknown")(_.toString)
+        )
+      )
     case Rejection.Ledger(LedgerFailure.Rejected(_, failure)) =>
-      PredicateFailureCbor.applyTxError(Vector(failure))
+      Right(PredicateFailureCbor.applyTxError(Vector(failure)))
     case Rejection.AlreadyHeld(_) =>
-      text(MempoolState.AllInputsSpent)
-    case other => text(other.message)
+      Right(text(MempoolState.AllInputsSpent))
+    case other => Right(text(other.message))
 
   private def text(message: String): Bytes =
     PredicateFailureCbor.applyTxError(Vector(PredicateFailure.Mempool(message)))
 
-  /** The handler of the LocalTxSubmission server: `None` when the mempool took the transaction. */
-  def handler[F[_]: Applicative](mempool: Mempool[F]): Bytes => F[Option[Bytes]] = item =>
+  /** Service unavailability has no ledger rejection bytes. The transport closes this connection;
+    * admitting an external transaction does not require stopping the node.
+    */
+  private def response(rejection: Rejection): LocalTxSubmissionServer.Response =
+    reasonItem(rejection).fold(
+      error =>
+        LocalTxSubmissionServer.Response.ServiceUnavailable(
+          LocalTxSubmissionServer.Unavailable.ScriptEvaluation(error.message)
+        ),
+      LocalTxSubmissionServer.Response.Rejected(_)
+    )
+
+  def handler[F[_]: Applicative](
+      mempool: Mempool[F]
+  ): Bytes => F[LocalTxSubmissionServer.Response] = item =>
     unwrap(item) match
-      case Left(rejection) => Applicative[F].pure(Some(reasonItem(rejection)))
+      case Left(rejection) => Applicative[F].pure(response(rejection))
       case Right(tx) =>
-        mempool.add(tx).map(_.fold(r => Some(reasonItem(r)), _ => None))
+        mempool.add(tx).map(_.fold(response, _ => LocalTxSubmissionServer.Response.Accepted))

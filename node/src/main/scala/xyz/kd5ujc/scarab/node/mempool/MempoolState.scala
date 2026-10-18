@@ -2,6 +2,8 @@
 package xyz.kd5ujc.scarab.node.mempool
 
 import cats.syntax.all.*
+import cats.Id
+import xyz.kd5ujc.scarab.plutus.{ScalusEvaluator, ScriptDecoder, ScriptEvaluator}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.consensus.BlockRef
@@ -60,7 +62,12 @@ final case class Entry(id: Bytes, raw: Bytes, tx: Tx, ticket: Long, refScriptByt
   def size: Int = raw.size
 
 /** What the transaction rules need besides the ledger state. */
-final case class MempoolEnv(globals: LedgerGlobals, geometry: EpochGeometry):
+final case class MempoolEnv(
+    globals: LedgerGlobals,
+    geometry: EpochGeometry,
+    evaluator: ScriptEvaluator[Id] = ScalusEvaluator.default,
+    decoder: ScriptDecoder[Id] = ScalusEvaluator.defaultDecoder
+):
   /** The environment in which a transaction is validated for inclusion in the next block: the slot
     * after the tip, in the ledger's current epoch.
     */
@@ -74,7 +81,9 @@ final case class MempoolEnv(globals: LedgerGlobals, geometry: EpochGeometry):
       stabilityWindow = geometry.stabilityWindow,
       txIndex = index,
       updateQuorum = globals.updateQuorum,
-      clock = Some(s => BigInt(geometry.slotStart(s).toEpochMilli))
+      clock = Some(s => BigInt(geometry.slotStart(s).toEpochMilli)),
+      evaluator = evaluator,
+      decoder = decoder
     )
 
   /** The constants the rules of the era-indexed state read. */

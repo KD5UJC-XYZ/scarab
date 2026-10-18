@@ -99,14 +99,16 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
     Resource.eval(Bearer.inMemory[IO]()).use { (clientEnd, serverEnd) =>
       Handle
         .allow[NetworkError](
-          NodeToClientServer.accept(
-            serverEnd,
-            magic,
-            _ => IO.pure(None),
-            None,
-            chainSync = chain,
-            txMonitor = monitor
-          )
+          NodeToClientServer
+            .accept(
+              serverEnd,
+              magic,
+              _ => IO.pure(LocalTxSubmissionServer.Response.Accepted),
+              None,
+              chainSync = chain,
+              txMonitor = monitor
+            )
+            .map(_.message)
         )
         .rescue(e => IO.pure(e.message))
         .start
@@ -249,7 +251,13 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
         Handle
           .allow[NetworkError](
             NodeToClientServer
-              .accept(serverEnd, magic, _ => IO.pure(None), txMonitor = Some(t.source))
+              .accept(
+                serverEnd,
+                magic,
+                _ => IO.pure(LocalTxSubmissionServer.Response.Accepted),
+                txMonitor = Some(t.source)
+              )
+              .map(_.message)
           )
           .rescue(e => IO.pure(e.message))
           .start

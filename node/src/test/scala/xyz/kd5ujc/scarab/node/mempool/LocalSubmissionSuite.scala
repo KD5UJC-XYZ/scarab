@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
-import cats.effect.{IO, Resource}
+import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.mtl.Handle
 import cats.syntax.all.*
 import com.comcast.ip4s.UnixSocketAddress
 import fs2.io.net.Network
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.ledger.TestLedger.txIn
 import xyz.kd5ujc.scarab.protocol.{Handshake, LocalTxSubmission}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Role
 import xyz.kd5ujc.scarab.network.*
@@ -64,6 +65,7 @@ class LocalSubmissionSuite extends CatsEffectSuite:
                 .allow[NetworkError](
                   LocalTxSubmissionServer
                     .accept(bearer, magic, LocalSubmission.handler(mempool))
+                    .map(_.message)
                 )
                 .rescue(e => IO.pure(e.message))
                 .void
@@ -126,7 +128,9 @@ class LocalSubmissionSuite extends CatsEffectSuite:
           mempool =>
             Handle
               .allow[NetworkError](
-                LocalTxSubmissionServer.accept(serverEnd, magic, LocalSubmission.handler(mempool))
+                LocalTxSubmissionServer
+                  .accept(serverEnd, magic, LocalSubmission.handler(mempool))
+                  .map(_.message)
               )
               .rescue(e => IO.pure(e.message))
               .start
@@ -150,5 +154,107 @@ class LocalSubmissionSuite extends CatsEffectSuite:
                   *> server.joinWithNever.map(r => assert(r.nonEmpty))
               }
         }
+      }
+  }
+
+  test(
+    "an unavailable local submission sends no rejection, closes only its connection, and permits a fresh client"
+  ) {
+    val fixture = xyz.kd5ujc.scarab.ledger.PlutusCase
+      .load(java.nio.file.Path.of("fixtures/preprod/plutus/tx-2edd684f.json"))
+    val script =
+      (fixture.tx.witnesses.scripts ++ fixture.references.values.flatMap(_.referenceScript))
+        .find(_.kind.isPlutus)
+        .getOrElse(fail("fixture has no Plutus script"))
+    val code = script.plutus.getOrElse(fail("fixture discarded script bytes"))
+    val (good, id) = tx(
+      Vector(txIn(1)),
+      Vector(bob.address() -> (99 * ada)),
+      ada,
+      Vector(alice),
+      referenceScript = Some(script.kind -> code)
+    )
+    val decoder: xyz.kd5ujc.scarab.plutus.ScriptDecoder[cats.Id] = (_, _, _) =>
+      Left(xyz.kd5ujc.scarab.plutus.ScriptDecodeFailure.Unavailable("injected backend limit"))
+    val failure = xyz.kd5ujc.scarab.ledger.LedgerFailure.Unavailable(
+      id,
+      xyz.kd5ujc.scarab.ledger.ScriptLocation.Phase1(script.hash),
+      xyz.kd5ujc.scarab.plutus.EvalFailure.Unsupported("injected backend limit")
+    )
+    LocalSubmission
+      .reasonItem(Rejection.Ledger(failure))
+      .fold(
+        error => assertEquals(error.message, failure.message),
+        bytes => fail(s"unavailability encoded rejection bytes ${bytes.hex}")
+      )
+    Resource
+      .eval(for
+        context <- Ref.of[IO, MempoolEnv](env.copy(decoder = decoder))
+        ask = new cats.mtl.Ask[IO, MempoolEnv]:
+          val applicative = summon[cats.Applicative[IO]]
+          def ask[E >: MempoolEnv]: IO[E] = context.get.map(value => value: E)
+        mempool <- Mempool.create[IO](
+          Right(ledger(2)),
+          1000,
+          env,
+          100000,
+          MempoolEvents.none[IO],
+          environment = Some(ask)
+        )
+        ended <- Deferred[IO, LocalTxSubmissionServer.End]
+        dir <- IO(java.nio.file.Files.createTempDirectory("scarab-unavailable-submission"))
+      yield (mempool, context, ended, dir.resolve("node.socket")))
+      .flatMap { (mempool, context, ended, path) =>
+        BearerServer
+          .listenUnix[IO](path) { bearer =>
+            Handle
+              .allow[NetworkError](
+                NodeToClientServer.accept(bearer, magic, LocalSubmission.handler(mempool))
+              )
+              .rescue(error => IO.pure(LocalTxSubmissionServer.End.ConnectionClosed(error)))
+              .flatMap(end => ended.complete(end).void)
+          }
+          .as((mempool, context, ended, path))
+      }
+      .use { (mempool, context, ended, path) =>
+        def client: IO[Either[NetworkError, LocalTxSubmission.Message]] =
+          Network.forAsync[IO].connect(UnixSocketAddress(path.toString)).use { socket =>
+            Handle
+              .allow[NetworkError] {
+                Mux.resource(Bearer.fromSocket(socket), Set(0, 6)).use { mux =>
+                  for
+                    hs <- mux.channel(0)
+                    _ <- HandshakeClient.run(
+                      hs,
+                      Vector(23 -> Handshake.Data(magic)),
+                      suite = Handshake.Suite.NodeToClient
+                    )
+                    ch <- mux.channel(6)
+                    answer <- submit(ch, wrap(good))
+                  yield answer.asRight[NetworkError]
+                }
+              }
+              .rescue(error => IO.pure(error.asLeft[LocalTxSubmission.Message]))
+          }
+        for
+          unavailable <- client
+          endedAs <- ended.get
+          heldBefore <- mempool.contains(id)
+          _ <- context.set(env)
+          healthy <- client
+          heldAfter <- mempool.contains(id)
+        yield
+          unavailable match
+            case Left(_: NetworkError.BearerClosed) => ()
+            case other => fail(s"expected connection closure without rejection bytes, got $other")
+          endedAs match
+            case LocalTxSubmissionServer.End.ServiceUnavailable(
+                  _: LocalTxSubmissionServer.Unavailable.ScriptEvaluation
+                ) =>
+              ()
+            case other => fail(s"unexpected service end $other")
+          assert(!heldBefore)
+          assertEquals(healthy, Right(LocalTxSubmission.Message.AcceptTx))
+          assert(heldAfter)
       }
   }

@@ -476,11 +476,28 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             GsmRunner.Marker.none[IO],
             LedgerPeersSource.none[IO]
           )
-          _ <- network.use { net =>
-            net.run.background.use { _ =>
-              // the fifth block cannot be stored: the node is told to stop, with the storage error
-              eventually("the node is told to stop")(fatals.get)(_.nonEmpty)
-            }
+          _ <- pool.session.use { origin =>
+            val unavailable =
+              injected == FatalCase.Unavailable || injected == FatalCase.UnavailablePhase1
+            val loaned = forged.headers
+              .take(8)
+              .zip(forged.raws.take(8))
+              .map((header, raw) => header.hash -> raw)
+            (origin.claim(loaned.map(_._1)) *> origin.fill(loaned)).whenA(unavailable) *>
+              network.use { net =>
+                net.run.background.use { _ =>
+                  eventually("the node is told to stop")(fatals.get)(_.nonEmpty)
+                }
+              } *>
+              (for
+                blamed <- origin.blamed.map(Option(_)).timeoutTo(50.millis, IO.pure(None))
+                retained <- pool.take(loaned.last._1)
+              yield
+                assertEquals(blamed, None)
+                // The failing block was borrowed. Treating unavailability as a rejection would
+                // call over.refused/distrust, blame its origin and discard this remaining block.
+                assertEquals(retained, Some(loaned.last._2))
+              ).whenA(unavailable)
           }
           stopped <- fatals.get
           tipNow <- chainRef.get.map(_.tip)

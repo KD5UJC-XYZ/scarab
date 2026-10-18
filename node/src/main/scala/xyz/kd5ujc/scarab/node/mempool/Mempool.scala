@@ -3,6 +3,8 @@ package xyz.kd5ujc.scarab.node.mempool
 
 import cats.effect.{Async, Ref}
 import cats.effect.std.Mutex
+import cats.mtl.Ask
+import xyz.kd5ujc.scarab.ledger.LedgerFailure
 import cats.syntax.all.*
 import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -93,7 +95,9 @@ object Mempool:
       /** Where the UTxO entries outside the ledger state's diff live; the pool fetches the read set
         * of each transaction from it, as the block path does.
         */
-      utxoStore: Option[UtxoStore[F]] = None
+      utxoStore: Option[UtxoStore[F]] = None,
+      /** A caller may refresh backend capabilities between validations. */
+      environment: Option[Ask[F, MempoolEnv]] = None
   ): F[Mempool[F]] =
     for
       state <- Ref.of[F, MempoolState](MempoolState.empty(ledger, tipSlot, capacityBytes))
@@ -102,6 +106,7 @@ object Mempool:
       lock <- Mutex[F]
     yield new Mempool[F]:
       private val F = Async[F]
+      private val readEnv = environment.fold(F.pure(env))(_.ask[MempoolEnv])
 
       def add(raw: Bytes) = lock.lock.surround {
         for
@@ -116,7 +121,8 @@ object Mempool:
                     .map(u => held.copy(current = Right(current.withUtxo(u))))
               )
             case Left(_) => F.pure(held)
-          result <- F.blocking(current.add(raw, env))
+          activeEnv <- readEnv
+          result <- F.blocking(current.add(raw, activeEnv))
           out <- result match
             case Right((next, entry)) =>
               state.set(next) *> version.update(_ + 1) *>
@@ -128,6 +134,7 @@ object Mempool:
                 case Rejection.AlreadyHeld(i) => Some(i)
                 case _                        => None
               val remembered = reason match
+                case Rejection.Ledger(_: LedgerFailure.Unavailable) => None
                 case Rejection.Ledger(_) | Rejection.Full(_, _) =>
                   MempoolState.parse(raw).toOption.map(_._1)
                 case _ => None
@@ -164,7 +171,8 @@ object Mempool:
               .complete(utxoStore, l.utxo, UtxoStore.readSet(current.entries.map(_.tx)))
               .map(l.withUtxo)
           )
-          result <- F.blocking(current.sync(completed, tipSlot, env))
+          activeEnv <- readEnv
+          result <- F.blocking(current.sync(completed, tipSlot, activeEnv))
           (next, dropped) = result
           _ <- state.set(next)
           _ <- version.update(_ + 1)
@@ -173,7 +181,10 @@ object Mempool:
             seen.update(_.add(entry.id, seenLimit)) *> events.emit(MempoolEvent.Adopted(entry.id))
           }
           _ <- invalid.traverse_ { (entry, reason) =>
-            seen.update(_.add(entry.id, seenLimit)) *>
+            val unavailable = reason match
+              case Rejection.Ledger(_: LedgerFailure.Unavailable) => true
+              case _                                              => false
+            seen.update(_.add(entry.id, seenLimit)).unlessA(unavailable) *>
               events.emit(MempoolEvent.Dropped(entry.id, reason))
           }
           _ <- events.emit(MempoolEvent.Synced(next.entries.size, next.bytes, invalid.size))

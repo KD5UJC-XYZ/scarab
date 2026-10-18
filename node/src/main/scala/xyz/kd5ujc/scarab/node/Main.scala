@@ -43,6 +43,7 @@ import xyz.kd5ujc.scarab.network.{
   ConnectionEvents,
   ConnectionManager,
   NodeToClientServer,
+  LocalTxSubmissionServer,
   NodeToNodeServer,
   NetworkError,
   ServerHandlers
@@ -834,8 +835,10 @@ object Main extends IOApp:
                       )
                       .rescue {
                         case NetworkError.Defect(cause) =>
-                          fatalSink(Fatal.Defect(cause)).as(NetworkError.Defect(cause).message)
-                        case other => IO.pure(other.message)
+                          fatalSink(Fatal.Defect(cause)).as(
+                            LocalTxSubmissionServer.End.ConnectionClosed(NetworkError.Defect(cause))
+                          )
+                        case other => IO.pure(LocalTxSubmissionServer.End.ConnectionClosed(other))
                       }
                       // A failure that is not a network error still ends the connection: say so,
                       // where the listener would drop it unseen.
@@ -843,7 +846,7 @@ object Main extends IOApp:
                       .map(
                         _.fold(
                           t => s"failed: ${t.getClass.getSimpleName}: ${t.getMessage}",
-                          identity
+                          _.message
                         )
                       )
                       .flatMap(reason =>

@@ -60,12 +60,19 @@ object TxKit:
       fee: BigInt,
       signers: Vector[Key],
       valid: Boolean = true,
-      votes: Vector[Byte] = Vector.empty
+      votes: Vector[Byte] = Vector.empty,
+      referenceScript: Option[(ScriptKind, Bytes)] = None
   ): (Bytes, Bytes) =
     val ins =
       head(4, inputs.size) ++ inputs.flatMap(i => head(4, 2) ++ bstr(i.id) ++ head(0, i.index))
     val outs =
-      head(4, outputs.size) ++ outputs.flatMap((a, c) => head(4, 2) ++ bstr(a.raw) ++ head(0, c))
+      head(4, outputs.size) ++ outputs.flatMap { (a, c) =>
+        referenceScript.fold(head(4, 2) ++ bstr(a.raw) ++ head(0, c)) { (kind, code) =>
+          val script = Bytes(head(4, 2) ++ head(0, kind.tag) ++ bstr(code))
+          head(5, 3) ++ head(0, 0) ++ bstr(a.raw) ++ head(0, 1) ++ head(0, c) ++
+            head(0, 3) ++ head(6, 24) ++ bstr(script)
+        }
+      }
     val body = Bytes(
       head(5, if votes.isEmpty then 3 else 4) ++ Vector(0x00.toByte) ++ ins ++ Vector(
         0x01.toByte
@@ -139,6 +146,9 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
   private def add(s: MempoolState, raw: Bytes): Either[Rejection, MempoolState] =
     s.add(raw, env).map(_._1)
 
+  private def reasonItem(rejection: Rejection): Bytes =
+    LocalSubmission.reasonItem(rejection).fold(error => fail(error.message), identity)
+
   test(
     "a valid transaction is admitted; duplicates, double spends and bad bytes are typed rejections"
   ) {
@@ -166,24 +176,24 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
     val (ghost, ghostId) = pay(9, fee = 1)
     val spent = add(s0, ghost).left.getOrElse(fail("accepted"))
     assertEquals(
-      LocalSubmission.reasonItem(spent).hex,
+      reasonItem(spent).hex,
       "8182068182077844416c6c20696e7075747320617265207370656e742e205472616e73616374696f6e206861732070726f6261626c7920616c7265616479206265656e20696e636c75646564"
     )
     // an unspent input and a fee below the minimum: FeeTooSmallUTxO, the minimum first
     val (cheap, _) = pay(1, fee = 1)
     val refused = add(s0, cheap).left.getOrElse(fail("accepted"))
-    val reason = LocalSubmission.reasonItem(refused).hex
+    val reason = reasonItem(refused).hex
     assert(reason.startsWith("81820681820182008305"), reason)
     // a transaction already held is, for the ledger, one whose inputs are spent
     val (t1, _) = pay(1)
     val s1 = add(s0, t1).fold(r => fail(r.message), identity)
     assertEquals(
-      LocalSubmission.reasonItem(add(s1, t1).left.getOrElse(fail("accepted"))).hex,
-      LocalSubmission.reasonItem(spent).hex
+      reasonItem(add(s1, t1).left.getOrElse(fail("accepted"))).hex,
+      reasonItem(spent).hex
     )
     // a transaction of another era is the combinator's era mismatch
     assertEquals(
-      LocalSubmission.reasonItem(Rejection.WrongEra(5)).hex,
+      reasonItem(Rejection.WrongEra(5)).hex,
       "8282056742616262616765820666436f6e776179"
     )
     assert(ghostId.size == 32)
@@ -387,6 +397,54 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
       assert(log.exists {
         case MempoolEvent.Rejected(_, _: Rejection.Malformed) => true; case _ => false
       })
+  }
+
+  test("real mempool validation retries unavailable add and revalidation after decoder recovery") {
+    val fixture = xyz.kd5ujc.scarab.ledger.PlutusCase
+      .load(java.nio.file.Path.of("fixtures/preprod/plutus/tx-2edd684f.json"))
+    val script =
+      (fixture.tx.witnesses.scripts ++ fixture.references.values.flatMap(_.referenceScript))
+        .find(_.kind.isPlutus)
+        .getOrElse(fail("fixture has no Plutus script"))
+    val code = script.plutus.getOrElse(fail("fixture discarded script bytes"))
+    val (raw, id) = tx(
+      Vector(txIn(1)),
+      Vector(bob.address() -> (99 * ada)),
+      ada,
+      Vector(alice),
+      referenceScript = Some(script.kind -> code)
+    )
+    val stopped: xyz.kd5ujc.scarab.plutus.ScriptDecoder[cats.Id] = (_, _, _) =>
+      Left(xyz.kd5ujc.scarab.plutus.ScriptDecodeFailure.Unavailable("backend recovering"))
+    val unavailableEnv = env.copy(decoder = stopped)
+    val base = ledger(2)
+    for
+      context <- Ref.of[IO, MempoolEnv](unavailableEnv)
+      ask = new cats.mtl.Ask[IO, MempoolEnv]:
+        val applicative = summon[cats.Applicative[IO]]
+        def ask[E >: MempoolEnv]: IO[E] = context.get.map(value => value: E)
+      mempool <- Mempool
+        .create[IO](Right(base), 1000, env, 100000, MempoolEvents.none[IO], environment = Some(ask))
+      first <- mempool.add(raw)
+      knownAfterUnavailableAdd <- mempool.sink.known(id)
+      _ <- context.set(env)
+      retried <- mempool.add(raw)
+      _ <- context.set(unavailableEnv)
+      dropped <- mempool.sync(Right(base), 1000)
+      knownAfterUnavailableSync <- mempool.sink.known(id)
+      _ <- context.set(env)
+      retryAfterSync <- mempool.add(raw)
+    yield
+      first match
+        case Left(Rejection.Ledger(_: LedgerFailure.Unavailable)) => ()
+        case other => fail(s"unexpected first validation $other")
+      assert(!knownAfterUnavailableAdd)
+      assertEquals(retried, Right(id))
+      assert(dropped.exists {
+        case (_, Rejection.Ledger(_: LedgerFailure.Unavailable)) => true; case _ => false
+      })
+      assert(!knownAfterUnavailableSync)
+      assertEquals(retryAfterSync, Right(id))
   }
 
 /** The pool reads inputs from the UTxO store, like the block path does. */

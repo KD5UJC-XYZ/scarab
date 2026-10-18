@@ -73,7 +73,14 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
     Resource.eval(Bearer.inMemory[IO]()).use { (clientEnd, serverEnd) =>
       Handle
         .allow[NetworkError](
-          NodeToClientServer.accept(serverEnd, magic, _ => IO.pure(None), Some(t.source))
+          NodeToClientServer
+            .accept(
+              serverEnd,
+              magic,
+              _ => IO.pure(LocalTxSubmissionServer.Response.Accepted),
+              Some(t.source)
+            )
+            .map(_.message)
         )
         .rescue(e => IO.pure(e.message))
         .start

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.effect.Async
+import cats.effect.{Async, Deferred}
 import cats.mtl.{Handle, Raise}
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -20,13 +20,13 @@ object NodeToClientServer:
   def accept[F[_]: Async](
       bearer: Bearer[F],
       magic: Long,
-      submit: Bytes => F[Option[Bytes]],
+      submit: Bytes => F[LocalTxSubmissionServer.Response],
       stateQuery: Option[LocalStateQueryServer.Source[F]] = None,
       settings: LocalTxSubmissionServer.Settings = LocalTxSubmissionServer.Settings(),
       /** One cursor over the chain per connection, serving whole blocks. */
       chainSync: Option[Resource[F, ChainSyncServer.Source[F, RawNtNBlock]]] = None,
       txMonitor: Option[LocalTxMonitorServer.Source[F]] = None
-  )(using Raise[F, NetworkError]): F[String] =
+  )(using Raise[F, NetworkError]): F[LocalTxSubmissionServer.End] =
     val protocols =
       Set(Protocols.Handshake, Protocols.LocalTxSubmission) ++
         stateQuery.map(_ => Protocols.LocalStateQuery) ++
@@ -62,6 +62,7 @@ object NodeToClientServer:
                 .IllegalTransition(Protocols.Handshake, "unoffered node-to-client version")
                 .raise[F, NtcVersion]
             )(Async[F].pure)
+          unavailable <- Deferred[F, LocalTxSubmissionServer.Unavailable]
           submission <- mux.channel(Protocols.LocalTxSubmission)
           querying <- stateQuery
             .traverse(source => mux.channel(Protocols.LocalStateQuery).map(_ -> source))
@@ -71,7 +72,10 @@ object NodeToClientServer:
             .traverse(source => mux.channel(Protocols.LocalTxMonitor).map(_ -> source))
           served = Fibers.failFast[F, NetworkError](
             List(
-              child(LocalTxSubmissionServer.run(submission, submit, settings)),
+              child(LocalTxSubmissionServer.run(submission, submit, settings).flatMap {
+                case None        => Async[F].unit
+                case Some(error) => unavailable.complete(error).void *> Async[F].never[Unit]
+              }),
               child(querying.fold(Async[F].unit) { (c, source) =>
                 LocalStateQueryServer
                   .run(
@@ -96,13 +100,17 @@ object NodeToClientServer:
               })
             )
           )
-          ended <- Async[F].race(served, mux.closed)
-          reason <- ended.fold(
-            result => Fibers.land[F, NetworkError, Unit](result).as("client finished"),
-            closed =>
-              closed match
-                case defect: NetworkError.Defect => defect.raise[F, String]
-                case other                       => Async[F].pure(other.message)
-          )
+          ended <- Async[F].race(Async[F].race(served, mux.closed), unavailable.get)
+          reason <- ended match
+            case Right(error) =>
+              Async[F].pure(LocalTxSubmissionServer.End.ServiceUnavailable(error))
+            case Left(Left(result)) =>
+              Fibers
+                .land[F, NetworkError, Unit](result)
+                .as(LocalTxSubmissionServer.End.ClientFinished)
+            case Left(Right(defect: NetworkError.Defect)) =>
+              defect.raise[F, LocalTxSubmissionServer.End]
+            case Left(Right(other)) =>
+              Async[F].pure(LocalTxSubmissionServer.End.ConnectionClosed(other))
         yield reason
       }
