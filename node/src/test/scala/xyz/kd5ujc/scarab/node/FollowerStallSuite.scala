@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.ledger.{
   ValidationError
 }
 import xyz.kd5ujc.scarab.storage.ChainPersistence
-import cats.effect.{IO, Ref}
+import cats.effect.{Deferred, IO, Ref}
 import cats.mtl.{Handle, Stateful}
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -149,23 +149,49 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     Handle.allow[NodeError](body).rescue(e => IO.raiseError(new RuntimeException(e.message)))
 
   /** A peer that answers the first block range with bytes that are not a CBOR item, and honestly
-    * after that.
+    * after that. The deferred value records a malformed block actually streamed.
     */
   private def garbling(
       honest: ServerHandlers[IO, NtNHeader]
+  ): IO[(ServerHandlers[IO, NtNHeader], Deferred[IO, Bytes])] =
+    (
+      Ref.of[IO, Int](0),
+      Deferred[IO, Bytes]
+    ).mapN { (answered, malformed) =>
+      val handlers = new ServerHandlers[IO, NtNHeader](
+        honest.codec,
+        honest.chainSync,
+        new BlockFetchServer.Blocks[IO]:
+          def range(from: Point, to: Point, max: Int) =
+            answered.getAndUpdate(_ + 1).flatMap { n =>
+              honest.blocks.range(from, to, max).map { found =>
+                if n == 0 then
+                  found.map(_.map(_ => Bytes(Vector(0xff.toByte))).evalTap { raw =>
+                    malformed.complete(raw).void
+                  })
+                else found
+              }
+            }
+        ,
+        honest.transactions
+      )
+      (handlers, malformed)
+    }
+
+  /** Hold back intersection before this peer can announce headers and claim shared blocks. */
+  private def intersectAfter(
+      ready: IO[Unit],
+      honest: ServerHandlers[IO, NtNHeader]
   ): ServerHandlers[IO, NtNHeader] =
-    val answered = Ref.unsafe[IO, Int](0)
     new ServerHandlers[IO, NtNHeader](
       honest.codec,
-      honest.chainSync,
-      new BlockFetchServer.Blocks[IO]:
-        def range(from: Point, to: Point, max: Int) =
-          answered.getAndUpdate(_ + 1).flatMap { n =>
-            honest.blocks.range(from, to, max).map { found =>
-              if n == 0 then found.map(_.map(_ => Bytes(Vector(0xff.toByte)))) else found
-            }
-          }
-      ,
+      honest.chainSync.map { inner =>
+        new ChainSyncServer.Source[IO, NtNHeader]:
+          def intersect(points: Vector[Point]) = ready *> inner.intersect(points)
+          def poll = inner.poll
+          def await = inner.await
+      },
+      honest.blocks,
       honest.transactions
     )
 
@@ -276,8 +302,14 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         )
         given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(chainRef)
         seen <- Ref.of[IO, Vector[FollowerEvent]](Vector.empty)
+        rejected <- Deferred[IO, Unit]
+        healthyReady <- Deferred[IO, Unit]
         events = new FollowerEvents[IO]:
-          def emit(event: FollowerEvent) = seen.update(_ :+ event)
+          def emit(event: FollowerEvent) =
+            seen.update(_ :+ event) *> (event match
+              case FollowerEvent.Reconnecting(_: PeerError.InvalidBlock, _) =>
+                rejected.complete(()).void
+              case _ => IO.unit)
         follower <- Follower.create[IO, MirrorState](
           ForgedChain.rules,
           events,
@@ -285,12 +317,19 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         )
         fatals <- Ref.of[IO, Vector[Fatal]](Vector.empty)
         pool <- BlockPool.create[IO]
-        bad <- serving(forged.raws).map(garbling)
+        garbled <- serving(forged.raws).flatMap(garbling)
+        (bad, malformed) = garbled
         good <- serving(forged.raws)
         peers <- InMemoryPeers.create(magic)
         first = InMemoryPeers.address(1)
         second = InMemoryPeers.address(2)
-        _ <- peers.serve(first, bad) *> peers.serve(second, good)
+        // Force the healthy peer to attempt intersection first. Without the rejection gate it can
+        // supply every shared block, leaving the malformed peer untested (CI regression #181).
+        _ <- peers.serve(first, intersectAfter(healthyReady.get, bad)) *>
+          peers.serve(
+            second,
+            intersectAfter(healthyReady.complete(()).void *> rejected.get, good)
+          )
         manager <- ConnectionManager.create[IO]()
         last = forged.headers.last
         hot = OutboundPeers.Hot[IO](
@@ -352,8 +391,11 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               net.fatal.tryGet.map(fault => assertEquals(fault, None))
           }
         }
+        served <- malformed.tryGet
         stopped <- fatals.get
-      yield assertEquals(stopped, Vector.empty[Fatal])
+      yield
+        assertEquals(served, Some(Bytes(Vector(0xff.toByte))))
+        assertEquals(stopped, Vector.empty[Fatal])
     }
   }
 
