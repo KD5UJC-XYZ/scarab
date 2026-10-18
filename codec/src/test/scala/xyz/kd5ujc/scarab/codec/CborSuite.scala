@@ -9,9 +9,9 @@ class CborSuite extends munit.FunSuite:
 
   test("bytes validate strict hex and isolate mutable arrays") {
     assertEquals(bytes("aB00").hex, "ab00")
-    assert(Bytes.fromHex("0").isLeft)
-    assert(Bytes.fromHex(" 0").isLeft)
-    assert(Bytes.fromHex("zz").isLeft)
+    assertEquals(Bytes.fromHex("0"), Left(Bytes.HexError.OddLength(1)))
+    assertEquals(Bytes.fromHex(" 0"), Left(Bytes.HexError.InvalidCharacter(0, ' ')))
+    assertEquals(Bytes.fromHex("zz"), Left(Bytes.HexError.InvalidCharacter(0, 'z')))
     val a = Array[Byte](1, 2)
     val b = Bytes.fromArray(a)
     a(0) = 9
@@ -25,9 +25,9 @@ class CborSuite extends munit.FunSuite:
     assertEquals(decoded("3bffffffffffffffff").value, Value.NInt(-max - 1))
     assertEquals(encoded(Value.UInt(max)), "1bffffffffffffffff")
     assertEquals(encoded(Value.NInt(-max - 1)), "3bffffffffffffffff")
-    assert(Cbor.encode(Value.UInt(max + 1)).isLeft)
-    assert(Cbor.encode(Value.UInt(-1)).isLeft)
-    assert(Cbor.encode(Value.NInt(0)).isLeft)
+    assertEquals(Cbor.encode(Value.UInt(max + 1)), Left(Cbor.Error.ArgumentOutOfRange(max + 1)))
+    assertEquals(Cbor.encode(Value.UInt(-1)), Left(Cbor.Error.ArgumentOutOfRange(-1)))
+    assertEquals(Cbor.encode(Value.NInt(0)), Left(Cbor.Error.NonNegativeNInt(0)))
     assert(Cbor.encode(Value.NInt(-max - 2)).isLeft)
   }
   test("shortest integer widths at boundaries") {

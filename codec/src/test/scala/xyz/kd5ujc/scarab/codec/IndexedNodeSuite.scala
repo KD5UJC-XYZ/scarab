@@ -249,7 +249,9 @@ class IndexedNodeSuite extends munit.FunSuite:
 
   test("the items of an array are found one at a time, definite or not, and of nothing else") {
     def items(hex: String): Option[Vector[String]] =
-      Cbor.decode(bytes(hex)).fold(e => fail(e.toString), _.items.map(_.map(_.original.hex).toVector))
+      Cbor
+        .decode(bytes(hex))
+        .fold(e => fail(e.toString), _.items.map(_.map(_.original.hex).toVector))
     assertEquals(items("80"), Some(Vector.empty))
     assertEquals(items("83010203"), Some(Vector("01", "02", "03")))
     assertEquals(items("9f0102ff"), Some(Vector("01", "02")))

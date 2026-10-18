@@ -32,42 +32,43 @@ object Cbor:
     case InvalidLimits
     case InputLimitExceeded
     case UnexpectedEnd
-    case InvalidAdditionalInformation
+    case InvalidAdditionalInformation(value: Int)
     case TruncatedString
     case InvalidUtf8
     case ItemLimitExceeded
     case InvalidStringChunk
     case UnmatchedMapKey
     case DepthLimitExceeded
-    case UnsupportedSimpleValue
+    case UnsupportedSimpleValue(value: Int)
     case TrailingBytes
     case OutputLimitExceeded
     case StringLimitExceeded
     case MapPairLimitExceeded
-    case ArgumentOutOfRange
-    case NonNegativeNInt
+    case ArgumentOutOfRange(value: BigInt)
+    case NonNegativeNInt(value: BigInt)
     case InvalidUnicode
     case StackExhausted
     def message: String = this match
-      case InvalidLimits => "limits must be nonnegative"
+      case InvalidLimits      => "limits must be nonnegative"
       case InputLimitExceeded => "input byte limit exceeded"
-      case UnexpectedEnd => "unexpected end of input"
-      case InvalidAdditionalInformation => "reserved additional information or invalid indefinite item"
-      case TruncatedString => "truncated string payload"
-      case InvalidUtf8 => "invalid UTF-8 text"
-      case ItemLimitExceeded => "item limit exceeded"
+      case UnexpectedEnd      => "unexpected end of input"
+      case InvalidAdditionalInformation(_) =>
+        "reserved additional information or invalid indefinite item"
+      case TruncatedString    => "truncated string payload"
+      case InvalidUtf8        => "invalid UTF-8 text"
+      case ItemLimitExceeded  => "item limit exceeded"
       case InvalidStringChunk => "indefinite strings require definite chunks of the same type"
-      case UnmatchedMapKey => "map has an unmatched key"
+      case UnmatchedMapKey    => "map has an unmatched key"
       case DepthLimitExceeded => "depth limit exceeded"
-      case UnsupportedSimpleValue => "unsupported simple value, float, or unexpected break"
-      case TrailingBytes => "trailing bytes after CBOR item"
-      case OutputLimitExceeded => "output byte limit exceeded"
-      case StringLimitExceeded => "string byte limit exceeded"
-      case MapPairLimitExceeded => "map pair limit exceeded"
-      case ArgumentOutOfRange => "CBOR argument outside uint64 range"
-      case NonNegativeNInt => "NInt must be negative"
-      case InvalidUnicode => "invalid Unicode text"
-      case StackExhausted => "nesting exceeds the stack"
+      case UnsupportedSimpleValue(_) => "unsupported simple value, float, or unexpected break"
+      case TrailingBytes             => "trailing bytes after CBOR item"
+      case OutputLimitExceeded       => "output byte limit exceeded"
+      case StringLimitExceeded       => "string byte limit exceeded"
+      case MapPairLimitExceeded      => "map pair limit exceeded"
+      case ArgumentOutOfRange(_)     => "CBOR argument outside uint64 range"
+      case NonNegativeNInt(_)        => "NInt must be negative"
+      case InvalidUnicode            => "invalid Unicode text"
+      case StackExhausted            => "nesting exceeds the stack"
 
   val TooDeep: Error = Error.StackExhausted
 
@@ -114,7 +115,7 @@ object Cbor:
           case 25 => 2
           case 26 => 4
           case 27 => 8
-          case _  => fail(Error.InvalidAdditionalInformation)
+          case _  => fail(Error.InvalidAdditionalInformation(ai))
         var n = 0L
         var i = 0
         while i < count do
@@ -186,9 +187,9 @@ object Cbor:
         while !isBreak do
           consumeItem()
           val h = read()
-          if h / 32 != major || (h & 31) == 31 then
-            fail(Error.InvalidStringChunk)
-          val length = bounded(argument(h & 31), limits.maxStringBytes - total, Error.StringLimitExceeded)
+          if h / 32 != major || (h & 31) == 31 then fail(Error.InvalidStringChunk)
+          val length =
+            bounded(argument(h & 31), limits.maxStringBytes - total, Error.StringLimitExceeded)
           val from = payload(length)
           total += length
           if major == 3 then utf8(from, length)
@@ -257,7 +258,12 @@ object Cbor:
             case 5 =>
               val remaining =
                 if ai == 31 then -1L
-                else 2L * bounded(argument(ai), (limits.maxItems - items) / 2, Error.MapPairLimitExceeded)
+                else
+                  2L * bounded(
+                    argument(ai),
+                    (limits.maxItems - items) / 2,
+                    Error.MapPairLimitExceeded
+                  )
               push(item, 5, remaining)
             case 6 =>
               argument(ai)
@@ -268,7 +274,7 @@ object Cbor:
                 case 25 if limits.allowFloats => floatBits(2)
                 case 26 if limits.allowFloats => floatBits(4)
                 case 27 if limits.allowFloats => floatBits(8)
-                case _ => fail(Error.UnsupportedSimpleValue)
+                case _                        => fail(Error.UnsupportedSimpleValue(ai))
               produced = true
           // a leaf is complete as soon as it is read; a container that was pushed is not
           if produced && major != 4 && major != 5 && major != 6 then index.finish(item, pos)
@@ -291,7 +297,7 @@ object Cbor:
         if out.size() >= limits.maxInputBytes then fail(Error.OutputLimitExceeded)
         out.write(b)
       def head(major: Int, n: BigInt): Unit =
-        if n < 0 || n > MaxUInt then fail(Error.ArgumentOutOfRange)
+        if n < 0 || n > MaxUInt then fail(Error.ArgumentOutOfRange(n))
         if n < 24 then write((major << 5) | n.toInt)
         else
           val (ai, width) =
@@ -329,7 +335,7 @@ object Cbor:
         v match
           case Value.UInt(n) => head(0, n)
           case Value.NInt(n) =>
-            if n >= 0 then fail(Error.NonNegativeNInt)
+            if n >= 0 then fail(Error.NonNegativeNInt(n))
             head(1, -1 - n)
           case Value.ByteString(b) => raw(2, b.toArray)
           case Value.Text(s) =>
@@ -375,5 +381,4 @@ object Cbor:
         if top.hasNext then emit(top.take(), stack.size)
         else stack.pop()
       Right(Bytes.fromArray(out.toByteArray))
-    catch
-      case _: StackOverflowError => Left(TooDeep)
+    catch case _: StackOverflowError => Left(TooDeep)

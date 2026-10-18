@@ -9,7 +9,8 @@ import scala.util.boundary.{Label, break}
 
 /** The tree builder of `Cbor.decode` as it was before the indexed `Node` (issue #94), kept as the
   * oracle of the differential tests: one `Node`, `Bytes` window and `Value` per item, built
-  * eagerly. Copied verbatim except for its name and its entry point; do not "improve" it.
+  * eagerly. The parser is unchanged apart from its name, entry point and typed error transport; do
+  * not "improve" it.
   */
 object OracleCbor:
   import Cbor.{Error, Limits}
@@ -20,8 +21,7 @@ object OracleCbor:
     else if bytes.size > limits.maxInputBytes then Left(Error.InputLimitExceeded)
     else
       try Right(new Decoder(bytes, limits).run())
-      catch
-        case _: StackOverflowError => Left(Cbor.TooDeep)
+      catch case _: StackOverflowError => Left(Cbor.TooDeep)
 
   private final class Decoder(input: Bytes, limits: Limits)(using Label[Either[Error, Node]]):
     private def fail(error: Error): Nothing = break(Left(error))
@@ -45,7 +45,7 @@ object OracleCbor:
           case 25 => 2
           case 26 => 4
           case 27 => 8
-          case _  => fail(Error.InvalidAdditionalInformation)
+          case _  => fail(Error.InvalidAdditionalInformation(ai))
         if count < 8 then
           var n = 0L
           var i = 0
@@ -100,9 +100,9 @@ object OracleCbor:
         while !isBreak do
           consumeItem()
           val h = read()
-          if h / 32 != major || (h & 31) == 31 then
-            fail(Error.InvalidStringChunk)
-          val length = bounded(argument(h & 31), limits.maxStringBytes - total, Error.StringLimitExceeded)
+          if h / 32 != major || (h & 31) == 31 then fail(Error.InvalidStringChunk)
+          val length =
+            bounded(argument(h & 31), limits.maxStringBytes - total, Error.StringLimitExceeded)
           val raw = payload(length)
           total += length
           if major == 2 then chunks.write(raw, 0, raw.length) else text.append(utf8(raw))
@@ -182,7 +182,12 @@ object OracleCbor:
             case 5 =>
               val remaining =
                 if ai == 31 then -1L
-                else 2L * bounded(argument(ai), (limits.maxItems - items) / 2, Error.MapPairLimitExceeded)
+                else
+                  2L * bounded(
+                    argument(ai),
+                    (limits.maxItems - items) / 2,
+                    Error.MapPairLimitExceeded
+                  )
               stack.push(new Frame(5, start, null, remaining))
             case 6 => stack.push(new Frame(6, start, argument(ai), 1L))
             case _ =>
@@ -199,7 +204,7 @@ object OracleCbor:
                   )
                 case 27 if limits.allowFloats =>
                   Value.Float(java.lang.Double.longBitsToDouble(floatBits(8)), FloatWidth.Double)
-                case _ => fail(Error.UnsupportedSimpleValue)
+                case _ => fail(Error.UnsupportedSimpleValue(ai))
               produced = Node(value, window(start))
         if produced != null then
           if stack.isEmpty then result = produced else stack.peek().add(produced)

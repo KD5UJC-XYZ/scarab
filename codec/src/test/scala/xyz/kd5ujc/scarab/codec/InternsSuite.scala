@@ -6,7 +6,9 @@ package xyz.kd5ujc.scarab.codec
   */
 class InternsSuite extends munit.FunSuite:
   private def root(hex: String): Node =
-    Cbor.decode(Bytes.fromHex(hex).fold(e => fail(e.toString), identity)).fold(e => fail(e.toString), identity)
+    Cbor
+      .decode(Bytes.fromHex(hex).fold(e => fail(e.toString), identity))
+      .fold(e => fail(e.toString), identity)
 
   private def bytes(n: Int): Bytes = Bytes.fromArray(Array(n.toByte, 7.toByte))
 
