@@ -14,6 +14,7 @@ from fractions import Fraction
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from devnet import cbor, cluster, compare, encoding, eraload, eratx, eraview, govextra, govview, ntccli, ntclocal, ntcqueries, ntcquery, refused_fixture, util  # noqa: E402
+from devnet.scenarios import peercut
 from devnet.scenarios import ntc  # noqa: E402
 from devnet.scenarios import pool  # noqa: E402
 from devnet.scenarios import relay as relay_scenario  # noqa: E402
@@ -640,3 +641,13 @@ class UserCliVerdictTest(unittest.TestCase):
         self.assertEqual([e["reason"] for e in ntccli.unexpected_closes(events)],
                          ["failed: IllegalArgumentException: boom"])
         self.assertEqual(len(ntccli.failures({}, self.ok_build, ntccli.unexpected_closes(events))), 1)
+
+
+class PeercutPolicyTest(unittest.TestCase):
+    def test_loss_requires_the_closed_policy_and_proxy_identity(self):
+        event = {"event": "peerSelectionDemote", "action": "asynchronous",
+                 "peer": "127.0.0.1:3400", "failure": "Transient"}
+        self.assertTrue(peercut.transient_proxy_loss([event]))
+        for field, bad in [("failure", "Misbehaved"), ("action", "done"),
+                           ("peer", "127.0.0.1:3001"), ("event", "reconnecting")]:
+            self.assertFalse(peercut.transient_proxy_loss([dict(event, **{field: bad})]))

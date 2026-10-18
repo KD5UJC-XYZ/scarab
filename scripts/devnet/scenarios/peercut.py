@@ -14,6 +14,14 @@ from .relay import tip_at
 PROXY_PORT = 3400   # the slow peer: a proxy in front of pool 1
 
 
+def transient_proxy_loss(events, peer="127.0.0.1:3400"):
+    """The closed governor failure policy, independent of display text and timing."""
+    return any(event.get("event") == "peerSelectionDemote"
+               and event.get("action") == "asynchronous"
+               and event.get("peer") == peer
+               and event.get("failure") == "Transient" for event in events)
+
+
 def start_proxy(args, root, upstream):
     """`lagproxy.py` in the reference container's network namespace, in front of `upstream`."""
     control = root / "proxy"
@@ -117,8 +125,8 @@ def peercut(args):
             failures.append(f"the Scala node extended nothing in the {args.follow_seconds} s after reaching the tip")
         if not counts.get("reconnecting"):
             failures.append("the lost peer was never logged as a reconnect")
-        elif not any(r.startswith("unavailable") for r in reasons):
-            failures.append(f"the reconnect reasons are not typed peer failures: {reasons}")
+        elif not transient_proxy_loss(events):
+            failures.append("the silent proxy did not produce an asynchronous Transient governor loss")
         # the governor chose the peers: both were promoted to hot, and the silent one was demoted or lost
         hot = {e["peer"] for e in events if e["event"] == "peerSelectionPromote"
                and e.get("action") == "done" and e.get("to") == "hot"}
