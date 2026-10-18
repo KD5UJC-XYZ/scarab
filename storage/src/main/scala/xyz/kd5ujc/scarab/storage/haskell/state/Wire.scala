@@ -70,15 +70,7 @@ object Wire:
     def encode(a: BigInt, out: Writer): Unit = out.integer(a)
 
   /** A smart constructor's refusal, as the decode error that names it. */
-  def violation(e: VocabError): Kind = e match
-    case VocabError.Negative(what, v) =>
-      Kind.Violation(ConstraintViolation(what.toString, "a non-negative number", v.toString))
-    case VocabError.OutOfRange(what, v) =>
-      Kind.Violation(ConstraintViolation(what.toString, "a number below 2^64", v.toString))
-    case VocabError.WrongHashLength(what, expected, actual) =>
-      Kind.Violation(ConstraintViolation(what.toString, s"$expected bytes", s"$actual bytes"))
-    case VocabError.Zero(what) =>
-      Kind.Violation(ConstraintViolation(what.toString, "a non-zero number", "0"))
+  def violation(e: VocabError): Kind = Kind.Domain(e)
 
   extension [R](c: Codec[R])
     /** The codec of `A`, written as `R` and read through a smart constructor whose refusal is a

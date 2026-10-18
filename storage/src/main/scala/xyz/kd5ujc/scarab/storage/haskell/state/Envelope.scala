@@ -141,7 +141,7 @@ object Envelope:
   private def refused(n: Node, e: xyz.kd5ujc.scarab.consensus.state.TelescopeError): DecodeError =
     DecodeError.at(
       n,
-      Kind.Violation(ConstraintViolation("Telescope", "a consistent telescope", e.show))
+      Kind.Domain(e)
     )
 
   /** `HardForkState` (`Serialisation/Common.hs:371-390`): an array of one `Past` per finished era
