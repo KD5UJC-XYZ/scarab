@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.legacy
 
 import xyz.kd5ujc.scarab.codec.BinaryError
-import xyz.kd5ujc.scarab.ledger.StorageStructureError
 import cats.syntax.all.*
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
@@ -86,7 +85,7 @@ object SnapshotV3:
     * fingerprint have been checked.
     */
   def sections(content: Array[Byte]): Either[StorageError, (SnapshotSidecar, Array[Byte])] =
-    def corrupt(reason: String) = StorageError.Corrupt("snapshot", reason)
+    def corrupt[E <: Product](cause: E): StorageError = StorageError.Corrupt("snapshot", cause)
     if content.length < HeaderSize || !content.startsWith(Magic) then
       Left(corrupt(BinaryError.BadMagic))
     else
@@ -94,7 +93,7 @@ object SnapshotV3:
       val fingerprint = SnapshotSidecar.fingerprint
       val end = HeaderSize.toLong + length
       if length < fingerprint.length || end > content.length then
-        Left(corrupt(s"sidecar of $length bytes in a file of ${content.length}"))
+        Left(corrupt(SnapshotFramingError.SidecarLength(length, content.length, fingerprint.length)))
       else
         val found = content.slice(HeaderSize, HeaderSize + fingerprint.length)
         if !java.util.Arrays.equals(found, fingerprint) then

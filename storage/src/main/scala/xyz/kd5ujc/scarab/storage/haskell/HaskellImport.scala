@@ -9,7 +9,7 @@ import cats.syntax.all.*
 import fs2.Stream
 import fs2.io.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Block, NetworkIdentity, StorageError}
+import xyz.kd5ujc.scarab.ledger.{Block, ChainError, NetworkIdentity, StorageError}
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.storage.{
   DatabaseOwnership,
@@ -34,7 +34,7 @@ enum HaskellImportError:
   case MagicMismatch(found: Long, expected: Long)
 
   /** A block that does not decode. */
-  case Undecodable(slot: Long, reason: String)
+  case Undecodable(slot: Long, cause: ChainError)
 
   /** The block's own header hash differs from the hash the index lists. */
   case HeaderHashDisagrees(slot: Long, indexed: String, computed: String)
@@ -58,7 +58,7 @@ enum HaskellImportError:
     case MagicFileMalformed(p, t) => s"$p does not hold a protocol magic: '$t'"
     case MagicMismatch(f, e) =>
       s"the Haskell database was written for protocol magic $f, this node is configured for $e"
-    case Undecodable(s, r) => s"block at slot $s does not decode: $r"
+    case Undecodable(s, r) => s"block at slot $s does not decode: ${r.message}"
     case HeaderHashDisagrees(s, i, c) =>
       s"block at slot $s: the index lists hash $i, the block's header hashes to $c"
     case SlotDisagrees(i, b) => s"the index places a block at slot $i, its header says $b"
@@ -143,7 +143,7 @@ object HaskellImport:
 
     def decode(b: HaskellBlock): F[(Block, BlockRef)] =
       Block.decode(b.bytes, config.byronEpochSlots) match
-        case Left(e) => fail(HaskellImportError.Undecodable(b.slot, e.message))
+        case Left(e) => fail(HaskellImportError.Undecodable(b.slot, e))
         case Right(block) =>
           val h = block.header
           for

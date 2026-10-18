@@ -125,9 +125,10 @@ object SnapshotV5:
               java.util.Arrays.equals(again, content) && back.anchor == snapshot.anchor,
               (),
               SnapshotRefusal.WouldDiffer(
-                List("the snapshot written again is not the one written").filter(_ =>
-                  !java.util.Arrays.equals(again, content)
-                )
+                List(
+                  Option.when(!java.util.Arrays.equals(again, content))(SnapshotDifference.ReencodedBytes),
+                  Option.when(back.anchor != snapshot.anchor)(SnapshotDifference.Anchor)
+                ).flatten
               )
             )
           yield ()

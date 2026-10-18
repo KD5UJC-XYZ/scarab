@@ -9,7 +9,9 @@ import xyz.kd5ujc.scarab.crypto.witness.{
   PublicKey32,
   Signature64,
   StrictEd25519,
-  VerificationResult
+  VerificationResult,
+  VerificationError,
+  WitnessInputError
 }
 
 /** Mithril 769d862 `ancillary_files_manifest.rs:153-160`: SHA256 of the ordered UTF-8 path and
@@ -30,7 +32,7 @@ final case class AncillaryManifest private (
   def verify(key: PublicKey32): Either[AncillaryManifest.Error, Unit] =
     StrictEd25519
       .verifyEd25519(key, signature, hash)
-      .leftMap(e => AncillaryManifest.Error.Verifier(e.toString))
+      .leftMap(e => AncillaryManifest.Error.Verifier(e))
       .flatMap {
         case VerificationResult.SignatureVerified => Right(())
         case VerificationResult.SignatureRejected => Left(AncillaryManifest.Error.SignatureRejected)
@@ -39,14 +41,32 @@ final case class AncillaryManifest private (
 object AncillaryManifest:
   final case class File private[state] (path: String, digest: Bytes)
 
+  enum DigestFailure:
+    case ExpectedString(actual: io.circe.Json)
+    case Hex(cause: Bytes.HexError)
+    case WrongLength(actual: Int)
+    case NonCanonical
+  enum SignatureFailure:
+    case Hex(cause: Bytes.HexError)
+    case Input(cause: WitnessInputError)
+  enum KeyFailure:
+    case Hex(cause: Bytes.HexError)
+    case JsonSyntax(cause: io.circe.ParsingFailure)
+    case JsonDecode(cause: io.circe.DecodingFailure)
+    case WrongLength(actual: Int)
+    case OctetOutOfRange(index: Int, actual: Int)
+    case Input(cause: WitnessInputError)
   enum Error:
-    case Malformed(detail: String)
+    case JsonSyntax(cause: io.circe.ParsingFailure)
+    case DataMissing
+    case DataNotObject(actual: io.circe.Json)
     case UnsafePath(path: String)
-    case InvalidDigest(path: String)
+    case InvalidDigest(path: String, cause: DigestFailure)
     case SignatureMissing, SignatureRejected
-    case InvalidSignature(detail: String)
-    case InvalidKey(detail: String)
-    case Verifier(detail: String)
+    case SignatureNotString(actual: io.circe.Json)
+    case InvalidSignature(cause: SignatureFailure)
+    case InvalidKey(cause: KeyFailure)
+    case Verifier(cause: VerificationError)
     case Unlisted(path: String)
     case DigestMismatch(path: String, expected: Bytes, actual: Bytes)
 
@@ -73,43 +93,36 @@ object AncillaryManifest:
       json <- io.circe.jawn
         .JawnParser(allowDuplicateKeys = false)
         .parse(text)
-        .leftMap(e => Error.Malformed(e.message))
-      data <- json.hcursor
-        .downField("data")
-        .focus
-        .flatMap(_.asObject)
-        .toRight(Error.Malformed("data is not an object"))
+        .leftMap(e => Error.JsonSyntax(e))
+      dataNode <- json.hcursor.downField("data").focus.toRight(Error.DataMissing)
+      data <- dataNode.asObject.toRight(Error.DataNotObject(dataNode))
       files <- data.toVector.traverse { (path, value) =>
         for
           _ <- Either.cond(safePath(path), (), Error.UnsafePath(path))
-          hex <- value.asString.toRight(Error.InvalidDigest(path))
-          digest <- Bytes.fromHex(hex).leftMap(_ => Error.InvalidDigest(path))
-          _ <- Either.cond(digest.size == 32 && hex == digest.hex, (), Error.InvalidDigest(path))
+          hex <- value.asString.toRight(Error.InvalidDigest(path, DigestFailure.ExpectedString(value)))
+          digest <- Bytes.fromHex(hex).leftMap(cause => Error.InvalidDigest(path, DigestFailure.Hex(cause)))
+          _ <- Either.cond(digest.size == 32, (), Error.InvalidDigest(path, DigestFailure.WrongLength(digest.size)))
+          _ <- Either.cond(hex == digest.hex, (), Error.InvalidDigest(path, DigestFailure.NonCanonical))
         yield File(path, digest)
       }
-      sig <- json.hcursor
-        .downField("signature")
-        .focus
-        .flatMap(_.asString)
-        .toRight(Error.SignatureMissing)
-      bytes <- Bytes.fromHex(sig).leftMap(Error.InvalidSignature(_))
-      signature <- Signature64.create(bytes).leftMap(e => Error.InvalidSignature(e.toString))
+      sigNode <- json.hcursor.downField("signature").focus.toRight(Error.SignatureMissing)
+      sig <- sigNode.asString.toRight(Error.SignatureNotString(sigNode))
+      bytes <- Bytes.fromHex(sig).leftMap(cause => Error.InvalidSignature(SignatureFailure.Hex(cause)))
+      signature <- Signature64.create(bytes).leftMap(cause => Error.InvalidSignature(SignatureFailure.Input(cause)))
     yield AncillaryManifest(files.sortBy(f => Bytes.wrap(f.path.getBytes(UTF_8))), signature)
 
   /** `ProtocolKey`'s published ancillary.vkey is hex-encoded JSON containing 32 octets. */
   def verificationKey(text: String): Either[Error, PublicKey32] =
     for
-      bytes <- Bytes.fromHex(text.trim).leftMap(Error.InvalidKey(_))
+      bytes <- Bytes.fromHex(text.trim).leftMap(cause => Error.InvalidKey(KeyFailure.Hex(cause)))
       json <- io.circe.parser
         .parse(new String(bytes.toArray, UTF_8))
-        .leftMap(e => Error.InvalidKey(e.message))
-      octets <- json.as[Vector[Int]].leftMap(e => Error.InvalidKey(e.message))
-      _ <- Either.cond(
-        octets.size == 32 && octets.forall(n => n >= 0 && n <= 255),
-        (),
-        Error.InvalidKey("expected 32 octets")
-      )
+        .leftMap(e => Error.InvalidKey(KeyFailure.JsonSyntax(e)))
+      octets <- json.as[Vector[Int]].leftMap(e => Error.InvalidKey(KeyFailure.JsonDecode(e)))
+      _ <- Either.cond(octets.size == 32, (), Error.InvalidKey(KeyFailure.WrongLength(octets.size)))
+      _ <- octets.zipWithIndex.find { (n, _) => n < 0 || n > 255 }
+        .map { (n, i) => Error.InvalidKey(KeyFailure.OctetOutOfRange(i, n)) }.toLeft(())
       key <- PublicKey32
         .fromArray(octets.map(_.toByte).toArray)
-        .leftMap(e => Error.InvalidKey(e.toString))
+        .leftMap(e => Error.InvalidKey(KeyFailure.Input(e)))
     yield key

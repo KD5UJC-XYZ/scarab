@@ -439,7 +439,7 @@ enum FileKind:
 
 /** Why the Haskell ImmutableDB cannot be read. */
 enum HaskellImmutableError:
-  case Io(path: String, reason: String)
+  case Io(path: String, cause: Throwable)
   case NoImmutableDir(path: String)
   case MissingFile(chunk: ChunkNo, kind: FileKind)
   case ChunkGap(expected: ChunkNo, found: ChunkNo)

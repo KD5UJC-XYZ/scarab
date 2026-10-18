@@ -59,7 +59,22 @@ final class Out(stream: OutputStream):
   * by the storage boundary. Collection sizes are bounded by the bytes that remain.
   */
 final class In(source: InputStream, limit: Long):
-  private val stream = new java.io.BufferedInputStream(source, 1 << 16)
+  private val stream = new java.io.BufferedInputStream(new InputStream:
+    private var left = limit
+    override def read(): Int =
+      if left <= 0 then -1
+      else
+        val value = source.read()
+        if value >= 0 then left -= 1
+        value
+    override def read(bytes: Array[Byte], offset: Int, length: Int): Int =
+      if length == 0 then 0
+      else if left <= 0 then -1
+      else
+        val count = source.read(bytes, offset, math.min(length.toLong, left).toInt)
+        if count > 0 then left -= count
+        count
+  , 1 << 16)
   private var consumed = 0L
   def remaining: Long = limit - consumed
   def position: Long = consumed
@@ -94,9 +109,9 @@ final class In(source: InputStream, limit: Long):
       }
     }
   def fixed32(): Either[BinaryError, Int] =
-    (0 until 4).foldLeftM(0)((acc, _) => byte().map(b => (acc << 8) | b))
+    (0 until 4).toVector.foldLeftM(0)((acc, _) => byte().map(b => (acc << 8) | b))
   def fixed64(): Either[BinaryError, Long] =
-    (0 until 8).foldLeftM(0L)((acc, _) => byte().map(b => (acc << 8) | b))
+    (0 until 8).toVector.foldLeftM(0L)((acc, _) => byte().map(b => (acc << 8) | b))
   def count(): Either[BinaryError, Int] = varint().flatMap { n =>
     Either.cond(n >= 0 && n <= remaining, n.toInt, BinaryError.CountExceedsRemaining(n, remaining))
   }
