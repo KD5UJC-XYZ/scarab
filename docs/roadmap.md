@@ -261,8 +261,9 @@ persistence and key handling. Until then development keeps the rapid direct-push
    (#33, on the G1.5 hooks).
 3. *Leios, built against the testnet and the reference node and refactored as the design moves* (owner,
    2026-10-18): the plan is [leios.md](leios.md) 11.8 for N4 ([#73](https://github.com/KD5UJC-XYZ/scarab/issues/73)):
-   get the Leios team's reference node (pinned), settle the mini-protocol gating on a loopback network with its
-   trace, follow the Dijkstra chain (X1, X2), the committee and certificates (X5), mini-protocols 18 and 19
+   steps 1–2 are complete: checksum-pinned reference images, isolated private main/w38a probes, and
+   original wire captures resolve the mini-protocol gating. Next are the Dijkstra follower (X1, X2),
+   the committee and certificates (X5), mini-protocols 18 and 19
    (X8, X7), then the devnet scenario against the reference. The rules for a moving target: Leios lands on `main`, not on a long-lived branch, behind the era selector and
    the configuration (`ExperimentalHardForksEnabled` is the switch; a short-lived branch is for one disruptive
    change at a time, such as the eighth era in the telescope); every revision

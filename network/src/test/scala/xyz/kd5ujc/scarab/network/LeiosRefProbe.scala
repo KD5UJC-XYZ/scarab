@@ -209,8 +209,8 @@ object LeiosRefProbe extends IOApp:
   private val limits = Cbor.Limits(70000, 16, 256, 70000)
   private val leiosProtocols = Set(Protocols.LeiosNotify, Protocols.LeiosFetch)
   private val raw: ChainSync.PayloadCodec[Bytes] = new ChainSync.PayloadCodec[Bytes]:
-    def encode(value: Bytes): Either[String, Bytes] = Right(value)
-    def decode(bytes: Bytes): Either[String, Bytes] = Right(bytes)
+    def encode(value: Bytes): Either[Nothing, Bytes] = Right(value)
+    def decode(bytes: Bytes): Either[Nothing, Bytes] = Right(bytes)
 
   private final class Log(out: Path, start: FiniteDuration):
     def line(protocol: Int, kind: String, codec: String, hex: String): IO[Unit] =
@@ -642,8 +642,8 @@ private object EmptyChain:
 
   def handlers[F[_]: Async](): ServerHandlers[F, Bytes] =
     val codec = new ChainSync.PayloadCodec[Bytes]:
-      def encode(value: Bytes): Either[String, Bytes] = Right(value)
-      def decode(bytes: Bytes): Either[String, Bytes] = Right(bytes)
+      def encode(value: Bytes): Either[Nothing, Bytes] = Right(value)
+      def decode(bytes: Bytes): Either[Nothing, Bytes] = Right(bytes)
     val source = new ChainSyncServer.Source[F, Bytes]:
       def intersect(points: Vector[ChainSync.Point]) =
         Async[F].pure(

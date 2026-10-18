@@ -5,7 +5,9 @@ Status: design note, the pure N2 crypto (section 9) and the N3 follow of the pub
 codecs and read-only decoders and header rules for the testnet's chain** (section 11; the node itself
 cannot follow it, 11.4). Against a Leios node, headers and blocks were checked on the public chain
 (154,698 headers, every Praos check but the stake-dependent leader threshold); protocols 18 and 19
-were never answered (sections 8, 10 and 11.7). The protocol is
+were not answered in those historical public probes (sections 8, 10 and 11.7). The pinned private
+reference networks now answer both and retain actual wire captures (section 12); production follower
+integration remains the later stages of #73. The protocol is
 still moving: every statement below carries the source and revision it was read from, and where
 the sources disagree the disagreement is recorded rather than resolved. Unofficial research
 software, not audited. Read together with [architecture.md](architecture.md),
@@ -651,13 +653,15 @@ The whole check takes about four minutes on one core (`LeiosCheckMain`: 255 s, 2
    (line 109) ends the connection at the first SDU on any other protocol number ("data on
    unexpected mini-protocol"). A Haskell Leios peer that has this node on a duplex connection can
    start its LeiosNotify and LeiosFetch initiators on 18 and 19 (`initiatorAndResponder` of the
-   release, `StartOnDemand`); that was not observed, because the relay never started them toward us
-   (11.7), so this is read from the two sources, not shown on the wire.
+   release, `StartOnDemand`). Section 11.7's public relay did not start them toward the probe;
+   section 12's private hot-peer listener now reproduces this boundary: the first SDU on 18 closes
+   a listener without 18/19, while a listener carrying both receives the expected request.
 
 ### 11.6 What is implemented and what is not: the gap table
 
-IDs are stable names for the integrator to turn into issues; none was filed ("Not yet" points at
-these). "Cited" is the source read, at the revisions of sections 1 and 11.2 and, where it says
+IDs are stable sub-items of [#73](https://github.com/KD5UJC-XYZ/scarab/issues/73), folded from
+the former X1–X13 issues; remaining work stays in that checklist. "Cited" is the source read,
+at the revisions of sections 1 and 11.2 and, where it says
 "pinned", at the revisions in `models/src/main/cddl/upstream/SOURCES`.
 
 | ID | What is missing | Where it matters | Cited |
@@ -678,7 +682,9 @@ these). "Cited" is the source read, at the revisions of sections 1 and 11.2 and,
 
 ### 11.7 The Leios mini-protocols against the relay
 
-Three probes, each its own connection and each after ChainSync from a known point to the relay's tip:
+Historical public probes (2026-10-14–16), superseded for the gating question by section 12's
+pinned private reference runs. Three probes, each its own connection and each after ChainSync
+from a known point to the relay's tip:
 (a) one `MsgLeiosNotificationRequestNext` on protocol 18 (version 16, initiator only); (b) one
 `MsgLeiosBlockRequest` on protocol 19 for the endorser block the newest announcing header names (slot
 3,448,578, EB hash `5cac54a5…fcfb`; version 16); (c) section 10's probes of 2026-10-14: the request
@@ -709,7 +715,7 @@ requiring another public connection.
    private network. Record the revision of every dependency as 11.2 does.
 2. **Done (section 12): settle the gating on a private network, with the reference's own trace.** One Haskell Leios node (no
    public host), the namespaces `Net.Mux.Remote`, `Net.InboundGovernor.Remote`, `LeiosNotify.Remote` and
-   `LeiosFetch.Remote` at Debug, and `LeiosChainProbe` as initiator-only, then as duplex with the Praos
+`LeiosFetch.Remote` at Debug, and `LeiosRefProbe` as initiator-only, then as duplex with the Praos
    protocols served. Outcome: which hypothesis of 11.7 holds and the first message the responder accepts.
 3. **Let the node follow the devnet's Dijkstra chain** (X1, X2): `HfcHeader` in `Peer`/`NodeToNode.connect`,
    `LeiosHeader` and `LeiosBlock` in the header and block paths, `Era.Dijkstra` with its trigger, a
@@ -788,6 +794,9 @@ unsafe: w38a votes (tag 4) can decode as a Blueprint announcement. The probe's t
 only a diagnostic comparison. It is not a production compatibility adapter. The newer transaction
 reply is also intentionally refused by the current three-field Blueprint codec; #174 tracks the
 format change before follower integration.
+
+Both profiles accepted the probe's indefinite bitmap map. Acceptance of the Blueprint codec's
+definite map remains a separate question in #174; these captures do not establish it.
 
 ### 12.3 Running and preserving the evidence
 
