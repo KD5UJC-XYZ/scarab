@@ -787,4 +787,57 @@ object Targets:
       )
     )
 
-  val all: Vector[Target] = network ++ node ++ ledgerPeers ++ mempackTxOut
+  private val snapshotTables: Vector[Target] =
+    import xyz.kd5ujc.scarab.storage.haskell.state.SnapshotTables
+    def seeds: Vector[Array[Byte]] =
+      Vector(
+        "shelley-1000",
+        "allegra-1800",
+        "mary-2308",
+        "alonzo-3013",
+        "babbage-4000",
+        "conway-4593"
+      )
+        .map(era =>
+          java.nio.file.Files
+            .readAllBytes(java.nio.file.Path.of("fixtures/haskell-state", era, "tables"))
+        )
+    Vector(
+      Target(
+        "snapshot-tables",
+        () =>
+          val inputs = seeds
+          inputs.foreach(b => SnapshotTables.decode(Bytes.fromArray(b)))
+          inputs ++ Corpus.tricky
+        ,
+        probe("snapshot-tables") { bytes =>
+          SnapshotTables.decode(bytes).foreach { (entries, summary) =>
+            hit("snapshot-tables")
+            val framed = entries
+              .foldLeft(SnapshotTables.prefix(summary.entries)) { (acc, entry) =>
+                for
+                  prefix <- acc
+                  encoded <- SnapshotTables.encodeEntry(entry)
+                yield prefix ++ encoded
+              }
+              .map(_ ++ SnapshotTables.suffix(summary.entries))
+            req(
+              framed.flatMap(SnapshotTables.decode).map(_._1) == Right(entries),
+              "tables reframing changes original keys or values"
+            )
+            val split = bytes.size / 2
+            val incremental = for
+              first <- SnapshotTables.decoder.feed(bytes.take(split))
+              second <- first._1.feed(bytes.drop(split))
+              complete <- second._1.finish
+            yield (first._2 ++ second._2, complete.crc.value)
+            req(
+              incremental == Right((entries, summary.crc.value)),
+              "tables chunk boundary changes decoding or original-byte CRC"
+            )
+          }
+        }
+      )
+    )
+
+  val all: Vector[Target] = network ++ node ++ ledgerPeers ++ mempackTxOut ++ snapshotTables

@@ -6,6 +6,7 @@ import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import fs2.io.file.Path
+import fs2.Stream
 import java.nio.file.{Files, StandardCopyOption}
 import java.util.concurrent.atomic.AtomicReference
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -211,6 +212,40 @@ final class RocksUtxoStore[F[_]: Sync] private (
       }
     finally it.close()
   }
+
+  /** An owned iterator, closed on completion, failure or cancellation. Iterator faults and
+    * malformed keys/values are reported exactly as for the other enumerations (AUD-04).
+    */
+  def entries: Stream[F, (TxIn, TxOut)] =
+    Stream
+      .resource(
+        Resource.make(guard("utxo iterator")(db.get.newIterator()))(it =>
+          guard("utxo iterator close")(it.close())
+        )
+      )
+      .flatMap { it =>
+        Stream.eval(guard("utxo iterator seek")(it.seekToFirst())).drain ++ Stream
+          .repeatEval(guardE("utxo iterator") {
+            @scala.annotation.tailrec
+            def next(): Either[StorageError, Option[(TxIn, TxOut)]] =
+              if !it.isValid then
+                it.status()
+                Right(None)
+              else
+                val key = it.key()
+                if key.length == RocksUtxoStore.StampKeyLength && key(0) == 0 then
+                  it.next()
+                  next()
+                else if key.length != RocksUtxoStore.KeyLength then
+                  Left(StorageError.Corrupt("utxo key", s"a key of ${key.length} bytes"))
+                else
+                  val value = Coding.decodeValue(it.value()).left.map(corruptEntry(key, _))
+                  it.next()
+                  value.map(out => Some(Coding.decodeKey(key) -> out))
+            next()
+          })
+          .unNoneTerminate
+      }
 
   /** The number of data entries. The values are not decoded (a count must stay cheap), so damage to
     * a value shows only in the enumerations and reads; damage to a key or to the files is reported

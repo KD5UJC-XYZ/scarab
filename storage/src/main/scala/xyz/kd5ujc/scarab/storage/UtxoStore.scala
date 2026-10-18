@@ -6,6 +6,7 @@ import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import fs2.io.file.Path
+import fs2.Stream
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.StorageError
 import xyz.kd5ujc.scarab.ledger.{TxIn, TxOut, Utxo}
@@ -45,6 +46,11 @@ trait UtxoStore[F[_]]:
 
   /** Visit every entry without collecting them (the state digests of `--dump-state`). */
   def scan(visit: (TxIn, TxOut) => Unit): F[Unit]
+
+  /** Every entry in ascending Haskell table-key order, without collecting a disk-backed set. The
+    * caller holds the store offline for a consistent snapshot export.
+    */
+  def entries: Stream[F, (TxIn, TxOut)]
 
   /** Number of entries. */
   def size: F[Long]
@@ -237,6 +243,14 @@ final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.C
     select(out => addresses(out.address.raw))
   def scan(visit: (TxIn, TxOut) => Unit): F[Unit] =
     state.get.map(_.entries.foreach((k, v) => visit(k, v)))
+  def entries: Stream[F, (TxIn, TxOut)] =
+    Stream
+      .eval(state.get)
+      .flatMap(c =>
+        Stream.emits(c.entries.toVector.sortBy { (in, _) =>
+          (in.id, in.index)
+        })
+      )
   def size: F[Long] = state.get.map(_.entries.size.toLong)
   def reset: F[Unit] = state.set(Contents(Map.empty, -1))
   def memory: F[Map[String, Long]] = F.pure(Map.empty)
