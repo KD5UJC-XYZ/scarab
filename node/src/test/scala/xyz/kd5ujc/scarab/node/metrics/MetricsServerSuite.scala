@@ -46,7 +46,7 @@ class MetricsServerSuite extends CatsEffectSuite:
           response.headers.firstValue("Content-Type").orElse(""),
           "text/plain; version=0.0.4; charset=utf-8"
         )
-        val parsed = TextFormat.parse(response.body).fold(fail(_), identity)
+        val parsed = TextFormat.parse(response.body).fold(e => fail(e.toString), identity)
         assert(
           parsed.samples.exists(s =>
             s.name == "cardano_node_metrics_blockNum_int" && s.value == 12.0
@@ -80,7 +80,7 @@ class MetricsServerSuite extends CatsEffectSuite:
     def samples(port: Int): IO[Vector[TextFormat.Sample]] =
       get(port, "/metrics").map { response =>
         assertEquals(response.statusCode, 200)
-        TextFormat.parse(response.body).fold(fail(_), _.samples)
+        TextFormat.parse(response.body).fold(e => fail(e.toString), _.samples)
       }
     def value(all: Vector[TextFormat.Sample], name: String): Option[Double] =
       all.find(_.name == name).map(_.value)

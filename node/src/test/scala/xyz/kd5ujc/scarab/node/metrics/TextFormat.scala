@@ -8,6 +8,27 @@ import scala.annotation.tailrec
   * wrote. It is strict: anything the grammar does not allow is a `Left`.
   */
 object TextFormat:
+  enum Error:
+    case MissingLineFeed
+    case Line(number: Int, text: String, cause: Error)
+    case HelpName(value: String)
+    case DuplicateHelp(name: String)
+    case DuplicateType(name: String)
+    case TypeBeforeHelp(name: String)
+    case InvalidTypeLine
+    case UnsupportedComment
+    case MissingFamily(sample: String)
+    case MissingName
+    case MetricName(value: String)
+    case MissingValueSpace
+    case MissingLabelAssignment
+    case LabelName(value: String)
+    case UnclosedLabelSet
+    case UnterminatedLabelValue
+    case DanglingBackslash
+    case Escape(value: Char)
+    case Number(value: String)
+
   final case class Sample(name: String, labels: List[(String, String)], value: Double)
 
   final case class Parsed(
@@ -23,51 +44,51 @@ object TextFormat:
   private val Decimal = "[+-]?([0-9]+(\\.[0-9]*)?|\\.[0-9]+)([eE][+-]?[0-9]+)?".r
   private val Kinds = Set("counter", "gauge", "histogram", "summary", "untyped")
 
-  def parse(text: String): Either[String, Parsed] =
-    if text.nonEmpty && !text.endsWith("\n") then Left("the text does not end with a line feed")
+  def parse(text: String): Either[Error, Parsed] =
+    if text.nonEmpty && !text.endsWith("\n") then Left(Error.MissingLineFeed)
     else
       text
         .split("\n", -1)
         .dropRight(1)
         .zipWithIndex
-        .foldLeft[Either[String, Parsed]](
+        .foldLeft[Either[Error, Parsed]](
           Right(Parsed(Map.empty, Map.empty, Vector.empty, Vector.empty))
         ) { case (acc, (line, n)) =>
-          acc.flatMap(p => parseLine(p, line).left.map(e => s"line ${n + 1}: $e in <$line>"))
+          acc.flatMap(p => parseLine(p, line).left.map(Error.Line(n + 1, line, _)))
         }
 
-  private def parseLine(p: Parsed, line: String): Either[String, Parsed] =
+  private def parseLine(p: Parsed, line: String): Either[Error, Parsed] =
     if line.startsWith("# HELP ") then
       val rest = line.drop(7)
       val (name, help) = rest.span(_ != ' ')
-      if !Name.matches(name) then Left("bad name in HELP")
-      else if p.help.contains(name) then Left(s"two HELP lines for $name")
+      if !Name.matches(name) then Left(Error.HelpName(name))
+      else if p.help.contains(name) then Left(Error.DuplicateHelp(name))
       else unescape(help.drop(1), quote = false).map(h => p.copy(help = p.help.updated(name, h)))
     else if line.startsWith("# TYPE ") then
       line.drop(7).split(" ", -1).toList match
         case name :: kind :: Nil if Name.matches(name) && Kinds(kind) =>
-          if p.kinds.contains(name) then Left(s"two TYPE lines for $name")
-          else if !p.help.contains(name) then Left(s"TYPE before HELP for $name")
+          if p.kinds.contains(name) then Left(Error.DuplicateType(name))
+          else if !p.help.contains(name) then Left(Error.TypeBeforeHelp(name))
           else Right(p.copy(kinds = p.kinds.updated(name, kind), order = p.order :+ name))
-        case _ => Left("bad TYPE line")
-    else if line.startsWith("#") then Left("comment the format does not define here")
+        case _ => Left(Error.InvalidTypeLine)
+    else if line.startsWith("#") then Left(Error.UnsupportedComment)
     else
       parseSample(line).flatMap(s => family(p, s.name).map(_ => p.copy(samples = p.samples :+ s)))
 
   /** The family a sample belongs to: its own name, or for a histogram the name without a suffix. */
-  private def family(p: Parsed, sample: String): Either[String, String] =
+  private def family(p: Parsed, sample: String): Either[Error, String] =
     val suffixes = List("_bucket", "_sum", "_count")
     val candidates = sample :: suffixes.filter(sample.endsWith).map(sample.stripSuffix)
     candidates
       .find(c => p.kinds.contains(c) && (c == sample || p.kinds(c) == "histogram"))
-      .toRight(s"sample $sample without HELP and TYPE")
+      .toRight(Error.MissingFamily(sample))
 
-  private def parseSample(line: String): Either[String, Sample] =
+  private def parseSample(line: String): Either[Error, Sample] =
     val nameEnd = line.indexWhere(c => c == '{' || c == ' ')
-    if nameEnd <= 0 then Left("no name")
+    if nameEnd <= 0 then Left(Error.MissingName)
     else
       val name = line.take(nameEnd)
-      if !Name.matches(name) then Left("bad metric name")
+      if !Name.matches(name) then Left(Error.MetricName(name))
       else
         val (labels, rest) =
           if line.charAt(nameEnd) == '{' then
@@ -77,7 +98,7 @@ object TextFormat:
           else (Right(Nil), line.drop(nameEnd))
         for
           ls <- labels
-          _ <- Either.cond(rest.startsWith(" "), (), "no space before the value")
+          _ <- Either.cond(rest.startsWith(" "), (), Error.MissingValueSpace)
           v <- number(rest.drop(1))
         yield Sample(name, ls, v)
 
@@ -87,14 +108,14 @@ object TextFormat:
       line: String,
       at: Int,
       acc: List[(String, String)]
-  ): Either[String, (List[(String, String)], Int)] =
+  ): Either[Error, (List[(String, String)], Int)] =
     if at < line.length && line.charAt(at) == '}' && acc.isEmpty then Right((acc, at + 1))
     else
       val eq = line.indexOf("=\"", at)
-      if eq < 0 then Left("label without =\"")
+      if eq < 0 then Left(Error.MissingLabelAssignment)
       else
         val label = line.substring(at, eq)
-        if !LabelNameRe.matches(label) || label.startsWith("__") then Left(s"bad label name $label")
+        if !LabelNameRe.matches(label) || label.startsWith("__") then Left(Error.LabelName(label))
         else
           quoted(line, eq + 2, new java.lang.StringBuilder) match
             case Left(e) => Left(e)
@@ -103,7 +124,7 @@ object TextFormat:
               if after < line.length && line.charAt(after) == ',' then
                 labelSet(line, after + 1, next)
               else if after < line.length && line.charAt(after) == '}' then Right((next, after + 1))
-              else Left("label set not closed")
+              else Left(Error.UnclosedLabelSet)
 
   /** A quoted label value from `at` (after the opening quote): its text and the index after the
     * closing quote.
@@ -113,39 +134,39 @@ object TextFormat:
       line: String,
       at: Int,
       out: java.lang.StringBuilder
-  ): Either[String, (String, Int)] =
-    if at >= line.length then Left("unterminated label value")
+  ): Either[Error, (String, Int)] =
+    if at >= line.length then Left(Error.UnterminatedLabelValue)
     else
       line.charAt(at) match
         case '"' => Right((out.toString, at + 1))
         case '\\' =>
-          if at + 1 >= line.length then Left("dangling backslash")
+          if at + 1 >= line.length then Left(Error.DanglingBackslash)
           else
             line.charAt(at + 1) match
               case '\\' => quoted(line, at + 2, out.append('\\'))
               case '"'  => quoted(line, at + 2, out.append('"'))
               case 'n'  => quoted(line, at + 2, out.append('\n'))
-              case c    => Left(s"bad escape \\$c")
+              case c    => Left(Error.Escape(c))
         case c => quoted(line, at + 1, out.append(c))
 
-  private def unescape(text: String, quote: Boolean): Either[String, String] =
+  private def unescape(text: String, quote: Boolean): Either[Error, String] =
     @tailrec
-    def go(at: Int, out: java.lang.StringBuilder): Either[String, String] =
+    def go(at: Int, out: java.lang.StringBuilder): Either[Error, String] =
       if at >= text.length then Right(out.toString)
       else if text.charAt(at) != '\\' then go(at + 1, out.append(text.charAt(at)))
-      else if at + 1 >= text.length then Left("dangling backslash")
+      else if at + 1 >= text.length then Left(Error.DanglingBackslash)
       else
         text.charAt(at + 1) match
           case '\\'         => go(at + 2, out.append('\\'))
           case 'n'          => go(at + 2, out.append('\n'))
           case '"' if quote => go(at + 2, out.append('"'))
-          case c            => Left(s"bad escape \\$c")
+          case c            => Left(Error.Escape(c))
     go(0, new java.lang.StringBuilder)
 
-  private def number(text: String): Either[String, Double] = text match
+  private def number(text: String): Either[Error, Double] = text match
     case "NaN"  => Right(Double.NaN)
     case "+Inf" => Right(Double.PositiveInfinity)
     case "-Inf" => Right(Double.NegativeInfinity)
     case other =>
-      if Decimal.matches(other) then other.toDoubleOption.toRight(s"bad value <$other>")
-      else Left(s"bad value <$other>")
+      if Decimal.matches(other) then other.toDoubleOption.toRight(Error.Number(other))
+      else Left(Error.Number(other))

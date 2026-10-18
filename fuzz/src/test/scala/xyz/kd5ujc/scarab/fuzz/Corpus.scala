@@ -161,7 +161,7 @@ object Corpus:
       "8301f5f6",
       "826161a1626263f6",
       "d9d9f700"
-    ).map(h => Bytes.fromHex(h).fold(e => throw new IllegalStateException(e), _.toArray))
+    ).map(h => Bytes.fromHex(h).fold(e => throw new IllegalStateException(e.toString), _.toArray))
 
   // --- CDDL sampling ------------------------------------------------------------------------------
 
@@ -280,7 +280,7 @@ object Corpus:
           .parse(line)
           .flatMap(_.hcursor.get[String]("script"))
           .fold(throw _, identity)
-        val bytes = Bytes.fromHex(script).fold(sys.error, _.toArray)
+        val bytes = Bytes.fromHex(script).fold(e => sys.error(e.toString), _.toArray)
         xyz.kd5ujc.scarab.plutus.PlutusScriptBytes.flatOf(bytes).toVector
       }
 

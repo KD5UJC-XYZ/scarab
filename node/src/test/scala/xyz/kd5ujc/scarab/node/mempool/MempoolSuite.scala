@@ -318,11 +318,11 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
     )
   )
 
-  private def replay(s: MempoolState): Either[String, MempoolLedger] =
+  private def replay(s: MempoolState): Either[LedgerFailure, MempoolLedger] =
     val base = s.base.fold(u => sys.error(u.toString), identity)
-    s.entries.zipWithIndex.foldLeft[Either[String, MempoolLedger]](Right(base)) {
+    s.entries.zipWithIndex.foldLeft[Either[LedgerFailure, MempoolLedger]](Right(base)) {
       case (Right(l), (e, i)) =>
-        l(e.tx, env.txEnv(s.tipSlot, base, i), env.rules).left.map(_.message)
+        l(e.tx, env.txEnv(s.tipSlot, base, i), env.rules)
       case (left, _) => left
     }
 
