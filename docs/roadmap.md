@@ -98,6 +98,9 @@ Each open item links to its GitHub issue, which carries its state (`status:` lab
 - **F6** [#123](https://github.com/KD5UJC-XYZ/scarab/issues/123) (P2, idea) Failure encodings not yet written (`CollectErrors` with its `ContextError`, the certifying purposes) and a reference check of the pre-Conway encodings; follow-up of F3.
 - **F7** [#141](https://github.com/KD5UJC-XYZ/scarab/issues/141) (P2, idea) The predicate failures no rule raises, `PoolMedataHashTooBig` (B22) and `OutputBootAddrAttrsTooBig` (B20): the failure case, the check and the node-to-client encoding.
 
+- **REF-05** [#169](https://github.com/KD5UJC-XYZ/scarab/issues/169) (P2, done) Nested local queries are stack safe through semantic decoding, UTxO planning, era gating, diagnostic rendering and acquired-session answering; `DeepQuerySuite` exercises 20,000 `GetCBOR` wrappers on a 256 KiB worker, and the `ntc` scenario compares the deep Scala answer with the shallow reference answer at the same acquired point.
+- **REF-08** [#172](https://github.com/KD5UJC-XYZ/scarab/issues/172) (P2, done) Decode exact hard-fork query constructor tags and arities: `QueryAnytime GetEraStart` is `[0]`, interpreter/current-era are `[0]`/`[1]`; `NtcQuerySuite` and the `ntc` scenario's valid-answer and malformed-close comparisons cover the pinned reference forms.
+
 ## G. Networking (P1/P2)
 
 - **G1** [#31](https://github.com/KD5UJC-XYZ/scarab/issues/31) P2P governor: root, ledger, big-ledger and bootstrap peers; churn; PeerSharing. Design: [peer-selection.md](design/peer-selection.md), in stages G1.1 to G1.5; G1.1 (peer states, local and bootstrap roots, the Genesis State Machine and the fetch mode) is built on its branch ("G1.1 as built" in the design, [ADR 0016](adr/0016-peer-states-and-the-governor.md)); its Preview run from a synced database waits for [#145](https://github.com/KD5UJC-XYZ/scarab/issues/145).
