@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.legacy.v4
 
 import xyz.kd5ujc.scarab.codec.DomainError
-
 import xyz.kd5ujc.scarab.codec.BinaryError
 import xyz.kd5ujc.scarab.legacy.SnapshotFramingError
 import cats.syntax.all.*

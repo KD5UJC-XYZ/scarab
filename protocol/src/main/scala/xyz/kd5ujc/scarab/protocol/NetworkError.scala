@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.protocol
 
 import xyz.kd5ujc.scarab.codec.DomainError
-
 import xyz.kd5ujc.scarab.protocol.Mux as WireMux
 
 /** Closed set of network runtime failures. Algebras raise these through cats-mtl `Raise`; because

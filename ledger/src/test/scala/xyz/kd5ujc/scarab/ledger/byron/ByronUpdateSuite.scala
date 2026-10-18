@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger.byron
 
 import xyz.kd5ujc.scarab.ledger.CborRead
-
 import xyz.kd5ujc.scarab.codec.Bytes
 import munit.ScalaCheckSuite
 import org.scalacheck.Prop.forAll

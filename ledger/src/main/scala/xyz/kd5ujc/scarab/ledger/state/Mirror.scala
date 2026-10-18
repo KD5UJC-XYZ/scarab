@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger.state
 
 import xyz.kd5ujc.scarab.codec.DomainError
-
 import cats.{Eq, Functor, Show}
 import cats.derived.*
 import xyz.kd5ujc.scarab.ledger.EpochGeometry

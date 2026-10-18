@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.codec.DomainError
-
 import cats.data.NonEmptyVector
 import cats.syntax.all.*
 import com.comcast.ip4s.IpAddress

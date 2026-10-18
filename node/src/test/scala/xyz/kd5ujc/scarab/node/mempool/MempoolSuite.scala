@@ -234,7 +234,7 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
         Rejection.Ledger(
           LedgerFailure.Rejected(
             id,
-            PredicateFailure.Mempool(MempoolProblem.UnelectedCommittee(Vector(hot.credential)))
+            PredicateFailure.gov(GovFailure.UnelectedCommitteeVoters(Vector(hot.credential)))
           )
         )
       )

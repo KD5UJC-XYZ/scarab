@@ -7,7 +7,7 @@ import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.codec.{Bytes}
+import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{CborRead, Datum, ScriptKind, TxOut, Value}
 import xyz.kd5ujc.scarab.ledger.state.{
   Allegra,

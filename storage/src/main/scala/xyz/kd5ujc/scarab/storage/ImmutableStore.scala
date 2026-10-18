@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.storage
 
 import xyz.kd5ujc.scarab.codec.DomainError
-
 import xyz.kd5ujc.scarab.ledger.StorageStructureError
 import cats.effect.{Async, Ref, Resource, Sync}
 import cats.effect.std.Mutex

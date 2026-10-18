@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.storage.haskell.state
 
 import xyz.kd5ujc.scarab.codec.DomainError
-
 import cats.syntax.all.*
 import java.nio.charset.StandardCharsets.UTF_8
 import java.security.MessageDigest

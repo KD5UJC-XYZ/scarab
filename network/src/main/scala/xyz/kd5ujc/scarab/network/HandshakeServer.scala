@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.network
 
 import xyz.kd5ujc.scarab.protocol.ProtocolError
-
 import cats.effect.Temporal
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*

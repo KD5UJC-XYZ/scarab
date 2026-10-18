@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.legacy
 
 import xyz.kd5ujc.scarab.codec.DomainError
-
 import xyz.kd5ujc.scarab.codec.BinaryError
 import cats.syntax.all.*
 import java.io.ByteArrayOutputStream

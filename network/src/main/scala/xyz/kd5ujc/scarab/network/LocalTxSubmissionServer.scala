@@ -2,9 +2,6 @@
 package xyz.kd5ujc.scarab.network
 
 import xyz.kd5ujc.scarab.codec.DomainError
-
-import NetworkError.RuntimeViolation
-
 import cats.effect.Temporal
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -13,6 +10,8 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.LocalTxSubmission
 import xyz.kd5ujc.scarab.protocol.ChainSync.Role
 import scala.concurrent.duration.*
+
+import NetworkError.RuntimeViolation
 
 /** Node-to-client transaction submission. Replies distinguish admission from a ledger rejection and
   * from service unavailability, which closes the connection without a consensus verdict.

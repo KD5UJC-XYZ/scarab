@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger.byron
 
 import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
-
 import cats.syntax.all.*
 import java.util.zip.CRC32
 import xyz.kd5ujc.scarab.crypto.Blake2b

@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.storage
 
 import xyz.kd5ujc.scarab.codec.DomainError
-
 import cats.Show
 import xyz.kd5ujc.scarab.consensus.state.StateMirrorError
 import xyz.kd5ujc.scarab.ledger.StorageError

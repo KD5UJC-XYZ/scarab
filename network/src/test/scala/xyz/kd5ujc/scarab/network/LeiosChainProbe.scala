@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.network
 
 import xyz.kd5ujc.scarab.protocol.ProtocolError
-
 import cats.effect.{ExitCode, IO, IOApp}
 import cats.mtl.Handle
 import cats.syntax.all.*

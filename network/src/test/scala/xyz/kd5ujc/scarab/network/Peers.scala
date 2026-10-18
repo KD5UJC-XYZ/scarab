@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.network
 
 import xyz.kd5ujc.scarab.protocol.ProtocolError
-
 import cats.effect.{IO, Ref, Resource}
 import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*

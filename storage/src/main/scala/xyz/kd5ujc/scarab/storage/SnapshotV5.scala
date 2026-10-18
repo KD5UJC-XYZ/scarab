@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.storage
 
 import xyz.kd5ujc.scarab.codec.DomainError
-
 import cats.data.Kleisli
 import cats.effect.Sync
 import cats.mtl.Ask

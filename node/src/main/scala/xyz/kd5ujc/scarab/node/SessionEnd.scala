@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.codec.DomainError
-
 import cats.{ApplicativeThrow, MonadThrow}
 import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*

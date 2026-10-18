@@ -46,7 +46,9 @@ peer merely because both can be rendered as text. Fiber ownership and recovery p
 This migration changes error contracts, not accepted ledger values, arithmetic, original CBOR
 bytes, signing inputs, wire layouts or snapshot versions. Current and frozen binary readers
 report semantic primitive failures without changing their encodings. Corrupt input must remain
-bounded by its content length before buffering, so decoding cannot consume a following checksum.
+bounded by its content length before buffering, so decoding cannot consume a following checksum. Collection counts must fit `Int`; readers build
+only successfully decoded elements and stop at the first failure without allocating placeholders
+for the declared length.
 
 Functional, stack-safe composition remains the default. Local mutable cursors, byte buffers and
 explicit heap stacks remain in the measured critical CBOR and framing paths; the existing

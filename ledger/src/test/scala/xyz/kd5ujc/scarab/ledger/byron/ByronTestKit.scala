@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger.byron
 
 import xyz.kd5ujc.scarab.ledger.CborRead
-
 import java.security.{KeyPairGenerator, PrivateKey, Signature}
 import java.security.spec.NamedParameterSpec
 import xyz.kd5ujc.scarab.codec.Bytes

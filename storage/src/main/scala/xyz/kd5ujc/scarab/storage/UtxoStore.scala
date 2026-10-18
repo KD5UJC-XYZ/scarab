@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.storage
 
 import xyz.kd5ujc.scarab.codec.DomainError
-
 import cats.effect.{Ref, Sync}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*

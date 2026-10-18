@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.models.runtime
 
 import xyz.kd5ujc.scarab.codec.DomainError
-
 import xyz.kd5ujc.scarab.codec.{Bytes as CborBytes, Node as CborNode}
 
 type Bytes = CborBytes

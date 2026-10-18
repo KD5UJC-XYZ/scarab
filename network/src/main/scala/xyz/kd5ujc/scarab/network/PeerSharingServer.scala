@@ -2,8 +2,6 @@
 package xyz.kd5ujc.scarab.network
 
 import xyz.kd5ujc.scarab.protocol.ProtocolError
-import NetworkError.RuntimeViolation
-
 import cats.effect.Temporal
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -11,6 +9,8 @@ import cats.syntax.all.*
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.protocol.PeerSharing
 import xyz.kd5ujc.scarab.protocol.PeerSharing.{Address, Amount}
+
+import NetworkError.RuntimeViolation
 
 /** PeerSharing responder: answers every `ShareRequest` with the peers the source names, until the
   * client says `Done`. In `StIdle` the client may keep us waiting for ever

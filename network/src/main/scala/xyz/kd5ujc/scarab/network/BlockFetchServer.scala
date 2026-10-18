@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import NetworkError.RuntimeViolation
-
 import cats.effect.Temporal
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -12,6 +10,8 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{BlockFetch, CardanoBlockFetch}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import scala.concurrent.duration.*
+
+import NetworkError.RuntimeViolation
 
 /** BlockFetch server: answers inclusive range requests from a [[BlockFetchServer.Blocks]] source,
   * one request at a time (a client that pipelines is served in order).

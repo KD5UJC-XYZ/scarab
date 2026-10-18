@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.node.ntc
 
 import xyz.kd5ujc.scarab.codec.DomainError
-
 import cats.Monad
 import cats.syntax.all.*
 import scala.annotation.tailrec

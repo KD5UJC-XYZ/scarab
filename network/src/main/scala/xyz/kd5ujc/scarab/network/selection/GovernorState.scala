@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.network.selection
 
 import xyz.kd5ujc.scarab.codec.DomainError
-
 import scala.collection.immutable.{SortedMap, SortedSet}
 
 /** The state of the governor (`PeerSelectionState`, `Governor/Types.hs` 609-705 with the Cardano

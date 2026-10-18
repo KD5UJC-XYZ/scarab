@@ -151,10 +151,9 @@ object Codec extends LowPriorityCodec:
       read: => Either[BinaryError, A]
   )(append: (B, A) => B): Either[BinaryError, B] =
     in.count().flatMap { count =>
-      cats.Monad[[C] =>> Either[BinaryError, C]].tailRecM((0, initial)) {
-        case (index, result) =>
-          if index == count then Right(Right(result))
-          else read.map(value => Left((index + 1, append(result, value))))
+      cats.Monad[[C] =>> Either[BinaryError, C]].tailRecM((0, initial)) { case (index, result) =>
+        if index == count then Right(Right(result))
+        else read.map(value => Left((index + 1, append(result, value))))
       }
     }
 

@@ -5,7 +5,7 @@ import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import cats.syntax.all.*
 import io.circe.{ACursor, Decoder, Json}
-import xyz.kd5ujc.scarab.codec.{Node}
+import xyz.kd5ujc.scarab.codec.Node
 import xyz.kd5ujc.scarab.ledger.ConfigError
 import xyz.kd5ujc.scarab.ledger.Nonce
 

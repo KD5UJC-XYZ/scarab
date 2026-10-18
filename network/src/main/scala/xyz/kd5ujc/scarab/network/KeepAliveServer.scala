@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import NetworkError.RuntimeViolation
-
 import cats.effect.Temporal
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.protocol.KeepAlive
 import scala.concurrent.duration.*
+
+import NetworkError.RuntimeViolation
 
 /** KeepAlive responder: echoes every cookie until the client says Done. A client silent for
   * `idleTimeout` (the upstream bound is 97 s) ends the conversation with a timeout.

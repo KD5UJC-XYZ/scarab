@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 import java.nio.file.{Files, Path}
 import munit.FunSuite
-import xyz.kd5ujc.scarab.codec.{Bytes}
+import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** Transaction 9a47e091709e4fe1 (mainnet block 5,567,164, slot 26,366,727, epoch 258, Mary,

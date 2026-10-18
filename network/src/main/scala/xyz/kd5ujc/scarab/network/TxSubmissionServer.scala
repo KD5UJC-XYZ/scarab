@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import NetworkError.RuntimeViolation
-
 import cats.effect.Temporal
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -11,6 +9,8 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.TxSubmission2
 import xyz.kd5ujc.scarab.protocol.ChainSync.Role
 import scala.concurrent.duration.*
+
+import NetworkError.RuntimeViolation
 
 /** TxSubmission2 as the side that collects transactions (the protocol's server, which is the
   * responder of an inbound connection): it asks the peer for transaction ids, fetches the bodies it

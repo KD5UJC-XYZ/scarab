@@ -2,9 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.byron
 
 import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
-
 import xyz.kd5ujc.scarab.ledger.CborRead
-
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Value}

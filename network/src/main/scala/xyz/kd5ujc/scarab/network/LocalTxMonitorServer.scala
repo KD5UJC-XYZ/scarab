@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import NetworkError.RuntimeViolation
-
 import cats.effect.Temporal
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -13,6 +11,8 @@ import xyz.kd5ujc.scarab.protocol.LocalTxMonitor.{Kind, Message, State}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Role
 import scala.collection.immutable.SortedMap
 import scala.concurrent.duration.*
+
+import NetworkError.RuntimeViolation
 
 /** Node-to-client LocalTxMonitor server: a client acquires a snapshot of the mempool and walks it.
   * The snapshot is fixed for as long as the client holds it, whatever the pool does meanwhile; a

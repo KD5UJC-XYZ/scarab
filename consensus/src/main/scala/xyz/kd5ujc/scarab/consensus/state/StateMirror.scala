@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.consensus.state
 
 import xyz.kd5ujc.scarab.codec.DomainError
-
 import cats.{Eq, Show}
 import cats.derived.*
 import cats.syntax.all.*

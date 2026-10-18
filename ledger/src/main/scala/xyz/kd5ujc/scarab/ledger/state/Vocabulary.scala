@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger.state
 
 import xyz.kd5ujc.scarab.codec.DomainError
-
 import cats.{Order, Show}
 import cats.derived.*
 import cats.syntax.show.*

@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger.byron
 
 import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
-
 import cats.syntax.all.*
 import io.circe.ACursor
 import xyz.kd5ujc.scarab.codec.{Cbor, Node, Value}

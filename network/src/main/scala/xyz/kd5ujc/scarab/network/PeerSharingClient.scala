@@ -2,8 +2,6 @@
 package xyz.kd5ujc.scarab.network
 
 import xyz.kd5ujc.scarab.protocol.ProtocolError
-import NetworkError.RuntimeViolation
-
 import cats.effect.{Ref, Temporal}
 import cats.effect.std.Mutex
 import cats.mtl.Raise
@@ -12,6 +10,8 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.protocol.PeerSharing
 import xyz.kd5ujc.scarab.protocol.PeerSharing.{Address, Amount}
 import scala.concurrent.duration.*
+
+import NetworkError.RuntimeViolation
 
 /** PeerSharing client on mini-protocol 10: asks the peer for addresses of other peers. The
   * conversation is `ShareRequest`, then `SharePeers`, as often as wanted, and ends with `Done`

@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.codec.DomainError
-
 import xyz.kd5ujc.scarab.ledger.{Block, Header, PeerError, ValidationError}
 import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.effect.syntax.all.*

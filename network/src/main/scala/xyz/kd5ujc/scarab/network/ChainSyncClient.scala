@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import NetworkError.RuntimeViolation
-
 import cats.effect.{Ref, Temporal}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -10,6 +8,8 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Message, Point, State, Tip}
 import scala.concurrent.duration.*
+
+import NetworkError.RuntimeViolation
 
 /** Non-pipelined ChainSync client. Every message is checked against the pure state machine. Use
   * from a single fiber.

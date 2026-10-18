@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.{Bytes}
+import xyz.kd5ujc.scarab.codec.Bytes
 
 /** Pre-Conway protocol-parameter update proposals: what PPUP refuses and how many genesis delegates
   * must agree (the era-indexed rules, `ShelleyUtxo` and `Upec`, call these).
