@@ -11,8 +11,9 @@ import xyz.kd5ujc.scarab.ledger.{Block, Header, TxIn}
 import xyz.kd5ujc.scarab.ledger.byron.*
 import xyz.kd5ujc.scarab.ledger.byron.ByronTestKit.*
 
-/** Source-derived REF-07 cases, not executions of the Haskell decoder. The pinned ledger f649f97
-  * has Word16/Word16/Word8 fields (ProtocolVersion.hs:27-32,65-68); registration checks lexical
+/** Source-derived REF-07 header/registration cases; raw reference proposal-decoder verdicts are
+  * retained separately by ByronProposalFixtureSuite. The pinned ledger f649f97 has
+  * Word16/Word16/Word8 fields (ProtocolVersion.hs:27-32,65-68); registration checks lexical
   * increase and the next major/minor (Validation/Registration.hs:489-499). Every accepted block
   * below has a signed proposal, signed transaction, signed main header and matching body proofs;
   * the width checks precede registration and its version-transition rule.
