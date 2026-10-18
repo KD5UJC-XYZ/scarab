@@ -60,7 +60,7 @@ class HaskellIndexSuite extends ScalaCheckSuite:
     val hex =
       "0000000000000000" + "0003" + "03c1" + "65fb2a4d" +
         "268ae601af8f9214804735910a3301881fbe0eec9936db7d1fb9fc39e93d1e37" + "0000000000000000"
-    val bytes = Bytes.fromHex(hex).fold(e => fail(e), _.toArray)
+    val bytes = Bytes.fromHex(hex).fold(e => fail(e.toString), _.toArray)
     val entry = SecondaryIndex.parse(bytes, false).fold(f => fail(f.message), _.head)
     assertEquals(entry.blockOffset.value, 0L)
     assertEquals(entry.headerOffset, 3)

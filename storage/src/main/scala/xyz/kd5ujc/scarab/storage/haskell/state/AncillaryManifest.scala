@@ -99,16 +99,32 @@ object AncillaryManifest:
       files <- data.toVector.traverse { (path, value) =>
         for
           _ <- Either.cond(safePath(path), (), Error.UnsafePath(path))
-          hex <- value.asString.toRight(Error.InvalidDigest(path, DigestFailure.ExpectedString(value)))
-          digest <- Bytes.fromHex(hex).leftMap(cause => Error.InvalidDigest(path, DigestFailure.Hex(cause)))
-          _ <- Either.cond(digest.size == 32, (), Error.InvalidDigest(path, DigestFailure.WrongLength(digest.size)))
-          _ <- Either.cond(hex == digest.hex, (), Error.InvalidDigest(path, DigestFailure.NonCanonical))
+          hex <- value.asString.toRight(
+            Error.InvalidDigest(path, DigestFailure.ExpectedString(value))
+          )
+          digest <- Bytes
+            .fromHex(hex)
+            .leftMap(cause => Error.InvalidDigest(path, DigestFailure.Hex(cause)))
+          _ <- Either.cond(
+            digest.size == 32,
+            (),
+            Error.InvalidDigest(path, DigestFailure.WrongLength(digest.size))
+          )
+          _ <- Either.cond(
+            hex == digest.hex,
+            (),
+            Error.InvalidDigest(path, DigestFailure.NonCanonical)
+          )
         yield File(path, digest)
       }
       sigNode <- json.hcursor.downField("signature").focus.toRight(Error.SignatureMissing)
       sig <- sigNode.asString.toRight(Error.SignatureNotString(sigNode))
-      bytes <- Bytes.fromHex(sig).leftMap(cause => Error.InvalidSignature(SignatureFailure.Hex(cause)))
-      signature <- Signature64.create(bytes).leftMap(cause => Error.InvalidSignature(SignatureFailure.Input(cause)))
+      bytes <- Bytes
+        .fromHex(sig)
+        .leftMap(cause => Error.InvalidSignature(SignatureFailure.Hex(cause)))
+      signature <- Signature64
+        .create(bytes)
+        .leftMap(cause => Error.InvalidSignature(SignatureFailure.Input(cause)))
     yield AncillaryManifest(files.sortBy(f => Bytes.wrap(f.path.getBytes(UTF_8))), signature)
 
   /** `ProtocolKey`'s published ancillary.vkey is hex-encoded JSON containing 32 octets. */
@@ -120,8 +136,10 @@ object AncillaryManifest:
         .leftMap(e => Error.InvalidKey(KeyFailure.JsonSyntax(e)))
       octets <- json.as[Vector[Int]].leftMap(e => Error.InvalidKey(KeyFailure.JsonDecode(e)))
       _ <- Either.cond(octets.size == 32, (), Error.InvalidKey(KeyFailure.WrongLength(octets.size)))
-      _ <- octets.zipWithIndex.find { (n, _) => n < 0 || n > 255 }
-        .map { (n, i) => Error.InvalidKey(KeyFailure.OctetOutOfRange(i, n)) }.toLeft(())
+      _ <- octets.zipWithIndex
+        .find { (n, _) => n < 0 || n > 255 }
+        .map { (n, i) => Error.InvalidKey(KeyFailure.OctetOutOfRange(i, n)) }
+        .toLeft(())
       key <- PublicKey32
         .fromArray(octets.map(_.toByte).toArray)
         .leftMap(e => Error.InvalidKey(KeyFailure.Input(e)))

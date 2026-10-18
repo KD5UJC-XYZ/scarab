@@ -74,3 +74,74 @@ class AncillaryManifestSuite extends FunSuite:
       )
     }
   }
+
+  test("manifest errors retain field shapes, hex errors and witness validation causes") {
+    import AncillaryManifest.{DigestFailure, Error, SignatureFailure}
+    import io.circe.Json
+    import xyz.kd5ujc.scarab.codec.Bytes
+    import xyz.kd5ujc.scarab.crypto.witness.WitnessInputError
+    def manifest(digest: Json, signature: Json = Json.fromString("00" * 64)) =
+      Json.obj("data" -> Json.obj("state" -> digest), "signature" -> signature).noSpaces
+    assertEquals(AncillaryManifest.parse("{}"), Left(Error.DataMissing))
+    assertEquals(
+      AncillaryManifest.parse("{\"data\":0}"),
+      Left(Error.DataNotObject(Json.fromInt(0)))
+    )
+    assertEquals(
+      AncillaryManifest.parse(manifest(Json.fromInt(0))),
+      Left(Error.InvalidDigest("state", DigestFailure.ExpectedString(Json.fromInt(0))))
+    )
+    assertEquals(
+      AncillaryManifest.parse(manifest(Json.fromString("zz"))),
+      Left(Error.InvalidDigest("state", DigestFailure.Hex(Bytes.HexError.InvalidCharacter(0, 'z'))))
+    )
+    assertEquals(
+      AncillaryManifest.parse(manifest(Json.fromString("00"))),
+      Left(Error.InvalidDigest("state", DigestFailure.WrongLength(1)))
+    )
+    assertEquals(
+      AncillaryManifest.parse(manifest(Json.fromString("AA" * 32))),
+      Left(Error.InvalidDigest("state", DigestFailure.NonCanonical))
+    )
+    assertEquals(
+      AncillaryManifest.parse(manifest(Json.fromString("00" * 32), Json.fromInt(0))),
+      Left(Error.SignatureNotString(Json.fromInt(0)))
+    )
+    assertEquals(
+      AncillaryManifest.parse(manifest(Json.fromString("00" * 32), Json.fromString(""))),
+      Left(
+        Error.InvalidSignature(
+          SignatureFailure.Input(WitnessInputError.MalformedSignatureLength(0))
+        )
+      )
+    )
+    assert(AncillaryManifest.parse("{").left.exists(_.isInstanceOf[Error.JsonSyntax]))
+  }
+
+  test("verification key failures distinguish JSON, length and octet domains") {
+    import AncillaryManifest.{Error, KeyFailure}
+    import java.nio.charset.StandardCharsets.UTF_8
+    import xyz.kd5ujc.scarab.codec.Bytes
+    def encoded(json: String) = Bytes.wrap(json.getBytes(UTF_8)).hex
+    assertEquals(
+      AncillaryManifest.verificationKey("z0"),
+      Left(Error.InvalidKey(KeyFailure.Hex(Bytes.HexError.InvalidCharacter(0, 'z'))))
+    )
+    assertEquals(
+      AncillaryManifest.verificationKey(encoded("[0,1]")),
+      Left(Error.InvalidKey(KeyFailure.WrongLength(2)))
+    )
+    val invalid = Vector.fill(32)(0).updated(7, -1).mkString("[", ",", "]")
+    assertEquals(
+      AncillaryManifest.verificationKey(encoded(invalid)),
+      Left(Error.InvalidKey(KeyFailure.OctetOutOfRange(7, -1)))
+    )
+    assert(AncillaryManifest.verificationKey(encoded("{")).left.exists {
+      case Error.InvalidKey(_: KeyFailure.JsonSyntax) => true
+      case _                                          => false
+    })
+    assert(AncillaryManifest.verificationKey(encoded("true")).left.exists {
+      case Error.InvalidKey(_: KeyFailure.JsonDecode) => true
+      case _                                          => false
+    })
+  }

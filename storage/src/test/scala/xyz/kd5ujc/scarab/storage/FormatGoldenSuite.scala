@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.storage.haskell.*
 class FormatGoldenSuite extends FunSuite:
   private val hash = Bytes.fromArray(Array.tabulate[Byte](32)(_.toByte))
 
-  private def hex(s: String): Array[Byte] = Bytes.fromHex(s).fold(e => fail(e), _.toArray)
+  private def hex(s: String): Array[Byte] = Bytes.fromHex(s).fold(e => fail(e.toString), _.toArray)
   private def hex(a: Array[Byte]): String = Bytes.wrap(a).hex
 
   // ---- the file store's index entry: 68 bytes ----

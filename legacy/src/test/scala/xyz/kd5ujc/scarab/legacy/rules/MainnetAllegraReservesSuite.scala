@@ -27,7 +27,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
   */
 class MainnetAllegraReservesSuite extends FunSuite:
   private val rs = RuleSet
-  private def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(e => fail(e), identity)
+  private def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(e => fail(e.toString), identity)
 
   // ---- the reward calculation of epoch 236
 

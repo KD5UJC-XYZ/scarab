@@ -28,7 +28,7 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
   private def version(major: Long): ProtVer = ProtVer(Word64.fromUnsigned(major), Word64.zero)
 
   private def hex(s: String): Bytes =
-    Bytes.fromHex(s.filterNot(_.isWhitespace)).fold(fail(_), identity)
+    Bytes.fromHex(s.filterNot(_.isWhitespace)).fold(e => fail(e.toString), identity)
 
   private def bytesOf(body: Writer => Unit): Bytes = StateGen.item(body)
 

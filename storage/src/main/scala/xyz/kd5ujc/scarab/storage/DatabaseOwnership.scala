@@ -43,7 +43,7 @@ object DatabaseOwnership:
       .attempt
       .flatMap {
         case Right(result) => result.fold(_.raise[F, (FileChannel, FileLock)], F.pure)
-        case Left(e) => StorageError.Io(db.toString, e).raise[F, (FileChannel, FileLock)]
+        case Left(e)       => StorageError.Io(db.toString, e).raise[F, (FileChannel, FileLock)]
       }
     Resource
       .make(acquire) { (channel, lease) =>

@@ -6,6 +6,7 @@ import cats.syntax.all.*
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 import java.security.MessageDigest
 import xyz.kd5ujc.scarab.ledger.StorageError
+import xyz.kd5ujc.scarab.codec.BinaryError
 
 /** A one-codec snapshot format for the tests of the snapshot store, which exercise the file layout
   * (the atomic write, the pruning, the restore) with a small state rather than the node state. It
@@ -42,7 +43,7 @@ object ToyFormat:
 
       private def read(content: Array[Byte]): Either[StorageError, StateSnapshot[S]] =
         if content.length < HeaderSize || !content.startsWith(Magic) then
-          Left(StorageError.Corrupt("snapshot", "bad magic or too short"))
+          Left(StorageError.Corrupt("snapshot", BinaryError.BadMagic))
         else
           val n = java.nio.ByteBuffer.wrap(content, Magic.length, 4).getInt
           if n != Number then
@@ -56,13 +57,13 @@ object ToyFormat:
                 new ByteArrayInputStream(content, HeaderSize + FingerprintSize, content.length),
                 (content.length - HeaderSize - FingerprintSize).toLong
               )
-              Either
-                .catchOnly[CodecException](codec.read(in))
-                .leftMap(e => StorageError.Corrupt("snapshot", e.getMessage))
+              codec
+                .read(in)
+                .leftMap(e => StorageError.Corrupt("snapshot", e))
                 .flatMap { snapshot =>
                   Either.cond(
                     in.remaining == 0,
                     snapshot,
-                    StorageError.Corrupt("snapshot", "trailing payload bytes")
+                    StorageError.Corrupt("snapshot", BinaryError.TrailingBytes(in.remaining))
                   )
                 }

@@ -125,7 +125,9 @@ object SnapshotV5:
               (),
               SnapshotRefusal.WouldDiffer(
                 List(
-                  Option.when(!java.util.Arrays.equals(again, content))(SnapshotDifference.ReencodedBytes),
+                  Option.when(!java.util.Arrays.equals(again, content))(
+                    SnapshotDifference.ReencodedBytes
+                  ),
                   Option.when(back.anchor != snapshot.anchor)(SnapshotDifference.Anchor)
                 ).flatten
               )
@@ -207,7 +209,8 @@ object SnapshotV5:
 
   // ---- read
 
-  private def corrupt[E <: Product](reason: E): StorageError = StorageError.Corrupt("snapshot", reason)
+  private def corrupt[E <: Product](reason: E): StorageError =
+    StorageError.Corrupt("snapshot", reason)
 
   private def read(
       env: ConsensusMirrorEnv,

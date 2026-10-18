@@ -27,7 +27,7 @@ import HaskellStateCodecs.{*, given}
   */
 class LedgerFileSuite extends ScalaCheckSuite:
   private def hex(s: String): Bytes =
-    Bytes.fromHex(s.filterNot(_.isWhitespace)).fold(fail(_), identity)
+    Bytes.fromHex(s.filterNot(_.isWhitespace)).fold(e => fail(e.toString), identity)
 
   private def bytesOf(body: Writer => Unit): Bytes = StateGen.item(body)
 
@@ -354,7 +354,8 @@ class LedgerFileSuite extends ScalaCheckSuite:
   fixtures.foreach { dir =>
     val name = dir.getFileName.toString
     test(s"fixture $name: the Haskell node's state is written again byte for byte") {
-      val (result, file) = RealLedgerFileCheck.run(dir.resolve("state")).fold(fail(_), identity)
+      val (result, file) =
+        RealLedgerFileCheck.run(dir.resolve("state")).fold(e => fail(e.toString), identity)
       assert(result.identical, s"first difference at ${result.firstDifference}")
       // the directory is named <era>-<slot>: the era and the tip it is named for are the file's
       assertEquals(name.takeWhile(_ != '-'), file.era.toString.toLowerCase)
@@ -375,7 +376,8 @@ class LedgerFileSuite extends ScalaCheckSuite:
       assertEquals(meta.tablesCodecVersion, 1)
     }
     test(s"fixture $name: the derived fields are the ones the mirror derives") {
-      val (_, file) = RealLedgerFileCheck.run(dir.resolve("state")).fold(fail(_), identity)
+      val (_, file) =
+        RealLedgerFileCheck.run(dir.resolve("state")).fold(e => fail(e.toString), identity)
       Derivations.ofFile(file).foreach { d =>
         // the VRF key hashes are kept from protocol version 10 only
         assertEquals(d.vrfExtra, 0)
@@ -393,7 +395,7 @@ class LedgerFileSuite extends ScalaCheckSuite:
   ) {
     assume(realFile.isDefined, "HASKELL_STATE_FILE is not set")
     realFile.foreach { path =>
-      val (result, file) = RealLedgerFileCheck.run(path).fold(fail(_), identity)
+      val (result, file) = RealLedgerFileCheck.run(path).fold(e => fail(e.toString), identity)
       assert(result.identical, s"first difference at ${result.firstDifference}")
       assertEquals(file.era, Era.Conway)
       Derivations.ofFile(file).foreach { d =>

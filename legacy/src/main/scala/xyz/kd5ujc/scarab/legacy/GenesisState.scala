@@ -55,7 +55,9 @@ object GenesisState:
         ByronGenesisFile
           .genesisBalances(files.byron)
           .flatMap((avvm, nonAvvm) =>
-            ByronLedger.genesisUtxo(avvm, nonAvvm, files.byronNetworkMagic).leftMap(e => ConfigError(ConfigProblem.LedgerValue(e)))
+            ByronLedger
+              .genesisUtxo(avvm, nonAvvm, files.byronNetworkMagic)
+              .leftMap(e => ConfigError(ConfigProblem.LedgerValue(e)))
           )
       )(Right(_))
       // Some testnets (Preview) inject Byron outputs of zero lovelace; the ledger's Byron to Shelley
@@ -97,7 +99,13 @@ object GenesisState:
       votes <- voteJson.toVector.traverse { case (k, j) =>
         (
           credential(k),
-          j.hcursor.downField("dRep").as[String].leftMap(e => ConfigError(ConfigProblem.JsonField("genesis vote delegation", "dRep", e))).flatMap(drep)
+          j.hcursor
+            .downField("dRep")
+            .as[String]
+            .leftMap(e =>
+              ConfigError(ConfigProblem.JsonField("genesis vote delegation", "dRep", e))
+            )
+            .flatMap(drep)
         ).tupled
       }
     yield

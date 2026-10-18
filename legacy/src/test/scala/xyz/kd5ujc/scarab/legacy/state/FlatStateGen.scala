@@ -76,7 +76,7 @@ object FlatStateGen:
         xyz.kd5ujc.scarab.ledger.TestLedger.params(if conway then 10 else 6),
         node.ParamUpdate(Map.empty)
       )
-      .fold(e => sys.error(e), identity)
+      .fold(e => sys.error(e.toString), identity)
 
   /** A flat state of an era: Conway, or one of the earlier ones (which differ in nothing the
     * conversion looks at but the protocol version it reads).

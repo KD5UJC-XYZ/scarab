@@ -52,26 +52,29 @@ final class Out(stream: OutputStream):
     flushBuffer()
     stream.flush()
 
-/** Buffered input interpreter. Malformed fields return values; stream I/O failures are handled
-  * by the storage boundary. Collection sizes are bounded by the bytes that remain.
+/** Buffered input interpreter. Malformed fields return values; stream I/O failures are handled by
+  * the storage boundary. Collection sizes are bounded by the bytes that remain.
   */
 final class In(source: InputStream, limit: Long):
-  private val stream = new java.io.BufferedInputStream(new InputStream:
-    private var left = limit
-    override def read(): Int =
-      if left <= 0 then -1
-      else
-        val value = source.read()
-        if value >= 0 then left -= 1
-        value
-    override def read(bytes: Array[Byte], offset: Int, length: Int): Int =
-      if length == 0 then 0
-      else if left <= 0 then -1
-      else
-        val count = source.read(bytes, offset, math.min(length.toLong, left).toInt)
-        if count > 0 then left -= count
-        count
-  , 1 << 16)
+  private val stream = new java.io.BufferedInputStream(
+    new InputStream:
+      private var left = limit
+      override def read(): Int =
+        if left <= 0 then -1
+        else
+          val value = source.read()
+          if value >= 0 then left -= 1
+          value
+      override def read(bytes: Array[Byte], offset: Int, length: Int): Int =
+        if length == 0 then 0
+        else if left <= 0 then -1
+        else
+          val count = source.read(bytes, offset, math.min(length.toLong, left).toInt)
+          if count > 0 then left -= count
+          count
+    ,
+    1 << 16
+  )
   private var consumed = 0L
   def remaining: Long = limit - consumed
   def position: Long = consumed
@@ -84,7 +87,8 @@ final class In(source: InputStream, limit: Long):
         consumed += 1
         Right(b)
   def bytes(len: Int): Either[BinaryError, Array[Byte]] =
-    if len < 0 || len > remaining then Left(BinaryError.LengthExceedsRemaining(len.toLong, remaining))
+    if len < 0 || len > remaining then
+      Left(BinaryError.LengthExceedsRemaining(len.toLong, remaining))
     else
       val out = new Array[Byte](len)
       cats.Monad[[A] =>> Either[BinaryError, A]].tailRecM(0) { done =>
@@ -92,7 +96,10 @@ final class In(source: InputStream, limit: Long):
         else
           val n = stream.read(out, done, len - done)
           if n < 0 then Left(BinaryError.UnexpectedEnd(consumed))
-          else if n == 0 then byte().map { value => out(done) = value.toByte; Left(done + 1) }
+          else if n == 0 then
+            byte().map { value =>
+              out(done) = value.toByte; Left(done + 1)
+            }
           else
             consumed += n
             Right(Left(done + n))
@@ -100,10 +107,11 @@ final class In(source: InputStream, limit: Long):
   def varint(): Either[BinaryError, Long] =
     cats.Monad[[A] =>> Either[BinaryError, A]].tailRecM((0, 0L)) { case (shift, result) =>
       if shift > 63 then Left(BinaryError.VarintTooLong(consumed))
-      else byte().map { b =>
-        val value = result | ((b & 0x7fL) << shift)
-        if (b & 0x80) == 0 then Right(value) else Left((shift + 7, value))
-      }
+      else
+        byte().map { b =>
+          val value = result | ((b & 0x7fL) << shift)
+          if (b & 0x80) == 0 then Right(value) else Left((shift + 7, value))
+        }
     }
   def fixed32(): Either[BinaryError, Int] =
     (0 until 4).toVector.foldLeftM(0)((acc, _) => byte().map(b => (acc << 8) | b))
@@ -130,10 +138,11 @@ trait Codec[A]:
 object Codec extends LowPriorityCodec:
   def apply[A](using c: Codec[A]): Codec[A] = c
 
-  def make[A](name: String)(w: (Out, A) => Unit)(r: In => Either[BinaryError, A]): Codec[A] = new Codec[A]:
-    def write(out: Out, a: A): Unit = w(out, a)
-    def read(in: In): Either[BinaryError, A] = r(in)
-    def shape: String = name
+  def make[A](name: String)(w: (Out, A) => Unit)(r: In => Either[BinaryError, A]): Codec[A] =
+    new Codec[A]:
+      def write(out: Out, a: A): Unit = w(out, a)
+      def read(in: In): Either[BinaryError, A] = r(in)
+      def shape: String = name
 
   /** Self-contained encoding of one value (tests, golden vectors). */
   def encode[A](a: A)(using c: Codec[A]): Array[Byte] =
@@ -145,7 +154,8 @@ object Codec extends LowPriorityCodec:
 
   def decode[A](bytes: Array[Byte])(using c: Codec[A]): Either[BinaryError, A] =
     val in = In(new ByteArrayInputStream(bytes), bytes.length.toLong)
-    c.read(in).flatMap(a => Either.cond(in.remaining == 0, a, BinaryError.TrailingBytes(in.remaining)))
+    c.read(in)
+      .flatMap(a => Either.cond(in.remaining == 0, a, BinaryError.TrailingBytes(in.remaining)))
 
   given Codec[Boolean] = make[Boolean]("Boolean")((o, b) => o.byte(if b then 1 else 0))(i =>
     i.byte().flatMap {
@@ -155,7 +165,10 @@ object Codec extends LowPriorityCodec:
     }
   )
   given Codec[Int] = make[Int]("Int")((o, v) => o.varint(v.toLong))(i =>
-    i.varint().flatMap(v => Either.cond(v >= Int.MinValue && v <= Int.MaxValue, v.toInt, BinaryError.IntOutOfRange(v)))
+    i.varint()
+      .flatMap(v =>
+        Either.cond(v >= Int.MinValue && v <= Int.MaxValue, v.toInt, BinaryError.IntOutOfRange(v))
+      )
   )
   given Codec[Long] = make[Long]("Long")((o, v) => o.varint(v))(_.varint())
   given Codec[String] = make[String]("String")((o, s) =>
@@ -167,9 +180,11 @@ object Codec extends LowPriorityCodec:
     val b = v.toByteArray
     o.varint(b.length.toLong)
     o.bytes(b, 0, b.length)
-  )(i => i.count().flatMap { n =>
-    if n == 0 then Left(BinaryError.EmptyBigInt) else i.bytes(n).map(BigInt(_))
-  })
+  )(i =>
+    i.count().flatMap { n =>
+      if n == 0 then Left(BinaryError.EmptyBigInt) else i.bytes(n).map(BigInt(_))
+    }
+  )
   given Codec[Bytes] = make[Bytes]("Bytes")((o, v) =>
     val b = v.toArray
     o.varint(b.length.toLong)
@@ -182,12 +197,13 @@ object Codec extends LowPriorityCodec:
     def read(in: In): Either[BinaryError, Rational] = for
       n <- summon[Codec[BigInt]].read(in)
       d <- summon[Codec[BigInt]].read(in)
-      value <- if d.signum > 0 then Right(Rational(n, d)) else Left(BinaryError.NonPositiveDenominator(d))
+      value <-
+        if d.signum > 0 then Right(Rational(n, d)) else Left(BinaryError.NonPositiveDenominator(d))
     yield value
     def shape: String = "Rational(BigInt,BigInt)"
   given [A](using c: Codec[A]): Codec[Option[A]] with
     def write(out: Out, a: Option[A]): Unit = a match
-      case None => out.byte(0)
+      case None    => out.byte(0)
       case Some(v) => out.byte(1); c.write(out, v)
     def read(in: In): Either[BinaryError, Option[A]] = in.byte().flatMap {
       case 0 => Right(None)
@@ -219,13 +235,20 @@ object Codec extends LowPriorityCodec:
   given [K, V](using k: Codec[K], v: Codec[V]): Codec[Map[K, V]] with
     def write(out: Out, a: Map[K, V]): Unit =
       out.varint(a.size.toLong)
-      a.foreach { (key, value) => k.write(out, key); v.write(out, value) }
+      a.foreach { (key, value) =>
+        k.write(out, key); v.write(out, value)
+      }
     def read(in: In): Either[BinaryError, Map[K, V]] =
-      in.count().flatMap(n => Vector.fill(n)(()).traverse { _ => for
-        key <- k.read(in)
-        value <- v.read(in)
-      yield key -> value
-      }).map(_.toMap)
+      in.count()
+        .flatMap(n =>
+          Vector.fill(n)(()).traverse { _ =>
+            for
+              key <- k.read(in)
+              value <- v.read(in)
+            yield key -> value
+          }
+        )
+        .map(_.toMap)
     def shape: String = s"Map[${k.shape},${v.shape}]"
 
   /** Recursive: the one persisted type that contains itself, so it cannot be derived inline. A
@@ -253,7 +276,12 @@ object Codec extends LowPriorityCodec:
       while !stack.isEmpty do
         val top = stack.peek()
         if top.hasNext then head(top.next()) else stack.pop()
-    private final case class Open(tag: Int, required: BigInt, left: Int, kids: Vector[NativeScript]):
+    private final case class Open(
+        tag: Int,
+        required: BigInt,
+        left: Int,
+        kids: Vector[NativeScript]
+    ):
       def build: NativeScript = tag match
         case 1 => NativeScript.AllOf(kids)
         case 2 => NativeScript.AnyOf(kids)
@@ -268,13 +296,20 @@ object Codec extends LowPriorityCodec:
         case (stack, None) =>
           val parents = stack match
             case top :: rest => top.copy(left = top.left - 1) :: rest
-            case Nil => Nil
+            case Nil         => Nil
           in.byte().flatMap {
             case 0 => bytes.read(in).map(h => Left((parents, Some(NativeScript.Sig(h)))))
-            case tag @ (1 | 2) => in.count().map(n => Left((Open(tag, 0, n, Vector.empty) :: parents, None)))
-            case 3 => bigInt.read(in).flatMap(n => in.count().map(count => Left((Open(3, n, count, Vector.empty) :: parents, None))))
+            case tag @ (1 | 2) =>
+              in.count().map(n => Left((Open(tag, 0, n, Vector.empty) :: parents, None)))
+            case 3 =>
+              bigInt
+                .read(in)
+                .flatMap(n =>
+                  in.count().map(count => Left((Open(3, n, count, Vector.empty) :: parents, None)))
+                )
             case 4 => bigInt.read(in).map(n => Left((parents, Some(NativeScript.InvalidBefore(n)))))
-            case 5 => bigInt.read(in).map(n => Left((parents, Some(NativeScript.InvalidHereafter(n)))))
+            case 5 =>
+              bigInt.read(in).map(n => Left((parents, Some(NativeScript.InvalidHereafter(n)))))
             case tag => Left(BinaryError.InvalidNativeScriptTag(tag))
           }
       }
@@ -333,7 +368,8 @@ object LowPriorityCodec:
       out.varint(i.toLong)
       variants(i).write(out, a)
     def read(in: In): Either[BinaryError, A] = in.varint().flatMap { i =>
-      if i < 0 || i >= variants.length then Left(BinaryError.InvalidVariant(name, i, variants.length))
+      if i < 0 || i >= variants.length then
+        Left(BinaryError.InvalidVariant(name, i, variants.length))
       else variants(i.toInt).read(in).map(_.asInstanceOf[A])
     }
     def shape: String = s"$name{${codecs.map(_.shape).mkString("|")}}"

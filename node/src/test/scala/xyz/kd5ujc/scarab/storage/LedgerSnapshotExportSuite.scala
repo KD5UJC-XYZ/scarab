@@ -278,7 +278,7 @@ class LedgerSnapshotExportSuite extends CatsEffectSuite:
         _ <- IO {
           assert(corrupt.left.exists {
             case LedgerSnapshotExport.Error.Storage(_: StorageError.Corrupt[?]) => true
-            case _                                                           => false
+            case _                                                              => false
           })
           assertEquals(fingerprint(db), corruptBefore)
         }

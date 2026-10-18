@@ -73,7 +73,7 @@ object NodeStateGen:
     val keys = Vector(ByronTestKit.key(), ByronTestKit.key())
     ByronLedger
       .initial(ByronLedger.Config(ByronTestKit.genesis(keys, keys), requiresNetworkMagic = false))
-      .fold(e => sys.error(e), identity)
+      .fold(e => sys.error(e.toString), identity)
 
   private val lite: LiteLedger = LiteLedger(
     0,

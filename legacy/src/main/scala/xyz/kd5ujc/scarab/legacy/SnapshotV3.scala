@@ -93,7 +93,9 @@ object SnapshotV3:
       val fingerprint = SnapshotSidecar.fingerprint
       val end = HeaderSize.toLong + length
       if length < fingerprint.length || end > content.length then
-        Left(corrupt(SnapshotFramingError.SidecarLength(length, content.length, fingerprint.length)))
+        Left(
+          corrupt(SnapshotFramingError.SidecarLength(length, content.length, fingerprint.length))
+        )
       else
         val found = content.slice(HeaderSize, HeaderSize + fingerprint.length)
         if !java.util.Arrays.equals(found, fingerprint) then

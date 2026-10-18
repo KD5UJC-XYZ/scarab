@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage.haskell.state
 
-import cats.syntax.show.*
+import cats.syntax.all.*
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.state.EraLedgerState
@@ -15,6 +15,15 @@ import xyz.kd5ujc.scarab.consensus.state.EraLedgerState
   * the real file when `HASKELL_STATE_FILE` names one.
   */
 object RealLedgerFileCheck:
+  enum Error:
+    case Read(cause: Throwable)
+    case Decode(cause: xyz.kd5ujc.scarab.models.runtime.DecodeError)
+    case Encode(cause: StateNotWritable)
+    def message: String = this match
+      case Read(cause)   => s"read failed: $cause"
+      case Decode(cause) => s"decode failed: ${cause.render}"
+      case Encode(cause) => s"not writable: ${cause.violation.render}"
+
   /** What a run found. */
   final case class Result(
       size: Int,
@@ -26,37 +35,42 @@ object RealLedgerFileCheck:
   )
 
   /** Read `path`, write it again, compare. */
-  def run(path: Path): Either[String, (Result, HaskellLedgerFile)] =
-    val data = Bytes.fromArray(Files.readAllBytes(path))
-    val t0 = System.nanoTime()
-    HaskellLedgerFile.decode(data) match
-      case Left(error) => Left(s"decode failed: ${error.render}")
-      case Right(file) =>
-        val t1 = System.nanoTime()
-        HaskellLedgerFile.encode(file) match
-          case Left(why) => Left(s"not writable: ${why.violation.render}")
-          case Right(again) =>
-            val t2 = System.nanoTime()
-            val same = again == data
-            val at =
-              if same then None
-              else
-                val a = data.toArray
-                val b = again.toArray
-                Some(a.indices.find(i => i >= b.length || a(i) != b(i)).getOrElse(b.length))
-            Right(
-              (
-                Result(
-                  data.size,
-                  file.era.toString,
-                  same,
-                  at,
-                  (t1 - t0) / 1000000,
-                  (t2 - t1) / 1000000
-                ),
-                file
-              )
-            )
+  def run(path: Path): Either[Error, (Result, HaskellLedgerFile)] =
+    Either
+      .catchNonFatal(Files.readAllBytes(path))
+      .leftMap(Error.Read.apply)
+      .map(Bytes.fromArray)
+      .flatMap { data =>
+        val t0 = System.nanoTime()
+        HaskellLedgerFile.decode(data) match
+          case Left(error) => Left(Error.Decode(error))
+          case Right(file) =>
+            val t1 = System.nanoTime()
+            HaskellLedgerFile.encode(file) match
+              case Left(why) => Left(Error.Encode(why))
+              case Right(again) =>
+                val t2 = System.nanoTime()
+                val same = again == data
+                val at =
+                  if same then None
+                  else
+                    val a = data.toArray
+                    val b = again.toArray
+                    Some(a.indices.find(i => i >= b.length || a(i) != b(i)).getOrElse(b.length))
+                Right(
+                  (
+                    Result(
+                      data.size,
+                      file.era.toString,
+                      same,
+                      at,
+                      (t1 - t0) / 1000000,
+                      (t2 - t1) / 1000000
+                    ),
+                    file
+                  )
+                )
+      }
 
   def main(args: Array[String]): Unit =
     val path = Path.of(args(0))
@@ -65,7 +79,7 @@ object RealLedgerFileCheck:
     }
     run(path) match
       case Left(message) =>
-        println(message)
+        println(message.message)
         sys.exit(1)
       case Right((r, file)) =>
         val rt = Runtime.getRuntime

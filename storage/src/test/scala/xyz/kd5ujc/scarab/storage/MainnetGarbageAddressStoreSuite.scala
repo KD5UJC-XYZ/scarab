@@ -22,13 +22,13 @@ class MainnetGarbageAddressStoreSuite extends FunSuite:
     val hex = Files
       .readString(java.nio.file.Path.of("fixtures/mainnet/mary-garbage-address-block.hex"))
       .trim
-    Block.decode(Bytes.fromHex(hex).fold(e => fail(e), identity), BigInt(21600)) match
+    Block.decode(Bytes.fromHex(hex).fold(e => fail(e.toString), identity), BigInt(21600)) match
       case Right(b: Block.Shelley) => b
       case other                   => fail(s"unexpected $other")
 
   private val tx: Tx =
     block.transactions
-      .map(Tx.fromBlock(_, block.era).fold(e => fail(e), identity))
+      .map(Tx.fromBlock(_, block.era).fold(e => fail(e.toString), identity))
       .find(_.body.id.hex.startsWith("369826b2f60b443d"))
       .getOrElse(fail("transaction 369826b2f60b443d is not in the block"))
 

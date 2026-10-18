@@ -63,7 +63,8 @@ final class RocksUtxoStore[F[_]: Sync] private (
   private val writeOptions = new WriteOptions().setDisableWAL(true)
 
   /** A failure of the database as a typed error: a checksum or format failure the library reports
-    * is damaged data ([[StorageError.Corrupt[?]]]), anything else an I/O error ([[StorageError.Io]]).
+    * is damaged data ([[StorageError.Corrupt[?]]]), anything else an I/O error
+    * ([[StorageError.Io]]).
     */
   private def failure(what: String, e: Throwable): StorageError = e match
     case r: RocksDBException
@@ -238,7 +239,9 @@ final class RocksUtxoStore[F[_]: Sync] private (
                   it.next()
                   next()
                 else if key.length != RocksUtxoStore.KeyLength then
-                  Left(StorageError.Corrupt("utxo key", StorageStructureError.KeyLength(key.length)))
+                  Left(
+                    StorageError.Corrupt("utxo key", StorageStructureError.KeyLength(key.length))
+                  )
                 else
                   val value = Coding.decodeValue(it.value()).left.map(corruptEntry(key, _))
                   it.next()

@@ -57,7 +57,9 @@ object NodeCodecs:
 
   // The chain-dependent state of the Haskell shape: unsigned words, key hashes, sorted maps.
   given word64: Codec[Word64] =
-    Codec.make[Word64]("Word64")((o, w) => o.fixed64(w.bits))(i => i.fixed64().map(Word64.fromUnsigned))
+    Codec.make[Word64]("Word64")((o, w) => o.fixed64(w.bits))(i =>
+      i.fixed64().map(Word64.fromUnsigned)
+    )
 
   given slotNo: Codec[SlotNo] =
     Codec.make[SlotNo]("SlotNo")((o, s) => o.fixed64(s.word.bits))(i =>
@@ -66,9 +68,11 @@ object NodeCodecs:
 
   given keyHash[R <: KeyRole]: Codec[KeyHash[R]] =
     Codec.make[KeyHash[R]]("KeyHash")((o, h) => summon[Codec[Bytes]].write(o, h.bytes))(i =>
-      summon[Codec[Bytes]].read(i).flatMap(bytes =>
-        KeyHash.fromBytes[R](bytes).leftMap(_ => BinaryError.InvalidKeyHashLength(bytes.size, 28))
-      )
+      summon[Codec[Bytes]]
+        .read(i)
+        .flatMap(bytes =>
+          KeyHash.fromBytes[R](bytes).leftMap(_ => BinaryError.InvalidKeyHashLength(bytes.size, 28))
+        )
     )
 
   /** In ascending key order (that of `Order[K]`), as the map holds it. */
@@ -81,12 +85,16 @@ object NodeCodecs:
         v.write(out, value)
       }
     def read(in: In): Either[BinaryError, SortedMap[K, V]] =
-      in.count().flatMap(n => List.fill(n)(()).traverse { _ =>
-        for
-          key <- k.read(in)
-          value <- v.read(in)
-        yield key -> value
-      }).map(Sorted.map(_))
+      in.count()
+        .flatMap(n =>
+          List.fill(n)(()).traverse { _ =>
+            for
+              key <- k.read(in)
+              value <- v.read(in)
+            yield key -> value
+          }
+        )
+        .map(Sorted.map(_))
     def shape: String = s"SortedMap[${k.shape},${v.shape}]"
 
   given withOrigin[A](using Codec[A]): Codec[WithOrigin[A]] = Codec.auto
@@ -116,7 +124,8 @@ object NodeCodecs:
         minor <- number.read(in)
         alt <- number.read(in)
         version <- ByronVersion.from(major, minor, alt).leftMap {
-          case ByronVersion.Error.OutOfRange(field, value) => BinaryError.InvalidByronVersion(field.toString, value)
+          case ByronVersion.Error.OutOfRange(field, value) =>
+            BinaryError.InvalidByronVersion(field.toString, value)
         }
       yield version
     )

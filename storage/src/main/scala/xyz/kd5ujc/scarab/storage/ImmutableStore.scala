@@ -387,13 +387,18 @@ object FileImmutableStore:
               _ <- before.traverse_ { t =>
                 if ref.slot > t.slot || (ref.slot == t.slot && t.boundary) then F.unit
                 else
-                  fail[Unit](StorageError.OutOfOrder(StorageStructureError.SlotOrder(ref.slot, t.slot)))
+                  fail[Unit](
+                    StorageError.OutOfOrder(StorageStructureError.SlotOrder(ref.slot, t.slot))
+                  )
               }
               _ <- F.unlessA(ref.hash.size == 32)(
                 fail[Unit](StorageError.OutOfOrder(StorageStructureError.HashLength(ref.hash.size)))
               )
               _ <- F.unlessA(ref.slot.isValidLong && ref.blockNo.isValidLong)(
-                fail[Unit](StorageError.OutOfOrder(StorageStructureError.InvalidBlockNumbers(ref.slot, ref.blockNo)))
+                fail[Unit](
+                  StorageError
+                    .OutOfOrder(StorageStructureError.InvalidBlockNumbers(ref.slot, ref.blockNo))
+                )
               )
               wanted = (ref.slot / chunkSlots).toInt
               cur <- current.get

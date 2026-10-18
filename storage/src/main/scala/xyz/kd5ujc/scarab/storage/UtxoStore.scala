@@ -155,8 +155,13 @@ object UtxoStore:
     def decodeValue(bytes: Array[Byte]): Either[ValueError, TxOut] =
       if bytes.isEmpty then Left(ValueError.Empty)
       else if bytes(0) == 1 then
-        TxOut.fromBytes(Bytes.wrap(java.util.Arrays.copyOfRange(bytes, 1, bytes.length))).leftMap(ValueError.Cbor(_))
-      else Codec.decode[TxOut](java.util.Arrays.copyOfRange(bytes, 1, bytes.length)).leftMap(ValueError.Binary(_))
+        TxOut
+          .fromBytes(Bytes.wrap(java.util.Arrays.copyOfRange(bytes, 1, bytes.length)))
+          .leftMap(ValueError.Cbor(_))
+      else
+        Codec
+          .decode[TxOut](java.util.Arrays.copyOfRange(bytes, 1, bytes.length))
+          .leftMap(ValueError.Binary(_))
 
     /** Where the address of an encoded output lies, read from the head of its CBOR without decoding
       * the rest: `(offset, length)` in `bytes`, or `None` when the head is not one of the two
@@ -298,7 +303,10 @@ final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.C
               stamp <- in.fixed64()
             yield Contents(entries, stamp)
           finally is.close()
-        }.flatMap(_.leftMap(e => StorageError.Corrupt(file.toString, e)).fold(_.raise[F, Boolean], c => state.set(c).as(true)))
+        }.flatMap(
+          _.leftMap(e => StorageError.Corrupt(file.toString, e))
+            .fold(_.raise[F, Boolean], c => state.set(c).as(true))
+        )
     }
 
 object MemoryUtxoStore:

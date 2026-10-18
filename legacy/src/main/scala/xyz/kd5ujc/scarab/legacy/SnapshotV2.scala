@@ -102,7 +102,9 @@ object SnapshotV2:
             new ByteArrayInputStream(content, HeaderSize + FingerprintSize, content.length),
             (content.length - HeaderSize - FingerprintSize).toLong
           )
-          codec.read(in).leftMap(e => StorageError.Corrupt("snapshot", e))
+          codec
+            .read(in)
+            .leftMap(e => StorageError.Corrupt("snapshot", e))
             .flatMap { snapshot =>
               Either.cond(
                 in.remaining == 0,

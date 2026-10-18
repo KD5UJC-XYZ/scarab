@@ -319,7 +319,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                       LedgerFailure.Unavailable(
                         Bytes.empty,
                         location,
-                        EvalFailure.Unsupported("injected replay outage")
+                        EvalFailure.Unsupported(xyz.kd5ujc.scarab.plutus.BackendFailure.NoResult)
                       )
                     )
                   )

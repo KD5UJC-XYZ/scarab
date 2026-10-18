@@ -82,7 +82,8 @@ object NodeCodecs:
         minor <- number.read(in)
         alt <- number.read(in)
         version <- ByronVersion.from(major, minor, alt).leftMap {
-          case ByronVersion.Error.OutOfRange(field, value) => BinaryError.InvalidByronVersion(field.toString, value)
+          case ByronVersion.Error.OutOfRange(field, value) =>
+            BinaryError.InvalidByronVersion(field.toString, value)
         }
       yield version
     )

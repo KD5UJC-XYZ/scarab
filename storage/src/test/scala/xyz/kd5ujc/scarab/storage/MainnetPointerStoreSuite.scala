@@ -24,11 +24,15 @@ class MainnetPointerStoreSuite extends FunSuite:
     val hex = Files
       .readString(java.nio.file.Path.of("fixtures/mainnet/mary-pointer-tx-9a47e091.hex"))
       .trim
-    val tx = Cbor.decode(Bytes.fromHex(hex).fold(fail(_), identity)).fold(fail(_), identity)
+    val tx = Cbor
+      .decode(Bytes.fromHex(hex).fold(e => fail(e.toString), identity))
+      .fold(e => fail(e.toString), identity)
     val parts = tx.value match
       case Value.Arr(xs) => xs
       case other         => fail(s"unexpected $other")
-    TxBody.decode(parts.head.original, Address.Mode.of(Era.Mary)).fold(e => fail(e), identity)
+    TxBody
+      .decode(parts.head.original, Address.Mode.of(Era.Mary))
+      .fold(e => fail(e.toString), identity)
 
   private val input = TxIn(body.id, 0)
   private val output = body.outputs.head

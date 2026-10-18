@@ -47,7 +47,7 @@ object UtxoScanBench:
       val cbor =
         Array[Byte](0x82.toByte, 0x58.toByte, address.length.toByte) ++ address ++
           Array[Byte](0x1a.toByte) ++ be(1000L + n, 4)
-      val out = TxOut.fromBytes(Bytes.wrap(cbor)).fold(e => sys.error(e), identity)
+      val out = TxOut.fromBytes(Bytes.wrap(cbor)).fold(e => sys.error(e.toString), identity)
       TxIn(Bytes.wrap(be(n.toLong, 32)), BigInt(n % 3)) -> Some(out)
     RocksUtxoStore.resource[IO](dir).use { store =>
       (0 until count by 100000).toList.traverse_ { from =>

@@ -48,7 +48,10 @@ object RocksUtxoCheckpoint:
         Option(db.get(Array[Byte](0))).toRight(StorageError.Missing("checkpoint stamp")).flatMap {
           case bytes if bytes.length == 8 => Right(ByteBuffer.wrap(bytes).getLong)
           case bytes =>
-            Left(StorageError.Corrupt("checkpoint stamp", StorageStructureError.StampLength(bytes.length)))
+            Left(
+              StorageError
+                .Corrupt("checkpoint stamp", StorageStructureError.StampLength(bytes.length))
+            )
         }
       }.flatMap(lift)
 
@@ -72,7 +75,8 @@ object RocksUtxoCheckpoint:
                       next()
                     else if key.length != RocksUtxoStore.KeyLength then
                       Left(
-                        StorageError.Corrupt("checkpoint key", StorageStructureError.KeyLength(key.length))
+                        StorageError
+                          .Corrupt("checkpoint key", StorageStructureError.KeyLength(key.length))
                       )
                     else
                       val decoded = UtxoStore.Coding

@@ -18,7 +18,7 @@ import xyz.kd5ujc.scarab.ledger.TestLedger.*
   */
 class DeepNestingSuite extends FunSuite:
   private val dir = Path.of("fixtures/preprod")
-  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(fail(_), identity)
+  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
   private def raw(xs: Int*): Bytes = Bytes.fromArray(xs.map(_.toByte).toArray)
   private def repeat(unit: Bytes, n: Int): Bytes =
     val a = unit.toArray
@@ -92,7 +92,7 @@ class DeepNestingSuite extends FunSuite:
   test("a native script as deep as a block holds decodes, evaluates, and persists") {
     val n = 30000 // 3 bytes a level
     onSmallStack {
-      val root = Cbor.decode(nested(n)).fold(fail(_), identity)
+      val root = Cbor.decode(nested(n)).fold(e => fail(e.toString), identity)
       val script = NativeScript.decode(root).fold(e => fail(e.message), identity)
       assertEquals(nativeDepth(script), n)
       assert(script.eval(Set(repeat(raw(0xab), 28)), None, None))
@@ -100,7 +100,7 @@ class DeepNestingSuite extends FunSuite:
       assertEquals(Script.native(root).map(_.hash.size), Right(28))
       // compared through their encodings: `==` on the case classes recurses
       val out = Codec.encode(script)
-      val back = Codec.decode[NativeScript](out).fold(fail(_), identity)
+      val back = Codec.decode[NativeScript](out).fold(e => fail(e.toString), identity)
       assertEquals(nativeDepth(back), n)
       assert(java.util.Arrays.equals(Codec.encode(back), out))
       // the recorded bytes come back out of the value, level for level
@@ -114,18 +114,20 @@ class DeepNestingSuite extends FunSuite:
     val leaf = raw(0x82, 0x04, 0x05)
     onSmallStack {
       val n = 10000
-      val ok = Cbor.decode(repeat(unit, n) ++ leaf).fold(fail(_), identity)
+      val ok = Cbor.decode(repeat(unit, n) ++ leaf).fold(e => fail(e.toString), identity)
       val script = NativeScript.decode(ok).fold(e => fail(e.message), identity)
       assert(script.eval(Set.empty, Some(BigInt(5)), None))
       assert(!script.eval(Set.empty, Some(BigInt(4)), None))
-      val bad = Cbor.decode(repeat(unit, n) ++ raw(0x82, 0x09, 0x00)).fold(fail(_), identity)
+      val bad =
+        Cbor.decode(repeat(unit, n) ++ raw(0x82, 0x09, 0x00)).fold(e => fail(e.toString), identity)
       assert(NativeScript.decode(bad).isLeft)
     }
   }
 
   // --- Plutus data ------------------------------------------------------------------------------------
 
-  private def decodeData(b: Bytes): PlutusData = PlutusData.decode(b).fold(fail(_), identity)
+  private def decodeData(b: Bytes): PlutusData =
+    PlutusData.decode(b).fold(e => fail(e.toString), identity)
 
   private def depthOf(d: PlutusData): Int =
     var depth = 0
@@ -173,7 +175,7 @@ class DeepNestingSuite extends FunSuite:
 
   test("Plutus data too deep for the stack still hashes by its original bytes") {
     val wire = repeat(raw(0x81), MaxLevels) ++ raw(0x00)
-    val root = onSmallStack(Cbor.decode(wire).fold(fail(_), identity))
+    val root = onSmallStack(Cbor.decode(wire).fold(e => fail(e.toString), identity))
     assertEquals(root.original, wire)
     assertEquals(
       xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(root.original),
@@ -198,7 +200,7 @@ class DeepNestingSuite extends FunSuite:
 
   test("== hashCode and toString of a value nested 10,000 levels are stack-safe: CBOR nodes") {
     val deep = (leaf: Int) => repeat(raw(0x81), 10000) ++ raw(leaf)
-    val decode = (b: Bytes) => Cbor.decode(b).fold(fail(_), identity)
+    val decode = (b: Bytes) => Cbor.decode(b).fold(e => fail(e.toString), identity)
     structural(decode, deep(0x00), deep(0x01))
     assert(decode(deep(0x00)).toString.startsWith("Arr[Arr[Arr["))
     // the values alone, without the bytes they were read from
@@ -226,7 +228,7 @@ class DeepNestingSuite extends FunSuite:
   test("== hashCode and toString of a value nested 10,000 levels are stack-safe: native scripts") {
     val script = (b: Bytes) =>
       NativeScript
-        .decode(Cbor.decode(b).fold(fail(_), identity))
+        .decode(Cbor.decode(b).fold(e => fail(e.toString), identity))
         .fold(e => fail(e.message), identity)
     structural(script, nested(10000), repeat(raw(0x82, 0x01, 0x81), 10000) ++ raw(0x82, 0x04, 0x05))
     assertNotEquals(script(nested(2)), script(nested(3)))
@@ -242,7 +244,7 @@ class DeepNestingSuite extends FunSuite:
     val blocks =
       Files.readAllLines(dir.resolve("blocks.hex")).toArray.toVector.map(l => hex(l.toString))
     val shelley = blocks
-      .map(b => Cbor.decode(b).fold(fail(_), identity))
+      .map(b => Cbor.decode(b).fold(e => fail(e.toString), identity))
       .find { n =>
         n.value match
           case C.Arr(Vector(tag, _)) => tag.value == C.UInt(2)
@@ -256,7 +258,7 @@ class DeepNestingSuite extends FunSuite:
           case other     => fail(s"$other")
       case other => fail(s"$other")
     val metadata = repeat(raw(0xa1, 0x00), 44000) ++ raw(0x00)
-    val deep = Cbor.decode(metadata).fold(fail(_), identity)
+    val deep = Cbor.decode(metadata).fold(e => fail(e.toString), identity)
     val aux = C.Map(Vector(Node(C.UInt(0), Bytes.empty) -> deep))
     val block = Cbor
       .encode(
@@ -277,7 +279,7 @@ class DeepNestingSuite extends FunSuite:
           )
         )
       )
-      .fold(fail(_), identity)
+      .fold(e => fail(e.toString), identity)
     val decoded = onSmallStack(Block.decodeShelley(block))
     decoded match
       case Right(b: Block.Shelley) =>

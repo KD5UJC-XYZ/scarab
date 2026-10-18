@@ -19,7 +19,7 @@ class UtxoCodecsSuite extends FunSuite:
     Bytes(Vector.tabulate(size)(i => (from + i).toByte))
 
   private val address = bytes(0x61, 29)
-  private val owner = Address.decode(address).fold(e => fail(e), identity)
+  private val owner = Address.decode(address).fold(e => fail(e.toString), identity)
 
   private def hex(expected: String)(actual: Bytes): Unit =
     assertEquals(actual.hex, expected.filterNot(_.isWhitespace))
