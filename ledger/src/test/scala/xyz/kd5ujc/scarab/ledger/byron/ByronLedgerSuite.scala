@@ -117,7 +117,76 @@ class ByronLedgerSuite extends ScalaCheckSuite:
 
   test("outputs larger than the inputs are refused") {
     val greedy = spendAlice(Seq(bobAddr -> 99999999, aliceAddr -> 2))
-    assert(apply(greedy).isLeft)
+    assertEquals(
+      apply(greedy),
+      Left(ByronError.LovelaceOutOfRange(ByronError.LovelaceContext.Fee))
+    )
+  }
+
+  test("lovelace balance failures distinguish the input and output totals") {
+    val good = spendAlice(Seq(bobAddr -> 1000000, aliceAddr -> 50000000))
+    val excessiveInput = utxo0.updated(
+      addrIn(aliceAddr),
+      ByronOut(aliceAddr, ByronLedger.MaxLovelace + 1)
+    )
+    assertEquals(
+      apply(good, excessiveInput),
+      Left(ByronError.LovelaceOutOfRange(ByronError.LovelaceContext.InputBalance))
+    )
+    val excessiveOutput = good.copy(tx =
+      good.tx.copy(outputs =
+        Vector(
+          ByronOut(bobAddr, ByronLedger.MaxLovelace),
+          ByronOut(aliceAddr, 1)
+        )
+      )
+    )
+    assertEquals(
+      apply(excessiveOutput),
+      Left(ByronError.LovelaceOutOfRange(ByronError.LovelaceContext.OutputBalance))
+    )
+  }
+
+  test("unknown attribute refusals distinguish transaction and address payloads") {
+    val good = spendAlice(Seq(bobAddr -> 1000000, aliceAddr -> 50000000))
+    assertEquals(
+      apply(good.copy(tx = good.tx.copy(attributesLength = 128))),
+      Left(ByronError.UnknownAttributes(ByronError.AttributeOwner.Transaction))
+    )
+    val attrs = Cb.map(Cb.uint(3) -> Cb.bytes(Bytes.fromArray(Array.fill(128)(0.toByte))))
+    val payload = Cb.arr(
+      Cb.bytes(ByronAddress.rootOf(ByronAddress.VerKey, bob.extended, attrs)),
+      attrs,
+      Cb.uint(0)
+    )
+    val address = Cb.arr(Cb.tag24(payload), ByronCbor.uint(ByronCbor.crc32(payload)))
+    val excessiveAddress = good.tx.copy(outputs = Vector(ByronOut(address, 1)))
+    assertEquals(
+      ByronLedger.outputs(config, excessiveAddress),
+      Left(ByronError.UnknownAttributes(ByronError.AttributeOwner.Address))
+    )
+  }
+
+  test("closed Byron discriminators retain the existing diagnostic text") {
+    val diagnostics = Vector(
+      ByronError.ProofMismatch(ByronError.Proof.Delegation) ->
+        "delegation payload does not match the header's proof",
+      ByronError.ProofMismatch(ByronError.Proof.Transaction) ->
+        "transaction payload does not match the header's proof",
+      ByronError.ProofMismatch(ByronError.Proof.Update) ->
+        "update payload does not match the header's proof",
+      ByronError.LovelaceOutOfRange(ByronError.LovelaceContext.InputBalance) ->
+        "lovelace out of range (input balance)",
+      ByronError.LovelaceOutOfRange(ByronError.LovelaceContext.OutputBalance) ->
+        "lovelace out of range (output balance)",
+      ByronError.LovelaceOutOfRange(ByronError.LovelaceContext.Fee) ->
+        "lovelace out of range (fee)",
+      ByronError.UnknownAttributes(ByronError.AttributeOwner.Address) ->
+        "too many unknown attribute bytes in address",
+      ByronError.UnknownAttributes(ByronError.AttributeOwner.Transaction) ->
+        "too many unknown attribute bytes in transaction"
+    )
+    diagnostics.foreach((error, expected) => assertEquals(error.message, expected))
   }
 
   test("an unknown input is refused") {

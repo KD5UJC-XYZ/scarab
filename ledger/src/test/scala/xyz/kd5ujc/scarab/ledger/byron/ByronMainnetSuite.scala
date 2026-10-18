@@ -93,8 +93,22 @@ class ByronMainnetSuite extends FunSuite:
     val changed = tx.copy(tx =
       tx.tx.copy(raw = Bytes(tx.tx.raw.value.updated(40, (tx.tx.raw.value(40) ^ 1).toByte)))
     )
-    assert(ByronLedger.checkProofs(b.header, body.copy(txs = Vector(changed))).isLeft)
-    assert(ByronLedger.checkProofs(b.header, body.copy(txs = Vector.empty)).isLeft)
+    val expected = Left(ByronError.ProofMismatch(ByronError.Proof.Transaction))
+    assertEquals(ByronLedger.checkProofs(b.header, body.copy(txs = Vector(changed))), expected)
+    assertEquals(ByronLedger.checkProofs(b.header, body.copy(txs = Vector.empty)), expected)
+  }
+
+  test("changed delegation and update payloads retain distinct proof failures") {
+    val b = blocks.head
+    val body = ByronBody.decode(b.body).fold(error => fail(error.message), identity)
+    assertEquals(
+      ByronLedger.checkProofs(b.header, body.copy(rawDelegation = Bytes.empty)),
+      Left(ByronError.ProofMismatch(ByronError.Proof.Delegation))
+    )
+    assertEquals(
+      ByronLedger.checkProofs(b.header, body.copy(update = body.update.copy(raw = Bytes.empty))),
+      Left(ByronError.ProofMismatch(ByronError.Proof.Update))
+    )
   }
 
   /** The transactions of all blocks in order against the genesis UTxO and the reported inputs. */
