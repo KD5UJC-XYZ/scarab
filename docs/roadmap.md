@@ -86,7 +86,7 @@ Each open item links to its GitHub issue, which carries its state (`status:` lab
 ## E. Fast start (P1)
 
 - **E1** [#27](https://github.com/KD5UJC-XYZ/scarab/issues/27) Mithril snapshot import. Decode the Haskell ImmutableDB and the ledger snapshot format, which needs `snapshot-converter` / UTxO-HD formats.
-- **E2** [#140](https://github.com/KD5UJC-XYZ/scarab/issues/140) (P1, in progress) Step D: Haskell-layout ledger snapshot import/export. [Design](design/haskell-snapshots.md) D1–D9 accepted; S1 codec/measurement done (D16). S2 tables/meta streaming, S3 import, S4 offline export and S5 preprod acceptance remain. V5 and stored CBOR stay; initial interoperability targets the Mem backend, with ancillary verification by default and Byron deferred. Serves E1 and M11.
+- **E2** [#140](https://github.com/KD5UJC-XYZ/scarab/issues/140) (P1, in progress) Step D: Haskell-layout ledger snapshot import/export. [Design](design/haskell-snapshots.md) D1–D9 accepted; S1 codec/measurement done (D16). S2 streaming tables and CRC/meta verification are built ([design](design/haskell-snapshots.md) section 9); S3 import, S4 offline export and S5 preprod acceptance remain. V5 and stored CBOR stay; initial interoperability targets the Mem backend, with ancillary verification by default and Byron deferred. Serves E1 and M11.
 - **E3** [#145](https://github.com/KD5UJC-XYZ/scarab/issues/145) (P2, idea, bug) Replaying a Preview database with format-1 snapshots fails with `BadInputsUTxO` right after the restore.
 
 ## F. Node-to-client (P1)

@@ -1,7 +1,7 @@
 # Ledger snapshots in the Haskell node's directory layout (Step D)
 
 **Status**: Accepted (owner approved D1-D9, 2026-10-18). Stage S1 (the MemPack `TxOut` codec, [#143](https://github.com/KD5UJC-XYZ/scarab/issues/143))
-is built and measured (section 8: the codec is checked against the 4,526,058 outputs of a real preprod table and 1,731,810 of this node's own stored outputs, and is not adopted as the stored value); S2 to S5 are not started. Tracked in
+is built and measured (section 8: the codec is checked against the 4,526,058 outputs of a real preprod table and 1,731,810 of this node's own stored outputs, and is not adopted as the stored value); S2 is implemented (section 9), with validation in progress; S3 to S5 are not started. Tracked in
 [#140](https://github.com/KD5UJC-XYZ/scarab/issues/140) (roadmap E2, D16); the first consumer is the Mithril import
 ([#27](https://github.com/KD5UJC-XYZ/scarab/issues/27), E1), then mainnet from a Mithril snapshot
 ([#69](https://github.com/KD5UJC-XYZ/scarab/issues/69), D9). Part of "Step D" of
@@ -281,3 +281,36 @@ Cheap improvements found while measuring, not made (the numbers above are before
 * The ledger directory of a Mithril database is unauthenticated by the certificate (section 3.3): E1's acceptance should say whether the import verifies the ancillary signature (D4).
 * The snapshot is behind the certified tip (here by about one chunk), so the first thing a node does after import is replay the chunks after the snapshot's slot; `import-haskell-db` and the follower already do that for the blocks (the `ledger/` directory it ignores is what S3 reads).
 * A mainnet import is a measurement of time and memory (the table is larger than the preprod one by an order of magnitude, to be measured), not a new mechanism; D9's "compare the ledger with the Haskell node's at every epoch boundary crossed" is the K7 comparison on the states of the two nodes after the same replay, and `db-analyser --store-ledger` gives the reference state at a chosen slot from the same database.
+
+## 9. Stage 2 as built: streaming tables and metadata
+
+`storage/haskell/state/SnapshotTables` is an immutable incremental framing decoder. It accepts a
+definite one-element array containing a definite or indefinite map, definite byte-string keys and
+values, and non-shortest length heads. Keys have the reference's 34-byte layout. A declared length
+does not allocate its body; the decoder retains only bytes actually received for the current entry.
+`SnapshotCrc` travels with the decoder and computes CRC32 over the original file bytes, including
+noncanonical framing. The final summary is available only after the closing map and the end of the
+input have been checked. An input with trailing bytes or an incomplete entry has no completed summary.
+
+`SnapshotTableStream` exposes the decoder as an fs2 event stream, a framing fold and an era-indexed
+`readInto` operation. `readInto` additionally decodes each MemPack value, then calls an explicit
+`SemanticSink[F, E]`. **Framing is not whole-table validation.** The reference accepts unsorted unique
+maps and rejects duplicates from protocol 9 (`cardano-ledger` f649f97,
+`Binary/Decoding/Decoder.hs:809-856`); earlier eras retain the last value. A sink supplies those
+semantics. Tests use an in-memory map; S3 must use disk-backed duplicate checking before making an
+imported table visible. The framing reader deliberately imposes no ordering requirement.
+
+The streaming writer requires ascending keys, verifies the supplied count, and follows D5: a definite
+map through 23 entries, otherwise an indefinite map. Its raw-entry operation preserves the MemPack
+bytes exactly, including constructors retained from earlier eras. `writeStore` consumes
+`UtxoStore.entries` in key order and converts each stored CBOR output to MemPack with the S1 codec.
+The RocksDB stream owns and closes its iterator and preserves the typed corruption checks of every
+other enumeration; the memory store sorts its existing in-memory set. The caller holds the store
+offline, as D6 requires. Resources and publication belong to S3/S4; these operations do not add
+import/export commands or change V5 or the internal UTxO encoding.
+
+`SnapshotMeta.fromCrcs`, `encode` and `verify` implement the reference's compact three-field JSON and
+`CRC32(decimal(stateCRC) ++ decimal(tablesCRC))`. Verification refuses the wrong backend, unknown
+codec version and checksum mismatch through closed errors. Callers must verify metadata after fully
+consuming the table, and keep sink writes staged until that succeeds. Ancillary authentication remains
+the S3 import requirement of D4; CRCs establish integrity, not provenance.
