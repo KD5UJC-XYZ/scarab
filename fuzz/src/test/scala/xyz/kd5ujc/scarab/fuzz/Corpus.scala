@@ -216,8 +216,12 @@ object Corpus extends munit.Assertions:
       .traverse(_ => sampler.sample(QName(m, n), rnd))
       .fold(
         {
-          case GenError.Unsupported(_, _) => Vector.empty
-          case other                      => fail(other.message)
+          // This optional seed catalogue uses partial CDDL modules. A rule whose imports or
+          // dependencies are absent cannot supply seeds; configuration/loading defects still fail.
+          case GenError.Unsupported(_, _) | GenError.SamplingCycle(_) |
+              GenError.UnknownModule(_, _) | GenError.UnresolvedName(_, _) =>
+            Vector.empty
+          case other => fail(other.message)
         },
         identity
       )

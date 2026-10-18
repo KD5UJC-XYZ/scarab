@@ -31,6 +31,16 @@ class GuardSuite extends FunSuite:
     assertEquals(cold.toList, Nil, "targets that accepted none of their seeds")
   }
 
+  test("optional partial-schema samples may be absent while available rules still supply seeds") {
+    for rule <- Vector(
+        "chainsync-header:header",
+        "leios-fetch:leiosBlockFetchMessage",
+        "leios-notify:leiosNotifyMessage"
+      )
+    do assertEquals(Corpus.sampled(rule, count = 4), Vector.empty[Array[Byte]], rule)
+    assertEquals(Corpus.sampled("conway:transaction_input", count = 4).size, 4)
+  }
+
   private def hex(s: String): Input = new Input(
     Bytes.fromHex(s).fold(e => fail(e.toString), _.toArray)
   )
