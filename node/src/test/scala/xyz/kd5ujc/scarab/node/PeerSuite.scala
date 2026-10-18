@@ -167,10 +167,12 @@ class PeerSuite extends ScalaCheckSuite:
 
   test("network-to-peer classification retains the original typed cause") {
     val malformed = xyz.kd5ujc.scarab.protocol.ProtocolError.ExpectedSerializedBlockTag24
-    val network = xyz.kd5ujc.scarab.network.NetworkError.Decode(3, malformed)
+    val network: xyz.kd5ujc.scarab.network.NetworkError.Decode =
+      xyz.kd5ujc.scarab.network.NetworkError.Decode(3, malformed)
     assertEquals(Peer.networkFault(network), Fault.Failed(PeerError.Protocol(network)))
     val cause = new java.io.IOException("connection refused")
-    val connect = xyz.kd5ujc.scarab.network.NetworkError.Connect("peer", cause)
+    val connect: xyz.kd5ujc.scarab.network.NetworkError.Connect =
+      xyz.kd5ujc.scarab.network.NetworkError.Connect("peer", cause)
     assertEquals(
       Peer.networkFault(connect),
       Fault.Failed(PeerError.Unavailable(PeerError.Unavailability.Network(connect)))
