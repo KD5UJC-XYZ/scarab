@@ -34,7 +34,7 @@ class ByronHandoverUtxoSuite extends CatsEffectSuite:
   private val Key = "c1092b9c0375d8c19c50313a48d6b4ee15d92421eaa75f53c66736d0d41d3ef2"
 
   private def hex(file: String): Bytes =
-    Bytes.fromHex(JFiles.readString(JPath.of(file)).trim).fold(e => fail(e), identity)
+    Bytes.fromHex(JFiles.readString(JPath.of(file)).trim).fold(e => fail(e.message), identity)
 
   // ---- the real transaction, applied by the Byron ledger to the output it spends
 
@@ -55,7 +55,7 @@ class ByronHandoverUtxoSuite extends CatsEffectSuite:
 
   /** The outputs of c1092b9c, as the Byron ledger leaves them. */
   private val created: Map[TxIn, ByronOut] =
-    val body = ByronBody.decode(mainnetBlock.body).fold(e => fail(e), identity)
+    val body = ByronBody.decode(mainnetBlock.body).fold(e => fail(e.message), identity)
     val inputs = parser
       .parse(JFiles.readString(JPath.of("fixtures/mainnet/byron-tx-c1092b9c-inputs.json")))
       .fold(e => fail(e.getMessage), identity)
@@ -100,7 +100,7 @@ class ByronHandoverUtxoSuite extends CatsEffectSuite:
       .asScala
       .toVector
       .filter(_.nonEmpty)
-      .map(l => Bytes.fromHex(l).fold(e => fail(e), identity))
+      .map(l => Bytes.fromHex(l).fold(e => fail(e.message), identity))
   private val headers: Vector[Header] =
     raws.map(Block.decode(_, setup.geometry.byron.epochSlots).fold(e => fail(e.message), _.header))
   private val firstShelley = headers.indexWhere(_.isInstanceOf[Header.Shelley])

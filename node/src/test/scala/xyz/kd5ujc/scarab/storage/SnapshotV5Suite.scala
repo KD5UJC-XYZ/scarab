@@ -53,7 +53,7 @@ class SnapshotV5Suite extends CatsEffectSuite:
       .asScala
       .toVector
       .filter(_.nonEmpty)
-      .map(l => Bytes.fromHex(l).fold(e => fail(e), identity))
+      .map(l => Bytes.fromHex(l).fold(e => fail(e.message), identity))
   private val blocks: Vector[Block] =
     raws.map(Block.decode(_, setup.geometry.byron.epochSlots).fold(e => fail(e.message), identity))
 
@@ -155,8 +155,8 @@ class SnapshotV5Suite extends CatsEffectSuite:
   test("an Alonzo update naming key 17, the lovelace per word, is written and comes back") {
     val Some((_, base)) =
       snapshots.find((era, s) => era == Era.Alonzo && proposals(s.state).nonEmpty): @unchecked
-    val key17 = Bytes.fromHex("199c40").fold(e => fail(e), identity)
-    val raise = Bytes.fromHex("820700").fold(e => fail(e), identity)
+    val key17 = Bytes.fromHex("199c40").fold(e => fail(e.message), identity)
+    val raise = Bytes.fromHex("820700").fold(e => fail(e.message), identity)
     List(Map(17 -> key17), Map(14 -> raise, 17 -> key17)).traverse_ { fields =>
       val snapshot = base.copy(state = withProposals(base.state, ParamUpdate(fields)))
       v5.encode(snapshot).flatMap {

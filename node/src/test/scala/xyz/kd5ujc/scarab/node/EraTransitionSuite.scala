@@ -62,7 +62,7 @@ class EraTransitionSuite extends CatsEffectSuite:
       .asScala
       .toVector
       .filter(_.nonEmpty)
-      .map(l => Bytes.fromHex(l).fold(e => fail(e), identity))
+      .map(l => Bytes.fromHex(l).fold(e => fail(e.message), identity))
 
   private val blocks: Vector[Block] =
     raws.map(Block.decode(_, geometry.byron.epochSlots).fold(e => fail(e.message), identity))
@@ -466,7 +466,7 @@ class EraTransitionSuite extends CatsEffectSuite:
       )
     )
     val result = byronUpdate(5, bad)
-    assert(result.left.contains(xyz.kd5ujc.scarab.ledger.ByronChainError.SignatureRejected), result.toString)
+    assert(result.left.exists(_ == xyz.kd5ujc.scarab.ledger.ByronChainError.SignatureRejected), result.toString)
   }
 
   test("a Byron header signed over different content is rejected") {

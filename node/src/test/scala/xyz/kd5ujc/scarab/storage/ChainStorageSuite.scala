@@ -66,7 +66,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       .asScala
       .toVector
       .filter(_.nonEmpty)
-      .map(l => Bytes.fromHex(l).fold(e => fail(e), identity))
+      .map(l => Bytes.fromHex(l).fold(e => fail(e.message), identity))
   private val headers: Vector[Header] =
     raws.map(Block.decode(_, geometry.byron.epochSlots).fold(e => fail(e.message), _.header))
   private def ref(i: Int) =

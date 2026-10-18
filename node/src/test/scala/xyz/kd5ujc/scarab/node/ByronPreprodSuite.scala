@@ -34,7 +34,7 @@ class ByronPreprodSuite extends CatsEffectSuite:
       .asScala
       .toVector
       .filter(_.nonEmpty)
-      .map(l => Bytes.fromHex(l).fold(e => fail(e), identity))
+      .map(l => Bytes.fromHex(l).fold(e => fail(e.message), identity))
 
   private val blocks: Vector[Block] =
     raws.map(Block.decode(_, setup.geometry.byron.epochSlots).fold(e => fail(e.message), identity))

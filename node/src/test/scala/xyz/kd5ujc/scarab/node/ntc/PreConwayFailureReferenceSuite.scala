@@ -42,7 +42,7 @@ class PreConwayFailureReferenceSuite extends FunSuite:
           text("label"),
           era,
           text("mustReject"),
-          Bytes.fromHex(text("reason")).fold(e => fail(e), identity)
+          Bytes.fromHex(text("reason")).fold(e => fail(e.message), identity)
         )
       }
 
@@ -61,7 +61,7 @@ class PreConwayFailureReferenceSuite extends FunSuite:
     case CborValue.UInt(v) => v
     case other             => fail(s"not an unsigned integer: $other")
 
-  private def txOut(n: Node): TxOut = TxOut.decode(n).fold(e => fail(e), identity)
+  private def txOut(n: Node): TxOut = TxOut.decode(n).fold(e => fail(e.message), identity)
 
   /** The failure the recorded reason reports, from its payload. */
   private def failureOf(r: Record, reason: Node): PredicateFailure =

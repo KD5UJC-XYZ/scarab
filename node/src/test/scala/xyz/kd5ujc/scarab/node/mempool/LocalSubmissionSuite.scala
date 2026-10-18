@@ -39,7 +39,7 @@ class LocalSubmissionSuite extends CatsEffectSuite:
             LocalTxSubmission.Message.SubmitTx(item)
           )
           .left
-          .map(RuntimeException(_))
+          .map(e => RuntimeException(e.message))
       )
       _ <- channel.send(bytes)
       reply <- channel.recv(LocalTxSubmission.MaxMessageBytes)(
@@ -249,7 +249,7 @@ class LocalSubmissionSuite extends CatsEffectSuite:
             case other => fail(s"expected connection closure without rejection bytes, got $other")
           endedAs match
             case LocalTxSubmissionServer.End.ServiceUnavailable(
-                  _: LocalTxSubmissionServer.Unavailable.ScriptEvaluation
+                  _: LocalTxSubmissionServer.Unavailable.ScriptEvaluation[?]
                 ) =>
               ()
             case other => fail(s"unexpected service end $other")

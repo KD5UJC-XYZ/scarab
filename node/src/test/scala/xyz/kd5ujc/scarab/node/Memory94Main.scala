@@ -318,7 +318,7 @@ object Memory94Main:
     try
       val retained: AnyRef = mode match
         case "cbor" =>
-          Cbor.decode(haskell, HaskellState.limits).fold(m => sys.error(m), identity)
+          Cbor.decode(haskell, HaskellState.limits).fold(m => sys.error(m.message), identity)
         case "ledger" =>
           HaskellLedgerFile.decode(haskell).fold(e => sys.error(e.render), identity)
         case "tape" =>

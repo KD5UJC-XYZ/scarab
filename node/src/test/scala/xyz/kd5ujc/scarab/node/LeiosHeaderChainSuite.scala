@@ -48,7 +48,7 @@ class LeiosHeaderChainSuite extends munit.FunSuite:
       .toVector
       .filterNot(l => l.startsWith("#") || l.isEmpty)
       .map { l =>
-        val envelope = Bytes.fromHex(l.split('\t')(4)).fold(e => fail(e), identity)
+        val envelope = Bytes.fromHex(l.split('\t')(4)).fold(e => fail(e.message), identity)
         val raw = HfcHeader.decode(envelope) match
           case Right(HfcHeader.Supported(h)) => h.raw
           case other                         => fail(other.toString)

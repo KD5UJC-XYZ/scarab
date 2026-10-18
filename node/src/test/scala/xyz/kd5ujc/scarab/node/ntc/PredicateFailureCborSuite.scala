@@ -13,7 +13,7 @@ import munit.FunSuite
   * from its payload.
   */
 class PredicateFailureCborSuite extends FunSuite:
-  private def hex(h: String): Bytes = Bytes.fromHex(h).fold(e => fail(e), identity)
+  private def hex(h: String): Bytes = Bytes.fromHex(h).fold(e => fail(e.message), identity)
   private def reason(failures: PredicateFailure*): String =
     PredicateFailureCbor.applyTxError(failures.toVector).hex
 
@@ -30,7 +30,7 @@ class PredicateFailureCborSuite extends FunSuite:
     assertEquals(
       reason(
         PredicateFailure.Mempool(
-          "All inputs are spent. Transaction has probably already been included"
+          xyz.kd5ujc.scarab.ledger.MempoolProblem.AllInputsSpent
         )
       ),
       "8182068182077844416c6c20696e7075747320617265207370656e742e205472616e73616374696f6e206861732070726f6261626c7920616c7265616479206265656e20696e636c75646564"
@@ -87,7 +87,7 @@ class PredicateFailureCborSuite extends FunSuite:
 
   test("an output below the minimum travels with the minimum it missed") {
     val address =
-      Address.decode(Bytes(Vector(0x60.toByte) ++ keyHash.value)).fold(fail(_), identity)
+      Address.decode(Bytes(Vector(0x60.toByte) ++ keyHash.value)).fold(e => fail(e.message), identity)
     assertEquals(
       reason(
         PredicateFailure.utxo(UtxoFailure.BabbageOutputTooSmall(Vector(out(address, 1) -> 831830)))

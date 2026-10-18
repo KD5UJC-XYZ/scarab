@@ -47,13 +47,13 @@ class DeepQuerySuite extends FunSuite:
     NtcQuery.decode(raw).fold(e => fail(e.message), identity)
 
   private def result(raw: Bytes): Bytes =
-    Cbor.decode(raw).fold(fail(_), identity).value match
+    Cbor.decode(raw).fold(e => fail(e.message), identity).value match
       case Value.Arr(Vector(inner)) => inner.original
       case _                        => fail("expected singleton era answer")
 
   private def unwrap(raw: Bytes, layers: Int): Bytes =
     (0 until layers).foldLeft(raw) { (current, _) =>
-      Cbor.decode(current).fold(fail(_), identity).value match
+      Cbor.decode(current).fold(e => fail(e.message), identity).value match
         case Value.Tag(t, inner) if t == 24 =>
           inner.value match
             case Value.ByteString(bytes) => bytes
@@ -111,7 +111,7 @@ class DeepQuerySuite extends FunSuite:
       .filter(_.nonEmpty)
       .take(51)
       .foldLeft(beforeConway.mirrorStart) { (current, line) =>
-        val raw = Bytes.fromHex(line).fold(fail(_), identity)
+        val raw = Bytes.fromHex(line).fold(e => fail(e.message), identity)
         val block = Block
           .decode(raw, beforeConway.geometry.byron.epochSlots)
           .fold(e => fail(e.message), identity)
@@ -150,7 +150,7 @@ class DeepQuerySuite extends FunSuite:
       val legal = nested(7)
       val wire = LocalStateQuery
         .encode(LocalStateQuery.State.Acquired, Role.Client, LocalStateQuery.Message.Query(legal))
-        .fold(fail(_), identity)
+        .fold(e => fail(e.message), identity)
       assertEquals(
         LocalStateQuery.decodePrefix(LocalStateQuery.State.Acquired, Role.Client, wire),
         DecodeResult.Decoded(LocalStateQuery.Message.Query(legal), wire.size)

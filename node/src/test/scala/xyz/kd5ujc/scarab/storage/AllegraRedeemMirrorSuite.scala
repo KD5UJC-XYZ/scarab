@@ -37,7 +37,7 @@ class AllegraRedeemMirrorSuite extends CatsEffectSuite:
       .asScala
       .toVector
       .filter(_.nonEmpty)
-      .map(l => Bytes.fromHex(l).fold(e => fail(e), identity))
+      .map(l => Bytes.fromHex(l).fold(e => fail(e.message), identity))
   private val headers: Vector[Header] =
     raws.map(Block.decode(_, setup.geometry.byron.epochSlots).fold(e => fail(e.message), _.header))
   private val firstShelley = headers.indexWhere(_.isInstanceOf[Header.Shelley])
@@ -52,7 +52,7 @@ class AllegraRedeemMirrorSuite extends CatsEffectSuite:
       ByronGenesisFile.genesisBalances(json).fold(e => fail(e.message), identity)
     ByronLedger
       .genesisUtxo(redeem, nonAvvm, None)
-      .fold(e => fail(e), identity)
+      .fold(e => fail(e.message), identity)
       .headOption
       .getOrElse(fail("no AVVM balance"))
 

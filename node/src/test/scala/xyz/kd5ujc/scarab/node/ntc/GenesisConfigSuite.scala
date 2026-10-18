@@ -37,10 +37,11 @@ class GenesisConfigSuite extends FunSuite:
       Left(GenesisConfig.Error.InvalidDecimal("activeSlotsCoeff"))
     )
     val start = valid.deepMerge(Json.obj("systemStart" -> Json.fromString("not a time")))
-    assertEquals(
-      GenesisConfig.encode(start),
-      Left(GenesisConfig.Error.InvalidSystemStart("not a time"))
-    )
+    assert(GenesisConfig.encode(start).left.exists {
+      case GenesisConfig.Error.InvalidSystemStart(value, cause) =>
+        value == "not a time" && cause.isInstanceOf[java.time.format.DateTimeParseException]
+      case _ => false
+    })
     val nonce = valid.deepMerge(
       Json.obj(
         "protocolParams" -> Json.obj(

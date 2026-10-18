@@ -28,7 +28,7 @@ class DevnetRefusedTxSuite extends FunSuite:
     def opt(k: String): Option[String] = json.hcursor.get[String](k).toOption
     def int(k: String): Int = json.hcursor.get[Int](k).fold(e => fail(e.message), identity)
     def tx: (Bytes, Tx) =
-      val raw = Bytes.fromHex(str("tx")).fold(e => fail(e), identity)
+      val raw = Bytes.fromHex(str("tx")).fold(e => fail(e.message), identity)
       MempoolState.parse(raw).fold(r => fail(r.message), identity)
 
   private val entries: Vector[Entry] =
@@ -46,7 +46,7 @@ class DevnetRefusedTxSuite extends FunSuite:
   private def funded(base: LedgerState, tx: Tx): LedgerState =
     val body = tx.body
     val owner = xyz.kd5ujc.scarab.ledger.Verdicts.Direct.keyHash(tx.witnesses.vkeys.head._1)
-    val address = Address.decode(Bytes(0x60.toByte +: owner.value)).fold(e => fail(e), identity)
+    val address = Address.decode(Bytes(0x60.toByte +: owner.value)).fold(e => fail(e.message), identity)
     val needed = body.outputs.map(_.value.coin).sum + body.fee
     val spare = BigInt(3000000)
     val inputs = body.inputs.distinct
@@ -103,11 +103,11 @@ class DevnetRefusedTxSuite extends FunSuite:
       .get[Map[String, String]]("pools")
       .fold(e => fail(e.message), identity)
       .map { case (op, vrf) =>
-        val operator = Bytes.fromHex(op).fold(e => fail(e), identity)
+        val operator = Bytes.fromHex(op).fold(e => fail(e.message), identity)
         operator -> PoolState(
           PoolParams(
             operator,
-            Bytes.fromHex(vrf).fold(e => fail(e), identity),
+            Bytes.fromHex(vrf).fold(e => fail(e.message), identity),
             0,
             0,
             Rational.zero,

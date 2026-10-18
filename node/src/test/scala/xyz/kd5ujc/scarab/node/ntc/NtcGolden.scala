@@ -57,7 +57,7 @@ object NtcGolden:
     setup.mirrorEnv().ledger
   )
 
-  private def hex(h: String): Bytes = Bytes.fromHex(h).fold(e => sys.error(e), identity)
+  private def hex(h: String): Bytes = Bytes.fromHex(h).fold(e => sys.error(e.message), identity)
 
   val raws: Vector[Bytes] =
     Files

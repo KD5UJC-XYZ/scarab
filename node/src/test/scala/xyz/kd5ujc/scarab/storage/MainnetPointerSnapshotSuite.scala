@@ -27,16 +27,16 @@ import xyz.kd5ujc.scarab.protocol.Era
 class MainnetPointerSnapshotSuite extends CatsEffectSuite:
   private val Mainnet = 1
 
-  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e), identity)
+  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.message), identity)
 
   private val body: TxBody =
     val tx = Cbor
       .decode(hex(JFiles.readString(Path.of("fixtures/mainnet/mary-pointer-tx-9a47e091.hex")).trim))
-      .fold(e => fail(e), identity)
+      .fold(e => fail(e.message), identity)
     val parts = tx.value match
       case Value.Arr(xs) => xs
       case other         => fail(s"unexpected $other")
-    TxBody.decode(parts.head.original, Address.Mode.of(Era.Mary)).fold(e => fail(e), identity)
+    TxBody.decode(parts.head.original, Address.Mode.of(Era.Mary)).fold(e => fail(e.message), identity)
 
   private val fixtures = Path.of("fixtures/eras")
   private val setup: NodeSetup =

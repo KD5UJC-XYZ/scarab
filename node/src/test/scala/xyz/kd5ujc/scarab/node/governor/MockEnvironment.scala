@@ -315,7 +315,7 @@ object MockEnvironment:
           def raise[E2 <: GovernorError, B](e: E2): IO[B] =
             val fault = e match
               case GovernorError.InvariantBroken(vs) =>
-                GovernorFault.InvariantBroken(vs.map(_.toString))
+                GovernorFault.InvariantBroken(vs)
               case GovernorError.BootstrapPeersCriticalTimeout =>
                 GovernorFault.BootstrapPeersCriticalTimeout
             fatal.complete(fault) *> IO.never

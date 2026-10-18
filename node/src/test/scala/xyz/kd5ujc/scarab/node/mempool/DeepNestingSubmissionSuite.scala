@@ -100,7 +100,7 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
                       Role.Client,
                       LocalTxSubmission.Message.SubmitTx(wrapped)
                     )
-                    .leftMap(RuntimeException(_))
+                    .leftMap(e => RuntimeException(e.message))
                 )
                 _ <- ch.send(bytes)
                 reply <- ch.recv(LocalTxSubmission.MaxMessageBytes)(
@@ -119,7 +119,7 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
   }
 
   test("TxSubmission2 offers it to a peer, which fetches it and the mempool admits it") {
-    val id = TxSubmission2.bodyId(tx).fold(e => fail(e), identity)
+    val id = TxSubmission2.bodyId(tx).fold(e => fail(e.message), identity)
     assertEquals(id.hex, PreprodDeepTx.Id)
     val offered = new TxSubmissionClient.Source[IO]:
       private val one = TxSubmissionClient.Held(id, tx.size, 1L)

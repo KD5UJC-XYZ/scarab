@@ -35,7 +35,7 @@ class HaskellStateOverlapSuite extends FunSuite:
     .fold(e => fail(e.message), identity)
     .hcursor
 
-  private def hex(h: String): Bytes = Bytes.fromHex(h).fold(e => fail(e), identity)
+  private def hex(h: String): Bytes = Bytes.fromHex(h).fold(e => fail(e.message), identity)
 
   private def answerOf(label: String): Bytes =
     golden

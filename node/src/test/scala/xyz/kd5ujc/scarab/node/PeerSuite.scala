@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf, VrfCert}
+import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf, VrfCert, PeerError}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{Era, Mux as WireMux}
 import munit.ScalaCheckSuite
