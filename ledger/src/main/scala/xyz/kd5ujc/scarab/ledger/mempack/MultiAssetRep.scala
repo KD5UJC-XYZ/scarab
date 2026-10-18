@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.ledger.mempack
 
 import scala.collection.mutable.ArrayBuffer
 import xyz.kd5ujc.scarab.codec.Bytes
+
 import MemPack.{Failure, MultiAssetFault, Quantity, Result}
 
 /** The flat representation of a multi-asset value inside `CompactValue` (`Value.hs`, the comment at

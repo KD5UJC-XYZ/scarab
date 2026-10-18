@@ -15,6 +15,7 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.state.{EraTag, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.protocol.Era
+
 import MemPack.{Failure, Feature, Packer, Quantity, Result, TagSite, Unpacker}
 
 /** What a MemPack `TxOut` stores of an output: the ledger's address bytes, the value, the datum and

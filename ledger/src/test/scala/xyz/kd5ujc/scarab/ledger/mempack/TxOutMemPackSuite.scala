@@ -19,6 +19,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Shelley,
   ShelleyBasedEra
 }
+
 import MemPack.{Failure, Feature, MultiAssetFault, Packer, Quantity, TagSite, Unpacker}
 
 /** The MemPack `TxOut` codec against bytes the Haskell node wrote and against itself.

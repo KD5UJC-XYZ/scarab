@@ -691,8 +691,8 @@ object Targets:
       )
     )
 
-  /** The MemPack `TxOut` of a LedgerDB `tables` file (Step D, S1): read from a file the node does not
-    * write (a Mithril snapshot), in every era's grammar. The seeds are the real outputs of the
+  /** The MemPack `TxOut` of a LedgerDB `tables` file (Step D, S1): read from a file the node does
+    * not write (a Mithril snapshot), in every era's grammar. The seeds are the real outputs of the
     * preprod snapshot in `fixtures/mempack`; an output that decodes must pack and decode again to
     * itself.
     */
@@ -709,7 +709,15 @@ object Targets:
     Vector(
       Target(
         "mempack-txout",
-        () => seeds ++ Corpus.tricky,
+        () =>
+          // build every seed's output once here: the first one pays for the class initialisation
+          // of the hashing and script code, which the allocation bound of a probe is not for
+          val all = seeds
+          all.foreach(b =>
+            TxOutMemPack.decodeParts[Conway](Bytes.fromArray(b)).foreach(TxOutMemPack.toTxOut)
+          )
+          all ++ Corpus.tricky
+        ,
         probe("mempack-txout") { b =>
           TxOutMemPack.decodeParts[Conway](b).foreach { p =>
             hit("mempack-txout")
