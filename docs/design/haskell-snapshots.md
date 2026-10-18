@@ -1,7 +1,7 @@
 # Ledger snapshots in the Haskell node's directory layout (Step D)
 
 **Status**: Accepted (owner approved D1-D9, 2026-10-18). Stage S1 (the MemPack `TxOut` codec, [#143](https://github.com/KD5UJC-XYZ/scarab/issues/143))
-is built and measured (section 8: the codec is checked against the 4,526,058 outputs of a real preprod table and 1,731,810 of this node's own stored outputs, and is not adopted as the stored value); S2 is implemented (section 9), with validation in progress; S3 to S5 are not started. Tracked in
+is built and measured (section 8: the codec is checked against the 4,526,058 outputs of a real preprod table and 1,731,810 of this node's own stored outputs, and is not adopted as the stored value); S2 is implemented and reference-checked (section 9); S3 to S5 are not started. Tracked in
 [#140](https://github.com/KD5UJC-XYZ/scarab/issues/140) (roadmap E2, D16); the first consumer is the Mithril import
 ([#27](https://github.com/KD5UJC-XYZ/scarab/issues/27), E1), then mainnet from a Mithril snapshot
 ([#69](https://github.com/KD5UJC-XYZ/scarab/issues/69), D9). Part of "Step D" of
@@ -314,3 +314,11 @@ import/export commands or change V5 or the internal UTxO encoding.
 codec version and checksum mismatch through closed errors. Callers must verify metadata after fully
 consuming the table, and keep sink writes staged until that succeeds. Ancillary authentication remains
 the S3 import requirement of D4; CRCs establish integrity, not provenance.
+
+S2 validation: 22 focused tests pass, including all 4,526,058 outputs of the pinned preprod table
+converted and streamed to a byte-identical 1,014,553,955-byte file (50.1 s). Full `check`, scalafix
+and the 64-target four-seed decoder campaign pass (25.6 million cases), including the new table
+framing target and its wide-input allocation guard. A private `restart` run stops in 0.7 and 0.6 s,
+writes both shutdown snapshots, restores the snapshot and retains V5 throughout. The fixture
+comparison verifies the committed SHA-256 pins; actual snapshot authentication remains the S3/D4
+requirement.
