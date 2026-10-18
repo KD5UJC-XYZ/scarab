@@ -167,12 +167,10 @@ class FormatBenchSuite extends FunSuite:
     // The same mapping from the three wire fields to a `Header` on both sides, so that only the
     // reading of the fields differs.
     val wire = scodec.codecs.uint32 :: scodec.codecs.uint16 :: scodec.codecs.uint16
-    def viaScodec(bytes: Bytes): Either[String, Mux.Header] =
+    def viaScodec(bytes: Bytes): Either[scodec.Err, Mux.Header] =
       wire
         .decode(BitVector.view(bytes.toArray))
         .toEither
-        .left
-        .map(_.messageWithContext)
         .map { r =>
           val (timestamp, mode, length) = r.value
           Mux.Header(
@@ -182,8 +180,13 @@ class FormatBenchSuite extends FunSuite:
             length
           )
         }
-    assertEquals(headers.map(viaScodec), headers.map(Mux.decodeHeader(_)))
-    def loop(decode: Bytes => Either[String, Mux.Header]): Long =
+    headers.foreach { bytes =>
+      assertEquals(
+        viaScodec(bytes).fold(e => fail(e.messageWithContext), identity),
+        Mux.decodeHeader(bytes).fold(e => fail(e.message), identity)
+      )
+    }
+    def loop[E](decode: Bytes => Either[E, Mux.Header]): Long =
       var i = 0L
       var acc = 0L
       while i < calls do

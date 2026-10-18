@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf, VrfCert}
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, Mux as WireMux}
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.*
@@ -108,7 +108,10 @@ class PeerSuite extends ScalaCheckSuite:
       classified(NetworkError.IllegalTransition(2, "pipelined request")),
       FailureClass.Misbehaved
     )
-    assertEquals(classified(NetworkError.Framing("EOF in mux payload")), FailureClass.Misbehaved)
+    assertEquals(
+      classified(NetworkError.Framing(WireMux.Error.TruncatedPayload(9, 1))),
+      FailureClass.Misbehaved
+    )
     assert(Peer.networkFault(NetworkError.IngressLimit(2, 1L)).isInstanceOf[Fault.Failed])
   }
 
@@ -117,5 +120,28 @@ class PeerSuite extends ScalaCheckSuite:
     assertEquals(
       Peer.networkFault(xyz.kd5ujc.scarab.network.NetworkError.Defect(cause)),
       Fault.Defect(cause)
+    )
+  }
+
+  test("mux causes reach node policy unchanged, with local failures separate from peer framing") {
+    import xyz.kd5ujc.scarab.ledger.PeerError
+    import xyz.kd5ujc.scarab.network.NetworkError
+    import xyz.kd5ujc.scarab.network.selection.FailureClass
+
+    val truncated = WireMux.Error.TruncatedPayload(9, 1)
+    val setup = WireMux.Error.InvalidPayloadLimit(0)
+    val write = WireMux.Error.InvalidMessageLimit(2500001, 2500000)
+    val cases = Vector(
+      (NetworkError.Framing(truncated), PeerError.Framing(truncated), FailureClass.Misbehaved),
+      (NetworkError.MuxSetup(setup), PeerError.MuxSetup(setup), FailureClass.Transient),
+      (NetworkError.MuxWrite(write), PeerError.MuxWrite(write), FailureClass.Transient)
+    )
+    cases.foreach { case (network, peer, classification) =>
+      assertEquals(Peer.networkFault(network), Fault.Failed(peer))
+      assertEquals(FailurePolicy.classify(peer), classification)
+    }
+    assertEquals(
+      PeerError.Framing(truncated).message,
+      "protocol: multiplexer framing: EOF in mux payload"
     )
   }

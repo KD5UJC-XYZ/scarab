@@ -6,7 +6,7 @@ import xyz.kd5ujc.scarab.protocol.Mux.*
 
 class MuxSuite extends munit.FunSuite:
   private def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(fail(_), identity)
-  private def right[A](value: Either[String, A]): A = value.fold(fail(_), identity)
+  private def right[A](value: Either[Error, A]): A = value.fold(e => fail(e.message), identity)
   private def decoder(limits: Limits = Limits()): Decoder = right(Decoder.create(limits))
   private def join(left: Bytes, right: Bytes): Bytes = Bytes(left.value ++ right.value)
 
@@ -39,23 +39,29 @@ class MuxSuite extends munit.FunSuite:
   test("wire ranges and exact single-frame boundaries are checked") {
     val valid = Header(0, 0, Direction.Initiator, 1)
     Vector(
-      valid.copy(timestamp = -1),
-      valid.copy(timestamp = 0x100000000L),
-      valid.copy(protocol = -1),
-      valid.copy(protocol = 0x8000),
-      valid.copy(payloadLength = 0),
-      valid.copy(payloadLength = -1),
-      valid.copy(payloadLength = 65536)
-    ).foreach(h => assert(encodeHeader(h).isLeft))
-    assert(encode(Sdu(0, 0, Direction.Initiator, Bytes.empty)).isLeft)
-    assert(decodeHeader(bytes("0000000000000000")).isLeft)
-    assert(decodeHeader(bytes("00000000000001")).isLeft)
-    assert(decodeHeader(bytes("000000000000000100")).isLeft)
-    assert(decode(Bytes(proposal.value.dropRight(1))).isLeft)
-    assert(decode(join(proposal, bytes("00"))).isLeft)
-    assert(decode(proposal, maxPayloadBytes = 8).isLeft)
-    assert(decode(proposal, maxPayloadBytes = 0).isLeft)
-    assert(decode(proposal, maxPayloadBytes = 65536).isLeft)
+      valid.copy(timestamp = -1) -> Error.TimestampOutOfRange(-1),
+      valid.copy(timestamp = 0x100000000L) -> Error.TimestampOutOfRange(0x100000000L),
+      valid.copy(protocol = -1) -> Error.ProtocolOutOfRange(-1),
+      valid.copy(protocol = 0x8000) -> Error.ProtocolOutOfRange(0x8000),
+      valid.copy(payloadLength = 0) -> Error.PayloadLengthOutOfRange(0, WireMaxPayloadBytes),
+      valid.copy(payloadLength = -1) -> Error.PayloadLengthOutOfRange(-1, WireMaxPayloadBytes),
+      valid.copy(payloadLength = 65536) -> Error.PayloadLengthOutOfRange(65536, WireMaxPayloadBytes)
+    ).foreach { case (header, error) => assertEquals(encodeHeader(header), Left(error)) }
+    assertEquals(
+      encode(Sdu(0, 0, Direction.Initiator, Bytes.empty)),
+      Left(Error.PayloadLengthOutOfRange(0, WireMaxPayloadBytes))
+    )
+    assertEquals(
+      decodeHeader(bytes("0000000000000000")),
+      Left(Error.PayloadLengthOutOfRange(0, WireMaxPayloadBytes))
+    )
+    assertEquals(decodeHeader(bytes("00000000000001")), Left(Error.HeaderLength(7)))
+    assertEquals(decodeHeader(bytes("000000000000000100")), Left(Error.HeaderLength(9)))
+    assertEquals(decode(proposal.take(proposal.size - 1)), Left(Error.FrameLength(17, 16)))
+    assertEquals(decode(join(proposal, bytes("00"))), Left(Error.FrameLength(17, 18)))
+    assertEquals(decode(proposal, maxPayloadBytes = 8), Left(Error.PayloadLengthOutOfRange(9, 8)))
+    assertEquals(decode(proposal, maxPayloadBytes = 0), Left(Error.InvalidPayloadLimit(0)))
+    assertEquals(decode(proposal, maxPayloadBytes = 65536), Left(Error.InvalidPayloadLimit(65536)))
   }
 
   test("every split of two coalesced literal SDUs preserves frames and EOF") {
@@ -87,7 +93,7 @@ class MuxSuite extends munit.FunSuite:
     val (partial, frames) = right(decoder().feed(join(proposal, Bytes(accept.value.take(10)))))
     assertEquals(frames, Vector(proposalSdu))
     assertEquals(partial.pendingBytes, 10)
-    assertEquals(partial.finish, Left("EOF in mux payload"))
+    assertEquals(partial.finish, Left(Error.TruncatedPayload(8, 2)))
     val (done, last) = right(partial.feed(Bytes(accept.value.drop(10))))
     assertEquals(last, Vector(acceptSdu))
     assertEquals(done.finish, Right(()))
@@ -98,23 +104,32 @@ class MuxSuite extends munit.FunSuite:
     for length <- 1 until proposal.size do
       val (partial, frames) = right(decoder().feed(Bytes(proposal.value.take(length))))
       assertEquals(frames, Vector.empty)
-      assert(partial.finish.isLeft, s"length $length")
+      val expected =
+        if length < HeaderBytes then Error.TruncatedHeader(length)
+        else Error.TruncatedPayload(proposalSdu.payload.size, length - HeaderBytes)
+      assertEquals(partial.finish, Left(expected), s"length $length")
       assertEquals(partial.pendingBytes, length)
   }
 
   test("local resource limits reject a header before payload retention and bound batches") {
     Vector(
-      Limits(maxPayloadBytes = 0),
-      Limits(maxPayloadBytes = 65536),
-      Limits(maxInputBytes = 0),
-      Limits(maxFramesPerFeed = 0)
-    ).foreach(l => assert(Decoder.create(l).isLeft))
+      Limits(maxPayloadBytes = 0) -> Error.InvalidPayloadLimit(0),
+      Limits(maxPayloadBytes = 65536) -> Error.InvalidPayloadLimit(65536),
+      Limits(maxInputBytes = 0) -> Error.InvalidInputLimit(0),
+      Limits(maxFramesPerFeed = 0) -> Error.InvalidFrameLimit(0)
+    ).foreach { case (limits, error) => assertEquals(Decoder.create(limits), Left(error)) }
     val limited = decoder(Limits(maxPayloadBytes = 8))
-    assert(limited.feed(Bytes(proposal.value.take(8))).isLeft)
-    assert(limited.feed(bytes("0000000000000000")).isLeft)
+    assertEquals(limited.feed(proposal.take(8)), Left(Error.PayloadLengthOutOfRange(9, 8)))
+    assertEquals(limited.feed(bytes("0000000000000000")), Left(Error.PayloadLengthOutOfRange(0, 8)))
     assertEquals(limited.pendingBytes, 0)
-    assert(decoder(Limits(maxInputBytes = 16)).feed(proposal).isLeft)
-    assert(decoder(Limits(maxFramesPerFeed = 1)).feed(join(proposal, accept)).isLeft)
+    assertEquals(
+      decoder(Limits(maxInputBytes = 16)).feed(proposal),
+      Left(Error.FeedInputLimit(17, 16))
+    )
+    val single = decoder(Limits(maxFramesPerFeed = 1))
+    assertEquals(single.feed(join(proposal, accept)), Left(Error.FeedFrameLimit(2, 1)))
+    assertEquals(single.pendingBytes, 0)
+    assertEquals(right(single.feed(accept))._2, Vector(acceptSdu))
     val (one, first) = right(decoder(Limits(maxFramesPerFeed = 1)).feed(proposal))
     val (two, second) = right(one.feed(accept))
     assertEquals(first ++ second, Vector(proposalSdu, acceptSdu))
@@ -161,10 +176,61 @@ class MuxSuite extends munit.FunSuite:
 
   test("general bounded segmentation separates large application and handshake limits") {
     val payload = Bytes(Vector.fill(7807)(0.toByte))
-    assert(Mux.segment(payload, 0L, Mux.Direction.Responder, 256, 5).isLeft)
+    assertEquals(
+      Mux.segment(payload, 0L, Mux.Direction.Responder, 256, 5),
+      Left(Error.HandshakeLength(7807))
+    )
     val frames =
       Mux.segmentBounded(payload, 0L, Mux.Direction.Responder, 256, 5, 65535).toOption.get
     assertEquals(Bytes(frames.flatMap(_.payload.value)), payload)
     assert(frames.forall(s => s.protocol == 5 && s.payload.size <= 256))
-    assert(Mux.segmentBounded(payload, 0L, Mux.Direction.Responder, 256, 5, 7806).isLeft)
+    assertEquals(
+      Mux.segmentBounded(payload, 0L, Mux.Direction.Responder, 256, 5, 7806),
+      Left(Error.MessageLength(7807, 7806))
+    )
+    assertEquals(
+      Mux.segmentBounded(payload, 0L, Mux.Direction.Responder, 256, 5, 65536),
+      Left(Error.InvalidMessageLimit(65536, 65535))
+    )
+    Vector(0, -1, 2500001).foreach { limit =>
+      assertEquals(
+        segmentProtocolMessage(payload, 0, Direction.Responder, 256, 5, limit),
+        Left(Error.InvalidMessageLimit(limit, 2500000))
+      )
+    }
+    assertEquals(
+      segmentProtocolMessage(Bytes.empty, 0, Direction.Responder, 256, 5, 100),
+      Left(Error.MessageLength(0, 100))
+    )
+  }
+
+  test("bounded message-limit errors retain their own ceiling and validation precedence") {
+    val payload = bytes("00")
+    Vector(0, -1, Int.MinValue).foreach { messageLimit =>
+      assertEquals(
+        segmentBounded(payload, -1, Direction.Initiator, 256, -1, messageLimit),
+        Left(Error.InvalidMessageLimit(messageLimit, WireMaxPayloadBytes))
+      )
+      Vector(0, -1, WireMaxPayloadBytes + 1).foreach { payloadLimit =>
+        assertEquals(
+          segmentBounded(payload, -1, Direction.Initiator, payloadLimit, -1, messageLimit),
+          Left(Error.InvalidPayloadLimit(payloadLimit))
+        )
+      }
+    }
+    Vector(WireMaxPayloadBytes + 1, Int.MaxValue).foreach { messageLimit =>
+      assertEquals(
+        segmentBounded(Bytes.empty, -1, Direction.Initiator, 0, -1, messageLimit),
+        Left(Error.InvalidMessageLimit(messageLimit, WireMaxPayloadBytes))
+      )
+    }
+  }
+
+  test("header length and local payload limit retain their validation precedence") {
+    assertEquals(decodeHeader(proposal.take(7), 0), Left(Error.HeaderLength(7)))
+    assertEquals(decodeHeader(proposal.take(8), 0), Left(Error.InvalidPayloadLimit(0)))
+    assertEquals(
+      segmentProtocolMessage(Bytes.empty, -1, Direction.Initiator, 0, -1, 0),
+      Left(Error.InvalidPayloadLimit(0))
+    )
   }
