@@ -3,7 +3,8 @@ package xyz.kd5ujc.scarab.node.ntc
 
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as CborValue}
 import xyz.kd5ujc.scarab.ledger.*
-import xyz.kd5ujc.scarab.plutus.ExUnits
+import xyz.kd5ujc.scarab.plutus.{EvalFailure, ExUnits, ScriptFailure}
+import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.TestLedger.out
 import munit.FunSuite
 
@@ -18,6 +19,46 @@ class PredicateFailureCborSuite extends FunSuite:
     PredicateFailureCbor.applyTxError(failures.toVector).hex
 
   private val keyHash = hex("683acdaa374d6ef02de93bea119185477b17c8298d59967b06528a2d")
+
+  test("typed script failures render only at the wire boundary without changing rejection bytes") {
+    val cause = new IllegalArgumentException("failure")
+    val evaluation = EvalFailure.Script(ScriptFailure(cause, Vector("trace")))
+    val failure = PredicateFailure.utxo(
+      UtxoFailure.Utxos(
+        UtxosFailure.ValidationTagMismatch(
+          true,
+          Some(Vector(PlutusFailure(evaluation, hex("0102"))))
+        )
+      )
+    )
+    // Alonzo/Rules/Utxos.hs:259-309 (f649f975): PlutusFailure keeps constructor tag 1,
+    // its rendered text and opaque reconstruction bytes. The outer UTXOS tag stays 0.
+    val utxos = "8300f58201818301756661696c7572653b2074726163653a207472616365420102"
+    assertEquals(reason(failure), "81820681820182008200" + utxos)
+    for era <- Vector(Era.Alonzo, Era.Babbage, Era.Conway) do
+      val encoded = PredicateFailureCbor
+        .applyTxError(era, Vector(failure))
+        .getOrElse(fail(s"missing $era validity-tag encoding"))
+      assert(encoded.hex.endsWith(utxos), s"$era: ${encoded.hex}")
+    evaluation match
+      case EvalFailure.Script(ScriptFailure(original: Throwable, logs)) =>
+        assert(original eq cause)
+        assertEquals(logs, Vector("trace"))
+      case other => fail(s"changed evaluator cause: $other")
+  }
+
+  test("an unexpectedly passing script retains the existing validity-tag rejection bytes") {
+    assertEquals(
+      reason(
+        PredicateFailure.utxo(
+          UtxoFailure.Utxos(
+            UtxosFailure.ValidationTagMismatch(false, None)
+          )
+        )
+      ),
+      "818206818201820082008300f48100"
+    )
+  }
 
   test("the fee is below the minimum: expected first, then supplied") {
     assertEquals(

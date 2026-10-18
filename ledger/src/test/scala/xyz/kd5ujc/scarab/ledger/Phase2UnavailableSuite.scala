@@ -65,6 +65,30 @@ class Phase2UnavailableSuite extends FunSuite:
       case other                              => fail(s"unexpected script-failure outcome: $other")
   }
 
+  test("a validity-tag mismatch retains the evaluator cause and its original exception") {
+    val defect = new IllegalArgumentException("script machine refused")
+    val reason = EvalFailure.Script(ScriptFailure(defect, Vector("before refusal")))
+    val evaluator: ScriptEvaluator[Id] = _ => EvalResult.Failure(reason, ExUnits.zero, Vector.empty)
+    checked(c.tx.copy(isValid = true), evaluator) match
+      case Left(
+            LedgerFailure.Rejected(
+              _,
+              PredicateFailure.Utxow(
+                UtxowFailure.Utxo(
+                  UtxoFailure.Utxos(UtxosFailure.ValidationTagMismatch(true, Some(failures)))
+                )
+              )
+            )
+          ) =>
+        assertEquals(failures, Vector(PlutusFailure(reason, Bytes.empty)))
+        failures.headOption.map(_.cause) match
+          case Some(EvalFailure.Script(ScriptFailure(cause: Throwable, logs))) =>
+            assert(cause eq defect)
+            assertEquals(logs, Vector("before refusal"))
+          case other => fail(s"lost evaluator cause: $other")
+      case other => fail(s"unexpected script-failure outcome: $other")
+  }
+
   test("phase-1 backend unavailability never becomes malformed scripts, for either validity flag") {
     val script =
       scripts.values.find(_.kind.isPlutus).getOrElse(fail("fixture has no Plutus script"))
