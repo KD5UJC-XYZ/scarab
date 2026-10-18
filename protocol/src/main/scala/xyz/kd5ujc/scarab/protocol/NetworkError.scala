@@ -60,10 +60,12 @@ object NetworkError:
   enum Closure:
     case PeerClosed
     case Aborted
+    case AbortedBy[E <: Product](cause: E)
     case Transport(context: String, cause: java.io.IOException)
     def message: String = this match
       case PeerClosed                => "closed by peer"
       case Aborted                   => "aborted"
+      case AbortedBy(cause) => s"aborted: $cause"
       case Transport(context, cause) => s"$context: ${cause.getMessage}"
   enum HandshakeFailure:
     case Local(cause: ProtocolError)

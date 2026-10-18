@@ -87,9 +87,11 @@ object PeerError:
   enum Divergence:
     case RollbackOutsideChain(point: ChainSync.Point)
     case DetachedCandidate(base: ChainSync.Point)
+    case ForeignBlock(cause: ValidationError)
     def message: String = this match
       case RollbackOutsideChain(point) => s"peer rolled back to ${Points.show(point)}, outside our chain"
       case DetachedCandidate(base) => s"the peer's chain no longer joins ours at ${Points.show(base)}"
+      case ForeignBlock(cause) => s"a block fetched by another peer: ${cause.message}"
   def protocolMessage(cause: ProtocolFailure): String = cause match
     case error: ProtocolError => error.message
     case error: ProtocolProblem => error.message

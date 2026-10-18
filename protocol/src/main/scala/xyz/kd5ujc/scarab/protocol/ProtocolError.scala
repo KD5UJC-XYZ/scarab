@@ -51,7 +51,6 @@ enum ProtocolError:
   case HandshakeAlreadyDone
   case HandshakeByteLimitExceeded
   case HashByteLimitExceeded
-  case IllegalTxSubmission2MessageAgency
   case IncompleteBlockFetchRequestAtEndOfInput
   case IncompleteCbor
   case InvalidBlockFetchLimits
@@ -223,7 +222,6 @@ enum ProtocolError:
     case HandshakeAlreadyDone                    => "handshake already done"
     case HandshakeByteLimitExceeded              => "handshake byte limit exceeded"
     case HashByteLimitExceeded                   => "hash byte limit exceeded"
-    case IllegalTxSubmission2MessageAgency       => "illegal TxSubmission2 message/agency"
     case IncompleteBlockFetchRequestAtEndOfInput => "incomplete BlockFetch request at end of input"
     case IncompleteCbor                          => "incomplete CBOR"
     case InvalidBlockFetchLimits                 => "invalid BlockFetch limits"
@@ -345,7 +343,7 @@ enum ProtocolError:
       s"illegal TxSubmission2 message/agency in $state from $sender"
     case Word32Range(field, _) =>
       s"${field.toString.head.toLower}${field.toString.tail} does not fit a Word32"
-    case Codec(cause)       => cause.toString
+    case Codec(cause)       => cause.message
     case HfcHeader(cause)   => cause.toString
     case PeerSharing(cause) => cause.message
     case Leios(cause)       => cause.toString

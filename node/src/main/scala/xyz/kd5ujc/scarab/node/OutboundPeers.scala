@@ -291,7 +291,7 @@ final class OutboundPeers[F[_]: Async, A] private (
                           if foreign then
                             SessionEnd.Failed(
                               PeerError
-                                .Diverged(s"a block fetched by another peer: ${refusal.message}")
+                                .Diverged(PeerError.Divergence.ForeignBlock(refusal))
                             )
                           else SessionEnd.Rejected(refusal)
                         )

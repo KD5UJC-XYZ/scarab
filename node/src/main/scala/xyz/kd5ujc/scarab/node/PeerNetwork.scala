@@ -303,7 +303,7 @@ object PeerNetwork:
         def raise[E2 <: GovernorError, B](e: E2): F[B] =
           val fault = e match
             case GovernorError.InvariantBroken(vs) =>
-              GovernorFault.InvariantBroken(vs.map(_.toString))
+              GovernorFault.InvariantBroken(vs)
             case GovernorError.BootstrapPeersCriticalTimeout =>
               GovernorFault.BootstrapPeersCriticalTimeout
           fatal.complete(fault) *> F.never[B]
