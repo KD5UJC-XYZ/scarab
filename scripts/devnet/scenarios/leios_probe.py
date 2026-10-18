@@ -224,6 +224,8 @@ class Run:
             ref.docker("rm", "-f", ref.node(self.name, 4), check=False)
             shutil.rmtree(self.root / "devnet" / "node4", ignore_errors=True)
             (self.root / "probes" / f"{label}.out").write_text(text)
+            if proc.returncode:
+                raise subprocess.CalledProcessError(proc.returncode, proc.args, output=text)
             if leios == "no":
                 self.check("connection ended: data on unexpected mini-protocol 18" in text,
                            "a multiplexer without 18 and 19 ends the connection at the reference's first SDU on 18")

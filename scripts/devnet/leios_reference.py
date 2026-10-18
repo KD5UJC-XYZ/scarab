@@ -274,4 +274,5 @@ def run_probe(name, root, classpath, main_class, program, label, timeout):
     finally:
         docker("rm", "-f", container, check=False)
     (out / f"{label}.out").write_text(done.stdout + done.stderr)
+    done.check_returncode()
     return done.stdout + done.stderr

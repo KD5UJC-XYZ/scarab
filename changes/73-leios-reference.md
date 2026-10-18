@@ -5,3 +5,5 @@
   notification credit limits and transaction reply formats; hot peers require mux protocols 18/19.
 - Reliable probe cleanup, trace flushing and a single-deadline duplex silence observer. Production
   Dijkstra following and committee/protocol integration remain the later stages of #73.
+- Unexpected probe process failures retain their diagnostic output and fail the scenario; printed
+  network-refusal text alone cannot count as a successful probe.

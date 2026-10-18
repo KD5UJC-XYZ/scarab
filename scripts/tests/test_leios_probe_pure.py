@@ -7,6 +7,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -42,6 +43,36 @@ class LeiosProbeTest(unittest.TestCase):
                 with self.assertRaises(subprocess.TimeoutExpired):
                     reference.run_probe("test", root, "classpath", "Probe", [], "timeout", 1)
             docker.assert_called_once_with("rm", "-f", "test-probe-timeout", check=False)
+
+    def test_failed_probe_keeps_output_and_cannot_count_as_expected_refusal(self):
+        result = subprocess.CompletedProcess("docker", 7, "messages received 0\n", "probe failed\n")
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            with mock.patch.object(reference, "jdk_image", return_value="test-jdk"), \
+                    mock.patch.object(reference, "docker") as docker, \
+                    mock.patch.object(reference.subprocess, "run", return_value=result):
+                with self.assertRaises(subprocess.CalledProcessError) as failure:
+                    reference.run_probe("test", root, "classpath", "Probe", [], "failed", 1)
+            self.assertEqual(failure.exception.returncode, 7)
+            self.assertEqual((root / "probes/failed.out").read_text(), result.stdout + result.stderr)
+            docker.assert_called_once_with("rm", "-f", "test-probe-failed", check=False)
+
+    def test_failed_listener_cannot_count_as_expected_channel_close(self):
+        process = mock.Mock(returncode=7, args=["docker", "probe"])
+        process.communicate.return_value = ("connection ended: data on unexpected mini-protocol 18\n", None)
+        with tempfile.TemporaryDirectory() as directory:
+            run = probe.Run(SimpleNamespace(name="test"), probe.PROFILES["w38a"])
+            run.root = pathlib.Path(directory)
+            (run.root / "probes").mkdir()
+            with mock.patch.object(reference, "docker"), \
+                    mock.patch.object(reference, "probe_command", return_value=["probe"]), \
+                    mock.patch.object(reference, "start_relay"), \
+                    mock.patch.object(probe.time, "sleep"), \
+                    mock.patch.object(probe.subprocess, "Popen", return_value=process):
+                with self.assertRaises(subprocess.CalledProcessError) as failure:
+                    run.listener()
+            self.assertEqual(failure.exception.returncode, 7)
+            self.assertEqual((run.root / "probes/listen-without.out").read_text(), process.communicate.return_value[0])
 
     def test_capture_makes_trace_visible_before_follower_exits(self):
         emitted, release = threading.Event(), threading.Event()

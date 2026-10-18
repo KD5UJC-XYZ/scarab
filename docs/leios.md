@@ -813,6 +813,8 @@ python3 scripts/devnet.py --name <private-name> leios-probe --profile all --capt
 The scenario checks chain announcements/certificates, all message kinds, codec verdicts, the other
 numbering's refusal trace, credit limits, duplex silence and hot-peer listener behaviour. Its probe
 containers are removed even on timeout, and the private network is removed on completion. The
+scenario retains diagnostics and fails on an unexpected nonzero probe exit, even if its output
+contains an expected network-refusal message. The
 silence observer has one deadline and ends as soon as either channel receives a message; virtual
 time tests cover silence, either arrival and observer failure. Filtered trace checks are line-buffered.
 Captured message fixtures and their decoder expectations preserve the differences above. Remaining
