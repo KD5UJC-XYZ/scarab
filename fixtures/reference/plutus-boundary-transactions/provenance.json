@@ -1,0 +1,98 @@
+[
+  {
+    "protocolMajor": 10,
+    "batch": "main",
+    "fixture": "transactions/conway-pv10.json",
+    "observedProtocolVersion": {
+      "major": 10,
+      "minor": 0
+    },
+    "initialization": "fresh private genesis before the first node startup; required observed protocol equality before funding",
+    "nodeVersion": "cardano-node 11.1.3 - linux-x86_64 - ghc-9.6\ngit rev 938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+    "cliVersion": "cardano-cli 11.2.3.0 - linux-x86_64 - ghc-9.6\ngit rev 938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+    "referenceImage": "sha256:74e849e1b68e2cf8ba3cdfe3fcda67114f22d9bebc6a34372657cd179e704c4b [\"cardano-reference-11.1.3@sha256:74e849e1b68e2cf8ba3cdfe3fcda67114f22d9bebc6a34372657cd179e704c4b\"]",
+    "configurationSha256": {
+      "configuration.yaml": "879960a310eccd7c435e7eb802638fa885f59da1c50ecbfeefd5756dcb747e15",
+      "byron-genesis.json": "85ae66b8ca86c2c392bb208a50c93cb17c24dc26348f14f0a8760fed4a1fa286",
+      "shelley-genesis.json": "8278dcea998a0cd83b1f054fbfe835c765cbfca0c6e35fb475968041d0a934a0",
+      "alonzo-genesis.json": "4291b3e5fbcdd1f1daed9ab8f78e4d0181eb7eac4506e34c8aa0fecab6051f3b",
+      "conway-genesis.json": "958982384131ba66c84b77356b64927915c44d9d68c733b51b5cdc9029f64487"
+    },
+    "cases": 32,
+    "accepted": 15,
+    "refused": 17,
+    "fundingAndCollateralChecked": true
+  },
+  {
+    "protocolMajor": 11,
+    "batch": "main",
+    "fixture": "transactions/conway-pv11.json",
+    "observedProtocolVersion": {
+      "major": 11,
+      "minor": 0
+    },
+    "initialization": "fresh private genesis before the first node startup; required observed protocol equality before funding",
+    "nodeVersion": "cardano-node 11.1.3 - linux-x86_64 - ghc-9.6\ngit rev 938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+    "cliVersion": "cardano-cli 11.2.3.0 - linux-x86_64 - ghc-9.6\ngit rev 938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+    "referenceImage": "sha256:74e849e1b68e2cf8ba3cdfe3fcda67114f22d9bebc6a34372657cd179e704c4b [\"cardano-reference-11.1.3@sha256:74e849e1b68e2cf8ba3cdfe3fcda67114f22d9bebc6a34372657cd179e704c4b\"]",
+    "configurationSha256": {
+      "configuration.yaml": "879960a310eccd7c435e7eb802638fa885f59da1c50ecbfeefd5756dcb747e15",
+      "byron-genesis.json": "2587fef478a4b910df4441e7317f586e0f3d499b41ec35b47164444b0fe9795f",
+      "shelley-genesis.json": "54c63eddfdf71c7fd428b689121993c3dcd56232db25109a9cde3013c3b9eac5",
+      "alonzo-genesis.json": "4291b3e5fbcdd1f1daed9ab8f78e4d0181eb7eac4506e34c8aa0fecab6051f3b",
+      "conway-genesis.json": "b378e695c3fe1a08d0e0c351eace1136c10bb6c052bbfafea3b3087a5eab112a"
+    },
+    "cases": 32,
+    "accepted": 13,
+    "refused": 19,
+    "fundingAndCollateralChecked": true
+  },
+  {
+    "protocolMajor": 10,
+    "batch": "depth-two",
+    "fixture": "transactions/conway-pv10-depth-two.json",
+    "observedProtocolVersion": {
+      "major": 10,
+      "minor": 0
+    },
+    "initialization": "fresh private genesis before the first node startup; required observed protocol equality before funding",
+    "nodeVersion": "cardano-node 11.1.3 - linux-x86_64 - ghc-9.6\ngit rev 938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+    "cliVersion": "cardano-cli 11.2.3.0 - linux-x86_64 - ghc-9.6\ngit rev 938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+    "referenceImage": "sha256:74e849e1b68e2cf8ba3cdfe3fcda67114f22d9bebc6a34372657cd179e704c4b [\"cardano-reference-11.1.3@sha256:74e849e1b68e2cf8ba3cdfe3fcda67114f22d9bebc6a34372657cd179e704c4b\"]",
+    "configurationSha256": {
+      "configuration.yaml": "879960a310eccd7c435e7eb802638fa885f59da1c50ecbfeefd5756dcb747e15",
+      "byron-genesis.json": "ac4664c632eff880bb97c3b78579c39cea47aaef5cf7abf6c8994c5c9273a49e",
+      "shelley-genesis.json": "f7167d8e0881c3485a01b71c93614610fefc64925b6313497e035cf18dc454f8",
+      "alonzo-genesis.json": "4291b3e5fbcdd1f1daed9ab8f78e4d0181eb7eac4506e34c8aa0fecab6051f3b",
+      "conway-genesis.json": "7f315b25d9690bb5adb528e30b1e54ba687d46c6c1786f3a05f6e81f0dacf043"
+    },
+    "cases": 4,
+    "accepted": 2,
+    "refused": 2,
+    "fundingAndCollateralChecked": true
+  },
+  {
+    "protocolMajor": 11,
+    "batch": "depth-two",
+    "fixture": "transactions/conway-pv11-depth-two.json",
+    "observedProtocolVersion": {
+      "major": 11,
+      "minor": 0
+    },
+    "initialization": "fresh private genesis before the first node startup; required observed protocol equality before funding",
+    "nodeVersion": "cardano-node 11.1.3 - linux-x86_64 - ghc-9.6\ngit rev 938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+    "cliVersion": "cardano-cli 11.2.3.0 - linux-x86_64 - ghc-9.6\ngit rev 938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+    "referenceImage": "sha256:74e849e1b68e2cf8ba3cdfe3fcda67114f22d9bebc6a34372657cd179e704c4b [\"cardano-reference-11.1.3@sha256:74e849e1b68e2cf8ba3cdfe3fcda67114f22d9bebc6a34372657cd179e704c4b\"]",
+    "configurationSha256": {
+      "configuration.yaml": "879960a310eccd7c435e7eb802638fa885f59da1c50ecbfeefd5756dcb747e15",
+      "byron-genesis.json": "d3f786cb2a64780d23797e81d48dbe56d5835502d9f2f0c0ce3bb287dca4a76f",
+      "shelley-genesis.json": "df2cbcfa7b6471b592d7edaadddb05c076317d19e753831b5b5f264ea99b552e",
+      "alonzo-genesis.json": "4291b3e5fbcdd1f1daed9ab8f78e4d0181eb7eac4506e34c8aa0fecab6051f3b",
+      "conway-genesis.json": "2f16ec39962ea5f471c0973a62ef90de4ac828d601bb0c4cb03e2b4a0a95aa52"
+    },
+    "cases": 4,
+    "accepted": 2,
+    "refused": 2,
+    "fundingAndCollateralChecked": true
+  }
+]

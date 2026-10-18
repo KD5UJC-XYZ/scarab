@@ -16,6 +16,7 @@ import importlib
 import json
 import subprocess
 import time
+from typing import NamedTuple
 
 from .. import eratx
 from ..cbor import enc
@@ -52,6 +53,13 @@ def base58_decode(text):
         n = n * 58 + alphabet.index(c)
     raw = n.to_bytes((n.bit_length() + 7) // 8, "big")
     return b"\x00" * (len(text) - len(text.lstrip("1"))) + raw
+
+
+class PreparedSetup(NamedTuple):
+    transaction: bytes
+    txid: str
+    source: tuple
+    outputs: dict
 
 
 class Driver:
@@ -129,9 +137,8 @@ class Driver:
             is_valid=valid)
 
     # ------------------------------------------------------------ the setup transaction
-    def setup(self, specials, count):
-        """One transaction that creates everything the cases read: `count` funding and collateral outputs
-        each, and the outputs of `specials` (name -> output). Returns {name: (txid, ix, output)}."""
+    def prepare_setup(self, specials, count):
+        """Prepare once, so a caller confirming inclusion can resubmit identical signed bytes."""
         funds = self.utxo()
         (txid, ix), v = max(funds.items(), key=lambda kv: kv[1]["value"]["lovelace"])
         outputs, names = [], []
@@ -148,12 +155,18 @@ class Driver:
         outputs.append(self.out(change))
         names.append("change")
         tx, tid = self.build([(txid, int(ix))], outputs)
-        ok, text = self.submit(tx, "setup")
+        made = {n: (tid, i, o) for i, (n, o) in enumerate(zip(names, outputs))}
+        return PreparedSetup(tx, tid, (txid, int(ix)), made)
+
+    def setup(self, specials, count):
+        """Create funding, collateral and special outputs; preserve the context driver's wait policy."""
+        prepared = self.prepare_setup(specials, count)
+        ok, text = self.submit(prepared.transaction, "setup")
         if not ok:
             raise SystemExit(f"setup refused: {text}")
-        if not self.wait_present(tid, len(outputs) - 1):
+        if not self.wait_present(prepared.txid, prepared.outputs["change"][1]):
             raise SystemExit("setup transaction not in a block")
-        return {n: (tid, i, o) for i, (n, o) in enumerate(zip(names, outputs))}
+        return prepared.outputs
 
     @staticmethod
     def coin_of(o):

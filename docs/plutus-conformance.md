@@ -75,7 +75,12 @@ backend is enabled; no crypto stubs supply evidence. The retained
 `PlutusBoundaryOracleSuite` bind each row to its script bytes and cost model. All rows agree on
 admission and evaluation stage. This API matrix is complemented by four actual reference-node Conway/protocol10 transactions
 covering binary-DST success/failure against both validity flags. The same assertions are replayed
-through phase2, LEDGER and BBODY; transaction-context evidence remains recorded separately.
+through phase2, LEDGER and BBODY. A separate
+[complete boundary transaction corpus](../fixtures/reference/plutus-boundary-transactions/README.md)
+adds actual reference submissions at observed protocols 10 and 11 for decode limits, applied scope
+and wide indices, with both validity flags and both funding/collateral dispositions. Its 36 pinned
+API observations apply the exact ignored-context wrapper before evaluation; they are distinct from
+the original 477-row API matrix. Transaction-context evidence remains recorded separately.
 
 | Case(s) | Class | Scalus 1.3.0 against the reference | Protocols where it exists | Reachable from a transaction? | Effect | Handling |
 |---|---|---|---|---|---|---|
@@ -125,9 +130,8 @@ reference-proven setup, scope, budget and runtime script failures.
 
 Whole-transaction context findings REF-01/02/03 have their own recorded reference transactions and
 regressions. Four binary-DST validity-tag reference transactions additionally agree at phase2,
-LEDGER and BBODY, using the same harness. These four transactions cover binary DST only; the
-wide-index/scope and protocol-11 decode-limit probes still need complete reference transactions,
-both validity flags and funding/collateral effects. Until that evidence is retained, #155, #166,
-#167 and #175 remain open. The malformed Byron reference transaction gap in #171 belongs to that separate oracle;
+LEDGER and BBODY, using the same harness. `BoundaryTransactionsSuite` separately replays complete
+V3 boundary submissions, including phase-1 decode refusals that cannot supply a collateral verdict.
+The malformed Byron reference transaction gap in #171 belongs to that separate oracle;
 this Plutus API matrix does not claim to resolve it. IN-74 to IN-77 are decided in
 [implementer-notes.md](implementer-notes.md); filing upstream remains the owner's decision.
