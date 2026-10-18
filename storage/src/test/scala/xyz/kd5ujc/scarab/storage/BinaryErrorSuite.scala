@@ -50,3 +50,49 @@ class BinaryErrorSuite extends FunSuite:
       assertEquals(frozenSource.available(), tail.length)
     }
   }
+
+  test("large declared collection counts reject the first invalid element incrementally") {
+    // The synthetic stream models a large file without allocating its body. Its declared bound
+    // admits the count, so only the invalid first Boolean can reject it. Eager count-sized
+    // placeholder collections would attempt billions of allocations before reaching that byte.
+    val prefix = Codec.encode(Int.MaxValue.toLong)
+    val body = prefix :+ 2.toByte
+    val limit = prefix.length.toLong + Int.MaxValue
+    given cats.Order[Boolean] = cats.Order.fromLessThan((a, b) => !a && b)
+    val current: Vector[Codec[?]] = Vector(
+      Codec[Vector[Boolean]],
+      Codec[List[Boolean]],
+      Codec[Set[Boolean]],
+      Codec[Map[Boolean, Int]],
+      NodeCodecs.sortedMap[Boolean, Int]
+    )
+    val frozen: Vector[legacy.Codec[?]] = Vector(
+      legacy.Codec[Vector[Boolean]],
+      legacy.Codec[List[Boolean]],
+      legacy.Codec[Set[Boolean]],
+      legacy.Codec[Map[Boolean, Int]],
+      legacy.v4.NodeCodecs.sortedMap[Boolean, Int]
+    )
+    current.foreach { codec =>
+      val in = In(ByteArrayInputStream(body), limit)
+      assertEquals(codec.read(in).left.toOption, Some(BinaryError.InvalidBoolean(2)))
+      assertEquals(in.position, prefix.length.toLong + 1)
+    }
+    frozen.foreach { codec =>
+      val in = legacy.In(ByteArrayInputStream(body), limit)
+      assertEquals(codec.read(in).left.toOption, Some(BinaryError.InvalidBoolean(2)))
+      assertEquals(in.position, prefix.length.toLong + 1)
+    }
+  }
+
+  test("current and frozen counts reject Int overflow before narrowing or reading elements") {
+    val count = Int.MaxValue.toLong + 1
+    val prefix = Codec.encode(count)
+    val limit = prefix.length.toLong + count
+    val current = In(ByteArrayInputStream(prefix), limit)
+    val frozen = legacy.In(ByteArrayInputStream(prefix), limit)
+    assertEquals(current.count(), Left(BinaryError.IntOutOfRange(count)))
+    assertEquals(frozen.count(), Left(BinaryError.IntOutOfRange(count)))
+    assertEquals(current.position, prefix.length.toLong)
+    assertEquals(frozen.position, prefix.length.toLong)
+  }

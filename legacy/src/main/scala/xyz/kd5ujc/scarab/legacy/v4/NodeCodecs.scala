@@ -116,16 +116,12 @@ object NodeCodecs:
         v.write(out, value)
       }
     def read(in: In): Either[BinaryError, SortedMap[K, V]] =
-      in.count()
-        .flatMap(n =>
-          List.fill(n)(()).traverse { _ =>
-            for
-              key <- k.read(in)
-              value <- v.read(in)
-            yield key -> value
-          }
-        )
-        .map(Sorted.map(_))
+      Codec.readCounted(in, Sorted.map[K, V](Vector.empty)) {
+        for
+          key <- k.read(in)
+          value <- v.read(in)
+        yield key -> value
+      }(_ + _)
     def shape: String = s"SortedMap[${k.shape},${v.shape}]"
 
   given withOrigin[A](using Codec[A]): Codec[WithOrigin[A]] = Codec.auto

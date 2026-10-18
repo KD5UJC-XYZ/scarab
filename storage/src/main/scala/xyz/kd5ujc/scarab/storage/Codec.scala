@@ -118,7 +118,9 @@ final class In(source: InputStream, limit: Long):
   def fixed64(): Either[BinaryError, Long] =
     (0 until 8).toVector.foldLeftM(0L)((acc, _) => byte().map(b => (acc << 8) | b))
   def count(): Either[BinaryError, Int] = varint().flatMap { n =>
-    Either.cond(n >= 0 && n <= remaining, n.toInt, BinaryError.CountExceedsRemaining(n, remaining))
+    if n < 0 || n > remaining then Left(BinaryError.CountExceedsRemaining(n, remaining))
+    else if n > Int.MaxValue then Left(BinaryError.IntOutOfRange(n))
+    else Right(n.toInt)
   }
 
 /** Binary codec for a persisted type. `shape` describes the encoded structure (field names and
@@ -143,6 +145,18 @@ object Codec extends LowPriorityCodec:
       def write(out: Out, a: A): Unit = w(out, a)
       def read(in: In): Either[BinaryError, A] = r(in)
       def shape: String = name
+
+  /** Read incrementally: a corrupt first element must not allocate from the claimed count. */
+  private[storage] def readCounted[A, B](in: In, initial: B)(
+      read: => Either[BinaryError, A]
+  )(append: (B, A) => B): Either[BinaryError, B] =
+    in.count().flatMap { count =>
+      cats.Monad[[C] =>> Either[BinaryError, C]].tailRecM((0, initial)) {
+        case (index, result) =>
+          if index == count then Right(Right(result))
+          else read.map(value => Left((index + 1, append(result, value))))
+      }
+    }
 
   /** Self-contained encoding of one value (tests, golden vectors). */
   def encode[A](a: A)(using c: Codec[A]): Array[Byte] =
@@ -216,21 +230,21 @@ object Codec extends LowPriorityCodec:
       out.varint(a.size.toLong)
       a.foreach(c.write(out, _))
     def read(in: In): Either[BinaryError, Vector[A]] =
-      in.count().flatMap(n => Vector.fill(n)(()).traverse(_ => c.read(in)))
+      readCounted(in, Vector.empty[A])(c.read(in))(_ :+ _)
     def shape: String = s"Vector[${c.shape}]"
   given [A](using c: Codec[A]): Codec[List[A]] with
     def write(out: Out, a: List[A]): Unit =
       out.varint(a.size.toLong)
       a.foreach(c.write(out, _))
     def read(in: In): Either[BinaryError, List[A]] =
-      in.count().flatMap(n => List.fill(n)(()).traverse(_ => c.read(in)))
+      readCounted(in, List.empty[A])(c.read(in))((values, value) => value :: values).map(_.reverse)
     def shape: String = s"List[${c.shape}]"
   given [A](using c: Codec[A]): Codec[Set[A]] with
     def write(out: Out, a: Set[A]): Unit =
       out.varint(a.size.toLong)
       a.foreach(c.write(out, _))
     def read(in: In): Either[BinaryError, Set[A]] =
-      summon[Codec[Vector[A]]].read(in).map(_.toSet)
+      readCounted(in, Set.empty[A])(c.read(in))(_ + _)
     def shape: String = s"Set[${c.shape}]"
   given [K, V](using k: Codec[K], v: Codec[V]): Codec[Map[K, V]] with
     def write(out: Out, a: Map[K, V]): Unit =
@@ -239,16 +253,12 @@ object Codec extends LowPriorityCodec:
         k.write(out, key); v.write(out, value)
       }
     def read(in: In): Either[BinaryError, Map[K, V]] =
-      in.count()
-        .flatMap(n =>
-          Vector.fill(n)(()).traverse { _ =>
-            for
-              key <- k.read(in)
-              value <- v.read(in)
-            yield key -> value
-          }
-        )
-        .map(_.toMap)
+      readCounted(in, Map.empty[K, V]) {
+        for
+          key <- k.read(in)
+          value <- v.read(in)
+        yield key -> value
+      }(_ + _)
     def shape: String = s"Map[${k.shape},${v.shape}]"
 
   /** Recursive: the one persisted type that contains itself, so it cannot be derived inline. A
