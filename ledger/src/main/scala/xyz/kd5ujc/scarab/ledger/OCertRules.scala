@@ -9,9 +9,9 @@ import xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate
 /** Why an operational certificate (or its KES signature) is rejected. */
 enum OCertError:
   case KesPeriodOutsideWindow(period: BigInt, start: BigInt, evolutions: BigInt)
-  case KesMalformed(reason: String)
+  case KesFailure(cause: Sum6Kes.Failure)
   case KesSignatureRejected
-  case OpCertMalformed(reason: String)
+  case OpCertFailure(cause: OperationalCertificate.Failure)
   case OpCertSignatureRejected
   case NoCounter(issuer: Bytes)
   case CounterTooSmall(current: BigInt, got: BigInt)
@@ -20,9 +20,9 @@ enum OCertError:
   def message: String = this match
     case KesPeriodOutsideWindow(p, s, e) =>
       s"KES period $p outside opcert window [$s, ${s + e})"
-    case KesMalformed(r)         => r
+    case KesFailure(e)           => e.toString
     case KesSignatureRejected    => "KES signature rejected"
-    case OpCertMalformed(r)      => r
+    case OpCertFailure(e)        => e.message
     case OpCertSignatureRejected => "opcert signature rejected"
     case NoCounter(i) => s"no opcert counter for issuer ${i.hex} (not a pool or genesis delegate)"
     case CounterTooSmall(m, n)   => s"opcert counter $n below current $m"
@@ -54,7 +54,7 @@ object OCertRules:
           header.kesSignature
         )
         .left
-        .map(e => OCertError.KesMalformed(e.toString))
+        .map(OCertError.KesFailure(_))
       _ <- Either.cond(
         kes == Sum6Kes.Result.SuppliedMessageSignatureVerified,
         (),
@@ -69,7 +69,7 @@ object OCertRules:
           header.opCert.sigma
         )
         .left
-        .map(e => OCertError.OpCertMalformed(e.toString))
+        .map(OCertError.OpCertFailure(_))
       _ <- Either.cond(
         oc == OperationalCertificate.Result.OperationalCertificateSignatureVerified,
         (),

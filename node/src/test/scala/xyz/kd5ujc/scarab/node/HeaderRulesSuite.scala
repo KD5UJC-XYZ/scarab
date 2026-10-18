@@ -301,3 +301,23 @@ class HeaderRulesSuite extends ScalaCheckSuite:
       Left(PraosError.OCert(OCertError.KesSignatureRejected))
     )
   }
+
+  test("certificate and KES failures retain their crypto causes through header validation") {
+    val h = forged.headers.head
+    val cause = xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate.Failure.Signature(
+      xyz.kd5ujc.scarab.crypto.witness.WitnessInputError.MalformedSignatureLength(0)
+    )
+    assertEquals(
+      invalid(0, h.copy(opCert = h.opCert.copy(sigma = Bytes.empty))),
+      Some(HeaderError.Praos(PraosError.OCert(OCertError.OpCertFailure(cause))))
+    )
+    val kesCause = xyz.kd5ujc.scarab.crypto.kes.Sum6Kes.Signature448
+      .fromBytes(Bytes.empty)
+      .swap
+      .toOption
+      .getOrElse(fail("empty KES signature accepted"))
+    assertEquals(
+      invalid(0, h.copy(kesSignature = Bytes.empty)),
+      Some(HeaderError.Praos(PraosError.OCert(OCertError.KesFailure(kesCause))))
+    )
+  }

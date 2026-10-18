@@ -248,8 +248,20 @@ Goal: `NodeState(ext: ExtLedgerState, extras)` is live; new era-indexed rules ev
      error's presentation method. The source-derived E34 comparison, 256/512-bit domains, original
      signed bytes, nonce/state evolution and persisted formats are unchanged; missing/nonpositive
      comparison ranges now return typed failures instead of allowing a null range to throw.
-     The VRF primitives' and certificate rules' remaining generic message cases, other consensus
+     The VRF primitives' and Sum6 KES verifier's remaining generic message cases, other consensus
      modules and the CI guard remain in M11-E; this does not complete #82 or #85.
+   - **As built (M11-E, #82, certificate errors):** `OperationalCertificate.Failure` has
+     separate missing-component, hot-key length, counter/start-period, witness-input,
+     primitive-failure, primitive-contract and defect cases. `UInt64.Error` retains rejected
+     values; caught nonfatal exceptions retain their `Throwable` as `Defect`. The OCERT rule
+     carries the certificate and existing Sum6 KES causes, so Praos/TPraos, header-first and block
+     validation keep them. Credential checks replace `ForgeError.KeyMismatch(String)` with
+     key mismatch, certificate failure and rejected-signature cases. Reloads distinguish
+     `CertificateFailure(cause)` from `BadCertificateSignature`, erasing a refused candidate's key
+     while keeping the active credentials. The 48 signed bytes, acceptance profile, counter/window
+     rules, key and persisted formats are unchanged. The Sum6 verifier's and VRF primitives'
+     generic errors and the CI guard remain in M11-E; forger infrastructure/defect policy is
+     still #180 G7-F3. The existing header OCERT failure propagation policy is unchanged.
    - `Diff[A]` instances beside the `Eq` givens in `ledger/state/*` and `consensus/state/*`.
 2. **J2.2 Harness skeleton (done; see section 2.5, as built).**
    - `node/differential/*`, `--rules`, `DifferentialErasSuite`, `PreviewDifferentialMain`, repro bundles.

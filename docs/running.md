@@ -695,7 +695,9 @@ has to change both before they run out. The node does four things for that; a dr
   and switches only when all of these hold, and otherwise keeps the old credentials and logs a typed
   `kesReloadRefused` (`kind` is the case of `ReloadRefusal`) and counts `scarab_kes_reloads_total{outcome="refused"}`:
   the cold verification key hashes to the pool this node forges for (`WrongPool`); the certificate names the
-  KES key in the file (`KeyNotCertified`) and carries the cold key's signature (`BadCertificateSignature`); the
+  KES key in the file (`KeyNotCertified`) and carries the cold key's signature (`BadCertificateSignature`);
+  malformed certificate input or a certificate verifier failure retains its typed cause as
+  `CertificateFailure`, separately from a signature that was checked and rejected; the
   current KES period is inside `[start, start + maxKESEvolutions)` (`NotYetValid`, `Expired`); the key has not
   been evolved past the period it must sign in (`KeyPastPeriod`); and the certificate counter is the pool's
   counter on the chain or one above it (`Counter`, the rule of `doValidateKESSignature` in ouroboros-consensus-protocol

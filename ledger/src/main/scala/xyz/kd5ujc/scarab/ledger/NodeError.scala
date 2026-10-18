@@ -2,7 +2,9 @@
 package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.blst.BlstProblem
+import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
+import xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate
 import xyz.kd5ujc.scarab.crypto.vrf.{
   Draft03Prover,
   PraosLeaderThreshold as Leader,
@@ -168,8 +170,14 @@ enum ForgeError extends NodeError:
   /** A KES signing key was decoded, but its material is invalid. */
   case KesKey(file: String, cause: Sum6KesSigning.Failure)
 
-  /** The keys do not belong together (hot key, certificate signature, VRF pair). */
-  case KeyMismatch(reason: String)
+  /** The certificate names another KES key. */
+  case KesKeyNotCertified(
+      expected: Bytes,
+      actual: Bytes
+  )
+
+  case CertificateFailure(cause: OperationalCertificate.Failure)
+  case CertificateSignatureRejected
 
   /** The KES period of the slot is outside the operational certificate's window. */
   case KeyPeriodOutOfRange(period: BigInt, start: BigInt, evolutions: BigInt)
@@ -201,9 +209,13 @@ enum ForgeError extends NodeError:
   case SelfRejected(rule: String, reason: String)
 
   def message: String = this match
-    case KeyFile(f, r)  => s"key file $f: $r"
-    case KesKey(f, e)   => s"key file $f: ${e.message}"
-    case KeyMismatch(r) => s"keys do not match: $r"
+    case KeyFile(f, r) => s"key file $f: $r"
+    case KesKey(f, e)  => s"key file $f: ${e.message}"
+    case KesKeyNotCertified(_, _) =>
+      "keys do not match: the operational certificate names another KES verification key"
+    case CertificateFailure(e) => s"operational certificate: ${e.message}"
+    case CertificateSignatureRejected =>
+      "keys do not match: the operational certificate is not signed by its cold key"
     case KeyPeriodOutOfRange(p, s, e) =>
       s"KES period $p outside the operational certificate window [$s, ${s + e})"
     case KesFailure(r)                  => s"KES: $r"

@@ -519,3 +519,31 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     assertEquals(decide(p, fresh, 10, None), Right(()))
     assertEquals(decide(p, fresh, 9, None), Left(ReloadRefusal.KeyPastPeriod(10, 9)))
   }
+
+  test("a malformed certificate reload retains its cause and leaves the active keys unchanged") {
+    val p = pool(kesStart = 50, seed = 31)
+    val good = hotFor(p.cold, seed = 32, start = 50, sequence = 1)
+    val candidate = good.copy(opCert = good.opCert.copy(sigma = Bytes.empty))
+    val cause = xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate.Failure.Signature(
+      xyz.kd5ujc.scarab.crypto.witness.WitnessInputError.MalformedSignatureLength(0)
+    )
+    val expected = ReloadRefusal.CertificateFailure(cause)
+    assertEquals(HotKeys.validate(p.creds, candidate, 50, Some(0), config), Left(expected))
+    for
+      seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
+      adopted <- Ref.of[IO, Boolean](false)
+      src = new HotKeySource[IO]:
+        def read = IO.pure(Right(HotKeySource.Candidate(candidate, adopted.set(true))))
+        def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Unchanged)
+      keys <- HotKeys.create[IO](p.creds, Some(src), config, e => seen.update(_ :+ e))
+      _ <- keys.reload(50, Some(0))
+      current <- keys.current
+      events <- seen.get
+      switched <- adopted.get
+    yield
+      assertEquals(current, p.creds)
+      assertEquals(events, Vector(ForgeEvent.KesReloadRefused(expected)))
+      assert(!switched)
+      assert(!current.kes.isForgotten)
+      assert(candidate.kes.isForgotten)
+  }
