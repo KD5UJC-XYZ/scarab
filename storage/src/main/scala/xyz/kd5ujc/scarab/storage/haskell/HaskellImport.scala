@@ -166,7 +166,7 @@ object HaskellImport:
             case Right(b) => F.pure(Some(b.header.prevHash))
             case Left(e) =>
               StorageError
-                .Corrupt("first immutable block", e.message)
+                .Corrupt("first immutable block", e)
                 .raise[F, Option[Option[Bytes]]]
       }
 

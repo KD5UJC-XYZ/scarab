@@ -47,7 +47,7 @@ object UtxoCodecs:
     */
   given txOut: Codec[TxOut] = new Codec[TxOut]:
     def decode(n: Node): Decoded[TxOut] =
-      TxOut.decode(n).left.map(why => DecodeError.at(n, Kind.Unsupported(why)))
+      TxOut.decode(n).left.map(why => DecodeError.at(n, Kind.Domain(why)))
 
     /** The items of the output as it came, by key: the inline datum and the reference script. */
     private def items(o: TxOut): Map[Int, Bytes] =

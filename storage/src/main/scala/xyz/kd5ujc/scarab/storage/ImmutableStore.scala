@@ -441,7 +441,7 @@ object FileImmutableStore:
               else
                 fail(
                   StorageError
-                    .Corrupt(dataPath(c).toString, s"block at ${e.offset} fails its checksum")
+                    .Corrupt(dataPath(c).toString, ImmutableReadError.BlockChecksum(e.offset))
                 )
             }
 
@@ -529,7 +529,7 @@ object FileImmutableStore:
                     else
                       fail[ImmutableStore.Stored](
                         StorageError
-                          .Corrupt(dataPath(c).toString, s"block at ${e.offset} fails its checksum")
+                          .Corrupt(dataPath(c).toString, ImmutableReadError.BlockChecksum(e.offset))
                       )
                   }
                 }
@@ -549,3 +549,7 @@ object FileImmutableStore:
           yield new Impl(mutex, current, tipRef, chunksRef)
         Resource.make(acquire)(_.close).map(s => (s: ImmutableStore[F], report))
     }
+
+/** A persisted immutable record that cannot be trusted. */
+private[storage] enum ImmutableReadError:
+  case BlockChecksum(offset: Long)

@@ -283,7 +283,7 @@ object ChainStorage:
           case Right(b) => Async[F].pure(Some(b.header.prevHash))
           case Left(e) =>
             StorageError
-              .Corrupt("first immutable block", e.message)
+              .Corrupt("first immutable block", e)
               .raise[F, Option[Option[Bytes]]]
     }
 
@@ -444,7 +444,7 @@ object ChainStorage:
               batch <- pending.modify(p => (p.drop(immutable.size), p.take(immutable.size)))
               _ <- F.unlessA(batch.map(_._1) == immutable)(
                 StorageError
-                  .OutOfOrder("volatile blocks do not match the new immutable ones")
+                  .OutOfOrder(StorageStructureError.VolatileImmutableMismatch)
                   .raise[F, Unit]
               )
               _ <- batch.traverse_((r, b) => store.append(r, b))
