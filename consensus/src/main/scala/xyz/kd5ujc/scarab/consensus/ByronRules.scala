@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.consensus
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Block, ByronGenesis, Header}
+import xyz.kd5ujc.scarab.ledger.{Block, ByronGenesis, Header, ByronChainError}
 import xyz.kd5ujc.scarab.ledger.Header.ByronSignature
 import xyz.kd5ujc.scarab.ledger.byron.*
 import xyz.kd5ujc.scarab.consensus.state.{PBftSigner, PBftState}
@@ -69,7 +69,7 @@ object ByronRules:
       state: State,
       block: Block.Byron,
       config: Config
-  ): Either[String, (State, ByronCheck)] =
+  ): Either[ByronChainError, (State, ByronCheck)] =
     val header = block.header
     val genesis = config.ledger.genesis
     val expectedPrev = state.tip.map(_.hash).getOrElse(genesis.hash)
@@ -77,17 +77,17 @@ object ByronRules:
       _ <- Either.cond(
         header.protocolMagic == config.ledger.magicId,
         (),
-        s"protocol magic ${header.protocolMagic} differs from the genesis ${genesis.protocolMagic}"
+        ByronChainError.ProtocolMagic(header.protocolMagic, genesis.protocolMagic)
       )
       _ <- Either.cond(
         header.prevHash.contains(expectedPrev),
         (),
-        s"previous hash ${header.prevHash.fold("none")(_.hex)} is not the tip ${expectedPrev.hex}"
+        ByronChainError.PreviousHash(header.prevHash, expectedPrev)
       )
       _ <- Either.cond(
         header.slotInEpoch < config.ledger.epochSlots,
         (),
-        s"slot ${header.slotInEpoch} outside a ${config.ledger.epochSlots}-slot epoch"
+        ByronChainError.SlotOutsideEpoch(header.slotInEpoch, config.ledger.epochSlots)
       )
       _ <- orderOk(state.tip, header)
       result <-
@@ -101,40 +101,40 @@ object ByronRules:
       state: State,
       block: Block.Byron,
       config: Config
-  ): Either[String, (State, ByronCheck)] =
+  ): Either[ByronChainError, (State, ByronCheck)] =
     val header = block.header
     val ticked = ByronLedger.tick(config.ledger, state.ledger, header.slot)
     ByronLedger
       .applyBoundary(config.ledger, ticked, header, block.size)
-      .leftMap(_.message)
+      .leftMap(ByronChainError.Ledger(_))
       .map(ledger => State(Some(tipOf(header)), ledger, state.pbft) -> ByronCheck.Boundary)
 
   private def main(
       state: State,
       block: Block.Byron,
       config: Config
-  ): Either[String, (State, ByronCheck)] =
+  ): Either[ByronChainError, (State, ByronCheck)] =
     val header = block.header
     val genesis = config.ledger.genesis
     // The tick to the block's slot comes first: it activates the delegations due, which the
     // header is validated against, and adopts a confirmed update at an epoch boundary.
     val ticked = ByronLedger.tick(config.ledger, state.ledger, header.slot)
     for
-      main <- header.main.toRight("main header without consensus data")
+      main <- header.main.toRight(ByronChainError.MissingConsensusData)
       delegated <- main.signature match
         case d: ByronSignature.Delegated => Right(d)
       _ <- verifySignature(main, delegated, config)
       delegate = ByronCbor.keyHash(delegated.delegate)
       genesisKey <- ticked.delegation
         .delegatorOf(delegate)
-        .toRight(s"signer ${delegate.hex.take(16)} is not a delegate of any genesis key")
-      slot <- SlotNo.fromBigInt(header.slot).leftMap(_.toString)
-      signer <- KeyHash.fromBytes[Genesis](genesisKey).leftMap(_.toString)
+        .toRight(ByronChainError.UnknownDelegate(delegate))
+      slot <- SlotNo.fromBigInt(header.slot).leftMap(ByronChainError.Vocabulary(_))
+      signer <- KeyHash.fromBytes[Genesis](genesisKey).leftMap(ByronChainError.Vocabulary(_))
       lastSigned = state.pbft.lastSignedSlot.map(_.toBigInt)
       _ <- Either.cond(
         lastSigned.forall(_ <= header.slot),
         (),
-        s"slot ${header.slot} is below the last signed slot ${lastSigned.getOrElse(0)}"
+        ByronChainError.SlotBeforeLastSigned(header.slot, lastSigned.getOrElse(0))
       )
       k = config.ledger.genesis.securityParam
       pbft = state.pbft.append(PBftSigner(slot, signer), k)
@@ -143,37 +143,35 @@ object ByronRules:
       _ <- Either.cond(
         signed <= threshold,
         (),
-        s"genesis key ${genesisKey.hex.take(16)} signed $signed of the last $k blocks, above the threshold $threshold"
+        ByronChainError.SignatureThreshold(genesisKey, signed, k, threshold)
       )
-      body <- ByronBody.decode(block.body)
+      body <- ByronBody.decode(block.body).leftMap(ByronChainError.Body(_))
       ledger <- ByronLedger
         .applyMain(config.ledger, ticked, header, block.size, body)
-        .leftMap(_.message)
+        .leftMap(ByronChainError.Ledger(_))
     yield
       val onSchedule = ByronCbor.keyHash(main.leader) == scheduledLeader(genesis, header.slot)
       State(Some(tipOf(header)), ledger, pbft) -> ByronCheck.Verified(onSchedule, body.txs.size)
 
-  private def orderOk(tip: Option[ByronTip], h: Header.Byron): Either[String, Unit] =
+  private def orderOk(tip: Option[ByronTip], h: Header.Byron): Either[ByronChainError, Unit] =
     tip match
       case None =>
         Either.cond(
           h.boundary && h.epoch == 0,
           (),
-          "the chain must start with the epoch 0 boundary"
+          ByronChainError.InitialBoundaryRequired
         )
       case Some(t) if h.boundary =>
         Either.cond(
           h.epoch > t.epoch && !t.boundary,
           (),
-          s"boundary block of epoch ${h.epoch} after epoch ${t.epoch}${
-              if t.boundary then " boundary" else ""
-            }"
+          ByronChainError.BoundaryOrder(h.epoch, t.epoch, t.boundary)
         )
       case Some(t) =>
         Either.cond(
           h.epoch >= t.epoch && (h.slot > t.slot || (t.boundary && h.slot == t.slot)),
           (),
-          s"slot ${h.slot} does not follow ${t.slot}"
+          ByronChainError.SlotOrder(h.slot, t.slot)
         )
 
   /** The delegate's signature over `[prev, proof, slot, difficulty, extra]` under the heavy block
@@ -183,7 +181,7 @@ object ByronRules:
       main: Header.ByronMain,
       d: ByronSignature.Delegated,
       config: Config
-  ): Either[String, Unit] =
+  ): Either[ByronChainError, Unit] =
     // The genesis key in the signed tag is the header's, not the certificate's (as upstream).
     val message = ByronCbor.concat(
       Bytes.fromArray("01".getBytes("US-ASCII")),
@@ -194,6 +192,6 @@ object ByronRules:
     )
     for _ <- StrictEd25519.verify(d.delegate.take(32), d.signature, message) match
         case Right(VerificationResult.SignatureVerified) => Right(())
-        case Right(VerificationResult.SignatureRejected) => Left("block signature rejected")
-        case Left(other)                                 => Left(s"signature check failed: $other")
+        case Right(VerificationResult.SignatureRejected) => Left(ByronChainError.SignatureRejected)
+        case Left(other)                                 => Left(ByronChainError.SignatureFailure(other))
     yield ()

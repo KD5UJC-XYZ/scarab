@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.ledger.StorageStructureError
 import cats.effect.{Resource, Sync}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -29,8 +30,8 @@ object RocksUtxoCheckpoint:
         case Right(value) => F.pure(value)
         case Left(error: RocksDBException)
             if error.getStatus != null && error.getStatus.getCode == Status.Code.Corruption =>
-          errors.raise(StorageError.Corrupt(what, error.toString))
-        case Left(error) => errors.raise(StorageError.Io(what, error.toString))
+          errors.raise(StorageError.Corrupt(what, StorageStructureError.RocksFailure(error)))
+        case Left(error) => errors.raise(StorageError.Io(what, error))
       }
     def lift[A](result: Either[StorageError, A]): F[A] =
       result.fold(_.raise[F, A], F.pure)
@@ -47,7 +48,7 @@ object RocksUtxoCheckpoint:
         Option(db.get(Array[Byte](0))).toRight(StorageError.Missing("checkpoint stamp")).flatMap {
           case bytes if bytes.length == 8 => Right(ByteBuffer.wrap(bytes).getLong)
           case bytes =>
-            Left(StorageError.Corrupt("checkpoint stamp", "a value of " + bytes.length + " bytes"))
+            Left(StorageError.Corrupt("checkpoint stamp", StorageStructureError.StampLength(bytes.length)))
         }
       }.flatMap(lift)
 
@@ -71,7 +72,7 @@ object RocksUtxoCheckpoint:
                       next()
                     else if key.length != RocksUtxoStore.KeyLength then
                       Left(
-                        StorageError.Corrupt("checkpoint key", "a key of " + key.length + " bytes")
+                        StorageError.Corrupt("checkpoint key", StorageStructureError.KeyLength(key.length))
                       )
                     else
                       val decoded = UtxoStore.Coding

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.ledger.StorageStructureError
 import cats.effect.{Async, Ref, Resource, Sync}
 import cats.effect.std.Mutex
 import cats.mtl.Raise
@@ -213,7 +214,7 @@ object FileImmutableStore:
 
     def fail[A](e: StorageError): F[A] = e.raise[F, A]
     def guard[A](what: String)(fa: F[A]): F[A] =
-      fa.attempt.flatMap(_.fold(e => fail(StorageError.Io(what, String.valueOf(e))), F.pure))
+      fa.attempt.flatMap(_.fold(e => fail(StorageError.Io(what, e)), F.pure))
 
     def dataPath(c: Int) = dir / f"$c%05d.chunk"
     def indexPath(c: Int) = dir / f"$c%05d.index"
@@ -255,7 +256,7 @@ object FileImmutableStore:
         _ <-
           if index.length >= HeaderSize && !java.util.Arrays
               .equals(index.take(HeaderSize), IndexMagic)
-          then fail[Unit](StorageError.Corrupt(indexPath(c).toString, "bad index magic"))
+          then fail[Unit](StorageError.Corrupt(indexPath(c).toString, SnapshotReadError.IndexMagic))
           else F.unit
         all = entries(index)
         good = validPrefix(c, all, data)
@@ -386,13 +387,13 @@ object FileImmutableStore:
               _ <- before.traverse_ { t =>
                 if ref.slot > t.slot || (ref.slot == t.slot && t.boundary) then F.unit
                 else
-                  fail[Unit](StorageError.OutOfOrder(s"slot ${ref.slot} does not follow ${t.slot}"))
+                  fail[Unit](StorageError.OutOfOrder(StorageStructureError.SlotOrder(ref.slot, t.slot)))
               }
               _ <- F.unlessA(ref.hash.size == 32)(
-                fail[Unit](StorageError.OutOfOrder("block hash is not 32 bytes"))
+                fail[Unit](StorageError.OutOfOrder(StorageStructureError.HashLength(ref.hash.size)))
               )
               _ <- F.unlessA(ref.slot.isValidLong && ref.blockNo.isValidLong)(
-                fail[Unit](StorageError.OutOfOrder("slot or block number out of range"))
+                fail[Unit](StorageError.OutOfOrder(StorageStructureError.InvalidBlockNumbers(ref.slot, ref.blockNo)))
               )
               wanted = (ref.slot / chunkSlots).toInt
               cur <- current.get

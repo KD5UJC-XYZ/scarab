@@ -133,7 +133,7 @@ class LedgerSnapshotsSuite extends CatsEffectSuite:
             _ <- IO(assertEquals(restored.skipped.map(_.name), Vector(name), label))
             _ <- IO(
               assert(
-                restored.skipped.head.error.isInstanceOf[StorageError.Corrupt],
+                restored.skipped.head.error.isInstanceOf[StorageError.Corrupt[?]],
                 label + restored.skipped
               )
             )

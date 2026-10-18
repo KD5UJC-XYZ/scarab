@@ -60,7 +60,7 @@ enum PeerError extends NodeError:
 
 /** Failures of the local chain model. These are not recoverable by reconnecting. */
 enum ChainError extends NodeError:
-  case Decode(what: String, reason: String)
+  case Decode(what: String, cause: LedgerDecodeError)
   case NotConnected(point: ChainSync.Point, tip: ChainSync.Point)
   case RollbackBeyondAnchor(target: ChainSync.Point, anchor: ChainSync.Point)
   case NoIntersection
@@ -112,10 +112,10 @@ enum StorageError extends NodeError:
   case DatabaseInUse(database: String)
 
   /** The stored bytes fail validation (bad checksum, truncation, impossible structure). */
-  case Corrupt(what: String, reason: String)
+  case Corrupt[E <: Product](what: String, cause: E) extends StorageError
 
   /** An operating-system failure reading or writing `what`. */
-  case Io(what: String, reason: String)
+  case Io(what: String, cause: Throwable)
 
   /** The data was written by an incompatible format or schema version. */
   case VersionMismatch(what: String, found: String, expected: String)
@@ -129,7 +129,7 @@ enum StorageError extends NodeError:
   case Missing(what: String)
 
   /** An append that does not extend the stored chain. */
-  case OutOfOrder(reason: String)
+  case OutOfOrder(cause: StorageStructureError)
 
   /** The database was created for another network than the one this node is configured for. */
   case NetworkMismatch(found: NetworkIdentity, expected: NetworkIdentity)
@@ -165,7 +165,7 @@ enum StorageError extends NodeError:
   */
 enum ForgeError extends NodeError:
   /** A key or certificate file is missing, malformed or of the wrong type. */
-  case KeyFile(file: String, reason: String)
+  case KeyFile(file: String, cause: ForgeKeyProblem)
 
   /** A failure at one of the durability boundaries for an evolved KES key. */
   case KesFileFailure(file: String, operation: KesFileOperation, cause: KesFileFailureCause)
@@ -186,7 +186,7 @@ enum ForgeError extends NodeError:
   case KeyPeriodOutOfRange(period: BigInt, start: BigInt, evolutions: BigInt)
 
   /** Legacy unexpected forger-step failure; infrastructure/defect classification is #180 G7-F3. */
-  case KesFailure(reason: String)
+  case KesFailure(cause: Throwable)
 
   /** The KES key could not be evolved to the slot's period (it has already moved past it). */
   case KesEvolution(cause: Sum6KesSigning.Failure)
@@ -200,16 +200,19 @@ enum ForgeError extends NodeError:
 
   /** The slot's pool distribution cannot be derived from the tip (tip too old or ledger not ready).
     */
-  case LedgerViewUnavailable(slot: BigInt, reason: String)
+  case LedgerViewUnavailable(slot: BigInt, cause: ForgeLedgerProblem)
 
   /** Forging is only implemented for Praos (Conway) on a fully validated ledger. */
-  case UnsupportedProtocol(reason: String)
+  case UnsupportedProtocol(cause: ForgeProtocolProblem)
 
   /** The block body or header could not be assembled within the protocol limits. */
-  case Assembly(reason: String)
+  case Assembly(cause: ForgeAssemblyProblem)
 
   /** Our own block rules refuse the block we built. */
-  case SelfRejected(rule: String, reason: String)
+  case SelfRejected(error: ValidationError)
+
+  case ServiceFailure(error: NodeError)
+  case Defect(cause: Throwable)
 
   def message: String = this match
     case KeyFile(f, r) => s"key file $f: $r"
@@ -232,7 +235,9 @@ enum ForgeError extends NodeError:
     case LedgerViewUnavailable(slot, r) => s"no ledger view for slot $slot: $r"
     case UnsupportedProtocol(r)         => s"cannot forge: $r"
     case Assembly(r)                    => s"block assembly: $r"
-    case SelfRejected(rule, r)          => s"our own $rule rules refuse the forged block: $r"
+    case SelfRejected(e) => s"our own ${e.rule} rules refuse the forged block: ${e.reason}"
+    case ServiceFailure(e) => e.message
+    case Defect(cause) => s"forger defect: $cause"
 
 enum KesFileOperation:
   case StageWrite, StageSync, StageReadback, DirectorySyncBeforeErase
@@ -285,34 +290,9 @@ final case class NativeLibraryError(problem: BlstProblem) extends NodeError:
   * whose hash differs from the configured one, a topology the node cannot follow); `reason` is the
   * text.
   */
-final case class ConfigError(reason: String, problem: ConfigProblem = ConfigProblem.Invalid)
-    extends NodeError:
-  def message: String = problem match
-    case ConfigProblem.ActiveSlotsCoefficient(e) => s"config: ${e.message}"
-    case _                                       => s"config: $reason"
-
-/** What kind of configuration failure a [[ConfigError]] is. */
-enum ConfigProblem:
-  case ActiveSlotsCoefficient(cause: Leader.Error)
-
-  /** Anything else: a malformed file, a missing or invalid field, a bad flag. */
-  case Invalid
-
-  /** A file the configuration lists could not be read. */
-  case FileMissing(role: String, file: String)
-
-  /** The blake2b-256 of a genesis file differs from the hash the configuration lists. */
-  case GenesisHashMismatch(role: String, file: String, expected: String, actual: String)
-
-  /** A topology in a format this node does not read (the legacy `Producers` one) or an access point
-    * it cannot connect to.
-    */
-  case UnsupportedTopology
-
-  /** A flag of an earlier build that this one no longer has (the rule sets and the differential
-    * harness, removed at J2.9): the node is not started.
-    */
-  case RemovedFlag(flag: String)
+final case class ConfigError(problem: ConfigProblem) extends NodeError:
+  def reason: String = problem.message
+  def message: String = s"config: ${problem.message}"
 
 object Points:
   def show(point: ChainSync.Point): String = point match

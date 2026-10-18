@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.legacy
 
+import xyz.kd5ujc.scarab.codec.BinaryError
+import xyz.kd5ujc.scarab.ledger.StorageStructureError
 import cats.syntax.all.*
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
@@ -86,7 +88,7 @@ object SnapshotV3:
   def sections(content: Array[Byte]): Either[StorageError, (SnapshotSidecar, Array[Byte])] =
     def corrupt(reason: String) = StorageError.Corrupt("snapshot", reason)
     if content.length < HeaderSize || !content.startsWith(Magic) then
-      Left(corrupt("bad magic or too short"))
+      Left(corrupt(BinaryError.BadMagic))
     else
       val length = ByteBuffer.wrap(content, Magic.length, 4).getInt
       val fingerprint = SnapshotSidecar.fingerprint

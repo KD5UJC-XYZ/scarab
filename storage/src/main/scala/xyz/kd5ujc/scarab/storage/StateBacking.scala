@@ -80,7 +80,7 @@ final class UtxoBacking[F[_]: Sync, S](store: UtxoStore[F], root: Path)(using
   private def guard[A](what: String)(body: => A): F[A] =
     F.blocking(body).attempt.flatMap {
       case Right(a) => F.pure(a)
-      case Left(e)  => StorageError.Io(what, String.valueOf(e)).raise[F, A]
+      case Left(e)  => StorageError.Io(what, e).raise[F, A]
     }
 
   /** While the Byron ledger is current the UTxO set of the state is only the genesis placeholder

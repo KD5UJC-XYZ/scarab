@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.legacy
 
+import xyz.kd5ujc.scarab.codec.BinaryError
+import xyz.kd5ujc.scarab.ledger.StorageStructureError
 import cats.syntax.all.*
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 import java.security.MessageDigest
@@ -89,7 +91,7 @@ object SnapshotV2:
     val expected = fingerprint(codec.shape)
     numberOf(content) match
       case None =>
-        Left(StorageError.Corrupt("snapshot", "bad magic or too short"))
+        Left(StorageError.Corrupt("snapshot", BinaryError.BadMagic))
       case Some(n) if n != Number =>
         Left(StorageError.VersionMismatch("snapshot format", n.toString, current))
       case Some(_) =>
@@ -101,14 +103,12 @@ object SnapshotV2:
             new ByteArrayInputStream(content, HeaderSize + FingerprintSize, content.length),
             (content.length - HeaderSize - FingerprintSize).toLong
           )
-          Either
-            .catchOnly[CodecException](codec.read(in))
-            .leftMap(e => StorageError.Corrupt("snapshot", e.getMessage))
+          codec.read(in).leftMap(e => StorageError.Corrupt("snapshot", e))
             .flatMap { snapshot =>
               Either.cond(
                 in.remaining == 0,
                 snapshot,
-                StorageError.Corrupt("snapshot", "trailing payload bytes")
+                StorageError.Corrupt("snapshot", BinaryError.TrailingBytes(in.remaining))
               )
             }
 

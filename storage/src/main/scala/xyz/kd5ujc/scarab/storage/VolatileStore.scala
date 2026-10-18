@@ -180,7 +180,7 @@ object VolatileStore:
     def guard[A](what: String)(body: => A): F[A] =
       F.blocking(body).attempt.flatMap {
         case Right(a) => F.pure(a)
-        case Left(e)  => StorageError.Io(what, String.valueOf(e)).raise[F, A]
+        case Left(e)  => StorageError.Io(what, e).raise[F, A]
       }
 
     def syncDir(): Unit =

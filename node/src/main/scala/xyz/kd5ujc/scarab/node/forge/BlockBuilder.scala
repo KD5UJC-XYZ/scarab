@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.ledger.ForgeAssemblyProblem
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
@@ -54,14 +55,14 @@ object BlockBuilder:
 
   def piece(entry: Entry): Either[ForgeError, Piece] =
     for
-      root <- Cbor.decode(entry.raw, limits).leftMap(ForgeError.Assembly(_))
+      root <- Cbor.decode(entry.raw, limits).leftMap(e => ForgeError.Assembly(ForgeAssemblyProblem.Cbor(e)))
       parts <- root.value match
         case Value.Arr(xs) if xs.size == 4 => Right(xs)
         case _ =>
-          Left(ForgeError.Assembly(s"transaction ${entry.id.hex} is not a four-element array"))
+          Left(ForgeError.Assembly(ForgeAssemblyProblem.TransactionArity(entry.id)))
       valid <- parts(2).value match
         case Value.Bool(b) => Right(b)
-        case _             => Left(ForgeError.Assembly("is_valid is not a boolean"))
+        case _             => Left(ForgeError.Assembly(ForgeAssemblyProblem.ValidityFlag))
       aux = parts(3).value match
         case Value.Null => None
         case _          => Some(parts(3).original)

@@ -27,7 +27,7 @@ enum StorageEvent:
   case SnapshotSkipped(name: String, error: StorageError)
   case SnapshotRestored(name: String, anchor: Option[BlockRef])
   case SnapshotWritten(name: String, anchor: Option[BlockRef], bytes: Long, millis: Long)
-  case SnapshotFailed(reason: String)
+  case SnapshotFailed(cause: Throwable)
 
   /** A snapshot that was not written, or an old one not brought to the current format, because the
     * format refused the state (`name` is the file; `anchor` the block of a write, none for a
@@ -558,7 +558,7 @@ object ChainStorage:
         )
       yield done).attempt.flatMap {
         case Right(done) => F.pure(done)
-        case Left(e)     => events.emit(StorageEvent.SnapshotFailed(String.valueOf(e))).as(false)
+        case Left(e)     => events.emit(StorageEvent.SnapshotFailed(e)).as(false)
       }
 
     /** On release: wait for a snapshot in flight, then snapshot the immutable tip unless the newest
@@ -578,7 +578,7 @@ object ChainStorage:
               _ <- events.emit(StorageEvent.ShutdownSnapshot(Some(ref), ok))
             yield ()).attempt.flatMap {
               case Right(_) => F.unit
-              case Left(e)  => events.emit(StorageEvent.SnapshotFailed(String.valueOf(e)))
+              case Left(e)  => events.emit(StorageEvent.SnapshotFailed(e))
             }
           case (_, done) => events.emit(StorageEvent.ShutdownSnapshot(done, false))
         }

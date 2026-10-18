@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.ledger.StorageStructureError
 import cats.data.Kleisli
 import cats.effect.Sync
 import cats.mtl.Ask
@@ -206,7 +207,7 @@ object SnapshotV5:
 
   // ---- read
 
-  private def corrupt(reason: String): StorageError = StorageError.Corrupt("snapshot", reason)
+  private def corrupt[E <: Product](reason: E): StorageError = StorageError.Corrupt("snapshot", reason)
 
   private def read(
       env: ConsensusMirrorEnv,
@@ -216,12 +217,12 @@ object SnapshotV5:
       val state: Either[StorageError, MirrorState] = sidecar.chain match
         case SnapshotSidecar.Chain.InByron(pending, extras) =>
           Either
-            .cond(haskell.size == 0, (), corrupt("a Byron snapshot with a ledger state"))
+            .cond(haskell.size == 0, (), corrupt(SnapshotReadError.ByronWithLedgerState))
             .flatMap { _ =>
               val seen = env.copy(observed = env.observed ++ sidecar.observed)
               ByronMirror
                 .of(seen, sidecar.anchor, pending, extras)
-                .leftMap(e => corrupt(s"the Byron state does not mirror: ${e.show}"))
+                .leftMap(e => corrupt(e))
             }
         case shelley: SnapshotSidecar.Chain.InShelley =>
           shelleyState(
@@ -247,13 +248,13 @@ object SnapshotV5:
       extras: MirrorExtras.InShelley
   ): Either[StorageError, MirrorState] =
     for
-      file <- HaskellLedgerFile.decode(haskell).leftMap(e => corrupt(e.render))
-      decoded <- file.ext.toRight(corrupt("the ledger state is a Byron item"))
+      file <- HaskellLedgerFile.decode(haskell).leftMap(e => corrupt(e))
+      decoded <- file.ext.toRight(corrupt(SnapshotReadError.ByronLedgerInShelley))
       ext <- withUtxo(decoded, utxo)
       _ <- Either.cond(
         StateMirror.anchorOf(ext.headerState.tip) == anchor,
         (),
-        corrupt("the tip of the ledger state is not the anchor of the snapshot")
+        corrupt(SnapshotReadError.AnchorMismatch)
       )
     yield MirrorStep.withParams(MirrorState(ext, extras), params, prevParams)
 
@@ -283,13 +284,13 @@ object SnapshotV5:
           Left(
             StorageError.VersionMismatch("snapshot format", found, kind.identifier(kind.current))
           )
-        case None => Left(corrupt("bad magic or too short"))
+        case None => Left(corrupt(SnapshotReadError.BadMagic))
     else
       val length = ByteBuffer.wrap(content, Magic.length, 4).getInt
       val fingerprint = SnapshotSidecar.fingerprint
       val end = HeaderSize.toLong + length
       if length < fingerprint.length || end > content.length then
-        Left(corrupt(s"sidecar of $length bytes in a file of ${content.length}"))
+        Left(corrupt(SnapshotReadError.SidecarLength(length, content.length)))
       else
         val found = content.slice(HeaderSize, HeaderSize + fingerprint.length)
         if !java.util.Arrays.equals(found, fingerprint) then
@@ -331,7 +332,7 @@ object SnapshotV5:
   ): Either[SnapshotRefusal, Array[Byte]] =
     def unreadable[A](e: Either[StorageError, A]) = e.leftMap(SnapshotRefusal.Unreadable(_))
     def vocab[A](e: Either[xyz.kd5ujc.scarab.ledger.state.VocabError, A]) =
-      e.leftMap(v => SnapshotRefusal.Unreadable(corrupt(s"a value the live types cannot hold: $v")))
+      e.leftMap(v => SnapshotRefusal.Unreadable(corrupt(v)))
     val older: Either[SnapshotRefusal, (StateSnapshot[MirrorState], Carried)] =
       if content.startsWith(legacy.v4.SnapshotV4.Magic) then fromV4(env, content)
       else if content.startsWith(legacy.SnapshotV3.Magic) then fromV3(env, content)
@@ -359,11 +360,11 @@ object SnapshotV5:
         case legacy.v4.SnapshotSidecar.Chain.InByron(_, pending, extras) =>
           unreadable(
             Either
-              .cond(haskell.size == 0, (), corrupt("a Byron snapshot with a ledger state"))
+              .cond(haskell.size == 0, (), corrupt(SnapshotReadError.ByronWithLedgerState))
               .flatMap(_ =>
                 ByronMirror
                   .of(seen, sidecar.anchor, pending, extras)
-                  .leftMap(e => corrupt(s"the Byron state does not mirror: ${e.show}"))
+                  .leftMap(e => corrupt(e))
               )
           )
         case legacy.v4.SnapshotSidecar.Chain.InShelley(utxo, params, prevParams, extras) =>
@@ -385,7 +386,7 @@ object SnapshotV5:
   ): Either[SnapshotRefusal, (StateSnapshot[MirrorState], Carried)] =
     def unreadable[A](e: Either[StorageError, A]) = e.leftMap(SnapshotRefusal.Unreadable(_))
     def vocab[A](e: Either[xyz.kd5ujc.scarab.ledger.state.VocabError, A]) =
-      e.leftMap(v => SnapshotRefusal.Unreadable(corrupt(s"a value the live types cannot hold: $v")))
+      e.leftMap(v => SnapshotRefusal.Unreadable(corrupt(v)))
     for
       parts <- unreadable(legacy.SnapshotV3.sections(content))
       sidecar = parts._1
@@ -423,7 +424,7 @@ object SnapshotV5:
   /** The ledger state with the node's UTxO set put back where the Haskell section has `map(0)`. */
   private def withUtxo(ext: ExtLedgerState, utxo: Utxo): Either[StorageError, ExtLedgerState] =
     ext.ledgerState.state match
-      case _: EraLedgerState.ByronCurrent => Left(corrupt("a Byron ledger state in a Shelley era"))
+      case _: EraLedgerState.ByronCurrent => Left(corrupt(SnapshotReadError.ByronLedgerInShelley))
       case i: EraLedgerState.InShelleyEra[e] =>
         val tables = ShelleyLedgerState
           .nes[e]
@@ -434,5 +435,5 @@ object SnapshotV5:
         val state = EraLedgerState.InShelleyEra(i.era, tables.replace(UtxoTables(utxo))(i.state))
         Telescope
           .make(ext.ledgerState.past, ext.ledgerState.current.copy(state = state))
-          .leftMap(e => corrupt(s"the telescope: $e"))
+          .leftMap(e => corrupt(e))
           .map(telescope => ext.copy(ledgerState = telescope))

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import cats.syntax.all.*
+import xyz.kd5ujc.scarab.codec.BinaryError
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.BootstrapState
@@ -55,18 +57,18 @@ object NodeCodecs:
 
   // The chain-dependent state of the Haskell shape: unsigned words, key hashes, sorted maps.
   given word64: Codec[Word64] =
-    Codec.make[Word64]("Word64")((o, w) => o.fixed64(w.bits))(i => Word64.fromUnsigned(i.fixed64()))
+    Codec.make[Word64]("Word64")((o, w) => o.fixed64(w.bits))(i => i.fixed64().map(Word64.fromUnsigned))
 
   given slotNo: Codec[SlotNo] =
     Codec.make[SlotNo]("SlotNo")((o, s) => o.fixed64(s.word.bits))(i =>
-      SlotNo.fromUnsigned(i.fixed64())
+      i.fixed64().map(SlotNo.fromUnsigned)
     )
 
   given keyHash[R <: KeyRole]: Codec[KeyHash[R]] =
     Codec.make[KeyHash[R]]("KeyHash")((o, h) => summon[Codec[Bytes]].write(o, h.bytes))(i =>
-      KeyHash
-        .fromBytes[R](summon[Codec[Bytes]].read(i))
-        .fold(e => throw CodecException(e.toString), identity)
+      summon[Codec[Bytes]].read(i).flatMap(bytes =>
+        KeyHash.fromBytes[R](bytes).leftMap(_ => BinaryError.InvalidKeyHashLength(bytes.size, 28))
+      )
     )
 
   /** In ascending key order (that of `Order[K]`), as the map holds it. */
@@ -78,15 +80,13 @@ object NodeCodecs:
         k.write(out, key)
         v.write(out, value)
       }
-    def read(in: In): SortedMap[K, V] =
-      val n = in.count()
-      val b = List.newBuilder[(K, V)]
-      var i = 0
-      while i < n do
-        val key = k.read(in)
-        b += key -> v.read(in)
-        i += 1
-      Sorted.map(b.result())
+    def read(in: In): Either[BinaryError, SortedMap[K, V]] =
+      in.count().flatMap(n => List.fill(n)(()).traverse { _ =>
+        for
+          key <- k.read(in)
+          value <- v.read(in)
+        yield key -> value
+      }).map(Sorted.map(_))
     def shape: String = s"SortedMap[${k.shape},${v.shape}]"
 
   given withOrigin[A](using Codec[A]): Codec[WithOrigin[A]] = Codec.auto
@@ -111,9 +111,14 @@ object NodeCodecs:
       number.write(out, BigInt(version.minor))
       number.write(out, BigInt(version.alt))
     )(in =>
-      ByronVersion
-        .from(number.read(in), number.read(in), number.read(in))
-        .fold(e => throw CodecException(e.message), identity)
+      for
+        major <- number.read(in)
+        minor <- number.read(in)
+        alt <- number.read(in)
+        version <- ByronVersion.from(major, minor, alt).leftMap {
+          case ByronVersion.Error.OutOfRange(field, value) => BinaryError.InvalidByronVersion(field.toString, value)
+        }
+      yield version
     )
   given byron: Codec[ByronState] = Codec.auto
   given consensusExtras: Codec[ConsensusExtras] = Codec.auto

@@ -230,7 +230,7 @@ class FormatMigrationSuite extends CatsEffectSuite with ScalaCheckSuite:
         foreign <- attempt(open(dir).use((_, _) => IO.unit))
         _ <- IO {
           assert(unknown.left.exists(_.isInstanceOf[StorageError.UnknownVersion]), unknown.toString)
-          assert(foreign.left.exists(_.isInstanceOf[StorageError.Corrupt]), foreign.toString)
+          assert(foreign.left.exists(_.isInstanceOf[StorageError.Corrupt[?]]), foreign.toString)
         }
       yield ()
     }
@@ -269,7 +269,7 @@ class FormatMigrationSuite extends CatsEffectSuite with ScalaCheckSuite:
     assert(
       NetworkIdentity.parse("f", unknown).left.exists(_.isInstanceOf[StorageError.UnknownVersion])
     )
-    assert(NetworkIdentity.parse("f", "garbage").left.exists(_.isInstanceOf[StorageError.Corrupt]))
+    assert(NetworkIdentity.parse("f", "garbage").left.exists(_.isInstanceOf[StorageError.Corrupt[?]]))
   }
 
   test("a version 1 identity file is migrated once, atomically, and still names the same network") {

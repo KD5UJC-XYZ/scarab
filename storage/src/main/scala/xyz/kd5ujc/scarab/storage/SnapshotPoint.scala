@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.ledger.StorageStructureError
 import cats.effect.Sync
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -28,7 +29,7 @@ private[storage] object SnapshotPoint:
     val F = Sync[F]
     val root = db / "immutable"
     val slots = FileImmutableStore.DefaultChunkSlots
-    def corrupt(detail: String): StorageError =
+    def corrupt[E <: Product](detail: E): StorageError =
       StorageError.Corrupt("snapshot immutable point", detail)
     for
       recorded <- NetworkIdentityFile.verify[F](db, identity)
@@ -50,11 +51,11 @@ private[storage] object SnapshotPoint:
           val header = FileImmutableStore.HeaderSize
           val width = FileImmutableStore.EntrySize
           if size < header || size > header + (slots + 1) * width || (size - header) % width != 0
-          then Left(corrupt("invalid immutable index length"))
+          then Left(corrupt(SnapshotReadError.IndexLength(size)))
           else
             val bytes = Files.readAllBytes(index)
             if !bytes.take(header).sameElements(FileImmutableStore.IndexMagic) then
-              Left(corrupt("unsupported immutable index magic"))
+              Left(corrupt(SnapshotReadError.IndexMagic))
             else
               FileImmutableStore
                 .entries(bytes)
@@ -69,7 +70,7 @@ private[storage] object SnapshotPoint:
                   // The block decoder itself bounds input to 2,500,000 bytes (Block.scala).
                   if entry.offset < 0 || entry.length <= 0 || entry.length > 2500000 || entry.end < entry.offset || entry.end > Files
                       .size(data)
-                  then Left(corrupt("point lies outside immutable data"))
+                  then Left(corrupt(SnapshotReadError.PointOutsideData))
                   else
                     val channel = java.nio.channels.FileChannel.open(data, StandardOpenOption.READ)
                     val buffer = ByteBuffer.allocate(entry.length)
@@ -80,7 +81,7 @@ private[storage] object SnapshotPoint:
                         else
                           val n = channel.read(buffer, at)
                           n > 0 && read(at + n)
-                      if !read(entry.offset) then Left(corrupt("truncated immutable block"))
+                      if !read(entry.offset) then Left(corrupt(SnapshotReadError.TruncatedBlock))
                       else
                         val raw = buffer.array()
                         val crc = new CRC32()
@@ -89,11 +90,11 @@ private[storage] object SnapshotPoint:
                           _ <- Either.cond(
                             crc.getValue.toInt == entry.crc,
                             (),
-                            corrupt("immutable block checksum mismatch")
+                            corrupt(SnapshotReadError.BlockChecksum)
                           )
                           block <- Block
                             .decode(Bytes.wrap(raw), byronEpochSlots)
-                            .leftMap(e => corrupt(e.message))
+                            .leftMap(e => corrupt(e))
                           h = block.header
                           _ <- Either.cond(
                             BlockRef(
@@ -103,7 +104,7 @@ private[storage] object SnapshotPoint:
                               h.isBoundary
                             ) == anchor && block.era == era,
                             (),
-                            corrupt("immutable block disagrees with snapshot tip or era")
+                            corrupt(SnapshotReadError.BlockAnchorMismatch)
                           )
                         yield ()
                     finally channel.close()

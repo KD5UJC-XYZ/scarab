@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.ledger.StorageStructureError
 import cats.effect.Sync
 import cats.mtl.Ask
 import cats.mtl.syntax.all.*
@@ -105,7 +106,7 @@ object SnapshotMigration:
         convert(file).flatMap(
           _.fold(
             r =>
-              StorageError.Corrupt(file.toString, s"cannot be migrated: ${r.show}").raise[F, Unit],
+              StorageError.Corrupt(file.toString, r).raise[F, Unit],
             F.pure
           )
         )

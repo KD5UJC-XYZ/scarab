@@ -222,7 +222,7 @@ object MithrilBootstrap:
     yield report
     operation.handleErrorWith {
       case error: java.io.IOException =>
-        Error.Storage(StorageError.Io(config.destination.toString, error.toString)).raise[F, Report]
+        Error.Storage(StorageError.Io(config.destination.toString, error)).raise[F, Report]
       case error => F.raiseError(error)
     }
 

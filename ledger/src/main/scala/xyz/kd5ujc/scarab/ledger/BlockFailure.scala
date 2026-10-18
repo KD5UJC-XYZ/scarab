@@ -80,7 +80,7 @@ enum BlockFailure:
   case ShelleyBeforeTransition(epoch: BigInt, first: BigInt, lastByronSlot: BigInt)
 
   /** The Byron rules refused the block (`text` is their text). */
-  case Byron(text: String)
+  case Byron(cause: ByronChainError)
 
   // ---- envelope, headers
 
@@ -99,7 +99,7 @@ enum BlockFailure:
   case Lite(error: LedgerDecodeError)
 
   /** The Byron-to-Shelley hand-over refused the final Byron state (`text` is its text). */
-  case Handover(text: String)
+  case Handover(cause: HandoverProblem)
 
   /** The total supply is not the maximum entering an epoch (before Conway). */
   case SupplyInvariant(epoch: BigInt, total: BigInt, maximum: BigInt)
@@ -122,7 +122,7 @@ enum BlockFailure:
     * be extended into the era, a value is outside the range of the Haskell type). A total refusal:
     * a state the rules made is always in the range, and the era history is consistent with it.
     */
-  case Mirror(text: String)
+  case Mirror[E <: Product](cause: E) extends BlockFailure
 
   /** The rule family, as the log names it. */
   def rule: BlockRule = this match
@@ -175,3 +175,8 @@ object BlockFailure:
   // Plain data all through (Bytes and the ledger's failure records compare structurally).
   given Eq[BlockFailure] = Eq.fromUniversalEquals
   given Show[BlockFailure] = Show.show(f => s"${f.rule.name}: ${f.reason}")
+
+/** Missing configuration contexts at the Byron to Shelley transition. */
+enum HandoverProblem:
+  case MissingShelleyContext
+  case MissingByronRules

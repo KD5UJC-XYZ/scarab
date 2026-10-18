@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.ledger.StorageStructureError
 import cats.effect.Async
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -60,13 +61,13 @@ object FileLedgerSnapshots:
   /** The content of a file whose checksum holds: the file without its last [[DigestSize]] bytes. */
   def verified(file: Array[Byte]): Either[StorageError, Array[Byte]] =
     if file.length < DigestSize then
-      Left(StorageError.Corrupt("snapshot", s"file of ${file.length} bytes is too short"))
+      Left(StorageError.Corrupt("snapshot", SnapshotReadError.FileTooShort(file.length)))
     else
       val content = file.take(file.length - DigestSize)
       Either.cond(
         java.util.Arrays.equals(sha256(content), file.drop(file.length - DigestSize)),
         content,
-        StorageError.Corrupt("snapshot", "checksum mismatch")
+        StorageError.Corrupt("snapshot", SnapshotReadError.ChecksumMismatch)
       )
 
   /** The file of a content: the content and its checksum. */
@@ -87,7 +88,7 @@ object FileLedgerSnapshots:
 
     def fail[A](e: StorageError): F[A] = e.raise[F, A]
     def guard[A](what: String)(fa: F[A]): F[A] =
-      fa.attempt.flatMap(_.fold(e => fail(StorageError.Io(what, String.valueOf(e))), F.pure))
+      fa.attempt.flatMap(_.fold(e => fail(StorageError.Io(what, e)), F.pure))
 
     def names: F[Vector[String]] =
       guard(dir.toString)(
@@ -102,7 +103,7 @@ object FileLedgerSnapshots:
 
     def readFile(name: String): F[Either[StorageError, StateSnapshot[S]]] =
       F.blocking(java.nio.file.Files.readAllBytes((dir / name).toNioPath)).attempt.flatMap {
-        case Left(e) => F.pure(Left(StorageError.Io(name, String.valueOf(e))))
+        case Left(e) => F.pure(Left(StorageError.Io(name, e)))
         case Right(file) =>
           verified(file).fold(e => F.pure(Left(e)), content => format.decode(content))
       }
@@ -123,7 +124,7 @@ object FileLedgerSnapshots:
 
       def write(snapshot: StateSnapshot[S]): F[Either[SnapshotRefusal, LedgerSnapshots.Written]] =
         snapshot.anchor match
-          case None => fail(StorageError.OutOfOrder("a genesis snapshot is never written"))
+          case None => fail(StorageError.OutOfOrder(StorageStructureError.GenesisSnapshot))
           case Some(anchor) =>
             val name = nameOf(anchor)
             format.encode(snapshot).flatMap {

@@ -45,7 +45,7 @@ final case class DecodeError(
 object DecodeError:
   enum Kind:
     /** The bytes are not well-formed CBOR (the CBOR layer reports a message only). */
-    case Syntax(message: String)
+    case Syntax(cause: xyz.kd5ujc.scarab.codec.Cbor.Error)
     case TypeMismatch(expected: String, found: String)
     case BadSize(expected: String, actual: Long)
     case OutOfRange(expected: String, actual: BigInt)
@@ -67,10 +67,10 @@ object DecodeError:
     case Unsupported(what: String)
 
     /** A decoder threw. This is a bug in a decoder, reported rather than propagated. */
-    case Internal(exception: String)
+    case Internal(cause: Throwable)
 
   def describe(kind: Kind): String = kind match
-    case Kind.Syntax(m)             => s"malformed CBOR: $m"
+    case Kind.Syntax(m)             => s"malformed CBOR: ${m.message}"
     case Kind.TypeMismatch(e, f)    => s"expected $e, found $f"
     case Kind.BadSize(e, a)         => s"expected size $e, got $a"
     case Kind.OutOfRange(e, a)      => s"expected $e, got $a"

@@ -110,5 +110,5 @@ enum FileKind(
       .map(_._1)
       .toRight(
         if families.exists(found.startsWith) then StorageError.UnknownVersion(what, this, found)
-        else StorageError.Corrupt(what, s"not a $label file")
+        else StorageError.Corrupt(what, StorageStructureError.WrongFileKind(this))
       )

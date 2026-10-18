@@ -30,7 +30,7 @@ enum LeaderCheck:
   case Threshold
 
   /** Every cryptographic check passed but the threshold was not evaluated. */
-  case Unchecked(reason: String)
+  case Unchecked(reason: LeaderCheck.UncheckedReason)
 
   def label: String = this match
     case Overlay(_)   => "overlay"
@@ -44,3 +44,8 @@ final case class LedgerView(
     genDelegs: Map[Bytes, GenDelegPair],
     stake: StakeView
 )
+
+object LeaderCheck:
+  enum UncheckedReason:
+    case BootstrapStakeUnknown
+    def message: String = "stake distribution unknown (bootstrap)"

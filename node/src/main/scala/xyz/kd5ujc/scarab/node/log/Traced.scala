@@ -139,7 +139,7 @@ object Traced:
         "millis" -> millis.asJson
       )
     case StorageEvent.SnapshotFailed(reason) =>
-      EventKind.SnapshotFailed.line("reason" -> reason.asJson)
+      EventKind.SnapshotFailed.line("reason" -> String.valueOf(reason).asJson)
     case StorageEvent.SnapshotRefused(name, a, refusal) =>
       EventKind.SnapshotRefused.line(
         "file" -> name.asJson,
@@ -207,7 +207,7 @@ object Traced:
         "remote" -> remote.asJson,
         "what" -> "closed".asJson,
         "provenance" -> provenance.toString.asJson,
-        "reason" -> reason.asJson
+        "reason" -> String.valueOf(reason).asJson
       )
 
   given Traced[MempoolEvent] =
@@ -280,7 +280,7 @@ object Traced:
       EventKind.Lost.line(
         "slot" -> slot.asJson,
         "hash" -> hash.hex.asJson,
-        "reason" -> reason.asJson
+        "reason" -> String.valueOf(reason).asJson
       )
     case ForgeEvent.KesEvolved(period, rel) =>
       EventKind.KesEvolved.line("kesPeriod" -> period.asJson, "relativeKesPeriod" -> rel.asJson)
@@ -304,7 +304,7 @@ object Traced:
         "message" -> error.message.asJson
       )
     case ForgeEvent.Skipped(slot, reason) =>
-      EventKind.ForgeSkipped.line("slot" -> slot.asJson, "reason" -> reason.asJson)
+      EventKind.ForgeSkipped.line("slot" -> slot.asJson, "reason" -> String.valueOf(reason).asJson)
     case ForgeEvent.Failed(slot, error) =>
       EventKind.ForgeFailed.line(
         "slot" -> slot.asJson,

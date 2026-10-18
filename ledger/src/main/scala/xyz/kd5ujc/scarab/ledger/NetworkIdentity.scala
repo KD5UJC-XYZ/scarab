@@ -36,7 +36,7 @@ object NetworkIdentity:
       what: String,
       text: String
   ): Either[StorageError, (FormatVersion, NetworkIdentity)] =
-    def corrupt(reason: String): Either[StorageError, (FormatVersion, NetworkIdentity)] =
+    def corrupt(reason: StorageStructureError): Either[StorageError, (FormatVersion, NetworkIdentity)] =
       Left(StorageError.Corrupt(what, reason))
     def hash(value: String): Option[Bytes] =
       Bytes.fromHex(value).toOption.filter(_.size == 32)
@@ -58,11 +58,11 @@ object NetworkIdentity:
                   ) match
                     case (Some(mm), Some(ss), Some(bb)) =>
                       Right((version, NetworkIdentity(mm, ss, bb)))
-                    case _ => corrupt("malformed magic or genesis hash")
-                case _ => corrupt("unexpected lines")
-            case _ => corrupt("unexpected lines")
+                    case _ => corrupt(StorageStructureError.InvalidIdentityFields)
+                case _ => corrupt(StorageStructureError.UnexpectedIdentityLines)
+            case _ => corrupt(StorageStructureError.UnexpectedIdentityLines)
         }
-      case Nil => corrupt("not a network identity file")
+      case Nil => corrupt(StorageStructureError.EmptyIdentity)
 
   /** [[parseVersioned]] without the version. */
   def parse(what: String, text: String): Either[StorageError, NetworkIdentity] =

@@ -243,7 +243,7 @@ object LedgerSnapshotExport:
             files.createDirectories(config.out) *> stage.use(writeSnapshot(snapshot, _))
           }).handleErrorWith {
             case error: java.io.IOException =>
-              errors.raise(Error.Storage(StorageError.Io(config.db.toString, error.toString)))
+              errors.raise(Error.Storage(StorageError.Io(config.db.toString, error)))
             case error => F.raiseError(error)
           }
         }
