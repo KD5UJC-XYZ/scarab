@@ -325,8 +325,11 @@ class LedgerFileSuite extends ScalaCheckSuite:
       SnapshotMeta.parse("""{"backend":"utxohd-mem","checksum":1,"tablesCodecVersion":2}"""),
       Left(MetaError.UnknownTablesCodecVersion(BigInt(2)))
     )
-    assert(SnapshotMeta.parse("not json").left.exists(_.isInstanceOf[MetaError.Malformed]))
-    assert(SnapshotMeta.parse("""{"backend":"utxohd-mem"}""").isLeft)
+    assert(SnapshotMeta.parse("not json").left.exists(_.isInstanceOf[MetaError.JsonSyntax]))
+    assertEquals(
+      SnapshotMeta.parse("""{"backend":"utxohd-mem"}"""),
+      Left(MetaError.MissingField(MetaField.Checksum))
+    )
   }
 
   // ---- the files the Haskell node wrote
