@@ -49,12 +49,12 @@ def start_scala_relay(args, root, peers):
     return subprocess.Popen(["docker", *command], stdout=log, stderr=subprocess.STDOUT, text=True)
 
 
-def start_haskell_relay(args):
+def start_haskell_relay(args, advertise=None):
     """A non-producing reference node whose topology names only the Scala node."""
     in_ref(args.name, f"mkdir -p {RELAY_DIR}/db")
     topology = {"bootstrapPeers": None,
                 "localRoots": [{"accessPoints": [{"address": "127.0.0.1", "port": SCALA_PORT}],
-                                "advertise": bool(getattr(args, "peer_sharing", True)), "behindFirewall": False,
+                                "advertise": bool(getattr(args, "peer_sharing", True)) if advertise is None else advertise, "behindFirewall": False,
                                 "trustable": True,
                                 "diffusionMode": args.relay_mode, "hotValency": 1, "warmValency": 1}],
                 "publicRoots": [{"accessPoints": [], "advertise": False}], "useLedgerAfterSlot": -1}

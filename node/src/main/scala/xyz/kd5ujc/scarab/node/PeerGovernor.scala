@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.Monad
-import cats.effect.{Clock, Ref, Temporal}
+import cats.effect.{Clock, Deferred, Ref, Temporal}
 import cats.effect.std.{Queue, Supervisor}
 import cats.mtl.{Ask, Raise, Stateful, Tell}
 import cats.syntax.all.*
@@ -69,6 +69,17 @@ enum Output[A]:
   /** The ledger-peers worker did something: loaded a snapshot, rebuilt its maps. */
   case LedgerPeers(trace: LedgerPeersTrace)
 
+/** Peer-sharing effects. A request owns its error scope and returns a closed discovery result;
+  * implementation defects are reported to the node fatal sink before returning.
+  */
+trait PeerSharingActions[F[_], A]:
+  def inbound: F[Map[A, Boolean]]
+  def request(
+      peer: A,
+      amount: xyz.kd5ujc.scarab.protocol.PeerSharing.Amount
+  ): F[PeerShare.Result[A]]
+  def publish(state: GovernorState[A]): F[Unit]
+
 /** The settings of the effect loop. */
 final case class GovernorConfig(
     policy: Policy = Policy(),
@@ -106,7 +117,8 @@ object PeerGovernor:
       actions: PeerStateActions[F, A],
       roots: RootProvider[F, A],
       events: Queue[F, Event[A]],
-      supervisor: Supervisor[F]
+      supervisor: Supervisor[F],
+      sharing: Option[PeerSharingActions[F, A]] = None
   )(using
       state: Stateful[F, GovernorState[A]],
       config: Ask[F, GovernorConfig],
@@ -116,7 +128,7 @@ object PeerGovernor:
   ): F[Nothing] =
     Ref
       .of[F, Set[Time]](Set.empty)
-      .flatMap(scheduled => loop(actions, roots, events, supervisor, scheduled))
+      .flatMap(scheduled => loop(actions, roots, events, supervisor, scheduled, sharing))
 
   private def loop[F[_]: Temporal, A](
       actions: PeerStateActions[F, A],
@@ -124,7 +136,8 @@ object PeerGovernor:
       events: Queue[F, Event[A]],
       supervisor: Supervisor[F],
       /** The times a wake-up is already asked for. */
-      scheduled: Ref[F, Set[Time]]
+      scheduled: Ref[F, Set[Time]],
+      sharing: Option[PeerSharingActions[F, A]]
   )(using
       state: Stateful[F, GovernorState[A]],
       config: Ask[F, GovernorConfig],
@@ -137,51 +150,116 @@ object PeerGovernor:
 
     def now: F[Time] = Clock[F].monotonic
 
-    /** The work of one job, as the outcome the decision function applies. */
-    def work(job: Job[A]): F[Outcome[A]] = job match
-      case Job.Connect(peer, mode, provenance) =>
-        actions
-          .establish(peer, mode, provenance)
-          .map(_.fold[Outcome[A]](Outcome.Connected(peer))(Outcome.ConnectFailed(peer, _)))
-      case Job.Activate(peer) =>
-        actions.activate(peer).flatMap {
-          case None => F.pure[Outcome[A]](Outcome.Activated(peer))
-          case Some(failure) =>
-            config.reader(_.activationPause).flatMap(F.sleep) *>
-              F.pure[Outcome[A]](Outcome.ActivateFailed(peer, failure))
-        }
-      case Job.Deactivate(peer) =>
-        actions.deactivate(peer).map {
-          case PeerStateActions.Deactivation.Warm      => Outcome.Deactivated(peer)
-          case PeerStateActions.Deactivation.Closed    => Outcome.DeactivateFailed(peer)
-          case PeerStateActions.Deactivation.Lingering => Outcome.CloseTimedOut(peer)
-        }
-      case Job.Close(peer) =>
-        actions
-          .close(peer)
-          .map(released => if released then Outcome.Closed(peer) else Outcome.CloseTimedOut(peer))
-      case Job.RequestRoots(max, bootstrap) =>
-        roots
-          .request(max, bootstrap)
-          .map(
-            _.fold[Outcome[A]](Outcome.RootsFailed())((found, ttl) =>
-              Outcome.RootsFound(found, ttl)
-            )
-          )
-      case Job.RequestBigLedger(max) =>
-        roots
-          .requestBigLedger(max)
-          .map(
-            _.fold[Outcome[A]](Outcome.BigLedgerFailed())((found, ttl) =>
-              Outcome.BigLedgerFound(found, ttl)
-            )
-          )
+    /** Start an ordinary job and report its outcome to its owner. */
+    def complete(result: F[Outcome[A]]): F[Unit] =
+      supervisor.supervise(result.flatMap(outcome => events.offer(Event.Completed(outcome)))).void
 
     /** Start a job in a fiber of the supervisor; it ends by offering its outcome. */
-    def start(job: Job[A]): F[Unit] =
-      supervisor
-        .supervise(work(job).flatMap(outcome => events.offer(Event.Completed(outcome))))
-        .void
+    def start(job: Job[A]): F[Unit] = job match
+      case Job.Share(batch, amount, peers) =>
+        config.reader(_.policy).flatMap { policy =>
+          // Requests belong to the supervisor, not to the governor's short wait. A logical
+          // timeout stops waiting for discovery; the bounded wire request still drains its reply
+          // before this client can be reused (as the reference's protocol controller does).
+          peers
+            .traverse { peer =>
+              Deferred[F, PeerShare.Result[A]]
+                .flatTap { result =>
+                  val request = sharing.fold(
+                    F.pure[PeerShare.Result[A]](PeerShare.Result.NotRegistered())
+                  )(_.request(peer, amount))
+                  supervisor.supervise(request.flatMap(result.complete).void).void
+                }
+                .map(peer -> _)
+            }
+            .flatMap { pending =>
+              def collect(
+                  wait: FiniteDuration,
+                  remaining: List[(A, Deferred[F, PeerShare.Result[A]])]
+              ) =
+                F.race(F.sleep(wait), remaining.traverse_(_._2.get)).flatMap { _ =>
+                  remaining.traverse { (peer, result) =>
+                    result.tryGet.map(value => (peer, result, value))
+                  }
+                }
+              val phases = for
+                first <- collect(policy.peerShareBatchWaitTime, pending)
+                done = first.collect { case (peer, _, Some(result)) => peer -> result }
+                rest = first.collect { case (peer, result, None) => peer -> result }
+                _ <- events.offer(Event.Completed(Outcome.Shared(batch, done))).whenA(done.nonEmpty)
+                _ <-
+                  if rest.isEmpty then F.unit
+                  else
+                    collect(
+                      (policy.peerShareOverallTimeout - policy.peerShareBatchWaitTime)
+                        .max(Duration.Zero),
+                      rest
+                    )
+                      .flatMap(results =>
+                        events.offer(
+                          Event.Completed(
+                            Outcome.Shared(
+                              batch,
+                              results.map((peer, _, value) =>
+                                peer -> value.getOrElse(PeerShare.Result.TimedOut())
+                              )
+                            )
+                          )
+                        )
+                      )
+              yield ()
+              supervisor.supervise(phases).void
+            }
+        }
+      case Job.Connect(peer, mode, provenance) =>
+        complete(
+          actions
+            .establish(peer, mode, provenance)
+            .map(_.fold[Outcome[A]](Outcome.Connected(peer))(Outcome.ConnectFailed(peer, _)))
+        )
+      case Job.Activate(peer) =>
+        complete(
+          actions.activate(peer).flatMap {
+            case None => F.pure[Outcome[A]](Outcome.Activated(peer))
+            case Some(failure) =>
+              config.reader(_.activationPause).flatMap(F.sleep) *>
+                F.pure[Outcome[A]](Outcome.ActivateFailed(peer, failure))
+          }
+        )
+      case Job.Deactivate(peer) =>
+        complete(
+          actions.deactivate(peer).map {
+            case PeerStateActions.Deactivation.Warm      => Outcome.Deactivated(peer)
+            case PeerStateActions.Deactivation.Closed    => Outcome.DeactivateFailed(peer)
+            case PeerStateActions.Deactivation.Lingering => Outcome.CloseTimedOut(peer)
+          }
+        )
+      case Job.Close(peer) =>
+        complete(
+          actions
+            .close(peer)
+            .map(released => if released then Outcome.Closed(peer) else Outcome.CloseTimedOut(peer))
+        )
+      case Job.RequestRoots(max, bootstrap) =>
+        complete(
+          roots
+            .request(max, bootstrap)
+            .map(
+              _.fold[Outcome[A]](Outcome.RootsFailed())((found, ttl) =>
+                Outcome.RootsFound(found, ttl)
+              )
+            )
+        )
+      case Job.RequestBigLedger(max) =>
+        complete(
+          roots
+            .requestBigLedger(max)
+            .map(
+              _.fold[Outcome[A]](Outcome.BigLedgerFailed())((found, ttl) =>
+                Outcome.BigLedgerFound(found, ttl)
+              )
+            )
+        )
 
     /** Make a decision the state: the new state, the jobs started, the traces told. */
     def commit(decision: Decision[A]): F[Unit] =
@@ -216,6 +294,7 @@ object PeerGovernor:
       for
         st <- state.get
         association <- config.reader(_.association)
+        _ <- sharing.traverse_(_.publish(st))
         view = st.view(at)
         counters = view.counters
         connections = GovernorState.outboundConnectionsState(association, view)
@@ -253,7 +332,9 @@ object PeerGovernor:
         st <- state.get
         _ <- PeerSelection.abort(st, at).traverse_(raise.raise[GovernorError, Unit](_))
         scores <- metrics.ask[PeerMetrics[A]]
-        loop <- PeerSelection.decide(st, at, scores) match
+        policy <- config.reader(_.policy)
+        inbound <- sharing.fold(F.pure(Map.empty[A, Boolean]))(_.inbound)
+        loop <- PeerSelection.decide(st, at, scores, policy, inbound) match
           case Step.Act(decision) => commit(decision) *> publish(before, at)
           case Step.Idle(settled, wakeAt) =>
             for

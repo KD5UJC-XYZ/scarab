@@ -121,7 +121,10 @@ object LogSamples:
     Trace.BigLedgerFailure(-1, 2.seconds),
     Trace.ForgetBigLedger(15, 17, List(peerA)),
     Trace.PromoteBigLedger(Temperature.Cold, List(peerA, peerB), 10, 4),
-    Trace.DemoteBigLedger(Temperature.Hot, List(peerB), 5, 6)
+    Trace.DemoteBigLedger(Temperature.Hot, List(peerB), 5, 6),
+    Trace.PickInbound(List(peerA)),
+    Trace.ShareRequests(8, List(peerA)),
+    Trace.ShareResults(List(peerA -> PeerShare.Result.Peers(Vector(peerB))), List(peerB))
   )
 
   /** Every case of the ledger-peers worker's trace. */

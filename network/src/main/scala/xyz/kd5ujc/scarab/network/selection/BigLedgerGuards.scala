@@ -89,7 +89,8 @@ private[selection] final class BigLedgerGuards[A](
 
   private def retryTimes: Option[Time] =
     st.peers.values.collect {
-      case PeerRecord(Status.Cold(Some(at)), Origin.BigLedger, _, _, _, _) if at > now => at
+      case PeerRecord(Status.Cold(Some(at)), Origin.BigLedger, _, _, _, _, _, _, _) if at > now =>
+        at
     }.minOption
 
   /** `EstablishedPeers.belowTargetBigLedgerPeers`: connect to the shortfall of the established
@@ -148,7 +149,7 @@ private[selection] final class BigLedgerGuards[A](
 
   private def readyTimes: Option[Time] =
     st.peers.collect {
-      case (_, PeerRecord(Status.Warm(at), Origin.BigLedger, _, _, _, _)) if at > now => at
+      case (_, PeerRecord(Status.Warm(at), Origin.BigLedger, _, _, _, _, _, _, _)) if at > now => at
     }.minOption
 
   /** `ActivePeers.belowTargetBigLedgerPeers`: activate the shortfall of the active target among the

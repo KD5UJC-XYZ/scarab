@@ -246,7 +246,8 @@ What the configuration does:
 | `DijkstraGenesisFile`/`Hash`, `CheckpointsFile`/`Hash` | the hash is verified when the file is present; the Dijkstra era and checkpoints are not implemented |
 | `TestShelleyHardForkAtEpoch` ... `TestConwayHardForkAtEpoch` | the first epoch of each era (`0` for all of them: the chain starts in that era, as Preview); absent for Shelley: the Byron ledger decides |
 | `RequiresNetworkMagic`, `PBftSignatureThreshold` | the Byron address magic and the PBFT signing threshold |
-| `LastKnownBlockVersion-Major/Minor/Alt`, `MaxKnownMajorProtocolVersion`, `Protocol` (must be `Cardano`), `ExperimentalHardForksEnabled`, `ConsensusMode`, `PeerSharing`, `DiffusionMode` | read, validated and logged (`started`); the node does not act on them (`PeerSharing` is offered in the handshake). `configUnsupported` in the `started` line lists the ones that ask for something not implemented: experimental hard forks (the Dijkstra era), `GenesisMode` (no Genesis syncing: the configured peers are followed as in Praos mode), `Test<Era>HardForkAtVersion`, `PeerSharing: true` (the protocol is offered and answered with an empty list, but the governor does not ask for peers: G1.4b) |
+| `LastKnownBlockVersion-Major/Minor/Alt`, `MaxKnownMajorProtocolVersion`, `Protocol` (must be `Cardano`), `ExperimentalHardForksEnabled`, `ConsensusMode`, `DiffusionMode` | read, validated and logged (`started`); the node does not act on them. `configUnsupported` in the `started` line lists the ones that ask for something not implemented: experimental hard forks (the Dijkstra era), `GenesisMode` (no Genesis syncing: the configured peers are followed as in Praos mode), `Test<Era>HardForkAtVersion` |
+| `PeerSharing` | used by both handshakes and the governor; absent means on for a relay and off with `--forge`, an explicit Boolean wins. Both peers must enable it. Eligible connected peers are asked below the known target; only advertised, previously connected peers with no failures are shared (G1.4) |
 | `ExperimentalProtocolsEnabled` (also `TestEnableDevelopmentNetworkProtocols`, which must agree) | the highest node-to-node version the node offers and accepts (G4): absent or `false`, **15**, the latest release of cardano-node 11.1.3 (14 and 15 are offered, as the reference does, `Cardano/Node.hs` 456 and `limitToLatestReleasedVersion`); `true`, **16**, which adds the Peras flag to the version data (always sent as false: the node has no Peras mini-protocols). A relay or pool of the reference needs the same key to agree on 16. The public Leios testnet sets it; its relay accepts 14 to 16. Node-to-client versions 16 to 23 are always accepted. The devnet `relay` scenario takes `--max-ntn-version 16` to turn the key on for the Scala node and the Haskell relay |
 | `SocketPath`, `DatabasePath`, `MempoolCapacityBytesOverride` (a byte count; `NoOverride` leaves the default) | the defaults of `--local-socket`, `--db` and `--mempool-bytes`, with `--config` only; a flag wins |
 | `MaxConcurrencyDeadline` | how many peers may be asked for the same block in the fetch mode deadline (default 1, the reference's: one peer per block); see "Peer selection" |
@@ -281,7 +282,7 @@ The outbound peers are chosen by the peer governor (roadmap G1.1, [design](desig
   peers; the governor connects, activates, demotes and reconnects to hold that. The `bootstrapPeers` of the topology
   are used while the node is behind (below); the public roots are asked for when fewer peers are known than
   `TargetNumberOfRootPeers`. A peer that is a local root or a bootstrap peer is never forgotten.
-- **Temperatures.** Cold is known, warm is connected with KeepAlive only, hot also runs ChainSync, BlockFetch and
+- **Temperatures.** Cold is known, warm is connected with KeepAlive and negotiated PeerSharing, hot also runs ChainSync, BlockFetch and
   TxSubmission2; the transitions in between are states of their own. A warm peer is promoted to hot, and a hot peer is
   demoted, by starting and ending the hot protocols on the same connection; the blocks a hot session claimed are
   released when it ends.
@@ -304,6 +305,15 @@ The outbound peers are chosen by the peer governor (roadmap G1.1, [design](desig
   `scarab_peer_selection_peers{origin}` (where the known peers came from), `scarab_peer_selection_targets{target}` (also the
   three big ledger ones) and `scarab_ledger_peers_pools{map}` tell what the governor holds; `GET /connections` gives each
   peer's `origin` (`Local`, `Public`, `Bootstrap`, `Ledger`, `BigLedger`, `Other`).
+- **Peer sharing** (G1.4, mini-protocol 10). Below the known target, the governor chooses inbound peers or
+  asks established peers that negotiated sharing, outside the bootstrap-sensitive state. It waits 300 s after
+  connection, retries after 900 s (3600 s on request failure), and has at most two requests in flight. Fast
+  answers are published as one batch within 3 s; stragglers have 10 s overall. Known and big-ledger peers
+  are removed from answers and each batch stays within its original discovery objective. Discovered peers
+  are advertised by default; configured local/public roots retain their `advertise` setting (`--peer` roots
+  are not advertised). The server shares only advertised peers with a successful connection and zero
+  failures, returns at most `min(requested,10)`, and holds its ordering salt for 823 s. IPv4 words are
+  converted from the reference's little-endian host convention; IPv6 words stay in network order.
 - **Peer metrics and churn.** The feedback from the chain (roadmap G1.2). Each hot session reports the headers and blocks
   it delivers; two boards of 180 slots keep, per slot, the peer that was *first* (`PeerMetrics`, the reference's
   `PeerMetric`: the earliest arrival wins, the join-time correction `adjustAvg` is zero in the pinned release and is not
@@ -342,8 +352,8 @@ The outbound peers are chosen by the peer governor (roadmap G1.1, [design](desig
   `peerSelectionDemote`, `peerSelectionForget`, `peerSelectionSensitive`, `peerSelectionCounters`, `peerSelectionChurn`, `ledgerPeers`, `outboundConnections`,
   `gsmTransition` and `fetchModeChanged` (table in "Logging"); the gauges of "Peer selection (G1)" in "Metrics";
   `GET /connections` has a `peerSelection` object next to the connection table: `counters` (cold, warm, hot, known, root),
-  `targets`, `judgement`, `sensitive` and each `peer` with its `temperature`, `origin` and `failCount`.
-- **Not yet.** Peer sharing (G1.4), the Genesis hooks (G1.5), a
+  `targets`, `judgement`, `sensitive` and each `peer` with its `temperature`, `origin`, `failCount`, `advertise`, `everConnected` and negotiated `peerSharing`.
+- **Follow-ups.** The Genesis hooks (G1.5), a
   re-read of the topology on SIGHUP, SRV access points and duplex outbound connections ([#142](https://github.com/KD5UJC-XYZ/scarab/issues/142)).
 
 ### Preview
@@ -868,7 +878,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `connection` | `Net.Connection` | Info (Warning when `what` is `refused`) | `remote`, `what`, `provenance`, `from`, `to`, `reason` |
 | `inbound` | `Net.Inbound` | Info (Warning when `state` is `refused`) | `remote`, `state`, `reason` |
 | `peerSelectionTargets` | `Net.PeerSelectionTargets` | Notice | `root`, `known`, `established`, `active`, `knownBigLedger`, `establishedBigLedger`, `activeBigLedger` |
-| `peerSelectionRoots` | `Net.PeerSelectionRoots` | Info (Warning when `action` is `failure`) | `action`, `bigLedger`, `before`, `after`, `target`, `current`, `found`, `backoffs`, `retryInSeconds` |
+| `peerSelectionRoots` | `Net.PeerSelectionRoots` | Info (Warning when `action` is `failure`) | `action`, `bigLedger`, `before`, `after`, `target`, `current`, `found`, `backoffs`, `retryInSeconds`; sharing actions `pickInbound`, `peerShareRequests`, `peerShareResults` add `peers`, `amount`, `results`, `added` |
 | `peerSelectionPromote` | `Net.PeerSelectionPromote` | Info (Warning when `action` is `failed`) | `action`, `bigLedger`, `from`, `to`, `peers`, `peer`, `local`, `target`, `current`, `failure`, `retryInSeconds`, `forgotten` |
 | `peerSelectionDemote` | `Net.PeerSelectionDemote` | Info (Warning when `action` is `failed`, or `asynchronous` with a `failure`) | `action`, `bigLedger`, `from`, `to`, `peers`, `peer`, `local`, `target`, `current`, `timedOut`, `failure`, `reason` |
 | `peerSelectionForget` | `Net.PeerSelectionForget` | Info | `action`, `bigLedger`, `target`, `known`, `peers` |

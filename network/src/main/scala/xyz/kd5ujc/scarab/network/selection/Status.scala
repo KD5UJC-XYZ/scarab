@@ -118,7 +118,13 @@ final case class PeerRecord(
     /** A connection to it has been established at some time (`knownSuccessfulConnection`). */
     everConnected: Boolean,
     /** When the fail count is reset (a peer that stayed hot for `policyClearFailCountDelay`). */
-    clearFailAt: Option[Time]
+    clearFailAt: Option[Time],
+    /** Local willingness, retained across discovery/connection updates (`knownPeerAdvertise`). */
+    advertise: Option[Boolean] = None,
+    /** Next request on this established connection; none when sharing was not negotiated. */
+    shareAt: Option[Time] = None,
+    /** Last negotiated remote willingness, retained when the connection ends. */
+    sharing: Option[Boolean] = None
 )
 
 object PeerRecord:

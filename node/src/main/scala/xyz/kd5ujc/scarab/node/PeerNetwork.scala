@@ -36,7 +36,8 @@ object PeerNetwork:
       /** `useLedgerAfterSlot`: whether and after which slot the node takes ledger peers. */
       ledger: UseLedgerPeers,
       /** The peer snapshot file of the topology, as the node starts with it. */
-      snapshot: SnapshotUse = SnapshotUse.Unused
+      snapshot: SnapshotUse = SnapshotUse.Unused,
+      advertise: Map[Addr, Boolean] = Map.empty
   ):
     /** Whether the topology enables ledger peers (it matters for the association mode). */
     def ledgerPeers: Boolean = ledger.isEnabled
@@ -119,7 +120,11 @@ object PeerNetwork:
         topology.toList.flatMap(_.publicRoots).flatMap(_.accessPoints).map(_.socketAddress).toSet,
       bootstrap = topology.flatMap(_.bootstrapPeers).map(_.map(_.socketAddress)),
       ledger = topology.fold[UseLedgerPeers](UseLedgerPeers.Disabled)(_.useLedgerAfterSlot),
-      snapshot = snapshot
+      snapshot = snapshot,
+      advertise = topology.toList
+        .flatMap(_.publicRoots)
+        .flatMap(g => g.accessPoints.map(_.socketAddress -> g.advertise))
+        .toMap
     )
 
   /** Whether there is anything to start from: a local root, a public root or a bootstrap peer. */
@@ -170,7 +175,10 @@ object PeerNetwork:
           "peer" -> peer.toString.asJson,
           "temperature" -> temperature(r).asJson,
           "origin" -> r.origin.toString.asJson,
-          "failCount" -> r.failCount.asJson
+          "failCount" -> r.failCount.asJson,
+          "advertise" -> r.advertise.asJson,
+          "everConnected" -> r.everConnected.asJson,
+          "peerSharing" -> r.sharing.asJson
         )
       }.asJson
     )
@@ -196,7 +204,8 @@ object PeerNetwork:
       fetchModeChanged: FetchMode => F[Unit],
       marker: GsmRunner.Marker[F],
       /** The ledger the ledger peers are taken from. */
-      ledgerSource: LedgerPeersSource[F]
+      ledgerSource: LedgerPeersSource[F],
+      sharing: Option[PeerSharingRuntime[F]] = None
   )(using Handle[F, NodeError]): Resource[F, Running[F, Addr]] =
     val F = Async[F]
     val roots = configuredRoots(settings.roots)
@@ -220,16 +229,28 @@ object PeerNetwork:
     for
       supervisor <- Supervisor[F](await = false)
       events <- Resource.eval(Queue.unbounded[F, Event[Addr]])
+      _ <- sharing.traverse_(runtime =>
+        Resource
+          .eval(
+            supervisor.supervise(
+              (runtime.changed *> Clock[F].monotonic.flatMap(at => events.offer(Event.Wake(at))))
+                .foreverM[Unit]
+            )
+          )
+          .void
+      )
       fatal <- Resource.eval(Deferred[F, GovernorFault])
       initialKind = Regime.kind(FetchMode.BulkSync, bootstrapOn)
       state <- Resource.eval(
         Ref.of[F, GovernorState[Addr]](
-          GovernorState.initial[Addr](
-            settings.seed,
-            roots,
-            Regime.initial(initialKind, base, localHot),
-            Sensitivity.initial(bootstrapOn)
-          )
+          GovernorState
+            .initial[Addr](
+              settings.seed,
+              roots,
+              Regime.initial(initialKind, base, localHot),
+              Sensitivity.initial(bootstrapOn)
+            )
+            .copy(sharing = PeerShare.Governor[Addr](enabled = settings.peerSharing))
         )
       )
       connections <- Resource.eval(
@@ -265,7 +286,10 @@ object PeerNetwork:
           hot,
           supervisor,
           events.offer,
-          RefStateful(metrics)
+          RefStateful(metrics),
+          sharing.map(s =>
+            (peer: Addr, remote: SocketAddress[IpAddress]) => s.connected(peer, remote)
+          )
         )
       )
     yield
@@ -295,7 +319,8 @@ object PeerNetwork:
         NodeRootProvider[F](
           settings.roots.public,
           settings.roots.bootstrap.getOrElse(Vector.empty),
-          worker
+          worker,
+          settings.roots.advertise
         )
 
       val modeCell: Ref[F, FetchMode] = fetchMode
@@ -348,7 +373,16 @@ object PeerNetwork:
         )
 
       val governor: F[Nothing] =
-        PeerGovernor.run[F, Addr](outbound, rootProvider, events, supervisor)
+        val actions = sharing.map { runtime =>
+          new PeerSharingActions[F, Addr]:
+            def inbound = runtime.inbound
+            def publish(st: GovernorState[Addr]) = runtime.publish(st)
+            def request(peer: Addr, amount: xyz.kd5ujc.scarab.protocol.PeerSharing.Amount) =
+              outbound.requestPeerShare(peer, amount)(address =>
+                PeerSharingAddress.socket(address).map(ip => SocketAddress[Host](ip.host, ip.port))
+              )
+        }
+        PeerGovernor.run[F, Addr](outbound, rootProvider, events, supervisor, actions)
 
       val loops: F[Nothing] =
         F.race(governor, F.race(modes, F.race(churn, gsmLoop)))

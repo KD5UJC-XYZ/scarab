@@ -62,6 +62,8 @@ class PeerSelectionSuite extends FunSuite:
             case Job.Close(p)            => Outcome.Closed(p)
             case Job.RequestRoots(_, _)  => Outcome.RootsFailed()
             case Job.RequestBigLedger(_) => Outcome.BigLedgerFailed()
+            case Job.Share(id, _, peers) =>
+              Outcome.Shared(id, peers.map(_ -> PeerShare.Result.NotRegistered()))
           complete(s, outcome, now)
         }
         go(done, traces ++ more, fuel - 1)

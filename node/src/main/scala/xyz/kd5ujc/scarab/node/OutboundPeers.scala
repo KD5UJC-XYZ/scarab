@@ -56,7 +56,8 @@ final class OutboundPeers[F[_]: Async, A] private (
     supervisor: Supervisor[F],
     report: Event[A] => F[Unit],
     metrics: Stateful[F, PeerMetrics[A]],
-    table: Ref[F, Map[A, OutboundPeers.Link[F]]]
+    table: Ref[F, Map[A, OutboundPeers.Link[F]]],
+    connected: Option[(A, SocketAddress[IpAddress]) => F[Unit]]
 ) extends PeerStateActions[F, A]:
   import OutboundPeers.*
   import Peer.networkAsPeer
@@ -112,6 +113,8 @@ final class OutboundPeers[F[_]: Async, A] private (
               link = Link(warm, release, gone, phase)
               _ <- linked.set(Some(link))
               _ <- table.update(_ + (peer -> link))
+              _ <- connected.traverse_(_(peer, remote))
+              _ <- report(Event.SharingNegotiated(peer, warm.peerSharing.isDefined))
               _ <- ready.complete(None)
               closed <- F.race(release.get, warm.mux.closed)
               _ <- closed.traverse_(reason =>
@@ -166,6 +169,30 @@ final class OutboundPeers[F[_]: Async, A] private (
               link.release.complete(()) *> link.gone.get *> report(observation(released = true))
             )
             .void
+    }
+
+  /** A request starts in its own scope. Domain network failures terminate that mini-protocol's
+    * connection; defects stop the node without peer blame. A missing controller is no answer.
+    */
+  def requestPeerShare(peer: A, amount: xyz.kd5ujc.scarab.protocol.PeerSharing.Amount)(
+      address: xyz.kd5ujc.scarab.protocol.PeerSharing.Address => Option[A]
+  ): F[PeerShare.Result[A]] =
+    table.get.map(_.get(peer)).flatMap {
+      case None => F.pure(PeerShare.Result.NotRegistered())
+      case Some(link) =>
+        link.warm.peerSharing match
+          case None => F.pure(PeerShare.Result.NotRegistered())
+          case Some(client) =>
+            Fibers
+              .scoped[F, NetworkError, Vector[xyz.kd5ujc.scarab.protocol.PeerSharing.Address]](
+                NetworkError.fromThrowable("peer-sharing", _)
+              )(client.request(amount))
+              .flatMap {
+                case Right(peers) => F.pure(PeerShare.Result.Peers(peers.flatMap(address)))
+                case Left(NetworkError.Defect(cause)) =>
+                  stop(link, Fatal.Defect(cause)).as(PeerShare.Result.NotRegistered())
+                case Left(error) => link.warm.mux.abort(error).as(PeerShare.Result.Failed(error))
+              }
     }
 
   // ------------------------------------------------------------------ hot
@@ -461,7 +488,8 @@ object OutboundPeers:
       hot: Hot[F],
       supervisor: Supervisor[F],
       report: Event[A] => F[Unit],
-      metrics: Stateful[F, PeerMetrics[A]]
+      metrics: Stateful[F, PeerMetrics[A]],
+      connected: Option[(A, SocketAddress[IpAddress]) => F[Unit]] = None
   )(using node: Handle[F, NodeError]): F[OutboundPeers[F, A]] =
     Ref
       .of[F, Map[A, Link[F]]](Map.empty)
@@ -475,6 +503,7 @@ object OutboundPeers:
           supervisor,
           report,
           metrics,
-          _
+          _,
+          connected
         )
       )

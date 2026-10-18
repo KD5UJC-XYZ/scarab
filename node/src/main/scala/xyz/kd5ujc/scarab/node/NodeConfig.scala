@@ -107,6 +107,9 @@ final case class ConfigSettings(
   def maxNtnVersion: NtnVersion =
     NtnVersion.maximum(experimentalProtocols = experimentalProtocolsEnabled)
 
+  /** POM.hs:899-905: relays default on, producers off; an explicit setting wins. */
+  def peerSharingEnabled(producer: Boolean): Boolean = peerSharing.getOrElse(!producer)
+
   /** Settings that ask for something the node does not implement. */
   def unsupported: List[String] =
     List(
@@ -119,10 +122,6 @@ final case class ConfigSettings(
       ),
       Option.when(hardForkVersions.nonEmpty)(
         "Test<Era>HardForkAtVersion: hard forks triggered by a version are not honoured"
-      ),
-      Option.when(peerSharing.contains(true))(
-        "PeerSharing: the protocol is offered and answered (with no peers), but the governor " +
-          "does not ask for peers and shares none yet (G1.4b)"
       )
     ).flatten
 

@@ -195,6 +195,25 @@ private[log] object PeerSelectionLines:
         "current" -> current.asJson
       )
 
+    case Trace.PickInbound(ps) =>
+      EventKind.PeerSelectionRoots.line("action" -> "pickInbound".asJson, "peers" -> peers(ps))
+    case Trace.ShareRequests(amount, ps) =>
+      EventKind.PeerSelectionRoots.line(
+        "action" -> "peerShareRequests".asJson,
+        "amount" -> amount.asJson,
+        "peers" -> peers(ps)
+      )
+    case Trace.ShareResults(results, added) =>
+      EventKind.PeerSelectionRoots.line(
+        "action" -> "peerShareResults".asJson,
+        "added" -> peers(added),
+        "results" -> results
+          .map((peer, result) =>
+            Json.obj("peer" -> peer.toString.asJson, "result" -> result.toString.asJson)
+          )
+          .asJson
+      )
+
   def churn(t: Churn.Trace): Line = t match
     case Churn.Trace.Mode(mode) =>
       EventKind.PeerSelectionChurn.line("action" -> "round".asJson, "mode" -> mode.toString.asJson)

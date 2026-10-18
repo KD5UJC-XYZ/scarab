@@ -4,7 +4,6 @@ package xyz.kd5ujc.scarab.network
 import cats.effect.{IO, Ref, Resource}
 import cats.effect.testkit.TestControl
 import cats.syntax.all.*
-import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ChainSyncFixtures, PeerSharing}
 import xyz.kd5ujc.scarab.protocol.PeerSharing.{Address, Amount}
@@ -16,7 +15,7 @@ import Peers.*
   * peers than asked for, a message over 5760 bytes, no answer within 60 s) and the negotiation of
   * the flag on a whole connection.
   */
-class PeerSharingSuite extends CatsEffectSuite:
+class PeerSharingSuite extends FailsOnUncaught:
   private val magic = 42L
   private val Protocol = Protocols.PeerSharing
 
@@ -39,12 +38,17 @@ class PeerSharingSuite extends CatsEffectSuite:
       client: PeerSharingClient.Settings = PeerSharingClient.Settings(),
       server: PeerSharingServer.Settings = PeerSharingServer.Settings()
   )(using Net): Resource[IO, PeerSharingClient[IO]] =
-    linked(protocols = Set(Protocol)).evalMap { (c, s) =>
+    linked(protocols = Set(Protocol)).flatMap { (c, s) =>
       for
-        cc <- c.channel(Protocol)
-        sc <- s.channel(Protocol)
-        _ <- PeerSharingServer.run(sc, peers, server).start
-        api <- PeerSharingClient(cc, client)
+        cc <- Resource.eval(c.channel(Protocol))
+        sc <- Resource.eval(s.channel(Protocol))
+        _ <- Fibers
+          .scoped[IO, NetworkError, Unit](NetworkError.fromThrowable("test peer-sharing", _))(
+            PeerSharingServer.run(sc, peers, server)
+          )
+          .flatMap(_.fold(s.abort, _ => IO.unit))
+          .background
+        api <- Resource.eval(PeerSharingClient(cc, client))
       yield api
     }
 
@@ -97,16 +101,17 @@ class PeerSharingSuite extends CatsEffectSuite:
           cc <- c.channel(Protocol)
           sc <- s.channel(Protocol)
           served <- Ref.of[IO, Int](0)
-          server <- (PeerSharingServer.run(
-            sc,
-            source(Vector(addr(1))),
-            PeerSharingServer.Settings()
-          ) *>
-            served.update(_ + 1)).foreverM.start
+          server <- Fibers
+            .scoped[IO, NetworkError, Unit](NetworkError.fromThrowable("test peer-sharing", _)) {
+              (PeerSharingServer.run(sc, source(Vector(addr(1))), PeerSharingServer.Settings()) *>
+                served.update(_ + 1)).foreverM
+            }
+            .flatMap(_.fold(s.abort, _ => IO.unit))
+            .start
           first <- PeerSharingClient(cc)
           one <- first.request(amount(1))
           _ <- first.done
-          again <- first.request(amount(1)).attempt // the client is finished
+          again <- typed(first.request(amount(1))) // the client is finished
           second <- PeerSharingClient(cc)
           two <- second.request(amount(1))
           n <- served.get
@@ -119,18 +124,21 @@ class PeerSharingSuite extends CatsEffectSuite:
   private def scripted(
       reply: Amount => Bytes
   )(using Net): Resource[IO, PeerSharingClient[IO]] =
-    linked(protocols = Set(Protocol)).evalMap { (c, s) =>
+    linked(protocols = Set(Protocol)).flatMap { (c, s) =>
       for
-        cc <- c.channel(Protocol)
-        sc <- s.channel(Protocol)
-        _ <- sc
-          .recv(5760)(PeerSharing.decoder(PeerSharing.State.Idle, PeerSharing.Role.Client))
-          .flatMap {
-            case PeerSharing.Message.ShareRequest(a) => sc.send(reply(a))
-            case _                                   => IO.unit
+        cc <- Resource.eval(c.channel(Protocol))
+        sc <- Resource.eval(s.channel(Protocol))
+        _ <- Fibers
+          .scoped[IO, NetworkError, Unit](NetworkError.fromThrowable("test peer-sharing", _)) {
+            sc.recv(5760)(PeerSharing.decoder(PeerSharing.State.Idle, PeerSharing.Role.Client))
+              .flatMap {
+                case PeerSharing.Message.ShareRequest(a) => sc.send(reply(a))
+                case _                                   => IO.unit
+              }
           }
-          .start
-        api <- PeerSharingClient(cc)
+          .flatMap(_.fold(s.abort, _ => IO.unit))
+          .background
+        api <- Resource.eval(PeerSharingClient(cc))
       yield api
     }
 
@@ -154,6 +162,25 @@ class PeerSharingSuite extends CatsEffectSuite:
           assertEquals(detail, PeerSharing.Violation.TooManyPeers(amount(2), 3).message)
         case other => fail(s"unexpected $other")
       }
+
+  test("a client created in one scope raises a bad answer in its request fiber's own scope"):
+    typed {
+      scripted(_ => sharePeers(Vector(addr(1), addr(2)))).use { client =>
+        Fibers
+          .scoped[IO, NetworkError, Vector[Address]](
+            NetworkError.fromThrowable("request test", _)
+          ) {
+            client.request(amount(1))
+          }
+          .start
+          .flatMap(_.joinWithNever)
+      }
+    }.map { result =>
+      assert(
+        result.exists(_.left.exists(_.isInstanceOf[NetworkError.IllegalTransition])),
+        result.toString
+      )
+    }
 
   test("exactly the amount requested is fine"):
     typed(scripted(_ => sharePeers(Vector(addr(1), addr(2)))).use(_.request(amount(2))))

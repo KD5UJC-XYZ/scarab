@@ -47,7 +47,9 @@ object PeerSelection:
   def decide[A](
       input: GovernorState[A],
       now: Time,
-      metrics: PeerMetrics[A] = PeerMetrics.empty[A]()
+      metrics: PeerMetrics[A] = PeerMetrics.empty[A](),
+      policy: Policy = Policy(),
+      inbound: Map[A, Boolean] = Map.empty[A, Boolean]
   ): Step[A] =
     given Ordering[A] = input.peers.ordering
     val pass = Pass(tick(input, now), now, metrics)
@@ -59,6 +61,7 @@ object PeerSelection:
       () => pass.big.request,
       () => pass.big.forget,
       () => pass.requestRoots,
+      () => PeerShare.belowTarget(pass.st, now, policy, inbound),
       () => pass.forget,
       () => pass.big.connect,
       () => pass.connectLocal,
@@ -149,7 +152,7 @@ object PeerSelection:
         st.peers.keySet.subsetOf(trusted) &&
         view.connecting.isEmpty && view.big.connecting.isEmpty &&
         view.activating.isEmpty && view.big.activating.isEmpty &&
-        !st.publicRootsInFlight && !st.bigLedgerInFlight
+        !st.publicRootsInFlight && !st.bigLedgerInFlight && st.sharing.inFlight == 0
       then
         go(
           st.copy(sensitivity = s.copy(hasOnlyBootstrapPeers = true, timeout = None)),
@@ -247,8 +250,18 @@ object PeerSelection:
           val added = wanted.keys -- st.localRoots.keys
           val withNew = added.foldLeft(st.peers) { (m, p) =>
             m.get(p) match
-              case Some(r) => m.updated(p, r.copy(origin = Origin.Local))
-              case None    => m.updated(p, PeerRecord.cold(Origin.Local))
+              case Some(r) =>
+                m.updated(
+                  p,
+                  r.copy(origin = Origin.Local, advertise = wanted.config.get(p).map(_.advertise))
+                )
+              case None =>
+                m.updated(
+                  p,
+                  PeerRecord
+                    .cold(Origin.Local)
+                    .copy(advertise = wanted.config.get(p).map(_.advertise))
+                )
           }
           val moved = reorigin(withNew, st.localRoots, wanted)
           val toDemote = removed.filter(p => st.peers.get(p).exists(_.status == Status.Hot))
@@ -288,8 +301,12 @@ object PeerSelection:
       }
       after.keys.foldLeft(peers1) { (m, p) =>
         m.get(p)
-          .filter(_.origin != Origin.Local)
-          .fold(m)(r => m.updated(p, r.copy(origin = Origin.Local)))
+          .fold(m)(r =>
+            m.updated(
+              p,
+              r.copy(origin = Origin.Local, advertise = after.config.get(p).map(_.advertise))
+            )
+          )
       }
 
     // ---------------------------------------------------------------- discovering peers
@@ -337,7 +354,9 @@ object PeerSelection:
 
     private def retryTimes(exclude: A => Boolean): Option[Time] =
       st.peers.collect {
-        case (p, PeerRecord(Status.Cold(Some(at)), _, _, _, _, _)) if !exclude(p) && at > now => at
+        case (p, PeerRecord(Status.Cold(Some(at)), _, _, _, _, _, _, _, _))
+            if !exclude(p) && at > now =>
+          at
       }.minOption
 
     /** `EstablishedPeers.belowTargetLocal` (`Governor/EstablishedPeers.hs` 106-239): every local
@@ -442,7 +461,7 @@ object PeerSelection:
 
     private def readyTimes: Option[Time] =
       st.peers.values.collect {
-        case PeerRecord(Status.Warm(at), _, _, _, _, _) if at > now => at
+        case PeerRecord(Status.Warm(at), _, _, _, _, _, _, _, _) if at > now => at
       }.minOption
 
     /** `ActivePeers.belowTargetLocal` (201-324): every local root group with fewer active members
@@ -581,9 +600,17 @@ object PeerSelection:
     given Ordering[A] = st0.peers.ordering
     val st = tick(st0, now)
     event match
-      case Event.TargetsRequested(t)         => Decision(st.copy(requested = t), Nil, Nil)
-      case Event.JudgementReported(j)        => Decision(st.copy(reported = j), Nil, Nil)
-      case Event.RootsConfigured(roots)      => Decision(st.copy(configuredRoots = roots), Nil, Nil)
+      case Event.TargetsRequested(t)    => Decision(st.copy(requested = t), Nil, Nil)
+      case Event.JudgementReported(j)   => Decision(st.copy(reported = j), Nil, Nil)
+      case Event.RootsConfigured(roots) => Decision(st.copy(configuredRoots = roots), Nil, Nil)
+      case Event.SharingNegotiated(peer, enabled) =>
+        Decision(
+          st.updated(peer)(
+            _.copy(sharing = Some(enabled))
+          ),
+          Nil,
+          Nil
+        )
       case Event.Wake(_)                     => Decision(st, Nil, Nil)
       case Event.Observed(peer, observation) => Events.observed(st, peer, observation, now, policy)
       case Event.Completed(outcome)          => Events.completed(st, outcome, now, policy)

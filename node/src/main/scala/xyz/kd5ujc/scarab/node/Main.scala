@@ -626,11 +626,15 @@ object Main extends IOApp:
               initialViews = resumed.map(r => r.ref.hash -> r.view).toMap,
               compute = Some(scheduling.compute)
             )
+            seed <- IO.delay(java.util.concurrent.ThreadLocalRandom.current().nextLong())
+            sharing <- PeerSharingRuntime.create[IO](seed)
+            peerSharing = setup.config.settings.peerSharingEnabled(options.forge.isDefined)
             handlers = ServerHandlers[IO, NtNHeader](
               NtNHeader.codec,
               server.source,
               server.blocks,
-              mempool.sink
+              mempool.sink,
+              peerSharing = Some(sharing.source)
             )
             // header-first validation (G6): signatures are verified through the cache's keeping
             // view, so the block's own validation does not repeat them. Every live session also
@@ -703,7 +707,7 @@ object Main extends IOApp:
               InboundGovernor.Config(
                 genesis.networkMagic,
                 NodeToNodeServer.Settings(
-                  offerPeerSharing = setup.config.settings.peerSharing.contains(true),
+                  offerPeerSharing = peerSharing,
                   maxVersion = setup.config.settings.maxNtnVersion
                 ),
                 Peer.Settings(
@@ -723,12 +727,12 @@ object Main extends IOApp:
               headers = headerCheck,
               transactions = Some(mempool.source),
               events = Some(loggedInbound.alongside(measured.inbound)),
-              observe = Some(observePeer)
+              observe = Some(observePeer),
+              sharing = Some(sharing)
             )
             // The outbound peer network (G1): the governor chooses the peers, moves them between
             // temperatures and replaces the ones that fail; the Genesis State Machine tells it
             // whether the ledger is too old.
-            seed <- IO.delay(java.util.concurrent.ThreadLocalRandom.current().nextLong())
             defaults = if options.forge.isDefined then Targets.blockProducer else Targets.relay
             targets <- setup.config.settings
               .peerTargets(defaults)
@@ -745,7 +749,7 @@ object Main extends IOApp:
               magic = genesis.networkMagic,
               network = NodeToNode
                 .Settings(
-                  offerPeerSharing = setup.config.settings.peerSharing.contains(true),
+                  offerPeerSharing = peerSharing,
                   maxVersion = setup.config.settings.maxNtnVersion
                 )
                 .pipelining(options.readAhead),
@@ -783,6 +787,7 @@ object Main extends IOApp:
                   PeerNetwork.Roots(Nil, Set.empty, None, UseLedgerPeers.Disabled)
                 ),
                 targets,
+                peerSharing = peerSharing,
                 intervals = options.churnInterval.fold(Churn.Intervals())(Churn.Intervals.every),
                 timeouts = options.churnInterval.fold(Churn.Timeouts())(Churn.Timeouts().within),
                 seed = seed
@@ -799,7 +804,8 @@ object Main extends IOApp:
               phase => measured.gsm(phase),
               mode => measured.fetchMode(mode) *> logged(NodeEvent.FetchModeChanged(mode)),
               marker,
-              LedgerPeersSource.fromChain[IO, MirrorState](ref.get)
+              LedgerPeersSource.fromChain[IO, MirrorState](ref.get),
+              sharing = Some(sharing)
             )
             relay = options.listen.fold(Resource.unit[IO])(address =>
               BearerServer

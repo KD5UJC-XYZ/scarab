@@ -53,7 +53,8 @@ object NodeRootProvider:
   def apply[F[_]: Applicative](
       public: Set[Addr],
       bootstrap: Vector[Addr],
-      worker: LedgerPeersWorker[F]
+      worker: LedgerPeersWorker[F],
+      advertise: Map[Addr, Boolean] = Map.empty
   ): RootProvider[F, Addr] = new RootProvider[F, Addr]:
     def request(max: Int, sensitive: Boolean) =
       if sensitive then
@@ -63,7 +64,7 @@ object NodeRootProvider:
       else
         worker.request[LedgerKind.All](max).map {
           case LedgerAnswer.FallBackToPublicRoots() =>
-            Some(PublicRoots(public, Set.empty[Addr]) -> ConfiguredTtl)
+            Some(PublicRoots(public, Set.empty[Addr], advertise = advertise) -> ConfiguredTtl)
           case LedgerAnswer.Picked(relays, _) =>
             Some(
               PublicRoots(Set.empty[Addr], Set.empty[Addr], relays.flatMap(address).toSet) ->

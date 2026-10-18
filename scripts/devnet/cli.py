@@ -56,6 +56,7 @@ from .scenarios.ntc import ntc
 from .scenarios.peercut import peercut
 from .scenarios.pool import kes_rotate_scenario, pool
 from .scenarios.relay import relay
+from .scenarios.peer_sharing import peer_sharing
 from .scenarios.restart import restart
 from .scenarios.v1context import v1_context
 from .scenarios.soak import soak
@@ -192,6 +193,10 @@ def main():
     rl.add_argument("--keep", action="store_true", help="leave the cluster running")
     rl.add_argument("--keep-data", action="store_true", help="keep the run directory")
     rl.set_defaults(run=relay)
+    ps = sub.add_parser("peer-sharing", parents=[scala_options],
+                        help="bounded private two-way PeerSharing governor proof with one configured local root")
+    ps.add_argument("--timeout", type=int, default=420, help="seconds after activation setup (default420; includes300s activation)")
+    ps.set_defaults(run=peer_sharing, relay_mode="InitiatorAndResponder", peer_sharing=True, max_ntn_version=15)
     pc = sub.add_parser("peercut", parents=[scala_options],
                         help="Scala node with two upstream peers, one slow and then silent mid-sync; it must reach the tip (issue 130)")
     pc.add_argument("--backlog-blocks", type=int, default=150,

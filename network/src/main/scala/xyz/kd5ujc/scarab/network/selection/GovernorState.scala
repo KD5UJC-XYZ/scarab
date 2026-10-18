@@ -40,7 +40,8 @@ final case class GovernorState[A](
       */
     bigLedgerBackoffs: Int = 0,
     bigLedgerRetryAt: Time = Time.Zero,
-    bigLedgerInFlight: Boolean = false
+    bigLedgerInFlight: Boolean = false,
+    sharing: PeerShare.Governor[A] = PeerShare.Governor[A]()
 ):
   def record(peer: A): Option[PeerRecord] = peers.get(peer)
 
@@ -190,7 +191,10 @@ object GovernorState:
       Option.when(st.localRoots.size > st.targets.known.max(0) && st.targets != Targets.zero)(
         Violation.RootsAboveKnownTarget
       ),
-      Option.when(st.peers.exists((_, r) => r.failCount < 0))(Violation.NegativeFailCount)
+      Option.when(st.peers.exists((_, r) => r.failCount < 0))(Violation.NegativeFailCount),
+      Option.when(st.sharing.batches.values.exists(b => b.remaining < 0 || b.pending.isEmpty))(
+        Violation.InvalidShareBatch
+      )
     ).flatten
 
   enum Violation:
@@ -199,6 +203,7 @@ object GovernorState:
     case RootNotConfigured
     case RootsAboveKnownTarget
     case NegativeFailCount
+    case InvalidShareBatch
 
   /** The counters of the reference (`PeerSelectionCounters`, `Types.hs` 851-1060), derived from the
     * view. The ordinary ones leave the big ledger peers out; theirs are the `*BigLedger*` ones.

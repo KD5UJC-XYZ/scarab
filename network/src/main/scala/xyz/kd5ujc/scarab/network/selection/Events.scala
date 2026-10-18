@@ -135,9 +135,15 @@ private[selection] object Events:
       if big(st, peer) then v.big.active.size else v.active.size
 
     outcome match
+      case Outcome.Shared(batch, results) => PeerShare.completed(st0, batch, results, now, policy)
       case Outcome.Connected(peer) if status(peer).contains(Status.Connecting) =>
-        val st = st0.updated(peer)(
-          _.copy(status = Status.Warm(now), everConnected = true, tepid = false)
+        val st = st0.updated(peer)(r =>
+          r.copy(
+            status = Status.Warm(now),
+            everConnected = true,
+            tepid = false,
+            shareAt = Option.when(r.sharing.contains(true))(now + policy.peerShareActivationDelay)
+          )
         )
         Decision(
           st,
@@ -229,8 +235,13 @@ private[selection] object Events:
             else if found.ledger(p) then Origin.Ledger
             else Origin.Public
           m.get(p) match
-            case Some(r) => m.updated(p, r.copy(origin = origin))
-            case None    => m.updated(p, PeerRecord.cold(origin))
+            case Some(r) =>
+              m.updated(
+                p,
+                r.copy(origin = origin, advertise = found.advertise.get(p).orElse(r.advertise))
+              )
+            case None =>
+              m.updated(p, PeerRecord.cold(origin).copy(advertise = found.advertise.get(p)))
         }
         val backoffs = if fresh.isEmpty then st0.publicRootBackoffs.max(0) + 1 else 0
         val retryIn =

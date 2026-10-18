@@ -37,7 +37,12 @@ enum Observation:
   * ledger peers the ledger answered with (when it answers, the configured public roots are not
   * offered: `requestPublicRootPeersImpl`, `PeerSelectionActions.hs` 132-184).
   */
-final case class PublicRoots[A](ordinary: Set[A], bootstrap: Set[A], ledger: Set[A] = Set.empty[A]):
+final case class PublicRoots[A](
+    ordinary: Set[A],
+    bootstrap: Set[A],
+    ledger: Set[A] = Set.empty[A],
+    advertise: Map[A, Boolean] = Map.empty[A, Boolean]
+):
   def isEmpty: Boolean = ordinary.isEmpty && bootstrap.isEmpty && ledger.isEmpty
 
 /** What a job reports when it ends: the governor applies it to the state *as it is then*, so a job
@@ -66,6 +71,9 @@ enum Outcome[A]:
   case BigLedgerFound(found: Set[A], ttl: FiniteDuration)
   case BigLedgerFailed()
 
+  /** One completed phase of a peer-sharing batch. */
+  case Shared(batch: Long, results: List[(A, PeerShare.Result[A])])
+
 /** A piece of work for the effect layer (a job of the reference's `JobPool`). */
 enum Job[A]:
   case Connect(peer: A, mode: DiffusionMode, provenance: Provenance)
@@ -78,6 +86,9 @@ enum Job[A]:
 
   /** Ask for up to `max` big ledger peers (`jobReqBigLedgerPeers`). */
   case RequestBigLedger(max: Int)
+
+  /** Parallel requests, reported in a short batch followed by the remaining timeout. */
+  case Share(batch: Long, amount: xyz.kd5ujc.scarab.protocol.PeerSharing.Amount, peers: List[A])
 
 /** What the governor tells the log: the decision it took or the outcome it applied (the cases of
   * `TracePeerSelection`, `Types.hs` 1646-1840, that G1.1 has).
@@ -133,6 +144,10 @@ enum Trace[A]:
   case PromoteBigLedger(from: Temperature, peers: List[A], target: Int, current: Int)
   case DemoteBigLedger(from: Temperature, peers: List[A], target: Int, current: Int)
 
+  case PickInbound(peers: List[A])
+  case ShareRequests(amount: Int, peers: List[A])
+  case ShareResults(results: List[(A, PeerShare.Result[A])], added: List[A])
+
 /** The result of one step of the governor: the new state, the work to start, what to log. */
 final case class Decision[A](
     state: GovernorState[A],
@@ -167,6 +182,9 @@ enum Event[A]:
 
   /** The time the governor asked to be woken at has come (it changes nothing by itself). */
   case Wake(at: Time)
+
+  /** Negotiated willingness on a newly established connection. */
+  case SharingNegotiated(peer: A, enabled: Boolean)
 
 /** What ends the governor (the reference's `abortGovernor`, `Governor.hs` 596, and the invariant
   * check): closed, raised through `Raise` by the effect loop.

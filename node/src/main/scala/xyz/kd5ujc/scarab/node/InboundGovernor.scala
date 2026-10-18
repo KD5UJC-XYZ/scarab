@@ -61,6 +61,7 @@ final class InboundGovernor[F[_]: Async] private (
     transactions: Option[TxSubmissionClient.Source[F]],
     events: Option[InboundEvents[F]],
     observe: Option[Peer.Observation => F[Unit]],
+    sharing: Option[PeerSharingRuntime[F]],
     sessionTable: Ref[F, Map[String, InboundGovernor.Session]]
 ):
   private val F = Async[F]
@@ -144,8 +145,8 @@ final class InboundGovernor[F[_]: Async] private (
           Resource.eval(
             emit(remote, if duplex then InboundEvent.Duplex else InboundEvent.Unidirectional)
           ) *>
-            (if duplex && config.runClients then
-               session(remote, agreed.version, mux).background.void
+            sharing.filter(_ => duplex).traverse_(_.accepted(remote, agreed.data.peerSharing)) *>
+            (if duplex && config.runClients then sessionResource(remote, agreed, mux)
              else Resource.unit[F])
       }
 
@@ -154,15 +155,23 @@ final class InboundGovernor[F[_]: Async] private (
     * still syncing from us is) is tried again after `retryDelay`: the protocol is back in its idle
     * state after a failed FindIntersect, so the connection is reusable.
     */
+  private def sessionResource(
+      remote: SocketAddress[IpAddress],
+      agreed: HandshakeClient.Agreed,
+      mux: Mux[F]
+  ): Resource[F, Unit] =
+    session(remote, agreed.version, agreed.data.peerSharing, mux).background.void
+
   private def session(
       remote: SocketAddress[IpAddress],
       version: Int,
+      peerSharing: Boolean,
       mux: Mux[F]
   ): F[Unit] =
     for
       n <- sessionTable.get.map(_.size.toLong)
       _ <- update(remote)(_ => InboundGovernor.Session(remote.toString, number = n + 1))
-      _ <- attempt(remote, version, mux)
+      _ <- attempt(remote, version, peerSharing, mux)
     yield ()
 
   /** Our clients on the connection, for as long as the session lasts. They are started once: a
@@ -176,6 +185,7 @@ final class InboundGovernor[F[_]: Async] private (
   private def attempt(
       remote: SocketAddress[IpAddress],
       version: Int,
+      peerSharing: Boolean,
       mux: Mux[F]
   ): F[Unit] =
     for
@@ -187,7 +197,8 @@ final class InboundGovernor[F[_]: Async] private (
             version,
             NtNHeader.codec,
             config.peer.network,
-            transactions
+            transactions,
+            peerSharing = peerSharing
           )
           .use(connection => following(remote, connection))
           .as(SessionEnd.Returned)
@@ -321,7 +332,8 @@ object InboundGovernor:
       headers: Option[HeaderCheck[F]] = None,
       transactions: Option[TxSubmissionClient.Source[F]] = None,
       events: Option[InboundEvents[F]] = None,
-      observe: Option[Peer.Observation => F[Unit]] = None
+      observe: Option[Peer.Observation => F[Unit]] = None,
+      sharing: Option[PeerSharingRuntime[F]] = None
   )(using node: Handle[F, NodeError]): F[InboundGovernor[F]] =
     Ref
       .of[F, Map[String, Session]](Map.empty)
@@ -338,6 +350,7 @@ object InboundGovernor:
           transactions,
           events,
           observe,
+          sharing,
           _
         )
       )

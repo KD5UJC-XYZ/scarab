@@ -15,6 +15,169 @@ import xyz.kd5ujc.scarab.protocol.PeerSharing
   * function of the known peers, the salt and the request, and a test needs no network.
   */
 object PeerShare:
+  /** A request has no answer when the protocol controller has not registered yet. These are
+    * discovery outcomes, never consensus verdicts (`PeerSharingNotRegisteredYet`).
+    */
+  enum Result[A]:
+    case Peers(peers: Vector[A])
+    case NotRegistered()
+    case Failed(error: xyz.kd5ujc.scarab.network.NetworkError)
+    case TimedOut()
+
+  final case class Batch[A](pending: Set[A], remaining: Int, salt: Long)
+
+  /** Peer-sharing bookkeeping, separate from connection temperatures. A batch retains the remaining
+    * objective between the 3-second and 10-second completions.
+    */
+  final case class Governor[A](
+      enabled: Boolean = false,
+      inboundRetryAt: Time = Time.Zero,
+      nextBatch: Long = 0L,
+      batches: Map[Long, Batch[A]] = Map.empty[Long, Batch[A]]
+  ):
+    def inFlight: Int = batches.valuesIterator.map(_.pending.size).sum
+
+  /** `KnownPeers.belowTarget` (2fb69829, Governor/KnownPeers.hs:96-237). */
+  private[selection] def belowTarget[A: Ordering](
+      st: GovernorState[A],
+      now: Time,
+      policy: Policy,
+      inbound: Map[A, Boolean]
+  ): PeerSelection.Guard[A] =
+    import PeerSelection.Guard.*
+    val sharing = st.sharing
+    val view = st.view(now)
+    val objective = st.targets.known - view.known.size
+    val capacity = policy.maxPeerShareRequests - sharing.inFlight
+    val eligible = st.peers.collect {
+      case (p, r)
+          if r.status.established && r.status != Status.Cooling &&
+            r.shareAt.exists(_ <= now) =>
+        p
+    }.toSet
+    val unknownInbound = inbound.keySet -- st.peers.keySet
+    val (coin, afterCoin) = st.rng.nextLong
+    if !sharing.enabled || st.sensitivity.sensitive || objective <= 0 then Skip(None)
+    else if sharing.inFlight == 0 && now >= sharing.inboundRetryAt &&
+      ((coin & 1L) == 0L || eligible.isEmpty) && unknownInbound.nonEmpty
+    then
+      val (picked, next) = Picks.promotion(
+        scala.collection.immutable.SortedSet.from(unknownInbound),
+        objective.min(policy.maxInboundPeers),
+        afterCoin
+      )
+      val peers = picked.foldLeft(st.peers) { (m, p) =>
+        m.updated(
+          p,
+          PeerRecord
+            .cold(Origin.Other)
+            .copy(advertise = Some(true), everConnected = true, sharing = inbound.get(p))
+        )
+      }
+      Go(
+        Decision(
+          st.copy(
+            peers = peers,
+            rng = next,
+            sharing = sharing.copy(inboundRetryAt = now + policy.inboundPeersRetryDelay)
+          ),
+          Nil,
+          List(Trace.PickInbound(picked))
+        )
+      )
+    else if capacity > 0 && eligible.nonEmpty then
+      val (picked, afterPick) = Picks.promotion(
+        scala.collection.immutable.SortedSet.from(eligible),
+        capacity,
+        afterCoin
+      )
+      val amount = PeerSharing.Amount.saturating((objective / picked.size).max(8).min(255))
+      val (salt, next) = afterPick.nextLong
+      val id = sharing.nextBatch
+      val peers = picked.foldLeft(st.peers)((m, p) =>
+        m.updated(p, m(p).copy(shareAt = Some(now + policy.peerShareRetryTime)))
+      )
+      Go(
+        Decision(
+          st.copy(
+            peers = peers,
+            rng = next,
+            sharing = sharing.copy(
+              nextBatch = id + 1,
+              batches = sharing.batches.updated(id, Batch(picked.toSet, objective, salt))
+            )
+          ),
+          List(Job.Share(id, amount, picked)),
+          List(Trace.ShareRequests(amount.value, picked))
+        )
+      )
+    else
+      val nextShare = Option
+        .when(capacity > 0)(
+          st.peers.valuesIterator
+            .filter(r => r.status.established && r.status != Status.Cooling)
+            .flatMap(_.shareAt)
+            .filter(_ > now)
+            .minOption
+        )
+        .flatten
+      val nextInbound = Option.when(
+        sharing.inFlight == 0 && unknownInbound.nonEmpty &&
+          sharing.inboundRetryAt > now
+      )(sharing.inboundRetryAt)
+      Skip((nextShare.toList ++ nextInbound.toList).minOption)
+
+  /** Filter against the state at completion, limit the whole batch objective, and retain failures
+    * as discovery results. Existing peer metadata must never be overwritten by a duplicate answer
+    * (`KnownPeers.hs:316-445`).
+    */
+  private[selection] def completed[A: Ordering](
+      st: GovernorState[A],
+      id: Long,
+      results: List[(A, Result[A])],
+      now: Time,
+      policy: Policy
+  ): Decision[A] =
+    st.sharing.batches.get(id).fold(Decision(st, Nil, Nil)) { batch =>
+      val applicable = results.filter((peer, _) => batch.pending(peer))
+      val bigLedger = st.peers.collect { case (peer, record) if record.origin.big => peer }.toSet
+      val candidates = applicable.flatMap {
+        case (_, Result.Peers(peers)) => peers.filterNot(p => st.peers.contains(p) || bigLedger(p))
+        case _                        => Vector.empty[A]
+      }.distinct
+      // Socket hashes differ from Haskell's platform-dependent SockAddr hash. Only deterministic
+      // salted ordering is required; the same explicit departure applies to the server policy.
+      val added = candidates
+        .sortBy(p =>
+          scala.util.hashing.MurmurHash3
+            .stringHash(p.toString, (batch.salt ^ (batch.salt >>> 32)).toInt)
+        )
+        .take(batch.remaining.max(0))
+      val retried = applicable.foldLeft(st.peers) {
+        case (m, (peer, Result.Failed(_) | Result.TimedOut())) =>
+          m.get(peer)
+            .fold(m)(r =>
+              m.updated(peer, r.copy(shareAt = Some(now + policy.peerShareFailureRetryTime)))
+            )
+        case (m, _) => m
+      }
+      val peers = added.foldLeft(retried)((m, p) =>
+        m.updated(p, PeerRecord.cold(Origin.Other).copy(advertise = Some(true)))
+      )
+      val remaining = batch.copy(
+        pending = batch.pending -- applicable.map(_._1),
+        remaining = batch.remaining - added.size
+      )
+      val batches =
+        if remaining.pending.isEmpty then st.sharing.batches - id
+        else st.sharing.batches.updated(id, remaining)
+      Decision(
+        st.copy(peers = peers, sharing = st.sharing.copy(batches = batches)),
+        Nil,
+        List(Trace.ShareResults(applicable, added))
+      )
+    }
+
   /** Time between two changes of the salt (`ps_POLICY_PEER_SHARE_STICKY_TIME`,
     * `PeerSharing.hs:168-169`). Within it the same peers are shared with every asker, so asking
     * again brings nothing new and the network cannot be mapped quickly.

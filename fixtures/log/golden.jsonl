@@ -51,6 +51,9 @@
 {"event":"peerSelectionForget","at":"2026-10-16T12:00:00Z","action":"cold","bigLedger":true,"target":15,"known":17,"peers":["10.0.0.1:3001"]}
 {"event":"peerSelectionPromote","at":"2026-10-16T12:00:00Z","action":"decided","bigLedger":true,"from":"cold","peers":["10.0.0.1:3001","relay.example.org:3001"],"target":10,"current":4}
 {"event":"peerSelectionDemote","at":"2026-10-16T12:00:00Z","action":"decided","bigLedger":true,"from":"hot","peers":["relay.example.org:3001"],"target":5,"current":6}
+{"event":"peerSelectionRoots","at":"2026-10-16T12:00:00Z","action":"pickInbound","peers":["10.0.0.1:3001"]}
+{"event":"peerSelectionRoots","at":"2026-10-16T12:00:00Z","action":"peerShareRequests","amount":8,"peers":["10.0.0.1:3001"]}
+{"event":"peerSelectionRoots","at":"2026-10-16T12:00:00Z","action":"peerShareResults","added":["relay.example.org:3001"],"results":[{"peer":"10.0.0.1:3001","result":"Peers(Vector(relay.example.org:3001))"}]}
 {"event":"peerSelectionCounters","at":"2026-10-16T12:00:00Z","root":3,"cold":0,"warm":1,"hot":1,"known":2,"established":2,"active":1,"availableToConnect":0,"coldPromotions":0,"warmPromotions":0,"warmDemotions":0,"activeDemotions":0,"localRoots":{"known":1,"established":1,"active":1},"bootstrap":{"known":1,"established":1,"active":0},"bigLedger":{"known":1,"established":1,"active":1},"origins":{"Local":1,"Public":0,"Bootstrap":1,"Ledger":0,"BigLedger":1,"Other":0}}
 {"event":"peerSelectionChurn","at":"2026-10-16T12:00:00Z","action":"round","mode":"Deadline"}
 {"event":"peerSelectionChurn","at":"2026-10-16T12:00:00Z","action":"step","step":"DecreaseActive","number":7,"tookSeconds":1.5,"change":-4}

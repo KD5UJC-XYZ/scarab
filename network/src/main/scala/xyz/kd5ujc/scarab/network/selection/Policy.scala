@@ -34,7 +34,15 @@ final case class Policy(
     /** The wait for a connection to be released after a demotion (`c_PEER_DEMOTION_TIMEOUT`,
       * `Types.hs` 268-274), which the effect loop enforces.
       */
-    demotionTimeout: FiniteDuration = 10.minutes
+    demotionTimeout: FiniteDuration = 10.minutes,
+    peerShareActivationDelay: FiniteDuration = 300.seconds,
+    peerShareRetryTime: FiniteDuration = 900.seconds,
+    peerShareFailureRetryTime: FiniteDuration = 3600.seconds,
+    peerShareBatchWaitTime: FiniteDuration = 3.seconds,
+    peerShareOverallTimeout: FiniteDuration = 10.seconds,
+    maxPeerShareRequests: Int = 2,
+    inboundPeersRetryDelay: FiniteDuration = 60.seconds,
+    maxInboundPeers: Int = 10
 )
 
 /** How the governor ranks hot peers for demotion: the lowest score goes first. The score is

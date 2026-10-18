@@ -1,6 +1,7 @@
 # Peer selection: the P2P governor (G1)
 
-**Status**: G1.1, G1.2, G1.3a and G1.3b are built (2026-10-17, sections 7a, 7b, 7c, 7d and 7e); the other stages in section 7 are not scheduled. Tracked in
+**Status**: G1.1–G1.4 are implemented; G1.4b's private reference proof and gates are recorded in section 7f
+(2026-10-18). Genesis hooks (G1.5) and the follow-ups remain separate. Tracked in
 [#31](https://github.com/KD5UJC-XYZ/scarab/issues/31) (roadmap G1). Written against `main` at 6ce5bb77 and the
 reference sources named in section 1.1, which were read in full for the governor, the churn governor, the peer
 metrics, ledger peers, PeerSharing and the Cardano configuration; every claim about the reference carries its
@@ -1565,7 +1566,7 @@ the hand-written and the generated codec) and the root in `SampledSuite` and the
 
 
 
-**What G1.4b must wire.**
+**G1.4a handoff: what G1.4b must wire.** Completed by section 7f.
 
 - `PeerRecord` has no `advertise` field, so `PeerShare.shareable` cannot be fed from the governor state; add it (from `advertise`
   of the topology's roots; a peer learnt by peer sharing is not advertised unless the reference does so: check
@@ -1581,6 +1582,78 @@ the hand-written and the generated codec) and the root in `SampledSuite` and the
   (#132); `PeerSharingClient.request` raises `NetworkError` through `Raise` like the other clients.
 - Defaults: with no `PeerSharing` key the reference is on for a node without producer credentials (`POM.hs:899-905`); Scarab is off
   until the above works. Remove the `unsupported` entry then.
+
+## 7f. G1.4b governor and wiring
+
+Issue [#138](https://github.com/KD5UJC-XYZ/scarab/issues/138); protocol G1.4a remains unchanged on the wire.
+This stage completes the missing wiring listed in G1.4a. Reference: ouroboros-network
+`2fb69829a19b5c04e4fb212bdd78fb63f9d2d776` (the existing pin),
+`Governor/KnownPeers.hs:96–237,268–445`, `Governor/EstablishedPeers.hs:576–614`,
+`State/KnownPeers.hs:178–200,580–592`, `Diffusion/Policies.hs:69–76,164–169`, and
+`Cardano/Network/PeerSelection/Governor/Types.hs:170–171` (sharing disabled throughout the sensitive state).
+The existing salt/hash deviation in G1.4a also applies to the client's salted subset: deterministic
+MurmurHash3 ordering replaces Haskell's platform-dependent `SockAddr` hash; the bound and filtering agree.
+
+**Pure policy.** `PeerRecord` retains configured advertisement and negotiated remote willingness.
+A successful establishment sets the sharing eligibility time to completion plus 300 seconds. The
+below-known-target family follows root requests, flips a coin between inbound discovery and eligible
+established peers, takes at most ten unknown inbound peers (60-second retry), or asks at most two peers.
+Requests split the discovery objective with `min(255,max(8,objective/requestCount))`; normal retry is
+900 seconds, request failures 3600 seconds. A batch keeps its pending peers, salt and remaining objective
+between the 3-second and 10-second completions. Existing peers (including the separate big-ledger
+population) are removed before insertion; duplicates collapse so the unique discovery budget is used.
+A new discovered peer gets `DoAdvertise`, existing configured flags remain unchanged. A late result
+never restores a closed connection. Clean-state detection waits for outstanding sharing jobs too.
+
+**Effects and ownership.** `PeerGovernor` starts total, exhaustively dispatched jobs. Per-peer requests
+run in the owned supervisor and return closed `PeerShare.Result` values. A logical discovery timeout
+ends the wait, while the at-most-60-second wire exchange drains its reply so the client's `Busy` state
+cannot be reused mid-conversation. Supervisor shutdown cancels those workers; no wire failure escapes
+through a captured MTL capability. `PeerSharingClient.request/done` take their caller's `Raise`;
+`OutboundPeers` establishes `Fibers.scoped` for each request and routes unexpected defects to the fatal
+sink without peer blame. Network failures close the failing mini-protocol's connection. A controller
+not yet registered produces no answer, with the normal retry policy, as in the reference.
+
+`PeerSharingRuntime` holds the public shareable vector, sticky salt, last successful DNS resolutions
+and currently accepted duplex peers. A bounded one-element change notification wakes the governor;
+resource release removes inbound candidates. Published answers use only advertised peers with a
+successful connection and zero failures. Successful DNS roots publish their actual resolved IP.
+The pure `PeerSharingAddress` conversion reverses IPv4 octets only; IPv6 retains its four network-order
+words. Both incoming and outgoing negotiated flags reach the clients. Governor request dispatch uses
+`OutboundPeers`' live connection table; accepting an inbound peer makes it known and subject to the
+existing connection-manager rules. Reusing the accepted connection for an outbound governor job remains
+the G2/#142 boundary. The actual client proof below uses an outbound connection; it does not prove a
+governor request executed through the inbound client's instance. `Main` uses one resolved setting:
+relay default on, producer default off, explicit configuration wins (`POM.hs:899–905`).
+`PeerSharing` is removed from `configUnsupported`.
+
+**Tests and evidence.** `PeerShareGovernorSuite` exercises activation/retry/cap/amount, both coin sides,
+inbound willingness, privacy, big-ledger exclusion, remaining objective, failure and late-completion
+rules. `PeerSharingLoopSuite` drives the actual effect loop on fixed-seed `TestControl`, including exact
+3/4-second partial batches, 10-second timeout and a repeated one-hour run with results used and no
+requests closer than 900 seconds per peer. `PeerSharingRuntimeSuite` tests publication, DNS provenance,
+inbound resource lifetime and defaults; the protocol suite uses owned scopes and `FailsOnUncaught`,
+including a client created in one scope and rejected in its request fiber's own scope. Address properties
+cover arbitrary IPv4/IPv6 octets and boundary ports. Log samples and byte-for-byte golden cover all
+three new sharing trace cases.
+
+`devnet.py peer-sharing` creates only a fresh private cluster: Scarab has one advertised local root,
+a pool-backed Haskell discovery relay. A second Haskell relay starts later with Scarab as its only
+configured upstream; its advertisement of Scarab is disabled to avoid returning Scarab its own address. This
+avoids depending on topology reload to stagger the 300-second activations. Its actual machine traces
+must show a nonempty successful reply, at most `min(requested,10)`, all peers inside Scarab's published
+eligible set. Scarab must also learn actual advertised pool endpoints beyond its sole root. The
+validator rejects empty, refused, wrong-peer, unregistered, duplicated, unproven and oversized answers.
+Every owned container is removed even if evidence archiving fails. Gate results are recorded in the
+compatibility evidence log; initial excluded setup attempts are disclosed there.
+
+Broader follow-ups remain [#139](https://github.com/KD5UJC-XYZ/scarab/issues/139),
+[#142](https://github.com/KD5UJC-XYZ/scarab/issues/142),
+[#150](https://github.com/KD5UJC-XYZ/scarab/issues/150),
+[#152](https://github.com/KD5UJC-XYZ/scarab/issues/152), and
+[#180](https://github.com/KD5UJC-XYZ/scarab/issues/180). This stage does not claim a new public-network
+sync: earlier Preview evidence covers its unchanged target/churn/ledger-peer paths; the new sharing
+behavior is checked on the private reference topology. Parent #31 acceptance is evaluated separately.
 
 ## 8. Open questions for the owner
 

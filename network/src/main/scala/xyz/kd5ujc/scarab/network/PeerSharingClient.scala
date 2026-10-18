@@ -18,10 +18,10 @@ import scala.concurrent.duration.*
   */
 trait PeerSharingClient[F[_]]:
   /** Ask for up to `amount` peers. */
-  def request(amount: Amount): F[Vector[Address]]
+  def request(amount: Amount)(using Raise[F, NetworkError]): F[Vector[Address]]
 
   /** Say `Done`; no request follows. */
-  def done: F[Unit]
+  def done(using Raise[F, NetworkError]): F[Unit]
 
 object PeerSharingClient:
   final case class Settings(
@@ -29,20 +29,24 @@ object PeerSharingClient:
       limits: PeerSharing.Limits = PeerSharing.Limits()
   )
 
-  def apply[F[_]: Temporal](channel: MuxChannel[F], settings: Settings = Settings())(using
-      Raise[F, NetworkError]
+  def apply[F[_]: Temporal](
+      channel: MuxChannel[F],
+      settings: Settings = Settings()
   ): F[PeerSharingClient[F]] =
     val F = Temporal[F]
     val id = Protocols.PeerSharing
-    def illegal[A](detail: String): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
-    def send(state: PeerSharing.State, message: PeerSharing.Message): F[Unit] =
+    def illegal[A](detail: String)(using Raise[F, NetworkError]): F[A] =
+      NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def send(state: PeerSharing.State, message: PeerSharing.Message)(using
+        Raise[F, NetworkError]
+    ): F[Unit] =
       PeerSharing
         .encode(state, PeerSharing.Role.Client, message, settings.limits)
         .fold(e => illegal(e.message), channel.send)
 
     (Mutex[F], Ref.of[F, PeerSharing.State](PeerSharing.State.Idle)).mapN { (lock, state) =>
       new PeerSharingClient[F]:
-        def request(amount: Amount): F[Vector[Address]] =
+        def request(amount: Amount)(using Raise[F, NetworkError]): F[Vector[Address]] =
           lock.lock.surround {
             for
               current <- state.get
@@ -68,7 +72,7 @@ object PeerSharingClient:
             yield peers
           }
 
-        def done: F[Unit] =
+        def done(using Raise[F, NetworkError]): F[Unit] =
           lock.lock.surround {
             state.get.flatMap(current =>
               send(current, PeerSharing.Message.Done) *> channel.flush *> state.set(
