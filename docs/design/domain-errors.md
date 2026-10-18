@@ -102,9 +102,12 @@ bounded contracts identified after #188:
   I/O errors retain `IOException`, and unexpected defects retain their original `Throwable`.
   `EitherT[Eval, ...]` trampolines recursive generation and immutable `StateT` carries emitter
   state. Unsupported syntax diagnostics use a bounded structural renderer, so presenting an error
-  does not recurse through its full AST. There is no `GenException` domain exception. The parser grammar stays unchanged, and
-  every file emitted from the pinned configuration is compared byte for byte with the previous
-  generator before this change is handed back.
+  does not recurse through its full AST. After the sampler's depth cutoff, repeated references
+  return `SamplingCycle` rather than looping. Optional fuzz seeds explicitly omit unsupported,
+  unresolved, missing-module or cyclic samples; configuration, I/O and defects remain failures.
+  There is no `GenException` domain exception. The parser grammar stays unchanged. All 21 files
+  emitted from the pinned configuration match the previous generator byte for byte, and 384
+  fixed-seed recursive/compound samples retain their baseline fingerprint.
 
 Compiler/AST enforcement and the Scalus callback seam remain explicit M11-E follow-ups; absence
 of declared `Either[String, ...]` alone does not establish semantic completeness. The original
