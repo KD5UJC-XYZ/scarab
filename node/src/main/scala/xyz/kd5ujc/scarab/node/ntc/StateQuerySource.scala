@@ -59,9 +59,9 @@ object StateQuerySource:
         def answer(raw: Bytes): F[Either[Refusal, Bytes]] =
           NtcQuery.decode(raw) match
             case Left(error) =>
-              Sync[F].pure(Left(Refusal.Undecodable(error, raw.hex.take(80))))
+              Sync[F].pure(Left(Refusal.Undecodable(error.message, raw.hex.take(80))))
             case Right(query) =>
-              val shown = query.toString.take(120)
+              val shown = NtcQuery.describe(query)
               for
                 e <- env
                 entries <- fetch(view, QueryAnswers.utxoNeeds(query))

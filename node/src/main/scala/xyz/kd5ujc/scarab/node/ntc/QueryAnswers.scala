@@ -192,11 +192,10 @@ object QueryAnswers:
     case NtcQuery.IfCurrent(_, inner) => ledgerNeeds(inner)
     case _                            => UtxoNeeds.Nothing
 
-  private def ledgerNeeds(q: LedgerQuery): UtxoNeeds = q match
+  private def ledgerNeeds(q: LedgerQuery): UtxoNeeds = LedgerQuery.cborLayers(q)._2 match
     case LedgerQuery.GetUTxOWhole           => UtxoNeeds.Whole
     case LedgerQuery.GetUTxOByAddress(some) => UtxoNeeds.Addresses(some)
     case LedgerQuery.GetUTxOByTxIn(ins)     => UtxoNeeds.Inputs(ins)
-    case LedgerQuery.GetCBOR(inner)         => ledgerNeeds(inner)
     case _                                  => UtxoNeeds.Nothing
 
   /** The era history of the acquired state: a chain that starts in Byron has an open-ended Byron
@@ -275,12 +274,11 @@ object QueryAnswers:
   /** The queries answered in every Shelley-based era: the ledger state as the Haskell node writes
     * it, and the chain-dependent state (the others are Conway's).
     */
-  private def inEveryEra(q: LedgerQuery): Boolean = q match
+  private def inEveryEra(q: LedgerQuery): Boolean = LedgerQuery.cborLayers(q)._2 match
     case LedgerQuery.DebugEpochState | LedgerQuery.DebugNewEpochState |
         LedgerQuery.DebugChainDepState =>
       true
-    case LedgerQuery.GetCBOR(inner) => inEveryEra(inner)
-    case _                          => false
+    case _ => false
 
   private def mismatch(w: CborOut, queried: Int, ledger: Era): CborOut =
     def name(i: Int): String = Era.values.find(_.index == i).fold("Unknown")(_.toString)
@@ -380,6 +378,27 @@ object QueryAnswers:
       utxo: Map[TxIn, TxOut],
       q: LedgerQuery
   ): Either[Unanswered, Bytes] =
+    val (depth, leaf) = LedgerQuery.cborLayers(q)
+    ledgerLeafAnswer(env, view, utxo, leaf).map { answer =>
+      // Build inside out, then emit outside in once: repeatedly copying the encoded inner
+      // result would make a legal deeply nested query quadratic in time and allocation.
+      val (_, headers) = (0 until depth).foldLeft((answer.size, List.empty[Bytes])) {
+        case ((size, done), _) =>
+          val header = CborOut.build(_.tag(24).head(2, size))
+          (size + header.size, header :: done)
+      }
+      CborOut.build { w =>
+        headers.foreach(w.raw)
+        w.raw(answer)
+      }
+    }
+
+  private def ledgerLeafAnswer[S](
+      env: QueryEnv,
+      view: QueryView[S],
+      utxo: Map[TxIn, TxOut],
+      q: LedgerQuery
+  ): Either[Unanswered, Bytes] =
     import LedgerQuery.*
     def conway[A](f: ConwayFacts => Either[Unanswered, A]): Either[Unanswered, A] =
       view.conway.leftMap(Unanswered.Refused(_)).flatMap {
@@ -400,8 +419,6 @@ object QueryAnswers:
         UtxoCodecs.utxo.answer(utxo.filter { case (_, o) => addresses(o.address.raw) })
       case GetUTxOByTxIn(inputs) =>
         UtxoCodecs.utxo.answer(utxo.filter { case (i, _) => inputs(i) })
-      case GetCBOR(inner) =>
-        ledgerAnswer(env, view, utxo, inner).map(r => CborOut.build(_.tag(24).bytes(r)))
       case GetFilteredDelegationsAndRewardAccounts(credentials) =>
         conway { f =>
           delegationsAndRewards.answerRead(f.accounts.map { all =>

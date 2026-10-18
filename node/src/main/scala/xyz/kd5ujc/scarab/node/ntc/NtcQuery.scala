@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import cats.Monad
 import cats.syntax.all.*
+import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{Credential, DRep, GovActionId, TxIn}
 
@@ -48,6 +50,15 @@ enum LedgerQuery:
   case GetDRepDelegations(dreps: Set[DRep])
   case Unsupported(tag: Int)
 
+object LedgerQuery:
+  /** Peel the only recursive constructor without consuming the worker's call stack. */
+  def cborLayers(query: LedgerQuery): (Int, LedgerQuery) =
+    @tailrec
+    def loop(current: LedgerQuery, depth: Int): (Int, LedgerQuery) = current match
+      case LedgerQuery.GetCBOR(inner) => loop(inner, depth + 1)
+      case leaf                       => (depth, leaf)
+    loop(query, 0)
+
 /** The hard-fork-combinator specific queries. */
 enum HardForkQuery:
   case GetInterpreter
@@ -69,26 +80,67 @@ enum NtcQuery:
   case DebugLedgerConfig
 
 object NtcQuery:
-  private type R[A] = Either[String, A]
+  /** Logging must not call the recursively derived `toString` before truncating it. */
+  def describe(query: NtcQuery): String = query match
+    case NtcQuery.IfCurrent(era, inner) =>
+      val (depth, leaf) = LedgerQuery.cborLayers(inner)
+      val shown = if depth == 0 then leaf.toString else s"GetCBOR[$depth]($leaf)"
+      s"IfCurrent($era,$shown)".take(120)
+    case other => other.toString.take(120)
+
+  enum Error:
+    case MalformedCbor(detail: String)
+    case ExpectedArray(field: String)
+    case ExpectedUnsigned(field: String)
+    case ExpectedBytes(field: String)
+    case InvalidHash(field: String)
+    case InvalidCredential
+    case InvalidDRep
+    case InvalidTxIn(detail: String)
+    case InvalidNonMyopicCredential
+    case ExpectedCoin
+    case Empty(field: String)
+    case Arity(field: String, expected: Int, actual: Int)
+    case UnknownTag(field: String, tag: Int)
+    case Constructor(field: String, tag: Int, arity: Int)
+
+    def message: String = this match
+      case MalformedCbor(detail)          => s"invalid query CBOR: $detail"
+      case ExpectedArray(field)           => s"$field: expected array"
+      case ExpectedUnsigned(field)        => s"$field: expected small unsigned integer"
+      case ExpectedBytes(field)           => s"$field: expected byte string"
+      case InvalidHash(field)             => s"$field: expected 28 bytes"
+      case InvalidCredential              => "credential: bad kind or hash"
+      case InvalidDRep                    => "drep: bad kind or arity"
+      case InvalidTxIn(detail)            => s"input: $detail"
+      case InvalidNonMyopicCredential     => "non-myopic credential: expected [tag, value]"
+      case ExpectedCoin                   => "non-myopic coin: expected unsigned integer"
+      case Empty(field)                   => s"$field: empty"
+      case Arity(field, expected, actual) => s"$field: expected $expected elements, got $actual"
+      case UnknownTag(field, tag)         => s"$field: unknown tag $tag"
+      case Constructor(field, tag, arity) => s"$field: unknown tag $tag or arity $arity"
+
+  private type R[A] = Either[Error, A]
   private val limits = Cbor.Limits(
     maxInputBytes = 2000000,
     maxItems = 200000,
     maxStringBytes = 1000000
   )
 
-  def decode(raw: Bytes): R[NtcQuery] = Cbor.decode(raw, limits).flatMap(top)
+  def decode(raw: Bytes): R[NtcQuery] =
+    Cbor.decode(raw, limits).leftMap(Error.MalformedCbor(_)).flatMap(top)
 
   private def arr(n: Node, what: String): R[Vector[Node]] = n.value match
     case Value.Arr(xs) => Right(xs)
-    case _             => Left(s"$what: expected array")
+    case _             => Left(Error.ExpectedArray(what))
 
   private def uint(n: Node, what: String): R[Int] = n.value match
     case Value.UInt(v) if v.isValidInt => Right(v.toInt)
-    case _                             => Left(s"$what: expected small unsigned integer")
+    case _                             => Left(Error.ExpectedUnsigned(what))
 
   private def bytes(n: Node, what: String): R[Bytes] = n.value match
     case Value.ByteString(b) => Right(b)
-    case _                   => Left(s"$what: expected byte string")
+    case _                   => Left(Error.ExpectedBytes(what))
 
   /** Elements of a set: an array, optionally under tag 258. */
   private def elements(n: Node, what: String): R[Vector[Node]] = n.value match
@@ -104,24 +156,24 @@ object NtcQuery:
         (uint(t, "credential kind"), bytes(h, "credential hash")).tupled.flatMap {
           case (0, hash) if hash.size == 28 => Right(Credential.Key(hash))
           case (1, hash) if hash.size == 28 => Right(Credential.Script(hash))
-          case _                            => Left("credential: bad kind or hash")
+          case _                            => Left(Error.InvalidCredential)
         }
-      case _ => Left("credential: expected two elements")
+      case xs => Left(Error.Arity("credential", 2, xs.size))
     }
 
   private def keyHash(n: Node): R[Bytes] =
-    bytes(n, "key hash").filterOrElse(_.size == 28, "key hash: expected 28 bytes")
+    bytes(n, "key hash").filterOrElse(_.size == 28, Error.InvalidHash("key hash"))
 
-  private def txIn(n: Node): R[TxIn] = TxIn.decode(n)
+  private def txIn(n: Node): R[TxIn] = TxIn.decode(n).leftMap(Error.InvalidTxIn(_))
 
   private def drep(n: Node): R[DRep] =
     arr(n, "drep").flatMap { xs =>
-      xs.headOption.toRight("drep: empty").flatMap(uint(_, "drep kind")).flatMap {
+      xs.headOption.toRight(Error.Empty("drep")).flatMap(uint(_, "drep kind")).flatMap {
         case 0 if xs.size == 2 => keyHash(xs(1)).map(h => DRep.Registered(Credential.Key(h)))
         case 1 if xs.size == 2 => keyHash(xs(1)).map(h => DRep.Registered(Credential.Script(h)))
         case 2 if xs.size == 1 => Right(DRep.AlwaysAbstain)
         case 3 if xs.size == 1 => Right(DRep.AlwaysNoConfidence)
-        case _                 => Left("drep: bad kind or arity")
+        case _                 => Left(Error.InvalidDRep)
       }
     }
 
@@ -131,7 +183,7 @@ object NtcQuery:
         (bytes(i, "gov action tx id"), uint(ix, "gov action index")).mapN((t, k) =>
           GovActionId(t, BigInt(k))
         )
-      case _ => Left("gov action id: expected two elements")
+      case xs => Left(Error.Arity("gov action id", 2, xs.size))
     }
 
   /** `Maybe (Set a)`: `[]` for nothing, `[set]` for just. */
@@ -139,61 +191,84 @@ object NtcQuery:
     arr(n, what).flatMap {
       case Vector()  => Right(None)
       case Vector(s) => set(s, what)(each).map(Some(_))
-      case _         => Left(s"$what: expected a maybe")
+      case xs        => Left(Error.Arity(what, 1, xs.size))
     }
 
   private def top(root: Node): R[NtcQuery] =
     arr(root, "query").flatMap { xs =>
-      xs.headOption.toRight("query: empty").flatMap(uint(_, "query tag")).flatMap {
+      xs.headOption.toRight(Error.Empty("query")).flatMap(uint(_, "query tag")).flatMap {
         case 0 if xs.size == 2 => hardFork(xs(1))
         case 1 if xs.size == 1 => Right(NtcQuery.SystemStart)
         case 2 if xs.size == 1 => Right(NtcQuery.ChainBlockNo)
         case 3 if xs.size == 1 => Right(NtcQuery.ChainPoint)
         case 4 if xs.size == 1 => Right(NtcQuery.DebugLedgerConfig)
-        case t                 => Left(s"query: unknown tag $t or arity ${xs.size}")
+        case t                 => Left(Error.Constructor("query", t, xs.size))
       }
     }
 
   private def hardFork(n: Node): R[NtcQuery] =
     arr(n, "block query").flatMap { xs =>
-      xs.headOption.toRight("block query: empty").flatMap(uint(_, "block query tag")).flatMap {
-        case 0 if xs.size == 2 =>
-          arr(xs(1), "query in era").flatMap {
-            case Vector(era, q) =>
-              (uint(era, "era index"), shelley(q)).mapN(NtcQuery.IfCurrent(_, _))
-            case _ => Left("query in era: expected [era, query]")
-          }
-        case 1 if xs.size == 3 =>
-          // [1, <Some GetEraStart>, era index]: the query is `[0]` (GetEraStart)
-          (arr(xs(1), "anytime query"), uint(xs(2), "era index")).tupled.flatMap {
-            case (q, era) if q.size >= 1 => Right(NtcQuery.EraStart(era))
-            case _                       => Left("anytime query: empty")
-          }
-        case 2 if xs.size == 2 =>
-          arr(xs(1), "hard fork query").flatMap { qs =>
-            qs.headOption
-              .toRight("hard fork query: empty")
-              .flatMap(uint(_, "hard fork tag"))
-              .flatMap {
-                case 0 => Right(NtcQuery.HardFork(HardForkQuery.GetInterpreter))
-                case 1 => Right(NtcQuery.HardFork(HardForkQuery.GetCurrentEra))
-                case t => Left(s"hard fork query: unknown tag $t")
-              }
-          }
-        case t => Left(s"block query: unknown tag $t")
-      }
+      xs.headOption
+        .toRight(Error.Empty("block query"))
+        .flatMap(uint(_, "block query tag"))
+        .flatMap {
+          case 0 if xs.size == 2 =>
+            arr(xs(1), "query in era").flatMap {
+              case Vector(era, q) =>
+                (uint(era, "era index"), shelley(q)).mapN(NtcQuery.IfCurrent(_, _))
+              case qs => Left(Error.Arity("query in era", 2, qs.size))
+            }
+          case 1 if xs.size == 3 =>
+            // [1, <Some GetEraStart>, era index]: the query is `[0]` (GetEraStart)
+            (arr(xs(1), "anytime query"), uint(xs(2), "era index")).tupled.flatMap {
+              // QueryAnytime's Serialise instance: Ledger/Query.hs:536-551 at 82ecba3.
+              case (Vector(tag), era) =>
+                uint(tag, "anytime query tag").flatMap {
+                  case 0 => Right(NtcQuery.EraStart(era))
+                  case t => Left(Error.UnknownTag("anytime query", t))
+                }
+              case (q, _) => Left(Error.Arity("anytime query", 1, q.size))
+            }
+          case 2 if xs.size == 2 =>
+            // SerialiseNodeToClient.hs:410-417 at 82ecba3 enforces a singleton.
+            arr(xs(1), "hard fork query").flatMap {
+              case Vector(tag) =>
+                uint(tag, "hard fork tag").flatMap {
+                  case 0 => Right(NtcQuery.HardFork(HardForkQuery.GetInterpreter))
+                  case 1 => Right(NtcQuery.HardFork(HardForkQuery.GetCurrentEra))
+                  case t => Left(Error.UnknownTag("hard fork query", t))
+                }
+              case qs => Left(Error.Arity("hard fork query", 1, qs.size))
+            }
+          case t => Left(Error.Constructor("block query", t, xs.size))
+        }
     }
 
   /** The Shelley block query (`decodeShelleyQuery`). */
   def shelley(n: Node): R[LedgerQuery] =
+    final case class Pending(node: Node, depth: Int)
+    Monad[R].tailRecM(Pending(n, 0)) { pending =>
+      arr(pending.node, "ledger query").flatMap {
+        case Vector(tag, inner) if tag.value == Value.UInt(9) =>
+          Right(Left(Pending(inner, pending.depth + 1)))
+        case _ =>
+          shelleyLeaf(pending.node).map { leaf =>
+            Right((0 until pending.depth).foldLeft(leaf)((q, _) => LedgerQuery.GetCBOR(q)))
+          }
+      }
+    }
+
+  private def shelleyLeaf(n: Node): R[LedgerQuery] =
     arr(n, "ledger query").flatMap { xs =>
-      xs.headOption.toRight("ledger query: empty").flatMap(uint(_, "ledger query tag")).flatMap {
-        tag =>
+      xs.headOption
+        .toRight(Error.Empty("ledger query"))
+        .flatMap(uint(_, "ledger query tag"))
+        .flatMap { tag =>
           import LedgerQuery.*
           def arg1[A](f: Node => R[A]): R[A] =
-            if xs.size == 2 then f(xs(1)) else Left(s"ledger query $tag: expected one argument")
+            if xs.size == 2 then f(xs(1)) else Left(Error.Arity(s"ledger query $tag", 2, xs.size))
           def none(q: LedgerQuery): R[LedgerQuery] =
-            if xs.size == 1 then Right(q) else Left(s"ledger query $tag: expected no argument")
+            if xs.size == 1 then Right(q) else Left(Error.Arity(s"ledger query $tag", 1, xs.size))
           tag match
             case 0 => none(GetLedgerTip)
             case 1 => none(GetEpochNo)
@@ -206,11 +281,11 @@ object NtcQuery:
                         case 0 =>
                           v.value match
                             case Value.UInt(coin) => Right(Left(coin))
-                            case _                => Left("non-myopic coin")
+                            case _                => Left(Error.ExpectedCoin)
                         case 1 => credential(v).map(Right(_))
-                        case _ => Left("non-myopic tag")
+                        case _ => Left(Error.InvalidNonMyopicCredential)
                       }
-                    case _ => Left("non-myopic credential")
+                    case _ => Left(Error.InvalidNonMyopicCredential)
                   }
                 )
               ).map(s => GetNonMyopicMemberRewards(s.toVector))
@@ -218,7 +293,7 @@ object NtcQuery:
             case 6 => arg1(set(_, "addresses")(bytes(_, "address"))).map(GetUTxOByAddress(_))
             case 7 => none(GetUTxOWhole)
             case 8 => none(DebugEpochState)
-            case 9 => arg1(shelley).map(GetCBOR(_))
+            case 9 => Left(Error.Arity("ledger query 9", 2, xs.size))
             case 10 =>
               arg1(set(_, "credentials")(credential))
                 .map(GetFilteredDelegationsAndRewardAccounts(_))
@@ -238,7 +313,7 @@ object NtcQuery:
             case 25 => arg1(set(_, "credentials")(credential)).map(GetDRepState(_))
             case 26 => arg1(set(_, "dreps")(drep)).map(GetDRepStakeDistr(_))
             case 27 =>
-              if xs.size != 4 then Left("committee members state: expected three arguments")
+              if xs.size != 4 then Left(Error.Arity("committee members state", 4, xs.size))
               else
                 (
                   set(xs(1), "cold credentials")(credential),
@@ -257,6 +332,6 @@ object NtcQuery:
             case 37    => none(GetStakeDistribution2)
             case 38    => none(GetMaxMajorProtocolVersion)
             case 39    => arg1(set(_, "dreps")(drep)).map(GetDRepDelegations(_))
-            case other => Left(s"ledger query: unknown tag $other")
-      }
+            case other => Left(Error.UnknownTag("ledger query", other))
+        }
     }
