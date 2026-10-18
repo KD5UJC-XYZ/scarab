@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.blst.BlstProblem
+import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
 import xyz.kd5ujc.scarab.protocol.ChainSync
 
 /** Closed hierarchy of node failures. Algebras raise the narrowest subtype; because cats-mtl
@@ -153,14 +154,20 @@ enum ForgeError extends NodeError:
   /** A key or certificate file is missing, malformed or of the wrong type. */
   case KeyFile(file: String, reason: String)
 
+  /** A KES signing key was decoded, but its material is invalid. */
+  case KesKey(file: String, cause: Sum6KesSigning.Failure)
+
   /** The keys do not belong together (hot key, certificate signature, VRF pair). */
   case KeyMismatch(reason: String)
 
   /** The KES period of the slot is outside the operational certificate's window. */
   case KeyPeriodOutOfRange(period: BigInt, start: BigInt, evolutions: BigInt)
 
-  /** The KES key could not be evolved to the slot's period (it has already moved past it). */
+  /** Legacy unexpected forger-step failure; infrastructure/defect classification is #180 G7-F3. */
   case KesFailure(reason: String)
+
+  /** The KES key could not be evolved to the slot's period (it has already moved past it). */
+  case KesEvolution(cause: Sum6KesSigning.Failure)
 
   case VrfFailure(reason: String)
 
@@ -182,10 +189,12 @@ enum ForgeError extends NodeError:
 
   def message: String = this match
     case KeyFile(f, r)  => s"key file $f: $r"
+    case KesKey(f, e)   => s"key file $f: ${e.message}"
     case KeyMismatch(r) => s"keys do not match: $r"
     case KeyPeriodOutOfRange(p, s, e) =>
       s"KES period $p outside the operational certificate window [$s, ${s + e})"
     case KesFailure(r)                  => s"KES: $r"
+    case KesEvolution(e)                => s"KES: ${e.message}"
     case VrfFailure(r)                  => s"VRF: $r"
     case NotLeader(slot)                => s"not elected for slot $slot"
     case LedgerViewUnavailable(slot, r) => s"no ledger view for slot $slot: $r"

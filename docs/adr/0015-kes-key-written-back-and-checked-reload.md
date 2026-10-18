@@ -41,3 +41,14 @@ test-network pool (#116).
 - A bad rotation cannot take the pool off the air: the node keeps what it has and the driver restores the
   previous pair. The Haskell node would have switched.
 - Revisit if a KES agent (H2) supplies the key: the agent owns evolution and the file is not written then.
+
+## Error representation (2026-10-18, #82)
+
+KES signing-key validation returns closed cases for missing material, incorrect lengths, periods,
+seed state and verification-key consistency. Consistency failures carry the tree depth and, when
+relevant, the local period and seed state. `ForgeError.KesKey` retains the cause and file name when
+loading; `ForgeError.KesEvolution` retains it when advancing the key. Messages are rendered for
+presentation. Key bytes, validation order, erasure and evolution are unchanged.
+
+The rest of the string-error migration is tracked by #82; infrastructure failures and defects of
+the forger remain the separate G7-F3 follow-up in [#180](https://github.com/KD5UJC-XYZ/scarab/issues/180).

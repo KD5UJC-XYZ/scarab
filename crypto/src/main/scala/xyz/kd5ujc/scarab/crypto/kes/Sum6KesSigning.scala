@@ -29,10 +29,32 @@ object Sum6KesSigning:
   val SignatureBytes: Int = 64 + 64 * Depth
 
   enum Failure:
-    case Malformed(reason: String)
+    case MissingSeed
+    case InvalidSeedLength(actual: Int)
+    case MissingKey
+    case InvalidKeyLength(actual: Int)
     case PeriodOutOfRange(period: Int)
-    case KeyInconsistent(reason: String)
-    case InternalFailure(kind: String)
+    case SeedStateMismatch(depth: Int, period: Int, actual: SeedState)
+    case VerificationKeyMismatch(depth: Int)
+    case RightSeedMismatch(depth: Int)
+
+    def message: String = this match
+      case MissingSeed | InvalidSeedLength(_) => "KES seed must be 32 bytes"
+      case MissingKey | InvalidKeyLength(_)   => s"Sum6 KES signing key must be $KeyBytes bytes"
+      case PeriodOutOfRange(period) =>
+        s"KES period $period is outside the remaining signing periods"
+      case SeedStateMismatch(depth, period, actual) =>
+        val state = actual match
+          case SeedState.Erased  => "erased"
+          case SeedState.Present => "present"
+        s"level $depth: the right-half seed is $state at period $period"
+      case VerificationKeyMismatch(depth) =>
+        s"level $depth: the stored key does not match its verification key"
+      case RightSeedMismatch(depth) =>
+        s"level $depth: the right-half seed does not generate the stored verification key"
+
+  enum SeedState:
+    case Present, Erased
 
   /** Bytes of a key of the given depth. */
   private def size(depth: Int): Int = if depth == 0 then 32 else size(depth - 1) + 96
@@ -75,8 +97,8 @@ object Sum6KesSigning:
 
   /** `genKeyKES seed`: the key for period 0, deterministic in the 32-byte seed. */
   def generate(seed: Bytes): Either[Failure, SigningKey] =
-    if seed == null || seed.size != SeedBytes then
-      Left(Failure.Malformed("KES seed must be 32 bytes"))
+    if seed == null then Left(Failure.MissingSeed)
+    else if seed.size != SeedBytes then Left(Failure.InvalidSeedLength(seed.size))
     else
       val material = new Array[Byte](KeyBytes)
       gen(seed.toArray, material, 0, Depth)
@@ -94,15 +116,15 @@ object Sum6KesSigning:
     * verification keys are recomputed and checked, so a corrupt or mis-sized key is refused.
     */
   def fromBytes(bytes: Bytes, period: Int = 0): Either[Failure, SigningKey] =
-    if bytes == null || bytes.size != KeyBytes then
-      Left(Failure.Malformed(s"Sum6 KES signing key must be $KeyBytes bytes"))
+    if bytes == null then Left(Failure.MissingKey)
+    else if bytes.size != KeyBytes then Left(Failure.InvalidKeyLength(bytes.size))
     else if period < 0 || period >= Periods then Left(Failure.PeriodOutOfRange(period))
     else
       val material = bytes.toArray
       checkLevel(material, 0, Depth, period).fold(
-        reason =>
+        failure =>
           Arrays.fill(material, 0.toByte)
-          Left(Failure.KeyInconsistent(reason))
+          Left(failure)
         ,
         _ => Right(new SigningKey(material, period))
       )
@@ -115,8 +137,8 @@ object Sum6KesSigning:
     * case.
     */
   def fromEvolved(bytes: Bytes): Either[Failure, SigningKey] =
-    if bytes == null || bytes.size != KeyBytes then
-      Left(Failure.Malformed(s"Sum6 KES signing key must be $KeyBytes bytes"))
+    if bytes == null then Left(Failure.MissingKey)
+    else if bytes.size != KeyBytes then Left(Failure.InvalidKeyLength(bytes.size))
     else fromBytes(bytes, periodOf(bytes.toArray))
 
   /** The period an evolved key stands at, read from which levels' right-half seeds are erased. */
@@ -207,7 +229,7 @@ object Sum6KesSigning:
       offset: Int,
       depth: Int,
       period: Int
-  ): Either[String, Unit] =
+  ): Either[Failure, Unit] =
     if depth == 0 then Right(())
     else
       val half = 1 << (depth - 1)
@@ -222,11 +244,15 @@ object Sum6KesSigning:
       val seedAt = r1At(offset, depth)
       val seedZero = (0 until 32).forall(i => m(seedAt + i) == 0)
       if inRight != seedZero then
-        Left(s"level $depth: the right-half seed is ${
-            if seedZero then "erased" else "present"
-          } at period $period")
+        Left(
+          Failure.SeedStateMismatch(
+            depth,
+            period,
+            if seedZero then SeedState.Erased else SeedState.Present
+          )
+        )
       else if !Arrays.equals(vkOf(m, offset, depth - 1), stored) then
-        Left(s"level $depth: the stored key does not match its verification key")
+        Left(Failure.VerificationKeyMismatch(depth))
       else if !inRight && !Arrays.equals(
           rootOfSeed(
             Bytes.fromArray(Arrays.copyOfRange(m, seedAt, seedAt + 32)),
@@ -234,5 +260,5 @@ object Sum6KesSigning:
           ).toArray,
           Arrays.copyOfRange(m, vk1At(offset, depth), vk1At(offset, depth) + 32)
         )
-      then Left(s"level $depth: the right-half seed does not generate the stored verification key")
+      then Left(Failure.RightSeedMismatch(depth))
       else checkLevel(m, offset, depth - 1, subPeriod)

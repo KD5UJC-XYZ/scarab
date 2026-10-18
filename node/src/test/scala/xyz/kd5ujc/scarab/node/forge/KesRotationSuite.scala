@@ -177,6 +177,26 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
 
   // ---- the forger writes the evolved key back
 
+  test(
+    "a refused KES evolution retains its crypto cause without changing the key or emitting events"
+  ) {
+    val p = pool(kesStart = 50, seed = 3)
+    val before = p.creds.kes.toBytes
+    for
+      seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
+      keys <- HotKeys.create[IO](p.creds, None, config, e => seen.update(_ :+ e))
+      result <- keys.locked(c => keys.evolved(c, 49))
+      _ = assertEquals(
+        result,
+        Left(ForgeError.KesEvolution(Sum6KesSigning.Failure.PeriodOutOfRange(-1)))
+      )
+      _ = assertEquals(p.creds.kes.period, 0)
+      _ = assertEquals(p.creds.kes.toBytes, before)
+      events <- seen.get
+      _ = assertEquals(events, Vector.empty)
+    yield ()
+  }
+
   test("restart across a KES boundary: the file holds the evolved key and forging goes on") {
     val p = pool(kesStart = 50, seed = 3)
     withDir { f =>
