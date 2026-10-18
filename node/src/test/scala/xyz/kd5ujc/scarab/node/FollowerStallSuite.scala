@@ -30,7 +30,8 @@ import xyz.kd5ujc.scarab.network.selection.{
   FetchMode,
   RootConfig,
   RootGroupSpec,
-  Targets
+  Targets,
+  UseLedgerPeers
 }
 import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 import xyz.kd5ujc.scarab.node.forge.ForgedChain
