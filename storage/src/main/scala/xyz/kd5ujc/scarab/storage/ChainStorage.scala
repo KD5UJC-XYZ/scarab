@@ -11,7 +11,7 @@ import fs2.io.file.Path
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, BlockRules, VolatileChain}
-import xyz.kd5ujc.scarab.ledger.{Block, ChainError, NetworkIdentity, NodeError, StorageError}
+import xyz.kd5ujc.scarab.ledger.{Block, ChainError, NetworkIdentity, NodeError, StorageError, StorageStructureError}
 import xyz.kd5ujc.scarab.consensus.Compute
 import xyz.kd5ujc.scarab.consensus.SelectView
 import scala.concurrent.duration.*
