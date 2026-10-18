@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.legacy
 
 import xyz.kd5ujc.scarab.codec.BinaryError
-import xyz.kd5ujc.scarab.ledger.StorageStructureError
 import cats.syntax.all.*
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 import java.security.MessageDigest
