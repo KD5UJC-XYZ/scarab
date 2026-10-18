@@ -431,7 +431,7 @@ object PeerNetwork:
   /** The oldest tip a caught up node tolerates (`llrnMaxCaughtUpAge`, `Node.hs` 1106). */
   val MaxCaughtUpAge: FiniteDuration = 20.minutes
 
-  /** The reason text of a failed resolution. */
+  /** A failed DNS resolution, retaining its operating-system cause. */
   def unresolved(host: Host, t: java.io.IOException): PeerError =
     PeerError.Unavailable(PeerError.Unavailability.Resolution(host.toString, t))
 
