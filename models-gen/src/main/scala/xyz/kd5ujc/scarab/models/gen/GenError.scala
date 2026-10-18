@@ -16,6 +16,7 @@ enum GenError:
   case NameClash(scope: String, scalaName: String, rules: Vector[String])
   case BadConfig(line: Int, problem: ConfigProblem)
   case CyclicExpansion(rule: QName)
+  case SamplingCycle(rule: QName)
 
   def message: String = this match
     case Parse(f, e)            => s"$f: ${e.message}"
@@ -29,6 +30,7 @@ enum GenError:
       s"in $s the rules ${rs.mkString(", ")} all map to the Scala name `$n`"
     case BadConfig(l, p)    => s"config line $l: ${p.message}"
     case CyclicExpansion(q) => s"cyclic expansion of `$q`"
+    case SamplingCycle(q) => s"recursive sampling of `$q` cannot terminate beyond the depth cutoff"
 
 enum ConfigProblem:
   case QualifiedName(value: String)
