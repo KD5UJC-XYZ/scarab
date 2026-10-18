@@ -9,7 +9,15 @@ import xyz.kd5ujc.scarab.blst.{BlstReport, CpuSupport, LibraryBuild}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.{NodeError, Points, ShelleyGenesis}
-import xyz.kd5ujc.scarab.node.{BuildInfo, Fatal, InboundEvent, LedgerPeersTrace, Main, NodeConfig, Topology}
+import xyz.kd5ujc.scarab.node.{
+  BuildInfo,
+  Fatal,
+  InboundEvent,
+  LedgerPeersTrace,
+  Main,
+  NodeConfig,
+  Topology
+}
 import xyz.kd5ujc.scarab.network.selection.{
   AfterSlot,
   Churn,
