@@ -185,12 +185,13 @@ object Peer:
   /** The node-level classification of a network failure. */
   def networkFault(error: NetworkError): Fault = error match
     case NetworkError.Defect(cause) => Fault.Defect(cause)
-    case _: NetworkError.Connect | _: NetworkError.Timeout | _: NetworkError.BearerClosed =>
+    case _: NetworkError.Connect | _: NetworkError.Timeout | _: NetworkError.SduTimeout |
+        _: NetworkError.BearerClosed =>
       Fault.Failed(PeerError.Unavailable(error.message))
     case _: NetworkError.HandshakeRefused | _: NetworkError.VersionMismatch =>
       Fault.Failed(PeerError.Handshake(error.message))
     case _: NetworkError.IngressLimit | _: NetworkError.Decode | _: NetworkError.IllegalTransition |
-        _: NetworkError.QueryRefused | _: NetworkError.Framing =>
+        _: NetworkError.QueryRefused | _: NetworkError.Framing | _: NetworkError.TxSubmission =>
       Fault.Failed(PeerError.Protocol(error.message))
 
   /** Node-to-node interpreter over `network`: ChainSync and BlockFetch share one multiplexed

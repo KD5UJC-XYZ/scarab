@@ -76,7 +76,7 @@ object IngressLimits:
     case Protocols.LocalChainSync | Protocols.LocalTxSubmission | Protocols.LocalStateQuery |
         Protocols.LocalTxMonitor =>
       NodeToClientBytes
-    // peer sharing (protocol 10) is `4 * 1440`, one round trip of TCP segments; it is not run yet
+    // PeerSharing (10) is `4 * 1440`, one round trip of TCP segments.
     case _ => 4L * 1440L
   }
 

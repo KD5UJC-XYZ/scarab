@@ -52,7 +52,7 @@ object KeepAlive:
       if !valid then bad("invalid KeepAlive limits")
       ProtocolWire.Limits(maxMessageBytes, 0, 0, maxDepth, maxItems, 0)
 
-  /** Pinned protocol-driver metadata only, not a scheduling interval or local timeout policy. */
+  /** Reference state deadlines used by the runtime; the keep-alive interval is separate policy. */
   object UpstreamTimeLimits:
     val client: FiniteDuration = 97.seconds
     val server: FiniteDuration = 60.seconds

@@ -83,6 +83,9 @@ class PeerSuite extends ScalaCheckSuite:
     // a lost or slow connection is tried again
     assertEquals(classified(NetworkError.Connect("peer", "refused")), FailureClass.Transient)
     assertEquals(classified(NetworkError.Timeout(2, "StNext")), FailureClass.Transient)
+    List(NetworkError.SduOperation.Read, NetworkError.SduOperation.Write).foreach(operation =>
+      assertEquals(classified(NetworkError.SduTimeout(operation)), FailureClass.Transient)
+    )
     assertEquals(classified(NetworkError.BearerClosed("closed by peer")), FailureClass.Transient)
     assertEquals(
       classified(NetworkError.VersionMismatch(Vector(14), Vector(13))),
@@ -92,6 +95,14 @@ class PeerSuite extends ScalaCheckSuite:
     // limit of the protocol, a message that does not decode, a message in the wrong state, a frame
     // the multiplexer cannot read
     assertEquals(classified(NetworkError.IngressLimit(2, 462100L)), FailureClass.Misbehaved)
+    assertEquals(
+      classified(
+        NetworkError.TxSubmission(
+          xyz.kd5ujc.scarab.network.TxSubmissionPolicy.Violation.Outstanding(10, 1)
+        )
+      ),
+      FailureClass.Misbehaved
+    )
     assertEquals(classified(NetworkError.Decode(3, "not a block")), FailureClass.Misbehaved)
     assertEquals(
       classified(NetworkError.IllegalTransition(2, "pipelined request")),

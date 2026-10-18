@@ -1339,8 +1339,23 @@ recoverable connection closures; unexpected network exceptions stop with exit 7.
 
 The multiplexer's ingress limits are the reference's and are not configurable
 (`IngressLimits`, ouroboros-network 1.2.0.0, network-mux 0.11.0.0): ChainSync 462,000 bytes, BlockFetch
-23,068,694, TxSubmission2 721,424, KeepAlive 1,408, Handshake 5,760; node-to-client queues are unbounded. A
+23,068,694, TxSubmission2 721,424, KeepAlive 1,408, Handshake/PeerSharing 5,760; each node-to-client queue has the reference local-interface ceiling of 4,294,967,295 bytes. A
 `--read-ahead` above the reference's pipelining high mark of 300 raises the ChainSync limit with it.
+
+An established connection may wait indefinitely between mux SDUs. Once header bytes arrive, that SDU
+must complete within 30 s; trickled bytes do not restart the timer. A write gets 30 s per SDU in its batch,
+or 10 s for handshake SDUs. Expiry is a typed transport failure handled by the normal reconnect policy.
+The existing 10 s handshake receive phase also bounds an entirely silent peer. The outbound queue holds
+at most 64 messages and sending waits for room.
+
+Message byte limits apply to complete messages too, including when multiple messages arrive in one
+SDU. TxSubmission keeps at most 10 unacknowledged IDs; repeated nonblocking requests cannot grow it
+without acknowledgement. Duplicate/unadvertised body requests and excess/duplicate offers are protocol
+violations. Body replies have 10 s; blocking ID waits remain indefinite. The existing local profile still
+limits each reply to eight items/524,400bytes and each original transaction to 65,536 bytes. The
+[network-limit matrix](design/network-limits.md) gives every protocol state, the reference pin, queue
+budgets and existing stricter local timeout policies.
+
 
 ## Monitoring long runs
 

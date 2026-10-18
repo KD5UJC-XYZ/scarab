@@ -31,7 +31,7 @@ object TxSubmissionServer:
       /** Ids asked for per request. */
       idsPerRequest: Int = 3,
       /** Time the client may take to send the transactions we asked for. */
-      bodiesTimeout: FiniteDuration = 60.seconds,
+      bodiesTimeout: FiniteDuration = TxSubmissionPolicy.ShortWait,
       /** Time to wait for the client's Init. */
       initTimeout: FiniteDuration = 60.seconds
   )
@@ -52,10 +52,12 @@ object TxSubmissionServer:
         state: TxSubmission2.State,
         limit: Option[FiniteDuration]
     ): F[TxSubmission2.Message] =
-      val read = channel.recv(TxSubmission2.MaxMessageBytes)(
+      val read = channel.recv(TxSubmission2.maxMessageBytes(state))(
         TxSubmission2.decodePrefix(state, Role.Client, _)
       )
-      limit.fold(read)(l => Timed.within(l, id, state.toString)(read))
+      limit
+        .orElse(TxSubmissionPolicy.timeLimit(state))
+        .fold(read)(l => Timed.within(l, id, state.toString)(read))
 
     def fetch(wanted: Vector[Bytes]): F[Unit] =
       if wanted.isEmpty then F.unit
@@ -82,7 +84,9 @@ object TxSubmissionServer:
         TxSubmission2.Message.RequestIds(blocking = true, ack, settings.idsPerRequest)
       ) *> receive(TxSubmission2.State.Ids(true), None).flatMap {
         case TxSubmission2.Message.ReplyIds(offers) =>
-          offers
+          TxSubmissionPolicy
+            .offers(offers.map(_.transactionId), settings.idsPerRequest)
+            .fold(v => NetworkError.TxSubmission(v).raise[F, Unit], F.pure) *> offers
             .filter(o => o.advertisedSize <= TxSubmission2.MaxOriginalBytes + 16L)
             .traverseFilter(o =>
               sink.known(o.transactionId).map(k => Option.unless(k)(o.transactionId))

@@ -1,7 +1,7 @@
 # Peer selection: the P2P governor (G1)
 
 **Status**: G1.1–G1.4 are implemented; G1.4b's private reference proof and gates are recorded in section 7f
-(2026-10-18). Genesis hooks (G1.5) and the follow-ups remain separate. Tracked in
+(2026-10-18). The original parent acceptance is evidenced below. Genesis hooks (G1.5) and the follow-ups remain separate. Tracked in
 [#31](https://github.com/KD5UJC-XYZ/scarab/issues/31) (roadmap G1). Written against `main` at 6ce5bb77 and the
 reference sources named in section 1.1, which were read in full for the governor, the churn governor, the peer
 metrics, ledger peers, PeerSharing and the Cardano configuration; every claim about the reference carries its
@@ -1653,7 +1653,16 @@ Broader follow-ups remain [#139](https://github.com/KD5UJC-XYZ/scarab/issues/139
 [#152](https://github.com/KD5UJC-XYZ/scarab/issues/152), and
 [#180](https://github.com/KD5UJC-XYZ/scarab/issues/180). This stage does not claim a new public-network
 sync: earlier Preview evidence covers its unchanged target/churn/ledger-peer paths; the new sharing
-behavior is checked on the private reference topology. Parent #31 acceptance is evaluated separately.
+behavior is checked on the private reference topology.
+
+**Original parent #31 acceptance.** The implemented target sets, churn and PeerSharing have
+reference-derived deterministic state-machine properties. Section 7b records Preview reaching and
+following the tip from the sole official bootstrap root at `5f3b6174`, with no `--peer`; that run restored
+an existing database copy and is not claimed as a fresh genesis sync. G1.3b repeats root-led discovery.
+These historical runs cover the unchanged root/bootstrap behavior. Section 7f supplies the missing
+actual nonempty two-way sharing proof on a private Haskell topology. Together they meet the original
+parent criteria without a new public run. The explicit live-churn observation limits and separately
+tracked Genesis/duplex/DNS/fetch/metrics/reintersection follow-ups above remain unchanged.
 
 ## 8. Open questions for the owner
 

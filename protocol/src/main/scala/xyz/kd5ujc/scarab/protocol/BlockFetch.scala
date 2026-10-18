@@ -60,8 +60,8 @@ object BlockFetch:
       val strings = math.min(maxStringBytes, size)
       ProtocolWire.Limits(size, strings, math.min(maxHashBytes, strings), maxDepth, maxItems)
 
-  /** Metadata for a later interpreter, not an implemented timer. Idle unlimited and 60s state waits
-    * are upstream values. A whole-request deadline is additional local policy.
+  /** The runtime client's deadlines. Idle unlimited and 60s state waits are upstream values; the
+    * whole-request deadline is additional local policy.
     */
   final case class TimeLimits(
       idle: Option[FiniteDuration] = None,
@@ -72,7 +72,7 @@ object BlockFetch:
     def valid: Boolean = idle.forall(_ > Duration.Zero) && busy > Duration.Zero &&
       streaming > Duration.Zero && wholeRequest > Duration.Zero
 
-  /** Local accounting policy for a future range interpreter. Not codec/transport limits. */
+  /** The runtime client's local aggregate range budget, separate from codec/transport limits. */
   final case class RequestLimits(maxBlocks: Int = 4, maxRawBytes: Long = 10000000L):
     def valid: Boolean = maxBlocks > 0 && maxBlocks <= 1000000 && maxRawBytes > 0
   final class Received private (val blocks: Int, val rawBytes: Long)

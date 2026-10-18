@@ -7,7 +7,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import ChainSync.{DecodeResult, Role}
 import ProtocolWire.{attempt, bad, get}
 
-/** Conway-only NtN14 publisher profile. Source pins and local policy: docs/txsubmission2.md. */
+/** Conway-only publisher profile. Source pins and local policy: docs/design/network-limits.md. */
 object TxSubmission2:
   val MiniProtocolId = 4
   val MaxOriginalBytes = 65536
@@ -31,6 +31,14 @@ object TxSubmission2:
     case RequestTxs(ids: Vector[Bytes])
     case ReplyTxs(originals: Vector[Bytes])
     case Done
+
+  /** TxSubmission2/Codec.hs:50-63: Init and Idle use smallByteLimit. The remaining active states
+    * retain the stricter local eight-transaction profile rather than upstream's 2500000 bytes.
+    */
+  def maxMessageBytes(state: State): Int = state match
+    case State.Init | State.Idle  => 65535
+    case State.Ids(_) | State.Txs => MaxMessageBytes
+    case State.Done               => 0
 
   def transition(state: State, sender: Role, message: Message): Either[String, State] =
     (state, sender, message) match
@@ -86,7 +94,7 @@ object TxSubmission2:
 
   def encode(state: State, sender: Role, message: Message): Either[String, Bytes] = attempt {
     get(transition(state, sender, message))
-    val w = new ProtocolWire.Writer(wire)
+    val w = new ProtocolWire.Writer(wire.copy(maxMessageBytes = maxMessageBytes(state)))
     def list[A](xs: Vector[A])(f: A => Unit): Unit =
       batch(xs.size); w.byte(0x9f); xs.foreach(f); w.byte(0xff)
     def id(bytes: Bytes): Unit =
@@ -117,7 +125,7 @@ object TxSubmission2:
     try
       if state == State.Done || (state == State.Idle) != (sender == Role.Server) then
         bad("wrong TxSubmission2 agency")
-      val r = new ProtocolWire.Reader(bytes, wire)
+      val r = new ProtocolWire.Reader(bytes, wire.copy(maxMessageBytes = maxMessageBytes(state)))
       def id(): Bytes =
         if r.arrayLength() != 2 || r.uint().value != 6 then bad("expected Conway transaction ID")
         val result = r.bytes(32); checkId(result); result

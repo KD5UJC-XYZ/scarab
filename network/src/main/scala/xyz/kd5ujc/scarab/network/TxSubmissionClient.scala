@@ -63,53 +63,54 @@ object TxSubmissionClient:
 
     def receive(state: TxSubmission2.State): F[TxSubmission2.Message] =
       Timed.within(settings.idleTimeout, id, state.toString)(
-        channel.recv(TxSubmission2.MaxMessageBytes)(
+        channel.recv(TxSubmission2.maxMessageBytes(state))(
           TxSubmission2.decodePrefix(state, Role.Server, _)
         )
       )
 
     /** The window after the reply, or none once the protocol was ended with `MsgDone`. */
     def answerIds(window: Window, blocking: Boolean, ack: Int, request: Int): F[Option[Window]] =
-      val retained = window.unacked.drop(ack)
       val limit = request.min(TxSubmission2.MaxBatch)
-      if ack > window.unacked.size then illegal("acknowledged more ids than were outstanding")
-      else if blocking && (request == 0 || retained.nonEmpty) then
-        illegal("blocking request with ids still outstanding")
-      else if !blocking && retained.isEmpty then
-        illegal("non-blocking request with nothing outstanding")
-      else
-        // a blocking wait ends early when the owner asks to finish: nothing is outstanding then
-        val fresh: F[Option[Vector[Held]]] =
-          if blocking then
-            finish
-              .fold(source.awaitAfter(window.cursor).map(Right(_)))(stop =>
-                F.race(stop, source.awaitAfter(window.cursor))
-              )
-              .flatMap {
-                case Left(_)  => F.pure(None)
-                case Right(_) => source.after(window.cursor, limit).map(Some(_))
-              }
-          else source.after(window.cursor, limit).map(Some(_))
-        fresh.flatMap {
-          case None =>
-            send(TxSubmission2.State.Ids(true), TxSubmission2.Message.Done).as(None)
-          // A blocking wait that raced with a removal can come back empty: wait again.
-          case Some(held) if blocking && held.isEmpty =>
-            answerIds(window, blocking, ack, request)
-          case Some(held) =>
-            offers(held).flatMap { os =>
-              send(TxSubmission2.State.Ids(blocking), TxSubmission2.Message.ReplyIds(os)).as(
-                Some(
-                  Window(retained ++ held.map(_.id), held.lastOption.fold(window.cursor)(_.ticket))
+      TxSubmissionPolicy
+        .acknowledge(window.unacked, blocking, ack, request)
+        .fold(v => NetworkError.TxSubmission(v).raise[F, Vector[Bytes]], F.pure)
+        .flatMap { retained =>
+          // a blocking wait ends early when the owner asks to finish: nothing is outstanding then
+          val fresh: F[Option[Vector[Held]]] =
+            if blocking then
+              finish
+                .fold(source.awaitAfter(window.cursor).map(Right(_)))(stop =>
+                  F.race(stop, source.awaitAfter(window.cursor))
                 )
-              )
-            }
+                .flatMap {
+                  case Left(_)  => F.pure(None)
+                  case Right(_) => source.after(window.cursor, limit).map(Some(_))
+                }
+            else source.after(window.cursor, limit).map(Some(_))
+          fresh.flatMap {
+            case None =>
+              send(TxSubmission2.State.Ids(true), TxSubmission2.Message.Done).as(None)
+            // A blocking wait that raced with a removal can come back empty: wait again.
+            case Some(held) if blocking && held.isEmpty =>
+              answerIds(window, blocking, ack, request)
+            case Some(held) =>
+              offers(held).flatMap { os =>
+                send(TxSubmission2.State.Ids(blocking), TxSubmission2.Message.ReplyIds(os)).as(
+                  Some(
+                    Window(
+                      retained ++ held.map(_.id),
+                      held.lastOption.fold(window.cursor)(_.ticket)
+                    )
+                  )
+                )
+              }
+          }
         }
 
     def answerTxs(window: Window, ids: Vector[Bytes]): F[Unit] =
-      if ids.exists(i => !window.unacked.contains(i)) then
-        illegal("requested a transaction that was not offered")
-      else
+      TxSubmissionPolicy
+        .bodies(window.unacked, ids)
+        .fold(v => NetworkError.TxSubmission(v).raise[F, Unit], F.pure) *>
         ids.flatTraverse(i => source.body(i).map(_.toVector)).flatMap { bodies =>
           send(TxSubmission2.State.Txs, TxSubmission2.Message.ReplyTxs(bodies))
         }
@@ -155,13 +156,10 @@ object TxSubmissionClient:
     val F = cats.effect.Async[F]
     cats.effect.Resource.eval((F.deferred[Unit], F.deferred[Boolean]).tupled).flatMap {
       case (asked, ended) =>
-        // the fiber's own error scope: the reason it ends the connection with is a value
+        // The fiber's own error scope. Mux already typed transport failures; an uncaught
+        // exception here comes from the local source/interpreter, even if it is an IOException.
         val program = Fibers
-          .scoped[F, NetworkError, Boolean](t =>
-            NetworkError.BearerClosed(
-              s"tx-submission: ${Option(t.getMessage).getOrElse(t.toString)}"
-            )
-          )(
+          .scoped[F, NetworkError, Boolean](NetworkError.Defect(_))(
             role
               .fold(mux.channel(Protocols.TxSubmission2))(mux.channel(Protocols.TxSubmission2, _))
               .flatMap(run(_, source, settings, Some(asked.get)))

@@ -8,6 +8,8 @@ package xyz.kd5ujc.scarab.network
 enum NetworkError:
   case Connect(address: String, reason: String)
   case Timeout(protocol: Int, state: String)
+  case SduTimeout(operation: NetworkError.SduOperation)
+  case TxSubmission(violation: TxSubmissionPolicy.Violation)
   case HandshakeRefused(reason: String)
   case VersionMismatch(offered: Vector[Int], supported: Vector[Int])
   case IngressLimit(protocol: Int, bytes: Long)
@@ -27,6 +29,8 @@ enum NetworkError:
   def message: String = this match
     case Connect(a, r)       => s"connect $a: $r"
     case Timeout(p, s)       => s"${Protocols.name(p)} timed out in $s"
+    case SduTimeout(op)      => s"multiplexer SDU ${op.toString.toLowerCase} timed out"
+    case TxSubmission(v)     => s"tx-submission-2 protocol violation: ${v.message}"
     case HandshakeRefused(r) => s"handshake refused: $r"
     case VersionMismatch(o, s) =>
       s"no common version (offered ${o.mkString(",")}, peer supports ${s.mkString(",")})"
@@ -40,6 +44,9 @@ enum NetworkError:
     case Framing(r)      => s"multiplexer framing: $r"
 
 object NetworkError:
+  enum SduOperation:
+    case Read, Write
+
   /** Only operating-system transport failures are connection failures. Preserve every unexpected
     * exception itself for the owning node's fatal boundary.
     */

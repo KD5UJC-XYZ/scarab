@@ -6,10 +6,11 @@ import cats.effect.std.{Mutex, Queue}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
-import fs2.Chunk
+import fs2.{Chunk, Pull}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult
 import xyz.kd5ujc.scarab.protocol.Mux as WireMux
+import scala.concurrent.duration.*
 
 /** One mini-protocol's view of the multiplexed connection. Use from a single fiber at a time.
   *
@@ -32,7 +33,8 @@ trait MuxChannel[F[_]]:
 
   /** The next complete message. `decode` is a pure `decodePrefix` for the current protocol state;
     * more SDUs are awaited while it answers `NeedMore`, and bytes beyond the message are kept for
-    * the next call. Fails with `IngressLimit` once `maxBytes` are buffered without a message.
+    * the next call. Fails with `IngressLimit` if the first message exceeds `maxBytes`, including
+    * when the decoder completes in one call.
     */
   def recv[A](maxBytes: Int)(decode: Bytes => DecodeResult[A])(using
       Raise[F, NetworkError]
@@ -91,7 +93,10 @@ object Mux:
         */
       ingressLimit: Int => Long = IngressLimits.nodeToNode(),
       egressQueueMessages: Int = 64,
-      maxMessageBytes: Int = 2500000
+      maxMessageBytes: Int = 2500000,
+      /** Reference ConnectionHandler.hs:94-102; idle between SDUs is indefinite. */
+      sduTimeout: FiniteDuration = 30.seconds,
+      handshakeSduTimeout: FiniteDuration = 10.seconds
   )
 
   /** The unread bytes of one mini-protocol and side: the payloads the reader has queued and the
@@ -189,29 +194,43 @@ object Mux:
                   case None => route(rest)
                 }
 
-      type Feed = Either[NetworkError, WireMux.Decoder]
-      def step(state: Feed, chunk: Chunk[Byte]): F[(Feed, Unit)] = state match
-        case Left(_) => F.pure((state, ()))
-        case Right(current) =>
-          current.feed(Bytes.wrap(chunk.toArray)) match
-            case Left(reason) => F.pure((Left(NetworkError.Framing(reason)), ()))
-            case Right((next, sdus)) =>
-              route(sdus.toList).map(failed => (failed.toLeft(next), ()))
-
       val closedByPeer = NetworkError.BearerClosed("closed by peer")
+      // Socket.hs:72-102: wait indefinitely for the first header bytes, then one absolute SDU
+      // deadline. Pull.timed owns its source and timer; continuing a partial SDU never resets it.
+      // Pull's suspended bind, rather than the JVM stack, owns this externally sized loop.
+      def read(
+          current: WireMux.Decoder,
+          input: Pull.Timed[F, Byte]
+      ): Pull[F, NetworkError, Unit] =
+        input.uncons.flatMap {
+          case None =>
+            Pull.output1(current.finish.fold(NetworkError.Framing(_), _ => closedByPeer))
+          case Some((Left(_), _)) =>
+            Pull.output1(NetworkError.SduTimeout(NetworkError.SduOperation.Read))
+          case Some((Right(chunk), rest)) =>
+            current.feed(Bytes.wrap(chunk.toArray)) match
+              case Left(reason) => Pull.output1(NetworkError.Framing(reason))
+              case Right((next, sdus)) =>
+                val timer =
+                  if next.pendingBytes == 0 then rest.timeout(Duration.Zero)
+                  else if current.pendingBytes == 0 || sdus.nonEmpty then
+                    rest.timeout(config.sduTimeout)
+                  else Pull.done
+                timer >> Pull.eval(route(sdus.toList)).flatMap {
+                  case Some(reason) => Pull.output1(reason)
+                  case None         => read(next, rest)
+                }
+        }
       val reader: F[NetworkError] =
         bearer.reads
           .chunkLimit(config.readChunkBytes)
-          .evalMapAccumulate[F, Feed, Unit](Right(decoder))(step)
-          .takeThrough(_._1.isRight)
+          .unchunks
+          .pull
+          .timed(read(decoder, _))
+          .stream
           .compile
           .last
-          .map {
-            case Some((Left(reason), _)) => reason
-            case Some((Right(last), _)) =>
-              last.finish.fold(NetworkError.Framing(_), _ => closedByPeer)
-            case None => closedByPeer
-          }
+          .map(_.getOrElse(closedByPeer))
           // a transport failure is the library's exception: it becomes a typed reason here
           .handleError(t => NetworkError.fromThrowable("bearer failed", t))
 
@@ -231,9 +250,22 @@ object Mux:
                 )
                 .flatMap(_.traverse(WireMux.encode))
               frames match
-                case Left(reason) => F.pure(NetworkError.BearerClosed(s"mux write: $reason"))
+                case Left(reason)   => F.pure(NetworkError.BearerClosed(s"mux write: $reason"))
                 case Right(encoded) =>
-                  bearer.write(Chunk.array(concat(encoded))) *> writeLoop
+                  // Socket.hs:190-230 gives a batch one SDU budget per frame, not per byte or
+                  // per progress notification. Handshake flushes are bounded on the writer too.
+                  val perSdu =
+                    if protocol == Protocols.Handshake then config.handshakeSduTimeout
+                    else config.sduTimeout
+                  F.timeoutTo(
+                    bearer
+                      .write(Chunk.array(concat(encoded)))
+                      .as(
+                        Right(()): Either[NetworkError, Unit]
+                      ),
+                    perSdu * encoded.size.toLong,
+                    F.pure(Left(NetworkError.SduTimeout(NetworkError.SduOperation.Write)))
+                  ).flatMap(_.fold(F.pure, _ => writeLoop))
             }
         }
       val writer: F[NetworkError] =
@@ -328,7 +360,8 @@ object Mux:
           buffer.get.flatMap { held =>
             decode(held) match
               case DecodeResult.Decoded(value, consumed) =>
-                buffer.set(held.drop(consumed)).as(value)
+                if consumed > maxBytes then NetworkError.IngressLimit(id, consumed).raise[F, A]
+                else buffer.set(held.drop(consumed)).as(value)
               case DecodeResult.Failed(reason) => NetworkError.Decode(id, reason).raise[F, A]
               case DecodeResult.NeedMore =>
                 if held.size > maxBytes then NetworkError.IngressLimit(id, held.size).raise[F, A]
