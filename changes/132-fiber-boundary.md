@@ -63,3 +63,6 @@
   with exit 8. Racing terminal observers report one fatal event; failed or cancelled logging still
   signals shutdown. Unavailable add and revalidation outcomes are excluded from the recent-refusal
   cache, allowing admission after the decoder/evaluator capability recovers.
+
+- Stored-block replay reports evaluator unavailability with the same typed fatal event and exit code 8
+  as live adoption. It leaves stored blocks recoverable when the evaluator is available again.

@@ -21,14 +21,23 @@ import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.ledger.NetworkIdentity
 import xyz.kd5ujc.scarab.ledger.NodeError
 import xyz.kd5ujc.scarab.ledger.{PeerError, StorageError}
-import xyz.kd5ujc.scarab.node.Follower
+import xyz.kd5ujc.scarab.node.{Fatal, Follower, Main}
+import xyz.kd5ujc.scarab.node.log.NodeEvent
+import xyz.kd5ujc.scarab.consensus.BlockRules
+import xyz.kd5ujc.scarab.ledger.{
+  BlockFailure,
+  LedgerFailure,
+  Redeemer,
+  ScriptLocation,
+  ValidationError
+}
+import xyz.kd5ujc.scarab.plutus.{EvalFailure, ExUnits}
 import xyz.kd5ujc.scarab.node.{MirrorRules, MirrorSteps}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.node.Peer
 import xyz.kd5ujc.scarab.node.RefStateful
 import xyz.kd5ujc.scarab.node.SyncEvent
-import munit.CatsEffectSuite
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 
@@ -38,7 +47,7 @@ import StorageTestKit.*
   * writes through [[ChainStorage]], a fresh open recovers the same state from the newest snapshot
   * plus a replay of the stored blocks, and recovery survives lost or damaged snapshots.
   */
-class ChainStorageSuite extends CatsEffectSuite:
+class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   override def munitIOTimeout: Duration = 3.minutes
 
   private val fixtures = java.nio.file.Path.of("fixtures/eras")
@@ -285,6 +294,61 @@ class ChainStorageSuite extends CatsEffectSuite:
           )
         )
         _ <- IO(assertState(chain.state, states(400)))
+      yield ()
+    }
+  }
+
+  test("unavailable replay reports no block rejection and the stored chain remains recoverable") {
+    tempDir.use { dir =>
+      for
+        log <- events(dir)
+        _ <- run(dir, 300, log = log)
+        _ <- snapshotsIn(dir).flatMap(_.traverse_(files.delete))
+        _ <- List(
+          ScriptLocation.Phase1(Bytes.empty),
+          ScriptLocation.Phase2(Redeemer(0, 0, Bytes.empty, ExUnits.zero))
+        ).traverse_ { location =>
+          Handle
+            .allow[NodeError] {
+              val errors = summon[Handle[IO, NodeError]]
+              val unavailable: BlockRules[IO, MirrorState] = (_, header, _) =>
+                errors.raise[NodeError, MirrorState](
+                  ValidationError(
+                    header.point,
+                    BlockFailure.Tx(
+                      LedgerFailure.Unavailable(
+                        Bytes.empty,
+                        location,
+                        EvalFailure.Unsupported("injected replay outage")
+                      )
+                    )
+                  )
+                )
+              ChainStorage
+                .open[IO, MirrorState](
+                  dir,
+                  config(120),
+                  unavailable,
+                  setup.mirrorStart,
+                  storageEvents(log),
+                  StateBacking.none[IO, MirrorState],
+                  _ => IO.unit
+                )
+                .use(_ => IO[Unit](fail("replay must stop without an evaluator verdict")))
+            }
+            .rescue { error =>
+              val (event, code) = Main.startupFailure(error)
+              IO {
+                assertEquals(code.code, 8)
+                event match
+                  case NodeEvent.Faulted(Fatal.Unavailable(unavailable)) =>
+                    assertEquals(unavailable.failure.location, location)
+                  case other => fail(s"replay emitted a verdict instead of unavailable: $other")
+              }
+            }
+        }
+        recovered <- run(dir, 400, log = log)
+        _ <- IO(assertState(recovered._2.state, states(400)))
       yield ()
     }
   }

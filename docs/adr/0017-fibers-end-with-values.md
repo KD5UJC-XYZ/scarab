@@ -105,3 +105,8 @@ rules refused, a storage failure and a bug in the node were all retried like a l
 - `FatalReporter` atomically claims the first terminal outcome. It logs before signalling shutdown,
   suppresses duplicate observations of a failing connection, and guarantees the shutdown signal even
   if logging fails or is cancelled.
+
+Evaluator unavailability during stored-block replay is reported by the same typed fatal event and
+exit code 8 as live adoption. No ledger verdict exists in either path. A regression stops both
+phase-1 and phase-2 injected replay outages, then reopens and replays the unchanged stored chain
+with healthy rules. Other startup error policies are unchanged.

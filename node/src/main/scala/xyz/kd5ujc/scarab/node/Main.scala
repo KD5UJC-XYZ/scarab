@@ -234,8 +234,19 @@ object Main extends IOApp:
           def logged(event: NodeEvent) = Log[IO].emit(event)
           Handle
             .allow[NodeError](follow(options))
-            .rescue(error => logged(NodeEvent.Failed(error)).as(ExitCode(1)))
+            .rescue { error =>
+              val (event, code) = startupFailure(error)
+              logged(event).as(code)
+            }
         }
+
+  /** Replay has no verdict when the evaluator is unavailable, just as live adoption has none. */
+  private[scarab] def startupFailure(error: NodeError): (NodeEvent, ExitCode) =
+    SessionEnd.of(error) match
+      case SessionEnd.Unavailable(unavailable) =>
+        val fatal = Fatal.Unavailable(unavailable)
+        (NodeEvent.Faulted(fatal), FaultExitCode(fatal))
+      case _ => (NodeEvent.Failed(error), ExitCode(1))
 
   /** The UTxO store, and where the checkpoints that keep it in step with the snapshots live (none:
     * the store is in memory and nothing is kept). The backing itself ([[backing]]) is of the form
@@ -966,9 +977,9 @@ object Main extends IOApp:
   val StallExitCode: ExitCode = ExitCode(4)
 
   /** The exit code of a run that a session's failure stopped: the storage failed (5), the node
-    * failed itself (6), or something threw that nobody expected (7). A supervisor restarts the node
-    * from its database; a storage failure is the one the reference also ends the node for
-    * (`consensusRethrowPolicy`, `ShutdownNode`).
+    * failed itself (6), something threw that nobody expected (7), or evaluation was unavailable
+    * (8). A supervisor restarts the node from its database; a storage failure is the one the
+    * reference also ends the node for (`consensusRethrowPolicy`, `ShutdownNode`).
     */
   def FaultExitCode(fault: Fatal): ExitCode = fault match
     case _: Fatal.Unavailable => ExitCode(8)
