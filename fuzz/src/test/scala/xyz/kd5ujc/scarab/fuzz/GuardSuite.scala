@@ -33,6 +33,20 @@ class GuardSuite extends FunSuite:
 
   private def hex(s: String): Input = new Input(Bytes.fromHex(s).fold(e => fail(e), _.toArray))
 
+  test(
+    "wide snapshot tables keep the fuzz round-trip property within its linear allocation budget"
+  ) {
+    val target =
+      Targets.all.find(_.name == "snapshot-tables").getOrElse(fail("snapshot-tables target"))
+    target.corpus()
+    val entry = Array[Byte](0x58, 0x22) ++ Array.fill[Byte](34)(0) ++ Array[Byte](0x41, 0)
+    val bytes =
+      Array[Byte](0x81.toByte, 0xbf.toByte) ++ Array.fill(4096)(entry).flatten ++ Array[Byte](
+        0xff.toByte
+      )
+    target.check(new Input(bytes))
+  }
+
   /** Short inputs whose heads declare 2^60 (or 2^63, 2^32) elements or bytes, alone and nested. */
   private val declaring: Vector[Input] =
     val counts = Vector(

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.fuzz
 
+import cats.syntax.all.*
+import fs2.Chunk
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.protocol.*
@@ -813,14 +815,17 @@ object Targets:
         probe("snapshot-tables") { bytes =>
           SnapshotTables.decode(bytes).foreach { (entries, summary) =>
             hit("snapshot-tables")
-            val framed = entries
-              .foldLeft(SnapshotTables.prefix(summary.entries)) { (acc, entry) =>
-                for
-                  prefix <- acc
-                  encoded <- SnapshotTables.encodeEntry(entry)
-                yield prefix ++ encoded
-              }
-              .map(_ ++ SnapshotTables.suffix(summary.entries))
+            val framed = for
+              prefix <- SnapshotTables.prefix(summary.entries)
+              encoded <- entries.traverse(SnapshotTables.encodeEntry)
+            yield Bytes.wrap(
+              Chunk
+                .concat(
+                  (prefix +: encoded :+ SnapshotTables.suffix(summary.entries))
+                    .map(b => Chunk.array(b.unsafeArray, b.unsafeOffset, b.size))
+                )
+                .toArray
+            )
             req(
               framed.flatMap(SnapshotTables.decode).map(_._1) == Right(entries),
               "tables reframing changes original keys or values"
