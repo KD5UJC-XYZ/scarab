@@ -33,7 +33,7 @@ import subprocess
 import sys
 import time
 
-from .. import cborspan, gapmask, ntccli, ntcquery
+from .. import cborspan, gapmask, ntccli, ntcquery, ntcsafety
 from ..ntclocal import Session, compare_follow, live_follow, monitor_rounds, await_wakes, tx_id
 from ..cluster import freeze_classes, scala_container, up
 from ..ntccases import CLI, Builder, corpus
@@ -552,6 +552,9 @@ def ntc(args):
         user_closes = ntccli.unexpected_closes(read_log(root / "follower.jsonl")[0][mark:])
         print(json.dumps({"userCli": {"build": user_build, "closes": len(user_closes)}}), flush=True)
         failures.extend(ntccli.failures(user_queries, user_build, user_closes))
+        safety, safety_failures = ntcsafety.run(lambda: open_h(args), lambda: open_s(root))
+        failures.extend(safety_failures)
+        print(json.dumps({"querySafety": safety}), flush=True)
         monitor = {}
         try:
             monitor_comparison(args, root, monitor)
@@ -582,6 +585,7 @@ def ntc(args):
                         "unexpectedCloses": [c["reason"] for c in user_closes]},
             "chainSync": chain_sync,
             "txMonitor": monitor,
+            "querySafety": safety,
         }
         mismatched = [k for k, v in implemented.items() if v["matched"] != v["total"]]
         if mismatched:
