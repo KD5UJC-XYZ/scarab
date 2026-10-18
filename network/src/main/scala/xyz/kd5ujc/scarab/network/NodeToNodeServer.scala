@@ -115,7 +115,7 @@ object NodeToNodeServer:
       settings: Settings = Settings(),
       negotiated: (HandshakeClient.Agreed, Mux[F]) => Resource[F, Unit] = (_, _: Mux[F]) =>
         Resource.unit[F]
-  )(using Raise[F, NetworkError]): F[String] =
+  )(using Raise[F, NetworkError]): F[ConnectionEnd] =
     val config = settings.mux.copy(role = Mux.Role.Responder, duplex = settings.duplex)
     Mux.resource(bearer, Protocol, config).use { mux =>
       for
@@ -137,7 +137,7 @@ object NodeToNodeServer:
           start(mux, handlers, settings, agreed.data.peerSharing) *> negotiated(agreed, mux)
         ).surround(mux.closed)
         result <- reason match
-          case defect: NetworkError.Defect => defect.raise[F, String]
-          case other                       => Async[F].pure(other.message)
+          case defect: NetworkError.Defect => defect.raise[F, ConnectionEnd]
+          case other                       => Async[F].pure(ConnectionEnd.fromNetwork(other))
       yield result
     }

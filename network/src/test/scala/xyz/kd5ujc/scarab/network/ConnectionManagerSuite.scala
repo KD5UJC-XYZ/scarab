@@ -208,7 +208,7 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
                   live <- cm.lookup(peer(7))
                   _ <- live.get.closed.productR(waiter.complete(true)).start
                   _ <- c.negotiated(DataFlow.Duplex)
-                  _ <- c.close("test over")
+                  _ <- c.close(ConnectionEnd.Closed(NetworkError.Closure.Aborted))
                 yield live.map(_.state)
               }
               woke <- waiter.get.timeout(2.seconds)
@@ -226,7 +226,7 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
         assertEquals(gone, None)
         assertEquals(
           seen.collect { case ConnectionEvent.Closed(_, _, reason) => reason },
-          Vector("test over")
+          Vector(ConnectionEnd.Closed(NetworkError.Closure.Aborted))
         )
         assert(seen.head.isInstanceOf[ConnectionEvent.Opened])
       }

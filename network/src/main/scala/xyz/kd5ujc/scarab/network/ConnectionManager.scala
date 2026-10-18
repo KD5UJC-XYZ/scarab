@@ -14,7 +14,7 @@ enum ConnectionEvent:
   case Opened(remote: String, provenance: Provenance)
   case Changed(remote: String, from: ConnectionState, to: ConnectionState)
   case Refused(error: ConnectionError)
-  case Closed(remote: String, provenance: Provenance, reason: String)
+  case Closed(remote: String, provenance: Provenance, reason: ConnectionEnd)
 
 trait ConnectionEvents[F[_]]:
   def emit(event: ConnectionEvent): F[Unit]
@@ -34,7 +34,7 @@ trait Connection[F[_]]:
   def negotiated(flow: DataFlow)(using Raise[F, ConnectionError]): F[Unit]
 
   /** Mark the connection closing with a reason (kept for the log); the owner then ends it. */
-  def close(reason: String): F[Unit]
+  def close(reason: ConnectionEnd): F[Unit]
 
   /** Completes once the connection has been released and removed. */
   def closed: F[Unit]
@@ -100,7 +100,7 @@ object ConnectionManager:
       provenance: Provenance,
       state: ConnectionState,
       closed: Deferred[F, Unit],
-      reason: Option[String]
+      reason: Option[ConnectionEnd]
   )
 
   def create[F[_]: Async](
@@ -174,7 +174,7 @@ object ConnectionManager:
         def connected(using Raise[F, ConnectionError]) = step(key, id, Event.Connected)
         def negotiated(flow: DataFlow)(using Raise[F, ConnectionError]) =
           step(key, id, Event.Negotiated(flow))
-        def close(reason: String) =
+        def close(reason: ConnectionEnd) =
           table.update(m =>
             m.get(key)
               .filter(e => e.id == id && e.reason.isEmpty)
@@ -236,7 +236,7 @@ object ConnectionManager:
         val key = (at, c.provenance)
         table.get.map(_.get(key)).flatMap {
           _.traverse_ { e =>
-            val reason = e.reason.getOrElse("released")
+            val reason = e.reason.getOrElse(ConnectionEnd.Released)
             c.close(reason) *> apply(key, e.id, Event.Released) *>
               table.update(m => m.get(key).filter(_.id == e.id).fold(m)(_ => m - key)) *>
               e.closed.complete(()) *>

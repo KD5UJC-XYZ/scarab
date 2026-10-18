@@ -871,8 +871,8 @@ object Main extends IOApp:
                       .attempt
                       .map(
                         _.fold(
-                          t => s"failed: ${t.getClass.getSimpleName}: ${t.getMessage}",
-                          _.message
+                          InboundEnd.Defect(_),
+                          InboundEnd.Local(_)
                         )
                       )
                       .flatMap(reason =>

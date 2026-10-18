@@ -25,9 +25,11 @@ import xyz.kd5ujc.scarab.ledger.{
   PlutusStats,
   StorageError
 }
-import xyz.kd5ujc.scarab.network.{ConnectionError, ConnectionEvent}
+import xyz.kd5ujc.scarab.network.{ConnectionEnd, ConnectionError, ConnectionEvent, NetworkError}
 import xyz.kd5ujc.scarab.node.{
+  InboundEnd,
   InboundEvent,
+  InboundGovernor,
   LedgerPeersTrace,
   NodeSetup,
   PeerSnapshotError,
@@ -193,10 +195,23 @@ object LogSamples:
     InboundEvent.Duplex,
     InboundEvent.Unidirectional,
     InboundEvent.Following(point),
-    InboundEvent.SessionEnded("done", dropped = false),
-    InboundEvent.SessionEnded("timeout", dropped = true),
-    InboundEvent.Closed("eof"),
-    InboundEvent.Refused("limit")
+    InboundEvent.SessionEnded(
+      InboundGovernor.SessionFailure
+        .Peer(PeerError.NoIntersection),
+      dropped = false
+    ),
+    InboundEvent.SessionEnded(
+      InboundGovernor.SessionFailure
+        .Peer(PeerError.NoIntersection),
+      dropped = true
+    ),
+    InboundEvent.Closed(
+      InboundEnd.Connection(
+        ConnectionEnd
+          .Closed(NetworkError.Closure.PeerClosed)
+      )
+    ),
+    InboundEvent.Refused(ConnectionError.InboundLimit("10.0.0.2:4000", 64))
   )
 
   val connection: List[ConnectionEvent] = List(
@@ -207,7 +222,12 @@ object LogSamples:
       ConnectionState.Unnegotiated(ConnectionState.Provenance.Outbound)
     ),
     ConnectionEvent.Refused(ConnectionError.InboundLimit("10.0.0.2:4000", 64)),
-    ConnectionEvent.Closed("10.0.0.1:3001", ConnectionState.Provenance.Inbound, "eof")
+    ConnectionEvent.Closed(
+      "10.0.0.1:3001",
+      ConnectionState.Provenance.Inbound,
+      ConnectionEnd
+        .Closed(NetworkError.Closure.PeerClosed)
+    )
   )
 
   val mempool: List[MempoolEvent] = List(

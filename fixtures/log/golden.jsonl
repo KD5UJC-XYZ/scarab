@@ -22,10 +22,10 @@
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"duplex","reason":null}
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"unidirectional","reason":null}
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"following","reason":"4200@abababababababab"}
-{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"sessionEnded","reason":"done"}
-{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"sessionDropped","reason":"timeout"}
-{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"closed","reason":"eof"}
-{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"refused","reason":"limit"}
+{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"sessionEnded","reason":"the peer's chain shares no point with ours"}
+{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"sessionDropped","reason":"the peer's chain shares no point with ours"}
+{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"closed","reason":"connection closed: closed by peer"}
+{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"refused","reason":"refused inbound connection from 10.0.0.2:4000: 64 connections accepted already"}
 {"event":"peerSelectionTargets","at":"2026-10-16T12:00:00Z","root":60,"known":150,"established":30,"active":20,"knownBigLedger":15,"establishedBigLedger":10,"activeBigLedger":5}
 {"event":"peerSelectionRoots","at":"2026-10-16T12:00:00Z","action":"localRootsChanged","before":3,"after":2}
 {"event":"peerSelectionSensitive","at":"2026-10-16T12:00:00Z","action":"judgement","judgement":"TooOld"}
@@ -77,7 +77,7 @@
 {"event":"connection","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","what":"opened","provenance":"Outbound"}
 {"event":"connection","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","what":"changed","from":"Reserved","to":"Unnegotiated(Outbound)"}
 {"event":"connection","at":"2026-10-16T12:00:00Z","what":"refused","reason":"refused inbound connection from 10.0.0.2:4000: 64 connections accepted already"}
-{"event":"connection","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","what":"closed","provenance":"Inbound","reason":"eof"}
+{"event":"connection","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","what":"closed","provenance":"Inbound","reason":"connection closed: closed by peer"}
 {"event":"mempoolAdded","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab","size":300,"count":2,"bytes":600}
 {"event":"mempoolRejected","at":"2026-10-16T12:00:00Z","tx":null,"reason":"malformed transaction: expected [body, witnesses, is_valid, auxiliary_data]"}
 {"event":"mempoolRejected","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab","reason":"mempool full: 300 bytes needed, 100 free"}

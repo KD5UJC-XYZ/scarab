@@ -296,10 +296,14 @@ object NodeEvent:
         case InboundEvent.Unidirectional => inbound(remote, "unidirectional", None)
         case InboundEvent.Following(p)   => inbound(remote, "following", Some(Points.show(p)))
         case InboundEvent.SessionEnded(reason, dropped) =>
-          inbound(remote, if dropped then "sessionDropped" else "sessionEnded", Some(reason))
-        case InboundEvent.Closed(reason) => inbound(remote, "closed", Some(reason))
+          inbound(
+            remote,
+            if dropped then "sessionDropped" else "sessionEnded",
+            Some(reason.message)
+          )
+        case InboundEvent.Closed(reason) => inbound(remote, "closed", Some(reason.message))
         case InboundEvent.Refused(reason) =>
-          inbound(remote, "refused", Some(reason)).at(Severity.Warning)
+          inbound(remote, "refused", Some(reason.message)).at(Severity.Warning)
     case PeerSelection(trace)        => PeerSelectionLines.trace(trace)
     case PeerChurn(trace)            => PeerSelectionLines.churn(trace)
     case LedgerPeers(trace)          => PeerSelectionLines.ledger(trace)
