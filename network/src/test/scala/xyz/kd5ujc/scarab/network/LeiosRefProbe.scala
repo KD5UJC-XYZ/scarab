@@ -21,9 +21,9 @@ import scala.concurrent.duration.*
   * The messages are built and framed here as raw CBOR, in either of two wire dialects, because the
   * reference builds disagree on the numbering of the messages: `blueprint` (the Blueprint
   * `fe4cceb9` and the codecs of the `protocol` module) and `w38a` (the build the public testnet
-  * runs). Every message received is classified by the dialect's tags and run through the
-  * `protocol` codecs as it came and, for `w38a`, with the tag renumbered to the Blueprint's, so a
-  * difference in numbering alone shows as such. One line per message is appended to `<out>`:
+  * runs). Every message received is classified by the dialect's tags and run through the `protocol`
+  * codecs as it came and, for `w38a`, with the tag renumbered to the Blueprint's, so a difference
+  * in numbering alone shows as such. One line per message is appended to `<out>`:
   * `ms<TAB>protocol<TAB>kind<TAB>codec<TAB>hex`.
   *
   * `network/Test/runMain xyz.kd5ujc.scarab.network.LeiosRefProbe <host> <port> <magic> <dialect>
@@ -69,15 +69,21 @@ object LeiosRefProbe extends IOApp:
           case 27 => 8
           case _  => 0
         if width == 0 || at + 1 + width > size then None
-        else Some(((0 until width).foldLeft(0L)((n, i) => (n << 8) | (bytes(at + 1 + i) & 0xffL)), width))
+        else
+          Some(
+            ((0 until width).foldLeft(0L)((n, i) => (n << 8) | (bytes(at + 1 + i) & 0xffL)), width)
+          )
     @tailrec def loop(at: Int, open: List[Long]): Option[Int] =
       open match
-        case Nil => Some(at)
+        case Nil          => Some(at)
         case 0L :: parent =>
           // a finished container is one item of its parent
-          loop(at, parent match
-            case Nil          => Nil
-            case head :: rest => (if head == Long.MaxValue then head else head - 1) :: rest)
+          loop(
+            at,
+            parent match
+              case Nil          => Nil
+              case head :: rest => (if head == Long.MaxValue then head else head - 1) :: rest
+          )
         case head :: rest =>
           if at >= size then None
           else
@@ -128,7 +134,9 @@ object LeiosRefProbe extends IOApp:
 
   // ---------------------------------------------------------------- classification
 
-  /** The kind of a message by its first array element and the dialect, and whether our codec reads it. */
+  /** The kind of a message by its first array element and the dialect, and whether our codec reads
+    * it.
+    */
   private final case class Seen(kind: String, codec: String)
 
   private def tagOf(message: Bytes): Option[Int] =
@@ -144,7 +152,8 @@ object LeiosRefProbe extends IOApp:
     val v = octets(message)
     Bytes(v.updated(1, tag.toByte))
 
-  private def verdict[A](r: Either[?, A]): String = r.fold(e => s"refused ${e.toString.take(60)}", _ => "ok")
+  private def verdict[A](r: Either[?, A]): String =
+    r.fold(e => s"refused ${e.toString.take(60)}", _ => "ok")
 
   private def notifySeen(dialect: Dialect, message: Bytes): Seen =
     val t = tags(dialect)
@@ -215,13 +224,20 @@ object LeiosRefProbe extends IOApp:
   private def nextItem(channel: MuxChannel[IO], within: FiniteDuration)(using
       Handle[IO, NetworkError]
   ): IO[Bytes] =
-    Timed.within(within, channel.protocol, "reply")(
-      channel.recv(2500000)(bytes =>
-        extent(bytes) match
-          case None    => DecodeResult.NeedMore
-          case Some(n) => DecodeResult.Decoded(bytes.take(n).compact, n)
-      )
+    Timed.within(within, channel.protocol, "reply")(item(channel))
+
+  private def item(channel: MuxChannel[IO])(using Handle[IO, NetworkError]): IO[Bytes] =
+    channel.recv(2500000)(bytes =>
+      extent(bytes) match
+        case None    => DecodeResult.NeedMore
+        case Some(n) => DecodeResult.Decoded(bytes.take(n).compact, n)
     )
+
+  private[network] def silentWindow(
+      duration: FiniteDuration,
+      first: IO[Unit],
+      second: IO[Unit]
+  ): IO[Boolean] = IO.race(IO.sleep(duration), IO.race(first, second)).map(_.isLeft)
 
   def run(args: List[String]): IO[ExitCode] = args match
     case host :: port :: magic :: dialect :: mode :: out :: rest =>
@@ -240,7 +256,7 @@ object LeiosRefProbe extends IOApp:
               case ("chain", n :: Nil)  => chain(addr, magic.toLong, n.toInt)
               case ("listen", p :: s :: w :: Nil) =>
                 listen(p.toInt, magic.toLong, log, s.toInt.seconds, w == "leios")
-              case _                    => IO.println("bad mode or arguments")
+              case _ => IO.println("bad mode or arguments")
             program.as(ExitCode.Success)
           }
     case _ =>
@@ -347,8 +363,8 @@ object LeiosRefProbe extends IOApp:
       _ <- IO.println(s"fetch: ${seen.kind} (${msg.size} bytes) ${seen.codec}")
     yield ()
 
-  /** The transactions of window 0 with bit 0 and with bits 0 to 2 set, as an indefinite map (what the
-    * reference decodes) and, for the Blueprint dialect, as a definite one.
+  /** The transactions of window 0 with bit 0 and with bits 0 to 2 set, as an indefinite map (what
+    * the reference decodes) and, for the Blueprint dialect, as a definite one.
     */
   private def fetchTxs(fetch: MuxChannel[IO], d: Dialect, log: Log, p: (Long, Bytes))(using
       Handle[IO, NetworkError]
@@ -403,20 +419,21 @@ object LeiosRefProbe extends IOApp:
         yield ()
         run = send(initial) *> collect.foreverM
         _ <- KeepAliveClient.background[IO](ka, mux).use { _ =>
-          IO.race(IO.sleep(duration), run.handleErrorWith(e => IO.println(s"error: ${e.getMessage}")))
-            .void
+          IO.race(
+            IO.sleep(duration),
+            run.handleErrorWith(e => IO.println(s"error: ${e.getMessage}"))
+          ).void
             .guarantee(
-              (sent.get, received.get).flatMapN((s, r) =>
-                IO.println(s"requests sent $s, messages received $r")
-              )
+              (sent.get, received.get)
+                .flatMapN((s, r) => IO.println(s"requests sent $s, messages received $r"))
             )
         }
       yield ()
     }
 
-  /** A duplex connection whose responder side serves the Praos protocols from an empty chain, with the
-    * Leios protocols registered on both roles. Logs the first message the reference sends on 18 or 19
-    * and the Praos protocols it starts.
+  /** A duplex connection whose responder side serves the Praos protocols from an empty chain, with
+    * the Leios protocols registered on both roles. Logs the first message the reference sends on 18
+    * or 19 and the Praos protocols it starts.
     */
   private def duplex(
       addr: SocketAddress[Host],
@@ -431,27 +448,34 @@ object LeiosRefProbe extends IOApp:
         _ <- IO.println(s"duplex handshake: version ${agreed.version} data ${agreed.data}")
         listen = (protocol: Int) =>
           mux.channel(protocol, Mux.Role.Responder).flatMap { channel =>
-            nextItem(channel, duration).flatMap { msg =>
+            item(channel).flatMap { msg =>
               log.line(protocol, "first-message-from-reference", "", msg.hex) *>
                 IO.println(s"reference sent on $protocol: ${msg.hex.take(80)}")
             }
           }
         _ <- NodeToNodeServer
-          .start(mux, EmptyChain.handlers[IO](), NodeToNodeServer.Settings(), agreed.data.peerSharing)
+          .start(
+            mux,
+            EmptyChain.handlers[IO](),
+            NodeToNodeServer.Settings(),
+            agreed.data.peerSharing
+          )
           .use { _ =>
-            NodeToNode.clients[IO, Bytes](mux, Mux.Role.Initiator, agreed.version, raw).use { conn =>
-              val syncing = conn.chainSync
-                .findIntersect(Vector(ChainSync.Point.Origin))
-                .flatMap(_ => conn.chainSync.requestNextBatch(4))
-                .flatMap(updates => IO.println(s"chain-sync: ${updates.size} updates"))
-              val waiting = IO.race(
-                IO.sleep(duration),
-                (listen(Protocols.LeiosNotify), listen(Protocols.LeiosFetch)).parTupled
-              ).flatMap {
-                case Left(_)  => IO.println("duplex: nothing received on 18 or 19")
-                case Right(_) => IO.unit
-              }
-              syncing *> waiting
+            NodeToNode.clients[IO, Bytes](mux, Mux.Role.Initiator, agreed.version, raw).use {
+              conn =>
+                val syncing = conn.chainSync
+                  .findIntersect(Vector(ChainSync.Point.Origin))
+                  .flatMap(_ => conn.chainSync.requestNextBatch(4))
+                  .flatMap(updates => IO.println(s"chain-sync: ${updates.size} updates"))
+                val waiting = silentWindow(
+                  duration,
+                  listen(Protocols.LeiosNotify),
+                  listen(Protocols.LeiosFetch)
+                ).flatMap {
+                  case true  => IO.println("duplex: nothing received on 18 or 19")
+                  case false => IO.unit
+                }
+                syncing *> waiting
             }
           }
       yield ()
@@ -459,9 +483,9 @@ object LeiosRefProbe extends IOApp:
 
   /** A node that is listening and serves the Praos protocols from an empty chain, as this node's
     * inbound side does, for a reference relay that has it as a local root and so connects to it:
-    * does the reference start LeiosNotify and LeiosFetch toward a peer it made hot, what is the first
-    * message, and what does this node's multiplexer do with it? `withLeios` registers 18 and 19; without,
-    * the set is `NodeToNodeServer.Protocol` as it is today.
+    * does the reference start LeiosNotify and LeiosFetch toward a peer it made hot, what is the
+    * first message, and what does this node's multiplexer do with it? `withLeios` registers 18 and
+    * 19; without, the set is `NodeToNodeServer.Protocol` as it is today.
     */
   private def listen(
       port: Int,
@@ -489,7 +513,12 @@ object LeiosRefProbe extends IOApp:
                   }
                 }
               _ <- NodeToNodeServer
-                .start(mux, EmptyChain.handlers[IO](), NodeToNodeServer.Settings(), peerSharing = false)
+                .start(
+                  mux,
+                  EmptyChain.handlers[IO](),
+                  NodeToNodeServer.Settings(),
+                  peerSharing = false
+                )
                 .use { _ =>
                   val leios =
                     if withLeios then
@@ -512,46 +541,49 @@ object LeiosRefProbe extends IOApp:
     * their numbers, slots and hashes. Header body positions as in `dijkstra.cddl`.
     */
   private def chain(addr: SocketAddress[Host], magic: Long, headers: Int): IO[Unit] =
-    val protocols = Set(Protocols.Handshake, Protocols.ChainSync, Protocols.BlockFetch, Protocols.KeepAlive)
+    val protocols =
+      Set(Protocols.Handshake, Protocols.ChainSync, Protocols.BlockFetch, Protocols.KeepAlive)
     open(addr, protocols, duplex = false) { mux =>
       for
         agreed <- handshake(mux, magic, initiatorOnly = true)
-        _ <- NodeToNode.clients[IO, Bytes](mux, Mux.Role.Initiator, agreed.version, raw).use { conn =>
-          for
-            found <- conn.chainSync.findIntersect(Vector(ChainSync.Point.Origin))
-            _ <- IO.println(s"intersection: ${found.map(_._1)}")
-            seen <- Ref.of[IO, (Option[String], Option[String], Int)]((None, None, 0))
-            batch = conn.chainSync.requestNextBatch(4).flatMap { updates =>
-              seen.update { case (ann, cert, n) =>
-                updates.foldLeft((ann, cert, n)) {
-                  case ((a, c, k), ChainSyncClient.Update.RollForward(h, _)) =>
-                    val info = describe(h)
-                    (
-                      a.orElse(info.filter(_.announces).map(_.text)),
-                      c.orElse(info.filter(_.certifies).map(_.text)),
-                      k + 1
-                    )
-                  case (acc, _) => acc
+        _ <- NodeToNode.clients[IO, Bytes](mux, Mux.Role.Initiator, agreed.version, raw).use {
+          conn =>
+            for
+              found <- conn.chainSync.findIntersect(Vector(ChainSync.Point.Origin))
+              _ <- IO.println(s"intersection: ${found.map(_._1)}")
+              seen <- Ref.of[IO, (Option[String], Option[String], Int)]((None, None, 0))
+              batch = conn.chainSync.requestNextBatch(4).flatMap { updates =>
+                seen.update { case (ann, cert, n) =>
+                  updates.foldLeft((ann, cert, n)) {
+                    case ((a, c, k), ChainSyncClient.Update.RollForward(h, _)) =>
+                      val info = describe(h)
+                      (
+                        a.orElse(info.filter(_.announces).map(_.text)),
+                        c.orElse(info.filter(_.certifies).map(_.text)),
+                        k + 1
+                      )
+                    case (acc, _) => acc
+                  }
                 }
               }
-            }
-            _ <- Ref.of[IO, Boolean](true).flatMap { _ =>
-              (batch *> seen.get).iterateUntil { case (a, c, n) =>
-                n >= headers || (a.isDefined && c.isDefined)
+              _ <- Ref.of[IO, Boolean](true).flatMap { _ =>
+                (batch *> seen.get).iterateUntil { case (a, c, n) =>
+                  n >= headers || (a.isDefined && c.isDefined)
+                }
               }
-            }
-            result <- seen.get
-            _ <- IO.println(s"headers read: ${result._3}")
-            _ <- IO.println(s"first announcement: ${result._1.getOrElse("none")}")
-            _ <- IO.println(s"first certificate: ${result._2.getOrElse("none")}")
-          yield ()
+              result <- seen.get
+              _ <- IO.println(s"headers read: ${result._3}")
+              _ <- IO.println(s"first announcement: ${result._1.getOrElse("none")}")
+              _ <- IO.println(s"first certificate: ${result._2.getOrElse("none")}")
+            yield ()
         }
       yield ()
     }
 
   private final case class HeaderInfo(text: String, announces: Boolean, certifies: Boolean)
 
-  /** Block number, slot, hash and the two Leios fields of a header envelope `[era, tag24(header)]`. */
+  /** Block number, slot, hash and the two Leios fields of a header envelope `[era, tag24(header)]`.
+    */
   private def describe(envelope: Bytes): Option[HeaderInfo] =
     for
       root <- Cbor.decode(envelope, limits).toOption
@@ -596,7 +628,8 @@ object LeiosRefProbe extends IOApp:
     )
 end LeiosRefProbe
 
-/** What a node with no chain serves: ChainSync from Origin only, no blocks, transactions ignored. */
+/** What a node with no chain serves: ChainSync from Origin only, no blocks, transactions ignored.
+  */
 private object EmptyChain:
   import cats.effect.{Async, Resource}
   import xyz.kd5ujc.scarab.protocol.ChainSync
