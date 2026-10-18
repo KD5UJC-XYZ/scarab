@@ -1,0 +1,6 @@
+**
+!scripts/
+!scripts/oracle/
+!scripts/oracle/byron/
+!scripts/oracle/byron/full/
+!scripts/oracle/byron/full/**

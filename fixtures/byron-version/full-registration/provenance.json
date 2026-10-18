@@ -1,0 +1,102 @@
+{
+  "schema": 1,
+  "scope": "Unchanged released reference registerProposal, original-byte signature/delegation checks, applyMempoolPayload proposal+ordinary transaction, and validateBlock composed with authentic header/certificate crypto APIs. Controlled synthetic adopted version near bounds; no PBFT or adoption history.",
+  "nodeRelease": "11.1.3",
+  "nodeRevision": "938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+  "referenceEmbeddedPackageIds": [
+    "cardano-binary-1.9.1.0-4dHFA6bctuX441xmFZrCT4",
+    "cardano-crypto-1.3.0-5MrByNYANJWJlc6fC40BNj",
+    "cardano-crypto-class-2.5.1.0-8udoUqOM3Lj3VtNGeeqFyU",
+    "cardano-crypto-wrapper-1.7.0.0-2wITO7Kh4m08lk48LdVBEf",
+    "cardano-ledger-binary-1.9.1.0-1RlJBmFmVqFEl1uOIj0QpX",
+    "cardano-ledger-byron-1.3.0.0-9eJg8qXAQbM9yhvH7mHRxa",
+    "cardano-prelude-0.2.2.0-JivZ0TD1P26Ez2irbUjrfd"
+  ],
+  "compiler": "ghc-9.10.3",
+  "referenceCompiler": "ghc-9.6",
+  "cabal": "3.14.1.1",
+  "ledgerCrossCheckRevision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "nativeSodium": {
+    "repository": "https://github.com/input-output-hk/libsodium",
+    "revision": "dbb48cce5429cb6585c9034f002568964f1ce567",
+    "pinSource": "cardano-node11.1.3 flake.lock sodium and sodium_2",
+    "configure": [
+      "--prefix=/usr/local"
+    ],
+    "autogen": "DO_NOT_UPDATE_CONFIG_SCRIPTS=1, Debian autotools config helpers"
+  },
+  "keyPolicy": "Random fixture keys existed only in generation process; no key or random seed retained. Replay needs only original public signed bytes.",
+  "widthVariants": "Eight replacements change only the recorded CBOR item in the original signed block/proposal; their signatures/proofs are stale and are NOT claimed valid. Reference rejects their widths during complete decoding before crypto or registration.",
+  "sourceComparison": "All91 released Byron source modules match f649. Released crypto-wrapper1.7.0.0 differs in one unused redeem secret-key decoder; final build uses released archive, eliminating drift.",
+  "files": [
+    {
+      "path": "genesis.json",
+      "bytes": 1225,
+      "sha256": "b0cbaf4a8418a6c8566d313febdd6042aeb944366eb586efdb50500215c4a1f6"
+    },
+    {
+      "path": "cases.json",
+      "bytes": 56083,
+      "sha256": "0fa861c68af141101568975b9cd77222a8bb7f515fce833c30bc2f7430e93e1f"
+    },
+    {
+      "path": "mutations.json",
+      "bytes": 3867,
+      "sha256": "8a98395f53a5525ee6133fe23b1980e15549537d92aab4fabfc401340e38a272"
+    },
+    {
+      "path": "reference.json",
+      "bytes": 16930,
+      "sha256": "516229892f1571e51845d8673fc2627d9766282d070b6a6d56afe25f15c105c0"
+    },
+    {
+      "path": "build-plan.json",
+      "bytes": 294288,
+      "sha256": "f783ab570526685be0b784ddbdf41512ffa96b8a1960a3622778ca7aeef82bf8"
+    },
+    {
+      "path": "released-source-comparison.json",
+      "bytes": 464,
+      "sha256": "79f84ab4305866f06a3ceedab72b6700b25018ec8558b16bf29651ba55bb1adc"
+    }
+  ],
+  "harnessFiles": [
+    {
+      "path": "Main.hs",
+      "sha256": "656d51c6ef5358aa980abbbe2806035dd6f25262b7a03954a0e7a8ca9eb3b98d"
+    },
+    {
+      "path": "scarab-byron-registration.cabal",
+      "sha256": "23c83c30183b348ca5897581811bef3245fb900ab8cd8abffe3737c1880aa8ad"
+    },
+    {
+      "path": "cabal.project",
+      "sha256": "71c6871c9e722df61a20fca36ee4ea436e0c9dde2e82e422ed345122055d8913"
+    },
+    {
+      "path": "cabal.project.freeze",
+      "sha256": "95bb78762039e9850ae66840dcf21b7b5c18da7febc88694244e1ecc78e6a274"
+    },
+    {
+      "path": "Dockerfile",
+      "sha256": "e6f41d56fa18d8a87ee2ef07b4f505b508a09d0ee6c0c470c8532dc90bb2718c"
+    }
+  ],
+  "referenceNodeVersion": "cardano-node 11.1.3 - linux-x86_64 - ghc-9.6\ngit rev 938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+  "finalImageId": "sha256:6c8c750fa99054fd5daf4cb01d31c46087988aee5baaa357e647b5cf9af71141",
+  "artifacts": [
+    {
+      "path": "/usr/local/bin/scarab-byron-registration",
+      "sha256": "32d7f86d75c7790d68495709a52cd3632a730697d54135e4c64befc5608e4232"
+    },
+    {
+      "path": "/usr/local/lib/libsodium.so",
+      "sha256": "4d0ec0cbac8a57c993552d4d02921cda1c1057ce0fb4782c6622596f28456c60"
+    }
+  ],
+  "nativeBuildTools": [
+    "autoconf\t2.71-3",
+    "automake\t1:1.16.5-1.3",
+    "libtool\t2.4.7-7~deb12u1"
+  ]
+}

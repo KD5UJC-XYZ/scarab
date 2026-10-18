@@ -34,7 +34,9 @@ increase, major jumps, a nonzero minor with next major, and Word16 wrap boundari
 executed predicate results, **not execution of the full reference registration machinery**.
 `ByronVersionSuite` consumes these verdicts through signed Scala block/transaction/proposal
 validation. It does not turn them into a claim about reference signature verification or other
-registration preconditions. Full reference registration remains a distinct scope under #171.
+registration preconditions. The later [full registration oracle](full/README.md) executes unchanged released registration,
+proposal/transaction admission and complete-block ledger rules composed with authentic header crypto.
+It supplies the broader #171 evidence separately from these historical excerpt results.
 
 The Haskell excerpts are Apache-2.0, from Intersect's cardano-ledger. The original notices and
 licence are retained in [fixtures/licenses](../../../fixtures/licenses); see the repository

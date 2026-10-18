@@ -1,0 +1,10 @@
+cabal-version: 3.0
+-- SPDX-License-Identifier: Apache-2.0
+name: scarab-byron-registration
+version: 0.1.0.0
+build-type: Simple
+executable scarab-byron-registration
+  main-is: Main.hs
+  build-depends: base, cardano-ledger-byron, bytestring, containers, mtl, cardano-ledger-binary, cardano-crypto-wrapper, aeson, base16-bytestring, cborg, text, time, vector, directory, filepath, canonical-json
+  default-language: Haskell2010
+  ghc-options: -Wall -Werror
