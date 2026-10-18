@@ -104,10 +104,16 @@ object LeiosRefProbe extends IOApp:
                   major match
                     case 0 | 1 | 7 => loop(next, one)
                     case 2 | 3 =>
-                      if n > Int.MaxValue || next.toLong + n > size then None
+                      if n < 0 || n > Int.MaxValue || next.toLong + n > size then None
                       else loop(next + n.toInt, one)
-                    case 4 => if n == 0 then loop(next, one) else loop(next, n :: open)
-                    case 5 => if n == 0 then loop(next, one) else loop(next, (2 * n) :: open)
+                    case 4 =>
+                      if n < 0 || n > size - next then None
+                      else if n == 0 then loop(next, one)
+                      else loop(next, n :: open)
+                    case 5 =>
+                      if n < 0 || n > (size - next) / 2 then None
+                      else if n == 0 then loop(next, one)
+                      else loop(next, (2 * n) :: open)
                     case _ => loop(next, 1L :: open)
     loop(0, List(1L))
 
@@ -421,7 +427,7 @@ object LeiosRefProbe extends IOApp:
         _ <- KeepAliveClient.background[IO](ka, mux).use { _ =>
           IO.race(
             IO.sleep(duration),
-            run.handleErrorWith(e => IO.println(s"error: ${e.getMessage}"))
+            run
           ).void
             .guarantee(
               (sent.get, received.get)
@@ -525,7 +531,7 @@ object LeiosRefProbe extends IOApp:
                       (watch(Protocols.LeiosNotify), watch(Protocols.LeiosFetch)).parTupled.void
                     else IO.never[Unit]
                   IO.race(mux.closed, IO.race(IO.sleep(duration), leios)).flatMap {
-                    case Left(reason) => IO.println(s"connection ended: $reason")
+                    case Left(reason) => IO.println(s"connection ended: ${reason.message}")
                     case Right(_)     => IO.println("listener: window over, connection still open")
                   }
                 }

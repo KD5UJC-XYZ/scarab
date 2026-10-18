@@ -51,7 +51,9 @@ Leios (fixtures/leios): serialisation test vectors from IntersectMBO/cardano-bas
 (Apache-2.0; fixtures/licenses/cardano-base-LICENSE and -NOTICE), the golden LeiosVote of
 IntersectMBO/ouroboros-consensus branch leios-prototype (Apache-2.0), and the throwaway
 proto-devnet BLS test keys and genesis proofs of input-output-hk/ouroboros-leios (Apache-2.0).
-Provenance per file is in fixtures/leios/README.md. The recorded testnet handshake replies are
+Provenance per file is in fixtures/leios/README.md. The private reference wire captures under
+fixtures/leios/reference are generated from public throwaway proto-devnet data using pinned
+Apache-2.0 Haskell prototype builds; no reference binaries or private keys are redistributed. The recorded testnet handshake replies are
 protocol bytes.
 
 Operational certificates (fixtures/opcert): the exact ledger OCert source and

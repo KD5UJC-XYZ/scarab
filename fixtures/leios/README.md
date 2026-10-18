@@ -31,7 +31,7 @@ seed is `blst_keygen` (checked indirectly: the devnet keys come from the same li
 | `testnet/headers-notable.tsv` | Six headers of the same capture: the last of era index 6 (block 4,254) and the first of index 7 (block 4,255, slot 86,463), the last before and the first announcing header (blocks 17,396 and 17,397), and the first two with `block_body_contains_leios_cert` (blocks 17,403 and 17,404). Columns: label, then as above | the same |
 | `testnet/blocks.tsv` | Six blocks fetched one at a time over BlockFetch from the same relay, 2026-10-16: block 0 (empty) and 28 (transactions) of block tag 7, and of tag 8: block 4,255 (empty), 17,403 (a Leios certificate, no transactions), 22,446 (transactions), 34,085 (announces an endorser block, 24 kB). Columns: label, block tag, block number, slot, header hash, the block `[tag, block]` in hex | `LeiosBlockSuite` |
 
-Not captured: any LeiosNotify or LeiosFetch message. On 2026-10-14 and again on 2026-10-16 (a
+Not captured from the public relay in these historical runs: any LeiosNotify or LeiosFetch message. On 2026-10-14 and again on 2026-10-16 (a
 LeiosNotify pull and a LeiosFetch request, after ChainSync from a known point to the tip, versions 14
 and 16) the relay closed the connection on the first message on protocol 18 or 19
 (docs/leios.md sections 10 and 11.7), so there are no raw announcement, offer, vote or endorser-block
@@ -40,3 +40,11 @@ golden `LeiosVote` above.
 
 The test files are plain TSV so that a diff shows a changed byte. The headers and blocks are public
 chain data of a test network.
+
+## `reference/` (private pinned reference builds, #73 steps 1–2)
+
+The [private reference capture corpus](reference/README.md) records actual LeiosNotify/LeiosFetch
+replies from both w38a and the pinned newer build. It resolves the old public-relay refusal without
+any further public probe. Exact original bytes, profile pins and checksums are retained; protocol
+regressions preserve the old numbering mismatch, silent vote interpretation and newer transaction
+reply shape.

@@ -478,8 +478,8 @@ The probe is `LeiosProbe` in the test sources of `network`
 | Version 16 only with the Peras flag set | accepted; closed the same way on protocol 18 |
 | Duplex (initiator and responder) connection, listening on 18 and 19 for 60 s without sending | handshake accepted, no bytes on 18 or 19 (the relay does not start its Leios client toward a connection it has not promoted) |
 
-So **no EB announcement, offer, vote or certificate was received, and nothing was verified against
-real data**: the relay does not serve LeiosNotify to an initiator-only follower that has not run
+In this historical run **no EB announcement, offer, vote or certificate was received, and nothing
+was verified against real data**. The hypotheses then were that the relay does not serve LeiosNotify to an initiator-only follower that has not run
 the Praos protocols, or does not offer protocol 18 on versions 14 to 16 at all. The first
 possibility fits an on-demand responder that exists only for a warm or hot peer; the second fits
 the gating being something other than the version (section 4.3). N3 must settle which by driving
@@ -491,7 +491,7 @@ votes, verification needs the committee: the Shelley genesis of the testnet has 
 
 Follow-up (section 11.7, 2026-10-16): driving ChainSync and BlockFetch first, on version 16, and a
 LeiosFetch request in place of the LeiosNotify one, end the same way, so the first possibility above
-(the Praos protocols not having been run) is ruled out; the cause is still open.
+(the Praos protocols not having been run) is ruled out; the private reference runs in section 12 identify build-specific wire numbering as the cause.
 
 ## 11. N3: following the public testnet (2026-10-16, owner-approved, read-only)
 
@@ -669,7 +669,7 @@ these). "Cited" is the source read, at the revisions of sections 1 and 11.2 and,
 | **X5** | The Leios certificate is decoded, not verified: no committee (the BLS keys are in pool registrations, `PoolParams` has no `bls_key`), no quorum from the stake, no lookup of the announcing ranking block | `LeiosBlock`, `Certificate.verify` | `dijkstra.cddl` 937 to 942; section 9 |
 | **X6** | `peras_certificate` is carried as bytes; the ledger's `validatePerasCert` is a placeholder that returns `False` | Peras | cardano-ledger `BlockBody/Internal.hs` 235 to 246 (pinned) |
 | **X7** | Endorser blocks: an announcement is recognised in a header (65,469 on this chain) but no EB is fetched, stored, hashed against the announced hash or applied; there is no EB store, no closure, no inlining for node-to-client, no chain selection with a missing closure | storage, consensus, `ntc` | sections 4.4 and 5; `dijkstra.cddl` 105 to 108 |
-| **X8** | Mini-protocols 18 and 19 were never answered by the relay (11.7), and the node's multiplexer and servers do not carry protocols 18 and 19 at all (11.5 item 6) | network | consensus `NodeToNode.hs` of the release |
+| **X8** | The pinned private reference serves protocols 18 and 19 (section 12 resolves 11.7); the production node's multiplexer and servers do not yet carry them (11.5 item 6) | network | consensus `NodeToNode.hs` of the release |
 | **X9** | ~~Handshake: the node offers version 14 only; the relay accepts 14 to 16, 16 adding the Peras flag~~ Resolved (G4, [#34](https://github.com/KD5UJC-XYZ/scarab/issues/34)): both sides offer 14 and 15 by default, as cardano-node 11.1.3 (`latestReleasedNodeVersion` is 15, `Cardano/Node.hs` 456 of consensus 4.2.1.0), and 16 with `ExperimentalProtocolsEnabled` (`limitToLatestReleasedVersion`, diffusion `Node.hs` 1152 to 1165). The Peras flag is off, so version 16 differs from 15 only by the fifth element of the version data. The public Leios testnet sets the key, so its relay is offered 14 to 16 and answers 16 | handshake | section 8; `LeiosTestnetHandshakeSuite`, `HandshakeNegotiationSuite` |
 | **X10** | `TxSubmissionLogicVersion: TxSubmissionLogicV2` and the Leios mempool (an EB reservation; section 4.4) are not modelled | mempool, TxSubmission2 | `config.json` |
 | **X11** | `ConsensusMode: PraosMode` with ledger peers after slot 151,200 and a peer snapshot: no ledger peers, no peer snapshot, one bootstrap relay only | topology | `topology.json`, `peer-snapshot.json` |
@@ -695,16 +695,19 @@ our connection is inbound and unknown to it; (3) the sender-driven driver of Lei
 rejects a first request that is not part of a pipelined credit run (the usage the CIP describes:
 request 1,000, then 100 more per 100 received). Settling it needs the relay's trace (`Net.Mux.Remote`,
 `LeiosNotify.Remote` at Debug are in its own `config.json`, not ours to read) or a local Haskell node
-(11.8).
+(11.8). Section 12 resolves these hypotheses on two pinned private reference builds: an
+initiator-only responder exists and accepts a single correctly numbered request. The old build
+expects `[0]`, while our Blueprint codec sends `[3]`. This reproduces the public symptom without
+requiring another public connection.
 
-### 11.8 Proposed plan for #73 (devnet prototype)
+### 11.8 Staged plan for #73 (devnet prototype)
 
-1. **Get the reference node** in the reference-image mechanism ([reference-image.md](reference-image.md)): the
+1. **Done (section 12): get the reference node** in the reference-image mechanism ([reference-image.md](reference-image.md)): the
    Leios team's relay image (`ghcr.io/input-output-hk/ouroboros-leios/cardano-node-testnet`) or a build of
    `cardano-node` `8c44d145` (the w38a release) for the testnet's behaviour, and the proto-devnet of
    `ouroboros-leios` `demo/proto-devnet` (three pools with BLS keys; section 9's vectors come from it) for a
    private network. Record the revision of every dependency as 11.2 does.
-2. **Settle the gating on a loopback network, with the reference's own trace.** One Haskell Leios node (no
+2. **Done (section 12): settle the gating on a private network, with the reference's own trace.** One Haskell Leios node (no
    public host), the namespaces `Net.Mux.Remote`, `Net.InboundGovernor.Remote`, `LeiosNotify.Remote` and
    `LeiosFetch.Remote` at Debug, and `LeiosChainProbe` as initiator-only, then as duplex with the Praos
    protocols served. Outcome: which hypothesis of 11.7 holds and the first message the responder accepts.
@@ -727,3 +730,82 @@ request 1,000, then 100 more per 100 received). Settling it needs the relay's tr
 7. **Regression**: the header capture of this section stays a test (`LeiosHeaderChainSuite` runs the first
    1,100 headers from the genesis; `LeiosCheckMain` runs all 154,698), and a new capture should be taken when
    the testnet respins.
+
+## 12. Pinned private Leios reference builds (2026-10-18)
+
+Status: current, bounded reference research for [#73](https://github.com/KD5UJC-XYZ/scarab/issues/73)
+steps 1–2. The production node's Dijkstra follower, committee and mini-protocol integration remain
+steps 3–6; this tooling does not implement them. Every run in this section uses an isolated Docker
+network with three throwaway reference pools, a load generator and a reference relay. No public
+follower or probe is needed.
+
+### 12.1 Reproducible builds
+
+`scripts/prepare_leios_reference_image.py` verifies the executable hashes before building with
+network access disabled. It keeps the stable Cardano 11.1.3 reference image separate. The exact
+binary SHA-256 values and base/load-generator image digests are constants in that script.
+
+| Profile | Node revision | Consensus / network revision | Proto-devnet configuration revision |
+|---|---|---|---|
+| `w38a` | `8c44d14542f41e96b657d013c6e183bcee9dfd85` | `27fa649f` / `4b3ab766` | `f65db01ca1f9462241e844bd3018cc4b78d41a30` (`prototype-2026w38a`, annotated tag `d0463cbe`) |
+| `main` (the pinned 2026-10-16 build) | `2d6a2a66415cc1d58c18ed3ee83ce719713fc97d` | `840e789b` / `96ee6e0e` | `49f7c4a2c37577e187e562d196cf8876815918a5` |
+
+The w38a release archive has SHA-256
+`0a5809af1c4f6e8088145f88fbcfb2c3e5f8e774b736c2ebdb0b1119b7a97fbc` (87,847,575 bytes).
+The newer relay image is pinned to
+`sha256:341462a038a069664ea723976501815e8e8875ea9c7b15946b62bc1994cc0f3b`; the load-generator
+image to `sha256:e9fed3819512699990042191b1e8b42a3b319773e9f645d51ab6e53f544d7cdf`.
+The configuration uses the reference Mem backend (`V2InMemory`) so the scenario does not depend on
+host `io_uring` support. Trace capture filters the otherwise large mux output and flushes each
+line before the scenario checks it.
+
+### 12.2 What differs on the wire
+
+| Message or behaviour | w38a | Pinned newer build |
+|---|---|---|
+| First accepted LeiosNotify request | `[0]` (`8100`) | `[3]` (`8103`) |
+| Notify announcement / block offer / transaction offer / votes tags | 1 / 2 / 3 / 4 | 4 / 5 / 6 / 7 |
+| LeiosFetch block request / block / transaction request / reply tags | 0 / 1 / 2 / 3 | 1 / 2 / 3 / 4 |
+| LeiosFetch Done | `[9]` | `[0]` |
+| Transaction reply | point, bitmaps and transactions | transactions only, each wrapped in CBOR tag 24 ([#174](https://github.com/KD5UJC-XYZ/scarab/issues/174)) |
+| Accepted initial notification credit | 100; 1,000 closes with `MkExnLeiosNotifyExcessiveRequests` | 1,000 |
+| Transaction-request bitmaps | indefinite-length map | indefinite-length map |
+
+A single correctly numbered request receives notifications on an initiator-only connection.
+Sending the other build's request closes the connection and records the expected reference decoder
+error (`unexpected key (3, 1)` on w38a, `(0, 1)` on the newer build). Neither missing Praos traffic,
+a hot-peer prerequisite for inbound responders, nor an initial 1,000-credit requirement explains
+section 11.7's refusal.
+
+A duplex peer that the reference has not made hot receives no request on 18 or 19, even when
+ChainSync is served. A reference relay configured to make the listener hot starts those protocols;
+a listener without them ends at the first SDU on 18. Carrying both is therefore required for X8.
+The private chain starts in Dijkstra at epoch 0 and produces both announcing and certifying ranking
+blocks under load.
+
+Wire dialect must be selected by the pinned reference build. Guessing from decoder success is
+unsafe: w38a votes (tag 4) can decode as a Blueprint announcement. The probe's tag renumbering is
+only a diagnostic comparison. It is not a production compatibility adapter. The newer transaction
+reply is also intentionally refused by the current three-field Blueprint codec; #174 tracks the
+format change before follower integration.
+
+### 12.3 Running and preserving the evidence
+
+Build the images and the test probes with the Docker-only workflow in
+[CONTRIBUTING.md](../CONTRIBUTING.md), including `node/runtimeClasspathFile` and
+`network/Test/compile`, then run:
+
+```sh
+python3 scripts/prepare_leios_reference_image.py --profile w38a
+python3 scripts/prepare_leios_reference_image.py --profile main
+python3 scripts/devnet.py --name <private-name> leios-probe --profile all --capture <outside-checkout>
+```
+
+The scenario checks chain announcements/certificates, all message kinds, codec verdicts, the other
+numbering's refusal trace, credit limits, duplex silence and hot-peer listener behaviour. Its probe
+containers are removed even on timeout, and the private network is removed on completion. The
+silence observer has one deadline and ends as soon as either channel receives a message; virtual
+time tests cover silence, either arrival and observer failure. Filtered trace checks are line-buffered.
+Captured message fixtures and their decoder expectations preserve the differences above. Remaining
+follower work stays in #73's staged checklist and the X1–X8 table, rather than being implied by a
+successful research probe.

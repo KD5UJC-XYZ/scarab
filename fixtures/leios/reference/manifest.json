@@ -1,0 +1,31 @@
+{
+  "date": "2026-10-18",
+  "captureToolCommit": "005b23f0",
+  "network": "private proto-devnet; no public peers",
+  "profiles": {
+    "main": {
+      "nodeRevision": "2d6a2a66415cc1d58c18ed3ee83ce719713fc97d",
+      "configRevision": "49f7c4a2c37577e187e562d196cf8876815918a5",
+      "binarySha256": {
+        "cardano-node": "5734a006d17d6af3b8ee98b305a0b57a9884c5e1c51069709aeb9364e8a13d12",
+        "cardano-cli": "4f074c3eb4e727c211ae13817d091e5d610269bf520fadff87f8203da3b4153b",
+        "tx-firehose": "57bd35881de0dccf587bbd3d9707693fac21b7f890a9043a69e6c0a7fdb1329f"
+      },
+      "file": "messages.tsv",
+      "fileSha256": "103c18373fa7bf3b03cdf89301b16572c20868d08d20bc24d5e70a7a8dc310a9",
+      "scenarioPassed": true
+    },
+    "w38a": {
+      "nodeRevision": "8c44d14542f41e96b657d013c6e183bcee9dfd85",
+      "configRevision": "f65db01ca1f9462241e844bd3018cc4b78d41a30",
+      "binarySha256": {
+        "cardano-node": "ca35aa211fd2147ba61c9d0782379d04fbd0c83d45f1b11334f354dad043490c",
+        "cardano-cli": "6ec529e7f00f7059982267e9c4d4b37b8c88bd32d831c22c129c250ce2433fd0",
+        "tx-firehose": "6e2fe9791d2dbd70cbcac7292a86596dae60ac5e19a21e49272bd58e70bfb83f"
+      },
+      "file": "messages.tsv",
+      "fileSha256": "da3204b8db1ef1b40a7e0047a8a62c862ee92c219c64786e5b93199f910e4b4f",
+      "scenarioPassed": true
+    }
+  }
+}

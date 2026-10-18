@@ -4,10 +4,9 @@ package xyz.kd5ujc.scarab.network
 import cats.effect.IO
 import cats.effect.testkit.TestControl
 import cats.syntax.all.*
-import munit.CatsEffectSuite
 import scala.concurrent.duration.*
 
-class LeiosRefProbeSuite extends CatsEffectSuite:
+class LeiosRefProbeSuite extends FailsOnUncaught:
   test("a silent window completes when neither channel receives a message") {
     TestControl
       .executeEmbed(LeiosRefProbe.silentWindow(1.second, IO.never[Unit], IO.never[Unit]))
