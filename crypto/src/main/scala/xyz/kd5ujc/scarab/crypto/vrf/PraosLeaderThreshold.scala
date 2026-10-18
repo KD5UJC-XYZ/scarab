@@ -9,15 +9,38 @@ import xyz.kd5ujc.scarab.codec.Bytes
   * this experimental profile (the source's error bound assumes the normal range).
   */
 object PraosLeaderThreshold:
+  enum Error:
+    case MissingNumerator, MissingDenominator
+    case InvalidFraction(numerator: BigInt, denominator: BigInt)
+    case MissingVrfOutput
+    case InvalidVrfOutputLength(actual: Int)
+    case MissingLeaderValue, MissingRange
+    case InvalidRange(actual: BigInt)
+    case LeaderValueOutOfRange(value: BigInt, range: BigInt)
+    case MissingStake, MissingActiveSlotsCoefficient
+    case UnsupportedActiveSlotsCoefficient(numerator: BigInt, denominator: BigInt)
+
+    def message: String = this match
+      case MissingNumerator | MissingDenominator | InvalidFraction(_, _) =>
+        "fraction must satisfy 0 <= numerator <= denominator <= Word64Max"
+      case MissingVrfOutput | InvalidVrfOutputLength(_) =>
+        "verified VRF output must contain 64 bytes"
+      case MissingLeaderValue | MissingRange | InvalidRange(_) | LeaderValueOutOfRange(_, _) |
+          MissingStake | MissingActiveSlotsCoefficient =>
+        "malformed leader comparison"
+      case UnsupportedActiveSlotsCoefficient(_, _) =>
+        "supported active coefficient is (0,1/2] or the reference testing case 1"
+
   val Scale: BigInt = BigInt(10).pow(34)
   val Range: BigInt = BigInt(1) << 256
   private val Epsilon = BigInt(10).pow(10) // 1e-24 at E34 resolution
   private val MaxWord = (BigInt(1) << 64) - 1
   final class Fraction private (val numerator: BigInt, val denominator: BigInt)
   object Fraction:
-    def checked(n: BigInt, d: BigInt): Either[String, Fraction] =
-      if n == null || d == null || n < 0 || d <= 0 || n > d || d > MaxWord then
-        Left("fraction must satisfy 0 <= numerator <= denominator <= Word64Max")
+    def checked(n: BigInt, d: BigInt): Either[Error, Fraction] =
+      if n == null then Left(Error.MissingNumerator)
+      else if d == null then Left(Error.MissingDenominator)
+      else if n < 0 || d <= 0 || n > d || d > MaxWord then Left(Error.InvalidFraction(n, d))
       else
         val gcd = n.gcd(d)
         Right(new Fraction(n / gcd, d / gcd))
@@ -77,25 +100,25 @@ object PraosLeaderThreshold:
       i += 1
     result - Scale
 
-  def leaderValue(verifiedOutput: Bytes): Either[String, BigInt] =
-    if verifiedOutput == null || verifiedOutput.value == null || verifiedOutput.size != 64 then
-      Left("verified VRF output must contain 64 bytes")
+  def leaderValue(verifiedOutput: Bytes): Either[Error, BigInt] =
+    if verifiedOutput == null || verifiedOutput.value == null then Left(Error.MissingVrfOutput)
+    else if verifiedOutput.size != 64 then Left(Error.InvalidVrfOutputLength(verifiedOutput.size))
     else
       Right(
         BigInt(1, Blake2b.hash256.hash(Bytes(Vector(0x4c.toByte) ++ verifiedOutput.value)).toArray)
       )
 
   /** Leader value as a natural over 2^512: the raw 64-byte certified output (TPraos, Shelley). */
-  def rawLeaderValue(verifiedOutput: Bytes): Either[String, BigInt] =
-    if verifiedOutput == null || verifiedOutput.value == null || verifiedOutput.size != 64 then
-      Left("verified VRF output must contain 64 bytes")
+  def rawLeaderValue(verifiedOutput: Bytes): Either[Error, BigInt] =
+    if verifiedOutput == null || verifiedOutput.value == null then Left(Error.MissingVrfOutput)
+    else if verifiedOutput.size != 64 then Left(Error.InvalidVrfOutputLength(verifiedOutput.size))
     else Right(BigInt(1, verifiedOutput.toArray))
 
   /** Range of a 64-byte output, for [[rawLeaderValue]]. */
   val Range512: BigInt = BigInt(1) << 512
 
   /** Praos check: `value` is the 32-byte "L"-hash natural, over 2^256. */
-  def check(value: BigInt, stake: Fraction, active: Fraction): Either[String, Decision] =
+  def check(value: BigInt, stake: Fraction, active: Fraction): Either[Error, Decision] =
     check(value, stake, active, Range)
 
   /** Leader iff `value / range < 1 - (1 - active)^stake`, decided by the reference Taylor series.
@@ -106,12 +129,16 @@ object PraosLeaderThreshold:
       stake: Fraction,
       active: Fraction,
       range: BigInt
-  ): Either[String, Decision] =
-    if value == null || value < 0 || value >= range || stake == null || active == null then
-      Left("malformed leader comparison")
+  ): Either[Error, Decision] =
+    if value == null then Left(Error.MissingLeaderValue)
+    else if range == null then Left(Error.MissingRange)
+    else if range <= 0 then Left(Error.InvalidRange(range))
+    else if value < 0 || value >= range then Left(Error.LeaderValueOutOfRange(value, range))
+    else if stake == null then Left(Error.MissingStake)
+    else if active == null then Left(Error.MissingActiveSlotsCoefficient)
     else if active.numerator == 0 ||
       (active.numerator != active.denominator && active.numerator * 2 > active.denominator)
-    then Left("supported active coefficient is (0,1/2] or the reference testing case 1")
+    then Left(Error.UnsupportedActiveSlotsCoefficient(active.numerator, active.denominator))
     else if active.numerator == active.denominator then Right(Decision.Eligible)
     else
       val cmp = range * Scale / (range - value)

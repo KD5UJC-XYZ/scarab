@@ -235,9 +235,21 @@ Goal: NtC answers from the mirror codec; the snapshot payload in Haskell bytes (
 
 Goal: `NodeState(ext: ExtLedgerState, extras)` is live; new era-indexed rules everywhere; old rules, the flat state and the conversion removed only after agreement on the eras fixture, every Preview state and a preprod replay.
 
-1. **J2.1 Infrastructure (done; sections 2.2 and 2.5, as built).** `BlockFailure` lives in `ledger` (`ValidationError(point, failure)` renders `rule` and `reason` byte for byte, pinned by `BlockFailureSuite`); the Byron, Praos, ledger-lite, hand-over and transaction-decode cases still carry their upstream's text (those return `String`) and go with it. `Diff` is `ledger/state/Diff.scala`, `derives Diff` on the records that `derives Eq`, the era-indexed ones by the witness in `EraInstances`.
+1. **J2.1 Infrastructure (done; sections 2.2 and 2.5, as built).** `BlockFailure` lives in `ledger` (`ValidationError(point, failure)` renders `rule` and `reason` byte for byte, pinned by `BlockFailureSuite`); the Byron, ledger-lite, hand-over and transaction-decode cases still carry their upstream's text (those return `String`) and go with it. `Diff` is `ledger/state/Diff.scala`, `derives Diff` on the records that `derives Eq`, the era-indexed ones by the witness in `EraInstances`.
    - `ledger/rules/Sts.scala` (capabilities, `focus`, `RuleT`), `Globals` (from `LedgerGlobals` plus geometry).
    - `BlockFailure` ADT in `NodeRules` (D6).
+   - **As built (M11-E, #82, leader errors):** `Praos.update/validate` return `PraosError`;
+     header-first validation, block validation and the Leios header-chain validator retain that
+     cause. Registration failures carry the pool and key hashes; threshold failures carry
+     `PraosLeaderThreshold.Error`; vocabulary, VRF input/verdict and certificate failures retain
+     their existing ADTs. TPraos has separate protocol/state, vocabulary and threshold cases and
+     keeps VRF verdicts. Forging retains VRF input, proof and threshold causes; genesis setup keeps
+     the fraction error in `ConfigProblem.ActiveSlotsCoefficient`. Rendering stays in the enclosing
+     error's presentation method. The source-derived E34 comparison, 256/512-bit domains, original
+     signed bytes, nonce/state evolution and persisted formats are unchanged; missing/nonpositive
+     comparison ranges now return typed failures instead of allowing a null range to throw.
+     The VRF primitives' and certificate rules' remaining generic message cases, other consensus
+     modules and the CI guard remain in M11-E; this does not complete #82 or #85.
    - `Diff[A]` instances beside the `Eq` givens in `ledger/state/*` and `consensus/state/*`.
 2. **J2.2 Harness skeleton (done; see section 2.5, as built).**
    - `node/differential/*`, `--rules`, `DifferentialErasSuite`, `PreviewDifferentialMain`, repro bundles.
@@ -406,7 +418,7 @@ Goal: debug-query answers byte-equal to the reference with no mask, on a node sy
   - *What goes.* The old rules and their state: `NodeRules.applyFull`, `applyBootstrap`, `tickLedger`, `tick`, `OldTick` and the old `enterShelley` (`NodeRules.entry`, `byronStep`, `headerChecks`, `prepare` and `observe` stay: `MirrorRules` calls them), `Epoch`, `Stake`, `Rewards.update`, `ConwayRules`, `PreConwayRules`, `TxRules`, `PpupRules`, the flat `ledger/LedgerState.scala`, `NodeCodecs` (to `legacy`, D3) and `NodeState` (to `legacy`); from the mirror, `LedgerMirror.from` and `rebuilt`, `StateMirror.fromMirror`, `verify`, the `Derived` checks and `normalised`, and `to` goes to `legacy` with the V2 and V3 migration; from the node, `FlatEraRead`, `ChainRead.nodeState`, `MirrorCheck` (`follow --mirror-check` becomes `--snapshot-check`), `differential/*`, `Shadowed`, `Relations` and `NewRules.carried` (the seed of the harness; `LegacySeed.carried` stays, see below), `RuleSet.Old` and the `...OldSuite` classes of J2.6, `SnapshotV4.format`, `canonical` and the flat half of `SnapshotV4Suite` (`SnapshotV4.migrated` stays and runs through the `to` direction in `legacy`), `UtxoHandle[NodeState]`, `LeaderPools[flat.LedgerState]`, and `Mode`, `flatMode` and the `NodeState` instance of `followWith` (`Main` collapses to `MirrorState`; `RulesMode` goes with the flag: `--rules` is refused or ignored with a pointer).
   - *What stays.* `LegacySeed` and `SnapshotFormat.restoring`, until the owner picks a sunset for the files the old rules wrote (the seed reads `NodeExtras`, whose old fields the sidecar still holds). `NodeExtras` keeps `plutus`, and drops `rewardDraft`, `rewardRegistered`, `rewardAmounts`, `prevParamsExplicit`, `pulserAbsent`, `snapshots`, `poolDistribution`, `params` and `residue` (section 2.1): that changes the sidecar's shape, so its fingerprint and golden are bumped with a migration that reads the V4 file as it is and drops the fields (the "V3a step" of section 4 item 9), and `LegacySeed` runs on the file read before the drop (it needs `snapshots` and `rewardAmounts`).
   - *Measurements to repeat after J2.9.* The perf and memory gates of section 2.3 (the numbers of J2.8 are in its entry), K1 on Preview and a preprod replay from genesis on `--rules new`, then without the old rules.
-  - *Smaller things J2.8 leaves.* `BlockFailure.Mirror(text)` and the other transitional string cases (`Byron`, `Praos`, `Lite`, `Handover`) go when their upstream returns a closed type. The sidecar's `gaps` are a constant for a state of the new rules; J3.1 gives the live mirror a place for them. `Rewards.update` has no other caller than the old rules and `RuleSet.Old`.
+  - *Smaller things J2.8 leaves.* `BlockFailure.Mirror(text)` and the other transitional string cases (`Byron`, `Lite`, `Handover`) go when their upstream returns a closed type. The sidecar's `gaps` are a constant for a state of the new rules; J3.1 gives the live mirror a place for them. `Rewards.update` has no other caller than the old rules and `RuleSet.Old`.
 - **Step D (snapshots in Haskell layout, import and export):**
   - directory `ledger/<slot>[_suffix]/{state,tables,meta}`;
   - `tables` = `[ {34-byte key → MemPack TxOut} ]` sorted, streamed from RocksDB (the keys are already Haskell's `txid ++ be16 ix`); a MemPack encoder with `scripts/oracle/mempack.py` as the reference;

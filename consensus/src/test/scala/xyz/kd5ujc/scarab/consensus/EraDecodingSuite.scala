@@ -109,7 +109,7 @@ class EraDecodingSuite extends FunSuite:
     val config = PraosConfig(geometry, 129600, 62, Fraction.checked(1, 20).toOption.get)
     val state = ProtocolState.initial(Era.Conway, Bytes.empty)
     val result = Praos.update(state, tpraos, PoolDistribution(Map.empty, Map.empty), config)
-    assert(result.left.exists(_.contains("TPraos")), result.toString)
+    assertEquals(result, Left(xyz.kd5ujc.scarab.ledger.PraosError.TPraosHeader(tpraos.era)))
   }
 
   test("Byron: header hash is Blake2b-256 of [subtag, header]; chain links by it") {

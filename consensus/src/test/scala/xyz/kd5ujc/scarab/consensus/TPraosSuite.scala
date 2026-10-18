@@ -12,9 +12,9 @@ import xyz.kd5ujc.scarab.ledger.LeaderCheck
 import xyz.kd5ujc.scarab.ledger.LedgerView
 import xyz.kd5ujc.scarab.ledger.Nonce
 import xyz.kd5ujc.scarab.ledger.TPraosError
-import xyz.kd5ujc.scarab.ledger.{LiteLedger, ParamUpdate}
+import xyz.kd5ujc.scarab.ledger.{LiteLedger, ParamUpdate, PoolDistribution, StakeView}
 import xyz.kd5ujc.scarab.codec.Rational
-import xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold as Leader
+import xyz.kd5ujc.scarab.crypto.vrf.{PraosLeaderThreshold as Leader, PraosVrfCertificate as Vrf}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 
@@ -92,10 +92,7 @@ class TPraosSuite extends FunSuite:
     val h = headers.head
     val vrf = h.vrf.asInstanceOf[HeaderVrf.TPraos]
     val bad = h.copy(vrf = vrf.copy(nonce = vrf.nonce.copy(output = flip(vrf.nonce.output, 3))))
-    assert(
-      firstError(bad).exists(_.isInstanceOf[TPraosError.BadNonceVrf]),
-      firstError(bad).toString
-    )
+    assertEquals(firstError(bad), Some(TPraosError.BadNonceVrf(Vrf.Result.OutputMismatch)))
   }
 
   test("a block from the wrong genesis delegate in an active overlay slot is rejected") {
@@ -182,5 +179,36 @@ class TPraosSuite extends FunSuite:
     assertEquals(
       LiteLedger.voted(Map(key(1) -> a, key(2) -> a, key(3) -> b), params, 3),
       Right(None)
+    )
+  }
+
+  test("non-overlay TPraos retains threshold validation causes") {
+    val h = headers.head
+    val issuer = Blake2b.hash224.hash(h.issuerVkey)
+    val vrf = Blake2b.hash256.hash(h.vrfVkey)
+    val pools = PoolDistribution(Map(issuer -> BigInt(1)), Map(issuer -> vrf))
+    val view = lite.view.copy(d = Rational.zero, stake = StakeView.Known(pools))
+    val active = Leader.Fraction.checked(3, 4).fold(e => fail(e.message), identity)
+    assertEquals(
+      TPraos.update(initial, h, view, config.copy(activeSlotsCoeff = active)),
+      Left(TPraosError.LeaderThreshold(Leader.Error.UnsupportedActiveSlotsCoefficient(3, 4)))
+    )
+    val invalid = view.copy(stake = StakeView.Known(pools.copy(stake = Map(issuer -> BigInt(-1)))))
+    assertEquals(
+      TPraos.update(initial, h, invalid, config),
+      Left(TPraosError.LeaderThreshold(Leader.Error.InvalidFraction(-1, -1)))
+    )
+  }
+
+  test("wrong protocol state and header family have distinct TPraos cases") {
+    val h = headers.head
+    assertEquals(
+      TPraos.update(initial.in(Era.Conway), h, lite.view, config),
+      Left(TPraosError.WrongState(h.era))
+    )
+    val praos = h.copy(vrf = HeaderVrf.Praos(h.vrf.asInstanceOf[HeaderVrf.TPraos].leader))
+    assertEquals(
+      TPraos.update(initial, praos, lite.view, config),
+      Left(TPraosError.PraosHeader(h.era))
     )
   }

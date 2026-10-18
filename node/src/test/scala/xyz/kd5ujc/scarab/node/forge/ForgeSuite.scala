@@ -416,3 +416,27 @@ class ForgeSuite extends CatsEffectSuite with ForgeFixture:
     )
     assertEquals(Leadership.check(1, epochNonce, key, 0, 10, f), Left(ForgeError.NotLeader(1)))
   }
+
+  test("leadership preserves threshold and VRF input causes") {
+    val key = Draft03Prover.SigningKey
+      .fromSeed(hex(Array.fill(32)(9.toByte)))
+      .fold(e => fail(e.toString), identity)
+    val active = Leader.Fraction.checked(3, 4).fold(e => fail(e.message), identity)
+    assertEquals(
+      Leadership.check(1, epochNonce, key, 2, 1, config.activeSlotsCoeff),
+      Left(ForgeError.LeaderThreshold(Leader.Error.InvalidFraction(2, 1)))
+    )
+    assertEquals(
+      Leadership.check(1, epochNonce, key, 1, 1, active),
+      Left(ForgeError.LeaderThreshold(Leader.Error.UnsupportedActiveSlotsCoefficient(3, 4)))
+    )
+    val expected = xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate.Slot
+      .fromBigInt(-1)
+      .left
+      .toOption
+      .getOrElse(fail("negative slot accepted"))
+    assertEquals(
+      Leadership.check(-1, epochNonce, key, 1, 1, config.activeSlotsCoeff),
+      Left(ForgeError.VrfInput(expected))
+    )
+  }

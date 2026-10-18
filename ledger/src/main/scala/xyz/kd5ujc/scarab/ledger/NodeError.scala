@@ -3,6 +3,11 @@ package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.blst.BlstProblem
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
+import xyz.kd5ujc.scarab.crypto.vrf.{
+  Draft03Prover,
+  PraosLeaderThreshold as Leader,
+  PraosVrfCertificate as Vrf
+}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Mux as WireMux}
 
 /** Closed hierarchy of node failures. Algebras raise the narrowest subtype; because cats-mtl
@@ -175,7 +180,9 @@ enum ForgeError extends NodeError:
   /** The KES key could not be evolved to the slot's period (it has already moved past it). */
   case KesEvolution(cause: Sum6KesSigning.Failure)
 
-  case VrfFailure(reason: String)
+  case VrfInput(cause: Vrf.Failure)
+  case VrfProof(cause: Draft03Prover.Failure)
+  case LeaderThreshold(cause: Leader.Error)
 
   /** The VRF output of the slot is above the pool's threshold (or the pool has no stake). */
   case NotLeader(slot: BigInt)
@@ -201,7 +208,9 @@ enum ForgeError extends NodeError:
       s"KES period $p outside the operational certificate window [$s, ${s + e})"
     case KesFailure(r)                  => s"KES: $r"
     case KesEvolution(e)                => s"KES: ${e.message}"
-    case VrfFailure(r)                  => s"VRF: $r"
+    case VrfInput(e)                    => s"VRF: $e"
+    case VrfProof(e)                    => s"VRF: $e"
+    case LeaderThreshold(e)             => s"VRF: ${e.message}"
     case NotLeader(slot)                => s"not elected for slot $slot"
     case LedgerViewUnavailable(slot, r) => s"no ledger view for slot $slot: $r"
     case UnsupportedProtocol(r)         => s"cannot forge: $r"
@@ -233,10 +242,14 @@ final case class NativeLibraryError(problem: BlstProblem) extends NodeError:
   */
 final case class ConfigError(reason: String, problem: ConfigProblem = ConfigProblem.Invalid)
     extends NodeError:
-  def message: String = s"config: $reason"
+  def message: String = problem match
+    case ConfigProblem.ActiveSlotsCoefficient(e) => s"config: ${e.message}"
+    case _                                       => s"config: $reason"
 
 /** What kind of configuration failure a [[ConfigError]] is. */
 enum ConfigProblem:
+  case ActiveSlotsCoefficient(cause: Leader.Error)
+
   /** Anything else: a malformed file, a missing or invalid field, a bad flag. */
   case Invalid
 

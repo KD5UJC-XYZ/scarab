@@ -3,6 +3,8 @@ package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.crypto.vrf.{PraosLeaderThreshold as Leader, PraosVrfCertificate as Vrf}
+import xyz.kd5ujc.scarab.ledger.state.VocabError
 
 /** Why a header is refused before its block is fetched. Closed: every rule family has its case. */
 enum HeaderError:
@@ -12,7 +14,7 @@ enum HeaderError:
   /** The Praos rules: VRF key and proof, leader threshold, operational certificate and KES
     * signature, certificate counter.
     */
-  case Praos(reason: String)
+  case Praos(error: PraosError)
 
   /** The TPraos rules (Shelley to Alonzo): overlay schedule, VRF proofs, threshold, certificate. */
   case TPraos(error: TPraosError)
@@ -37,7 +39,7 @@ enum HeaderError:
     case FarFuture(s, ahead, skew) =>
       s"slot $s begins $ahead ms after the header arrived, beyond the tolerable clock skew of $skew ms"
     case Envelope(e)  => s"envelope: ${e.message}"
-    case Praos(r)     => s"praos: $r"
+    case Praos(e)     => s"praos: ${e.message}"
     case TPraos(e)    => s"tpraos: ${e.message}"
     case Structure(r) => s"structure: $r"
 
@@ -68,14 +70,47 @@ enum EnvelopeError:
     case WrongEra(h, e, epoch, major) =>
       s"$h block in epoch $epoch at protocol major version $major, the chain is in $e"
 
+/** Praos rule failures, preserving the crypto, vocabulary and certificate causes. */
+enum PraosError:
+  case NotPraos(era: Era)
+  case TPraosHeader(era: Era)
+  case WrongState(era: Era)
+  case Vocabulary(cause: VocabError)
+  case IssuerWithoutStake(pool: Bytes)
+  case UnregisteredPool(pool: Bytes)
+  case VrfKeyMismatch(pool: Bytes, actual: Bytes, registered: Set[Bytes])
+  case VrfInput(cause: Vrf.Failure)
+  case VrfRejected(cause: Vrf.Result)
+  case LeaderThreshold(cause: Leader.Error)
+  case NotElected(slot: BigInt, decision: Leader.Decision)
+  case OCert(cause: OCertError)
+
+  def message: String = this match
+    case NotPraos(e)     => s"$e headers are not Praos headers"
+    case TPraosHeader(e) => s"$e headers use TPraos, not Praos"
+    case WrongState(e) =>
+      s"$e headers use Praos, but the chain-dependent state is not Praos's"
+    case Vocabulary(e)           => e.toString
+    case IssuerWithoutStake(p)   => s"issuer ${p.hex} has no stake in the pool distribution"
+    case UnregisteredPool(p)     => s"issuer ${p.hex} is not a registered pool"
+    case VrfKeyMismatch(_, _, _) => "VRF key is not the pool's registered key"
+    case VrfInput(e)             => e.toString
+    case VrfRejected(e)          => s"VRF proof rejected: $e"
+    case LeaderThreshold(e)      => e.message
+    case NotElected(s, d)        => s"issuer not elected for slot $s: $d"
+    case OCert(e)                => e.message
+
 /** Why a TPraos (Shelley..Alonzo) header is rejected. Closed: every rule has its own case. */
 enum TPraosError:
-  case NotTPraos(era: String)
-  case Malformed(reason: String)
+  case NotTPraos(era: Era)
+  case PraosHeader(era: Era)
+  case WrongState(era: Era)
+  case Vocabulary(cause: VocabError)
+  case LeaderThreshold(cause: Leader.Error)
   case VrfKeyUnknown(pool: Bytes)
   case VrfKeyWrong(pool: Bytes)
-  case BadNonceVrf(reason: String)
-  case BadLeaderVrf(reason: String)
+  case BadNonceVrf(cause: Vrf.Result)
+  case BadLeaderVrf(cause: Vrf.Result)
   case LeaderValueTooBig(slot: BigInt)
   case NotActiveOverlaySlot(slot: BigInt)
   case UnknownGenesisKey(key: Bytes)
@@ -84,8 +119,12 @@ enum TPraosError:
   case OCert(error: OCertError)
 
   def message: String = this match
-    case NotTPraos(e)            => s"$e headers are not TPraos headers"
-    case Malformed(r)            => r
+    case NotTPraos(e)   => s"$e headers are not TPraos headers"
+    case PraosHeader(e) => s"$e (Praos) headers are not TPraos headers"
+    case WrongState(e) =>
+      s"$e (the chain-dependent state is not TPraos's) headers are not TPraos headers"
+    case Vocabulary(e)           => e.toString
+    case LeaderThreshold(e)      => e.message
     case VrfKeyUnknown(p)        => s"issuer ${p.hex} is not a registered pool"
     case VrfKeyWrong(p)          => s"VRF key is not the registered key of pool ${p.hex}"
     case BadNonceVrf(r)          => s"nonce VRF proof rejected: $r"

@@ -5,7 +5,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.state.ProtocolState
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.ledger.{LeaderCheck, LeiosHeader, PoolDistribution, StakeView}
+import xyz.kd5ujc.scarab.ledger.{PraosError, LeaderCheck, LeiosHeader, PoolDistribution, StakeView}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** Header-only validation of a chain of Leios headers (the shape of `dijkstra.cddl` 's `header`,
@@ -53,12 +53,12 @@ object LeiosHeaderChain:
   ):
     def length: Long = leadership.threshold + leadership.unchecked
 
-  /** A header that breaks a rule. The Praos rules report a diagnostic string (their own type). */
+  /** A header that breaks a rule, retaining the Praos rule failure. */
   enum Fault:
     case PrevHashDiffers(expected: Option[Bytes], actual: Option[Bytes])
     case BlockNumberNotSuccessor(expected: BigInt, actual: BigInt)
     case SlotNotAfterTip(tipSlot: BigInt, slot: BigInt)
-    case Praos(reason: String)
+    case Praos(error: PraosError)
 
   /** Epochs led by the genesis pools: the schedule of epoch `e` uses the stake snapshot of the end
     * of epoch `e - 2`, so until a transaction can have changed the stake the genesis distribution

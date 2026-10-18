@@ -27,18 +27,21 @@ object Leadership:
   ): Either[ForgeError, VrfCert] =
     if stake <= 0 || totalStake <= 0 then Left(ForgeError.NotLeader(slot))
     else
-      def vrfFailure(reason: String): ForgeError = ForgeError.VrfFailure(reason)
       for
         nonce <- epochNonce match
           case Nonce.Neutral => Right(Vrf.NeutralNonce)
-          case Nonce.Hash(b) => Vrf.Hash32.fromBytes(b).leftMap(e => vrfFailure(e.toString))
-        s <- Vrf.Slot.fromBigInt(slot).leftMap(e => vrfFailure(e.toString))
-        input <- Vrf.Input.create(s, nonce).leftMap(e => vrfFailure(e.toString))
-        alpha <- Vrf.alpha(input).leftMap(e => vrfFailure(e.toString))
-        proved <- key.prove(alpha).leftMap(e => vrfFailure(e.toString))
-        value <- Leader.leaderValue(proved.output).leftMap(vrfFailure)
-        fraction <- Leader.Fraction.checked(stake, totalStake).leftMap(vrfFailure)
-        decision <- Leader.check(value, fraction, activeSlotsCoeff).leftMap(vrfFailure)
+          case Nonce.Hash(b) => Vrf.Hash32.fromBytes(b).leftMap(ForgeError.VrfInput(_))
+        s <- Vrf.Slot.fromBigInt(slot).leftMap(ForgeError.VrfInput(_))
+        input <- Vrf.Input.create(s, nonce).leftMap(ForgeError.VrfInput(_))
+        alpha <- Vrf.alpha(input).leftMap(ForgeError.VrfInput(_))
+        proved <- key.prove(alpha).leftMap(ForgeError.VrfProof(_))
+        value <- Leader.leaderValue(proved.output).leftMap(ForgeError.LeaderThreshold(_))
+        fraction <- Leader.Fraction
+          .checked(stake, totalStake)
+          .leftMap(ForgeError.LeaderThreshold(_))
+        decision <- Leader
+          .check(value, fraction, activeSlotsCoeff)
+          .leftMap(ForgeError.LeaderThreshold(_))
         cert <- Either.cond(
           decision == Leader.Decision.Eligible,
           VrfCert(proved.output, proved.proof),

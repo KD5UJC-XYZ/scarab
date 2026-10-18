@@ -279,7 +279,9 @@ object NodeSetup:
       f = genesis.geometry.activeSlotsCoeff
       active <- PraosLeaderThreshold.Fraction
         .checked(BigInt(f.bigDecimal.unscaledValue), BigInt(10).pow(f.bigDecimal.scale.max(0)))
-        .leftMap(ConfigError(_))
+        .leftMap(e =>
+          ConfigError("active slots coefficient", ConfigProblem.ActiveSlotsCoefficient(e))
+        )
       praos = PraosConfig(
         genesis.geometry,
         genesis.slotsPerKesPeriod,
