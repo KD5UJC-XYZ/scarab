@@ -47,7 +47,7 @@ final case class DecodeError(
 object DecodeError:
   enum Kind:
     case Domain[E <: DomainError](cause: E) extends Kind
-    /** The bytes are not well-formed CBOR (the CBOR layer reports a message only). */
+    /** The bytes are not well-formed CBOR; retain the codec failure as the cause. */
     case Syntax(cause: xyz.kd5ujc.scarab.codec.Cbor.Error)
     case TypeMismatch(expected: String, found: String)
     case BadSize(expected: String, actual: Long)
