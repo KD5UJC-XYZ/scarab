@@ -310,7 +310,7 @@ object LiteLedger:
     val slot = block.header.slot
     block.transactions.filter(_.isValid).foldLeftM(l) { (s, tx) =>
       effects(tx.body, block.era)
-        .leftMap(r => s"tx ${tx.id.hex.take(16)}: $r")
+        .leftMap(LedgerDecodeError.Transaction(tx.id, _))
         .flatMap(_.foldLeftM(s)(apply(_, _, slot, geometry)))
     }
 

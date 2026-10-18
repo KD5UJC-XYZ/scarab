@@ -7,6 +7,7 @@ import xyz.kd5ujc.scarab.ledger.byron.{ByronVersion, DelegationError}
 /** Failures while reading ledger values. Context names identify fields; cases identify failures. */
 enum LedgerDecodeError:
   case Protocol(cause: xyz.kd5ujc.scarab.protocol.ProtocolError)
+  case Transaction(id: xyz.kd5ujc.scarab.codec.Bytes, cause: LedgerDecodeError)
   case Syntax(cause: Cbor.Error)
   case Expected(context: String, expected: LedgerDecodeError.Shape, actual: Value)
   case ExpectedTag(context: String, expected: BigInt, actual: Value)

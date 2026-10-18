@@ -69,7 +69,13 @@ object ByronTx:
         Right(xs(0).original),
         CborRead
           .uint(xs(1), "Byron output value")
-          .filterOrElse(_ <= ByronLedger.MaxLovelace, "lovelace too large")
+          .flatMap(n =>
+            Either.cond(
+              n <= ByronLedger.MaxLovelace,
+              n,
+              LedgerDecodeError.NumberOutOfRange("Byron lovelace", n, 0, ByronLedger.MaxLovelace)
+            )
+          )
       ).tupled.map(ByronOut(_, _))
     }
 

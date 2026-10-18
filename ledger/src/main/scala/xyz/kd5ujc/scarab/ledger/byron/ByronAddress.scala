@@ -150,10 +150,16 @@ object ByronAddress:
         LedgerDecodeError.UnknownTag("Byron address", ty)
       )
       magic <- fields.find(_._1 == 2).traverse { (_, v) =>
-        Cbor
+        CborRead
           .decode(v, limits)
           .flatMap(CborRead.uint(_, "network magic"))
-          .filterOrElse(_ < (BigInt(1) << 32), "network magic out of range")
+          .flatMap(n =>
+            Either.cond(
+              n < (BigInt(1) << 32),
+              n,
+              LedgerDecodeError.NumberOutOfRange("network magic", n, 0, (BigInt(1) << 32) - 1)
+            )
+          )
           .map(_.toLong)
       }
       // the derivation path is a byte string, itself the content of the attribute's byte string
