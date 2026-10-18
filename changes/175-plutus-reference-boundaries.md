@@ -12,3 +12,5 @@
 - Retain477 real-crypto Haskell API verdicts over53 original-byte probes at protocols9/10/11 in
   V1/V2/V3, pinned source/build recipes and point vectors. The regression binds script and cost-model
   hashes. Nine corrected conformance exceptions are removed;996/1009 pass with13 harness exceptions.
+- Four actual private reference transactions cover binary-DST success/failure and both validity
+  flags, with accepted cases observed in blocks and local phase2/LEDGER/BBODY replay parity.

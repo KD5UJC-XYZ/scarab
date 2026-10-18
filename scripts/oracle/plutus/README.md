@@ -46,3 +46,16 @@ are14,000,000 memory units and10,000,000,000 CPU steps. Cost models are the pinn
 selected and ordered by language and protocol in `PlutusBoundaryCorpus`. Failures are classified
 by constructors; diagnostic text is not control flow. Golden rows omit unstable decoder addresses
 and bind the actual script bytes and canonical JSON parameter lists by SHA-256.
+
+The optional whole-transaction driver reuses the v1-context driver's funding, signing, submission
+and fixture recording. Use a uniquely named local cluster and the retained exact scripts:
+
+```sh
+python3 scripts/devnet.py --name plutus-boundaries up
+python3 scripts/oracle/plutus/transactions.py --name plutus-boundaries --scripts fixtures/reference/plutus-boundaries/transaction-scripts.jsonl --out /tmp/scarab-plutus/reference-transactions.json
+python3 scripts/devnet.py --name plutus-boundaries down
+```
+
+The2026-10-18 private Conway/protocol10 run recorded all four expected validity-tag outcomes,
+including block inclusion for accepted transactions. The existing transaction/ledger/block harness
+replays every case; this complements the477 standalone API verdicts.

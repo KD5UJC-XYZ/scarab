@@ -40,33 +40,39 @@ class V1ContextSuite extends FunSuite:
 
   private final case class Recorded(file: String, plutus: PlutusCase, verdict: Verdict)
 
-  private val directory = Path.of("fixtures/reference/v1-context")
+  private val directories = Vector(
+    Path.of("fixtures/reference/v1-context"),
+    // The same transaction/ledger/block harness also checks the executed binary-DST controls.
+    Path.of("fixtures/reference/plutus-boundaries/transactions")
+  )
 
   private val recorded: Vector[Recorded] =
-    if !Files.isDirectory(directory) then Vector.empty
-    else
-      Files
-        .list(directory)
-        .iterator
-        .asScala
-        .filter(_.toString.endsWith(".json"))
-        .toVector
-        .sortBy(_.getFileName.toString)
-        .flatMap { path =>
-          val cases =
-            parse(Files.readString(path)).toOption.flatMap(_.asArray).getOrElse(Vector.empty)
-          cases.map { j =>
-            val reference = j.hcursor.downField("reference")
-            Recorded(
-              path.getFileName.toString,
-              PlutusCase.fromJson(j),
-              Verdict(
-                reference.get[Boolean]("accepted").toOption.get,
-                reference.get[String]("error").toOption.get
+    directories.flatMap { directory =>
+      if !Files.isDirectory(directory) then Vector.empty
+      else
+        Files
+          .list(directory)
+          .iterator
+          .asScala
+          .filter(_.toString.endsWith(".json"))
+          .toVector
+          .sortBy(_.getFileName.toString)
+          .flatMap { path =>
+            val cases =
+              parse(Files.readString(path)).toOption.flatMap(_.asArray).getOrElse(Vector.empty)
+            cases.map { j =>
+              val reference = j.hcursor.downField("reference")
+              Recorded(
+                path.getFileName.toString,
+                PlutusCase.fromJson(j),
+                Verdict(
+                  reference.get[Boolean]("accepted").toOption.get,
+                  reference.get[String]("error").toOption.get
+                )
               )
-            )
+            }
           }
-        }
+    }
 
   test("the fixtures cover every era and both verdicts") {
     assert(recorded.nonEmpty, "no recorded cases")

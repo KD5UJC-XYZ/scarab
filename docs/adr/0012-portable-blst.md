@@ -117,7 +117,10 @@ exports and curve arithmetic. It adds two byte-array hash/compress entry points,
 upstream Scalus fix; [adapter provenance](../../blst-native/native/README.md) and
 [executed Haskell vectors](../../fixtures/reference/plutus-boundaries/README.md) record the ABI and
 new known answers. The earlier three-answer no-ADX performance measurements below concern the prior
-artifact; the new artifact's no-ADX gate must be recorded separately.
+artifact. The new artifact passed a separate offline no-ADX/BMI2 smoke on2026-10-18: CPU feature
+set empty, portable library selected, all five startup known answers and all three public builtin
+scripts passed, exit0. An isolated network-disabled container loaded only the public bundle and
+compiled native overlay read-only; no operational node or configuration changed.
 
 ## Consequences
 

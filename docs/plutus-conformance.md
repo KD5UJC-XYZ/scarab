@@ -73,8 +73,9 @@ backend is enabled; no crypto stubs supply evidence. The retained
 [oracle recipe and provenance](../scripts/oracle/plutus/README.md),
 [original scripts and verdicts](../fixtures/reference/plutus-boundaries/README.md), and
 `PlutusBoundaryOracleSuite` bind each row to its script bytes and cost model. All rows agree on
-admission and evaluation stage. This is the reference's ledger API, not a whole-transaction node
-submission; transaction-level reference context evidence is recorded separately.
+admission and evaluation stage. This API matrix is complemented by four actual reference-node Conway/protocol10 transactions
+covering binary-DST success/failure against both validity flags. The same assertions are replayed
+through phase2, LEDGER and BBODY; transaction-context evidence remains recorded separately.
 
 | Case(s) | Class | Scalus 1.3.0 against the reference | Protocols where it exists | Reachable from a transaction? | Effect | Handling |
 |---|---|---|---|---|---|---|
@@ -119,6 +120,7 @@ The node's supervision boundary handles it as unavailable validation. This remai
 reference-proven setup, scope, budget and runtime script failures.
 
 Whole-transaction context findings REF-01/02/03 have their own recorded reference transactions and
-regressions. The malformed Byron reference transaction gap in #171 belongs to that separate oracle;
+regressions. Four binary-DST validity-tag reference transactions additionally agree at phase2,
+LEDGER and BBODY, using the same harness. The malformed Byron reference transaction gap in #171 belongs to that separate oracle;
 this Plutus API matrix does not claim to resolve it. IN-74 to IN-77 are decided in
 [implementer-notes.md](implementer-notes.md); filing upstream remains the owner's decision.
