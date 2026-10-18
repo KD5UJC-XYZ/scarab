@@ -273,9 +273,9 @@ object Utxo
       // `validateTooManyCollateralInputs` (`Babbage/Rules/Utxo.hs:412`): whether or not there are
       // redeemers, which is all `collateralChecks` looks at
       _ <- check(
-        body.collateral.size <= pp.maxCollateralInputs,
+        TxChecks.collateralInputs(body).size <= pp.maxCollateralInputs,
         UtxoFailure.TooManyCollateralInputs(
-          Mismatch(body.collateral.size, pp.maxCollateralInputs.toInt)
+          Mismatch(TxChecks.collateralInputs(body).size, pp.maxCollateralInputs.toInt)
         )
       )
       collateral <- TxChecks.collateralChecks(ann.utxo, pp, tx)
@@ -321,7 +321,7 @@ object Utxo
         stake <- InstantStakeOps.update(
           s.instantStake,
           returned.map(_._2),
-          body.collateral.flatMap(utxo.get)
+          collateral.outputs
         )
         fees <- Coin.fromBigInt(s.fees.value + collateral.fee)
       yield s.copy(

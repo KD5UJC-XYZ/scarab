@@ -1096,7 +1096,7 @@ of an enum label that never happened are absent, except `scarab_era` (written fo
 - The Haskell gauges `blocksForged_int`, `nodeIsLeader_int` and the `Forge_*_counter` counters are two views
   of the same counts; both are exported.
 
-**Not exported** (cardano-node 11.1.3 has them; tracked in roadmap J3): `cardano_node_metrics_served_block_counter`,
+**Not exported** (cardano-node 11.1.3 has them; tracked in roadmap J3e): `cardano_node_metrics_served_block_counter`,
 `served_header_counter` and `served_block_latest_counter` (what the node served to peers; only the inbound
 sessions of `GET /connections` count headers), `utxoSize_int` and `delegMapSize_int` (see
 `scarab_ledger_utxo_entries` for the UTxO set, once per epoch), `blockReplayProgress_real`, `txsSyncDuration*`,

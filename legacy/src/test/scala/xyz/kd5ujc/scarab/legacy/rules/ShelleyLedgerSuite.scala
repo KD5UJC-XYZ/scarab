@@ -200,6 +200,36 @@ class ShelleyLedgerSuite extends FunSuite:
 
   private val rich = 10000 * ada
 
+  Vector(alonzo, babbage).foreach { c =>
+    test(s"${c.name} LEDGER refuses excessive collateral even without redeemers (#178)") {
+      val inputs = Vector(coinIn, txIn(2), txIn(3), txIn(4))
+      val s = base(c, inputs.map(_ -> out(alice.address(), rich)))
+      val t = tx(
+        body(
+          "collateral-count",
+          Vector(coinIn),
+          Vector(out(alice.address(), rich - 200)),
+          200,
+          collateral = inputs
+        ),
+        Vector(alice)
+      )
+      assert(t.witnesses.redeemers.isEmpty)
+      assertEquals(
+        agree(c, s, t, TestLedger.env),
+        Out.Refused(
+          LedgerFailure.Rejected(
+            t.body.id,
+            node.PredicateFailure.utxo(
+              node.UtxoFailure.TooManyCollateralInputs(node.Mismatch(4, 3))
+            )
+          )
+        )
+      )
+      accepted(c, s, tx(t.body.copy(collateral = inputs.take(3)), Vector(alice)))
+    }
+  }
+
   private def fundedBy(k: Key, coin: BigInt = rich, i: Int = 1) =
     Vector(txIn(i) -> out(k.address(), coin))
 

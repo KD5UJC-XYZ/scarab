@@ -1,0 +1,666 @@
+[
+  {
+    "addresses": {
+      "accepted": true
+    },
+    "attributes": {
+      "accepted": true
+    },
+    "body": "a30081825820000000000000000000000000000000000000000000000000000000000000000000018182587282d818586883581c01010101010101010101010101010101010101010101010101010101a20242182a05584002020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202001add0605ca1a009895b80218c8",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 0,
+    "collateralCount": 0,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "5-unknown64",
+    "network": 0,
+    "protocolMajor": 5
+  },
+  {
+    "addresses": {
+      "accepted": true
+    },
+    "attributes": {
+      "accepted": false,
+      "failure": "OutputBootAddrAttrsTooBig ((AddrBootstrap (BootstrapAddress (Address {addrRoot = 01010101010101010101010101010101010101010101010101010101, addrAttributes = Attributes { data_ = AddrAttributes {aaVKDerivationPath = Nothing, aaNetworkMagic = NetworkTestnet 42}, remain: <65 bytes> }, addrType = ATVerKey})),MaryValue (Coin 9999800) (MultiAsset (fromList [])),SNothing) :| []) :| []"
+    },
+    "body": "a30081825820000000000000000000000000000000000000000000000000000000000000000000018182587382d818586983581c01010101010101010101010101010101010101010101010101010101a20242182a0558410202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202001a161944fc1a009895b80218c8",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 0,
+    "collateralCount": 0,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "5-unknown65",
+    "network": 0,
+    "protocolMajor": 5
+  },
+  {
+    "addresses": {
+      "accepted": true
+    },
+    "attributes": {
+      "accepted": true
+    },
+    "body": "a30081825820000000000000000000000000000000000000000000000000000000000000000000018182587482d818586a83581c01010101010101010101010101010101010101010101010101010101a20158425840020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020242182a001a595de5e81a009895b80218c8",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 0,
+    "collateralCount": 0,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "5-derivation64",
+    "network": 0,
+    "protocolMajor": 5
+  },
+  {
+    "addresses": {
+      "accepted": true
+    },
+    "attributes": {
+      "accepted": false,
+      "failure": "OutputBootAddrAttrsTooBig ((AddrBootstrap (BootstrapAddress (Address {addrRoot = 01010101010101010101010101010101010101010101010101010101, addrAttributes = Attributes { data_ = AddrAttributes {aaVKDerivationPath = Just (HDAddressPayload {getHDAddressPayload = \"\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\"}), aaNetworkMagic = NetworkTestnet 42} }, addrType = ATVerKey})),MaryValue (Coin 9999800) (MultiAsset (fromList [])),SNothing) :| []) :| []"
+    },
+    "body": "a30081825820000000000000000000000000000000000000000000000000000000000000000000018182587582d818586b83581c01010101010101010101010101010101010101010101010101010101a2015843584102020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020242182a001ae5b8109d1a009895b80218c8",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 0,
+    "collateralCount": 0,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "5-derivation65",
+    "network": 0,
+    "protocolMajor": 5
+  },
+  {
+    "addresses": {
+      "accepted": true
+    },
+    "attributes": {
+      "accepted": true
+    },
+    "body": "a30081825820000000000000000000000000000000000000000000000000000000000000000000018182587782d818586d83581c01010101010101010101010101010101010101010101010101010101a3015822582002020202020202020202020202020202020202020202020202020202020202020242182a0558200202020202020202020202020202020202020202020202020202020202020202001a509e85011a009895b80218c8",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 0,
+    "collateralCount": 0,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "5-combined64",
+    "network": 0,
+    "protocolMajor": 5
+  },
+  {
+    "addresses": {
+      "accepted": true
+    },
+    "attributes": {
+      "accepted": false,
+      "failure": "OutputBootAddrAttrsTooBig ((AddrBootstrap (BootstrapAddress (Address {addrRoot = 01010101010101010101010101010101010101010101010101010101, addrAttributes = Attributes { data_ = AddrAttributes {aaVKDerivationPath = Just (HDAddressPayload {getHDAddressPayload = \"\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\"}), aaNetworkMagic = NetworkTestnet 42}, remain: <32 bytes> }, addrType = ATVerKey})),MaryValue (Coin 9999800) (MultiAsset (fromList [])),SNothing) :| []) :| []"
+    },
+    "body": "a30081825820000000000000000000000000000000000000000000000000000000000000000000018182587882d818586e83581c01010101010101010101010101010101010101010101010101010101a301582358210202020202020202020202020202020202020202020202020202020202020202020242182a0558200202020202020202020202020202020202020202020202020202020202020202001af80281211a009895b80218c8",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 0,
+    "collateralCount": 0,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "5-combined65",
+    "network": 0,
+    "protocolMajor": 5
+  },
+  {
+    "addresses": {
+      "accepted": false,
+      "failure": "WrongNetwork Testnet (NonEmptySet (fromList [AddrBootstrap (BootstrapAddress (Address {addrRoot = 01010101010101010101010101010101010101010101010101010101, addrAttributes = Attributes { data_ = AddrAttributes {aaVKDerivationPath = Nothing, aaNetworkMagic = NetworkMainOrStage} }, addrType = ATVerKey}))])) :| []"
+    },
+    "attributes": {
+      "accepted": true
+    },
+    "body": "a30081825820000000000000000000000000000000000000000000000000000000000000000000018182582b82d818582183581c01010101010101010101010101010101010101010101010101010101a0001a346d9aac1a009895b80218c8",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 0,
+    "collateralCount": 0,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "5-wrong-mainnet",
+    "network": 0,
+    "protocolMajor": 5
+  },
+  {
+    "addresses": {
+      "accepted": true
+    },
+    "attributes": {
+      "accepted": true
+    },
+    "body": "a30081825820000000000000000000000000000000000000000000000000000000000000000000018182582e82d818582483581c01010101010101010101010101010101010101010101010101010101a1024101001a68a435da1a009895b80218c8",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 0,
+    "collateralCount": 0,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "5-testnet-magic1",
+    "network": 0,
+    "protocolMajor": 5
+  },
+  {
+    "addresses": {
+      "accepted": true
+    },
+    "attributes": {
+      "accepted": true
+    },
+    "body": "a30081825820000000000000000000000000000000000000000000000000000000000000000000018182582f82d818582583581c01010101010101010101010101010101010101010101010101010101a10242182a001ada458b4b1a009895b80218c8",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 0,
+    "collateralCount": 0,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "5-testnet-magic42",
+    "network": 0,
+    "protocolMajor": 5
+  },
+  {
+    "addresses": {
+      "accepted": true
+    },
+    "attributes": {
+      "accepted": true
+    },
+    "body": "a40081825820000000000000000000000000000000000000000000000000000000000000000000018182582f82d818582583581c01010101010101010101010101010101010101010101010101010101a10242182a001ada458b4b1a009895b80218c80d83825820010101010101010101010101010101010101010101010101010101010101010100825820020202020202020202020202020202020202020202020202020202020202020200825820030303030303030303030303030303030303030303030303030303030303030300",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 29999400,
+    "collateralCount": 3,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "5-collateral3",
+    "network": 0,
+    "protocolMajor": 5
+  },
+  {
+    "addresses": {
+      "accepted": true
+    },
+    "attributes": {
+      "accepted": true
+    },
+    "body": "a40081825820000000000000000000000000000000000000000000000000000000000000000000018182582f82d818582583581c01010101010101010101010101010101010101010101010101010101a10242182a001ada458b4b1a009895b80218c80d84825820010101010101010101010101010101010101010101010101010101010101010100825820020202020202020202020202020202020202020202020202020202020202020200825820030303030303030303030303030303030303030303030303030303030303030300825820040404040404040404040404040404040404040404040404040404040404040400",
+    "collateral": {
+      "accepted": false,
+      "failure": "TooManyCollateralInputs Mismatch (RelLTEQ) {supplied: 4, expected: 3} :| []"
+    },
+    "collateralCoin": 39999200,
+    "collateralCount": 4,
+    "conwayCollateral": {
+      "accepted": false,
+      "failure": "TooManyCollateralInputs Mismatch (RelLTEQ) {supplied: 4, expected: 3} :| []"
+    },
+    "name": "5-collateral4",
+    "network": 0,
+    "protocolMajor": 5
+  },
+  {
+    "addresses": {
+      "accepted": true
+    },
+    "attributes": {
+      "accepted": true
+    },
+    "body": "a30081825820000000000000000000000000000000000000000000000000000000000000000000018182582b82d818582183581c01010101010101010101010101010101010101010101010101010101a0001a346d9aac1a009895b80218c8",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 0,
+    "collateralCount": 0,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "5-mainnet",
+    "network": 1,
+    "protocolMajor": 5
+  },
+  {
+    "addresses": {
+      "accepted": false,
+      "failure": "WrongNetwork Mainnet (NonEmptySet (fromList [AddrBootstrap (BootstrapAddress (Address {addrRoot = 01010101010101010101010101010101010101010101010101010101, addrAttributes = Attributes { data_ = AddrAttributes {aaVKDerivationPath = Nothing, aaNetworkMagic = NetworkTestnet 42} }, addrType = ATVerKey}))])) :| []"
+    },
+    "attributes": {
+      "accepted": true
+    },
+    "body": "a30081825820000000000000000000000000000000000000000000000000000000000000000000018182582f82d818582583581c01010101010101010101010101010101010101010101010101010101a10242182a001ada458b4b1a009895b80218c8",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 0,
+    "collateralCount": 0,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "5-wrong-testnet",
+    "network": 1,
+    "protocolMajor": 5
+  },
+  {
+    "addresses": {
+      "accepted": false,
+      "failure": "WrongNetwork Testnet (NonEmptySet (fromList [Addr Mainnet (KeyHashObj (KeyHash {unKeyHash = \"03030303030303030303030303030303030303030303030303030303\"})) StakeRefNull,AddrBootstrap (BootstrapAddress (Address {addrRoot = 01010101010101010101010101010101010101010101010101010101, addrAttributes = Attributes { data_ = AddrAttributes {aaVKDerivationPath = Nothing, aaNetworkMagic = NetworkMainOrStage}, remain: <65 bytes> }, addrType = ATVerKey}))])) :| []"
+    },
+    "attributes": {
+      "accepted": false,
+      "failure": "OutputBootAddrAttrsTooBig ((AddrBootstrap (BootstrapAddress (Address {addrRoot = 01010101010101010101010101010101010101010101010101010101, addrAttributes = Attributes { data_ = AddrAttributes {aaVKDerivationPath = Nothing, aaNetworkMagic = NetworkMainOrStage}, remain: <65 bytes> }, addrType = ATVerKey})),MaryValue (Coin 5000000) (MultiAsset (fromList [])),SNothing) :| []) :| []"
+    },
+    "body": "a40081825820000000000000000000000000000000000000000000000000000000000000000000018282586f82d818586583581c01010101010101010101010101010101010101010101010101010101a10558410202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202001ae46a3f421a004c4b4082581d61030303030303030303030303030303030303030303030303030303031a004c4a780218c80d84825820010101010101010101010101010101010101010101010101010101010101010100825820020202020202020202020202020202020202020202020202020202020202020200825820030303030303030303030303030303030303030303030303030303030303030300825820040404040404040404040404040404040404040404040404040404040404040400",
+    "collateral": {
+      "accepted": false,
+      "failure": "TooManyCollateralInputs Mismatch (RelLTEQ) {supplied: 4, expected: 3} :| []"
+    },
+    "collateralCoin": 20000000,
+    "collateralCount": 4,
+    "conwayCollateral": {
+      "accepted": false,
+      "failure": "TooManyCollateralInputs Mismatch (RelLTEQ) {supplied: 4, expected: 3} :| []"
+    },
+    "name": "5-attributes-before-networks-before-collateral",
+    "network": 0,
+    "protocolMajor": 5
+  },
+  {
+    "addresses": {
+      "accepted": true
+    },
+    "attributes": {
+      "accepted": true
+    },
+    "body": "a30081825820000000000000000000000000000000000000000000000000000000000000000000018182587282d818586883581c01010101010101010101010101010101010101010101010101010101a20242182a05584002020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202001add0605ca1a009895b80218c8",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 0,
+    "collateralCount": 0,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "7-unknown64",
+    "network": 0,
+    "protocolMajor": 7
+  },
+  {
+    "addresses": {
+      "accepted": true
+    },
+    "attributes": {
+      "accepted": false,
+      "failure": "OutputBootAddrAttrsTooBig ((AddrBootstrap (BootstrapAddress (Address {addrRoot = 01010101010101010101010101010101010101010101010101010101, addrAttributes = Attributes { data_ = AddrAttributes {aaVKDerivationPath = Nothing, aaNetworkMagic = NetworkTestnet 42}, remain: <65 bytes> }, addrType = ATVerKey})),MaryValue (Coin 9999800) (MultiAsset (fromList [])),NoDatum,SNothing) :| []) :| []"
+    },
+    "body": "a30081825820000000000000000000000000000000000000000000000000000000000000000000018182587382d818586983581c01010101010101010101010101010101010101010101010101010101a20242182a0558410202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202001a161944fc1a009895b80218c8",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 0,
+    "collateralCount": 0,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "7-unknown65",
+    "network": 0,
+    "protocolMajor": 7
+  },
+  {
+    "addresses": {
+      "accepted": true
+    },
+    "attributes": {
+      "accepted": true
+    },
+    "body": "a30081825820000000000000000000000000000000000000000000000000000000000000000000018182587482d818586a83581c01010101010101010101010101010101010101010101010101010101a20158425840020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020242182a001a595de5e81a009895b80218c8",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 0,
+    "collateralCount": 0,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "7-derivation64",
+    "network": 0,
+    "protocolMajor": 7
+  },
+  {
+    "addresses": {
+      "accepted": true
+    },
+    "attributes": {
+      "accepted": false,
+      "failure": "OutputBootAddrAttrsTooBig ((AddrBootstrap (BootstrapAddress (Address {addrRoot = 01010101010101010101010101010101010101010101010101010101, addrAttributes = Attributes { data_ = AddrAttributes {aaVKDerivationPath = Just (HDAddressPayload {getHDAddressPayload = \"\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\"}), aaNetworkMagic = NetworkTestnet 42} }, addrType = ATVerKey})),MaryValue (Coin 9999800) (MultiAsset (fromList [])),NoDatum,SNothing) :| []) :| []"
+    },
+    "body": "a30081825820000000000000000000000000000000000000000000000000000000000000000000018182587582d818586b83581c01010101010101010101010101010101010101010101010101010101a2015843584102020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020242182a001ae5b8109d1a009895b80218c8",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 0,
+    "collateralCount": 0,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "7-derivation65",
+    "network": 0,
+    "protocolMajor": 7
+  },
+  {
+    "addresses": {
+      "accepted": true
+    },
+    "attributes": {
+      "accepted": true
+    },
+    "body": "a30081825820000000000000000000000000000000000000000000000000000000000000000000018182587782d818586d83581c01010101010101010101010101010101010101010101010101010101a3015822582002020202020202020202020202020202020202020202020202020202020202020242182a0558200202020202020202020202020202020202020202020202020202020202020202001a509e85011a009895b80218c8",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 0,
+    "collateralCount": 0,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "7-combined64",
+    "network": 0,
+    "protocolMajor": 7
+  },
+  {
+    "addresses": {
+      "accepted": true
+    },
+    "attributes": {
+      "accepted": false,
+      "failure": "OutputBootAddrAttrsTooBig ((AddrBootstrap (BootstrapAddress (Address {addrRoot = 01010101010101010101010101010101010101010101010101010101, addrAttributes = Attributes { data_ = AddrAttributes {aaVKDerivationPath = Just (HDAddressPayload {getHDAddressPayload = \"\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\\STX\"}), aaNetworkMagic = NetworkTestnet 42}, remain: <32 bytes> }, addrType = ATVerKey})),MaryValue (Coin 9999800) (MultiAsset (fromList [])),NoDatum,SNothing) :| []) :| []"
+    },
+    "body": "a30081825820000000000000000000000000000000000000000000000000000000000000000000018182587882d818586e83581c01010101010101010101010101010101010101010101010101010101a301582358210202020202020202020202020202020202020202020202020202020202020202020242182a0558200202020202020202020202020202020202020202020202020202020202020202001af80281211a009895b80218c8",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 0,
+    "collateralCount": 0,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "7-combined65",
+    "network": 0,
+    "protocolMajor": 7
+  },
+  {
+    "addresses": {
+      "accepted": false,
+      "failure": "WrongNetwork Testnet (NonEmptySet (fromList [AddrBootstrap (BootstrapAddress (Address {addrRoot = 01010101010101010101010101010101010101010101010101010101, addrAttributes = Attributes { data_ = AddrAttributes {aaVKDerivationPath = Nothing, aaNetworkMagic = NetworkMainOrStage} }, addrType = ATVerKey}))])) :| []"
+    },
+    "attributes": {
+      "accepted": true
+    },
+    "body": "a30081825820000000000000000000000000000000000000000000000000000000000000000000018182582b82d818582183581c01010101010101010101010101010101010101010101010101010101a0001a346d9aac1a009895b80218c8",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 0,
+    "collateralCount": 0,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "7-wrong-mainnet",
+    "network": 0,
+    "protocolMajor": 7
+  },
+  {
+    "addresses": {
+      "accepted": true
+    },
+    "attributes": {
+      "accepted": true
+    },
+    "body": "a30081825820000000000000000000000000000000000000000000000000000000000000000000018182582e82d818582483581c01010101010101010101010101010101010101010101010101010101a1024101001a68a435da1a009895b80218c8",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 0,
+    "collateralCount": 0,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "7-testnet-magic1",
+    "network": 0,
+    "protocolMajor": 7
+  },
+  {
+    "addresses": {
+      "accepted": true
+    },
+    "attributes": {
+      "accepted": true
+    },
+    "body": "a30081825820000000000000000000000000000000000000000000000000000000000000000000018182582f82d818582583581c01010101010101010101010101010101010101010101010101010101a10242182a001ada458b4b1a009895b80218c8",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 0,
+    "collateralCount": 0,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "7-testnet-magic42",
+    "network": 0,
+    "protocolMajor": 7
+  },
+  {
+    "addresses": {
+      "accepted": true
+    },
+    "attributes": {
+      "accepted": true
+    },
+    "body": "a40081825820000000000000000000000000000000000000000000000000000000000000000000018182582f82d818582583581c01010101010101010101010101010101010101010101010101010101a10242182a001ada458b4b1a009895b80218c80d83825820010101010101010101010101010101010101010101010101010101010101010100825820020202020202020202020202020202020202020202020202020202020202020200825820030303030303030303030303030303030303030303030303030303030303030300",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 29999400,
+    "collateralCount": 3,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "7-collateral3",
+    "network": 0,
+    "protocolMajor": 7
+  },
+  {
+    "addresses": {
+      "accepted": true
+    },
+    "attributes": {
+      "accepted": true
+    },
+    "body": "a40081825820000000000000000000000000000000000000000000000000000000000000000000018182582f82d818582583581c01010101010101010101010101010101010101010101010101010101a10242182a001ada458b4b1a009895b80218c80d84825820010101010101010101010101010101010101010101010101010101010101010100825820020202020202020202020202020202020202020202020202020202020202020200825820030303030303030303030303030303030303030303030303030303030303030300825820040404040404040404040404040404040404040404040404040404040404040400",
+    "collateral": {
+      "accepted": false,
+      "failure": "TooManyCollateralInputs Mismatch (RelLTEQ) {supplied: 4, expected: 3} :| []"
+    },
+    "collateralCoin": 39999200,
+    "collateralCount": 4,
+    "conwayCollateral": {
+      "accepted": false,
+      "failure": "TooManyCollateralInputs Mismatch (RelLTEQ) {supplied: 4, expected: 3} :| []"
+    },
+    "name": "7-collateral4",
+    "network": 0,
+    "protocolMajor": 7
+  },
+  {
+    "addresses": {
+      "accepted": true
+    },
+    "attributes": {
+      "accepted": true
+    },
+    "body": "a30081825820000000000000000000000000000000000000000000000000000000000000000000018182582b82d818582183581c01010101010101010101010101010101010101010101010101010101a0001a346d9aac1a009895b80218c8",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 0,
+    "collateralCount": 0,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "7-mainnet",
+    "network": 1,
+    "protocolMajor": 7
+  },
+  {
+    "addresses": {
+      "accepted": false,
+      "failure": "WrongNetwork Mainnet (NonEmptySet (fromList [AddrBootstrap (BootstrapAddress (Address {addrRoot = 01010101010101010101010101010101010101010101010101010101, addrAttributes = Attributes { data_ = AddrAttributes {aaVKDerivationPath = Nothing, aaNetworkMagic = NetworkTestnet 42} }, addrType = ATVerKey}))])) :| []"
+    },
+    "attributes": {
+      "accepted": true
+    },
+    "body": "a30081825820000000000000000000000000000000000000000000000000000000000000000000018182582f82d818582583581c01010101010101010101010101010101010101010101010101010101a10242182a001ada458b4b1a009895b80218c8",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 0,
+    "collateralCount": 0,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "7-wrong-testnet",
+    "network": 1,
+    "protocolMajor": 7
+  },
+  {
+    "addresses": {
+      "accepted": false,
+      "failure": "WrongNetwork Testnet (NonEmptySet (fromList [Addr Mainnet (KeyHashObj (KeyHash {unKeyHash = \"03030303030303030303030303030303030303030303030303030303\"})) StakeRefNull,AddrBootstrap (BootstrapAddress (Address {addrRoot = 01010101010101010101010101010101010101010101010101010101, addrAttributes = Attributes { data_ = AddrAttributes {aaVKDerivationPath = Nothing, aaNetworkMagic = NetworkMainOrStage}, remain: <65 bytes> }, addrType = ATVerKey}))])) :| []"
+    },
+    "attributes": {
+      "accepted": false,
+      "failure": "OutputBootAddrAttrsTooBig ((AddrBootstrap (BootstrapAddress (Address {addrRoot = 01010101010101010101010101010101010101010101010101010101, addrAttributes = Attributes { data_ = AddrAttributes {aaVKDerivationPath = Nothing, aaNetworkMagic = NetworkMainOrStage}, remain: <65 bytes> }, addrType = ATVerKey})),MaryValue (Coin 5000000) (MultiAsset (fromList [])),NoDatum,SNothing) :| []) :| []"
+    },
+    "body": "a40081825820000000000000000000000000000000000000000000000000000000000000000000018282586f82d818586583581c01010101010101010101010101010101010101010101010101010101a10558410202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202001ae46a3f421a004c4b4082581d61030303030303030303030303030303030303030303030303030303031a004c4a780218c80d84825820010101010101010101010101010101010101010101010101010101010101010100825820020202020202020202020202020202020202020202020202020202020202020200825820030303030303030303030303030303030303030303030303030303030303030300825820040404040404040404040404040404040404040404040404040404040404040400",
+    "collateral": {
+      "accepted": false,
+      "failure": "TooManyCollateralInputs Mismatch (RelLTEQ) {supplied: 4, expected: 3} :| []"
+    },
+    "collateralCoin": 20000000,
+    "collateralCount": 4,
+    "conwayCollateral": {
+      "accepted": false,
+      "failure": "TooManyCollateralInputs Mismatch (RelLTEQ) {supplied: 4, expected: 3} :| []"
+    },
+    "name": "7-attributes-before-networks-before-collateral",
+    "network": 0,
+    "protocolMajor": 7
+  },
+  {
+    "addresses": {
+      "accepted": true
+    },
+    "attributes": {
+      "accepted": false,
+      "failure": "OutputBootAddrAttrsTooBig ((AddrBootstrap (BootstrapAddress (Address {addrRoot = 01010101010101010101010101010101010101010101010101010101, addrAttributes = Attributes { data_ = AddrAttributes {aaVKDerivationPath = Nothing, aaNetworkMagic = NetworkTestnet 42}, remain: <65 bytes> }, addrType = ATVerKey})),MaryValue (Coin 10000000) (MultiAsset (fromList [])),NoDatum,SNothing) :| []) :| []"
+    },
+    "body": "a40081825820000000000000000000000000000000000000000000000000000000000000000000018182582f82d818582583581c01010101010101010101010101010101010101010101010101010101a10242182a001ada458b4b1a009895b80218c81082587382d818586983581c01010101010101010101010101010101010101010101010101010101a20242182a0558410202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202001a161944fc1a00989680",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 0,
+    "collateralCount": 0,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "7-return65",
+    "network": 0,
+    "protocolMajor": 7
+  },
+  {
+    "addresses": {
+      "accepted": false,
+      "failure": "WrongNetwork Testnet (NonEmptySet (fromList [AddrBootstrap (BootstrapAddress (Address {addrRoot = 01010101010101010101010101010101010101010101010101010101, addrAttributes = Attributes { data_ = AddrAttributes {aaVKDerivationPath = Nothing, aaNetworkMagic = NetworkMainOrStage} }, addrType = ATVerKey}))])) :| []"
+    },
+    "attributes": {
+      "accepted": true
+    },
+    "body": "a40081825820000000000000000000000000000000000000000000000000000000000000000000018182582f82d818582583581c01010101010101010101010101010101010101010101010101010101a10242182a001ada458b4b1a009895b80218c81082582b82d818582183581c01010101010101010101010101010101010101010101010101010101a0001a346d9aac1a00989680",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 0,
+    "collateralCount": 0,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "7-return-mainnet",
+    "network": 0,
+    "protocolMajor": 7
+  },
+  {
+    "addresses": {
+      "accepted": true
+    },
+    "attributes": {
+      "accepted": true
+    },
+    "body": "a40081825820000000000000000000000000000000000000000000000000000000000000000000018182582f82d818582583581c01010101010101010101010101010101010101010101010101010101a10242182a001ada458b4b1a009895b80218c80d8482582001010101010101010101010101010101010101010101010101010101010101010098025820010101010101010101010101010101010101010101010101010101010101010100825820010101010101010101010101010101010101010101010101010101010101010118009802582001010101010101010101010101010101010101010101010101010101010101011800",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 9999800,
+    "collateralCount": 1,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "5-semantic-duplicate-collateral",
+    "network": 0,
+    "protocolMajor": 5
+  },
+  {
+    "addresses": {
+      "accepted": true
+    },
+    "attributes": {
+      "accepted": true
+    },
+    "body": "a40081825820000000000000000000000000000000000000000000000000000000000000000000018182582f82d818582583581c01010101010101010101010101010101010101010101010101010101a10242182a001ada458b4b1a009895b80218c80d8482582001010101010101010101010101010101010101010101010101010101010101010098025820010101010101010101010101010101010101010101010101010101010101010100825820010101010101010101010101010101010101010101010101010101010101010118009802582001010101010101010101010101010101010101010101010101010101010101011800",
+    "collateral": {
+      "accepted": true
+    },
+    "collateralCoin": 9999800,
+    "collateralCount": 1,
+    "conwayCollateral": {
+      "accepted": true
+    },
+    "name": "7-semantic-duplicate-collateral",
+    "network": 0,
+    "protocolMajor": 7
+  }
+]

@@ -1,0 +1,7 @@
+*
+!scripts/
+scripts/*
+!scripts/oracle/
+scripts/oracle/*
+!scripts/oracle/pre-conway-utxo/
+!scripts/oracle/pre-conway-utxo/Main.hs

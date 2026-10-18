@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-10-18",
+  "scope": "Unchanged released Haskell predicate APIs, not full UTXO or LEDGER admission",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "compiler": "GHC 9.10.3",
+  "referenceNode": "11.1.3 (matching embedded ledger package versions, not a bit-identical node release build)",
+  "packages": {
+    "cardano-ledger-alonzo": "1.16.0.0",
+    "cardano-ledger-babbage": "1.14.0.0",
+    "cardano-ledger-shelley": "1.19.0.1",
+    "cardano-ledger-core": "1.21.0.0",
+    "cardano-ledger-binary": "1.9.1.0",
+    "cardano-ledger-conway": "1.23.0.0"
+  },
+  "sourceFiles": {
+    "alonzo": {
+      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxo.hs",
+      "sourceSha256": "1330fdceee12c3dbb02473041cb26b42b583139a7358033a800bc7cab7668a83",
+      "matchesPin": true,
+      "archiveSha256": "195f1b9dac59bcdd8d4f499275f450bc37ee57169efee0fadf0d1676bc37cae5"
+    },
+    "babbage": {
+      "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs",
+      "sourceSha256": "a184942394c2bbce9cf1a09771d70c02677927f5799a01e0927fca4fe33b183f",
+      "matchesPin": true,
+      "archiveSha256": "8a0466673e9de9f0a2375cd137fb1b6368c901929865b0def41abd83a200730d"
+    },
+    "shelley": {
+      "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxo.hs",
+      "sourceSha256": "bb7f5c9caae9ea4973666164d32e567099115f4e33ed46e6edafb4b5b7484eda",
+      "matchesPin": true,
+      "archiveSha256": "cc9d5b415742bc188fb933fae305743a2c1ee6f3ad7fa06fcfa1ac5bd95b59ce"
+    },
+    "core": {
+      "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
+      "sourceSha256": "f2ef8e3cebbe7475676e7466d6fa57a6dfc8495f3bdb0b516d3ae4420b04ec2d",
+      "matchesPin": true,
+      "archiveSha256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a"
+    }
+  },
+  "harnessSha256": "f849c03da2a70be31034bc7501831e505c9dc67d3189a456ae757f563cb3a058",
+  "fixtureSha256": "030dccb8bd47b33bdba4e981959461395084d6a25346639b7aecd3da724c26b2",
+  "originalStdoutSha256": "c82cce35e06fd75776f36ed2379cab8945838ac680d60759952c3f24d1ee6863",
+  "cases": 32,
+  "predicateCalls": 128,
+  "originalBodyBytesRetained": true,
+  "network": "none",
+  "keysRetained": false,
+  "collateralModel": "Each collateral key maps to the first transaction output; actual Haskell Set cardinality and sumAllCoin over that map are recorded, not full transaction admission.",
+  "conwayScope": "An actual Conway-era validateTooManyCollateralInputs call on a basic body containing the same decoded collateral Set, not a Conway wire decoding claim."
+}

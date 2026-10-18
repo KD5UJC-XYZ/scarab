@@ -162,10 +162,9 @@ object TxChecks:
     else if pp.protocolMajor >= 3 then Some(BigInt(4000))
     else None
 
-  /** The output checks of UTXO before Conway, each reporting every offending output: on the wrong
-    * network (`WrongNetwork`), too small (`OutputTooSmallUTxO`, with the outputs) and too big
-    * (`OutputTooBigUTxO`, with the size and the limit). From Babbage the checks are
-    * [[outputsOk]]'s.
+  /** Output predicates before Conway. Alonzo and Babbage check the minimum, value size, bootstrap
+    * attributes and then the network, including bootstrap addresses (pinned ledger f649f975,
+    * `Alonzo/Rules/Utxo.hs:543-556`, `Babbage/Rules/Utxo.hs:384-397`).
     */
   private[ledger] def outputChecks(
       pp: ProtocolParams,
@@ -173,29 +172,49 @@ object TxChecks:
       id: Bytes,
       outs: Vector[TxOut]
   ): Result[Unit] =
-    if pp.protocolMajor >= 7 then outputsOk(pp, env, outs).leftMap(LedgerFailure.Rejected(id, _))
-    else
-      // Allegra and Mary test `pointwise (<) v (inject min)`: every component must be below, so a value
-      // that carries assets is never too small (Shelley compares the coin, Alonzo negates `pointwise (>=)`).
-      def minimumApplies(out: TxOut) =
-        pp.protocolMajor <= 2 || pp.protocolMajor >= 5 || out.value.assets.isEmpty
-      val wrong = outs.filter(_.address.kind match
-        case Address.Kind.Shelley(n, _, _, _) => n != env.network
-        case Address.Kind.Byron(_)            => false)
-      val small = outs.filter(o => minimumApplies(o) && o.value.coin < minUTxO(pp, o))
-      val big = outs.flatMap { o =>
-        maxOutputValueSize(pp).filter(max => BigInt(o.value.serializedSize) > max).map { max =>
-          (o.value.serializedSize, max.toInt, o)
-        }
+    // Allegra and Mary test `pointwise (<) v (inject min)`: every component must be below, so a
+    // value carrying assets is never too small. Alonzo negates `pointwise (>=)` instead.
+    def minimumApplies(out: TxOut) =
+      pp.protocolMajor <= 2 || pp.protocolMajor >= 5 || out.value.assets.isEmpty
+    val small = outs.filter(o => minimumApplies(o) && o.value.coin < minUTxO(pp, o))
+    val big = outs.flatMap { o =>
+      maxOutputValueSize(pp).filter(max => BigInt(o.value.serializedSize) > max).map { max =>
+        (o.value.serializedSize, max.toInt, o)
       }
-      def refuse(f: UtxoFailure) = Left(LedgerFailure.Rejected(id, PredicateFailure.utxo(f)))
-      for
-        _ <-
-          if wrong.isEmpty then Right(())
-          else refuse(UtxoFailure.WrongNetwork(env.network, wrong.map(_.address.raw).toSet))
-        _ <- if small.isEmpty then Right(()) else refuse(UtxoFailure.OutputTooSmall(small))
-        _ <- if big.isEmpty then Right(()) else refuse(UtxoFailure.OutputTooBig(big))
-      yield ()
+    }
+    val bootstrap =
+      if pp.protocolMajor < 5 then Vector.empty
+      else
+        outs.flatMap(out =>
+          out.address.kind match
+            case Address.Kind.Byron(_) =>
+              byron.ByronAddress.decode(out.address.raw).toOption.map(out -> _)
+            case _ => None
+        )
+    val largeAttributes = bootstrap.collect { case (out, a) if a.attributesSize > 64 => out }
+    val wrong = outs
+      .filter(_.address.kind match
+        case Address.Kind.Shelley(n, _, _, _) => n != env.network
+        case _                                => false)
+      .map(_.address.raw)
+      .toSet ++
+      bootstrap.collect { case (out, a) if a.network != env.network => out.address.raw }
+    def check(ok: Boolean, f: => UtxoFailure): Result[Unit] =
+      Either.cond(ok, (), LedgerFailure.Rejected(id, PredicateFailure.utxo(f)))
+    def network = check(wrong.isEmpty, UtxoFailure.WrongNetwork(env.network, wrong))
+    for
+      // Preserve the earlier eras' existing order; #178 concerns Alonzo and Babbage.
+      _ <- if pp.protocolMajor < 5 then network else Right(())
+      _ <- check(
+        small.isEmpty,
+        if pp.protocolMajor >= 7 then
+          UtxoFailure.BabbageOutputTooSmall(small.map(out => out -> minUTxO(pp, out)))
+        else UtxoFailure.OutputTooSmall(small)
+      )
+      _ <- check(big.isEmpty, UtxoFailure.OutputTooBig(big))
+      _ <- check(largeAttributes.isEmpty, UtxoFailure.OutputBootAddrAttrsTooBig(largeAttributes))
+      _ <- if pp.protocolMajor >= 5 then network else Right(())
+    yield ()
 
   /** The output checks of Babbage and Conway UTXO, each reporting every offending output: too small
     * (with the minimum), too big (with the size and the limit) and on the wrong network.
@@ -228,6 +247,12 @@ object TxChecks:
       )
     yield ()
 
+  /** The reference stores collateral as `Set TxIn` (`Alonzo/Rules/Utxo.hs:288-324,470-481` at
+    * f649f975). Deduplicate decoded inputs, preserving the transaction's original signed bytes.
+    */
+  private[ledger] def collateralInputs(body: TxBody): Vector[TxIn] =
+    body.collateral.toSet.toVector.sorted
+
   /** Collateral rules (Alonzo+): only for transactions that carry redeemers. Returns the collateral
     * outputs and their ada balance after the return output.
     */
@@ -243,10 +268,11 @@ object TxChecks:
       else Left(LedgerFailure.Rejected(id, PredicateFailure.utxo(failure)))
     if pp.protocolMajor < 5 || tx.witnesses.redeemers.isEmpty then Right(Collateral.none)
     else
-      val missing = body.collateral.filterNot(utxo.contains).toSet
+      val inputs = collateralInputs(body)
+      val missing = inputs.filterNot(utxo.contains).toSet
       for
         _ <- check(missing.isEmpty, UtxoFailure.BadInputs(missing))
-        outs = body.collateral.flatMap(utxo.get)
+        outs = inputs.flatMap(utxo.get)
         required = tx.witnesses.redeemers.nonEmpty
         _ <-
           if !required then Right(())
@@ -254,19 +280,19 @@ object TxChecks:
             val total = outs.foldLeft(Value.zero)(_ + _.value)
             val balance = body.collateralReturn.fold(total)(r => total - r.value)
             val needed = (body.fee * pp.collateralPercentage + 99) / 100
-            val scriptLocked = body.collateral.zip(outs).filter { case (_, o) =>
+            val scriptLocked = inputs.zip(outs).filter { case (_, o) =>
               o.address.kind match
                 case Address.Kind.Shelley(_, Credential.Script(_), _, _) => true
                 case _                                                   => false
             }
             for
               _ <- check(
-                body.collateral.size <= pp.maxCollateralInputs,
+                inputs.size <= pp.maxCollateralInputs,
                 UtxoFailure.TooManyCollateralInputs(
-                  Mismatch(body.collateral.size, pp.maxCollateralInputs.toInt)
+                  Mismatch(inputs.size, pp.maxCollateralInputs.toInt)
                 )
               )
-              _ <- check(body.collateral.nonEmpty, UtxoFailure.NoCollateralInputs)
+              _ <- check(inputs.nonEmpty, UtxoFailure.NoCollateralInputs)
               _ <- check(scriptLocked.isEmpty, UtxoFailure.ScriptsNotPaid(scriptLocked.toMap))
               _ <- check(balance.assets.isEmpty, UtxoFailure.CollateralContainsNonAda(balance))
               _ <- check(

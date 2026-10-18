@@ -324,6 +324,14 @@ object ShelleyUtxo:
         !alonzo || wits.totalExUnits.fits(pp.maxTxExUnits),
         UtxoFailure.ExUnitsTooBig(Mismatch(wits.totalExUnits, pp.maxTxExUnits))
       )
+      // `validateTooManyCollateralInputs` (Alonzo Utxo.hs:571, Babbage Utxo.hs:412) runs
+      // independently of the redeemer-dependent collateral fee checks and the validity flag.
+      _ <- check(
+        !alonzo || TxChecks.collateralInputs(body).size <= pp.maxCollateralInputs,
+        UtxoFailure.TooManyCollateralInputs(
+          Mismatch(TxChecks.collateralInputs(body).size, pp.maxCollateralInputs.toInt)
+        )
+      )
       collateral <- TxChecks.collateralChecks(ann.utxo, pp, tx)
     yield collateral
 
@@ -363,7 +371,7 @@ object ShelleyUtxo:
         next <- ShelleyInstantStakeOps.update(
           stake,
           returned.map(_._2),
-          body.collateral.flatMap(utxo.get)
+          collateral.outputs
         )
         fees <- Coin.fromBigInt(s.fees.value + collateral.fee)
       yield pre.instantStake.replace(next)(
