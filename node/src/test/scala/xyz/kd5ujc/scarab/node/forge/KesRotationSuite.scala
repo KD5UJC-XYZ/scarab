@@ -588,7 +588,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
           result <- h.forger.step(5100)
           events <- h.seen
           chain <- h.chain
-          _ <- h.forger.hot.locked(_ => IO.unit)
+          _ <- Forger.scoped(h.forger.hot.locked(_ => IO.unit))
         yield
           assertEquals(
             result,
@@ -629,7 +629,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
             _ <- (5030 until 5080).toList.traverse_(s => h.forger.step(s))
             all <- h.raws.get
             events <- h.seen
-            current <- h.forger.hot.current
+            current <- currentHot(h.forger.hot)
           yield
             assert(p.creds.kes.isForgotten, "the earlier key is erased from memory")
             assertEquals(current.opCert.sequence, BigInt(1))
@@ -683,7 +683,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
             _ = Files.delete(f.cert)
             _ <- h.forger.reload
             seen <- refusals(h)
-            current <- h.forger.hot.current
+            current <- currentHot(h.forger.hot)
             _ <- (5000 until 5040).toList.traverse_(s => h.forger.step(s))
             blocks <- h.raws.get
           yield
@@ -723,7 +723,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
             // someone puts the period-0 file back
             _ = f.install(hotFor(p.cold, seed = 13, start = 50, sequence = 0))
             _ <- h.forger.reload
-            current <- h.forger.hot.current
+            current <- currentHot(h.forger.hot)
             periodAfter = current.kes.period
             _ <- (5300 until 5330).toList.traverse_(s => h.forger.step(s))
             events <- h.seen
@@ -859,7 +859,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Unchanged)
       keys <- HotKeys.create[IO](p.creds, Some(src), config, e => seen.update(_ :+ e))
       _ <- Forger.scoped(keys.reload(50, Some(0))).map(result => assertEquals(result, Right(())))
-      current <- keys.current
+      current <- currentHot(keys)
       events <- seen.get
       switched <- adopted.get
     yield

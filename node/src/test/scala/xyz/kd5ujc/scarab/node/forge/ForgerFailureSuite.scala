@@ -143,7 +143,7 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
         h <- harness(p, ledgerWith(p, 1), source = Some(source(IO.pure(Left(refusal)))))
         first <- h.forger.reload
         second <- h.forger.reload
-        current <- h.forger.hot.current
+        current <- currentHot(h.forger.hot)
         events <- h.seen
       yield
         assertEquals(first, Right(()))
@@ -221,7 +221,7 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
           fresh <- IO(pool(kesStart = 50))
           h <- harness(fresh, ledgerWith(fresh, 1), source = Some(keys))
           result <- h.forger.step(5100)
-          _ <- h.forger.hot.locked(_ => IO.unit).timeout(3.seconds)
+          _ <- Forger.scoped(h.forger.hot.locked(_ => IO.unit)).timeout(3.seconds)
           events <- h.seen
         yield
           assertEquals(result, Left(expected))
@@ -251,6 +251,135 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
         events <- h.seen
       yield
         assertEquals(result, Left(Fatal.Defect(cause)))
+        assert(!events.exists(_.isInstanceOf[ForgeEvent.KesReloadRefused]))
+    }
+  }
+
+  test("a failed reload poisons an evolved key before another step in the same period") {
+    val p = pool(kesStart = 50)
+    val cause = new IOException("disk full after evolution")
+    val error = ForgeError.KeyFile("kes", ForgeKeyProblem.Io(cause))
+    val expected = Fatal.Storage(StorageError.Io("kes", cause))
+    withHandle {
+      for
+        writes <- Ref.of[IO, Int](0)
+        keys = new HotKeySource[IO]:
+          def read = IO.pure(
+            Right(
+              HotKeySource.Candidate(
+                p.creds.hot.copy(kes = p.creds.kes.copy),
+                IO.unit
+              )
+            )
+          )
+          def persist(key: Sum6KesSigning.SigningKey) = writes.getAndUpdate(_ + 1).map {
+            case 0 => Persisted.Unchanged
+            case _ => Persisted.Failed(error)
+          }
+        h <- harness(
+          p,
+          ledgerWith(p, 1),
+          source = Some(keys),
+          clock = Some(IO.pure(java.time.Instant.EPOCH.plusSeconds(5100)))
+        )
+        reload <- h.forger.reload
+        _ = assertEquals(p.creds.kes.period, 1)
+        step <- h.forger.step(5101)
+        again <- h.forger.reload
+        events <- h.seen
+        count <- writes.get
+      yield
+        assertEquals(reload, Left(expected))
+        assertEquals(step, Left(expected))
+        assertEquals(again, Left(expected))
+        assertEquals(count, 2)
+        assertEquals(
+          events.collect { case ForgeEvent.KesPersistFailed(_, cause) => cause },
+          Vector(error)
+        )
+        assert(!events.exists(_.isInstanceOf[ForgeEvent.Forged]))
+        assert(!events.exists(_.isInstanceOf[ForgeEvent.Adopted]))
+    }
+  }
+
+  test("a signer queued behind a failed persistence sees the poisoned key before it can sign") {
+    val p = pool(kesStart = 50)
+    val cause = new IOException("disk full")
+    val error = ForgeError.KeyFile("kes", ForgeKeyProblem.Io(cause))
+    val expected = Fatal.Storage(StorageError.Io("kes", cause))
+    for
+      reporting <- Deferred[IO, Unit]
+      release <- Deferred[IO, Unit]
+      signed <- Ref.of[IO, Int](0)
+      events <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
+      source = new HotKeySource[IO]:
+        def read = IO.pure(Left(unreadable))
+        def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Failed(error))
+      keys <- HotKeys.create[IO](
+        p.creds,
+        Some(source),
+        config,
+        event =>
+          events.update(_ :+ event) *> (event match
+            case _: ForgeEvent.KesPersistFailed => reporting.complete(()) *> release.get
+            case _                              => IO.unit)
+      )
+      failing <- Forger.scoped(keys.advance(51)).start
+      _ <- reporting.get.timeout(3.seconds)
+      signer <- Forger
+        .scoped(
+          keys.locked(c =>
+            signed.update(_ + 1) *> IO(c.kes.sign(xyz.kd5ujc.scarab.codec.Bytes.empty))
+          )
+        )
+        .start
+      _ <- IO.cede
+      _ <- release.complete(())
+      result <- failing.joinWithNever.timeout(3.seconds)
+      attempted <- signer.joinWithNever.timeout(3.seconds)
+      read <- Forger.scoped(keys.current)
+      count <- signed.get
+      emitted <- events.get
+    yield
+      assertEquals(result, Left(expected))
+      assertEquals(attempted, Left(expected))
+      assertEquals(read, Left(expected))
+      assertEquals(count, 0)
+      assertEquals(
+        emitted.collect { case ForgeEvent.KesPersistFailed(_, cause) => cause },
+        Vector(error)
+      )
+  }
+
+  test("FileNotFoundException for an existing directory is fatal storage, not file absence") {
+    val p = pool(kesStart = 50)
+    val directory = java.nio.file.Files.createTempDirectory("scarab-forger-fnf")
+    val cause =
+      try
+        val stream = new java.io.FileInputStream(directory.toFile)
+        stream.close()
+        fail("FileInputStream accepted a directory")
+      catch case e: java.io.FileNotFoundException => e
+      finally java.nio.file.Files.delete(directory)
+    withHandle {
+      for
+        h <- harness(
+          p,
+          ledgerWith(p, 1),
+          source = Some(
+            source(
+              IO.pure(
+                Left(
+                  ForgeError.KeyFile("kes", ForgeKeyProblem.Io(cause))
+                )
+              )
+            )
+          )
+        )
+        result <- h.forger.reload
+        events <- h.seen
+      yield
+        assertEquals(result, Left(Fatal.Storage(StorageError.Io("kes", cause))))
         assert(!events.exists(_.isInstanceOf[ForgeEvent.KesReloadRefused]))
     }
   }
@@ -327,9 +456,10 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
         _ <- fiber.cancel
         outcome <- fiber.join
         _ <- released.get.timeout(3.seconds)
-        _ <- h.forger.hot.locked(_ => IO.unit).timeout(3.seconds)
+        blocked <- Forger.scoped(h.forger.hot.locked(_ => IO.unit)).timeout(3.seconds)
         events <- h.seen
       yield
+        assertEquals(blocked, Left(Fatal.Internal(ForgeError.KesUpdateInterrupted)))
         assertEquals(outcome, Outcome.canceled[IO, Throwable, Either[Fatal, Unit]])
         assert(!events.exists(_.isInstanceOf[ForgeEvent.Failed]))
         assert(!events.exists(_.isInstanceOf[ForgeEvent.KesPersistFailed]))

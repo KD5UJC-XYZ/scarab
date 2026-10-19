@@ -267,6 +267,9 @@ enum ForgeError extends NodeError:
   /** The KES period of the slot is outside the operational certificate's window. */
   case KeyPeriodOutOfRange(period: BigInt, start: BigInt, evolutions: BigInt)
 
+  /** A cancelled key operation may have mutated key material without completing durability. */
+  case KesUpdateInterrupted
+
   /** The KES key could not be evolved to the slot's period (it has already moved past it). */
   case KesEvolution(cause: Sum6KesSigning.Failure)
 
@@ -302,6 +305,8 @@ enum ForgeError extends NodeError:
       "keys do not match: the operational certificate is not signed by its cold key"
     case KeyPeriodOutOfRange(p, s, e) =>
       s"KES period $p outside the operational certificate window [$s, ${s + e})"
+    case KesUpdateInterrupted =>
+      "KES key operation was interrupted; restart to recover durable key material"
     case KesEvolution(e)                => s"KES: ${e.message}"
     case VrfInput(e)                    => s"VRF: $e"
     case VrfProof(e)                    => s"VRF: $e"
