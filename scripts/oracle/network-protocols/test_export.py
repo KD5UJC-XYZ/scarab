@@ -8,6 +8,7 @@ import unittest
 
 from export import (
     PROPERTY_COLUMNS,
+    summarize_chainsync_direct_connect_rows,
     summarize_chainsync_pipeline_rows,
     summarize_property_outcomes,
 )
@@ -49,6 +50,49 @@ class PropertyOutcomeColumnsTest(unittest.TestCase):
                 "chainsync-pipelined-low-high-v1",
                 depth_columns=(5, 7),
             )
+        min_buffered = [
+            ["chainsync-pipelined-min-buffered-v1", "504001", "0", "30", "7504004", "0", "8504004", "21", "precondition-discard"],
+            ["chainsync-pipelined-min-buffered-v1", "504002", "1", "31", "7504005", "17", "8504005", "0", "precondition-discard"],
+        ]
+        self.assertEqual(
+            summarize_chainsync_pipeline_rows(
+                min_buffered,
+                "chainsync-pipelined-min-buffered-v1",
+                depth_columns=(5, 7),
+                require_all_positive=True,
+            ),
+            {"pass": 0, "precondition-discard": 2, "upstream-failure": 0},
+        )
+        min_buffered[0][-1] = "pass"
+        with self.assertRaisesRegex(ValueError, "precondition/outcome mismatch"):
+            summarize_chainsync_pipeline_rows(
+                min_buffered,
+                "chainsync-pipelined-min-buffered-v1",
+                depth_columns=(5, 7),
+                require_all_positive=True,
+            )
+
+    def test_chainsync_direct_connect_counts_validate_exact_generated_choices(self) -> None:
+        rows = [
+            ["chainsync-pipelined-direct-connect-v1", "504001", "0", "30", "7504004", "17", "9504008", "01", "pass", "pass", "pass", "upstream-failure", "pass", "pass", "pass", "pass"],
+            ["chainsync-pipelined-direct-connect-v1", "504002", "1", "31", "7504005", "34", "9504009", "001", "pass", "upstream-failure", "pass", "pass", "upstream-failure", "pass", "pass", "pass"],
+        ]
+        self.assertEqual(
+            summarize_chainsync_direct_connect_rows(rows),
+            {
+                "propChainSyncPipelinedMaxDirectST": {"pass": 2, "upstream-failure": 0},
+                "propChainSyncPipelinedMinDirectST": {"pass": 1, "upstream-failure": 1},
+                "propChainSyncPipelinedMaxConnectST": {"pass": 2, "upstream-failure": 0},
+                "propChainSyncPipelinedMinConnectST": {"pass": 1, "upstream-failure": 1},
+                "propChainSyncPipelinedMaxDirectIO": {"pass": 1, "upstream-failure": 1},
+                "propChainSyncPipelinedMinDirectIO": {"pass": 2, "upstream-failure": 0},
+                "propChainSyncPipelinedMaxConnectIO": {"pass": 2, "upstream-failure": 0},
+                "propChainSyncPipelinedMinConnectIO": {"pass": 2, "upstream-failure": 0},
+            },
+        )
+        rows[1][15] = "pass?"
+        with self.assertRaisesRegex(ValueError, "invalid ChainSync direct/connect outcome"):
+            summarize_chainsync_direct_connect_rows(rows)
 
     def test_localsq_codec_cbor_and_valid_cbor_columns_are_distinct(self) -> None:
         rows = []
@@ -334,6 +378,134 @@ class PropertyOutcomeColumnsTest(unittest.TestCase):
         self.assertEqual(
             manifest["upstreamPropertyOutcomes"],
             {"pass": 24, "upstream-failure": 0, "precondition-discard": 0},
+        )
+
+    def test_chainsync_direct_connect_fixture_preserves_choice_vectors_and_outcomes(self) -> None:
+        repo = Path(__file__).resolve().parents[3]
+        reference_dir = repo / "fixtures/reference/ouroboros-network-protocol-codecs"
+        runtime_dir = repo / "network/src/test/resources/upstream/ouroboros-network-protocol-codecs"
+        raw = (reference_dir / "chainsync-pipelined-direct-connect.tsv").read_bytes()
+        manifest = json.loads(
+            (reference_dir / "chainsync-pipelined-direct-connect.manifest.json").read_text()
+        )
+        rows = [line.split("\t") for line in raw.decode("utf-8").splitlines()]
+
+        self.assertEqual(raw, (runtime_dir / "chainsync-pipelined-direct-connect.tsv").read_bytes())
+        self.assertEqual(
+            manifest,
+            json.loads((runtime_dir / "chainsync-pipelined-direct-connect.manifest.json").read_text()),
+        )
+        self.assertEqual(manifest["sourceCommit"], "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776")
+        self.assertEqual(manifest["caseTsvSha256"], hashlib.sha256(raw).hexdigest())
+        self.assertEqual(manifest["exportedCases"], 24)
+        self.assertEqual([int(row[1]) for row in rows], list(range(504001, 504025)))
+        self.assertTrue(all(len(row) == 16 for row in rows))
+        outcomes = summarize_chainsync_direct_connect_rows(rows)
+        self.assertEqual(
+            outcomes,
+            {name: {"pass": 24, "upstream-failure": 0} for name in manifest["upstreamPropertyOutcomesByProperty"]},
+        )
+        self.assertEqual(outcomes, manifest["upstreamPropertyOutcomesByProperty"])
+        self.assertEqual(sum(len(row[7]) for row in rows), 565)
+        self.assertEqual(sum(row[7].count("1") for row in rows), 282)
+        self.assertEqual(sum(row[7].count("0") for row in rows), 283)
+
+    def test_chainsync_min_buffered_fixture_preserves_two_depth_precondition(self) -> None:
+        repo = Path(__file__).resolve().parents[3]
+        reference_dir = repo / "fixtures/reference/ouroboros-network-protocol-codecs"
+        runtime_dir = repo / "network/src/test/resources/upstream/ouroboros-network-protocol-codecs"
+        raw = (reference_dir / "chainsync-pipelined-min-buffered.tsv").read_bytes()
+        manifest = json.loads(
+            (reference_dir / "chainsync-pipelined-min-buffered.manifest.json").read_text()
+        )
+        rows = [line.split("\t") for line in raw.decode("utf-8").splitlines()]
+
+        self.assertEqual(raw, (runtime_dir / "chainsync-pipelined-min-buffered.tsv").read_bytes())
+        self.assertEqual(
+            manifest,
+            json.loads((runtime_dir / "chainsync-pipelined-min-buffered.manifest.json").read_text()),
+        )
+        self.assertEqual(manifest["sourceCommit"], "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776")
+        self.assertEqual(manifest["caseTsvSha256"], hashlib.sha256(raw).hexdigest())
+        self.assertEqual(manifest["upstreamTest"].rsplit("/ ", 1)[-1], "propChainSyncDemoPipelinedMinBufferedIO")
+        self.assertEqual(manifest["exportedCases"], 24)
+        self.assertEqual([int(row[1]) for row in rows], list(range(504001, 504025)))
+        self.assertTrue(all(len(row) == 9 and row[0] == "chainsync-pipelined-min-buffered-v1" for row in rows))
+        self.assertTrue(all(int(row[4]) == int(row[1]) + 7000003 for row in rows))
+        self.assertTrue(all(int(row[6]) == int(row[1]) + 8000003 for row in rows))
+        self.assertTrue(all(int(row[5]) > 0 and int(row[7]) > 0 and row[8] == "pass" for row in rows))
+        self.assertEqual(
+            manifest["upstreamPropertyOutcomes"],
+            {"pass": 24, "upstream-failure": 0, "precondition-discard": 0},
+        )
+
+    def test_chainsync_demo_pipeline_io_fixture_preserves_per_property_verdicts(self) -> None:
+        repo = Path(__file__).resolve().parents[3]
+        reference_dir = repo / "fixtures/reference/ouroboros-network-protocol-codecs"
+        runtime_dir = repo / "network/src/test/resources/upstream/ouroboros-network-protocol-codecs"
+        raw = (reference_dir / "chainsync-demo-pipelined-io.tsv").read_bytes()
+        manifest = json.loads(
+            (reference_dir / "chainsync-demo-pipelined-io.manifest.json").read_text()
+        )
+        rows = [line.split("\t") for line in raw.decode("utf-8").splitlines()]
+
+        self.assertEqual(raw, (runtime_dir / "chainsync-demo-pipelined-io.tsv").read_bytes())
+        self.assertEqual(
+            manifest,
+            json.loads((runtime_dir / "chainsync-demo-pipelined-io.manifest.json").read_text()),
+        )
+        self.assertEqual(manifest["sourceCommit"], "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776")
+        self.assertEqual(manifest["caseTsvSha256"], hashlib.sha256(raw).hexdigest())
+        self.assertEqual(manifest["exportedCases"], 24)
+        self.assertEqual([int(row[1]) for row in rows], list(range(504001, 504025)))
+        self.assertTrue(all(len(row) == 11 and row[0] == "chainsync-demo-pipelined-io-v1" for row in rows))
+        self.assertTrue(all(int(row[4]) == int(row[1]) + 7000003 for row in rows))
+        self.assertTrue(all(int(row[6]) == int(row[1]) + 8000003 for row in rows))
+        self.assertTrue(all(0 < int(row[5]) <= 300 and 0 < int(row[7]) <= 300 for row in rows))
+        self.assertTrue(all(row[8:11] == ["pass"] * 3 for row in rows))
+        self.assertEqual(
+            manifest["upstreamPropertyOutcomesByProperty"],
+            {
+                name: {"pass": 24, "upstream-failure": 0, "precondition-discard": 0}
+                for name in (
+                    "propChainSyncDemoPipelinedMaxIO",
+                    "propChainSyncDemoPipelinedMinIO",
+                    "propChainSyncDemoPipelinedLowHighIO",
+                )
+            },
+        )
+
+    def test_chainsync_base_io_fixture_matches_original_behavior_seed_domain(self) -> None:
+        repo = Path(__file__).resolve().parents[3]
+        reference_dir = repo / "fixtures/reference/ouroboros-network-protocol-codecs"
+        runtime_dir = repo / "network/src/test/resources/upstream/ouroboros-network-protocol-codecs"
+        raw = (reference_dir / "chainsync-behavior-io.tsv").read_bytes()
+        manifest = json.loads((reference_dir / "chainsync-behavior-io.manifest.json").read_text())
+        rows = [line.split("\t") for line in raw.decode("utf-8").splitlines()]
+
+        self.assertEqual(raw, (runtime_dir / "chainsync-behavior-io.tsv").read_bytes())
+        self.assertEqual(
+            manifest,
+            json.loads((runtime_dir / "chainsync-behavior-io.manifest.json").read_text()),
+        )
+        self.assertEqual(manifest["sourceCommit"], "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776")
+        self.assertEqual(manifest["caseTsvSha256"], hashlib.sha256(raw).hexdigest())
+        self.assertEqual(manifest["exportedCases"], 24)
+        self.assertEqual([int(row[1]) for row in rows], list(range(504001, 504025)))
+        self.assertTrue(all(len(row) == 8 and row[0] == "chainsync-behavior-io-v1" for row in rows))
+        self.assertTrue(all(int(row[3]) == 30 + int(row[2]) % 21 for row in rows))
+        self.assertTrue(all(row[4:8] == ["pass"] * 4 for row in rows))
+        self.assertEqual(
+            manifest["upstreamPropertyOutcomesByProperty"],
+            {
+                name: {"pass": 24, "upstream-failure": 0}
+                for name in (
+                    "propChainSyncDirectIO",
+                    "propChainSyncConnectIO",
+                    "propChainSyncDemoIO",
+                    "propChainSyncPipe",
+                )
+            },
         )
 
     def test_binary_compat_fixtures_preserve_both_original_directions_and_paired_wires(self) -> None:

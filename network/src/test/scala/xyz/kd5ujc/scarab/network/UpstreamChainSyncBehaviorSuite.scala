@@ -85,6 +85,44 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
       secondDepth: Int,
       outcome: PipelineOutcome
   )
+  private final case class PipelineDirectConnectRow(
+      seed: Int,
+      ordinal: Int,
+      size: Int,
+      depthSeed: Int,
+      maxDepth: Int,
+      choicesSeed: Int,
+      choices: String,
+      maxDirect: PipelineOutcome,
+      minDirect: PipelineOutcome,
+      maxConnect: PipelineOutcome,
+      minConnect: PipelineOutcome,
+      maxDirectIO: PipelineOutcome,
+      minDirectIO: PipelineOutcome,
+      maxConnectIO: PipelineOutcome,
+      minConnectIO: PipelineOutcome
+  )
+  private final case class PipelineDemoIORow(
+      seed: Int,
+      ordinal: Int,
+      size: Int,
+      firstDepthSeed: Int,
+      firstDepth: Int,
+      secondDepthSeed: Int,
+      secondDepth: Int,
+      maxOutcome: PipelineOutcome,
+      minOutcome: PipelineOutcome,
+      lowHighOutcome: PipelineOutcome
+  )
+  private final case class BaseIORow(
+      seed: Int,
+      ordinal: Int,
+      size: Int,
+      direct: PipelineOutcome,
+      connect: PipelineOutcome,
+      demo: PipelineOutcome,
+      pipe: PipelineOutcome
+  )
   private final case class FixtureCase(
       row: CaseRow,
       producer: Vector[BlockRow],
@@ -192,14 +230,18 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
       )
     }
 
-  private def readPipelineLowHighRows(expectedSha: String): Vector[PipelineLowHighRow] =
+  private def readPipelinePairRows(
+      fixture: String,
+      expectedSha: String,
+      schema: String
+  ): Vector[PipelineLowHighRow] =
     resource(
-      "/upstream/ouroboros-network-protocol-codecs/chainsync-pipelined-low-high.tsv",
+      s"/upstream/ouroboros-network-protocol-codecs/$fixture",
       expectedSha
     ).map { line =>
       val fields = line.split("\\t", -1).toVector
       assertEquals(fields.size, 9)
-      assertEquals(fields(0), "chainsync-pipelined-low-high-v1")
+      assertEquals(fields(0), schema)
       PipelineLowHighRow(
         fields(1).toInt,
         fields(2).toInt,
@@ -209,6 +251,74 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
         fields(6).toInt,
         fields(7).toInt,
         pipelineOutcome(fields(8))
+      )
+    }
+
+  private def readPipelineDirectConnectRows(expectedSha: String): Vector[PipelineDirectConnectRow] =
+    resource(
+      "/upstream/ouroboros-network-protocol-codecs/chainsync-pipelined-direct-connect.tsv",
+      expectedSha
+    ).map { line =>
+      val fields = line.split("\\t", -1).toVector
+      assertEquals(fields.size, 16)
+      assertEquals(fields(0), "chainsync-pipelined-direct-connect-v1")
+      PipelineDirectConnectRow(
+        fields(1).toInt,
+        fields(2).toInt,
+        fields(3).toInt,
+        fields(4).toInt,
+        fields(5).toInt,
+        fields(6).toInt,
+        fields(7),
+        pipelineOutcome(fields(8)),
+        pipelineOutcome(fields(9)),
+        pipelineOutcome(fields(10)),
+        pipelineOutcome(fields(11)),
+        pipelineOutcome(fields(12)),
+        pipelineOutcome(fields(13)),
+        pipelineOutcome(fields(14)),
+        pipelineOutcome(fields(15))
+      )
+    }
+
+  private def readPipelineDemoIORows(expectedSha: String): Vector[PipelineDemoIORow] =
+    resource(
+      "/upstream/ouroboros-network-protocol-codecs/chainsync-demo-pipelined-io.tsv",
+      expectedSha
+    ).map { line =>
+      val fields = line.split("\\t", -1).toVector
+      assertEquals(fields.size, 11)
+      assertEquals(fields(0), "chainsync-demo-pipelined-io-v1")
+      PipelineDemoIORow(
+        fields(1).toInt,
+        fields(2).toInt,
+        fields(3).toInt,
+        fields(4).toInt,
+        fields(5).toInt,
+        fields(6).toInt,
+        fields(7).toInt,
+        pipelineOutcome(fields(8)),
+        pipelineOutcome(fields(9)),
+        pipelineOutcome(fields(10))
+      )
+    }
+
+  private def readBaseIORows(expectedSha: String): Vector[BaseIORow] =
+    resource(
+      "/upstream/ouroboros-network-protocol-codecs/chainsync-behavior-io.tsv",
+      expectedSha
+    ).map { line =>
+      val fields = line.split("\\t", -1).toVector
+      assertEquals(fields.size, 8)
+      assertEquals(fields(0), "chainsync-behavior-io-v1")
+      BaseIORow(
+        fields(1).toInt,
+        fields(2).toInt,
+        fields(3).toInt,
+        pipelineOutcome(fields(4)),
+        pipelineOutcome(fields(5)),
+        pipelineOutcome(fields(6)),
+        pipelineOutcome(fields(7))
       )
     }
 
@@ -385,10 +495,7 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
       case other => fail(s"seed ${row.seed} expected initial rollback, got $other")
     }
 
-  test(
-    "production generic ChainSync runtime replays unchanged pinned upstream fork-property cases"
-  ):
-    val fixture = readFixture()
+  private def verifyBaseRuntime(fixture: Vector[FixtureCase]): IO[Unit] =
     assertEquals(fixture.size, 24)
     assertEquals(fixture.map(_.row.seed), Vector.range(504001, 504025))
     assertEquals(fixture.map(_.row.ordinal), Vector.range(0, 24))
@@ -462,6 +569,26 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
         }
       }
     }
+
+  test(
+    "production generic ChainSync runtime replays unchanged pinned upstream fork-property cases"
+  ):
+    verifyBaseRuntime(readFixture())
+
+  test("production generic ChainSync runtime covers matching direct/connect/demo/pipe IO cases"):
+    val fixture = readFixture()
+    val ioRows = readBaseIORows(
+      "b19554a9c49ea5bec484f0c6a082b1ba1870b9379cd9e5b559e5a80ddd08f121"
+    )
+    assertEquals(ioRows.size, fixture.size)
+    assertEquals(ioRows.map(_.seed), fixture.map(_.row.seed))
+    assertEquals(ioRows.map(_.ordinal), fixture.map(_.row.ordinal))
+    assertEquals(ioRows.map(_.size), fixture.map(_.row.size))
+    assertEquals(ioRows.map(_.direct).count(_ == PipelineOutcome.Pass), 24)
+    assertEquals(ioRows.map(_.connect).count(_ == PipelineOutcome.Pass), 24)
+    assertEquals(ioRows.map(_.demo).count(_ == PipelineOutcome.Pass), 24)
+    assertEquals(ioRows.map(_.pipe).count(_ == PipelineOutcome.Pass), 24)
+    verifyBaseRuntime(fixture)
 
   private def verifyPipelinedFinalChains(
       pipelineRows: Vector[PipelineRow],
@@ -573,8 +700,10 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
     )
 
   test("production generic ChainSync runtime matches generated low/high final-chain cases"):
-    val generated = readPipelineLowHighRows(
-      "5b1cddbee3ac695ab8a796aca7701c18ad95b4d85d72c03c4542b68fb782052b"
+    val generated = readPipelinePairRows(
+      "chainsync-pipelined-low-high.tsv",
+      "5b1cddbee3ac695ab8a796aca7701c18ad95b4d85d72c03c4542b68fb782052b",
+      "chainsync-pipelined-low-high-v1"
     )
     assertEquals(generated.size, 24)
     assertEquals(generated.map(_.seed), Vector.range(504001, 504025))
@@ -599,4 +728,138 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
         )
       ),
       "low/high-pipelined"
+    )
+
+  test("production generic ChainSync runtime matches min-buffered final-chain cases"):
+    val generated = readPipelinePairRows(
+      "chainsync-pipelined-min-buffered.tsv",
+      "801615d3e3238aa142ccf61102352d4f2f9dc63e61cf2e044edefd37b9769dd6",
+      "chainsync-pipelined-min-buffered-v1"
+    )
+    assertEquals(generated.size, 24)
+    assertEquals(generated.map(_.seed), Vector.range(504001, 504025))
+    assertEquals(generated.map(_.ordinal), Vector.range(0, 24))
+    assert(generated.forall(row => row.size == 30 + row.ordinal % 21))
+    assert(generated.forall(row => row.firstDepthSeed == row.seed + 7000003))
+    assert(generated.forall(row => row.secondDepthSeed == row.seed + 8000003))
+    assert(generated.forall(row => row.firstDepth > 0 && row.firstDepth <= 300))
+    assert(generated.forall(row => row.secondDepth > 0 && row.secondDepth <= 300))
+    assertEquals(generated.count(_.outcome == PipelineOutcome.Pass), 24)
+    assertEquals(generated.count(_.outcome == PipelineOutcome.UpstreamFailure), 0)
+    assertEquals(generated.count(_.outcome == PipelineOutcome.PreconditionDiscard), 0)
+    verifyPipelinedFinalChains(
+      generated.map(row =>
+        PipelineRow(
+          row.seed,
+          row.ordinal,
+          row.size,
+          row.firstDepthSeed,
+          math.max(row.firstDepth, row.secondDepth),
+          row.outcome
+        )
+      ),
+      "min-buffered"
+    )
+
+  test("production generic ChainSync runtime replays unchanged direct/connect pipeline cases"):
+    val generated = readPipelineDirectConnectRows(
+      "1f3ab510123a287f294efd0869c2b33973c175c28a19d144b46869688522668c"
+    )
+    assertEquals(generated.size, 24)
+    assertEquals(generated.map(_.seed), Vector.range(504001, 504025))
+    assertEquals(generated.map(_.ordinal), Vector.range(0, 24))
+    assert(generated.forall(row => row.size == 30 + row.ordinal % 21))
+    assert(generated.forall(row => row.depthSeed == row.seed + 7000003))
+    assert(generated.forall(row => row.choicesSeed == row.seed + 9000007))
+    assert(generated.forall(row => row.maxDepth > 0 && row.maxDepth <= 300))
+    assert(generated.forall(row => row.choices.forall(choice => choice == '0' || choice == '1')))
+    assertEquals(generated.map(_.choices).map(_.count(_ == '1')).sum, 282)
+    assertEquals(generated.map(_.choices).map(_.count(_ == '0')).sum, 283)
+    assertEquals(generated.count(_.maxDirect == PipelineOutcome.Pass), 24)
+    assertEquals(generated.count(_.minDirect == PipelineOutcome.Pass), 24)
+    assertEquals(generated.count(_.maxConnect == PipelineOutcome.Pass), 24)
+    assertEquals(generated.count(_.minConnect == PipelineOutcome.Pass), 24)
+    assertEquals(generated.count(_.maxDirectIO == PipelineOutcome.Pass), 24)
+    assertEquals(generated.count(_.minDirectIO == PipelineOutcome.Pass), 24)
+    assertEquals(generated.count(_.maxConnectIO == PipelineOutcome.Pass), 24)
+    assertEquals(generated.count(_.minConnectIO == PipelineOutcome.Pass), 24)
+    assertEquals(generated.count(_.maxDirect == PipelineOutcome.UpstreamFailure), 0)
+    assertEquals(generated.count(_.minDirect == PipelineOutcome.UpstreamFailure), 0)
+    assertEquals(generated.count(_.maxConnect == PipelineOutcome.UpstreamFailure), 0)
+    assertEquals(generated.count(_.minConnect == PipelineOutcome.UpstreamFailure), 0)
+    assertEquals(generated.count(_.maxDirectIO == PipelineOutcome.UpstreamFailure), 0)
+    assertEquals(generated.count(_.minDirectIO == PipelineOutcome.UpstreamFailure), 0)
+    assertEquals(generated.count(_.maxConnectIO == PipelineOutcome.UpstreamFailure), 0)
+    assertEquals(generated.count(_.minConnectIO == PipelineOutcome.UpstreamFailure), 0)
+    verifyPipelinedFinalChains(
+      generated.map(row =>
+        PipelineRow(
+          row.seed,
+          row.ordinal,
+          row.size,
+          row.depthSeed,
+          row.maxDepth,
+          PipelineOutcome.Pass
+        )
+      ),
+      "direct/connect max/min-pipelined"
+    )
+
+  test("production generic ChainSync runtime replays unchanged demo pipeline IO cases"):
+    val generated = readPipelineDemoIORows(
+      "e212c604ca458021e456b39599cda7665f799a0e4832d7c999a9aabe843be997"
+    )
+    assertEquals(generated.size, 24)
+    assertEquals(generated.map(_.seed), Vector.range(504001, 504025))
+    assertEquals(generated.map(_.ordinal), Vector.range(0, 24))
+    assert(generated.forall(row => row.size == 30 + row.ordinal % 21))
+    assert(generated.forall(row => row.firstDepthSeed == row.seed + 7000003))
+    assert(generated.forall(row => row.secondDepthSeed == row.seed + 8000003))
+    assert(generated.forall(row => row.firstDepth >= 0 && row.firstDepth <= 300))
+    assert(generated.forall(row => row.secondDepth >= 0 && row.secondDepth <= 300))
+    assertEquals(generated.count(_.maxOutcome == PipelineOutcome.Pass), 24)
+    assertEquals(generated.count(_.minOutcome == PipelineOutcome.Pass), 24)
+    assertEquals(generated.count(_.lowHighOutcome == PipelineOutcome.Pass), 24)
+    assertEquals(generated.count(_.maxOutcome == PipelineOutcome.UpstreamFailure), 0)
+    assertEquals(generated.count(_.minOutcome == PipelineOutcome.UpstreamFailure), 0)
+    assertEquals(generated.count(_.lowHighOutcome == PipelineOutcome.UpstreamFailure), 0)
+    assertEquals(generated.count(_.maxOutcome == PipelineOutcome.PreconditionDiscard), 0)
+    assertEquals(generated.count(_.minOutcome == PipelineOutcome.PreconditionDiscard), 0)
+    assertEquals(generated.count(_.lowHighOutcome == PipelineOutcome.PreconditionDiscard), 0)
+    verifyPipelinedFinalChains(
+      generated.map(row =>
+        PipelineRow(
+          row.seed,
+          row.ordinal,
+          row.size,
+          row.firstDepthSeed,
+          row.firstDepth,
+          row.maxOutcome
+        )
+      ),
+      "max-pipelined IO"
+    ) *> verifyPipelinedFinalChains(
+      generated.map(row =>
+        PipelineRow(
+          row.seed,
+          row.ordinal,
+          row.size,
+          row.firstDepthSeed,
+          row.firstDepth,
+          row.minOutcome
+        )
+      ),
+      "min-pipelined IO"
+    ) *> verifyPipelinedFinalChains(
+      generated.map(row =>
+        PipelineRow(
+          row.seed,
+          row.ordinal,
+          row.size,
+          row.firstDepthSeed,
+          math.max(row.firstDepth, row.secondDepth),
+          row.lowHighOutcome
+        )
+      ),
+      "low/high-pipelined IO"
     )

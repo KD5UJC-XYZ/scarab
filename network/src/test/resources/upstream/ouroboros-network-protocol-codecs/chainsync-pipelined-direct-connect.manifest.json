@@ -1,0 +1,179 @@
+{
+  "schema": "scarab-upstream-network-protocol-behavior-v1",
+  "source": "ouroboros-network",
+  "sourceCommit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+  "upstreamTests": [
+    "ouroboros-network:protocols-tests / ChainSync / propChainSyncPipelinedMaxDirectST",
+    "ouroboros-network:protocols-tests / ChainSync / propChainSyncPipelinedMinDirectST",
+    "ouroboros-network:protocols-tests / ChainSync / propChainSyncPipelinedMaxConnectST",
+    "ouroboros-network:protocols-tests / ChainSync / propChainSyncPipelinedMinConnectST",
+    "ouroboros-network:protocols-tests / ChainSync / propChainSyncPipelinedMaxDirectIO",
+    "ouroboros-network:protocols-tests / ChainSync / propChainSyncPipelinedMinDirectIO",
+    "ouroboros-network:protocols-tests / ChainSync / propChainSyncPipelinedMaxConnectIO",
+    "ouroboros-network:protocols-tests / ChainSync / propChainSyncPipelinedMinConnectIO"
+  ],
+  "generatorType": "ChainProducerStateForkTest \u00d7 PipeliningDepth \u00d7 [Bool] for connect properties",
+  "requestedCases": 24,
+  "exportedCases": 24,
+  "seed": 504001,
+  "upstreamPropertyOutcomesByProperty": {
+    "propChainSyncPipelinedMaxDirectST": {
+      "pass": 24,
+      "upstream-failure": 0
+    },
+    "propChainSyncPipelinedMinDirectST": {
+      "pass": 24,
+      "upstream-failure": 0
+    },
+    "propChainSyncPipelinedMaxConnectST": {
+      "pass": 24,
+      "upstream-failure": 0
+    },
+    "propChainSyncPipelinedMinConnectST": {
+      "pass": 24,
+      "upstream-failure": 0
+    },
+    "propChainSyncPipelinedMaxDirectIO": {
+      "pass": 24,
+      "upstream-failure": 0
+    },
+    "propChainSyncPipelinedMinDirectIO": {
+      "pass": 24,
+      "upstream-failure": 0
+    },
+    "propChainSyncPipelinedMaxConnectIO": {
+      "pass": 24,
+      "upstream-failure": 0
+    },
+    "propChainSyncPipelinedMinConnectIO": {
+      "pass": 24,
+      "upstream-failure": 0
+    }
+  },
+  "adapterInputStatuses": {
+    "connectChoiceSeedOffset": 9000007,
+    "connectChoiceVectorLengthBySeed": [
+      {
+        "seed": 504001,
+        "length": 2
+      },
+      {
+        "seed": 504002,
+        "length": 15
+      },
+      {
+        "seed": 504003,
+        "length": 32
+      },
+      {
+        "seed": 504004,
+        "length": 28
+      },
+      {
+        "seed": 504005,
+        "length": 16
+      },
+      {
+        "seed": 504006,
+        "length": 7
+      },
+      {
+        "seed": 504007,
+        "length": 30
+      },
+      {
+        "seed": 504008,
+        "length": 33
+      },
+      {
+        "seed": 504009,
+        "length": 36
+      },
+      {
+        "seed": 504010,
+        "length": 26
+      },
+      {
+        "seed": 504011,
+        "length": 20
+      },
+      {
+        "seed": 504012,
+        "length": 1
+      },
+      {
+        "seed": 504013,
+        "length": 26
+      },
+      {
+        "seed": 504014,
+        "length": 11
+      },
+      {
+        "seed": 504015,
+        "length": 10
+      },
+      {
+        "seed": 504016,
+        "length": 35
+      },
+      {
+        "seed": 504017,
+        "length": 38
+      },
+      {
+        "seed": 504018,
+        "length": 40
+      },
+      {
+        "seed": 504019,
+        "length": 46
+      },
+      {
+        "seed": 504020,
+        "length": 35
+      },
+      {
+        "seed": 504021,
+        "length": 15
+      },
+      {
+        "seed": 504022,
+        "length": 27
+      },
+      {
+        "seed": 504023,
+        "length": 28
+      },
+      {
+        "seed": 504024,
+        "length": 8
+      }
+    ],
+    "connectChoiceTrueValues": 282,
+    "connectChoiceFalseValues": 283
+  },
+  "sourceFiles": {
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/Test.hs": "759c3e7ec58a89d34058773f43377cab759e8bbe875ee55c88dde52e561e43b9",
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/ExamplesPipelined.hs": "810544a5b37d40ae71e04eb3becbb73eeb25575bef9024665cbbc8c74857417b",
+    "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/PipelineDecision.hs": "d557b4aad0ed47fe291dea83cfdbd247d0efc0eb562d4b1799c1a8d674fba50d",
+    "ouroboros-network/protocols/tests-lib/Test/Data/PipeliningDepth.hs": "c0914dc089e9e563ab2fc4bdcc532b4173ad6780a1ee3a0094169ccfc6c0a7c9"
+  },
+  "observerPatchSha256": "c40a95c6071ed3e1cdf8c1c3e23e44df5c7351c69b1e5bbe9795c77ff63038d5",
+  "caseTsvSha256": "1f3ab510123a287f294efd0869c2b33973c175c28a19d144b46869688522668c",
+  "generatorParameters": {
+    "forkCaseSeedPerOrdinal": "seed + ordinal",
+    "caseSizePerOrdinal": "30 + (ordinal mod 21)",
+    "depthSeedOffset": 7000003,
+    "connectChoiceSeedOffset": 9000007,
+    "depthGenerator": "unchanged Arbitrary PipeliningDepth, choose (0, 300)",
+    "connectChoicesGenerator": "unchanged Arbitrary [Bool]",
+    "connectChoiceVectors": "preserved exact generated bit strings in TSV order"
+  },
+  "scarabRuntimeProfiles": 1,
+  "limitations": [
+    "The four unchanged Haskell properties retain direct and connect experiment outcomes; connect boolean scheduling choices are preserved per row.",
+    "Scarab uses one production generic Mux runtime replay per passing row, with fixed requestNextBatch windows bounded by the generated depth, and compares final chain only.",
+    "The Scarab replay does not claim direct-peer or connect choice scheduling trace equivalence with the upstream ST experiments."
+  ]
+}
