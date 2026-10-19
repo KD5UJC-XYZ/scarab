@@ -95,6 +95,13 @@ upstream pass status but are unsupported at `ExpectedDefiniteByteString`: upstre
 `HeaderHash Int` is integer-encoded, while Scarab's point type requires byte-string hashes. No
 point conversion or fabricated value is used; query/result payloads remain opaque full CBOR items.
 This is a generic mock-to-Cardano typed-API gap, not evidence of an invalid Cardano wire message.
+The separate `localsq-splits.tsv` fixture reuses these exact 24 rows and records the unchanged
+`prop_codec_splits2` and `prop_codec_splits3` verdicts (24/24 each). Scarab runs every two- and
+three-part partition through its production stateful prefix decoder for the 20 typed-compatible
+rows, including trailing-empty-segment handling and a truncated-wire negative control. The four
+specific-point mock rows retain their original wire and both passing upstream verdicts, but remain
+unsupported by the typed adapter for the same `ExpectedDefiniteByteString` reason. Their upstream
+passes are not counted as Scarab split passes.
 
 The LocalTxSubmission observer exports 24 rows from the pinned upstream
 `AnyMessage (LocalTxSubmission Tx Reject)` generator at seed base 493001. Both unchanged
@@ -106,9 +113,9 @@ The pinned LocalTxMonitor observer exports 24 messages from the unchanged
 `AnyMessage (LocalTxMonitor TxId Tx SlotNo)` generator at seed base 494001. Both
 `prop_codecM_LocalTxMonitor` and `prop_codec_cborM_LocalTxMonitor` pass 24/24. Scarab's typed
 consumer matches and exact-wire re-encodes all rows across acquire/acquired, busy replies, size and
-measure queries, transaction lookup, release, and await-acquire. This is a bounded codec sample;
-the split, codec-ID, valid-CBOR, client/server, channel and pipe properties remain separate suite
-coverage.
+measure queries, transaction lookup, release, and await-acquire. Its split2/split3 results and
+production prefix-decoder comparison are recorded in `localtxmonitor-splits.tsv`; codec-ID,
+valid-CBOR, client/server, channel and pipe properties remain separate suite coverage.
 
 The pinned TxSubmission2 `codec` and `codec cbor` observer exports 24 messages from the actual
 `AnyMessage (TxSubmission2 TxId Tx)` generator at seed base 495001; both properties pass all 24.

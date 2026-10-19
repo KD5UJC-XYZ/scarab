@@ -414,6 +414,60 @@ exportLocalStateQueryCases path count seed = withFile path WriteMode $ \outputHa
         "import Test.QuickCheck.Gen (unGen)\n"
         "import Test.QuickCheck.Random (mkQCGen)\n",
     )
+    local_state_query.write_text(local_state_query.read_text() + r'''
+
+-- Disposable observer: run the unchanged stateful split properties over the
+-- same deterministic AnyMessageWithResult rows as exportLocalStateQueryCases.
+exportLocalStateQuerySplitCases :: FilePath -> Int -> Int -> IO ()
+exportLocalStateQuerySplitCases path count seed = withFile path WriteMode $ \outputHandle ->
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 30 + (ordinal `mod` 21)
+        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize
+          :: AnyMessageWithResult Block (Point Block) Query MockLedgerState
+    split2Result <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 3000003), caseSize) }
+      (once (prop_codec_splits2 testCase))
+    split3Result <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 4000003), caseSize) }
+      (once (prop_codec_splits3 testCase))
+    case testCase of
+      AnyMessageWithResult (Stateful.AnyMessage localState msg) -> do
+        let statefulCodec = codec
+              :: Stateful.Codec (LocalStateQuery Block (Point Block) Query)
+                   DeserialiseFailure State IO ByteString
+            raw = Stateful.encode statefulCodec localState msg
+            (state, sender) = case localState of
+              StateIdle -> ("idle", "client")
+              StateAcquiring -> ("acquiring", "server")
+              StateAcquired -> ("acquired", "client")
+              StateQuerying _ -> ("querying", "server")
+              StateDone -> ("done", "none")
+            tag = case msg of
+              MsgAcquire VolatileTip -> "acquire-volatile-tip"
+              MsgAcquire ImmutableTip -> "acquire-immutable-tip"
+              MsgAcquire (SpecificPoint _) -> "acquire-specific-point"
+              MsgAcquired -> "acquired"
+              MsgFailure AcquireFailurePointTooOld -> "failure-point-too-old"
+              MsgFailure AcquireFailurePointNotOnChain -> "failure-point-not-on-chain"
+              MsgQuery _ -> "query"
+              MsgResult _ -> "result"
+              MsgRelease -> "release"
+              MsgReAcquire VolatileTip -> "reacquire-volatile-tip"
+              MsgReAcquire ImmutableTip -> "reacquire-immutable-tip"
+              MsgReAcquire (SpecificPoint _) -> "reacquire-specific-point"
+              MsgDone -> "done"
+            split2Outcome = if isSuccess split2Result then "pass" else "upstream-failure"
+            split3Outcome = if isSuccess split3Result then "pass" else "upstream-failure"
+        hPutStrLn outputHandle $ intercalate "\t"
+          [ "localsq-splits-v1", show caseSeed, show ordinal, show caseSize
+          , state, sender, tag, hex (BL.toStrict raw), split2Outcome, split3Outcome
+          ]
+  where
+    hex = concatMap (pad . (`showHex` "")) . BS.unpack
+    pad [digit] = ['0', digit]
+    pad digits = digits
+''')
     local_state_module = local_state_query.read_text()
     local_state_export_anchor = "module Ouroboros.Network.Protocol.LocalStateQuery.Test\n"
     if local_state_module.count(local_state_export_anchor) != 1:
@@ -423,7 +477,7 @@ exportLocalStateQueryCases path count seed = withFile path WriteMode $ \outputHa
         raise SystemExit("LocalStateQuery observer module export list changed")
     local_state_query.write_text(local_state_module.replace(
         export_block_anchor,
-        "  ( tests\n  , exportLocalStateQueryCases\n",
+        "  ( tests\n  , exportLocalStateQueryCases\n  , exportLocalStateQuerySplitCases\n",
     ))
 
     local_tx_submission_original = inject(
@@ -764,7 +818,7 @@ exportTxSubmission2Cases path count seed = withFile path WriteMode $ \outputHand
         "import Ouroboros.Network.Protocol.PeerSharing.Test qualified as PeerSharing (tests, exportPeerSharingCases)\n"
         "import Ouroboros.Network.Protocol.ChainSync.Test qualified as ChainSync (tests, exportChainSyncCases)\n"
         "import Ouroboros.Network.Protocol.BlockFetch.Test qualified as BlockFetch (tests, exportBlockFetchCases)\n"
-        "import Ouroboros.Network.Protocol.LocalStateQuery.Test qualified as LocalStateQuery (tests, exportLocalStateQueryCases)\n"
+        "import Ouroboros.Network.Protocol.LocalStateQuery.Test qualified as LocalStateQuery (tests, exportLocalStateQueryCases, exportLocalStateQuerySplitCases)\n"
         "import Ouroboros.Network.Protocol.LocalTxSubmission.Test qualified as LocalTxSubmission (tests, exportLocalTxSubmissionCases, exportLocalTxSubmissionSplitCases)\n"
         "import Ouroboros.Network.Protocol.LocalTxMonitor.Test qualified as LocalTxMonitor (tests, exportLocalTxMonitorCases, exportLocalTxMonitorSplitCases)\n"
         "import Ouroboros.Network.Protocol.TxSubmission2.Test qualified as TxSubmission2 (tests, exportTxSubmission2Cases)\n"
@@ -814,6 +868,7 @@ exportTxSubmission2Cases path count seed = withFile path WriteMode $ \outputHand
         "    ChainSync.exportChainSyncCases (dir <> \"/chainsync.tsv\") (read count) (read seed)\n"
         "    BlockFetch.exportBlockFetchCases (dir <> \"/blockfetch.tsv\") (read count) (read seed)\n"
         "    LocalStateQuery.exportLocalStateQueryCases (dir <> \"/localsq.tsv\") (read count) (read seed)\n"
+        "    LocalStateQuery.exportLocalStateQuerySplitCases (dir <> \"/localsq-splits.tsv\") (read count) (read seed)\n"
         "    LocalTxSubmission.exportLocalTxSubmissionCases (dir <> \"/localtxsubmission.tsv\") (read count) (read seed)\n"
         "    LocalTxMonitor.exportLocalTxMonitorCases (dir <> \"/localtxmonitor.tsv\") (read count) (read seed)\n"
         "    LocalTxSubmission.exportLocalTxSubmissionSplitCases (dir <> \"/localtxsubmission-splits.tsv\") (read count) (read seed + 2800)\n"
@@ -938,6 +993,7 @@ def main() -> None:
         ("chainsync.tsv", "ouroboros-network:protocols-tests / ChainSync / codecSerialised + codecSerialised cbor"),
         ("blockfetch.tsv", "ouroboros-network:protocols-tests / BlockFetch / codecSerialised + codecSerialised cbor"),
         ("localsq.tsv", "ouroboros-network:protocols-tests / LocalStateQuery / codec + codec cbor"),
+        ("localsq-splits.tsv", "ouroboros-network:protocols-tests / LocalStateQuery / prop_codec_splits2 + prop_codec_splits3"),
         ("localtxsubmission.tsv", "ouroboros-network:protocols-tests / LocalTxSubmission / codec + codec cbor"),
         ("localtxsubmission-splits.tsv", "ouroboros-network:protocols-tests / LocalTxSubmission / prop_codec_splits2 + prop_codec_splits3"),
         ("localtxmonitor.tsv", "ouroboros-network:protocols-tests / LocalTxMonitor / codecM + codec cborM"),
@@ -957,7 +1013,7 @@ def main() -> None:
             "upstreamPropertyOutcomes": {
                 "both-properties-pass": sum(row[-2:] == ["pass", "pass"] for row in rows),
                 "at-least-one-upstream-failure": sum(row[-2:] != ["pass", "pass"] for row in rows),
-            } if name in ("chainsync.tsv", "blockfetch.tsv", "localsq.tsv", "localtxsubmission.tsv", "localtxmonitor.tsv", "txsubmission2.tsv", "keepalive-splits.tsv", "localtxsubmission-splits.tsv", "localtxmonitor-splits.tsv") else {
+            } if name in ("chainsync.tsv", "blockfetch.tsv", "localsq.tsv", "localsq-splits.tsv", "localtxsubmission.tsv", "localtxmonitor.tsv", "txsubmission2.tsv", "keepalive-splits.tsv", "localtxsubmission-splits.tsv", "localtxmonitor-splits.tsv") else {
                 "pass": sum(row[-1] == "pass" for row in rows),
                 "upstream-failure": sum(row[-1] != "pass" for row in rows),
             },
@@ -1029,9 +1085,9 @@ def main() -> None:
                 "prop_codec_v2_splits2": 3000003,
                 "prop_codec_v2_splits3": 4000003,
             }
-        if name in ("localtxsubmission-splits.tsv", "localtxmonitor-splits.tsv"):
-            split2 = "prop_codec_splits2" if name == "localtxsubmission-splits.tsv" else "prop_codec_splitsM_LocalTxMonitor_splits2"
-            split3 = "prop_codec_splits3" if name == "localtxsubmission-splits.tsv" else "prop_codec_splitsM_LocalTxMonitor_splits3"
+        if name in ("localsq-splits.tsv", "localtxsubmission-splits.tsv", "localtxmonitor-splits.tsv"):
+            split2 = "prop_codec_splits2" if name in ("localsq-splits.tsv", "localtxsubmission-splits.tsv") else "prop_codec_splitsM_LocalTxMonitor_splits2"
+            split3 = "prop_codec_splits3" if name in ("localsq-splits.tsv", "localtxsubmission-splits.tsv") else "prop_codec_splitsM_LocalTxMonitor_splits3"
             manifest["upstreamPropertyOutcomesByProperty"] = {
                 split2: {"pass": sum(row[-2] == "pass" for row in rows), "upstream-failure": sum(row[-2] != "pass" for row in rows)},
                 split3: {"pass": sum(row[-1] == "pass" for row in rows), "upstream-failure": sum(row[-1] != "pass" for row in rows)},

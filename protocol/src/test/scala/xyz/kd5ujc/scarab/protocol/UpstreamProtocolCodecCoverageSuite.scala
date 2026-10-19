@@ -836,6 +836,129 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
       )
     )
 
+  test(
+    "consume upstream LocalStateQuery split properties through Scarab's stateful prefix decoder"
+  ):
+    val input = rows(
+      "localsq-splits.tsv",
+      "411ff97764d6e81748ecc4772a5bed02fffdb91dc3e8d5451f9197e58f5bc7b0"
+    )
+    val completeWire = rows(
+      "localsq.tsv",
+      "09358cbf911717869def7225954a7b0148ad5128a48edcd3895f94d2b44ddd18"
+    )
+    assertEquals(input.size, 24)
+    assertEquals(completeWire.size, 24)
+    assertEquals(
+      input.count(f => f.size == 10 && f(8) == "pass" && f(9) == "pass"),
+      24
+    )
+    assertEquals(
+      input.groupMapReduce(_(6))(_ => 1)(_ + _),
+      completeWire.groupMapReduce(_(6))(_ => 1)(_ + _)
+    )
+    val constructors = scala.collection.mutable.Map.empty[String, Int].withDefaultValue(0)
+    var split2Count = 0
+    var split3Count = 0
+    val outcomes = input.zip(completeWire).map { (fields, baseFields) =>
+      assertEquals(fields.size, 10)
+      assertEquals(fields(0), "localsq-splits-v1")
+      assertEquals(baseFields(0), "localsq-codec-v1")
+      assertEquals(
+        fields.slice(1, 8),
+        baseFields.slice(1, 8),
+        "split observer preserves the original generated row"
+      )
+      val seed = fields(1).toInt
+      val ordinal = fields(2).toInt
+      assertEquals(seed, 492001 + ordinal)
+      assertEquals(fields(3).toInt, 30 + ordinal % 21)
+      assertEquals(fields(8), "pass", s"upstream prop_codec_splits2 seed $seed")
+      assertEquals(fields(9), "pass", s"upstream prop_codec_splits3 seed $seed")
+      val state = fields(4) match
+        case "idle"      => LocalStateQuery.State.Idle
+        case "acquiring" => LocalStateQuery.State.Acquiring
+        case "acquired"  => LocalStateQuery.State.Acquired
+        case "querying"  => LocalStateQuery.State.Querying
+        case other       => fail(s"unknown upstream LocalStateQuery state $other at seed $seed")
+      val sender = fields(5) match
+        case "client" => ChainSync.Role.Client
+        case "server" => ChainSync.Role.Server
+        case other    => fail(s"unknown upstream LocalStateQuery sender $other at seed $seed")
+      val wire = bytes(fields(7))
+      val full = LocalStateQuery.decodePrefix(state, sender, wire) match
+        case DecodeResult.Decoded(message, consumed) =>
+          assertEquals(consumed, wire.size, s"seed $seed consumed original wire")
+          Right(message)
+        case DecodeResult.Failed(error) => Left(error.toString)
+        case DecodeResult.NeedMore      => Left("NeedMore")
+      full match
+        case Left(reason) =>
+          assert(
+            fields(6) == "acquire-specific-point" || fields(6) == "reacquire-specific-point",
+            s"unexpected unsupported LocalStateQuery constructor ${fields(6)} at seed $seed"
+          )
+          assertEquals(reason, "ExpectedDefiniteByteString", s"seed $seed typed reason")
+          s"unsupported:${fields(6)}:$reason"
+        case Right(message) =>
+          val tag = message match
+            case LocalStateQuery.Message.Acquire(LocalStateQuery.Target.Specific(_)) =>
+              "acquire-specific-point"
+            case LocalStateQuery.Message.Acquire(LocalStateQuery.Target.VolatileTip) =>
+              "acquire-volatile-tip"
+            case LocalStateQuery.Message.Acquire(LocalStateQuery.Target.ImmutableTip) =>
+              "acquire-immutable-tip"
+            case LocalStateQuery.Message.Acquired => "acquired"
+            case LocalStateQuery.Message.Failed(LocalStateQuery.Failure.PointTooOld) =>
+              "failure-point-too-old"
+            case LocalStateQuery.Message.Failed(LocalStateQuery.Failure.PointNotOnChain) =>
+              "failure-point-not-on-chain"
+            case LocalStateQuery.Message.Query(_)  => "query"
+            case LocalStateQuery.Message.Result(_) => "result"
+            case LocalStateQuery.Message.Release   => "release"
+            case LocalStateQuery.Message.ReAcquire(LocalStateQuery.Target.Specific(_)) =>
+              "reacquire-specific-point"
+            case LocalStateQuery.Message.ReAcquire(LocalStateQuery.Target.VolatileTip) =>
+              "reacquire-volatile-tip"
+            case LocalStateQuery.Message.ReAcquire(LocalStateQuery.Target.ImmutableTip) =>
+              "reacquire-immutable-tip"
+            case LocalStateQuery.Message.Done => "done"
+          assertEquals(tag, fields(6), s"seed $seed typed constructor")
+          constructors.update(tag, constructors(tag) + 1)
+          val encoded = LocalStateQuery
+            .encode(state, sender, message)
+            .fold(e => fail(s"seed $seed Scarab typed encode: ${e.toString}"), identity)
+          assertEquals(encoded, wire, s"seed $seed exact original wire roundtrip")
+          val counts = verifyAllPartitions(
+            wire,
+            DecodeResult.Decoded(message, wire.size),
+            prefix => LocalStateQuery.decodePrefix(state, sender, prefix),
+            s"seed $seed"
+          )
+          split2Count += counts._1
+          split3Count += counts._2
+          "matched"
+    }
+    assertEquals(
+      outcomes.groupMapReduce(identity)(_ => 1)(_ + _),
+      Map(
+        "matched" -> 20,
+        "unsupported:acquire-specific-point:ExpectedDefiniteByteString" -> 1,
+        "unsupported:reacquire-specific-point:ExpectedDefiniteByteString" -> 3
+      )
+    )
+    val supportedRows = outcomes.zip(input).collect { case ("matched", fields) => fields }
+    assertEquals(supportedRows.size, 20)
+    assertEquals(split2Count, supportedRows.map(fields => bytes(fields(7)).size + 1).sum)
+    assertEquals(
+      split3Count,
+      supportedRows.map { fields =>
+        val n = bytes(fields(7)).size
+        (n + 1) * (n + 2) / 2
+      }.sum
+    )
+    assertEquals(constructors.values.sum, 20)
+
   test("consume actual generated LocalTxSubmission codec cases at the typed boundary"):
     val input = rows(
       "localtxsubmission.tsv",
