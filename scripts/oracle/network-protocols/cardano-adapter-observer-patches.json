@@ -1,0 +1,19 @@
+{
+  "upstreamCommit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+  "patches": {
+    "cardano-handshake-observer.patch": {
+      "path": "scripts/oracle/network-protocols/cardano-handshake-observer.patch",
+      "sourcePath": "cardano-diffusion/protocols/tests-lib/Cardano/Network/Protocol/Handshake/Test.hs",
+      "sourceSha256": "70c04f90ecff381fd6f15422bed8ac8d97a1a14b7f3f2619521328f667645950",
+      "overlaySha256": "c494f8e1bd17773fa9214f466561a12af167f50ac56546efb4988c34705419ed",
+      "patchSha256": "c07bf007fb8d3387df11667137723fadcf2ff806211a595bdf5fe5718ee01668"
+    },
+    "cardano-peersharing-cddl-observer.patch": {
+      "path": "scripts/oracle/network-protocols/cardano-peersharing-cddl-observer.patch",
+      "sourcePath": "cardano-diffusion/protocols/cddl/Main.hs",
+      "sourceSha256": "30799c100112531d52a62efa9fa598fce97b36e3d300aac3b583a88d67886490",
+      "overlaySha256": "632c306788727158552c3c86eed2307c66fa17e5bff397614367778bd638a283",
+      "patchSha256": "80273abd74aec3b2c32712a871b3ea415e75478c505ef925084a40ec270d722f"
+    }
+  }
+}

@@ -14,6 +14,28 @@ test suites also passed: all nine KeepAlive properties and all ten PeerSharing p
 upstream suite's QuickCheck properties each passed 100 cases, except the split-three properties,
 which each passed 33.
 
+The pinned `cardano-diffusion` suite adds bounded Cardano-specific evidence.
+`cardano-handshake.tsv` contains 40 deterministic cases from the unchanged
+`prop_acceptable_symmetric_NodeToNode` property at v16; each retains both original proposal CBOR
+messages and has explicit generator seed provenance. Scarab consumes all 40, with one negotiated
+result, 19 query results, and 20 refusals. This is a bounded sample of one property, not the full
+Cardano Handshake suite.
+
+`cardano-peersharing-sockaddr.tsv` contains 300 real CDDL-generated messages: 100 each from the
+pinned `unit_decodePeerSharingV14ToLast` test for NodeToNode v14, v15, and v16. The upstream
+`unit_encodePeerSharingV14ToLast` SockAddr property also passes 100 generated cases. The CDDL
+generator does not expose a reproducible seed, so the fixture records its version and ordinal and
+keeps the original diagnostic term and wire bytes rather than inventing seed provenance. Scarab
+decodes all 300 to typed values and its own encodings decode to the same values. A replay of all
+300 original and Scarab-produced wires through the pinned version-specific Haskell codec also
+compared equal typed message renderings, including complete `SockAddr` lists. Peer-list arrays can
+be encoded definite upstream and indefinite by Scarab, so this adapter checks typed-value parity
+and retains the source bytes; it does not claim byte-for-byte re-encoding parity.
+
+Each Cardano fixture has a manifest with source SHA-256, observer patch hash, result counts, and
+limitations. The observer patches add only export hooks around existing generator/property and
+decoder paths.
+
 `UpstreamProtocolCodecCoverageSuite` consumes the original encoded bytes at Scarab's typed codec
 boundary. KeepAlive matches all 24 rows. PeerSharing matches its 18 request/done rows. Its six
 actual `MsgSharePeers` rows are retained with upstream pass status and `unsupported-int-addresses`:
@@ -21,7 +43,7 @@ the upstream property instantiates peer payloads as `Int`, while Scarab's protoc
 typed IPv4/IPv6 addresses, so there is no lossless field mapping. No synthetic peer addresses or
 default values are inserted.
 
-This is bounded evidence for two codec properties, not a claim that all protocol properties or
+This is bounded evidence for selected codec properties, not a claim that all protocol properties or
 Ouroboros-network tests are covered. Other applicable protocols and typed-protocol behaviors remain
 open under #49. Source licensing is Apache-2.0; see `fixtures/licenses/ouroboros-network-LICENSE`
 and `fixtures/licenses/ouroboros-network-NOTICE`.

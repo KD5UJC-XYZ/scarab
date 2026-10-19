@@ -1,0 +1,92 @@
+--- a/cardano-diffusion/protocols/tests-lib/Cardano/Network/Protocol/Handshake/Test.hs
++++ b/cardano-diffusion/protocols/tests-lib/Cardano/Network/Protocol/Handshake/Test.hs
+@@ -15,10 +15,18 @@
+ module Cardano.Network.Protocol.Handshake.Test where
+ 
+ import Data.ByteString.Lazy (ByteString)
++import Data.ByteString.Lazy qualified as BL
++import Data.List (intercalate)
+ import Data.Map qualified as Map
++import Data.Word (Word8)
++import Numeric (showHex)
++import System.Environment (lookupEnv)
++import System.IO (IOMode (WriteMode), hPutStrLn, withFile)
++import Control.Monad (forM_, unless)
+ 
+ import Codec.CBOR.Read qualified as CBOR
+ import Codec.CBOR.Term qualified as CBOR
++import Codec.CBOR.Write qualified as CBOR
+ 
+ import Control.DeepSeq (NFData)
+ import Control.Monad.Class.MonadAsync
+@@ -46,6 +54,8 @@
+ import Ouroboros.Network.Protocol.Handshake.Version
+ 
+ import Test.QuickCheck
++import Test.QuickCheck.Gen (unGen)
++import Test.QuickCheck.Random (mkQCGen)
+ import Test.Tasty (TestTree, testGroup)
+ import Test.Tasty.QuickCheck (testProperty)
+ 
+@@ -56,6 +66,8 @@
+       [ testGroup "NodeToNode"
+         [ testProperty "acceptable_symmetric"
+             prop_acceptable_symmetric_NodeToNode
++        , testProperty "export seeded Cardano negotiation cases"
++            (once (ioProperty (exportCardanoNegotiationCases >> pure True)))
+         , testProperty "acceptOrRefuse"
+             prop_acceptOrRefuse_symmetric_NodeToNode
+         , testProperty "simultaneous open ST"
+@@ -218,6 +230,52 @@
+   -> Bool
+ prop_acceptable_symmetric_NodeToNode (ArbitraryNodeToNodeVersionData a) (ArbitraryNodeToNodeVersionData b) =
+     prop_acceptable_symmetric a b
++
++
++-- | Export rows from the unchanged Cardano generator and unchanged
++-- prop_acceptable_symmetric_NodeToNode.  The optional equal-magic constraint
++-- is recorded explicitly so both Accept and Refuse branches are represented.
++exportCardanoNegotiationCases :: IO ()
++exportCardanoNegotiationCases = do
++    maybePath <- lookupEnv "SCARAB_HANDSHAKE_CASES"
++    case maybePath of
++      Nothing -> pure ()
++      Just path -> withFile path WriteMode $ \out ->
++        forM_ [0 .. 39 :: Int] $ \ordinal -> do
++          let seed = 490801 + ordinal
++              size = 40 + ordinal `mod` 31
++              (a, generatedB) = unGen
++                ((,) <$> genNodeToNodeVersionData <*> genNodeToNodeVersionData)
++                (mkQCGen seed) size
++              constraint = if even ordinal then "equal-network-magic" else "unconstrained"
++              b = if even ordinal then generatedB { NTN.networkMagic = NTN.networkMagic a }
++                                  else generatedB
++              propertyResult = prop_acceptable_symmetric_NodeToNode
++                (ArbitraryNodeToNodeVersionData a)
++                (ArbitraryNodeToNodeVersionData b)
++              VersionDataCodec { encodeData } = NTN.nodeToNodeVersionDataCodec
++              proposal value = CBOR.TList
++                [ CBOR.TInt 0
++                , CBOR.TMap [(CBOR.TInt 16, encodeData NTN.NodeToNodeV_16 value)]
++                ]
++              wire value = hexLazy $ CBOR.toLazyByteString (CBOR.encodeTerm (proposal value))
++              branch = if NTN.networkMagic a == NTN.networkMagic b then "accept" else "refuse"
++              fields value =
++                [ show (NTN.unNetworkMagic (NTN.networkMagic value))
++                , show (NTN.diffusionMode value)
++                , show (NTN.peerSharing value)
++                , show (NTN.query value)
++                , show (NTN.perasSupport value)
++                ]
++              row = [ "cardano-handshake-v1", show seed, show ordinal, show size
++                    , constraint, "16", if propertyResult then "pass" else "fail", branch
++                    ] ++ fields a ++ fields b ++ [wire a, wire b]
++          hPutStrLn out (intercalate "\t" row)
++          unless propertyResult $ fail ("Cardano Handshake property failed at seed " ++ show seed)
++  where
++    hexLazy = concatMap hexByte . BL.unpack
++    hexByte :: Word8 -> String
++    hexByte w = let h = showHex w "" in if length h == 1 then '0' : h else h
+ 
+ 
+ prop_acceptable_symmetric_NodeToClient
