@@ -5,9 +5,9 @@ import cats.effect.{Deferred, IO, Resource}
 import cats.mtl.Handle
 import xyz.kd5ujc.scarab.ledger.NodeError
 
-/** The node's own error scope for a test: what the follower's rules and stores raise through it
-  * (their `Raise` is the scope's `Handle`, fixed when they are made) is caught in the session that
-  * met it. In `Main` this is the `Handle.allow[NodeError]` around the whole run.
+/** A live enclosing node scope for test services whose lifetime spans several sessions. Rule and
+  * store operations use each caller's capability; the session also catches this enclosing scope
+  * for services that share its lifetime. In `Main` it is the outer `Handle.allow[NodeError]`.
   */
 object NodeScope:
   /** A scope that lives as long as the resource. */
