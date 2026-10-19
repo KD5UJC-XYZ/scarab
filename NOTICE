@@ -152,3 +152,8 @@ fixtures/reference/script-results contains one byte-identical original admission
 context-errors corpus and explicitly marked API-only multi-script derivations with unchanged released
 Cardano Ledger evaluation/encoding outputs. Public keys/signatures only; no signing keys. The thin
 oracle wrapper and fixture generation are original Apache-2.0 code; upstream notices remain as above.
+
+storage/src/test/resources/rewards-1.19.0.1 contains deterministic synthetic state and outputs of
+unchanged released Cardano Ledger reward APIs. No upstream implementation is copied into the thin
+Apache-2.0 wrapper in scripts/oracle/rewards. Package provenance, scope and hashes are retained with
+the fixtures; upstream package licenses and notices remain in fixtures/licenses and fetched sources.

@@ -424,27 +424,13 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     assert(failure(vote, hex("03")).kind.isInstanceOf[Kind.OutOfRange])
   }
 
-  test("a pulsing reward update keeps its pulser as the original bytes and writes them back") {
-    // a pulser the mirror has no model of: an indefinite array holding an odd mix of items
-    val pulser = bytesOf { w =>
-      w.raw(
-        xyz.kd5ujc.scarab.codec.Bytes.fromArray(Array(0x9f.toByte, 1, 0xa0.toByte, 0xff.toByte))
-      )
-    }
-    val snapshot = arb[RewardSnapShot].sample.get
-    val written = bytesOf { w =>
-      w.arrayHead(3)
-      w.uint(0L)
-      rewardSnapShot.encode(snapshot, w)
-      w.raw(pulser)
-    }
-    val read = readOk(pulsingRewUpdate, written)
-    assertEquals(read, PulsingRewUpdate.Pulsing(snapshot, RewardPulser(pulser)))
-    assertEquals(pulsingRewUpdate.encodeUnchecked(read), written)
-    assertEquals(pulsingRewUpdate.check(read), None)
-    given ShelleyBasedEra[Conway] = ShelleyBasedEra.SConway
-    val state = StateGen.newEpochState[Conway].sample.get.copy[Conway](ru = Some(read))
-    assert(HaskellState.encode(state).isRight)
+  test("a typed mid-pulse reward update round trips and refuses invalid pulse sizes") {
+    val state = StateGen.rewardUpdate.sample.getOrElse(fail("no update"))
+    val written = pulsingRewUpdate.encodeUnchecked(state)
+    assertEquals(readOk(pulsingRewUpdate, written), state)
+    assert(rewardPulseSize.decodeBytes(hex("00")).isLeft)
+    assert(rewardPulseSize.decodeBytes(hex("20")).isLeft)
+    assert(rewardPulser.decodeBytes(hex("9f01a0ff")).isLeft)
   }
 
   test(
@@ -600,6 +586,10 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
   laws("NonMyopic", arb[NonMyopic], nonMyopic)
   laws("RewardUpdate", arb[RewardUpdate], rewardUpdate)
   laws("RewardSnapShot", arb[RewardSnapShot], rewardSnapShot)
+  laws("RewardPulser", StateGen.rewardPulser, rewardPulser)
+  laws("RewardFreeVars", StateGen.rewardFreeVars, rewardFreeVars)
+  laws("PoolRewardInfo", StateGen.poolRewardInfo, poolRewardInfo)
+  laws("RewardAns", arb[RewardAns], rewardAns)
   laws("BlocksMade", arb[BlocksMade], blocksMade)
   laws("ConwayGovState", StateGen.conwayGov, conwayGovState)
   laws("Proposals", StateGen.proposals, proposals)

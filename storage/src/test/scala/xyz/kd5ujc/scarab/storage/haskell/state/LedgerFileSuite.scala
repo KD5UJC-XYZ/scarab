@@ -289,9 +289,9 @@ class LedgerFileSuite extends ScalaCheckSuite:
       .newEpochState[Conway]
       .sample
       .getOrElse(fail("no state"))
-    val pulser = hex("9f 01 a1 01 02 ff")
+    val pulser = StateGen.rewardPulser.sample.getOrElse(fail("no pulser"))
     val snap = arb[RewardSnapShot].sample.getOrElse(fail("no snapshot"))
-    val state = nes.copy[Conway](ru = Some(PulsingRewUpdate.Pulsing(snap, RewardPulser(pulser))))
+    val state = nes.copy[Conway](ru = Some(PulsingRewUpdate.Pulsing(snap, pulser)))
     val bytes = HaskellState.encode(state).fold(e => fail(e.violation.render), identity)
     val back = HaskellState.decode[Conway](bytes).fold(e => fail(e.render), identity)
     assertEquals(back.ru, state.ru)

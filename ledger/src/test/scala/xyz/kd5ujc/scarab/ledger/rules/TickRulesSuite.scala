@@ -4,13 +4,11 @@ package xyz.kd5ujc.scarab.ledger.rules
 import cats.Monad
 import cats.data.{Kleisli, StateT}
 import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
-import java.time.Instant
 import munit.FunSuite
 import scala.collection.immutable.SortedMap
-import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
-import xyz.kd5ujc.scarab.ledger.{EpochGeometry, LedgerGlobals, TestLedger}
+import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.ledger.TestLedger
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.ledger.state.given
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** The tick rules (J2.3: TICK, NEWEPOCH, EPOCH, SNAP, POOLREAP, MIR, RUPD, the translations of the
@@ -23,116 +21,11 @@ import xyz.kd5ujc.scarab.protocol.Era
   * Preview chain.
   */
 class TickRulesSuite extends FunSuite:
-  private val Supply = BigInt("45000000000000000")
-
-  private val globals = Globals(
-    LedgerGlobals(
-      Supply,
-      10000,
-      Rational(1, 20),
-      network = 0,
-      startRewards = 400,
-      conway = None,
-      alonzoCoinsPerUTxOWord = 34482
-    ),
-    EpochGeometry(Instant.EPOCH, 1000, 10000, 5, BigDecimal("0.05"))
-  )
+  import RewardPulserFixture.*
 
   // the first slot of an epoch, and a slot past the start of the rewards in it
   private def first(epoch: Int): Long = epoch.toLong * 10000
   private def late(epoch: Int): Long = first(epoch) + 5000
-
-  private def bytes(n: Int, size: Int): Bytes =
-    Bytes.fromArray(
-      Array.tabulate[Byte](size)(i => if i < 4 then ((n >> (8 * i)) & 0xff).toByte else 7)
-    )
-
-  private def ok[A](either: Either[VocabError, A]): A =
-    either.fold(e => fail(s"vocabulary: $e"), identity)
-
-  private def credential(n: Int): Credential[Staking] =
-    Credential.KeyHashObj[Staking](ok(KeyHash.fromBytes[Staking](bytes(n, 28))))
-
-  private def pool(n: Int): KeyHash[StakePool] = ok(KeyHash.fromBytes[StakePool](bytes(n, 28)))
-
-  private def coin(n: BigInt): Coin = ok(Coin.fromBigInt(n))
-  private def compact(n: BigInt): CompactCoin = ok(CompactCoin.fromBigInt(n))
-
-  /** A Conway state in `epoch`: `accounts` stake credentials delegating to `pools` pools, each with
-    * the same balance and an output of the same value, a `go` snapshot of that stake, and the
-    * blocks the pools made in the previous epoch.
-    */
-  private def conway(epoch: Int, accounts: Int, pools: Int): NewEpochState[Conway] =
-    val params = TestLedger.params(10).copy(rho = Rational(3, 1000), tau = Rational(1, 5))
-    val byPool: Map[Int, Vector[Credential[Staking]]] =
-      Vector.range(0, accounts).groupMap(_ % pools)(credential)
-    val stakePools = Sorted.map(Vector.range(0, pools).map { p =>
-      pool(p) -> StakePoolState(
-        ok(VRFVerKeyHash.fromBytes(bytes(p, 32))),
-        coin(0),
-        coin(340000000),
-        Rational(1, 100),
-        credential(p),
-        Sorted.emptySet[KeyHash[Staking]],
-        Bytes.empty,
-        None,
-        compact(500000000),
-        Sorted.set(byPool.getOrElse(p, Vector.empty))
-      )
-    })
-    val states = Sorted.map(Vector.range(0, accounts).map { a =>
-      credential(a) -> ConwayAccountState(
-        compact(1000000),
-        compact(2000000),
-        Some(pool(a % pools)),
-        None
-      )
-    })
-    val instant = ConwayInstantStake(Sorted.map(Vector.range(0, accounts).map { a =>
-      credential(a) -> compact(5000000000L)
-    }))
-    val cert = ConwayCertState(
-      VState(Sorted.empty, CommitteeState(Sorted.empty), EpochNo.fromUnsigned(0L)),
-      PState(Sorted.empty, stakePools, Sorted.empty, Sorted.empty),
-      DState(
-        ConwayAccounts(states),
-        Sorted.empty,
-        Sorted.empty,
-        InstantaneousRewards(Sorted.empty, Sorted.empty, DeltaCoin(0), DeltaCoin(0))
-      )
-    )
-    val gov = Empty.govState[Conway](params)
-    val ls = LedgerState[Conway](
-      cert,
-      UTxOState[Conway](
-        UtxoTables(xyz.kd5ujc.scarab.ledger.Utxo.empty),
-        coin(BigInt(accounts) * 2000000 + BigInt(pools) * 500000000),
-        // the fees collected so far, of which the snapshot fee is the part already counted
-        coin(3000000),
-        gov,
-        instant,
-        coin(0)
-      )
-    )
-    val active = ok(EraLedger.activeStake(ls))
-    val go = ok(StakeDistribution.snapshot(active, stakePools))
-    val made = BlocksMade(
-      Sorted.map(Vector.range(0, pools).map(p => pool(p) -> Word64.fromUnsigned(10L)))
-    )
-    NewEpochState[Conway](
-      ok(EpochNo.fromBigInt(epoch)),
-      made,
-      made,
-      EpochState[Conway](
-        ChainAccountState(coin(1000000000000L), coin(Supply / 2)),
-        ls,
-        SnapShots(go, go, go, coin(3000000)),
-        NonMyopic.empty
-      ),
-      None,
-      PoolDistr.of(go),
-      ()
-    )
 
   private val noEra: Hfc.EraAt = (_, _) => Era.Conway
 
@@ -167,6 +60,46 @@ class TickRulesSuite extends FunSuite:
     thread.start()
     thread.join()
     result.getOrElse(fail("the thread did not finish")).fold(throw _, identity)
+
+  test("RUPD starts without member work, pulses in the normal window, and forces after 8k/f") {
+    val before = conway(5, 41, 4)
+    val at = first(5) + globals.randomnessStabilisationWindow.toLong
+    assertEquals(tick(before, at).ru, None)
+    val started = tick(before, at + 1)
+    started.ru match
+      case Some(PulsingRewUpdate.Pulsing(_, p)) =>
+        assertEquals(p.remaining.size, 41)
+        assertEquals(p.answer, RewardAns.empty)
+      case other => fail(s"not started: $other")
+    val advanced = tick(started, at + 2)
+    advanced.ru match
+      case Some(PulsingRewUpdate.Pulsing(_, p)) => assertEquals(p.remaining.size, 38)
+      case other                                => fail(s"not pulsing: $other")
+    val force = at + globals.randomnessStabilisationWindow.toLong
+    assert(tick(started, force).ru.exists(_.isInstanceOf[PulsingRewUpdate.Pulsing]))
+    val completed = tick(advanced, force + 1)
+    assertEquals(
+      completed.ru,
+      Some(
+        PulsingRewUpdate.Complete(
+          Rewards
+            .update(before.es, before.bprev, globals, 5)
+            .fold(e => fail(s"update: $e"), identity)
+        )
+      )
+    )
+    assertEquals(tick(before, force + 1).ru, completed.ru)
+  }
+
+  test("a boundary completes an unfinished reward prefix before applying it") {
+    val before = conway(5, 41, 4)
+    val start = first(5) + globals.randomnessStabilisationWindow.toLong + 1
+    val pending = tick(tick(before, start), start + 1)
+    val eager =
+      Rewards.update(before.es, before.bprev, globals, 5).fold(e => fail(s"update: $e"), identity)
+    val control = before.copy(ru = Some(PulsingRewUpdate.Complete(eager)))
+    assertEquals(tick(pending, first(6) + 10), tick(control, first(6) + 10))
+  }
 
   test(
     "a tick inside an epoch changes nothing but the reward update, which starts after the window"
@@ -266,55 +199,6 @@ class TickRulesSuite extends FunSuite:
     }
   }
 
-  /** The state of `c` as a Babbage one about to adopt the parameters of Conway's first version. */
-  private def babbage(c: NewEpochState[Conway]): NewEpochState[Babbage] =
-    val ls = c.es.ls
-    NewEpochState[Babbage](
-      c.epoch,
-      c.bprev,
-      c.bcur,
-      EpochState[Babbage](
-        c.es.chainAccount,
-        LedgerState[Babbage](
-          ShelleyCertState(
-            ls.cert.pState,
-            DState(
-              ShelleyAccounts(
-                Sorted.map(
-                  ls.cert.dState.accounts.states.iterator.map((k, a) =>
-                    k -> ShelleyAccountState(Ptr0, a.balance, a.deposit, a.pool)
-                  )
-                ),
-                Sorted.empty
-              ),
-              Sorted.empty,
-              Sorted.empty,
-              ls.cert.dState.iRewards
-            )
-          ),
-          UTxOState[Babbage](
-            ls.utxo.utxo,
-            ls.utxo.deposited,
-            ls.utxo.fees,
-            ShelleyGovState(
-              Sorted.empty,
-              Sorted.empty,
-              TestLedger.params(8),
-              TestLedger.params(8),
-              FuturePParams.DefinitePParamsUpdate(TestLedger.params(9))
-            ),
-            ShelleyInstantStake(ls.utxo.instantStake.credentialStake, Sorted.empty),
-            ls.utxo.donation
-          )
-        ),
-        c.es.snapshots,
-        c.es.nonMyopic
-      ),
-      c.ru,
-      c.pd,
-      ()
-    )
-
   /** Conway enters at epoch 6 when the parameters adopted there are of major version 9. */
   private val schedule: Hfc.EraAt = (epoch, major) =>
     if epoch >= 6 && major >= 9 then Era.Conway else Era.Babbage
@@ -352,8 +236,6 @@ class TickRulesSuite extends FunSuite:
       assertEquals(nes.es.snapshots.mark.activeStake.entries.size, 150000)
     }
   }
-
-  private val Ptr0 = xyz.kd5ujc.scarab.ledger.Ptr(0, 0, 0)
 
   test(
     "Shelley to Allegra removes the stashed AVVM outputs from the UTxO and returns them to the reserves"

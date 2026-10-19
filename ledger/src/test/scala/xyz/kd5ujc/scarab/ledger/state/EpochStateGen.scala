@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger.state
 
 import org.scalacheck.{Arbitrary, Gen}
 import scala.collection.immutable.SortedMap
-import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
+import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.state.LedgerStateGen.{*, given}
 import xyz.kd5ujc.scarab.ledger.state.VocabularyGen.{*, given}
 
@@ -129,11 +129,62 @@ object EpochStateGen:
       .map(RewardSnapShot(_, _, _, _, _, _, _, _))
   )
 
+  given Arbitrary[RewardPulseSize] = Arbitrary(
+    Gen.choose(1, 1000).map(n => RewardPulseSize.fromBigInt(n).toOption.get)
+  )
+
+  given Arbitrary[LeaderOnlyReward] = Arbitrary(
+    Gen.zip(arb[KeyHash[StakePool]], arb[Coin]).map(LeaderOnlyReward(_, _))
+  )
+
+  given Arbitrary[RewardBlockCount] = Arbitrary(
+    Gen
+      .oneOf(BigInt(0), BigInt(100), (BigInt(1) << 80) + 7)
+      .map(n => RewardBlockCount.fromBigInt(n).toOption.get)
+  )
+
+  given Arbitrary[PoolRewardInfo] = Arbitrary(
+    Gen
+      .zip(ratio, arb[Coin], arb[StakePoolSnapShot], arb[RewardBlockCount], arb[LeaderOnlyReward])
+      .map(PoolRewardInfo(_, _, _, _, _))
+  )
+
+  given Arbitrary[RewardFreeVars] = Arbitrary(
+    Gen
+      .zip(
+        sortedSet(arb[Credential[Staking]]),
+        arb[Coin],
+        arb[ProtVer],
+        sortedMap(arb[KeyHash[StakePool]], arb[PoolRewardInfo])
+      )
+      .map(RewardFreeVars(_, _, _, _))
+  )
+
+  given Arbitrary[SingletonReward] = Arbitrary(arb[Reward].map(SingletonReward(_)))
+
+  given Arbitrary[RewardAns] = Arbitrary(
+    Gen
+      .zip(
+        sortedMap(arb[Credential[Staking]], arb[SingletonReward]),
+        sortedMap(arb[Credential[Staking]], arb[RewardSet])
+      )
+      .map(RewardAns(_, _))
+  )
+
+  given Arbitrary[RewardPulser] = Arbitrary(
+    Gen
+      .zip(
+        arb[RewardPulseSize],
+        arb[RewardFreeVars],
+        sortedMap(arb[Credential[Staking]], arb[StakeWithDelegation]),
+        arb[RewardAns]
+      )
+      .map(RewardPulser(_, _, _, _))
+  )
+
   given Arbitrary[PulsingRewUpdate] = Arbitrary(
     Gen.oneOf(
-      arb[RewardSnapShot].map(
-        PulsingRewUpdate.Pulsing(_, RewardPulser(Bytes.fromArray(Array(0x82.toByte, 1, 2))))
-      ),
+      Gen.zip(arb[RewardSnapShot], arb[RewardPulser]).map(PulsingRewUpdate.Pulsing(_, _)),
       arb[RewardUpdate].map(PulsingRewUpdate.Complete(_))
     )
   )
