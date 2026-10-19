@@ -138,16 +138,50 @@ class GenErrorSuite extends munit.FunSuite:
     assertEquals(s.rule(QName("t", "r")), Left(GenError.CyclicExpansion(QName("t", "a"))))
   }
 
+  test("codec hoist expansion preserves regex word boundaries and replacement order") {
+    def legacy(codec: String, hoists: Vector[(String, String, String)]): String =
+      hoists.reverseIterator.foldLeft(codec) { case (expanded, (name, _, value)) =>
+        expanded.replaceAll(s"\\b$name\\b", java.util.regex.Matcher.quoteReplacement(value))
+      }
+
+    val hoists = Vector(
+      ("c0", "Int", "rt.Codec.int"),
+      ("c1", "Int", "rt.Codec.tagged(BigInt(1), c0)"),
+      ("c10", "Int", "rt.Codec.tagged(BigInt(10), c1)"),
+      ("c11", "Int", "rt.Codec.literal(\"c10 c99\")")
+    )
+    val codec = "Tuple(c10, c1, c0, c100, xc1, \"c11\")"
+    assertEquals(Emitter.unhoist(codec, hoists), legacy(codec, hoists))
+
+    val forwardReference = Vector(
+      ("c0", "Int", "rt.Codec.literal(c1)"),
+      ("c1", "Int", "rt.Codec.int")
+    )
+    assertEquals(
+      Emitter.unhoist("Tuple(c0, c1)", forwardReference),
+      legacy("Tuple(c0, c1)", forwardReference)
+    )
+
+    val selfReference = Vector(("c0", "Int", "rt.Codec.literal(c0)"))
+    assertEquals(Emitter.unhoist("c0", selfReference), legacy("c0", selfReference))
+  }
+
   test("schema depth, reference chains and config width do not consume the JVM stack") {
     smallStack {
       val depth = 12000
-      val body = (0 until depth).foldLeft[Ast.Ty](Ast.Ty.Name("uint", Vector.empty))((t, _) =>
-        Ast.Ty.Tag(6, Some(1), Some(t))
-      )
+      val body = {
+        (0 until depth).foldLeft[Ast.Ty](Ast.Ty.Name("uint", Vector.empty))((t, _) =>
+          Ast.Ty.Tag(6, Some(1), Some(t))
+        )
+      }
       val s = schema(body)
       assert(s.rule(QName("t", "r")).isRight)
-      assert(new Emitter(s, config()).generate().exists(_.values.head.contains("rt.Codec.tagged")))
-      assert(new CddlSampler(s).sample(QName("t", "r"), new Random(1)).exists(_.length > depth))
+      assert(
+        new Emitter(s, config()).generate().exists(_.values.head.contains("rt.Codec.tagged"))
+      )
+      assert(
+        new CddlSampler(s).sample(QName("t", "r"), new Random(1)).exists(_.length > depth)
+      )
       val chain = (0 until depth).map { i =>
         Ast.Rule(
           s"n$i",
@@ -160,7 +194,9 @@ class GenErrorSuite extends munit.FunSuite:
       val cfg = config().copy(roots = Vector(QName("t", "n0")))
       assert(new Emitter(linked, cfg).generate().isRight)
       assert(new CddlSampler(linked).sample(QName("t", "n0"), new Random(1)).isRight)
-      assert(Config.parse("package p\n" + "root t:r\n" * 100000).exists(_.roots.size == 100000))
+      assert(
+        Config.parse("package p\n" + "root t:r\n" * 100000).exists(_.roots.size == 100000)
+      )
     }
   }
 

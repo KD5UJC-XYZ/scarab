@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.models.gen
 
-import cats.data.StateT
+import cats.data.{Chain, StateT}
 import cats.syntax.all.*
 
 /** Resolves reachability before emitting source, with typed, stack-safe failures. */
@@ -424,9 +424,7 @@ private final class PreparedEmitter(cfg: Config, schema: Schema, reached: Emitte
   }
 
   private def unhoist(codec: String, o: OwnerData): String =
-    o.hoists.reverseIterator.foldLeft(codec) { (acc, h) =>
-      acc.replaceAll(s"\\b${h._1}\\b", java.util.regex.Matcher.quoteReplacement(h._3))
-    }
+    Emitter.unhoist(codec, o.hoists)
 
   private lazy val moduleTypeNames = reached.order
     .filterNot(q => cfg.external(q) || inlined(q))
@@ -834,6 +832,31 @@ private final class PreparedEmitter(cfg: Config, schema: Schema, reached: Emitte
     }
 
 object Emitter:
+  private val hoistReference = "\\bc\\d+\\b".r
+
+  private def substituteHoists(
+      source: String,
+      expanded: Map[String, Chain[String]]
+  ): Chain[String] =
+    val (offset, fragments) = hoistReference
+      .findAllMatchIn(source)
+      .foldLeft(
+        (0, Chain.empty[String])
+      ) { case ((cursor, result), matched) =>
+        val unchanged = Chain.one(source.substring(cursor, matched.start))
+        val replacement = expanded.getOrElse(matched.matched, Chain.one(matched.matched))
+        (matched.end, result ++ unchanged ++ replacement)
+      }
+    fragments ++ Chain.one(source.substring(offset))
+
+  private[gen] def unhoist(codec: String, hoists: Vector[(String, String, String)]): String =
+    // These entries are the substitutions the old reverse fold would still visit.
+    val expanded = hoists.foldLeft(Map.empty[String, Chain[String]]) {
+      case (known, (name, _, expression)) =>
+        known.updated(name, substituteHoists(expression, known))
+    }
+    substituteHoists(codec, expanded).iterator.mkString
+
   private[gen] def isVector(es: Vector[REntry]): Boolean =
     es.size == 1 && es.head.key.isEmpty && !es.head.value.isInstanceOf[RT.GroupRef] &&
       (es.head.occ.max.forall(_ > 1) || es.head.occ.min > 1)
