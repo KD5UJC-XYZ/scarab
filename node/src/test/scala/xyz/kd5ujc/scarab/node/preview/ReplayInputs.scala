@@ -5,6 +5,8 @@ import cats.syntax.all.*
 import io.circe.{Decoder, Error as JsonError}
 import io.circe.parser.decode
 import java.nio.file.Path
+import java.nio.ByteBuffer
+import java.nio.charset.{CharacterCodingException, StandardCharsets}
 import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
 import xyz.kd5ujc.scarab.codec.Bytes.HexError
 import xyz.kd5ujc.scarab.ledger.{Block, Header}
@@ -31,6 +33,7 @@ object ReplayInputs:
     case InvalidSchedule(value: String)
     case ComparisonRounds(value: Int)
     case Json(line: Int, cause: JsonError)
+    case Utf8(cause: CharacterCodingException)
     case UnsafeChunk(chunk: String)
     case InvalidRange(slot: BigInt, offset: Long, length: Int)
     case NonIncreasing(previous: BigInt, actual: BigInt)
@@ -102,6 +105,19 @@ object ReplayInputs:
         sha256 <- cursor.get[Option[String]]("sha256")
       yield Record(chunk, offset, length, slot, block, hash, sha256)
     }
+
+  def lines(bytes: Array[Byte]): Either[Error, Vector[String]] =
+    Either
+      .catchOnly[CharacterCodingException](
+        StandardCharsets.UTF_8
+          .newDecoder()
+          .decode(ByteBuffer.wrap(bytes))
+          .toString
+          .linesIterator
+          .toVector
+      )
+      .left
+      .map(Error.Utf8(_))
 
   def records(lines: Vector[String]): Either[Error, Vector[Record]] =
     lines.zipWithIndex

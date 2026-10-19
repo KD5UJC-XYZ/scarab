@@ -206,3 +206,42 @@ class ReplayContractSuite extends FunSuite:
     assert(ReplayInputs.link(previous, header.copy(prevHash = None)).isLeft)
     assert(ReplayInputs.link(previous, header.copy(slot = 7)).isLeft)
   }
+
+  test("record metadata independently refuses a wrong slot, block, header hash or raw-byte SHA") {
+    val header = PreparedBlockFixture.header
+    val sha = "00" * 32
+    val record = ReplayInputs.Record(
+      "00001.chunk",
+      0L,
+      12,
+      header.slot,
+      Some(header.blockNo),
+      Some(header.hash.hex),
+      Some(sha)
+    )
+    assertEquals(record.check(header, sha), Right(()))
+    assertEquals(
+      record.copy(slot = header.slot + 1).check(header, sha),
+      Left(ReplayInputs.Error.Slot(header.slot + 1, header.slot))
+    )
+    assertEquals(
+      record.copy(block = Some(header.blockNo + 1)).check(header, sha),
+      Left(ReplayInputs.Error.BlockNumber(header.blockNo + 1, header.blockNo))
+    )
+    val foreign = "ff" * 32
+    assertEquals(
+      record.copy(hash = Some(foreign)).check(header, sha),
+      Left(ReplayInputs.Error.HeaderHash(foreign, header.hash))
+    )
+    assertEquals(
+      record.copy(sha256 = Some(foreign)).check(header, sha),
+      Left(ReplayInputs.Error.BlockHash(foreign, sha))
+    )
+  }
+
+  test("JSONL bytes decode strictly before parsing their bound contents") {
+    val bytes =
+      (record(1) + "\n" + record(2) + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8)
+    assertEquals(ReplayInputs.lines(bytes).flatMap(ReplayInputs.records).map(_.size), Right(2))
+    assert(ReplayInputs.lines(Array(0xc3.toByte, 0x28.toByte)).isLeft)
+  }

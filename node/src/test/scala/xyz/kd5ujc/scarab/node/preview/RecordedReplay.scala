@@ -38,9 +38,17 @@ object RecordedReplay extends munit.Assertions:
     )
   }
 
-  private def records(config: ReplayInputs.Config): IO[Vector[ReplayInputs.Record]] =
-    IO.blocking(Files.readAllLines(config.capture.resolve("records.jsonl")).asScala.toVector)
-      .map(lines => ReplayInputs.records(lines).fold(e => fail(e.toString), identity))
+  /** The parsed value and its binding digest always come from one read, including for optional
+    * expected-failure files. Read-only mounts remain required for the original chunk/checkpoint
+    * inputs.
+    */
+  private def readBound[A](path: Path)(
+      parse: Vector[String] => Either[ReplayInputs.Error, A]
+  ): IO[(A, String)] =
+    IO.blocking(Files.readAllBytes(path)).map { bytes =>
+      val value = ReplayInputs.lines(bytes).flatMap(parse).fold(e => fail(e.toString), identity)
+      value -> sha256(bytes)
+    }
 
   private def readBlock(config: ReplayInputs.Config, record: ReplayInputs.Record): IO[Bytes] =
     IO.blocking {
@@ -174,11 +182,11 @@ object RecordedReplay extends munit.Assertions:
         assert(!Files.exists(config.output), s"output must be fresh: ${config.output}")
         Files.createDirectories(config.output)
       }
-      entries <- records(config)
-      recordsSha <- IO.blocking(sha256(Files.readAllBytes(config.capture.resolve("records.jsonl"))))
+      recordInput <- readBound(config.capture.resolve("records.jsonl"))(ReplayInputs.records)
+      (entries, recordsSha) = recordInput
       snapshotBytes <- IO.blocking(Files.readAllBytes(config.snapshot))
       _ <- IO(assert(snapshotBytes.take(8).sameElements("SCRBSNP5".getBytes("US-ASCII"))))
-      loaded <- NativeSnapshots.read[IO](config.snapshot, setup.mirrorEnv())
+      loaded <- NativeSnapshots.decode[IO](snapshotBytes, setup.mirrorEnv())
       initial <- IO(loaded.fold(e => fail(e.message), identity))
       anchor <- IO(initial.anchor.getOrElse(fail("recorded replay requires a snapshot anchor")))
       genesisHashes <- IO.blocking {
@@ -195,15 +203,11 @@ object RecordedReplay extends munit.Assertions:
           Option.when(Files.isRegularFile(file))(name -> sha256(Files.readAllBytes(file)))
         }.toMap
       }
-      expectedSha <- config.expectedFailures.traverse(path =>
-        IO.blocking(sha256(Files.readAllBytes(path)))
+      expectedInput <- config.expectedFailures.traverse(path =>
+        readBound(path)(ReplayInputs.expectedFailures)
       )
-      expected <- config.expectedFailures.traverse(path =>
-        IO.blocking {
-          val lines = Files.readAllLines(path).asScala.toVector
-          ReplayInputs.expectedFailures(lines).fold(e => fail(e.toString), identity)
-        }
-      )
+      expected = expectedInput.map(_._1)
+      expectedSha = expectedInput.map(_._2)
       referenceTargets <- config.reference.fold(IO.pure(Map.empty[BigInt, String]))(dir =>
         IO.blocking {
           val lines = Files.readAllLines(dir.resolve("index.jsonl")).asScala.toVector

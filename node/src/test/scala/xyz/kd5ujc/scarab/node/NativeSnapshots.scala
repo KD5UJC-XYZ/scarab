@@ -18,15 +18,21 @@ object NativeSnapshots:
       file: Path,
       env: ConsensusMirrorEnv
   ): F[Either[StorageError, StateSnapshot[MirrorState]]] =
-    given Ask[F, ConsensusMirrorEnv] = Ask.const(env)
     Sync[F]
       .blocking(Files.readAllBytes(file))
       .attemptNarrow[IOException]
       .map(_.leftMap(error => StorageError.Io(s"read snapshot $file", error)))
       .flatMap {
-        case Left(error) => Sync[F].pure(Left(error))
-        case Right(bytes) =>
-          FileLedgerSnapshots.verified(bytes) match
-            case Left(error)    => Sync[F].pure(Left(error))
-            case Right(content) => SnapshotV5.format[F](SnapshotCheck.Full).decode(content)
+        case Left(error)  => Sync[F].pure(Left(error))
+        case Right(bytes) => decode(bytes, env)
       }
+
+  /** Decode the exact bytes a replay has authenticated, without reopening the source file. */
+  def decode[F[_]: Sync](
+      bytes: Array[Byte],
+      env: ConsensusMirrorEnv
+  ): F[Either[StorageError, StateSnapshot[MirrorState]]] =
+    given Ask[F, ConsensusMirrorEnv] = Ask.const(env)
+    FileLedgerSnapshots.verified(bytes) match
+      case Left(error)    => Sync[F].pure(Left(error))
+      case Right(content) => SnapshotV5.format[F](SnapshotCheck.Full).decode(content)
