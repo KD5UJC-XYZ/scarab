@@ -2028,3 +2028,22 @@ Python sources remain byte-identical to checked source `e3dbe2da`, and the used 
 are unchanged. The additional audit has SHA-256
 `7504d11b69dc39157655309259dc8de2aa1bf7f6948d781d182846307d709ade`.
 The accepted one-CPU v0.2 limitation in section 31 is retained.
+
+The final integration rebase onto `50759002` includes #241's DELEG/POOL/GOVCERT/RATIFY rule
+extractions and conversion of proposal lookup to a map. Source review found the inspected
+production decisions/accounting equivalent for valid states with unique proposal IDs. Pool
+certificate decoding now represents canonical empty relays (`80`) as `Bytes.empty`; this is a
+representation change, not a claim that all executed code is unchanged. The focused
+`UpstreamPoolConformanceSuite` regression checks normalization, native pool-parameter encoding
+and retention of the original noncanonical transaction body/witness bytes. Network codec/DNS
+changes are outside the offline replay path. The private audit is
+`rebase-final-main-audit.json`, SHA-256
+`9e4a65ac85ba8f7efa193cde1dff490fefc362c937f6b9eeddbac67d9079bad3`.
+
+Fresh Docker `check` on `59d3b8c2`, based on `50759002`, passes 5,273 tests with 17 optional-data
+skips across all 14 modules, formatting, warning checks, default fuzz and scalafix. All 250 Python
+tests pass. The added relay regression then passes with its two existing native POOL adapter
+controls (three tests), formatting and scalafix; production source is unchanged by that test-only
+addition. The current area scenario and final published-head CI are reported in
+[PR #209](https://github.com/KD5UJC-XYZ/scarab/pull/209). These integration checks do not relabel
+any frozen full-data run as execution on the final main revision.
