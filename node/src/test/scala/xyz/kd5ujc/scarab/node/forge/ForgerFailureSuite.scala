@@ -19,6 +19,87 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
       def read = readKeys
       def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Unchanged)
 
+  private def leaderSlot(p: Pool): BigInt =
+    (5000 until 5040)
+      .find(slot =>
+        Leadership
+          .check(
+            slot,
+            epochNonce,
+            p.creds.vrf,
+            1000000,
+            1000000,
+            config.activeSlotsCoeff
+          )
+          .isRight
+      )
+      .map(BigInt(_))
+      .getOrElse(fail("fixture pool leads no slot"))
+
+  test("a forged block persistence failure retains its storage cause before publishing the tip") {
+    val p = pool(kesStart = 50)
+    val cause = StorageError.Io("volatile", new IOException("disk full"))
+    for
+      h <- withHandle(harness(p, ledgerWith(p, 1), storageFailure = Some(cause)))
+      result <- h.forger.step(leaderSlot(p))
+      events <- h.seen
+      chain <- h.chain
+      stats <- h.forger.stats.total
+    yield
+      assertEquals(result, Left(Fatal.Storage(cause)))
+      assertEquals(chain.tipRef, None)
+      assertEquals(stats.failed, 0L)
+      assert(!events.exists(_.isInstanceOf[ForgeEvent.Adopted]))
+      assert(!events.exists(_.isInstanceOf[ForgeEvent.Failed]))
+  }
+
+  test("rule implementation unavailability is fatal, never a self-rejected forged block") {
+    val p = pool(kesStart = 50)
+    val cause = xyz.kd5ujc.scarab.ledger.LedgerFailure.Unavailable(
+      xyz.kd5ujc.scarab.codec.Bytes.empty,
+      xyz.kd5ujc.scarab.ledger.ScriptLocation.Phase1(xyz.kd5ujc.scarab.codec.Bytes.empty),
+      xyz.kd5ujc.scarab.plutus.EvalFailure
+        .Unsupported(xyz.kd5ujc.scarab.plutus.BackendFailure.BinaryDstUnavailable)
+    )
+    withHandle {
+      for
+        h <- harness(
+          p,
+          ledgerWith(p, 1),
+          ruleFailure = Some(xyz.kd5ujc.scarab.ledger.BlockFailure.Tx(cause))
+        )
+        result <- h.forger.step(leaderSlot(p))
+        events <- h.seen
+        chain <- h.chain
+      yield
+        result match
+          case Left(Fatal.Unavailable(unavailable)) => assertEquals(unavailable.failure, cause)
+          case other => fail(s"expected unavailable evaluator, got $other")
+        assertEquals(chain.tipRef, None)
+        assert(!events.exists(_.isInstanceOf[ForgeEvent.Adopted]))
+        assert(!events.exists(_.isInstanceOf[ForgeEvent.Failed]))
+    }
+  }
+
+  test("an actual rule rejection remains recoverable and retains its predicate failure") {
+    val p = pool(kesStart = 50)
+    val cause = xyz.kd5ujc.scarab.ledger.BlockFailure.HeaderDiffers
+    withHandle {
+      for
+        h <- harness(p, ledgerWith(p, 1), ruleFailure = Some(cause))
+        result <- h.forger.step(leaderSlot(p))
+        events <- h.seen
+        chain <- h.chain
+      yield
+        assertEquals(result, Right(()))
+        assertEquals(chain.tipRef, None)
+        val refused = events.collect { case ForgeEvent.Failed(_, ForgeError.SelfRejected(error)) =>
+          error.failure
+        }
+        assertEquals(refused, Vector(cause))
+    }
+  }
+
   test("a slot defect retains its cause without recording a recoverable forge failure") {
     val p = pool(kesStart = 50)
     val cause = new IllegalStateException("readiness bug")
