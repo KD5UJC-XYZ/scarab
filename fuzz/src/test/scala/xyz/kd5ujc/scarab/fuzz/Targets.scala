@@ -382,10 +382,15 @@ object Targets:
       }
     )
 
-  private val genericVersions: Handshake.VersionCodec = new Handshake.VersionCodec:
-    def decode(wire: Int): Option[Int] = Option.when(wire >= 0 && wire <= 2)(wire)
-    def encode(version: Int): Either[ProtocolError, Int] =
-      decode(version).toRight(ProtocolError.UnsupportedLogicalVersion)
+  private enum MockVersion(val number: Int):
+    case V0 extends MockVersion(0)
+    case V1 extends MockVersion(1)
+    case V2 extends MockVersion(2)
+  private object MockVersion:
+    given Ordering[MockVersion] = Ordering.by(_.number)
+    given Handshake.VersionCodec[MockVersion] with
+      def decode(wire: Int): Option[MockVersion] = MockVersion.values.find(_.number == wire)
+      def encode(version: MockVersion): Either[ProtocolError, Int] = Right(version.number)
 
   private def genericHandshakeSeeds(file: String, column: Int): Vector[Array[Byte]] =
     pinnedLines(s"protocol/src/test/resources/upstream/generic-handshake/$file.tsv")
@@ -393,35 +398,39 @@ object Targets:
         Bytes.fromHex(row.split('\t')(column)).toOption.map(_.toArray)
       ) ++ Corpus.tricky
 
-  private def knownReason(reason: Handshake.Reason): Handshake.Reason = reason match
-    case mismatch: Handshake.Reason.VersionMismatch => mismatch.copy(unknown = Vector.empty)
-    case other                                      => other
+  private def knownReason(
+      reason: Handshake.WireReason[MockVersion]
+  ): Handshake.WireReason[MockVersion] = reason match
+    case mismatch: Handshake.WireReason.VersionMismatch[MockVersion] =>
+      mismatch.copy(unknown = Vector.empty)
+    case other => other
 
   private val genericHandshake: Target = Target(
     "handshake-generic",
     () => genericHandshakeSeeds("codec", 3),
     probe("handshake-generic") { b =>
       for state <- Handshake.State.values do
-        Handshake.decodePrefix(genericVersions, state, b).foreach { case (message, rest) =>
+        Handshake.decodePrefix[MockVersion](state, b).foreach { case (message, rest) =>
           hit("handshake-generic")
           val used = b.size - rest.size
           req(used > 0, "decoded nothing")
           req(
-            Handshake.decode(genericVersions, state, b.take(used)) == Right(message),
+            Handshake.decode[MockVersion](state, b.take(used)) == Right(message),
             "consumed prefix decodes differently"
           )
           req(
-            Handshake.decode(genericVersions, state, b.take(used - 1)).isLeft,
+            Handshake.decode[MockVersion](state, b.take(used - 1)).isLeft,
             "a shorter prefix decodes too"
           )
           val kept = message match
-            case Handshake.Message.Refuse(reason) => Handshake.Message.Refuse(knownReason(reason))
-            case other                            => other
-          Handshake.encode(genericVersions, message) match
+            case Handshake.WireMessage.Refuse(reason) =>
+              Handshake.WireMessage.Refuse(knownReason(reason))
+            case other => other
+          Handshake.encode(message) match
             case Left(e) => throw new Violation(s"$state: decoded $message does not encode: $e")
             case Right(encoded) =>
               req(
-                Handshake.decode(genericVersions, state, encoded) == Right(kept),
+                Handshake.decode[MockVersion](state, encoded) == Right(kept),
                 s"$state: $message re-decodes differently"
               )
         }
@@ -432,13 +441,13 @@ object Targets:
     "handshake-refusal",
     () => genericHandshakeSeeds("refuse", 2),
     probe("handshake-refusal") { b =>
-      Handshake.decodeReason(genericVersions, b).foreach { reason =>
+      Handshake.decodeReason[MockVersion](b).foreach { reason =>
         hit("handshake-refusal")
-        Handshake.encodeReason(genericVersions, reason) match
+        Handshake.encodeReason(reason) match
           case Left(e) => throw new Violation(s"decoded $reason does not encode: $e")
           case Right(encoded) =>
             req(
-              Handshake.decodeReason(genericVersions, encoded) == Right(knownReason(reason)),
+              Handshake.decodeReason[MockVersion](encoded) == Right(knownReason(reason)),
               s"$reason re-decodes differently"
             )
       }

@@ -73,11 +73,15 @@ retain address validation, amount/byte clamping, over-response refusal and the e
 receive-only deadline. The generic adapter retains unconstrained upstream responses
 and uses real linked Mux; it does not fabricate addresses.
 
-Handshake shares its bounded parser and wire codec through a version-codec policy;
-the Cardano facades retain their closed node-to-node/node-to-client version policies.
-Its highest-common selector takes a version-data codec and returns a closed
-`SelectionError[E]`, preserving typed decode/agreement causes until an explicit
-wire-refusal conversion. It mirrors `ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Client.hs:191–227`
+Handshake shares its bounded parser and wire codec through contextual `VersionCodec[V]`
+and `Ordering[V]` instances. `WireMessage[V]` and `WireReason[V]` keep the version domain
+in their types: node-to-node, node-to-client and the original closed mock 0/1/2 domain
+cannot select each other's codec. Existing Cardano integer facades convert once through
+their closed `NtnVersion`/`NtcVersion` profiles; only the node-to-client wire codec applies
+bit 15. Its highest-common selector uses a contextual `DataCodec[V, A, E]` and returns
+closed `SelectionError[V, E]`, preserving version values and typed decode/agreement causes
+until an explicit wire-refusal conversion. Missing or mismatched codec instances are
+compile-time errors, covered alongside the original negotiation regressions. It mirrors `ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Client.hs:191–227`
 at the pinned revision. Original mock versions 0/1/2 and version-dependent data are
 retained in 792 original property observations plus nine controlled cross-version
 judgments. Native checks compare the shared pure wire/selection contracts; original

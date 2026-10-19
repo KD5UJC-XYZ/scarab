@@ -52,3 +52,10 @@ itself. A clean second exporter run reproduced every TSV byte. The retained patc
 one blank context prefix normalized for repository whitespace checks; manifests retain
 both the executed and retained patch hashes. Independently applying the normalized
 patch reconstructs the identical recorded executed-source hash.
+
+The native adapter uses a closed `Version` enum for the original 0/1/2 values.
+Contextual `VersionCodec[Version]`, `Ordering[Version]` and
+`DataCodec[Version, Data, DataError]` instances are shared with the generic production
+wire/selection operations. Typed wire messages and refusals cannot accidentally use
+Cardano's version codec. `TypedHandshakeSuite` checks missing/mismatched codec rejection
+at compile time, node-to-client bit-15 framing and existing facade error precedence.

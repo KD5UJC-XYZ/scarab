@@ -6,28 +6,39 @@ import java.security.MessageDigest
 import scala.io.Source
 import xyz.kd5ujc.scarab.codec.Bytes
 
-import Handshake.{Message, Reason, State, Term}
+import Handshake.{WireMessage as Message, WireReason as Reason, State, Term}
 
 /** Original mock domain from upstream Handshake/Test.hs:125–235, not Cardano versions. */
 class GenericHandshakeUpstreamSuite extends munit.FunSuite:
   private case class Data(number: Long, conjunction: Boolean, disjunction: Boolean)
+  private enum Version(val number: Int):
+    case V0 extends Version(0)
+    case V1 extends Version(1)
+    case V2 extends Version(2)
+  private object Version:
+    given Ordering[Version] = Ordering.by(_.number)
+    given Handshake.VersionCodec[Version] = versions()
+
+  private def version(number: Int): Version =
+    Version.values.find(_.number == number).getOrElse(fail(s"unknown mock version $number"))
+
   private enum DataError:
-    case Unrecognized(version: Int, term: Term)
+    case Unrecognized(version: Version, term: Term)
     case Incompatible
 
-  private def versions(onlyOne: Boolean = false): Handshake.VersionCodec =
-    new Handshake.VersionCodec:
-      def decode(wire: Int): Option[Int] =
-        Option.when(if onlyOne then wire == 1 else wire >= 0 && wire <= 2)(wire)
-      def encode(version: Int): Either[ProtocolError, Int] =
-        decode(version).toRight(ProtocolError.UnsupportedLogicalVersion)
+  private def versions(onlyOne: Boolean = false): Handshake.VersionCodec[Version] =
+    new Handshake.VersionCodec[Version]:
+      def decode(wire: Int): Option[Version] =
+        Version.values.find(v => v.number == wire && (!onlyOne || v == Version.V1))
+      def encode(v: Version): Either[ProtocolError, Int] =
+        decode(v.number).map(_.number).toRight(ProtocolError.UnsupportedLogicalVersion)
 
-  private val codec = new Handshake.DataCodec[Data, DataError]:
-    def decode(version: Int, term: Term): Either[DataError, Data] = (version, term) match
-      case (0, Term.Integer(n)) if n.isValidLong => Right(Data(n.toLong, false, false))
-      case (1, Term.Arr(Vector(Term.Integer(n), Term.Bool(a)), true)) if n.isValidLong =>
+  private given codec: Handshake.DataCodec[Version, Data, DataError] with
+    def decode(version: Version, term: Term): Either[DataError, Data] = (version, term) match
+      case (Version.V0, Term.Integer(n)) if n.isValidLong => Right(Data(n.toLong, false, false))
+      case (Version.V1, Term.Arr(Vector(Term.Integer(n), Term.Bool(a)), true)) if n.isValidLong =>
         Right(Data(n.toLong, a, false))
-      case (2, Term.Arr(Vector(Term.Integer(n), Term.Bool(a), Term.Bool(b)), true))
+      case (Version.V2, Term.Arr(Vector(Term.Integer(n), Term.Bool(a), Term.Bool(b)), true))
           if n.isValidLong =>
         Right(Data(n.toLong, a, b))
       case _ => Left(DataError.Unrecognized(version, term))
@@ -44,7 +55,7 @@ class GenericHandshakeUpstreamSuite extends munit.FunSuite:
     def refusalText(error: DataError): String = error match
       case DataError.Incompatible => "incompatible"
       case DataError.Unrecognized(version, term) =>
-        val name = if version == 2 then "Data" else "VersionData"
+        val name = if version == Version.V2 then "Data" else "VersionData"
         s"decodeTerm $name: unrecognised tag: ${haskell(term)}"
 
   private def haskell(term: Term): String = term match
@@ -75,9 +86,12 @@ class GenericHandshakeUpstreamSuite extends munit.FunSuite:
     case "confirm" => State.Confirm
     case other     => fail(s"unknown state $other")
 
-  private def receive(state: State, chunks: Vector[Bytes]): Either[Handshake.DecodeError, Message] =
+  private def receive(
+      state: State,
+      chunks: Vector[Bytes]
+  ): Either[Handshake.DecodeError, Message[Version]] =
     chunks
-      .foldLeft[Either[Handshake.DecodeError, (Bytes, Option[Message])]](
+      .foldLeft[Either[Handshake.DecodeError, (Bytes, Option[Message[Version]])]](
         Right((Bytes.empty, None))
       ) { (result, chunk) =>
         result.flatMap { case (pending, decoded) =>
@@ -87,7 +101,7 @@ class GenericHandshakeUpstreamSuite extends munit.FunSuite:
               else Left(Handshake.DecodeError(ProtocolError.TrailingBytes))
             case None =>
               val all = pending ++ chunk
-              Handshake.decodePrefix(versions(), state, all) match
+              Handshake.decodePrefix[Version](state, all) match
                 case Left(error) if error.incomplete => Right((all, None))
                 case Left(error)                     => Left(error)
                 case Right((message, rest)) =>
@@ -107,8 +121,8 @@ class GenericHandshakeUpstreamSuite extends munit.FunSuite:
       assert(row.drop(4).forall(_ == "pass"), s"original property verdicts ${row.take(2)}")
       val wire = bytes(row(3))
       val st = state(row(2))
-      val decoded = right(Handshake.decode(versions(), st, wire))
-      assertEquals(right(Handshake.encode(versions(), decoded)), wire)
+      val decoded = right(Handshake.decode[Version](st, wire))
+      assertEquals(right(Handshake.encode(decoded)), wire)
       (0 to wire.size).foreach { i =>
         assertEquals(right(receive(st, Vector(wire.take(i), wire.drop(i)))), decoded)
         (i to wire.size).foreach { j =>
@@ -120,7 +134,7 @@ class GenericHandshakeUpstreamSuite extends munit.FunSuite:
       }
       val sentinel = bytes("00")
       assertEquals(
-        right(Handshake.decodePrefix(versions(), st, wire ++ sentinel)),
+        right(Handshake.decodePrefix[Version](st, wire ++ sentinel)),
         (decoded, sentinel)
       )
     }
@@ -134,35 +148,36 @@ class GenericHandshakeUpstreamSuite extends munit.FunSuite:
       assertEquals(row(3), "pass")
       val wire = bytes(row(2))
       assertEquals(
-        right(Handshake.encodeReason(versions(), right(Handshake.decodeReason(versions(), wire)))),
+        right(Handshake.encodeReason(right(Handshake.decodeReason[Version](wire)))),
         wire
       )
     }
   }
 
-  private def offers(raw: String): Vector[(Int, Data)] =
+  private def offers(raw: String): Vector[(Version, Data)] =
     raw.split(";", -1).toVector.filter(_.nonEmpty).map { entry =>
       val fields = entry.split(",", -1)
       assertEquals(fields.length, 4)
-      fields(0).toInt -> Data(fields(1).toLong, fields(2) == "True", fields(3) == "True")
+      version(fields(0).toInt) -> Data(fields(1).toLong, fields(2) == "True", fields(3) == "True")
     }
-  private def proposal(hex: String, onlyOne: Boolean = false): Vector[(Int, Term)] =
-    right(Handshake.decode(versions(onlyOne), State.Propose, bytes("8200" + hex))) match
+  private def proposal(hex: String, onlyOne: Boolean = false): Vector[(Version, Term)] =
+    given Handshake.VersionCodec[Version] = versions(onlyOne)
+    right(Handshake.decode[Version](State.Propose, bytes("8200" + hex))) match
       case Message.Propose(vs) => vs
       case other               => fail(s"unexpected proposal $other")
   private def select(
-      local: Vector[(Int, Data)],
-      remote: Vector[(Int, Term)]
-  ): Either[Reason, (Int, Data)] =
-    Handshake.acceptOrRefuse(codec, local, remote).left.map(Handshake.refusal(codec, _))
+      local: Vector[(Version, Data)],
+      remote: Vector[(Version, Term)]
+  ): Either[Reason[Version], (Version, Data)] =
+    Handshake.acceptOrRefuse(local, remote).left.map(Handshake.refusal[Version, Data, DataError])
 
-  private def expected(raw: String): Either[Reason, (Int, Data)] =
+  private def expected(raw: String): Either[Reason[Version], (Version, Data)] =
     if raw.startsWith("refuse:") then
-      Left(right(Handshake.decodeReason(versions(), bytes(raw.drop(7)))))
+      Left(right(Handshake.decodeReason[Version](bytes(raw.drop(7)))))
     else
       raw.split(":", -1).toVector match
         case Vector("accept", version, n, a, b) =>
-          Right(version.toInt -> Data(n.toLong, a == "True", b == "True"))
+          Right(this.version(version.toInt) -> Data(n.toLong, a == "True", b == "True"))
         case other => fail(s"unknown outcome $other")
 
   test("original generic and asymmetric negotiation judgments use the shared production selector") {
@@ -178,9 +193,9 @@ class GenericHandshakeUpstreamSuite extends munit.FunSuite:
       assertEquals(select(client, proposal(row(3))), expected(row(7)))
       // The actual asymmetric server only recognizes version 1, and skips 0/2 on the wire.
       val known = proposal(row(2), onlyOne = true)
-      assert(known.forall(_._1 == 1))
+      assert(known.forall(_._1 == Version.V1))
       assertEquals(
-        select(Vector(1 -> Data(0, true, true)), known),
+        select(Vector(Version.V1 -> Data(0, true, true)), known),
         expected(row(8))
       )
     }
@@ -193,12 +208,13 @@ class GenericHandshakeUpstreamSuite extends munit.FunSuite:
     assertEquals(cases.size, 9)
     cases.foreach { row =>
       assertEquals(row.size, 8)
-      val target = row(2).toInt
+      val target = version(row(2).toInt)
       val d = Data(row(3).toLong, row(4) == "True", row(5) == "True")
-      val local = (if target == 2 then Vector(0 -> d) else Vector.empty) :+ (target -> d)
+      val local =
+        (if target == Version.V2 then Vector(Version.V0 -> d) else Vector.empty) :+ (target -> d)
       val actual = select(local, proposal(row(6)))
       assertEquals(actual, expected(row(7)))
-      if row(1).toInt != target then
+      if version(row(1).toInt) != target then
         actual match
           case Left(Reason.DecodeError(version, _)) => assertEquals(version, target)
           case other => fail(s"invalid cross-version data did not refuse highest version: $other")
@@ -206,12 +222,11 @@ class GenericHandshakeUpstreamSuite extends munit.FunSuite:
     assertEquals(cases.count(_(7).startsWith("refuse:")), 6)
   }
 
-  private def encoded(v: Int, d: Data): Term = v match
-    case 0 => Term.Integer(d.number)
-    case 1 => Term.Arr(Vector(Term.Integer(d.number), Term.Bool(d.conjunction)))
-    case 2 =>
+  private def encoded(v: Version, d: Data): Term = v match
+    case Version.V0 => Term.Integer(d.number)
+    case Version.V1 => Term.Arr(Vector(Term.Integer(d.number), Term.Bool(d.conjunction)))
+    case Version.V2 =>
       Term.Arr(Vector(Term.Integer(d.number), Term.Bool(d.conjunction), Term.Bool(d.disjunction)))
-    case other => fail(s"unknown mock version $other")
 
   test("original acceptable and valid-version selection symmetry properties") {
     val cases = rows("symmetry", "924508ac71976613c3c9e39afeef965e34febf8bc410cd0cbed3344c28ded35d")
@@ -243,19 +258,25 @@ class GenericHandshakeUpstreamSuite extends munit.FunSuite:
     "generic codecs do not widen Cardano recognition or fallback after a highest-version refusal"
   ) {
     val original = bytes("8200a30000018200f4028300f4f4")
-    assertEquals(proposal("a30000018200f4028300f4f4").map(_._1), Vector(0, 1, 2))
+    assertEquals(
+      proposal("a30000018200f4028300f4f4").map(_._1),
+      Vector(Version.V0, Version.V1, Version.V2)
+    )
     assertEquals(
       right(Handshake.decode(Handshake.Suite.NodeToNode, State.Propose, original)),
-      Message.Propose(Vector.empty)
+      Handshake.Message.Propose(Vector.empty)
     )
-    val local = Vector(0 -> Data(1, false, false), 2 -> Data(1, true, false))
-    val remote = Vector(0 -> Term.Integer(1), 2 -> Term.Integer(1))
+    val local = Vector(Version.V0 -> Data(1, false, false), Version.V2 -> Data(1, true, false))
+    val remote = Vector(Version.V0 -> Term.Integer(1), Version.V2 -> Term.Integer(1))
     assertEquals(
-      Handshake.acceptOrRefuse(codec, local, remote),
-      Left(Handshake.SelectionError.DecodeError(2, DataError.Unrecognized(2, Term.Integer(1))))
+      Handshake.acceptOrRefuse(local, remote),
+      Left(
+        Handshake.SelectionError
+          .DecodeError(Version.V2, DataError.Unrecognized(Version.V2, Term.Integer(1)))
+      )
     )
     assertEquals(
       select(local, remote),
-      Left(Reason.DecodeError(2, "decodeTerm Data: unrecognised tag: TInt 1"))
+      Left(Reason.DecodeError(Version.V2, "decodeTerm Data: unrecognised tag: TInt 1"))
     )
   }
