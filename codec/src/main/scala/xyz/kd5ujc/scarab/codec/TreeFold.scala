@@ -29,7 +29,7 @@ object TreeFold:
 
   /** The keys and values of a map in turn: `k0, v0, k1, v1, ...`. */
   def flatten[A](ps: Vector[(A, A)]): Vector[A] =
-    val out = scala.collection.mutable.ArrayBuffer[A](2 * ps.size)
+    val out = new scala.collection.mutable.ArrayBuffer[A](2 * ps.size)
     var i = 0
     while i < ps.size do
       out += ps(i)._1
