@@ -111,7 +111,8 @@ behaviour change, all gates re-run); the sync ran on d66b216.
   hash `c182c2d1b783983c614d5331241bd640ebd76ba58f7f51a95dda5921865f733e`, identical to Koios `/tip`
   at that moment.
 - 0 error events. Phase 2: 3,229,757 successful and 242 failing evaluations (each equal to
-  `is_valid`), 11,213,919 scripts, 3,303,884 script data hashes checked; 1447 epochs validated. Final
+  `is_valid`), 11,213,919 scripts, 3,303,884 script data hashes checked; 1447 epochs validated. The
+  successful/failing evaluation counters count transactions, rather than individual scripts. Final
   ledger: 3,195,803 UTxO, 112,205 accounts, 726 pools, protocol 11.0.
 - Memory: container RSS grew from about 1 GB to a peak of 5.66 GB with `-Xmx3g`. The container limit
   was raised from 6 GiB to 10 GiB at 17:20 with `docker update` (no restart, no code change).
@@ -1849,3 +1850,33 @@ and retries it once; a discarded repetition emits no verdicts and is counted in 
 summary. Expect a shared box to contaminate most repetitions — re-run until the wanted
 number of clean repetitions pass, or use a quiet machine.
 
+## 31. Preview acceptance evidence reconciliation (#21)
+
+**Historical evidence recovered, 2026-10-19.** The retained K1 Haskell projections were recovered
+from the read-only archive, independently of the Scala outputs. All 1,518 transferred files
+(163,493,903 bytes) matched their source SHA-256; no raw Haskell database was copied or restarted.
+The reference index has 1,451 unique epochs, continuously 1 through 1,451, with SHA-256
+`f2c74064442493decbadb77fbeb6e3f4d42eac1e6e64a3505b0ad5cbe232eabb`.
+
+The current `oracle_compare.py diff --expected-epochs 1451` reproduces **1,451/1,451 matches**,
+zero differences, missing points or duplicate epochs, against both the original K1 Scala dumps
+and the frozen `a315286e` rerun. Both result files have SHA-256
+`97c7e4b0271782a7ed50cb1d5d82b571e3ee2b3d619fcf5c11de8fe324d133f9`.
+This authenticates the historical comparison; it does not execute current rules over those blocks.
+The strict option matters: the ordinary progress-reporting command can legitimately have no
+mismatches while still waiting for Scala points.
+
+The historical **242** phase-2 failures count invalid transactions. The original block bytes identify
+242 unique transaction hashes in 230 blocks: 137 Babbage and 105 Conway transactions, all at or
+before the uninterrupted run's final slot 125092775/block 4748301. Original transaction-body
+BLAKE2b-256 hashes and the block/body/witness SHA-256 values were independently checked. The
+private extraction has SHA-256
+`81ad623b4c868ac8855ec0748cbacc0d50629caa3d287eb8e6c8300e27823620`.
+An epoch log counter is discovery evidence rather than a transaction identity: the epoch 762/763
+log deltas are 10/7, while the canonical invalid-transaction counts are 8/9; the total agrees.
+Canonical block validity flags determine the fixture identities.
+
+The section 3 figure of about 365 blocks/s retains its original build, hardware and live-sync
+conditions. Neither the recovered comparison nor fixture extraction measures current throughput.
+Current-rule Preview replay, its serial/parallel comparison and any timing result are recorded
+separately from this recovered evidence.

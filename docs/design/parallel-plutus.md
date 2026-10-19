@@ -65,7 +65,8 @@ Pinned ledger source: `f649f9751074d2ab3de033fc3912f29c9862c1f5`,
 [Alonzo/Plutus/Evaluate.hs, lines 134–177](https://github.com/IntersectMBO/cardano-ledger/blob/f649f9751074d2ab3de033fc3912f29c9862c1f5/eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Evaluate.hs#L134)
 for request collection, and lines 187–207 for reference evaluation. The unchanged-reference
 aggregation oracle now pins all pass/fail patterns in three scripts for each language, and serial/prepared paths retain every result. Exact reconstruction payloads match; native
-diagnostic prose remains the presentation gap in [#195](https://github.com/KD5UJC-XYZ/scarab/issues/195).
+diagnostic prose remains the optional presentation follow-up in
+[#208](https://github.com/KD5UJC-XYZ/scarab/issues/208); result aggregation #195 is complete.
 The graph follows
 [CIP-31](https://cips.cardano.org/cip/CIP-0031) reference reads and
 [CIP-40](https://cips.cardano.org/cip/CIP-0040) collateral returns. Parallel evaluation is a local
@@ -96,6 +97,11 @@ Normal `check` skips only this externally supplied capture, not the deterministi
 The capture's integrity, baseline binding, sample limits and measured results are recorded in
 [performance.md](../performance.md). These data establish serial/parallel equivalence on that
 preprod window, not the complete historical Preview 242-failure/K1 acceptance of #21.
+
+For a finished epoch comparison, use `scripts/oracle_compare.py diff --require-complete`;
+`--expected-epochs 1451` also pins the historical Preview reference coverage. These acceptance
+options reject empty references, duplicate epochs, missing points and wrong block hashes. The
+default mode continues to report points still waiting for a running follower.
 
 ## Accepted feature gates
 
