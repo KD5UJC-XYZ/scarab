@@ -1850,7 +1850,7 @@ and retries it once; a discarded repetition emits no verdicts and is counted in 
 summary. Expect a shared box to contaminate most repetitions — re-run until the wanted
 number of clean repetitions pass, or use a quiet machine.
 
-## 31. Preview acceptance evidence reconciliation (#21)
+## 32. Preview acceptance evidence reconciliation (#21)
 
 **Historical evidence recovered, 2026-10-19.** The retained K1 Haskell projections were recovered
 from the read-only archive, independently of the Scala outputs. All 1,518 transferred files
@@ -1921,3 +1921,10 @@ The retained 21-artifact evidence manifest, independently rehashed after the run
 `395d0ff72707146701e688ea8e61a9871c3067a87e9996f12519ea6a7c6e4af7`.
 The [shared-runner recipe](design/parallel-plutus.md#preview-replay-using-the-same-runner) describes
 the input export and environment controls.
+
+The feature was subsequently rebased onto `ad5288a9`. That merge adds networking and topology
+configuration, typed configuration cases, a DNS dependency and two immutable-index lookup methods.
+The replay does not call those new methods; existing immutable open/recovery/stream, `ChainStorage`,
+ledger, evaluator, reward, snapshot and projection paths are unchanged. The frozen replay manifests
+retain their earlier source and class bindings; they are not claimed to be identical to every file
+on the rebased branch.
