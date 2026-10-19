@@ -44,7 +44,8 @@ private[network] object TxSubmission2Runtime:
   final case class ServerSettings(
       idsPerRequest: Int = 3,
       bodiesTimeout: FiniteDuration = TxSubmissionPolicy.ShortWait,
-      initTimeout: FiniteDuration = 60.seconds,
+      /** The reference blocks indefinitely in StInit. A local deployment may opt into a bound. */
+      initTimeout: Option[FiniteDuration] = None,
       maxTxToRequest: Int = 8,
       maxUnacked: Int = TxSubmissionPolicy.MaxUnacknowledged
   )
@@ -219,7 +220,7 @@ private[network] object TxSubmission2Runtime:
     validateServerSettings(settings, codec).fold(
       error => illegal(error),
       _ =>
-        receive(State.Init, Some(settings.initTimeout)).flatMap {
+        receive(State.Init, settings.initTimeout).flatMap {
           case TxSubmission2Engine.Message.Init => loop(0)
           case other                            => illegal(unexpected(other))
         }

@@ -31,8 +31,8 @@ object TxSubmissionServer:
       idsPerRequest: Int = 3,
       /** Time the client may take to send the transactions we asked for. */
       bodiesTimeout: FiniteDuration = TxSubmissionPolicy.ShortWait,
-      /** Time to wait for the client's Init. */
-      initTimeout: FiniteDuration = 60.seconds
+      /** Optional local bound for the client's first Init; the reference waits indefinitely. */
+      initTimeout: Option[FiniteDuration] = None
   )
 
   def run[F[_]: Temporal](
