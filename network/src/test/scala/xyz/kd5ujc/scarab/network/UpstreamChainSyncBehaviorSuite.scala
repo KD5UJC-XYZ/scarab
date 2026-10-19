@@ -26,7 +26,7 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
     "/upstream/ouroboros-network-protocol-codecs/chainsync-behavior-blocks.tsv"
   private val pointsFixture =
     "/upstream/ouroboros-network-protocol-codecs/chainsync-behavior-points.tsv"
-  private val expectedCasesSha = "a5736870dfe3aff9e6e975363ed64db34022a426b3c736b5d1eaf246a34513fd"
+  private val expectedCasesSha = "a3e77a7ef66233c8d2360788efa828afd946a7513069cc535317e3751d055a18"
   private val expectedBlocksSha = "98d1ee153282f811de0b287bf1c7b3a5e3b5c68482fd8223d7f5536744eda776"
   private val expectedPointsSha = "4093edd68ddf331771f9857899fcd32e14b4108b1249c400d624ba7d35740518"
 
@@ -50,7 +50,8 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
       producerCount: Int,
       forkCount: Int,
       pointCount: Int,
-      genesisPoint: Bytes
+      genesisPoint: Bytes,
+      expectedIntersection: Option[Bytes]
   )
   private final case class BlockRow(
       seed: Int,
@@ -92,8 +93,8 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
   private def readCases(): Vector[CaseRow] =
     resource(casesFixture, expectedCasesSha).map { line =>
       val fields = line.split("\\t", -1).toVector
-      assertEquals(fields.size, 13)
-      assertEquals(fields(0), "chainsync-behavior-case-v1")
+      assertEquals(fields.size, 14)
+      assertEquals(fields(0), "chainsync-behavior-case-v2")
       CaseRow(
         fields(1).toInt,
         fields(2).toInt,
@@ -106,7 +107,10 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
         fields(9).toInt,
         fields(10).toInt,
         fields(11).toInt,
-        fromHex(fields(12))
+        fromHex(fields(12)),
+        fields(13) match
+          case "none" => None
+          case point  => Some(fromHex(point))
       )
     }
 
@@ -195,6 +199,7 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
       new ChainSyncRuntime.Source[IO, Bytes, Bytes, Bytes]:
         def intersect(points: Vector[Bytes]): IO[Either[Bytes, (Bytes, Bytes)]] =
           val found = points.collectFirst {
+            case point if point == row.genesisPoint => point -> -1
             case point if producer.exists(_.point == point) =>
               point -> producer.indexWhere(_.point == point)
           }
@@ -230,22 +235,24 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
       chain: Ref[IO, Vector[Bytes]]
   )(using Raise[IO, NetworkError]): IO[Unit] =
     val row = testCase.row
-    client.requestNext.flatMap {
-      case ChainSyncRuntime.Update.RollBackward(point, _) =>
-        val retained =
-          if point == row.genesisPoint then Vector.empty
-          else
-            val found = testCase.fork.indexWhere(_.point == point)
-            assert(found >= 0, s"seed ${row.seed} rollback point must be on original client fork")
-            testCase.fork.take(found + 1).map(_.payload)
-        chain.set(retained) *> (if point == row.targetPoint then client.done
-                                else replayClient(client, testCase, chain))
-      case ChainSyncRuntime.Update.RollForward(payload, _) =>
-        val point = testCase.pointByPayload
-          .get(payload)
-          .getOrElse(fail(s"seed ${row.seed} unknown exact serialized block item"))
-        chain.update(_ :+ payload) *> (if point == row.targetPoint then client.done
-                                       else replayClient(client, testCase, chain))
+    cats.Monad[IO].tailRecM(()) { _ =>
+      client.requestNext.flatMap {
+        case ChainSyncRuntime.Update.RollBackward(point, _) =>
+          val retained =
+            if point == row.genesisPoint then Vector.empty
+            else
+              val found = testCase.fork.indexWhere(_.point == point)
+              assert(found >= 0, s"seed ${row.seed} rollback point must be on original client fork")
+              testCase.fork.take(found + 1).map(_.payload)
+          chain.set(retained) *> (if point == row.targetPoint then client.done.as(Right(()))
+                                  else IO.pure(Left(())))
+        case ChainSyncRuntime.Update.RollForward(payload, _) =>
+          val point = testCase.pointByPayload
+            .get(payload)
+            .getOrElse(fail(s"seed ${row.seed} unknown exact serialized block item"))
+          chain.update(_ :+ payload) *> (if point == row.targetPoint then client.done.as(Right(()))
+                                         else IO.pure(Left(())))
+      }
     }
 
   test(
@@ -262,6 +269,11 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
     assertEquals(fixture.map(_.producer.size).sum, 1_074)
     assertEquals(fixture.map(_.fork.size).sum, 1_036)
     assertEquals(fixture.map(_.candidatePoints.size).sum, 234)
+    assertEquals(
+      fixture.count(_.row.expectedIntersection.contains(fromHex("80"))),
+      3,
+      "pinned upstream Chain.findFirstPoint selects Genesis in three generated cases"
+    )
 
     fixture.traverse_ { testCase =>
       val row = testCase.row
@@ -306,9 +318,7 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
                     yield
                       assertEquals(
                         intersection,
-                        testCase.candidatePoints
-                          .find(p => testCase.producer.exists(_.point == p))
-                          .map(_ -> row.targetTip)
+                        row.expectedIntersection.map(_ -> row.targetTip)
                       )
                       assertEquals(
                         finalChain,

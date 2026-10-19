@@ -1,5 +1,5 @@
 {
-  "schema": "scarab-upstream-network-protocol-behavior-v1",
+  "schema": "scarab-upstream-network-protocol-behavior-v2",
   "source": "ouroboros-network",
   "sourceCommit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
   "upstreamTest": "ouroboros-network:protocols-tests / ChainSync / unchanged Arbitrary ChainProducerStateForkTest + propChainSyncDirectST + propChainSyncConnectST + propChainSyncDemoST",
@@ -56,10 +56,10 @@
     "ConcreteBlock.hs": "a8af2d74be6df4ce0067ca7adfbcf98bec9f8829d36e276261b2526d895e404f",
     "Block.hs": "83e93f9be5a5bf30600c4d5257f8527bd06adc22d5f92bcc83165a479982a822"
   },
-  "observerPatchSha256": "8b220cc3b1c2b278005f8edeaeed83e36cfefe0cff9779aebbfe6b69d853fc82",
+  "observerPatchSha256": "5629b56637b51dcc15cfc00919899f5fce3f3c636464936fca49861de21c6078",
   "dependencyPlanSha256": "42d695659261546c8c90946f82f38389c61cf6588c16a931aad92a9c42ea183c",
   "targetDependencyClosureUnitCount": 167,
-  "casesTsvSha256": "a5736870dfe3aff9e6e975363ed64db34022a426b3c736b5d1eaf246a34513fd",
+  "casesTsvSha256": "a3e77a7ef66233c8d2360788efa828afd946a7513069cc535317e3751d055a18",
   "blocksTsvSha256": "98d1ee153282f811de0b287bf1c7b3a5e3b5c68482fd8223d7f5536744eda776",
   "pointsTsvSha256": "4093edd68ddf331771f9857899fcd32e14b4108b1249c400d624ba7d35740518",
   "generatorParameters": {
@@ -71,7 +71,8 @@
     "point": "exact Serialise (Point Block) bytes",
     "tip": "exact encodeTip S.encode bytes used by the upstream codec",
     "payload": "exact Serialise Block item bytes; generated mock Int hashes retained as CBOR integers",
-    "genesisPoint": "exact Serialise Point Block bytes used by the unchanged upstream chain model"
+    "genesisPoint": "exact Serialise Point Block bytes used by the unchanged upstream chain model",
+    "expectedIntersection": "exact first candidate returned by pinned ChainProducerState.findFirstPoint; none when no candidate is on-chain"
   },
   "limitations": [
     "Rows retain the complete generated producer and fork chains plus exact candidate-point order and unchanged original property verdicts.",

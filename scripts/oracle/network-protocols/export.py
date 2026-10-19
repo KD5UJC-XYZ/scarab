@@ -499,16 +499,18 @@ exportChainSyncBehaviorCases casesPath blocksPath pointsPath count seed = do
                   candidatePoints = Chain.selectPoints ChainSyncExamples.recentOffsets fork
                   targetPoint = Chain.headPoint producer
                   targetTip = Chain.headTip producer
+                  expectedIntersection = ChainProducerState.findFirstPoint candidatePoints cps
                   pointBytes = BL.toStrict . S.serialise
                   blockBytes = BL.toStrict . S.serialise
                   tipBytes = BL.toStrict . CBOR.toLazyByteString . encodeTip S.encode $ targetTip
                   propertyResult result = if isSuccess result then "pass" else "upstream-failure"
               hPutStrLn casesHandle $ intercalate "\t"
-                [ "chainsync-behavior-case-v1", show caseSeed, show ordinal, show caseSize
+                [ "chainsync-behavior-case-v2", show caseSeed, show ordinal, show caseSize
                 , propertyResult directResult, propertyResult connectResult, propertyResult channelResult
                 , hex (pointBytes targetPoint), hex tipBytes
                 , show (length producerBlocks), show (length forkBlocks), show (length candidatePoints)
                 , hex (pointBytes (Chain.headPoint Chain.genesis))
+                , maybe "none" (hex . pointBytes) expectedIntersection
                 ]
               forM_ (zip [0 :: Int ..] producerBlocks) $ \(blockOrdinal, block) ->
                 hPutStrLn blocksHandle $ intercalate "\t"
@@ -1901,14 +1903,14 @@ def main() -> None:
             "propChainSyncConnectST": 5,
             "propChainSyncDemoST": 6,
         }
-        if len(case_rows) != args.count or any(len(row) != 13 for row in case_rows):
+        if len(case_rows) != args.count or any(len(row) != 14 for row in case_rows):
             raise SystemExit("ChainSync behavior case export does not match requested schema/count")
         if any(len(row) != 7 or row[0] != "chainsync-behavior-block-v1" for row in block_rows):
             raise SystemExit("ChainSync behavior block export has invalid schema")
         if any(len(row) != 5 or row[0] != "chainsync-behavior-point-v1" for row in point_rows):
             raise SystemExit("ChainSync behavior point export has invalid schema")
         manifest = {
-            "schema": "scarab-upstream-network-protocol-behavior-v1",
+            "schema": "scarab-upstream-network-protocol-behavior-v2",
             "source": "ouroboros-network",
             "sourceCommit": UPSTREAM_COMMIT,
             "upstreamTest": "ouroboros-network:protocols-tests / ChainSync / unchanged Arbitrary ChainProducerStateForkTest + propChainSyncDirectST + propChainSyncConnectST + propChainSyncDemoST",
@@ -1952,6 +1954,7 @@ def main() -> None:
                 "tip": "exact encodeTip S.encode bytes used by the upstream codec",
                 "payload": "exact Serialise Block item bytes; generated mock Int hashes retained as CBOR integers",
                 "genesisPoint": "exact Serialise Point Block bytes used by the unchanged upstream chain model",
+                "expectedIntersection": "exact first candidate returned by pinned ChainProducerState.findFirstPoint; none when no candidate is on-chain",
             },
             "limitations": [
                 "Rows retain the complete generated producer and fork chains plus exact candidate-point order and unchanged original property verdicts.",

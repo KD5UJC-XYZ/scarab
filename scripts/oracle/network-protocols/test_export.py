@@ -177,7 +177,7 @@ class PropertyOutcomeColumnsTest(unittest.TestCase):
             manifest["sourceCommit"], "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776"
         )
         for name, expected_hash in (
-            ("chainsync-behavior-cases.tsv", "a5736870dfe3aff9e6e975363ed64db34022a426b3c736b5d1eaf246a34513fd"),
+            ("chainsync-behavior-cases.tsv", "a3e77a7ef66233c8d2360788efa828afd946a7513069cc535317e3751d055a18"),
             ("chainsync-behavior-blocks.tsv", "98d1ee153282f811de0b287bf1c7b3a5e3b5c68482fd8223d7f5536744eda776"),
             ("chainsync-behavior-points.tsv", "4093edd68ddf331771f9857899fcd32e14b4108b1249c400d624ba7d35740518"),
         ):
@@ -191,8 +191,10 @@ class PropertyOutcomeColumnsTest(unittest.TestCase):
         self.assertEqual(manifest["exportedCases"], 24)
         self.assertEqual(manifest["seed"], 504001)
         self.assertEqual([int(row[1]) for row in cases], list(range(504001, 504025)))
-        self.assertTrue(all(len(row) == 13 and row[0] == "chainsync-behavior-case-v1" for row in cases))
+        self.assertTrue(all(len(row) == 14 and row[0] == "chainsync-behavior-case-v2" for row in cases))
         self.assertTrue(all(row[4:7] == ["pass", "pass", "pass"] for row in cases))
+        self.assertEqual(sum(row[13] == "80" for row in cases), 3)
+        self.assertEqual(manifest["schema"], "scarab-upstream-network-protocol-behavior-v2")
         self.assertEqual(len(blocks), manifest["blockRows"])
         self.assertEqual(len(points), manifest["pointRows"])
         self.assertTrue(all(len(row) == 7 and row[0] == "chainsync-behavior-block-v1" for row in blocks))
