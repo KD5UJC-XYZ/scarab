@@ -76,7 +76,8 @@
   },
   "limitations": [
     "Rows retain the complete generated producer and fork chains plus exact candidate-point order and unchanged original property verdicts.",
-    "The Scarab consumer replays the bounded direct/connect/channel client-server behaviors over the generic production runtime and compares the final client chain to the independent producer-chain oracle.",
+    "The Scarab consumer uses one linked Mux runtime profile per case alongside the three retained unchanged Haskell direct/connect/channel outcomes; it compares the final client chain to the independent producer-chain oracle.",
     "This mock-domain replay does not claim Cardano block/hash instantiation, dynamic pipelining-policy equivalence, or node-level fork choice."
-  ]
+  ],
+  "scarabRuntimeProfiles": 1
 }

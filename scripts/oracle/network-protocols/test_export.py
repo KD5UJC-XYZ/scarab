@@ -6,10 +6,30 @@ import json
 from pathlib import Path
 import unittest
 
-from export import PROPERTY_COLUMNS, summarize_property_outcomes
+from export import (
+    PROPERTY_COLUMNS,
+    summarize_chainsync_pipeline_rows,
+    summarize_property_outcomes,
+)
 
 
 class PropertyOutcomeColumnsTest(unittest.TestCase):
+    def test_chainsync_pipeline_counts_preserve_precondition_discards(self) -> None:
+        rows = [
+            ["chainsync-pipelined-max-v1", "504001", "0", "30", "7504004", "0", "precondition-discard"],
+            ["chainsync-pipelined-max-v1", "504002", "1", "31", "7504005", "17", "pass"],
+            ["chainsync-pipelined-max-v1", "504003", "2", "32", "7504006", "300", "upstream-failure"],
+        ]
+
+        self.assertEqual(
+            summarize_chainsync_pipeline_rows(rows),
+            {"pass": 1, "precondition-discard": 1, "upstream-failure": 1},
+        )
+
+        rows[0][6] = "pass"
+        with self.assertRaisesRegex(ValueError, "precondition/outcome mismatch"):
+            summarize_chainsync_pipeline_rows(rows)
+
     def test_localsq_codec_cbor_and_valid_cbor_columns_are_distinct(self) -> None:
         rows = []
         for verdicts in (
@@ -206,6 +226,37 @@ class PropertyOutcomeColumnsTest(unittest.TestCase):
                 "propChainSyncConnectST": {"pass": 24, "upstream-failure": 0},
                 "propChainSyncDemoST": {"pass": 24, "upstream-failure": 0},
             },
+        )
+
+    def test_chainsync_pipelined_max_fixture_preserves_original_depth_domain(self) -> None:
+        repo = Path(__file__).resolve().parents[3]
+        reference_dir = repo / "fixtures/reference/ouroboros-network-protocol-codecs"
+        runtime_dir = repo / "network/src/test/resources/upstream/ouroboros-network-protocol-codecs"
+        raw = (reference_dir / "chainsync-pipelined-max.tsv").read_bytes()
+        manifest = json.loads(
+            (reference_dir / "chainsync-pipelined-max.manifest.json").read_text()
+        )
+        rows = [line.split("\t") for line in raw.decode("utf-8").splitlines()]
+
+        self.assertEqual(raw, (runtime_dir / "chainsync-pipelined-max.tsv").read_bytes())
+        self.assertEqual(
+            manifest,
+            json.loads((runtime_dir / "chainsync-pipelined-max.manifest.json").read_text()),
+        )
+        self.assertEqual(manifest["sourceCommit"], "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776")
+        self.assertEqual(manifest["caseTsvSha256"], hashlib.sha256(raw).hexdigest())
+        self.assertEqual(manifest["requestedCases"], 24)
+        self.assertEqual(manifest["exportedCases"], 24)
+        self.assertEqual(manifest["seed"], 504001)
+        self.assertEqual([int(row[1]) for row in rows], list(range(504001, 504025)))
+        self.assertTrue(all(len(row) == 7 for row in rows))
+        self.assertTrue(all(row[0] == "chainsync-pipelined-max-v1" for row in rows))
+        self.assertTrue(all(int(row[4]) == int(row[1]) + 7000003 for row in rows))
+        self.assertTrue(all(1 <= int(row[5]) <= 300 for row in rows))
+        self.assertTrue(all(row[6] == "pass" for row in rows))
+        self.assertEqual(
+            manifest["upstreamPropertyOutcomes"],
+            {"pass": 24, "upstream-failure": 0, "precondition-discard": 0},
         )
 
     def test_binary_compat_fixtures_preserve_both_original_directions_and_paired_wires(self) -> None:

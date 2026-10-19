@@ -34,6 +34,11 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
     case Pass
     case Failure
 
+  private enum PipelineOutcome:
+    case Pass
+    case UpstreamFailure
+    case PreconditionDiscard
+
   private enum Side:
     case Producer
     case Client
@@ -62,6 +67,14 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
       payload: Bytes
   )
   private final case class PointRow(seed: Int, caseOrdinal: Int, ordinal: Int, point: Bytes)
+  private final case class PipelineRow(
+      seed: Int,
+      ordinal: Int,
+      size: Int,
+      depthSeed: Int,
+      maxDepth: Int,
+      outcome: PipelineOutcome
+  )
   private final case class FixtureCase(
       row: CaseRow,
       producer: Vector[BlockRow],
@@ -89,6 +102,12 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
     case "pass"             => Verdict.Pass
     case "upstream-failure" => Verdict.Failure
     case other              => fail(s"unknown upstream property verdict: $other")
+
+  private def pipelineOutcome(value: String): PipelineOutcome = value match
+    case "pass"                 => PipelineOutcome.Pass
+    case "upstream-failure"     => PipelineOutcome.UpstreamFailure
+    case "precondition-discard" => PipelineOutcome.PreconditionDiscard
+    case other                  => fail(s"unknown ChainSync pipeline property outcome: $other")
 
   private def readCases(): Vector[CaseRow] =
     resource(casesFixture, expectedCasesSha).map { line =>
@@ -139,6 +158,24 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
       assertEquals(fields.size, 5)
       assertEquals(fields(0), "chainsync-behavior-point-v1")
       PointRow(fields(1).toInt, fields(2).toInt, fields(3).toInt, fromHex(fields(4)))
+    }
+
+  private def readPipelineRows(): Vector[PipelineRow] =
+    resource(
+      "/upstream/ouroboros-network-protocol-codecs/chainsync-pipelined-max.tsv",
+      "a3b1f8a495704991fb90ee701fe1bb31d56371346ce37f7e7bfd38f4e6c0cc49"
+    ).map { line =>
+      val fields = line.split("\\t", -1).toVector
+      assertEquals(fields.size, 7)
+      assertEquals(fields(0), "chainsync-pipelined-max-v1")
+      PipelineRow(
+        fields(1).toInt,
+        fields(2).toInt,
+        fields(3).toInt,
+        fields(4).toInt,
+        fields(5).toInt,
+        pipelineOutcome(fields(6))
+      )
     }
 
   private def readFixture(): Vector[FixtureCase] =
@@ -255,6 +292,65 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
       }
     }
 
+  private def replayPipelinedMax(
+      client: ChainSyncRuntime.Client[IO, Bytes, Bytes, Bytes],
+      testCase: FixtureCase,
+      chain: Ref[IO, Vector[Bytes]],
+      maxDepth: Int
+  )(using Raise[IO, NetworkError]): IO[Unit] =
+    val row = testCase.row
+    val targetPayload = testCase.producer.last.payload
+    def applyRollback(point: Bytes): IO[Boolean] =
+      val retained =
+        if point == row.genesisPoint then Vector.empty
+        else
+          val found = testCase.fork.indexWhere(_.point == point)
+          assert(found >= 0, s"seed ${row.seed} rollback point must be on the original fork")
+          testCase.fork.take(found + 1).map(_.payload)
+      chain.set(retained).as(point == row.targetPoint)
+
+    client.requestNext.flatMap {
+      case ChainSyncRuntime.Update.RollBackward(point, _) =>
+        applyRollback(point).flatMap {
+          case true => client.done
+          case false =>
+            cats.Monad[IO].tailRecM(()) { _ =>
+              chain.get.flatMap { current =>
+                val remaining = testCase.producer.size - current.size
+                if remaining <= 0 then client.done.as(Right(()))
+                else
+                  val window = math.min(maxDepth, remaining)
+                  client.requestNextBatch(window).flatMap { updates =>
+                    assertEquals(updates.size, window, s"seed ${row.seed} batch window replies")
+                    val next = updates.foldLeft(current) {
+                      case (prefix, ChainSyncRuntime.Update.RollForward(payload, _)) =>
+                        val point = testCase.pointByPayload
+                          .get(payload)
+                          .getOrElse(fail(s"seed ${row.seed} unknown exact serialized block item"))
+                        assert(
+                          !prefix.lastOption.contains(targetPayload),
+                          s"seed ${row.seed} max window continued after the generated target"
+                        )
+                        assert(point != row.genesisPoint)
+                        prefix :+ payload
+                      case (_, ChainSyncRuntime.Update.RollBackward(point, _)) =>
+                        fail(
+                          s"seed ${row.seed} unexpected rollback inside a bounded max window: $point"
+                        )
+                    }
+                    chain.set(
+                      next
+                    ) *> (if next.size == testCase.producer.size then client.done.as(Right(()))
+                          else if next.size > testCase.producer.size then
+                            fail(s"seed ${row.seed} max window exceeded producer chain")
+                          else IO.pure(Left(())))
+                  }
+              }
+            }
+        }
+      case other => fail(s"seed ${row.seed} expected initial rollback, got $other")
+    }
+
   test(
     "production generic ChainSync runtime replays unchanged pinned upstream fork-property cases"
   ):
@@ -331,4 +427,91 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
           }.map(result => assertEquals(result, Right(()), s"seed ${row.seed}"))
         }
       }
+    }
+
+  test("production generic ChainSync runtime matches generated max-pipelined final-chain cases"):
+    val fixture = readFixture()
+    val pipelineRows = readPipelineRows()
+    assertEquals(pipelineRows.size, fixture.size)
+    assertEquals(pipelineRows.map(_.seed), fixture.map(_.row.seed))
+    assertEquals(pipelineRows.map(_.ordinal), fixture.map(_.row.ordinal))
+    assertEquals(pipelineRows.map(_.size), fixture.map(_.row.size))
+    assert(pipelineRows.forall(row => row.depthSeed == row.seed + 7000003))
+    assert(pipelineRows.forall(row => row.maxDepth >= 0 && row.maxDepth <= 300))
+    assertEquals(
+      pipelineRows.count(_.outcome == PipelineOutcome.PreconditionDiscard),
+      pipelineRows.count(_.maxDepth == 0),
+      "zero depths are kept as original upstream implication discards"
+    )
+    assert(
+      pipelineRows.forall(row =>
+        (row.maxDepth == 0) == (row.outcome == PipelineOutcome.PreconditionDiscard)
+      )
+    )
+    val runnable = pipelineRows.filter(_.outcome == PipelineOutcome.Pass)
+    assert(
+      runnable.nonEmpty,
+      "the original generated sample must contain positive-depth passing rows"
+    )
+    assertEquals(pipelineRows.count(_.outcome == PipelineOutcome.UpstreamFailure), 0)
+
+    fixture.zip(pipelineRows).filter(_._2.outcome == PipelineOutcome.Pass).traverse_ {
+      case (testCase, pipeline) =>
+        val row = testCase.row
+        source(testCase).flatMap { oracle =>
+          Ref.of[IO, Vector[Bytes]](testCase.fork.map(_.payload)).flatMap { chain =>
+            typed {
+              linked(protocols = Set(Protocols.ChainSync)).use { (clientMux, serverMux) =>
+                for
+                  clientChannel <- clientMux.channel(Protocols.ChainSync)
+                  serverChannel <- serverMux.channel(Protocols.ChainSync)
+                  _ <- Resource
+                    .make(
+                      ChainSyncRuntime
+                        .run(
+                          serverChannel,
+                          pointCodec,
+                          tipCodec,
+                          payloadCodec,
+                          oracle,
+                          ChainSyncRuntime.ServerSettings(idleTimeout = 5.seconds)
+                        )
+                        .start
+                    )(_.cancel)
+                    .use { serverFiber =>
+                      for
+                        client <- ChainSyncRuntime.client(
+                          clientChannel,
+                          pointCodec,
+                          tipCodec,
+                          payloadCodec,
+                          ChainSyncRuntime.ClientSettings(
+                            intersectTimeout = 5.seconds,
+                            canAwaitTimeout = 5.seconds,
+                            mustReplyTimeout = 5.seconds
+                          )
+                        )
+                        intersection <- client.findIntersect(testCase.candidatePoints)
+                        _ <- replayPipelinedMax(client, testCase, chain, pipeline.maxDepth).timeout(
+                          10.seconds
+                        )
+                        _ <- serverFiber.joinWithNever
+                        finalChain <- chain.get
+                      yield
+                        assertEquals(
+                          intersection,
+                          row.expectedIntersection.map(_ -> row.targetTip),
+                          s"seed ${row.seed} independent intersection"
+                        )
+                        assertEquals(
+                          finalChain,
+                          testCase.producer.map(_.payload),
+                          s"seed ${row.seed} fixed-window final chain equals upstream oracle"
+                        )
+                    }
+                yield ()
+              }
+            }.map(result => assertEquals(result, Right(()), s"seed ${row.seed}"))
+          }
+        }
     }
