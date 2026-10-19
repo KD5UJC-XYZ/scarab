@@ -837,6 +837,7 @@ exportLocalTxSubmissionAnnotatedCases path count seed = withFile path WriteMode 
     pad [digit] = ['0', digit]
     pad digits = digits
 ''',
+        "import Codec.CBOR.Write qualified as CBOR\n"
         "import Control.Monad (forM_)\n"
         "import Data.ByteString qualified as BS\n"
         "import Data.ByteString.Lazy qualified as BL\n"
@@ -846,6 +847,56 @@ exportLocalTxSubmissionAnnotatedCases path count seed = withFile path WriteMode 
         "import Test.QuickCheck.Gen (unGen)\n"
         "import Test.QuickCheck.Random (mkQCGen)\n",
     )
+    local_tx_submission.write_text(local_tx_submission.read_text() + r'''
+
+-- Disposable observer: run the unchanged direct/connect/channel properties over
+-- one original generated arbitrary function and transaction list, retaining each
+-- exact serialized Tx and SubmitResult for a production-server replay.
+exportLocalTxSubmissionBehaviorCases :: FilePath -> Int -> Int -> IO ()
+exportLocalTxSubmissionBehaviorCases path count seed = withFile path WriteMode $ \outputHandle ->
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 30 + (ordinal `mod` 21)
+        p = unGen arbitrary (mkQCGen (caseSeed + 1000003)) caseSize
+              :: Tx -> SubmitResult Reject
+        txs = unGen arbitrary (mkQCGen caseSeed) caseSize :: [Tx]
+        results = map p txs
+        wireResult tx result =
+          let raw = BL.toStrict (CBOR.toLazyByteString (Serialise.encode tx))
+              outcome = case result of
+                SubmitSuccess -> Left ()
+                SubmitFail reject -> Right (BL.toStrict (CBOR.toLazyByteString (Serialise.encode reject)))
+          in (raw, outcome)
+        aliases = map (uncurry wireResult) (zip txs results)
+        consistent = and
+          [ wire /= wire' || result == result'
+          | (index, (wire, result)) <- zip [0 :: Int ..] aliases
+          , (wire', result') <- drop (index + 1) aliases
+          ]
+    if not consistent then fail "generated Tx wire aliases have conflicting SubmitResult values" else pure ()
+    directResult <- quickCheckWithResult stdArgs { chatty = False }
+      (once (prop_direct p txs))
+    connectResult <- quickCheckWithResult stdArgs { chatty = False }
+      (once (prop_connect p txs))
+    channelResult <- quickCheckWithResult stdArgs { chatty = False }
+      (once (prop_channel_ST p txs))
+    forM_ (zip3 [0 :: Int ..] txs results) $ \(txIndex, tx, result) -> do
+      let txWire = hex (BL.toStrict (CBOR.toLazyByteString (Serialise.encode tx)))
+          (outcome, rejection) = case result of
+            SubmitSuccess -> ("accepted", "")
+            SubmitFail reject -> ("rejected", hex (BL.toStrict (CBOR.toLazyByteString (Serialise.encode reject))))
+      hPutStrLn outputHandle $ intercalate "\t"
+        [ "localtxsubmission-behavior-v1", show caseSeed, show ordinal, show caseSize
+        , show txIndex, txWire, outcome, rejection
+        , if isSuccess directResult then "pass" else "upstream-failure"
+        , if isSuccess connectResult then "pass" else "upstream-failure"
+        , if isSuccess channelResult then "pass" else "upstream-failure"
+        ]
+  where
+    hex = concatMap (pad . (`showHex` "")) . BS.unpack
+    pad [digit] = ['0', digit]
+    pad digits = digits
+''')
     local_tx_module = local_tx_submission.read_text()
     tx_pragma_anchor = "{-# LANGUAGE RankNTypes                 #-}\n"
     if local_tx_module.count(tx_pragma_anchor) != 1:
@@ -861,7 +912,7 @@ exportLocalTxSubmissionAnnotatedCases path count seed = withFile path WriteMode 
         raise SystemExit("LocalTxSubmission observer module export list changed")
     local_tx_submission.write_text(local_tx_module.replace(
         local_tx_export_anchor,
-        "  ( tests\n  , exportLocalTxSubmissionCases\n  , exportLocalTxSubmissionSplitCases\n  , exportLocalTxSubmissionAnnotatedCases\n",
+        "  ( tests\n  , exportLocalTxSubmissionCases\n  , exportLocalTxSubmissionSplitCases\n  , exportLocalTxSubmissionAnnotatedCases\n  , exportLocalTxSubmissionBehaviorCases\n",
     ))
 
     local_tx_monitor_original = inject(
@@ -1356,7 +1407,7 @@ exportBlockFetchBinaryCases path count seed = withFile path WriteMode $ \outputH
         "import Ouroboros.Network.Protocol.ChainSync.Test qualified as ChainSync (tests, exportChainSyncCases, exportChainSyncSplitCases, exportChainSyncBinaryCases)\n"
         "import Ouroboros.Network.Protocol.BlockFetch.Test qualified as BlockFetch (tests, exportBlockFetchCases, exportBlockFetchSplitCases, exportBlockFetchBinaryCases)\n"
         "import Ouroboros.Network.Protocol.LocalStateQuery.Test qualified as LocalStateQuery (tests, exportLocalStateQueryCases, exportLocalStateQuerySplitCases)\n"
-        "import Ouroboros.Network.Protocol.LocalTxSubmission.Test qualified as LocalTxSubmission (tests, exportLocalTxSubmissionCases, exportLocalTxSubmissionSplitCases, exportLocalTxSubmissionAnnotatedCases)\n"
+        "import Ouroboros.Network.Protocol.LocalTxSubmission.Test qualified as LocalTxSubmission (tests, exportLocalTxSubmissionCases, exportLocalTxSubmissionSplitCases, exportLocalTxSubmissionAnnotatedCases, exportLocalTxSubmissionBehaviorCases)\n"
         "import Ouroboros.Network.Protocol.LocalTxMonitor.Test qualified as LocalTxMonitor (tests, exportLocalTxMonitorCases, exportLocalTxMonitorSplitCases)\n"
         "import Ouroboros.Network.Protocol.TxSubmission2.Test qualified as TxSubmission2 (tests, exportTxSubmission2Cases, exportTxSubmission2SplitCases, exportTxSubmission2AnnotatedCases)\n"
         "import System.Environment (getArgs)\n"
@@ -1412,6 +1463,7 @@ exportBlockFetchBinaryCases path count seed = withFile path WriteMode $ \outputH
         "    LocalStateQuery.exportLocalStateQueryCases (dir <> \"/localsq.tsv\") (read count) (read seed + 1800)\n"
         "    LocalStateQuery.exportLocalStateQuerySplitCases (dir <> \"/localsq-splits.tsv\") (read count) (read seed + 1800)\n"
         "    LocalTxSubmission.exportLocalTxSubmissionCases (dir <> \"/localtxsubmission.tsv\") (read count) (read seed + 2800)\n"
+        "    LocalTxSubmission.exportLocalTxSubmissionBehaviorCases (dir <> \"/localtxsubmission-behavior.tsv\") (read count) (read seed + 8800)\n"
         "    LocalTxMonitor.exportLocalTxMonitorCases (dir <> \"/localtxmonitor.tsv\") (read count) (read seed + 3800)\n"
         "    LocalTxSubmission.exportLocalTxSubmissionSplitCases (dir <> \"/localtxsubmission-splits.tsv\") (read count) (read seed + 2800)\n"
         "    LocalTxSubmission.exportLocalTxSubmissionAnnotatedCases (dir <> \"/localtxsubmission-annotated.tsv\") (read count) (read seed + 5800)\n"
@@ -1548,6 +1600,7 @@ def main() -> None:
         ("localsq.tsv", "ouroboros-network:protocols-tests / LocalStateQuery / codec + codec cbor"),
         ("localsq-splits.tsv", "ouroboros-network:protocols-tests / LocalStateQuery / prop_codec_splits2 + prop_codec_splits3"),
         ("localtxsubmission.tsv", "ouroboros-network:protocols-tests / LocalTxSubmission / codec + codec cbor"),
+        ("localtxsubmission-behavior.tsv", "ouroboros-network:protocols-tests / LocalTxSubmission / prop_direct + prop_connect + prop_channel_ST"),
         ("localtxsubmission-annotated.tsv", "ouroboros-network:protocols-tests / LocalTxSubmission / prop_anncodec + prop_anncodec_splits2 + prop_anncodec_splits3"),
         ("localtxsubmission-splits.tsv", "ouroboros-network:protocols-tests / LocalTxSubmission / prop_codec_splits2 + prop_codec_splits3"),
         ("localtxmonitor.tsv", "ouroboros-network:protocols-tests / LocalTxMonitor / codecM + codec cborM"),
@@ -1920,6 +1973,16 @@ def main() -> None:
             manifest["observation"] = (
                 "The function is recorded as its exact finite accumulator trace for this generated n; "
                 "cookies are the unchanged upstream descending Word16 sequence."
+            )
+        if name == "localtxsubmission-behavior.tsv":
+            manifest["generatedInputSeedOffsets"] = {
+                "transactionList": 0,
+                "submitResultFunction": 1000003,
+            }
+            manifest["rowMeaning"] = (
+                "Each row is one ordered input from the same generated Tx list and arbitrary "
+                "SubmitResult function passed to prop_direct, prop_connect, and prop_channel_ST; "
+                "Tx Any and Reject Int are retained as their exact serialized CBOR items."
             )
         if name in ("localtxsubmission-annotated.tsv", "txsubmission2-annotated.tsv"):
             manifest["adapterInputStatuses"] = {
