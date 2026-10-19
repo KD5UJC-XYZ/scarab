@@ -232,6 +232,69 @@ class PeerSelectionSuite extends FunSuite:
     assertEquals(late.traces, List(Trace.PromoteAborted(Temperature.Warm, 7)))
   }
 
+  test("late cached-block rejection forgets its disconnected source, never its consumer") {
+    val base = start(Nil)
+    val source = PeerRecord.cold(Origin.Public)
+    val consumer = PeerRecord.cold(Origin.Public).copy(status = Status.Hot)
+    val state = base.copy(peers = base.peers ++ Map(7 -> source, 8 -> consumer))
+    val rejected = PeerSelection.apply(
+      state,
+      Event.Observed(7, Observation.CachedBlockRejected("invalid")),
+      1.minute
+    )
+    assert(!rejected.state.peers.contains(7))
+    assertEquals(rejected.state.peers(8), consumer)
+    assertEquals(rejected.jobs, List(Job.Close(7)))
+    assert(rejected.traces.contains(Trace.Forgotten(List(7))))
+    val innocent = PeerSelection.apply(
+      rejected.state,
+      Event.Observed(8, Observation.Lost(FailureClass.Transient, 5.seconds, true, "foreign block")),
+      2.minutes
+    )
+    assert(innocent.state.peers.contains(8))
+    assertEquals(innocent.state.peers(8).failCount, 1)
+  }
+
+  test("late cached-block rejection closes a newer source session and backs off local roots") {
+    val (base, _, _) = settle(start(List(group(1, 1, 7))), t0)
+    val state = base.updated(7)(_.copy(status = Status.Hot))
+    val rejected = PeerSelection.apply(
+      state,
+      Event.Observed(7, Observation.CachedBlockRejected("invalid")),
+      1.minute
+    )
+    assert(rejected.state.peers.contains(7))
+    assertEquals(rejected.jobs, List(Job.Close(7)))
+    assertEquals(rejected.state.peers(7).failCount, 1)
+    val Status.Cold(Some(retryAt)) = rejected.state.peers(7).status: @unchecked
+    assertEquals(
+      retryAt,
+      1.minute + Policy().baseColdRetry * (1L << Policy().maxColdRetryBackoff.toLong)
+    )
+    val replay =
+      PeerSelection.apply(rejected.state, Event.Completed(Outcome.Activated(7)), 2.minutes)
+    assertEquals(replay.state, rejected.state)
+  }
+
+  test(
+    "a source connecting when its cached block is refused is closed even if the job finishes later"
+  ) {
+    val base = start(Nil)
+    val state = base.copy(peers =
+      base.peers.updated(7, PeerRecord.cold(Origin.Public).copy(status = Status.Connecting))
+    )
+    val rejected = PeerSelection.apply(
+      state,
+      Event.Observed(7, Observation.CachedBlockRejected("invalid")),
+      1.minute
+    )
+    val connected =
+      PeerSelection.apply(rejected.state, Event.Completed(Outcome.Connected(7)), 2.minutes)
+    assert(!connected.state.peers.contains(7))
+    assertEquals(connected.jobs, List(Job.Close(7)))
+    assertEquals(connected.traces, List(Trace.PromoteAborted(Temperature.Cold, 7)))
+  }
+
   test("above the established target the surplus warm peers that are not roots are closed") {
     val targets = Targets.validated(0, 150, 2, 1, 0, 0, 0).toOption.get
     val base = start(Nil, targets)

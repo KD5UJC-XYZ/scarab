@@ -77,6 +77,19 @@ private[selection] object Events:
       case None => Decision(st0, Nil, Nil)
       case Some(record) =>
         observation match
+          case Observation.CachedBlockRejected(reason) =>
+            val result = report(st0, peer, now, FailureClass.Misbehaved, policy, _ => Duration.Zero)
+            Decision(
+              result.state,
+              List(Job.Close(peer)),
+              Trace.DemoteAsynchronous(
+                peer,
+                Temperature.Cold,
+                Some(FailureClass.Misbehaved),
+                Some(reason)
+              ) ::
+                (if result.forgotten then List(Trace.Forgotten(List(peer))) else Nil)
+            )
           // a hot protocol ended and the connection is up: warm again
           case Observation.HotEnded(delay) if record.status == Status.Hot =>
             val (extra, st) = fuzz(st0, policy.warmReconnectFuzz._1, policy.warmReconnectFuzz._2)
@@ -309,6 +322,14 @@ private[selection] object Events:
           Nil,
           List(Trace.BigLedgerFailure(backoffs, retryIn))
         )
+
+      // A late rejection can forget a connecting source before its bearer is registered. Close
+      // its subsequently successful job too; the earlier Close may have found nothing yet.
+      case connected @ Outcome.Connected(peer) if status(peer).forall {
+            case Status.Cold(_) => true
+            case _              => false
+          } =>
+        Decision(st0, List(Job.Close(peer)), aborted(connected))
 
       // the world moved on while the job ran: nothing to apply
       case other => Decision(st0, Nil, aborted(other))
