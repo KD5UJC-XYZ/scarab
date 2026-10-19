@@ -19,6 +19,65 @@ CONTAINER_NAME = "scarab-v02-49-protocols-luna"
 COMMAND_RESULTS: list[dict[str, object]] = []
 COMMAND_LOG: Path | None = None
 
+PROPERTY_COLUMNS: dict[str, tuple[tuple[str, int], ...]] = {
+    "keepalive.tsv": (("prop_codec_v2", 9), ("prop_codec_v2_valid_cbor", 10)),
+    "peersharing.tsv": (("prop_codec_PeerSharing", 10), ("prop_codec_valid_cbor", 11)),
+    "localsq.tsv": (
+        ("prop_codec_LocalStateQuery", 8),
+        ("prop_codec_cbor", 9),
+        ("prop_codec_valid_cbor", 10),
+    ),
+    "localtxsubmission.tsv": (
+        ("prop_codec", 8),
+        ("prop_codec_cbor", 9),
+        ("prop_codec_valid_cbor", 10),
+    ),
+    "localtxmonitor.tsv": (
+        ("prop_codecM_LocalTxMonitor", 8),
+        ("prop_codec_cborM_LocalTxMonitor", 9),
+        ("prop_codecIdM_LocalTxMonitor", 10),
+        ("prop_codec_valid_cbor_encoding_LocalTxMonitor", 11),
+    ),
+    "txsubmission2.tsv": (
+        ("prop_codec", 8),
+        ("prop_codec_cbor", 9),
+        ("prop_codec_id", 10),
+        ("prop_codec_valid_cbor", 11),
+    ),
+    "localtxsubmission-annotated.tsv": (
+        ("prop_anncodec", 8),
+        ("prop_anncodec_splits2", 9),
+        ("prop_anncodec_splits3", 10),
+    ),
+    "txsubmission2-annotated.tsv": (
+        ("prop_anncodec", 8),
+        ("prop_anncodec_splits2", 9),
+        ("prop_anncodec_splits3", 10),
+    ),
+}
+
+
+def summarize_property_outcomes(
+    rows: list[list[str]], properties: tuple[tuple[str, int], ...]
+) -> dict[str, object]:
+    per_property = {
+        property_name: {
+            "pass": sum(row[column] == "pass" for row in rows),
+            "upstream-failure": sum(row[column] != "pass" for row in rows),
+        }
+        for property_name, column in properties
+    }
+    all_pass = sum(
+        all(row[column] == "pass" for _, column in properties) for row in rows
+    )
+    return {
+        "upstreamPropertyOutcomesByProperty": per_property,
+        "upstreamPropertyOutcomes": {
+            "all-recorded-properties-pass": all_pass,
+            "at-least-one-recorded-property-failure": len(rows) - all_pass,
+        },
+    }
+
 
 def checked(command: list[str], **kwargs: object) -> str:
     started = datetime.now(timezone.utc).isoformat()
@@ -107,6 +166,9 @@ exportKeepAliveCases path count seed = withFile path WriteMode $ \outputHandle -
     result <- quickCheckWithResult
       stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 1000003), caseSize) }
       (once (prop_codec_v2 testCase))
+    validCborResult <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 6000003), caseSize) }
+      (once (prop_codec_v2_valid_cbor testCase))
     case testCase of
       AnyMessage msg -> do
         let Codec { encode } = codecKeepAlive_v2
@@ -117,9 +179,10 @@ exportKeepAliveCases path count seed = withFile path WriteMode $ \outputHandle -
               MsgKeepAliveResponse (Cookie value) -> ("server", "server", "response", show value)
               MsgDone                             -> ("client", "client", "done", "")
             outcome = if isSuccess result then "pass" else "upstream-failure"
+            validCborOutcome = if isSuccess validCborResult then "pass" else "upstream-failure"
         hPutStrLn outputHandle $ intercalate "\t"
           [ "keepalive-codec-v1", show caseSeed, show ordinal, show caseSize
-          , state, sender, tag, cookie, hex (BL.toStrict raw), outcome
+          , state, sender, tag, cookie, hex (BL.toStrict raw), outcome, validCborOutcome
           ]
   where
     hex = concatMap (pad . (`showHex` "")) . BS.unpack
@@ -191,6 +254,9 @@ exportPeerSharingCases path count seed = withFile path WriteMode $ \outputHandle
     result <- quickCheckWithResult
       stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 1000003), caseSize) }
       (once (prop_codec_PeerSharing testCase))
+    validCborResult <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 6000003), caseSize) }
+      (once (prop_codec_valid_cbor testCase))
     case testCase of
       AnyMessage msg -> do
         let Codec { encode } = codecPeerSharing @IO CBOR.encodeInt CBOR.decodeInt
@@ -202,9 +268,10 @@ exportPeerSharingCases path count seed = withFile path WriteMode $ \outputHandle
                 ("busy", "server", "peers", show peers, "unsupported-int-addresses")
               MsgDone -> ("idle", "client", "done", "", "candidate")
             outcome = if isSuccess result then "pass" else "upstream-failure"
+            validCborOutcome = if isSuccess validCborResult then "pass" else "upstream-failure"
         hPutStrLn outputHandle $ intercalate "\t"
           [ "peersharing-codec-int-v1", show caseSeed, show ordinal, show caseSize
-          , state, sender, tag, fields, adapterStatus, hex (BL.toStrict raw), outcome
+          , state, sender, tag, fields, adapterStatus, hex (BL.toStrict raw), outcome, validCborOutcome
           ]
   where
     hex = concatMap (pad . (`showHex` "")) . BS.unpack
@@ -461,6 +528,9 @@ exportLocalStateQueryCases path count seed = withFile path WriteMode $ \outputHa
     cborResult <- quickCheckWithResult
       stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 2000003), caseSize) }
       (once (prop_codec_cbor testCase))
+    validCborResult <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 6000003), caseSize) }
+      (once (prop_codec_valid_cbor testCase))
     case testCase of
       AnyMessageWithResult (Stateful.AnyMessage localState msg) -> do
         let statefulCodec = codec
@@ -489,9 +559,10 @@ exportLocalStateQueryCases path count seed = withFile path WriteMode $ \outputHa
               MsgDone -> "done"
             codecOutcome = if isSuccess codecResult then "pass" else "upstream-failure"
             cborOutcome = if isSuccess cborResult then "pass" else "upstream-failure"
+            validCborOutcome = if isSuccess validCborResult then "pass" else "upstream-failure"
         hPutStrLn outputHandle $ intercalate "\t"
           [ "localsq-codec-v1", show caseSeed, show ordinal, show caseSize
-          , state, sender, tag, hex (BL.toStrict raw), codecOutcome, cborOutcome
+          , state, sender, tag, hex (BL.toStrict raw), codecOutcome, cborOutcome, validCborOutcome
           ]
   where
     hex = concatMap (pad . (`showHex` "")) . BS.unpack
@@ -592,6 +663,9 @@ exportLocalTxSubmissionCases path count seed = withFile path WriteMode $ \output
     cborResult <- quickCheckWithResult
       stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 2000003), caseSize) }
       (once (prop_codec_cbor testCase))
+    validCborResult <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 6000003), caseSize) }
+      (once (prop_codec_valid_cbor testCase))
     case testCase of
       AnyMessage (msg :: Message (LocalTxSubmission Tx Reject) st st') -> do
         let txCodec = codec
@@ -609,9 +683,10 @@ exportLocalTxSubmissionCases path count seed = withFile path WriteMode $ \output
               MsgDone -> "done"
             codecOutcome = if isSuccess codecResult then "pass" else "upstream-failure"
             cborOutcome = if isSuccess cborResult then "pass" else "upstream-failure"
+            validCborOutcome = if isSuccess validCborResult then "pass" else "upstream-failure"
         hPutStrLn outputHandle $ intercalate "\t"
           [ "local-tx-submission-codec-v1", show caseSeed, show ordinal, show caseSize
-          , state, sender, tag, hex (BL.toStrict raw), codecOutcome, cborOutcome
+          , state, sender, tag, hex (BL.toStrict raw), codecOutcome, cborOutcome, validCborOutcome
           ]
   where
     hex = concatMap (pad . (`showHex` "")) . BS.unpack
@@ -658,6 +733,52 @@ exportLocalTxSubmissionSplitCases path count seed = withFile path WriteMode $ \o
     pad [digit] = ['0', digit]
     pad digits = digits
 
+
+
+-- Disposable observer: retain the distinct WithBytes generator and annotated codec laws.
+exportLocalTxSubmissionAnnotatedCases :: FilePath -> Int -> Int -> IO ()
+exportLocalTxSubmissionAnnotatedCases path count seed = withFile path WriteMode $ \outputHandle ->
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 30 + (ordinal `mod` 21)
+        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize
+          :: AnyMessage (LocalTxSubmission (WithBytes Tx) Reject)
+    annResult <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 7000003), caseSize) }
+      (once (prop_anncodec testCase))
+    split2Result <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 8000003), caseSize) }
+      (once (prop_anncodec_splits2 testCase))
+    split3Result <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 9000003), caseSize) }
+      (once (prop_anncodec_splits3 testCase))
+    case testCase of
+      AnyMessage (msg :: Message (LocalTxSubmission (WithBytes Tx) Reject) st st') -> do
+        let Codec { encode } = anncodec
+              :: AnnotatedCodec (LocalTxSubmission (WithBytes Tx) Reject)
+                   DeserialiseFailure IO ByteString
+            raw = BL.toStrict (encode msg)
+            token = stateToken :: StateToken st
+            (state, sender) = case token of
+              SingIdle -> ("idle", "client")
+              SingBusy -> ("busy", "server")
+              SingDone -> ("done", "none")
+            tag = case msg of
+              MsgSubmitTx _ -> "submit-tx"
+              MsgAcceptTx -> "accept-tx"
+              MsgRejectTx _ -> "reject-tx"
+              MsgDone -> "done"
+            annOutcome = if isSuccess annResult then "pass" else "upstream-failure"
+            split2Outcome = if isSuccess split2Result then "pass" else "upstream-failure"
+            split3Outcome = if isSuccess split3Result then "pass" else "upstream-failure"
+        hPutStrLn outputHandle $ intercalate "\t"
+          [ "local-tx-submission-annotated-v1", show caseSeed, show ordinal, show caseSize
+          , state, sender, tag, hex raw, annOutcome, split2Outcome, split3Outcome
+          ]
+  where
+    hex = concatMap (pad . (`showHex` "")) . BS.unpack
+    pad [digit] = ['0', digit]
+    pad digits = digits
 ''',
         "import Control.Monad (forM_)\n"
         "import Data.ByteString qualified as BS\n"
@@ -683,7 +804,7 @@ exportLocalTxSubmissionSplitCases path count seed = withFile path WriteMode $ \o
         raise SystemExit("LocalTxSubmission observer module export list changed")
     local_tx_submission.write_text(local_tx_module.replace(
         local_tx_export_anchor,
-        "  ( tests\n  , exportLocalTxSubmissionCases\n  , exportLocalTxSubmissionSplitCases\n",
+        "  ( tests\n  , exportLocalTxSubmissionCases\n  , exportLocalTxSubmissionSplitCases\n  , exportLocalTxSubmissionAnnotatedCases\n",
     ))
 
     local_tx_monitor_original = inject(
@@ -705,6 +826,12 @@ exportLocalTxMonitorCases path count seed = withFile path WriteMode $ \outputHan
     cborResult <- quickCheckWithResult
       stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 2000003), caseSize) }
       (once (prop_codec_cborM_LocalTxMonitor testCase))
+    codecIdResult <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 5000003), caseSize) }
+      (once (prop_codecIdM_LocalTxMonitor testCase))
+    validCborResult <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 6000003), caseSize) }
+      (once (prop_codec_valid_cbor_encoding_LocalTxMonitor testCase))
     case testCase of
       AnyMessage (msg :: Message (LocalTxMonitor TxId Tx SlotNo) st st') -> do
         let monitorCodec = codec
@@ -736,9 +863,11 @@ exportLocalTxMonitorCases path count seed = withFile path WriteMode $ \outputHan
               MsgDone -> "done"
             codecOutcome = if isSuccess codecResult then "pass" else "upstream-failure"
             cborOutcome = if isSuccess cborResult then "pass" else "upstream-failure"
+            codecIdOutcome = if isSuccess codecIdResult then "pass" else "upstream-failure"
+            validCborOutcome = if isSuccess validCborResult then "pass" else "upstream-failure"
         hPutStrLn outputHandle $ intercalate "\t"
           [ "local-tx-monitor-codec-v1", show caseSeed, show ordinal, show caseSize
-          , state, sender, tag, hex (BL.toStrict raw), codecOutcome, cborOutcome
+          , state, sender, tag, hex (BL.toStrict raw), codecOutcome, cborOutcome, codecIdOutcome, validCborOutcome
           ]
   where
     hex = concatMap (pad . (`showHex` "")) . BS.unpack
@@ -837,6 +966,12 @@ exportTxSubmission2Cases path count seed = withFile path WriteMode $ \outputHand
     cborResult <- quickCheckWithResult
       stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 2000003), caseSize) }
       (once (prop_codec_cbor testCase))
+    codecIdResult <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 5000003), caseSize) }
+      (once (prop_codec_id testCase))
+    validCborResult <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 6000003), caseSize) }
+      (once (prop_codec_valid_cbor testCase))
     case testCase of
       AnyMessage (msg :: Message (TxSubmission2 TxId Tx) st st') -> do
         let txCodec = codec_v2
@@ -860,9 +995,11 @@ exportTxSubmission2Cases path count seed = withFile path WriteMode $ \outputHand
               MsgDone -> "done"
             codecOutcome = if isSuccess codecResult then "pass" else "upstream-failure"
             cborOutcome = if isSuccess cborResult then "pass" else "upstream-failure"
+            codecIdOutcome = if isSuccess codecIdResult then "pass" else "upstream-failure"
+            validCborOutcome = if isSuccess validCborResult then "pass" else "upstream-failure"
         hPutStrLn outputHandle $ intercalate "\t"
           [ "txsubmission2-codec-v1", show caseSeed, show ordinal, show caseSize
-          , state, sender, tag, hex (BL.toStrict raw), codecOutcome, cborOutcome
+          , state, sender, tag, hex (BL.toStrict raw), codecOutcome, cborOutcome, codecIdOutcome, validCborOutcome
           ]
   where
     hex = concatMap (pad . (`showHex` "")) . BS.unpack
@@ -914,6 +1051,58 @@ exportTxSubmission2SplitCases path count seed = withFile path WriteMode $ \outpu
     hex = concatMap (pad . (`showHex` "")) . BS.unpack
     pad [digit] = ['0', digit]
     pad digits = digits
+
+
+-- Disposable observer: retain the distinct WithBytes generator and annotated codec laws.
+exportTxSubmission2AnnotatedCases :: FilePath -> Int -> Int -> IO ()
+exportTxSubmission2AnnotatedCases path count seed = withFile path WriteMode $ \outputHandle ->
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 30 + (ordinal `mod` 21)
+        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize
+          :: AnyMessage (TxSubmission2 TxId (WithBytes Tx))
+    annResult <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 7000003), caseSize) }
+      (once (prop_anncodec testCase))
+    split2Result <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 8000003), caseSize) }
+      (once (prop_anncodec_splits2 testCase))
+    split3Result <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 9000003), caseSize) }
+      (once (prop_anncodec_splits3 testCase))
+    case testCase of
+      AnyMessage (msg :: Message (TxSubmission2 TxId (WithBytes Tx)) st st') -> do
+        let Codec { encode } = anncodec_v2
+              :: AnnotatedCodec (TxSubmission2 TxId (WithBytes Tx))
+                   DeserialiseFailure IO ByteString
+            raw = BL.toStrict (encode msg)
+            token = stateToken :: StateToken st
+            (state, sender) = case token of
+              SingInit -> ("init", "client")
+              SingIdle -> ("idle", "server")
+              SingTxIds SingBlocking -> ("ids-blocking", "client")
+              SingTxIds SingNonBlocking -> ("ids-nonblocking", "client")
+              SingTxs -> ("txs", "client")
+              SingDone -> ("done", "none")
+            tag = case msg of
+              MsgInit -> "init"
+              MsgRequestTxIds SingBlocking _ _ -> "request-ids-blocking"
+              MsgRequestTxIds SingNonBlocking _ _ -> "request-ids-nonblocking"
+              MsgReplyTxIds _ -> "reply-ids"
+              MsgRequestTxs _ -> "request-txs"
+              MsgReplyTxs _ -> "reply-txs"
+              MsgDone -> "done"
+            annOutcome = if isSuccess annResult then "pass" else "upstream-failure"
+            split2Outcome = if isSuccess split2Result then "pass" else "upstream-failure"
+            split3Outcome = if isSuccess split3Result then "pass" else "upstream-failure"
+        hPutStrLn outputHandle $ intercalate "\t"
+          [ "txsubmission2-annotated-v1", show caseSeed, show ordinal, show caseSize
+          , state, sender, tag, hex raw, annOutcome, split2Outcome, split3Outcome
+          ]
+  where
+    hex = concatMap (pad . (`showHex` "")) . BS.unpack
+    pad [digit] = ['0', digit]
+    pad digits = digits
 ''',
         "import Control.Monad (forM_)\n"
         "import Data.ByteString qualified as BS\n"
@@ -939,7 +1128,7 @@ exportTxSubmission2SplitCases path count seed = withFile path WriteMode $ \outpu
         raise SystemExit("TxSubmission2 observer module export list changed")
     tx_submission2.write_text(tx_submission2_module.replace(
         tx_submission2_export_anchor,
-        "  , labelMsg\n  , exportTxSubmission2Cases\n  , exportTxSubmission2SplitCases\n",
+        "  , labelMsg\n  , exportTxSubmission2Cases\n  , exportTxSubmission2SplitCases\n  , exportTxSubmission2AnnotatedCases\n",
     ))
 
     chain_module = chain.read_text()
@@ -958,9 +1147,9 @@ exportTxSubmission2SplitCases path count seed = withFile path WriteMode $ \outpu
         "import Ouroboros.Network.Protocol.ChainSync.Test qualified as ChainSync (tests, exportChainSyncCases, exportChainSyncSplitCases)\n"
         "import Ouroboros.Network.Protocol.BlockFetch.Test qualified as BlockFetch (tests, exportBlockFetchCases, exportBlockFetchSplitCases)\n"
         "import Ouroboros.Network.Protocol.LocalStateQuery.Test qualified as LocalStateQuery (tests, exportLocalStateQueryCases, exportLocalStateQuerySplitCases)\n"
-        "import Ouroboros.Network.Protocol.LocalTxSubmission.Test qualified as LocalTxSubmission (tests, exportLocalTxSubmissionCases, exportLocalTxSubmissionSplitCases)\n"
+        "import Ouroboros.Network.Protocol.LocalTxSubmission.Test qualified as LocalTxSubmission (tests, exportLocalTxSubmissionCases, exportLocalTxSubmissionSplitCases, exportLocalTxSubmissionAnnotatedCases)\n"
         "import Ouroboros.Network.Protocol.LocalTxMonitor.Test qualified as LocalTxMonitor (tests, exportLocalTxMonitorCases, exportLocalTxMonitorSplitCases)\n"
-        "import Ouroboros.Network.Protocol.TxSubmission2.Test qualified as TxSubmission2 (tests, exportTxSubmission2Cases, exportTxSubmission2SplitCases)\n"
+        "import Ouroboros.Network.Protocol.TxSubmission2.Test qualified as TxSubmission2 (tests, exportTxSubmission2Cases, exportTxSubmission2SplitCases, exportTxSubmission2AnnotatedCases)\n"
         "import System.Environment (getArgs)\n"
     )
     main_text = main_original.replace(
@@ -1000,22 +1189,24 @@ exportTxSubmission2SplitCases path count seed = withFile path WriteMode $ \outpu
     main_text = main_text.replace(
         "main = defaultMain tests",
         "main = getArgs >>= \\args -> case args of\n"
-        "  [\"--export-network-codecs\", dir, count, seed] -> do\n"
+        "  [\"--export-network-codecs\", dir, count, seed, chainCount] -> do\n"
         "    KeepAlive.exportKeepAliveCases (dir <> \"/keepalive.tsv\") (read count) (read seed)\n"
         "    KeepAlive.exportKeepAliveSplitCases (dir <> \"/keepalive-splits.tsv\") (read count) (read seed)\n"
         "    PeerSharing.exportPeerSharingCases (dir <> \"/peersharing.tsv\") (read count) (read seed)\n"
-        "    ChainSync.exportChainSyncCases (dir <> \"/chainsync.tsv\") (read count) (read seed)\n"
-        "    ChainSync.exportChainSyncSplitCases (dir <> \"/chainsync-splits.tsv\") (read count) (read seed)\n"
+        "    ChainSync.exportChainSyncCases (dir <> \"/chainsync.tsv\") (read chainCount) (read seed + 900)\n"
+        "    ChainSync.exportChainSyncSplitCases (dir <> \"/chainsync-splits.tsv\") (read chainCount) (read seed + 900)\n"
         "    BlockFetch.exportBlockFetchCases (dir <> \"/blockfetch.tsv\") (read count) (read seed)\n"
         "    BlockFetch.exportBlockFetchSplitCases (dir <> \"/blockfetch-splits.tsv\") (read count) (read seed)\n"
-        "    LocalStateQuery.exportLocalStateQueryCases (dir <> \"/localsq.tsv\") (read count) (read seed)\n"
-        "    LocalStateQuery.exportLocalStateQuerySplitCases (dir <> \"/localsq-splits.tsv\") (read count) (read seed)\n"
-        "    LocalTxSubmission.exportLocalTxSubmissionCases (dir <> \"/localtxsubmission.tsv\") (read count) (read seed)\n"
-        "    LocalTxMonitor.exportLocalTxMonitorCases (dir <> \"/localtxmonitor.tsv\") (read count) (read seed)\n"
+        "    LocalStateQuery.exportLocalStateQueryCases (dir <> \"/localsq.tsv\") (read count) (read seed + 1800)\n"
+        "    LocalStateQuery.exportLocalStateQuerySplitCases (dir <> \"/localsq-splits.tsv\") (read count) (read seed + 1800)\n"
+        "    LocalTxSubmission.exportLocalTxSubmissionCases (dir <> \"/localtxsubmission.tsv\") (read count) (read seed + 2800)\n"
+        "    LocalTxMonitor.exportLocalTxMonitorCases (dir <> \"/localtxmonitor.tsv\") (read count) (read seed + 3800)\n"
         "    LocalTxSubmission.exportLocalTxSubmissionSplitCases (dir <> \"/localtxsubmission-splits.tsv\") (read count) (read seed + 2800)\n"
+        "    LocalTxSubmission.exportLocalTxSubmissionAnnotatedCases (dir <> \"/localtxsubmission-annotated.tsv\") (read count) (read seed + 5800)\n"
         "    LocalTxMonitor.exportLocalTxMonitorSplitCases (dir <> \"/localtxmonitor-splits.tsv\") (read count) (read seed + 3800)\n"
-        "    TxSubmission2.exportTxSubmission2Cases (dir <> \"/txsubmission2.tsv\") (read count) (read seed)\n"
-        "    TxSubmission2.exportTxSubmission2SplitCases (dir <> \"/txsubmission2-splits.tsv\") (read count) (read seed)\n"
+        "    TxSubmission2.exportTxSubmission2Cases (dir <> \"/txsubmission2.tsv\") (read count) (read seed + 4800)\n"
+        "    TxSubmission2.exportTxSubmission2SplitCases (dir <> \"/txsubmission2-splits.tsv\") (read count) (read seed + 4800)\n"
+        "    TxSubmission2.exportTxSubmission2AnnotatedCases (dir <> \"/txsubmission2-annotated.tsv\") (read count) (read seed + 6800)\n"
         "  _ -> defaultMain tests",
     )
     main.write_text(main_text)
@@ -1037,12 +1228,15 @@ def main() -> None:
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--count", type=int, default=24)
+    parser.add_argument("--chainsync-count", type=int, default=128)
     parser.add_argument("--seed", type=int, default=490201)
     parser.add_argument("--probe-dir", type=Path, default=Path("/tmp/scarab/v02-49-protocol-probe"))
     parser.add_argument("--reference-plan", type=Path)
     args = parser.parse_args()
     if not 1 <= args.count <= 128:
         raise SystemExit("case count must be 1..128")
+    if not 1 <= args.chainsync_count <= 128:
+        raise SystemExit("ChainSync case count must be 1..128")
     args.output_dir.mkdir(parents=True, exist_ok=True)
     args.probe_dir.mkdir(parents=True, exist_ok=True)
     global COMMAND_LOG
@@ -1091,7 +1285,7 @@ def main() -> None:
     checked([
         "docker", "exec", "-w", "/source", CONTAINER_NAME,
         binary, "--export-network-codecs", "/probe/exports",
-        str(args.count), str(args.seed),
+        str(args.count), str(args.seed), str(args.chainsync_count),
     ])
     patch = ""
     for name, original in originals.items():
@@ -1139,10 +1333,12 @@ def main() -> None:
         ("localsq.tsv", "ouroboros-network:protocols-tests / LocalStateQuery / codec + codec cbor"),
         ("localsq-splits.tsv", "ouroboros-network:protocols-tests / LocalStateQuery / prop_codec_splits2 + prop_codec_splits3"),
         ("localtxsubmission.tsv", "ouroboros-network:protocols-tests / LocalTxSubmission / codec + codec cbor"),
+        ("localtxsubmission-annotated.tsv", "ouroboros-network:protocols-tests / LocalTxSubmission / prop_anncodec + prop_anncodec_splits2 + prop_anncodec_splits3"),
         ("localtxsubmission-splits.tsv", "ouroboros-network:protocols-tests / LocalTxSubmission / prop_codec_splits2 + prop_codec_splits3"),
         ("localtxmonitor.tsv", "ouroboros-network:protocols-tests / LocalTxMonitor / codecM + codec cborM"),
         ("localtxmonitor-splits.tsv", "ouroboros-network:protocols-tests / LocalTxMonitor / prop_codec_splitsM_LocalTxMonitor splits2 + splits3"),
         ("txsubmission2.tsv", "ouroboros-network:protocols-tests / TxSubmission2 / codec + codec cbor"),
+        ("txsubmission2-annotated.tsv", "ouroboros-network:protocols-tests / TxSubmission2 / prop_anncodec + prop_anncodec_splits2 + prop_anncodec_splits3"),
         ("txsubmission2-splits.tsv", "ouroboros-network:protocols-tests / TxSubmission2 / prop_codec_splits2 + prop_codec_splits3"),
     ]:
         raw = (args.probe_dir / "exports" / name).read_bytes()
@@ -1212,8 +1408,8 @@ def main() -> None:
             }
         if name == "peersharing.tsv":
             manifest["adapterInputStatuses"] = {
-                status: sum(row[-3] == status for row in rows)
-                for status in sorted({row[-3] for row in rows})
+                status: sum(row[8] == status for row in rows)
+                for status in sorted({row[8] for row in rows})
             }
         if name == "keepalive-splits.tsv":
             manifest["upstreamPropertyOutcomesByProperty"] = {
@@ -1448,6 +1644,48 @@ def main() -> None:
             manifest["propertyReplaySeedOffsets"] = {
                 "prop_codec": 1000003,
                 "prop_codec_cbor": 2000003,
+            }
+        if name in PROPERTY_COLUMNS:
+            properties = PROPERTY_COLUMNS[name]
+            manifest.update(summarize_property_outcomes(rows, properties))
+        if name in ("localtxsubmission-annotated.tsv", "txsubmission2-annotated.tsv"):
+            manifest["adapterInputStatuses"] = {
+                "byConstructor": {
+                    tag: sum(row[6] == tag for row in rows)
+                    for tag in sorted({row[6] for row in rows})
+                },
+                "sourceStates": {
+                    state: sum(row[4] == state for row in rows)
+                    for state in sorted({row[4] for row in rows})
+                },
+                "byUpstreamOutcome": {
+                    property_name: {
+                        status: sum(row[column] == status for row in rows)
+                        for status in ("pass", "upstream-failure")
+                    }
+                    for property_name, column in properties
+                },
+            }
+            manifest["propertyReplaySeedOffsets"] = {
+                property_name: offset
+                for property_name, offset in (
+                    ("prop_codec_v2", 1000003),
+                    ("prop_codec_PeerSharing", 1000003),
+                    ("prop_codec_LocalStateQuery", 1000003),
+                    ("prop_codec", 1000003),
+                    ("prop_codecM_LocalTxMonitor", 1000003),
+                    ("prop_codec_cbor", 2000003),
+                    ("prop_codec_cborM_LocalTxMonitor", 2000003),
+                    ("prop_codecIdM_LocalTxMonitor", 5000003),
+                    ("prop_codec_id", 5000003),
+                    ("prop_codec_v2_valid_cbor", 6000003),
+                    ("prop_codec_valid_cbor", 6000003),
+                    ("prop_codec_valid_cbor_encoding_LocalTxMonitor", 6000003),
+                    ("prop_anncodec", 7000003),
+                    ("prop_anncodec_splits2", 8000003),
+                    ("prop_anncodec_splits3", 9000003),
+                )
+                if property_name in {name for name, _ in properties}
             }
         (args.output_dir / name).write_bytes(raw)
         (args.output_dir / (name + ".manifest.json")).write_text(json.dumps(manifest, indent=2) + "\n")

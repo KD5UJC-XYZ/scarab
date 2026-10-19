@@ -64,9 +64,9 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
 
   test("consume all seeded KeepAlive codec cases at the typed Scarab boundary"):
     val input =
-      rows("keepalive.tsv", "68bfde5d45f320586738c5d3fcc7c13b057b916697fbfc580f084dc72cdefb34")
+      rows("keepalive.tsv", "eacd61861245f5c5061fa66230dc152585915b91c7ffac2fe7d7239ca2f7b0bf")
     val matches = input.map { fields =>
-      assertEquals(fields.size, 10)
+      assertEquals(fields.size, 11)
       assertEquals(fields(0), "keepalive-codec-v1")
       val seed = fields(1).toInt
       val ordinal = fields(2).toInt
@@ -74,6 +74,7 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
       assertEquals(seed, 490201 + ordinal)
       assertEquals(size, 30 + ordinal % 21)
       assertEquals(fields(9), "pass", s"upstream property seed $seed")
+      assertEquals(fields(10), "pass", s"upstream valid-CBOR property seed $seed")
       val state = fields(4) match
         case "client" => KeepAlive.State.Client
         case "server" => KeepAlive.State.Server
@@ -394,15 +395,16 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
 
   test("retain and classify every seeded PeerSharing row, mapping only typed-compatible messages"):
     val input =
-      rows("peersharing.tsv", "61fd52db28760ccfb88b3e0099e2f20e5f450ca0a690c495252243bed11df010")
+      rows("peersharing.tsv", "bb25935c495d1710279755a043bd37c59c3bc1575049149973b41373c4cd1381")
     val statuses = input.map { fields =>
-      assertEquals(fields.size, 11)
+      assertEquals(fields.size, 12)
       assertEquals(fields(0), "peersharing-codec-int-v1")
       val seed = fields(1).toInt
       val ordinal = fields(2).toInt
       assertEquals(seed, 490201 + ordinal)
       assertEquals(fields(3).toInt, 30 + ordinal % 21)
-      assertEquals(fields(10), "pass", s"upstream property seed $seed")
+      assertEquals(fields(10), "pass", s"upstream codec property seed $seed")
+      assertEquals(fields(11), "pass", s"upstream valid-CBOR property seed $seed")
       val wire = bytes(fields(9))
       fields(8) match
         case "candidate" =>
@@ -805,7 +807,10 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
       rows("blockfetch.tsv", "18c4e32a647e7287246b2ef2c6a874e82e565778e63352966645fb969e0e2e50")
     val payloadCodec = CardanoBlockFetch.payloadCodec()
     assertEquals(input.size, 24)
-    assertEquals(input.count(f => f.size == 10 && f(8) == "pass" && f(9) == "pass"), 24)
+    assertEquals(
+      input.count(f => f.size == 10 && f(8) == "pass" && f(9) == "pass"),
+      24
+    )
     assertEquals(
       input.groupMapReduce(_(6))(_ => 1)(_ + _),
       Map(
@@ -976,9 +981,12 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
 
   test("classify generated pinned LocalStateQuery codec rows at the typed boundary"):
     val input =
-      rows("localsq.tsv", "09358cbf911717869def7225954a7b0148ad5128a48edcd3895f94d2b44ddd18")
+      rows("localsq.tsv", "a9b0f1584c4330ebb2ce670d3dd422ecb168ed4a55b6aa469c824b12c33940cf")
     assertEquals(input.size, 24)
-    assertEquals(input.count(f => f.size == 10 && f(8) == "pass" && f(9) == "pass"), 24)
+    assertEquals(
+      input.count(f => f.size == 11 && f(8) == "pass" && f(9) == "pass" && f(10) == "pass"),
+      24
+    )
     assertEquals(
       input.groupMapReduce(_(6))(_ => 1)(_ + _),
       Map(
@@ -999,12 +1007,13 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
       Map("acquired" -> 14, "acquiring" -> 3, "idle" -> 5, "querying" -> 2)
     )
     val outcomes = input.map { fields =>
-      assertEquals(fields.size, 10)
+      assertEquals(fields.size, 11)
       assertEquals(fields(0), "localsq-codec-v1")
       val seed = fields(1).toInt
       val ordinal = fields(2).toInt
       assertEquals(seed, 492001 + ordinal)
       assertEquals(fields(3).toInt, 30 + ordinal % 21)
+      assertEquals(fields(10), "pass", s"upstream valid-CBOR seed $seed")
       val state = fields(4) match
         case "idle"      => LocalStateQuery.State.Idle
         case "acquiring" => LocalStateQuery.State.Acquiring
@@ -1077,7 +1086,7 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
     )
     val completeWire = rows(
       "localsq.tsv",
-      "09358cbf911717869def7225954a7b0148ad5128a48edcd3895f94d2b44ddd18"
+      "a9b0f1584c4330ebb2ce670d3dd422ecb168ed4a55b6aa469c824b12c33940cf"
     )
     assertEquals(input.size, 24)
     assertEquals(completeWire.size, 24)
@@ -1093,6 +1102,7 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
       assertEquals(fields.size, 10)
       assertEquals(fields(0), "localsq-splits-v1")
       assertEquals(baseFields(0), "localsq-codec-v1")
+      assertEquals(baseFields.size, 11)
       assertEquals(
         fields.slice(1, 8),
         baseFields.slice(1, 8),
@@ -1104,6 +1114,7 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
       assertEquals(fields(3).toInt, 30 + ordinal % 21)
       assertEquals(fields(8), "pass", s"upstream prop_codec_splits2 seed $seed")
       assertEquals(fields(9), "pass", s"upstream prop_codec_splits3 seed $seed")
+      assertEquals(baseFields(10), "pass", s"upstream valid-CBOR seed $seed")
       val state = fields(4) match
         case "idle"      => LocalStateQuery.State.Idle
         case "acquiring" => LocalStateQuery.State.Acquiring
@@ -1204,17 +1215,20 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
   test("consume actual generated LocalTxSubmission codec cases at the typed boundary"):
     val input = rows(
       "localtxsubmission.tsv",
-      "003b00977beb431d5e9b59712af67f026b10d9a684daa37a208fc1c4a4cf88d1"
+      "f1fd489b8ff996952090ef21fce3496cac9ad36f4655bb6209387d41e78ecdba"
     )
     assertEquals(input.size, 24)
-    assertEquals(input.count(f => f.size == 10 && f(8) == "pass" && f(9) == "pass"), 24)
+    assertEquals(
+      input.count(f => f.size == 11 && f(8) == "pass" && f(9) == "pass" && f(10) == "pass"),
+      24
+    )
     assertEquals(
       input.groupMapReduce(_(6))(_ => 1)(_ + _),
       Map("accept-tx" -> 4, "done" -> 7, "reject-tx" -> 7, "submit-tx" -> 6)
     )
     assertEquals(input.groupMapReduce(_(4))(_ => 1)(_ + _), Map("busy" -> 11, "idle" -> 13))
     val outcomes = input.map { fields =>
-      assertEquals(fields.size, 10)
+      assertEquals(fields.size, 11)
       assertEquals(fields(0), "local-tx-submission-codec-v1")
       val seed = fields(1).toInt
       val ordinal = fields(2).toInt
@@ -1250,11 +1264,74 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
     assertEquals(outcomes.size, 24)
     assertEquals(outcomes.count(_ == "matched"), 24)
 
+  test("consume upstream LocalTxSubmission annotated codec and split properties"):
+    val input = rows(
+      "localtxsubmission-annotated.tsv",
+      "fbb303143dd5c7bfe540a194d06da3a4316dab7b12d94a748fbec1e1278e5b8b"
+    )
+    assertEquals(input.size, 24)
+    assertEquals(
+      input.groupMapReduce(_(4))(_ => 1)(_ + _),
+      Map("busy" -> 12, "idle" -> 12)
+    )
+    assertEquals(
+      input.groupMapReduce(_(6))(_ => 1)(_ + _),
+      Map("accept-tx" -> 5, "done" -> 8, "reject-tx" -> 7, "submit-tx" -> 4)
+    )
+    val partitionCounts = input.map { fields =>
+      assertEquals(fields.size, 11)
+      assertEquals(fields(0), "local-tx-submission-annotated-v1")
+      val seed = fields(1).toInt
+      val ordinal = fields(2).toInt
+      assertEquals(seed, 496001 + ordinal)
+      assertEquals(fields(3).toInt, 30 + ordinal % 21)
+      assertEquals(fields(8), "pass", s"prop_anncodec seed $seed")
+      assertEquals(fields(9), "pass", s"prop_anncodec_splits2 seed $seed")
+      assertEquals(fields(10), "pass", s"prop_anncodec_splits3 seed $seed")
+      val state = fields(4) match
+        case "idle" => LocalTxSubmission.State.Idle
+        case "busy" => LocalTxSubmission.State.Busy
+        case other  => fail(s"unknown LocalTxSubmission annotated state $other at seed $seed")
+      val sender = fields(5) match
+        case "client" => ChainSync.Role.Client
+        case "server" => ChainSync.Role.Server
+        case other    => fail(s"unknown LocalTxSubmission annotated sender $other at seed $seed")
+      val wire = bytes(fields(7))
+      LocalTxSubmission.decodePrefix(state, sender, wire) match
+        case DecodeResult.Decoded(message, consumed) =>
+          assertEquals(consumed, wire.size, s"seed $seed consumed annotated wire")
+          val tag = message match
+            case LocalTxSubmission.Message.SubmitTx(_) => "submit-tx"
+            case LocalTxSubmission.Message.AcceptTx    => "accept-tx"
+            case LocalTxSubmission.Message.RejectTx(_) => "reject-tx"
+            case LocalTxSubmission.Message.Done        => "done"
+          assertEquals(tag, fields(6), s"seed $seed annotated constructor")
+          assertEquals(
+            LocalTxSubmission.encode(state, sender, message),
+            Right(wire),
+            s"seed $seed annotated payload bytes survive Scarab decode/encode"
+          )
+          verifyAllPartitions(
+            wire,
+            DecodeResult.Decoded(message, wire.size),
+            prefix => LocalTxSubmission.decodePrefix(state, sender, prefix),
+            s"LocalTxSubmission annotated seed $seed"
+          )
+        case DecodeResult.Failed(error) => fail(s"seed $seed annotated decode failed: $error")
+        case DecodeResult.NeedMore      => fail(s"seed $seed annotated wire is incomplete")
+    }
+    assertEquals(partitionCounts.size, 24, "all generated LocalTxSubmission annotated rows mapped")
+
   test("consume generated LocalTxMonitor messages at the typed Scarab boundary"):
     val input =
-      rows("localtxmonitor.tsv", "0baa7b0b184ffb0bf5ed502c784b10002f4f37d8a5318d96d809762944e5f58b")
+      rows("localtxmonitor.tsv", "476cc50040858da65ccd430654a71ccfa869a1a8f74bcd286b8647b2d1581074")
     assertEquals(input.size, 24)
-    assertEquals(input.count(f => f.size == 10 && f(8) == "pass" && f(9) == "pass"), 24)
+    assertEquals(
+      input.count(f =>
+        f.size == 12 && f(8) == "pass" && f(9) == "pass" && f(10) == "pass" && f(11) == "pass"
+      ),
+      24
+    )
     assertEquals(
       input.groupMapReduce(_(6))(_ => 1)(_ + _),
       Map(
@@ -1273,7 +1350,7 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
       )
     )
     val outcomes = input.map { fields =>
-      assertEquals(fields.size, 10)
+      assertEquals(fields.size, 12)
       assertEquals(fields(0), "local-tx-monitor-codec-v1")
       val seed = fields(1).toInt
       val ordinal = fields(2).toInt
@@ -1325,9 +1402,14 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
 
   test("classify actual generated TxSubmission2 rows at the Conway typed boundary"):
     val input =
-      rows("txsubmission2.tsv", "148ef49de27138d1b2bf5d46b02ea944e3fe9fde1a646baf6b42304f0f909e41")
+      rows("txsubmission2.tsv", "35a6489a5d78aa1e59895f6d4b37a4bc6bb95c974d713b032786f48c9fd396c6")
     assertEquals(input.size, 24)
-    assertEquals(input.count(f => f.size == 10 && f(8) == "pass" && f(9) == "pass"), 24)
+    assertEquals(
+      input.count(f =>
+        f.size == 12 && f(8) == "pass" && f(9) == "pass" && f(10) == "pass" && f(11) == "pass"
+      ),
+      24
+    )
     assertEquals(
       input.groupMapReduce(_(6))(_ => 1)(_ + _),
       Map(
@@ -1345,7 +1427,7 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
       Map("idle" -> 8, "ids-blocking" -> 8, "init" -> 4, "txs" -> 4)
     )
     val outcomes = input.map { fields =>
-      assertEquals(fields.size, 10)
+      assertEquals(fields.size, 12)
       assertEquals(fields(0), "txsubmission2-codec-v1")
       val seed = fields(1).toInt
       val ordinal = fields(2).toInt
@@ -1398,6 +1480,110 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
       )
     )
 
+  test("consume upstream TxSubmission2 annotated codec and split properties by typed domain"):
+    val input = rows(
+      "txsubmission2-annotated.tsv",
+      "2dde0b6a37ed1d4682f8ed04bdc0f96d1441aa79c79d0bf2cfe68b2e695e9ecc"
+    )
+    assertEquals(input.size, 24)
+    assertEquals(
+      input.groupMapReduce(_(4))(_ => 1)(_ + _),
+      Map("ids-blocking" -> 5, "ids-nonblocking" -> 1, "idle" -> 11, "init" -> 4, "txs" -> 3)
+    )
+    assertEquals(
+      input.groupMapReduce(_(6))(_ => 1)(_ + _),
+      Map(
+        "done" -> 1,
+        "init" -> 4,
+        "reply-ids" -> 5,
+        "reply-txs" -> 3,
+        "request-ids-blocking" -> 3,
+        "request-ids-nonblocking" -> 6,
+        "request-txs" -> 2
+      )
+    )
+    val outcomes = input.map { fields =>
+      assertEquals(fields.size, 11)
+      assertEquals(fields(0), "txsubmission2-annotated-v1")
+      val seed = fields(1).toInt
+      val ordinal = fields(2).toInt
+      assertEquals(seed, 497001 + ordinal)
+      assertEquals(fields(3).toInt, 30 + ordinal % 21)
+      assertEquals(fields(8), "pass", s"prop_anncodec seed $seed")
+      assertEquals(fields(9), "pass", s"prop_anncodec_splits2 seed $seed")
+      assertEquals(fields(10), "pass", s"prop_anncodec_splits3 seed $seed")
+      val state = fields(4) match
+        case "init"            => TxSubmission2.State.Init
+        case "idle"            => TxSubmission2.State.Idle
+        case "ids-blocking"    => TxSubmission2.State.Ids(blocking = true)
+        case "ids-nonblocking" => TxSubmission2.State.Ids(blocking = false)
+        case "txs"             => TxSubmission2.State.Txs
+        case other => fail(s"unknown TxSubmission2 annotated state $other at seed $seed")
+      val sender = fields(5) match
+        case "client" => ChainSync.Role.Client
+        case "server" => ChainSync.Role.Server
+        case other    => fail(s"unknown TxSubmission2 annotated agency $other at seed $seed")
+      val wire = bytes(fields(7))
+      TxSubmission2.decodePrefix(state, sender, wire) match
+        case DecodeResult.Decoded(message, consumed) =>
+          assertEquals(consumed, wire.size, s"seed $seed consumed annotated wire")
+          val tag = message match
+            case TxSubmission2.Message.Init => "init"
+            case TxSubmission2.Message.RequestIds(blocking, _, _) =>
+              if blocking then "request-ids-blocking" else "request-ids-nonblocking"
+            case TxSubmission2.Message.ReplyIds(_)   => "reply-ids"
+            case TxSubmission2.Message.RequestTxs(_) => "request-txs"
+            case TxSubmission2.Message.ReplyTxs(_)   => "reply-txs"
+            case TxSubmission2.Message.Done          => "done"
+          assertEquals(tag, fields(6), s"seed $seed annotated constructor")
+          val encoded = TxSubmission2
+            .encode(state, sender, message)
+            .fold(error => fail(s"seed $seed Scarab annotated encode: $error"), identity)
+          assertEquals(encoded, wire, s"seed $seed annotated bytes preserved")
+          val counts = verifyAllPartitions(
+            wire,
+            DecodeResult.Decoded(message, wire.size),
+            prefix => TxSubmission2.decodePrefix(state, sender, prefix),
+            s"TxSubmission2 annotated seed $seed"
+          )
+          (fields(6), Option.empty[ProtocolError], Some(counts))
+        case DecodeResult.Failed(error @ ProtocolError.ExpectedDefiniteArray)
+            if Set("reply-ids", "request-txs", "reply-txs").contains(fields(6)) =>
+          (fields(6), Some(error), Option.empty[(Int, Int)])
+        case DecodeResult.Failed(error @ ProtocolError.ExpectedFourMemberConwayTransaction)
+            if fields(6) == "reply-txs" =>
+          (fields(6), Some(error), Option.empty[(Int, Int)])
+        case DecodeResult.Failed(error @ ProtocolError.ExpectedConwayGenTx)
+            if fields(6) == "reply-txs" =>
+          (fields(6), Some(error), Option.empty[(Int, Int)])
+        case DecodeResult.Failed(error @ ProtocolError.ExpectedConwayTransactionID)
+            if Set("reply-ids", "request-txs").contains(fields(6)) =>
+          (fields(6), Some(error), Option.empty[(Int, Int)])
+        case DecodeResult.Failed(error) =>
+          fail(s"seed $seed unsupported TxSubmission2 annotated mismatch: $error")
+        case DecodeResult.NeedMore => fail(s"seed $seed annotated wire is incomplete")
+    }
+    assertEquals(outcomes.size, 24)
+    val matched = outcomes.collect { case (tag, None, Some(partitions)) => (tag, partitions) }
+    val unsupported = outcomes.collect { case (tag, Some(error), None) => (tag, error) }
+    assertEquals(matched.size + unsupported.size, outcomes.size)
+    assert(matched.nonEmpty, "no actual annotated row reached Scarab's typed decoder")
+    assertEquals(
+      unsupported
+        .map(_._2)
+        .toSet
+        .subsetOf(
+          Set(
+            ProtocolError.ExpectedDefiniteArray,
+            ProtocolError.ExpectedFourMemberConwayTransaction,
+            ProtocolError.ExpectedConwayGenTx,
+            ProtocolError.ExpectedConwayTransactionID
+          )
+        ),
+      true,
+      "unsupported generated mock payloads retain their typed Conway boundary error"
+    )
+
   test("consume upstream TxSubmission2 split properties through Scarab's prefix decoder"):
     val splitInput = rows(
       "txsubmission2-splits.tsv",
@@ -1405,7 +1591,7 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
     )
     val codecInput = rows(
       "txsubmission2.tsv",
-      "148ef49de27138d1b2bf5d46b02ea944e3fe9fde1a646baf6b42304f0f909e41"
+      "35a6489a5d78aa1e59895f6d4b37a4bc6bb95c974d713b032786f48c9fd396c6"
     )
     assertEquals(splitInput.size, 24)
     assertEquals(codecInput.size, splitInput.size)
@@ -1423,6 +1609,8 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
       assertEquals(fields(7), codecFields(7), s"seed $seed original wire")
       assertEquals(codecFields(8), "pass", s"seed $seed original codec verdict")
       assertEquals(codecFields(9), "pass", s"seed $seed original CBOR verdict")
+      assertEquals(codecFields(10), "pass", s"seed $seed original codec-ID verdict")
+      assertEquals(codecFields(11), "pass", s"seed $seed original valid-CBOR verdict")
       assertEquals(fields(8), "pass", s"seed $seed upstream splits2 verdict")
       assertEquals(fields(9), "pass", s"seed $seed upstream splits3 verdict")
       val state = fields(4) match

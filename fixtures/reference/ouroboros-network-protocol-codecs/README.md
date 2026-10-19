@@ -154,3 +154,25 @@ patch hash, and constructor/state counts. The Scala consumer passes the full sam
 typed matches and the same 79 `ExpectedDefiniteByteString` mock-hash cases listed above. This
 the adjacent split fixture preserves the same 128 rows and property verdicts. Binary-compatibility,
 valid-CBOR, pipelining and transport tests remain separate coverage.
+
+
+The separate annotated fixtures use the pinned upstream `WithBytes Tx` generators and unchanged
+`prop_anncodec`, `prop_anncodec_splits2`, and `prop_anncodec_splits3` functions. Each contains 24
+rows with the complete annotated wire, source state, agency, constructor, and all three property
+verdicts; seeds are 496001 for LocalTxSubmission and 497001 for TxSubmission2. All recorded
+upstream properties pass on these rows. Their manifests preserve the source module and observer
+overlay hashes and measured state/constructor counts. The Scala consumer is set to check exact
+wire roundtrip and production prefix decoding for mapped rows; TxSubmission2 mock transaction payloads retain typed
+domain errors and are not counted as matches. This proves full-wire preservation on mapped rows,
+not equality of an in-memory annotation object.
+
+
+A corrected exact-seed observer run added independent valid-CBOR outcomes to the existing
+KeepAlive, PeerSharing, LocalStateQuery, LocalTxSubmission, LocalTxMonitor, and TxSubmission2 rows,
+and codec-ID outcomes to LocalTxMonitor and TxSubmission2. Each newly recorded property passed on
+all 24 same-seed cases. The raw wire/state/agency/constructor prefix of every existing ordinary row
+was checked against the prior fixture before extending its columns. The six manifests record the
+separate property counts and exact replay offsets. ChainSync remains 128 rows and the other families
+remain 24; its serialized properties and all previously recorded split fixtures were regenerated
+with byte-identical rows. These property results are upstream oracle results; Scarab's focused consumer
+tests are reported separately from this manifest-level evidence.

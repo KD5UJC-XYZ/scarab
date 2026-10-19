@@ -7,8 +7,8 @@
   "requestedCases": 24,
   "exportedCases": 24,
   "upstreamPropertyOutcomes": {
-    "both-properties-pass": 24,
-    "at-least-one-upstream-failure": 0
+    "all-recorded-properties-pass": 24,
+    "at-least-one-recorded-property-failure": 0
   },
   "projectPlanInstallUnits": 246,
   "projectPlanConfiguredUnits": 218,
@@ -23,12 +23,13 @@
     "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/LocalStateQuery/Test.hs": "9a0f831a997b47e42b0c5bf472a28567ceb4dc8ecb477da3e1f6b7580e98013f",
     "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/LocalTxSubmission/Test.hs": "1ce9e88ce19682e235ba1437f1189470e8e9f4292a4b35e051c58f3ab1fec288",
     "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/LocalTxMonitor/Test.hs": "fb33c4f05913146e61e7a6ee8716224256c0c276280ea4160a399ef71160aef5",
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/TxSubmission2/Test.hs": "c7e8237dbbef5af3f3bb827c08e626e97ee0fb4b04db3de37c48e5490326921d",
     "ouroboros-network/protocols/tests/Main.hs": "32a3b5a431e0e00ce4f206ffe2c8d4b829f9135e82e0c2befdbe35b64adf58eb"
   },
-  "observerPatchSha256": "63a85278497c1c777404f3a691bda625e7637b075d1b15b7b7cd2ca63a237776",
+  "observerPatchSha256": "4b093b3a392d9b52ec331e0512d5562dc0a70037f6552440a1335e7b4f061f08",
   "observerPatch": "disposable changes add deterministic exporter entrypoints using unchanged Arbitrary instances and property functions",
   "caseFile": "localtxmonitor.tsv",
-  "sha256": "0baa7b0b184ffb0bf5ed502c784b10002f4f37d8a5318d96d809762944e5f58b",
+  "sha256": "476cc50040858da65ccd430654a71ccfa869a1a8f74bcd286b8647b2d1581074",
   "filteredUpstreamSuiteCommands": [
     {
       "argv": [
@@ -45,8 +46,8 @@
         "--builddir=/probe/narrow-builddir",
         "--jobs=2"
       ],
-      "startedAt": "2026-10-19T02:46:32.431190+00:00",
-      "endedAt": "2026-10-19T02:46:36.481982+00:00",
+      "startedAt": "2026-10-19T04:40:02.434574+00:00",
+      "endedAt": "2026-10-19T04:40:04.713009+00:00",
       "returncode": 0,
       "status": "complete",
       "log": "/tmp/scarab/v02-49-protocol-probe/3.log"
@@ -66,8 +67,8 @@
         "--builddir=/probe/narrow-builddir",
         "--jobs=2"
       ],
-      "startedAt": "2026-10-19T02:46:36.482192+00:00",
-      "endedAt": "2026-10-19T02:46:37.950342+00:00",
+      "startedAt": "2026-10-19T04:40:04.713199+00:00",
+      "endedAt": "2026-10-19T04:40:05.993989+00:00",
       "returncode": 0,
       "status": "complete",
       "log": "/tmp/scarab/v02-49-protocol-probe/4.log"
@@ -87,8 +88,8 @@
         "--builddir=/probe/narrow-builddir",
         "--jobs=2"
       ],
-      "startedAt": "2026-10-19T02:46:37.950612+00:00",
-      "endedAt": "2026-10-19T02:46:39.774934+00:00",
+      "startedAt": "2026-10-19T04:40:05.994189+00:00",
+      "endedAt": "2026-10-19T04:40:07.763698+00:00",
       "returncode": 0,
       "status": "complete",
       "log": "/tmp/scarab/v02-49-protocol-probe/5.log"
@@ -108,8 +109,8 @@
         "--builddir=/probe/narrow-builddir",
         "--jobs=2"
       ],
-      "startedAt": "2026-10-19T02:46:39.775169+00:00",
-      "endedAt": "2026-10-19T02:46:41.276225+00:00",
+      "startedAt": "2026-10-19T04:40:07.763911+00:00",
+      "endedAt": "2026-10-19T04:40:09.153025+00:00",
       "returncode": 0,
       "status": "complete",
       "log": "/tmp/scarab/v02-49-protocol-probe/6.log"
@@ -129,8 +130,8 @@
         "--builddir=/probe/narrow-builddir",
         "--jobs=2"
       ],
-      "startedAt": "2026-10-19T02:46:41.276510+00:00",
-      "endedAt": "2026-10-19T02:46:42.660283+00:00",
+      "startedAt": "2026-10-19T04:40:09.153238+00:00",
+      "endedAt": "2026-10-19T04:40:10.431618+00:00",
       "returncode": 0,
       "status": "complete",
       "log": "/tmp/scarab/v02-49-protocol-probe/7.log"
@@ -150,8 +151,8 @@
         "--builddir=/probe/narrow-builddir",
         "--jobs=2"
       ],
-      "startedAt": "2026-10-19T02:46:42.660527+00:00",
-      "endedAt": "2026-10-19T02:46:44.332882+00:00",
+      "startedAt": "2026-10-19T04:40:10.431860+00:00",
+      "endedAt": "2026-10-19T04:40:12.003968+00:00",
       "returncode": 0,
       "status": "complete",
       "log": "/tmp/scarab/v02-49-protocol-probe/8.log"
@@ -171,11 +172,32 @@
         "--builddir=/probe/narrow-builddir",
         "--jobs=2"
       ],
-      "startedAt": "2026-10-19T02:46:44.333200+00:00",
-      "endedAt": "2026-10-19T02:46:46.226776+00:00",
+      "startedAt": "2026-10-19T04:40:12.004203+00:00",
+      "endedAt": "2026-10-19T04:40:13.757983+00:00",
       "returncode": 0,
       "status": "complete",
       "log": "/tmp/scarab/v02-49-protocol-probe/9.log"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-v02-49-protocols-luna",
+        "cabal",
+        "test",
+        "--project-file=/probe/protocols-tests.project",
+        "ouroboros-network:protocols-tests",
+        "--test-options=--pattern=TxSubmission2",
+        "--builddir=/probe/narrow-builddir",
+        "--jobs=2"
+      ],
+      "startedAt": "2026-10-19T04:40:13.758199+00:00",
+      "endedAt": "2026-10-19T04:40:15.930272+00:00",
+      "returncode": 0,
+      "status": "complete",
+      "log": "/tmp/scarab/v02-49-protocol-probe/10.log"
     }
   ],
   "caseExportCommand": {
@@ -189,13 +211,14 @@
       "--export-network-codecs",
       "/probe/exports",
       "24",
-      "494001"
+      "490201",
+      "128"
     ],
-    "startedAt": "2026-10-19T02:46:46.624110+00:00",
-    "endedAt": "2026-10-19T02:46:46.702985+00:00",
+    "startedAt": "2026-10-19T04:40:16.290073+00:00",
+    "endedAt": "2026-10-19T04:42:25.083109+00:00",
     "returncode": 0,
     "status": "complete",
-    "log": "/tmp/scarab/v02-49-protocol-probe/11.log"
+    "log": "/tmp/scarab/v02-49-protocol-probe/12.log"
   },
   "execution": {
     "image": "scarab-pre-conway178-oracle:local",
@@ -245,6 +268,14 @@
       "upstream-failure": 0
     },
     "prop_codec_cborM_LocalTxMonitor": {
+      "pass": 24,
+      "upstream-failure": 0
+    },
+    "prop_codecIdM_LocalTxMonitor": {
+      "pass": 24,
+      "upstream-failure": 0
+    },
+    "prop_codec_valid_cbor_encoding_LocalTxMonitor": {
       "pass": 24,
       "upstream-failure": 0
     }
