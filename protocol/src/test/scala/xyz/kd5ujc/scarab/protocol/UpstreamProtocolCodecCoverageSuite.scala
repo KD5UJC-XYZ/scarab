@@ -662,3 +662,74 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
     }
     assertEquals(outcomes.size, 24)
     assertEquals(outcomes.count(_ == "matched"), 24)
+
+  test("classify actual generated TxSubmission2 rows at the Conway typed boundary"):
+    val input =
+      rows("txsubmission2.tsv", "148ef49de27138d1b2bf5d46b02ea944e3fe9fde1a646baf6b42304f0f909e41")
+    assertEquals(input.size, 24)
+    assertEquals(input.count(f => f.size == 10 && f(8) == "pass" && f(9) == "pass"), 24)
+    assertEquals(
+      input.groupMapReduce(_(6))(_ => 1)(_ + _),
+      Map(
+        "done" -> 5,
+        "init" -> 4,
+        "reply-ids" -> 3,
+        "reply-txs" -> 4,
+        "request-ids-blocking" -> 2,
+        "request-ids-nonblocking" -> 2,
+        "request-txs" -> 4
+      )
+    )
+    assertEquals(
+      input.groupMapReduce(_(4))(_ => 1)(_ + _),
+      Map("idle" -> 8, "ids-blocking" -> 8, "init" -> 4, "txs" -> 4)
+    )
+    val outcomes = input.map { fields =>
+      assertEquals(fields.size, 10)
+      assertEquals(fields(0), "txsubmission2-codec-v1")
+      val seed = fields(1).toInt
+      val ordinal = fields(2).toInt
+      assertEquals(seed, 495001 + ordinal)
+      assertEquals(fields(3).toInt, 30 + ordinal % 21)
+      val state = fields(4) match
+        case "init"            => TxSubmission2.State.Init
+        case "idle"            => TxSubmission2.State.Idle
+        case "ids-blocking"    => TxSubmission2.State.Ids(blocking = true)
+        case "ids-nonblocking" => TxSubmission2.State.Ids(blocking = false)
+        case "txs"             => TxSubmission2.State.Txs
+        case other             => fail(s"unknown upstream TxSubmission2 state $other at seed $seed")
+      val sender = fields(5) match
+        case "client" => ChainSync.Role.Client
+        case "server" => ChainSync.Role.Server
+        case other    => fail(s"unknown upstream TxSubmission2 sender $other at seed $seed")
+      val wire = bytes(fields(7))
+      TxSubmission2.decodePrefix(state, sender, wire) match
+        case DecodeResult.Decoded(message, consumed) =>
+          assertEquals(consumed, wire.size, s"seed $seed consumed original wire")
+          val tag = message match
+            case TxSubmission2.Message.Init => "init"
+            case TxSubmission2.Message.RequestIds(blocking, _, _) =>
+              if blocking then "request-ids-blocking" else "request-ids-nonblocking"
+            case TxSubmission2.Message.ReplyIds(_)   => "reply-ids"
+            case TxSubmission2.Message.RequestTxs(_) => "request-txs"
+            case TxSubmission2.Message.ReplyTxs(_)   => "reply-txs"
+            case TxSubmission2.Message.Done          => "done"
+          assertEquals(tag, fields(6), s"seed $seed typed constructor")
+          val encoded = TxSubmission2
+            .encode(state, sender, message)
+            .fold(e => fail(s"seed $seed Scarab typed encode: ${e.toString}"), identity)
+          assertEquals(encoded, wire, s"seed $seed exact original wire roundtrip")
+          "matched"
+        case DecodeResult.Failed(error) => s"unsupported:${fields(6)}:${error.productPrefix}"
+        case DecodeResult.NeedMore      => "unsupported:NeedMore"
+    }
+    assertEquals(outcomes.size, 24)
+    assertEquals(
+      outcomes.groupMapReduce(identity)(_ => 1)(_ + _),
+      Map(
+        "matched" -> 13,
+        "unsupported:reply-ids:ExpectedDefiniteArray" -> 3,
+        "unsupported:reply-txs:ExpectedDefiniteArray" -> 4,
+        "unsupported:request-txs:ExpectedDefiniteArray" -> 4
+      )
+    )

@@ -8,11 +8,14 @@ and property bodies. `keepalive.tsv` is generated from `KeepAlive/Test.hs`'s `pr
 record source file hashes, exact seed/size values, dependency plan, overlay patch hash, upstream
 property result, and raw fixture hash.
 
-Each file has 24 cases from seed `490201`; the row seed is base plus ordinal and size cycles from
-30 through 50. The original property was run over each exported message, and the filtered upstream
-test suites also passed: all nine KeepAlive properties and all ten PeerSharing properties. The
-upstream suite's QuickCheck properties each passed 100 cases, except the split-three properties,
-which each passed 33.
+The KeepAlive and PeerSharing files each have 24 cases from seed `490201`; each row's seed is base
+plus ordinal and size cycles from 30 through 50. The original property was run over each exported
+message, and the filtered upstream test suites also passed: all nine KeepAlive properties and all
+ten PeerSharing properties. The upstream suite's QuickCheck properties each passed 100 cases,
+except the split-three properties, which each passed 33.
+
+Unsupported rows below describe exact typed-adapter gaps for upstream test parameterizations; they
+are not Cardano production-wire failures or demonstrated protocol divergences.
 
 The pinned `cardano-diffusion` suite adds bounded Cardano-specific evidence.
 `cardano-handshake.tsv` contains 40 deterministic cases from the unchanged
@@ -72,6 +75,7 @@ failure, and done messages. Four specific-point acquire/reacquire rows retain or
 upstream pass status but are unsupported at `ExpectedDefiniteByteString`: upstream mock
 `HeaderHash Int` is integer-encoded, while Scarab's point type requires byte-string hashes. No
 point conversion or fabricated value is used; query/result payloads remain opaque full CBOR items.
+This is a generic mock-to-Cardano typed-API gap, not evidence of an invalid Cardano wire message.
 
 The LocalTxSubmission observer exports 24 rows from the pinned upstream
 `AnyMessage (LocalTxSubmission Tx Reject)` generator at seed base 493001. Both unchanged
@@ -87,13 +91,23 @@ measure queries, transaction lookup, release, and await-acquire. This is a bound
 the split, codec-ID, valid-CBOR, client/server, channel and pipe properties remain separate suite
 coverage.
 
+The pinned TxSubmission2 `codec` and `codec cbor` observer exports 24 messages from the actual
+`AnyMessage (TxSubmission2 TxId Tx)` generator at seed base 495001; both properties pass all 24.
+Scarab exactly consumes and re-encodes 13 control/request rows. Three `ReplyIds`, four `RequestTxs`,
+and four `ReplyTxs` rows remain unsupported at typed error `ExpectedDefiniteArray`: the generic
+upstream test uses arbitrary CDDL `Any` values for `TxId` and `Tx`, while Scarab's Conway adapter
+requires the Cardano transaction-id and GenTx structures. Original wires and upstream verdicts are
+retained without conversion. This is a test-domain coverage gap, not a finding of invalid Cardano
+wire or an upstream protocol defect. Split, ID codec, annotated-codec, valid-CBOR and channel
+properties remain separate coverage.
+
 The pinned ChainSync `codecSerialised` observer now exports 128 rows from the actual
 `AnyMessage ChainSync_Serialised_BlockHeader` generator, preserving each source state token,
 sender agency, constructor, original CBOR wire, generator seed/size, and separate verdicts from
 `prop_codec_ChainSyncSerialised` and `prop_codec_cbor_ChainSyncSerialised`. Both properties passed
 128/128; the filtered upstream ChainSync test group passed all 34 tests (each QuickCheck property
 reported 100 cases). The fixture manifest records the exact command logs, source hashes, observer
-patch hash, and constructor/state counts. The Scala consumer is set up to verify typed
-decode/encode parity for these rows; the focused consumer result is pending. This bounded sample
-does not imply coverage of ChainSync split, binary-compatibility, valid-CBOR, pipelining or
-transport tests.
+patch hash, and constructor/state counts. The Scala consumer passes the full sample, with 49 exact
+typed matches and the same 79 `ExpectedDefiniteByteString` mock-hash cases listed above. This
+bounded sample does not imply coverage of ChainSync split, binary-compatibility, valid-CBOR,
+pipelining or transport tests.

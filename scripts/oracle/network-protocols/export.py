@@ -79,6 +79,7 @@ def prepare(source: Path, overlay: Path) -> dict[str, str]:
         "LocalStateQuery": source / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/LocalStateQuery/Test.hs",
         "LocalTxSubmission": source / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/LocalTxSubmission/Test.hs",
         "LocalTxMonitor": source / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/LocalTxMonitor/Test.hs",
+        "TxSubmission2": source / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/TxSubmission2/Test.hs",
         "Main": source / "ouroboros-network/protocols/tests/Main.hs",
     }
     source_hashes = {name: hashlib.sha256(path.read_bytes()).hexdigest() for name, path in modules.items()}
@@ -90,6 +91,7 @@ def prepare(source: Path, overlay: Path) -> dict[str, str]:
     local_state_query = overlay / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/LocalStateQuery/Test.hs"
     local_tx_submission = overlay / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/LocalTxSubmission/Test.hs"
     local_tx_monitor = overlay / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/LocalTxMonitor/Test.hs"
+    tx_submission2 = overlay / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/TxSubmission2/Test.hs"
     keep_original = inject(
         keep,
         "import Test.QuickCheck\n",
@@ -531,6 +533,84 @@ exportLocalTxMonitorCases path count seed = withFile path WriteMode $ \outputHan
         "module Ouroboros.Network.Protocol.LocalTxMonitor.Test (tests, exportLocalTxMonitorCases) where",
     ))
 
+    tx_submission2_original = inject(
+        tx_submission2,
+        "import Test.QuickCheck as QC\n",
+        r'''
+
+-- Disposable observer: preserve the original typed-protocol generator, codec, and properties.
+exportTxSubmission2Cases :: FilePath -> Int -> Int -> IO ()
+exportTxSubmission2Cases path count seed = withFile path WriteMode $ \outputHandle ->
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 30 + (ordinal `mod` 21)
+        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize
+          :: AnyMessage (TxSubmission2 TxId Tx)
+    codecResult <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 1000003), caseSize) }
+      (once (prop_codec testCase))
+    cborResult <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 2000003), caseSize) }
+      (once (prop_codec_cbor testCase))
+    case testCase of
+      AnyMessage (msg :: Message (TxSubmission2 TxId Tx) st st') -> do
+        let txCodec = codec_v2
+              :: Codec (TxSubmission2 TxId Tx) DeserialiseFailure IO ByteString
+            raw = encode txCodec msg
+            token = stateToken :: StateToken st
+            (state, sender) = case token of
+              SingInit -> ("init", "client")
+              SingIdle -> ("idle", "server")
+              SingTxIds SingBlocking -> ("ids-blocking", "client")
+              SingTxIds SingNonBlocking -> ("ids-nonblocking", "client")
+              SingTxs -> ("txs", "client")
+              SingDone -> ("done", "none")
+            tag = case msg of
+              MsgInit -> "init"
+              MsgRequestTxIds SingBlocking _ _ -> "request-ids-blocking"
+              MsgRequestTxIds SingNonBlocking _ _ -> "request-ids-nonblocking"
+              MsgReplyTxIds _ -> "reply-ids"
+              MsgRequestTxs _ -> "request-txs"
+              MsgReplyTxs _ -> "reply-txs"
+              MsgDone -> "done"
+            codecOutcome = if isSuccess codecResult then "pass" else "upstream-failure"
+            cborOutcome = if isSuccess cborResult then "pass" else "upstream-failure"
+        hPutStrLn outputHandle $ intercalate "\t"
+          [ "txsubmission2-codec-v1", show caseSeed, show ordinal, show caseSize
+          , state, sender, tag, hex (BL.toStrict raw), codecOutcome, cborOutcome
+          ]
+  where
+    hex = concatMap (pad . (`showHex` "")) . BS.unpack
+    pad [digit] = ['0', digit]
+    pad digits = digits
+''',
+        "import Control.Monad (forM_)\n"
+        "import Data.ByteString qualified as BS\n"
+        "import Data.ByteString.Lazy qualified as BL\n"
+        "import Data.List (intercalate)\n"
+        "import Numeric (showHex)\n"
+        "import System.IO (withFile, IOMode (WriteMode), hPutStrLn)\n"
+        "import Test.QuickCheck.Gen (unGen)\n"
+        "import Test.QuickCheck.Random (mkQCGen)\n",
+    )
+    tx_submission2_module = tx_submission2.read_text()
+    tx_scoped_anchor = "{-# LANGUAGE RankNTypes                 #-}\n"
+    if tx_submission2_module.count(tx_scoped_anchor) != 1:
+        raise SystemExit("TxSubmission2 observer language pragma anchor changed")
+    tx_submission2_module = tx_submission2_module.replace(
+        tx_scoped_anchor,
+        tx_scoped_anchor + "{-# LANGUAGE ScopedTypeVariables        #-}\n",
+    )
+    tx_submission2.write_text(tx_submission2_module)
+    tx_submission2_module = tx_submission2.read_text()
+    tx_submission2_export_anchor = "  , labelMsg\n"
+    if tx_submission2_module.count(tx_submission2_export_anchor) != 1:
+        raise SystemExit("TxSubmission2 observer module export list changed")
+    tx_submission2.write_text(tx_submission2_module.replace(
+        tx_submission2_export_anchor,
+        "  , labelMsg\n  , exportTxSubmission2Cases\n",
+    ))
+
     chain_module = chain.read_text()
     chain_export_anchor = "module Ouroboros.Network.Protocol.ChainSync.Test (tests) where"
     if chain_module.count(chain_export_anchor) != 1:
@@ -549,6 +629,7 @@ exportLocalTxMonitorCases path count seed = withFile path WriteMode $ \outputHan
         "import Ouroboros.Network.Protocol.LocalStateQuery.Test qualified as LocalStateQuery (tests, exportLocalStateQueryCases)\n"
         "import Ouroboros.Network.Protocol.LocalTxSubmission.Test qualified as LocalTxSubmission (tests, exportLocalTxSubmissionCases)\n"
         "import Ouroboros.Network.Protocol.LocalTxMonitor.Test qualified as LocalTxMonitor (tests, exportLocalTxMonitorCases)\n"
+        "import Ouroboros.Network.Protocol.TxSubmission2.Test qualified as TxSubmission2 (tests, exportTxSubmission2Cases)\n"
         "import System.Environment (getArgs)\n"
     )
     main_text = main_original.replace(
@@ -574,6 +655,9 @@ exportLocalTxMonitorCases path count seed = withFile path WriteMode $ \outputHan
         "import Ouroboros.Network.Protocol.LocalTxMonitor.Test qualified (tests)\n", ""
     )
     main_text = main_text.replace(
+        "import Ouroboros.Network.Protocol.TxSubmission2.Test qualified (tests)\n", ""
+    )
+    main_text = main_text.replace(
         "Ouroboros.Network.Protocol.KeepAlive.Test.tests", "KeepAlive.tests"
     ).replace("Ouroboros.Network.Protocol.PeerSharing.Test.tests", "PeerSharing.tests")
     main_text = main_text.replace("Ouroboros.Network.Protocol.ChainSync.Test.tests", "ChainSync.tests")
@@ -581,6 +665,7 @@ exportLocalTxMonitorCases path count seed = withFile path WriteMode $ \outputHan
     main_text = main_text.replace("Ouroboros.Network.Protocol.LocalStateQuery.Test.tests", "LocalStateQuery.tests")
     main_text = main_text.replace("Ouroboros.Network.Protocol.LocalTxSubmission.Test.tests", "LocalTxSubmission.tests")
     main_text = main_text.replace("Ouroboros.Network.Protocol.LocalTxMonitor.Test.tests", "LocalTxMonitor.tests")
+    main_text = main_text.replace("Ouroboros.Network.Protocol.TxSubmission2.Test.tests", "TxSubmission2.tests")
     main_text = main_text.replace(
         "main = defaultMain tests",
         "main = getArgs >>= \\args -> case args of\n"
@@ -592,6 +677,7 @@ exportLocalTxMonitorCases path count seed = withFile path WriteMode $ \outputHan
         "    LocalStateQuery.exportLocalStateQueryCases (dir <> \"/localsq.tsv\") (read count) (read seed)\n"
         "    LocalTxSubmission.exportLocalTxSubmissionCases (dir <> \"/localtxsubmission.tsv\") (read count) (read seed)\n"
         "    LocalTxMonitor.exportLocalTxMonitorCases (dir <> \"/localtxmonitor.tsv\") (read count) (read seed)\n"
+        "    TxSubmission2.exportTxSubmission2Cases (dir <> \"/txsubmission2.tsv\") (read count) (read seed)\n"
         "  _ -> defaultMain tests",
     )
     main.write_text(main_text)
@@ -603,6 +689,7 @@ exportLocalTxMonitorCases path count seed = withFile path WriteMode $ \outputHan
         "LocalStateQuery/Test.hs": local_state_query_original,
         "LocalTxSubmission/Test.hs": local_tx_submission_original,
         "LocalTxMonitor/Test.hs": local_tx_monitor_original,
+        "TxSubmission2/Test.hs": tx_submission2_original,
         "protocols/tests/Main.hs": main_original,
     }
 
@@ -643,7 +730,7 @@ def main() -> None:
             "-w", "/source", IMAGE, "-f", "/dev/null",
         ])
     checked(["docker", "start", CONTAINER_NAME])
-    for test_name in ("KeepAlive", "PeerSharing", "ChainSync", "BlockFetch", "LocalStateQuery", "LocalTxSubmission", "LocalTxMonitor"):
+    for test_name in ("KeepAlive", "PeerSharing", "ChainSync", "BlockFetch", "LocalStateQuery", "LocalTxSubmission", "LocalTxMonitor", "TxSubmission2"):
         checked([
             "docker", "exec", "-w", "/source", CONTAINER_NAME,
             "cabal", "test", "--project-file=/probe/protocols-tests.project",
@@ -711,6 +798,7 @@ def main() -> None:
         ("localsq.tsv", "ouroboros-network:protocols-tests / LocalStateQuery / codec + codec cbor"),
         ("localtxsubmission.tsv", "ouroboros-network:protocols-tests / LocalTxSubmission / codec + codec cbor"),
         ("localtxmonitor.tsv", "ouroboros-network:protocols-tests / LocalTxMonitor / codecM + codec cborM"),
+        ("txsubmission2.tsv", "ouroboros-network:protocols-tests / TxSubmission2 / codec + codec cbor"),
     ]:
         raw = (args.probe_dir / "exports" / name).read_bytes()
         rows = [line.split("\t") for line in raw.decode().splitlines()]
@@ -725,7 +813,7 @@ def main() -> None:
             "upstreamPropertyOutcomes": {
                 "both-properties-pass": sum(row[-2:] == ["pass", "pass"] for row in rows),
                 "at-least-one-upstream-failure": sum(row[-2:] != ["pass", "pass"] for row in rows),
-            } if name in ("chainsync.tsv", "blockfetch.tsv", "localsq.tsv", "localtxsubmission.tsv", "localtxmonitor.tsv") else {
+            } if name in ("chainsync.tsv", "blockfetch.tsv", "localsq.tsv", "localtxsubmission.tsv", "localtxmonitor.tsv", "txsubmission2.tsv") else {
                 "pass": sum(row[-1] == "pass" for row in rows),
                 "upstream-failure": sum(row[-1] != "pass" for row in rows),
             },
@@ -742,6 +830,7 @@ def main() -> None:
                 "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/LocalStateQuery/Test.hs",
                 "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/LocalTxSubmission/Test.hs",
                 "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/LocalTxMonitor/Test.hs",
+                "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/TxSubmission2/Test.hs",
                 "ouroboros-network/protocols/tests/Main.hs",
             ]},
             "observerPatchSha256": hashlib.sha256(patch.encode()).hexdigest(),
@@ -905,6 +994,31 @@ def main() -> None:
             manifest["propertyReplaySeedOffsets"] = {
                 "prop_codecM_LocalTxMonitor": 1000003,
                 "prop_codec_cborM_LocalTxMonitor": 2000003,
+            }
+        if name == "txsubmission2.tsv":
+            manifest["adapterInputStatuses"] = {
+                "byConstructor": {
+                    tag: sum(row[6] == tag for row in rows)
+                    for tag in sorted({row[6] for row in rows})
+                },
+                "sourceStates": {
+                    state: sum(row[4] == state for row in rows)
+                    for state in sorted({row[4] for row in rows})
+                },
+            }
+            manifest["upstreamPropertyOutcomesByProperty"] = {
+                "prop_codec": {
+                    "pass": sum(row[-2] == "pass" for row in rows),
+                    "upstream-failure": sum(row[-2] != "pass" for row in rows),
+                },
+                "prop_codec_cbor": {
+                    "pass": sum(row[-1] == "pass" for row in rows),
+                    "upstream-failure": sum(row[-1] != "pass" for row in rows),
+                },
+            }
+            manifest["propertyReplaySeedOffsets"] = {
+                "prop_codec": 1000003,
+                "prop_codec_cbor": 2000003,
             }
         (args.output_dir / name).write_bytes(raw)
         (args.output_dir / (name + ".manifest.json")).write_text(json.dumps(manifest, indent=2) + "\n")
