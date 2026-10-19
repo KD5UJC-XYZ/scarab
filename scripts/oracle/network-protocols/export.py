@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """Export generated typed-protocol codec cases from the pinned upstream properties."""
 
 from __future__ import annotations

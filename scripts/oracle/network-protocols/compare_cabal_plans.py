@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """Prove the selected protocol-test target closure matches a full Cabal plan."""
 
 import argparse

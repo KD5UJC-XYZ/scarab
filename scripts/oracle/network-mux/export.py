@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """Export a bounded corpus from the pinned upstream `prop_sdu_codec` generator.
 
 The exporter patches only a disposable copy of the pinned checkout. The copied Haskell test
