@@ -5,7 +5,9 @@ import xyz.kd5ujc.scarab.codec.Bytes
 
 /** ChainSync policy boundary over shared framing. Its 65535-byte policy is unchanged. */
 private[protocol] object ChainSyncWire:
-  private def checked(limits: ChainSync.Limits)(using ProtocolWire.Scope): ProtocolWire.Limits =
+  private[protocol] def checked(limits: ChainSync.Limits)(using
+      ProtocolWire.Scope
+  ): ProtocolWire.Limits =
     if !limits.valid then ChainSync.bad(ProtocolError.InvalidLocalLimits)
     ProtocolWire.Limits(
       limits.maxMessageBytes,

@@ -107,6 +107,7 @@ object NetworkError:
     case TransactionNotRequested
     case KeepAliveUnexpected(message: KeepAlive.Message)
     case ChainSyncUnexpected(message: ChainSync.Message[?])
+    case ChainSyncEngineUnexpected(message: ChainSyncEngine.Message[?, ?, ?])
     case BlockFetchUnexpected(message: BlockFetch.Message[?])
     case BlockFetchEngineUnexpected(message: BlockFetchEngine.Message[?, ?])
     case TxSubmissionUnexpected(message: TxSubmission2.Message)
