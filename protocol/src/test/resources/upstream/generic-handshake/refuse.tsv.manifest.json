@@ -1,0 +1,156 @@
+{
+  "fixture": "refuse.tsv",
+  "fixtureSha256": "bf30a0f4f614a9c4e03e0d775a998b19c39ab941361e38f4b7f8d1407c68b667",
+  "columns": [
+    "seed",
+    "size",
+    "originalCbor",
+    "prop_codec_RefuseReason"
+  ],
+  "rows": 24,
+  "upstreamOutcomes": {
+    "prop_codec_RefuseReason": {
+      "pass": 24,
+      "upstream-failure": 0
+    }
+  },
+  "upstream": {
+    "repository": "IntersectMBO/ouroboros-network",
+    "commit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+    "source": "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/Handshake/Test.hs",
+    "originalSourceSha256": "8f70ade7feaf6012677f038cd91dd7ed42a3355fab6d0a304dd22fe931bc5be0",
+    "observedSourceSha256": "abeb2e97167a32ae47fc50f4fefe1a5ef6d4ed0e4e39f802b8a3c2a35283275d",
+    "observerPatch": "scripts/oracle/network-protocols/generic-handshake/observer.patch",
+    "observerPatchSha256": "35d33a7f1966962ee15d0deff7cbc06bcc12acc2c8591f407cc456642245fe97"
+  },
+  "build": {
+    "image": "scarab-v02-49-protocols-cache:peer-acceptance-20261019",
+    "imageId": "sha256:b9e81590371f7d1784b0e4a62eac7560e0da3498d8b1a6b791e50f6420ae15fb",
+    "projectSha256": "8af20fd6f6389ab41dfcf016201b4da34ee518714abf528bf1115e40c14a6aef",
+    "selectedPlanSha256": "42d695659261546c8c90946f82f38389c61cf6588c16a931aad92a9c42ea183c",
+    "fullProjectPlanSha256": "3c0b26e26a13727364b6c8b567a90aa109c67b5c4914f41057ec8faaf3c5202c",
+    "sameTargetClosure": true,
+    "targetDependencyUnits": 167,
+    "executableSha256": "09056644fffff13ca21342e89902b41e8afb969aeb85e68a5ce35ac188b6573b",
+    "commands": [
+      {
+        "argv": [
+          "patch",
+          "--batch",
+          "-p1",
+          "-i",
+          "/home/euler/repos/cardano-scala-lab/.workspace/worktrees/v02-49-generic-handshake/scripts/oracle/network-protocols/generic-handshake/observer.patch"
+        ],
+        "returncode": 0,
+        "logSha256": "3a45f12a145e08e329102b8bf1bccdafd7858031c989c337c56a7b7fdfa7675e"
+      },
+      {
+        "argv": [
+          "docker",
+          "image",
+          "inspect",
+          "scarab-v02-49-protocols-cache:peer-acceptance-20261019",
+          "--format",
+          "{{.Id}}"
+        ],
+        "returncode": 0,
+        "logSha256": "e4a1aeb45bd1678400388c8821cf1d5e6a213ab58f21781f9f5faea4a3771687"
+      },
+      {
+        "argv": [
+          "docker",
+          "run",
+          "-d",
+          "--name",
+          "scarab-49-generic-handshake-reproduce",
+          "-v",
+          "/tmp/scarab/issue-49-handshake-reproduction-final/source:/source",
+          "-v",
+          "/tmp/scarab/issue-49-handshake-reproduction-final:/probe",
+          "--entrypoint",
+          "tail",
+          "scarab-v02-49-protocols-cache:peer-acceptance-20261019",
+          "-f",
+          "/dev/null"
+        ],
+        "returncode": 0,
+        "logSha256": "dc314c8439f6efc2a5561ce8275f2024128beca228a08d454b7cb0f1c39a8c10"
+      },
+      {
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/source",
+          "scarab-49-generic-handshake-reproduce",
+          "cabal",
+          "build",
+          "--project-file=/probe/protocols-tests.project",
+          "ouroboros-network:protocols-tests",
+          "--builddir=/probe/narrow-builddir",
+          "--jobs=2"
+        ],
+        "returncode": 0,
+        "logSha256": "bebd83ac959974a913045a77e7e627a64c56fc0f9a10e0c85009a6e44479dbcd"
+      },
+      {
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/source",
+          "scarab-49-generic-handshake-reproduce",
+          "cabal",
+          "build",
+          "ouroboros-network:protocols-tests",
+          "--project-file=/source/cabal.project",
+          "--builddir=/probe/full-plan",
+          "--enable-tests",
+          "--dry-run",
+          "--offline"
+        ],
+        "returncode": 0,
+        "logSha256": "185581d6c76b83b9c1815322a0da83435ed3234ef31c4d9fd3bd27f2fa51c2ce"
+      },
+      {
+        "argv": [
+          "/home/linuxbrew/.linuxbrew/opt/python@3.14/bin/python3.14",
+          "/home/euler/repos/cardano-scala-lab/.workspace/worktrees/v02-49-generic-handshake/scripts/oracle/network-protocols/compare_cabal_plans.py",
+          "/tmp/scarab/issue-49-handshake-reproduction-final/full-plan/cache/plan.json",
+          "/tmp/scarab/issue-49-handshake-reproduction-final/narrow-builddir/cache/plan.json",
+          "--output",
+          "/tmp/scarab/issue-49-handshake-reproduction-final/dependency-closure.json"
+        ],
+        "returncode": 0,
+        "logSha256": "700efc7f3b44b9811afecaf25c145cd77ce0b1cbcf0f66ca6b41a1da553df593"
+      },
+      {
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/source",
+          "-e",
+          "SCARAB_GENERIC_HANDSHAKE_OUTPUT=/probe/generic",
+          "scarab-49-generic-handshake-reproduce",
+          "/probe/narrow-builddir/build/x86_64-linux/ghc-9.10.3/ouroboros-network-1.3.0.0/t/protocols-tests/build/protocols-tests/protocols-tests",
+          "--pattern",
+          "scarab generic export"
+        ],
+        "returncode": 0,
+        "logSha256": "1ddc445392e7cb5916974d53222faa080a8f9bfa87b63472ab16de978db91d36"
+      }
+    ]
+  },
+  "adapter": {
+    "suite": "xyz.kd5ujc.scarab.protocol.GenericHandshakeUpstreamSuite",
+    "scope": "Original mock versions 0/1/2 and version-dependent data; production bounded parser, wire codecs and highest-common selector. Cardano policy remains separate.",
+    "limitations": [
+      "Bounded deterministic samples, not whole-property completion.",
+      "ST/IO/pipe/SimNet original verdicts are retained independently. Scala checks wire/selection contracts, not interpreter, transport or scheduler equivalence.",
+      "The asymmetric server recognizes only version 1; original 0/2 entries are skipped rather than remapped.",
+      "Generic generator-consistency laws are Haskell test infrastructure; they do not require Scala QuickCheck generation/shrinking.",
+      "Local bounded resource/refusal-arity policies remain stricter than upstream."
+    ]
+  }
+}

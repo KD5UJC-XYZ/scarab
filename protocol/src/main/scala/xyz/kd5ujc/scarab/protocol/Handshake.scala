@@ -67,16 +67,27 @@ object Handshake:
   def wireVersion(suite: Suite, version: Int): Either[ProtocolError, Int] =
     if !recognized(suite, version) then Left(ProtocolError.UnsupportedLogicalVersion)
     else Right(if suite == Suite.NodeToClient then version | 0x8000 else version)
-  private def logical(suite: Suite, term: Term): Option[Int] = term match
-    case Term.Integer(n) if n.isValidInt =>
-      val wire = n.toInt
+
+  /** Wire policy, independent of version-data negotiation. Unknown map keys are skipped. The
+    * Cardano facades below retain their closed NtnVersion/NtcVersion policies.
+    */
+  trait VersionCodec:
+    def encode(version: Int): Either[ProtocolError, Int]
+    def decode(wire: Int): Option[Int]
+
+  private def versions(suite: Suite): VersionCodec = new VersionCodec:
+    def encode(version: Int): Either[ProtocolError, Int] = wireVersion(suite, version)
+    def decode(wire: Int): Option[Int] =
       val v = if suite == Suite.NodeToClient then wire ^ 0x8000 else wire
       Option.when(recognized(suite, v))(v)
-    case _ => None
-  private def known(suite: Suite, term: Term)(using ProtocolWire.Scope): Int =
-    logical(suite, term).getOrElse(bad(ProtocolError.UnrecognizedSelectedVersion))
-  private def versionTerm(suite: Suite, v: Int)(using ProtocolWire.Scope): Term =
-    Term.Integer(wireVersion(suite, v).fold(bad, identity))
+
+  private def logical(codec: VersionCodec, term: Term): Option[Int] = term match
+    case Term.Integer(n) if n.isValidInt => codec.decode(n.toInt)
+    case _                               => None
+  private def known(codec: VersionCodec, term: Term)(using ProtocolWire.Scope): Int =
+    logical(codec, term).getOrElse(bad(ProtocolError.UnrecognizedSelectedVersion))
+  private def versionTerm(codec: VersionCodec, v: Int)(using ProtocolWire.Scope): Term =
+    Term.Integer(codec.encode(v).fold(bad, identity))
   private def arr(t: Term)(using ProtocolWire.Scope): Vector[Term] = t match
     case Term.Arr(v, true) => v
     case _                 => bad(ProtocolError.ExpectedDefiniteArray)
@@ -143,60 +154,68 @@ object Handshake:
         )
       )
 
-  private def versionMap(suite: Suite, term: Term)(using ProtocolWire.Scope): Vector[(Int, Term)] =
+  private def versionMap(codec: VersionCodec, term: Term)(using
+      ProtocolWire.Scope
+  ): Vector[(Int, Term)] =
     term match
       case Term.Map(entries, true) =>
-        val recognized = entries.flatMap { case (key, data) => logical(suite, key).map(_ -> data) }
+        val recognized = entries.flatMap { case (key, data) => logical(codec, key).map(_ -> data) }
         if recognized.zip(recognized.drop(1)).exists((a, b) => a._1 >= b._1) then
           bad(ProtocolError.RecognizedVersionsMustBeDistinctAndIncreasing)
         recognized
       case _ => bad(ProtocolError.ExpectedDefiniteVersionMap)
-  private def mapTerm(suite: Suite, entries: Vector[(Int, Term)])(using ProtocolWire.Scope): Term =
+  private def mapTerm(codec: VersionCodec, entries: Vector[(Int, Term)])(using
+      ProtocolWire.Scope
+  ): Term =
     if entries.map(_._1).distinct.size != entries.size then bad(ProtocolError.DuplicateVersion)
-    Term.Map(entries.sortBy(_._1).map { case (v, d) => (versionTerm(suite, v), d) })
+    Term.Map(entries.sortBy(_._1).map { case (v, d) => (versionTerm(codec, v), d) })
   private def text(t: Term)(using ProtocolWire.Scope): String = t match
     case Term.Text(s, true) if s.getBytes(StandardCharsets.UTF_8).length <= MaxRefusalBytes => s
     case _ => bad(ProtocolError.InvalidOrOversizedRefusalText)
-  private def reason(suite: Suite, term: Term)(using ProtocolWire.Scope): Reason = arr(term) match
+  private def reason(codec: VersionCodec, term: Term)(using ProtocolWire.Scope): Reason = arr(
+    term
+  ) match
     case Vector(Term.Integer(tag), versions) if tag == 0 =>
       val all = arr(versions)
       Reason.VersionMismatch(
-        all.flatMap(logical(suite, _)),
+        all.flatMap(logical(codec, _)),
         all.collect {
-          case t @ Term.Integer(n) if logical(suite, t).isEmpty => n
+          case t @ Term.Integer(n) if logical(codec, t).isEmpty => n
         }
       )
-    case Vector(Term.Integer(tag), v, s) if tag == 1 => Reason.DecodeError(known(suite, v), text(s))
-    case Vector(Term.Integer(tag), v, s) if tag == 2 => Reason.Refused(known(suite, v), text(s))
+    case Vector(Term.Integer(tag), v, s) if tag == 1 => Reason.DecodeError(known(codec, v), text(s))
+    case Vector(Term.Integer(tag), v, s) if tag == 2 => Reason.Refused(known(codec, v), text(s))
     case _                                           => bad(ProtocolError.InvalidRefusalTagOrArity)
-  private def reasonTerm(suite: Suite, r: Reason)(using ProtocolWire.Scope): Term = r match
+  private def reasonTerm(codec: VersionCodec, r: Reason)(using ProtocolWire.Scope): Term = r match
     case Reason.VersionMismatch(vs, _) =>
-      Term.Arr(Vector(Term.Integer(0), Term.Arr(vs.map(versionTerm(suite, _)))))
+      Term.Arr(Vector(Term.Integer(0), Term.Arr(vs.map(versionTerm(codec, _)))))
     case Reason.DecodeError(v, s) =>
-      text(Term.Text(s)); Term.Arr(Vector(Term.Integer(1), versionTerm(suite, v), Term.Text(s)))
+      text(Term.Text(s)); Term.Arr(Vector(Term.Integer(1), versionTerm(codec, v), Term.Text(s)))
     case Reason.Refused(v, s) =>
-      text(Term.Text(s)); Term.Arr(Vector(Term.Integer(2), versionTerm(suite, v), Term.Text(s)))
-  private def message(suite: Suite, state: State, term: Term)(using ProtocolWire.Scope): Message =
+      text(Term.Text(s)); Term.Arr(Vector(Term.Integer(2), versionTerm(codec, v), Term.Text(s)))
+  private def message(codec: VersionCodec, state: State, term: Term)(using
+      ProtocolWire.Scope
+  ): Message =
     if state == State.Done then bad(ProtocolError.HandshakeAlreadyDone)
     arr(term) match
-      case Vector(Term.Integer(tag), map) if tag == 0 => Message.Propose(versionMap(suite, map))
+      case Vector(Term.Integer(tag), map) if tag == 0 => Message.Propose(versionMap(codec, map))
       case Vector(Term.Integer(tag), v, d) if tag == 1 && state == State.Confirm =>
-        Message.Accept(known(suite, v), d)
+        Message.Accept(known(codec, v), d)
       case Vector(Term.Integer(tag), r) if tag == 2 && state == State.Confirm =>
-        Message.Refuse(reason(suite, r))
+        Message.Refuse(reason(codec, r))
       case Vector(Term.Integer(tag), map) if tag == 3 && state == State.Confirm =>
-        Message.QueryReply(versionMap(suite, map))
+        Message.QueryReply(versionMap(codec, map))
       case _ => bad(ProtocolError.UnexpectedHandshakeTagArityOrState)
-  def encode(suite: Suite, msg: Message): Either[ProtocolError, Bytes] = attempt {
+  def encode(codec: VersionCodec, msg: Message): Either[ProtocolError, Bytes] = attempt {
     val term = msg match
-      case Message.Propose(vs)    => Term.Arr(Vector(Term.Integer(0), mapTerm(suite, vs)))
-      case Message.Accept(v, d)   => Term.Arr(Vector(Term.Integer(1), versionTerm(suite, v), d))
-      case Message.Refuse(r)      => Term.Arr(Vector(Term.Integer(2), reasonTerm(suite, r)))
-      case Message.QueryReply(vs) => Term.Arr(Vector(Term.Integer(3), mapTerm(suite, vs)))
+      case Message.Propose(vs)    => Term.Arr(Vector(Term.Integer(0), mapTerm(codec, vs)))
+      case Message.Accept(v, d)   => Term.Arr(Vector(Term.Integer(1), versionTerm(codec, v), d))
+      case Message.Refuse(r)      => Term.Arr(Vector(Term.Integer(2), reasonTerm(codec, r)))
+      case Message.QueryReply(vs) => Term.Arr(Vector(Term.Integer(3), mapTerm(codec, vs)))
     encodeTerm(term)
   }
   def decodePrefix(
-      suite: Suite,
+      codec: VersionCodec,
       state: State,
       bytes: Bytes
   ): Either[DecodeError, (Message, Bytes)] =
@@ -204,14 +223,38 @@ object Handshake:
       .term(0)
       .run(Cursor(0, 0))
       .flatMap { case (cursor, term) =>
-        attempt((message(suite, state, term), bytes.drop(cursor.position)))
+        attempt((message(codec, state, term), bytes.drop(cursor.position)))
       }
       .left
       .map(e => DecodeError(e, e.incomplete))
-  def decode(suite: Suite, state: State, bytes: Bytes): Either[DecodeError, Message] =
-    decodePrefix(suite, state, bytes).flatMap { case (m, rest) =>
+  def decode(codec: VersionCodec, state: State, bytes: Bytes): Either[DecodeError, Message] =
+    decodePrefix(codec, state, bytes).flatMap { case (m, rest) =>
       if rest.size == 0 then Right(m) else Left(DecodeError(ProtocolError.TrailingBytes))
     }
+
+  def encode(suite: Suite, msg: Message): Either[ProtocolError, Bytes] =
+    encode(versions(suite), msg)
+  def decodePrefix(
+      suite: Suite,
+      state: State,
+      bytes: Bytes
+  ): Either[DecodeError, (Message, Bytes)] =
+    decodePrefix(versions(suite), state, bytes)
+  def decode(suite: Suite, state: State, bytes: Bytes): Either[DecodeError, Message] =
+    decode(versions(suite), state, bytes)
+
+  def encodeReason(codec: VersionCodec, value: Reason): Either[ProtocolError, Bytes] =
+    attempt(encodeTerm(reasonTerm(codec, value)))
+  def decodeReason(codec: VersionCodec, bytes: Bytes): Either[DecodeError, Reason] =
+    new Parser(bytes)
+      .term(0)
+      .run(Cursor(0, 0))
+      .flatMap { case (cursor, term) =>
+        if cursor.position != bytes.size then Left(ProtocolError.TrailingBytes)
+        else attempt(reason(codec, term))
+      }
+      .left
+      .map(e => DecodeError(e, e.incomplete))
 
   def proposal(suite: Suite, offers: Vector[(Int, Data)]): Either[ProtocolError, Message] =
     offers
@@ -238,24 +281,64 @@ object Handshake:
     NtcVersion.All.map(v => v.number -> data)
   private def queryResult(suite: Suite, vs: Vector[(Int, Term)]): Result =
     Result.QueryResult(vs.map { case (v, d) => v -> decodeData(suite, v, d) })
+
+  /** Version-data policy: errors stay typed until a refusal is encoded for the peer. */
+  trait DataCodec[A, E]:
+    def decode(version: Int, term: Term): Either[E, A]
+    def agree(local: A, remote: A): Either[E, A]
+    def refusalText(error: E): String
+
+  enum SelectionError[+E]:
+    case VersionMismatch(versions: Vector[Int])
+    case DecodeError(version: Int, cause: E)
+    case Refused(version: Int, cause: E)
+
+  /** Convert a typed selection failure into its wire diagnostic at the handshake boundary. */
+  def refusal[A, E](codec: DataCodec[A, E], error: SelectionError[E]): Reason = error match
+    case SelectionError.VersionMismatch(vs)   => Reason.VersionMismatch(vs)
+    case SelectionError.DecodeError(v, cause) => Reason.DecodeError(v, codec.refusalText(cause))
+    case SelectionError.Refused(v, cause)     => Reason.Refused(v, codec.refusalText(cause))
+
+  /** Highest-common-version selection, shared by the Cardano facade and mock-domain adapters.
+    * Mirrors Handshake/Client.hs:acceptOrRefuse at upstream 2fb69829. A failed highest candidate
+    * never falls back to a lower version.
+    */
+  def acceptOrRefuse[A, E](
+      codec: DataCodec[A, E],
+      offers: Vector[(Int, A)],
+      remote: Vector[(Int, Term)]
+  ): Either[SelectionError[E], (Int, A)] =
+    val common = remote.filter { case (v, _) => offers.exists(_._1 == v) }
+    common.maxByOption(_._1) match
+      case None => Left(SelectionError.VersionMismatch(offers.map(_._1).sorted))
+      case Some((v, term)) =>
+        codec.decode(v, term).left.map(e => SelectionError.DecodeError(v, e)).flatMap { decoded =>
+          offers.find(_._1 == v) match
+            case None => Left(SelectionError.VersionMismatch(offers.map(_._1).sorted))
+            case Some((_, own)) =>
+              codec
+                .agree(own, decoded)
+                .left
+                .map(e => SelectionError.Refused(v, e))
+                .map(v -> _)
+        }
+
+  private def cardanoData(suite: Suite): DataCodec[Data, ProtocolError] =
+    new DataCodec[Data, ProtocolError]:
+      def decode(version: Int, term: Term): Either[ProtocolError, Data] =
+        decodeData(suite, version, term)
+      def agree(local: Data, remote: Data): Either[ProtocolError, Data] =
+        Handshake.agree(local, remote)
+      def refusalText(error: ProtocolError): String = error.message
+
   private def negotiate(
       suite: Suite,
       offers: Vector[(Int, Data)],
       remote: Vector[(Int, Term)]
   ): Result =
-    val common = remote.filter { case (v, _) => offers.exists(_._1 == v) }
-    if common.isEmpty then Result.Rejected(Reason.VersionMismatch(offers.map(_._1).sorted))
-    else
-      val (v, term) = common.maxBy(_._1)
-      decodeData(suite, v, term) match
-        case Left(e) => Result.Rejected(Reason.DecodeError(v, e.message))
-        case Right(d) =>
-          offers.find(_._1 == v) match
-            case None => Result.Rejected(Reason.VersionMismatch(offers.map(_._1).sorted))
-            case Some((_, own)) =>
-              agree(own, d) match
-                case Left(e)       => Result.Rejected(Reason.Refused(v, e.message))
-                case Right(agreed) => Result.Negotiated(v, agreed)
+    val codec = cardanoData(suite)
+    acceptOrRefuse(codec, offers, remote)
+      .fold(error => Result.Rejected(refusal(codec, error)), (v, d) => Result.Negotiated(v, d))
   final case class Client private[Handshake] (
       suite: Suite,
       offers: Vector[(Int, Data)],
