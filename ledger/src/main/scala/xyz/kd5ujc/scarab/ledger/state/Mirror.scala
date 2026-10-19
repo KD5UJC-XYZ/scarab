@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.ledger.state
 import xyz.kd5ujc.scarab.codec.DomainError
 import cats.{Eq, Functor, Show}
 import cats.derived.*
+import scala.reflect.ClassTag
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 
 // The vocabulary of the conversion between the node's flat ledger state and the mirror of the
@@ -46,9 +47,10 @@ enum Gap derives Eq, Show, Diff:
   case ShelleyTransition
 
 /** A mirror with the gaps it has. A functor, so a conversion of the value keeps them. */
-final case class Mirrored[A](value: A, gaps: Set[Gap]) derives Eq, Show, Diff
+final case class Mirrored[A](value: A, gaps: Set[Gap]) derives Eq, Show
 
 object Mirrored:
+  given [A](using Diff[A], ClassTag[A]): Diff[Mirrored[A]] = Diff.derived
   given Functor[Mirrored] with
     def map[A, B](m: Mirrored[A])(f: A => B): Mirrored[B] = Mirrored(f(m.value), m.gaps)
 
