@@ -289,14 +289,15 @@ object Credential:
   private val hotCommitteeOrder: Order[Credential[HotCommittee]] =
     new CredentialOrder[HotCommittee]
 
-  given Order[Credential[StakePool]] = stakePoolOrder
-  given Order[Credential[Staking]] = stakingOrder
-  given Order[Credential[Genesis]] = genesisOrder
-  given Order[Credential[GenesisDelegate]] = genesisDelegateOrder
-  given Order[Credential[BlockIssuer]] = blockIssuerOrder
-  given Order[Credential[DRepRole]] = drepOrder
-  given Order[Credential[ColdCommittee]] = coldCommitteeOrder
-  given Order[Credential[HotCommittee]] = hotCommitteeOrder
+  given stakePoolCredentialOrder: Order[Credential[StakePool]] = stakePoolOrder
+  given stakingCredentialOrder: Order[Credential[Staking]] = stakingOrder
+  given genesisCredentialOrder: Order[Credential[Genesis]] = genesisOrder
+  given genesisDelegateCredentialOrder: Order[Credential[GenesisDelegate]] =
+    genesisDelegateOrder
+  given blockIssuerCredentialOrder: Order[Credential[BlockIssuer]] = blockIssuerOrder
+  given drepCredentialOrder: Order[Credential[DRepRole]] = drepOrder
+  given coldCommitteeCredentialOrder: Order[Credential[ColdCommittee]] = coldCommitteeOrder
+  given hotCommitteeCredentialOrder: Order[Credential[HotCommittee]] = hotCommitteeOrder
 
 /** `DRep` (`DRep.hs:67-72`, `deriving Ord`): key hash, script hash, always-abstain,
   * always-no-confidence.
