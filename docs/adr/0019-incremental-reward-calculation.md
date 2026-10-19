@@ -38,4 +38,10 @@ calculation state is introduced.
 - A sparse chain may provide fewer than the required pulse calls before `8k/f`. Forced completion
   must still finish the suffix synchronously; performance evidence reports this case separately
   and never promises a hard bound that changes reference semantics.
+- Invalid imported relative stake is refused with a typed vocabulary error only when an eligible
+  member's positive distributable pot requires division by it; harmless zero-pot state is retained.
+- Normal completion still reduces all delivered rewards. On 2026-10-19 the owner accepted the
+  measured 15.99 ms API median (19.30 ms maximum), superseding the original proposed 5 ms target.
+  The owner also accepted the measured tens-of-milliseconds start and sparse forced completion;
+  this stage requires no further latency follow-up.
 - ADR 0009's other decisions and historical acceptance remain in force.

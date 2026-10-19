@@ -112,13 +112,16 @@ ledger results against the eager baseline, using the same JVM, CPU allowance and
 rotate conditions to reduce JIT and host-contention bias. Loading, state hashing and comparison
 are outside the timed interval. Report allocation, peak retained heap and total reward CPU too.
 
-The proposed normal-schedule gate makes "a small factor of an ordinary block" measurable:
+The accepted normal-schedule gates make "a small factor of an ordinary block" measurable:
 
 - Through the normal reward interval, full-block p99 and maximum latency are at most twice those
   of the same workload's ordinary-block control, with absolute times and control selection shown.
-- Separately, start, normal pulse and normal completion ticks each target no more than
-  `max(5 ms, 2 × median ordinary full-block time)` on the frozen benchmark machine. This is an
-  acceptance target to verify, not a hard real-time promise or a result of the current profile.
+- Separately report start, normal pulse and normal completion API latency. The original shaping
+  target was `max(5 ms, 2 × median ordinary full-block time)`. On 2026-10-19 the owner explicitly
+  accepted the measured 15.99 ms normal-completion median (19.30 ms maximum), relative to the
+  historical approximately 1.1-second reward update, superseding the proposed 5 ms API target.
+  The owner also accepted the measured tens-of-milliseconds start and sparse forced-completion
+  costs; the remaining linear reduction requires no further latency follow-up.
 - Total reward-calculation CPU is no more than 1.25 times eager calculation on the same work;
   no full scan or complete eager member calculation occurs on each pulse.
 
@@ -161,3 +164,25 @@ rollback to the immutable earlier state. `RewardSnapshotSuite` retains that regr
 [fixture provenance](../../node/src/test/resources/rewards-pending-v5.md) records the exact writer
 and SHA-256. The sidecar fingerprint golden remains unchanged; no persisted-format migration is
 introduced.
+
+
+The five pending-sensitive flat-state regressions now live in `NativeRewardSemanticsSuite`:
+reward-start timing, delegated owner pledge, Shelley/Allegra aggregation, captured prefilter versus
+registration at application, and the exact mainnet epoch 235 AVVM/reserves reward regression. The
+flat adapter remains strict; it no longer completes a pending value merely to fit a flat test
+projection. Maintained snapshot fixtures and recorded-data tools use native V5, with pinned
+conversion provenance in [their README](../../fixtures/snapshot-v5/README.md). The old V5 pending
+regression is already in the current persisted format.
+
+Codec-valid imported relative stake can still be an invalid calculation input. When an eligible
+member has a positive distributable pool pot, nonpositive relative stake returns
+`VocabError.InvalidRewardRelativeStake` instead of dividing by zero. A zero-stake pool with no
+distributable reward remains harmless; owners, filtered credentials and zero-total-stake inputs
+retain the reference's early-return behaviour. This guard does not narrow the Haskell wire codec.
+
+The controlled API measurements remove the eager first-call work and reduce total reward CPU,
+but normal completion still performs the reference's linear delivered-reward reduction. Its
+15.99 ms median exceeded the original proposed 5 ms API target; the owner accepted that measured
+result on 2026-10-19. #135 follows the normal main-plus-nightly definition of done, with no
+remaining 5 ms follow-up requirement. [performance.md](../performance.md#30-incremental-reward-implementation-135)
+records measured scope and limitations, separately from the final current-main block replay.

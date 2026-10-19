@@ -1644,9 +1644,115 @@ than node-wide peak memory. A separate untimed prefix probe samples retained hea
 one current immutable state. Neither measures a full node's retained volatile rollback history.
 
 Sources, exact Docker argument vectors, class/source inventories, hashes, stage samples and
-analysis stay outside Git under `/tmp/scarab/issue-135`. The final runtime binding is
+analysis stay outside Git under `/tmp/scarab/issue-135`. The controlled-profile runtime binding is
 `candidate-binding-singleton.json` (SHA-256
 `c362e39ea9e4f2903b2830655902e6ad82e2b4c88506fe650863b4f8063ef55e`):
 eight runtime source files and 10,783 compiled production files. The final edits were compiled
 while uncommitted, then recorded by `bfcd4fd0`; generated build metadata can name the preceding
 head. Independent source/class hashes bind the measured implementation.
+
+
+This controlled profile is bound to the **pre-rebase, pre-import-validation** runtime above.
+The final gates and paired block replay use main `0b5dde8f` plus the subsequent typed refusal for
+invalid imported relative stake; they have a separate binding. All nine largest-state output
+digests agree with the baseline's `a2912a1475bf177677e31589f4a9832116a5fe619706999851a8b7634ced936b`.
+
+| Controlled API condition | Wall median (ms) | Largest wall call (ms) | Current-thread CPU median (ms) | Allocation per sequence (MB) |
+|---|---:|---:|---:|---:|
+| Eager, one call | 265.582 | 335.810 | 264.547 | 332.297 |
+| Start | 4.278 | 6.214 | 4.276 | 5.199 |
+| Member pulse, 1,697 calls/sequence | 0.0717 | 0.269 | 133.884 summed across pulses | 249.234 summed across pulses |
+| Normal completion | 15.990 | 19.299 | 16.011 | 8.066 |
+| Pulsed, whole sequence | — | — | 154.660 | 262.500 |
+
+Stage medians are medians of the nine per-sequence values; the member wall median is the median
+of each sequence's per-call median. CPU/allocation totals exclude instrumentation between calls.
+The CPU ratio is 0.585 of eager and allocation 0.790, within the proposed total-CPU target. The
+remaining completion reduction over all delivered rewards is linear, as in the reference. Its
+15.99 ms median is real CPU work, not merely scheduler noise, and exceeded the original proposed
+5 ms API completion target; the largest start call also exceeds 5 ms. On 2026-10-19 the owner
+explicitly accepted this measured normal-completion result relative to the historical approximately
+1.1-second reward update, superseding the proposed 5 ms API target. The separate whole-block tail
+and total-CPU criteria remain; #135 has no remaining 5 ms follow-up requirement. This records an
+explicit acceptance decision rather than silently changing reference timing or hiding the result.
+
+A cheaper section 29 index 1400 control (79,745 captured credentials but only 5,908 rewarded
+accounts) also completes the same 1,697-pulse schedule and reproduces its baseline digest. It is
+a three-measured-sequence diagnostic pair, without the largest workload's three-pair rotation.
+The regular completion calls are 1.57–1.82 ms; many zero member results avoid retained reward
+allocation. This control demonstrates that captured credential count alone does not predict
+completion cost.
+
+The largest-state completed-result retained deltas are 9.984 MB eager and 10.061 MB pulsed (medians
+of explicit-GC measurements). The untimed prefix probe observes incremental retained heap rising
+from 0.112 MB at start through 2.566/5.094/7.619/10.123 MB after 425/850/1,275/1,697 pulses, then
+10.144 MB after completion; eager completion in that separate probe retains 10.020 MB. These are
+sampled deltas with one current reward state and the input snapshot retained. They are not an
+upper bound on peak live heap, a volatile-history benchmark or a full-node soak result.
+
+Private reproduction uses `PulseProfile.scala`, `run-micro-singleton.py` and
+`run-micro-cheap.py`; the separate untimed probe is `RewardMemoryProfile.scala`/`run-memory.py`.
+The input names and hashes are in section 29. `micro-singleton-summary.json` retains all rounds,
+stage summaries and output-log hashes; exact Docker argument vectors are in
+`micro-singleton-commands.json`. Host load was about 6.6 on 24 logical CPUs at timing start;
+other sessions compiled on the shared WSL2 host, and no other owned timed benchmark ran
+concurrently. Ordinary JVM JIT/GC and host scheduling remain sources of variation.
+
+
+**Current-main recorded block replay.** The final comparison uses eager main `0b5dde8f` and
+feature runtime `c8265de3`, including the imported-divisor guard. Both load the same checksummed
+native V5 copy of the archived K1 snapshot at slot 125231955/block 4753556, paired with its
+RocksDB checkpoint. Authentication checks original block CRCs, original-header hashes, slot/block
+numbers and parent links. The native input retains the original anchor, gaps and observations;
+its unmasked canonical NES SHA-256 is
+`9488acde5daafe88bff31aecbb1a52ba1ffee4ff971eaf17df68b2bc41930049`. Full typed equality with
+the archive requires only the documented normalization of empty pool-relay encodings; no reward
+fields are masked in this input proof. The original archive is unchanged.
+
+Three rotated pairs replay 4,971 original blocks per condition, from the authenticated anchor
+through epoch 1451: 29,826 full block applications. All 42 paired full-ledger checkpoints and all
+three paired whole-UTxO digests agree; 28 repeated eager ledger controls and two repeated eager
+UTxO controls also agree. Canonical comparison completes captured pending rewards outside the
+validation timer and masks only the named `NonMyopic` gap. The actual pulser prefix is retained
+for subsequent validation; the comparison does not replace live state with the completed view.
+
+| Final recorded replay measure | Eager main | Incremental |
+|---|---:|---:|
+| Start block, median | 349.320 ms | 18.361 ms |
+| First pulse block, median | 2.559 ms | 3.867 ms |
+| First block past force, median | 0.926 ms | 36.755 ms |
+| Normal reward interval p99, range across pairs | — | 10.898–11.508 ms |
+| Same-epoch ordinary control p99, range | — | 9.105–9.487 ms |
+| Normal reward interval maximum, range | — | 22.578–24.370 ms |
+| Same-epoch ordinary control maximum, range | — | 16.524–19.040 ms |
+| Full-window validation, median | 15.228 s | 12.839 s |
+| Full-window process CPU, median | 23.36 s | 20.66 s |
+| Full-window allocation, range | 20.742–20.761 GB | 20.674–20.698 GB |
+| Maximum sampled retained heap, range | 310.85–311.26 MB | 310.76–311.30 MB |
+| Maximum observed heap, range | 3.114–3.221 GB | 2.962–3.078 GB |
+
+The candidate's normal-interval p99 is at most 1.243 times its matched ordinary control, and its
+maximum at most 1.367 times: both satisfy the proposed 2 times full-block tail criterion. Whole-
+window time ranges overlap, so the three pairs do not establish a firm throughput improvement.
+Process allocation counters cover currently live threads; observed heap is not RSS. Explicit GC
+at matched comparison checkpoints is outside validation timing and may affect later blocks.
+Completing captured rewards for comparison also warms calculation methods outside the timer.
+
+The epoch 1450 window has only 1,261 blocks between start and force, fewer than the 1,697 member
+pulses plus start/completion required by this state. It therefore necessarily forces an unfinished
+suffix. The 36.755 ms force block measures reference-required remaining work; it does not measure
+natural completion. Natural completion is measured separately in the controlled API profile.
+On 2026-10-19 the owner explicitly accepted processing on the order of tens of milliseconds,
+including the measured start, normal completion and sparse-chain forced completion. No further
+latency follow-up is required for this stage.
+
+Exact commands, full block rows, input/checkpoint hashes, native conversion proof, dependency
+jar/genesis hashes, copied runtime inventories and analysis are retained under
+`/tmp/scarab/issue-135-replay-native`. `accepted-evidence.json` binds 163 artifacts (SHA-256
+`06ed671670fd978ca25f9ada7d6b280ece133b81466ab3ecd5dfd81b287c5738`);
+`benchmark-binding.json` SHA-256 is
+`c5eef7c34fed4823a9e05bbea3fe3aadd3b9fa667076a991e4373e5b012bbcf1`.
+The feature author's independent manifest of 8 reward sources, 452 main sources and 11,379 production files
+is `candidate-binding-rebased.json` in `/tmp/scarab/issue-135`, SHA-256
+`9e8b987d17d35b1e1a4b9df5677bca8c59ccbce874e9d2cf4d4ae49b4a6808d3`.
+Final verification confirms all original inputs, copied classes and bound sources unchanged.

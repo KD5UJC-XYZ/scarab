@@ -10,9 +10,8 @@ import xyz.kd5ujc.scarab.consensus.state.MirrorStep
 import xyz.kd5ujc.scarab.ledger.rules.EraNes
 import xyz.kd5ujc.scarab.ledger.state.PulsingRewUpdate
 
-/** The K1 projection of the state of the era-indexed rules is the same as it was before it was
-  * written over the read paths, when it was made from the flat state of the old rules (the recorded
-  * digests, `fixtures/projection-golden`).
+/** Direct native K1 projections against the era-capture goldens. The fixture README records the
+  * J2.7/J2.9 history and #135's pending-only rewardUpdate change.
   */
 class ProjectionSuite extends FunSuite:
   private val recorded: Vector[String] =

@@ -19,6 +19,10 @@ import xyz.kd5ujc.scarab.node.Projection
   * update from the first block of the first Shelley epoch, where the reference makes it at `4k/f`
   * slots into the epoch. The digest on Preview did not change at J2.8.
   *
+  * #135 records genuine pending reward work as rewardUpdate null in 19 rows; all other fields
+  * restore the old digests when the already captured pending update is completed in the private
+  * proof. The fixture README retains exact scope, hashes and provenance.
+  *
   * The Byron states are in the file for the record: the projection then was of a placeholder ledger
   * state, which a chain in Byron does not have, and is now the consensus part alone.
   */
