@@ -484,8 +484,30 @@ object StateGen:
       .zip(arb[ChainAccountState], ledgerState[E], snapShots, arb[NonMyopic])
       .map(EpochState[E](_, _, _, _))
 
-  /** A reward update, complete or pulsing (the pulser kept as the original bytes). */
-  val rewardUpdate: Gen[PulsingRewUpdate] = arb[PulsingRewUpdate]
+  /** The typed pulser carries pool snapshots too; cap their Haskell Int delegator counts. */
+  val poolRewardInfo: Gen[PoolRewardInfo] = arb[PoolRewardInfo].map(info =>
+    info.copy(snapshot =
+      info.snapshot.copy(numDelegators =
+        Word64.fromUnsigned(info.snapshot.numDelegators.bits & Long.MaxValue)
+      )
+    )
+  )
+
+  val rewardFreeVars: Gen[RewardFreeVars] = for
+    free <- arb[RewardFreeVars]
+    pools <- smallMap(arb[KeyHash[StakePool]], poolRewardInfo)
+  yield free.copy(pools = Sorted.map(pools))
+
+  val rewardPulser: Gen[RewardPulser] = for
+    pulser <- arb[RewardPulser]
+    free <- rewardFreeVars
+  yield pulser.copy(free = free)
+
+  /** A complete update or a typed, serialisable pending prefix. */
+  val rewardUpdate: Gen[PulsingRewUpdate] = Gen.oneOf(
+    arb[RewardUpdate].map(PulsingRewUpdate.Complete(_)),
+    Gen.zip(arb[RewardSnapShot], rewardPulser).map(PulsingRewUpdate.Pulsing(_, _))
+  )
 
   def newEpochState[E <: EraTag](using era: ShelleyBasedEra[E]): Gen[NewEpochState[E]] =
     Gen

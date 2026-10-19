@@ -220,7 +220,8 @@ object Memory94Main:
     * memory (5 x 648,752 votes, the copy making ten). The original file of the issue is a
     * `CSLSNAP1` snapshot of a schema the migration no longer reads, so the Haskell section is had
     * from a current one and the spam added to its Conway gov state. `spam <snapshot> <voters>
-    * <out>` writes a V4 file (the sidecar of the input, the new Haskell section, a zero checksum).
+    * <out>` writes a V5-shaped profiling file (the sidecar of the input, the new Haskell section, a
+    * zero checksum).
     */
   private def spamMain(content: Array[Byte], voters: Int, out: Path): Unit =
     import xyz.kd5ujc.scarab.consensus.state.EraLedgerState

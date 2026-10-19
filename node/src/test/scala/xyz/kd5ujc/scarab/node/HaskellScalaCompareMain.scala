@@ -1,11 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import cats.effect.IO
+import cats.effect.unsafe.implicits.global
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, EraLedgerState}
-import xyz.kd5ujc.scarab.legacy
+import xyz.kd5ujc.scarab.consensus.state.{
+  ChainDepState,
+  ConsensusMirrorEnv,
+  EraLedgerState,
+  MirrorState
+}
 import xyz.kd5ujc.scarab.ledger.state.*
+import xyz.kd5ujc.scarab.ledger.StorageError
+import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, LedgerFileEra}
 
 /** Compares a Haskell `state` file of the Preview chain with a snapshot of the Scala node in the
@@ -21,9 +29,12 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, LedgerFileEra
 object HaskellScalaCompareMain:
   private def readScala(
       file: Path,
-      forks: xyz.kd5ujc.scarab.consensus.HardForkConfig
-  ): Option[(Option[Long], legacy.FlatNodeState)] =
-    LegacySnapshots.read(file, forks).toOption.map(s => (s.anchor.map(_.slot.toLong), s.state))
+      env: ConsensusMirrorEnv
+  ): Either[StorageError, (Option[Long], MirrorState)] =
+    NativeSnapshots
+      .read[IO](file, env)
+      .unsafeRunSync()
+      .map(s => (s.anchor.map(_.slot.toLong), s.state))
 
   /** The names of the fields in which two values of a case class differ. */
   private def fields(a: Product, b: Product): List[String] =
@@ -48,24 +59,12 @@ object HaskellScalaCompareMain:
       .decode(Bytes.fromArray(Files.readAllBytes(Path.of(args(0)))))
       .fold(e => sys.error(e.render), identity)
     val (slot, state) =
-      readScala(Path.of(args(1)), setup.praos.forks).getOrElse(sys.error("no snapshot"))
+      readScala(Path.of(args(1)), setup.mirrorEnv()).fold(e => sys.error(e.message), identity)
     given ShelleyBasedEra[Conway] = ShelleyBasedEra.SConway
     val haskell = hs.ledger.state match
       case LedgerFileEra.Mirrored(EraLedgerState.InShelleyEra(ShelleyBasedEra.SConway, s)) => s.nes
       case other => sys.error(s"not a Conway state: $other")
-    val scalaNes = legacy.Mirroring
-      .toMirror(
-        setup.mirrorEnv(),
-        slot.map(s =>
-          xyz.kd5ujc.scarab.consensus.BlockRef(s, Bytes.fromArray(new Array[Byte](32)), 0)
-        ),
-        state
-      )
-      .fold(e => sys.error(s"mirror refused: $e"), identity)
-      .value
-      .ext
-      .ledgerState
-      .state match
+    val scalaNes = state.ext.ledgerState.state match
       case i: EraLedgerState.InShelleyEra[e] =>
         NewEpochState
           .retype(i.era, ShelleyBasedEra.SConway)(i.state.nes)

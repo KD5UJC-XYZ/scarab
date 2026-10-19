@@ -20,7 +20,8 @@ import xyz.kd5ujc.scarab.protocol.Era
   * (`fixtures/ntc-golden`): what [[QueryAnswers]] answers to every ledger query on those states,
   * recorded from the encoders the answers were written with before the Haskell state codec took
   * them over (`LedgerEncoders`, deleted since, whose bytes the devnet comparison with the reference
-  * node proved). The answers must not change.
+  * node proved). A change requires a reference-backed reason recorded with the fixture; #135's six
+  * debug-answer changes affect only the corrected captured non-myopic reward pot.
   *
   * The states are the three Conway states of the capture, and two built on the last one that hold
   * what a young chain does not: DReps, a committee, one proposal of each kind, a completed pulser

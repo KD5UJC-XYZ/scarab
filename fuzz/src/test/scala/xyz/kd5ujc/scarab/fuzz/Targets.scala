@@ -1029,6 +1029,77 @@ object Targets:
       )
     )
 
+  /** Native snapshot payloads enter through storage as well as the recorded-data tools. Use
+    * immutable current-format replacements from every era; their historical gaps are not rewritten
+    * through the live writer (live provenance is separately tracked by #129).
+    */
+  private val nativeSnapshots: Vector[Target] =
+    import cats.effect.{Sync, SyncIO}
+    import cats.mtl.Ask
+    import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
+    import xyz.kd5ujc.scarab.node.NodeSetup
+    import xyz.kd5ujc.scarab.storage.{
+      Codec,
+      FileLedgerSnapshots,
+      SnapshotCheck,
+      SnapshotSidecar,
+      SnapshotV5
+    }
+    import scala.jdk.CollectionConverters.*
+    lazy val env = NodeSetup
+      .fromDirectory(java.nio.file.Path.of("fixtures/eras/genesis"))
+      .fold(e => throw new Violation(e.message), _.mirrorEnv())
+    lazy val format =
+      given Ask[SyncIO, ConsensusMirrorEnv] = Ask.const(env)
+      SnapshotV5.format[SyncIO](SnapshotCheck.Full)
+    Vector(
+      Target(
+        "native-snapshot-v5",
+        () =>
+          // Keep decoder allocations visible to Probe's caller-thread counter.
+          val caller = Thread.currentThread()
+          req(
+            Sync[SyncIO].blocking(Thread.currentThread()).unsafeRunSync() eq caller,
+            "snapshot fuzz interpreter moved off the allocation-guard thread"
+          )
+          val listing = java.nio.file.Files.list(java.nio.file.Path.of("fixtures/snapshot-v5/eras"))
+          val eraSeeds =
+            try
+              listing.iterator.asScala.toVector.sorted.map { file =>
+                FileLedgerSnapshots
+                  .verified(java.nio.file.Files.readAllBytes(file))
+                  .fold(e => throw new Violation(e.message), identity)
+              }
+            finally listing.close()
+          val seeds = eraSeeds :+ java.nio.file.Files.readAllBytes(
+            java.nio.file.Path.of("node/src/test/resources/rewards-pending-v5.bin")
+          )
+          req(
+            seeds.forall(b => format.decode(b).unsafeRunSync().isRight),
+            "native snapshot seed does not decode"
+          )
+          seeds
+        ,
+        probe("native-snapshot-v5") { bytes =>
+          format.decode(bytes.toArray).unsafeRunSync().foreach { snapshot =>
+            hit("native-snapshot-v5")
+            val sidecar = SnapshotV5
+              .sidecarOf(bytes.toArray)
+              .fold(e => throw new Violation(e.message), identity)
+            req(
+              snapshot.anchor == sidecar.anchor,
+              "native snapshot anchor differs from its sidecar"
+            )
+            val encoded = Codec.encode(sidecar)(using SnapshotSidecar.codec)
+            req(
+              Codec.decode(encoded)(using SnapshotSidecar.codec) == Right(sidecar),
+              "native sidecar round trip drops state or gap metadata"
+            )
+          }
+        }
+      )
+    )
+
   private val ancillary: Vector[Target] =
     import xyz.kd5ujc.scarab.storage.haskell.state.AncillaryManifest
     Vector(
@@ -1214,4 +1285,4 @@ object Targets:
 
   val all: Vector[Target] =
     network ++ node ++ ledgerPeers ++ mempackTxOut ++ snapshotMeta ++ snapshotTables ++ sclsFraming ++
-      Vector(sclsValues) ++ ancillary ++ mithril ++ networkIdentity
+      Vector(sclsValues) ++ nativeSnapshots ++ ancillary ++ mithril ++ networkIdentity

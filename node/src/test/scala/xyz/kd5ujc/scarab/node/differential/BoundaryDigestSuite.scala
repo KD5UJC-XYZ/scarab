@@ -12,8 +12,9 @@ import xyz.kd5ujc.scarab.node.NodeSetup
   * before and after); a change to the rules of the boundary that should change the state changes
   * them, and then the new ones are recorded with a reason.
   *
-  * Runs when `SCARAB_K1_DB` names the `db` directory of that run (about 4 GB of heap per state:
-  * start sbt with `-J-Xmx12g`); otherwise it is skipped.
+  * Runs when `SCARAB_K1_DB` names its verified current-format V5 conversion corpus, with the
+  * recorded immutable chain available read-only (about 4 GB per state; allow a 12 GB heap for this
+  * optional proof); otherwise it is skipped.
   */
 class BoundaryDigestSuite extends FunSuite:
   override def munitTimeout: scala.concurrent.duration.Duration =

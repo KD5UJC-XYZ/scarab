@@ -148,6 +148,15 @@ object EraLedger:
       c => Sorted.Cursor(c.dState.accounts.states).at(_).isDefined
     )
 
+  /** The frozen registration set shares the persistent accounts tree's ordered key view. */
+  def registered[E <: EraTag](ls: LedgerState[E])(using
+      ShelleyBasedEra[E]
+  ): scala.collection.immutable.SortedSet[Credential[Staking]] =
+    foldCert[E, scala.collection.immutable.SortedSet[Credential[Staking]]](ls.cert)(
+      _.dState.accounts.states.keySet,
+      _.dState.accounts.states.keySet
+    )
+
   /** The accounts, in the order of their credential. */
   def accounts[E <: EraTag](ls: LedgerState[E])(using
       ShelleyBasedEra[E]

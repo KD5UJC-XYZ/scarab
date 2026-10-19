@@ -1,6 +1,6 @@
 # Ledger-state mirror, step 2
 
-**Status**: Accepted 2026-10-15 with the recommended decisions D1 to D10 ([ADR 0009](../adr/0009-ledger-mirror-step-2.md)). Jumps 1 and 2 are done (J2.9 removed the old rules, the flat state and the differential harness on 2026-10-17); jump 3 (section 5) and the follow-ups of section 8 are open and not started. Sections 2.5, 3 and 4 are the plan as approved with the "as built" notes added as each stage landed: the differential harness they describe no longer exists, and `--rules`, `--mirror-check`, `--on-divergence` and `--repro-dir` are refused. Tracked in [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82) (roadmap M11); step 1 is [ledger-mirror.md](ledger-mirror.md).
+**Status**: Accepted 2026-10-15 with the recommended decisions D1 to D10 ([ADR 0009](../adr/0009-ledger-mirror-step-2.md)). Jumps 1 and 2 are done (J2.9 removed the old rules, the flat state and the differential harness on 2026-10-17); jump 3 (section 5) is partially implemented, including the typed resumable reward runtime under #135, with the remaining gaps and follow-ups of section 8 still tracked. Sections 2.5, 3 and 4 are the plan as approved with the "as built" notes added as each stage landed: the differential harness they describe no longer exists, and `--rules`, `--mirror-check`, `--on-divergence` and `--repro-dir` are refused. Tracked in [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82) (roadmap M11); step 1 is [ledger-mirror.md](ledger-mirror.md).
 
 This plan was written against `integrate/batch7` at 1f7ea8ef (worktree (local working data)). It draws on the step-1 plan, the inventory, the CHANGELOG sections S0–S9, `docs/findings.md`, the code, and the pinned upstream sources in (local working data).
 
@@ -31,7 +31,7 @@ The differential harness of jump 2 also needs the conversion, because it compare
 | D5 | `Tx[E]`, `TxOut[E]`, `TxCert[E]` | **Defer to #85 (step 3).** `Tx`, `Prepared`, `Verdicts`, `VerificationCache`, the mempool, the forger and header-first validation all share the flat `Tx`. Jump 2 indexes the *state* only. |
 | D6 | Close the String failures in jump 2? | Yes, for the block level: `NodeRules.applyBlock` returns `Either[(String, String), …]` today and becomes a closed `BlockFailure` ADT in the first commit of jump 2 (both sides; the JSON log renders the same `rule`/`reason`). The new rules raise typed `PredicateFailure`s for every era; `PredicateFailure.Unmapped(rule, detail)` gains constructors as each rule is ported and is deleted with the old rules. Collecting several failures, as Haskell's `runTest` does, is out of scope: it only changes rejection lists. |
 | D7 | Harness sampling on Preview/preprod | Touched entries compared after every transaction; a full comparison at every epoch boundary and every 2,160 blocks; `halt` on devnet and the fixture; `reseed-and-continue` on the preprod replay, so one 5 h run finds every divergence. |
-| D8 | Representing the pulsing reward update | Keep the eager calculation and add a progress counter. `Pulsing(snapshot, pulser)` is derived from the eager result plus the number of blocks pulsed, because `pulseSize = max 1 ⌈n/4k⌉` (`PulsingReward.hs:114`) makes the pulser state a prefix of the credentials in `Map` order. Do not port the incremental pulser. |
+| D8 | Representing the pulsing reward update | Historical choice: eager calculation plus a progress counter. Superseded by [ADR 0019](../adr/0019-incremental-reward-calculation.md) / [#135](reward-pulser.md): the typed reference pulser now performs actual incremental member computation and resumes imported pending state. |
 | D9 | NonMyopic if the floats cannot be matched byte for byte | Fallback ladder: `StrictMath` → glibc `log` through FFM (the image is JDK 21, where FFM is still preview; it is final from 22) → leave `Gap.NonMyopic` documented. It affects no validation, only the debug answers and `GetNonMyopicMemberRewards`. |
 | D10 | VRF registry rule (jump 3) | Adopt Haskell's behaviour. It *changes a verdict*: on a chain that starts at protocol 11, a new pool may take a genesis pool's VRF key (`HardFork.hs:75-78,107` populates only at the HARDFORK into 11). The current `ConwayRules.vrfAvailable` refuses that. |
 
@@ -108,6 +108,11 @@ final case class NodeState(ext: ExtLedgerState, extras: ConsensusExtras)
   - **As built (#131):** the gate was met without the fallback: merges of the maps that are in one order, sorted maps built once from sorted input, one `Ordering` per key type and a cheaper `Bytes` comparison (`performance.md` section 16; new / old at the boundary 1.03 mean and 1.12 p99 against 1.47 and 1.86).
 
 ### 2.4 Persisted format (#83)
+
+The staging below records the historical format decisions. Native snapshots now use V5.
+[ADR 0019](../adr/0019-incremental-reward-calculation.md) / [#135](reward-pulser.md) supersedes the
+planned eager-result/pulse-counter representation: its typed resumable state retains the existing
+Haskell reward bytes and V5 fingerprint, so it introduces no version bump or migration.
 - **Mechanism fix first (J1.2):**
   - The snapshot (`CSLSNAP1 | u32 2 | fingerprint | payload | sha256`, `LedgerSnapshots.scala:43-120`, with its own `FormatVersion = 2` integer) is not a `FileKind`. Add `FileKind.SnapshotFile` (families `CSLSNAP`, `SCRBSNP`) and `FormatVersion.V3`.
   - `Migrate` steps *every* kind through each shared version, so a V3 bump would rewrite all 29k index files for nothing. Add `FileKind.current: FormatVersion` (the newest version at which the kind's layout changed) and make `Migrate` compare with it; `IndexFile`/`FormatFile`/`IdentityFile` stay at V2.
@@ -353,7 +358,12 @@ Goal: `NodeState(ext: ExtLedgerState, extras)` is live; new era-indexed rules ev
 
 ## 5. Jump 3: close the gaps, #83 migrations, byte equality, about 7–10 agent-days (NonMyopic float risk flagged)
 
-*Not started.* Its first item has an issue ([#129](https://github.com/KD5UJC-XYZ/scarab/issues/129), J3.1); the others are listed in roadmap M11 and wait for the owner to schedule them. Snapshots are format 5 now, so "V3" and "V4" below name the formats of the time: the migration registry of J3.9 ends at V5.
+*Partially implemented.* J3.5's typed resumable runtime and newly computed reward attribution are
+implemented under [#135](reward-pulser.md), superseding D8 through
+[ADR 0019](../adr/0019-incremental-reward-calculation.md). The remaining gap ledger is tracked by
+[#129](https://github.com/KD5UJC-XYZ/scarab/issues/129); the other outstanding items remain in
+roadmap M11. Snapshots are format 5 now, so "V3" and "V4" below name the historical formats:
+the migration registry of J3.9 ends at V5.
 
 Goal: debug-query answers byte-equal to the reference with no mask, on a node synced from genesis.
 
@@ -368,14 +378,20 @@ Goal: debug-query answers byte-equal to the reference with no mask, on a node sy
    - `vrfAvailable` reads the registry.
    - Devnet test: a registration that takes a genesis pool's key is accepted, as the reference accepts it.
 4. **J3.4 Pool relays:** `StakePoolState` keeps the registration's relay items as original bytes, so the 11.1.3 IPv4 decode-order fix cannot alter them. Genesis pools take theirs from the Shelley genesis staking section.
-5. **J3.5 Representable pulsing update and per-pool attribution** (D8):
-   - `RewardPulser(item: Bytes)` becomes typed (`pulseSize`, free vars, remaining credentials, accumulated `RewardAnswer`), derived from the eager result plus a pulse counter;
-   - `RewardSnapShot` filled (`rewDeltaR1`, `rewR`, `rewLikelihoods`, `rewLeaders`, …);
-   - `rewardRegistered` moves into it;
-   - sidecar V4 and the V3→V4 migration.
-   - Test: decode and re-encode the mid-epoch Haskell Preview `state` files (slots 125383670 and 125400924), and the Scala state at the same slot.
+5. **J3.5 Representable pulsing update and per-pool attribution** (D8, runtime implemented by #135):
+   - The common typed `RewardPulser` captures a positive pulse size, free variables, ordered
+     remaining stake and accumulated/recent rewards. It performs actual incremental member work;
+     the original eager-result/pulse-counter policy is superseded by ADR 0019.
+   - `RewardSnapShot` and frozen registration inputs support normal, forced and imported-state
+     completion through one pure machine. Newly computed rewards retain per-pool attribution.
+   - Existing Haskell reward bytes and the V5 fingerprint are unchanged. An actual old opaque V5
+     writer fixture proves read/continuation compatibility; no new migration is required.
+   - Fifteen unchanged Haskell API cases compare 180 intermediate states. Broader whole-state
+     corpus byte equality remains J3.8; historical migrated attribution gaps remain #129.
 6. **J3.6 NonMyopic** (D9):
-   - likelihoods and reward pot at NEWEPOCH per `PoolRank.hs` (`LogWeight` is a `Float` from `log :: Double`, `applyDecay` in Float, 100 sample positions);
+   - Newly generated likelihood vectors remain open (`LogWeight` is a `Float` from `log :: Double`,
+     with 100 sample positions). #135 implements exact captured-history decay/normalization and
+     reward-pot completion, including imported nonempty and empty-new likelihood maps;
    - oracle test against the 727×100 real floats of the Preview state, computed from Haskell state e plus the blocks of e;
    - the fallback ladder if not bit-equal.
 7. **J3.7 ShelleyTransition:** `afterVoting` counts the blocks at or after the voting deadline and resets at the new-epoch tick (`Ledger.hs:565-575,700-720`).
@@ -411,7 +427,11 @@ Goal: debug-query answers byte-equal to the reference with no mask, on a node sy
   - *Relations to retire as the old fields go.* `Relations` carries the places where the Haskell-shaped state is more exact than what the old mirror can say; each is listed in its comment. The delegator counts and owners of `set` and `go` of a carried state, and the pools of no stake in `pd`, disappear when the new side's snapshots are not seeded (the old mirror derives them from the accounts as they are, not as they were when the snapshot was taken; the seed itself holds `mark` as it was taken, `SnapshotBasis.AsTaken`, a lower bound that `Relations` compares as such); the future parameters of the hand-over block and the cost per UTxO byte before Babbage stay a representation matter until the flat `ProtocolParams` is replaced (J3 or step 3).
   - *The tick rules read the state through `EraLedger`;* the LEDGER rules of Conway can use the same functions for the accounts, the pools and the parameters, and the lenses of `ConwayLedgerState`.
   - *Cost.* A new-side epoch boundary of a 112,000-account state takes about 1.1 s (SNAP 0.4 to 0.55 s of it, EPOCH with the pulser 0.85 s, `applyRewardUpdate` 0.25 s) and the reward update at the start of the rewards 1.1 s, against about 0.1 to 0.4 s for the old rules' whole boundary; the time is in `SortedMap` construction and lookups (`Bytes.compareTo` is a fifth of the profile) and the rewards' rational arithmetic. The plan's gates (design 2.3: `epochBoundary` p99 within 25% of today's, replay within 15%) apply at the flip (J2.8); if they fail, the first measures are building the sorted maps from sorted input (the accounts are in order already), not rebuilding the active stake and the reward set, and the plan's fallback of hash maps with a sorted view at encode time.
-  - *Open.* The non-myopic data (`updateNonMyopic`, `Gap.NonMyopic`) is untouched (J3.6); the VRF key hashes are not tracked before the hard fork into 11 (J3.3), and the harness does not compare them at version 10 where the old mirror derives them and the reference has none; `Pulsing` reward updates read from a Haskell state are refused (`TickFailure.PulsingRewardUpdate`, J3.5).
+  - *Historical open items at the J2.3 hand-off.* The non-myopic data was untouched (J3.6), the
+    pre-11 VRF registry remained J3.3, and imported `Pulsing` updates were refused. #135 supersedes
+    that refusal: imported pending rewards now resume through typed RUPD/NEWEPOCH, and captured
+    non-myopic history completes exactly. New likelihood generation remains J3.6; the historical
+    performance measurements above are superseded for rewards by [the measured pulser](reward-pulser.md).
 - **J2.5 (Shelley..Babbage LEDGER), from J2.4:**
   - *What to reuse.* The predicates of UTXO and UTXOW in `PreConwayRules` already take the parameters, the UTxO set and the counters (the pre-Conway `apply` is still on the flat state and calls the same functions through the old signatures), so a generic UTXOW/UTXO over the witness is the sequence of calls `Utxow.witnesses` and `Utxo.validate` make with the era's deposits and without the Conway-only checks (reference inputs, collateral from Alonzo, `ValidationTagMismatch`, the reference-script fee, `WdrlNotDelegatedToDRep`, treasury value). `StAnnTx`, `Counted`, `Refuse`, `CertLens` (Conway's; the Shelley certificate state needs its own), `InstantStakeOps` (the credential stake; Shelley's `ShelleyInstantStake` adds the pointer stake, `Shelley/State/Stake.hs`, which the delegation by pointer resolves through `ShelleyAccounts.ptrs`) and `Deposits` are the places to generalise.
   - *The Conway-only choices to undo.* `Bbody` counts every block for its issuer (`incrBlocks False`: Conway has no overlay); before Babbage with `d > 0` a block made in an overlay slot is not counted, which the old rules take from the leader check's result (`LeaderCheck.Overlay`), so the signal needs it (or `isOverlaySlot` from the slot and `d`). BBODY has no reference-script limit before Babbage and no execution-unit limit before Alonzo. `ConwayBlock` takes the state through `Hfc.tick` and then matches the witness once (`SConway`); the rest of the era-generic code is `body` and `NewRules.withConway`, to generalise by the witness (the mirror is rebuilt with the tip, the new-epoch state and the counters, in the era of the telescope's current state). The block of an era whose pre-state is of the one before is `NotPorted` for the same reason as the first block of Conway (the telescope is not extended).
