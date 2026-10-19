@@ -1850,7 +1850,7 @@ and retries it once; a discarded repetition emits no verdicts and is counted in 
 summary. Expect a shared box to contaminate most repetitions — re-run until the wanted
 number of clean repetitions pass, or use a quiet machine.
 
-## 32. Preview acceptance evidence reconciliation (#21)
+## 33. Preview acceptance evidence reconciliation (#21)
 
 **Historical evidence recovered, 2026-10-19.** The retained K1 Haskell projections were recovered
 from the read-only archive, independently of the Scala outputs. All 1,518 transferred files
