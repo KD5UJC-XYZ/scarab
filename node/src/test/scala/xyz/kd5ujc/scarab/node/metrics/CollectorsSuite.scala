@@ -159,9 +159,11 @@ class CollectorsSuite extends CatsEffectSuite:
 
   private val header = Fixtures.header(1, 1, None)
 
-  private def accepted: BlockRules[IO, Int] = (state, _, _) => IO.pure(state + 1)
-  private def refusing(failure: BlockFailure)(using h: Handle[IO, NodeError]): BlockRules[IO, Int] =
-    (_, header, _) => h.raise(ValidationError(header.point, failure))
+  private def accepted: BlockRules[IO, Int] = BlockRules.from((state, _, _) => IO.pure(state + 1))
+  private def refusing(failure: BlockFailure): BlockRules[IO, Int] =
+    BlockRules.from((_, header, _) =>
+      cats.mtl.Raise[IO, ValidationError].raise(ValidationError(header.point, failure))
+    )
 
   private def withHandle[A](program: Handle[IO, NodeError] ?=> IO[A]): IO[Either[NodeError, A]] =
     Handle.allow[NodeError](program.map(_.asRight[NodeError])).rescue(e => IO.pure(e.asLeft[A]))

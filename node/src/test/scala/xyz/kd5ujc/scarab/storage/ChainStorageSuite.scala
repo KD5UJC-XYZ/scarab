@@ -317,9 +317,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         ).traverse_ { location =>
           Handle
             .allow[NodeError] {
-              val errors = summon[Handle[IO, NodeError]]
-              val unavailable: BlockRules[IO, MirrorState] = (_, header, _) =>
-                errors.raise[NodeError, MirrorState](
+              val unavailable: BlockRules[IO, MirrorState] = BlockRules.from { (_, header, _) =>
+                Raise[IO, ValidationError].raise[ValidationError, MirrorState](
                   ValidationError(
                     header.point,
                     BlockFailure.Tx(
@@ -331,6 +330,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                     )
                   )
                 )
+              }
               ChainStorage
                 .open[IO, MirrorState](
                   dir,

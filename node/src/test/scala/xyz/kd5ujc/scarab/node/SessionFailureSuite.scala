@@ -95,11 +95,11 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError],
               Raise[IO, xyz.kd5ujc.scarab.ledger.ChainError]
           ) = IO.unit
-        rules: BlockRules[IO, BigInt] = (_, header, _) =>
+        rules: BlockRules[IO, BigInt] = BlockRules.from { (_, header, _) =>
           if explode.contains(header.blockNo.toInt) then
             IO.raiseError(new IllegalStateException("a bug in the rules"))
           else if unavailable.contains(header.blockNo.toInt) then
-            node.raise[NodeError, BigInt](
+            Raise[IO, ValidationError].raise[ValidationError, BigInt](
               ValidationError(
                 header.point,
                 BlockFailure.Tx(
@@ -113,8 +113,11 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               )
             )
           else if refuse.contains(header.blockNo.toInt) then
-            node.raise[NodeError, BigInt](ValidationError(header.point, BlockFailure.HeaderDiffers))
+            Raise[IO, ValidationError].raise[ValidationError, BigInt](
+              ValidationError(header.point, BlockFailure.HeaderDiffers)
+            )
           else IO.pure(header.blockNo)
+        }
         follower <- Follower.create[IO, BigInt](
           rules,
           noEvents,

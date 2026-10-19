@@ -20,7 +20,7 @@ class SnapshotFailureSuite extends FailsOnUncaught:
     def decode(content: Array[Byte]) =
       IO.pure(Right(StateSnapshot(Some(point(1)), content.headOption.fold(0)(_.toInt))))
 
-  private val rules: BlockRules[IO, Int] = (_, _, _) => IO.pure(0)
+  private val rules: BlockRules[IO, Int] = BlockRules.from((_, _, _) => IO.pure(0))
 
   private def opened(
       dir: Path,
