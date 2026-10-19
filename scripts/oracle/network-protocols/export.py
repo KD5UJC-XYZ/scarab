@@ -263,6 +263,84 @@ def inject(module: Path, import_anchor: str, code: str, imports: str) -> str:
     return original
 
 
+def append_peer_acceptance_observers(keep: Path, peer: Path) -> None:
+    inject(keep, "import Ouroboros.Network.Driver.Limits\n", r'''
+
+exportKeepAliveByteLimits :: FilePath -> Int -> Int -> IO ()
+exportKeepAliveByteLimits path count seed = withFile path WriteMode $ \out ->
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 30 + ordinal `mod` 21
+        input = unGen arbitrary (mkQCGen caseSeed) caseSize :: AnyMessage KeepAlive
+    case input of
+      AnyMessage (msg :: Message KeepAlive st st') -> do
+        let Codec {encode} = codecKeepAlive_v2 :: Codec KeepAlive CBOR.DeserialiseFailure IO ByteString
+            ProtocolSizeLimits {sizeLimitForState, dataSize} = byteLimitsKeepAlive (fromIntegral . BL.length)
+            raw = encode msg
+            limit = sizeLimitForState (stateToken :: StateToken st)
+            state = case msg of
+              MsgKeepAlive _ -> "client"
+              MsgKeepAliveResponse _ -> "server"
+              MsgDone -> "client"
+        hPutStrLn out $ intercalate "\t"
+          ["keepalive-byte-limits-v1", show caseSeed, show ordinal, show caseSize,
+           state, hex (BL.toStrict raw), show (dataSize raw), show limit,
+           if prop_byteLimits input then "pass" else "upstream-failure"]
+  where
+    hex = concatMap (pad . (`showHex` "")) . BS.unpack
+    pad [digit] = ['0', digit]
+    pad digits = digits
+''', "")
+    inject(peer, "import Test.QuickCheck.Function (Fun, applyFun)\n", r'''
+
+-- Observe finite evaluations of the original generated function; no replacement generator/rule.
+exportPeerSharingBehavior :: FilePath -> Int -> Int -> IO ()
+exportPeerSharingBehavior path count seed = withFile path WriteMode $ \out ->
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 12 + ordinal `mod` 13
+        function = unGen arbitrary (mkQCGen caseSeed) caseSize :: Fun Word8 Int
+        amounts = unGen arbitrary (mkQCGen (caseSeed + 7000003)) caseSize :: [PeerSharingAmount]
+        evaluations = [applyFun function a | PeerSharingAmount a <- amounts]
+        expected = snd (foldl' (\(n,r) copies -> (n+1, replicate copies n ++ r)) (0,[]) evaluations)
+    directResult <- quickCheckWithResult stdArgs {chatty=False} (once (prop_direct function amounts))
+    connectResult <- quickCheckWithResult stdArgs {chatty=False} (once (prop_connect function amounts))
+    stResult <- quickCheckWithResult stdArgs {chatty=False} (once (prop_channel_ST function amounts))
+    ioResult <- quickCheckWithResult stdArgs {chatty=False} (once (prop_channel_IO function amounts))
+    hPutStrLn out $ intercalate "\t"
+      ["peersharing-behavior-v1",show caseSeed,show ordinal,show caseSize,
+       show [a | PeerSharingAmount a <- amounts],show evaluations,show (expected :: [Int]),
+       verdict directResult,verdict connectResult,verdict stResult,verdict ioResult]
+  where
+    verdict result = if isSuccess result then "pass" else "upstream-failure"
+
+exportPeerSharingByteLimits :: FilePath -> Int -> Int -> IO ()
+exportPeerSharingByteLimits path count seed = withFile path WriteMode $ \out ->
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 30 + ordinal `mod` 21
+        input = unGen arbitrary (mkQCGen caseSeed) caseSize :: AnyMessage (PeerSharing Int)
+    case input of
+      AnyMessage (msg :: Message (PeerSharing Int) st st') -> do
+        let Codec {encode} = codecPeerSharing @IO CBOR.encodeInt CBOR.decodeInt
+            ProtocolSizeLimits {sizeLimitForState,dataSize} = byteLimitsPeerSharing (fromIntegral . BL.length)
+            raw = encode msg
+            limit = sizeLimitForState (stateToken :: StateToken st)
+            state = case msg of
+              MsgShareRequest _ -> "idle"
+              MsgSharePeers _ -> "busy"
+              MsgDone -> "idle"
+        hPutStrLn out $ intercalate "\t"
+          ["peersharing-byte-limits-v1",show caseSeed,show ordinal,show caseSize,
+           state,hex (BL.toStrict raw),show (dataSize raw),show limit,
+           if prop_byteLimits input then "pass" else "upstream-failure"]
+  where
+    hex = concatMap (pad . (`showHex` "")) . BS.unpack
+    pad [digit] = ['0',digit]
+    pad digits = digits
+''', "")
+
+
 def prepare(source: Path, overlay: Path) -> dict[str, str]:
     actual = checked(["git", "-C", str(source), "rev-parse", "HEAD"])
     if actual != UPSTREAM_COMMIT:
@@ -2190,11 +2268,12 @@ exportBlockFetchBinaryCases path count seed = withFile path WriteMode $ \outputH
     pad [digit] = ['0', digit]
     pad digits = digits
 ''')
+    append_peer_acceptance_observers(keep, peer)
     main = overlay / "ouroboros-network/protocols/tests/Main.hs"
     main_original = main.read_text()
     dispatch_imports = (
-        "import Ouroboros.Network.Protocol.KeepAlive.Test qualified as KeepAlive (tests, exportKeepAliveCases, exportKeepAliveSplitCases, exportKeepAliveBehaviorCases)\n"
-        "import Ouroboros.Network.Protocol.PeerSharing.Test qualified as PeerSharing (tests, exportPeerSharingCases)\n"
+        "import Ouroboros.Network.Protocol.KeepAlive.Test qualified as KeepAlive (tests, exportKeepAliveCases, exportKeepAliveSplitCases, exportKeepAliveBehaviorCases, exportKeepAliveByteLimits)\n"
+        "import Ouroboros.Network.Protocol.PeerSharing.Test qualified as PeerSharing (tests, exportPeerSharingCases, exportPeerSharingBehavior, exportPeerSharingByteLimits)\n"
         "import Ouroboros.Network.Protocol.ChainSync.Test qualified as ChainSync (tests, exportChainSyncCases, exportChainSyncSplitCases, exportChainSyncBinaryCases, exportChainSyncBehaviorCases, exportChainSyncIOBehaviorCases, exportChainSyncPipelinedMaxCases, exportChainSyncPipelinedMinCases, exportChainSyncPipelinedLowHighCases, exportChainSyncPipelinedDirectConnectCases, exportChainSyncPipelinedMinBufferedCases, exportChainSyncDemoPipelinedIOCases)\n"
         "import Ouroboros.Network.Protocol.BlockFetch.Test qualified as BlockFetch (tests, exportBlockFetchCases, exportBlockFetchSplitCases, exportBlockFetchBinaryCases, exportBlockFetchBehaviorCases)\n"
         "import Ouroboros.Network.Protocol.LocalStateQuery.Test qualified as LocalStateQuery (tests, exportLocalStateQueryCases, exportLocalStateQuerySplitCases, exportLocalStateQueryBehaviorCases)\n"
@@ -2240,6 +2319,10 @@ exportBlockFetchBinaryCases path count seed = withFile path WriteMode $ \outputH
     main_text = main_text.replace(
         "main = defaultMain tests",
         "main = getArgs >>= \\args -> case args of\n"
+        "  [\"--export-peer-acceptance\", dir, count, seed] -> do\n"
+        "    PeerSharing.exportPeerSharingBehavior (dir <> \"/peersharing-behavior.tsv\") (read count) (read seed)\n"
+        "    PeerSharing.exportPeerSharingByteLimits (dir <> \"/peersharing-byte-limits.tsv\") (read count) (read seed + 1000)\n"
+        "    KeepAlive.exportKeepAliveByteLimits (dir <> \"/keepalive-byte-limits.tsv\") (read count) (read seed + 2000)\n"
         "  [\"--export-lsq-behavior\", dir, count, seed] -> LocalStateQuery.exportLocalStateQueryBehaviorCases (dir <> \"/localsq-behavior-cases.tsv\") (dir <> \"/localsq-behavior-actions.tsv\") (read count) (read seed)\n"
         "  [\"--export-chainsync-behavior\", dir, count, seed] -> ChainSync.exportChainSyncBehaviorCases (dir <> \"/chainsync-behavior-cases.tsv\") (dir <> \"/chainsync-behavior-blocks.tsv\") (dir <> \"/chainsync-behavior-points.tsv\") (read count) (read seed)\n"
         "  [\"--export-chainsync-io-behavior\", dir, count, seed] -> ChainSync.exportChainSyncIOBehaviorCases (dir <> \"/chainsync-behavior-io.tsv\") (read count) (read seed)\n"
@@ -2303,6 +2386,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=490201)
     parser.add_argument("--probe-dir", type=Path, default=Path("/tmp/scarab/v02-49-protocol-probe"))
     parser.add_argument("--reference-plan", type=Path)
+    parser.add_argument("--peer-acceptance-only", action="store_true")
     parser.add_argument("--lsq-behavior-only", action="store_true")
     parser.add_argument("--txsubmission2-behavior-only", action="store_true")
     parser.add_argument("--blockfetch-behavior-only", action="store_true")
@@ -2346,7 +2430,7 @@ def main() -> None:
             "-w", "/source", IMAGE, "-f", "/dev/null",
         ])
     checked(["docker", "start", CONTAINER_NAME])
-    test_names = () if args.pipe_demo_behavior_only or args.socket_demo_behavior_only else ("LocalStateQuery",) if args.lsq_behavior_only else ("TxSubmission2",) if args.txsubmission2_behavior_only else ("BlockFetch",) if args.blockfetch_behavior_only else ("ChainSync",) if args.chainsync_behavior_only or args.chainsync_pipelined_max_only or args.chainsync_pipelined_min_only or args.chainsync_pipelined_low_high_only or args.chainsync_pipelined_direct_connect_only or args.chainsync_pipelined_min_buffered_only or args.chainsync_demo_pipelined_io_only or args.chainsync_io_behavior_only else (
+    test_names = ("PeerSharing", "KeepAlive") if args.peer_acceptance_only else () if args.pipe_demo_behavior_only or args.socket_demo_behavior_only else ("LocalStateQuery",) if args.lsq_behavior_only else ("TxSubmission2",) if args.txsubmission2_behavior_only else ("BlockFetch",) if args.blockfetch_behavior_only else ("ChainSync",) if args.chainsync_behavior_only or args.chainsync_pipelined_max_only or args.chainsync_pipelined_min_only or args.chainsync_pipelined_low_high_only or args.chainsync_pipelined_direct_connect_only or args.chainsync_pipelined_min_buffered_only or args.chainsync_demo_pipelined_io_only or args.chainsync_io_behavior_only else (
         "KeepAlive", "PeerSharing", "ChainSync", "BlockFetch", "LocalStateQuery",
         "LocalTxSubmission", "LocalTxMonitor", "TxSubmission2",
     )
@@ -2370,7 +2454,10 @@ def main() -> None:
     )
     if binary is None:
         raise SystemExit(f"cabal list-bin did not return a build executable path: {binary_output!r}")
-    if args.chainsync_pipelined_max_only:
+    if args.peer_acceptance_only:
+        checked(["docker", "exec", "-w", "/source", CONTAINER_NAME, binary,
+                 "--export-peer-acceptance", "/probe/exports", str(args.count), str(args.seed)])
+    elif args.chainsync_pipelined_max_only:
         checked([
             "docker", "exec", "-w", "/source", CONTAINER_NAME,
             binary, "--export-chainsync-pipelined-max", "/probe/exports",
@@ -2545,6 +2632,55 @@ def main() -> None:
             "python3", "scripts/oracle/network-protocols/compare_cabal_plans.py",
             str(args.reference_plan), str(build / "cache/plan.json"), "--output", str(equivalence_path),
         ])
+    if args.peer_acceptance_only:
+        files = ("peersharing-behavior.tsv", "peersharing-byte-limits.tsv", "keepalive-byte-limits.tsv")
+        hashes = {}
+        outcomes = {}
+        for name in files:
+            raw = (args.probe_dir / "exports" / name).read_bytes()
+            rows = [line.split("\t") for line in raw.decode().splitlines()]
+            width = 11 if name == "peersharing-behavior.tsv" else 9
+            if len(rows) != args.count or any(len(row) != width for row in rows):
+                raise SystemExit(f"invalid peer acceptance export {name}")
+            if any(value != "pass" for row in rows for value in row[7:] if name.endswith("behavior.tsv")):
+                raise SystemExit(f"upstream finite property failed: {name}")
+            if name.endswith("byte-limits.tsv") and any(row[8] != "pass" or len(bytes.fromhex(row[5])) != int(row[6]) or int(row[6]) > int(row[7]) for row in rows):
+                raise SystemExit(f"upstream byte limit property failed: {name}")
+            (args.output_dir / name).write_bytes(raw)
+            hashes[name] = hashlib.sha256(raw).hexdigest()
+            outcomes[name] = len(rows)
+        manifest = {
+            "schema": "scarab-upstream-peer-acceptance-v1", "sourceCommit": UPSTREAM_COMMIT,
+            "count": args.count, "seed": args.seed, "files": hashes, "passingRows": outcomes,
+            "observerPatchSha256": hashlib.sha256(patch.encode()).hexdigest(),
+            "sourceFiles": {
+                path: hashlib.sha256((args.source / path).read_bytes()).hexdigest()
+                for path in (
+                    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/PeerSharing/Test.hs",
+                    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/PeerSharing/Examples.hs",
+                    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/PeerSharing/Direct.hs",
+                    "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Client.hs",
+                    "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Server.hs",
+                    "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Type.hs",
+                    "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Codec.hs",
+                    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/KeepAlive/Test.hs",
+                    "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Codec.hs",
+                    "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Type.hs",
+                    "ouroboros-network/api/lib/Ouroboros/Network/Protocol/Limits.hs",
+                )
+            },
+            "dependencyPlanSha256": hashlib.sha256(plan).hexdigest(),
+            "targetDependencyClosureUnitCount": len(target_closure),
+            "projectPlanUnitCount": len(plan_units),
+            "dependencyPlanComparison": "Only the selected target closure is bound; no independent full-project equivalence is claimed.",
+            "imageDigest": image_digest, "commands": COMMAND_RESULTS,
+            "scope": ["Original finite PeerSharing direct/connect/channel ST/channel IO property verdicts and exact Int payloads.",
+                      "Original byteLimits properties and actual source-state limit/dataSize for both protocols.",
+                      "Scarab generic runtime replay checks finite functional results, not scheduler trace equivalence.",
+                      "Generic Int peer payloads are not Cardano addresses; their wire codecs remain distinct."]}
+        (args.output_dir / "peer-acceptance.manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+        (args.output_dir / "peer-acceptance-observers.patch").write_text(patch)
+        return
     if args.pipe_demo_behavior_only:
         cases_raw = (args.probe_dir / "exports/pipe-demo-cases.tsv").read_bytes()
         blocks_raw = (args.probe_dir / "exports/pipe-demo-blocks.tsv").read_bytes()

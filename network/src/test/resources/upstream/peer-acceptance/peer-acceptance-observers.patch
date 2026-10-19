@@ -1,0 +1,1787 @@
+--- upstream/KeepAlive/Test.hs
+
++++ overlay/KeepAlive/Test.hs
+
+@@ -40,6 +40,13 @@
+
+ 
+ import Test.Cardano.Base.QuickCheck qualified as BaseQC
+ import Test.QuickCheck
++import Control.Monad (forM_)
++import Data.ByteString qualified as BS
++import Data.List (intercalate)
++import Numeric (showHex)
++import System.IO (withFile, IOMode (WriteMode), hPutStrLn)
++import Test.QuickCheck.Gen (unGen)
++import Test.QuickCheck.Random (mkQCGen)
+ import Test.Tasty (TestTree, testGroup)
+ import Test.Tasty.QuickCheck (testProperty)
+ import Text.Show.Functions ()
+@@ -169,3 +176,125 @@
+
+   where
+     Codec { encode } = codecKeepAlive_v2 :: Codec KeepAlive CBOR.DeserialiseFailure IO ByteString
+     ProtocolSizeLimits { sizeLimitForState, dataSize } = byteLimitsKeepAlive (fromIntegral . BL.length)
++
++
++-- Disposable observer: use the exact AnyMessage generator and prop_codec_v2 above.
++exportKeepAliveCases :: FilePath -> Int -> Int -> IO ()
++exportKeepAliveCases path count seed = withFile path WriteMode $ \outputHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + (ordinal `mod` 21)
++        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize :: AnyMessage KeepAlive
++    result <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 1000003), caseSize) }
++      (once (prop_codec_v2 testCase))
++    validCborResult <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 6000003), caseSize) }
++      (once (prop_codec_v2_valid_cbor testCase))
++    case testCase of
++      AnyMessage msg -> do
++        let Codec { encode } = codecKeepAlive_v2
++              :: Codec KeepAlive CBOR.DeserialiseFailure IO ByteString
++            raw = encode msg
++            (state, sender, tag, cookie) = case msg of
++              MsgKeepAlive (Cookie value)         -> ("client", "client", "request", show value)
++              MsgKeepAliveResponse (Cookie value) -> ("server", "server", "response", show value)
++              MsgDone                             -> ("client", "client", "done", "")
++            outcome = if isSuccess result then "pass" else "upstream-failure"
++            validCborOutcome = if isSuccess validCborResult then "pass" else "upstream-failure"
++        hPutStrLn outputHandle $ intercalate "\t"
++          [ "keepalive-codec-v1", show caseSeed, show ordinal, show caseSize
++          , state, sender, tag, cookie, hex (BL.toStrict raw), outcome, validCborOutcome
++          ]
++  where
++    hex = concatMap (pad . (`showHex` "")) . BS.unpack
++    pad [digit] = ['0', digit]
++    pad digits = digits
++
++
++-- Disposable observer: run the unchanged upstream split properties over the
++-- same deterministic AnyMessage rows as exportKeepAliveCases.
++exportKeepAliveSplitCases :: FilePath -> Int -> Int -> IO ()
++exportKeepAliveSplitCases path count seed = withFile path WriteMode $ \outputHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + (ordinal `mod` 21)
++        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize :: AnyMessage KeepAlive
++    split2Result <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 3000003), caseSize) }
++      (once (prop_codec_v2_splits2 testCase))
++    split3Result <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 4000003), caseSize) }
++      (once (prop_codec_v2_splits3 testCase))
++    case testCase of
++      AnyMessage msg -> do
++        let Codec { encode } = codecKeepAlive_v2
++              :: Codec KeepAlive CBOR.DeserialiseFailure IO ByteString
++            raw = BL.toStrict (encode msg)
++            (state, sender, tag, cookie) = case msg of
++              MsgKeepAlive (Cookie value)         -> ("client", "client", "request", show value)
++              MsgKeepAliveResponse (Cookie value) -> ("server", "server", "response", show value)
++              MsgDone                             -> ("client", "client", "done", "")
++            split2Outcome = if isSuccess split2Result then "pass" else "upstream-failure"
++            split3Outcome = if isSuccess split3Result then "pass" else "upstream-failure"
++        hPutStrLn outputHandle $ intercalate "\t"
++          [ "keepalive-splits-v1", show caseSeed, show ordinal, show caseSize
++          , state, sender, tag, cookie, hex raw, split2Outcome, split3Outcome
++          ]
++  where
++    hex = concatMap (pad . (`showHex` "")) . BS.unpack
++    pad [digit] = ['0', digit]
++    pad digits = digits
++
++
++-- Export observations of the unchanged direct/connect/channel properties. A generated QuickCheck
++-- function is recorded by its complete trace on the finite accumulator path the properties use.
++exportKeepAliveBehaviorCases :: FilePath -> Int -> Int -> IO ()
++exportKeepAliveBehaviorCases path count seed = withFile path WriteMode $ \outputHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 12 + (ordinal `mod` 13)
++        function = unGen arbitrary (mkQCGen caseSeed) caseSize :: Int -> Int
++        NonNegative n = unGen arbitrary (mkQCGen (caseSeed + 7000003)) caseSize
++        accumulatorTrace = scanl (\acc _ -> function acc) 0 [1 .. n]
++        cookies = [n, n - 1 .. 1]
++    directResult <- quickCheckWithResult stdArgs { chatty = False }
++      (once (prop_direct function (NonNegative n)))
++    connectResult <- quickCheckWithResult stdArgs { chatty = False }
++      (once (prop_connect function (NonNegative n)))
++    channelResult <- quickCheckWithResult stdArgs { chatty = False }
++      (once (prop_channel_ST function (NonNegative n)))
++    hPutStrLn outputHandle $ intercalate "\t"
++      [ "keepalive-behavior-v1", show caseSeed, show ordinal, show caseSize, show n
++      , intercalate "," (map show accumulatorTrace)
++      , intercalate "," (map show cookies)
++      , verdict directResult, verdict connectResult, verdict channelResult
++      ]
++  where
++    verdict result = if isSuccess result then "pass" else "upstream-failure"
++
++
++exportKeepAliveByteLimits :: FilePath -> Int -> Int -> IO ()
++exportKeepAliveByteLimits path count seed = withFile path WriteMode $ \out ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + ordinal `mod` 21
++        input = unGen arbitrary (mkQCGen caseSeed) caseSize :: AnyMessage KeepAlive
++    case input of
++      AnyMessage (msg :: Message KeepAlive st st') -> do
++        let Codec {encode} = codecKeepAlive_v2 :: Codec KeepAlive CBOR.DeserialiseFailure IO ByteString
++            ProtocolSizeLimits {sizeLimitForState, dataSize} = byteLimitsKeepAlive (fromIntegral . BL.length)
++            raw = encode msg
++            limit = sizeLimitForState (stateToken :: StateToken st)
++            state = case msg of
++              MsgKeepAlive _ -> "client"
++              MsgKeepAliveResponse _ -> "server"
++              MsgDone -> "client"
++        hPutStrLn out $ intercalate "\t"
++          ["keepalive-byte-limits-v1", show caseSeed, show ordinal, show caseSize,
++           state, hex (BL.toStrict raw), show (dataSize raw), show limit,
++           if prop_byteLimits input then "pass" else "upstream-failure"]
++  where
++    hex = concatMap (pad . (`showHex` "")) . BS.unpack
++    pad [digit] = ['0', digit]
++    pad digits = digits
+--- upstream/PeerSharing/Test.hs
+
++++ overlay/PeerSharing/Test.hs
+
+@@ -41,6 +41,14 @@
+
+ import Test.Ouroboros.Network.Protocol.Utils (prop_codec_cborM,
+            prop_codec_valid_cbor_encoding, splits2, splits3)
+ import Test.QuickCheck.Function (Fun, applyFun)
++import Control.Monad (forM_)
++import Data.ByteString qualified as BS
++import Data.List (intercalate)
++import Numeric (showHex)
++import System.IO (withFile, IOMode (WriteMode), hPutStrLn)
++import Test.QuickCheck.Gen (unGen)
++import Test.QuickCheck.Random (mkQCGen)
++import Test.QuickCheck (stdArgs, chatty, replay, quickCheckWithResult, once, isSuccess)
+ import Test.Tasty (TestTree, testGroup)
+ import Test.Tasty.QuickCheck (Arbitrary (..), Property, ioProperty, oneof,
+            testProperty, (===))
+@@ -193,3 +201,98 @@
+
+     Codec { encode } = codecPeerSharing @IO CBOR.encodeInt CBOR.decodeInt
+     ProtocolSizeLimits { sizeLimitForState, dataSize } =
+       byteLimitsPeerSharing (fromIntegral . BL.length)
++
++
++-- Disposable observer: use the exact AnyMessage generator and prop_codec_PeerSharing above.
++exportPeerSharingCases :: FilePath -> Int -> Int -> IO ()
++exportPeerSharingCases path count seed = withFile path WriteMode $ \outputHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + (ordinal `mod` 21)
++        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize :: AnyMessage (PeerSharing Int)
++    result <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 1000003), caseSize) }
++      (once (prop_codec_PeerSharing testCase))
++    cborResult <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 2000003), caseSize) }
++      (once (prop_codec_cbor testCase))
++    validCborResult <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 6000003), caseSize) }
++      (once (prop_codec_valid_cbor testCase))
++    split2Result <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 3000003), caseSize) }
++      (once (prop_codec_splits2 testCase))
++    split3Result <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 4000003), caseSize) }
++      (once (prop_codec_splits3 testCase))
++    case testCase of
++      AnyMessage msg -> do
++        let Codec { encode } = codecPeerSharing @IO CBOR.encodeInt CBOR.decodeInt
++            raw = encode msg
++            (state, sender, tag, fields, adapterStatus) = case msg of
++              MsgShareRequest (PeerSharingAmount amount) ->
++                ("idle", "client", "request", show (fromIntegral amount :: Int), "candidate")
++              MsgSharePeers peers ->
++                ("busy", "server", "peers", show peers, "unsupported-int-addresses")
++              MsgDone -> ("idle", "client", "done", "", "candidate")
++            outcome = if isSuccess result then "pass" else "upstream-failure"
++            cborOutcome = if isSuccess cborResult then "pass" else "upstream-failure"
++            validCborOutcome = if isSuccess validCborResult then "pass" else "upstream-failure"
++            split2Outcome = if isSuccess split2Result then "pass" else "upstream-failure"
++            split3Outcome = if isSuccess split3Result then "pass" else "upstream-failure"
++        hPutStrLn outputHandle $ intercalate "\t"
++          [ "peersharing-codec-int-v1", show caseSeed, show ordinal, show caseSize
++          , state, sender, tag, fields, adapterStatus, hex (BL.toStrict raw), outcome, cborOutcome, validCborOutcome
++          , split2Outcome, split3Outcome
++          ]
++  where
++    hex = concatMap (pad . (`showHex` "")) . BS.unpack
++    pad [digit] = ['0', digit]
++    pad digits = digits
++
++
++-- Observe finite evaluations of the original generated function; no replacement generator/rule.
++exportPeerSharingBehavior :: FilePath -> Int -> Int -> IO ()
++exportPeerSharingBehavior path count seed = withFile path WriteMode $ \out ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 12 + ordinal `mod` 13
++        function = unGen arbitrary (mkQCGen caseSeed) caseSize :: Fun Word8 Int
++        amounts = unGen arbitrary (mkQCGen (caseSeed + 7000003)) caseSize :: [PeerSharingAmount]
++        evaluations = [applyFun function a | PeerSharingAmount a <- amounts]
++        expected = snd (foldl' (\(n,r) copies -> (n+1, replicate copies n ++ r)) (0,[]) evaluations)
++    directResult <- quickCheckWithResult stdArgs {chatty=False} (once (prop_direct function amounts))
++    connectResult <- quickCheckWithResult stdArgs {chatty=False} (once (prop_connect function amounts))
++    stResult <- quickCheckWithResult stdArgs {chatty=False} (once (prop_channel_ST function amounts))
++    ioResult <- quickCheckWithResult stdArgs {chatty=False} (once (prop_channel_IO function amounts))
++    hPutStrLn out $ intercalate "\t"
++      ["peersharing-behavior-v1",show caseSeed,show ordinal,show caseSize,
++       show [a | PeerSharingAmount a <- amounts],show evaluations,show (expected :: [Int]),
++       verdict directResult,verdict connectResult,verdict stResult,verdict ioResult]
++  where
++    verdict result = if isSuccess result then "pass" else "upstream-failure"
++
++exportPeerSharingByteLimits :: FilePath -> Int -> Int -> IO ()
++exportPeerSharingByteLimits path count seed = withFile path WriteMode $ \out ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + ordinal `mod` 21
++        input = unGen arbitrary (mkQCGen caseSeed) caseSize :: AnyMessage (PeerSharing Int)
++    case input of
++      AnyMessage (msg :: Message (PeerSharing Int) st st') -> do
++        let Codec {encode} = codecPeerSharing @IO CBOR.encodeInt CBOR.decodeInt
++            ProtocolSizeLimits {sizeLimitForState,dataSize} = byteLimitsPeerSharing (fromIntegral . BL.length)
++            raw = encode msg
++            limit = sizeLimitForState (stateToken :: StateToken st)
++            state = case msg of
++              MsgShareRequest _ -> "idle"
++              MsgSharePeers _ -> "busy"
++              MsgDone -> "idle"
++        hPutStrLn out $ intercalate "\t"
++          ["peersharing-byte-limits-v1",show caseSeed,show ordinal,show caseSize,
++           state,hex (BL.toStrict raw),show (dataSize raw),show limit,
++           if prop_byteLimits input then "pass" else "upstream-failure"]
++  where
++    hex = concatMap (pad . (`showHex` "")) . BS.unpack
++    pad [digit] = ['0',digit]
++    pad digits = digits
+--- upstream/ChainSync/Test.hs
+
++++ overlay/ChainSync/Test.hs
+
+@@ -8,9 +8,10 @@
+
+ 
+ {-# OPTIONS_GHC -Wno-orphans #-}
+ 
+-module Ouroboros.Network.Protocol.ChainSync.Test (tests) where
++module Ouroboros.Network.Protocol.ChainSync.Test (tests, exportChainSyncCases, exportChainSyncSplitCases, exportChainSyncBinaryCases, exportChainSyncBehaviorCases, exportChainSyncIOBehaviorCases, exportChainSyncPipelinedMaxCases, exportChainSyncPipelinedMinCases, exportChainSyncPipelinedLowHighCases, exportChainSyncPipelinedDirectConnectCases, exportChainSyncPipelinedMinBufferedCases, exportChainSyncDemoPipelinedIOCases) where
+ 
+ import Codec.Serialise qualified as S
++import Codec.CBOR.Write qualified as CBOR
+ import Data.ByteString.Lazy (ByteString)
+ 
+ import Control.Concurrent.Class.MonadSTM.Strict
+@@ -58,6 +59,14 @@
+
+            prop_codec_valid_cbor_encoding, splits2, splits3)
+ 
+ import Test.QuickCheck hiding (Result)
++import Control.Monad (forM_)
++import Data.ByteString qualified as BS
++import Data.ByteString.Lazy qualified as BL
++import Data.List (intercalate)
++import Numeric (showHex)
++import System.IO (withFile, IOMode (WriteMode), hPutStrLn)
++import Test.QuickCheck.Gen (unGen)
++import Test.QuickCheck.Random (mkQCGen)
+ import Test.Tasty (TestTree, testGroup)
+ import Test.Tasty.QuickCheck (testProperty)
+ 
+@@ -823,3 +832,442 @@
+
+             MsgIntersectNotFound {} -> "MsgIntersectNotFound"
+             MsgDone {}              -> "MsgDone"
+           )
++
++
++-- Disposable observer: retain the real Serialised-block AnyMessage generator and properties.
++exportChainSyncCases :: FilePath -> Int -> Int -> IO ()
++exportChainSyncCases path count seed = withFile path WriteMode $ \outputHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + (ordinal `mod` 21)
++        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize
++          :: AnyMessage ChainSync_Serialised_BlockHeader
++    codecResult <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 1000003), caseSize) }
++      (once (prop_codec_ChainSyncSerialised testCase))
++    cborResult <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 2000003), caseSize) }
++      (once (prop_codec_cbor_ChainSyncSerialised testCase))
++    case testCase of
++      AnyMessage (msg :: Message ChainSync_Serialised_BlockHeader st st') -> do
++        let chainCodec = codecSerialised
++              :: Codec (ChainSync (Serialised BlockHeader) (Point BlockHeader) (Tip BlockHeader))
++                   S.DeserialiseFailure IO ByteString
++            raw = encode chainCodec msg
++            token = stateToken :: StateToken st
++            (state, sender) = case token of
++              SingIdle -> ("idle", "client")
++              SingNext SingCanAwait -> ("next-can-await", "server")
++              SingNext SingMustReply -> ("next-must-reply", "server")
++              SingIntersect -> ("intersect", "server")
++              SingDone -> ("done", "client")
++            tag = case msg of
++              MsgRequestNext -> "request-next"
++              MsgAwaitReply -> "await-reply"
++              MsgRollForward _ _ -> "roll-forward"
++              MsgRollBackward _ _ -> "roll-backward"
++              MsgFindIntersect _ -> "find-intersect"
++              MsgIntersectFound _ _ -> "intersect-found"
++              MsgIntersectNotFound _ -> "intersect-not-found"
++              MsgDone -> "done"
++            codecOutcome = if isSuccess codecResult then "pass" else "upstream-failure"
++            cborOutcome = if isSuccess cborResult then "pass" else "upstream-failure"
++        hPutStrLn outputHandle $ intercalate "\t"
++          [ "chainsync-serialised-codec-v1", show caseSeed, show ordinal, show caseSize
++          , state, sender, tag, hex (BL.toStrict raw), codecOutcome, cborOutcome
++          ]
++  where
++    hex = concatMap (pad . (`showHex` "")) . BS.unpack
++    pad [digit] = ['0', digit]
++    pad digits = digits
++-- Disposable observer: rerun the original split properties for the same seeded message.
++exportChainSyncSplitCases :: FilePath -> Int -> Int -> IO ()
++exportChainSyncSplitCases path count seed = withFile path WriteMode $ \outputHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + (ordinal `mod` 21)
++        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize
++          :: AnyMessage ChainSync_Serialised_BlockHeader
++    split2Result <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 3000003), caseSize) }
++      (once (prop_codec_splits2_ChainSyncSerialised testCase))
++    split3Result <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 4000003), caseSize) }
++      (once (prop_codec_splits3_ChainSyncSerialised testCase))
++    case testCase of
++      AnyMessage (msg :: Message ChainSync_Serialised_BlockHeader st st') -> do
++        let chainCodec = codecSerialised
++              :: Codec (ChainSync (Serialised BlockHeader) (Point BlockHeader) (Tip BlockHeader))
++                   S.DeserialiseFailure IO ByteString
++            raw = encode chainCodec msg
++            token = stateToken :: StateToken st
++            (state, sender) = case token of
++              SingIdle -> ("idle", "client")
++              SingNext SingCanAwait -> ("next-can-await", "server")
++              SingNext SingMustReply -> ("next-must-reply", "server")
++              SingIntersect -> ("intersect", "server")
++              SingDone -> ("done", "client")
++            tag = case msg of
++              MsgRequestNext -> "request-next"
++              MsgAwaitReply -> "await-reply"
++              MsgRollForward _ _ -> "roll-forward"
++              MsgRollBackward _ _ -> "roll-backward"
++              MsgFindIntersect _ -> "find-intersect"
++              MsgIntersectFound _ _ -> "intersect-found"
++              MsgIntersectNotFound _ -> "intersect-not-found"
++              MsgDone -> "done"
++            split2Outcome = if isSuccess split2Result then "pass" else "upstream-failure"
++            split3Outcome = if isSuccess split3Result then "pass" else "upstream-failure"
++        hPutStrLn outputHandle $ intercalate "\t"
++          [ "chainsync-splits-v1", show caseSeed, show ordinal, show caseSize
++          , state, sender, tag, hex (BL.toStrict raw), split2Outcome, split3Outcome
++          ]
++  where
++    hex = concatMap (pad . (`showHex` "")) . BS.unpack
++    pad [digit] = ['0', digit]
++    pad digits = digits
++
++
++-- Disposable observer: preserve the unchanged ChainProducerStateForkTest
++-- generator and direct/connect/channel property verdicts for the typed runtime.
++exportChainSyncBehaviorCases :: FilePath -> FilePath -> FilePath -> Int -> Int -> IO ()
++exportChainSyncBehaviorCases casesPath blocksPath pointsPath count seed = do
++  withFile casesPath WriteMode $ \casesHandle ->
++    withFile blocksPath WriteMode $ \blocksHandle ->
++      withFile pointsPath WriteMode $ \pointsHandle ->
++        forM_ [0 .. count - 1] $ \ordinal -> do
++          let caseSeed = seed + ordinal
++              caseSize = 30 + (ordinal `mod` 21)
++              input = unGen arbitrary (mkQCGen caseSeed) caseSize
++                :: ChainProducerStateForkTest
++          directResult <- quickCheckWithResult stdArgs { chatty = False }
++            (once (propChainSyncDirectST input))
++          connectResult <- quickCheckWithResult stdArgs { chatty = False }
++            (once (propChainSyncConnectST input))
++          channelResult <- quickCheckWithResult stdArgs { chatty = False }
++            (once (propChainSyncDemoST input))
++          case input of
++            ChainProducerStateForkTest cps fork -> do
++              let producer = ChainProducerState.producerChain cps
++                  producerBlocks = Chain.toOldestFirst producer
++                  forkBlocks = Chain.toOldestFirst fork
++                  candidatePoints = Chain.selectPoints ChainSyncExamples.recentOffsets fork
++                  targetPoint = Chain.headPoint producer
++                  targetTip = Chain.headTip producer
++                  expectedIntersection = ChainProducerState.findFirstPoint candidatePoints cps
++                  pointBytes = BL.toStrict . S.serialise
++                  blockBytes = BL.toStrict . S.serialise
++                  tipBytes = BL.toStrict . CBOR.toLazyByteString . encodeTip S.encode $ targetTip
++                  propertyResult result = if isSuccess result then "pass" else "upstream-failure"
++              hPutStrLn casesHandle $ intercalate "\t"
++                [ "chainsync-behavior-case-v2", show caseSeed, show ordinal, show caseSize
++                , propertyResult directResult, propertyResult connectResult, propertyResult channelResult
++                , hex (pointBytes targetPoint), hex tipBytes
++                , show (length producerBlocks), show (length forkBlocks), show (length candidatePoints)
++                , hex (pointBytes (Chain.headPoint Chain.genesis))
++                , maybe "none" (hex . pointBytes) expectedIntersection
++                ]
++              forM_ (zip [0 :: Int ..] producerBlocks) $ \(blockOrdinal, block) ->
++                hPutStrLn blocksHandle $ intercalate "\t"
++                  [ "chainsync-behavior-block-v1", show caseSeed, show ordinal, "producer"
++                  , show blockOrdinal, hex (pointBytes (Chain.blockPoint block)), hex (blockBytes block)
++                  ]
++              forM_ (zip [0 :: Int ..] forkBlocks) $ \(blockOrdinal, block) ->
++                hPutStrLn blocksHandle $ intercalate "\t"
++                  [ "chainsync-behavior-block-v1", show caseSeed, show ordinal, "client"
++                  , show blockOrdinal, hex (pointBytes (Chain.blockPoint block)), hex (blockBytes block)
++                  ]
++              forM_ (zip [0 :: Int ..] candidatePoints) $ \(pointOrdinal, point) ->
++                hPutStrLn pointsHandle $ intercalate "\t"
++                  [ "chainsync-behavior-point-v1", show caseSeed, show ordinal
++                  , show pointOrdinal, hex (pointBytes point)
++                  ]
++  where
++    hex = concatMap (pad . (`showHex` "")) . BS.unpack
++    pad [digit] = ['0', digit]
++    pad digits = digits
++
++
++-- Disposable observer: execute both original binary-compatibility properties
++-- and retain the wire emitted by each property's original generator domain.
++exportChainSyncBinaryCases :: FilePath -> Int -> Int -> IO ()
++exportChainSyncBinaryCases path count seed = withFile path WriteMode $ \outputHandle -> do
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + (ordinal `mod` 21)
++        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize :: AnyMessage ChainSync_BlockHeader
++    result <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 5000003), caseSize) }
++      (once (prop_codec_binary_compat_ChainSync_ChainSyncSerialised testCase))
++    case testCase of
++      AnyMessage (msg :: Message ChainSync_BlockHeader st st') -> do
++        let wrappedCodec = codecWrapped
++              :: Codec (ChainSync BlockHeader (Point BlockHeader) (Tip BlockHeader))
++                   S.DeserialiseFailure IO ByteString
++            raw = encode wrappedCodec msg
++            token = stateToken :: StateToken st
++            (state, sender) = case token of
++              SingIdle -> ("idle", "client")
++              SingNext SingCanAwait -> ("next-can-await", "server")
++              SingNext SingMustReply -> ("next-must-reply", "server")
++              SingIntersect -> ("intersect", "server")
++              SingDone -> ("done", "client")
++            tag = case msg of
++              MsgRequestNext -> "request-next"
++              MsgAwaitReply -> "await-reply"
++              MsgRollForward _ _ -> "roll-forward"
++              MsgRollBackward _ _ -> "roll-backward"
++              MsgFindIntersect _ -> "find-intersect"
++              MsgIntersectFound _ _ -> "intersect-found"
++              MsgIntersectNotFound _ -> "intersect-not-found"
++              MsgDone -> "done"
++        hPutStrLn outputHandle $ intercalate "\t"
++          [ "chainsync-binary-v1", show caseSeed, show ordinal, show caseSize
++          , "codec/codecSerialised", state, sender, tag, hex (BL.toStrict raw)
++          , if isSuccess result then "pass" else "upstream-failure"
++          ]
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + (ordinal `mod` 21)
++        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize :: AnyMessage ChainSync_Serialised_BlockHeader
++    result <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 6000003), caseSize) }
++      (once (prop_codec_binary_compat_ChainSyncSerialised_ChainSync testCase))
++    case testCase of
++      AnyMessage (msg :: Message ChainSync_Serialised_BlockHeader st st') -> do
++        let serialisedCodec = codecSerialised
++              :: Codec (ChainSync (Serialised BlockHeader) (Point BlockHeader) (Tip BlockHeader))
++                   S.DeserialiseFailure IO ByteString
++            raw = encode serialisedCodec msg
++            token = stateToken :: StateToken st
++            (state, sender) = case token of
++              SingIdle -> ("idle", "client")
++              SingNext SingCanAwait -> ("next-can-await", "server")
++              SingNext SingMustReply -> ("next-must-reply", "server")
++              SingIntersect -> ("intersect", "server")
++              SingDone -> ("done", "client")
++            tag = case msg of
++              MsgRequestNext -> "request-next"
++              MsgAwaitReply -> "await-reply"
++              MsgRollForward _ _ -> "roll-forward"
++              MsgRollBackward _ _ -> "roll-backward"
++              MsgFindIntersect _ -> "find-intersect"
++              MsgIntersectFound _ _ -> "intersect-found"
++              MsgIntersectNotFound _ -> "intersect-not-found"
++              MsgDone -> "done"
++        hPutStrLn outputHandle $ intercalate "\t"
++          [ "chainsync-binary-v1", show caseSeed, show ordinal, show caseSize
++          , "codecSerialised/codec", state, sender, tag, hex (BL.toStrict raw)
++          , if isSuccess result then "pass" else "upstream-failure"
++          ]
++  where
++    hex = concatMap (pad . (`showHex` "")) . BS.unpack
++    pad [digit] = ['0', digit]
++    pad digits = digits
++
++
++-- Disposable observer: retain the unchanged generated fork cases and actual
++-- PipeliningDepth inputs for the original demoPipelinedMax ST property.
++exportChainSyncPipelinedMaxCases :: FilePath -> Int -> Int -> IO ()
++exportChainSyncPipelinedMaxCases path count seed = withFile path WriteMode $ \outputHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + (ordinal `mod` 21)
++        input = unGen arbitrary (mkQCGen caseSeed) caseSize
++          :: ChainProducerStateForkTest
++        depthSeed = caseSeed + 7000003
++        depth@(PipeliningDepth maxDepth) = unGen arbitrary (mkQCGen depthSeed) caseSize
++    outcome <- if maxDepth == 0
++      then pure "precondition-discard"
++      else do
++        result <- quickCheckWithResult
++          stdArgs { chatty = False }
++          (once (propChainSyncDemoPipelinedMaxST input depth))
++        pure (if isSuccess result then "pass" else "upstream-failure")
++    hPutStrLn outputHandle $ intercalate "\t"
++      [ "chainsync-pipelined-max-v1", show caseSeed, show ordinal
++      , show caseSize, show depthSeed, show maxDepth, outcome
++      ]
++
++
++-- Disposable observer for the unchanged non-pipelined IO and pipe properties.
++-- The full generated fork cases remain in chainsync-behavior v2 fixtures.
++exportChainSyncIOBehaviorCases :: FilePath -> Int -> Int -> IO ()
++exportChainSyncIOBehaviorCases path count seed = withFile path WriteMode $ \outputHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + (ordinal `mod` 21)
++        input = unGen arbitrary (mkQCGen caseSeed) caseSize
++          :: ChainProducerStateForkTest
++    directIO <- quickCheckWithResult stdArgs { chatty = False }
++      (once (propChainSyncDirectIO input))
++    connectIO <- quickCheckWithResult stdArgs { chatty = False }
++      (once (propChainSyncConnectIO input))
++    demoIO <- quickCheckWithResult stdArgs { chatty = False }
++      (once (propChainSyncDemoIO input))
++    pipeIO <- quickCheckWithResult stdArgs { chatty = False }
++      (once (propChainSyncPipe input))
++    hPutStrLn outputHandle $ intercalate "\t"
++      [ "chainsync-behavior-io-v1", show caseSeed, show ordinal, show caseSize
++      , if isSuccess directIO then "pass" else "upstream-failure"
++      , if isSuccess connectIO then "pass" else "upstream-failure"
++      , if isSuccess demoIO then "pass" else "upstream-failure"
++      , if isSuccess pipeIO then "pass" else "upstream-failure"
++      ]
++
++
++-- Disposable observer for the unchanged min-pipelining property over the same
++-- generated fork/depth pairs as exportChainSyncPipelinedMaxCases.
++exportChainSyncPipelinedMinCases :: FilePath -> Int -> Int -> IO ()
++exportChainSyncPipelinedMinCases path count seed = withFile path WriteMode $ \outputHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + (ordinal `mod` 21)
++        input = unGen arbitrary (mkQCGen caseSeed) caseSize
++          :: ChainProducerStateForkTest
++        depthSeed = caseSeed + 7000003
++        depth@(PipeliningDepth maxDepth) = unGen arbitrary (mkQCGen depthSeed) caseSize
++    outcome <- if maxDepth == 0
++      then pure "precondition-discard"
++      else do
++        result <- quickCheckWithResult
++          stdArgs { chatty = False }
++          (once (propChainSyncDemoPipelinedMinST input depth))
++        pure (if isSuccess result then "pass" else "upstream-failure")
++    hPutStrLn outputHandle $ intercalate "\t"
++      [ "chainsync-pipelined-min-v1", show caseSeed, show ordinal
++      , show caseSize, show depthSeed, show maxDepth, outcome
++      ]
++
++
++-- Disposable observer for the unchanged low/high property and both original
++-- PipeliningDepth-domain values. The property itself orders the two marks.
++exportChainSyncPipelinedLowHighCases :: FilePath -> Int -> Int -> IO ()
++exportChainSyncPipelinedLowHighCases path count seed = withFile path WriteMode $ \outputHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + (ordinal `mod` 21)
++        input = unGen arbitrary (mkQCGen caseSeed) caseSize
++          :: ChainProducerStateForkTest
++        firstDepthSeed = caseSeed + 7000003
++        firstDepth@(PipeliningDepth firstDepthValue) = unGen arbitrary (mkQCGen firstDepthSeed) caseSize
++        secondDepthSeed = caseSeed + 8000003
++        secondDepth@(PipeliningDepth secondDepthValue) = unGen arbitrary (mkQCGen secondDepthSeed) caseSize
++        highDepth = max firstDepthValue secondDepthValue
++    outcome <- if highDepth == 0
++      then pure "precondition-discard"
++      else do
++        result <- quickCheckWithResult
++          stdArgs { chatty = False }
++          (once (propChainSyncDemoPipelinedLowHighST input firstDepth secondDepth))
++        pure (if isSuccess result then "pass" else "upstream-failure")
++    hPutStrLn outputHandle $ intercalate "\t"
++      [ "chainsync-pipelined-low-high-v1", show caseSeed, show ordinal
++      , show caseSize, show firstDepthSeed, show firstDepthValue
++      , show secondDepthSeed, show secondDepthValue, outcome
++      ]
++
++
++-- Disposable observer for unchanged direct/connect max/min pipelining ST
++-- properties. Preserve the generated connect scheduling-choice vector.
++exportChainSyncPipelinedDirectConnectCases :: FilePath -> Int -> Int -> IO ()
++exportChainSyncPipelinedDirectConnectCases path count seed = withFile path WriteMode $ \outputHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + (ordinal `mod` 21)
++        input = unGen arbitrary (mkQCGen caseSeed) caseSize
++          :: ChainProducerStateForkTest
++        depthSeed = caseSeed + 7000003
++        depth@(PipeliningDepth maxDepth) = unGen arbitrary (mkQCGen depthSeed) caseSize
++        choicesSeed = caseSeed + 9000007
++        choices = unGen arbitrary (mkQCGen choicesSeed) caseSize :: [Bool]
++        encodedChoices = map (\choice -> if choice then '1' else '0') choices
++    maxDirect <- quickCheckWithResult stdArgs { chatty = False }
++      (once (propChainSyncPipelinedMaxDirectST input depth))
++    minDirect <- quickCheckWithResult stdArgs { chatty = False }
++      (once (propChainSyncPipelinedMinDirectST input depth))
++    maxConnect <- quickCheckWithResult stdArgs { chatty = False }
++      (once (propChainSyncPipelinedMaxConnectST input choices depth))
++    minConnect <- quickCheckWithResult stdArgs { chatty = False }
++      (once (propChainSyncPipelinedMinConnectST input choices depth))
++    maxDirectIO <- quickCheckWithResult stdArgs { chatty = False }
++      (once (propChainSyncPipelinedMaxDirectIO input depth))
++    minDirectIO <- quickCheckWithResult stdArgs { chatty = False }
++      (once (propChainSyncPipelinedMinDirectIO input depth))
++    maxConnectIO <- quickCheckWithResult stdArgs { chatty = False }
++      (once (propChainSyncPipelinedMaxConnectIO input choices depth))
++    minConnectIO <- quickCheckWithResult stdArgs { chatty = False }
++      (once (propChainSyncPipelinedMinConnectIO input choices depth))
++    hPutStrLn outputHandle $ intercalate "\t"
++      [ "chainsync-pipelined-direct-connect-v1", show caseSeed, show ordinal
++      , show caseSize, show depthSeed, show maxDepth, show choicesSeed, encodedChoices
++      , if isSuccess maxDirect then "pass" else "upstream-failure"
++      , if isSuccess minDirect then "pass" else "upstream-failure"
++      , if isSuccess maxConnect then "pass" else "upstream-failure"
++      , if isSuccess minConnect then "pass" else "upstream-failure"
++      , if isSuccess maxDirectIO then "pass" else "upstream-failure"
++      , if isSuccess minDirectIO then "pass" else "upstream-failure"
++      , if isSuccess maxConnectIO then "pass" else "upstream-failure"
++      , if isSuccess minConnectIO then "pass" else "upstream-failure"
++      ]
++
++
++-- Disposable observer for the unchanged connected buffered-channel IO
++-- property. Preserve both generated depths; the property uses min as buffer
++-- capacity and max as the client depth.
++exportChainSyncPipelinedMinBufferedCases :: FilePath -> Int -> Int -> IO ()
++exportChainSyncPipelinedMinBufferedCases path count seed = withFile path WriteMode $ \outputHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + (ordinal `mod` 21)
++        input = unGen arbitrary (mkQCGen caseSeed) caseSize
++          :: ChainProducerStateForkTest
++        firstDepthSeed = caseSeed + 7000003
++        firstDepth@(PipeliningDepth firstDepthValue) = unGen arbitrary (mkQCGen firstDepthSeed) caseSize
++        secondDepthSeed = caseSeed + 8000003
++        secondDepth@(PipeliningDepth secondDepthValue) = unGen arbitrary (mkQCGen secondDepthSeed) caseSize
++        minDepth = min firstDepthValue secondDepthValue
++    outcome <- if minDepth <= 0
++      then pure "precondition-discard"
++      else do
++        result <- quickCheckWithResult
++          stdArgs { chatty = False }
++          (once (propChainSyncDemoPipelinedMinBufferedIO input firstDepth secondDepth))
++        pure (if isSuccess result then "pass" else "upstream-failure")
++    hPutStrLn outputHandle $ intercalate "\t"
++      [ "chainsync-pipelined-min-buffered-v1", show caseSeed, show ordinal
++      , show caseSize, show firstDepthSeed, show firstDepthValue
++      , show secondDepthSeed, show secondDepthValue, outcome
++      ]
++
++
++-- Disposable observer for the unchanged demo max/min/low-high IO properties.
++-- Preserve both generated depth values and each property outcome separately.
++exportChainSyncDemoPipelinedIOCases :: FilePath -> Int -> Int -> IO ()
++exportChainSyncDemoPipelinedIOCases path count seed = withFile path WriteMode $ \outputHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + (ordinal `mod` 21)
++        input = unGen arbitrary (mkQCGen caseSeed) caseSize
++          :: ChainProducerStateForkTest
++        firstDepthSeed = caseSeed + 7000003
++        firstDepth@(PipeliningDepth firstDepthValue) = unGen arbitrary (mkQCGen firstDepthSeed) caseSize
++        secondDepthSeed = caseSeed + 8000003
++        secondDepth@(PipeliningDepth secondDepthValue) = unGen arbitrary (mkQCGen secondDepthSeed) caseSize
++    maxIO <- if firstDepthValue == 0 then pure "precondition-discard" else do
++      result <- quickCheckWithResult stdArgs { chatty = False }
++        (once (propChainSyncDemoPipelinedMaxIO input firstDepth))
++      pure (if isSuccess result then "pass" else "upstream-failure")
++    minIO <- if firstDepthValue == 0 then pure "precondition-discard" else do
++      result <- quickCheckWithResult stdArgs { chatty = False }
++        (once (propChainSyncDemoPipelinedMinIO input firstDepth))
++      pure (if isSuccess result then "pass" else "upstream-failure")
++    lowHighIO <- if max firstDepthValue secondDepthValue == 0 then pure "precondition-discard" else do
++      result <- quickCheckWithResult stdArgs { chatty = False }
++        (once (propChainSyncDemoPipelinedLowHighIO input firstDepth secondDepth))
++      pure (if isSuccess result then "pass" else "upstream-failure")
++    hPutStrLn outputHandle $ intercalate "\t"
++      [ "chainsync-demo-pipelined-io-v1", show caseSeed, show ordinal
++      , show caseSize, show firstDepthSeed, show firstDepthValue
++      , show secondDepthSeed, show secondDepthValue, maxIO, minIO, lowHighIO
++      ]
+--- upstream/ChainSync/Examples.hs
+
++++ overlay/ChainSync/Examples.hs
+
+@@ -14,6 +14,7 @@
+
+   , controlledClient
+   , Tip (..)
+   , chainSyncServerExample
++  , recentOffsets
+   ) where
+ 
+ import Control.Concurrent.Class.MonadSTM.Strict
+--- upstream/BlockFetch/Test.hs
+
++++ overlay/BlockFetch/Test.hs
+
+@@ -10,7 +10,7 @@
+
+ 
+ {-# OPTIONS_GHC -Wno-orphans #-}
+ 
+-module Ouroboros.Network.Protocol.BlockFetch.Test (tests) where
++module Ouroboros.Network.Protocol.BlockFetch.Test (tests, exportBlockFetchCases, exportBlockFetchSplitCases, exportBlockFetchBinaryCases, exportBlockFetchBehaviorCases) where
+ 
+ import Codec.Serialise qualified as S
+ import Control.Monad.ST (runST)
+@@ -51,6 +51,14 @@
+
+ 
+ import Test.Cardano.Base.QuickCheck qualified as BaseQC
+ import Test.QuickCheck
++import Control.Monad (forM_)
++import qualified Data.ByteString as BS
++import qualified Data.ByteString.Lazy as BL
++import Data.List (intercalate)
++import Numeric (showHex)
++import System.IO (withFile, IOMode (WriteMode), hPutStrLn)
++import Test.QuickCheck.Gen (unGen)
++import Test.QuickCheck.Random (mkQCGen)
+ import Test.Tasty (TestTree, testGroup)
+ import Test.Tasty.QuickCheck (testProperty)
+ 
+@@ -531,3 +539,212 @@
+
+       case Chain.selectBlockRange chain from to of
+         Nothing -> []
+         Just bs -> bs
++
++
++-- Disposable observer: retain the actual Serialised-block generator and codec properties.
++exportBlockFetchCases :: FilePath -> Int -> Int -> IO ()
++exportBlockFetchCases path count seed = withFile path WriteMode $ \outputHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + (ordinal `mod` 21)
++        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize
++          :: AnyMessage (BlockFetch (Serialised Block) (Point Block))
++    codecResult <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 1000003), caseSize) }
++      (once (prop_codec_BlockFetchSerialised testCase))
++    cborResult <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 2000003), caseSize) }
++      (once (prop_codec_cbor_BlockFetchSerialised testCase))
++    case testCase of
++      AnyMessage (msg :: Message (BlockFetch (Serialised Block) (Point Block)) st st') -> do
++        let blockCodec = codecSerialised
++              :: Codec (BlockFetch (Serialised Block) (Point Block))
++                   S.DeserialiseFailure IO ByteString
++            raw = encode blockCodec msg
++            token = stateToken :: StateToken st
++            (state, sender) = case token of
++              SingBFIdle -> ("idle", "client")
++              SingBFBusy -> ("busy", "server")
++              SingBFStreaming -> ("streaming", "server")
++              SingBFDone -> error "BlockFetch generator produced terminal source state"
++            tag = case msg of
++              MsgRequestRange _ -> "request-range"
++              MsgClientDone -> "client-done"
++              MsgStartBatch -> "start-batch"
++              MsgNoBlocks -> "no-blocks"
++              MsgBlock _ -> "block"
++              MsgBatchDone -> "batch-done"
++            codecOutcome = if isSuccess codecResult then "pass" else "upstream-failure"
++            cborOutcome = if isSuccess cborResult then "pass" else "upstream-failure"
++        hPutStrLn outputHandle $ intercalate "\t"
++          [ "blockfetch-serialised-codec-v1", show caseSeed, show ordinal, show caseSize
++          , state, sender, tag, hex (BL.toStrict raw), codecOutcome, cborOutcome
++          ]
++  where
++    hex = concatMap (pad . (`showHex` "")) . BS.unpack
++    pad [digit] = ['0', digit]
++    pad digits = digits
++
++
++-- Disposable observer: run unchanged serialized-codec split properties over
++-- the same deterministic AnyMessage rows as exportBlockFetchCases.
++exportBlockFetchSplitCases :: FilePath -> Int -> Int -> IO ()
++exportBlockFetchSplitCases path count seed = withFile path WriteMode $ \outputHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + (ordinal `mod` 21)
++        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize
++          :: AnyMessage (BlockFetch (Serialised Block) (Point Block))
++    split2Result <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 3000003), caseSize) }
++      (once (prop_codec_splits2_BlockFetchSerialised testCase))
++    split3Result <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 4000003), caseSize) }
++      (once (prop_codec_splits3_BlockFetchSerialised testCase))
++    case testCase of
++      AnyMessage (msg :: Message (BlockFetch (Serialised Block) (Point Block)) st st') -> do
++        let blockCodec = codecSerialised
++              :: Codec (BlockFetch (Serialised Block) (Point Block))
++                   S.DeserialiseFailure IO ByteString
++            raw = BL.toStrict (encode blockCodec msg)
++            token = stateToken :: StateToken st
++            (state, sender) = case token of
++              SingBFIdle -> ("idle", "client")
++              SingBFBusy -> ("busy", "server")
++              SingBFStreaming -> ("streaming", "server")
++              SingBFDone -> error "BlockFetch generator produced terminal source state"
++            tag = case msg of
++              MsgRequestRange _ -> "request-range"
++              MsgClientDone -> "client-done"
++              MsgStartBatch -> "start-batch"
++              MsgNoBlocks -> "no-blocks"
++              MsgBlock _ -> "block"
++              MsgBatchDone -> "batch-done"
++            split2Outcome = if isSuccess split2Result then "pass" else "upstream-failure"
++            split3Outcome = if isSuccess split3Result then "pass" else "upstream-failure"
++        hPutStrLn outputHandle $ intercalate "\t"
++          [ "blockfetch-splits-v1", show caseSeed, show ordinal, show caseSize
++          , state, sender, tag, hex raw, split2Outcome, split3Outcome
++          ]
++  where
++    hex = concatMap (pad . (`showHex` "")) . BS.unpack
++    pad [digit] = ['0', digit]
++    pad digits = digits
++
++
++-- Disposable observer: preserve the unchanged generator and direct/connect/channel properties.
++exportBlockFetchBehaviorCases :: FilePath -> Int -> Int -> IO ()
++exportBlockFetchBehaviorCases path count seed = withFile path WriteMode $ \outputHandle ->
++  withFile (path <> ".ranges.tsv") WriteMode $ \rangesHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + (ordinal `mod` 21)
++        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize :: TestChainAndPoints
++    directResult <- quickCheckWithResult stdArgs { chatty = False }
++      (once (prop_direct testCase))
++    connectResult <- quickCheckWithResult stdArgs { chatty = False }
++      (once (prop_connect testCase))
++    channelResult <- quickCheckWithResult stdArgs { chatty = False }
++      (once (prop_channel_ST testCase))
++    case testCase of
++      TestChainAndPoints chain points -> do
++        let chainBlocks = Chain.toOldestFirst chain
++            chainPoints = map Chain.blockPoint chainBlocks
++            ranges = pointsToRanges chain points
++            rangePoints = map (\(ChainRange from to) -> (from, to)) ranges
++            rangeBodies = receivedBlockBodies chain points
++            expectedBodies = reverse (concat (receivedBlockBodies chain points))
++            outcome result = if isSuccess result then "pass" else "upstream-failure"
++        forM_ (zip3 [0 :: Int ..] ranges rangeBodies) $ \(rangeOrdinal, ChainRange from to, bodies) ->
++          hPutStrLn rangesHandle $ intercalate "\t"
++            ([ "blockfetch-range-v1", show caseSeed, show ordinal, show rangeOrdinal
++             , hex (BL.toStrict (S.serialise from)), hex (BL.toStrict (S.serialise to))
++             , show (length bodies)
++             ] ++ map (hex . BL.toStrict . S.serialise) bodies)
++        hPutStrLn outputHandle $ intercalate "\t"
++          [ "blockfetch-behavior-v1", show caseSeed, show ordinal, show caseSize
++          , hex (BL.toStrict (S.serialise chainBlocks))
++          , hex (BL.toStrict (S.serialise chainPoints))
++          , hex (BL.toStrict (S.serialise points))
++          , hex (BL.toStrict (S.serialise rangePoints))
++          , hex (BL.toStrict (S.serialise rangeBodies))
++          , hex (BL.toStrict (S.serialise expectedBodies))
++          , intercalate "," (map (hex . BL.toStrict . S.serialise) expectedBodies)
++          , outcome directResult, outcome connectResult, outcome channelResult
++          ]
++  where
++    hex = concatMap (pad . (`showHex` "")) . BS.unpack
++    pad [digit] = ['0', digit]
++    pad digits = digits
++
++
++-- Disposable observer for the two original binary-compatibility directions.
++exportBlockFetchBinaryCases :: FilePath -> Int -> Int -> IO ()
++exportBlockFetchBinaryCases path count seed = withFile path WriteMode $ \outputHandle -> do
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + (ordinal `mod` 21)
++        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize
++          :: AnyMessage (BlockFetch Block (Point Block))
++    result <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 5000003), caseSize) }
++      (once (prop_codec_binary_compat_BlockFetch_BlockFetchSerialised testCase))
++    case testCase of
++      AnyMessage (msg :: Message (BlockFetch Block (Point Block)) st st') -> do
++        let wrappedCodec = codecWrapped
++              :: Codec (BlockFetch Block (Point Block)) S.DeserialiseFailure IO ByteString
++            raw = encode wrappedCodec msg
++            token = stateToken :: StateToken st
++            (state, sender) = case token of
++              SingBFIdle -> ("idle", "client")
++              SingBFBusy -> ("busy", "server")
++              SingBFStreaming -> ("streaming", "server")
++              SingBFDone -> ("done", "client")
++            tag = case msg of
++              MsgRequestRange _ -> "request-range"
++              MsgClientDone -> "client-done"
++              MsgStartBatch -> "start-batch"
++              MsgNoBlocks -> "no-blocks"
++              MsgBlock _ -> "block"
++              MsgBatchDone -> "batch-done"
++        hPutStrLn outputHandle $ intercalate "\t"
++          [ "blockfetch-binary-v1", show caseSeed, show ordinal, show caseSize
++          , "codec/codecSerialised", state, sender, tag, hex (BL.toStrict raw)
++          , if isSuccess result then "pass" else "upstream-failure"
++          ]
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + (ordinal `mod` 21)
++        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize
++          :: AnyMessage (BlockFetch (Serialised Block) (Point Block))
++    result <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 6000003), caseSize) }
++      (once (prop_codec_binary_compat_BlockFetchSerialised_BlockFetch testCase))
++    case testCase of
++      AnyMessage (msg :: Message (BlockFetch (Serialised Block) (Point Block)) st st') -> do
++        let serialisedCodec = codecSerialised
++              :: Codec (BlockFetch (Serialised Block) (Point Block))
++                   S.DeserialiseFailure IO ByteString
++            raw = encode serialisedCodec msg
++            token = stateToken :: StateToken st
++            (state, sender) = case token of
++              SingBFIdle -> ("idle", "client")
++              SingBFBusy -> ("busy", "server")
++              SingBFStreaming -> ("streaming", "server")
++              SingBFDone -> ("done", "client")
++            tag = case msg of
++              MsgRequestRange _ -> "request-range"
++              MsgClientDone -> "client-done"
++              MsgStartBatch -> "start-batch"
++              MsgNoBlocks -> "no-blocks"
++              MsgBlock _ -> "block"
++              MsgBatchDone -> "batch-done"
++        hPutStrLn outputHandle $ intercalate "\t"
++          [ "blockfetch-binary-v1", show caseSeed, show ordinal, show caseSize
++          , "codecSerialised/codec", state, sender, tag, hex (BL.toStrict raw)
++          , if isSuccess result then "pass" else "upstream-failure"
++          ]
++  where
++    hex = concatMap (pad . (`showHex` "")) . BS.unpack
++    pad [digit] = ['0', digit]
++    pad digits = digits
+--- upstream/LocalStateQuery/Test.hs
+
++++ overlay/LocalStateQuery/Test.hs
+
+@@ -13,6 +13,9 @@
+
+ {-# OPTIONS_GHC -Wno-orphans #-}
+ module Ouroboros.Network.Protocol.LocalStateQuery.Test
+   ( tests
++  , exportLocalStateQueryCases
++  , exportLocalStateQuerySplitCases
++  , exportLocalStateQueryBehaviorCases
+   , codec
+   , AnyMessageWithResult (..)
+   , Query (..)
+@@ -62,6 +65,15 @@
+
+ 
+ import Test.Cardano.Base.QuickCheck qualified as BaseQC
+ import Test.QuickCheck as QC hiding (Result)
++import Control.Monad (forM_)
++import Codec.Serialise (serialise)
++import Data.ByteString qualified as BS
++import Data.ByteString.Lazy qualified as BL
++import Data.List (intercalate)
++import Numeric (showHex)
++import System.IO (withFile, IOMode (WriteMode), hPutStrLn)
++import Test.QuickCheck.Gen (unGen)
++import Test.QuickCheck.Random (mkQCGen)
+ import Test.Tasty (TestTree, testGroup)
+ import Test.Tasty.QuickCheck (testProperty)
+ import Text.Show.Functions ()
+@@ -446,3 +458,158 @@
+
+   -> Property
+ prop_codec_valid_cbor (AnyMessageWithResult msg) =
+     prop_codec_st_valid_cbor_encoding codec msg
++
++
++-- Disposable observer: preserve the real stateful generator, codec, and codec properties.
++exportLocalStateQueryCases :: FilePath -> Int -> Int -> IO ()
++exportLocalStateQueryCases path count seed = withFile path WriteMode $ \outputHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + (ordinal `mod` 21)
++        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize
++          :: AnyMessageWithResult Block (Point Block) Query MockLedgerState
++    codecResult <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 1000003), caseSize) }
++      (once (prop_codec_LocalStateQuery testCase))
++    cborResult <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 2000003), caseSize) }
++      (once (prop_codec_cbor testCase))
++    validCborResult <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 6000003), caseSize) }
++      (once (prop_codec_valid_cbor testCase))
++    case testCase of
++      AnyMessageWithResult (Stateful.AnyMessage localState msg) -> do
++        let statefulCodec = codec
++              :: Stateful.Codec (LocalStateQuery Block (Point Block) Query)
++                   DeserialiseFailure State IO ByteString
++            raw = Stateful.encode statefulCodec localState msg
++            (state, sender) = case localState of
++              StateIdle -> ("idle", "client")
++              StateAcquiring -> ("acquiring", "server")
++              StateAcquired -> ("acquired", "client")
++              StateQuerying _ -> ("querying", "server")
++              StateDone -> ("done", "none")
++            tag = case msg of
++              MsgAcquire VolatileTip -> "acquire-volatile-tip"
++              MsgAcquire ImmutableTip -> "acquire-immutable-tip"
++              MsgAcquire (SpecificPoint _) -> "acquire-specific-point"
++              MsgAcquired -> "acquired"
++              MsgFailure AcquireFailurePointTooOld -> "failure-point-too-old"
++              MsgFailure AcquireFailurePointNotOnChain -> "failure-point-not-on-chain"
++              MsgQuery _ -> "query"
++              MsgResult _ -> "result"
++              MsgRelease -> "release"
++              MsgReAcquire VolatileTip -> "reacquire-volatile-tip"
++              MsgReAcquire ImmutableTip -> "reacquire-immutable-tip"
++              MsgReAcquire (SpecificPoint _) -> "reacquire-specific-point"
++              MsgDone -> "done"
++            codecOutcome = if isSuccess codecResult then "pass" else "upstream-failure"
++            cborOutcome = if isSuccess cborResult then "pass" else "upstream-failure"
++            validCborOutcome = if isSuccess validCborResult then "pass" else "upstream-failure"
++        hPutStrLn outputHandle $ intercalate "\t"
++          [ "localsq-codec-v1", show caseSeed, show ordinal, show caseSize
++          , state, sender, tag, hex (BL.toStrict raw), codecOutcome, cborOutcome, validCborOutcome
++          ]
++  where
++    hex = concatMap (pad . (`showHex` "")) . BS.unpack
++    pad [digit] = ['0', digit]
++    pad digits = digits
++
++
++-- Disposable observer: run the unchanged stateful split properties over the
++-- same deterministic AnyMessageWithResult rows as exportLocalStateQueryCases.
++exportLocalStateQuerySplitCases :: FilePath -> Int -> Int -> IO ()
++exportLocalStateQuerySplitCases path count seed = withFile path WriteMode $ \outputHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + (ordinal `mod` 21)
++        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize
++          :: AnyMessageWithResult Block (Point Block) Query MockLedgerState
++    split2Result <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 3000003), caseSize) }
++      (once (prop_codec_splits2 testCase))
++    split3Result <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 4000003), caseSize) }
++      (once (prop_codec_splits3 testCase))
++    case testCase of
++      AnyMessageWithResult (Stateful.AnyMessage localState msg) -> do
++        let statefulCodec = codec
++              :: Stateful.Codec (LocalStateQuery Block (Point Block) Query)
++                   DeserialiseFailure State IO ByteString
++            raw = Stateful.encode statefulCodec localState msg
++            (state, sender) = case localState of
++              StateIdle -> ("idle", "client")
++              StateAcquiring -> ("acquiring", "server")
++              StateAcquired -> ("acquired", "client")
++              StateQuerying _ -> ("querying", "server")
++              StateDone -> ("done", "none")
++            tag = case msg of
++              MsgAcquire VolatileTip -> "acquire-volatile-tip"
++              MsgAcquire ImmutableTip -> "acquire-immutable-tip"
++              MsgAcquire (SpecificPoint _) -> "acquire-specific-point"
++              MsgAcquired -> "acquired"
++              MsgFailure AcquireFailurePointTooOld -> "failure-point-too-old"
++              MsgFailure AcquireFailurePointNotOnChain -> "failure-point-not-on-chain"
++              MsgQuery _ -> "query"
++              MsgResult _ -> "result"
++              MsgRelease -> "release"
++              MsgReAcquire VolatileTip -> "reacquire-volatile-tip"
++              MsgReAcquire ImmutableTip -> "reacquire-immutable-tip"
++              MsgReAcquire (SpecificPoint _) -> "reacquire-specific-point"
++              MsgDone -> "done"
++            split2Outcome = if isSuccess split2Result then "pass" else "upstream-failure"
++            split3Outcome = if isSuccess split3Result then "pass" else "upstream-failure"
++        hPutStrLn outputHandle $ intercalate "\t"
++          [ "localsq-splits-v1", show caseSeed, show ordinal, show caseSize
++          , state, sender, tag, hex (BL.toStrict raw), split2Outcome, split3Outcome
++          ]
++  where
++    hex = concatMap (pad . (`showHex` "")) . BS.unpack
++    pad [digit] = ['0', digit]
++    pad digits = digits
++
++
++-- Disposable observer: retain the unchanged SetupData map and run every original
++-- direct/connect/channel property against that exact generated value.
++exportLocalStateQueryBehaviorCases :: FilePath -> FilePath -> Int -> Int -> IO ()
++exportLocalStateQueryBehaviorCases casesPath actionsPath count seed = do
++  withFile casesPath WriteMode $ \casesHandle ->
++    withFile actionsPath WriteMode $ \actionsHandle ->
++      forM_ [0 .. count - 1] $ \ordinal -> do
++        let caseSeed = seed + ordinal
++            caseSize = ordinal `mod` 7
++            input = unGen arbitrary (mkQCGen caseSeed) caseSize :: SetupData
++        directResult <- quickCheckWithResult stdArgs { chatty = False } (once (prop_direct input))
++        connectResult <- quickCheckWithResult stdArgs { chatty = False } (once (prop_connect input))
++        channelSTResult <- quickCheckWithResult stdArgs { chatty = False } (once (prop_channel_ST input))
++        channelIOResult <- quickCheckWithResult stdArgs { chatty = False } (once (prop_channel_IO input))
++        pipeIOResult <- quickCheckWithResult stdArgs { chatty = False } (once (prop_pipe_IO input))
++        let entries = Map.toList input
++            verdict result = if isSuccess result then "pass" else "upstream-failure"
++        hPutStrLn casesHandle $ intercalate "\t"
++          [ "localsq-behavior-case-v1", show caseSeed, show ordinal, show caseSize
++          , show (length entries), verdict directResult, verdict connectResult
++          , verdict channelSTResult, verdict channelIOResult, verdict pipeIOResult
++          ]
++        forM_ (zip [0 :: Int ..] entries) $ \(actionOrdinal, (target, (failure, _query))) -> do
++          let statefulCodec = codec
++                :: Stateful.Codec (LocalStateQuery Block (Point Block) Query)
++                     DeserialiseFailure State IO ByteString
++              acquireWire = BL.toStrict (Stateful.encode statefulCodec StateIdle (MsgAcquire target))
++              queryWire = BL.toStrict (serialise ())
++              resultWire = BL.toStrict (serialise (MockLedgerState target))
++              failureTag = case failure of
++                Nothing -> "acquired"
++                Just AcquireFailurePointTooOld -> "point-too-old"
++                Just AcquireFailurePointNotOnChain -> "point-not-on-chain"
++          hPutStrLn actionsHandle $ intercalate "\t"
++            [ "localsq-behavior-v1", show caseSeed, show ordinal, show caseSize
++            , show actionOrdinal, show (length entries), hex acquireWire
++            , failureTag, hex queryWire, hex resultWire
++            , verdict directResult, verdict connectResult, verdict channelSTResult
++            , verdict channelIOResult, verdict pipeIOResult
++            ]
++  where
++    hex = concatMap (pad . (`showHex` "")) . BS.unpack
++    pad [digit] = ['0', digit]
++    pad digits = digits
+--- upstream/LocalTxSubmission/Test.hs
+
++++ overlay/LocalTxSubmission/Test.hs
+
+@@ -7,12 +7,17 @@
+
+ {-# LANGUAGE NamedFieldPuns             #-}
+ {-# LANGUAGE PolyKinds                  #-}
+ {-# LANGUAGE RankNTypes                 #-}
++{-# LANGUAGE ScopedTypeVariables        #-}
+ 
+ {-# OPTIONS_GHC -Wno-orphans #-}
+ {-# LANGUAGE DeriveGeneric              #-}
+ 
+ module Ouroboros.Network.Protocol.LocalTxSubmission.Test
+   ( tests
++  , exportLocalTxSubmissionCases
++  , exportLocalTxSubmissionSplitCases
++  , exportLocalTxSubmissionAnnotatedCases
++  , exportLocalTxSubmissionBehaviorCases
+   , Tx (..)
+   , Reject (..)
+   ) where
+@@ -52,6 +57,15 @@
+
+ import Control.DeepSeq
+ import GHC.Generics
+ import Test.QuickCheck as QC
++import Codec.CBOR.Write qualified as CBOR
++import Control.Monad (forM_)
++import Data.ByteString qualified as BS
++import Data.ByteString.Lazy qualified as BL
++import Data.List (intercalate)
++import Numeric (showHex)
++import System.IO (withFile, IOMode (WriteMode), hPutStrLn)
++import Test.QuickCheck.Gen (unGen)
++import Test.QuickCheck.Random (mkQCGen)
+ import Test.Tasty (TestTree, testGroup)
+ import Test.Tasty.QuickCheck (testProperty)
+ import Text.Show.Functions ()
+@@ -312,3 +326,184 @@
+
+           MsgRejectTx {} -> "MsgRejectTx"
+           MsgDone        -> "MsgDone"
+         )
++
++
++-- Disposable observer: use the actual typed-protocol AnyMessage generator and codec properties.
++exportLocalTxSubmissionCases :: FilePath -> Int -> Int -> IO ()
++exportLocalTxSubmissionCases path count seed = withFile path WriteMode $ \outputHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + (ordinal `mod` 21)
++        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize
++          :: AnyMessage (LocalTxSubmission Tx Reject)
++    codecResult <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 1000003), caseSize) }
++      (once (prop_codec testCase))
++    cborResult <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 2000003), caseSize) }
++      (once (prop_codec_cbor testCase))
++    validCborResult <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 6000003), caseSize) }
++      (once (prop_codec_valid_cbor testCase))
++    case testCase of
++      AnyMessage (msg :: Message (LocalTxSubmission Tx Reject) st st') -> do
++        let txCodec = codec
++              :: Codec (LocalTxSubmission Tx Reject) DeserialiseFailure IO ByteString
++            raw = encode txCodec msg
++            token = stateToken :: StateToken st
++            (state, sender) = case token of
++              SingIdle -> ("idle", "client")
++              SingBusy -> ("busy", "server")
++              SingDone -> ("done", "none")
++            tag = case msg of
++              MsgSubmitTx _ -> "submit-tx"
++              MsgAcceptTx -> "accept-tx"
++              MsgRejectTx _ -> "reject-tx"
++              MsgDone -> "done"
++            codecOutcome = if isSuccess codecResult then "pass" else "upstream-failure"
++            cborOutcome = if isSuccess cborResult then "pass" else "upstream-failure"
++            validCborOutcome = if isSuccess validCborResult then "pass" else "upstream-failure"
++        hPutStrLn outputHandle $ intercalate "\t"
++          [ "local-tx-submission-codec-v1", show caseSeed, show ordinal, show caseSize
++          , state, sender, tag, hex (BL.toStrict raw), codecOutcome, cborOutcome, validCborOutcome
++          ]
++  where
++    hex = concatMap (pad . (`showHex` "")) . BS.unpack
++    pad [digit] = ['0', digit]
++    pad digits = digits
++
++-- Disposable observer: use the same generated message with unchanged split properties.
++exportLocalTxSubmissionSplitCases :: FilePath -> Int -> Int -> IO ()
++exportLocalTxSubmissionSplitCases path count seed = withFile path WriteMode $ \outputHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + (ordinal `mod` 21)
++        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize
++          :: AnyMessage (LocalTxSubmission Tx Reject)
++    split2Result <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 3000003), caseSize) }
++      (once (prop_codec_splits2 testCase))
++    split3Result <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 4000003), caseSize) }
++      (once (prop_codec_splits3 testCase))
++    case testCase of
++      AnyMessage (msg :: Message (LocalTxSubmission Tx Reject) st st') -> do
++        let txCodec = codec
++              :: Codec (LocalTxSubmission Tx Reject) DeserialiseFailure IO ByteString
++            raw = BL.toStrict (encode txCodec msg)
++            token = stateToken :: StateToken st
++            (state, sender) = case token of
++              SingIdle -> ("idle", "client")
++              SingBusy -> ("busy", "server")
++              SingDone -> ("done", "none")
++            tag = case msg of
++              MsgSubmitTx _ -> "submit-tx"
++              MsgAcceptTx -> "accept-tx"
++              MsgRejectTx _ -> "reject-tx"
++              MsgDone -> "done"
++            split2Outcome = if isSuccess split2Result then "pass" else "upstream-failure"
++            split3Outcome = if isSuccess split3Result then "pass" else "upstream-failure"
++        hPutStrLn outputHandle $ intercalate "\t"
++          [ "local-tx-submission-splits-v1", show caseSeed, show ordinal, show caseSize
++          , state, sender, tag, hex raw, split2Outcome, split3Outcome
++          ]
++  where
++    hex = concatMap (pad . (`showHex` "")) . BS.unpack
++    pad [digit] = ['0', digit]
++    pad digits = digits
++
++
++
++-- Disposable observer: retain the distinct WithBytes generator and annotated codec laws.
++exportLocalTxSubmissionAnnotatedCases :: FilePath -> Int -> Int -> IO ()
++exportLocalTxSubmissionAnnotatedCases path count seed = withFile path WriteMode $ \outputHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + (ordinal `mod` 21)
++        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize
++          :: AnyMessage (LocalTxSubmission (WithBytes Tx) Reject)
++    annResult <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 7000003), caseSize) }
++      (once (prop_anncodec testCase))
++    split2Result <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 8000003), caseSize) }
++      (once (prop_anncodec_splits2 testCase))
++    split3Result <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 9000003), caseSize) }
++      (once (prop_anncodec_splits3 testCase))
++    case testCase of
++      AnyMessage (msg :: Message (LocalTxSubmission (WithBytes Tx) Reject) st st') -> do
++        let Codec { encode } = anncodec
++              :: AnnotatedCodec (LocalTxSubmission (WithBytes Tx) Reject)
++                   DeserialiseFailure IO ByteString
++            raw = BL.toStrict (encode msg)
++            token = stateToken :: StateToken st
++            (state, sender) = case token of
++              SingIdle -> ("idle", "client")
++              SingBusy -> ("busy", "server")
++              SingDone -> ("done", "none")
++            tag = case msg of
++              MsgSubmitTx _ -> "submit-tx"
++              MsgAcceptTx -> "accept-tx"
++              MsgRejectTx _ -> "reject-tx"
++              MsgDone -> "done"
++            annOutcome = if isSuccess annResult then "pass" else "upstream-failure"
++            split2Outcome = if isSuccess split2Result then "pass" else "upstream-failure"
++            split3Outcome = if isSuccess split3Result then "pass" else "upstream-failure"
++        hPutStrLn outputHandle $ intercalate "\t"
++          [ "local-tx-submission-annotated-v1", show caseSeed, show ordinal, show caseSize
++          , state, sender, tag, hex raw, annOutcome, split2Outcome, split3Outcome
++          ]
++  where
++    hex = concatMap (pad . (`showHex` "")) . BS.unpack
++    pad [digit] = ['0', digit]
++    pad digits = digits
++
++
++-- Disposable observer: run the unchanged direct/connect/channel properties over
++-- one original generated arbitrary function and transaction list, retaining each
++-- exact serialized Tx and SubmitResult for a production-server replay.
++exportLocalTxSubmissionBehaviorCases :: FilePath -> Int -> Int -> IO ()
++exportLocalTxSubmissionBehaviorCases path count seed = withFile path WriteMode $ \outputHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 8 + (ordinal `mod` 9)
++        p = unGen arbitrary (mkQCGen (caseSeed + 1000003)) caseSize
++              :: Tx -> SubmitResult Reject
++        txs = unGen arbitrary (mkQCGen caseSeed) caseSize :: [Tx]
++        results = map p txs
++        wireResult tx result =
++          let raw = BL.toStrict (CBOR.toLazyByteString (Serialise.encode tx))
++              outcome = case result of
++                SubmitSuccess -> Left ()
++                SubmitFail reject -> Right (BL.toStrict (CBOR.toLazyByteString (Serialise.encode reject)))
++          in (raw, outcome)
++        aliases = map (uncurry wireResult) (zip txs results)
++        consistent = and
++          [ wire /= wire' || result == result'
++          | (index, (wire, result)) <- zip [0 :: Int ..] aliases
++          , (wire', result') <- drop (index + 1) aliases
++          ]
++    if not consistent then fail "generated Tx wire aliases have conflicting SubmitResult values" else pure ()
++    directResult <- quickCheckWithResult stdArgs { chatty = False }
++      (once (prop_direct p txs))
++    connectResult <- quickCheckWithResult stdArgs { chatty = False }
++      (once (prop_connect p txs))
++    channelResult <- quickCheckWithResult stdArgs { chatty = False }
++      (once (prop_channel_ST p txs))
++    forM_ (zip3 [0 :: Int ..] txs results) $ \(txIndex, tx, result) -> do
++      let txWire = hex (BL.toStrict (CBOR.toLazyByteString (Serialise.encode tx)))
++          (outcome, rejection) = case result of
++            SubmitSuccess -> ("accepted", "")
++            SubmitFail reject -> ("rejected", hex (BL.toStrict (CBOR.toLazyByteString (Serialise.encode reject))))
++      hPutStrLn outputHandle $ intercalate "\t"
++        [ "localtxsubmission-behavior-v1", show caseSeed, show ordinal, show caseSize
++        , show txIndex, txWire, outcome, rejection
++        , if isSuccess directResult then "pass" else "upstream-failure"
++        , if isSuccess connectResult then "pass" else "upstream-failure"
++        , if isSuccess channelResult then "pass" else "upstream-failure"
++        ]
++  where
++    hex = concatMap (pad . (`showHex` "")) . BS.unpack
++    pad [digit] = ['0', digit]
++    pad digits = digits
+--- upstream/LocalTxMonitor/Test.hs
+
++++ overlay/LocalTxMonitor/Test.hs
+
+@@ -10,7 +10,7 @@
+
+ 
+ {-# OPTIONS_GHC -Wno-orphans #-}
+ 
+-module Ouroboros.Network.Protocol.LocalTxMonitor.Test (tests) where
++module Ouroboros.Network.Protocol.LocalTxMonitor.Test (tests, exportLocalTxMonitorCases, exportLocalTxMonitorSplitCases, exportLocalTxMonitorBehaviorCases) where
+ 
+ import Codec.Serialise (Serialise)
+ import Codec.Serialise qualified as S
+@@ -47,6 +47,15 @@
+
+ import Test.Ouroboros.Network.Protocol.Utils (prop_codec_cborM,
+            prop_codec_valid_cbor_encoding, splits2, splits3)
+ import Test.QuickCheck hiding (Result)
++import Codec.CBOR.Write qualified as CBOR
++import Control.Monad (forM_)
++import Data.ByteString qualified as BS
++import Data.ByteString.Lazy qualified as BL
++import Data.List (intercalate)
++import Numeric (showHex)
++import System.IO (withFile, IOMode (WriteMode), hPutStrLn)
++import Test.QuickCheck.Gen (unGen)
++import Test.QuickCheck.Random (mkQCGen)
+ import Test.Tasty (TestTree, testGroup)
+ import Test.Tasty.QuickCheck (testProperty)
+ 
+@@ -283,3 +292,155 @@
+
+     AnyMessage MsgRelease              == AnyMessage MsgRelease              = True
+     AnyMessage MsgDone                 == AnyMessage MsgDone                 = True
+     AnyMessage _                       == AnyMessage _                       = False
++
++
++-- Disposable observer: retain the real AnyMessage generator and both codec properties.
++exportLocalTxMonitorCases :: FilePath -> Int -> Int -> IO ()
++exportLocalTxMonitorCases path count seed = withFile path WriteMode $ \outputHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + (ordinal `mod` 21)
++        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize
++          :: AnyMessage (LocalTxMonitor TxId Tx SlotNo)
++    codecResult <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 1000003), caseSize) }
++      (once (prop_codecM_LocalTxMonitor testCase))
++    cborResult <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 2000003), caseSize) }
++      (once (prop_codec_cborM_LocalTxMonitor testCase))
++    codecIdResult <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 5000003), caseSize) }
++      (once (prop_codecIdM_LocalTxMonitor testCase))
++    validCborResult <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 6000003), caseSize) }
++      (once (prop_codec_valid_cbor_encoding_LocalTxMonitor testCase))
++    case testCase of
++      AnyMessage (msg :: Message (LocalTxMonitor TxId Tx SlotNo) st st') -> do
++        let monitorCodec = codec
++              :: Codec (LocalTxMonitor TxId Tx SlotNo) S.DeserialiseFailure IO ByteString
++            raw = encode monitorCodec msg
++            token = stateToken :: StateToken st
++            (state, sender) = case token of
++              SingIdle -> ("idle", "client")
++              SingAcquiring -> ("acquiring", "server")
++              SingAcquired -> ("acquired", "client")
++              SingBusy SingNextTx -> ("busy-next-tx", "server")
++              SingBusy SingHasTx -> ("busy-has-tx", "server")
++              SingBusy SingGetSizes -> ("busy-get-sizes", "server")
++              SingBusy SingGetMeasures -> ("busy-get-measures", "server")
++              SingDone -> ("done", "none")
++            tag = case msg of
++              MsgAcquire -> "acquire"
++              MsgAcquired _ -> "acquired"
++              MsgAwaitAcquire -> "await-acquire"
++              MsgNextTx -> "next-tx"
++              MsgReplyNextTx _ -> "reply-next-tx"
++              MsgHasTx _ -> "has-tx"
++              MsgReplyHasTx _ -> "reply-has-tx"
++              MsgGetSizes -> "get-sizes"
++              MsgReplyGetSizes _ -> "reply-get-sizes"
++              MsgGetMeasures -> "get-measures"
++              MsgReplyGetMeasures _ -> "reply-get-measures"
++              MsgRelease -> "release"
++              MsgDone -> "done"
++            codecOutcome = if isSuccess codecResult then "pass" else "upstream-failure"
++            cborOutcome = if isSuccess cborResult then "pass" else "upstream-failure"
++            codecIdOutcome = if isSuccess codecIdResult then "pass" else "upstream-failure"
++            validCborOutcome = if isSuccess validCborResult then "pass" else "upstream-failure"
++        hPutStrLn outputHandle $ intercalate "\t"
++          [ "local-tx-monitor-codec-v1", show caseSeed, show ordinal, show caseSize
++          , state, sender, tag, hex (BL.toStrict raw), codecOutcome, cborOutcome, codecIdOutcome, validCborOutcome
++          ]
++  where
++    hex = concatMap (pad . (`showHex` "")) . BS.unpack
++    pad [digit] = ['0', digit]
++    pad digits = digits
++
++-- Disposable observer: use the same generated message with unchanged split properties.
++exportLocalTxMonitorSplitCases :: FilePath -> Int -> Int -> IO ()
++exportLocalTxMonitorSplitCases path count seed = withFile path WriteMode $ \outputHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 30 + (ordinal `mod` 21)
++        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize
++          :: AnyMessage (LocalTxMonitor TxId Tx SlotNo)
++    split2Result <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 3000003), caseSize) }
++      (once (prop_codec_splitsM_LocalTxMonitor splits2 testCase))
++    split3Result <- quickCheckWithResult
++      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 4000003), caseSize) }
++      (once (prop_codec_splitsM_LocalTxMonitor splits3 testCase))
++    case testCase of
++      AnyMessage (msg :: Message (LocalTxMonitor TxId Tx SlotNo) st st') -> do
++        let monitorCodec = codec
++              :: Codec (LocalTxMonitor TxId Tx SlotNo) S.DeserialiseFailure IO ByteString
++            raw = BL.toStrict (encode monitorCodec msg)
++            token = stateToken :: StateToken st
++            (state, sender) = case token of
++              SingIdle -> ("idle", "client")
++              SingAcquiring -> ("acquiring", "server")
++              SingAcquired -> ("acquired", "client")
++              SingBusy SingNextTx -> ("busy-next-tx", "server")
++              SingBusy SingHasTx -> ("busy-has-tx", "server")
++              SingBusy SingGetSizes -> ("busy-get-sizes", "server")
++              SingBusy SingGetMeasures -> ("busy-get-measures", "server")
++              SingDone -> ("done", "none")
++            tag = case msg of
++              MsgAcquire -> "acquire"
++              MsgAcquired _ -> "acquired"
++              MsgAwaitAcquire -> "await-acquire"
++              MsgNextTx -> "next-tx"
++              MsgReplyNextTx _ -> "reply-next-tx"
++              MsgHasTx _ -> "has-tx"
++              MsgReplyHasTx _ -> "reply-has-tx"
++              MsgGetSizes -> "get-sizes"
++              MsgReplyGetSizes _ -> "reply-get-sizes"
++              MsgGetMeasures -> "get-measures"
++              MsgReplyGetMeasures _ -> "reply-get-measures"
++              MsgRelease -> "release"
++              MsgDone -> "done"
++            split2Outcome = if isSuccess split2Result then "pass" else "upstream-failure"
++            split3Outcome = if isSuccess split3Result then "pass" else "upstream-failure"
++        hPutStrLn outputHandle $ intercalate "\t"
++          [ "local-tx-monitor-splits-v1", show caseSeed, show ordinal, show caseSize
++          , state, sender, tag, hex raw, split2Outcome, split3Outcome
++          ]
++  where
++    hex = concatMap (pad . (`showHex` "")) . BS.unpack
++    pad [digit] = ['0', digit]
++    pad digits = digits
++
++-- Disposable observer: retain exact generated inputs and unchanged property verdicts.
++exportLocalTxMonitorBehaviorCases :: FilePath -> Int -> Int -> IO ()
++exportLocalTxMonitorBehaviorCases path count seed = withFile path WriteMode $ \outputHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 8 + (ordinal `mod` 9)
++        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize :: (SlotNo, [Tx])
++        (slot, txs) = testCase
++        txRows =
++          [ (show txIndex, hex (BL.toStrict (CBOR.toLazyByteString (S.encode tx)))
++            , hex (BL.toStrict (CBOR.toLazyByteString (S.encode (txId tx)))))
++          | (txIndex, tx) <- zip [0 :: Int ..] txs
++          ]
++        rows = if null txRows then [("-1", "", "")] else txRows
++    directResult <- quickCheckWithResult stdArgs { chatty = False }
++      (once (prop_direct testCase))
++    connectResult <- quickCheckWithResult stdArgs { chatty = False }
++      (once (prop_connect testCase))
++    channelResult <- quickCheckWithResult stdArgs { chatty = False }
++      (once (prop_channel_ST testCase))
++    forM_ rows $ \(txIndex, txWire, idWire) ->
++      hPutStrLn outputHandle $ intercalate "\t"
++        [ "localtxmonitor-behavior-v1", show caseSeed, show ordinal, show caseSize
++        , hex (BL.toStrict (CBOR.toLazyByteString (S.encode slot))), txIndex, txWire, idWire
++        , if null txs then "empty" else "transaction"
++        , if isSuccess directResult then "pass" else "upstream-failure"
++        , if isSuccess connectResult then "pass" else "upstream-failure"
++        , if isSuccess channelResult then "pass" else "upstream-failure"
++        ]
++  where
++    hex = concatMap (pad . (`showHex` "")) . BS.unpack
++    pad [digit] = ['0', digit]
++    pad digits = digits
++
+--- upstream/TxSubmission2/Test.hs
+
++++ overlay/TxSubmission2/Test.hs
+
+@@ -8,6 +8,7 @@
+
+ {-# LANGUAGE PolyKinds                  #-}
+ {-# LANGUAGE QuantifiedConstraints      #-}
+ {-# LANGUAGE RankNTypes                 #-}
++{-# LANGUAGE ScopedTypeVariables        #-}
+ {-# LANGUAGE StandaloneDeriving         #-}
+ {-# LANGUAGE TupleSections              #-}
+ {-# LANGUAGE TypeFamilies               #-}
+@@ -19,6 +20,10 @@
+
+   , Tx (..)
+   , TxId (..)
+   , labelMsg
++  , exportTxSubmission2Cases
++  , exportTxSubmission2SplitCases
++  , exportTxSubmission2AnnotatedCases
++  , exportTxSubmission2BehaviorCases
+   ) where
+ 
+ import Data.Bifunctor (second)
+@@ -453,6 +458,51 @@
+
+            MsgDone            -> "MsgDone"
+         )
+ 
++
++
++-- Disposable observer: export original TxSubmission2 test params and their
++-- unchanged direct/connect/channel property verdicts for Scarab runtime replay.
++exportTxSubmission2BehaviorCases :: FilePath -> Int -> Int -> IO ()
++exportTxSubmission2BehaviorCases path count seed = withFile path WriteMode $ \outputHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 4 + (ordinal `mod` 9)
++        params = unGen arbitrary (mkQCGen caseSeed) caseSize :: TxSubmissionTestParams
++        choices = unGen arbitrary (mkQCGen (caseSeed + 3000007)) caseSize :: NonEmptyList Bool
++    directResult <- quickCheckWithResult stdArgs { chatty = False }
++      (once (prop_direct params))
++    connectResult <- quickCheckWithResult stdArgs { chatty = False }
++      (once (prop_connect1 params))
++    pipelinedResult <- quickCheckWithResult stdArgs { chatty = False }
++      (once (prop_connect2 params choices))
++    channelResult <- quickCheckWithResult stdArgs { chatty = False }
++      (once (prop_channel_ST params))
++    case params of
++      TxSubmissionTestParams
++        { testMaxUnacked = Positive (Small maxUnacked)
++        , testMaxTxIdsToRequest = Positive (Small maxIdsToRequest)
++        , testMaxTxToRequest = Positive (Small maxTxToRequest)
++        , testTransactions = DistinctList txs
++        } -> do
++          let pairs = intercalate ";"
++                [ hex (BL.toStrict (CBOR.toLazyByteString (Serialise.encode (txId tx)))) <> ":" <>
++                  hex (BL.toStrict (CBOR.toLazyByteString (Serialise.encode tx)))
++                | tx <- txs
++                ]
++          hPutStrLn outputHandle $ intercalate "\t"
++            [ "txsubmission2-behavior-v2", show caseSeed, show ordinal, show caseSize
++            , show maxUnacked, show maxIdsToRequest, show maxTxToRequest
++            , if isSuccess directResult then "pass" else "upstream-failure"
++            , if isSuccess connectResult then "pass" else "upstream-failure"
++            , if isSuccess pipelinedResult then "pass" else "upstream-failure"
++            , if isSuccess channelResult then "pass" else "upstream-failure"
++            , show (length txs), pairs
++            , map (\choice -> if choice then '1' else '0') (getNonEmpty choices)
++            ]
++  where
++    hex = concatMap (pad . (`showHex` "")) . BS.unpack
++    pad [digit] = ['0', digit]
++    pad digits = digits
+ 
+ -- Disposable observer: preserve the original typed-protocol generator, codec, and properties.
+ exportTxSubmission2Cases :: FilePath -> Int -> Int -> IO ()
+--- upstream/protocols/tests/Main.hs
+
++++ overlay/protocols/tests/Main.hs
+
+@@ -2,20 +2,64 @@
+
+ 
+ import Test.Tasty
+ 
+-import Ouroboros.Network.Protocol.BlockFetch.Test qualified (tests)
+-import Ouroboros.Network.Protocol.ChainSync.Test qualified (tests)
+ import Ouroboros.Network.Protocol.Handshake.Test qualified (tests)
+-import Ouroboros.Network.Protocol.KeepAlive.Test qualified (tests)
+-import Ouroboros.Network.Protocol.LocalStateQuery.Test qualified (tests)
+-import Ouroboros.Network.Protocol.LocalTxMonitor.Test qualified (tests)
+-import Ouroboros.Network.Protocol.LocalTxSubmission.Test qualified (tests)
++import Ouroboros.Network.Protocol.KeepAlive.Test qualified as KeepAlive (tests, exportKeepAliveCases, exportKeepAliveSplitCases, exportKeepAliveBehaviorCases, exportKeepAliveByteLimits)
++import Ouroboros.Network.Protocol.PeerSharing.Test qualified as PeerSharing (tests, exportPeerSharingCases, exportPeerSharingBehavior, exportPeerSharingByteLimits)
++import Ouroboros.Network.Protocol.ChainSync.Test qualified as ChainSync (tests, exportChainSyncCases, exportChainSyncSplitCases, exportChainSyncBinaryCases, exportChainSyncBehaviorCases, exportChainSyncIOBehaviorCases, exportChainSyncPipelinedMaxCases, exportChainSyncPipelinedMinCases, exportChainSyncPipelinedLowHighCases, exportChainSyncPipelinedDirectConnectCases, exportChainSyncPipelinedMinBufferedCases, exportChainSyncDemoPipelinedIOCases)
++import Ouroboros.Network.Protocol.BlockFetch.Test qualified as BlockFetch (tests, exportBlockFetchCases, exportBlockFetchSplitCases, exportBlockFetchBinaryCases, exportBlockFetchBehaviorCases)
++import Ouroboros.Network.Protocol.LocalStateQuery.Test qualified as LocalStateQuery (tests, exportLocalStateQueryCases, exportLocalStateQuerySplitCases, exportLocalStateQueryBehaviorCases)
++import Ouroboros.Network.Protocol.LocalTxSubmission.Test qualified as LocalTxSubmission (tests, exportLocalTxSubmissionCases, exportLocalTxSubmissionSplitCases, exportLocalTxSubmissionAnnotatedCases, exportLocalTxSubmissionBehaviorCases)
++import Ouroboros.Network.Protocol.LocalTxMonitor.Test qualified as LocalTxMonitor (tests, exportLocalTxMonitorCases, exportLocalTxMonitorSplitCases, exportLocalTxMonitorBehaviorCases)
++import Ouroboros.Network.Protocol.TxSubmission2.Test qualified as TxSubmission2 (tests, exportTxSubmission2Cases, exportTxSubmission2SplitCases, exportTxSubmission2AnnotatedCases, exportTxSubmission2BehaviorCases)
++import System.Environment (getArgs)
++
+ import Ouroboros.Network.Protocol.ObjectDiffusion.Test qualified (tests)
+-import Ouroboros.Network.Protocol.PeerSharing.Test qualified (tests)
+-import Ouroboros.Network.Protocol.TxSubmission2.Test qualified (tests)
+ import Test.Data.CDDL qualified (tests)
+ 
+ main :: IO ()
+-main = defaultMain tests
++main = getArgs >>= \args -> case args of
++  ["--export-peer-acceptance", dir, count, seed] -> do
++    PeerSharing.exportPeerSharingBehavior (dir <> "/peersharing-behavior.tsv") (read count) (read seed)
++    PeerSharing.exportPeerSharingByteLimits (dir <> "/peersharing-byte-limits.tsv") (read count) (read seed + 1000)
++    KeepAlive.exportKeepAliveByteLimits (dir <> "/keepalive-byte-limits.tsv") (read count) (read seed + 2000)
++  ["--export-lsq-behavior", dir, count, seed] -> LocalStateQuery.exportLocalStateQueryBehaviorCases (dir <> "/localsq-behavior-cases.tsv") (dir <> "/localsq-behavior-actions.tsv") (read count) (read seed)
++  ["--export-chainsync-behavior", dir, count, seed] -> ChainSync.exportChainSyncBehaviorCases (dir <> "/chainsync-behavior-cases.tsv") (dir <> "/chainsync-behavior-blocks.tsv") (dir <> "/chainsync-behavior-points.tsv") (read count) (read seed)
++  ["--export-chainsync-io-behavior", dir, count, seed] -> ChainSync.exportChainSyncIOBehaviorCases (dir <> "/chainsync-behavior-io.tsv") (read count) (read seed)
++  ["--export-chainsync-pipelined-max", dir, count, seed] -> ChainSync.exportChainSyncPipelinedMaxCases (dir <> "/chainsync-pipelined-max.tsv") (read count) (read seed)
++  ["--export-chainsync-pipelined-min", dir, count, seed] -> ChainSync.exportChainSyncPipelinedMinCases (dir <> "/chainsync-pipelined-min.tsv") (read count) (read seed)
++  ["--export-chainsync-pipelined-low-high", dir, count, seed] -> ChainSync.exportChainSyncPipelinedLowHighCases (dir <> "/chainsync-pipelined-low-high.tsv") (read count) (read seed)
++  ["--export-chainsync-pipelined-direct-connect", dir, count, seed] -> ChainSync.exportChainSyncPipelinedDirectConnectCases (dir <> "/chainsync-pipelined-direct-connect.tsv") (read count) (read seed)
++  ["--export-chainsync-pipelined-min-buffered", dir, count, seed] -> ChainSync.exportChainSyncPipelinedMinBufferedCases (dir <> "/chainsync-pipelined-min-buffered.tsv") (read count) (read seed)
++  ["--export-chainsync-demo-pipelined-io", dir, count, seed] -> ChainSync.exportChainSyncDemoPipelinedIOCases (dir <> "/chainsync-demo-pipelined-io.tsv") (read count) (read seed)
++  ["--export-lsq-behavior", dir, count, seed] -> LocalStateQuery.exportLocalStateQueryBehaviorCases (dir <> "/localsq-behavior-cases.tsv") (dir <> "/localsq-behavior-actions.tsv") (read count) (read seed)
++  ["--export-txsubmission2-behavior", dir, count, seed] -> TxSubmission2.exportTxSubmission2BehaviorCases (dir <> "/txsubmission2-behavior.tsv") (read count) (read seed)
++  ["--export-blockfetch-behavior", dir, count, seed] -> BlockFetch.exportBlockFetchBehaviorCases (dir <> "/blockfetch-behavior.tsv") (read count) (read seed)
++  ["--export-network-codecs", dir, count, seed, chainCount] -> do
++    KeepAlive.exportKeepAliveBehaviorCases (dir <> "/keepalive-behavior.tsv") (read count) (read seed + 700)
++    KeepAlive.exportKeepAliveCases (dir <> "/keepalive.tsv") (read count) (read seed)
++    KeepAlive.exportKeepAliveSplitCases (dir <> "/keepalive-splits.tsv") (read count) (read seed)
++    PeerSharing.exportPeerSharingCases (dir <> "/peersharing.tsv") (read count) (read seed)
++    ChainSync.exportChainSyncCases (dir <> "/chainsync.tsv") (read chainCount) (read seed + 900)
++    ChainSync.exportChainSyncSplitCases (dir <> "/chainsync-splits.tsv") (read chainCount) (read seed + 900)
++    ChainSync.exportChainSyncBinaryCases (dir <> "/chainsync-binary.tsv") (read chainCount) (read seed + 900)
++    BlockFetch.exportBlockFetchCases (dir <> "/blockfetch.tsv") (read count) (read seed)
++    BlockFetch.exportBlockFetchSplitCases (dir <> "/blockfetch-splits.tsv") (read count) (read seed)
++    BlockFetch.exportBlockFetchBinaryCases (dir <> "/blockfetch-binary.tsv") (read count) (read seed)
++    LocalStateQuery.exportLocalStateQueryCases (dir <> "/localsq.tsv") (read count) (read seed + 1800)
++    LocalStateQuery.exportLocalStateQuerySplitCases (dir <> "/localsq-splits.tsv") (read count) (read seed + 1800)
++    LocalStateQuery.exportLocalStateQueryBehaviorCases (dir <> "/localsq-behavior-cases.tsv") (dir <> "/localsq-behavior-actions.tsv") (read count) (read seed + 11800)
++    LocalTxSubmission.exportLocalTxSubmissionCases (dir <> "/localtxsubmission.tsv") (read count) (read seed + 2800)
++    LocalTxSubmission.exportLocalTxSubmissionBehaviorCases (dir <> "/localtxsubmission-behavior.tsv") (read count) (read seed + 8800)
++    LocalTxMonitor.exportLocalTxMonitorCases (dir <> "/localtxmonitor.tsv") (read count) (read seed + 3800)
++    LocalTxMonitor.exportLocalTxMonitorBehaviorCases (dir <> "/localtxmonitor-behavior.tsv") (read count) (read seed + 9800)
++    LocalTxSubmission.exportLocalTxSubmissionSplitCases (dir <> "/localtxsubmission-splits.tsv") (read count) (read seed + 2800)
++    LocalTxSubmission.exportLocalTxSubmissionAnnotatedCases (dir <> "/localtxsubmission-annotated.tsv") (read count) (read seed + 5800)
++    LocalTxMonitor.exportLocalTxMonitorSplitCases (dir <> "/localtxmonitor-splits.tsv") (read count) (read seed + 3800)
++    TxSubmission2.exportTxSubmission2Cases (dir <> "/txsubmission2.tsv") (read count) (read seed + 4800)
++    TxSubmission2.exportTxSubmission2SplitCases (dir <> "/txsubmission2-splits.tsv") (read count) (read seed + 4800)
++    TxSubmission2.exportTxSubmission2AnnotatedCases (dir <> "/txsubmission2-annotated.tsv") (read count) (read seed + 6800)
++    TxSubmission2.exportTxSubmission2BehaviorCases (dir <> "/txsubmission2-behavior.tsv") (read count) (read seed + 12800)
++  _ -> defaultMain tests
+ 
+ tests :: TestTree
+ tests =
+@@ -25,14 +69,14 @@
+
+   [ Test.Data.CDDL.tests
+ 
+     -- protocols
+-  , Ouroboros.Network.Protocol.BlockFetch.Test.tests
+-  , Ouroboros.Network.Protocol.ChainSync.Test.tests
++  , BlockFetch.tests
++  , ChainSync.tests
+   , Ouroboros.Network.Protocol.Handshake.Test.tests
+-  , Ouroboros.Network.Protocol.KeepAlive.Test.tests
+-  , Ouroboros.Network.Protocol.LocalStateQuery.Test.tests
+-  , Ouroboros.Network.Protocol.LocalTxMonitor.Test.tests
+-  , Ouroboros.Network.Protocol.LocalTxSubmission.Test.tests
+-  , Ouroboros.Network.Protocol.PeerSharing.Test.tests
+-  , Ouroboros.Network.Protocol.TxSubmission2.Test.tests
++  , KeepAlive.tests
++  , LocalStateQuery.tests
++  , LocalTxMonitor.tests
++  , LocalTxSubmission.tests
++  , PeerSharing.tests
++  , TxSubmission2.tests
+   , Ouroboros.Network.Protocol.ObjectDiffusion.Test.tests
+   ]

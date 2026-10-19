@@ -1,0 +1,164 @@
+{
+  "schema": "scarab-upstream-peer-acceptance-v1",
+  "sourceCommit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+  "count": 24,
+  "seed": 492701,
+  "files": {
+    "peersharing-behavior.tsv": "79be3b5848a582eef99dee2434adc3016008369cf56e9504610780e471da4771",
+    "peersharing-byte-limits.tsv": "3010380bbaad94643973f15ab0f1bc76219942348ac60ccfdc5516887e69a06b",
+    "keepalive-byte-limits.tsv": "11d71ea7be554c86a6491ec87acfd6d1a727663f8fa5da0dbde03e0a98ba3c6a"
+  },
+  "passingRows": {
+    "peersharing-behavior.tsv": 24,
+    "peersharing-byte-limits.tsv": 24,
+    "keepalive-byte-limits.tsv": 24
+  },
+  "observerPatchSha256": "77962b35700efba4e773da9b77a58fd9922e76d651133010862a4144dc72a210",
+  "sourceFiles": {
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/PeerSharing/Test.hs": "e1980f57cc8bebe7a1530e68e68cf552b9e141b2b136381701e504607946b31a",
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/PeerSharing/Examples.hs": "f480830b6c581c8d5ed5b8208a4e51650c8622ab0b8abffb85686661c2a8ea00",
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/PeerSharing/Direct.hs": "99b32aa6ecd82a62a5a604033c474495da7bbb93ad4e487665d599b1455b99af",
+    "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Client.hs": "12d792bf5b88ba7f3ad7488a9cb7b44e05daa2a3c549ecaaff7fc6cf36d457c6",
+    "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Server.hs": "6e992d2b15dd97e6871aa6b83f183750d4c88159b6336bb369187d9e764d5a9c",
+    "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Type.hs": "60a6dacfa6becc7ba1d07d4f1eb73e16d302a0e95264c8310eec4eaa275375fb",
+    "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Codec.hs": "cc04fdf00eb3b030d4723f2acb5ae2cfe551dd5a84e318fdb020255e6775dc2e",
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/KeepAlive/Test.hs": "1ee386a76b09e7e5ac2aeb5f97eb4658a66e2d6f1f9bea40c4dc0aec5faf24df",
+    "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Codec.hs": "e3c875f3b6437970d3f66a2e9764c1333a6f6071d7fa47bdc88989b51e65682c",
+    "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Type.hs": "09e7badb5c91de4df14d1fb4c18d6ca6e115f05de44e0513bcadd0a09fca8465",
+    "ouroboros-network/api/lib/Ouroboros/Network/Protocol/Limits.hs": "85d22f3f9af5c94c5dc67897860a10a1432a02a4574b6c4ad0c9cc5394b04a36"
+  },
+  "dependencyPlanSha256": "42d695659261546c8c90946f82f38389c61cf6588c16a931aad92a9c42ea183c",
+  "targetDependencyClosureUnitCount": 167,
+  "projectPlanUnitCount": 246,
+  "dependencyPlanComparison": "Only the selected target closure is bound; no independent full-project equivalence is claimed.",
+  "imageDigest": "sha256:aa7e2d96e9f15eb8556f9b6a2685b0aaf3a22608ed1299821f7a7edc4c491847",
+  "commands": [
+    {
+      "argv": [
+        "git",
+        "-C",
+        "/home/euler/repos/cardano-scala-lab/.workspace/data/2026-10-14-upstream/ouroboros-network",
+        "rev-parse",
+        "HEAD"
+      ],
+      "startedAt": "2026-10-19T20:50:01.472740+00:00",
+      "endedAt": "2026-10-19T20:50:01.474658+00:00",
+      "returncode": 0,
+      "status": "complete",
+      "log": "/tmp/scarab/v02-49-blockfetch-probe/0.log"
+    },
+    {
+      "argv": [
+        "docker",
+        "image",
+        "inspect",
+        "scarab-pre-conway178-oracle:local",
+        "--format",
+        "{{.Id}}"
+      ],
+      "startedAt": "2026-10-19T20:50:01.513257+00:00",
+      "endedAt": "2026-10-19T20:50:01.554399+00:00",
+      "returncode": 0,
+      "status": "complete",
+      "log": "/tmp/scarab/v02-49-blockfetch-probe/1.log"
+    },
+    {
+      "argv": [
+        "docker",
+        "start",
+        "scarab-v02-49-blockfetch-luna"
+      ],
+      "startedAt": "2026-10-19T20:50:01.569407+00:00",
+      "endedAt": "2026-10-19T20:50:01.587148+00:00",
+      "returncode": 0,
+      "status": "complete",
+      "log": "/tmp/scarab/v02-49-blockfetch-probe/2.log"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-v02-49-blockfetch-luna",
+        "cabal",
+        "test",
+        "--project-file=/probe/protocols-tests.project",
+        "ouroboros-network:protocols-tests",
+        "--test-options=--pattern=PeerSharing",
+        "--builddir=/probe/narrow-builddir",
+        "--jobs=2"
+      ],
+      "startedAt": "2026-10-19T20:50:01.587351+00:00",
+      "endedAt": "2026-10-19T20:50:02.867788+00:00",
+      "returncode": 0,
+      "status": "complete",
+      "log": "/tmp/scarab/v02-49-blockfetch-probe/3.log"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-v02-49-blockfetch-luna",
+        "cabal",
+        "test",
+        "--project-file=/probe/protocols-tests.project",
+        "ouroboros-network:protocols-tests",
+        "--test-options=--pattern=KeepAlive",
+        "--builddir=/probe/narrow-builddir",
+        "--jobs=2"
+      ],
+      "startedAt": "2026-10-19T20:50:02.867994+00:00",
+      "endedAt": "2026-10-19T20:50:04.046762+00:00",
+      "returncode": 0,
+      "status": "complete",
+      "log": "/tmp/scarab/v02-49-blockfetch-probe/4.log"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-v02-49-blockfetch-luna",
+        "cabal",
+        "list-bin",
+        "--project-file=/probe/protocols-tests.project",
+        "ouroboros-network:protocols-tests",
+        "--builddir=/probe/narrow-builddir"
+      ],
+      "startedAt": "2026-10-19T20:50:04.047034+00:00",
+      "endedAt": "2026-10-19T20:50:04.399330+00:00",
+      "returncode": 0,
+      "status": "complete",
+      "log": "/tmp/scarab/v02-49-blockfetch-probe/5.log"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-v02-49-blockfetch-luna",
+        "/probe/narrow-builddir/build/x86_64-linux/ghc-9.10.3/ouroboros-network-1.3.0.0/t/protocols-tests/build/protocols-tests/protocols-tests",
+        "--export-peer-acceptance",
+        "/probe/exports",
+        "24",
+        "492701"
+      ],
+      "startedAt": "2026-10-19T20:50:04.399545+00:00",
+      "endedAt": "2026-10-19T20:50:04.481970+00:00",
+      "returncode": 0,
+      "status": "complete",
+      "log": "/tmp/scarab/v02-49-blockfetch-probe/6.log"
+    }
+  ],
+  "scope": [
+    "Original finite PeerSharing direct/connect/channel ST/channel IO property verdicts and exact Int payloads.",
+    "Original byteLimits properties and actual source-state limit/dataSize for both protocols.",
+    "Scarab generic runtime replay checks finite functional results, not scheduler trace equivalence.",
+    "Generic Int peer payloads are not Cardano addresses; their wire codecs remain distinct."
+  ]
+}
