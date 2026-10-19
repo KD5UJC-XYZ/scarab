@@ -1024,6 +1024,10 @@ object Targets:
               hit("scls-container")
               req(verified.manifest.namespaces.size == 12, "SCLS profile namespace set changes")
             }
+          }
+        }
+      )
+    )
 
   /** Native snapshot payloads enter through storage as well as the recorded-data tools. Use
     * immutable current-format replacements from every era; their historical gaps are not rewritten
@@ -1059,7 +1063,7 @@ object Targets:
             "snapshot fuzz interpreter moved off the allocation-guard thread"
           )
           val listing = java.nio.file.Files.list(java.nio.file.Path.of("fixtures/snapshot-v5/eras"))
-          val seeds =
+          val eraSeeds =
             try
               listing.iterator.asScala.toVector.sorted.map { file =>
                 FileLedgerSnapshots
@@ -1067,6 +1071,9 @@ object Targets:
                   .fold(e => throw new Violation(e.message), identity)
               }
             finally listing.close()
+          val seeds = eraSeeds :+ java.nio.file.Files.readAllBytes(
+            java.nio.file.Path.of("node/src/test/resources/rewards-pending-v5.bin")
+          )
           req(
             seeds.forall(b => format.decode(b).unsafeRunSync().isRight),
             "native snapshot seed does not decode"
