@@ -12,7 +12,7 @@ phase-two evaluations. Its original run directory is no longer retained locally.
 recovered from the retained October 14–15 canonical Preview immutable archive, bounded by the exact
 October 11 final tip above. Recovery checks index CRCs and the original header hashes, reads the
 block's invalid-transaction index set, and hashes the original transaction body and witness spans.
-The first two identities also occur in the earlier capped [Plutus fixtures](../plutus/README.md).
+The first two identities also occur in the earlier capped [Plutus fixtures](../README.md).
 
 These identities establish the historical set of invalid transactions, not 242 individual failed
 scripts. The historical evaluator stopped at the first failing redeemer and did not retain per-script
