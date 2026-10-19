@@ -258,11 +258,13 @@ object Credential:
     case KeyHashObj(h)    => s"KeyHashObj(${h.show})"
   }
 
-  // one order for every role, so that the maps keyed by a credential share one ordering
+  // The same comparator for every role (the phantom role does not affect the bytes): maps
+  // keyed by credentials of different roles therefore share one ordering.
   private val scriptOrder: Order[ScriptHash] = Order[ScriptHash]
-  private val keyOrder: Order[KeyHash[KeyRole]] = Order[KeyHash[KeyRole]]
-  private val order: Order[Credential[KeyRole]] = new SortOrder[Credential[KeyRole]]:
-    def compare(x: Credential[KeyRole], y: Credential[KeyRole]): Int = x match
+
+  given [R <: KeyRole]: Order[Credential[R]] = new SortOrder[Credential[R]]:
+    private val keyOrder: Order[KeyHash[R]] = Order[KeyHash[R]]
+    def compare(x: Credential[R], y: Credential[R]): Int = x match
       case ScriptHashObj(a) =>
         y match
           case ScriptHashObj(b) => scriptOrder.compare(a, b)
@@ -271,8 +273,6 @@ object Credential:
         y match
           case KeyHashObj(b) => keyOrder.compare(a, b)
           case _             => 1
-
-  given [R <: KeyRole]: Order[Credential[R]] = order.asInstanceOf[Order[Credential[R]]]
 
 /** `DRep` (`DRep.hs:67-72`, `deriving Ord`): key hash, script hash, always-abstain,
   * always-no-confidence.
