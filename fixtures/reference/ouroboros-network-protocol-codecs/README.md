@@ -86,6 +86,13 @@ classified unsupported: the upstream mock point uses `HeaderHash Int`, encoded a
 while Scarab's point codec requires byte-string hashes. No conversion or synthetic hash is used.
 The upstream target dependency closure is 167 units; the minimal solver project was checked against
 the full plan and matches every package/component, flag, source/Cabal hash, and dependency edge.
+The adjacent `blockfetch-splits.tsv` reuses those exact rows for the unchanged
+`prop_codec_splits2_BlockFetchSerialised` and `prop_codec_splits3_BlockFetchSerialised`
+properties; each passed 24/24. Scarab replays every two- and three-part partition, including empty
+segments, through its production prefix decoder for the 20 typed-compatible rows and checks a
+truncated-wire negative control. The four mock-point rows preserve both passing upstream split
+verdicts but remain unsupported at `ExpectedDefiniteByteString`; they are not counted as Scarab
+split passes.
 
 The LocalStateQuery observer exports 24 seeded stateful messages from the unchanged
 `AnyMessageWithResult` generator. `prop_codec_LocalStateQuery` and `prop_codec_cbor` pass for all 24.

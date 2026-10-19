@@ -340,13 +340,60 @@ exportBlockFetchCases path count seed = withFile path WriteMode $ \outputHandle 
         "import Test.QuickCheck.Gen (unGen)\n"
         "import Test.QuickCheck.Random (mkQCGen)\n",
     )
+    block_fetch.write_text(block_fetch.read_text() + r'''
+
+-- Disposable observer: run unchanged serialized-codec split properties over
+-- the same deterministic AnyMessage rows as exportBlockFetchCases.
+exportBlockFetchSplitCases :: FilePath -> Int -> Int -> IO ()
+exportBlockFetchSplitCases path count seed = withFile path WriteMode $ \outputHandle ->
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 30 + (ordinal `mod` 21)
+        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize
+          :: AnyMessage (BlockFetch (Serialised Block) (Point Block))
+    split2Result <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 3000003), caseSize) }
+      (once (prop_codec_splits2_BlockFetchSerialised testCase))
+    split3Result <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 4000003), caseSize) }
+      (once (prop_codec_splits3_BlockFetchSerialised testCase))
+    case testCase of
+      AnyMessage (msg :: Message (BlockFetch (Serialised Block) (Point Block)) st st') -> do
+        let blockCodec = codecSerialised
+              :: Codec (BlockFetch (Serialised Block) (Point Block))
+                   S.DeserialiseFailure IO ByteString
+            raw = BL.toStrict (encode blockCodec msg)
+            token = stateToken :: StateToken st
+            (state, sender) = case token of
+              SingBFIdle -> ("idle", "client")
+              SingBFBusy -> ("busy", "server")
+              SingBFStreaming -> ("streaming", "server")
+              SingBFDone -> error "BlockFetch generator produced terminal source state"
+            tag = case msg of
+              MsgRequestRange _ -> "request-range"
+              MsgClientDone -> "client-done"
+              MsgStartBatch -> "start-batch"
+              MsgNoBlocks -> "no-blocks"
+              MsgBlock _ -> "block"
+              MsgBatchDone -> "batch-done"
+            split2Outcome = if isSuccess split2Result then "pass" else "upstream-failure"
+            split3Outcome = if isSuccess split3Result then "pass" else "upstream-failure"
+        hPutStrLn outputHandle $ intercalate "\t"
+          [ "blockfetch-splits-v1", show caseSeed, show ordinal, show caseSize
+          , state, sender, tag, hex raw, split2Outcome, split3Outcome
+          ]
+  where
+    hex = concatMap (pad . (`showHex` "")) . BS.unpack
+    pad [digit] = ['0', digit]
+    pad digits = digits
+''')
     block_module = block_fetch.read_text()
     block_export_anchor = "module Ouroboros.Network.Protocol.BlockFetch.Test (tests) where"
     if block_module.count(block_export_anchor) != 1:
         raise SystemExit("BlockFetch observer module export anchor changed")
     block_fetch.write_text(block_module.replace(
         block_export_anchor,
-        "module Ouroboros.Network.Protocol.BlockFetch.Test (tests, exportBlockFetchCases) where",
+        "module Ouroboros.Network.Protocol.BlockFetch.Test (tests, exportBlockFetchCases, exportBlockFetchSplitCases) where",
     ))
 
     local_state_query_original = inject(
@@ -817,7 +864,7 @@ exportTxSubmission2Cases path count seed = withFile path WriteMode $ \outputHand
         "import Ouroboros.Network.Protocol.KeepAlive.Test qualified as KeepAlive (tests, exportKeepAliveCases, exportKeepAliveSplitCases)\n"
         "import Ouroboros.Network.Protocol.PeerSharing.Test qualified as PeerSharing (tests, exportPeerSharingCases)\n"
         "import Ouroboros.Network.Protocol.ChainSync.Test qualified as ChainSync (tests, exportChainSyncCases)\n"
-        "import Ouroboros.Network.Protocol.BlockFetch.Test qualified as BlockFetch (tests, exportBlockFetchCases)\n"
+        "import Ouroboros.Network.Protocol.BlockFetch.Test qualified as BlockFetch (tests, exportBlockFetchCases, exportBlockFetchSplitCases)\n"
         "import Ouroboros.Network.Protocol.LocalStateQuery.Test qualified as LocalStateQuery (tests, exportLocalStateQueryCases, exportLocalStateQuerySplitCases)\n"
         "import Ouroboros.Network.Protocol.LocalTxSubmission.Test qualified as LocalTxSubmission (tests, exportLocalTxSubmissionCases, exportLocalTxSubmissionSplitCases)\n"
         "import Ouroboros.Network.Protocol.LocalTxMonitor.Test qualified as LocalTxMonitor (tests, exportLocalTxMonitorCases, exportLocalTxMonitorSplitCases)\n"
@@ -867,6 +914,7 @@ exportTxSubmission2Cases path count seed = withFile path WriteMode $ \outputHand
         "    PeerSharing.exportPeerSharingCases (dir <> \"/peersharing.tsv\") (read count) (read seed)\n"
         "    ChainSync.exportChainSyncCases (dir <> \"/chainsync.tsv\") (read count) (read seed)\n"
         "    BlockFetch.exportBlockFetchCases (dir <> \"/blockfetch.tsv\") (read count) (read seed)\n"
+        "    BlockFetch.exportBlockFetchSplitCases (dir <> \"/blockfetch-splits.tsv\") (read count) (read seed)\n"
         "    LocalStateQuery.exportLocalStateQueryCases (dir <> \"/localsq.tsv\") (read count) (read seed)\n"
         "    LocalStateQuery.exportLocalStateQuerySplitCases (dir <> \"/localsq-splits.tsv\") (read count) (read seed)\n"
         "    LocalTxSubmission.exportLocalTxSubmissionCases (dir <> \"/localtxsubmission.tsv\") (read count) (read seed)\n"
@@ -992,6 +1040,7 @@ def main() -> None:
         ("peersharing.tsv", "ouroboros-network:protocols-tests / PeerSharing / codec / prop_codec_PeerSharing"),
         ("chainsync.tsv", "ouroboros-network:protocols-tests / ChainSync / codecSerialised + codecSerialised cbor"),
         ("blockfetch.tsv", "ouroboros-network:protocols-tests / BlockFetch / codecSerialised + codecSerialised cbor"),
+        ("blockfetch-splits.tsv", "ouroboros-network:protocols-tests / BlockFetch / prop_codec_splits2_BlockFetchSerialised + prop_codec_splits3_BlockFetchSerialised"),
         ("localsq.tsv", "ouroboros-network:protocols-tests / LocalStateQuery / codec + codec cbor"),
         ("localsq-splits.tsv", "ouroboros-network:protocols-tests / LocalStateQuery / prop_codec_splits2 + prop_codec_splits3"),
         ("localtxsubmission.tsv", "ouroboros-network:protocols-tests / LocalTxSubmission / codec + codec cbor"),
@@ -1013,7 +1062,7 @@ def main() -> None:
             "upstreamPropertyOutcomes": {
                 "both-properties-pass": sum(row[-2:] == ["pass", "pass"] for row in rows),
                 "at-least-one-upstream-failure": sum(row[-2:] != ["pass", "pass"] for row in rows),
-            } if name in ("chainsync.tsv", "blockfetch.tsv", "localsq.tsv", "localsq-splits.tsv", "localtxsubmission.tsv", "localtxmonitor.tsv", "txsubmission2.tsv", "keepalive-splits.tsv", "localtxsubmission-splits.tsv", "localtxmonitor-splits.tsv") else {
+            } if name in ("chainsync.tsv", "blockfetch.tsv", "blockfetch-splits.tsv", "localsq.tsv", "localsq-splits.tsv", "localtxsubmission.tsv", "localtxmonitor.tsv", "txsubmission2.tsv", "keepalive-splits.tsv", "localtxsubmission-splits.tsv", "localtxmonitor-splits.tsv") else {
                 "pass": sum(row[-1] == "pass" for row in rows),
                 "upstream-failure": sum(row[-1] != "pass" for row in rows),
             },
@@ -1097,6 +1146,25 @@ def main() -> None:
                 "sourceStates": {state: sum(row[4] == state for row in rows) for state in sorted({row[4] for row in rows})},
             }
             manifest["propertyReplaySeedOffsets"] = {split2: 3000003, split3: 4000003}
+        if name == "blockfetch-splits.tsv":
+            manifest["upstreamPropertyOutcomesByProperty"] = {
+                "prop_codec_splits2_BlockFetchSerialised": {
+                    "pass": sum(row[-2] == "pass" for row in rows),
+                    "upstream-failure": sum(row[-2] != "pass" for row in rows),
+                },
+                "prop_codec_splits3_BlockFetchSerialised": {
+                    "pass": sum(row[-1] == "pass" for row in rows),
+                    "upstream-failure": sum(row[-1] != "pass" for row in rows),
+                },
+            }
+            manifest["adapterInputStatuses"] = {
+                "byConstructor": {tag: sum(row[6] == tag for row in rows) for tag in sorted({row[6] for row in rows})},
+                "sourceStates": {state: sum(row[4] == state for row in rows) for state in sorted({row[4] for row in rows})},
+            }
+            manifest["propertyReplaySeedOffsets"] = {
+                "prop_codec_splits2_BlockFetchSerialised": 3000003,
+                "prop_codec_splits3_BlockFetchSerialised": 4000003,
+            }
         if name == "chainsync.tsv":
             manifest["adapterInputStatuses"] = {
                 "byConstructor": {
