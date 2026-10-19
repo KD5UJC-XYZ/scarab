@@ -61,3 +61,17 @@ class CallerScopeSuite extends munit.CatsEffectSuite:
       yield ()
     }
   }
+
+  test("a startup migration reports a bad format through the caller after construction ended") {
+    tempDir.use { dir =>
+      val path = dir / "bad.index"
+      for
+        migration <- ok(IO.pure(FileImmutableStore.indexMigration[IO]))
+        _ <- IO.blocking(Files.write(path.toNioPath, Array.fill[Byte](8)(0)))
+        first <- attempt(migration.detect(path))
+        second <- attempt(migration.detect(path))
+      yield
+        assert(first.isLeft)
+        assertEquals(second, first)
+    }
+  }

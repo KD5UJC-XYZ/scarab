@@ -17,7 +17,7 @@ import xyz.kd5ujc.scarab.legacy
   * one at a time, and does not keep the old ones (see docs/running.md for keeping a copy).
   */
 trait SnapshotMigration[F[_]]:
-  def run(dir: Path): F[SnapshotMigration.Report]
+  def run(dir: Path)(using cats.mtl.Raise[F, StorageError]): F[SnapshotMigration.Report]
 
 object SnapshotMigration:
   /** Read only the bounded format header of every snapshot before identity admission or any mutable
@@ -92,13 +92,11 @@ object SnapshotMigration:
     * worst. Nothing is ever replayed here.
     */
   def toCurrent[F[_]: Sync](using
-      env: Ask[F, ConsensusMirrorEnv],
-      raise: cats.mtl.Raise[F, StorageError]
+      env: Ask[F, ConsensusMirrorEnv]
   ): NodeSnapshotMigration[F] = new NodeSnapshotMigration[F]
 
   final class NodeSnapshotMigration[F[_]: Sync](using
-      env: Ask[F, ConsensusMirrorEnv],
-      raise: cats.mtl.Raise[F, StorageError]
+      env: Ask[F, ConsensusMirrorEnv]
   ) extends SnapshotMigration[F]
       with Migration[F]:
     private val F = Sync[F]
@@ -110,7 +108,9 @@ object SnapshotMigration:
       Option.when(from.ordinal < current.ordinal)(current)
 
     /** The version of the file, or why it has none. */
-    private def probe(file: Path): F[Either[StorageError, FormatVersion]] =
+    private def probe(
+        file: Path
+    )(using cats.mtl.Raise[F, StorageError]): F[Either[StorageError, FormatVersion]] =
       AtomicFile
         .guard[F, Array[Byte]](file.toString) {
           val in = JFiles.newInputStream(file.toNioPath)
@@ -127,11 +127,13 @@ object SnapshotMigration:
               )
         }
 
-    def detect(file: Path): F[FormatVersion] =
+    def detect(file: Path)(using cats.mtl.Raise[F, StorageError]): F[FormatVersion] =
       probe(file).flatMap(_.fold(_.raise[F, FormatVersion], F.pure))
 
     /** The file rewritten as the current version, or why it was not. */
-    private def convert(file: Path): F[Either[SnapshotRefusal, Unit]] =
+    private def convert(
+        file: Path
+    )(using cats.mtl.Raise[F, StorageError]): F[Either[SnapshotRefusal, Unit]] =
       for
         mirrorEnv <- env.ask[ConsensusMirrorEnv]
         raw <- AtomicFile.guard[F, Array[Byte]](file.toString)(JFiles.readAllBytes(file.toNioPath))
@@ -149,7 +151,9 @@ object SnapshotMigration:
       * intermediate versions are not written), so the steps after the first find the file current;
       * a snapshot that does not convert raises here, where [[run]] reports it instead.
       */
-    def step(file: Path, from: FormatVersion, to: FormatVersion): F[Unit] =
+    def step(file: Path, from: FormatVersion, to: FormatVersion)(using
+        cats.mtl.Raise[F, StorageError]
+    ): F[Unit] =
       validateStep(file, from, to) *> {
         if from == current then F.unit
         else
@@ -161,7 +165,7 @@ object SnapshotMigration:
           )
       }
 
-    def run(dir: Path): F[Report] =
+    def run(dir: Path)(using cats.mtl.Raise[F, StorageError]): F[Report] =
       for
         present <- F.blocking(JFiles.isDirectory(dir.toNioPath))
         names <-

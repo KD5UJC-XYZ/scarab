@@ -540,8 +540,10 @@ class FormatMigrationSuite extends CatsEffectSuite with ScalaCheckSuite:
       stepped: Ref[IO, List[(Path, FormatVersion)]]
   ): Migration[IO] = new Migration[IO]:
     val kind = of
-    def detect(file: Path) = state.get.map(_(file))
-    def step(file: Path, from: FormatVersion, to: FormatVersion) =
+    def detect(file: Path)(using cats.mtl.Raise[IO, StorageError]) = state.get.map(_(file))
+    def step(file: Path, from: FormatVersion, to: FormatVersion)(using
+        cats.mtl.Raise[IO, StorageError]
+    ) =
       stepped.update(_ :+ (file -> from)) *>
         state.update(_.updated(file, to))
 
@@ -561,7 +563,7 @@ class FormatMigrationSuite extends CatsEffectSuite with ScalaCheckSuite:
         for
           state <- Ref.of[IO, Map[Path, FormatVersion]](paths.zip(versions).toMap)
           stepped <- Ref.of[IO, List[(Path, FormatVersion)]](Nil)
-          report <- Migrate(inMemory(kind, state, stepped), paths)
+          report <- ok(Migrate(inMemory(kind, state, stepped), paths))
           after <- state.get
           steps <- stepped.get
         yield (report, after, steps)
@@ -576,15 +578,17 @@ class FormatMigrationSuite extends CatsEffectSuite with ScalaCheckSuite:
           }
         )
         .sum) :| "steps" &&
-      (Migrate(inMemory2(kind, after), paths).unsafeRunSync() ?= Nil) :| "idempotent"
+      (ok(Migrate(inMemory2(kind, after), paths)).unsafeRunSync() ?= Nil) :| "idempotent"
     }
   }
 
   private def inMemory2(of: FileKind, after: Map[Path, FormatVersion]): Migration[IO] =
     new Migration[IO]:
       val kind = of
-      def detect(file: Path) = IO.pure(after(file))
-      def step(file: Path, from: FormatVersion, to: FormatVersion) =
+      def detect(file: Path)(using cats.mtl.Raise[IO, StorageError]) = IO.pure(after(file))
+      def step(file: Path, from: FormatVersion, to: FormatVersion)(using
+          cats.mtl.Raise[IO, StorageError]
+      ) =
         IO.raiseError(new AssertionError("nothing is stale"))
 
   test("global V6 changes only identity; each kind at its current layout is a no-op") {

@@ -96,11 +96,11 @@ object FileImmutableStore:
     * step is the file with its header replaced. Reading the version looks at the header alone, once
     * per file at open: the per-entry read path never checks the magic.
     */
-  private[storage] def indexMigration[F[_]: Sync](using Raise[F, StorageError]): Migration[F] =
+  private[storage] def indexMigration[F[_]: Sync]: Migration[F] =
     new Migration[F]:
       val kind = FileKind.IndexFile
 
-      def detect(file: Path): F[FormatVersion] =
+      def detect(file: Path)(using cats.mtl.Raise[F, StorageError]): F[FormatVersion] =
         AtomicFile
           .guard[F, Array[Byte]](file.toString) {
             val in = JFiles.newInputStream(file.toNioPath)
@@ -116,7 +116,9 @@ object FileImmutableStore:
                 .fold(_.raise[F, FormatVersion], Sync[F].pure)
           }
 
-      def step(file: Path, from: FormatVersion, to: FormatVersion): F[Unit] =
+      def step(file: Path, from: FormatVersion, to: FormatVersion)(using
+          cats.mtl.Raise[F, StorageError]
+      ): F[Unit] =
         validateStep(file, from, to) *> {
           AtomicFile
             .guard[F, Array[Byte]](file.toString)(JFiles.readAllBytes(file.toNioPath))
@@ -127,43 +129,44 @@ object FileImmutableStore:
     * that the database was made with this build's `chunkSlots`: a different value is a
     * [[StorageError.VersionMismatch]], since the chunk a block lives in depends on it.
     */
-  private[storage] def formatMigration[F[_]: Sync](chunkSlots: Long)(using
-      Raise[F, StorageError]
-  ): Migration[F] = new Migration[F]:
-    val kind = FileKind.FormatFile
-    private val Suffix = " chunkSlots="
+  private[storage] def formatMigration[F[_]: Sync](chunkSlots: Long): Migration[F] =
+    new Migration[F]:
+      val kind = FileKind.FormatFile
+      private val Suffix = " chunkSlots="
 
-    def detect(file: Path): F[FormatVersion] =
-      AtomicFile
-        .guard[F, String](file.toString)(
-          new String(JFiles.readAllBytes(file.toNioPath), StandardCharsets.UTF_8).trim
-        )
-        .flatMap { text =>
-          val at = text.lastIndexOf(Suffix)
-          val (identifier, slots) = if at < 0 then (text, "") else text.splitAt(at)
-          kind
-            .versionOf(file.toString, identifier)
-            .fold(_.raise[F, FormatVersion], Sync[F].pure)
-            .flatMap { version =>
-              if slots == s"$Suffix$chunkSlots" then Sync[F].pure(version)
-              else
-                StorageError
-                  .VersionMismatch(
-                    file.toString,
-                    text,
-                    s"${kind.identifier(version)}$Suffix$chunkSlots"
-                  )
-                  .raise[F, FormatVersion]
-            }
+      def detect(file: Path)(using cats.mtl.Raise[F, StorageError]): F[FormatVersion] =
+        AtomicFile
+          .guard[F, String](file.toString)(
+            new String(JFiles.readAllBytes(file.toNioPath), StandardCharsets.UTF_8).trim
+          )
+          .flatMap { text =>
+            val at = text.lastIndexOf(Suffix)
+            val (identifier, slots) = if at < 0 then (text, "") else text.splitAt(at)
+            kind
+              .versionOf(file.toString, identifier)
+              .fold(_.raise[F, FormatVersion], Sync[F].pure)
+              .flatMap { version =>
+                if slots == s"$Suffix$chunkSlots" then Sync[F].pure(version)
+                else
+                  StorageError
+                    .VersionMismatch(
+                      file.toString,
+                      text,
+                      s"${kind.identifier(version)}$Suffix$chunkSlots"
+                    )
+                    .raise[F, FormatVersion]
+              }
+          }
+
+      def step(file: Path, from: FormatVersion, to: FormatVersion)(using
+          cats.mtl.Raise[F, StorageError]
+      ): F[Unit] =
+        validateStep(file, from, to) *> {
+          AtomicFile.replace[F](
+            file,
+            s"${kind.identifier(to)}$Suffix$chunkSlots\n".getBytes(StandardCharsets.UTF_8)
+          )
         }
-
-    def step(file: Path, from: FormatVersion, to: FormatVersion): F[Unit] =
-      validateStep(file, from, to) *> {
-        AtomicFile.replace[F](
-          file,
-          s"${kind.identifier(to)}$Suffix$chunkSlots\n".getBytes(StandardCharsets.UTF_8)
-        )
-      }
 
   /** Validate immutable format headers without opening the recovery-capable store. Identity
     * adoption calls this before publishing a new identity, so an unknown or incompatible database
