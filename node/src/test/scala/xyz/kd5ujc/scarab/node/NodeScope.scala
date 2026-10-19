@@ -6,8 +6,8 @@ import cats.mtl.Handle
 import xyz.kd5ujc.scarab.ledger.NodeError
 
 /** A live enclosing node scope for test services whose lifetime spans several sessions. Rule and
-  * store operations use each caller's capability; the session also catches this enclosing scope
-  * for services that share its lifetime. In `Main` it is the outer `Handle.allow[NodeError]`.
+  * store operations use each caller's capability; the session also catches this enclosing scope for
+  * services that share its lifetime. In `Main` it is the outer `Handle.allow[NodeError]`.
   */
 object NodeScope:
   /** A scope that lives as long as the resource. */

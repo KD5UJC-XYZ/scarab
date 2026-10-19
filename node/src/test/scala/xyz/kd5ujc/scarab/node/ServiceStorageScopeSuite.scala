@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.effect.{Deferred, IO, Ref}
+import cats.effect.std.Mutex
 import cats.mtl.Raise
 import java.io.IOException
 import java.nio.file.Path
@@ -17,7 +18,7 @@ import xyz.kd5ujc.scarab.node.ntc.{CborOut, QueryEnv, QueryView, StateQuerySourc
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.protocol.LocalStateQuery.Target
-import xyz.kd5ujc.scarab.storage.{MemoryUtxoStore, SnapshotFailure, UtxoStore}
+import xyz.kd5ujc.scarab.storage.{MemoryUtxoStore, SnapshotFailure, UtxoPinnedReadView, UtxoStore}
 
 /** Serving callbacks are invoked after their construction scope has ended, in a different fiber. */
 class ServiceStorageScopeSuite extends FailsOnUncaught:
@@ -26,11 +27,16 @@ class ServiceStorageScopeSuite extends FailsOnUncaught:
     .fromDirectory(Path.of("fixtures/devnet/lsq/genesis"))
     .fold(e => fail(e.message), identity)
 
-  private def broken(store: UtxoStore[IO], enabled: Ref[IO, Boolean]): UtxoStore[IO] =
+  private def broken(
+      store: UtxoStore[IO],
+      enabled: Ref[IO, Boolean],
+      pinnedClosed: Option[Ref[IO, Boolean]] = None
+  ): UtxoStore[IO] =
     new UtxoStore[IO]:
       export store.{
         write,
         flushed,
+        stamp,
         select,
         selectAddresses,
         scan,
@@ -45,6 +51,16 @@ class ServiceStorageScopeSuite extends FailsOnUncaught:
         enabled.get.ifM(caller.raise(error), store.read(keys))
       def all(using caller: Raise[IO, StorageError]): IO[Map[TxIn, TxOut]] =
         enabled.get.ifM(caller.raise(error), store.all)
+
+      def readView = store.readView
+        .map(_.map { view =>
+          new UtxoPinnedReadView[IO]:
+            export view.{stamp, select, selectAddresses}
+            def read(keys: Iterable[TxIn]) =
+              enabled.get.ifM(IO.pure(Left(error)), view.read(keys))
+            def all = enabled.get.ifM(IO.pure(Left(error)), view.all)
+        })
+        .onFinalize(pinnedClosed.fold(IO.unit)(_.set(true)))
 
   private def opened[A](body: Raise[IO, StorageError] ?=> IO[A]): IO[A] =
     SnapshotFailure.capture(body).map(_.fold(e => fail(s"opening failed: $e"), identity))
@@ -132,7 +148,7 @@ class ServiceStorageScopeSuite extends FailsOnUncaught:
     yield ()
   }
 
-  test("an acquired state query owns the scope of its backing-store read") {
+  test("an acquired state query returns its typed backend error after releasing the pinned view") {
     val env = QueryEnv(
       setup.geometry.systemStart,
       setup.geometry,
@@ -148,15 +164,20 @@ class ServiceStorageScopeSuite extends FailsOnUncaught:
     for
       enabled <- Ref.of[IO, Boolean](true)
       store <- opened(MemoryUtxoStore[IO])
+      released <- Ref.of[IO, Boolean](false)
+      gate <- Mutex[IO]
       chain <- Ref.of[IO, VolatileChain[MirrorState]](
         VolatileChain(5, Anchor(None, setup.mirrorStart), Vector.empty)
       )
-      _ <- pendingFatal { report =>
+      result <- {
         val source =
-          StateQuerySource(chain, IO.pure(env), broken(store, enabled), StorageBoundary(report))
-        source
-          .acquire(Target.VolatileTip)
-          .flatMap(_.fold(e => IO(fail(s"acquisition refused: $e")), _.answer(query)))
+          StateQuerySource(chain, IO.pure(env), broken(store, enabled, Some(released)), gate)
+        source.acquire(Target.VolatileTip).use {
+          _.fold(e => IO(fail(s"acquisition refused: $e")), _.answer(query))
+        }
       }
-    yield ()
+      closed <- released.get
+    yield
+      assertEquals(result, Left(error))
+      assert(closed)
   }
