@@ -58,6 +58,15 @@ decodes and exact-wire re-encodes 49 rows. The other 79 retain their original by
 verdicts but are unsupported at `ExpectedDefiniteByteString`: the upstream mock uses
 `HeaderHash Int`, while Scarab requires hash bytes. No integer-to-byte mapping is applied.
 
+The same 24 KeepAlive rows are now also run through the unchanged upstream
+`prop_codec_v2_splits2` and `prop_codec_v2_splits3` properties. Both pass 24/24; the Scala
+consumer enumerates every 2- and 3-part partition from upstream `splits2`/`splits3`, feeds each
+fragment to Scarab's production `KeepAlive.decodePrefix` with retained-prefix accumulation, and
+checks `NeedMore` on incomplete prefixes and the exact typed message plus consumed byte count once
+the full wire is present. Empty fragments at the beginning or end are included. Each row also has a
+negative control that reorders two nonempty fragments and rejects any decoded result. Fixture
+SHA-256 and observer/property provenance are in `keepalive-splits.tsv.manifest.json`.
+
 The pinned BlockFetch observer exports 24 seeded `AnyMessage (BlockFetch (Serialised Block)
 (Point Block))` cases at seed base 490201. Both unchanged `prop_codec_BlockFetchSerialised` and
 `prop_codec_cbor_BlockFetchSerialised` pass for all 24 rows. Scarab's `CardanoBlockFetch` typed

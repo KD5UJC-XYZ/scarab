@@ -126,6 +126,48 @@ exportKeepAliveCases path count seed = withFile path WriteMode $ \outputHandle -
     pad [digit] = ['0', digit]
     pad digits = digits
 ''',
+        "",
+    )
+    keep = overlay / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/KeepAlive/Test.hs"
+    inject(
+        keep,
+        "import Test.QuickCheck\n",
+        r'''
+
+-- Disposable observer: run the unchanged upstream split properties over the
+-- same deterministic AnyMessage rows as exportKeepAliveCases.
+exportKeepAliveSplitCases :: FilePath -> Int -> Int -> IO ()
+exportKeepAliveSplitCases path count seed = withFile path WriteMode $ \outputHandle ->
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 30 + (ordinal `mod` 21)
+        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize :: AnyMessage KeepAlive
+    split2Result <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 3000003), caseSize) }
+      (once (prop_codec_v2_splits2 testCase))
+    split3Result <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 4000003), caseSize) }
+      (once (prop_codec_v2_splits3 testCase))
+    case testCase of
+      AnyMessage msg -> do
+        let Codec { encode } = codecKeepAlive_v2
+              :: Codec KeepAlive CBOR.DeserialiseFailure IO ByteString
+            raw = BL.toStrict (encode msg)
+            (state, sender, tag, cookie) = case msg of
+              MsgKeepAlive (Cookie value)         -> ("client", "client", "request", show value)
+              MsgKeepAliveResponse (Cookie value) -> ("server", "server", "response", show value)
+              MsgDone                             -> ("client", "client", "done", "")
+            split2Outcome = if isSuccess split2Result then "pass" else "upstream-failure"
+            split3Outcome = if isSuccess split3Result then "pass" else "upstream-failure"
+        hPutStrLn outputHandle $ intercalate "\t"
+          [ "keepalive-splits-v1", show caseSeed, show ordinal, show caseSize
+          , state, sender, tag, cookie, hex raw, split2Outcome, split3Outcome
+          ]
+  where
+    hex = concatMap (pad . (`showHex` "")) . BS.unpack
+    pad [digit] = ['0', digit]
+    pad digits = digits
+''',
         "import Control.Monad (forM_)\n"
         "import Data.ByteString qualified as BS\n"
         "import Data.List (intercalate)\n"
@@ -622,7 +664,7 @@ exportTxSubmission2Cases path count seed = withFile path WriteMode $ \outputHand
     main = overlay / "ouroboros-network/protocols/tests/Main.hs"
     main_original = main.read_text()
     dispatch_imports = (
-        "import Ouroboros.Network.Protocol.KeepAlive.Test qualified as KeepAlive (tests, exportKeepAliveCases)\n"
+        "import Ouroboros.Network.Protocol.KeepAlive.Test qualified as KeepAlive (tests, exportKeepAliveCases, exportKeepAliveSplitCases)\n"
         "import Ouroboros.Network.Protocol.PeerSharing.Test qualified as PeerSharing (tests, exportPeerSharingCases)\n"
         "import Ouroboros.Network.Protocol.ChainSync.Test qualified as ChainSync (tests, exportChainSyncCases)\n"
         "import Ouroboros.Network.Protocol.BlockFetch.Test qualified as BlockFetch (tests, exportBlockFetchCases)\n"
@@ -671,6 +713,7 @@ exportTxSubmission2Cases path count seed = withFile path WriteMode $ \outputHand
         "main = getArgs >>= \\args -> case args of\n"
         "  [\"--export-network-codecs\", dir, count, seed] -> do\n"
         "    KeepAlive.exportKeepAliveCases (dir <> \"/keepalive.tsv\") (read count) (read seed)\n"
+        "    KeepAlive.exportKeepAliveSplitCases (dir <> \"/keepalive-splits.tsv\") (read count) (read seed)\n"
         "    PeerSharing.exportPeerSharingCases (dir <> \"/peersharing.tsv\") (read count) (read seed)\n"
         "    ChainSync.exportChainSyncCases (dir <> \"/chainsync.tsv\") (read count) (read seed)\n"
         "    BlockFetch.exportBlockFetchCases (dir <> \"/blockfetch.tsv\") (read count) (read seed)\n"
@@ -792,6 +835,7 @@ def main() -> None:
     manifests = []
     for name, upstream_test in [
         ("keepalive.tsv", "ouroboros-network:protocols-tests / KeepAlive / codec v2 / prop_codec_v2"),
+        ("keepalive-splits.tsv", "ouroboros-network:protocols-tests / KeepAlive / prop_codec_v2_splits2 + prop_codec_v2_splits3"),
         ("peersharing.tsv", "ouroboros-network:protocols-tests / PeerSharing / codec / prop_codec_PeerSharing"),
         ("chainsync.tsv", "ouroboros-network:protocols-tests / ChainSync / codecSerialised + codecSerialised cbor"),
         ("blockfetch.tsv", "ouroboros-network:protocols-tests / BlockFetch / codecSerialised + codecSerialised cbor"),
@@ -813,7 +857,7 @@ def main() -> None:
             "upstreamPropertyOutcomes": {
                 "both-properties-pass": sum(row[-2:] == ["pass", "pass"] for row in rows),
                 "at-least-one-upstream-failure": sum(row[-2:] != ["pass", "pass"] for row in rows),
-            } if name in ("chainsync.tsv", "blockfetch.tsv", "localsq.tsv", "localtxsubmission.tsv", "localtxmonitor.tsv", "txsubmission2.tsv") else {
+            } if name in ("chainsync.tsv", "blockfetch.tsv", "localsq.tsv", "localtxsubmission.tsv", "localtxmonitor.tsv", "txsubmission2.tsv", "keepalive-splits.tsv") else {
                 "pass": sum(row[-1] == "pass" for row in rows),
                 "upstream-failure": sum(row[-1] != "pass" for row in rows),
             },
@@ -869,6 +913,21 @@ def main() -> None:
             manifest["adapterInputStatuses"] = {
                 status: sum(row[-3] == status for row in rows)
                 for status in sorted({row[-3] for row in rows})
+            }
+        if name == "keepalive-splits.tsv":
+            manifest["upstreamPropertyOutcomesByProperty"] = {
+                "prop_codec_v2_splits2": {
+                    "pass": sum(row[-2] == "pass" for row in rows),
+                    "upstream-failure": sum(row[-2] != "pass" for row in rows),
+                },
+                "prop_codec_v2_splits3": {
+                    "pass": sum(row[-1] == "pass" for row in rows),
+                    "upstream-failure": sum(row[-1] != "pass" for row in rows),
+                },
+            }
+            manifest["propertyReplaySeedOffsets"] = {
+                "prop_codec_v2_splits2": 3000003,
+                "prop_codec_v2_splits3": 4000003,
             }
         if name == "chainsync.tsv":
             manifest["adapterInputStatuses"] = {

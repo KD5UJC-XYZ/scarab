@@ -7,6 +7,7 @@ import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 import scala.io.Source
 import xyz.kd5ujc.scarab.codec.Bytes
+
 import ChainSync.DecodeResult
 
 /** Consumes actual generated codec messages exported from the pinned upstream QuickCheck tests. */
@@ -89,6 +90,98 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
     }
     assertEquals(matches.size, 24)
     assertEquals(matches.count(_ == "match"), 24)
+
+  test("consume upstream KeepAlive 2- and 3-split properties with Scarab prefix decoding"):
+    val input = rows(
+      "keepalive-splits.tsv",
+      "fe810270669b209b0311dbff7c12e6a6c7d509cb3a3ba0e200cacb7de864db24"
+    )
+    var split2Partitions = 0
+    var split3Partitions = 0
+    val constructors = scala.collection.mutable.Map.empty[String, Int].withDefaultValue(0)
+    input.foreach { fields =>
+      assertEquals(fields.size, 11)
+      assertEquals(fields(0), "keepalive-splits-v1")
+      val seed = fields(1).toInt
+      val ordinal = fields(2).toInt
+      assertEquals(seed, 490201 + ordinal)
+      assertEquals(fields(3).toInt, 30 + ordinal % 21)
+      assertEquals(fields(9), "pass", s"upstream prop_codec_v2_splits2 seed $seed")
+      assertEquals(fields(10), "pass", s"upstream prop_codec_v2_splits3 seed $seed")
+      val state = fields(4) match
+        case "client" => KeepAlive.State.Client
+        case "server" => KeepAlive.State.Server
+        case other    => fail(s"unknown KeepAlive state $other at seed $seed")
+      val sender = fields(5) match
+        case "client" => KeepAlive.Role.Client
+        case "server" => KeepAlive.Role.Server
+        case other    => fail(s"unknown KeepAlive sender $other at seed $seed")
+      val message = fields(6) match
+        case "request"  => KeepAlive.Message.Request(cookie(fields(7)))
+        case "response" => KeepAlive.Message.Response(cookie(fields(7)))
+        case "done"     => KeepAlive.Message.Done
+        case other      => fail(s"unknown KeepAlive message $other at seed $seed")
+      constructors.update(fields(6), constructors(fields(6)) + 1)
+      val wire = bytes(fields(8))
+      assert(wire.size >= 2, s"unexpected short KeepAlive wire at seed $seed")
+      assertEquals(KeepAlive.encode(state, sender, message), Right(wire), s"seed $seed wire")
+
+      def verifyPartition(parts: Vector[Vector[Byte]], label: String): Unit =
+        var retained = Vector.empty[Byte]
+        parts.foreach { fragment =>
+          retained = retained ++ fragment
+          val decoded = KeepAlive.decodePrefix(state, sender, Bytes(retained))
+          if retained.size < wire.size then
+            assertEquals(decoded, DecodeResult.NeedMore, s"seed $seed $label partial prefix")
+          else
+            assertEquals(
+              decoded,
+              DecodeResult.Decoded(message, wire.size),
+              s"seed $seed $label complete prefix"
+            )
+        }
+        assertEquals(retained, wire.value, s"seed $seed $label retained bytes")
+
+      (0 to wire.size).foreach { cut =>
+        verifyPartition(Vector(wire.value.take(cut), wire.value.drop(cut)), s"2-split@$cut")
+        split2Partitions += 1
+      }
+      for
+        firstCut <- 0 to wire.size
+        secondCut <- firstCut to wire.size
+      do
+        verifyPartition(
+          Vector(
+            wire.value.take(firstCut),
+            wire.value.slice(firstCut, secondCut),
+            wire.value.drop(secondCut)
+          ),
+          s"3-split@$firstCut/$secondCut"
+        )
+        split3Partitions += 1
+
+      // A nonempty two-fragment reorder is a negative control: the decoder must not
+      // accept the original message after bytes arrive in the wrong order.
+      val midpoint = wire.size / 2
+      val left = wire.value.take(midpoint)
+      val right = wire.value.drop(midpoint)
+      assert(left.nonEmpty && right.nonEmpty, s"seed $seed negative-control fragments")
+      val reordered = Bytes(right ++ left)
+      KeepAlive.decodePrefix(state, sender, reordered) match
+        case DecodeResult.Decoded(_, _) =>
+          fail(s"seed $seed reordered nonempty fragments unexpectedly decoded: $reordered")
+        case DecodeResult.NeedMore | DecodeResult.Failed(_) => ()
+    }
+    assertEquals(input.size, 24)
+    assertEquals(split2Partitions, input.map(fields => bytes(fields(8)).size + 1).sum)
+    assertEquals(
+      split3Partitions,
+      input.map { fields =>
+        val n = bytes(fields(8)).size
+        (n + 1) * (n + 2) / 2
+      }.sum
+    )
+    assertEquals(constructors.toMap, Map("request" -> 7, "response" -> 10, "done" -> 7))
 
   test("retain and classify every seeded PeerSharing row, mapping only typed-compatible messages"):
     val input =
