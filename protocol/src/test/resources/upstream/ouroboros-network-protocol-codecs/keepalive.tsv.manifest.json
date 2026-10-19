@@ -10,7 +10,6 @@
     "pass": 24,
     "upstream-failure": 0
   },
-  "dependencyPlanUnits": 167,
   "dependencyPlanSha256": "b90adc9cc498b0d6789d6eeef6a6baa0811c2516a706cab0802ea58f0536477d",
   "sourceFiles": {
     "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/KeepAlive/Test.hs": "1ee386a76b09e7e5ac2aeb5f97eb4658a66e2d6f1f9bea40c4dc0aec5faf24df",
@@ -44,5 +43,8 @@
     "returncode": 0,
     "testsPassed": 2,
     "result": "/tmp/scarab/v02-49-protocol-probe/scala-focused-result.json"
-  }
+  },
+  "dependencyPlanInstallUnits": 279,
+  "dependencyPlanConfiguredUnits": 251,
+  "dependencyPlanPreExistingUnits": 28
 }

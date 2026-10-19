@@ -230,6 +230,7 @@ def main() -> None:
             original.splitlines(), target.read_text().splitlines(), fromfile="upstream/" + name, tofile="overlay/" + name
         )) + "\n"
     plan = (build / "cache/plan.json").read_bytes()
+    plan_units = json.loads(plan)["install-plan"]
     manifests = []
     for name, upstream_test in [
         ("keepalive.tsv", "ouroboros-network:protocols-tests / KeepAlive / codec v2 / prop_codec_v2"),
@@ -246,7 +247,9 @@ def main() -> None:
             "requestedCases": args.count,
             "exportedCases": len(rows),
             "upstreamPropertyOutcomes": {"pass": sum(row[-1] == "pass" for row in rows), "upstream-failure": sum(row[-1] != "pass" for row in rows)},
-            "dependencyPlanUnits": 167,
+            "dependencyPlanInstallUnits": len(plan_units),
+            "dependencyPlanConfiguredUnits": sum(unit["type"] == "configured" for unit in plan_units),
+            "dependencyPlanPreExistingUnits": sum(unit["type"] != "configured" for unit in plan_units),
             "dependencyPlanSha256": hashlib.sha256(plan).hexdigest(),
             "sourceFiles": {key: hashlib.sha256((args.source / key).read_bytes()).hexdigest() for key in [
                 "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/KeepAlive/Test.hs",
