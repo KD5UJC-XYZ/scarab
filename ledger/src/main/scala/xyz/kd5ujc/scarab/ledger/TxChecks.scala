@@ -98,9 +98,11 @@ object TxChecks:
       .flatMap {
         case Phase2.Outcome.Unavailable(_, redeemer, reason) =>
           Left(LedgerFailure.Unavailable(id, ScriptLocation.Phase2(redeemer), reason))
-        case Phase2.Outcome.Passed(n) =>
+        case Phase2.Outcome.Passed(report) =>
           if tx.isValid then
-            Right(stats.copy(succeeded = stats.succeeded + 1, scripts = stats.scripts + n))
+            Right(
+              stats.copy(succeeded = stats.succeeded + 1, scripts = stats.scripts + report.scripts)
+            )
           else
             Left(
               LedgerFailure.Rejected(
@@ -110,9 +112,9 @@ object TxChecks:
                 )
               )
             )
-        case Phase2.Outcome.Failed(n, redeemer, reason) =>
+        case Phase2.Outcome.Failed(report, failures) =>
           if !tx.isValid then
-            Right(stats.copy(failed = stats.failed + 1, scripts = stats.scripts + n + 1))
+            Right(stats.copy(failed = stats.failed + 1, scripts = stats.scripts + report.scripts))
           else
             Left(
               LedgerFailure.Rejected(
@@ -121,7 +123,10 @@ object TxChecks:
                   UtxoFailure.Utxos(
                     UtxosFailure.ValidationTagMismatch(
                       true,
-                      Some(Vector(PlutusFailure(reason, Bytes.empty)))
+                      Some(
+                        failures.toVector
+                          .map(f => PlutusFailure(f.reason, Bytes.empty, Some(f.request)))
+                      )
                     )
                   )
                 )

@@ -157,11 +157,15 @@ class BoundaryTransactionsSuite extends FunSuite:
           )
           (stage, outcome) match
             case (Stage.Success, Right(Phase2.Outcome.Passed(_))) => ()
-            case (Stage.Scope, Right(Phase2.Outcome.Failed(_, _, EvalFailure.OpenTerm(index)))) =>
+            case (Stage.Scope, Right(Phase2.Outcome.Failed(_, failures))) =>
+              val index = failures.head.reason match
+                case EvalFailure.OpenTerm(value) => value
+                case other                       => fail(s"not an open term: $other")
               assert(
                 field[Vector[String]](r.boundary, "sourceIndices").map(BigInt(_)).contains(index)
               )
-            case (Stage.Evaluation, Right(Phase2.Outcome.Failed(_, _, EvalFailure.Script(_)))) => ()
+            case (Stage.Evaluation, Right(Phase2.Outcome.Failed(_, failures))) =>
+              assert(failures.toVector.forall(_.reason.isInstanceOf[EvalFailure.Script]))
             case other => fail(s"not the reference evaluation stage: $other")
       val spent = obj(r.boundary, "spentAfter")
       assertEquals(field[Boolean](spent, "funding"), r.accepted && c.tx.isValid)

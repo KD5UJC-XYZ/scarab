@@ -36,8 +36,11 @@ final class PlutusCases(dir: Path, perKind: Int, max: Int):
       "multi" -> (o.tx.witnesses.redeemers.size > 1)
     ).collect { case (n, true) => n }
     val outcome = o.outcome match
-      case Right(Phase2.Outcome.Passed(_))         => "passed"
-      case Right(Phase2.Outcome.Failed(_, r, why)) => s"failed ${r.tag}.${r.index} ${why.message}"
+      case Right(Phase2.Outcome.Passed(_)) => "passed"
+      case Right(Phase2.Outcome.Failed(_, failures)) =>
+        failures.toVector
+          .map(f => s"failed ${f.redeemer.tag}.${f.redeemer.index} ${f.reason.message}")
+          .mkString("; ")
       case Right(Phase2.Outcome.Unavailable(_, r, why)) =>
         s"unavailable ${r.tag}.${r.index} ${why.message}"
       case Left(es) => s"translation ${es.toVector.map(_.message).mkString("; ")}"

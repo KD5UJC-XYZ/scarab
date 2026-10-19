@@ -128,16 +128,21 @@ class SpendingDatumSuite extends FunSuite:
         assertEquals(args.size, if datum.isDefined then 3 else 2)
         datum.foreach(d => assertEquals(args.headOption, Some(d)))
       assertEquals(
-        Phase2.evaluate(
-          c.tx,
-          c.params,
-          r.scripts,
-          c.spent,
-          c.references,
-          c.posix,
-          ScalusEvaluator.default
-        ),
-        Right(Phase2.Outcome.Passed(1))
+        Phase2
+          .evaluate(
+            c.tx,
+            c.params,
+            r.scripts,
+            c.spent,
+            c.references,
+            c.posix,
+            ScalusEvaluator.default
+          )
+          .map {
+            case Phase2.Outcome.Passed(report) => report.scripts;
+            case other                         => fail(s"not passed: $other")
+          },
+        Right(1)
       )
       assertEquals(
         TxChecks.alonzoChecks(c.params, c.tx, r.spent, r.scripts, r.needed),

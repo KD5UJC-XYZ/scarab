@@ -1,0 +1,8 @@
+{
+  "algorithm": "SHA-256",
+  "files": {
+    "aggregation.json": "bfee14fe5f087f24a916b002853b43fc880987d202c4066ac5c695b6b6e3ffd4",
+    "provenance.json": "31c0fd47cf775abeeabf1a5a5ac142c1d225bc54c0c6b3571a8c287458408c6c",
+    "README.md": "ca717aa7dda8018c6ce26618e6eb21a18cfe6e217feaba5fc071a9f98f38e267"
+  }
+}
