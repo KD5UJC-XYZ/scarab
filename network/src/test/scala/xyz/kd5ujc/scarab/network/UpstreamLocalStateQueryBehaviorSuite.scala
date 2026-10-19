@@ -293,14 +293,17 @@ class UpstreamLocalStateQueryBehaviorSuite extends FailsOnUncaught:
               s <- server.channel(LocalStateQuery.MiniProtocolId, Mux.Role.Responder)
               result <- Resource
                 .make(
-                  LocalStateQueryServer
-                    .run(s, source)
-                    .flatMap {
-                      case Right(()) => IO.unit
-                      case Left(error) =>
-                        IO.raiseError(
-                          new IllegalStateException(s"impossible LSQ backend error: $error")
-                        )
+                  Fibers
+                    .scoped[IO, NetworkError, Unit](NetworkError.Defect(_)) {
+                      LocalStateQueryServer
+                        .run(s, source)
+                        .flatMap {
+                          case Right(()) => IO.unit
+                          case Left(error) =>
+                            IO.raiseError(
+                              new IllegalStateException(s"impossible LSQ backend error: $error")
+                            )
+                        }
                     }
                     .start
                 )(_.cancel)
@@ -349,7 +352,9 @@ class UpstreamLocalStateQueryBehaviorSuite extends FailsOnUncaught:
                     .flatMap { acquired =>
                       val release =
                         if acquired then send(c, State.Acquired, Message.Release) else IO.unit
-                      release *> send(c, State.Idle, Message.Done) *> serving.joinWithNever
+                      release *> send(c, State.Idle, Message.Done) *> serving.joinWithNever.flatMap(
+                        Fibers.land[IO, NetworkError, Unit]
+                      )
                     }
                 }
             yield result

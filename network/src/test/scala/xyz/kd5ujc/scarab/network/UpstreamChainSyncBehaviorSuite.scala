@@ -524,15 +524,18 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
                 serverChannel <- serverMux.channel(Protocols.ChainSync)
                 _ <- Resource
                   .make(
-                    ChainSyncRuntime
-                      .run(
-                        serverChannel,
-                        pointCodec,
-                        tipCodec,
-                        payloadCodec,
-                        oracle,
-                        ChainSyncRuntime.ServerSettings(idleTimeout = 5.seconds)
-                      )
+                    Fibers
+                      .scoped[IO, NetworkError, Unit](NetworkError.Defect(_)) {
+                        ChainSyncRuntime
+                          .run(
+                            serverChannel,
+                            pointCodec,
+                            tipCodec,
+                            payloadCodec,
+                            oracle,
+                            ChainSyncRuntime.ServerSettings(idleTimeout = 5.seconds)
+                          )
+                      }
                       .start
                   )(_.cancel)
                   .use { serverFiber =>
@@ -550,7 +553,8 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
                       )
                       intersection <- client.findIntersect(testCase.candidatePoints)
                       _ <- replayClient(client, testCase, chain).timeout(10.seconds)
-                      _ <- serverFiber.joinWithNever
+                      serverResult <- serverFiber.joinWithNever
+                      _ <- Fibers.land[IO, NetworkError, Unit](serverResult)
                       finalChain <- chain.get
                     yield
                       assertEquals(
@@ -630,15 +634,18 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
                   serverChannel <- serverMux.channel(Protocols.ChainSync)
                   _ <- Resource
                     .make(
-                      ChainSyncRuntime
-                        .run(
-                          serverChannel,
-                          pointCodec,
-                          tipCodec,
-                          payloadCodec,
-                          oracle,
-                          ChainSyncRuntime.ServerSettings(idleTimeout = 5.seconds)
-                        )
+                      Fibers
+                        .scoped[IO, NetworkError, Unit](NetworkError.Defect(_)) {
+                          ChainSyncRuntime
+                            .run(
+                              serverChannel,
+                              pointCodec,
+                              tipCodec,
+                              payloadCodec,
+                              oracle,
+                              ChainSyncRuntime.ServerSettings(idleTimeout = 5.seconds)
+                            )
+                        }
                         .start
                     )(_.cancel)
                     .use { serverFiber =>
@@ -658,7 +665,8 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
                         _ <- replayFixedWindow(client, testCase, chain, pipeline.maxDepth).timeout(
                           10.seconds
                         )
-                        _ <- serverFiber.joinWithNever
+                        serverResult <- serverFiber.joinWithNever
+                        _ <- Fibers.land[IO, NetworkError, Unit](serverResult)
                         finalChain <- chain.get
                       yield
                         assertEquals(

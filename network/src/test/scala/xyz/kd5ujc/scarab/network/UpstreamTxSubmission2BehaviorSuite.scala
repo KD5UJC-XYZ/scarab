@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.effect.{Deferred, IO, Ref}
+import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.mtl.Handle
 import cats.syntax.all.*
 import cats.effect.testkit.TestControl
@@ -185,32 +185,43 @@ class UpstreamTxSubmission2BehaviorSuite extends FailsOnUncaught:
         for
           clientChannel <- clientPeer.channel(4)
           serverChannel <- serverPeer.channel(4)
-          client <- TxSubmission2Runtime
-            .client(
-              clientChannel,
-              source,
-              codec,
-              rules(row.maxUnacked),
-              TxSubmission2Runtime.ClientSettings(),
-              Some(finished.get),
-              _ => ProtocolError.UnknownTxSubmission2TagStateArity
-            )
-            .start
-          serverResult <- TxSubmission2Runtime.server(
-            serverChannel,
-            sink,
-            codec,
-            rules(row.maxUnacked),
-            TxSubmission2Runtime.ServerSettings(
-              idsPerRequest = row.maxIdsToRequest,
-              maxTxToRequest = row.maxTxToRequest,
-              maxUnacked = row.maxUnacked
-            ),
-            _ => ProtocolError.UnknownTxSubmission2TagStateArity
-          )
-          _ <- client.joinWithNever
-          actual <- received.get
-        yield (serverResult, actual)
+          result <- Resource
+            .make(
+              Fibers
+                .scoped[IO, NetworkError, Unit](NetworkError.Defect(_)) {
+                  TxSubmission2Runtime
+                    .client(
+                      clientChannel,
+                      source,
+                      codec,
+                      rules(row.maxUnacked),
+                      TxSubmission2Runtime.ClientSettings(),
+                      Some(finished.get),
+                      _ => ProtocolError.UnknownTxSubmission2TagStateArity
+                    )
+                }
+                .start
+            )(_.cancel)
+            .use { client =>
+              for
+                serverResult <- TxSubmission2Runtime.server(
+                  serverChannel,
+                  sink,
+                  codec,
+                  rules(row.maxUnacked),
+                  TxSubmission2Runtime.ServerSettings(
+                    idsPerRequest = row.maxIdsToRequest,
+                    maxTxToRequest = row.maxTxToRequest,
+                    maxUnacked = row.maxUnacked
+                  ),
+                  _ => ProtocolError.UnknownTxSubmission2TagStateArity
+                )
+                clientResult <- client.joinWithNever
+                _ <- Fibers.land[IO, NetworkError, Unit](clientResult)
+                actual <- received.get
+              yield (serverResult, actual)
+            }
+        yield result
       }
     yield
       assertEquals(clientChannelAndServerChannel._1, ())

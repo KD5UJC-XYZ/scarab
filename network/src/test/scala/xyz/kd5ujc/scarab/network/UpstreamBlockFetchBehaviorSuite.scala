@@ -163,15 +163,19 @@ class UpstreamBlockFetchBehaviorSuite extends FailsOnUncaught:
               serverChannel <- serverMux.channel(Protocols.BlockFetch)
               _ <- cats.effect.Resource
                 .make(
-                  BlockFetchRuntime
-                    .run(
-                      serverChannel,
-                      serverBlocks,
-                      pointCodec,
-                      payloadCodec,
-                      (from, to) => Right((from, to)),
-                      BlockFetchRuntime.ServerSettings(maxBlocks = 128, idleTimeout = 10.seconds)
-                    )
+                  Fibers
+                    .scoped[IO, NetworkError, Unit](NetworkError.Defect(_)) {
+                      BlockFetchRuntime
+                        .run(
+                          serverChannel,
+                          serverBlocks,
+                          pointCodec,
+                          payloadCodec,
+                          (from, to) => Right((from, to)),
+                          BlockFetchRuntime
+                            .ServerSettings(maxBlocks = 128, idleTimeout = 10.seconds)
+                        )
+                    }
                     .start
                 )(_.cancel)
                 .use { serverFiber =>
@@ -187,7 +191,8 @@ class UpstreamBlockFetchBehaviorSuite extends FailsOnUncaught:
                       client.requestRange(range.from, range.to).map(result => (range, result))
                     }
                     _ <- client.done
-                    _ <- serverFiber.joinWithNever
+                    serverResult <- serverFiber.joinWithNever
+                    _ <- Fibers.land[IO, NetworkError, Unit](serverResult)
                     _ <- IO {
                       responses.foreach { case (range, actual) =>
                         val expected = Option.when(range.bodies.nonEmpty)(range.bodies)
