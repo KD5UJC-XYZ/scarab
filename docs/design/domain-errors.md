@@ -127,7 +127,7 @@ Strict-construction regressions cover the public TCP listener, snapshot adapter 
 scope. The snapshot call path takes the caller's `Raise`: immutable-store sync, snapshot write/list,
 backing advance/settle/checkpoint/retain, and the UTxO write/stamp/checkpoint calls they use. These
 operations no longer raise through the scope that opened the service. The broader rule/store
-capability migration remains G7-F1; it is not completed by this slice.
+capability migration is described under G7-F1 below; the snapshot slice alone does not complete it.
 
 `SnapshotFailure.Storage` retains the original `StorageError`, while `SnapshotFailure.Defect`
 retains an unexpected exception. `StorageEvent.SnapshotFailed` carries that value; only the log
