@@ -162,9 +162,10 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
         limit
       )
     )
-    assertEquals(chosen.map(_._1.id.hex), Vector(PreprodDeepTx.Id))
-    val body = BlockBuilder.body(chosen.map(_._2))
-    assertEquals(BlockBuilder.bodySize(chosen.map(_._2)), body.size)
+    val selected = chosen.fold(e => fail(e.message), identity)
+    assertEquals(selected.map(_._1.id.hex), Vector(PreprodDeepTx.Id))
+    val body = BlockBuilder.body(selected.map(_._2))
+    assertEquals(BlockBuilder.bodySize(selected.map(_._2)), body.size)
     val block = BlockBuilder.block(
       BlockBuilder.headerBody(
         1,

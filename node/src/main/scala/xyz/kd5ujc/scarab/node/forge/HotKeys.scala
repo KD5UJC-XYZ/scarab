@@ -3,14 +3,27 @@ package xyz.kd5ujc.scarab.node.forge
 
 import cats.effect.{Async, Ref}
 import cats.effect.std.Mutex
+import cats.mtl.Raise
+import cats.mtl.syntax.all.*
 import cats.syntax.all.*
-import java.nio.file.Path
+import java.nio.file.{NoSuchFileException, Path}
+import java.io.{FileNotFoundException, IOException}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.PraosConfig
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
 import xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate
-import xyz.kd5ujc.scarab.ledger.{ForgeError, OCertError, OCertRules}
+import xyz.kd5ujc.scarab.crypto.vrf.{Draft03Prover, PraosVrfCertificate}
+import xyz.kd5ujc.scarab.crypto.witness.VerificationError
+import xyz.kd5ujc.scarab.ledger.{
+  ForgeError,
+  ForgeKeyProblem,
+  KesFileFailureCause,
+  OCertError,
+  OCertRules,
+  StorageError
+}
+import xyz.kd5ujc.scarab.node.Fatal
 
 /** Why a reload of the KES key and operational certificate was refused. The old credentials stay in
   * force; the refusal is reported as a [[ForgeEvent.KesReloadRefused]].
@@ -101,10 +114,6 @@ final class HotKeys[F[_]: Async] private (
     state: Ref[F, PoolCredentials],
     lock: Mutex[F],
     source: Option[HotKeySource[F]],
-    /** Some(period) while the key in memory is not on disk: the period a failure was last reported
-      * for, so it is reported once per period and retried at every slot.
-      */
-    unwritten: Ref[F, Option[BigInt]],
     config: PraosConfig,
     events: ForgeEvents[F]
 ):
@@ -116,50 +125,44 @@ final class HotKeys[F[_]: Async] private (
   def locked[A](use: PoolCredentials => F[A]): F[A] =
     lock.lock.surround(state.get.flatMap(use))
 
-  /** The key written back after an evolution; a failure is reported (once per KES period) and
-    * retried at the next slot.
+  /** Persist the evolved key before signing. A durability failure is terminal: another slot cannot
+    * repair the safety guarantee that the previous key has been erased from disk.
     */
-  private def write(c: PoolCredentials, kesPeriod: BigInt): F[Unit] =
+  private def write(c: PoolCredentials)(using Raise[F, Fatal]): F[Unit] =
     source.traverse_ { s =>
       s.persist(c.kes).flatMap {
-        case Persisted.Failed(e) =>
-          unwritten
-            .getAndSet(Some(kesPeriod))
-            .flatMap(last =>
-              events
-                .emit(ForgeEvent.KesPersistFailed(kesPeriod, e))
-                .unlessA(last.contains(kesPeriod))
-            )
-        case Persisted.Written | Persisted.Unchanged | Persisted.Superseded =>
-          unwritten.set(None)
+        case Persisted.Failed(e) => HotKeys.persistenceFailure(e).raise[F, Unit]
+        case Persisted.Written | Persisted.Unchanged | Persisted.Superseded => F.unit
       }
     }
 
   /** Evolve the key to the period of `kesPeriod` and write it back (the lock is held). A key that
     * cannot get there (it is already past it) is reported by the caller's signing, not here.
     */
-  private[forge] def evolved(c: PoolCredentials, kesPeriod: BigInt): F[Either[ForgeError, Unit]] =
+  private[forge] def evolved(c: PoolCredentials, kesPeriod: BigInt)(using
+      Raise[F, Fatal]
+  ): F[Either[ForgeError, Unit]] =
     val relative = (kesPeriod - c.opCert.kesPeriod).toInt
     F.delay(c.kes.period).flatMap { before =>
       F.blocking(c.kes.evolveTo(relative).leftMap(ForgeError.KesEvolution(_)))
         .flatTap(_.traverse_ { _ =>
-          (write(c, kesPeriod) *> events.emit(ForgeEvent.KesEvolved(kesPeriod, relative)))
+          (write(c) *> events.emit(ForgeEvent.KesEvolved(kesPeriod, relative)))
             .whenA(before != relative)
         })
     }
 
   /** At a slot: evolve to the slot's period when it has moved on (inside the certificate's window),
     * so the earlier key is gone from memory and disk as soon as the period changes, whether or not
-    * the pool leads a slot in it; and write again a key that could not be written.
+    * the pool leads a slot in it. A failed write stops this forging worker.
     */
-  def advance(kesPeriod: BigInt): F[Unit] =
+  def advance(kesPeriod: BigInt)(using Raise[F, Fatal]): F[Unit] =
     lock.lock.surround(
       state.get.flatMap { c =>
         val relative = kesPeriod - c.opCert.kesPeriod
         val inside =
           relative >= 0 && relative < config.maxKesEvolutions && relative < Sum6KesSigning.Periods
         if inside && relative.toInt > c.kes.period then evolved(c, kesPeriod).void
-        else unwritten.get.flatMap(missing => write(c, kesPeriod).whenA(missing.isDefined))
+        else F.unit
       }
     )
 
@@ -167,10 +170,11 @@ final class HotKeys[F[_]: Async] private (
     * [[HotKeys.validate]]); otherwise keep the old ones and say why. `counter` is the pool's issue
     * counter on the chain.
     */
-  def reload(kesPeriod: BigInt, counter: Option[BigInt]): F[Unit] =
+  def reload(kesPeriod: BigInt, counter: Option[BigInt])(using Raise[F, Fatal]): F[Unit] =
     source.traverse_ { s =>
       s.read.flatMap {
-        case Left(e) => refuse(ReloadRefusal.Unreadable(e))
+        case Left(e) =>
+          HotKeys.reloadFailure(e).fold(refuse(ReloadRefusal.Unreadable(e)))(_.raise[F, Unit])
         case Right(candidate) =>
           lock.lock.surround(
             state.get.flatMap { cur =>
@@ -182,13 +186,18 @@ final class HotKeys[F[_]: Async] private (
       }
     }
 
-  private def refuse(why: ReloadRefusal): F[Unit] = events.emit(ForgeEvent.KesReloadRefused(why))
+  private def refuse(why: ReloadRefusal)(using Raise[F, Fatal]): F[Unit] =
+    val fatal = why match
+      case ReloadRefusal.CertificateFailure(cause) =>
+        HotKeys.infrastructureFailure(ForgeError.CertificateFailure(cause))
+      case _ => None
+    fatal.fold(events.emit(ForgeEvent.KesReloadRefused(why)))(_.raise[F, Unit])
 
   private def adopt(
       cur: PoolCredentials,
       found: HotKeySource.Candidate[F],
       kesPeriod: BigInt
-  ): F[Unit] =
+  )(using Raise[F, Fatal]): F[Unit] =
     // a certificate re-issued for the key already in use keeps that key, which is further on than
     // the file's copy; a new key replaces it and the old one is erased from memory
     val candidate = found.credentials
@@ -200,9 +209,8 @@ final class HotKeys[F[_]: Async] private (
       _ <- F.delay(if sameKey then candidate.kes.forget() else cur.kes.forget())
       _ <- state.set(next)
       _ <- found.adopt
-      _ <- unwritten.set(None)
       // the key in use, further on than the file it was read again from, is written there too
-      _ <- write(next, kesPeriod).whenA(sameKey)
+      _ <- write(next).whenA(sameKey)
       // a key installed at period 0 is brought to the present at once; its file is rewritten
       _ <- evolved(next, kesPeriod).void.whenA(relative.toInt > kes.period)
       _ <- events.emit(
@@ -222,9 +230,54 @@ object HotKeys:
       config: PraosConfig,
       events: ForgeEvents[F]
   ): F[HotKeys[F]] =
-    (Ref.of[F, PoolCredentials](credentials), Mutex[F], Ref.of[F, Option[BigInt]](None)).mapN {
-      (state, lock, unwritten) => new HotKeys[F](state, lock, source, unwritten, config, events)
+    (Ref.of[F, PoolCredentials](credentials), Mutex[F]).mapN { (state, lock) =>
+      new HotKeys[F](state, lock, source, config, events)
     }
+
+  /** An absent replacement file is an operator refusal on reload only. Other I/O is a storage
+    * failure; an unexpected exception remains a defect, even if the file adapter wrapped it.
+    */
+  private[forge] def reloadFailure(error: ForgeError): Option[Fatal] = error match
+    case ForgeError.KeyFile(
+          _,
+          ForgeKeyProblem.Io(_: NoSuchFileException | _: FileNotFoundException)
+        ) =>
+      None
+    case ForgeError.KeyFile(file, ForgeKeyProblem.Io(cause)) => Some(fileFailure(file, cause))
+    case _: ForgeError.KesFileFailure                        => Some(persistenceFailure(error))
+    case _                                                   => infrastructureFailure(error)
+
+  /** Typed nested crypto defects have the same terminal policy as raw exceptions. */
+  private[forge] def infrastructureFailure(error: ForgeError): Option[Fatal] = error match
+    case ForgeError.VrfInput(PraosVrfCertificate.Failure.InternalFailure(cause)) =>
+      Some(Fatal.Defect(cause))
+    case ForgeError.VrfProof(Draft03Prover.Failure.InternalFailure(cause)) =>
+      Some(Fatal.Defect(cause))
+    case ForgeError.KeyFile(_, ForgeKeyProblem.Vrf(Draft03Prover.Failure.InternalFailure(cause))) =>
+      Some(Fatal.Defect(cause))
+    case ForgeError.CertificateFailure(OperationalCertificate.Failure.Defect(cause)) =>
+      Some(Fatal.Defect(cause))
+    case ForgeError.CertificateFailure(
+          OperationalCertificate.Failure.PrimitiveFailure(
+            VerificationError.ImplementationFailure(cause)
+          )
+        ) =>
+      Some(Fatal.Defect(cause))
+    case ForgeError.CertificateFailure(
+          _: OperationalCertificate.Failure.PrimitiveContractViolation
+        ) =>
+      Some(Fatal.Internal(error))
+    case _ => None
+
+  private def fileFailure(file: String, cause: Throwable): Fatal = cause match
+    case _: IOException => Fatal.Storage(StorageError.Io(file, cause))
+    case other          => Fatal.Defect(other)
+
+  private[forge] def persistenceFailure(error: ForgeError): Fatal = error match
+    case ForgeError.KeyFile(file, ForgeKeyProblem.Io(cause)) => fileFailure(file, cause)
+    case ForgeError.KesFileFailure(file, _, KesFileFailureCause.FileSystem(cause)) =>
+      fileFailure(file, cause)
+    case other => infrastructureFailure(other).getOrElse(Fatal.Internal(other))
 
   /** May a node forging for `current` 's pool switch to `candidate` at `kesPeriod`, when the pool's
     * issue counter on the chain is `counter` (none: not seen yet)?

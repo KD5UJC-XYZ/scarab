@@ -17,12 +17,11 @@ import xyz.kd5ujc.scarab.node.Follower
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.node.mempool.TxKit
 import xyz.kd5ujc.scarab.crypto.vrf.{Draft03Prover, PraosLeaderThreshold as Leader}
-import munit.CatsEffectSuite
 
 /** Forging against the real block rules: whatever the forger builds must pass the same `NodeRules`
   * that validate blocks received from peers, and the follower must adopt it.
   */
-class ForgeSuite extends CatsEffectSuite with ForgeFixture:
+class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFixture:
 
   test("an elected slot yields a block our rules accept, built from the mempool, and adopted") {
     val p = pool(kesStart = 50)

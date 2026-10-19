@@ -267,9 +267,6 @@ enum ForgeError extends NodeError:
   /** The KES period of the slot is outside the operational certificate's window. */
   case KeyPeriodOutOfRange(period: BigInt, start: BigInt, evolutions: BigInt)
 
-  /** Legacy unexpected forger-step failure; infrastructure/defect classification is #180 G7-F3. */
-  case KesFailure(cause: Throwable)
-
   /** The KES key could not be evolved to the slot's period (it has already moved past it). */
   case KesEvolution(cause: Sum6KesSigning.Failure)
 
@@ -293,9 +290,6 @@ enum ForgeError extends NodeError:
   /** Our own block rules refuse the block we built. */
   case SelfRejected(error: ValidationError)
 
-  case ServiceFailure(error: NodeError)
-  case Defect(cause: Throwable)
-
   def message: String = this match
     case KeyFile(f, r) => s"key file $f: $r"
     case KesFileFailure(f, op, cause) =>
@@ -308,7 +302,6 @@ enum ForgeError extends NodeError:
       "keys do not match: the operational certificate is not signed by its cold key"
     case KeyPeriodOutOfRange(p, s, e) =>
       s"KES period $p outside the operational certificate window [$s, ${s + e})"
-    case KesFailure(r)                  => s"KES: $r"
     case KesEvolution(e)                => s"KES: ${e.message}"
     case VrfInput(e)                    => s"VRF: $e"
     case VrfProof(e)                    => s"VRF: $e"
@@ -317,9 +310,7 @@ enum ForgeError extends NodeError:
     case LedgerViewUnavailable(slot, r) => s"no ledger view for slot $slot: $r"
     case UnsupportedProtocol(r)         => s"cannot forge: $r"
     case Assembly(r)                    => s"block assembly: $r"
-    case SelfRejected(e)   => s"our own ${e.rule} rules refuse the forged block: ${e.reason}"
-    case ServiceFailure(e) => e.message
-    case Defect(cause)     => s"forger defect: $cause"
+    case SelfRejected(e) => s"our own ${e.rule} rules refuse the forged block: ${e.reason}"
 
 enum KesFileOperation:
   case StageWrite, StageSync, StageReadback, DirectorySyncBeforeErase

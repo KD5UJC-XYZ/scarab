@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.node.forge
 import xyz.kd5ujc.scarab.ledger.{ForgeAssemblyProblem, ForgeLedgerProblem, ForgeProtocolProblem}
 import scala.annotation.unused
 import cats.effect.{Async, Clock, Ref}
-import cats.mtl.{Handle, Stateful}
+import cats.mtl.{Handle, Raise, Stateful}
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import java.time.{Duration, Instant}
@@ -12,11 +12,11 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.Block
-import xyz.kd5ujc.scarab.ledger.ForgeError
+import xyz.kd5ujc.scarab.ledger.{EvaluationUnavailable, ForgeError}
 import xyz.kd5ujc.scarab.ledger.NodeError
 import xyz.kd5ujc.scarab.ledger.VrfCert
 import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash}
-import xyz.kd5ujc.scarab.node.Follower
+import xyz.kd5ujc.scarab.node.{Fatal, Follower, SessionEnd}
 import xyz.kd5ujc.scarab.consensus.{Praos, PraosConfig}
 import xyz.kd5ujc.scarab.consensus.state.ProtocolState
 import xyz.kd5ujc.scarab.protocol.Era
@@ -28,6 +28,7 @@ import xyz.kd5ujc.scarab.node.read.LeaderPools.given
 import xyz.kd5ujc.scarab.node.mempool.{Mempool, MempoolLedger}
 import xyz.kd5ujc.scarab.storage.UtxoStore
 import scala.concurrent.duration.*
+import xyz.kd5ujc.scarab.network.Fibers
 
 /** What the forger reports, for the JSON log and for tests. */
 enum ForgeEvent:
@@ -74,7 +75,7 @@ enum ForgeEvent:
   /** A reload was refused: the credentials in use before it stay in force. */
   case KesReloadRefused(reason: ReloadRefusal)
 
-  /** The evolved KES key could not be written back; it is tried again at the next slot. */
+  /** Legacy log/metric vocabulary; durability failures now finish as typed fatal values. */
   case KesPersistFailed(kesPeriod: BigInt, error: ForgeError)
 
   /** A slot we cannot forge on (the tip is too old to forge from). */
@@ -126,14 +127,13 @@ final class Forger[F[_]: Async, S](
     val stats: ForgeStats[F]
 )(using
     chain: Stateful[F, VolatileChain[S]],
-    handle: Handle[F, NodeError],
     read: ChainRead[S]
 ):
   private val F = Async[F]
   private val geometry = config.geometry
 
   /** Run until cancelled. */
-  def run: F[Unit] =
+  def run: F[Either[Fatal, Unit]] = Forger.scoped {
     for
       instant <- now
       current <- hot.current
@@ -149,6 +149,7 @@ final class Forger[F[_]: Async, S](
       )
       _ <- loop(None)
     yield ()
+  }
 
   private def kesPeriodOf(slot: BigInt): BigInt = slot / config.slotsPerKesPeriod
 
@@ -159,27 +160,20 @@ final class Forger[F[_]: Async, S](
     * credentials again and hands them to `setBlockForging` (cardano-node 11.1.3, `Run.hs` lines 596
     * and 626).
     */
-  def reload: F[Unit] =
-    val attempted =
-      for
-        instant <- now
-        current <- chain.get
-        counter = KeyHash
-          .fromBytes[BlockIssuer](credentials.poolId)
-          .toOption
-          .flatMap(current.state.protocol.counters.get)
-          .map(_.toBigInt)
-        _ <- hot.reload(kesPeriodOf(geometry.slotAt(instant)), counter)
-      yield ()
-    attempted.handleErrorWith(t =>
-      events.emit(
-        ForgeEvent.KesReloadRefused(
-          ReloadRefusal.Unreadable(ForgeError.Defect(t))
-        )
-      )
-    )
+  def reload: F[Either[Fatal, Unit]] = Forger.scoped {
+    for
+      instant <- now
+      current <- chain.get
+      counter = KeyHash
+        .fromBytes[BlockIssuer](credentials.poolId)
+        .toOption
+        .flatMap(current.state.protocol.counters.get)
+        .map(_.toBigInt)
+      _ <- hot.reload(kesPeriodOf(geometry.slotAt(instant)), counter)
+    yield ()
+  }
 
-  private def loop(last: Option[BigInt]): F[Unit] =
+  private def loop(last: Option[BigInt])(using Handle[F, NodeError], Raise[F, Fatal]): F[Unit] =
     for
       instant <- now
       slot = geometry.slotAt(instant)
@@ -197,7 +191,7 @@ final class Forger[F[_]: Async, S](
           stats.epoch(ended).flatMap(s => events.emit(ForgeEvent.EpochSummary(ended, s)))
         else F.unit
       }
-      _ <- if last.exists(_ >= slot) then F.unit else step(slot)
+      _ <- if last.exists(_ >= slot) then F.unit else stepInScope(slot)
       after <- now
       untilNext = Duration.between(after, geometry.slotStart(slot + 1))
       _ <- sleep(untilNext.toMillis.max(1L).millis)
@@ -209,24 +203,27 @@ final class Forger[F[_]: Async, S](
       ForgeEvent.Skipped(slot, reason)
     )
 
-  /** Everything for one slot; nothing escapes (a failure is reported and the next slot goes on). */
-  private[forge] def step(slot: BigInt): F[Unit] =
-    hot
-      .advance(kesPeriodOf(slot))
-      .handleErrorWith(t => failed(slot, ForgeError.KesFailure(t))) *> handle
-      .attempt(attempt(slot))
-      .flatMap {
-        case Right(_)                      => F.unit
-        case Left(_: ForgeError.NotLeader) => F.unit
-        case Left(e: ForgeError)           => failed(slot, e)
-        case Left(other)                   => failed(slot, ForgeError.ServiceFailure(other))
-      }
-      .handleErrorWith(t => failed(slot, ForgeError.Defect(t))) *> watch
+  /** One slot in its own scope: a forging refusal permits another slot; a service failure or defect
+    * is returned to the owner and never enters the recoverable forging channel.
+    */
+  private[forge] def step(slot: BigInt): F[Either[Fatal, Unit]] =
+    Forger.scoped(stepInScope(slot))
+
+  private def stepInScope(
+      slot: BigInt
+  )(using handle: Handle[F, NodeError], terminal: Raise[F, Fatal]): F[Unit] =
+    handle.attempt(F.defer(hot.advance(kesPeriodOf(slot)) *> attempt(slot))).flatMap {
+      case Right(_)                      => F.unit
+      case Left(_: ForgeError.NotLeader) => F.unit
+      case Left(e: ForgeError) =>
+        HotKeys.infrastructureFailure(e).fold(failed(slot, e))(_.raise[F, Unit])
+      case Left(other) => other.raise[F, Unit]
+    } *> watch
 
   private def failed(slot: BigInt, error: ForgeError): F[Unit] =
     stats.failed(geometry.epochOf(slot)) *> events.emit(ForgeEvent.Failed(slot, error))
 
-  private def attempt(slot: BigInt)(using Handle[F, NodeError]): F[Unit] =
+  private def attempt(slot: BigInt)(using Handle[F, NodeError], Raise[F, Fatal]): F[Unit] =
     for
       current <- chain.get
       connected <- ready
@@ -241,9 +238,13 @@ final class Forger[F[_]: Async, S](
         else forge(current, slot)
     yield ()
 
-  private def lift[A](e: Either[ForgeError, A]): F[A] = e.fold(_.raise[F, A], F.pure)
+  private def lift[A](e: Either[ForgeError, A])(using Handle[F, NodeError]): F[A] =
+    e.fold(_.raise[F, A], F.pure)
 
-  private def forge(current: VolatileChain[S], slot: BigInt): F[Unit] =
+  private def forge(current: VolatileChain[S], slot: BigInt)(using
+      Handle[F, NodeError],
+      Raise[F, Fatal]
+  ): F[Unit] =
     val epoch = geometry.epochOf(slot)
     val tip = current.tipRef
     for
@@ -292,7 +293,7 @@ final class Forger[F[_]: Async, S](
         ticked.utxo,
         UtxoStore.readSet(held.entries.map(_.tx))
       )
-      chosen <- F.blocking(
+      selection <- F.blocking(
         BlockBuilder.select(
           ticked.withUtxo(readable),
           slot,
@@ -302,6 +303,12 @@ final class Forger[F[_]: Async, S](
           held.entries,
           limits
         )
+      )
+      chosen <- selection.fold(
+        unavailable =>
+          EvaluationUnavailable(current.tip, unavailable)
+            .raise[F, Vector[(xyz.kd5ujc.scarab.node.mempool.Entry, BlockBuilder.Piece)]],
+        F.pure
       )
       outcome <- build(
         current,
@@ -334,7 +341,7 @@ final class Forger[F[_]: Async, S](
       pieces: Vector[BlockBuilder.Piece],
       stake: BigInt,
       totalStake: BigInt
-  ): F[Either[ForgeError, Unit]] =
+  )(using Handle[F, NodeError], Raise[F, Fatal]): F[Either[ForgeError, Unit]] =
     val body = BlockBuilder.body(pieces)
     val kesPeriod = slot / config.slotsPerKesPeriod
     // the header, the key's evolution and the signature all use the credentials of one moment: a
@@ -414,7 +421,10 @@ final class Forger[F[_]: Async, S](
                 stats.lost(epoch) *>
                   events.emit(ForgeEvent.Lost(slot, h.hash, reason.message)).as(Right(()))
               case Follower.Adoption.Invalid(e) =>
-                F.pure(Left(ForgeError.SelfRejected(e)))
+                SessionEnd.of(e) match
+                  case SessionEnd.Unavailable(unavailable) =>
+                    unavailable.raise[F, Either[ForgeError, Unit]]
+                  case _ => F.pure(Left(ForgeError.SelfRejected(e)))
             }
     }
 
@@ -456,7 +466,7 @@ final class Forger[F[_]: Async, S](
       current: VolatileChain[S],
       epoch: BigInt,
       slot: BigInt
-  ): F[Forger.Crossed] =
+  )(using Handle[F, NodeError]): F[Forger.Crossed] =
     val state = current.state
     val key = (current.tipRef.map(_.hash), epoch)
     cache.get.flatMap {
@@ -531,6 +541,24 @@ final class Forger[F[_]: Async, S](
     }
 
 object Forger:
+  /** Like runExceptT at the forging worker boundary: typed failures and defects finish as values.
+    * The scope and the body are constructed inside defer (cats-mtl 1.7.0 Handle.rescue invokes its
+    * body eagerly); cancellation passes through unchanged.
+    */
+  private[forge] def scoped[F[_]: Async, A](
+      body: (Handle[F, NodeError], Raise[F, Fatal]) ?=> F[A]
+  ): F[Either[Fatal, A]] =
+    Fibers.scoped[F, Fatal, A](Fatal.Defect(_)) {
+      val terminal = summon[Handle[F, Fatal]]
+      Handle.allow[NodeError](body).rescue { error =>
+        val fatal = SessionEnd.of(error) match
+          case SessionEnd.Storage(e)     => Fatal.Storage(e)
+          case SessionEnd.Unavailable(e) => Fatal.Unavailable(e)
+          case _                         => Fatal.Internal(error)
+        terminal.raise[Fatal, A](fatal)
+      }
+    }
+
   /** At most this many missed slots are reported at once (a suspended machine would report
     * millions).
     */
@@ -564,7 +592,6 @@ object Forger:
       source: Option[HotKeySource[F]] = None
   )(using
       Stateful[F, VolatileChain[S]],
-      Handle[F, NodeError],
       ChainRead[S]
   ): F[Forger[F, S]] =
     (

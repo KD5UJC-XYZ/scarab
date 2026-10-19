@@ -934,7 +934,9 @@ object Main extends IOApp:
             _ <- forging.traverse_(f => collectors.add(Collectors.forging(f.stats)))
             // SIGHUP re-reads the KES key and operational certificate (as the Haskell node does)
             production = forging.fold(Resource.unit[IO])(f =>
-              Signals.hangup[IO](f.reload).flatMap(_ => f.run.background.void)
+              Signals
+                .hangup[IO](f.reload.flatMap(_.fold(fatalSink, _ => IO.unit)))
+                .flatMap(_ => f.run.flatMap(_.fold(fatalSink, _ => IO.unit)).background.void)
             )
             // the chain we start from is progress made: the watchdog counts from here
             _ <- ref.get.flatMap(c => c.tipRef.traverse_(t => watchdog.extended(t.blockNo)))

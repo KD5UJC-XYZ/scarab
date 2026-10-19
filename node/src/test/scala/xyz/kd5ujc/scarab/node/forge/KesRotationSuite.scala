@@ -497,10 +497,10 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     for
       seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
       keys <- HotKeys.create[IO](p.creds, None, config, e => seen.update(_ :+ e))
-      result <- keys.locked(c => keys.evolved(c, 49))
+      result <- Forger.scoped(keys.locked(c => keys.evolved(c, 49)))
       _ = assertEquals(
         result,
-        Left(ForgeError.KesEvolution(Sum6KesSigning.Failure.PeriodOutOfRange(-1)))
+        Right(Left(ForgeError.KesEvolution(Sum6KesSigning.Failure.PeriodOutOfRange(-1))))
       )
       _ = assertEquals(p.creds.kes.period, 0)
       _ = assertEquals(p.creds.kes.toBytes, before)
@@ -565,46 +565,44 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     }
   }
 
-  test(
-    "a key that cannot be written is reported once per period, tried again at each slot, and forging goes on"
-  ) {
+  test("a key persistence I/O failure is terminal and no block is signed or adopted") {
     val p = pool(kesStart = 50, seed = 4)
+    val cause = new java.io.IOException("disk full")
     withDir { f =>
       f.install(p.creds.hot)
       withHandle {
         for
           inner <- source(f)
-          failing <- Ref.of[IO, Boolean](true)
-          flaky = new HotKeySource[IO]:
+          failing = new HotKeySource[IO]:
             def read = inner.read
             def persist(key: Sum6KesSigning.SigningKey) =
-              failing.get.flatMap(down =>
-                if down then
-                  IO.pure(
-                    Persisted.Failed(
-                      ForgeError.KeyFile(
-                        "kes.skey",
-                        xyz.kd5ujc.scarab.ledger.ForgeKeyProblem
-                          .Io(new java.io.IOException("disk full"))
-                      )
-                    )
+              IO.pure(
+                Persisted.Failed(
+                  ForgeError.KeyFile(
+                    "kes.skey",
+                    xyz.kd5ujc.scarab.ledger.ForgeKeyProblem.Io(cause)
                   )
-                else inner.persist(key)
+                )
               )
-          h <- harness(p, ledgerWith(p, 1), source = Some(flaky))
-          _ <- h.forger.step(5100)
-          _ <- h.forger.step(5101)
-          _ <- failing.set(false)
-          _ <- h.forger.step(5102)
-          _ <- h.forger.step(5103)
+          h <- harness(p, ledgerWith(p, 1), source = Some(failing))
+          result <- h.forger.step(5100)
           events <- h.seen
+          chain <- h.chain
+          _ <- h.forger.hot.locked(_ => IO.unit)
         yield
           assertEquals(
-            events.collect { case ForgeEvent.KesPersistFailed(k, _) => k },
-            Vector(BigInt(51))
+            result,
+            Left(
+              xyz.kd5ujc.scarab.node.Fatal.Storage(
+                xyz.kd5ujc.scarab.ledger.StorageError.Io("kes.skey", cause)
+              )
+            )
           )
-          assertEquals(f.onDisk.period, 1)
+          assertEquals(f.onDisk.period, 0)
+          assertEquals(chain.tipRef, None)
+          assert(!events.exists(_.isInstanceOf[ForgeEvent.Forged]), events.toString)
           assert(!events.exists(_.isInstanceOf[ForgeEvent.Failed]), events.toString)
+          assert(!events.exists(_.isInstanceOf[ForgeEvent.KesPersistFailed]), events.toString)
       }
     }
   }
@@ -857,7 +855,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         def read = IO.pure(Right(HotKeySource.Candidate(candidate, adopted.set(true))))
         def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Unchanged)
       keys <- HotKeys.create[IO](p.creds, Some(src), config, e => seen.update(_ :+ e))
-      _ <- keys.reload(50, Some(0))
+      _ <- Forger.scoped(keys.reload(50, Some(0))).map(result => assertEquals(result, Right(())))
       current <- keys.current
       events <- seen.get
       switched <- adopted.get
