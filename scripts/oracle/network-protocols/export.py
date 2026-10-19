@@ -76,6 +76,7 @@ def prepare(source: Path, overlay: Path) -> dict[str, str]:
         "PeerSharing": source / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/PeerSharing/Test.hs",
         "ChainSync": source / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/Test.hs",
         "BlockFetch": source / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/BlockFetch/Test.hs",
+        "LocalStateQuery": source / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/LocalStateQuery/Test.hs",
         "Main": source / "ouroboros-network/protocols/tests/Main.hs",
     }
     source_hashes = {name: hashlib.sha256(path.read_bytes()).hexdigest() for name, path in modules.items()}
@@ -84,6 +85,7 @@ def prepare(source: Path, overlay: Path) -> dict[str, str]:
     peer = overlay / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/PeerSharing/Test.hs"
     chain = overlay / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/Test.hs"
     block_fetch = overlay / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/BlockFetch/Test.hs"
+    local_state_query = overlay / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/LocalStateQuery/Test.hs"
     keep_original = inject(
         keep,
         "import Test.QuickCheck\n",
@@ -299,6 +301,83 @@ exportBlockFetchCases path count seed = withFile path WriteMode $ \outputHandle 
         "module Ouroboros.Network.Protocol.BlockFetch.Test (tests, exportBlockFetchCases) where",
     ))
 
+    local_state_query_original = inject(
+        local_state_query,
+        "import Test.QuickCheck as QC hiding (Result)\n",
+        r'''
+
+-- Disposable observer: preserve the real stateful generator, codec, and codec properties.
+exportLocalStateQueryCases :: FilePath -> Int -> Int -> IO ()
+exportLocalStateQueryCases path count seed = withFile path WriteMode $ \outputHandle ->
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 30 + (ordinal `mod` 21)
+        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize
+          :: AnyMessageWithResult Block (Point Block) Query MockLedgerState
+    codecResult <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 1000003), caseSize) }
+      (once (prop_codec_LocalStateQuery testCase))
+    cborResult <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 2000003), caseSize) }
+      (once (prop_codec_cbor testCase))
+    case testCase of
+      AnyMessageWithResult (Stateful.AnyMessage localState msg) -> do
+        let statefulCodec = codec
+              :: Stateful.Codec (LocalStateQuery Block (Point Block) Query)
+                   DeserialiseFailure State IO ByteString
+            raw = Stateful.encode statefulCodec localState msg
+            (state, sender) = case localState of
+              StateIdle -> ("idle", "client")
+              StateAcquiring -> ("acquiring", "server")
+              StateAcquired -> ("acquired", "client")
+              StateQuerying _ -> ("querying", "server")
+              StateDone -> ("done", "none")
+            tag = case msg of
+              MsgAcquire VolatileTip -> "acquire-volatile-tip"
+              MsgAcquire ImmutableTip -> "acquire-immutable-tip"
+              MsgAcquire (SpecificPoint _) -> "acquire-specific-point"
+              MsgAcquired -> "acquired"
+              MsgFailure AcquireFailurePointTooOld -> "failure-point-too-old"
+              MsgFailure AcquireFailurePointNotOnChain -> "failure-point-not-on-chain"
+              MsgQuery _ -> "query"
+              MsgResult _ -> "result"
+              MsgRelease -> "release"
+              MsgReAcquire VolatileTip -> "reacquire-volatile-tip"
+              MsgReAcquire ImmutableTip -> "reacquire-immutable-tip"
+              MsgReAcquire (SpecificPoint _) -> "reacquire-specific-point"
+              MsgDone -> "done"
+            codecOutcome = if isSuccess codecResult then "pass" else "upstream-failure"
+            cborOutcome = if isSuccess cborResult then "pass" else "upstream-failure"
+        hPutStrLn outputHandle $ intercalate "\t"
+          [ "localsq-codec-v1", show caseSeed, show ordinal, show caseSize
+          , state, sender, tag, hex (BL.toStrict raw), codecOutcome, cborOutcome
+          ]
+  where
+    hex = concatMap (pad . (`showHex` "")) . BS.unpack
+    pad [digit] = ['0', digit]
+    pad digits = digits
+''',
+        "import Control.Monad (forM_)\n"
+        "import Data.ByteString qualified as BS\n"
+        "import Data.ByteString.Lazy qualified as BL\n"
+        "import Data.List (intercalate)\n"
+        "import Numeric (showHex)\n"
+        "import System.IO (withFile, IOMode (WriteMode), hPutStrLn)\n"
+        "import Test.QuickCheck.Gen (unGen)\n"
+        "import Test.QuickCheck.Random (mkQCGen)\n",
+    )
+    local_state_module = local_state_query.read_text()
+    local_state_export_anchor = "module Ouroboros.Network.Protocol.LocalStateQuery.Test\n"
+    if local_state_module.count(local_state_export_anchor) != 1:
+        raise SystemExit("LocalStateQuery observer module export anchor changed")
+    export_block_anchor = "  ( tests\n"
+    if local_state_module.count(export_block_anchor) != 1:
+        raise SystemExit("LocalStateQuery observer module export list changed")
+    local_state_query.write_text(local_state_module.replace(
+        export_block_anchor,
+        "  ( tests\n  , exportLocalStateQueryCases\n",
+    ))
+
     chain_module = chain.read_text()
     chain_export_anchor = "module Ouroboros.Network.Protocol.ChainSync.Test (tests) where"
     if chain_module.count(chain_export_anchor) != 1:
@@ -314,6 +393,7 @@ exportBlockFetchCases path count seed = withFile path WriteMode $ \outputHandle 
         "import Ouroboros.Network.Protocol.PeerSharing.Test qualified as PeerSharing (tests, exportPeerSharingCases)\n"
         "import Ouroboros.Network.Protocol.ChainSync.Test qualified as ChainSync (tests, exportChainSyncCases)\n"
         "import Ouroboros.Network.Protocol.BlockFetch.Test qualified as BlockFetch (tests, exportBlockFetchCases)\n"
+        "import Ouroboros.Network.Protocol.LocalStateQuery.Test qualified as LocalStateQuery (tests, exportLocalStateQueryCases)\n"
         "import System.Environment (getArgs)\n"
     )
     main_text = main_original.replace(
@@ -330,10 +410,14 @@ exportBlockFetchCases path count seed = withFile path WriteMode $ \outputHandle 
         "import Ouroboros.Network.Protocol.BlockFetch.Test qualified (tests)\n", ""
     )
     main_text = main_text.replace(
+        "import Ouroboros.Network.Protocol.LocalStateQuery.Test qualified (tests)\n", ""
+    )
+    main_text = main_text.replace(
         "Ouroboros.Network.Protocol.KeepAlive.Test.tests", "KeepAlive.tests"
     ).replace("Ouroboros.Network.Protocol.PeerSharing.Test.tests", "PeerSharing.tests")
     main_text = main_text.replace("Ouroboros.Network.Protocol.ChainSync.Test.tests", "ChainSync.tests")
     main_text = main_text.replace("Ouroboros.Network.Protocol.BlockFetch.Test.tests", "BlockFetch.tests")
+    main_text = main_text.replace("Ouroboros.Network.Protocol.LocalStateQuery.Test.tests", "LocalStateQuery.tests")
     main_text = main_text.replace(
         "main = defaultMain tests",
         "main = getArgs >>= \\args -> case args of\n"
@@ -342,6 +426,7 @@ exportBlockFetchCases path count seed = withFile path WriteMode $ \outputHandle 
         "    PeerSharing.exportPeerSharingCases (dir <> \"/peersharing.tsv\") (read count) (read seed)\n"
         "    ChainSync.exportChainSyncCases (dir <> \"/chainsync.tsv\") (read count) (read seed)\n"
         "    BlockFetch.exportBlockFetchCases (dir <> \"/blockfetch.tsv\") (read count) (read seed)\n"
+        "    LocalStateQuery.exportLocalStateQueryCases (dir <> \"/localsq.tsv\") (read count) (read seed)\n"
         "  _ -> defaultMain tests",
     )
     main.write_text(main_text)
@@ -350,6 +435,7 @@ exportBlockFetchCases path count seed = withFile path WriteMode $ \outputHandle 
         "PeerSharing/Test.hs": peer_original,
         "ChainSync/Test.hs": chain_original,
         "BlockFetch/Test.hs": block_fetch_original,
+        "LocalStateQuery/Test.hs": local_state_query_original,
         "protocols/tests/Main.hs": main_original,
     }
 
@@ -390,7 +476,7 @@ def main() -> None:
             "-w", "/source", IMAGE, "-f", "/dev/null",
         ])
     checked(["docker", "start", CONTAINER_NAME])
-    for test_name in ("KeepAlive", "PeerSharing", "ChainSync", "BlockFetch"):
+    for test_name in ("KeepAlive", "PeerSharing", "ChainSync", "BlockFetch", "LocalStateQuery"):
         checked([
             "docker", "exec", "-w", "/source", CONTAINER_NAME,
             "cabal", "test", "--project-file=/probe/protocols-tests.project",
@@ -455,6 +541,7 @@ def main() -> None:
         ("peersharing.tsv", "ouroboros-network:protocols-tests / PeerSharing / codec / prop_codec_PeerSharing"),
         ("chainsync.tsv", "ouroboros-network:protocols-tests / ChainSync / codecSerialised + codecSerialised cbor"),
         ("blockfetch.tsv", "ouroboros-network:protocols-tests / BlockFetch / codecSerialised + codecSerialised cbor"),
+        ("localsq.tsv", "ouroboros-network:protocols-tests / LocalStateQuery / codec + codec cbor"),
     ]:
         raw = (args.probe_dir / "exports" / name).read_bytes()
         rows = [line.split("\t") for line in raw.decode().splitlines()]
@@ -469,7 +556,7 @@ def main() -> None:
             "upstreamPropertyOutcomes": {
                 "both-properties-pass": sum(row[-2:] == ["pass", "pass"] for row in rows),
                 "at-least-one-upstream-failure": sum(row[-2:] != ["pass", "pass"] for row in rows),
-            } if name in ("chainsync.tsv", "blockfetch.tsv") else {
+            } if name in ("chainsync.tsv", "blockfetch.tsv", "localsq.tsv") else {
                 "pass": sum(row[-1] == "pass" for row in rows),
                 "upstream-failure": sum(row[-1] != "pass" for row in rows),
             },
@@ -483,6 +570,7 @@ def main() -> None:
                 "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/PeerSharing/Test.hs",
                 "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/Test.hs",
                 "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/BlockFetch/Test.hs",
+                "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/LocalStateQuery/Test.hs",
                 "ouroboros-network/protocols/tests/Main.hs",
             ]},
             "observerPatchSha256": hashlib.sha256(patch.encode()).hexdigest(),
@@ -495,7 +583,10 @@ def main() -> None:
             if "test" in result["argv"]
             and any("protocols-tests" in arg for arg in result["argv"])
         ]
-        manifest["caseExportCommand"] = COMMAND_RESULTS[-1]
+        manifest["caseExportCommand"] = next(
+            result for result in COMMAND_RESULTS
+            if "--export-network-codecs" in result["argv"]
+        )
         manifest["execution"] = {
             "image": IMAGE,
             "imageDigest": image_digest,
@@ -503,8 +594,8 @@ def main() -> None:
             "cabalOffline": False,
             "projectFile": str(project_file),
             "projectFileSha256": hashlib.sha256(project_file.read_bytes()).hexdigest(),
-            "targetPlanSha256": hashlib.sha256(plan).hexdigest(),
-            "targetPlanUnitCount": len(plan_units),
+            "projectPlanSha256": hashlib.sha256(plan).hexdigest(),
+            "projectPlanUnitCount": len(plan_units),
         }
         if args.reference_plan:
             manifest["targetPlanEquivalence"] = {
@@ -568,6 +659,31 @@ def main() -> None:
             manifest["propertyReplaySeedOffsets"] = {
                 "prop_codec_BlockFetchSerialised": 1000003,
                 "prop_codec_cbor_BlockFetchSerialised": 2000003,
+            }
+        if name == "localsq.tsv":
+            manifest["adapterInputStatuses"] = {
+                "byConstructor": {
+                    tag: sum(row[6] == tag for row in rows)
+                    for tag in sorted({row[6] for row in rows})
+                },
+                "sourceStates": {
+                    state: sum(row[4] == state for row in rows)
+                    for state in sorted({row[4] for row in rows})
+                },
+            }
+            manifest["upstreamPropertyOutcomesByProperty"] = {
+                "prop_codec_LocalStateQuery": {
+                    "pass": sum(row[-2] == "pass" for row in rows),
+                    "upstream-failure": sum(row[-2] != "pass" for row in rows),
+                },
+                "prop_codec_cbor": {
+                    "pass": sum(row[-1] == "pass" for row in rows),
+                    "upstream-failure": sum(row[-1] != "pass" for row in rows),
+                },
+            }
+            manifest["propertyReplaySeedOffsets"] = {
+                "prop_codec_LocalStateQuery": 1000003,
+                "prop_codec_cbor": 2000003,
             }
         (args.output_dir / name).write_bytes(raw)
         (args.output_dir / (name + ".manifest.json")).write_text(json.dumps(manifest, indent=2) + "\n")

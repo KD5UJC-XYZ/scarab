@@ -65,6 +65,14 @@ while Scarab's point codec requires byte-string hashes. No conversion or synthet
 The upstream target dependency closure is 167 units; the minimal solver project was checked against
 the full plan and matches every package/component, flag, source/Cabal hash, and dependency edge.
 
+The LocalStateQuery observer exports 24 seeded stateful messages from the unchanged
+`AnyMessageWithResult` generator. `prop_codec_LocalStateQuery` and `prop_codec_cbor` pass for all 24.
+Scarab exactly decodes and re-encodes 20 rows, including acquire/reacquire tips, result, release,
+failure, and done messages. Four specific-point acquire/reacquire rows retain original wire and
+upstream pass status but are unsupported at `ExpectedDefiniteByteString`: upstream mock
+`HeaderHash Int` is integer-encoded, while Scarab's point type requires byte-string hashes. No
+point conversion or fabricated value is used; query/result payloads remain opaque full CBOR items.
+
 The pinned ChainSync `codecSerialised` observer now exports 128 rows from the actual
 `AnyMessage ChainSync_Serialised_BlockHeader` generator, preserving each source state token,
 sender agency, constructor, original CBOR wire, generator seed/size, and separate verdicts from

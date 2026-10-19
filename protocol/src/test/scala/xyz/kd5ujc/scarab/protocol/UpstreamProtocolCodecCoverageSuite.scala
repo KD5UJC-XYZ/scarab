@@ -444,3 +444,99 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
       outcomes.groupMapReduce(identity)(_ => 1)(_ + _),
       Map("matched" -> 20, "unsupported:request-range:ExpectedDefiniteByteString" -> 4)
     )
+
+  test("classify generated pinned LocalStateQuery codec rows at the typed boundary"):
+    val input =
+      rows("localsq.tsv", "09358cbf911717869def7225954a7b0148ad5128a48edcd3895f94d2b44ddd18")
+    assertEquals(input.size, 24)
+    assertEquals(input.count(f => f.size == 10 && f(8) == "pass" && f(9) == "pass"), 24)
+    assertEquals(
+      input.groupMapReduce(_(6))(_ => 1)(_ + _),
+      Map(
+        "acquire-specific-point" -> 1,
+        "acquire-volatile-tip" -> 3,
+        "acquired" -> 2,
+        "done" -> 1,
+        "failure-point-too-old" -> 1,
+        "reacquire-immutable-tip" -> 3,
+        "reacquire-specific-point" -> 5,
+        "reacquire-volatile-tip" -> 5,
+        "release" -> 1,
+        "result" -> 2
+      )
+    )
+    assertEquals(
+      input.groupMapReduce(_(4))(_ => 1)(_ + _),
+      Map("acquired" -> 14, "acquiring" -> 3, "idle" -> 5, "querying" -> 2)
+    )
+    val outcomes = input.map { fields =>
+      assertEquals(fields.size, 10)
+      assertEquals(fields(0), "localsq-codec-v1")
+      val seed = fields(1).toInt
+      val ordinal = fields(2).toInt
+      assertEquals(seed, 492001 + ordinal)
+      assertEquals(fields(3).toInt, 30 + ordinal % 21)
+      val state = fields(4) match
+        case "idle"      => LocalStateQuery.State.Idle
+        case "acquiring" => LocalStateQuery.State.Acquiring
+        case "acquired"  => LocalStateQuery.State.Acquired
+        case "querying"  => LocalStateQuery.State.Querying
+        case other       => fail(s"unknown upstream LocalStateQuery state $other at seed $seed")
+      val sender = fields(5) match
+        case "client" => ChainSync.Role.Client
+        case "server" => ChainSync.Role.Server
+        case other    => fail(s"unknown upstream LocalStateQuery sender $other at seed $seed")
+      val wire = bytes(fields(7))
+      val decoded = LocalStateQuery.decodePrefix(state, sender, wire) match
+        case DecodeResult.Decoded(message, consumed) =>
+          assertEquals(consumed, wire.size, s"seed $seed consumed original wire")
+          Right(message)
+        case DecodeResult.Failed(error) => Left(error.toString)
+        case DecodeResult.NeedMore      => Left("NeedMore")
+      decoded match
+        case Left(reason) =>
+          assert(
+            fields(6) == "acquire-specific-point" || fields(6) == "reacquire-specific-point",
+            s"unexpected unsupported LocalStateQuery constructor ${fields(6)} at seed $seed"
+          )
+          assertEquals(reason, "ExpectedDefiniteByteString", s"seed $seed typed reason")
+          s"unsupported:${fields(6)}:$reason"
+        case Right(message) =>
+          val decodedTag = message match
+            case LocalStateQuery.Message.Acquire(LocalStateQuery.Target.Specific(_)) =>
+              "acquire-specific-point"
+            case LocalStateQuery.Message.Acquire(LocalStateQuery.Target.VolatileTip) =>
+              "acquire-volatile-tip"
+            case LocalStateQuery.Message.Acquire(LocalStateQuery.Target.ImmutableTip) =>
+              "acquire-immutable-tip"
+            case LocalStateQuery.Message.Acquired => "acquired"
+            case LocalStateQuery.Message.Failed(LocalStateQuery.Failure.PointTooOld) =>
+              "failure-point-too-old"
+            case LocalStateQuery.Message.Failed(LocalStateQuery.Failure.PointNotOnChain) =>
+              "failure-point-not-on-chain"
+            case LocalStateQuery.Message.Query(_)  => "query"
+            case LocalStateQuery.Message.Result(_) => "result"
+            case LocalStateQuery.Message.Release   => "release"
+            case LocalStateQuery.Message.ReAcquire(LocalStateQuery.Target.Specific(_)) =>
+              "reacquire-specific-point"
+            case LocalStateQuery.Message.ReAcquire(LocalStateQuery.Target.VolatileTip) =>
+              "reacquire-volatile-tip"
+            case LocalStateQuery.Message.ReAcquire(LocalStateQuery.Target.ImmutableTip) =>
+              "reacquire-immutable-tip"
+            case LocalStateQuery.Message.Done => "done"
+          assertEquals(decodedTag, fields(6), s"seed $seed typed constructor")
+          val encoded = LocalStateQuery
+            .encode(state, sender, message)
+            .fold(e => fail(s"seed $seed Scarab typed encode: ${e.toString}"), identity)
+          assertEquals(encoded, wire, s"seed $seed exact original wire roundtrip")
+          "matched"
+    }
+    assertEquals(outcomes.size, 24)
+    assertEquals(
+      outcomes.groupMapReduce(identity)(_ => 1)(_ + _),
+      Map(
+        "matched" -> 20,
+        "unsupported:acquire-specific-point:ExpectedDefiniteByteString" -> 1,
+        "unsupported:reacquire-specific-point:ExpectedDefiniteByteString" -> 3
+      )
+    )
