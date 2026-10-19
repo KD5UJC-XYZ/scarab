@@ -22,7 +22,7 @@ final case class ForgeEpochStats(
     /** Slots not checked, by reason: `busy` (the loop was still on an earlier slot), `tipTooOld`,
       * `slotOccupied` (a block already held the slot or a later one), `notConnected`.
       */
-    skipped: Map[String, Long] = Map.empty,
+    skipped: Map[ForgeSkip.Kind, Long] = Map.empty,
     latencyCount: Long = 0,
     latencyTotalMs: Long = 0,
     latencyMaxMs: Long = 0
@@ -45,13 +45,6 @@ final case class ForgeEpochStats(
       latencyMaxMs.max(o.latencyMaxMs)
     )
 
-object ForgeEpochStats:
-  /** Skip reasons that are counted but not logged one by one (they happen every slot). */
-  val Busy = "busy"
-  val TipTooOld = "tipTooOld"
-  val SlotOccupied = "slotOccupied"
-  val NotConnected = "notConnected"
-
 /** The forger's counters per epoch. */
 final class ForgeStats[F[_]: Sync] private (ref: Ref[F, SortedMap[BigInt, ForgeEpochStats]]):
   private def update(epoch: BigInt)(f: ForgeEpochStats => ForgeEpochStats): F[Unit] =
@@ -63,7 +56,7 @@ final class ForgeStats[F[_]: Sync] private (ref: Ref[F, SortedMap[BigInt, ForgeE
   def forged(epoch: BigInt): F[Unit] = update(epoch)(s => s.copy(forged = s.forged + 1))
   def failed(epoch: BigInt): F[Unit] = update(epoch)(s => s.copy(failed = s.failed + 1))
   def lost(epoch: BigInt): F[Unit] = update(epoch)(s => s.copy(lost = s.lost + 1))
-  def skipped(epoch: BigInt, reason: String): F[Unit] =
+  def skipped(epoch: BigInt, reason: ForgeSkip.Kind): F[Unit] =
     update(epoch)(s =>
       s.copy(skipped = s.skipped.updated(reason, s.skipped.getOrElse(reason, 0L) + 1))
     )

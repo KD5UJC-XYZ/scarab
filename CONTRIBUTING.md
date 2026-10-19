@@ -102,7 +102,8 @@ with a pattern that matches your own shell command line.
   wrapper standing in for domain cases. Never use `raiseError`/`throw` for a domain error; IO
   exceptions are mapped to `StorageError`/`PeerError` at the boundary only. No `.get`/`.toOption.get`
   on values that are not provably present. The remaining sweep and CI guard are tracked by M11-E
-  in [the roadmap](docs/roadmap.md), under [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82).
+  in [the roadmap](docs/roadmap.md). The original #82 is closed; the semantic follow-up is
+  [#189](https://github.com/KD5UJC-XYZ/scarab/issues/189).
 - **Functional code by default.** Imperative, side-effecting implementations are an exception only
   for performance-critical paths. Support each exception with profiling or benchmark evidence and
   a written reason; record measurements in [performance.md](docs/performance.md). Keep mutation

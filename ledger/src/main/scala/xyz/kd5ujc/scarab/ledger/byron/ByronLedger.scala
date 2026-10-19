@@ -14,7 +14,7 @@ enum ByronError:
   case HeaderTooLarge(max: BigInt, actual: BigInt)
   case BlockTooLarge(max: BigInt, actual: BigInt)
   case Decode(cause: LedgerDecodeError)
-  case ProofMismatch(which: String)
+  case ProofMismatch(which: ByronError.Proof)
   case Delegation(error: DelegationError)
   case Update(error: UpdateError)
   case TxTooLarge(max: BigInt, actual: BigInt)
@@ -24,9 +24,9 @@ enum ByronError:
   case WrongSignature(input: TxIn)
   case WrongKey(input: TxIn)
   case FeeTooSmall(min: BigInt, actual: BigInt)
-  case LovelaceOutOfRange(what: String)
+  case LovelaceOutOfRange(what: ByronError.LovelaceContext)
   case NetworkMagicMismatch(expected: Option[Long], actual: Option[Long])
-  case UnknownAttributes(what: String)
+  case UnknownAttributes(what: ByronError.AttributeOwner)
   case MissingDelegatedSignature
 
   def message: String = this match
@@ -34,7 +34,7 @@ enum ByronError:
     case HeaderTooLarge(m, a)        => s"header of $a bytes exceeds $m"
     case BlockTooLarge(m, a)         => s"block of $a bytes exceeds $m"
     case Decode(r)                   => s"block body does not decode: $r"
-    case ProofMismatch(w)            => s"$w payload does not match the header's proof"
+    case ProofMismatch(w)            => s"${w.label} payload does not match the header's proof"
     case Delegation(e)               => s"delegation: ${e.message}"
     case Update(e)                   => s"update: ${e.message}"
     case TxTooLarge(m, a)            => s"transaction of $a bytes exceeds $m"
@@ -44,10 +44,34 @@ enum ByronError:
     case WrongSignature(i) => s"witness signature of ${i.id.hex.take(16)}#${i.index} rejected"
     case WrongKey(i) => s"witness key does not match the address of ${i.id.hex.take(16)}#${i.index}"
     case FeeTooSmall(m, a)          => s"fee $a is below the minimum $m"
-    case LovelaceOutOfRange(w)      => s"lovelace out of range ($w)"
+    case LovelaceOutOfRange(w)      => s"lovelace out of range (${w.label})"
     case NetworkMagicMismatch(e, a) => s"output network magic $a, expected $e"
-    case UnknownAttributes(w)       => s"too many unknown attribute bytes in $w"
+    case UnknownAttributes(w)       => s"too many unknown attribute bytes in ${w.label}"
     case MissingDelegatedSignature  => "main header without a delegated signature"
+
+object ByronError:
+  /** `ProofValidationError` distinguishes these payloads (`cardano-ledger` f649f975,
+    * `Cardano/Chain/Block/Validation.hs:308-328`).
+    */
+  enum Proof(val label: String):
+    case Delegation extends Proof("delegation")
+    case Transaction extends Proof("transaction")
+    case Update extends Proof("update")
+
+  /** The three lovelace operations performed by `applyTx`. The reference uses free-text context
+    * (`Cardano/Chain/UTxO/Validation.hs:200-214`); this closed set preserves that distinction.
+    */
+  enum LovelaceContext(val label: String):
+    case InputBalance extends LovelaceContext("input balance")
+    case OutputBalance extends LovelaceContext("output balance")
+    case Fee extends LovelaceContext("fee")
+
+  /** `TxValidationUnknownAddressAttributes` versus `TxValidationUnknownAttributes`
+    * (`Cardano/Chain/UTxO/Validation.hs:92-102`).
+    */
+  enum AttributeOwner(val label: String):
+    case Address extends AttributeOwner("address")
+    case Transaction extends AttributeOwner("transaction")
 
 /** A Byron block's body, decoded: `[tx payload, ssc payload, delegation payload, update payload]`.
   * The SSC payload is not used on these networks and is not interpreted.
@@ -280,19 +304,19 @@ object ByronLedger:
         _ <- Either.cond(
           dlg == Blake2b.hash256.hash(body.rawDelegation),
           (),
-          ByronError.ProofMismatch("delegation")
+          ByronError.ProofMismatch(ByronError.Proof.Delegation)
         )
         _ <- Either.cond(
           count == body.txs.size &&
             merkle == ByronTx.merkleRoot(body.txs.map(_.tx.raw)) &&
             witnesses == Blake2b.hash256.hash(witnessBytes),
           (),
-          ByronError.ProofMismatch("transaction")
+          ByronError.ProofMismatch(ByronError.Proof.Transaction)
         )
         _ <- Either.cond(
           upd == Blake2b.hash256.hash(body.update.raw),
           (),
-          ByronError.ProofMismatch("update")
+          ByronError.ProofMismatch(ByronError.Proof.Update)
         )
       yield ()
     }
@@ -309,7 +333,7 @@ object ByronLedger:
             _ <- Either.cond(
               a.unknownAttributesLength < 128,
               (),
-              ByronError.UnknownAttributes("address")
+              ByronError.UnknownAttributes(ByronError.AttributeOwner.Address)
             )
             _ <- Either.cond(
               a.networkMagic == config.addressMagic,
@@ -345,18 +369,30 @@ object ByronLedger:
         (),
         ByronError.TxTooLarge(params.maxTxSize, aux.raw.size)
       )
-      _ <- Either.cond(tx.attributesLength < 128, (), ByronError.UnknownAttributes("transaction"))
+      _ <- Either.cond(
+        tx.attributesLength < 128,
+        (),
+        ByronError.UnknownAttributes(ByronError.AttributeOwner.Transaction)
+      )
       _ <- outputs(config, tx)
       spent = inputSet.toVector.map(utxo)
       balanceIn = spent.map(_.value).sum
       balanceOut = tx.outputs.map(_.value).sum
-      _ <- Either.cond(balanceIn <= MaxLovelace, (), ByronError.LovelaceOutOfRange("input balance"))
+      _ <- Either.cond(
+        balanceIn <= MaxLovelace,
+        (),
+        ByronError.LovelaceOutOfRange(ByronError.LovelaceContext.InputBalance)
+      )
       _ <- Either.cond(
         balanceOut <= MaxLovelace,
         (),
-        ByronError.LovelaceOutOfRange("output balance")
+        ByronError.LovelaceOutOfRange(ByronError.LovelaceContext.OutputBalance)
       )
-      _ <- Either.cond(balanceIn >= balanceOut, (), ByronError.LovelaceOutOfRange("fee"))
+      _ <- Either.cond(
+        balanceIn >= balanceOut,
+        (),
+        ByronError.LovelaceOutOfRange(ByronError.LovelaceContext.Fee)
+      )
       allRedeem = spent.forall(o => ByronAddress.decode(o.address).exists(_.isRedeem))
       minFee = if allRedeem then BigInt(0) else params.txFeePolicy.minimumFee(aux.raw.size)
       _ <- Either.cond(

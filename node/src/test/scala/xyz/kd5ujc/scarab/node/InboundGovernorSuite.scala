@@ -3,7 +3,15 @@ package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, Compute, VolatileChain}
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
-import xyz.kd5ujc.scarab.ledger.{Block, ChainError, Header, NodeError, Points}
+import xyz.kd5ujc.scarab.ledger.{
+  Block,
+  ChainError,
+  Header,
+  HeaderError,
+  NodeError,
+  PeerError,
+  Points
+}
 import cats.effect.{IO, Ref, Resource}
 import cats.mtl.{Handle, Stateful}
 import cats.syntax.all.*
@@ -14,14 +22,13 @@ import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.network.*
 import xyz.kd5ujc.scarab.node.forge.ForgedChain
 import xyz.kd5ujc.scarab.node.relay.ChainServer
-import munit.CatsEffectSuite
 import scala.concurrent.duration.*
 
 /** The inbound governor over in-memory bearers: a peer that only connects to us, offering duplex,
   * is followed over that same connection, with its headers validated before its blocks are fetched
   * (G2 with G6).
   */
-class InboundGovernorSuite extends CatsEffectSuite:
+class InboundGovernorSuite extends FailsOnUncaught:
   override def munitIOTimeout: FiniteDuration = 60.seconds
 
   private val magic = 42L
@@ -96,7 +103,8 @@ class InboundGovernorSuite extends CatsEffectSuite:
       runClients: Boolean = true,
       retryDelay: FiniteDuration = 10.seconds,
       transactions: Option[TxSubmissionClient.Source[IO]] = None,
-      clock: Option[SlotClock[IO]] = None
+      clock: Option[SlotClock[IO]] = None,
+      fatal: Fatal => IO[Unit] = _ => IO.unit
   ): IO[Local] =
     for
       ref <- Ref.of[IO, VolatileChain[MirrorState]](
@@ -164,7 +172,7 @@ class InboundGovernorSuite extends CatsEffectSuite:
         ),
         follow = peer => follower.session(peer),
         prepare = _ => IO.unit,
-        fatal = _ => IO.unit,
+        fatal = fatal,
         headers = headerCheck,
         transactions = transactions
       )
@@ -175,8 +183,8 @@ class InboundGovernorSuite extends CatsEffectSuite:
     * it is done the peer lets go. Returns its result and why our side of the connection ended.
     */
   private def connect[A](remoteNode: Option[Remote], us: Local)(
-      during: IO[String] => IO[A]
-  ): IO[(A, String)] =
+      during: IO[ConnectionEnd] => IO[A]
+  ): IO[(A, ConnectionEnd)] =
     Bearer.inMemory[IO](256).flatMap { (theirs, ours) =>
       us.governor.serve(ours, remote).start.flatMap { served =>
         val ended = served.joinWithNever.timeout(15.seconds)
@@ -198,6 +206,44 @@ class InboundGovernorSuite extends CatsEffectSuite:
           .flatMap(a => ended.map(a -> _))
       }
     }
+
+  private def peerFailure(end: ConnectionEnd): PeerError = end match
+    case ConnectionEnd.Closed(NetworkError.Closure.AbortedBy(error: PeerError)) => error
+    case other => fail(s"unexpected $other")
+
+  test("an unexpected inbound transport exception remains a defect with the original cause") {
+    val defect = new IllegalStateException("injected read defect")
+    val bearer = new Bearer[IO]:
+      def reads = fs2.Stream.raiseError[IO](defect)
+      def write(bytes: fs2.Chunk[Byte]) = IO.unit
+      def close = IO.unit
+    for
+      reported <- Ref.of[IO, Vector[Fatal]](Vector.empty)
+      us <- local(runClients = false, fatal = value => reported.update(_ :+ value))
+      outcome <- us.governor.serve(bearer, remote).timeout(5.seconds)
+      fatalities <- reported.get
+      table <- us.manager.snapshot
+    yield
+      outcome match
+        case ConnectionEnd.Defect(cause) => assert(cause eq defect)
+        case other                       => fail(s"unexpected $other")
+      fatalities match
+        case Vector(Fatal.Defect(cause)) => assert(cause eq defect)
+        case other                       => fail(s"unexpected $other")
+      assertEquals(table.counters, ConnectionState.Counters.zero)
+  }
+
+  test("connection JSON renders a typed session failure only at presentation") {
+    val failure = InboundGovernor.SessionFailure.Peer(PeerError.NoIntersection)
+    val json = InboundGovernor.json(
+      ConnectionManager.Snapshot(ConnectionState.Counters.zero, Vector.empty),
+      Vector(InboundGovernor.Session(remote.toString, ended = Some(failure)))
+    )
+    assertEquals(
+      json.hcursor.downField("inboundSessions").downArray.get[String]("ended"),
+      Right(failure.message)
+    )
+  }
 
   private def eventually[A](what: String)(read: IO[A])(ok: A => Boolean): IO[A] =
     def loop(left: Int): IO[A] =
@@ -259,10 +305,13 @@ class InboundGovernorSuite extends CatsEffectSuite:
       sessions <- us.governor.sessions
       table <- us.manager.snapshot
     yield
-      assert(outcome._2.contains("InvalidHeader("), outcome._2)
+      val failure = peerFailure(outcome._2)
+      assert(failure.isInstanceOf[PeerError.InvalidHeader])
       assertEquals(ranges, Vector.empty[(Point, Point)])
       assertEquals(chain.tip, ChainSync.Point.Origin)
-      assert(sessions.head.ended.exists(_.contains("invalid header")), sessions.toString)
+      sessions.head.ended match
+        case Some(InboundGovernor.SessionFailure.Peer(error)) => assert(error eq failure)
+        case other                                            => fail(s"unexpected $other")
       assertEquals(table.counters, ConnectionState.Counters.zero)
   }
 
@@ -295,10 +344,17 @@ class InboundGovernorSuite extends CatsEffectSuite:
       sessions <- us.governor.sessions
       table <- us.manager.snapshot
     yield
-      // The connection diagnostic renders the retained error cases.
-      assert(outcome._2.contains("InvalidHeader("), outcome._2)
-      assert(outcome._2.contains("FarFuture("), outcome._2)
-      assert(sessions.exists(_.ended.exists(_.contains("clock skew"))), sessions.toString)
+      val failure = peerFailure(outcome._2)
+      failure match
+        case PeerError.InvalidHeader(_, _: HeaderError.FarFuture) => ()
+        case other                                                => fail(s"unexpected $other")
+      assert(
+        sessions.exists(_.ended.exists {
+          case InboundGovernor.SessionFailure.Peer(error) => error eq failure
+          case _                                          => false
+        }),
+        sessions.toString
+      )
       // no block of the batch with a future header was requested, and nothing in the future applied
       assert(chain.tip != forged.headers.last.point)
       assert(chain.tipRef.forall(t => t.slot <= reference.slot + 20), chain.tipRef.toString)
@@ -318,7 +374,7 @@ class InboundGovernorSuite extends CatsEffectSuite:
       ranges <- remoteNode.ranges.get
       chain <- us.chain.get
     yield
-      assert(outcome._2.contains("InvalidHeader("), outcome._2)
+      assert(peerFailure(outcome._2).isInstanceOf[PeerError.InvalidHeader])
       assert(ranges.forall { case (_, to) => to != badHeader.point }, ranges.toString)
       // headers are checked a batch at a time, before any block of the batch: the batch with the
       // bad header is not fetched at all (how many blocks the batches before it held depends on the
@@ -356,7 +412,10 @@ class InboundGovernorSuite extends CatsEffectSuite:
           _.counters.inbound == 1
         ) *> Bearer.inMemory[IO](64).flatMap((_, ours2) => us.governor.serve(ours2, remote))
       }
-    yield assert(outcome._1.contains("already connected"), outcome._1)
+    yield outcome._1 match
+      case ConnectionEnd.Refused(ConnectionError.AlreadyConnected(address, _)) =>
+        assertEquals(address, remote.toString)
+      case other => fail(s"unexpected $other")
   }
 
   /** A mempool that never holds a transaction: a blocking request for ids waits forever. */

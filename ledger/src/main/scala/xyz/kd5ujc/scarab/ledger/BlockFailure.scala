@@ -24,16 +24,12 @@ object BlockRule:
   given Eq[BlockRule] = Eq.fromUniversalEquals
   given Show[BlockRule] = Show.show(_.name)
 
-/** Why `NodeRules.applyBlock` refused a block (design D6 of the ledger-state mirror, step 2): a
-  * closed ADT in place of the `(rule, reason)` pair of strings, used by the old rules now and by
-  * the era-indexed ones when they are ported, so that the differential harness compares verdicts as
-  * values.
+/** Why `NodeRules.applyBlock` refused a block: a closed ADT shared by the bootstrap and era-indexed
+  * rules, so that the differential harness compares verdicts as values.
   *
   * Every case carries what the rule found and renders its [[rule]] family and its [[reason]] text
   * (the two fields of the `rejected` log event, and of [[ValidationError]]); nothing branches on
-  * the text. The three cases that still carry the text of a rule not yet closed (`Byron`, `Praos`,
-  * `Lite` /`Handover`, `TxDecode`) say so: their upstream returns `String`, and they go when that
-  * does (the transitional constructors).
+  * the text. Nested rule and decoding failures retain their typed causes through this boundary.
   */
 enum BlockFailure:
   // ---- structure: the block against the chain and its own header
@@ -66,7 +62,7 @@ enum BlockFailure:
   /** The block does not decode. */
   case Decode(error: ChainError)
 
-  /** A transaction of the block does not decode (`text` is the decoder's text). */
+  /** A transaction of the block does not decode; its decoder failure is retained. */
   case TxDecode(txId: Bytes, error: LedgerDecodeError)
 
   // ---- byron
@@ -96,10 +92,10 @@ enum BlockFailure:
 
   // ---- ledger
 
-  /** The ledger-lite rules of the bootstrap mode refused the block (`text` is their text). */
+  /** The ledger-lite rules of the bootstrap mode refused the block. */
   case Lite(error: LedgerDecodeError)
 
-  /** The Byron-to-Shelley hand-over refused the final Byron state (`text` is its text). */
+  /** The Byron-to-Shelley hand-over refused the final Byron state. */
   case Handover(cause: HandoverProblem)
 
   /** The total supply is not the maximum entering an epoch (before Conway). */

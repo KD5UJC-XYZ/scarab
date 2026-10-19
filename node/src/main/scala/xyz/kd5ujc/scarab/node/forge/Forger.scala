@@ -78,7 +78,7 @@ enum ForgeEvent:
   case KesPersistFailed(kesPeriod: BigInt, error: ForgeError)
 
   /** A slot we cannot forge on (the tip is too old to forge from). */
-  case Skipped(slot: BigInt, reason: String)
+  case Skipped(slot: BigInt, reason: ForgeSkip)
 
   /** A real problem (not simply losing the leader lottery). */
   case Failed(slot: BigInt, error: ForgeError)
@@ -188,9 +188,7 @@ final class Forger[F[_]: Async, S](
         (l + 1 until slot)
           .take(Forger.MaxReportedMissed)
           .toList
-          .traverse_(missed =>
-            skipped(missed, ForgeEpochStats.Busy, "the forger was busy with an earlier slot")
-          )
+          .traverse_(missed => skipped(missed, ForgeSkip.Busy))
       )
       // the epoch the previous slot was in has ended: its counters are final
       _ <- last.traverse_ { l =>
@@ -206,8 +204,10 @@ final class Forger[F[_]: Async, S](
       _ <- loop(Some(slot))
     yield ()
 
-  private def skipped(slot: BigInt, key: String, reason: String): F[Unit] =
-    stats.skipped(geometry.epochOf(slot), key) *> events.emit(ForgeEvent.Skipped(slot, reason))
+  private def skipped(slot: BigInt, reason: ForgeSkip): F[Unit] =
+    stats.skipped(geometry.epochOf(slot), reason.kind) *> events.emit(
+      ForgeEvent.Skipped(slot, reason)
+    )
 
   /** Everything for one slot; nothing escapes (a failure is reported and the next slot goes on). */
   private[forge] def step(slot: BigInt): F[Unit] =
@@ -232,16 +232,12 @@ final class Forger[F[_]: Async, S](
       connected <- ready
       tipSlot = current.tipRef.map(_.slot)
       _ <-
-        if !connected then stats.skipped(geometry.epochOf(slot), ForgeEpochStats.NotConnected)
+        if !connected then stats.skipped(geometry.epochOf(slot), ForgeSkip.Kind.NotConnected)
         else if tipSlot.exists(_ >= slot) then
           // a block already occupies this slot or a later one
-          stats.skipped(geometry.epochOf(slot), ForgeEpochStats.SlotOccupied)
+          stats.skipped(geometry.epochOf(slot), ForgeSkip.Kind.SlotOccupied)
         else if slot - tipSlot.getOrElse(BigInt(0)) > maxTipAge then
-          skipped(
-            slot,
-            ForgeEpochStats.TipTooOld,
-            s"the tip (${tipSlot.fold("genesis")(t => s"slot $t")}) is too old to forge from"
-          )
+          skipped(slot, ForgeSkip.TipTooOld(tipSlot))
         else forge(current, slot)
     yield ()
 

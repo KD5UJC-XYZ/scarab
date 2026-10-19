@@ -31,38 +31,47 @@ final case class Config(
 object Config:
   final case class ModuleSpec(name: String, subpackage: String, files: Vector[String])
 
-  private def err(line: Int, message: String): Nothing = throw GenException(
-    GenError.BadConfig(line, message)
+  private val empty = Config(
+    "",
+    Vector.empty,
+    Vector.empty,
+    Set.empty,
+    Map.empty,
+    Map.empty,
+    Map.empty,
+    Map.empty,
+    Set.empty
   )
 
-  def parse(text: String): Config =
-    var pkg = ""
-    val modules = Vector.newBuilder[ModuleSpec]
-    val roots = Vector.newBuilder[QName]
-    var preserve = Set.empty[QName]
-    var rename = Map.empty[QName, String]
-    var cases = Map.empty[QName, Vector[String]]
-    var strip = Map.empty[QName, Vector[String]]
-    var fields = Map.empty[(QName, String), String]
-    var external = Set.empty[QName]
-    def q(line: Int, s: String): QName = s.split(":", 2) match
-      case Array(m, n) => QName(m, n)
-      case _           => err(line, s"expected module:rule, got `$s`")
-    text.linesIterator.zipWithIndex.foreach { (raw, i) =>
-      val line = i + 1
-      val words = raw.takeWhile(_ != '#').trim.split("\\s+").toVector.filter(_.nonEmpty)
-      words match
-        case Vector()                                        => ()
-        case Vector("package", p)                            => pkg = p
-        case "module" +: n +: sub +: files if files.nonEmpty => modules += ModuleSpec(n, sub, files)
-        case Vector("root", r)                               => roots += q(line, r)
-        case Vector("preserve", r)                           => preserve += q(line, r)
-        case Vector("rename", r, n)                          => rename += q(line, r) -> n
-        case "cases" +: r +: names if names.nonEmpty         => cases += q(line, r) -> names
-        case "strip" +: r +: ps if ps.nonEmpty               => strip += q(line, r) -> ps
-        case Vector("field", r, k, n)                        => fields += (q(line, r), k) -> n
-        case Vector("external", r)                           => external += q(line, r)
-        case other => err(line, s"unrecognised directive: ${other.mkString(" ")}")
-    }
-    if pkg.isEmpty then err(0, "missing `package`")
-    Config(pkg, modules.result(), roots.result(), preserve, rename, cases, strip, fields, external)
+  def parse(text: String): Either[GenError, Config] =
+    text.linesIterator.zipWithIndex
+      .foldLeft[Either[GenError, Config]](Right(empty)) { case (acc, (raw, i)) =>
+        acc.flatMap { cfg =>
+          val line = i + 1
+          val words = raw.takeWhile(_ != '#').trim.split("\\s+").toVector.filter(_.nonEmpty)
+          def q(s: String): Either[GenError, QName] = s.split(":", 2) match
+            case Array(m, n) => Right(QName(m, n))
+            case _           => Left(GenError.BadConfig(line, ConfigProblem.QualifiedName(s)))
+          words match
+            case Vector()             => Right(cfg)
+            case Vector("package", p) => Right(cfg.copy(basePackage = p))
+            case "module" +: n +: sub +: files if files.nonEmpty =>
+              Right(cfg.copy(modules = cfg.modules :+ ModuleSpec(n, sub, files)))
+            case Vector("root", r)     => q(r).map(n => cfg.copy(roots = cfg.roots :+ n))
+            case Vector("preserve", r) => q(r).map(n => cfg.copy(preserve = cfg.preserve + n))
+            case Vector("rename", r, n) =>
+              q(r).map(r => cfg.copy(rename = cfg.rename.updated(r, n)))
+            case "cases" +: r +: names if names.nonEmpty =>
+              q(r).map(r => cfg.copy(cases = cfg.cases.updated(r, names)))
+            case "strip" +: r +: ps if ps.nonEmpty =>
+              q(r).map(r => cfg.copy(strip = cfg.strip.updated(r, ps)))
+            case Vector("field", r, k, n) =>
+              q(r).map(r => cfg.copy(fields = cfg.fields.updated((r, k), n)))
+            case Vector("external", r) => q(r).map(r => cfg.copy(external = cfg.external + r))
+            case other => Left(GenError.BadConfig(line, ConfigProblem.Directive(other)))
+        }
+      }
+      .flatMap(cfg =>
+        if cfg.basePackage.isEmpty then Left(GenError.BadConfig(0, ConfigProblem.MissingPackage))
+        else Right(cfg)
+      )

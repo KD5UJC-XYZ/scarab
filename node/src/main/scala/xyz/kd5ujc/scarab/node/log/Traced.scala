@@ -207,7 +207,7 @@ object Traced:
         "remote" -> remote.asJson,
         "what" -> "closed".asJson,
         "provenance" -> provenance.toString.asJson,
-        "reason" -> String.valueOf(reason).asJson
+        "reason" -> reason.message.asJson
       )
 
   given Traced[MempoolEvent] =
@@ -304,7 +304,7 @@ object Traced:
         "message" -> error.message.asJson
       )
     case ForgeEvent.Skipped(slot, reason) =>
-      EventKind.ForgeSkipped.line("slot" -> slot.asJson, "reason" -> String.valueOf(reason).asJson)
+      EventKind.ForgeSkipped.line("slot" -> slot.asJson, "reason" -> reason.message.asJson)
     case ForgeEvent.Failed(slot, error) =>
       EventKind.ForgeFailed.line(
         "slot" -> slot.asJson,

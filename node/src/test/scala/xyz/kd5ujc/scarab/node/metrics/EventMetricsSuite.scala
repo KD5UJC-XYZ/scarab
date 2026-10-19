@@ -5,10 +5,11 @@ import cats.effect.IO
 import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent}
-import xyz.kd5ujc.scarab.network.ConnectionEvent
+import xyz.kd5ujc.scarab.network.{ConnectionEnd, ConnectionEvent}
+import xyz.kd5ujc.scarab.ledger.PeerError
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.selection.{Churn, FetchMode}
-import xyz.kd5ujc.scarab.node.{HeaderGate, InboundEvent, Output, Peer}
+import xyz.kd5ujc.scarab.node.{HeaderGate, InboundEvent, InboundGovernor, Output, Peer}
 import xyz.kd5ujc.scarab.node.forge.ForgeEvent
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, MempoolEvents, Rejection}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ConnectionState, Era}
@@ -180,10 +181,28 @@ class EventMetricsSuite extends CatsEffectSuite:
       for
         _ <- em.connection.emit(ConnectionEvent.Opened("a", ConnectionState.Provenance.Outbound))
         _ <- em.connection.emit(
-          ConnectionEvent.Closed("a", ConnectionState.Provenance.Outbound, "x")
+          ConnectionEvent.Closed(
+            "a",
+            ConnectionState.Provenance.Outbound,
+            ConnectionEnd.Released
+          )
         )
-        _ <- em.inbound.emit("b", InboundEvent.SessionEnded("x", dropped = true))
-        _ <- em.inbound.emit("b", InboundEvent.SessionEnded("x", dropped = false))
+        _ <- em.inbound.emit(
+          "b",
+          InboundEvent.SessionEnded(
+            InboundGovernor.SessionFailure
+              .Peer(PeerError.NoIntersection),
+            dropped = true
+          )
+        )
+        _ <- em.inbound.emit(
+          "b",
+          InboundEvent.SessionEnded(
+            InboundGovernor.SessionFailure
+              .Peer(PeerError.NoIntersection),
+            dropped = false
+          )
+        )
         s <- metrics.snapshot
       yield
         assertEquals(counter(s, Catalogue.connectionEvents, ConnectionEventLabel.Opened), Some(1.0))

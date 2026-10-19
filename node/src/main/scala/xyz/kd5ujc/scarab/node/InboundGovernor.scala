@@ -25,13 +25,13 @@ enum InboundEvent:
   case Following(intersection: ChainSync.Point)
 
   /** Our client session on the connection ended; the connection stays unless `dropped`. */
-  case SessionEnded(reason: String, dropped: Boolean)
+  case SessionEnded(reason: InboundGovernor.SessionFailure, dropped: Boolean)
 
   /** The connection ended. */
-  case Closed(reason: String)
+  case Closed(reason: InboundEnd)
 
   /** The connection manager refused the connection. */
-  case Refused(reason: String)
+  case Refused(reason: ConnectionError)
 
 trait InboundEvents[F[_]]:
   def emit(remote: String, event: InboundEvent): F[Unit]
@@ -90,7 +90,7 @@ final class InboundGovernor[F[_]: Async] private (
     }
 
   /** Serve one accepted connection until it ends; returns why it ended. Never raises. */
-  def serve(bearer: Bearer[F], remote: SocketAddress[IpAddress]): F[String] =
+  def serve(bearer: Bearer[F], remote: SocketAddress[IpAddress]): F[ConnectionEnd] =
     Handle
       .allow[ConnectionError] {
         // a connection we opened is initiator-only: the peer can read our chain only over a
@@ -109,14 +109,14 @@ final class InboundGovernor[F[_]: Async] private (
               }
               .rescue {
                 case NetworkError.Defect(cause) =>
-                  fatal(Fatal.Defect(cause)).as(NetworkError.Defect(cause).message)
-                case other => F.pure(other.message)
+                  fatal(Fatal.Defect(cause)).as(ConnectionEnd.Defect(cause))
+                case other => F.pure(ConnectionEnd.fromNetwork(other))
               }
               .flatTap(reason => connection.close(reason))
         }
       }
-      .rescue(error => emit(remote, InboundEvent.Refused(error.message)).as(error.message))
-      .flatTap(reason => emit(remote, InboundEvent.Closed(reason)))
+      .rescue(error => emit(remote, InboundEvent.Refused(error)).as(ConnectionEnd.Refused(error)))
+      .flatTap(reason => emit(remote, InboundEvent.Closed(InboundEnd.Connection(reason))))
 
   /** After the handshake: record the data flow and, on a duplex connection, run our clients. */
   private def negotiated(
@@ -207,9 +207,10 @@ final class InboundGovernor[F[_]: Async] private (
       }
       disposition = FailurePolicy.disposition(end)
       reason = disposition match
-        case Disposition.Forget | Disposition.Backoff => SessionEnd.peerError(end).map(_.message)
-        case Disposition.StopNode(f)                  => Some(f.message)
-        case Disposition.Settled                      => None
+        case Disposition.Forget | Disposition.Backoff =>
+          SessionEnd.peerError(end).map(InboundGovernor.SessionFailure.Peer(_))
+        case Disposition.StopNode(f) => Some(InboundGovernor.SessionFailure.Fatal(f))
+        case Disposition.Settled     => None
       drop = disposition == Disposition.Forget
       _ <- reason.traverse_ { why =>
         val closure = SessionEnd
@@ -246,7 +247,11 @@ final class InboundGovernor[F[_]: Async] private (
         case None => F.unit
         case Some(PeerError.NoIntersection) =>
           update(remote)(s => s.copy(retries = s.retries + 1)) *>
-            emit(remote, InboundEvent.SessionEnded(PeerError.NoIntersection.message, false)) *>
+            emit(
+              remote,
+              InboundEvent
+                .SessionEnded(InboundGovernor.SessionFailure.Peer(PeerError.NoIntersection), false)
+            ) *>
             F.sleep(config.retryDelay) *> following(remote, connection)
         case Some(error) => Raise[F, PeerError].raise(error)
       }
@@ -271,6 +276,15 @@ final class InboundGovernor[F[_]: Async] private (
   private def tipBlock(tip: ChainSync.Tip): Option[BigInt] = Some(tip.blockNo.value)
 
 object InboundGovernor:
+  /** A client session's retained failure, before log/JSON presentation. */
+  enum SessionFailure:
+    case Peer(error: PeerError)
+    case Fatal(error: xyz.kd5ujc.scarab.node.Fatal)
+
+    def message: String = this match
+      case Peer(error)  => error.message
+      case Fatal(error) => error.message
+
   /** The connection table and the inbound sessions as JSON (`GET /connections`). */
   def json(
       snapshot: ConnectionManager.Snapshot,
@@ -296,7 +310,7 @@ object InboundGovernor:
           "rollbacks" -> s.rollbacks.asJson,
           "retries" -> s.retries.asJson,
           "peerTipBlock" -> s.peerTip.map(_.toString).asJson,
-          "ended" -> s.ended.asJson
+          "ended" -> s.ended.map(_.message).asJson
         )
       }.asJson
     )
@@ -311,7 +325,7 @@ object InboundGovernor:
       /** Times the peer shared no point with our chain and the session was started again. */
       retries: Long = 0,
       peerTip: Option[BigInt] = None,
-      ended: Option[String] = None
+      ended: Option[SessionFailure] = None
   )
 
   /** The follower session over the peer, raising a [[PeerError]] when the peer fails. */

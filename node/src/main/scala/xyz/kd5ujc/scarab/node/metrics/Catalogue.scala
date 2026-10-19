@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node.metrics
 
 import xyz.kd5ujc.scarab.ledger.BlockRule
-import xyz.kd5ujc.scarab.node.forge.ForgeEpochStats
+import xyz.kd5ujc.scarab.node.forge.ForgeSkip
 import xyz.kd5ujc.scarab.network.selection.{Churn, GovernorState, Origin}
 import xyz.kd5ujc.scarab.node.mempool.Rejection
 import xyz.kd5ujc.scarab.protocol.{ConnectionState, Era}
@@ -97,19 +97,17 @@ object RejectionLabel:
     case Rejection.WrongEra(_)    => WrongEra
     case Rejection.NoLedger(_)    => NoLedger
 
-/** Why the forger did not check a slot. The forger counts the reasons as text; anything it does not
-  * know is `Other`.
+/** Why the forger did not check a slot. `Other` remains as a zero-valued series for compatibility.
   */
 enum SkipLabel derives LabelValue:
   case Busy, TipTooOld, SlotOccupied, NotConnected, Other
 
 object SkipLabel:
-  def parse(reason: String): SkipLabel = reason match
-    case ForgeEpochStats.Busy         => Busy
-    case ForgeEpochStats.TipTooOld    => TipTooOld
-    case ForgeEpochStats.SlotOccupied => SlotOccupied
-    case ForgeEpochStats.NotConnected => NotConnected
-    case _                            => Other
+  def of(reason: ForgeSkip.Kind): SkipLabel = reason match
+    case ForgeSkip.Kind.Busy         => Busy
+    case ForgeSkip.Kind.TipTooOld    => TipTooOld
+    case ForgeSkip.Kind.SlotOccupied => SlotOccupied
+    case ForgeSkip.Kind.NotConnected => NotConnected
 
 /** What became of a reload of the KES key and certificate: the credentials were replaced (or
   * confirmed), or the reload was refused and the old ones kept.

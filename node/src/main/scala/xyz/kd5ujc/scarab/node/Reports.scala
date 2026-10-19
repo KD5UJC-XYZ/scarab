@@ -21,7 +21,11 @@ object Reports:
       "lostSlotBattles" -> s.lost.asJson,
       "failed" -> s.failed.asJson,
       "skipped" -> s.skippedTotal.asJson,
-      "skippedByReason" -> s.skipped.toList.sortBy(_._1).toMap.asJson,
+      "skippedByReason" -> s.skipped.toList
+        .map((reason, count) => reason.key -> count)
+        .sortBy(_._1)
+        .toMap
+        .asJson,
       "forgeLatencyMs" -> Json.obj(
         "count" -> s.latencyCount.asJson,
         "mean" -> (if s.latencyCount == 0 then Json.Null

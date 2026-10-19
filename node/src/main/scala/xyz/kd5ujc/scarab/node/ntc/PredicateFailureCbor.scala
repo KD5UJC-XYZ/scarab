@@ -303,7 +303,9 @@ object PredicateFailureCbor:
         case None => w.array(1).uint(0)
         case Some(fs) =>
           w.array(2).uint(1)
-          list(w, fs) { case (k, (text, detail)) => k.array(3).uint(1).text(text).bytes(detail) }
+          list(w, fs) { (k, failure) =>
+            k.array(3).uint(1).text(failure.cause.message).bytes(failure.reconstructionDetail)
+          }
     case UtxosFailure.CollectErrors(errors) =>
       ContextFailureCbor.utxos(errors).fold(notInConway(w))(raw => { w.raw(raw); () })
 

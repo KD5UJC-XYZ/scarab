@@ -192,11 +192,15 @@ class LogRouterSuite extends CatsEffectSuite:
 
   test("the human format: time, namespace, severity, event and fields") {
     val line = summon[Traced[NodeEvent]].line(
-      NodeEvent.Inbound("10.0.0.1:3001", xyz.kd5ujc.scarab.node.InboundEvent.Refused("limit"))
+      NodeEvent.Inbound(
+        "10.0.0.1:3001",
+        xyz.kd5ujc.scarab.node.InboundEvent
+          .Refused(xyz.kd5ujc.scarab.network.ConnectionError.InboundLimit("10.0.0.1:3001", 64))
+      )
     )
     assertEquals(
       Render.human(line, java.time.Instant.parse("2026-10-16T12:00:00Z")),
-      "[2026-10-16T12:00:00Z][Net.Inbound](Warning) inbound remote=10.0.0.1:3001 state=refused reason=limit"
+      "[2026-10-16T12:00:00Z][Net.Inbound](Warning) inbound remote=10.0.0.1:3001 state=refused reason=refused inbound connection from 10.0.0.1:3001: 64 connections accepted already"
     )
   }
 

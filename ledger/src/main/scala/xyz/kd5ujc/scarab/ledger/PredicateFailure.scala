@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import xyz.kd5ujc.scarab.plutus.ExUnits
+import xyz.kd5ujc.scarab.plutus.{EvalFailure, ExUnits}
 import xyz.kd5ujc.scarab.codec.Bytes
 
 /** A pair of values a rule compared (`Mismatch r a` in the ledger): what the transaction supplied
@@ -31,13 +31,20 @@ enum PpupFailure:
   /** A protocol version that does not follow the one in force (`PVCannotFollowPPUP`). */
   case PVCannotFollow(major: BigInt, minor: BigInt)
 
+/** The evaluator's cause, retained until node-to-client serialization. The reference's
+  * `FailureDescription.PlutusFailure` holds text and reconstruction bytes (`cardano-ledger`
+  * f649f975, `Alonzo/Rules/Utxos.hs:259-290`); keeping the cause here preserves its cases and
+  * nested exceptions instead of discarding them into the wire presentation.
+  */
+final case class PlutusFailure(cause: EvalFailure, reconstructionDetail: Bytes)
+
 /** Why UTXOS refused a transaction. */
 enum UtxosFailure:
   /** The `is_valid` tag of the transaction disagrees with the evaluation of its scripts. `isValid`
     * is the tag the transaction carries; `failures` are the Plutus errors when the scripts failed
     * though the tag says they pass (none when the scripts passed though the tag says they fail).
     */
-  case ValidationTagMismatch(isValid: Boolean, failures: Option[Vector[(String, Bytes)]])
+  case ValidationTagMismatch(isValid: Boolean, failures: Option[Vector[PlutusFailure]])
 
   /** The evaluation of a script could not be set up (`CollectErrors`,
     * `Alonzo/Rules/Utxos.hs:94-100`); a phase-1 failure.

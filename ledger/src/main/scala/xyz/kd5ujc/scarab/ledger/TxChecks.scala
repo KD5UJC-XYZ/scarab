@@ -103,7 +103,7 @@ object TxChecks:
                       UtxoFailure.Utxos(
                         UtxosFailure.ValidationTagMismatch(
                           true,
-                          Some(Vector(reason.message -> Bytes.empty))
+                          Some(Vector(PlutusFailure(reason, Bytes.empty)))
                         )
                       )
                     )

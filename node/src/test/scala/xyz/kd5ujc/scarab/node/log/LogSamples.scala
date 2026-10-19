@@ -25,9 +25,11 @@ import xyz.kd5ujc.scarab.ledger.{
   PlutusStats,
   StorageError
 }
-import xyz.kd5ujc.scarab.network.{ConnectionError, ConnectionEvent}
+import xyz.kd5ujc.scarab.network.{ConnectionEnd, ConnectionError, ConnectionEvent, NetworkError}
 import xyz.kd5ujc.scarab.node.{
+  InboundEnd,
   InboundEvent,
+  InboundGovernor,
   LedgerPeersTrace,
   NodeSetup,
   PeerSnapshotError,
@@ -35,7 +37,7 @@ import xyz.kd5ujc.scarab.node.{
 }
 import xyz.kd5ujc.scarab.ledger.state.{Derived, MirrorError}
 import xyz.kd5ujc.scarab.ledger.PoolRelayError
-import xyz.kd5ujc.scarab.node.forge.{ForgeEpochStats, ForgeEvent, ReloadRefusal}
+import xyz.kd5ujc.scarab.node.forge.{ForgeSkip, ForgeEpochStats, ForgeEvent, ReloadRefusal}
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, Rejection}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ConnectionState, Era}
 import xyz.kd5ujc.scarab.storage.{
@@ -193,10 +195,23 @@ object LogSamples:
     InboundEvent.Duplex,
     InboundEvent.Unidirectional,
     InboundEvent.Following(point),
-    InboundEvent.SessionEnded("done", dropped = false),
-    InboundEvent.SessionEnded("timeout", dropped = true),
-    InboundEvent.Closed("eof"),
-    InboundEvent.Refused("limit")
+    InboundEvent.SessionEnded(
+      InboundGovernor.SessionFailure
+        .Peer(PeerError.NoIntersection),
+      dropped = false
+    ),
+    InboundEvent.SessionEnded(
+      InboundGovernor.SessionFailure
+        .Peer(PeerError.NoIntersection),
+      dropped = true
+    ),
+    InboundEvent.Closed(
+      InboundEnd.Connection(
+        ConnectionEnd
+          .Closed(NetworkError.Closure.PeerClosed)
+      )
+    ),
+    InboundEvent.Refused(ConnectionError.InboundLimit("10.0.0.2:4000", 64))
   )
 
   val connection: List[ConnectionEvent] = List(
@@ -207,7 +222,12 @@ object LogSamples:
       ConnectionState.Unnegotiated(ConnectionState.Provenance.Outbound)
     ),
     ConnectionEvent.Refused(ConnectionError.InboundLimit("10.0.0.2:4000", 64)),
-    ConnectionEvent.Closed("10.0.0.1:3001", ConnectionState.Provenance.Inbound, "eof")
+    ConnectionEvent.Closed(
+      "10.0.0.1:3001",
+      ConnectionState.Provenance.Inbound,
+      ConnectionEnd
+        .Closed(NetworkError.Closure.PeerClosed)
+    )
   )
 
   val mempool: List[MempoolEvent] = List(
@@ -233,7 +253,7 @@ object LogSamples:
     adopted = 4,
     lost = 1,
     failed = 0,
-    skipped = Map("busy" -> 2L, "tipTooOld" -> 1L),
+    skipped = Map(ForgeSkip.Kind.Busy -> 2L, ForgeSkip.Kind.TipTooOld -> 1L),
     latencyCount = 4,
     latencyTotalMs = 50,
     latencyMaxMs = 20
@@ -281,7 +301,7 @@ object LogSamples:
         xyz.kd5ujc.scarab.ledger.ForgeKeyProblem.Io(new java.io.IOException("disk full"))
       )
     ),
-    ForgeEvent.Skipped(BigInt(4201), "busy"),
+    ForgeEvent.Skipped(BigInt(4201), ForgeSkip.Busy),
     ForgeEvent.Failed(BigInt(4202), ForgeError.KeyPeriodOutOfRange(33, 0, 32)),
     ForgeEvent.EpochSummary(BigInt(3), forgeStats),
     ForgeEvent.EpochSummary(BigInt(4), ForgeEpochStats())
