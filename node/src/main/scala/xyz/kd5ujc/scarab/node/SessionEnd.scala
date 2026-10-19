@@ -118,13 +118,22 @@ object SessionEnd:
     * [[Defect]].
     */
   def scoped[F[_]: MonadThrow: Defer](node: Handle[F, NodeError])(
-      body: (Handle[F, SessionEnd], Raise[F, PeerError]) ?=> F[SessionEnd]
+      body: (Handle[F, SessionEnd], Handle[F, NodeError]) ?=> F[SessionEnd]
   ): F[SessionEnd] =
     Fibers
       .scoped[F, SessionEnd, SessionEnd](Defect(_)) {
         val scope = summon[Handle[F, SessionEnd]]
         node
-          .attempt(body(using scope, raiseOf(scope)))
+          .attempt {
+            Defer[F].defer {
+              Handle
+                .allow[NodeError] {
+                  val caller = summon[Handle[F, NodeError]]
+                  Defer[F].defer(body(using scope, caller))
+                }
+                .rescue(e => scope.raise[SessionEnd, SessionEnd](of(e)))
+            }
+          }
           .flatMap(_.fold(e => scope.raise[SessionEnd, SessionEnd](of(e)), MonadThrow[F].pure))
       }
       .map(_.merge)

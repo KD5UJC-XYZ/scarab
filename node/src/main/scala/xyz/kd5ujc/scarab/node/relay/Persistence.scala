@@ -2,6 +2,8 @@
 package xyz.kd5ujc.scarab.node.relay
 
 import cats.Monad
+import cats.mtl.Raise
+import xyz.kd5ujc.scarab.ledger.{StorageError, ChainError}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
@@ -16,6 +18,10 @@ object Persistence:
       first: ChainPersistence[F, S],
       second: ChainPersistence[F, S]
   ): ChainPersistence[F, S] = new ChainPersistence[F, S]:
-    def extended(ref: BlockRef, raw: Bytes, immutable: Vector[BlockRef], anchor: Anchor[S]) =
+    def extended(ref: BlockRef, raw: Bytes, immutable: Vector[BlockRef], anchor: Anchor[S])(using
+        Raise[F, StorageError],
+        Raise[F, ChainError]
+    ) =
       first.extended(ref, raw, immutable, anchor) *> second.extended(ref, raw, immutable, anchor)
-    def rolledBack(to: ChainSync.Point) = first.rolledBack(to) *> second.rolledBack(to)
+    def rolledBack(to: ChainSync.Point)(using Raise[F, StorageError], Raise[F, ChainError]) =
+      first.rolledBack(to) *> second.rolledBack(to)

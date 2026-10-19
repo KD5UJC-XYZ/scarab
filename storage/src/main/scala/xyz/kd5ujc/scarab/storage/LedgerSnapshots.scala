@@ -26,7 +26,9 @@ trait LedgerSnapshots[F[_], S]:
   /** The newest snapshot that decodes, passes its checksum and whose anchor `usable` accepts.
     * Snapshots that fail are reported and skipped, never raised.
     */
-  def restore(usable: Option[BlockRef] => F[Boolean]): F[LedgerSnapshots.Restored[S]]
+  def restore(usable: Option[BlockRef] => F[Boolean])(using
+      cats.mtl.Raise[F, StorageError]
+  ): F[LedgerSnapshots.Restored[S]]
 
   /** File names, newest first. */
   def list(using Raise[F, StorageError]): F[Vector[String]]
@@ -103,7 +105,9 @@ object FileLedgerSnapshots:
           .map(_.sorted.reverse)
       )
 
-    def readFile(name: String): F[Either[StorageError, StateSnapshot[S]]] =
+    def readFile(
+        name: String
+    )(using cats.mtl.Raise[F, StorageError]): F[Either[StorageError, StateSnapshot[S]]] =
       F.blocking(java.nio.file.Files.readAllBytes((dir / name).toNioPath)).attempt.flatMap {
         case Left(e) => F.pure(Left(StorageError.Io(name, e)))
         case Right(file) =>
@@ -145,7 +149,9 @@ object FileLedgerSnapshots:
                 yield Right(LedgerSnapshots.Written(name, size, snapshot.anchor))
             }
 
-      def restore(usable: Option[BlockRef] => F[Boolean]): F[LedgerSnapshots.Restored[S]] =
+      def restore(usable: Option[BlockRef] => F[Boolean])(using
+          cats.mtl.Raise[F, StorageError]
+      ): F[LedgerSnapshots.Restored[S]] =
         def go(
             rest: List[String],
             skipped: Vector[LedgerSnapshots.Skipped]

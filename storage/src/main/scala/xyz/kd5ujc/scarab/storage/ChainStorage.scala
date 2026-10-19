@@ -68,25 +68,39 @@ trait ChainPersistence[F[_], S]:
   /** A block was applied. `immutable` are the blocks that just aged past `k` (oldest first) and
     * `anchor` the chain's new immutable boundary.
     */
-  def extended(ref: BlockRef, raw: Bytes, immutable: Vector[BlockRef], anchor: Anchor[S]): F[Unit]
+  def extended(ref: BlockRef, raw: Bytes, immutable: Vector[BlockRef], anchor: Anchor[S])(using
+      cats.mtl.Raise[F, StorageError],
+      cats.mtl.Raise[F, ChainError]
+  ): F[Unit]
 
   /** The volatile chain now ends at `to`. */
-  def rolledBack(to: ChainSync.Point): F[Unit]
+  def rolledBack(
+      to: ChainSync.Point
+  )(using cats.mtl.Raise[F, StorageError], cats.mtl.Raise[F, ChainError]): F[Unit]
 
 object ChainPersistence:
   /** No block storage, but the backing store still follows the immutable tip. */
-  def backingOnly[F[_]: cats.Monad, S](backing: StateBacking[F, S])(using
-      Raise[F, StorageError]
-  ): ChainPersistence[F, S] =
+  def backingOnly[F[_]: cats.Monad, S](backing: StateBacking[F, S]): ChainPersistence[F, S] =
     new ChainPersistence[F, S]:
-      def extended(ref: BlockRef, raw: Bytes, immutable: Vector[BlockRef], anchor: Anchor[S]) =
+      def extended(ref: BlockRef, raw: Bytes, immutable: Vector[BlockRef], anchor: Anchor[S])(using
+          cats.mtl.Raise[F, StorageError],
+          cats.mtl.Raise[F, ChainError]
+      ) =
         if immutable.isEmpty then cats.Monad[F].unit else backing.advance(anchor.state)
-      def rolledBack(to: ChainSync.Point) = cats.Monad[F].unit
+      def rolledBack(
+          to: ChainSync.Point
+      )(using cats.mtl.Raise[F, StorageError], cats.mtl.Raise[F, ChainError]) = cats.Monad[F].unit
 
   def none[F[_]: cats.Applicative, S]: ChainPersistence[F, S] = new ChainPersistence[F, S]:
-    def extended(ref: BlockRef, raw: Bytes, immutable: Vector[BlockRef], anchor: Anchor[S]) =
+    def extended(ref: BlockRef, raw: Bytes, immutable: Vector[BlockRef], anchor: Anchor[S])(using
+        cats.mtl.Raise[F, StorageError],
+        cats.mtl.Raise[F, ChainError]
+    ) =
       cats.Applicative[F].unit
-    def rolledBack(to: ChainSync.Point) = cats.Applicative[F].unit
+    def rolledBack(
+        to: ChainSync.Point
+    )(using cats.mtl.Raise[F, StorageError], cats.mtl.Raise[F, ChainError]) =
+      cats.Applicative[F].unit
 
 /** The ChainDB: an [[ImmutableStore]], [[LedgerSnapshots]] and a [[VolatileStore]] under one
   * directory, and the network identity the database was created for ([[NetworkIdentityFile]]).
@@ -219,7 +233,8 @@ object ChainStorage:
   )(using
       SnapshotFormat[F, S],
       Raise[F, StorageError],
-      Raise[F, ChainError]
+      Raise[F, ChainError],
+      Raise[F, xyz.kd5ujc.scarab.ledger.ValidationError]
   ): Resource[F, Recovered[F, S]] =
     val F = Async[F]
     for
@@ -422,7 +437,11 @@ object ChainStorage:
       from: Option[BlockRef],
       state: S,
       began: FiniteDuration
-  )(using chainRaise: Raise[F, ChainError]): F[(Option[BlockRef], S)] =
+  )(using
+      chainRaise: Raise[F, ChainError],
+      storageRaise: Raise[F, StorageError],
+      validationRaise: Raise[F, xyz.kd5ujc.scarab.ledger.ValidationError]
+  ): F[(Option[BlockRef], S)] =
     val F = Async[F]
     final case class Acc(anchor: Option[BlockRef], state: S, count: Long)
     def elapsed: F[Long] = Clock[F].monotonic.map(now => (now - began).toMillis)
@@ -481,8 +500,7 @@ object ChainStorage:
       backing: StateBacking[F, S],
       /** Block number of the immutable tip the backing store was last brought to. */
       advancedAt: Ref[F, BigInt]
-  )(using Raise[F, StorageError])
-      extends ChainPersistence[F, S]:
+  ) extends ChainPersistence[F, S]:
     private val F = Async[F]
 
     /** A block is logged, kept pending, and when blocks age past `k` appended to the immutable
@@ -494,7 +512,7 @@ object ChainStorage:
         raw: Bytes,
         immutable: Vector[BlockRef],
         anchor: Anchor[S]
-    ): F[Unit] =
+    )(using cats.mtl.Raise[F, StorageError], cats.mtl.Raise[F, ChainError]): F[Unit] =
       F.uncancelable { _ =>
         volatile.append(ref, raw) *>
           pending.update(_ :+ (ref -> raw)) *>
@@ -517,14 +535,18 @@ object ChainStorage:
       * immutable tip. Collecting forces the immutable store first: the log is what protects a block
       * the immutable store has not yet made durable.
       */
-    private def collect(added: Int, tip: Option[BlockRef]): F[Unit] =
+    private def collect(added: Int, tip: Option[BlockRef])(using
+        cats.mtl.Raise[F, StorageError]
+    ): F[Unit] =
       sinceCollect.updateAndGet(_ + added).flatMap { n =>
         F.whenA(n >= config.volatileCollectBlocks) {
           tip.traverse_(t => store.sync *> volatile.gc(t.slot)) *> sinceCollect.set(0)
         }
       }
 
-    def rolledBack(to: ChainSync.Point): F[Unit] =
+    def rolledBack(
+        to: ChainSync.Point
+    )(using cats.mtl.Raise[F, StorageError], cats.mtl.Raise[F, ChainError]): F[Unit] =
       F.uncancelable { _ =>
         volatile.rollback(to) *> pending.update { p =>
           val index = p.indexWhere(_._1.point == to)
@@ -539,7 +561,7 @@ object ChainStorage:
       * snapshot when the policy says so. The backing checkpoint is taken here, before the snapshot
       * is written in the background, because the store keeps moving with the chain.
       */
-    def advanced(ref: BlockRef, state: S): F[Unit] =
+    def advanced(ref: BlockRef, state: S)(using cats.mtl.Raise[F, StorageError]): F[Unit] =
       (lastSlot.get, previousSlot.getAndSet(ref.slot), lastTaken.get, Clock[F].monotonic).flatMapN {
         (last, previous, taken, now) =>
           val snapshotDue = config.snapshotPolicy.due(
@@ -556,14 +578,18 @@ object ChainStorage:
       * steps of [[ChainStorage.AdvanceEvery]] blocks (and at every snapshot, whose checkpoint must
       * be at its anchor). The diff keeps what the store lacks, so the states stay complete.
       */
-    private def advanceBacking(ref: BlockRef, state: S, force: Boolean): F[Unit] =
+    private def advanceBacking(ref: BlockRef, state: S, force: Boolean)(using
+        cats.mtl.Raise[F, StorageError]
+    ): F[Unit] =
       advancedAt.get.flatMap { at =>
         F.whenA(force || at.signum < 0 || ref.blockNo - at >= ChainStorage.AdvanceEvery)(
           backing.advance(state) *> advancedAt.set(ref.blockNo)
         )
       }
 
-    private def afterAdvance(ref: BlockRef, state: S, snapshotDue: Boolean): F[Unit] =
+    private def afterAdvance(ref: BlockRef, state: S, snapshotDue: Boolean)(using
+        cats.mtl.Raise[F, StorageError]
+    ): F[Unit] =
       F.whenA(snapshotDue) {
         busy.getAndSet(true).flatMap {
           case true => F.unit

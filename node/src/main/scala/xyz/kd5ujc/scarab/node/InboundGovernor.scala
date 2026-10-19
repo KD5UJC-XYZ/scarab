@@ -234,7 +234,7 @@ final class InboundGovernor[F[_]: Async] private (
   private def following(
       remote: SocketAddress[IpAddress],
       connection: NodeToNodeConnection[F, NtNHeader]
-  )(using Raise[F, PeerError]): F[Unit] =
+  )(using Raise[F, NodeError]): F[Unit] =
     Handle
       .allow[PeerError] {
         Peer
@@ -329,7 +329,7 @@ object InboundGovernor:
   )
 
   /** The follower session over the peer, raising a [[PeerError]] when the peer fails. */
-  type Follow[F[_]] = Peer[F] => Raise[F, PeerError] ?=> F[Unit]
+  type Follow[F[_]] = Peer[F] => Raise[F, NodeError] ?=> F[Unit]
 
   private val RetainedSessions = 64
 

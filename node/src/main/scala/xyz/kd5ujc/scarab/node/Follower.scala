@@ -68,7 +68,7 @@ final class Follower[F[_]: Async, S] private (
     /** Called with the chain after every change of the tip and the raw blocks that were added
       * (mempool revalidation, for one).
       */
-    onTip: Option[(VolatileChain[S], Vector[Bytes]) => F[Unit]],
+    onTip: Option[(VolatileChain[S], Vector[Bytes]) => Raise[F, xyz.kd5ujc.scarab.ledger.StorageError] ?=> F[Unit]],
     tiebreaker: Era => ChainSelection.Tiebreaker,
     views: SelectViews[F],
     lock: Mutex[F],
@@ -77,8 +77,7 @@ final class Follower[F[_]: Async, S] private (
     /** The window chain selection reads, kept in step with the chain by [[commit]]. */
     window: Ref[F, Option[ChainSelection.Local]]
 )(using
-    chain: Stateful[F, VolatileChain[S]],
-    raise: Raise[F, ChainError]
+    chain: Stateful[F, VolatileChain[S]]
 ):
   private val F = Async[F]
 
@@ -95,7 +94,7 @@ final class Follower[F[_]: Async, S] private (
   def session(
       peer: Peer[F],
       track: Ref[F, ChainSelection.Candidate] => F[Unit] = _ => Async[F].unit
-  )(using Raise[F, PeerError]): F[Unit] =
+  )(using Raise[F, NodeError]): F[Unit] =
     for
       current <- chain.get
       found <- peer.intersect(current.candidates)
@@ -126,7 +125,7 @@ final class Follower[F[_]: Async, S] private (
       peer: Peer[F],
       candidate: Ref[F, ChainSelection.Candidate],
       event: SyncEvent
-  )(using Raise[F, PeerError]): F[Unit] = event match
+  )(using Raise[F, NodeError]): F[Unit] = event match
     case SyncEvent.RollBackward(point, _) =>
       candidate.get.flatMap { c =>
         c.rollback(point) match
@@ -194,7 +193,7 @@ final class Follower[F[_]: Async, S] private (
       peer: Peer[F],
       candidate: ChainSelection.Candidate,
       peerTip: ChainSync.Tip
-  )(using Raise[F, PeerError]): F[ChainSelection.Candidate] =
+  )(using Raise[F, NodeError]): F[ChainSelection.Candidate] =
     lock.lock.surround {
       for
         l <- local
@@ -213,7 +212,7 @@ final class Follower[F[_]: Async, S] private (
       depth: Int,
       take: Vector[Header],
       peerTip: ChainSync.Tip
-  )(using Raise[F, PeerError]): F[Unit] =
+  )(using Raise[F, NodeError]): F[Unit] =
     for
       original <- chain.get
       rolled <- original.rollback(to).fold(_.raise[F, VolatileChain[S]], _.pure[F])
@@ -262,7 +261,7 @@ final class Follower[F[_]: Async, S] private (
       depth: Int,
       steps: Vector[Applied],
       peerTip: ChainSync.Tip
-  ): F[Unit] =
+  )(using Raise[F, NodeError]): F[Unit] =
     for
       _ <- persistence.traverse_(_.rolledBack(to)).whenA(depth > 0)
       _ <- steps.traverse_(a =>
@@ -393,7 +392,7 @@ object Follower:
       geometry: EpochGeometry,
       observe: (S, S, BlockRef) => List[FollowerEvent] = (_: S, _: S, _: BlockRef) => Nil,
       persistence: Option[ChainPersistence[F, S]] = None,
-      onTip: Option[(VolatileChain[S], Vector[Bytes]) => F[Unit]] = None,
+      onTip: Option[(VolatileChain[S], Vector[Bytes]) => Raise[F, xyz.kd5ujc.scarab.ledger.StorageError] ?=> F[Unit]] = None,
       tiebreaker: Era => ChainSelection.Tiebreaker = ChainSelection.tiebreakerFor,
       /** The epoch of a slot as the state sees it (a chain whose Byron span is derived learns it).
         */
@@ -405,8 +404,7 @@ object Follower:
       /** Shared with the LSQ point/store capture; held only while a view is selected. */
       chainGate: Option[Mutex[F]] = None
   )(using
-      Stateful[F, VolatileChain[S]],
-      Raise[F, ChainError]
+      Stateful[F, VolatileChain[S]]
   ): F[Follower[F, S]] =
     (
       SelectViews.create[F](initialViews),

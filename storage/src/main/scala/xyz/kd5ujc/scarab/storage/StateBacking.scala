@@ -26,13 +26,13 @@ trait StateBacking[F[_], S]:
   def checkpoint(anchor: BlockRef)(using Raise[F, StorageError]): F[Unit]
 
   /** Whether the checkpoint of `anchor` exists. */
-  def available(anchor: Option[BlockRef]): F[Boolean]
+  def available(anchor: Option[BlockRef])(using cats.mtl.Raise[F, StorageError]): F[Boolean]
 
   /** Make the store equal to the checkpoint of `anchor`. */
-  def restore(anchor: Option[BlockRef]): F[Boolean]
+  def restore(anchor: Option[BlockRef])(using cats.mtl.Raise[F, StorageError]): F[Boolean]
 
   /** Start from an empty store (no snapshot was restored). */
-  def reset: F[Unit]
+  def reset(using cats.mtl.Raise[F, StorageError]): F[Unit]
 
   /** Delete the checkpoints that no listed snapshot (by file stem) refers to. */
   def retain(stems: Set[String])(using Raise[F, StorageError]): F[Unit]
@@ -43,9 +43,11 @@ object StateBacking:
     def advance(state: S)(using Raise[F, StorageError]) = unit
     def settled(state: S)(using Raise[F, StorageError]) = Applicative[F].pure(state)
     def checkpoint(anchor: BlockRef)(using Raise[F, StorageError]) = unit
-    def available(anchor: Option[BlockRef]) = Applicative[F].pure(true)
-    def restore(anchor: Option[BlockRef]) = Applicative[F].pure(true)
-    def reset = unit
+    def available(anchor: Option[BlockRef])(using cats.mtl.Raise[F, StorageError]) =
+      Applicative[F].pure(true)
+    def restore(anchor: Option[BlockRef])(using cats.mtl.Raise[F, StorageError]) =
+      Applicative[F].pure(true)
+    def reset(using cats.mtl.Raise[F, StorageError]) = unit
     def retain(stems: Set[String])(using Raise[F, StorageError]) = unit
 
   /** The name shared by a snapshot file (`<stem>.bin`) and its checkpoint directory. */
@@ -70,7 +72,6 @@ object UtxoHandle:
 
 /** [[StateBacking]] for a chain state over a [[UtxoStore]]; checkpoints live under `root`. */
 final class UtxoBacking[F[_]: Sync, S](store: UtxoStore[F], root: Path)(using
-    raise: Raise[F, StorageError],
     handle: UtxoHandle[S]
 ) extends StateBacking[F, S]:
   private val F = Sync[F]
@@ -105,15 +106,17 @@ final class UtxoBacking[F[_]: Sync, S](store: UtxoStore[F], root: Path)(using
       guard(root.toString)(java.nio.file.Files.createDirectories(root.toNioPath)) *>
       store.checkpoint(dir)
 
-  def available(anchor: Option[BlockRef]): F[Boolean] = anchor match
-    case None    => F.pure(false)
-    case Some(a) => guard(root.toString)(java.nio.file.Files.isDirectory(dirOf(a).toNioPath))
+  def available(anchor: Option[BlockRef])(using cats.mtl.Raise[F, StorageError]): F[Boolean] =
+    anchor match
+      case None    => F.pure(false)
+      case Some(a) => guard(root.toString)(java.nio.file.Files.isDirectory(dirOf(a).toNioPath))
 
-  def restore(anchor: Option[BlockRef]): F[Boolean] = anchor match
-    case None    => F.pure(false)
-    case Some(a) => store.restore(dirOf(a))
+  def restore(anchor: Option[BlockRef])(using cats.mtl.Raise[F, StorageError]): F[Boolean] =
+    anchor match
+      case None    => F.pure(false)
+      case Some(a) => store.restore(dirOf(a))
 
-  def reset: F[Unit] = store.reset
+  def reset(using cats.mtl.Raise[F, StorageError]): F[Unit] = store.reset
 
   def retain(stems: Set[String])(using Raise[F, StorageError]): F[Unit] = guard(root.toString) {
     val nio = root.toNioPath

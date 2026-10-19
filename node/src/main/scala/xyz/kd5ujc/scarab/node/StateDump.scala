@@ -114,7 +114,9 @@ object StateDump:
   /** Digest of the whole UTxO set: the store's entries the state's diff does not decide, then the
     * diff's live entries.
     */
-  def utxoDigest[F[_]: Sync](store: Option[UtxoStore[F]], utxo: Utxo): F[Json] =
+  def utxoDigest[F[_]: Sync](store: Option[UtxoStore[F]], utxo: Utxo)(using
+      cats.mtl.Raise[F, xyz.kd5ujc.scarab.ledger.StorageError]
+  ): F[Json] =
     val d = new Digest
     def add(in: TxIn, out: TxOut): Unit = d.add(in.render, canon(Projection.txOut(out)))
     val stored = store.fold(Sync[F].unit)(
@@ -155,7 +157,9 @@ object StateDump:
       emit: NodeEvent => F[Unit],
       full: Boolean
   )(using read: ChainRead[S]):
-    def afterBlock(header: Header, s: S): F[Unit] = header match
+    def afterBlock(header: Header, s: S)(using
+        cats.mtl.Raise[F, xyz.kd5ujc.scarab.ledger.StorageError]
+    ): F[Unit] = header match
       case h: Header.Shelley =>
         val epoch = s.ledgerEpoch
         val due: F[Boolean] = targets match
@@ -171,7 +175,9 @@ object StateDump:
         due.flatMap(if _ then write(h, s) else Sync[F].unit)
       case _ => Sync[F].unit
 
-    private def write(h: Header.Shelley, s: S): F[Unit] =
+    private def write(h: Header.Shelley, s: S)(using
+        cats.mtl.Raise[F, xyz.kd5ujc.scarab.ledger.StorageError]
+    ): F[Unit] =
       val file = dir.resolve(f"${h.slot.toLong}%012d-${h.hash.hex}.json")
       Sync[F].blocking(Files.exists(file)).flatMap {
         case true => Sync[F].unit

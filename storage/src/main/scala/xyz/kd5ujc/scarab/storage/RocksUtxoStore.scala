@@ -60,8 +60,7 @@ final class RocksUtxoStore[F[_]: Sync] private (
     // this store and its lifetime is the enclosing Resource. A Ref would only add a suspension
     // around every JNI call on the hot read path.
     db: AtomicReference[RocksDB]
-)(using Raise[F, StorageError])
-    extends UtxoStore[F]:
+) extends UtxoStore[F]:
   import UtxoStore.Coding
   private val F = Sync[F]
   private val StampKey = Array[Byte](0)
@@ -242,7 +241,7 @@ final class RocksUtxoStore[F[_]: Sync] private (
     it.status()
     stopped.toLeft(())
 
-  def read(keys: Iterable[TxIn]): F[Map[TxIn, TxOut]] =
+  def read(keys: Iterable[TxIn])(using cats.mtl.Raise[F, StorageError]): F[Map[TxIn, TxOut]] =
     val wanted = keys.iterator.flatMap(k => Coding.encodeKey(k).map(k -> _)).toVector
     if wanted.isEmpty then F.pure(Map.empty)
     else
@@ -292,21 +291,22 @@ final class RocksUtxoStore[F[_]: Sync] private (
   }
   def stamp(using Raise[F, StorageError]): F[Long] = flushed
 
-  def all: F[Map[TxIn, TxOut]] = select(_ => true)
+  def all(using cats.mtl.Raise[F, StorageError]): F[Map[TxIn, TxOut]] = select(_ => true)
 
-  def select(keep: TxOut => Boolean): F[Map[TxIn, TxOut]] = guardE("utxo scan") {
-    val it = db.get.newIterator()
-    try
-      val b = Map.newBuilder[TxIn, TxOut]
-      walk(it) { (k, at) =>
-        Coding.decodeValue(at.value()) match
-          case Right(out) =>
-            if keep(out) then b += Coding.decodeKey(k) -> out
-            None
-          case Left(reason) => Some(corruptEntry(k, reason))
-      }.map(_ => b.result())
-    finally it.close()
-  }
+  def select(keep: TxOut => Boolean)(using cats.mtl.Raise[F, StorageError]): F[Map[TxIn, TxOut]] =
+    guardE("utxo scan") {
+      val it = db.get.newIterator()
+      try
+        val b = Map.newBuilder[TxIn, TxOut]
+        walk(it) { (k, at) =>
+          Coding.decodeValue(at.value()) match
+            case Right(out) =>
+              if keep(out) then b += Coding.decodeKey(k) -> out
+              None
+            case Left(reason) => Some(corruptEntry(k, reason))
+        }.map(_ => b.result())
+      finally it.close()
+    }
 
   /** One streaming pass over the raw values: an output is decoded only when the head of its
     * encoding says it may pay to a wanted address ([[UtxoStore.Coding.mayPayTo]]). The scan does
@@ -314,7 +314,9 @@ final class RocksUtxoStore[F[_]: Sync] private (
     * whose head is not of a known shape is always decoded, so a malformed one fails the pass; one
     * with a well-formed head for another address is passed over undecoded, which is the point.
     */
-  def selectAddresses(addresses: Set[Bytes]): F[Map[TxIn, TxOut]] = guardE("utxo scan") {
+  def selectAddresses(
+      addresses: Set[Bytes]
+  )(using cats.mtl.Raise[F, StorageError]): F[Map[TxIn, TxOut]] = guardE("utxo scan") {
     val wanted = addresses.iterator.map(_.toArray).toArray
     val options = new ReadOptions().setFillCache(false).setReadaheadSize(2L * 1024 * 1024)
     val it = db.get.newIterator(options)
@@ -335,21 +337,22 @@ final class RocksUtxoStore[F[_]: Sync] private (
       options.close()
   }
 
-  def scan(visit: (TxIn, TxOut) => Unit): F[Unit] = guardE("utxo scan") {
-    val it = db.get.newIterator()
-    try
-      walk(it) { (k, at) =>
-        Coding.decodeValue(at.value()) match
-          case Right(out)   => visit(Coding.decodeKey(k), out); None
-          case Left(reason) => Some(corruptEntry(k, reason))
-      }
-    finally it.close()
-  }
+  def scan(visit: (TxIn, TxOut) => Unit)(using cats.mtl.Raise[F, StorageError]): F[Unit] =
+    guardE("utxo scan") {
+      val it = db.get.newIterator()
+      try
+        walk(it) { (k, at) =>
+          Coding.decodeValue(at.value()) match
+            case Right(out)   => visit(Coding.decodeKey(k), out); None
+            case Left(reason) => Some(corruptEntry(k, reason))
+        }
+      finally it.close()
+    }
 
   /** An owned iterator, closed on completion, failure or cancellation. Iterator faults and
     * malformed keys/values are reported exactly as for the other enumerations (AUD-04).
     */
-  def entries: Stream[F, (TxIn, TxOut)] =
+  def entries(using cats.mtl.Raise[F, StorageError]): Stream[F, (TxIn, TxOut)] =
     Stream
       .resource(
         Resource.make(guard("utxo iterator")(db.get.newIterator()))(it =>
@@ -386,7 +389,7 @@ final class RocksUtxoStore[F[_]: Sync] private (
     * a value shows only in the enumerations and reads; damage to a key or to the files is reported
     * as for them.
     */
-  def size: F[Long] = guardE("utxo count") {
+  def size(using cats.mtl.Raise[F, StorageError]): F[Long] = guardE("utxo count") {
     val it = db.get.newIterator()
     try
       var n = 0L
@@ -396,7 +399,7 @@ final class RocksUtxoStore[F[_]: Sync] private (
     finally it.close()
   }
 
-  def memory: F[Map[String, Long]] = guard("utxo memory") {
+  def memory(using cats.mtl.Raise[F, StorageError]): F[Map[String, Long]] = guard("utxo memory") {
     val d = db.get
     def prop(name: String): Option[(String, Long)] =
       Option(d.getProperty(s"rocksdb.$name")).flatMap(_.toLongOption).map(name -> _)
@@ -420,7 +423,7 @@ final class RocksUtxoStore[F[_]: Sync] private (
     finally cp.close()
   }
 
-  def restore(source: Path): F[Boolean] =
+  def restore(source: Path)(using cats.mtl.Raise[F, StorageError]): F[Boolean] =
     guard(source.toString) {
       val from = source.toNioPath
       if !Files.isDirectory(from) then Right(false)
@@ -445,7 +448,7 @@ final class RocksUtxoStore[F[_]: Sync] private (
         StorageError.UtxoCheckpoint(source.toString, problem).raise[F, Boolean]
     }
 
-  def reset: F[Unit] = guard(dir.toString) {
+  def reset(using cats.mtl.Raise[F, StorageError]): F[Unit] = guard(dir.toString) {
     db.getAndSet(null).close()
     RocksUtxoStore.deleteTree(dir)
     Files.createDirectories(dir)

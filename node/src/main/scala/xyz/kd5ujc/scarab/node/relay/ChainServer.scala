@@ -13,7 +13,8 @@ import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.RawNtNBlock
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, Tip}
 import xyz.kd5ujc.scarab.network.{BlockFetchServer, ChainSyncServer}
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef}
-import xyz.kd5ujc.scarab.ledger.{Block, ChainError, Header}
+import xyz.kd5ujc.scarab.ledger.{Block, ChainError, Header, StorageError}
+import xyz.kd5ujc.scarab.node.{Fatal, StorageBoundary}
 import xyz.kd5ujc.scarab.storage.{ChainPersistence, ImmutableStore}
 
 /** The chain this node serves to its peers: the in-memory volatile chain ([[ServedChain]]) in front
@@ -28,7 +29,8 @@ final class ChainServer[F[_]: Async] private (
     state: Ref[F, ServedChain],
     version: SignallingRef[F, Long],
     store: Option[ImmutableStore[F]],
-    headerOf: ChainServer.HeaderOf
+    headerOf: ChainServer.HeaderOf,
+    fatal: Fatal => F[Unit]
 ):
   private val F = Async[F]
 
@@ -37,16 +39,19 @@ final class ChainServer[F[_]: Async] private (
   /** The node's chain updates, to be composed with the storage persistence. The block must be
     * stored (by the persistence that runs before this one) before it leaves the volatile chain.
     */
-  def persistence[S](using Raise[F, ChainError]): ChainPersistence[F, S] =
+  def persistence[S]: ChainPersistence[F, S] =
     new ChainPersistence[F, S]:
-      def extended(ref: BlockRef, raw: Bytes, immutable: Vector[BlockRef], anchor: Anchor[S]) =
+      def extended(ref: BlockRef, raw: Bytes, immutable: Vector[BlockRef], anchor: Anchor[S])(using
+          Raise[F, StorageError],
+          Raise[F, ChainError]
+      ) =
         for
           header <- headerOf(raw).fold(_.raise[F, ChainServer.Info], F.pure)
           _ <- state.update(_.extend(Served(ref, header.ntn, raw), immutable.size, anchor.block))
           _ <- version.update(_ + 1)
         yield ()
 
-      def rolledBack(to: Point) =
+      def rolledBack(to: Point)(using Raise[F, StorageError], Raise[F, ChainError]) =
         state
           .modify { chain =>
             chain.rollback(to).fold((chain, false))(c => (c, true))
@@ -54,10 +59,11 @@ final class ChainServer[F[_]: Async] private (
           .flatMap(changed => version.update(_ + 1).whenA(changed))
 
   /** Is `point` on our chain: Origin, the anchor, volatile, or stored. */
-  private def onChain(chain: ServedChain, point: Point): F[Boolean] = point match
-    case Point.Origin                   => F.pure(chain.anchor.isEmpty || store.isDefined)
-    case p if chain.containsVolatile(p) => F.pure(true)
-    case p                              => store.fold(F.pure(false))(_.get(p).map(_.isDefined))
+  private def onChain(chain: ServedChain, point: Point)(using Raise[F, StorageError]): F[Boolean] =
+    point match
+      case Point.Origin                   => F.pure(chain.anchor.isEmpty || store.isDefined)
+      case p if chain.containsVolatile(p) => F.pure(true)
+      case p                              => store.fold(F.pure(false))(_.get(p).map(_.isDefined))
 
   /** One cursor per connected node-to-node ChainSync client: headers. */
   def source: Resource[F, ChainSyncServer.Source[F, NtNHeader]] =
@@ -79,7 +85,7 @@ final class ChainServer[F[_]: Async] private (
       .make(state.modify(_.open()))(id => state.update(_.close(id)))
       .map { id =>
         new ChainSyncServer.Source[F, P]:
-          def intersect(points: Vector[Point]) =
+          def intersect(points: Vector[Point]) = StorageBoundary.run(fatal) {
             state.get.flatMap { chain =>
               points
                 .findM(onChain(chain, _))
@@ -94,7 +100,9 @@ final class ChainServer[F[_]: Async] private (
                 }
             }
 
-          def poll: F[Option[ChainSyncServer.Update[P]]] =
+          }
+
+          def poll: F[Option[ChainSyncServer.Update[P]]] = StorageBoundary.run(fatal) {
             state
               .modify { chain =>
                 chain.followers.get(id).map(chain.read) match
@@ -114,6 +122,8 @@ final class ChainServer[F[_]: Async] private (
                 case Read.Behind(p) => immutableNext(id, p, ofStored)
               }
 
+          }
+
           def await: F[ChainSyncServer.Update[P]] =
             version.get.flatMap { seen =>
               poll.flatMap {
@@ -128,7 +138,7 @@ final class ChainServer[F[_]: Async] private (
       id: Long,
       point: Point,
       ofStored: Bytes => Option[P]
-  ): F[Option[ChainSyncServer.Update[P]]] =
+  )(using Raise[F, StorageError]): F[Option[ChainSyncServer.Update[P]]] =
     store match
       case None => F.pure(None)
       case Some(s) =>
@@ -143,35 +153,38 @@ final class ChainServer[F[_]: Async] private (
 
   /** Blocks for BlockFetch: the range must lie on our chain (immutable then volatile). */
   def blocks: BlockFetchServer.Blocks[F] = (from, to, max) =>
-    state.get.flatMap { chain =>
-      def volatile(point: Point): Option[Int] =
-        chain.blocks.indexWhere(_.ref.point == point) match
-          case -1 => None
-          case i  => Some(i)
-      def number(point: Point): F[Option[BigInt]] = volatile(point) match
-        case Some(i) => F.pure(Some(chain.blocks(i).ref.blockNo))
-        case None =>
-          store.fold(F.pure(Option.empty[BigInt]))(
-            _.get(point).map(_.flatMap(raw => headerOf(raw).toOption.map(_.blockNo)))
-          )
-      def emit(served: Vector[Served]) = Stream.emits(served.map(_.raw).toList).covary[F]
-      (number(from), number(to)).mapN {
-        case (Some(a), Some(b)) if a <= b && b - a < max =>
-          (volatile(from), volatile(to), store) match
-            case (Some(i), Some(j), _) => Some(emit(chain.blocks.slice(i, j + 1)))
-            case (Some(_), None, _)    => None
-            case (None, _, None)       => None
-            case (None, inVolatile, Some(s)) =>
-              val first = Stream.eval(s.get(from)).unNone
-              if from == to then Some(first)
-              else
-                val stored = s.stream(from)
-                inVolatile match
-                  case Some(j) =>
-                    Some(first ++ stored.map(_.raw) ++ emit(chain.blocks.take(j + 1)))
-                  case None => Some(first ++ stored.takeThrough(_.ref.point != to).map(_.raw))
-        case _ => None
+    StorageBoundary.run(fatal) {
+      state.get.flatMap { chain =>
+        def volatile(point: Point): Option[Int] =
+          chain.blocks.indexWhere(_.ref.point == point) match
+            case -1 => None
+            case i  => Some(i)
+        def number(point: Point): F[Option[BigInt]] = volatile(point) match
+          case Some(i) => F.pure(Some(chain.blocks(i).ref.blockNo))
+          case None =>
+            store.fold(F.pure(Option.empty[BigInt]))(
+              _.get(point).map(_.flatMap(raw => headerOf(raw).toOption.map(_.blockNo)))
+            )
+        def emit(served: Vector[Served]) = Stream.emits(served.map(_.raw).toList).covary[F]
+        (number(from), number(to)).mapN {
+          case (Some(a), Some(b)) if a <= b && b - a < max =>
+            (volatile(from), volatile(to), store) match
+              case (Some(i), Some(j), _) => Some(emit(chain.blocks.slice(i, j + 1)))
+              case (Some(_), None, _)    => None
+              case (None, _, None)       => None
+              case (None, inVolatile, Some(s)) =>
+                val first = Stream.eval(StorageBoundary.run(fatal)(s.get(from))).unNone
+                if from == to then Some(first)
+                else
+                  val stored = StorageBoundary.stream(fatal)(s.stream(from))
+                  inVolatile match
+                    case Some(j) =>
+                      Some(first ++ stored.map(_.raw) ++ emit(chain.blocks.take(j + 1)))
+                    case None => Some(first ++ stored.takeThrough(_.ref.point != to).map(_.raw))
+          case _ => None
+        }
       }
+
     }
 
 object ChainServer:
@@ -196,9 +209,10 @@ object ChainServer:
   def open[F[_]: Async](
       store: Option[ImmutableStore[F]],
       anchor: Option[BlockRef],
-      headerOf: HeaderOf
+      headerOf: HeaderOf,
+      fatal: Fatal => F[Unit]
   ): F[ChainServer[F]] =
     for
       state <- Ref.of[F, ServedChain](ServedChain.empty(anchor))
       version <- SignallingRef.of[F, Long](0L)
-    yield new ChainServer[F](state, version, store, headerOf)
+    yield new ChainServer[F](state, version, store, headerOf, fatal)

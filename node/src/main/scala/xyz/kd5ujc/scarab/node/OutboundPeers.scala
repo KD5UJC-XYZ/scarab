@@ -418,7 +418,7 @@ object OutboundPeers:
   type Tracker[F[_]] = Ref[F, ChainSelection.Candidate] => F[Unit]
 
   /** The follower session over a peer, which hands its candidate chain to the tracker. */
-  type Follow[F[_]] = (Peer[F], Tracker[F]) => Raise[F, PeerError] ?=> F[Unit]
+  type Follow[F[_]] = (Peer[F], Tracker[F]) => Raise[F, NodeError] ?=> F[Unit]
 
   /** What the hot part needs, besides the connection: the follower session, the pool, the header
     * check, the transactions, the settings and how a candidate compares with our selection.
