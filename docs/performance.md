@@ -1866,6 +1866,14 @@ This authenticates the historical comparison; it does not execute current rules 
 The strict option matters: the ordinary progress-reporting command can legitimately have no
 mismatches while still waiting for Scala points.
 
+K1 compares the reference's projected fields, rather than complete Haskell-state bytes. The archived
+projector omits `NonMyopic` and cost models, pool relays/metadata/reward-account network, and stake
+snapshot fields other than stake, delegations and pool identities; pending reward updates project
+as null. Comparison ignores the top-level era label and rounds floating-point fields to ten decimal
+places. Parameters absent from an era are absent from its projection. These are the existing
+comparison boundaries, not new masks introduced for the current replay. The historical wrapper
+names reference release 11.1.3, but no immutable historical Docker image ID was recovered.
+
 The historical **242** phase-2 failures count invalid transactions. The original block bytes identify
 242 unique transaction hashes in 230 blocks: 137 Babbage and 105 Conway transactions, all at or
 before the uninterrupted run's final slot 125092775/block 4748301. Original transaction-body
