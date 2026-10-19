@@ -223,3 +223,17 @@ pass verdicts; ChainSync's mock `HeaderHash Int` points and BlockFetch's mock `P
 remain typed `ExpectedDefiniteByteString` unsupported cases. No mock integer is converted into a
 Cardano hash. This observes the upstream binary-compatibility properties and the Scarab typed
 boundary separately; it does not claim Cardano-instantiated ChainSync header/hash coverage.
+
+The registered IO Pipe and Socket `prop_*_demo` properties share 24 original
+`TestBlockChainAndUpdates` inputs (seeds 505001–505024). Each unchanged upstream property passes
+on all 24 inputs. The Pipe fixtures retain all 517 updates, 587 final-chain blocks and the original
+consumer stop ordinal, including three cases that stop before the producer's remaining tail.
+`UpstreamPipeBehaviorSuite` checks those complete final chains and stop ordinals through the shared
+production ChainSync runtime, using linked Mux bearers for Pipe and actual loopback TCP for Socket.
+Server fibers return typed outcomes to the caller in their own error scope.
+
+`chainsync-socket-demo-outcomes.tsv` binds each Socket verdict to the same Pipe seed, ordinal and
+generator size. Its manifest pins the source, observer and dependency plan. The Socket adapter uses
+Scarab's production Cardano Handshake (version 15); the upstream property uses its test-only
+`TestVersion` handshake. These results compare generated chain behavior over TCP. They do not claim
+handshake wire/version-data equality, OS-pipe scheduling equality or pipeline decision-trace parity.

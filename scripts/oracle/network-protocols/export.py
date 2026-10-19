@@ -149,6 +149,21 @@ def validate_pipe_demo_export(
     }
 
 
+def validate_socket_demo_export(rows: list[list[str]], pipe_cases: list[list[str]], requested: int) -> dict[str, int]:
+    if len(rows) != requested or len(pipe_cases) != requested:
+        raise ValueError("Socket outcomes and source Pipe inputs must match the requested count")
+    counts = {"pass": 0, "upstream-failure": 0}
+    for ordinal, (row, pipe_case) in enumerate(zip(rows, pipe_cases, strict=True)):
+        if len(row) != 5 or row[0] != "ouroboros-socket-demo-v1":
+            raise ValueError(f"invalid Socket observer row schema at {ordinal}")
+        if row[1:4] != pipe_case[1:4]:
+            raise ValueError(f"Socket observer input identity differs from original Pipe row {ordinal}")
+        if row[4] not in counts:
+            raise ValueError(f"invalid upstream Socket outcome at {ordinal}: {row[4]!r}")
+        counts[row[4]] += 1
+    return counts
+
+
 def summarize_chainsync_pipeline_rows(
     rows: list[list[str]],
     version: str = "chainsync-pipelined-max-v1",
@@ -265,6 +280,7 @@ def prepare(source: Path, overlay: Path) -> dict[str, str]:
         "Main": source / "ouroboros-network/protocols/tests/Main.hs",
         "Pipe": source / "ouroboros-network/tests/io/Test/Ouroboros/Network/Pipe.hs",
         "PipeMain": source / "ouroboros-network/tests/io/Main.hs",
+        "Socket": source / "ouroboros-network/tests/io/Test/Ouroboros/Network/Socket.hs",
     }
     source_hashes = {name: hashlib.sha256(path.read_bytes()).hexdigest() for name, path in modules.items()}
     shutil.copytree(source, overlay, dirs_exist_ok=True, ignore=shutil.ignore_patterns(".git", "dist-newstyle"))
@@ -279,6 +295,7 @@ def prepare(source: Path, overlay: Path) -> dict[str, str]:
     tx_submission2 = overlay / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/TxSubmission2/Test.hs"
     pipe = overlay / "ouroboros-network/tests/io/Test/Ouroboros/Network/Pipe.hs"
     pipe_main = overlay / "ouroboros-network/tests/io/Main.hs"
+    socket = overlay / "ouroboros-network/tests/io/Test/Ouroboros/Network/Socket.hs"
 
     pipe_original = pipe.read_text()
     pipe_export_anchor = "module Test.Ouroboros.Network.Pipe (tests) where"
@@ -413,6 +430,58 @@ exportPipeDemoBehaviorCases casesPath blocksPath updatesPath count seed =
         "Test.Ouroboros.Network.Pipe.tests", "Pipe.tests"
     )
     pipe_main.write_text(pipe_main_original)
+    socket_original = socket.read_text()
+    socket_export_anchor = "module Test.Ouroboros.Network.Socket (tests) where"
+    if socket_original.count(socket_export_anchor) != 1:
+        raise SystemExit("Socket observer module export anchor changed")
+    socket_original = socket_original.replace(
+        socket_export_anchor,
+        "module Test.Ouroboros.Network.Socket (tests, exportSocketDemoOutcomes) where",
+    )
+    socket_import_anchor = "import Test.QuickCheck\n"
+    if socket_original.count(socket_import_anchor) != 1:
+        raise SystemExit("Socket observer QuickCheck import anchor changed")
+    socket_original = socket_original.replace(
+        socket_import_anchor,
+        socket_import_anchor
+        + "import Data.List (intercalate)\n"
+        + "import System.IO (IOMode (WriteMode), hPutStrLn, withFile)\n"
+        + "import Test.QuickCheck.Gen (unGen)\n"
+        + "import Test.QuickCheck.Random (mkQCGen)\n",
+    )
+    socket.write_text(socket_original + r'''
+
+-- Disposable observer: run the unchanged registered TCP/Handshake property on
+-- the same generated inputs exported for the Pipe behavior adapter.
+exportSocketDemoOutcomes :: FilePath -> Int -> Int -> IO ()
+exportSocketDemoOutcomes path count seed =
+  withFile path WriteMode $ \handle ->
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 30 + (ordinal `mod` 21)
+        input = unGen arbitrary (mkQCGen caseSeed) caseSize :: TestBlockChainAndUpdates
+    result <- quickCheckWithResult stdArgs { chatty = False } (once (prop_socket_demo input))
+    hPutStrLn handle $ intercalate "\t"
+      [ "ouroboros-socket-demo-v1", show caseSeed, show ordinal, show caseSize
+      , if isSuccess result then "pass" else "upstream-failure"
+      ]
+''')
+    socket_import = "import Test.Ouroboros.Network.Socket qualified (tests)"
+    if pipe_main.read_text().count(socket_import) != 1:
+        raise SystemExit("IO test main Socket import anchor changed")
+    pipe_main.write_text(
+        pipe_main.read_text()
+        .replace(
+            socket_import,
+            "import Test.Ouroboros.Network.Socket qualified as Socket (tests, exportSocketDemoOutcomes)",
+        )
+        .replace(
+            '  args <- getArgs\n  case args of\n',
+            '  args <- getArgs\n  case args of\n'
+            '    ["--export-socket-demo", dir, count, seed] -> Socket.exportSocketDemoOutcomes (dir <> "/socket-demo-outcomes.tsv") (read count) (read seed)\n',
+        )
+        .replace("Test.Ouroboros.Network.Socket.tests", "Socket.tests")
+    )
     keep_original = inject(
         keep,
         "import Test.QuickCheck\n",
@@ -2246,6 +2315,7 @@ def main() -> None:
     parser.add_argument("--chainsync-pipelined-min-buffered-only", action="store_true")
     parser.add_argument("--chainsync-demo-pipelined-io-only", action="store_true")
     parser.add_argument("--pipe-demo-behavior-only", action="store_true")
+    parser.add_argument("--socket-demo-behavior-only", action="store_true")
     args = parser.parse_args()
     if not 1 <= args.count <= 128:
         raise SystemExit("case count must be 1..128")
@@ -2276,7 +2346,7 @@ def main() -> None:
             "-w", "/source", IMAGE, "-f", "/dev/null",
         ])
     checked(["docker", "start", CONTAINER_NAME])
-    test_names = () if args.pipe_demo_behavior_only else ("LocalStateQuery",) if args.lsq_behavior_only else ("TxSubmission2",) if args.txsubmission2_behavior_only else ("BlockFetch",) if args.blockfetch_behavior_only else ("ChainSync",) if args.chainsync_behavior_only or args.chainsync_pipelined_max_only or args.chainsync_pipelined_min_only or args.chainsync_pipelined_low_high_only or args.chainsync_pipelined_direct_connect_only or args.chainsync_pipelined_min_buffered_only or args.chainsync_demo_pipelined_io_only or args.chainsync_io_behavior_only else (
+    test_names = () if args.pipe_demo_behavior_only or args.socket_demo_behavior_only else ("LocalStateQuery",) if args.lsq_behavior_only else ("TxSubmission2",) if args.txsubmission2_behavior_only else ("BlockFetch",) if args.blockfetch_behavior_only else ("ChainSync",) if args.chainsync_behavior_only or args.chainsync_pipelined_max_only or args.chainsync_pipelined_min_only or args.chainsync_pipelined_low_high_only or args.chainsync_pipelined_direct_connect_only or args.chainsync_pipelined_min_buffered_only or args.chainsync_demo_pipelined_io_only or args.chainsync_io_behavior_only else (
         "KeepAlive", "PeerSharing", "ChainSync", "BlockFetch", "LocalStateQuery",
         "LocalTxSubmission", "LocalTxMonitor", "TxSubmission2",
     )
@@ -2390,6 +2460,30 @@ def main() -> None:
             io_binary, "--export-pipe-demo", "/probe/exports",
             str(args.count), str(args.seed + 14800),
         ])
+    elif args.socket_demo_behavior_only:
+        checked([
+            "docker", "exec", "-w", "/source", CONTAINER_NAME,
+            "cabal", "build", "--project-file=/probe/protocols-tests.project",
+            "ouroboros-network:ouroboros-network-io-tests",
+            "--builddir=/probe/narrow-builddir", "--jobs=2",
+        ])
+        io_binary_output = checked([
+            "docker", "exec", "-w", "/source", CONTAINER_NAME,
+            "cabal", "list-bin", "--project-file=/probe/protocols-tests.project",
+            "ouroboros-network:ouroboros-network-io-tests",
+            "--builddir=/probe/narrow-builddir",
+        ])
+        io_binary = next(
+            (line.strip() for line in reversed(io_binary_output.splitlines()) if line.strip().startswith("/probe/narrow-builddir/")),
+            None,
+        )
+        if io_binary is None:
+            raise SystemExit(f"cabal list-bin did not return the IO test executable path: {io_binary_output!r}")
+        checked([
+            "docker", "exec", "-w", "/source", CONTAINER_NAME,
+            io_binary, "--export-socket-demo", "/probe/exports",
+            str(args.count), str(args.seed + 14800),
+        ])
     else:
         checked([
             "docker", "exec", "-w", "/source", CONTAINER_NAME,
@@ -2397,12 +2491,28 @@ def main() -> None:
             str(args.count), str(args.seed), str(args.chainsync_count),
         ])
     patch = ""
-    for name, original in originals.items():
+    if args.pipe_demo_behavior_only:
+        patch_sources = list(originals.items()) + [
+            ("Pipe", (args.source / "ouroboros-network/tests/io/Test/Ouroboros/Network/Pipe.hs").read_text()),
+            ("PipeMain", (args.source / "ouroboros-network/tests/io/Main.hs").read_text()),
+        ]
+    elif args.socket_demo_behavior_only:
+        patch_sources = [
+            ("Socket", (args.source / "ouroboros-network/tests/io/Test/Ouroboros/Network/Socket.hs").read_text()),
+            ("SocketMain", (args.source / "ouroboros-network/tests/io/Main.hs").read_text()),
+        ]
+    else:
+        patch_sources = list(originals.items())
+    for name, original in patch_sources:
         if name == "protocols/tests/Main.hs":
             target = overlay / "ouroboros-network" / name
         elif name == "Pipe":
             target = overlay / "ouroboros-network/tests/io/Test/Ouroboros/Network/Pipe.hs"
         elif name == "PipeMain":
+            target = overlay / "ouroboros-network/tests/io/Main.hs"
+        elif name == "Socket":
+            target = overlay / "ouroboros-network/tests/io/Test/Ouroboros/Network/Socket.hs"
+        elif name == "SocketMain":
             target = overlay / "ouroboros-network/tests/io/Main.hs"
         else:
             target = overlay / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol" / name
@@ -2416,7 +2526,7 @@ def main() -> None:
         unit for unit in plan_units
         if unit.get("pkg-name") == "ouroboros-network"
         and unit.get("component-name") == (
-            "test:ouroboros-network-io-tests" if args.pipe_demo_behavior_only else "test:protocols-tests"
+            "test:ouroboros-network-io-tests" if args.pipe_demo_behavior_only or args.socket_demo_behavior_only else "test:protocols-tests"
         )
     ]
     if len(target_roots) != 1:
@@ -2503,6 +2613,54 @@ def main() -> None:
             ],
         }
         (args.output_dir / "pipe-demo-behavior.manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+        return
+    if args.socket_demo_behavior_only:
+        raw = (args.probe_dir / "exports/socket-demo-outcomes.tsv").read_bytes()
+        rows = [line.split("\t") for line in raw.decode().splitlines()]
+        pipe_cases_raw = (args.output_dir / "pipe-demo-cases.tsv").read_bytes()
+        pipe_cases = [line.split("\t") for line in pipe_cases_raw.decode().splitlines()]
+        try:
+            outcomes = validate_socket_demo_export(rows, pipe_cases, args.count)
+        except ValueError as error:
+            raise SystemExit(str(error)) from error
+        output = args.output_dir / "chainsync-socket-demo-outcomes.tsv"
+        output.write_bytes(raw)
+        source_files = {
+            relative: hashlib.sha256((args.source / relative).read_bytes()).hexdigest()
+            for relative in (
+                "ouroboros-network/tests/io/Test/Ouroboros/Network/Socket.hs",
+                "ouroboros-network/tests/io/Main.hs",
+                "ouroboros-network/api/tests-lib/Ouroboros/Network/Mock/ChainGenerators.hs",
+                "ouroboros-network/api/tests-lib/Ouroboros/Network/Mock/ConcreteBlock.hs",
+                "ouroboros-network/api/tests-lib/Ouroboros/Network/Mock/Chain.hs",
+            )
+        }
+        manifest = {
+            "schema": "scarab-upstream-network-protocol-behavior-v1",
+            "source": "ouroboros-network",
+            "sourceCommit": UPSTREAM_COMMIT,
+            "upstreamTest": "ouroboros-network:ouroboros-network-io-tests / Socket / prop_socket_demo",
+            "generatorType": "TestBlockChainAndUpdates",
+            "requestedCases": args.count,
+            "exportedCases": len(rows),
+            "seed": int(rows[0][1]),
+            "generatorSizePerOrdinal": "30 + (ordinal mod 21)",
+            "inputCasesTsvSha256": hashlib.sha256(pipe_cases_raw).hexdigest(),
+            "outcomesTsvSha256": hashlib.sha256(raw).hexdigest(),
+            "upstreamPropertyOutcomes": outcomes,
+            "sourceFiles": source_files,
+            "observerPatchSha256": hashlib.sha256(patch.encode()).hexdigest(),
+            "dependencyPlanSha256": hashlib.sha256(plan).hexdigest(),
+            "targetDependencyClosureUnitCount": len(target_closure),
+            "scarabRuntimeProfiles": 1,
+            "limitations": [
+                "The unchanged registered Socket prop_socket_demo ran on the exact same TestBlockChainAndUpdates seed/size inputs as the Pipe fixture.",
+                "Scarab's adapter executes loopback TCP, the production Cardano Handshake, Mux, and generic ChainSync runtime; the upstream property uses a test-only TestVersion handshake. The adapter compares the original generated chain result and does not claim Handshake wire/version-data equivalence.",
+            ],
+        }
+        (args.output_dir / "chainsync-socket-demo-behavior.manifest.json").write_text(
+            json.dumps(manifest, indent=2) + "\n"
+        )
         return
     if args.chainsync_pipelined_max_only:
         raw = (args.probe_dir / "exports/chainsync-pipelined-max.tsv").read_bytes()

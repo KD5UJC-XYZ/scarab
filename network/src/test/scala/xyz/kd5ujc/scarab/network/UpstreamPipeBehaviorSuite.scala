@@ -4,13 +4,15 @@ package xyz.kd5ujc.scarab.network
 import cats.effect.{IO, Ref, Resource}
 import cats.mtl.Raise
 import cats.syntax.all.*
+import com.comcast.ip4s.*
+import fs2.io.net.Network
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
 import scala.io.Source
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.{ChainSyncEngine, NetworkError}
+import xyz.kd5ujc.scarab.protocol.{ChainSyncEngine, Handshake, NetworkError}
 
 import Peers.*
 
@@ -23,9 +25,11 @@ class UpstreamPipeBehaviorSuite extends FailsOnUncaught:
   private val casesPath = resourceRoot + "chainsync-pipe-demo-cases.tsv"
   private val blocksPath = resourceRoot + "chainsync-pipe-demo-blocks.tsv"
   private val updatesPath = resourceRoot + "chainsync-pipe-demo-updates.tsv"
+  private val socketOutcomesPath = resourceRoot + "chainsync-socket-demo-outcomes.tsv"
   private val casesSha = "3a9f3f099bdd6012b30ed8b9376481d3ee0745aca29ebb0e1c2a49470799b0f1"
   private val blocksSha = "a9ba09ef34443b1922a56e99b9f590d6420d2eacdcc4cee8d591547d9d69f82e"
   private val updatesSha = "d311f1b8ba5656593767564dfa139ba9517167714dcf2f489f47d9a9793b0c10"
+  private val socketOutcomesSha = "8c0ef4d4574e16c2663da6ff01d6bd09a016b91eca89fbef8a1cc6dbbb75537e"
 
   private final case class CaseRow(
       seed: Int,
@@ -290,6 +294,80 @@ class UpstreamPipeBehaviorSuite extends FailsOnUncaught:
         }
     }
 
+  private def socketReplay(
+      testCase: FixtureCase
+  ): IO[Either[NetworkError, (Vector[Bytes], Int)]] = typed {
+    Network[IO]
+      .bind(SocketAddress(ip"127.0.0.1", port"0"))
+      .use { listener =>
+        val server = Fibers.scoped[IO, NetworkError, Unit](NetworkError.Defect(_)) {
+          listener.accept
+            .take(1)
+            .evalMap { socket =>
+              Mux
+                .resource(
+                  Bearer.fromSocket(socket),
+                  NodeToNodeServer.Protocol,
+                  Mux.Config(role = Mux.Role.Responder)
+                )
+                .use { mux =>
+                  for
+                    handshake <- mux.channel(Protocols.Handshake)
+                    agreement <- HandshakeServer.run(
+                      handshake,
+                      HandshakeServer.offers(0L, duplex = false)
+                    )
+                    _ <- IO(assertEquals(agreement.version, 15))
+                    channel <- mux.channel(Protocols.ChainSync)
+                    oracle <- source(testCase)
+                    _ <- ChainSyncRuntime.run(
+                      channel,
+                      pointCodec,
+                      tipCodec,
+                      payloadCodec,
+                      oracle,
+                      ChainSyncRuntime.ServerSettings(idleTimeout = 20.seconds)
+                    )
+                  yield ()
+                }
+            }
+            .compile
+            .drain
+        }
+        Resource.make(server.start)(_.cancel).use { serverFiber =>
+          val address = SocketAddress(host"localhost", listener.address.asIpUnsafe.port)
+          Bearer.tcp[IO](address, 5.seconds).use { bearer =>
+            Mux.resource(bearer, NodeToNodeServer.Protocol).use { mux =>
+              for
+                handshake <- mux.channel(Protocols.Handshake)
+                agreement <- HandshakeClient.run(
+                  handshake,
+                  Handshake.defaultNodeToNode(0L),
+                  timeout = 5.seconds
+                )
+                _ <- IO(assertEquals(agreement.version, 15))
+                channel <- mux.channel(Protocols.ChainSync)
+                client <- ChainSyncRuntime.client(
+                  channel,
+                  pointCodec,
+                  tipCodec,
+                  payloadCodec,
+                  ChainSyncRuntime.ClientSettings(
+                    intersectTimeout = 5.seconds,
+                    canAwaitTimeout = 5.seconds,
+                    mustReplyTimeout = 5.seconds
+                  )
+                )
+                result <- replay(client, testCase).timeout(20.seconds)
+                serverResult <- serverFiber.joinWithNever.timeout(5.seconds)
+                _ <- Fibers.land[IO, NetworkError, Unit](serverResult)
+              yield result
+            }
+          }
+        }
+      }
+  }
+
   test(
     "unchanged registered upstream Pipe IO property rows replay through production linked Mux ChainSync"
   ):
@@ -336,19 +414,25 @@ class UpstreamPipeBehaviorSuite extends FailsOnUncaught:
                 )
                 replayed <- Resource
                   .make(
-                    ChainSyncRuntime
-                      .run(
-                        serverChannel,
-                        pointCodec,
-                        tipCodec,
-                        payloadCodec,
-                        oracle,
-                        ChainSyncRuntime.ServerSettings(idleTimeout = 5.seconds)
-                      )
+                    Fibers
+                      .scoped[IO, NetworkError, Unit](NetworkError.Defect(_)) {
+                        ChainSyncRuntime.run(
+                          serverChannel,
+                          pointCodec,
+                          tipCodec,
+                          payloadCodec,
+                          oracle,
+                          ChainSyncRuntime.ServerSettings(idleTimeout = 5.seconds)
+                        )
+                      }
                       .start
                   )(_.cancel)
                   .use { server =>
-                    replay(client, testCase).timeout(10.seconds) <* server.joinWithNever
+                    for
+                      result <- replay(client, testCase).timeout(10.seconds)
+                      serverResult <- server.joinWithNever
+                      _ <- Fibers.land[IO, NetworkError, Unit](serverResult)
+                    yield result
                   }
               yield replayed
             }
@@ -385,3 +469,33 @@ class UpstreamPipeBehaviorSuite extends FailsOnUncaught:
           "the original consumer stops at the target point; all unused generated tail events remain in the fixture"
         )
       }
+
+  test("pinned Socket demo runs the same generated rows over TCP and production Handshake"):
+    val socketRows = read(socketOutcomesPath, socketOutcomesSha).map(_.split("\\t", -1).toVector)
+    val cases = fixture()
+    assertEquals(socketRows.size, cases.size)
+    assertEquals(socketRows.map(_.head), Vector.fill(24)("ouroboros-socket-demo-v1"))
+    assertEquals(socketRows.map(_(4)), Vector.fill(24)("pass"))
+    cases.traverse_ { testCase =>
+      val row = socketRows(testCase.row.ordinal)
+      assertEquals(row.size, 5)
+      assertEquals(row(1).toInt, testCase.row.seed)
+      assertEquals(row(2).toInt, testCase.row.ordinal)
+      assertEquals(row(3).toInt, testCase.row.size)
+      socketReplay(testCase).timeout(30.seconds).map { result =>
+        val value = result.fold(
+          error => fail(s"seed ${testCase.row.seed} TCP network failure: ${error.message}"),
+          identity
+        )
+        assertEquals(
+          value._1,
+          testCase.expectedFinal.map(_.payloadOrPoint),
+          s"seed ${testCase.row.seed} TCP final chain equals original generated Haskell oracle"
+        )
+        assertEquals(
+          value._2,
+          testCase.row.stopCount,
+          s"seed ${testCase.row.seed} TCP runtime stops at the recorded consumer target"
+        )
+      }
+    }

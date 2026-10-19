@@ -11,11 +11,29 @@ from export import (
     summarize_chainsync_direct_connect_rows,
     summarize_chainsync_pipeline_rows,
     validate_pipe_demo_export,
+    validate_socket_demo_export,
     summarize_property_outcomes,
 )
 
 
 class PropertyOutcomeColumnsTest(unittest.TestCase):
+    def test_socket_outcome_rows_are_tied_to_unchanged_pipe_generator_identity(self) -> None:
+        inputs = [
+            ["ouroboros-pipe-demo-v1", "505001", "0", "30"],
+            ["ouroboros-pipe-demo-v1", "505002", "1", "31"],
+        ]
+        outcomes = [
+            ["ouroboros-socket-demo-v1", "505001", "0", "30", "pass"],
+            ["ouroboros-socket-demo-v1", "505002", "1", "31", "upstream-failure"],
+        ]
+        self.assertEqual(
+            validate_socket_demo_export(outcomes, inputs, 2),
+            {"pass": 1, "upstream-failure": 1},
+        )
+        outcomes[1][1] = "505003"
+        with self.assertRaisesRegex(ValueError, "input identity differs"):
+            validate_socket_demo_export(outcomes, inputs, 2)
+
     def test_chainsync_pipeline_counts_preserve_precondition_discards(self) -> None:
         rows = [
             ["chainsync-pipelined-max-v1", "504001", "0", "30", "7504004", "0", "precondition-discard"],
