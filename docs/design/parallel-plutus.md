@@ -40,7 +40,8 @@ script level among its ancestors; ordinary transactions add no level. Batches ru
 This is conservative: all contexts have already been frozen before any worker starts. Full state
 application and certificates are never executed concurrently.
 
-Within each job the existing script order and first failure are preserved. One shared semaphore
+Within each job every script runs in collection order; all failures, budgets and logs are retained
+([I4 result aggregation](script-results.md)). One shared semaphore
 bounds jobs across concurrent validations. Non-interruptible `blocking` holds each permit until its
 machine returns, including cancellation. Joined fibers return `Phase2.Completed` values and hold no
 `Raise`. The owner resolves them by transaction order, calls observers only for reached transactions,
@@ -62,9 +63,10 @@ single-transaction mempool admission) retain their serial interpreter.
 
 Pinned ledger source: `f649f9751074d2ab3de033fc3912f29c9862c1f5`,
 [Alonzo/Plutus/Evaluate.hs, lines 134–177](https://github.com/IntersectMBO/cardano-ledger/blob/f649f9751074d2ab3de033fc3912f29c9862c1f5/eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Evaluate.hs#L134)
-for request collection, and lines 178–197 for reference evaluation. This scheduler retains Scarab's
-existing per-transaction first-failure behavior; the broader aggregation correspondence remains
-[#195](https://github.com/KD5UJC-XYZ/scarab/issues/195). The graph follows
+for request collection, and lines 187–207 for reference evaluation. The unchanged-reference
+aggregation oracle now pins all pass/fail patterns in three scripts for each language, and serial/prepared paths retain every result. Exact reconstruction payloads match; native
+diagnostic prose remains the presentation gap in [#195](https://github.com/KD5UJC-XYZ/scarab/issues/195).
+The graph follows
 [CIP-31](https://cips.cardano.org/cip/CIP-0031) reference reads and
 [CIP-40](https://cips.cardano.org/cip/CIP-0040) collateral returns. Parallel evaluation is a local
 implementation choice, justified by immutable inputs and ordered landing, rather than a claim that

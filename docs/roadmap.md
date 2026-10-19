@@ -144,7 +144,7 @@ Each open item links to its GitHub issue, which carries its state (`status:` lab
 
 - **I3** [#44](https://github.com/KD5UJC-XYZ/scarab/issues/44) Drive Plutus V1 and V2 scripts in the devnet load (`scripts/devnet/eraload.py` TODO) so the Haskell comparator covers them; today they are verified by the Preview sync and unit/oracle tests only.
 
-- **I4** [#195](https://github.com/KD5UJC-XYZ/scarab/issues/195) (P2, backlog) Pin multi-script CEK result/log aggregation against the unchanged reference API and align serial/prepared verdicts and predicate bytes where needed. D2 retains the existing first-failure policy; closed REF-11 #176 covers context collection, not this separate boundary.
+- **I4** [#195](https://github.com/KD5UJC-XYZ/scarab/issues/195) (P2, in progress) Unchanged-reference three-script oracle covers all pass/fail patterns in V1/V2/V3; serial/prepared paths now retain all typed results, logs and budgets, and reconstruct exact failure-context bytes. General Haskell diagnostic-text byte parity remains open; see [the as-built result contract](design/script-results.md). Closed REF-11 #176 covers context collection.
 
 ## J. Operational parity (P2)
 

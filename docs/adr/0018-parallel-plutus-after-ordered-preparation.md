@@ -24,8 +24,10 @@ ledger effects. The serial entry points remain the executable reference.
 Evaluate transaction jobs in bounded dependency batches, then land results and observations in
 original order. Ordinary transactions transmit dependencies. Include normal, reference and collateral
 reads, read-before-consume edges and conditional collateral returns. Scripts inside a transaction
-keep the existing collection order and first-failure behavior. This changes scheduling, not the
-existing failure aggregation policy (the remaining reference correspondence is tracked in #195).
+keep collection order. I4 #195 subsequently established the released reference's accumulating result
+policy: every script now executes, and all failures, budgets and
+logs are retained ([as-built result contract](../design/script-results.md)). This refines evaluation
+inside jobs; the scheduling and ordered landing contract is unchanged.
 
 One node-wide semaphore bounds concurrent machines across block callers. Joined workers return values;
 raw defects land as their original exceptions in the owner, retaining the fatal classification of
