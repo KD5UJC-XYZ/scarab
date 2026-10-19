@@ -16,6 +16,15 @@ message, and the filtered upstream test suites also passed: all nine KeepAlive p
 ten PeerSharing properties. The upstream suite's QuickCheck properties each passed 100 cases,
 except the split-three properties, which each passed 33.
 
+`keepalive-behavior.tsv` adds 24 rows from the unchanged pinned `prop_direct`, `prop_connect`, and
+`prop_channel_ST` properties, using seeds `490901` through `490924`. Each row stores the exact finite
+accumulator trace observed for the generated QuickCheck function, the original descending Word16
+cookie sequence (`n` through `1`), and all three property verdicts. The network test replays those
+cookies and Done over a real in-memory mux pair against Scarab's production `KeepAliveServer.run`,
+checking each echoed value and the server's completion after Done. Scarab's automatic client's
+incrementing-cookie policy is outside this adapter; this tests the upstream server-visible behavior
+and typed message path without rewriting the generated sequence.
+
 Unsupported rows below describe exact typed-adapter gaps for upstream test parameterizations; they
 are not Cardano production-wire failures or demonstrated protocol divergences.
 

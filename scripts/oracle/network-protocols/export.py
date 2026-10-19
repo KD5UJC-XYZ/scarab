@@ -21,6 +21,11 @@ COMMAND_LOG: Path | None = None
 
 PROPERTY_COLUMNS: dict[str, tuple[tuple[str, int], ...]] = {
     "keepalive.tsv": (("prop_codec_v2", 9), ("prop_codec_v2_valid_cbor", 10)),
+    "keepalive-behavior.tsv": (
+        ("prop_direct", 7),
+        ("prop_connect", 8),
+        ("prop_channel_ST", 9),
+    ),
     "peersharing.tsv": (
         ("prop_codec_PeerSharing", 10),
         ("prop_codec_cbor", 11),
@@ -244,6 +249,39 @@ exportKeepAliveSplitCases path count seed = withFile path WriteMode $ \outputHan
         "import System.IO (withFile, IOMode (WriteMode), hPutStrLn)\n"
         "import Test.QuickCheck.Gen (unGen)\n"
         "import Test.QuickCheck.Random (mkQCGen)\n",
+    )
+    inject(
+        keep,
+        "import Test.QuickCheck.Random (mkQCGen)\n",
+        r'''
+
+-- Export observations of the unchanged direct/connect/channel properties. A generated QuickCheck
+-- function is recorded by its complete trace on the finite accumulator path the properties use.
+exportKeepAliveBehaviorCases :: FilePath -> Int -> Int -> IO ()
+exportKeepAliveBehaviorCases path count seed = withFile path WriteMode $ \outputHandle ->
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 12 + (ordinal `mod` 13)
+        function = unGen arbitrary (mkQCGen caseSeed) caseSize :: Int -> Int
+        NonNegative n = unGen arbitrary (mkQCGen (caseSeed + 7000003)) caseSize
+        accumulatorTrace = scanl (\acc _ -> function acc) 0 [1 .. n]
+        cookies = [n, n - 1 .. 1]
+    directResult <- quickCheckWithResult stdArgs { chatty = False }
+      (once (prop_direct function (NonNegative n)))
+    connectResult <- quickCheckWithResult stdArgs { chatty = False }
+      (once (prop_connect function (NonNegative n)))
+    channelResult <- quickCheckWithResult stdArgs { chatty = False }
+      (once (prop_channel_ST function (NonNegative n)))
+    hPutStrLn outputHandle $ intercalate "\t"
+      [ "keepalive-behavior-v1", show caseSeed, show ordinal, show caseSize, show n
+      , intercalate "," (map show accumulatorTrace)
+      , intercalate "," (map show cookies)
+      , verdict directResult, verdict connectResult, verdict channelResult
+      ]
+  where
+    verdict result = if isSuccess result then "pass" else "upstream-failure"
+''',
+        "",
     )
     peer_original = inject(
         peer,
@@ -1313,7 +1351,7 @@ exportBlockFetchBinaryCases path count seed = withFile path WriteMode $ \outputH
     main = overlay / "ouroboros-network/protocols/tests/Main.hs"
     main_original = main.read_text()
     dispatch_imports = (
-        "import Ouroboros.Network.Protocol.KeepAlive.Test qualified as KeepAlive (tests, exportKeepAliveCases, exportKeepAliveSplitCases)\n"
+        "import Ouroboros.Network.Protocol.KeepAlive.Test qualified as KeepAlive (tests, exportKeepAliveCases, exportKeepAliveSplitCases, exportKeepAliveBehaviorCases)\n"
         "import Ouroboros.Network.Protocol.PeerSharing.Test qualified as PeerSharing (tests, exportPeerSharingCases)\n"
         "import Ouroboros.Network.Protocol.ChainSync.Test qualified as ChainSync (tests, exportChainSyncCases, exportChainSyncSplitCases, exportChainSyncBinaryCases)\n"
         "import Ouroboros.Network.Protocol.BlockFetch.Test qualified as BlockFetch (tests, exportBlockFetchCases, exportBlockFetchSplitCases, exportBlockFetchBinaryCases)\n"
@@ -1361,6 +1399,7 @@ exportBlockFetchBinaryCases path count seed = withFile path WriteMode $ \outputH
         "main = defaultMain tests",
         "main = getArgs >>= \\args -> case args of\n"
         "  [\"--export-network-codecs\", dir, count, seed, chainCount] -> do\n"
+        "    KeepAlive.exportKeepAliveBehaviorCases (dir <> \"/keepalive-behavior.tsv\") (read count) (read seed + 700)\n"
         "    KeepAlive.exportKeepAliveCases (dir <> \"/keepalive.tsv\") (read count) (read seed)\n"
         "    KeepAlive.exportKeepAliveSplitCases (dir <> \"/keepalive-splits.tsv\") (read count) (read seed)\n"
         "    PeerSharing.exportPeerSharingCases (dir <> \"/peersharing.tsv\") (read count) (read seed)\n"
@@ -1498,6 +1537,7 @@ def main() -> None:
     for name, upstream_test in [
         ("keepalive.tsv", "ouroboros-network:protocols-tests / KeepAlive / codec v2 / prop_codec_v2"),
         ("keepalive-splits.tsv", "ouroboros-network:protocols-tests / KeepAlive / prop_codec_v2_splits2 + prop_codec_v2_splits3"),
+        ("keepalive-behavior.tsv", "ouroboros-network:protocols-tests / KeepAlive / prop_direct + prop_connect + prop_channel_ST"),
         ("peersharing.tsv", "ouroboros-network:protocols-tests / PeerSharing / prop_codec_PeerSharing + prop_codec_cbor + prop_codec_valid_cbor + prop_codec_splits2 + prop_codec_splits3"),
         ("chainsync.tsv", "ouroboros-network:protocols-tests / ChainSync / codecSerialised + codecSerialised cbor"),
         ("blockfetch.tsv", "ouroboros-network:protocols-tests / BlockFetch / codecSerialised + codecSerialised cbor"),
@@ -1872,6 +1912,15 @@ def main() -> None:
         if name in PROPERTY_COLUMNS:
             properties = PROPERTY_COLUMNS[name]
             manifest.update(summarize_property_outcomes(rows, properties))
+        if name == "keepalive-behavior.tsv":
+            manifest["generatedInputSeedOffsets"] = {
+                "quickCheckFunction": 0,
+                "NonNegativeRequestCount": 7000003,
+            }
+            manifest["observation"] = (
+                "The function is recorded as its exact finite accumulator trace for this generated n; "
+                "cookies are the unchanged upstream descending Word16 sequence."
+            )
         if name in ("localtxsubmission-annotated.tsv", "txsubmission2-annotated.tsv"):
             manifest["adapterInputStatuses"] = {
                 "byConstructor": {
