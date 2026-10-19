@@ -1,18 +1,19 @@
 # Incremental reward calculation
 
-**Status: Proposal.** D15 / [#135](https://github.com/KD5UJC-XYZ/scarab/issues/135), shaped and
-profiled on 2026-10-19. This document specifies implementation acceptance; it does not enable a
-pulser or close #135. The current implementation remains eager.
+**Status: Current.** D15 / [#135](https://github.com/KD5UJC-XYZ/scarab/issues/135), implemented
+2026-10-19. [ADR 0019](../adr/0019-incremental-reward-calculation.md) supersedes the eager-only
+D8 choice. The required gates and measurements are recorded below and in the compatibility log.
 
 ## Problem and scope
 
-`ledger/rules/Rupd.scala` calls `Rewards.update` on the first tick after the reward start point,
-`epochFirstSlot + 4k/f`. That pure call computes all pool and member rewards before returning.
-It creates a long individual block-validation step even when the surrounding ticks are short.
+Before this change, `ledger/rules/Rupd.scala` called `Rewards.update` on the first tick after the
+reward start point, `epochFirstSlot + 4k/f`. That pure call computed all pool and member rewards
+before returning.
+It created a long individual block-validation step even when the surrounding ticks were short.
 The historical approximately 1.1-second observation is workload and machine dependent; the
 fresh Preview measurements are in [performance.md](../performance.md#29-reward-update-shaping-135).
 
-Replace that eager step with the reference's pure, resumable reward calculation. Preserve the
+The implementation replaces that eager step with the reference's pure, resumable reward calculation. It preserves the
 attributed rewards, protocol-version gates, exact rational arithmetic and treasury/reserves/fee
 accounting. This is scheduling work inside the ledger transition, independent of parallel Plutus
 evaluation. It does not parallelise rewards, introduce a background fiber, or authorise a new
@@ -61,21 +62,21 @@ pure `start` / `pulse` / `complete` API returns typed failures; RUPD runs it thr
 `Ask`, `Stateful` and `Raise` capabilities. Pulse size is a checked positive value, not a runtime
 configuration knob. All folds must be stack safe, including forced completion and decoding.
 
-This proposal would replace the eager-only decision D8 in
-[ledger-mirror-step2.md](ledger-mirror-step2.md), including J3.5's suggestion of deriving a pulser
-from an eager result and progress counter. That change becomes current only with the implementing
-PR. Do not compute every reward eagerly and then reveal a prefix: that preserves the original
-pause and fails this work's purpose.
+[ADR 0019](../adr/0019-incremental-reward-calculation.md) replaces D8 in
+[ledger-mirror-step2.md](ledger-mirror-step2.md), including the suggestion of deriving a pulser
+from an eager result and progress counter. The runtime performs actual incremental computation;
+there is no eager member result hidden behind the prefix. `Rewards.update` remains an eager
+convenience for tools, implemented by starting and completing this same machine.
 
 J3.5 of the existing mirror design specifies the common reward vocabulary. Coordinate its typed
 `RewardPulser` replacement with this work; do not add a second private pulser beside
 `NewEpochState.ru`. [#77](https://github.com/KD5UJC-XYZ/scarab/issues/77) is a compatibility
-stakeholder for canonical-state projection/import, rather than a separate runtime-pulser owner. Today `RewardPulser(item: Bytes)` preserves an
-imported CBOR item and `NewEpoch` refuses imported pending work. The implementation must resume
-that work, not discard it and restart from the current ledger state.
+stakeholder for canonical-state projection/import, rather than a separate runtime-pulser owner.
+The earlier `RewardPulser(item: Bytes)` preserved an imported CBOR item and `NewEpoch` refused
+imported pending work. Both RUPD and NEWEPOCH now resume that work from its frozen fields.
 
-[#83](https://github.com/KD5UJC-XYZ/scarab/issues/83) owns versioned snapshot evolution. Audit both
-the Haskell reward encoding and Scarab's snapshot fingerprint before implementation. A typed
+[#83](https://github.com/KD5UJC-XYZ/scarab/issues/83) owns versioned snapshot evolution. The implemented codec audit checks both
+the Haskell reward encoding and Scarab's snapshot fingerprint. A typed
 decoder for an existing wire layout need not change those bytes; any actual persisted-format
 change requires a version bump, migration and a previous-version read test under
 [ADR 0006](../adr/0006-versioned-formats-migrate-on-open.md). Run the restart scenario when storage
@@ -86,20 +87,19 @@ J3.6 specifies the existing non-myopic ranking gap;
 Full reference-state byte equality also requires real likelihoods and the reference's non-myopic
 update; do not claim it from reward-amount equality or fill missing fields with an unlabelled default.
 
-## Implementation stages and acceptance
+## Implementation and acceptance
 
-1. **Shape and profile (this stage).** Pin the reference, retain the measured workload and commands,
-   distinguish standalone update from tick and whole-block latency, and record this plan. This is
-   level 0: no runtime behaviour, schema or defaults change; relative documentation links resolve.
-2. **Typed resumable state and reference oracle.** Agree ownership with J3.5, implement the common
-   vocabulary and codecs, and execute the unchanged pinned Haskell `startStep`, `pulseStep` and
+1. **Shape and profile (completed).** Pin the reference, retain the measured workload and commands,
+   distinguish standalone update from tick and whole-block latency, and record this plan. This original stage was level 0; the implementation below is level 3.
+2. **Typed resumable state and reference oracle (implemented).** The common
+   vocabulary and codecs execute the unchanged pinned Haskell `startStep`, `pulseStep` and
    `completeRupd` against shared fixtures. Compare frozen inputs, remaining credential order,
    accumulated/recent rewards, completion pots and protocol-version behaviour at every transition.
    Include empty state, zero reward, owner/script credentials, multiple leader rewards to one
    account, registration changes, final empty pulse, forced completion and imported mid-pulse state.
    Check that completing after any pulse partition equals eager reward accounting; do not use
    the old Scala implementation alone as a correctness oracle.
-3. **RUPD/NEWEPOCH integration and performance.** Enable the resumable machine, including epoch
+3. **RUPD/NEWEPOCH integration and performance (implemented).** The resumable machine handles epoch
    jumps, rollback and import/restart. Run `check` plus `e2e`; typed decoder changes also run the
    decoder fuzz gate, and storage changes run `restart`. Record compatibility, the as-built design
    and a changelog fragment. Keep #135 open until implementation acceptance and the required
@@ -132,3 +132,32 @@ The initial JFR profile points at pool lookups/byte hashing and exact rational a
 are optimisation leads, not permission to change reward formulas or introduce mutation. Start
 with immutable ordered state and library folds. Any local imperative optimisation needs a
 separate measured comparison and written reason under the repository's performance exception.
+
+## Recorded implementation evidence
+
+The runtime is `ledger/rules/Rewards.scala` (`start`, `pulse`, `complete`), called by RUPD and
+NEWEPOCH. `ledger/state/Rewards.scala` models `RewardPulseSize`, `RewardBlockCount`,
+`LeaderOnlyReward`, `PoolRewardInfo`, `RewardFreeVars`, `RewardAns` and `RewardPulser`; the
+Haskell codecs retain the existing four-field `RSLP` layout. The registration key set shares the
+immutable accounts tree. Remaining stake uses a persistent ordered map, split at the pulse bound.
+The private `SingletonReward` representation enforces one reward while sharing its singleton
+`RewardSet` between accumulated and recent maps. Completion widens the covariant immutable map
+in constant time instead of allocating a new tree and singleton set for every rewarded account.
+The wire codec still encodes one `Reward` per accumulated entry, including imported leader
+rewards. This pure optimisation follows the measured completion allocation recorded in
+[performance.md](../performance.md). No imperative exception is used.
+
+Fifteen executed unchanged-reference cases retain the initial state plus eleven API operations
+per case: 180 encoded-state comparisons in total, and events for normal pulses. They include
+positive members, script/owner credentials, version-2/3 aggregation and prefiltering, imported
+pool-identifier discrepancies, a count above 2^64, the full positive Haskell `Int` range, and
+non-myopic history/empty-map/identity-length cases. See the
+[oracle fixtures](../../storage/src/test/resources/rewards-1.19.0.1/README.md). Only local newly
+computed likelihood vectors are masked. Codec-write failures fail the comparison.
+
+The old opaque V5 writer rewrote a 20,227-byte pending state to identical bytes. The new reader
+loads it, checkpoints a prefix, restores and resumes it, and reproduces the original prefix after
+rollback to the immutable earlier state. `RewardSnapshotSuite` retains that regression;
+[fixture provenance](../../node/src/test/resources/rewards-pending-v5.md) records the exact writer
+and SHA-256. The sidecar fingerprint golden remains unchanged; no persisted-format migration is
+introduced.

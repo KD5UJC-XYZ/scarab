@@ -95,3 +95,12 @@ class RewardPulserSuite extends ScalaCheckSuite:
       Right(ProtVer(Word64.fromUnsigned(13), Word64.fromUnsigned(0xffffffffL)))
     )
   }
+
+  test("forced completion of twenty thousand captured members is stack safe") {
+    val captured = pending(rewarding(conway(5, 20000, 4)))
+    val completed = xyz.kd5ujc.scarab.ledger.PreprodDeepTx.onSmallStack {
+      result(Rewards.complete(captured))
+    }
+    assert(completed.rs.size >= 20000, "wide control must retain positive member rewards")
+    assertEquals(Rewards.complete(captured), Right(completed))
+  }

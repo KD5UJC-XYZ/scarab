@@ -1613,3 +1613,40 @@ The resulting-state digests for indices 1400/1420/1449 are respectively
 `08da6612ee4a403ad358492b3ccde05199570ba1ff02d66d6c45978c8c63f2f2`,
 `7f6cbc39c031526555749b0869aec8fd0cc3d11adc9983ac0fb193c338b0c9b5`, and
 `a2912a1475bf177677e31589f4a9832116a5fe619706999851a8b7634ced936b`.
+
+
+## 30. Incremental reward implementation (#135)
+
+**Scope.** The [implemented machine](design/reward-pulser.md) spreads member calculation over
+reference-sized immutable prefixes. Two different measurements separate scheduling from ledger
+admission: controlled API calls on the largest recorded Preview state, and authenticated replay
+of the original blocks across the actual start/force/epoch boundaries. These are offline,
+shared-host measurements, without a public-network sync.
+
+The initial incremental candidate still allocated 18,942,352 bytes at normal completion to build
+75,616 singleton reward sets and a replacement map. Nine warmed completion calls had a median
+33.007 ms and maximum 46.676 ms. That measured work justified the pure `SingletonReward`
+representation: each pulse stores a singleton set once, the recent map reuses it, and completion
+widens the same covariant immutable map. The accumulated-entry CBOR remains one `Reward`; an
+imported accumulated leader reward is accepted as the reference allows. No mutable cache,
+second pulser or imperative exception was introduced.
+
+**Controlled regular schedule.** The private `PulseProfile` loads the section 29 index 1449
+state outside timing and calls `start`, every member pulse, and the final empty-source completion
+call. It warms that whole sequence once per JVM and measures three subsequent sequences; three
+rotated eager/pulsed pairs produce nine measured sequences per condition. The eager baseline is
+main `7dfcded1`; the candidate runtime source is `bfcd4fd0`. The same Docker/JDK/heap/CPU settings
+as section 29 apply. `ThreadMXBean` measures current-thread CPU and allocation; timings exclude
+loading, encoding, digests, per-call sample bookkeeping and explicit GC. Each output's monetary
+and attributed-reward digest must match after normalising only the existing non-myopic gap.
+Explicit GC before and after each sequence measures the retained completed-result delta, rather
+than node-wide peak memory. A separate untimed prefix probe samples retained heap while keeping
+one current immutable state. Neither measures a full node's retained volatile rollback history.
+
+Sources, exact Docker argument vectors, class/source inventories, hashes, stage samples and
+analysis stay outside Git under `/tmp/scarab/issue-135`. The final runtime binding is
+`candidate-binding-singleton.json` (SHA-256
+`c362e39ea9e4f2903b2830655902e6ad82e2b4c88506fe650863b4f8063ef55e`):
+eight runtime source files and 10,783 compiled production files. The final edits were compiled
+while uncommitted, then recorded by `bfcd4fd0`; generated build metadata can name the preceding
+head. Independent source/class hashes bind the measured implementation.
