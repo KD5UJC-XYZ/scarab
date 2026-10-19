@@ -106,14 +106,18 @@ object PeerError:
 
 /** Failures of the local chain model. These are not recoverable by reconnecting. */
 enum ChainError extends NodeError:
+  /** The retained ledger point and pinned backing generation do not describe one state. */
+  case StateAcquire(cause: NetworkError.StateAcquireFailure)
+
   case Decode(what: String, cause: LedgerDecodeError)
   case NotConnected(point: ChainSync.Point, tip: ChainSync.Point)
   case RollbackBeyondAnchor(target: ChainSync.Point, anchor: ChainSync.Point)
   case NoIntersection
 
   def message: String = this match
-    case Decode(w, r)       => s"decode $w: $r"
-    case NotConnected(p, t) => s"${Points.show(p)} does not extend tip ${Points.show(t)}"
+    case StateAcquire(cause) => cause.message
+    case Decode(w, r)        => s"decode $w: $r"
+    case NotConnected(p, t)  => s"${Points.show(p)} does not extend tip ${Points.show(t)}"
     case RollbackBeyondAnchor(t, a) =>
       s"rollback to ${Points.show(t)} beyond anchor ${Points.show(a)}"
     case NoIntersection => "peer shares no point with the local chain"
