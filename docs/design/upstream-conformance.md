@@ -61,7 +61,11 @@ shared by their strict Cardano facades. Caller-provided codecs preserve original
 CBOR rather than fabricate Cardano identifiers. Strict Cardano validation, byte limits
 and transaction accounting remain policy at the facade. The Genesis intersection
 oracle uses upstream's actual findFirstPoint behavior; origin is a real intersection,
-not the absence of one.
+not the absence of one. TxSubmission2 keeps the configured Cardano ID request
+count independent of the reply-list batch ceiling; the generic runtime separately
+applies its caller's outstanding-credit bound. Invalid runtime settings fail with a
+typed configuration error before waiting for Init, rather than failing later during
+wire encoding. Valid default settings retain the reference's indefinite Init wait.
 
 Every retained network fiber owns its error scope and returns an Either; its owner
 lands the value in the caller's scope, following [ADR 0017](../adr/0017-fibers-end-with-values.md).

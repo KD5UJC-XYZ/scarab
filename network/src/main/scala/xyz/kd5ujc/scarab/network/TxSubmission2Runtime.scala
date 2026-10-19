@@ -201,7 +201,8 @@ private[network] object TxSubmission2Runtime:
             }
         }
     def loop(ack: Int): F[Unit] =
-      val request = settings.idsPerRequest.min(settings.maxUnacked).min(codec.maxBatch)
+      // Request counts are UInt16 and independent of reply-list batch ceilings.
+      val request = settings.idsPerRequest.min(settings.maxUnacked)
       send(State.Idle, TxSubmission2Engine.Message.RequestIds(true, ack, request)) *>
         receive(State.Ids(true), None).flatMap {
           case TxSubmission2Engine.Message.ReplyIds(offers) =>

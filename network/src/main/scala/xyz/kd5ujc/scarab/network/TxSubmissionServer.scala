@@ -54,7 +54,13 @@ object TxSubmissionServer:
       typedSink,
       TxSubmission2.conwayCodec,
       rules,
+      // The configured UInt16 request count is independent of the reply-list batch ceiling.
       TxSubmission2Runtime
-        .ServerSettings(settings.idsPerRequest, settings.bodiesTimeout, settings.initTimeout),
+        .ServerSettings(
+          settings.idsPerRequest,
+          settings.bodiesTimeout,
+          settings.initTimeout,
+          maxUnacked = settings.idsPerRequest
+        ),
       message => RuntimeViolation.TxSubmissionUnexpected(TxSubmission2.fromEngine(message))
     )

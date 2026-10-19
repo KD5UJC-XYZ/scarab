@@ -296,3 +296,23 @@ class TxSubmissionLimitsSuite extends FailsOnUncaught with ScalaCheckSuite:
         }
       })
       .map(result => assertEquals(result, Right(None)))
+
+  test("the Cardano server retains configured ID counts above the reply-list batch ceiling"):
+    typed {
+      linked(protocols = Set(4)).use { (client, server) =>
+        for
+          c <- client.channel(4)
+          s <- server.channel(4)
+          request <- Fibers.scoped[IO, NetworkError, Unit](NetworkError.Defect(_)) {
+            TxSubmissionServer.run(s, sink, TxSubmissionServer.Settings(idsPerRequest = 9))
+          }.background.use { serving =>
+            for
+              _ <- send(c, State.Init, Role.Client, Message.Init)
+              request <- receive(c, State.Idle, Role.Server)
+              _ <- send(c, State.Ids(true), Role.Client, Message.Done)
+              _ <- serving.joinWithNever.flatMap(Fibers.land[IO, NetworkError, Unit])
+            yield request
+          }
+        yield request
+      }
+    }.map(result => assertEquals(result, Right(Message.RequestIds(true, 0, 9))))
