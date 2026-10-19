@@ -154,6 +154,21 @@ object RewardUpdate:
 final case class ProtVer(major: Word64, minor: Word64) derives Eq, Show, Diff
 
 object ProtVer:
+  /** The pinned ledger's Version major and Word32 minor, before storing parameters in a pulser. */
+  def fromBigInt(major: BigInt, minor: BigInt): Either[VocabError, ProtVer] =
+    for
+      _ <- Either.cond(
+        major >= 0 && major <= 13,
+        (),
+        VocabError.OutOfRange(VocabError.Kind.ProtocolMajor, major)
+      )
+      _ <- Either.cond(
+        minor >= 0 && minor <= ((BigInt(1) << 32) - 1),
+        (),
+        VocabError.OutOfRange(VocabError.Kind.ProtocolMinor, minor)
+      )
+    yield ProtVer(Word64.fromUnsigned(major.toLong), Word64.fromUnsigned(minor.toLong))
+
   val major: Lens[ProtVer, Word64] = Focus[ProtVer](_.major)
   val minor: Lens[ProtVer, Word64] = Focus[ProtVer](_.minor)
 

@@ -142,8 +142,6 @@ object Rewards:
     val totalStake = globals.maxLovelaceSupply - reserves
     val totalActive = go.totalActiveStake.value.value
     val registered = EraLedger.registered(es.ls)
-    val version =
-      ProtVer(Word64.fromUnsigned(major.toLong), Word64.fromUnsigned(pr.protocolMinor.toLong))
 
     // `mkPoolRewardInfo`: only block-producing pools participate in monetary rewards.
     val infos = go.pools.iterator.toVector.flatTraverse { (id, spss) =>
@@ -176,6 +174,7 @@ object Rewards:
       }
     }
     for
+      version <- ProtVer.fromBigInt(pr.protocolMajor, pr.protocolMinor)
       pools <- infos.map(Sorted.map(_))
       leaders = pools.valuesIterator.foldLeft(Sorted.empty[Credential[Staking], RewardSet]) {
         (rs, info) =>
