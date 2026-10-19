@@ -1,0 +1,55 @@
+--- a/cardano-diffusion/protocols/tests-lib/Cardano/Network/Protocol/Handshake/Test.hs
++++ b/cardano-diffusion/protocols/tests-lib/Cardano/Network/Protocol/Handshake/Test.hs
+@@ -68,4 +68,6 @@
+         , testProperty "export seeded Cardano simultaneous-open cases"
+             (once (ioProperty (exportCardanoSimultaneousOpenCases >> pure True)))
++        , testProperty "export correlated Cardano simultaneous-open cases"
++            (once (ioProperty (exportCardanoCorrelatedSimultaneousOpenCases >> pure True)))
+         , testProperty "acceptOrRefuse"
+             prop_acceptOrRefuse_symmetric_NodeToNode
+@@ -796,0 +798,45 @@
++
++
++-- | Export a separately labelled correlated slice of the unchanged simultaneous-open ST
++-- property. One unchanged generated map is supplied to both original property arguments.
++exportCardanoCorrelatedSimultaneousOpenCases :: IO ()
++exportCardanoCorrelatedSimultaneousOpenCases = do
++    maybePath <- lookupEnv "SCARAB_HANDSHAKE_SIMOPEN_CORRELATED_CASES"
++    case maybePath of
++      Nothing -> pure ()
++      Just path -> withFile path WriteMode $ \out ->
++        forM_ [0 .. 63 :: Int] $ \ordinal -> do
++          let seed = 503001 + ordinal
++              size = 60 + ordinal `mod` 31
++              generated = unGen arbitrary (mkQCGen seed) size
++                :: ArbitraryNodeToNodeVersions
++              ArbitraryNodeToNodeVersions versions = generated
++              property = prop_channel_simultaneous_open_NodeToNode_ST generated generated
++              (serverResult, clientResult) = pureHandshake
++                ((maybeAccept .) . acceptableVersion)
++                versions
++                versions
++              renderResult = maybe "none" (\value -> if value then "true" else "false")
++              VersionDataCodec { encodeData } = NTN.nodeToNodeVersionDataCodec
++              proposal = CBOR.TList
++                [ CBOR.TInt 0
++                , CBOR.TMap
++                    [ (CBOR.TInt (fromIntegral (fromEnum version + 14)), encodeData version (versionData entry))
++                    | (version, entry) <- Map.toAscList (getVersions versions)
++                    ]
++                ]
++              wire = hexLazy $ CBOR.toLazyByteString (CBOR.encodeTerm proposal)
++          result <- quickCheckWithResult
++            stdArgs { chatty = False, replay = Just (mkQCGen (seed + 900006), size) }
++            (once property)
++          hPutStrLn out $ intercalate "\t"
++            [ "cardano-handshake-simopen-correlated-v1", show seed, show ordinal, show size
++            , if isSuccess result then "pass" else "upstream-failure"
++            , renderResult clientResult, renderResult serverResult, wire, wire
++            ]
++          unless (isSuccess result) $
++            fail ("Cardano correlated simultaneous-open property failed at seed " ++ show seed)
++  where
++    hexLazy = concatMap hexByte . BL.unpack
++    hexByte :: Word8 -> String
++    hexByte w = let h = showHex w "" in if length h == 1 then '0' : h else h
