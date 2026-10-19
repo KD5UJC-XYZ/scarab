@@ -48,6 +48,23 @@ Ouroboros-network tests are covered. Other applicable protocols and typed-protoc
 open under #49. Source licensing is Apache-2.0; see `fixtures/licenses/ouroboros-network-LICENSE`
 and `fixtures/licenses/ouroboros-network-NOTICE`.
 
+The ChainSync `codecSerialised` observer exports 128 rows from the real
+`AnyMessage ChainSync_Serialised_BlockHeader` generator. Both unchanged
+`prop_codec_ChainSyncSerialised` and `prop_codec_cbor_ChainSyncSerialised` pass 128/128. Scarab
+decodes and exact-wire re-encodes 49 rows. The other 79 retain their original bytes and pass
+verdicts but are unsupported at `ExpectedDefiniteByteString`: the upstream mock uses
+`HeaderHash Int`, while Scarab requires hash bytes. No integer-to-byte mapping is applied.
+
+The pinned BlockFetch observer exports 24 seeded `AnyMessage (BlockFetch (Serialised Block)
+(Point Block))` cases at seed base 490201. Both unchanged `prop_codec_BlockFetchSerialised` and
+`prop_codec_cbor_BlockFetchSerialised` pass for all 24 rows. Scarab's `CardanoBlockFetch` typed
+consumer exactly decodes and re-encodes 20 rows across `ClientDone`, `StartBatch`, `NoBlocks`, and
+`Block`. Four `RequestRange` rows retain their original wire and upstream pass verdict but are
+classified unsupported: the upstream mock point uses `HeaderHash Int`, encoded as an integer,
+while Scarab's point codec requires byte-string hashes. No conversion or synthetic hash is used.
+The upstream target dependency closure is 167 units; the minimal solver project was checked against
+the full plan and matches every package/component, flag, source/Cabal hash, and dependency edge.
+
 The pinned ChainSync `codecSerialised` observer now exports 128 rows from the actual
 `AnyMessage ChainSync_Serialised_BlockHeader` generator, preserving each source state token,
 sender agency, constructor, original CBOR wire, generator seed/size, and separate verdicts from

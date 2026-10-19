@@ -7,6 +7,7 @@ import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 import scala.io.Source
 import xyz.kd5ujc.scarab.codec.Bytes
+import ChainSync.DecodeResult
 
 /** Consumes actual generated codec messages exported from the pinned upstream QuickCheck tests. */
 class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
@@ -373,4 +374,73 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
         "unsupported:intersect-found:ExpectedDefiniteByteString" -> 13,
         "unsupported:find-intersect:ExpectedDefiniteByteString" -> 9
       )
+    )
+
+  test("classify generated pinned BlockFetch Serialised-block rows at the typed boundary"):
+    val input =
+      rows("blockfetch.tsv", "18c4e32a647e7287246b2ef2c6a874e82e565778e63352966645fb969e0e2e50")
+    val payloadCodec = CardanoBlockFetch.payloadCodec()
+    assertEquals(input.size, 24)
+    assertEquals(input.count(f => f.size == 10 && f(8) == "pass" && f(9) == "pass"), 24)
+    assertEquals(
+      input.groupMapReduce(_(6))(_ => 1)(_ + _),
+      Map(
+        "block" -> 4,
+        "client-done" -> 5,
+        "no-blocks" -> 5,
+        "request-range" -> 4,
+        "start-batch" -> 6
+      )
+    )
+    assertEquals(
+      input.groupMapReduce(_(4))(_ => 1)(_ + _),
+      Map("busy" -> 11, "idle" -> 9, "streaming" -> 4)
+    )
+    val outcomes = input.map { fields =>
+      assertEquals(fields.size, 10)
+      assertEquals(fields(0), "blockfetch-serialised-codec-v1")
+      val seed = fields(1).toInt
+      val ordinal = fields(2).toInt
+      assertEquals(seed, 490201 + ordinal)
+      assertEquals(fields(3).toInt, 30 + ordinal % 21)
+      val state = fields(4) match
+        case "idle"      => BlockFetch.State.Idle
+        case "busy"      => BlockFetch.State.Busy
+        case "streaming" => BlockFetch.State.Streaming
+        case other       => fail(s"unknown upstream BlockFetch state $other at seed $seed")
+      val sender = fields(5) match
+        case "client" => BlockFetch.Role.Client
+        case "server" => BlockFetch.Role.Server
+        case other    => fail(s"unknown upstream BlockFetch sender $other at seed $seed")
+      val wire = bytes(fields(7))
+      val decoded = BlockFetch.decodePrefix(state, sender, wire, payloadCodec) match
+        case DecodeResult.Decoded(message, consumed) =>
+          assertEquals(consumed, wire.size, s"seed $seed consumed original wire")
+          Right(message)
+        case DecodeResult.Failed(error) => Left(error.toString)
+        case DecodeResult.NeedMore      => Left("NeedMore")
+      decoded match
+        case Left(reason) =>
+          assertEquals(fields(6), "request-range", s"only mock Int hashes are unsupported at $seed")
+          assertEquals(reason, "ExpectedDefiniteByteString", s"seed $seed typed reason")
+          "unsupported:request-range:ExpectedDefiniteByteString"
+        case Right(message) =>
+          val decodedTag = message match
+            case BlockFetch.Message.RequestRange(_, _) => "request-range"
+            case BlockFetch.Message.ClientDone         => "client-done"
+            case BlockFetch.Message.StartBatch         => "start-batch"
+            case BlockFetch.Message.NoBlocks           => "no-blocks"
+            case BlockFetch.Message.Block(_)           => "block"
+            case BlockFetch.Message.BatchDone          => "batch-done"
+          assertEquals(decodedTag, fields(6), s"seed $seed typed constructor")
+          val encoded = BlockFetch
+            .encode(state, sender, message, payloadCodec)
+            .fold(e => fail(s"seed $seed Scarab typed encode: ${e.toString}"), identity)
+          assertEquals(encoded, wire, s"seed $seed exact original wire roundtrip")
+          "matched"
+    }
+    assertEquals(outcomes.size, 24)
+    assertEquals(
+      outcomes.groupMapReduce(identity)(_ => 1)(_ + _),
+      Map("matched" -> 20, "unsupported:request-range:ExpectedDefiniteByteString" -> 4)
     )
