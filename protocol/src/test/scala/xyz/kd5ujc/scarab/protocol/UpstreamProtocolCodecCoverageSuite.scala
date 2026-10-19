@@ -10,6 +10,10 @@ import xyz.kd5ujc.scarab.codec.Bytes
 
 import ChainSync.DecodeResult
 
+private enum ChainSyncSplitCoverage:
+  case Matched(twoPartitions: Int, threePartitions: Int)
+  case Unsupported(error: ProtocolError)
+
 /** Consumes actual generated codec messages exported from the pinned upstream QuickCheck tests. */
 class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
   private val prefix = "/upstream/ouroboros-network-protocol-codecs/"
@@ -194,6 +198,44 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
     val truncated = decode(Bytes(raw.dropRight(1)))
     assertNotEquals(truncated, expected, s"$label truncated-wire negative control")
     (splits2, splits3)
+
+  private def verifyChainSyncPartitions[A](
+      wire: Bytes,
+      expected: ChainSync.DecodeResult[A],
+      decode: Bytes => ChainSync.DecodeResult[A],
+      label: String
+  ): (Int, Int) =
+    val raw = wire.value.toVector
+    def verify(parts: Vector[Vector[Byte]], partition: String): Unit =
+      val retainedPrefixes = parts.scanLeft(Vector.empty[Byte])(_ ++ _).tail
+      retainedPrefixes.zipWithIndex.foreach { (retained, index) =>
+        val result = decode(Bytes(retained))
+        if retained.size < raw.size then
+          assertEquals(result, ChainSync.DecodeResult.NeedMore, s"$label $partition prefix $index")
+        else assertEquals(result, expected, s"$label $partition complete prefix $index")
+      }
+      assertEquals(retainedPrefixes.lastOption.getOrElse(Vector.empty), raw, s"$label wire")
+
+    val twoPartitions = (0 to raw.size).map { first =>
+      verify(Vector(raw.take(first), raw.drop(first)), s"2-split@$first")
+      1
+    }.sum
+    val threePartitions = (for
+      first <- 0 to raw.size
+      second <- first to raw.size
+    yield
+      verify(
+        Vector(raw.take(first), raw.slice(first, second), raw.drop(second)),
+        s"3-split@$first/$second"
+      )
+      1
+    ).sum
+    assertNotEquals(
+      decode(Bytes(raw.dropRight(1))),
+      expected,
+      s"$label truncated-wire negative control"
+    )
+    (twoPartitions, threePartitions)
 
   test("consume upstream LocalTxSubmission split properties through Scarab's prefix decoder"):
     val input = rows(
@@ -634,6 +676,128 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
         "unsupported:intersect-found" -> 13,
         "unsupported:find-intersect" -> 9
       )
+    )
+
+  test("consume upstream ChainSync serialized split properties through Scarab's prefix decoder"):
+    val splitInput = rows(
+      "chainsync-splits.tsv",
+      "2979a92446cb3bc062b4f9109f1dea3208bf4094e22c80116f341ac838b45c70"
+    )
+    val codecInput = rows(
+      "chainsync.tsv",
+      "d2c840ebcb1f4b55b59055e8ef4b9ff55da80a0d0d428dc2b090c3c0c840224e"
+    )
+    val payloadCodec = new ChainSync.PayloadCodec[Bytes]:
+      def encode(value: Bytes): Either[ProtocolError, Bytes] = Right(value)
+      def decode(value: Bytes): Either[ProtocolError, Bytes] = Right(value)
+
+    assertEquals(splitInput.size, 128)
+    assertEquals(codecInput.size, splitInput.size)
+    assertEquals(splitInput.count(f => f.size == 10 && f(8) == "pass" && f(9) == "pass"), 128)
+    val outcomes = splitInput.zip(codecInput).map { (fields, codecFields) =>
+      assertEquals(fields.size, 10)
+      assertEquals(fields(0), "chainsync-splits-v1")
+      val seed = fields(1).toInt
+      val ordinal = fields(2).toInt
+      assertEquals(seed, 491101 + ordinal)
+      assertEquals(fields(3).toInt, 30 + ordinal % 21)
+      assertEquals(fields(4), codecFields(4), s"seed $seed original state")
+      assertEquals(fields(5), codecFields(5), s"seed $seed sender/agency")
+      assertEquals(fields(6), codecFields(6), s"seed $seed constructor")
+      assertEquals(fields(7), codecFields(7), s"seed $seed original wire")
+      assertEquals(codecFields(8), "pass", s"seed $seed original codec verdict")
+      assertEquals(codecFields(9), "pass", s"seed $seed original CBOR verdict")
+      assertEquals(fields(8), "pass", s"seed $seed upstream splits2 verdict")
+      assertEquals(fields(9), "pass", s"seed $seed upstream splits3 verdict")
+      val state = fields(4) match
+        case "idle"            => ChainSync.State.Idle
+        case "next-can-await"  => ChainSync.State.NextCanAwait
+        case "next-must-reply" => ChainSync.State.NextMustReply
+        case "intersect"       => ChainSync.State.Intersect
+        case other             => fail(s"unknown upstream ChainSync state $other at seed $seed")
+      val sender = fields(5) match
+        case "client" => ChainSync.Role.Client
+        case "server" => ChainSync.Role.Server
+        case other    => fail(s"unknown upstream ChainSync sender $other at seed $seed")
+      val wire = bytes(fields(7))
+      ChainSync.decodePrefix(state, sender, wire, payloadCodec) match
+        case ChainSync.DecodeResult.Failed(ProtocolError.ExpectedDefiniteByteString) =>
+          assert(
+            Set(
+              "roll-forward",
+              "roll-backward",
+              "find-intersect",
+              "intersect-found",
+              "intersect-not-found"
+            )
+              .contains(fields(6)),
+            s"only mock Int hash rows are unsupported at seed $seed"
+          )
+          ChainSyncSplitCoverage.Unsupported(ProtocolError.ExpectedDefiniteByteString)
+        case ChainSync.DecodeResult.Failed(error) =>
+          fail(s"seed $seed unexpected typed ChainSync decode error: $error")
+        case ChainSync.DecodeResult.NeedMore =>
+          fail(s"seed $seed complete ChainSync wire unexpectedly needs more bytes")
+        case decoded @ ChainSync.DecodeResult.Decoded(message, consumed) =>
+          assertEquals(consumed, wire.size, s"seed $seed consumed complete original wire")
+          val decodedTag = message match
+            case ChainSync.Message.RequestNext          => "request-next"
+            case ChainSync.Message.AwaitReply           => "await-reply"
+            case ChainSync.Message.RollForward(_, _)    => "roll-forward"
+            case ChainSync.Message.RollBackward(_, _)   => "roll-backward"
+            case ChainSync.Message.FindIntersect(_)     => "find-intersect"
+            case ChainSync.Message.IntersectFound(_, _) => "intersect-found"
+            case ChainSync.Message.IntersectNotFound(_) => "intersect-not-found"
+            case ChainSync.Message.Done                 => "done"
+          assertEquals(decodedTag, fields(6), s"seed $seed typed constructor")
+          val encoded = ChainSync
+            .encode(state, sender, message, payloadCodec)
+            .fold(e => fail(s"seed $seed Scarab typed encode: $e"), identity)
+          assertEquals(encoded, wire, s"seed $seed exact original wire roundtrip")
+          val (twoPartitions, threePartitions) = verifyChainSyncPartitions(
+            wire,
+            decoded,
+            prefix => ChainSync.decodePrefix(state, sender, prefix, payloadCodec),
+            s"seed $seed"
+          )
+          ChainSyncSplitCoverage.Matched(twoPartitions, threePartitions)
+    }
+    assertEquals(
+      outcomes.collect { case ChainSyncSplitCoverage.Matched(_, _) => 1 }.size,
+      49
+    )
+    assertEquals(
+      outcomes.collect {
+        case ChainSyncSplitCoverage.Unsupported(ProtocolError.ExpectedDefiniteByteString) => 1
+      }.size,
+      79
+    )
+    assertEquals(
+      splitInput
+        .zip(outcomes)
+        .collect { case (fields, ChainSyncSplitCoverage.Unsupported(_)) => fields(6) }
+        .groupMapReduce(identity)(_ => 1)(_ + _),
+      Map(
+        "roll-forward" -> 20,
+        "roll-backward" -> 29,
+        "intersect-not-found" -> 8,
+        "intersect-found" -> 13,
+        "find-intersect" -> 9
+      )
+    )
+    val mapped = splitInput.zip(outcomes).collect {
+      case (fields, ChainSyncSplitCoverage.Matched(twoPartitions, threePartitions)) =>
+        (bytes(fields(7)).size, twoPartitions, threePartitions)
+    }
+    assertEquals(
+      mapped.map(_._2).sum,
+      mapped.map(_._1 + 1).sum,
+      "all split2 partitions replayed for typed-compatible rows"
+    )
+    assertEquals(
+      mapped.map(_._3).sum,
+      mapped.map { case (size, _, _) => (size + 1) * (size + 2) / 2 }.sum,
+      "all split3 partitions replayed for typed-compatible rows"
     )
 
   test("classify generated pinned BlockFetch Serialised-block rows at the typed boundary"):
@@ -1232,4 +1396,94 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
         "unsupported:reply-txs" -> 4,
         "unsupported:request-txs" -> 4
       )
+    )
+
+  test("consume upstream TxSubmission2 split properties through Scarab's prefix decoder"):
+    val splitInput = rows(
+      "txsubmission2-splits.tsv",
+      "01e45d4a3b7e32b4d92e6cdb5007f933c04f78361a46d94ebd97b1f64f31f503"
+    )
+    val codecInput = rows(
+      "txsubmission2.tsv",
+      "148ef49de27138d1b2bf5d46b02ea944e3fe9fde1a646baf6b42304f0f909e41"
+    )
+    assertEquals(splitInput.size, 24)
+    assertEquals(codecInput.size, splitInput.size)
+    assertEquals(splitInput.count(f => f.size == 10 && f(8) == "pass" && f(9) == "pass"), 24)
+    val outcomes = splitInput.zip(codecInput).map { (fields, codecFields) =>
+      assertEquals(fields.size, 10)
+      assertEquals(fields(0), "txsubmission2-splits-v1")
+      val seed = fields(1).toInt
+      val ordinal = fields(2).toInt
+      assertEquals(seed, 495001 + ordinal)
+      assertEquals(fields(3).toInt, 30 + ordinal % 21)
+      assertEquals(fields(4), codecFields(4), s"seed $seed original state")
+      assertEquals(fields(5), codecFields(5), s"seed $seed original agency")
+      assertEquals(fields(6), codecFields(6), s"seed $seed original constructor")
+      assertEquals(fields(7), codecFields(7), s"seed $seed original wire")
+      assertEquals(codecFields(8), "pass", s"seed $seed original codec verdict")
+      assertEquals(codecFields(9), "pass", s"seed $seed original CBOR verdict")
+      assertEquals(fields(8), "pass", s"seed $seed upstream splits2 verdict")
+      assertEquals(fields(9), "pass", s"seed $seed upstream splits3 verdict")
+      val state = fields(4) match
+        case "init"            => TxSubmission2.State.Init
+        case "idle"            => TxSubmission2.State.Idle
+        case "ids-blocking"    => TxSubmission2.State.Ids(blocking = true)
+        case "ids-nonblocking" => TxSubmission2.State.Ids(blocking = false)
+        case "txs"             => TxSubmission2.State.Txs
+        case other             => fail(s"unknown upstream TxSubmission2 state $other at seed $seed")
+      val sender = fields(5) match
+        case "client" => ChainSync.Role.Client
+        case "server" => ChainSync.Role.Server
+        case other    => fail(s"unknown upstream TxSubmission2 sender $other at seed $seed")
+      val wire = bytes(fields(7))
+      TxSubmission2.decodePrefix(state, sender, wire) match
+        case DecodeResult.Failed(ProtocolError.ExpectedDefiniteArray) =>
+          assert(
+            Set("reply-ids", "request-txs", "reply-txs").contains(fields(6)),
+            s"only generic mock transaction payload rows are unsupported at seed $seed"
+          )
+          (fields(6), None)
+        case DecodeResult.Failed(error) =>
+          fail(s"seed $seed unexpected typed TxSubmission2 decode error: $error")
+        case DecodeResult.NeedMore =>
+          fail(s"seed $seed complete TxSubmission2 wire unexpectedly needs more bytes")
+        case decoded @ DecodeResult.Decoded(message, consumed) =>
+          assertEquals(consumed, wire.size, s"seed $seed consumed complete original wire")
+          val tag = message match
+            case TxSubmission2.Message.Init => "init"
+            case TxSubmission2.Message.RequestIds(blocking, _, _) =>
+              if blocking then "request-ids-blocking" else "request-ids-nonblocking"
+            case TxSubmission2.Message.ReplyIds(_)   => "reply-ids"
+            case TxSubmission2.Message.RequestTxs(_) => "request-txs"
+            case TxSubmission2.Message.ReplyTxs(_)   => "reply-txs"
+            case TxSubmission2.Message.Done          => "done"
+          assertEquals(tag, fields(6), s"seed $seed typed constructor")
+          val encoded = TxSubmission2
+            .encode(state, sender, message)
+            .fold(e => fail(s"seed $seed Scarab typed encode: $e"), identity)
+          assertEquals(encoded, wire, s"seed $seed exact original wire roundtrip")
+          val counts = verifyAllPartitions(
+            wire,
+            decoded,
+            prefix => TxSubmission2.decodePrefix(state, sender, prefix),
+            s"seed $seed"
+          )
+          (fields(6), Some(counts))
+    }
+    assertEquals(outcomes.count(_._2.nonEmpty), 13)
+    assertEquals(outcomes.count(_._2.isEmpty), 11)
+    assertEquals(
+      outcomes.collect { case (tag, None) => tag }.groupMapReduce(identity)(_ => 1)(_ + _),
+      Map("reply-ids" -> 3, "request-txs" -> 4, "reply-txs" -> 4)
+    )
+    val mapped = splitInput.zip(outcomes).collect {
+      case (fields, (_, Some((twoPartitions, threePartitions)))) =>
+        val size = bytes(fields(7)).size
+        (size, twoPartitions, threePartitions)
+    }
+    assertEquals(mapped.map(_._2).sum, mapped.map(_._1 + 1).sum)
+    assertEquals(
+      mapped.map(_._3).sum,
+      mapped.map { case (size, _, _) => (size + 1) * (size + 2) / 2 }.sum
     )

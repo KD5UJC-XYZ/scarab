@@ -271,6 +271,52 @@ exportChainSyncCases path count seed = withFile path WriteMode $ \outputHandle -
     hex = concatMap (pad . (`showHex` "")) . BS.unpack
     pad [digit] = ['0', digit]
     pad digits = digits
+-- Disposable observer: rerun the original split properties for the same seeded message.
+exportChainSyncSplitCases :: FilePath -> Int -> Int -> IO ()
+exportChainSyncSplitCases path count seed = withFile path WriteMode $ \outputHandle ->
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 30 + (ordinal `mod` 21)
+        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize
+          :: AnyMessage ChainSync_Serialised_BlockHeader
+    split2Result <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 3000003), caseSize) }
+      (once (prop_codec_splits2_ChainSyncSerialised testCase))
+    split3Result <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 4000003), caseSize) }
+      (once (prop_codec_splits3_ChainSyncSerialised testCase))
+    case testCase of
+      AnyMessage (msg :: Message ChainSync_Serialised_BlockHeader st st') -> do
+        let chainCodec = codecSerialised
+              :: Codec (ChainSync (Serialised BlockHeader) (Point BlockHeader) (Tip BlockHeader))
+                   S.DeserialiseFailure IO ByteString
+            raw = encode chainCodec msg
+            token = stateToken :: StateToken st
+            (state, sender) = case token of
+              SingIdle -> ("idle", "client")
+              SingNext SingCanAwait -> ("next-can-await", "server")
+              SingNext SingMustReply -> ("next-must-reply", "server")
+              SingIntersect -> ("intersect", "server")
+              SingDone -> ("done", "client")
+            tag = case msg of
+              MsgRequestNext -> "request-next"
+              MsgAwaitReply -> "await-reply"
+              MsgRollForward _ _ -> "roll-forward"
+              MsgRollBackward _ _ -> "roll-backward"
+              MsgFindIntersect _ -> "find-intersect"
+              MsgIntersectFound _ _ -> "intersect-found"
+              MsgIntersectNotFound _ -> "intersect-not-found"
+              MsgDone -> "done"
+            split2Outcome = if isSuccess split2Result then "pass" else "upstream-failure"
+            split3Outcome = if isSuccess split3Result then "pass" else "upstream-failure"
+        hPutStrLn outputHandle $ intercalate "\t"
+          [ "chainsync-splits-v1", show caseSeed, show ordinal, show caseSize
+          , state, sender, tag, hex (BL.toStrict raw), split2Outcome, split3Outcome
+          ]
+  where
+    hex = concatMap (pad . (`showHex` "")) . BS.unpack
+    pad [digit] = ['0', digit]
+    pad digits = digits
 ''',
         "import Control.Monad (forM_)\n"
         "import Data.ByteString qualified as BS\n"
@@ -822,6 +868,52 @@ exportTxSubmission2Cases path count seed = withFile path WriteMode $ \outputHand
     hex = concatMap (pad . (`showHex` "")) . BS.unpack
     pad [digit] = ['0', digit]
     pad digits = digits
+
+-- Disposable observer: replay the unchanged codec split properties for each seeded message.
+exportTxSubmission2SplitCases :: FilePath -> Int -> Int -> IO ()
+exportTxSubmission2SplitCases path count seed = withFile path WriteMode $ \outputHandle ->
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 30 + (ordinal `mod` 21)
+        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize
+          :: AnyMessage (TxSubmission2 TxId Tx)
+    split2Result <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 3000003), caseSize) }
+      (once (prop_codec_splits2 testCase))
+    split3Result <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 4000003), caseSize) }
+      (once (prop_codec_splits3 testCase))
+    case testCase of
+      AnyMessage (msg :: Message (TxSubmission2 TxId Tx) st st') -> do
+        let txCodec = codec_v2
+              :: Codec (TxSubmission2 TxId Tx) DeserialiseFailure IO ByteString
+            raw = encode txCodec msg
+            token = stateToken :: StateToken st
+            (state, sender) = case token of
+              SingInit -> ("init", "client")
+              SingIdle -> ("idle", "server")
+              SingTxIds SingBlocking -> ("ids-blocking", "client")
+              SingTxIds SingNonBlocking -> ("ids-nonblocking", "client")
+              SingTxs -> ("txs", "client")
+              SingDone -> ("done", "none")
+            tag = case msg of
+              MsgInit -> "init"
+              MsgRequestTxIds SingBlocking _ _ -> "request-ids-blocking"
+              MsgRequestTxIds SingNonBlocking _ _ -> "request-ids-nonblocking"
+              MsgReplyTxIds _ -> "reply-ids"
+              MsgRequestTxs _ -> "request-txs"
+              MsgReplyTxs _ -> "reply-txs"
+              MsgDone -> "done"
+            split2Outcome = if isSuccess split2Result then "pass" else "upstream-failure"
+            split3Outcome = if isSuccess split3Result then "pass" else "upstream-failure"
+        hPutStrLn outputHandle $ intercalate "\t"
+          [ "txsubmission2-splits-v1", show caseSeed, show ordinal, show caseSize
+          , state, sender, tag, hex (BL.toStrict raw), split2Outcome, split3Outcome
+          ]
+  where
+    hex = concatMap (pad . (`showHex` "")) . BS.unpack
+    pad [digit] = ['0', digit]
+    pad digits = digits
 ''',
         "import Control.Monad (forM_)\n"
         "import Data.ByteString qualified as BS\n"
@@ -847,7 +939,7 @@ exportTxSubmission2Cases path count seed = withFile path WriteMode $ \outputHand
         raise SystemExit("TxSubmission2 observer module export list changed")
     tx_submission2.write_text(tx_submission2_module.replace(
         tx_submission2_export_anchor,
-        "  , labelMsg\n  , exportTxSubmission2Cases\n",
+        "  , labelMsg\n  , exportTxSubmission2Cases\n  , exportTxSubmission2SplitCases\n",
     ))
 
     chain_module = chain.read_text()
@@ -856,19 +948,19 @@ exportTxSubmission2Cases path count seed = withFile path WriteMode $ \outputHand
         raise SystemExit("ChainSync observer module export anchor changed")
     chain.write_text(chain_module.replace(
         chain_export_anchor,
-        "module Ouroboros.Network.Protocol.ChainSync.Test (tests, exportChainSyncCases) where",
+        "module Ouroboros.Network.Protocol.ChainSync.Test (tests, exportChainSyncCases, exportChainSyncSplitCases) where",
     ))
     main = overlay / "ouroboros-network/protocols/tests/Main.hs"
     main_original = main.read_text()
     dispatch_imports = (
         "import Ouroboros.Network.Protocol.KeepAlive.Test qualified as KeepAlive (tests, exportKeepAliveCases, exportKeepAliveSplitCases)\n"
         "import Ouroboros.Network.Protocol.PeerSharing.Test qualified as PeerSharing (tests, exportPeerSharingCases)\n"
-        "import Ouroboros.Network.Protocol.ChainSync.Test qualified as ChainSync (tests, exportChainSyncCases)\n"
+        "import Ouroboros.Network.Protocol.ChainSync.Test qualified as ChainSync (tests, exportChainSyncCases, exportChainSyncSplitCases)\n"
         "import Ouroboros.Network.Protocol.BlockFetch.Test qualified as BlockFetch (tests, exportBlockFetchCases, exportBlockFetchSplitCases)\n"
         "import Ouroboros.Network.Protocol.LocalStateQuery.Test qualified as LocalStateQuery (tests, exportLocalStateQueryCases, exportLocalStateQuerySplitCases)\n"
         "import Ouroboros.Network.Protocol.LocalTxSubmission.Test qualified as LocalTxSubmission (tests, exportLocalTxSubmissionCases, exportLocalTxSubmissionSplitCases)\n"
         "import Ouroboros.Network.Protocol.LocalTxMonitor.Test qualified as LocalTxMonitor (tests, exportLocalTxMonitorCases, exportLocalTxMonitorSplitCases)\n"
-        "import Ouroboros.Network.Protocol.TxSubmission2.Test qualified as TxSubmission2 (tests, exportTxSubmission2Cases)\n"
+        "import Ouroboros.Network.Protocol.TxSubmission2.Test qualified as TxSubmission2 (tests, exportTxSubmission2Cases, exportTxSubmission2SplitCases)\n"
         "import System.Environment (getArgs)\n"
     )
     main_text = main_original.replace(
@@ -913,6 +1005,7 @@ exportTxSubmission2Cases path count seed = withFile path WriteMode $ \outputHand
         "    KeepAlive.exportKeepAliveSplitCases (dir <> \"/keepalive-splits.tsv\") (read count) (read seed)\n"
         "    PeerSharing.exportPeerSharingCases (dir <> \"/peersharing.tsv\") (read count) (read seed)\n"
         "    ChainSync.exportChainSyncCases (dir <> \"/chainsync.tsv\") (read count) (read seed)\n"
+        "    ChainSync.exportChainSyncSplitCases (dir <> \"/chainsync-splits.tsv\") (read count) (read seed)\n"
         "    BlockFetch.exportBlockFetchCases (dir <> \"/blockfetch.tsv\") (read count) (read seed)\n"
         "    BlockFetch.exportBlockFetchSplitCases (dir <> \"/blockfetch-splits.tsv\") (read count) (read seed)\n"
         "    LocalStateQuery.exportLocalStateQueryCases (dir <> \"/localsq.tsv\") (read count) (read seed)\n"
@@ -922,6 +1015,7 @@ exportTxSubmission2Cases path count seed = withFile path WriteMode $ \outputHand
         "    LocalTxSubmission.exportLocalTxSubmissionSplitCases (dir <> \"/localtxsubmission-splits.tsv\") (read count) (read seed + 2800)\n"
         "    LocalTxMonitor.exportLocalTxMonitorSplitCases (dir <> \"/localtxmonitor-splits.tsv\") (read count) (read seed + 3800)\n"
         "    TxSubmission2.exportTxSubmission2Cases (dir <> \"/txsubmission2.tsv\") (read count) (read seed)\n"
+        "    TxSubmission2.exportTxSubmission2SplitCases (dir <> \"/txsubmission2-splits.tsv\") (read count) (read seed)\n"
         "  _ -> defaultMain tests",
     )
     main.write_text(main_text)
@@ -1040,6 +1134,7 @@ def main() -> None:
         ("peersharing.tsv", "ouroboros-network:protocols-tests / PeerSharing / codec / prop_codec_PeerSharing"),
         ("chainsync.tsv", "ouroboros-network:protocols-tests / ChainSync / codecSerialised + codecSerialised cbor"),
         ("blockfetch.tsv", "ouroboros-network:protocols-tests / BlockFetch / codecSerialised + codecSerialised cbor"),
+        ("chainsync-splits.tsv", "ouroboros-network:protocols-tests / ChainSync / prop_codec_splits2_ChainSyncSerialised + prop_codec_splits3_ChainSyncSerialised"),
         ("blockfetch-splits.tsv", "ouroboros-network:protocols-tests / BlockFetch / prop_codec_splits2_BlockFetchSerialised + prop_codec_splits3_BlockFetchSerialised"),
         ("localsq.tsv", "ouroboros-network:protocols-tests / LocalStateQuery / codec + codec cbor"),
         ("localsq-splits.tsv", "ouroboros-network:protocols-tests / LocalStateQuery / prop_codec_splits2 + prop_codec_splits3"),
@@ -1048,6 +1143,7 @@ def main() -> None:
         ("localtxmonitor.tsv", "ouroboros-network:protocols-tests / LocalTxMonitor / codecM + codec cborM"),
         ("localtxmonitor-splits.tsv", "ouroboros-network:protocols-tests / LocalTxMonitor / prop_codec_splitsM_LocalTxMonitor splits2 + splits3"),
         ("txsubmission2.tsv", "ouroboros-network:protocols-tests / TxSubmission2 / codec + codec cbor"),
+        ("txsubmission2-splits.tsv", "ouroboros-network:protocols-tests / TxSubmission2 / prop_codec_splits2 + prop_codec_splits3"),
     ]:
         raw = (args.probe_dir / "exports" / name).read_bytes()
         rows = [line.split("\t") for line in raw.decode().splitlines()]
@@ -1062,7 +1158,7 @@ def main() -> None:
             "upstreamPropertyOutcomes": {
                 "both-properties-pass": sum(row[-2:] == ["pass", "pass"] for row in rows),
                 "at-least-one-upstream-failure": sum(row[-2:] != ["pass", "pass"] for row in rows),
-            } if name in ("chainsync.tsv", "blockfetch.tsv", "blockfetch-splits.tsv", "localsq.tsv", "localsq-splits.tsv", "localtxsubmission.tsv", "localtxmonitor.tsv", "txsubmission2.tsv", "keepalive-splits.tsv", "localtxsubmission-splits.tsv", "localtxmonitor-splits.tsv") else {
+            } if name in ("chainsync.tsv", "chainsync-splits.tsv", "blockfetch.tsv", "blockfetch-splits.tsv", "localsq.tsv", "localsq-splits.tsv", "localtxsubmission.tsv", "localtxmonitor.tsv", "txsubmission2.tsv", "txsubmission2-splits.tsv", "keepalive-splits.tsv", "localtxsubmission-splits.tsv", "localtxmonitor-splits.tsv") else {
                 "pass": sum(row[-1] == "pass" for row in rows),
                 "upstream-failure": sum(row[-1] != "pass" for row in rows),
             },
@@ -1146,6 +1242,25 @@ def main() -> None:
                 "sourceStates": {state: sum(row[4] == state for row in rows) for state in sorted({row[4] for row in rows})},
             }
             manifest["propertyReplaySeedOffsets"] = {split2: 3000003, split3: 4000003}
+        if name == "chainsync-splits.tsv":
+            manifest["upstreamPropertyOutcomesByProperty"] = {
+                "prop_codec_splits2_ChainSyncSerialised": {
+                    "pass": sum(row[-2] == "pass" for row in rows),
+                    "upstream-failure": sum(row[-2] != "pass" for row in rows),
+                },
+                "prop_codec_splits3_ChainSyncSerialised": {
+                    "pass": sum(row[-1] == "pass" for row in rows),
+                    "upstream-failure": sum(row[-1] != "pass" for row in rows),
+                },
+            }
+            manifest["adapterInputStatuses"] = {
+                "byConstructor": {tag: sum(row[6] == tag for row in rows) for tag in sorted({row[6] for row in rows})},
+                "sourceStates": {state: sum(row[4] == state for row in rows) for state in sorted({row[4] for row in rows})},
+            }
+            manifest["propertyReplaySeedOffsets"] = {
+                "prop_codec_splits2_ChainSyncSerialised": 3000003,
+                "prop_codec_splits3_ChainSyncSerialised": 4000003,
+            }
         if name == "blockfetch-splits.tsv":
             manifest["upstreamPropertyOutcomesByProperty"] = {
                 "prop_codec_splits2_BlockFetchSerialised": {
@@ -1289,6 +1404,25 @@ def main() -> None:
             manifest["propertyReplaySeedOffsets"] = {
                 "prop_codecM_LocalTxMonitor": 1000003,
                 "prop_codec_cborM_LocalTxMonitor": 2000003,
+            }
+        if name == "txsubmission2-splits.tsv":
+            manifest["upstreamPropertyOutcomesByProperty"] = {
+                "prop_codec_splits2": {
+                    "pass": sum(row[-2] == "pass" for row in rows),
+                    "upstream-failure": sum(row[-2] != "pass" for row in rows),
+                },
+                "prop_codec_splits3": {
+                    "pass": sum(row[-1] == "pass" for row in rows),
+                    "upstream-failure": sum(row[-1] != "pass" for row in rows),
+                },
+            }
+            manifest["adapterInputStatuses"] = {
+                "byConstructor": {tag: sum(row[6] == tag for row in rows) for tag in sorted({row[6] for row in rows})},
+                "sourceStates": {state: sum(row[4] == state for row in rows) for state in sorted({row[4] for row in rows})},
+            }
+            manifest["propertyReplaySeedOffsets"] = {
+                "prop_codec_splits2": 3000003,
+                "prop_codec_splits3": 4000003,
             }
         if name == "txsubmission2.tsv":
             manifest["adapterInputStatuses"] = {

@@ -56,7 +56,12 @@ The ChainSync `codecSerialised` observer exports 128 rows from the real
 `prop_codec_ChainSyncSerialised` and `prop_codec_cbor_ChainSyncSerialised` pass 128/128. Scarab
 decodes and exact-wire re-encodes 49 rows. The other 79 retain their original bytes and pass
 verdicts but are unsupported at `ExpectedDefiniteByteString`: the upstream mock uses
-`HeaderHash Int`, while Scarab requires hash bytes. No integer-to-byte mapping is applied.
+`HeaderHash Int`, while Scarab requires hash bytes. No integer-to-byte mapping is applied. The
+adjacent `chainsync-splits.tsv` reuses all 128 rows for the unchanged serialized split2 and split3
+properties; both pass 128/128. Scarab replays every partition through its production prefix decoder
+for the 49 typed-compatible rows, including empty fragments and truncation controls. The 79 generic
+integer-hash rows preserve their passing upstream split verdicts and remain unsupported; they are not
+counted as Scarab split passes.
 
 The same 24 KeepAlive rows are now also run through the unchanged upstream
 `prop_codec_v2_splits2` and `prop_codec_v2_splits3` properties. Both pass 24/24; the Scala
@@ -131,7 +136,12 @@ and four `ReplyTxs` rows remain unsupported at typed error `ExpectedDefiniteArra
 upstream test uses arbitrary CDDL `Any` values for `TxId` and `Tx`, while Scarab's Conway adapter
 requires the Cardano transaction-id and GenTx structures. Original wires and upstream verdicts are
 retained without conversion. This is a test-domain coverage gap, not a finding of invalid Cardano
-wire or an upstream protocol defect. Split, ID codec, annotated-codec, valid-CBOR and channel
+wire or an upstream protocol defect. The adjacent `txsubmission2-splits.tsv` reuses these same 24
+rows for unchanged `prop_codec_splits2` and `prop_codec_splits3`; each passes 24/24. Scarab replays
+every partition through its production prefix decoder for the 13 typed-compatible rows, including
+empty segments and a truncated-wire negative control. The 11 arbitrary CDDL transaction rows retain
+the original wire and both passing upstream verdicts but remain unsupported at `ExpectedDefiniteArray`;
+they are not counted as Scarab split passes. ID codec, annotated-codec, valid-CBOR and channel
 properties remain separate coverage.
 
 The pinned ChainSync `codecSerialised` observer now exports 128 rows from the actual
@@ -142,5 +152,5 @@ sender agency, constructor, original CBOR wire, generator seed/size, and separat
 reported 100 cases). The fixture manifest records the exact command logs, source hashes, observer
 patch hash, and constructor/state counts. The Scala consumer passes the full sample, with 49 exact
 typed matches and the same 79 `ExpectedDefiniteByteString` mock-hash cases listed above. This
-bounded sample does not imply coverage of ChainSync split, binary-compatibility, valid-CBOR,
-pipelining or transport tests.
+the adjacent split fixture preserves the same 128 rows and property verdicts. Binary-compatibility,
+valid-CBOR, pipelining and transport tests remain separate coverage.
