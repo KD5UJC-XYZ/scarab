@@ -72,9 +72,9 @@ window containing `immutable/` and `records.jsonl` (chunk, byte offset, byte len
 `SCARAB_PLUTUS_BASELINE` to the authenticated snapshot/checkpoint directory, and
 `SCARAB_PLUTUS_OUTPUT` to a fresh writable scratch directory. Mount both inputs read-only. Its fixed
 baseline is snapshot `snapshot-00000000000136511997-5300868.bin`; it verifies the snapshot format and
-restores its checkpoint into a fresh store. For every later captured block it warms a serial
-reference, rotates 1/2/4/8-worker order for three rounds, compares the complete mirror state after
-each validation, then advances only the reference state/store. Timings include full validation and
+restores its checkpoint into a fresh store. For every later captured block it warms the original serial
+interpreter, rotates it alongside 1/2/4/8-worker settings for three rounds, compares the complete mirror state after
+each validation, then advances only the reference state/store. Timings include full validation with direct signature verification (no verification-pipeline cache) and
 store reads, excluding comparisons, file loading, flushes and context recording. Run in the Docker
 JDK image with `scripts/sbtw 'node/testOnly *PlutusReplaySuite'` and those environment variables.
 Normal `check` skips only this externally supplied capture, not the deterministic regression controls.

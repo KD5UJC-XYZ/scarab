@@ -61,7 +61,7 @@ object Phase2:
   )
 
   /** Only values cross the worker boundary. Raw defects are landed in order by the owner. */
-  def execute(job: Job, evaluator: ScriptEvaluator[Id] = ScalusEvaluator.default): Completed =
+  private[ledger] def execute(job: Job, evaluator: ScriptEvaluator[Id]): Completed =
     val outcome =
       try Right(job.requests.map(run(_, evaluator)))
       catch case scala.util.control.NonFatal(cause) => Left(Defect(cause))
