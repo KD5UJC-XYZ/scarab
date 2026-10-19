@@ -50,18 +50,30 @@ class PreprodManyRedeemersSuite extends FunSuite:
 
   test("phase 2 passes all 158 scripts of the recorded transaction on a 256 KiB stack") {
     val outcome = PreprodDeepTx.onSmallStack(evaluate(c.tx, ScalusEvaluator.default))
-    assertEquals(outcome, Right(Phase2.Outcome.Passed(158)))
+    assertEquals(
+      outcome.map {
+        case Phase2.Outcome.Passed(report) => report.scripts;
+        case other                         => fail(s"not passed: $other")
+      },
+      Right(158)
+    )
   }
 
   test("the number of redeemers is not bounded by the stack: 20,000 on a 256 KiB stack") {
     val (many, spent) = manySpending(20000)
     val succeeding: ScriptEvaluator[Id] = _ => EvalResult.Success(ExUnits(0, 0), Vector.empty)
     val outcome = PreprodDeepTx.onSmallStack(evaluate(many, succeeding, spent))
-    assertEquals(outcome, Right(Phase2.Outcome.Passed(20000)))
+    assertEquals(
+      outcome.map {
+        case Phase2.Outcome.Passed(report) => report.scripts;
+        case other                         => fail(s"not passed: $other")
+      },
+      Right(20000)
+    )
   }
 
   test(
-    "the first failure stops the evaluation and names the redeemer, after any number before it"
+    "every script is evaluated and the failed redeemer retained on a small stack"
   ) {
     val (many, spent) = manySpending(20000)
     var calls = 0
@@ -71,9 +83,12 @@ class PreprodManyRedeemersSuite extends FunSuite:
         EvalResult.Failure(EvalFailure.OutOfBudget, ExUnits(0, 0), Vector.empty)
       else EvalResult.Success(ExUnits(0, 0), Vector.empty)
     val outcome = PreprodDeepTx.onSmallStack(evaluate(many, failingAt, spent))
-    assertEquals(
-      outcome,
-      Right(Phase2.Outcome.Failed(14999, many.witnesses.redeemers(5000), EvalFailure.OutOfBudget))
-    )
-    assertEquals(calls, 15000)
+    outcome match
+      case Right(Phase2.Outcome.Failed(report, failures)) =>
+        assertEquals(report.scripts, 20000)
+        assertEquals(failures.length, 1)
+        assertEquals(failures.head.redeemer, many.witnesses.redeemers(5000))
+        assertEquals(failures.head.reason, EvalFailure.OutOfBudget)
+      case other => fail(s"not a script failure: $other")
+    assertEquals(calls, 20000)
   }

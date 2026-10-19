@@ -1,0 +1,6 @@
+**
+!scripts/
+!scripts/oracle/
+!scripts/oracle/plutus/
+!scripts/oracle/plutus/aggregation/
+!scripts/oracle/plutus/aggregation/**

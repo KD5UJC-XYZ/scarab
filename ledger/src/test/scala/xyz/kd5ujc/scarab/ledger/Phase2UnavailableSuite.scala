@@ -49,7 +49,8 @@ class Phase2UnavailableSuite extends FunSuite:
         unavailable
       )
       outcome match
-        case Right(Phase2.Outcome.Unavailable(0, _, `limit`)) => ()
+        case Right(Phase2.Outcome.Unavailable(report, _, `limit`)) =>
+          assertEquals(report.scripts, 0)
         case other => fail(s"unexpected phase-2 outcome: $other")
       checked(tx, unavailable) match
         case Left(LedgerFailure.Unavailable(id, _, `limit`)) => assertEquals(id, tx.body.id)
@@ -80,7 +81,8 @@ class Phase2UnavailableSuite extends FunSuite:
               )
             )
           ) =>
-        assertEquals(failures, Vector(PlutusFailure(reason, Bytes.empty)))
+        assert(failures.forall(_.cause == reason))
+        assert(failures.forall(_.request.isDefined))
         failures.headOption.map(_.cause) match
           case Some(EvalFailure.Script(ScriptFailure(cause: Throwable, logs))) =>
             assert(cause eq defect)

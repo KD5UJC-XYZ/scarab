@@ -51,10 +51,13 @@ class PlutusCaseSuite extends FunSuite:
 
     test(s"${c.name} (${c.kind}): phase 2 agrees with is_valid = ${c.tx.isValid}") {
       evaluate(c, ScalusEvaluator.default) match
-        case Right(Phase2.Outcome.Passed(n)) =>
-          assert(c.tx.isValid, s"all $n scripts passed but the block says is_valid = false")
-        case Right(Phase2.Outcome.Failed(_, r, reason)) =>
-          assert(!c.tx.isValid, s"redeemer ${r.tag}.${r.index} failed: ${reason.message}")
+        case Right(Phase2.Outcome.Passed(report)) =>
+          assert(
+            c.tx.isValid,
+            s"all ${report.scripts} scripts passed but the block says is_valid = false"
+          )
+        case Right(Phase2.Outcome.Failed(_, failures)) =>
+          assert(!c.tx.isValid, failures.toString)
         case Right(Phase2.Outcome.Unavailable(_, _, why)) => fail(why.message)
         case Left(es) => fail(es.toVector.map(_.message).mkString("; "))
     }
@@ -65,7 +68,8 @@ class PlutusCaseSuite extends FunSuite:
       r => ScalusEvaluator.default.evaluate(r.copy(budget = ExUnits(0, 0)))
     cases.filter(_.tx.isValid).foreach { c =>
       evaluate(c, starved) match
-        case Right(Phase2.Outcome.Failed(_, _, EvalFailure.OutOfBudget)) => ()
+        case Right(Phase2.Outcome.Failed(_, failures)) =>
+          assert(failures.toVector.forall(_.reason == EvalFailure.OutOfBudget))
         case other => fail(s"${c.name}: $other")
     }
   }

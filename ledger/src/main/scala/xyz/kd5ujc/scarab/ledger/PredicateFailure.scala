@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import xyz.kd5ujc.scarab.plutus.{EvalFailure, ExUnits}
+import xyz.kd5ujc.scarab.plutus.{EvalFailure, EvalRequest, ExUnits}
 import xyz.kd5ujc.scarab.codec.Bytes
 
 /** A pair of values a rule compared (`Mismatch r a` in the ledger): what the transaction supplied
@@ -36,7 +36,11 @@ enum PpupFailure:
   * f649f975, `Alonzo/Rules/Utxos.hs:259-290`); keeping the cause here preserves its cases and
   * nested exceptions instead of discarding them into the wire presentation.
   */
-final case class PlutusFailure(cause: EvalFailure, reconstructionDetail: Bytes)
+final case class PlutusFailure(
+    cause: EvalFailure,
+    reconstructionDetail: Bytes,
+    request: Option[EvalRequest] = None
+)
 
 /** Why UTXOS refused a transaction. */
 enum UtxosFailure:

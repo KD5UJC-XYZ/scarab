@@ -29,14 +29,27 @@ object Phase2:
       outcome: Collected[Outcome]
   )
 
-  /** The first script that failed, or the number of scripts that all succeeded. */
+  /** An immutable machine result, in collection order, including budgets and trace output. */
+  final case class Evaluation(redeemer: Redeemer, request: EvalRequest, result: EvalResult)
+
+  final case class Failure(redeemer: Redeemer, request: EvalRequest, reason: EvalFailure)
+
+  final case class Report(evaluations: Vector[Evaluation]):
+    def scripts: Int = evaluations.size
+    def used: ExUnits = evaluations.foldLeft(ExUnits.zero)((total, e) => total + e.result.spent)
+    def logs: Vector[String] = evaluations.flatMap(_.result match
+      case EvalResult.Success(_, logs)    => logs
+      case EvalResult.Failure(_, _, logs) => logs)
+
+  /** The reference retains every passing script and failure, in collection order. */
   enum Outcome:
-    case Passed(scripts: Int)
-    case Failed(scripts: Int, redeemer: Redeemer, reason: EvalFailure)
+    case Passed(report: Report)
+    case Failed(report: Report, failures: NonEmptyVector[Failure])
 
     /** An implementation limit supplies no script verdict, whichever validity flag the tx carries.
+      * Its completed prefix is evidence, never a substitute for the missing result.
       */
-    case Unavailable(scripts: Int, redeemer: Redeemer, reason: EvalFailure.Unsupported)
+    case Unavailable(report: Report, redeemer: Redeemer, reason: EvalFailure.Unsupported)
 
     def passed: Boolean = this match
       case Passed(_) => true
@@ -196,18 +209,31 @@ object Phase2:
   ): Collected[Outcome] =
     collect(tx, pp, scripts, spent, references, posix).map(requests => run(requests, evaluator))
 
-  /** Evaluate in reference order, retaining the first failure and its original typed cause. */
+  /** Evaluate every script in reference order. A proven failure does not suppress later results;
+    * backend unavailability and raw defects still supply no complete transaction verdict.
+    * `ScriptResult` 's semigroup accumulates successes and failures
+    * (ledger-core/Plutus/Evaluate.hs).
+    */
   def run(requests: Vector[(Redeemer, EvalRequest)], evaluator: ScriptEvaluator[Id]): Outcome =
-    @scala.annotation.tailrec
-    def loop(rest: List[(Redeemer, EvalRequest)], done: Int): Outcome = rest match
-      case Nil => Outcome.Passed(done)
-      case (redeemer, request) :: tail =>
+    type Evaluated[A] = Either[Outcome, A]
+    val evaluated = requests.foldLeftM[Evaluated, Vector[Evaluation]](Vector.empty) {
+      case (done, (redeemer, request)) =>
         evaluator.evaluate(request) match
-          case EvalResult.Success(_, _) => loop(tail, done + 1)
           case EvalResult.Failure(reason: EvalFailure.Unsupported, _, _) =>
-            Outcome.Unavailable(done, redeemer, reason)
-          case EvalResult.Failure(reason, _, _) => Outcome.Failed(done, redeemer, reason)
-    loop(requests.toList, 0)
+            Left(Outcome.Unavailable(Report(done), redeemer, reason))
+          case result => Right(done :+ Evaluation(redeemer, request, result))
+    }
+    evaluated.fold(
+      identity,
+      evaluations =>
+        val report = Report(evaluations)
+        NonEmptyVector
+          .fromVector(evaluations.collect {
+            case Evaluation(r, request, EvalResult.Failure(reason, _, _)) =>
+              Failure(r, request, reason)
+          })
+          .fold[Outcome](Outcome.Passed(report))(Outcome.Failed(report, _))
+    )
 
   private[ledger] def languageOf(script: Script): Either[TranslationError, PlutusLanguage] =
     script.kind match

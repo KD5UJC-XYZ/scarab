@@ -147,3 +147,8 @@ and outputs of unchanged released Cardano Ledger context-collection/encoding API
 are explicitly distinguished from ledger admission. Public keys/signatures only; no signing keys.
 The thin oracle wrapper is original Apache-2.0 code; upstream package licenses/notices remain under
 fixtures/licenses and in the fetched source distributions.
+
+fixtures/reference/script-results contains one byte-identical original admission control from the
+context-errors corpus and explicitly marked API-only multi-script derivations with unchanged released
+Cardano Ledger evaluation/encoding outputs. Public keys/signatures only; no signing keys. The thin
+oracle wrapper and fixture generation are original Apache-2.0 code; upstream notices remain as above.
