@@ -1794,10 +1794,13 @@ before claiming an improvement.
 
 `TimingProbeMain` (`crypto`, package `vrf`, diagnostic tool — never called by the node) measures
 the crypto math for secret-dependent timing with a dudect-style protocol: a fixed-secret class
-and a random-secret class, percentile bucketing of the two timing distributions, and Welch's t
-per bucket. JVM timing is noisy, so every verdict is relative to a measured noise control (the
-basepoint table multiply, whose cost does not depend on its scalar's value); a target is a leak
-when `t > 10 && t > 5 × noise`.
+and a random-secret class, a fresh pre-generated random-class input per sample, percentile
+bucketing of the two timing distributions, and Welch's t per bucket. JVM timing is noisy, so
+every verdict is relative to a measured noise control (the basepoint table multiply, whose cost
+does not depend on its scalar's value); a target is reported as leaking when
+`t > 10 && t > 5 × noise`. A "no leak" verdict means **no leakage detected by this experiment** —
+evidence of absence within the experiment's power, not a proof of constant-time behaviour.
+Failed operations are reported and abort the run; they are never timed as successful crypto.
 
 Run on an idle machine (an interactive session's scheduler noise raises the floor):
 
@@ -1805,11 +1808,14 @@ Run on an idle machine (an interactive session's scheduler noise raises the floo
 sbt "crypto/runMain xyz.kd5ujc.scarab.crypto.vrf.TimingProbeMain [samples [buckets [repetitions]]]"
 ```
 
-Defaults: 20,000 samples, 100 buckets, 2 repetitions; ideally `-XX:+UseSerialGC -Xbatch`.
-Expected on a quiet machine: the curve25519 `point.multiply` stays near the noise floor (its
-constant-time claim), while `Ed25519Point.scalarMultiply` and the `uniform` control exceed the
-floor by an order of magnitude — the "variable-time, public inputs only" contract of
-`Draft03Math.java`. The first measurement (2026-10-19, a busy 2012-era i7-3770, JDK 21): noise
-18.5/53.9, `point.multiply` 24.6/11.0 (clean), `scalarMultiply` 693/1281 (leak, as designed).
-The probe is a manual/nightly tool, not part of `check` (shared CI runners are too noisy).
+Defaults: 20,000 samples, 100 buckets, 2 repetitions; bounds are validated
+(`samples >= 1000`, `2 <= buckets <= samples/2`, `1 <= repetitions <= 10`); ideally
+`-XX:+UseSerialGC -Xbatch`. Expected on a quiet machine: curve25519's `point.multiply` shows no
+leakage above the floor, while `Ed25519Point.scalarMultiply` and the `uniform` control exceed
+the floor by an order of magnitude — the "variable-time, public inputs only" contract of
+`Draft03Math.java`. A pre-review measurement with an earlier two-fixed-input harness
+(2026-10-19, a busy 2012-era i7-3770, JDK 21) recorded: noise 18.5/53.9, `point.multiply`
+24.6/11.0, `scalarMultiply` 693/1281, `uniform` 3182 — attributed to that harness, not to the
+corrected protocol. The probe is a manual/nightly tool, not part of `check` (shared CI runners
+are too noisy).
 
