@@ -144,6 +144,30 @@ class PropertyOutcomeColumnsTest(unittest.TestCase):
             manifest["adapterInputStatuses"]["connect2PipelineChoiceFalseValues"], 38
         )
 
+    def test_blockfetch_behavior_fixture_retains_original_chain_and_point_wires(self) -> None:
+        repo = Path(__file__).resolve().parents[3]
+        fixture = repo / "network/src/test/resources/upstream/ouroboros-network-protocol-codecs/blockfetch-behavior.tsv"
+        raw = fixture.read_bytes()
+        manifest = json.loads((fixture.parent / "blockfetch-behavior.manifest.json").read_text())
+        rows = [line.split("\t") for line in raw.decode("utf-8").splitlines()]
+
+        self.assertEqual(manifest["sourceCommit"], "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776")
+        self.assertEqual(manifest["caseTsvSha256"], hashlib.sha256(raw).hexdigest())
+        self.assertEqual(manifest["seed"], 490201)
+        self.assertEqual(manifest["exportedCases"], 24)
+        self.assertEqual([int(row[1]) for row in rows], list(range(490201, 490225)))
+        self.assertTrue(all(len(row) == 14 for row in rows))
+        self.assertTrue(all(row[0] == "blockfetch-behavior-v1" for row in rows))
+        self.assertTrue(all(row[4] and row[5] and row[6] and row[7] and row[8] for row in rows))
+        self.assertTrue(all(row[11:] == ["pass", "pass", "pass"] for row in rows))
+        range_fixture = fixture.with_name("blockfetch-behavior-ranges.tsv")
+        range_raw = range_fixture.read_bytes()
+        range_rows = [line.split("\t") for line in range_raw.decode("utf-8").splitlines()]
+        self.assertEqual(manifest["rangeTsvSha256"], hashlib.sha256(range_raw).hexdigest())
+        self.assertEqual(manifest["rangeRows"], len(range_rows))
+        self.assertTrue(all(len(row) == 7 + int(row[6]) for row in range_rows))
+        self.assertTrue(all(row[0] == "blockfetch-range-v1" for row in range_rows))
+
     def test_binary_compat_fixtures_preserve_both_original_directions_and_paired_wires(self) -> None:
         fixture_dir = (
             Path(__file__).resolve().parents[3]

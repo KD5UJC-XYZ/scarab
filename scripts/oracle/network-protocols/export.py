@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 
 UPSTREAM_COMMIT = "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776"
 IMAGE = os.environ.get("SCARAB_PROTOCOL_REFERENCE_IMAGE", "scarab-pre-conway178-oracle:local")
-CONTAINER_NAME = "scarab-v02-49-protocols-luna"
+CONTAINER_NAME = os.environ.get("SCARAB_PROTOCOL_REFERENCE_CONTAINER", "scarab-v02-49-protocols-luna")
 COMMAND_RESULTS: list[dict[str, object]] = []
 COMMAND_LOG: Path | None = None
 
@@ -25,6 +25,11 @@ PROPERTY_COLUMNS: dict[str, tuple[tuple[str, int], ...]] = {
         ("prop_direct", 7),
         ("prop_connect", 8),
         ("prop_channel_ST", 9),
+    ),
+    "blockfetch-behavior.tsv": (
+        ("prop_direct", 11),
+        ("prop_connect", 12),
+        ("prop_channel_ST", 13),
     ),
     "peersharing.tsv": (
         ("prop_codec_PeerSharing", 10),
@@ -557,13 +562,60 @@ exportBlockFetchSplitCases path count seed = withFile path WriteMode $ \outputHa
     pad [digit] = ['0', digit]
     pad digits = digits
 ''')
+    block_fetch.write_text(block_fetch.read_text() + r'''
+
+-- Disposable observer: preserve the unchanged generator and direct/connect/channel properties.
+exportBlockFetchBehaviorCases :: FilePath -> Int -> Int -> IO ()
+exportBlockFetchBehaviorCases path count seed = withFile path WriteMode $ \outputHandle ->
+  withFile (path <> ".ranges.tsv") WriteMode $ \rangesHandle ->
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 30 + (ordinal `mod` 21)
+        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize :: TestChainAndPoints
+    directResult <- quickCheckWithResult stdArgs { chatty = False }
+      (once (prop_direct testCase))
+    connectResult <- quickCheckWithResult stdArgs { chatty = False }
+      (once (prop_connect testCase))
+    channelResult <- quickCheckWithResult stdArgs { chatty = False }
+      (once (prop_channel_ST testCase))
+    case testCase of
+      TestChainAndPoints chain points -> do
+        let chainBlocks = Chain.toOldestFirst chain
+            chainPoints = map Chain.blockPoint chainBlocks
+            ranges = pointsToRanges chain points
+            rangePoints = map (\(ChainRange from to) -> (from, to)) ranges
+            rangeBodies = receivedBlockBodies chain points
+            expectedBodies = reverse (concat (receivedBlockBodies chain points))
+            outcome result = if isSuccess result then "pass" else "upstream-failure"
+        forM_ (zip3 [0 :: Int ..] ranges rangeBodies) $ \(rangeOrdinal, ChainRange from to, bodies) ->
+          hPutStrLn rangesHandle $ intercalate "\t"
+            ([ "blockfetch-range-v1", show caseSeed, show ordinal, show rangeOrdinal
+             , hex (BL.toStrict (S.serialise from)), hex (BL.toStrict (S.serialise to))
+             , show (length bodies)
+             ] ++ map (hex . BL.toStrict . S.serialise) bodies)
+        hPutStrLn outputHandle $ intercalate "\t"
+          [ "blockfetch-behavior-v1", show caseSeed, show ordinal, show caseSize
+          , hex (BL.toStrict (S.serialise chainBlocks))
+          , hex (BL.toStrict (S.serialise chainPoints))
+          , hex (BL.toStrict (S.serialise points))
+          , hex (BL.toStrict (S.serialise rangePoints))
+          , hex (BL.toStrict (S.serialise rangeBodies))
+          , hex (BL.toStrict (S.serialise expectedBodies))
+          , intercalate "," (map (hex . BL.toStrict . S.serialise) expectedBodies)
+          , outcome directResult, outcome connectResult, outcome channelResult
+          ]
+  where
+    hex = concatMap (pad . (`showHex` "")) . BS.unpack
+    pad [digit] = ['0', digit]
+    pad digits = digits
+''')
     block_module = block_fetch.read_text()
     block_export_anchor = "module Ouroboros.Network.Protocol.BlockFetch.Test (tests) where"
     if block_module.count(block_export_anchor) != 1:
         raise SystemExit("BlockFetch observer module export anchor changed")
     block_fetch.write_text(block_module.replace(
         block_export_anchor,
-        "module Ouroboros.Network.Protocol.BlockFetch.Test (tests, exportBlockFetchCases, exportBlockFetchSplitCases, exportBlockFetchBinaryCases) where",
+        "module Ouroboros.Network.Protocol.BlockFetch.Test (tests, exportBlockFetchCases, exportBlockFetchSplitCases, exportBlockFetchBinaryCases, exportBlockFetchBehaviorCases) where",
     ))
 
     local_state_query_original = inject(
@@ -1542,7 +1594,7 @@ exportBlockFetchBinaryCases path count seed = withFile path WriteMode $ \outputH
         "import Ouroboros.Network.Protocol.KeepAlive.Test qualified as KeepAlive (tests, exportKeepAliveCases, exportKeepAliveSplitCases, exportKeepAliveBehaviorCases)\n"
         "import Ouroboros.Network.Protocol.PeerSharing.Test qualified as PeerSharing (tests, exportPeerSharingCases)\n"
         "import Ouroboros.Network.Protocol.ChainSync.Test qualified as ChainSync (tests, exportChainSyncCases, exportChainSyncSplitCases, exportChainSyncBinaryCases)\n"
-        "import Ouroboros.Network.Protocol.BlockFetch.Test qualified as BlockFetch (tests, exportBlockFetchCases, exportBlockFetchSplitCases, exportBlockFetchBinaryCases)\n"
+        "import Ouroboros.Network.Protocol.BlockFetch.Test qualified as BlockFetch (tests, exportBlockFetchCases, exportBlockFetchSplitCases, exportBlockFetchBinaryCases, exportBlockFetchBehaviorCases)\n"
         "import Ouroboros.Network.Protocol.LocalStateQuery.Test qualified as LocalStateQuery (tests, exportLocalStateQueryCases, exportLocalStateQuerySplitCases, exportLocalStateQueryBehaviorCases)\n"
         "import Ouroboros.Network.Protocol.LocalTxSubmission.Test qualified as LocalTxSubmission (tests, exportLocalTxSubmissionCases, exportLocalTxSubmissionSplitCases, exportLocalTxSubmissionAnnotatedCases, exportLocalTxSubmissionBehaviorCases)\n"
         "import Ouroboros.Network.Protocol.LocalTxMonitor.Test qualified as LocalTxMonitor (tests, exportLocalTxMonitorCases, exportLocalTxMonitorSplitCases, exportLocalTxMonitorBehaviorCases)\n"
@@ -1589,6 +1641,7 @@ exportBlockFetchBinaryCases path count seed = withFile path WriteMode $ \outputH
         "  [\"--export-lsq-behavior\", dir, count, seed] -> LocalStateQuery.exportLocalStateQueryBehaviorCases (dir <> \"/localsq-behavior-cases.tsv\") (dir <> \"/localsq-behavior-actions.tsv\") (read count) (read seed)\n"
         "  [\"--export-lsq-behavior\", dir, count, seed] -> LocalStateQuery.exportLocalStateQueryBehaviorCases (dir <> \"/localsq-behavior-cases.tsv\") (dir <> \"/localsq-behavior-actions.tsv\") (read count) (read seed)\n"
         "  [\"--export-txsubmission2-behavior\", dir, count, seed] -> TxSubmission2.exportTxSubmission2BehaviorCases (dir <> \"/txsubmission2-behavior.tsv\") (read count) (read seed)\n"
+        "  [\"--export-blockfetch-behavior\", dir, count, seed] -> BlockFetch.exportBlockFetchBehaviorCases (dir <> \"/blockfetch-behavior.tsv\") (read count) (read seed)\n"
         "  [\"--export-network-codecs\", dir, count, seed, chainCount] -> do\n"
         "    KeepAlive.exportKeepAliveBehaviorCases (dir <> \"/keepalive-behavior.tsv\") (read count) (read seed + 700)\n"
         "    KeepAlive.exportKeepAliveCases (dir <> \"/keepalive.tsv\") (read count) (read seed)\n"
@@ -1641,6 +1694,7 @@ def main() -> None:
     parser.add_argument("--reference-plan", type=Path)
     parser.add_argument("--lsq-behavior-only", action="store_true")
     parser.add_argument("--txsubmission2-behavior-only", action="store_true")
+    parser.add_argument("--blockfetch-behavior-only", action="store_true")
     args = parser.parse_args()
     if not 1 <= args.count <= 128:
         raise SystemExit("case count must be 1..128")
@@ -1671,7 +1725,7 @@ def main() -> None:
             "-w", "/source", IMAGE, "-f", "/dev/null",
         ])
     checked(["docker", "start", CONTAINER_NAME])
-    test_names = ("LocalStateQuery",) if args.lsq_behavior_only else ("TxSubmission2",) if args.txsubmission2_behavior_only else (
+    test_names = ("LocalStateQuery",) if args.lsq_behavior_only else ("TxSubmission2",) if args.txsubmission2_behavior_only else ("BlockFetch",) if args.blockfetch_behavior_only else (
         "KeepAlive", "PeerSharing", "ChainSync", "BlockFetch", "LocalStateQuery",
         "LocalTxSubmission", "LocalTxMonitor", "TxSubmission2",
     )
@@ -1706,6 +1760,12 @@ def main() -> None:
             "docker", "exec", "-w", "/source", CONTAINER_NAME,
             binary, "--export-txsubmission2-behavior", "/probe/exports",
             str(args.count), str(args.seed + 12800),
+        ])
+    elif args.blockfetch_behavior_only:
+        checked([
+            "docker", "exec", "-w", "/source", CONTAINER_NAME,
+            binary, "--export-blockfetch-behavior", "/probe/exports",
+            str(args.count), str(args.seed),
         ])
     else:
         checked([
@@ -1793,6 +1853,47 @@ def main() -> None:
         (args.output_dir / "localsq-behavior-cases.tsv").write_bytes(cases_raw)
         (args.output_dir / "localsq-behavior-actions.tsv").write_bytes(actions_raw)
         (args.output_dir / "localsq-behavior.manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+        return
+    if args.blockfetch_behavior_only:
+        raw = (args.probe_dir / "exports/blockfetch-behavior.tsv").read_bytes()
+        ranges_raw = (args.probe_dir / "exports/blockfetch-behavior.tsv.ranges.tsv").read_bytes()
+        rows = [line.split("\t") for line in raw.decode().splitlines()]
+        range_rows = [line.split("\t") for line in ranges_raw.decode().splitlines()]
+        properties = {"prop_direct": 11, "prop_connect": 12, "prop_channel_ST": 13}
+        manifest = {
+            "schema": "scarab-upstream-network-protocol-behavior-v1",
+            "source": "ouroboros-network",
+            "sourceCommit": UPSTREAM_COMMIT,
+            "upstreamTest": "ouroboros-network:protocols-tests / BlockFetch / unchanged Arbitrary TestChainAndPoints + prop_direct + prop_connect + prop_channel_ST",
+            "caseFile": "blockfetch-behavior.tsv",
+            "rangeFile": "blockfetch-behavior-ranges.tsv",
+            "rangeRows": len(range_rows),
+            "rangeTsvSha256": hashlib.sha256(ranges_raw).hexdigest(),
+            "seed": int(rows[0][1]),
+            "requestedCases": args.count,
+            "exportedCases": len(rows),
+            "generatorSizes": sorted({int(row[3]) for row in rows}),
+            "upstreamPropertyOutcomesByProperty": {
+                name: {"pass": sum(row[column] == "pass" for row in rows),
+                       "upstream-failure": sum(row[column] != "pass" for row in rows)}
+                for name, column in properties.items()
+            },
+            "fixtureColumns": ["schema", "seed", "ordinal", "size", "oldestFirstChainBlocksCborHex", "oldestFirstChainPointsCborHex", "generatedPointsCborHex", "generatedRangesCborHex", "rangeBodiesCborHex", "expectedNewestFirstBlocksCborHex", "expectedNewestFirstBlockItemsCborHex", "prop_direct", "prop_connect", "prop_channel_ST"],
+            "propertyInput": "original TestChainAndPoints Arbitrary instance; direct/connect/channel ST properties run unchanged once per deterministic generated row",
+            "sourceFiles": {
+                "BlockFetch/Test.hs": hashlib.sha256((args.source / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/BlockFetch/Test.hs").read_bytes()).hexdigest(),
+                "Mock/ChainGenerators.hs": hashlib.sha256((args.source / "ouroboros-network/api/tests-lib/Ouroboros/Network/Mock/ChainGenerators.hs").read_bytes()).hexdigest(),
+            },
+            "observerPatchSha256": hashlib.sha256(patch.encode()).hexdigest(),
+            "dependencyPlanSha256": hashlib.sha256(plan).hexdigest(),
+            "caseTsvSha256": hashlib.sha256(raw).hexdigest(),
+            "filteredUpstreamSuiteCommands": [result for result in COMMAND_RESULTS if "test" in result["argv"] and any("protocols-tests" in arg for arg in result["argv"])],
+            "caseExportCommand": next(result for result in COMMAND_RESULTS if "--export-blockfetch-behavior" in result["argv"]),
+            "execution": {"image": IMAGE, "imageDigest": image_digest, "containerNetwork": "none", "projectFileSha256": hashlib.sha256(project_file.read_bytes()).hexdigest(), "projectPlanSha256": hashlib.sha256(plan).hexdigest(), "projectPlanUnitCount": len(plan_units)},
+        }
+        (args.output_dir / "blockfetch-behavior.tsv").write_bytes(raw)
+        (args.output_dir / "blockfetch-behavior-ranges.tsv").write_bytes(ranges_raw)
+        (args.output_dir / "blockfetch-behavior.manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
         return
     if args.txsubmission2_behavior_only:
         raw = (args.probe_dir / "exports/txsubmission2-behavior.tsv").read_bytes()

@@ -11,8 +11,6 @@ import xyz.kd5ujc.scarab.protocol.{BlockFetch, CardanoBlockFetch}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import scala.concurrent.duration.*
 
-import NetworkError.RuntimeViolation
-
 /** BlockFetch server: answers inclusive range requests from a [[BlockFetchServer.Blocks]] source,
   * one request at a time (a client that pipelines is served in order).
   */
@@ -39,54 +37,38 @@ object BlockFetchServer:
     val F = Temporal[F]
     val id = Protocols.BlockFetch
     val codec = CardanoBlockFetch.payloadCodec()
-    type Msg = BlockFetch.Message[CardanoBlockFetch.RawNtNBlock]
-    def illegal[A](detail: NetworkError.Violation): F[A] =
-      NetworkError.IllegalTransition(id, detail).raise[F, A]
-
-    def send(state: BlockFetch.State, message: Msg): F[Unit] =
-      BlockFetch
-        .encode(state, BlockFetch.Role.Server, message, codec, settings.limits)
-        .fold(illegal, channel.send)
-
-    def stream(source: Stream[F, Bytes]): F[Unit] =
-      source
-        .evalMap(raw =>
-          CardanoBlockFetch.RawNtNBlock
-            .from(raw)
-            .fold(
-              illegal[Unit],
-              block => send(BlockFetch.State.Streaming, BlockFetch.Message.Block(block))
-            )
-        )
-        .compile
-        .drain
-
-    val step: F[Boolean] =
-      Timed
-        .within(settings.idleTimeout, id, "idle")(
-          channel.recv(settings.limits.messageBytes(BlockFetch.State.Idle))(
-            BlockFetch
-              .decodePrefix(
-                BlockFetch.State.Idle,
-                BlockFetch.Role.Client,
-                _,
-                codec,
-                settings.limits
+    val genericBlocks = new BlockFetchRuntime.Blocks[F, Point, CardanoBlockFetch.RawNtNBlock]:
+      def range(
+          from: Point,
+          to: Point,
+          maxBlocks: Int
+      ): F[Option[Stream[F, CardanoBlockFetch.RawNtNBlock]]] =
+        blocks
+          .range(from, to, maxBlocks)
+          .map(
+            _.map(
+              _.evalMap(raw =>
+                CardanoBlockFetch.RawNtNBlock
+                  .from(raw)
+                  .fold(
+                    error =>
+                      NetworkError
+                        .IllegalTransition(id, error)
+                        .raise[F, CardanoBlockFetch.RawNtNBlock],
+                    F.pure
+                  )
               )
+            )
           )
-        )
-        .flatMap {
-          case BlockFetch.Message.ClientDone => F.pure(false)
-          case request @ BlockFetch.Message.RequestRange(_, _) =>
-            CardanoBlockFetch.checkedRange(request).fold(illegal, F.pure).flatMap { range =>
-              blocks.range(range.from.point, range.to.point, settings.maxBlocks).flatMap {
-                case None => send(BlockFetch.State.Busy, BlockFetch.Message.NoBlocks).as(true)
-                case Some(source) =>
-                  send(BlockFetch.State.Busy, BlockFetch.Message.StartBatch) *>
-                    stream(source) *>
-                    send(BlockFetch.State.Streaming, BlockFetch.Message.BatchDone).as(true)
-              }
-            }
-          case other => illegal(RuntimeViolation.BlockFetchUnexpected(other))
-        }
-    step.iterateWhile(identity).void
+
+    BlockFetchRuntime.run(
+      channel,
+      genericBlocks,
+      CardanoBlockFetch.pointCodec,
+      codec,
+      (from, to) =>
+        CardanoBlockFetch.InclusiveRange
+          .fromPoints(from, to)
+          .map(range => (range.from.point, range.to.point)),
+      BlockFetchRuntime.ServerSettings(settings.limits, settings.maxBlocks, settings.idleTimeout)
+    )

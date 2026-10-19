@@ -108,6 +108,7 @@ object NetworkError:
     case KeepAliveUnexpected(message: KeepAlive.Message)
     case ChainSyncUnexpected(message: ChainSync.Message[?])
     case BlockFetchUnexpected(message: BlockFetch.Message[?])
+    case BlockFetchEngineUnexpected(message: BlockFetchEngine.Message[?, ?])
     case TxSubmissionUnexpected(message: TxSubmission2.Message)
     case LocalTxSubmissionUnexpected(message: LocalTxSubmission.Message)
     case LocalTxMonitorUnexpected(message: LocalTxMonitor.Message)

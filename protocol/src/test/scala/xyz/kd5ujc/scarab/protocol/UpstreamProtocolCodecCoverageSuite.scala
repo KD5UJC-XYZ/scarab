@@ -1453,6 +1453,7 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
             case BlockFetch.Message.NoBlocks           => "no-blocks"
             case BlockFetch.Message.Block(_)           => "block"
             case BlockFetch.Message.BatchDone          => "batch-done"
+            case _ => fail(s"seed $seed unrecognized BlockFetch constructor")
           assertEquals(decodedTag, fields(6), s"seed $seed typed constructor")
           val encoded = BlockFetch
             .encode(state, sender, message, payloadCodec)
@@ -1527,6 +1528,7 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
             case BlockFetch.Message.NoBlocks           => "no-blocks"
             case BlockFetch.Message.Block(_)           => "block"
             case BlockFetch.Message.BatchDone          => "batch-done"
+            case _ => fail(s"seed $seed unrecognized binary BlockFetch constructor")
           assertEquals(decodedTag, tag, s"seed $seed typed binary constructor")
           assertEquals(
             BlockFetch.encode(state, sender, message, payloadCodec),
@@ -1632,6 +1634,7 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
             case BlockFetch.Message.NoBlocks           => "no-blocks"
             case BlockFetch.Message.Block(_)           => "block"
             case BlockFetch.Message.BatchDone          => "batch-done"
+            case _ => fail(s"seed $seed unrecognized split BlockFetch constructor")
           assertEquals(tag, fields(6), s"seed $seed typed constructor")
           assertEquals(
             BlockFetch.encode(state, sender, message, payloadCodec),
