@@ -10,6 +10,7 @@ from export import (
     PROPERTY_COLUMNS,
     summarize_chainsync_direct_connect_rows,
     summarize_chainsync_pipeline_rows,
+    validate_pipe_demo_export,
     summarize_property_outcomes,
 )
 
@@ -617,6 +618,50 @@ class PropertyOutcomeColumnsTest(unittest.TestCase):
             self.assertEqual(len(group), int(case[4]))
             self.assertEqual([int(row[4]) for row in group], list(range(len(group))))
             self.assertTrue(all(int(row[5]) == len(group) for row in group))
+
+    def test_pipe_demo_export_preserves_full_generated_results_and_rejects_wrong_final_count(self) -> None:
+        repo = Path(__file__).resolve().parents[3]
+        fixture_dir = repo / "fixtures/reference/ouroboros-network-protocol-codecs"
+        runtime_dir = repo / "network/src/test/resources/upstream/ouroboros-network-protocol-codecs"
+        manifest = json.loads((fixture_dir / "chainsync-pipe-demo-behavior.manifest.json").read_text())
+        self.assertEqual(manifest["sourceCommit"], "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776")
+        self.assertEqual(manifest["upstreamPropertyOutcomes"], {"pass": 24, "upstream-failure": 0})
+        cases = [line.split("\t") for line in (fixture_dir / "chainsync-pipe-demo-cases.tsv").read_text().splitlines()]
+        blocks = [line.split("\t") for line in (fixture_dir / "chainsync-pipe-demo-blocks.tsv").read_text().splitlines()]
+        updates = [line.split("\t") for line in (fixture_dir / "chainsync-pipe-demo-updates.tsv").read_text().splitlines()]
+        for name in (
+            "chainsync-pipe-demo-behavior.manifest.json",
+            "chainsync-pipe-demo-cases.tsv",
+            "chainsync-pipe-demo-blocks.tsv",
+            "chainsync-pipe-demo-updates.tsv",
+        ):
+            self.assertEqual(
+                (fixture_dir / name).read_bytes(),
+                (runtime_dir / name).read_bytes(),
+                f"runtime fixture copy matches pinned reference: {name}",
+            )
+        self.assertEqual(
+            validate_pipe_demo_export(cases, blocks, updates, 24),
+            {
+                "cases": 24,
+                "initialBlocks": 364,
+                "finalBlocks": 587,
+                "candidatePoints": 165,
+                "updates": 517,
+                "pass": 24,
+                "upstreamFailure": 0,
+                "updatesConsumedUntilTarget": 509,
+                "targetReachedBeforeGeneratedTail": 3,
+                "unusedGeneratedUpdateTail": 8,
+                "rollForwardUpdates": 416,
+                "rollBackwardUpdates": 101,
+            },
+        )
+
+        corrupted = [row.copy() for row in cases]
+        corrupted[2][8] = str(int(corrupted[2][8]) + 1)
+        with self.assertRaisesRegex(ValueError, "row counts disagree for ordinal 2"):
+            validate_pipe_demo_export(corrupted, blocks, updates, 24)
 
 
 if __name__ == "__main__":

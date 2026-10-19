@@ -1,0 +1,48 @@
+{
+  "schema": "scarab-upstream-network-protocol-behavior-v1",
+  "source": "ouroboros-network",
+  "sourceCommit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+  "upstreamTest": "ouroboros-network:ouroboros-network-io-tests / Pipe / prop_pipe_demo",
+  "generatorType": "TestBlockChainAndUpdates",
+  "requestedCases": 24,
+  "exportedCases": 24,
+  "seed": 505001,
+  "generatorSizePerOrdinal": "30 + (ordinal mod 21)",
+  "upstreamPropertyOutcomes": {
+    "pass": 24,
+    "upstream-failure": 0
+  },
+  "initialBlocks": 364,
+  "finalBlocks": 587,
+  "candidatePoints": 165,
+  "updateRows": 517,
+  "updateConstructors": {
+    "roll-forward": 416,
+    "roll-backward": 101
+  },
+  "consumerStopsAtFirstTarget": {
+    "updatesConsumed": 509,
+    "casesReachingTargetBeforeGeneratedTail": 3,
+    "unusedGeneratedUpdateTailRows": 8
+  },
+  "sourceFiles": {
+    "ouroboros-network/tests/io/Test/Ouroboros/Network/Pipe.hs": "7ae27e0dcdd826713e05f42b985a71cf2150dfd84c16ba76e8217ca00aeb2366",
+    "ouroboros-network/tests/io/Main.hs": "e336aa6e778008c1fa5357903ea70a7bb6203952f3bc9384b521ab338f90e97d",
+    "ouroboros-network/api/tests-lib/Ouroboros/Network/Mock/ChainGenerators.hs": "4fb726bc6d6c1d5207a6372d2dfdb2e9c3617c85fa978cb9282b15f66fdb2587",
+    "ouroboros-network/api/tests-lib/Ouroboros/Network/Mock/ConcreteBlock.hs": "a8af2d74be6df4ce0067ca7adfbcf98bec9f8829d36e276261b2526d895e404f",
+    "ouroboros-network/api/tests-lib/Ouroboros/Network/Mock/Chain.hs": "afad321e38fe4398d2ca646675c9d9aeb247ec2e5f9bae7920cbe5446059efa1",
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/Examples.hs": "2c8f33412bfa79828dcd3ec42ee049fffee8de1e5bac89deaf73da05342a06a7"
+  },
+  "observerPatchSha256": "b88a90c1ae0d2b5750831af95ede6d3b61603edce78b31230cc8f413a1a0840c",
+  "dependencyPlanSha256": "42d695659261546c8c90946f82f38389c61cf6588c16a931aad92a9c42ea183c",
+  "targetDependencyClosureUnitCount": 168,
+  "caseTsvSha256": "3a9f3f099bdd6012b30ed8b9376481d3ee0745aca29ebb0e1c2a49470799b0f1",
+  "blocksTsvSha256": "a9ba09ef34443b1922a56e99b9f590d6420d2eacdcc4cee8d591547d9d69f82e",
+  "updatesTsvSha256": "d311f1b8ba5656593767564dfa139ba9517167714dcf2f489f47d9a9793b0c10",
+  "scarabRuntimeProfiles": 1,
+  "limitations": [
+    "The unchanged registered upstream property runs over its unchanged TestBlockChainAndUpdates Arbitrary inputs; every original generated update and exact serialized block/point/tip item is retained.",
+    "Scarab replays the exact generated update prefix through one production linked Mux ChainSync runtime until the generated final point is reached; it compares the full ordered final chain and does not claim OS pipe bearer topology or scheduler equivalence.",
+    "The full original update list is retained even where the pinned consumer stops at the target before the generated list ends."
+  ]
+}

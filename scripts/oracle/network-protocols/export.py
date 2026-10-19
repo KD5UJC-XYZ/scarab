@@ -95,6 +95,60 @@ def summarize_property_outcomes(
     }
 
 
+def validate_pipe_demo_export(
+    cases: list[list[str]], blocks: list[list[str]], updates: list[list[str]], requested: int
+) -> dict[str, int]:
+    if len(cases) != requested or any(len(row) != 14 for row in cases):
+        raise ValueError("pipe demo case export does not match requested count/schema")
+    if any(row[0] != "ouroboros-pipe-demo-v1" for row in cases):
+        raise ValueError("pipe demo case export contains an unexpected schema tag")
+    if any(row[0] not in ("initial", "final", "candidate") for row in blocks):
+        raise ValueError("pipe demo block export contains an unexpected row kind")
+    if any(len(row) != (5 if row[0] in ("initial", "final") else 4) for row in blocks):
+        raise ValueError("pipe demo block export contains an invalid row shape")
+    if any(len(row) != 6 for row in updates):
+        raise ValueError("pipe demo update export contains an invalid row shape")
+    for ordinal, row in enumerate(cases):
+        if int(row[2]) != ordinal or int(row[1]) != int(cases[0][1]) + ordinal:
+            raise ValueError("pipe demo generated case ordinals/seeds are not contiguous")
+        if int(row[3]) != 30 + ordinal % 21:
+            raise ValueError("pipe demo generated case size differs from the recorded generator rule")
+        if row[4] not in ("pass", "upstream-failure"):
+            raise ValueError(f"invalid upstream pipe demo outcome: {row[4]!r}")
+        own_blocks = [item for item in blocks if int(item[1]) == ordinal and item[0] == "initial"]
+        own_final = [item for item in blocks if int(item[1]) == ordinal and item[0] == "final"]
+        own_candidates = [item for item in blocks if int(item[1]) == ordinal and item[0] == "candidate"]
+        own_updates = [item for item in updates if int(item[0]) == ordinal]
+        if (
+            len(own_blocks) != int(row[5])
+            or len(own_final) != int(row[8])
+            or len(own_candidates) != int(row[6])
+            or len(own_updates) != int(row[7])
+        ):
+            raise ValueError(f"pipe demo generated row counts disagree for ordinal {ordinal}")
+        if int(row[13]) < 0 or int(row[13]) > int(row[7]):
+            raise ValueError(f"pipe demo target stop ordinal is outside generated updates for {ordinal}")
+        for label, rows in (("initial block", own_blocks), ("final block", own_final), ("candidate", own_candidates)):
+            if [int(item[2]) for item in rows] != list(range(len(rows))):
+                raise ValueError(f"pipe demo {label} ordinals are not contiguous for {ordinal}")
+        if [int(item[1]) for item in own_updates] != list(range(len(own_updates))):
+            raise ValueError(f"pipe demo update ordinals are not contiguous for {ordinal}")
+    return {
+        "cases": len(cases),
+        "initialBlocks": sum(row[0] == "initial" for row in blocks),
+        "finalBlocks": sum(row[0] == "final" for row in blocks),
+        "candidatePoints": sum(row[0] == "candidate" for row in blocks),
+        "updates": len(updates),
+        "pass": sum(row[4] == "pass" for row in cases),
+        "upstreamFailure": sum(row[4] == "upstream-failure" for row in cases),
+        "updatesConsumedUntilTarget": sum(int(row[13]) for row in cases),
+        "targetReachedBeforeGeneratedTail": sum(int(row[13]) < int(row[7]) for row in cases),
+        "unusedGeneratedUpdateTail": sum(int(row[7]) - int(row[13]) for row in cases),
+        "rollForwardUpdates": sum(row[2] == "roll-forward" for row in updates),
+        "rollBackwardUpdates": sum(row[2] == "roll-backward" for row in updates),
+    }
+
+
 def summarize_chainsync_pipeline_rows(
     rows: list[list[str]],
     version: str = "chainsync-pipelined-max-v1",
@@ -209,6 +263,8 @@ def prepare(source: Path, overlay: Path) -> dict[str, str]:
         "LocalTxMonitor": source / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/LocalTxMonitor/Test.hs",
         "TxSubmission2": source / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/TxSubmission2/Test.hs",
         "Main": source / "ouroboros-network/protocols/tests/Main.hs",
+        "Pipe": source / "ouroboros-network/tests/io/Test/Ouroboros/Network/Pipe.hs",
+        "PipeMain": source / "ouroboros-network/tests/io/Main.hs",
     }
     source_hashes = {name: hashlib.sha256(path.read_bytes()).hexdigest() for name, path in modules.items()}
     shutil.copytree(source, overlay, dirs_exist_ok=True, ignore=shutil.ignore_patterns(".git", "dist-newstyle"))
@@ -221,6 +277,142 @@ def prepare(source: Path, overlay: Path) -> dict[str, str]:
     local_tx_submission = overlay / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/LocalTxSubmission/Test.hs"
     local_tx_monitor = overlay / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/LocalTxMonitor/Test.hs"
     tx_submission2 = overlay / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/TxSubmission2/Test.hs"
+    pipe = overlay / "ouroboros-network/tests/io/Test/Ouroboros/Network/Pipe.hs"
+    pipe_main = overlay / "ouroboros-network/tests/io/Main.hs"
+
+    pipe_original = pipe.read_text()
+    pipe_export_anchor = "module Test.Ouroboros.Network.Pipe (tests) where"
+    if pipe_original.count(pipe_export_anchor) != 1:
+        raise SystemExit("Pipe observer module export anchor changed")
+    pipe_original = pipe_original.replace(
+        pipe_export_anchor,
+        "module Test.Ouroboros.Network.Pipe (tests, exportPipeDemoBehaviorCases) where",
+    )
+    pipe_import_anchor = "import Codec.Serialise (Serialise (..))\n"
+    if pipe_original.count(pipe_import_anchor) != 1:
+        raise SystemExit("Pipe observer Serialise import anchor changed")
+    pipe_original = pipe_original.replace(
+        pipe_import_anchor,
+        pipe_import_anchor +
+        "import Codec.CBOR.Write qualified as CBOR\n"
+        "import Codec.Serialise qualified as S\n"
+        "import Data.ByteString qualified as BS\n"
+        "import Data.List (findIndex, intercalate)\n"
+        "import Numeric (showHex)\n"
+        "import System.IO (IOMode (WriteMode), hPutStrLn, withFile)\n"
+        "import Test.QuickCheck.Gen (unGen)\n"
+        "import Test.QuickCheck.Random (mkQCGen)\n",
+    )
+    pipe_update_import = "import Ouroboros.Network.Mock.Chain (Chain, ChainUpdate, Point)\n"
+    if pipe_original.count(pipe_update_import) != 1:
+        raise SystemExit("Pipe observer ChainUpdate import anchor changed")
+    pipe_original = pipe_original.replace(
+        pipe_update_import,
+        "import Ouroboros.Network.Mock.Chain (Chain, ChainUpdate (..), Point)\n"
+        "import Ouroboros.Network.Mock.ConcreteBlock (Block)\n",
+    )
+    pipe.write_text(pipe_original + r'''
+
+-- Disposable observer: execute the unchanged registered IO property over the
+-- unchanged Arbitrary generator and export the exact generated chain updates.
+exportPipeDemoBehaviorCases :: FilePath -> FilePath -> FilePath -> Int -> Int -> IO ()
+exportPipeDemoBehaviorCases casesPath blocksPath updatesPath count seed =
+  withFile casesPath WriteMode $ \caseHandle ->
+  withFile blocksPath WriteMode $ \blockHandle ->
+  withFile updatesPath WriteMode $ \updateHandle ->
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 30 + (ordinal `mod` 21)
+        input = unGen arbitrary (mkQCGen caseSeed) caseSize :: TestBlockChainAndUpdates
+    result <- quickCheckWithResult stdArgs { chatty = False } (once (prop_pipe_demo input))
+    case input of
+      TestBlockChainAndUpdates initial updates -> do
+            (_, updateStates) <- foldM advance (initial, []) updates
+            let finalChain = case reverse updateStates of
+                  (_, state) : _ -> state
+                  [] -> initial
+                stopCount = case findIndex (\(_, state) -> Chain.headPoint state == Chain.headPoint finalChain) updateStates of
+                  Just index -> index + 1
+                  Nothing -> 0
+            let candidates = Chain.selectPoints ChainSync.recentOffsets initial
+                initialBlocks = Chain.toOldestFirst initial
+                finalBlocks = Chain.toOldestFirst finalChain
+            hPutStrLn caseHandle $ intercalate "\t"
+              [ "ouroboros-pipe-demo-v1", show caseSeed, show ordinal, show caseSize
+              , if isSuccess result then "pass" else "upstream-failure"
+              , show (length initialBlocks), show (length candidates)
+              , show (length updates), show (length finalBlocks)
+              , hex (BL.toStrict (CBOR.toLazyByteString (encode (Chain.headPoint initial))))
+              , hex (BL.toStrict (CBOR.toLazyByteString (encode (Chain.headPoint finalChain))))
+              , hex (BL.toStrict (CBOR.toLazyByteString (encodeTip encode (Chain.headTip finalChain))))
+              , hex (BL.toStrict (CBOR.toLazyByteString (encodeTip encode (Chain.headTip initial))))
+              , show stopCount
+              ]
+            forM_ (zip [0 :: Int ..] initialBlocks) $ \(blockOrdinal, block) ->
+              hPutStrLn blockHandle $ intercalate "\t"
+                [ "initial", show ordinal, show blockOrdinal
+                , hex (BL.toStrict (S.serialise block))
+                , hex (BL.toStrict (CBOR.toLazyByteString (encode (Chain.blockPoint block))))
+                ]
+            forM_ (zip [0 :: Int ..] finalBlocks) $ \(blockOrdinal, block) ->
+              hPutStrLn blockHandle $ intercalate "\t"
+                [ "final", show ordinal, show blockOrdinal
+                , hex (BL.toStrict (S.serialise block))
+                , hex (BL.toStrict (CBOR.toLazyByteString (encode (Chain.blockPoint block))))
+                ]
+            forM_ (zip [0 :: Int ..] candidates) $ \(candidateOrdinal, point) ->
+              hPutStrLn blockHandle $ intercalate "\t"
+                [ "candidate", show ordinal, show candidateOrdinal, hex (BL.toStrict (S.serialise point)) ]
+            forM_ (zip [0 :: Int ..] updateStates) $ \(updateOrdinal, (update, state)) -> do
+              let (kind, payload, point) = case update of
+                    AddBlock block ->
+                      ( "roll-forward"
+                      , hex (BL.toStrict (S.serialise block))
+                      , hex (BL.toStrict (CBOR.toLazyByteString (encode (Chain.blockPoint block))))
+                      )
+                    RollBack point ->
+                      ( "roll-backward"
+                      , ""
+                      , hex (BL.toStrict (CBOR.toLazyByteString (encode point)))
+                      )
+                  tip = hex (BL.toStrict (CBOR.toLazyByteString (encodeTip encode (Chain.headTip state))))
+              hPutStrLn updateHandle $ intercalate "\t"
+                [ show ordinal, show updateOrdinal, kind, payload, point, tip ]
+  where
+    advance
+      :: (Chain Block, [(ChainUpdate Block Block, Chain Block)])
+      -> ChainUpdate Block Block
+      -> IO (Chain Block, [(ChainUpdate Block Block, Chain Block)])
+    advance (chain, states) update = case Chain.applyChainUpdate update chain of
+      Nothing -> fail "generated update sequence was not applicable"
+      Just next -> pure (next, states ++ [(update, next)])
+
+    hex = concatMap (pad . (`showHex` "")) . BS.unpack
+    pad [digit] = ['0', digit]
+    pad digits = digits
+''')
+    pipe_main_original = pipe_main.read_text()
+    pipe_main_import = "import Test.Ouroboros.Network.Pipe qualified (tests)\n"
+    if pipe_main_original.count(pipe_main_import) != 1:
+        raise SystemExit("IO test main Pipe import anchor changed")
+    pipe_main_original = pipe_main_original.replace(
+        pipe_main_import,
+        "import Test.Ouroboros.Network.Pipe qualified as Pipe (tests, exportPipeDemoBehaviorCases)\n"
+        "import System.Environment (getArgs)\n",
+    )
+    pipe_main_original = pipe_main_original.replace(
+        "main = withUtf8 $ defaultMain tests",
+        "main = withUtf8 $ do\n"
+        "  args <- getArgs\n"
+        "  case args of\n"
+        "    [\"--export-pipe-demo\", dir, count, seed] ->\n"
+        "      Pipe.exportPipeDemoBehaviorCases (dir <> \"/pipe-demo-cases.tsv\") (dir <> \"/pipe-demo-blocks.tsv\") (dir <> \"/pipe-demo-updates.tsv\") (read count) (read seed)\n"
+        "    _ -> defaultMain tests",
+    )
+    pipe_main_original = pipe_main_original.replace(
+        "Test.Ouroboros.Network.Pipe.tests", "Pipe.tests"
+    )
+    pipe_main.write_text(pipe_main_original)
     keep_original = inject(
         keep,
         "import Test.QuickCheck\n",
@@ -2053,6 +2245,7 @@ def main() -> None:
     parser.add_argument("--chainsync-pipelined-direct-connect-only", action="store_true")
     parser.add_argument("--chainsync-pipelined-min-buffered-only", action="store_true")
     parser.add_argument("--chainsync-demo-pipelined-io-only", action="store_true")
+    parser.add_argument("--pipe-demo-behavior-only", action="store_true")
     args = parser.parse_args()
     if not 1 <= args.count <= 128:
         raise SystemExit("case count must be 1..128")
@@ -2083,7 +2276,7 @@ def main() -> None:
             "-w", "/source", IMAGE, "-f", "/dev/null",
         ])
     checked(["docker", "start", CONTAINER_NAME])
-    test_names = ("LocalStateQuery",) if args.lsq_behavior_only else ("TxSubmission2",) if args.txsubmission2_behavior_only else ("BlockFetch",) if args.blockfetch_behavior_only else ("ChainSync",) if args.chainsync_behavior_only or args.chainsync_pipelined_max_only or args.chainsync_pipelined_min_only or args.chainsync_pipelined_low_high_only or args.chainsync_pipelined_direct_connect_only or args.chainsync_pipelined_min_buffered_only or args.chainsync_demo_pipelined_io_only or args.chainsync_io_behavior_only else (
+    test_names = () if args.pipe_demo_behavior_only else ("LocalStateQuery",) if args.lsq_behavior_only else ("TxSubmission2",) if args.txsubmission2_behavior_only else ("BlockFetch",) if args.blockfetch_behavior_only else ("ChainSync",) if args.chainsync_behavior_only or args.chainsync_pipelined_max_only or args.chainsync_pipelined_min_only or args.chainsync_pipelined_low_high_only or args.chainsync_pipelined_direct_connect_only or args.chainsync_pipelined_min_buffered_only or args.chainsync_demo_pipelined_io_only or args.chainsync_io_behavior_only else (
         "KeepAlive", "PeerSharing", "ChainSync", "BlockFetch", "LocalStateQuery",
         "LocalTxSubmission", "LocalTxMonitor", "TxSubmission2",
     )
@@ -2173,6 +2366,30 @@ def main() -> None:
             binary, "--export-blockfetch-behavior", "/probe/exports",
             str(args.count), str(args.seed),
         ])
+    elif args.pipe_demo_behavior_only:
+        checked([
+            "docker", "exec", "-w", "/source", CONTAINER_NAME,
+            "cabal", "build", "--project-file=/probe/protocols-tests.project",
+            "ouroboros-network:ouroboros-network-io-tests",
+            "--builddir=/probe/narrow-builddir", "--jobs=2",
+        ])
+        io_binary_output = checked([
+            "docker", "exec", "-w", "/source", CONTAINER_NAME,
+            "cabal", "list-bin", "--project-file=/probe/protocols-tests.project",
+            "ouroboros-network:ouroboros-network-io-tests",
+            "--builddir=/probe/narrow-builddir",
+        ])
+        io_binary = next(
+            (line.strip() for line in reversed(io_binary_output.splitlines()) if line.strip().startswith("/probe/narrow-builddir/")),
+            None,
+        )
+        if io_binary is None:
+            raise SystemExit(f"cabal list-bin did not return the IO test executable path: {io_binary_output!r}")
+        checked([
+            "docker", "exec", "-w", "/source", CONTAINER_NAME,
+            io_binary, "--export-pipe-demo", "/probe/exports",
+            str(args.count), str(args.seed + 14800),
+        ])
     else:
         checked([
             "docker", "exec", "-w", "/source", CONTAINER_NAME,
@@ -2181,11 +2398,14 @@ def main() -> None:
         ])
     patch = ""
     for name, original in originals.items():
-        target = (
-            overlay / "ouroboros-network" / name
-            if name == "protocols/tests/Main.hs"
-            else overlay / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol" / name
-        )
+        if name == "protocols/tests/Main.hs":
+            target = overlay / "ouroboros-network" / name
+        elif name == "Pipe":
+            target = overlay / "ouroboros-network/tests/io/Test/Ouroboros/Network/Pipe.hs"
+        elif name == "PipeMain":
+            target = overlay / "ouroboros-network/tests/io/Main.hs"
+        else:
+            target = overlay / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol" / name
         patch += "\n".join(difflib.unified_diff(
             original.splitlines(), target.read_text().splitlines(), fromfile="upstream/" + name, tofile="overlay/" + name
         )) + "\n"
@@ -2195,10 +2415,12 @@ def main() -> None:
     target_roots = [
         unit for unit in plan_units
         if unit.get("pkg-name") == "ouroboros-network"
-        and unit.get("component-name") == "test:protocols-tests"
+        and unit.get("component-name") == (
+            "test:ouroboros-network-io-tests" if args.pipe_demo_behavior_only else "test:protocols-tests"
+        )
     ]
     if len(target_roots) != 1:
-        raise SystemExit(f"expected one protocols-tests plan root, found {len(target_roots)}")
+        raise SystemExit(f"expected one selected upstream test plan root, found {len(target_roots)}")
     target_closure: set[str] = set()
     pending = [target_roots[0]["id"]]
     while pending:
@@ -2213,6 +2435,75 @@ def main() -> None:
             "python3", "scripts/oracle/network-protocols/compare_cabal_plans.py",
             str(args.reference_plan), str(build / "cache/plan.json"), "--output", str(equivalence_path),
         ])
+    if args.pipe_demo_behavior_only:
+        cases_raw = (args.probe_dir / "exports/pipe-demo-cases.tsv").read_bytes()
+        blocks_raw = (args.probe_dir / "exports/pipe-demo-blocks.tsv").read_bytes()
+        updates_raw = (args.probe_dir / "exports/pipe-demo-updates.tsv").read_bytes()
+        cases = [line.split("\t") for line in cases_raw.decode().splitlines()]
+        blocks = [line.split("\t") for line in blocks_raw.decode().splitlines()]
+        updates = [line.split("\t") for line in updates_raw.decode().splitlines()]
+        try:
+            pipe_counts = validate_pipe_demo_export(cases, blocks, updates, args.count)
+        except ValueError as error:
+            raise SystemExit(str(error)) from error
+        cases_path = args.output_dir / "pipe-demo-cases.tsv"
+        blocks_path = args.output_dir / "pipe-demo-blocks.tsv"
+        updates_path = args.output_dir / "pipe-demo-updates.tsv"
+        cases_path.write_bytes(cases_raw)
+        blocks_path.write_bytes(blocks_raw)
+        updates_path.write_bytes(updates_raw)
+        pipe_source = args.source / "ouroboros-network/tests/io/Test/Ouroboros/Network/Pipe.hs"
+        pipe_main_source = args.source / "ouroboros-network/tests/io/Main.hs"
+        manifest = {
+            "schema": "scarab-upstream-network-protocol-behavior-v1",
+            "source": "ouroboros-network",
+            "sourceCommit": UPSTREAM_COMMIT,
+            "upstreamTest": "ouroboros-network:ouroboros-network-io-tests / Pipe / prop_pipe_demo",
+            "generatorType": "TestBlockChainAndUpdates",
+            "requestedCases": args.count,
+            "exportedCases": len(cases),
+            "seed": int(cases[0][1]),
+            "generatorSizePerOrdinal": "30 + (ordinal mod 21)",
+            "upstreamPropertyOutcomes": {
+                "pass": pipe_counts["pass"],
+                "upstream-failure": pipe_counts["upstreamFailure"],
+            },
+            "initialBlocks": pipe_counts["initialBlocks"],
+            "finalBlocks": pipe_counts["finalBlocks"],
+            "candidatePoints": pipe_counts["candidatePoints"],
+            "updateRows": pipe_counts["updates"],
+            "updateConstructors": {
+                "roll-forward": pipe_counts["rollForwardUpdates"],
+                "roll-backward": pipe_counts["rollBackwardUpdates"],
+            },
+            "consumerStopsAtFirstTarget": {
+                "updatesConsumed": pipe_counts["updatesConsumedUntilTarget"],
+                "casesReachingTargetBeforeGeneratedTail": pipe_counts["targetReachedBeforeGeneratedTail"],
+                "unusedGeneratedUpdateTailRows": pipe_counts["unusedGeneratedUpdateTail"],
+            },
+            "sourceFiles": {
+                "ouroboros-network/tests/io/Test/Ouroboros/Network/Pipe.hs": hashlib.sha256(pipe_source.read_bytes()).hexdigest(),
+                "ouroboros-network/tests/io/Main.hs": hashlib.sha256(pipe_main_source.read_bytes()).hexdigest(),
+                "ouroboros-network/api/tests-lib/Ouroboros/Network/Mock/ChainGenerators.hs": hashlib.sha256((args.source / "ouroboros-network/api/tests-lib/Ouroboros/Network/Mock/ChainGenerators.hs").read_bytes()).hexdigest(),
+                "ouroboros-network/api/tests-lib/Ouroboros/Network/Mock/ConcreteBlock.hs": hashlib.sha256((args.source / "ouroboros-network/api/tests-lib/Ouroboros/Network/Mock/ConcreteBlock.hs").read_bytes()).hexdigest(),
+                "ouroboros-network/api/tests-lib/Ouroboros/Network/Mock/Chain.hs": hashlib.sha256((args.source / "ouroboros-network/api/tests-lib/Ouroboros/Network/Mock/Chain.hs").read_bytes()).hexdigest(),
+                "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/Examples.hs": hashlib.sha256((args.source / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/Examples.hs").read_bytes()).hexdigest(),
+            },
+            "observerPatchSha256": hashlib.sha256(patch.encode()).hexdigest(),
+            "dependencyPlanSha256": hashlib.sha256(plan).hexdigest(),
+            "targetDependencyClosureUnitCount": len(target_closure),
+            "caseTsvSha256": hashlib.sha256(cases_raw).hexdigest(),
+            "blocksTsvSha256": hashlib.sha256(blocks_raw).hexdigest(),
+            "updatesTsvSha256": hashlib.sha256(updates_raw).hexdigest(),
+            "scarabRuntimeProfiles": 1,
+            "limitations": [
+                "The unchanged registered upstream property runs over its unchanged TestBlockChainAndUpdates Arbitrary inputs; every original generated update and exact serialized block/point/tip item is retained.",
+                "Scarab replays the exact generated update prefix through one production linked Mux ChainSync runtime until the generated final point is reached; it compares the full ordered final chain and does not claim OS pipe bearer topology or scheduler equivalence.",
+                "The full original update list is retained even where the pinned consumer stops at the target before the generated list ends.",
+            ],
+        }
+        (args.output_dir / "pipe-demo-behavior.manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+        return
     if args.chainsync_pipelined_max_only:
         raw = (args.probe_dir / "exports/chainsync-pipelined-max.tsv").read_bytes()
         rows = [line.split("\t") for line in raw.decode().splitlines()]
