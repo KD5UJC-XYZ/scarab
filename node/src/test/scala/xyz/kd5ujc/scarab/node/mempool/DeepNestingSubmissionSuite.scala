@@ -79,7 +79,11 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
       .use { case (mempool, (clientEnd, serverEnd)) =>
         val server = typed(
           LocalTxSubmissionServer
-            .accept(serverEnd, magic, LocalSubmission.handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure"))))
+            .accept(
+              serverEnd,
+              magic,
+              LocalSubmission.handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure")))
+            )
             .map(_.message)
         ).start
         server.flatMap { running =>

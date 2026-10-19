@@ -206,8 +206,9 @@ object Mempool:
           }
         def body(id: Bytes) = state.get.map(_.entries.find(_.id == id).map(_.raw))
 
-      def sink(fatal: Fatal => F[Unit]): TxSubmissionServer.Sink[F] = new TxSubmissionServer.Sink[F]:
-        def known(id: Bytes) =
-          (state.get.map(_.contains(id)), seen.get.map(_.ids(id))).mapN(_ || _)
-        def submit(originals: Vector[Bytes]) =
-          StorageBoundary.run(fatal)(originals.traverse_(add(_).void))
+      def sink(fatal: Fatal => F[Unit]): TxSubmissionServer.Sink[F] =
+        new TxSubmissionServer.Sink[F]:
+          def known(id: Bytes) =
+            (state.get.map(_.contains(id)), seen.get.map(_.ids(id))).mapN(_ || _)
+          def submit(originals: Vector[Bytes]) =
+            StorageBoundary.run(fatal)(originals.traverse_(add(_).void))

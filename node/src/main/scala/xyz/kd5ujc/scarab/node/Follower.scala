@@ -68,7 +68,11 @@ final class Follower[F[_]: Async, S] private (
     /** Called with the chain after every change of the tip and the raw blocks that were added
       * (mempool revalidation, for one).
       */
-    onTip: Option[(VolatileChain[S], Vector[Bytes]) => Raise[F, xyz.kd5ujc.scarab.ledger.StorageError] ?=> F[Unit]],
+    onTip: Option[
+      (VolatileChain[S], Vector[Bytes]) => Raise[F, xyz.kd5ujc.scarab.ledger.StorageError] ?=> F[
+        Unit
+      ]
+    ],
     tiebreaker: Era => ChainSelection.Tiebreaker,
     views: SelectViews[F],
     lock: Mutex[F],
@@ -392,7 +396,11 @@ object Follower:
       geometry: EpochGeometry,
       observe: (S, S, BlockRef) => List[FollowerEvent] = (_: S, _: S, _: BlockRef) => Nil,
       persistence: Option[ChainPersistence[F, S]] = None,
-      onTip: Option[(VolatileChain[S], Vector[Bytes]) => Raise[F, xyz.kd5ujc.scarab.ledger.StorageError] ?=> F[Unit]] = None,
+      onTip: Option[
+        (VolatileChain[S], Vector[Bytes]) => Raise[F, xyz.kd5ujc.scarab.ledger.StorageError] ?=> F[
+          Unit
+        ]
+      ] = None,
       tiebreaker: Era => ChainSelection.Tiebreaker = ChainSelection.tiebreakerFor,
       /** The epoch of a slot as the state sees it (a chain whose Byron span is derived learns it).
         */

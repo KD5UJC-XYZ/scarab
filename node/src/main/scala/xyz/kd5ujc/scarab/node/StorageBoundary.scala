@@ -13,7 +13,14 @@ import xyz.kd5ujc.scarab.storage.SnapshotFailure
 /** A serving callback owns its storage scope. A failed store stops the node; the callback waits
   * cancelably for shutdown so neither a storage outage nor a defect is attributed to its client.
   */
+private[node] trait StorageBoundary[F[_]]:
+  def apply[A](body: Raise[F, StorageError] ?=> F[A]): F[A]
+
 private[node] object StorageBoundary:
+  def apply[F[_]: Async](fatal: Fatal => F[Unit]): StorageBoundary[F] =
+    new StorageBoundary[F]:
+      def apply[A](body: Raise[F, StorageError] ?=> F[A]): F[A] = run(fatal)(body)
+
   def run[F[_]: Async, A](fatal: Fatal => F[Unit])(
       body: Raise[F, StorageError] ?=> F[A]
   ): F[A] =

@@ -486,7 +486,9 @@ object QueryServer:
       .default[F]
       .withHost(Host.fromString("127.0.0.1").get)
       .withPort(Port.fromInt(port).get)
-      .withHttpApp(routes(view, utxoStore, scheduling, connections, forging, metrics)(fatal).orNotFound)
+      .withHttpApp(
+        routes(view, utxoStore, scheduling, connections, forging, metrics)(fatal).orNotFound
+      )
       .build
 
   private enum StateTarget:

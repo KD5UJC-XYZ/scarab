@@ -510,15 +510,16 @@ object Main extends IOApp:
           options.dumpStateFull
         )
       }
-      afterBlock = (header: Header, s: MirrorState) => (storageError: cats.mtl.Raise[IO, StorageError]) ?=>
-        IO.delay(cache.noteEpochNonce(s.ledgerEpoch, s.protocol.epochNonce)) *>
-          dumper.traverse_(_.afterBlock(header, s)) *>
-          praosConfig
-            .update(c => c.copy(geometry = s.geometry(c.geometry)))
-            .whenA(s.consensus.byron.firstShelleyEpoch.isDefined) *>
-          blocks.updateAndGet(_ + 1).flatMap { n =>
-            logged(NodeEvent.VerificationCache(cache.summary)).whenA(n % 20000 == 0)
-          }
+      afterBlock = (header: Header, s: MirrorState) =>
+        (storageError: cats.mtl.Raise[IO, StorageError]) ?=>
+          IO.delay(cache.noteEpochNonce(s.ledgerEpoch, s.protocol.epochNonce)) *>
+            dumper.traverse_(_.afterBlock(header, s)) *>
+            praosConfig
+              .update(c => c.copy(geometry = s.geometry(c.geometry)))
+              .whenA(s.consensus.byron.firstShelleyEpoch.isDefined) *>
+            blocks.updateAndGet(_ + 1).flatMap { n =>
+              logged(NodeEvent.VerificationCache(cache.summary)).whenA(n % 20000 == 0)
+            }
       rules = MirrorRules[IO](
         setup.praos,
         setup.globals,
