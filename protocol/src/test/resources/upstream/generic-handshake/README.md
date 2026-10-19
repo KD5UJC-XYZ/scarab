@@ -48,4 +48,7 @@ export leaf calls original generators, peers, codecs and properties without repl
 their implementations. The selected build's 167-unit target dependency closure is
 independently compared with a fresh solve of the complete original `cabal.project`;
 `dependency-closure.json` retains that result. This is not a comparison of a plan with
-itself. A clean second exporter run reproduced every TSV byte.
+itself. A clean second exporter run reproduced every TSV byte. The retained patch later had
+one blank context prefix normalized for repository whitespace checks; manifests retain
+both the executed and retained patch hashes. Independently applying the normalized
+patch reconstructs the identical recorded executed-source hash.

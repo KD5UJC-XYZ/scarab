@@ -77,7 +77,8 @@ Handshake shares its bounded parser and wire codec through a version-codec polic
 the Cardano facades retain their closed node-to-node/node-to-client version policies.
 Its highest-common selector takes a version-data codec and returns a closed
 `SelectionError[E]`, preserving typed decode/agreement causes until an explicit
-wire-refusal conversion. Original mock versions 0/1/2 and version-dependent data are
+wire-refusal conversion. It mirrors `ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Client.hs:191–227`
+at the pinned revision. Original mock versions 0/1/2 and version-dependent data are
 retained in 792 original property observations plus nine controlled cross-version
 judgments. Native checks compare the shared pure wire/selection contracts; original
 ST/IO/pipe/SimNet verdicts do not establish native interpreter or scheduling parity.

@@ -312,5 +312,7 @@
       "pass": 64,
       "upstream-failure": 0
     }
-  }
+  },
+  "executedObserverPatchSha256": "2f7731958020060215ffbdec3c190cb6a52588d2f1579e2439d195aa8a951c67",
+  "observerPatchNormalization": "Retained patch blank-context whitespace normalized after reference execution. The original patch is reconstructed from pinned originals and executed sources; normalization yields exactly observerPatchSha256 and preserves every patchedSourceFiles hash."
 }

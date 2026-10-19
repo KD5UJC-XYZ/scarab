@@ -26,7 +26,10 @@ verdicts. The manifests identify the observer patch, original/patched modules,
 actual Docker image and executable, original source pin, project and dependency
 plan, command exit statuses and log hashes. The selected target's 167-unit
 dependency closure matches the previously retained full reference plan. This is
-target-closure equivalence, not equality of the whole project's solver plan.
+target-closure equivalence, not equality of the whole project's solver plan. The
+retained observer patch had blank context prefixes normalized after execution;
+manifests record both patch hashes. Reconstructing the original diff and normalizing
+it yields the retained patch exactly, with every executed module hash unchanged.
 
 `UpstreamOrdinaryCodecSuite` constructs the expected messages from the separately
 exported fields, compares their complete structural CBOR values, and exercises the
