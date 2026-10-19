@@ -15,10 +15,10 @@ import xyz.kd5ujc.scarab.node.{Projection, StateDump}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.storage.{AtomicFile, UtxoStore}
 
-/** The follower's K1 digest for a point reached by the offline replay's full block rules.
-  * Snapshot conversion alone does not establish current-rule boundary acceptance. The caller owns
-  * target authentication, state progression and the fresh output directory; this writer includes
-  * the backing UTxO and the state's unflushed changes, using the public follower's digest contract.
+/** The follower's K1 digest for a point reached by the offline replay's full block rules. Snapshot
+  * conversion alone does not establish current-rule boundary acceptance. The caller owns target
+  * authentication, state progression and the fresh output directory; this writer includes the
+  * backing UTxO and the state's unflushed changes, using the public follower's digest contract.
   */
 object K1Projection:
   def write[F[_]: Sync](
@@ -32,9 +32,11 @@ object K1Projection:
       case Right(projection) =>
         for
           utxo <- StateDump.utxoDigest(Some(store), state.utxo)
-          body = StateDump.reduce(projection).deepMerge(
-            Json.obj("utxo" -> utxo, "format" -> Json.fromString(StateDump.Format))
-          )
+          body = StateDump
+            .reduce(projection)
+            .deepMerge(
+              Json.obj("utxo" -> utxo, "format" -> Json.fromString(StateDump.Format))
+            )
           file = out.resolve(f"${header.slot}%012d-${header.hash.hex}.json")
           _ <- AtomicFile.guard[F, Path](out.toString)(Files.createDirectories(out))
           _ <- AtomicFile.replace[F](
