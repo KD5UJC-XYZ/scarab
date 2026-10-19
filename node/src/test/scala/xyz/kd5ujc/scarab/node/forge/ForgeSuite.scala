@@ -23,6 +23,23 @@ import xyz.kd5ujc.scarab.crypto.vrf.{Draft03Prover, PraosLeaderThreshold as Lead
   */
 class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFixture:
 
+  test("two independently forged branches share a valid prefix within the retained window") {
+    TestControl.executeEmbed(
+      ForgedChain
+        .competingForks(5000 until 5064, 5064 until 5128, leftSeed = 1, rightSeed = 2)
+        .map { case (left, right) =>
+          val common = left.headers.zip(right.headers).takeWhile { case (a, b) => a.hash == b.hash }
+          assert(common.size >= ForgedChain.geometry.securityParam)
+          assert(left.headers.size > common.size)
+          assert(right.headers.size > common.size)
+          assertNotEquals(left.headers(common.size).hash, right.headers(common.size).hash)
+          assert(left.headers.size - common.size <= ForgedChain.geometry.securityParam)
+          assert(right.headers.size - common.size <= ForgedChain.geometry.securityParam)
+        },
+      seed = Some("MQ==")
+    )
+  }
+
   test("an elected slot yields a block our rules accept, built from the mempool, and adopted") {
     val p = pool(kesStart = 50)
     val (t1, id1) = TxKit.pay(1)

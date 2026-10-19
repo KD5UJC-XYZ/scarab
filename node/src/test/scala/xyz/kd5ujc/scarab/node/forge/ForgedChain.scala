@@ -98,23 +98,29 @@ object ForgedChain:
     val oc = Header.OpCert(kes.verificationKey, 0, kesStart, cold.sign(signable))
     Pool(PoolCredentials(vrf, kes, oc, cold.vkey), TestLedger.key())
 
-  private def ledgerWith(p: Pool, epoch: BigInt): LedgerState =
-    val cred = p.stake.credential
-    val params = PoolParams(
-      p.creds.poolId,
-      p.creds.vrfKeyHash,
-      0,
-      0,
-      Rational.zero,
-      RewardAccount(0, cred),
-      Set.empty,
-      Bytes.empty,
-      None
-    )
+  private def ledgerWith(p: Pool, epoch: BigInt): LedgerState = ledgerWith(Vector(p), epoch)
+
+  private def ledgerWith(pools: Vector[Pool], epoch: BigInt): LedgerState =
+    val amount = BigInt(1000000) / pools.size
+    val registrations = pools.map { p =>
+      val cred = p.stake.credential
+      val params = PoolParams(
+        p.creds.poolId,
+        p.creds.vrfKeyHash,
+        0,
+        0,
+        Rational.zero,
+        RewardAccount(0, cred),
+        Set.empty,
+        Bytes.empty,
+        None
+      )
+      (cred, p.creds.poolId, p.creds.poolId -> params)
+    }
     val dist = Snapshot(
-      Map(cred -> BigInt(1000000)),
-      Map(cred -> p.creds.poolId),
-      Map(p.creds.poolId -> params)
+      registrations.map((cred, _, _) => cred -> amount).toMap,
+      registrations.map((cred, poolId, _) => cred -> poolId).toMap,
+      registrations.map((_, _, params) => params).toMap
     )
     TxKit
       .flat(1)
@@ -164,18 +170,71 @@ object ForgedChain:
     val start = Mirroring
       .toMirror(env, None, flatGenesis)
       .fold(e => throw new AssertionError(e.toString), _.value)
-    val genesis = start
+    forgeFrom(start, p, slots, None)
+
+  /** Two valid chains with a shared generated prefix and independently forged suffixes. Both pool
+    * identities are registered in the same genesis ledger, so either branch can be checked by the
+    * real mirror rules. The bounded suffix is useful for chain-selection tests that must switch
+    * within the retained `k` window.
+    */
+  def competingForks(
+      prefixSlots: Range,
+      branchSlots: Range,
+      leftSeed: Int,
+      rightSeed: Int
+  ): IO[(ForgedChain, ForgedChain)] =
+    val kesStart = (prefixSlots.head / 100).toInt - 1
+    val leftPool = pool(kesStart, leftSeed)
+    val rightPool = pool(kesStart, rightSeed)
+    val flatGenesis = nodeState(ledgerWith(Vector(leftPool, rightPool), epoch = 5))
+    val start = Mirroring
+      .toMirror(mirrorEnv, None, flatGenesis)
+      .fold(e => throw new AssertionError(e.toString), _.value)
+    for
+      prefix <- forgeFrom(start, leftPool, prefixSlots, None)
+      left <- forgeFrom(start, leftPool, branchSlots, Some(prefix))
+      right <- forgeFrom(start, rightPool, branchSlots, Some(prefix))
+      commonLength = prefix.headers.size
+      leftLimit = commonLength + geometry.securityParam
+      rightLimit = commonLength + (geometry.securityParam - 2).max(1)
+      boundedLeft = left.copy(
+        headers = left.headers.take(leftLimit),
+        raws = left.raws.take(leftLimit),
+        states = left.states.take(leftLimit)
+      )
+      boundedRight = right.copy(
+        headers = right.headers.take(rightLimit),
+        raws = right.raws.take(rightLimit),
+        states = right.states.take(rightLimit)
+      )
+    yield (boundedLeft, boundedRight)
+
+  private def forgeFrom(
+      genesis: MirrorState,
+      p: Pool,
+      slots: Range,
+      prior: Option[ForgedChain]
+  ): IO[ForgedChain] =
+    val initial = prior.fold(VolatileChain.genesis(geometry.securityParam, genesis)) { chain =>
+      chain.headers
+        .zip(chain.states)
+        .foldLeft(
+          VolatileChain.genesis(geometry.securityParam, chain.genesis)
+        ) { case (current, (header, state)) =>
+          current.extend(header, state).toOption.get._1
+        }
+    }
     Handle
       .allow[NodeError] {
         for
           ref <- Ref.of[IO, VolatileChain[MirrorState]](
-            VolatileChain.genesis(geometry.securityParam, start)
+            initial
           )
           given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(ref)
-          rules = MirrorRules[IO](config, globals, None, None, env.byron)
+          rules = MirrorRules[IO](config, globals, None, None, mirrorEnv.byron)
           mempool <- Mempool.create[IO](
-            MempoolLedger.at(start, None),
-            slots.head.toLong - 1,
+            MempoolLedger.at(initial.state, initial.tipRef),
+            initial.tipRef.fold(slots.head.toLong - 1)(_.slot.toLong),
             MempoolEnv(globals, geometry),
             1000000,
             MempoolEvents.none[IO]
@@ -200,9 +259,9 @@ object ForgedChain:
                   cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.ChainError]
               ) = IO.unit),
             onTip = Some((c, _) =>
-              mempool
-                .sync(MempoolLedger.at(c.state, c.tipRef), c.tipRef.get.slot, Set.empty)
-                .void
+              c.tipRef.traverse_(tip =>
+                mempool.sync(MempoolLedger.at(c.state, Some(tip)), tip.slot, Set.empty).void
+              )
             )
           )
           forger <- Forger.create[IO, MirrorState](
@@ -218,27 +277,34 @@ object ForgedChain:
             sleep = Some(_ => IO.unit)
           )
           _ <- slots.toList.traverse_(s => forger.step(s))
-          all <- raws.get
+          appended <- raws.get
         yield
           val decoded =
-            all.map(r => Block.decodeShelley(r).toOption.get.asInstanceOf[Block.Shelley])
+            appended.map(r => Block.decodeShelley(r).toOption.get.asInstanceOf[Block.Shelley])
           val states = decoded
-            .scanLeft(genesis)((s, b) =>
+            .scanLeft(initial.state)((s, b) =>
               MirrorRules
                 .applyBlock(
                   s,
                   b.header,
-                  all(decoded.indexOf(b)),
+                  appended(decoded.indexOf(b)),
                   config,
                   globals,
                   None,
                   None,
-                  env.byron
+                  mirrorEnv.byron
                 )
                 .toOption
                 .get
             )
             .tail
-          ForgedChain(config, globals, genesis, decoded.map(_.header), all, states)
+          ForgedChain(
+            config,
+            globals,
+            prior.fold(genesis)(_.genesis),
+            prior.fold(Vector.empty[Header.Shelley])(_.headers) ++ decoded.map(_.header),
+            prior.fold(Vector.empty[Bytes])(_.raws) ++ appended,
+            prior.fold(Vector.empty[MirrorState])(_.states) ++ states
+          )
       }
       .rescue(e => IO.raiseError(new RuntimeException(e.message)))

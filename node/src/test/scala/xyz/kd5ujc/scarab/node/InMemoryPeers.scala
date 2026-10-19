@@ -17,6 +17,7 @@ final class InMemoryPeers private (
     magic: Long,
     servers: Ref[IO, Map[PeerNetwork.Addr, ServerHandlers[IO, NtNHeader]]],
     opened: Ref[IO, Map[PeerNetwork.Addr, Int]],
+    closed: Ref[IO, Map[PeerNetwork.Addr, Int]],
     ends: Ref[IO, Map[PeerNetwork.Addr, List[Bearer[IO]]]]
 ) extends Transport[IO, PeerNetwork.Addr]:
 
@@ -46,12 +47,22 @@ final class InMemoryPeers private (
         for
           _ <- Resource.eval(opened.update(m => m.updated(peer, m.getOrElse(peer, 0) + 1)))
           pair <- Resource.eval(Bearer.inMemory[IO](256))
+          closedOnce <- Resource.eval(Ref.of[IO, Boolean](false))
           _ <- Resource.eval(ends.update(m => m.updated(peer, pair._1 :: m.getOrElse(peer, Nil))))
           _ <- Handle
             .allow[NetworkError](NodeToNodeServer.accept(pair._1, magic, handlers).void)
             .rescue(_ => IO.unit)
             .background
-        yield pair._2
+          clientBearer = new Bearer[IO]:
+            def reads = pair._2.reads
+            def write(bytes: fs2.Chunk[Byte]) = pair._2.write(bytes)
+            def close =
+              closedOnce.getAndSet(true).flatMap { alreadyClosed =>
+                if alreadyClosed then IO.unit
+                else closed.update(m => m.updated(peer, m.getOrElse(peer, 0) + 1))
+              } *> pair._2.close
+          client <- Resource.make(IO.pure(clientBearer))(_.close)
+        yield client
     }
 
   /** Start serving `peer` with `handlers`. */
@@ -68,13 +79,17 @@ final class InMemoryPeers private (
   /** How many bearers were opened to each peer. */
   def connections: IO[Map[PeerNetwork.Addr, Int]] = opened.get
 
+  /** How many client-side bearer ends were closed by their owning mux resources. */
+  def closedConnections: IO[Map[PeerNetwork.Addr, Int]] = closed.get
+
 object InMemoryPeers:
   def create(magic: Long): IO[InMemoryPeers] =
     (
       Ref.of[IO, Map[PeerNetwork.Addr, ServerHandlers[IO, NtNHeader]]](Map.empty),
       Ref.of[IO, Map[PeerNetwork.Addr, Int]](Map.empty),
+      Ref.of[IO, Map[PeerNetwork.Addr, Int]](Map.empty),
       Ref.of[IO, Map[PeerNetwork.Addr, List[Bearer[IO]]]](Map.empty)
-    ).mapN(new InMemoryPeers(magic, _, _, _))
+    ).mapN(new InMemoryPeers(magic, _, _, _, _))
 
   /** The address of the n-th test peer. */
   def address(n: Int): PeerNetwork.Addr =

@@ -16,3 +16,4 @@ decisions they rest on are [ADRs](../adr/README.md).
 | [Network resource limits](network-limits.md) | As built; reference state/queue/SDU matrix and explicit local profiles | [#35](https://github.com/KD5UJC-XYZ/scarab/issues/35) |
 | [Haskell snapshot import and export](haskell-snapshots.md) | Accepted (D1–D9); S1–S5 complete, including recorded preprod acceptance | [#140](https://github.com/KD5UJC-XYZ/scarab/issues/140), [#143](https://github.com/KD5UJC-XYZ/scarab/issues/143) |
 | [Certified Mithril bootstrap](mithril-bootstrap.md) | Implemented; recorded-Preview acceptance and local integration gates complete | [#27](https://github.com/KD5UJC-XYZ/scarab/issues/27) |
+| [Deterministic adversarial schedules](adversarial-schedules.md) | As built; finite fixed-seed regression schedules, not a security proof | [#78](https://github.com/KD5UJC-XYZ/scarab/issues/78) |
