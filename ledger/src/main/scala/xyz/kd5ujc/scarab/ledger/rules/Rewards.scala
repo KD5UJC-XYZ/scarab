@@ -14,8 +14,7 @@ import xyz.kd5ujc.scarab.ledger.state.*
   * The pure start/pulse/complete machine mirrors the reference: captured inputs are immutable, and
   * each normal pulse consumes a bounded prefix in credential order. The result is attributed: each
   * credential's rewards are a set of [[Reward]] s that name the pool they came from and whether as
-  * leader or as member, so the per-pool accounting is there (the node's own reward update has only
-  * the sum per credential).
+  * leader or as member. The native update retains this per-pool attribution through application.
   *
   * New likelihood generation remains an explicit gap (`Gap.NonMyopic`, J3.6). Completion combines
   * the captured likelihoods and previous history exactly, including imported updates.

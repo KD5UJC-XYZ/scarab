@@ -186,3 +186,25 @@ but normal completion still performs the reference's linear delivered-reward red
 result on 2026-10-19. #135 follows the normal main-plus-nightly definition of done, with no
 remaining 5 ms follow-up requirement. [performance.md](../performance.md#30-incremental-reward-implementation-135)
 records measured scope and limitations, separately from the final recorded block replay.
+
+
+The final current-main Docker `check` passes on `de9619b9`, based on `d2461cb3`: 5,045 tests
+pass, 16 optional-data tests skip, with no failures or errors across all 14 modules; formatting,
+warning-clean compilation, standard fuzz and scalafix pass. The merged multi-script changes do
+not overlap the reward runtime. The frozen scenario source is `93164ee9`; all eight reward
+runtime sources match the measured `c8265de3` implementation. The compatibility log distinguishes
+those bindings and the earlier controlled API measurements.
+
+Direct native projection keeps a pending reward update pending. Nineteen of 731 projection
+goldens consequently expose `rewardUpdate: null`; completing their captured update in an external
+proof restores the previous digest with every other JSON field equal. A separate six of 265 NtC
+answers change because completion now sets the non-myopic reward pot: restoring that field alone
+restores every original answer. The fixture READMEs retain source, original-file and proof hashes.
+
+
+The private area gates also pass on the frozen `93164ee9` runtime: e2e applies 1,672 blocks
+through Conway epoch 17 with 66 matching ledger projections and no mismatches, comparison errors
+or skips; restart writes two V5 shutdown snapshots and restores the exact prior anchor. The
+compatibility log records their projection limits, workload retry, class bindings and cleanup.
+The final source edits correct two Scaladoc descriptions only; the executable implementation
+remains the one checked and measured above.
