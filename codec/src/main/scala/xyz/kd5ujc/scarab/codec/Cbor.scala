@@ -284,101 +284,105 @@ object Cbor:
 
   /** Uses shortest integer/length widths and definite containers, recursively re-encoding values
     * (not their original bytes). Map order is retained, so this is NOT RFC 8949 deterministic map
-    * ordering. For hashing a decoded wire item, use Node.original, never a re-encoding. Encoder
-    * uses default resource limits.
+    * ordering. For hashing a decoded wire item, use Node.original, never a re-encoding. The same
+    * caller-selected resource limits may be supplied to the encoder and decoder. `allowFloats`
+    * controls decoding only; the encoder keeps its prior behavior of writing explicit float nodes.
     */
-  def encode(value: Value): Either[Error, Bytes] = boundary:
+  def encode(value: Value, limits: Limits = Limits()): Either[Error, Bytes] = boundary:
     def fail(error: Error): Nothing = break(Left(error))
-    try
-      val out = new java.io.ByteArrayOutputStream()
-      val limits = Limits()
-      var items = 0
-      def write(b: Int): Unit =
-        if out.size() >= limits.maxInputBytes then fail(Error.OutputLimitExceeded)
-        out.write(b)
-      def head(major: Int, n: BigInt): Unit =
-        if n < 0 || n > MaxUInt then fail(Error.ArgumentOutOfRange(n))
-        if n < 24 then write((major << 5) | n.toInt)
-        else
-          val (ai, width) =
-            if n <= 255 then (24, 1)
-            else if n <= 65535 then (25, 2)
-            else if n <= BigInt("ffffffff", 16) then (26, 4)
-            else (27, 8)
-          write((major << 5) | ai)
-          var shift = (width - 1) * 8
-          while shift >= 0 do
-            write(((n >> shift) & 255).toInt)
-            shift -= 8
-      def raw(major: Int, bytes: Array[Byte]): Unit =
-        if bytes.length > limits.maxStringBytes then fail(Error.StringLimitExceeded)
-        head(major, BigInt(bytes.length))
-        bytes.foreach(b => write(b & 255))
-      // An open container: the values still to write, by index (a map's keys and values
-      // alternate), without an iterator per level.
-      final class Open(val nodes: Vector[Node], val pairs: Vector[(Node, Node)], val node: Node):
-        var next = 0
-        val size: Int =
-          if nodes != null then nodes.size else if pairs != null then 2 * pairs.size else 1
-        def hasNext: Boolean = next < size
-        def take(): Value =
-          val i = next
-          next += 1
-          if nodes != null then nodes(i).value
-          else if pairs != null then (if i % 2 == 0 then pairs(i / 2)._1 else pairs(i / 2)._2).value
-          else node.value
-      val stack = new java.util.ArrayDeque[Open]
-      def emit(v: Value, depth: Int): Unit =
-        if depth > limits.maxDepth then fail(Error.DepthLimitExceeded)
-        if items >= limits.maxItems then fail(Error.ItemLimitExceeded)
-        items += 1
-        v match
-          case Value.UInt(n) => head(0, n)
-          case Value.NInt(n) =>
-            if n >= 0 then fail(Error.NonNegativeNInt(n))
-            head(1, -1 - n)
-          case Value.ByteString(b) => raw(2, b.toArray)
-          case Value.Text(s) =>
-            val bytes =
-              try
-                val buffer = StandardCharsets.UTF_8
-                  .newEncoder()
-                  .onMalformedInput(CodingErrorAction.REPORT)
-                  .onUnmappableCharacter(CodingErrorAction.REPORT)
-                  .encode(CharBuffer.wrap(s))
-                val a = new Array[Byte](buffer.remaining())
-                buffer.get(a)
-                a
-              catch case NonFatal(_) => fail(Error.InvalidUnicode)
-            raw(3, bytes)
-          case Value.Arr(nodes) =>
-            head(4, BigInt(nodes.size))
-            stack.push(new Open(nodes, null, null))
-          case Value.Map(pairs) =>
-            head(5, BigInt(pairs.size))
-            stack.push(new Open(null, pairs, null))
-          case Value.Tag(tag, node) =>
-            head(6, tag)
-            stack.push(new Open(null, null, node))
-          case Value.Bool(b) => write(if b then 245 else 244)
-          case Value.Null    => write(246)
-          case Value.Float(x, FloatWidth.Half) =>
-            val bits = Float16.fromFloat(x.toFloat)
-            write(0xf9); write(bits >> 8); write(bits & 0xff)
-          case Value.Float(x, FloatWidth.Single) =>
-            val bits = java.lang.Float.floatToRawIntBits(x.toFloat)
-            write(0xfa)
-            var shift = 24
-            while shift >= 0 do { write((bits >>> shift) & 0xff); shift -= 8 }
-          case Value.Float(x, FloatWidth.Double) =>
-            val bits = java.lang.Double.doubleToRawLongBits(x)
-            write(0xfb)
-            var shift = 56
-            while shift >= 0 do { write(((bits >>> shift) & 0xff).toInt); shift -= 8 }
-      emit(value, 0)
-      while !stack.isEmpty do
-        val top = stack.peek()
-        if top.hasNext then emit(top.take(), stack.size)
-        else stack.pop()
-      Right(Bytes.fromArray(out.toByteArray))
-    catch case _: StackOverflowError => Left(TooDeep)
+    if limits.maxInputBytes < 0 || limits.maxDepth < 0 || limits.maxItems < 0 || limits.maxStringBytes < 0
+    then Left(Error.InvalidLimits)
+    else
+      try
+        val out = new java.io.ByteArrayOutputStream()
+        var items = 0
+        def write(b: Int): Unit =
+          if out.size() >= limits.maxInputBytes then fail(Error.OutputLimitExceeded)
+          out.write(b)
+        def head(major: Int, n: BigInt): Unit =
+          if n < 0 || n > MaxUInt then fail(Error.ArgumentOutOfRange(n))
+          if n < 24 then write((major << 5) | n.toInt)
+          else
+            val (ai, width) =
+              if n <= 255 then (24, 1)
+              else if n <= 65535 then (25, 2)
+              else if n <= BigInt("ffffffff", 16) then (26, 4)
+              else (27, 8)
+            write((major << 5) | ai)
+            var shift = (width - 1) * 8
+            while shift >= 0 do
+              write(((n >> shift) & 255).toInt)
+              shift -= 8
+        def raw(major: Int, bytes: Array[Byte]): Unit =
+          if bytes.length > limits.maxStringBytes then fail(Error.StringLimitExceeded)
+          head(major, BigInt(bytes.length))
+          bytes.foreach(b => write(b & 255))
+        // An open container: the values still to write, by index (a map's keys and values
+        // alternate), without an iterator per level.
+        final class Open(val nodes: Vector[Node], val pairs: Vector[(Node, Node)], val node: Node):
+          var next = 0
+          val size: Int =
+            if nodes != null then nodes.size else if pairs != null then 2 * pairs.size else 1
+          def hasNext: Boolean = next < size
+          def take(): Value =
+            val i = next
+            next += 1
+            if nodes != null then nodes(i).value
+            else if pairs != null then
+              (if i % 2 == 0 then pairs(i / 2)._1 else pairs(i / 2)._2).value
+            else node.value
+        val stack = new java.util.ArrayDeque[Open]
+        def emit(v: Value, depth: Int): Unit =
+          if depth > limits.maxDepth then fail(Error.DepthLimitExceeded)
+          if items >= limits.maxItems then fail(Error.ItemLimitExceeded)
+          items += 1
+          v match
+            case Value.UInt(n) => head(0, n)
+            case Value.NInt(n) =>
+              if n >= 0 then fail(Error.NonNegativeNInt(n))
+              head(1, -1 - n)
+            case Value.ByteString(b) => raw(2, b.toArray)
+            case Value.Text(s) =>
+              val bytes =
+                try
+                  val buffer = StandardCharsets.UTF_8
+                    .newEncoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .encode(CharBuffer.wrap(s))
+                  val a = new Array[Byte](buffer.remaining())
+                  buffer.get(a)
+                  a
+                catch case NonFatal(_) => fail(Error.InvalidUnicode)
+              raw(3, bytes)
+            case Value.Arr(nodes) =>
+              head(4, BigInt(nodes.size))
+              stack.push(new Open(nodes, null, null))
+            case Value.Map(pairs) =>
+              head(5, BigInt(pairs.size))
+              stack.push(new Open(null, pairs, null))
+            case Value.Tag(tag, node) =>
+              head(6, tag)
+              stack.push(new Open(null, null, node))
+            case Value.Bool(b) => write(if b then 245 else 244)
+            case Value.Null    => write(246)
+            case Value.Float(x, FloatWidth.Half) =>
+              val bits = Float16.fromFloat(x.toFloat)
+              write(0xf9); write(bits >> 8); write(bits & 0xff)
+            case Value.Float(x, FloatWidth.Single) =>
+              val bits = java.lang.Float.floatToRawIntBits(x.toFloat)
+              write(0xfa)
+              var shift = 24
+              while shift >= 0 do { write((bits >>> shift) & 0xff); shift -= 8 }
+            case Value.Float(x, FloatWidth.Double) =>
+              val bits = java.lang.Double.doubleToRawLongBits(x)
+              write(0xfb)
+              var shift = 56
+              while shift >= 0 do { write(((bits >>> shift) & 0xff).toInt); shift -= 8 }
+        emit(value, 0)
+        while !stack.isEmpty do
+          val top = stack.peek()
+          if top.hasNext then emit(top.take(), stack.size)
+          else stack.pop()
+        Right(Bytes.fromArray(out.toByteArray))
+      catch case _: StackOverflowError => Left(TooDeep)

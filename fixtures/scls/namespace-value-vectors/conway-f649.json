@@ -1,0 +1,28 @@
+{
+  "ledgerRepository": "https://github.com/IntersectMBO/cardano-ledger",
+  "ledgerCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "clsRepository": "https://github.com/tweag/cardano-cls",
+  "clsCommit": "8e2bba9442cb388089f53d708cc4aedcb47726ea",
+  "generator": "cardano-ledger-canonical-state:exe:scls-canonical-vectors",
+  "generatorSource": "scripts/oracle/scls/Values.hs",
+  "generatorSourceSha256": "f179bac5fec6f0bfca841682467e504a4a4be9c84514d3620f70e23f700de1a7",
+  "command": "docker exec -w /probe scarab-77-reference cabal run cardano-ledger-canonical-state:exe:scls-canonical-vectors --jobs=4 --extra-lib-dirs=/usr/local/lib",
+  "network": "Docker reference helper only; offline local package cache; no public network",
+  "semantics": "Each emitted row is decoded to the pinned Haskell namespace entry type and emitted again with its ToCanonicalCBOR instance. Most inputs are synthetic typed test values; the unbounded PParams vector starts from a complete row in the pinned conway-4593 artifact fixture and replaces maxTxExUnits/maxBlockExUnits with Natural values 2^63 and 2^64.",
+  "referenceSources": {
+    "accountDRep": "cardano-ledger-canonical-state/src/Cardano/Ledger/CanonicalState/Namespace/EntitiesAccounts/V0.hs:118-124",
+    "entityCredential": "cardano-ledger-canonical-state/src/Cardano/Ledger/CanonicalState/BasicTypes.hs:210-221",
+    "committee": "cardano-ledger-canonical-state/src/Cardano/Ledger/CanonicalState/Namespace/GovCommittee/V0.hs:79-98",
+    "committeeEntity": "cardano-ledger-canonical-state/src/Cardano/Ledger/CanonicalState/Namespace/EntitiesCommittee/V0.hs:75-117",
+    "drepState": "cardano-ledger-canonical-state/src/Cardano/Ledger/CanonicalState/Namespace/EntitiesDReps/V0.hs:89-113",
+    "proposalRoots": "cardano-ledger-canonical-state/src/Cardano/Ledger/CanonicalState/Namespace/GovProposals/Roots/V0.hs:75-100",
+    "stakePools": "cardano-ledger-canonical-state/src/Cardano/Ledger/CanonicalState/Namespace/EntitiesStakePools/V0.hs:124-280; BasicTypes.hs:210-221, 284-301",
+    "utxoOnChain": "cardano-ledger-canonical-state/src/Cardano/Ledger/CanonicalState/Namespace/UTxO/V0.hs:69-84",
+    "proposals": "conway/Cardano/Ledger/CanonicalState/Conway.hs:265-344; src/Cardano/Ledger/CanonicalState/Namespace/GovProposals/V0.hs:89-140; cardano-cls/scls-cbor/src/Cardano/SCLS/CBOR/Canonical/Encoder.hs:354-371",
+    "pparamsNatural": "cardano-ledger-canonical-state/conway/Cardano/Ledger/CanonicalState/Conway.hs:107-160; cardano-ledger-canonical-state/src/Cardano/Ledger/CanonicalState/BasicTypes.hs:323-335"
+  },
+  "generatorBuild": "Succeeded with the existing frozen cabal.project / cabal.project.freeze and local /usr/local/lib; the standalone values target wrote values-stakepools-out/haskell-nonempty-vectors.tsv.",
+  "generatedOutputSha256": "1fbcb6a36f145cdbbdb6c3fcb3bf0c5e4dc11dc43fbfcc7cf99c70f0341a65ac",
+  "fixtureVectorSha256": "c837b00b5b5a7e3367a0fdc984d1e13cd5edfd519eebf2b0b49b6830e5bb1745",
+  "reproduction": "In the public cardano-ledger checkout at ledger commit f649f9751074d2ab3de033fc3912f29c9862c1f5, use its cardano-ledger-canonical-state package and the frozen cabal.project/cabal.project.freeze resolving Tweag cardano-cls commit 8e2bba9442cb388089f53d708cc4aedcb47726ea. Copy scripts/oracle/scls/Values.hs to probe/Values.hs and add a separate executable stanza modeled on scarab-scls-probe (main-is Values.hs, hs-source-dirs probe, plus direct cardano-ledger-conway dependency for the ConwayEra vector). Run the command above offline. The generated file has two tab-separated columns (name, canonical bytes); conway-f649.tsv is the recorded three-column form (name, namespace, bytes), with namespace assigned from each value type. Verify generatorSourceSha256, generatedOutputSha256 over the generated two-column file, and fixtureVectorSha256 over the three-column TSV. Each row is decoded to its pinned namespace type and re-emitted with ToCanonicalCBOR. Most inputs are synthetic typed values; the unbounded PParams vector derives from a complete artifact row and replaces maxTxExUnits/maxBlockExUnits with 2^63/2^64."
+}

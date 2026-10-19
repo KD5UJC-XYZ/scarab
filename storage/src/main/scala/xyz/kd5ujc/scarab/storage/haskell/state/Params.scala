@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.storage.haskell.state
 
 import scala.annotation.tailrec
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Value}
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.{
   DRepVotingThresholds,
@@ -48,7 +48,8 @@ object Params:
       val name: String,
       codec: Codec[A],
       get: ProtocolParams => A,
-      set: (ProtocolParams, A) => ProtocolParams
+      set: (ProtocolParams, A) => ProtocolParams,
+      canonicalCodec: Codec[A]
   ):
     def write(p: ProtocolParams, out: Writer): Unit = codec.encode(get(p), out)
     def read(p: ProtocolParams, n: Node): Decoded[ProtocolParams] =
@@ -57,10 +58,39 @@ object Params:
       codec.check(get(p)).map(_.at(name))
     def copyValue(from: ProtocolParams, into: ProtocolParams): ProtocolParams = set(into, get(from))
     def canonical(raw: Bytes): Decoded[Bytes] = codec.decodeBytes(raw).map(codec.encodeUnchecked)
+    private[Params] def capture(n: Node): Decoded[Captured[A]] =
+      canonicalCodec.decode(n).map(value => new Captured(this, value))
+    private[Params] def captureFrom(p: ProtocolParams): Either[ConstraintViolation, Captured[A]] =
+      val value = get(p)
+      canonicalCodec.check(value).map(_.at(name)).toLeft(new Captured(this, value))
+    private[Params] def install(value: A, base: ProtocolParams): ProtocolParams = set(base, value)
+    private[Params] def writeCaptured(value: A, out: Writer): Unit =
+      canonicalCodec.encode(value, out)
 
-  private def param[A](name: String, codec: Codec[A])(
+  /** A decoded value paired with the descriptor that fixes its field type and encoding. */
+  final case class Captured[A] private[Params] (
+      private val descriptor: Param[A],
+      private val value: A
+  ):
+    private[Params] def write(out: Writer): Unit = descriptor.writeCaptured(value, out)
+    private[Params] def overlay(base: ProtocolParams): ProtocolParams =
+      descriptor.install(value, base)
+
+  /** An exact, fully populated Conway PParams projection. Its private constructor and opaque
+    * captured fields prevent absent-era parameters from being filled with `Params.empty` values.
+    */
+  final class ConwayPParams private[Params] (
+      private[Params] val fields: Vector[(Int, Captured[?])]
+  ):
+    override def equals(other: Any): Boolean = other match
+      case that: ConwayPParams => fields == that.fields
+      case _                   => false
+    override def hashCode(): Int = fields.hashCode()
+
+  private def param[A](name: String, codec: Codec[A], canonicalCodec: Option[Codec[A]] = None)(
       get: ProtocolParams => A
-  )(set: (ProtocolParams, A) => ProtocolParams): Param[A] = new Param(name, codec, get, set)
+  )(set: (ProtocolParams, A) => ProtocolParams): Param[A] =
+    new Param(name, codec, get, set, canonicalCodec.getOrElse(codec))
 
   /** What a field an era does not have reads as: zero, the neutral nonce, no cost models. */
   val empty: ProtocolParams = ProtocolParams(
@@ -107,6 +137,20 @@ object Params:
     val natural = Codec.uintBig(BigInt(Long.MaxValue))
     Record.of[ExUnits]((natural, natural))
 
+  /** Canonical `Natural` fields are unbounded; the node snapshot's ExUnits codec above remains
+    * Int64-bounded as required by the state format (`BasicTypes.hs:323-335`).
+    */
+  private val canonicalExUnits: Codec[ExUnits] =
+    val natural = new Codec[BigInt]:
+      def decode(n: Node): Decoded[BigInt] = Wire.integer.decode(n).flatMap { value =>
+        if value >= 0 then Right(value)
+        else Left(DecodeError.at(n, Kind.OutOfRange("Natural", value)))
+      }
+      def encode(value: BigInt, out: Writer): Unit = out.integer(value)
+      override def check(value: BigInt): Option[ConstraintViolation] =
+        Codec.refuse(value < 0, "Natural", "0 <= x", value)
+    Record.of[ExUnits]((natural, natural))
+
   /** `CostModels` (`CostModels.hs:446-471`): a map from the language (a `Word8`) to its parameters,
     * each an `Int64`; a list of more than 23 is indefinite. Keys are in order, and a repeated one
     * is refused.
@@ -133,6 +177,23 @@ object Params:
         "language 0..255 and Int64 parameters",
         s"${a.size} languages"
       )
+
+  /** The SCLS codec uses definite maps and lists, independently of the state snapshot's
+    * variable-length policy above. Reference: cardano-ledger@f649f975,
+    * CanonicalState/Namespace/GovPParams/V0.hs:85-91 (`flattenCostModels`).
+    */
+  private val canonicalCostModels: Codec[Map[Int, Vector[BigInt]]] =
+    new Codec[Map[Int, Vector[BigInt]]]:
+      def decode(n: Node): Decoded[Map[Int, Vector[BigInt]]] = costModels.decode(n)
+      def encode(value: Map[Int, Vector[BigInt]], out: Writer): Unit =
+        out.mapHead(value.size)
+        value.toVector.sortBy(_._1).foreach { (language, parameters) =>
+          out.uint(language.toLong)
+          out.arrayHead(parameters.size)
+          parameters.foreach(out.int)
+        }
+      override def check(value: Map[Int, Vector[BigInt]]): Option[ConstraintViolation] =
+        costModels.check(value)
 
   /** `PoolVotingThresholds`: five unit intervals. */
   private val poolThresholds: Codec[PoolVotingThresholds] =
@@ -192,15 +253,21 @@ object Params:
   private val coinsPerUTxOByte =
     param("coinsPerUTxOByte", coin)(_.coinsPerUTxOByte)((p, x) => p.copy(coinsPerUTxOByte = x))
   private val costModelsParam =
-    param("costModels", costModels)(_.costModels)((p, x) => p.copy(costModels = x))
+    param("costModels", costModels, Some(canonicalCostModels))(_.costModels)((p, x) =>
+      p.copy(costModels = x)
+    )
   private val pricesParam =
     param("prices", prices)(p => (p.priceMem, p.priceSteps))((p, x) =>
       p.copy(priceMem = x._1, priceSteps = x._2)
     )
   private val maxTxExUnits =
-    param("maxTxExUnits", exUnits)(_.maxTxExUnits)((p, x) => p.copy(maxTxExUnits = x))
+    param("maxTxExUnits", exUnits, Some(canonicalExUnits))(_.maxTxExUnits)((p, x) =>
+      p.copy(maxTxExUnits = x)
+    )
   private val maxBlockExUnits =
-    param("maxBlockExUnits", exUnits)(_.maxBlockExUnits)((p, x) => p.copy(maxBlockExUnits = x))
+    param("maxBlockExUnits", exUnits, Some(canonicalExUnits))(_.maxBlockExUnits)((p, x) =>
+      p.copy(maxBlockExUnits = x)
+    )
   private val maxValSize =
     param("maxValSize", w32)(_.maxValueSize)((p, x) => p.copy(maxValueSize = x))
   private val collateralPercentage =
@@ -324,43 +391,97 @@ object Params:
     minFeeRefScriptCostPerByte
   )
 
+  private val conwayMapFields: Vector[(Int, Param[?])] = Vector(
+    0 -> txFeePerByte,
+    1 -> txFeeFixed,
+    2 -> maxBBSize,
+    3 -> maxTxSize,
+    4 -> maxBHSize,
+    5 -> keyDeposit,
+    6 -> poolDeposit,
+    7 -> eMax,
+    8 -> nOpt,
+    9 -> a0,
+    10 -> rho,
+    11 -> tau,
+    14 -> protocolVersionParam,
+    16 -> minPoolCost,
+    17 -> coinsPerUTxOByte,
+    18 -> costModelsParam,
+    19 -> pricesParam,
+    20 -> maxTxExUnits,
+    21 -> maxBlockExUnits,
+    22 -> maxValSize,
+    23 -> collateralPercentage,
+    24 -> maxCollateralInputs,
+    25 -> poolVotingThresholds,
+    26 -> drepVotingThresholds,
+    27 -> committeeMinSize,
+    28 -> committeeMaxTermLength,
+    29 -> govActionLifetime,
+    30 -> govActionDeposit,
+    31 -> drepDeposit,
+    32 -> drepActivity,
+    33 -> minFeeRefScriptCostPerByte
+  )
+
+  /** Conway `PParams` in canonical-state's integer-key map form (`Conway.hs:107-160`), distinct
+    * from the positional-array codec used by the node state snapshot. The map must contain exactly
+    * the 31 parameters in the Conway schema; values decode through the same descriptors used by the
+    * node-state codec, without defaulting fields from other eras.
+    */
+  val conwayPParamsCodec: Codec[ConwayPParams] = new Codec[ConwayPParams]:
+    private val expectedKeys = conwayMapFields.map(_._1).toSet
+
+    def decode(n: Node): Decoded[ConwayPParams] = n.value match
+      case Value.Map(pairs) =>
+        val parsedKeys = pairs.traverse { case (key, _) => Codec.uint.decode(key) }
+        parsedKeys.flatMap { keys =>
+          if pairs.size != conwayMapFields.size then
+            Left(DecodeError.at(n, Kind.BadArity(conwayMapFields.size.toString, pairs.size)))
+          else if keys.distinct.size != keys.size then
+            Left(DecodeError.at(n, Kind.DuplicateKey("a Conway PParams field")))
+          else
+            keys.find(key => !key.isValidInt || !expectedKeys(key.toInt)) match
+              case Some(key) => Left(DecodeError(Kind.UnexpectedKey(key.toString), Nil, n.offset))
+              case None =>
+                val values = keys.zip(pairs.map(_._2)).toMap
+                conwayMapFields
+                  .traverse { case (key, descriptor) =>
+                    descriptor.capture(values(key)).map(key -> _)
+                  }
+                  .map(fields => new ConwayPParams(fields))
+        }
+      case _ => Left(Codec.mismatch("31-field Conway PParams map", n))
+
+    def encode(value: ConwayPParams, out: Writer): Unit =
+      out.mapHead(value.fields.size)
+      value.fields.foreach { case (key, captured) =>
+        out.uint(key.toLong)
+        captured.write(out)
+      }
+
+  /** Capture exactly the canonical Conway fields, using their canonical constraints (including
+    * unbounded execution-unit Naturals), without manufacturing absent-era values.
+    */
+  def projectConway(value: ProtocolParams): Either[ConstraintViolation, ConwayPParams] =
+    conwayMapFields
+      .traverse { case (key, descriptor) => descriptor.captureFrom(value).map(key -> _) }
+      .map(fields => new ConwayPParams(fields))
+
+  /** Apply the complete canonical field set to an explicit base. Parameters absent from Conway
+    * retain the base's values. Reference: cardano-ledger@f649f975,
+    * CanonicalState/Conway/Import.hs:207-217; the caller owns same-point base admission.
+    */
+  def overlayConway(value: ConwayPParams, base: ProtocolParams): ProtocolParams =
+    value.fields.foldLeft(base) { case (current, (_, captured)) => captured.overlay(current) }
+
   /** The typed projection used only when reporting a Conway context error. Transaction and state
     * values keep their original parameter bytes; the reference's diagnostic `PParamsUpdate`
     * re-encodes its typed fields (`Conway/PParams.hs`, `conwayPParamsHKDPairs`).
     */
   def canonicalConwayUpdate(update: ParamUpdate): Decoded[ParamUpdate] =
-    val fields = (Vector(
-      0 -> txFeePerByte,
-      1 -> txFeeFixed,
-      2 -> maxBBSize,
-      3 -> maxTxSize,
-      4 -> maxBHSize,
-      5 -> keyDeposit,
-      6 -> poolDeposit,
-      7 -> eMax,
-      8 -> nOpt,
-      9 -> a0,
-      10 -> rho,
-      11 -> tau,
-      16 -> minPoolCost,
-      17 -> coinsPerUTxOByte,
-      18 -> costModelsParam,
-      19 -> pricesParam,
-      20 -> maxTxExUnits,
-      21 -> maxBlockExUnits,
-      22 -> maxValSize,
-      23 -> collateralPercentage,
-      24 -> maxCollateralInputs,
-      25 -> poolVotingThresholds,
-      26 -> drepVotingThresholds,
-      27 -> committeeMinSize,
-      28 -> committeeMaxTermLength,
-      29 -> govActionLifetime,
-      30 -> govActionDeposit,
-      31 -> drepDeposit,
-      32 -> drepActivity,
-      33 -> minFeeRefScriptCostPerByte
-    ): Vector[(Int, Param[?])]).toMap
+    val fields = conwayMapFields.filterNot(_._1 == 14).toMap
     update.fields.toVector
       .sortBy(_._1)
       .traverse { case (key, raw) =>

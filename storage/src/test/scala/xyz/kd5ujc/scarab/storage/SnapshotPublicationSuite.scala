@@ -14,10 +14,6 @@ class SnapshotPublicationSuite extends CatsEffectSuite:
   private type F[A] = EitherT[IO, LedgerSnapshotImport.Error, A]
   private given Handle[F, LedgerSnapshotImport.Error] =
     Handle.handleEitherT[IO, LedgerSnapshotImport.Error]
-  private given Raise[F, StorageError] = new Raise[F, StorageError]:
-    def functor: cats.Functor[F] = summon[cats.Functor[F]]
-    def raise[E <: StorageError, A](error: E): F[A] =
-      EitherT.leftT[IO, A](LedgerSnapshotImport.Error.Storage(error))
 
   Vector(false, true).foreach { denyCleanup =>
     test(
@@ -30,7 +26,7 @@ class SnapshotPublicationSuite extends CatsEffectSuite:
         val failedTarget = db / "missing-parent" / "snapshots"
         val native = LedgerSnapshotImport.Move.native[F]
         val move = new LedgerSnapshotImport.Move[F]:
-          def apply(from: Path, to: Path): F[Unit] =
+          def apply(from: Path, to: Path)(using Raise[F, LedgerSnapshotImport.Error]): F[Unit] =
             if to == db / "snapshots" then
               EitherT.liftF[IO, LedgerSnapshotImport.Error, Unit](IO.blocking {
                 assert(
@@ -84,5 +80,29 @@ class SnapshotPublicationSuite extends CatsEffectSuite:
           )
           assert(Files.isDirectory((stage / "artifacts" / "snapshots").toNioPath))
       }
+    }
+  }
+
+  test("a native rename uses the error scope active at the call, with no construction scope") {
+    val move = LedgerSnapshotImport.Move.native[IO]
+    StorageTestKit.tempDir.use { root =>
+      val from = root / "missing"
+      val target = root / "target"
+      Handle
+        .allow[LedgerSnapshotImport.Error] {
+          move(from, target).map(_.asRight[LedgerSnapshotImport.Error])
+        }
+        .rescue(error => IO.pure(Left(error)))
+        .map { result =>
+          assert(
+            result.left.exists {
+              case LedgerSnapshotImport.Error.Storage(StorageError.Io(path, _)) =>
+                path == target.toString
+              case _ => false
+            },
+            result.toString
+          )
+          assert(!Files.exists(target.toNioPath))
+        }
     }
   }

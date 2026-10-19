@@ -287,11 +287,14 @@ object LedgerSnapshotImport:
     * channel even when F is a transformer. Implementations must raise ImportError, not throw it.
     */
   private[storage] trait Move[F[_]]:
-    def apply(from: Path, to: Path): F[Unit]
+    def apply(from: Path, to: Path)(using Raise[F, Error]): F[Unit]
 
   private[storage] object Move:
-    def native[F[_]: Async](using Raise[F, StorageError]): Move[F] = new Move[F]:
-      def apply(from: Path, to: Path): F[Unit] =
+    def native[F[_]: Async]: Move[F] = new Move[F]:
+      def apply(from: Path, to: Path)(using outer: Raise[F, Error]): F[Unit] =
+        given Raise[F, StorageError] = new Raise[F, StorageError]:
+          def functor: Functor[F] = Async[F]
+          def raise[E <: StorageError, A](error: E): F[A] = outer.raise(Error.Storage(error))
         AtomicFile.guard[F, Unit](to.toString) {
           JFiles.move(from.toNioPath, to.toNioPath)
           ()

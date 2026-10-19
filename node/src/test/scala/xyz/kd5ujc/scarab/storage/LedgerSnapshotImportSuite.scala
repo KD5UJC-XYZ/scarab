@@ -19,6 +19,15 @@ import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
 import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.haskell.state.*
+import xyz.kd5ujc.scarab.storage.scls.{
+  SclsBase,
+  SclsEntrySorter,
+  SclsExport,
+  SclsImport,
+  SclsInterchange,
+  SclsRecord,
+  SclsStreaming
+}
 
 class LedgerSnapshotImportSuite extends CatsEffectSuite:
   import StorageTestKit.{ok, tempDir}
@@ -487,5 +496,91 @@ class LedgerSnapshotImportSuite extends CatsEffectSuite:
         assertEquals(result, Left(Error.Metadata(MetaError.MissingField(MetaField.Backend))))
         assertEquals(after, before)
         assert(!JFiles.exists((db / "snapshots").toNioPath))
+    }
+  }
+
+  test(
+    "SCLS file import publishes only at the exact immutable point and preserves source artifacts"
+  ) {
+    val codec = SclsExport.Config(
+      SclsStreaming.Config.fromInts(1024 * 1024, 1000, 4096).fold(e => fail(e.toString), identity),
+      SclsEntrySorter.Config.fromInt(1024 * 1024).fold(e => fail(e.toString), identity)
+    )
+    def interchange[A](
+        body: Handle[IO, SclsInterchange.Error] ?=> IO[A]
+    ): IO[Either[SclsInterchange.Error, A]] =
+      Handle
+        .allow[SclsInterchange.Error](body.map(_.asRight[SclsInterchange.Error]))
+        .rescue(e => IO.pure(Left(e)))
+    tempDir.use { root =>
+      for
+        inputs <- source(root, Era.Conway)
+        (ledger, db, state, _) = inputs
+        initialized <- attempt(LedgerSnapshotImport.run[IO](config(ledger, db)))
+        _ <- IO(assert(initialized.isRight, initialized.toString))
+        before <- IO(fingerprint(db))
+        base = SclsBase.Config(db, root, anchor(state), setup.identity)
+        artifact = root / "export.scls"
+        summary = SclsRecord.Summary("test", "test", None)
+        exported <- interchange(
+          SclsInterchange.exportFile[IO](
+            SclsInterchange.ExportConfig(base, artifact, summary, codec)
+          )
+        )
+        target = root / "target"
+        _ <- ok {
+          NetworkIdentityFile.write[IO](target, setup.identity) *>
+            FileImmutableStore.open[IO](target / "immutable").use { (store, _) =>
+              store.append(anchor(state), captures(Era.Conway)._2)
+            }
+        }
+        immutable <- IO(fingerprint(target / "immutable"))
+        imported <- interchange(
+          SclsInterchange.importFile[IO](
+            SclsInterchange.ImportConfig(
+              base,
+              artifact,
+              target,
+              setup.geometry.byron.epochSlots,
+              SclsImport.Config(codec)
+            )
+          )
+        )
+        back <- restored(target, state)
+        again <- interchange(
+          SclsInterchange.exportFile[IO](
+            SclsInterchange.ExportConfig(
+              base.copy(db = target),
+              root / "reexport.scls",
+              summary,
+              codec
+            )
+          )
+        )
+        collision <- interchange(
+          SclsInterchange.importFile[IO](
+            SclsInterchange.ImportConfig(
+              base,
+              artifact,
+              target,
+              setup.geometry.byron.epochSlots,
+              SclsImport.Config(codec)
+            )
+          )
+        )
+        _ <- IO {
+          assert(exported.isRight, exported.toString)
+          assert(imported.isRight, imported.toString)
+          assertEquals(again.map(_.manifest), exported.map(_.manifest))
+          assertEquals(back.anchor, Some(anchor(state)))
+          assertEquals(fingerprint(db), before)
+          assertEquals(fingerprint(target / "immutable"), immutable)
+          assertEquals(collision, Left(SclsInterchange.Error.Collision(target / "utxo")))
+          assertEquals(
+            JFiles.readAllBytes((root / "reexport.scls").toNioPath).toVector,
+            JFiles.readAllBytes(artifact.toNioPath).toVector
+          )
+        }
+      yield ()
     }
   }

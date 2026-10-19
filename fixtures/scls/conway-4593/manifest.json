@@ -1,0 +1,87 @@
+{
+  "sha256": "3c8b3e044f949314f5284ced2f9b43ecd977875493adb7d606d290aff9756891",
+  "size": 6060,
+  "slot": 4593,
+  "entries": 16,
+  "chunks": 8,
+  "root": "fb12b75ed9b1abcbd341bd751b0c45606e060fd714e6bb97ce5dcb0a",
+  "summary": [
+    "2026-10-18T00:00:00Z",
+    "scls-tool:reference",
+    ""
+  ],
+  "namespaces": [
+    {
+      "namespace": "blocks/v0",
+      "entries": 2,
+      "chunks": 1,
+      "root": "b4e0b0e0e63ae3e229fb7b97a9644128566523df711af760e9eb10eb"
+    },
+    {
+      "namespace": "entities/accounts/v0",
+      "entries": 3,
+      "chunks": 1,
+      "root": "d9f41ca961bd30f88ed7aab995149dde1da5386c8c87194f6b498fd5"
+    },
+    {
+      "namespace": "entities/committee/v0",
+      "entries": 1,
+      "chunks": 1,
+      "root": "177d298abbcbd474f2de59689e951c6cb4ea10349dea98a93a9a4564"
+    },
+    {
+      "namespace": "entities/dreps/v0",
+      "entries": 0,
+      "chunks": 0,
+      "root": "836cc68931c2e4e3e838602eca1902591d216837bafddfe6f0c8cb07"
+    },
+    {
+      "namespace": "entities/stake_pools/v0",
+      "entries": 3,
+      "chunks": 1,
+      "root": "9ad0c2216fb167714bc41769633e05e0eaa3a99fab2a6d39fdd5ef72"
+    },
+    {
+      "namespace": "entities/stake_pools/vrf_key_hashes/v0",
+      "entries": 0,
+      "chunks": 0,
+      "root": "836cc68931c2e4e3e838602eca1902591d216837bafddfe6f0c8cb07"
+    },
+    {
+      "namespace": "gov/committee/v0",
+      "entries": 1,
+      "chunks": 1,
+      "root": "dc2a8d48e4f6429e0fd722c5c7b0a0b6fa85e7c95d328a5fa8b36de1"
+    },
+    {
+      "namespace": "gov/constitution/v0",
+      "entries": 1,
+      "chunks": 1,
+      "root": "f81987ee3c7ed5688fac4f67d6942385d19d87e59bf241f16d9e0013"
+    },
+    {
+      "namespace": "gov/pparams/v0",
+      "entries": 2,
+      "chunks": 1,
+      "root": "f8e84bba8ad335a23a0aacfb8ba689ff3f1e13cb5ef4890d83c5fa2a"
+    },
+    {
+      "namespace": "gov/proposals/roots/v0",
+      "entries": 0,
+      "chunks": 0,
+      "root": "836cc68931c2e4e3e838602eca1902591d216837bafddfe6f0c8cb07"
+    },
+    {
+      "namespace": "gov/proposals/v0",
+      "entries": 0,
+      "chunks": 0,
+      "root": "836cc68931c2e4e3e838602eca1902591d216837bafddfe6f0c8cb07"
+    },
+    {
+      "namespace": "utxo/v0",
+      "entries": 3,
+      "chunks": 1,
+      "root": "f02e31bbe466abc525c8b3c6c0a7bbd1dd7fde0ab4e97e899a5a3e39"
+    }
+  ]
+}

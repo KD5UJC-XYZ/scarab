@@ -135,7 +135,10 @@ object ConwayEpoch:
           _ <- es.set(next)
         yield ()
 
-  private def totalObligation(ls: LedgerState[Conway]): BigInt =
+  /** The deposit pot implied by the complete certificate and proposal state. Snapshot interchange
+    * uses the same obligation as the epoch rule when checking reconstructed state.
+    */
+  def totalObligation(ls: LedgerState[Conway]): BigInt =
     EraLedger.keyDeposits(ls) +
       ls.cert.pState.stakePools.valuesIterator.foldLeft(BigInt(0))(_ + _.deposit.toBigInt) +
       ls.cert.vState.dreps.valuesIterator.foldLeft(BigInt(0))(_ + _.deposit.toBigInt) +

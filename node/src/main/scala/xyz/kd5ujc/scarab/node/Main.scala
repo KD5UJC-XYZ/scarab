@@ -243,7 +243,11 @@ object Main extends IOApp:
     )
 
   def run(args: List[String]): IO[ExitCode] =
-    if args.headOption.contains("import-haskell-db") then
+    if args.headOption.contains("export-scls") then
+      xyz.kd5ujc.scarab.node.tools.SclsCommand.runExport(args.tail)
+    else if args.headOption.contains("import-scls") then
+      xyz.kd5ujc.scarab.node.tools.SclsCommand.runImport(args.tail)
+    else if args.headOption.contains("import-haskell-db") then
       xyz.kd5ujc.scarab.node.tools.HaskellImportCommand.run(args.tail)
     else if args.headOption.contains("import-mithril") then
       xyz.kd5ujc.scarab.node.tools.MithrilBootstrapCommand.run(args.tail)

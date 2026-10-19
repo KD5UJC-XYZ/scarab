@@ -123,6 +123,43 @@ class CborSuite extends munit.FunSuite:
     assert(Cbor.decode(bytes("bbffffffffffffffff")).isLeft)
     assert(Cbor.decode(bytes("81" * 2049 + "00"), Cbor.Limits(maxDepth = 2048)).isLeft)
   }
+  test("encoder honors caller-selected output, item, depth and invalid limits") {
+    val text = Value.Text("ab")
+    assertEquals(
+      Cbor.encode(Value.UInt(0), Cbor.Limits(maxInputBytes = 0)),
+      Left(Cbor.Error.OutputLimitExceeded)
+    )
+    assertEquals(
+      Cbor.encode(text, Cbor.Limits(maxStringBytes = 1)),
+      Left(Cbor.Error.StringLimitExceeded)
+    )
+    assertEquals(
+      Cbor.encode(Value.Arr(Vector(n(Value.UInt(0)))), Cbor.Limits(maxItems = 1)),
+      Left(Cbor.Error.ItemLimitExceeded)
+    )
+    assertEquals(
+      Cbor.encode(Value.Arr(Vector(n(Value.UInt(0)))), Cbor.Limits(maxDepth = 0)),
+      Left(Cbor.Error.DepthLimitExceeded)
+    )
+    assertEquals(
+      Cbor.encode(Value.UInt(0), Cbor.Limits(maxItems = -1)),
+      Left(Cbor.Error.InvalidLimits)
+    )
+    // `allowFloats` governs decoder acceptance; the encoder retains its prior float behavior.
+    assertEquals(
+      Cbor.encode(Value.Float(1.0, FloatWidth.Single), Cbor.Limits()),
+      Right(bytes("fa3f800000"))
+    )
+  }
+  test("encoder walks deeply nested values on a small-stack thread") {
+    val deep =
+      (0 until 30000).foldLeft[Value](Value.UInt(0))((value, _) => Value.Arr(Vector(n(value))))
+    onSmallStack {
+      val encoded =
+        Cbor.encode(deep, Cbor.Limits(maxInputBytes = 100000, maxDepth = 30000, maxItems = 30001))
+      assert(encoded.isRight)
+    }
+  }
   test("empty strings, null, booleans and selected values roundtrip") {
     val values = Vector(
       Value.Null,

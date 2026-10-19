@@ -5,7 +5,7 @@ import cats.data.NonEmptyVector
 import cats.syntax.all.*
 import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
-import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 
 /** A TCP port as a pool registers it: the reference's `Port`, a `Word16`
   * (`Cardano.Ledger.BaseTypes`, `newtype Port = Port {portToWord16 :: Word16}`,
@@ -220,9 +220,12 @@ object PoolRelays:
 
   /** The relays of a registration, in order. */
   def decode(relays: Bytes): Either[PoolRelayError, Vector[PoolRelay]] =
+    decode(relays, Cbor.Limits())
+
+  def decode(relays: Bytes, limits: Cbor.Limits): Either[PoolRelayError, Vector[PoolRelay]] =
     if relays.isEmpty then Right(Vector.empty)
     else
-      CborRead.decode(relays).leftMap(PoolRelayError.NotCbor(_)).flatMap { node =>
+      CborRead.decode(relays, limits).leftMap(PoolRelayError.NotCbor(_)).flatMap { node =>
         node.value match
           case Value.Arr(items) => items.zipWithIndex.traverse((n, i) => relay(n, i))
           case _                => Left(PoolRelayError.NotASequence)

@@ -1,0 +1,12 @@
+{
+  "profile": "ledger-f649-conway-v0",
+  "ledgerCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "semantics": "Synthetic boundary VState values passed to the unmodified Haskell updateDormantDRepExpiry; fields epoch, dormant, original expiry, normalized expiry, normalized dormant counter. Both Word64 wrapping and ambiguous preimages are executed. This is not a historical state fixture.",
+  "source": "Conway/Rules/Certs.hs:308-328",
+  "generator": "scripts/oracle/scls/Dormancy.hs",
+  "generatorSha256": "b11e813585abf5c8dda34b4fd687573a9a7dca909b310fa259149e375086ef48",
+  "fixtureSha256": "2f442bf86f500e79b5152c67ecbbf7bdbdd5bf00bd008949f85a5f30f37518b5",
+  "rawStdoutSha256": "9d9f959756d780a16d0f3aee4e5cdc330f5bab449edf239d9fa45b316972e602",
+  "command": "cabal run -v0 cardano-ledger-canonical-state:exe:scarab-dormancy-vectors --jobs=4 --extra-lib-dirs=/usr/local/lib",
+  "reproduction": "Use the same pinned frozen Cabal workspace described by fixtures/scls/namespace-value-vectors/conway-f649.json. Copy Dormancy.hs to probe/Dormancy.hs; add a separate scarab-dormancy-vectors executable using GHC2021 and base, bytestring, containers, cardano-ledger-binary, cardano-ledger-core and cardano-ledger-conway. Capture stdout, replace single spaces with tabs. No reference source modifications."
+}

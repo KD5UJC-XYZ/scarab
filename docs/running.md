@@ -527,6 +527,37 @@ database. Failure or cancellation removes staging. JSON `exportLedgerSnapshot` e
 Reference replay and epoch-boundary acceptance are recorded in #140; the command alone does not prove
 that acceptance. It preserves V5 and the node's stored CBOR values.
 
+### `export-scls` and `import-scls`: canonical ledger-state interchange
+
+Run these offline in the JDK container, as with the Haskell snapshot tools above. Both require a
+complete Conway native snapshot/checkpoint, external writable scratch, the exact block reference,
+and local configuration/genesis inputs for the complete network identity. The supported pinned
+SCLS profile and lossy fields are described in [the design](design/scls-interchange.md).
+
+```sh
+java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main export-scls \
+  --db <complete base DB> --scratch <external scratch dir> --genesis-dir <genesis dir> \
+  --slot <slot> --block-no <block number> --block-hash <64 hex digits> --out <new file>
+java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main import-scls \
+  --db <complete base DB> --scratch <external scratch dir> --genesis-dir <genesis dir> \
+  --slot <slot> --block-no <block number> --block-hash <64 hex digits> \
+  --input <SCLS file> --target-db <separate DB with immutable blocks>
+```
+
+`--config <file>` can supply the node configuration; `--genesis-dir` is optional with it and supplies
+an explicit genesis override when both are given. The record and per-entry CBOR budget defaults to
+16 MiB; `--record-bytes` accepts 4 KiB through 256 MiB. The independent decoded-item ceiling
+remains 100,000 at every byte setting. Export takes an optional `--comment` and
+uses fixed local diagnostic metadata. The output parent must already exist and support hard links;
+an existing file is refused. Output and all scratch must resolve outside the source DB.
+
+SCLS omits restart and consensus information. Import therefore compares every namespace commitment
+with the explicit same-point complete base, preserves unrepresented fields, validates the new native
+files, and publishes only after the target's full identity and immutable block match. The target
+must have no existing UTxO, snapshots, volatile or ledger artifacts. This is interchange against an
+explicit base, not standalone bootstrap. Both commands retain V5 restart snapshots, stored CBOR,
+and the existing Haskell import/export tools. JSON events report the point/count/path or typed error.
+
 ### Preprod
 
 The node follows the public preprod testnet (network magic 1) from genesis through its Byron era

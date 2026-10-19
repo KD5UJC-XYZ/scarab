@@ -1,0 +1,16 @@
+{
+  "profile": "ledger-f649-conway-v0",
+  "ledgerCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "clsCommit": "8e2bba9442cb388089f53d708cc4aedcb47726ea",
+  "semantics": "Synthetic nonminimal proposal wrapper from the existing typed value vector, converted using actual toGovActionState and fromGovActionState. The OnChain wrapper alone preserves bytes; conversion through ledger state normalizes deposit 18 05 to 05. Original and projected bytes intentionally differ.",
+  "referenceSources": [
+    "CanonicalState/Conway.hs:270-292",
+    "CanonicalState/BasicTypes.hs:93-94"
+  ],
+  "generator": "scripts/oracle/scls/ProposalRoundtrip.hs",
+  "generatorSha256": "6844bb817f02bbd31ef5183ecb18c18e917d9c41f8c5d1577a064141bfe0ea3a",
+  "inputSha256": "c837b00b5b5a7e3367a0fdc984d1e13cd5edfd519eebf2b0b49b6830e5bb1745",
+  "outputSha256": "dc40ec5453162515f9e57133a8fc5e316b013a9be470376494323f8c670c96ca",
+  "command": "cabal run -v0 cardano-ledger-canonical-state:exe:scarab-proposal-roundtrip --jobs=4 --extra-lib-dirs=/usr/local/lib",
+  "reproduction": "Use the same frozen pinned Cabal workspace as the namespace value vectors. Copy the helper to probe/ProposalRoundtrip.hs and input TSV to proposal-roundtrip-input.tsv; add an executable like scls-canonical-vectors with this main file. No reference conversion, codec or serializer implementation is patched."
+}

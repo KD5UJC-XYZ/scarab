@@ -897,6 +897,138 @@ object Targets:
       )
     )
 
+  private val sclsFraming: Vector[Target] =
+    import xyz.kd5ujc.scarab.storage.scls.{SclsFraming, SclsKey, SclsRecord, SclsValidation}
+    // Prepare immutable codec definitions with the targets; every input decode remains in Probe.
+    val records = SclsRecord
+    val keys = SclsKey
+    val container = SclsValidation
+    val limit = SclsFraming.Limit
+      .fromInt(16 * 1024 * 1024 + 4096)
+      .fold(
+        error => throw new Violation(s"invalid SCLS fuzz limit: $error"),
+        identity
+      )
+    Vector(
+      Target(
+        "scls-framing",
+        () =>
+          Vector(
+            java.nio.file.Files.readAllBytes(
+              java.nio.file.Path.of("fixtures/scls/conway-4593/reference.scls")
+            )
+          ) ++ Corpus.tricky,
+        probe("scls-framing") { bytes =>
+          SclsFraming.decode(bytes, limit).foreach { frames =>
+            hit("scls-framing")
+            val encoded = frames.traverse(SclsFraming.encode(_, limit)).map { records =>
+              Bytes.wrap(
+                Chunk
+                  .concat(
+                    records.map(record =>
+                      Chunk.array(record.unsafeArray, record.unsafeOffset, record.size)
+                    )
+                  )
+                  .toArray
+              )
+            }
+            req(
+              encoded == Right(bytes),
+              "SCLS framing does not preserve exact original record bytes"
+            )
+            val split = bytes.size / 2
+            val incremental = for
+              first <- SclsFraming.decoder(limit).feed(bytes.take(split))
+              last <- first._1.feed(bytes.drop(split))
+              _ <- last._1.finish
+            yield first._2 ++ last._2
+            req(incremental == Right(frames), "SCLS input boundary changes record decoding")
+          }
+        }
+      ),
+      Target(
+        "scls-records",
+        () =>
+          Vector(
+            java.nio.file.Files
+              .readAllBytes(java.nio.file.Path.of("fixtures/scls/conway-4593/reference.scls"))
+          ) ++ Corpus.tricky,
+        probe("scls-records") { bytes =>
+          SclsFraming.decode(bytes, limit).foreach { frames =>
+            frames.foreach { frame =>
+              records.decode(frame).foreach { record =>
+                hit("scls-records")
+                req(
+                  records.encode(record) == Right(frame),
+                  "SCLS typed record changes original bytes"
+                )
+                record match
+                  case chunk: SclsRecord.Record.Chunk =>
+                    records
+                      .foldEntries(chunk, 0L)((count, _) => count + 1)
+                      .foreach { (count, _) =>
+                        req(count == chunk.count, "SCLS entry fold changes count")
+                      }
+                  case _ => ()
+              }
+            }
+          }
+        }
+      ),
+      Target(
+        "scls-keys",
+        () =>
+          val fixture = java.nio.file.Files
+            .readString(
+              java.nio.file.Path.of("fixtures/scls/conway-4593/entries.tsv")
+            )
+            .linesIterator
+            .map { row =>
+              val fields = row.split("\t")
+              val namespace = SclsRecord.Namespace.values
+                .find(_.name == fields(0))
+                .getOrElse(throw new Violation("unknown SCLS fixture namespace"))
+              val key = Bytes
+                .fromHex(fields(1))
+                .fold(error => throw new Violation(error.message), identity)
+              (Bytes(Vector(namespace.ordinal.toByte)) ++ key).toArray
+            }
+            .toVector
+          val widths = SclsRecord.Namespace.values.toVector.map { namespace =>
+            Array(namespace.ordinal.toByte) ++ Array.fill(namespace.keySize)(0.toByte)
+          }
+          fixture ++ widths ++ Corpus.tricky
+        ,
+        probe("scls-keys") { bytes =>
+          if bytes.nonEmpty then
+            SclsRecord.Namespace.values.lift(bytes(0) & 255).foreach { namespace =>
+              val original = bytes.drop(1)
+              keys.decode(namespace, original).foreach { key =>
+                hit("scls-keys")
+                req(key.namespace == namespace, "SCLS key changes its namespace")
+                req(keys.encode(key) == Right(original), "SCLS key changes original bytes")
+              }
+            }
+        }
+      ),
+      Target(
+        "scls-container",
+        () =>
+          Vector(
+            java.nio.file.Files
+              .readAllBytes(java.nio.file.Path.of("fixtures/scls/conway-4593/reference.scls"))
+          ) ++ Corpus.tricky,
+        probe("scls-container") { bytes =>
+          SclsFraming.decode(bytes, limit).foreach { frames =>
+            container.validate(frames).foreach { verified =>
+              hit("scls-container")
+              req(verified.manifest.namespaces.size == 12, "SCLS profile namespace set changes")
+            }
+          }
+        }
+      )
+    )
+
   private val ancillary: Vector[Target] =
     import xyz.kd5ujc.scarab.storage.haskell.state.AncillaryManifest
     Vector(
@@ -1018,6 +1150,68 @@ object Targets:
       )
     )
 
+  private val sclsValues: Target =
+    import xyz.kd5ujc.scarab.storage.scls.{SclsRecord, SclsValue}
+    val supported = Vector(
+      SclsRecord.Namespace.Blocks,
+      SclsRecord.Namespace.Utxo,
+      SclsRecord.Namespace.Accounts,
+      SclsRecord.Namespace.DReps,
+      SclsRecord.Namespace.ProposalRoots,
+      SclsRecord.Namespace.Proposals,
+      SclsRecord.Namespace.CommitteeEntities,
+      SclsRecord.Namespace.PParams,
+      SclsRecord.Namespace.StakePools,
+      SclsRecord.Namespace.StakePoolVrfHashes,
+      SclsRecord.Namespace.Committee,
+      SclsRecord.Namespace.Constitution
+    )
+    Target(
+      "scls-values",
+      () =>
+        val fixture = java.nio.file.Files.readString(
+          java.nio.file.Path.of("fixtures/scls/namespace-value-vectors/conway-f649.tsv")
+        )
+        val vectorSeeds = fixture.linesIterator
+          .filter(_.nonEmpty)
+          .map { line =>
+            val hex = line.split("\\t", -1).last
+            xyz.kd5ujc.scarab.codec.Bytes
+              .fromHex(hex)
+              .fold(e => throw new Violation(e.message), _.toArray)
+          }
+          .toVector
+        val artifact = java.nio.file.Files
+          .readString(java.nio.file.Path.of("fixtures/scls/conway-4593/entries.tsv"))
+        val artifactSeeds = artifact.linesIterator.flatMap { line =>
+          line.split("\\t", -1) match
+            case Array(name, _, value) if supported.exists(_.name == name) =>
+              Some(
+                xyz.kd5ujc.scarab.codec.Bytes
+                  .fromHex(value)
+                  .fold(e => throw new Violation(e.message), _.toArray)
+              )
+            case _ => None
+        }.toVector
+        vectorSeeds ++ artifactSeeds
+      ,
+      probe("scls-values") { bytes =>
+        supported.foreach { namespace =>
+          SclsValue.decode(namespace, bytes).foreach { value =>
+            hit("scls-values")
+            val encoded = SclsValue.encode(value) match
+              case Right(result) => result
+              case Left(error) =>
+                throw new Violation(s"decoded $namespace value does not encode: $error")
+            req(
+              SclsValue.decode(namespace, encoded) == Right(value),
+              s"$namespace value changes after encoding"
+            )
+          }
+        }
+      }
+    )
+
   val all: Vector[Target] =
-    network ++ node ++ ledgerPeers ++ mempackTxOut ++ snapshotMeta ++ snapshotTables ++ ancillary ++
-      mithril ++ networkIdentity
+    network ++ node ++ ledgerPeers ++ mempackTxOut ++ snapshotMeta ++ snapshotTables ++ sclsFraming ++
+      Vector(sclsValues) ++ ancillary ++ mithril ++ networkIdentity
