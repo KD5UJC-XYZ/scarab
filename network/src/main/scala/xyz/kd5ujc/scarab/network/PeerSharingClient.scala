@@ -47,22 +47,22 @@ object PeerSharingClient:
         .fold(e => illegal(ProtocolError.PeerSharing(e)), channel.send)
 
     val wire = new PeerSharingRuntime.ClientWire[F, Address]:
+      type Reply = PeerSharing.Message
       def request(state: PeerSharing.State, amount: Amount)(using Raise[F, NetworkError]): F[Unit] =
         send(state, PeerSharing.Message.ShareRequest(amount))
-      def peers(amount: Amount)(using Raise[F, NetworkError]): F[Vector[Address]] =
-        channel
-          .recv(settings.limits.maxMessageBytes)(
-            PeerSharing.decoder(PeerSharing.State.Busy, PeerSharing.Role.Server, settings.limits)
-          )
-          .flatMap {
-            case PeerSharing.Message.SharePeers(peers) if peers.size > amount.value =>
-              illegal[Vector[Address]](
-                RuntimeViolation
-                  .PeerSharingPolicy(PeerSharing.Violation.TooManyPeers(amount, peers.size))
-              )
-            case PeerSharing.Message.SharePeers(peers) => F.pure(peers)
-            case other => illegal[Vector[Address]](RuntimeViolation.PeerSharingUnexpected(other))
-          }
+      def receive(using Raise[F, NetworkError]): F[Reply] =
+        channel.recv(settings.limits.maxMessageBytes)(
+          PeerSharing.decoder(PeerSharing.State.Busy, PeerSharing.Role.Server, settings.limits)
+        )
+      def peers(amount: Amount, reply: Reply)(using Raise[F, NetworkError]): F[Vector[Address]] =
+        reply match
+          case PeerSharing.Message.SharePeers(peers) if peers.size > amount.value =>
+            illegal[Vector[Address]](
+              RuntimeViolation
+                .PeerSharingPolicy(PeerSharing.Violation.TooManyPeers(amount, peers.size))
+            )
+          case PeerSharing.Message.SharePeers(peers) => F.pure(peers)
+          case other => illegal[Vector[Address]](RuntimeViolation.PeerSharingUnexpected(other))
       def done(state: PeerSharing.State)(using Raise[F, NetworkError]): F[Unit] =
         send(state, PeerSharing.Message.Done) *> channel.flush
     PeerSharingRuntime.client(wire, settings.responseTimeout).map { client =>

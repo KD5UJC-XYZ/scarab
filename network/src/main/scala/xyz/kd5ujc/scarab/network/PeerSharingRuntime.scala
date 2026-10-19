@@ -17,8 +17,10 @@ private[network] object PeerSharingRuntime:
     case Done
 
   trait ClientWire[F[_], P]:
+    type Reply
     def request(state: State, amount: Amount)(using Raise[F, NetworkError]): F[Unit]
-    def peers(amount: Amount)(using Raise[F, NetworkError]): F[Vector[P]]
+    def receive(using Raise[F, NetworkError]): F[Reply]
+    def peers(amount: Amount, reply: Reply)(using Raise[F, NetworkError]): F[Vector[P]]
     def done(state: State)(using Raise[F, NetworkError]): F[Unit]
 
   trait ServerWire[F[_], P]:
@@ -41,9 +43,8 @@ private[network] object PeerSharingRuntime:
               current <- state.get
               _ <- wire.request(current, amount)
               _ <- state.set(State.Busy)
-              peers <- Timed.within(responseTimeout, Protocols.PeerSharing, "StBusy")(
-                wire.peers(amount)
-              )
+              reply <- Timed.within(responseTimeout, Protocols.PeerSharing, "StBusy")(wire.receive)
+              peers <- wire.peers(amount, reply)
               _ <- state.set(State.Idle)
             yield peers
           }
