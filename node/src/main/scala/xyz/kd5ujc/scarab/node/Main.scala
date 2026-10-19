@@ -90,7 +90,7 @@ import scala.concurrent.duration.*
   * <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N]
   * [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes
   * N] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off]
-  * [--cpu-threads N] [--dump-state <dir> [--dump-state-at
+  * [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at
   * <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket
   * <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
   *
@@ -190,7 +190,8 @@ object Main extends IOApp:
         * waits of up to 300 s). Off by default.
         */
       churnInterval: Option[FiniteDuration] = None,
-      adoptLegacyNetworkIdentity: Boolean = false
+      adoptLegacyNetworkIdentity: Boolean = false,
+      plutusWorkers: ParallelPlutus.Workers = ParallelPlutus.Workers.default
   )
 
   val DefaultMempoolBytes: Long = 1048576L
@@ -520,6 +521,7 @@ object Main extends IOApp:
             blocks.updateAndGet(_ + 1).flatMap { n =>
               logged(NodeEvent.VerificationCache(cache.summary)).whenA(n % 20000 == 0)
             }
+      parallelPlutus <- ParallelPlutus.create[IO](options.plutusWorkers)
       rules = MirrorRules[IO](
         setup.praos,
         setup.globals,
@@ -529,7 +531,8 @@ object Main extends IOApp:
         phase2Observer = cases.map(c => c.observe),
         utxoStore = Some(store),
         afterBlock = Some(afterBlock),
-        compute = Some(scheduling.compute)
+        compute = Some(scheduling.compute),
+        parallelPlutus = Some(parallelPlutus)
       )
       k = genesis.geometry.securityParam
       // The mirror's environment as the snapshots ask for it: the configuration, and the eras this
@@ -1077,7 +1080,7 @@ object Main extends IOApp:
       values.find(r => argument == s"--${r.flag}")
 
   private val Usage =
-    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>] " + LogSettings.Usage
+    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>] " + LogSettings.Usage
 
   /** Flags that take a value and may repeat. */
   private val RepeatedFlags = Set("peer") ++ LogSettings.RepeatedFlags
@@ -1108,6 +1111,7 @@ object Main extends IOApp:
     "max-inbound",
     "inbound-sync",
     "cpu-threads",
+    "plutus-workers",
     "dump-state",
     "dump-state-at",
     "local-socket",
@@ -1273,6 +1277,13 @@ object Main extends IOApp:
             .fold(Right(math.max(1, Runtime.getRuntime.availableProcessors())))(
               _.toIntOption.filter(_ >= 0).toRight(invalid("cpu-threads"))
             )
+          plutusWorkers <- flags
+            .get("plutus-workers")
+            .fold(Right(ParallelPlutus.Workers.default))(
+              _.toIntOption
+                .flatMap(n => ParallelPlutus.Workers.from(n).toOption)
+                .toRight(invalid("plutus-workers"))
+            )
           dump <- flags.get("dump-state").traverse { d =>
             flags
               .get("dump-state-at")
@@ -1321,6 +1332,7 @@ object Main extends IOApp:
           log
         ).copy(
           churnInterval = churnInterval,
+          plutusWorkers = plutusWorkers,
           adoptLegacyNetworkIdentity = flags.contains("adopt-legacy-network-identity")
         )
       case _ => Left(usage)

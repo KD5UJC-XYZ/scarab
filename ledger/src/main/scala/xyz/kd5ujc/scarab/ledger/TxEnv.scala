@@ -98,7 +98,8 @@ final case class TxEnv(
     /** Tooling hook called after each phase-2 evaluation; never affects the result. */
     observer: Option[Phase2.Observation => Unit] = None,
     /** Signature verdicts (memoised ahead of time in the node, computed in place otherwise). */
-    verdicts: xyz.kd5ujc.scarab.ledger.Verdicts = xyz.kd5ujc.scarab.ledger.Verdicts.Direct
+    verdicts: xyz.kd5ujc.scarab.ledger.Verdicts = xyz.kd5ujc.scarab.ledger.Verdicts.Direct,
+    private[ledger] val preparation: Option[Phase2.Preparation] = None
 )
 
 object TxEnv:

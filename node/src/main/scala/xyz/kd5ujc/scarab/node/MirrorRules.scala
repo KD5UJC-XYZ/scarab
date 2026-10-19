@@ -77,7 +77,8 @@ final class MirrorRules[F[_]: Monad](
       (Header, MirrorState) => Raise[F, xyz.kd5ujc.scarab.ledger.StorageError] ?=> F[Unit]
     ] = None,
     /** Measures the pure rules; without one they are not timed. */
-    compute: Option[Compute[F]] = None
+    compute: Option[Compute[F]] = None,
+    parallelPlutus: Option[ParallelPlutus[F]] = None
 ) extends BlockRules[F, MirrorState]:
 
   private val cpu: Compute[F] = compute.getOrElse(Compute.inline[F])
@@ -87,21 +88,38 @@ final class MirrorRules[F[_]: Monad](
       Raise[F, xyz.kd5ujc.scarab.ledger.StorageError]
   ): F[MirrorState] =
     def run(s: MirrorState, prepared: Option[Prepared]): F[MirrorState] =
-      cpu
-        .timed(MirrorRules.stepLabel(s))(
-          MirrorRules.applyBlock(
-            s,
-            header,
-            raw,
-            config,
-            globals,
-            byron,
-            handOver,
-            byronParams,
-            phase2Observer,
-            prepared
+      val applied = parallelPlutus match
+        case None =>
+          cpu.timed(MirrorRules.stepLabel(s))(
+            MirrorRules.applyBlock(
+              s,
+              header,
+              raw,
+              config,
+              globals,
+              byron,
+              handOver,
+              byronParams,
+              phase2Observer,
+              prepared
+            )
           )
-        )
+        case Some(workers) =>
+          cpu.timedF(MirrorRules.stepLabel(s))(
+            MirrorRules.applyBlockWith[F](
+              s,
+              header,
+              raw,
+              config,
+              globals,
+              byron,
+              handOver,
+              byronParams,
+              phase2Observer,
+              prepared
+            )(workers.apply)
+          )
+      applied
         .flatMap(
           _.fold(
             failure => ValidationError(header.point, failure).raise[F, MirrorState],
@@ -212,28 +230,55 @@ object MirrorRules:
       phase2Observer: Option[Phase2.Observation => Unit] = None,
       prepared: Option[Prepared] = None
   ): Either[BlockFailure, MirrorState] =
+    applyBlockWith[cats.Id](
+      state,
+      header,
+      raw,
+      config,
+      globals,
+      byron,
+      handOver,
+      byronParams,
+      phase2Observer,
+      prepared
+    )(_.serial)
+
+  private[node] def applyBlockWith[F[_]: Monad](
+      state: MirrorState,
+      header: Header,
+      raw: Bytes,
+      config: PraosConfig,
+      globals: LedgerGlobals,
+      byron: Option[ByronRules.Config],
+      handOver: Option[FromByron],
+      byronParams: EraHistory.ByronParams,
+      phase2Observer: Option[Phase2.Observation => Unit],
+      prepared: Option[Prepared]
+  )(validate: EraBlock.Body => F[EraBlock.Outcome]): F[Either[BlockFailure, MirrorState]] =
     header match
       case h: Header.Byron =>
         val chain = state.consensus
         NodeRules
           .byronStep(chain.byron, chain.boot, h, raw, byron)
           .flatMap((next, boot) => MirrorStep.byronBlock(state, h, next, boot).leftMap(mirror))
+          .pure[F]
       case h: Header.Shelley =>
-        NodeRules.entry(state.consensus.byron, h, config, globals, byron).flatMap { entry =>
-          before(state, entry, handOver).flatMap(pre =>
-            shelley(
-              state,
-              pre,
-              h,
-              raw,
-              entry.configuration,
-              entry.constants,
-              byronParams,
-              phase2Observer,
-              prepared
-            )
+        val ready = for
+          entry <- NodeRules.entry(state.consensus.byron, h, config, globals, byron)
+          pre <- before(state, entry, handOver)
+          body <- shelley(
+            state,
+            pre,
+            h,
+            raw,
+            entry.configuration,
+            entry.constants,
+            byronParams,
+            phase2Observer,
+            prepared
           )
-        }
+        yield body
+        ready.traverse { (body, finish) => validate(body).map(finish) }.map(_.flatten)
 
   private def shelley(
       state: MirrorState,
@@ -245,7 +290,7 @@ object MirrorRules:
       byronParams: EraHistory.ByronParams,
       phase2Observer: Option[Phase2.Observation => Unit],
       prepared: Option[Prepared]
-  ): Either[BlockFailure, MirrorState] =
+  ): Either[BlockFailure, (EraBlock.Body, EraBlock.Outcome => Either[BlockFailure, MirrorState])] =
     val geometry = config.geometry
     val epoch = geometry.epochOf(announced.slot)
     val context = EraBlock.Context(
@@ -288,30 +333,36 @@ object MirrorRules:
       )
       (praos, leader) = validated
       txs = prepared.fold(EraBlock.decode(block))(_.txs)
-      applied <- EraBlock.body(context)(ticked, announced, block, txs, pre.plutus) match
-        case EraBlock.Outcome.Applied(nes, plutus) => Right((nes, plutus))
-        case EraBlock.Outcome.Refused(failure)     => Left(failure)
-        case EraBlock.Outcome.NotInEra(era) => Left(BlockFailure.LedgerEra(era, announced.era))
-      (nes, plutus) = applied
-      boot = pre.consensus.boot
-      previous = boot.stats.filter(_.epoch == epoch)
-      finished = boot.stats.filter(_.epoch != epoch).orElse(boot.completed)
-      consensus = pre.consensus.copy(
-        boot = boot.copy(
-          era = Some(announced.era),
-          stats = Some(
-            previous.getOrElse(EpochStats(epoch, announced.era, 0, 0, 0)).record(leader)
-          ),
-          completed = finished
-        ),
-        byron = pre.consensus.byron.finish
-      )
-      placement = Placement(geometry, byronParams, config.forks)
-      next <-
-        (if pre.entered then MirrorStep.handover(state, placement, announced, nes, praos, consensus)
-         else MirrorStep.block(state, placement, announced, nes, praos, consensus, plutus))
-          .leftMap(mirror)
-    yield next
+    yield
+      val program = EraBlock.program(context)(ticked, announced, block, txs, pre.plutus)
+      val finish = (outcome: EraBlock.Outcome) =>
+        for
+          applied <- outcome match
+            case EraBlock.Outcome.Applied(nes, plutus) => Right((nes, plutus))
+            case EraBlock.Outcome.Refused(failure)     => Left(failure)
+            case EraBlock.Outcome.NotInEra(era) => Left(BlockFailure.LedgerEra(era, announced.era))
+          (nes, plutus) = applied
+          boot = pre.consensus.boot
+          previous = boot.stats.filter(_.epoch == epoch)
+          finished = boot.stats.filter(_.epoch != epoch).orElse(boot.completed)
+          consensus = pre.consensus.copy(
+            boot = boot.copy(
+              era = Some(announced.era),
+              stats = Some(
+                previous.getOrElse(EpochStats(epoch, announced.era, 0, 0, 0)).record(leader)
+              ),
+              completed = finished
+            ),
+            byron = pre.consensus.byron.finish
+          )
+          placement = Placement(geometry, byronParams, config.forks)
+          next <-
+            (if pre.entered then
+               MirrorStep.handover(state, placement, announced, nes, praos, consensus)
+             else MirrorStep.block(state, placement, announced, nes, praos, consensus, plutus))
+              .leftMap(mirror)
+        yield next
+      (program, finish)
 
   /** What the header rules read of the ticked ledger: the parameters in force, the genesis
     * delegations at the slot and the pool distribution of the leader check (`nesPd`).
