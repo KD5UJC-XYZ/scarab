@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.codec
 
+import scala.reflect.ClassTag
 import scala.util.boundary
 
 /** A post-order fold over a tree on the heap: the recursion of a decoder over a nested item becomes
@@ -16,39 +17,26 @@ object TreeFold:
     case Leaf(result: A)
     case Branch(children: Iterable[T], build: Vector[A] => Either[E, A])
 
-  /** An open node: the children still to visit and the results of those visited, in a small array
+  /** An open node: the children still to visit and the results of those visited, in a typed buffer
     * that doubles (a level of deep nesting usually has one child).
     */
   private final class Frame[T, A, E](
       val children: Iterator[T],
       val build: Vector[A] => Either[E, A]
   ):
-    private var results = new Array[AnyRef](2)
-    private var count = 0
-    def add(a: A): Unit =
-      if count == results.length then results = java.util.Arrays.copyOf(results, count * 2)
-      results(count) = a.asInstanceOf[AnyRef]
-      count += 1
-    def collected: Vector[A] =
-      Vector.from(
-        scala.collection.immutable.ArraySeq
-          .unsafeWrapArray(results.take(count))
-          .asInstanceOf[scala.collection.immutable.ArraySeq[A]]
-      )
+    private val results = new scala.collection.mutable.ArrayBuffer[A](2)
+    def add(a: A): Unit = results += a
+    def collected: Vector[A] = results.toVector
 
   /** The keys and values of a map in turn: `k0, v0, k1, v1, ...`. */
-  def flatten[A](ps: Vector[(A, A)]): Vector[A] =
-    val out = new Array[AnyRef](2 * ps.size)
+  def flatten[A: ClassTag](ps: Vector[(A, A)]): Vector[A] =
+    val out = new Array[A](2 * ps.size)
     var i = 0
     while i < ps.size do
-      out(2 * i) = ps(i)._1.asInstanceOf[AnyRef]
-      out(2 * i + 1) = ps(i)._2.asInstanceOf[AnyRef]
+      out(2 * i) = ps(i)._1
+      out(2 * i + 1) = ps(i)._2
       i += 1
-    Vector.from(
-      scala.collection.immutable.ArraySeq
-        .unsafeWrapArray(out)
-        .asInstanceOf[scala.collection.immutable.ArraySeq[A]]
-    )
+    Vector.from(scala.collection.immutable.ArraySeq.unsafeWrapArray(out))
 
   /** The pairs `(ds(0), ds(1))`, `(ds(2), ds(3))`, ... of a flattened map. */
   def pairs[A](ds: Vector[A]): Vector[(A, A)] =
