@@ -46,3 +46,20 @@ Fresh replay/reference results must report failed transactions, failed scripts a
 separately. The transaction validity flag supplies the authoritative aggregate admission expectation;
 per-request verdicts, logs and budgets require a fresh unchanged-reference evaluation. Neither the
 later preprod serial/parallel corpus nor a new unit-test count replaces this Preview coverage.
+
+For a production `ChainStorage.open` replay, prepare a separate writable database instead of opening
+the archive directly:
+
+```sh
+python3 scripts/preview_replay_db.py --immutable /archive/db/immutable \
+  --output /tmp/scarab/preview-offline/db --container-immutable /input/immutable --max-blocks 10000
+```
+
+Mount `/archive/db/immutable` at `/input/immutable` **read-only** in that replay container. The stager
+copies the format file and every selected index to private inodes, symlinks older chunk bodies into
+that mount, and privately copies/trims the newest chunk and index at the selected prefix endpoint.
+This isolates migration and crash recovery writes. The JSON manifest records source identities,
+index hashes, both final-chunk hashes, count and authenticated first/last points. Omitting
+`--max-blocks` selects the complete archive; an explicit count selects exactly that many records,
+starting at block zero, and refuses a shorter source. The historical K1 Haskell endpoint requires
+4,758,521 records through block 4,758,520 at slot 125366428, rather than the later Scala archive tip.
