@@ -118,13 +118,7 @@ class CodecSuite extends ScalaCheckSuite:
     assertEquals(Codec.decode[ByronVersion](oldBytes), Right(expected))
     assertEquals(Codec.encode(expected).toVector, oldBytes.toVector)
     assertEquals(Codec[ByronVersion].shape, "ByronVersion(major:BigInt,minor:BigInt,alt:BigInt)")
-    val legacy = xyz.kd5ujc.scarab.legacy.NodeCodecs.byronVersion
-    assertEquals(xyz.kd5ujc.scarab.legacy.Codec.decode(oldBytes)(using legacy), Right(expected))
-    assertEquals(
-      xyz.kd5ujc.scarab.legacy.Codec.encode(expected)(using legacy).toVector,
-      oldBytes.toVector
-    )
-    assertEquals(legacy.shape, Codec[ByronVersion].shape)
+
   }
 
   test("Byron version snapshot readers reject values outside the reference widths") {
@@ -133,11 +127,7 @@ class CodecSuite extends ScalaCheckSuite:
       val bytes =
         Codec.encode(BigInt(major)) ++ Codec.encode(BigInt(minor)) ++ Codec.encode(BigInt(alt))
       assert(Codec.decode[ByronVersion](bytes).isLeft)
-      assert(
-        xyz.kd5ujc.scarab.legacy.Codec
-          .decode(bytes)(using xyz.kd5ujc.scarab.legacy.NodeCodecs.byronVersion)
-          .isLeft
-      )
+
     }
   }
 
@@ -193,13 +183,9 @@ class CodecSuite extends ScalaCheckSuite:
     assertEquals(hex(digest) -> encoded.length, GoldenSidecar)
   }
 
-  // Regenerate (and add a FormatVersion with its migration if the layout itself changed) only when
-  // a persisted type changes on purpose: old snapshots are then rejected and recovery replays.
-  // The sidecar goldens are the V5 writer's (J2.9); the V4 sidecar's (467459aeddcceecd), the V3
-  // sidecar's (65d0043c049b7b7a) and the V2 node snapshot's (2293c5cf7bb77492) are asserted by the
-  // `legacy` module.
-  // The V2 reader's goldens (the fingerprint of the node snapshot and the digest of the initial state)
-  // are in the `legacy` module's suites, frozen with the node state of their time.
+  // A deliberate persisted-layout change needs a new FormatVersion, migration and previous-version
+  // read test (ADR 0006). These are the native V5 writer's current sidecar goldens; complete-file
+  // fixture hashes and their historical conversion provenance are pinned in SnapshotGoldenSuite.
   // Last regenerated for the previous epoch nonce of PraosState, the PlutusV2 cost model that the
   // Alonzo genesis carries in `extraConfig` (part of the fixture's initial protocol parameters) and
   // the Byron ledger state (UTxO, delegation, update system) carried in NodeState, and the idle

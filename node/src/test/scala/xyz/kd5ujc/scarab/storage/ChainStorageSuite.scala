@@ -17,13 +17,7 @@ import xyz.kd5ujc.scarab.consensus.FollowerEvents
 import xyz.kd5ujc.scarab.consensus.state.{MirrorState, MirrorStep}
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
-import xyz.kd5ujc.scarab.ledger.{
-  Block,
-  FileKind,
-  FormatVersion,
-  IdentityProvenance,
-  StoredNetworkIdentity
-}
+import xyz.kd5ujc.scarab.ledger.{Block, FileKind, IdentityProvenance, StoredNetworkIdentity}
 import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.ledger.NetworkIdentity
 import xyz.kd5ujc.scarab.ledger.NodeError
@@ -979,41 +973,21 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     assert(NetworkIdentity.parse("f", id.render.replace("v6", "v3")).isLeft)
   }
 
-  // ---- databases the builds of the older snapshot formats wrote (#145) ----
+  // ---- V5 snapshots paired with current and pre-K6 checkpoint key layouts (#145)
 
-  /** A format the snapshot files were written in, with the writer of its time (the frozen ones of
-    * `legacy`, see [[OldSnapshotFiles]]) and the layout of the UTxO checkpoints beside it: the
-    * format-1 builds are the ones before K6 (2026-10-14), whose store keyed an output
-    * `txid ++ u32`.
-    */
-  private final case class OldFormat(
-      version: FormatVersion,
-      write: (ConsensusMirrorEnv, StateSnapshot[MirrorState]) => Array[Byte],
-      keysBeforeK6: Boolean
-  )
-
-  private val oldFormats: List[OldFormat] = List(
-    OldFormat(FormatVersion.V1, OldSnapshotFiles.v1, keysBeforeK6 = true),
-    OldFormat(FormatVersion.V2, OldSnapshotFiles.v2, keysBeforeK6 = false),
-    OldFormat(FormatVersion.V3, OldSnapshotFiles.v3, keysBeforeK6 = false),
-    OldFormat(FormatVersion.V4, OldSnapshotFiles.v4, keysBeforeK6 = false)
-  )
-
-  private val mirrorEnv = setup.mirrorEnv()
+  private enum CheckpointLayout:
+    case Current, BeforeK6
 
   private def checkpointOf(dir: Path, snapshotFile: String): Path =
     dir / "utxo" / "checkpoints" / snapshotFile.stripSuffix(".bin")
 
-  /** What the old builds left behind: the database `dir`, written to block `until` by this build
-    * with the UTxO set in RocksDB, its snapshot files then rewritten in `format` (and, for the
-    * builds before K6, its checkpoints keyed as they were). The `drop` newest snapshots (with their
-    * checkpoints) are deleted, so that the live store, which stays as it was at the end of the run,
-    * is ahead of the newest snapshot, as after a crash. Returns the anchors of the snapshots that
-    * are left, newest first.
+  /** Current snapshot files with the chosen checkpoint key layout. Drop the newest snapshots so the
+    * live store is ahead, as after a crash; the original historical key migration remains supported
+    * independently of the snapshot payload format.
     */
-  private def oldDatabase(
+  private def checkpointDatabase(
       dir: Path,
-      format: OldFormat,
+      layout: CheckpointLayout,
       until: Int,
       every: Int,
       keep: Int,
@@ -1036,35 +1010,26 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           snapshot <- summon[SnapshotFormat[IO, MirrorState]]
             .decode(content)
             .map(_.fold(e => fail(e.message), identity))
-          _ <- IO(
-            JFiles.write(
-              file.toNioPath,
-              FileLedgerSnapshots.closed(format.write(mirrorEnv, snapshot))
-            )
-          )
-          _ <- IO.whenA(format.keysBeforeK6)(
+          _ <- IO.whenA(layout == CheckpointLayout.BeforeK6)(
             IO(LegacyUtxoCheckpoint.rewrite(checkpointOf(dir, n).toNioPath))
           )
         yield snapshot.anchor.getOrElse(fail(s"$n is a snapshot of the origin"))
       }
     yield anchors
 
-  /** The database of [[oldDatabase]] opened by this build with the snapshot migration, and the
-    * chain continued to block `until`. The snapshots are migrated, the newest left is restored (at
-    * the immutable tip it had), the blocks between it and the end of the immutable store are
-    * replayed, each with the inputs it spends read from the restored store, and the state at the
-    * end is the one a replay without storage gives.
+  /** Restore the newest usable V5 snapshot/checkpoint, replay its immutable tail and continue the
+    * chain. The old checkpoint key layout must convert without requiring an old snapshot reader.
     */
   private def reopened(
       dir: Path,
-      format: OldFormat,
+      layout: CheckpointLayout,
       left: List[BlockRef],
       until: Int,
       every: Int,
       keep: Int,
       rollback: Option[Rollback] = None
   ): IO[Unit] =
-    val label = format.version.toString
+    val label = layout.toString
     for
       log <- events(dir)
       again <- runWith(
@@ -1083,8 +1048,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         seen.collect {
           case StorageEvent.FormatMigrated(m) if m.kind == FileKind.SnapshotFile => m
         }.toList,
-        List(Migrated(FileKind.SnapshotFile, format.version, FormatVersion.V5, left.size)),
-        s"$label: the snapshot files are migrated"
+        List.empty[Migrated],
+        s"$label: current snapshot files are not rewritten"
       )
       assertEquals(
         seen.collect { case e: StorageEvent.SnapshotSkipped => e.name }.toList,
@@ -1103,33 +1068,33 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertState(again._2.state, states(until), s"$label: the state")
       assertEquals(again._3, states(until).utxo.toMap, s"$label: the UTxO set")
 
-  for format <- oldFormats do
+  for layout <- CheckpointLayout.values do
     test(
-      s"a database of snapshot format ${format.version} with UTxO checkpoints, its live store ahead of the snapshot, restores and replays"
+      s"a V5 database with ${layout} UTxO checkpoints, its live store ahead of the snapshot, restores and replays"
     ) {
       tempDir.use { dir =>
         for
-          left <- oldDatabase(dir, format, until = 600, every = 60, keep = 4, drop = 1)
+          left <- checkpointDatabase(dir, layout, until = 600, every = 60, keep = 4, drop = 1)
           _ <- IO(assert(left.size >= 2, s"snapshots left: ${left.size}"))
-          _ <- reopened(dir, format, left, until = 731, every = 120, keep = 4)
+          _ <- reopened(dir, layout, left, until = 731, every = 120, keep = 4)
         yield ()
       }
     }
 
   test(
-    "a database of snapshot format V4 with many blocks, many checkpoints and a rollback restores and replays"
+    "a current snapshot database with many blocks, many checkpoints and a rollback restores and replays"
   ) {
-    val format = oldFormats.last
+    val layout = CheckpointLayout.Current
     tempDir.use { dir =>
       for
-        left <- oldDatabase(dir, format, until = 700, every = 25, keep = 100, drop = 2)
+        left <- checkpointDatabase(dir, layout, until = 700, every = 25, keep = 100, drop = 2)
         _ <- IO(assert(left.size >= 15, s"checkpoints left: ${left.size}"))
         checkpoints <- files.list(dir / "utxo" / "checkpoints").compile.count
         _ <- IO(assertEquals(checkpoints, left.size.toLong))
         // the peer takes three blocks back after the first 725 and announces them again
         _ <- reopened(
           dir,
-          format,
+          layout,
           left,
           until = 731,
           every = 120,

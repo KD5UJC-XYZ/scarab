@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.differential
 
+import cats.effect.IO
+import cats.effect.unsafe.implicits.global
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.consensus.state.MirrorStep
 import xyz.kd5ujc.scarab.ledger.rules.{EraNes, Globals, Hfc}
 import xyz.kd5ujc.scarab.ledger.state.{ShelleyBasedEra, SlotNo}
-import xyz.kd5ujc.scarab.legacy
-import xyz.kd5ujc.scarab.node.{LegacySnapshots, NodeSetup}
+import xyz.kd5ujc.scarab.node.{NativeSnapshots, NodeSetup}
 import xyz.kd5ujc.scarab.storage.ImmutableReader
 import xyz.kd5ujc.scarab.storage.haskell.state.HaskellState
 
@@ -16,9 +17,8 @@ import xyz.kd5ujc.scarab.storage.haskell.state.HaskellState
   * from the state of a snapshot taken in the middle of the epoch before, and prints a digest of the
   * ticked `NewEpochState` as the Haskell format writes it (issue #131, `docs/performance.md`
   * section 16). Not a test: the input is the recorded K1 sync of Preview (`BoundaryDigestSuite` is
-  * the opt-in test that checks the digests). The snapshots of that run are in the flat form of the
-  * builds before the mirror; they are read by the frozen reader of the `legacy` module and
-  * converted to the mirror, as the node's migration does.
+  * the opt-in test that checks the digests). Use the verified V5 conversion corpus; the original
+  * flat snapshot files are archived evidence, not an input supported by this tool.
   *
   * {{{
   * java -Xmx12g -cp <test classpath> xyz.kd5ujc.scarab.node.differential.BoundaryTickMain <db> <genesis-dir> <first> <last> [repeats]
@@ -67,13 +67,12 @@ object BoundaryTickMain:
   /** Ticks the first block of the epoch after snapshot `i`'s, `repeats` times. */
   def measure(db: Path, setup: NodeSetup, snapshots: Vector[Path], i: Int, repeats: Int): Row =
     val env = setup.mirrorEnv()
-    val snap = LegacySnapshots.read(snapshots(i), env.forks).fold(e => fail(e.message), identity)
+    val snap = NativeSnapshots
+      .read[IO](snapshots(i), env)
+      .unsafeRunSync()
+      .fold(e => fail(e.message), identity)
     val anchor = snap.anchor.getOrElse(fail("no anchor"))
-    val mirror = legacy.Mirroring
-      .toMirror(env, snap.anchor, snap.state)
-      .fold(fail, identity)
-      .value
-    val nes = MirrorStep.nesOf(mirror).getOrElse(fail("Byron"))
+    val nes = MirrorStep.nesOf(snap.state).getOrElse(fail("Byron"))
     // the snapshots are taken in the middle of an epoch: the first block of the next one
     val firstSlot = ImmutableReader
       .blocks(db.resolve("immutable"), anchor.slot, anchor.slot + 200000)

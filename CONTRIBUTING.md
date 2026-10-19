@@ -122,6 +122,15 @@ with a pattern that matches your own shell command line.
   Fixtures must be public chain data or throwaway keys, with provenance and licence recorded in
   the fixture directory's README and `NOTICE`.
 
+Maintained native snapshot payload fixtures and ordinary test builders use the current native
+format (`FileKind.SnapshotFile.current`, V5). Assert typed native state directly; a flat-state
+completion adapter is not the fixture's expected state. Pin conversion provenance and preserve
+original private captures outside the checkout. A deliberate future format bump still requires
+its migration and a previous-version read test under [ADR 0006](docs/adr/0006-versioned-formats-migrate-on-open.md).
+Generic toy-format migration framework tests keep testing version transitions independently of
+the maintained native fixture corpus. Fixture conversion alone does not retire production readers
+or authorise an operational writer upgrade.
+
 ## Gates and ceremony by level of change
 
 Thoroughness lives in two places: the gates a change passes before it lands, and the nightly CI,
