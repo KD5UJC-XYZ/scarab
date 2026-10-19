@@ -138,8 +138,8 @@ object Traced:
         "bytes" -> bytes.asJson,
         "millis" -> millis.asJson
       )
-    case StorageEvent.SnapshotFailed(reason) =>
-      EventKind.SnapshotFailed.line("reason" -> String.valueOf(reason).asJson)
+    case StorageEvent.SnapshotFailed(failure) =>
+      EventKind.SnapshotFailed.line("reason" -> failure.message.asJson)
     case StorageEvent.SnapshotRefused(name, a, refusal) =>
       EventKind.SnapshotRefused.line(
         "file" -> name.asJson,

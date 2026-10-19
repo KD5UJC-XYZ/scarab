@@ -398,7 +398,9 @@ class ServerSuite extends FailsOnUncaught:
     val chain = Chain(Vector(1, 2, 3))
     typed {
       BearerServer
-        .listen[IO](Some(ip"127.0.0.1"), None) { (bearer, _) =>
+        .listen[IO, NetworkError](Some(ip"127.0.0.1"), None)((_, error) =>
+          IO(fail(error.toString))
+        ) { (bearer, _) =>
           typed(NodeToNodeServer.accept(bearer, magic, handlers(chain))).void
         }
         .flatMap(bound =>
@@ -433,7 +435,9 @@ class ServerSuite extends FailsOnUncaught:
     val chain = Chain(Vector(1))
     typed {
       BearerServer
-        .listen[IO](Some(ip"127.0.0.1"), None) { (bearer, _) =>
+        .listen[IO, NetworkError](Some(ip"127.0.0.1"), None)((_, error) =>
+          IO(fail(error.toString))
+        ) { (bearer, _) =>
           typed(NodeToNodeServer.accept(bearer, magic, handlers(chain))).void
         }
         .flatMap(bound =>

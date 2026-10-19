@@ -72,14 +72,16 @@ final class RocksUtxoStore[F[_]: Sync] private (
       StorageError.Corrupt(what, StorageStructureError.RocksFailure(e))
     case _ => StorageError.Io(what, e)
 
-  private def guard[A](what: String)(body: => A): F[A] =
+  private def guard[A](what: String)(body: => A)(using Raise[F, StorageError]): F[A] =
     F.blocking(body).attempt.flatMap {
       case Right(a) => F.pure(a)
       case Left(e)  => failure(what, e).raise[F, A]
     }
 
   /** [[guard]] for a body that can also find damaged data itself. */
-  private def guardE[A](what: String)(body: => Either[StorageError, A]): F[A] =
+  private def guardE[A](
+      what: String
+  )(body: => Either[StorageError, A])(using Raise[F, StorageError]): F[A] =
     guard(what)(body).flatMap {
       case Right(a)  => F.pure(a)
       case Left(err) => err.raise[F, A]
@@ -138,7 +140,9 @@ final class RocksUtxoStore[F[_]: Sync] private (
         case Left(reason) => StorageError.Corrupt("utxo entry", reason).raise[F, Map[TxIn, TxOut]]
       }
 
-  def write(changes: Iterable[(TxIn, Option[TxOut])], stamp: Long): F[Unit] =
+  def write(changes: Iterable[(TxIn, Option[TxOut])], stamp: Long)(using
+      Raise[F, StorageError]
+  ): F[Unit] =
     guard("utxo write") {
       val batch = new WriteBatch()
       try
@@ -154,7 +158,7 @@ final class RocksUtxoStore[F[_]: Sync] private (
       finally batch.close()
     }
 
-  def flushed: F[Long] = guardE("utxo stamp") {
+  def flushed(using Raise[F, StorageError]): F[Long] = guardE("utxo stamp") {
     val v = db.get.get(StampKey)
     if v == null then Right(-1L)
     else if v.length == 8 then Right(java.nio.ByteBuffer.wrap(v).getLong)
@@ -282,7 +286,7 @@ final class RocksUtxoStore[F[_]: Sync] private (
     )
   }
 
-  def checkpoint(target: Path): F[Unit] = guard(target.toString) {
+  def checkpoint(target: Path)(using Raise[F, StorageError]): F[Unit] = guard(target.toString) {
     val cp = Checkpoint.create(db.get)
     try cp.createCheckpoint(target.toString)
     finally cp.close()

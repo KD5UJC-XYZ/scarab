@@ -633,7 +633,10 @@ class EraTransitionSuite extends CatsEffectSuite:
       seen <- eventsRef.get
     yield (seen, chain)
 
-  private def mirrorRules(using cats.mtl.Raise[IO, ValidationError]): MirrorRules[IO] =
+  private def mirrorRules(using
+      cats.mtl.Raise[IO, ValidationError],
+      cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError]
+  ): MirrorRules[IO] =
     MirrorRules[IO](
       setup.praos,
       setup.globals,
@@ -671,37 +674,37 @@ class EraTransitionSuite extends CatsEffectSuite:
     // The real blocks form one chain, so the rollback is driven on the chain model and the rules
     // directly (the follower only rolls back when a different, preferred branch exists).
     val b = boundaries.head
-    given cats.mtl.Raise[IO, ValidationError] = new cats.mtl.Raise[IO, ValidationError]:
-      def functor = cats.Functor[IO]
-      def raise[E2 <: ValidationError, A](e: E2): IO[A] = IO.raiseError(RuntimeException(e.message))
-    val rules = mirrorRules
-    def apply(chain: VolatileChain[MirrorState], range: Range): IO[VolatileChain[MirrorState]] =
-      range.toList.foldLeftM(chain) { (c, i) =>
-        rules(c.state, headers(i), raws(i)).map(next =>
-          c.extend(headers(i), next).fold(e => fail(e.message), _._1)
-        )
-      }
-    val genesis = VolatileChain.genesis(geometry.securityParam, setup.mirrorStart, setup.origin)
-    for
-      first <- apply(genesis, 0 until b + 3)
-      rolled = first.rollback(headers(b - 1).point).fold(e => fail(e.message), identity)
-      replayed <- apply(rolled, b until b + 6)
-    yield
-      assertEquals(rolled.state.consensus.boot.era, Some(Era.Byron))
-      assertEquals(rolled.state, states(b))
-      assertEquals(first.length - rolled.length, 3)
-      assertEquals(
-        NodeRules
-          .observe(geometry)(
-            rolled.state,
-            states(b + 1),
-            BlockRef(headers(b).slot, headers(b).hash, headers(b).blockNo)
+    Handle
+      .allow[NodeError] {
+        val rules = mirrorRules
+        def apply(chain: VolatileChain[MirrorState], range: Range): IO[VolatileChain[MirrorState]] =
+          range.toList.foldLeftM(chain) { (c, i) =>
+            rules(c.state, headers(i), raws(i))
+              .map(next => c.extend(headers(i), next).fold(e => fail(e.message), _._1))
+          }
+        val genesis = VolatileChain.genesis(geometry.securityParam, setup.mirrorStart, setup.origin)
+        for
+          first <- apply(genesis, 0 until b + 3)
+          rolled = first.rollback(headers(b - 1).point).fold(e => fail(e.message), identity)
+          replayed <- apply(rolled, b until b + 6)
+        yield
+          assertEquals(rolled.state.consensus.boot.era, Some(Era.Byron))
+          assertEquals(rolled.state, states(b))
+          assertEquals(first.length - rolled.length, 3)
+          assertEquals(
+            NodeRules
+              .observe(geometry)(
+                rolled.state,
+                states(b + 1),
+                BlockRef(headers(b).slot, headers(b).hash, headers(b).blockNo)
+              )
+              .collect { case FollowerEvent.EraEntered(from, to, _, _) => (from, to) },
+            List((Some(Era.Byron), Era.Shelley))
           )
-          .collect { case FollowerEvent.EraEntered(from, to, _, _) => (from, to) },
-        List((Some(Era.Byron), Era.Shelley))
-      )
-      assertEquals(replayed.tip, headers(b + 5).point)
-      assertEquals(replayed.state, states(b + 6))
+          assertEquals(replayed.tip, headers(b + 5).point)
+          assertEquals(replayed.state, states(b + 6))
+      }
+      .rescue(error => IO(fail(error.message)))
   }
 
   test(

@@ -151,7 +151,7 @@ class ByronHandoverUtxoSuite extends CatsEffectSuite:
   }
 
   test("a store that holds the genesis placeholder (a database of an earlier build) is emptied") {
-    surviving(store => store.write(flatStart.ledger.utxo.changesAfter(-1).toVector, 0)).map(r =>
-      assertEquals(r.toMap, expected.toMap)
-    )
+    surviving(store =>
+      StorageTestKit.ok(store.write(flatStart.ledger.utxo.changesAfter(-1).toVector, 0))
+    ).map(r => assertEquals(r.toMap, expected.toMap))
   }

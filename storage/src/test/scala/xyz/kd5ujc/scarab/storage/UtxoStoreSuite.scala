@@ -132,15 +132,15 @@ class UtxoStoreSuite extends ScalaCheckSuite:
       for
         fetched <- store.read(tip.missing(spent))
         applied = tip.at(blockNo).withResident(fetched) -- spent ++ made
-        flushed <- store.flushed
+        flushed <- StorageTestKit.ok(store.flushed)
         settled = applied.settled(flushed)
         window = chain.utxos :+ settled
         models = chain.models :+ ((model -- spent) ++ made)
         next <-
           if window.size > k then
             val newAnchor = window.head
-            UtxoStore
-              .advance(store, newAnchor)
+            StorageTestKit
+              .ok(UtxoStore.advance(store, newAnchor))
               .as(
                 chain.copy(
                   utxos = window.tail,
@@ -305,12 +305,12 @@ class UtxoStoreSuite extends ScalaCheckSuite:
         // Drive the first part, snapshot the store, keep going, then restore the snapshot.
         _ <- run(store, actions)
         before <- store.all
-        stampBefore <- store.flushed
-        _ <- store.checkpoint(cp)
+        stampBefore <- StorageTestKit.ok(store.flushed)
+        _ <- StorageTestKit.ok(store.checkpoint(cp))
         _ <- run(store, more)
         restored <- store.restore(cp)
         after <- store.all
-        stampAfter <- store.flushed
+        stampAfter <- StorageTestKit.ok(store.flushed)
         missing <- store.restore(Path.fromNioPath(dir) / "nothing")
       yield restored && !missing && after == before && stampAfter == stampBefore)
         .guarantee(IO.blocking(RocksUtxoStore.deleteTree(dir)))
@@ -337,7 +337,7 @@ class UtxoStoreSuite extends ScalaCheckSuite:
         val b = TxIn(Bytes.wrap(be(2, 32)), 0)
         for
           _ <- store.write(Vector(a -> Some(output(0, 1, 1, 10))), 1)
-          _ <- store.checkpoint(cp)
+          _ <- StorageTestKit.ok(store.checkpoint(cp))
           _ <- store.write(Vector(b -> Some(output(0, 2, 1, 20)), a -> None), 2)
           _ <- store.restore(cp)
           restored <- store.all

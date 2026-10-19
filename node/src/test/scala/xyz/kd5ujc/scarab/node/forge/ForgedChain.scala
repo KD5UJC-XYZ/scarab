@@ -78,7 +78,10 @@ object ForgedChain:
   )
 
   /** The block rules of the forged chain's configuration: no Byron prefix. */
-  def rules(using Raise[IO, ValidationError]): MirrorRules[IO] =
+  def rules(using
+      Raise[IO, ValidationError],
+      Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError]
+  ): MirrorRules[IO] =
     MirrorRules[IO](config, globals, None, None, mirrorEnv.byron)
 
   private def hex(b: Array[Byte]) = Bytes.fromArray(b)

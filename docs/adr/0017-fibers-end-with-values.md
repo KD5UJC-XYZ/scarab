@@ -79,8 +79,12 @@ rules refused, a storage failure and a bug in the node were all retried like a l
   built (`Raise` of `Main`'s scope); the session catches them with the scope's own `Handle`, which is
   sound while the scope lives, the whole run. Passing them per call, as for the network, needs a change
   to the rule algebras: [#180 G7-F1](https://github.com/KD5UJC-XYZ/scarab/issues/180).
-  The same issue tracks typed snapshot failures (G7-F2), forging defects (G7-F3), listener callbacks
-  (G7-F4), and attribution after the originating session ends (G7-F5).
+  G7-F2 gives periodic/shutdown snapshots their own storage-error scopes, with caller-scoped
+  capabilities along the snapshot call path and `SnapshotFailure` values at the event boundary.
+  G7-F4 gives TCP/Unix handlers their own scopes and a required typed failure reporter; unexpected
+  handler defects reach `Fatal.Defect`. See the [as-built contracts](../design/domain-errors.md#snapshot-and-listener-scopes-g7-f2g7-f4).
+  The same issue still tracks forging defects (G7-F3) and attribution after the originating session
+  ends (G7-F5), as well as the remaining rule/store capabilities (G7-F1).
 
 - An evaluator or decoder implementation limit is `Unavailable`, carrying the closed ledger failure,
   not a consensus rejection. It stops the node with exit 8, bypassing peer blame and reconnect policy.

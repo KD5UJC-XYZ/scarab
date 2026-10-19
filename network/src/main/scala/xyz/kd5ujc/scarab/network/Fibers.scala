@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.{Applicative, ApplicativeThrow}
+import cats.{Applicative, ApplicativeThrow, Defer}
 import cats.effect.{Concurrent, Deferred}
 import cats.effect.implicits.*
 import cats.mtl.{Handle, Raise}
@@ -25,15 +25,17 @@ object Fibers:
     * it is given a type; cancellation is not an error and passes through.
     */
   def scoped[F[_], E, A](defect: Throwable => E)(body: Handle[F, E] ?=> F[A])(using
-      F: ApplicativeThrow[F]
+      F: ApplicativeThrow[F],
+      D: Defer[F]
   ): F[Either[E, A]] =
-    Handle
-      .allow[E](body.map(_.asRight[E]))
-      .rescue(e => F.pure(e.asLeft[A]))
-      .handleErrorWith {
-        case NonFatal(t) => F.pure(defect(t).asLeft[A])
-        case other       => F.raiseError(other)
-      }
+    D.defer {
+      Handle
+        .allow[E](body.map(_.asRight[E]))
+        .rescue(e => F.pure(e.asLeft[A]))
+    }.handleErrorWith {
+      case NonFatal(t) => F.pure(defect(t).asLeft[A])
+      case other       => F.raiseError(other)
+    }
 
   /** The value of a fiber's result raised in the scope of its owner. */
   def land[F[_]: Applicative, E, A](result: Either[E, A])(using raise: Raise[F, E]): F[A] =

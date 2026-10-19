@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import cats.Defer
 import cats.effect.{Clock, Ref, Resource, Temporal}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -60,7 +61,7 @@ object KeepAliveClient:
   /** Ping every `interval` for the life of the resource. A failed ping aborts the whole
     * multiplexer, so pending operations on the other protocols raise the reason.
     */
-  def background[F[_]: Temporal](
+  def background[F[_]: Temporal: Defer](
       channel: MuxChannel[F],
       mux: Mux[F],
       settings: Settings = Settings()
@@ -72,7 +73,7 @@ object KeepAliveClient:
     * the channel raises through the scope of the fiber that calls it, so a connection lost under a
     * waiting ping is a value here and not a failure of the fiber (issue 130).
     */
-  private[network] def pinger[F[_]: Temporal](
+  private[network] def pinger[F[_]: Temporal: Defer](
       channel: MuxChannel[F],
       mux: Mux[F],
       settings: Settings

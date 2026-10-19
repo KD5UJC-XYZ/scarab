@@ -832,10 +832,12 @@ object Main extends IOApp:
             )
             relay = options.listen.fold(Resource.unit[IO])(address =>
               BearerServer
-                .listen[IO](
+                .listen[IO, NetworkError](
                   Some(address.host),
                   Some(address.port),
                   maxConnections = options.maxInbound * 2
+                )((remote, failure) =>
+                  ListenerFailures.report(remote.toString, failure, logged, fatalSink)
                 ) { (bearer, remote) =>
                   governor.serve(bearer, remote).void
                 }
@@ -867,7 +869,9 @@ object Main extends IOApp:
             )
             local = options.localSocket.fold(Resource.unit[IO])(path =>
               BearerServer
-                .listenUnix[IO](path) { bearer =>
+                .listenUnix[IO, NetworkError](path)(failure =>
+                  ListenerFailures.report(path.toString, failure, logged, fatalSink)
+                ) { bearer =>
                   logged(NodeEvent.Inbound(path.toString, InboundEvent.Accepted)) *>
                     Handle
                       .allow[NetworkError](
@@ -887,15 +891,7 @@ object Main extends IOApp:
                           )
                         case other => IO.pure(LocalTxSubmissionServer.End.ConnectionClosed(other))
                       }
-                      // A failure that is not a network error still ends the connection: say so,
-                      // where the listener would drop it unseen.
-                      .attempt
-                      .map(
-                        _.fold(
-                          InboundEnd.Defect(_),
-                          InboundEnd.Local(_)
-                        )
-                      )
+                      .map(InboundEnd.Local(_))
                       .flatMap(reason =>
                         logged(NodeEvent.Inbound(path.toString, InboundEvent.Closed(reason)))
                       )

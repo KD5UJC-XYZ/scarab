@@ -17,13 +17,13 @@ import xyz.kd5ujc.scarab.ledger.{StorageError, Utxo}
   */
 trait StateBacking[F[_], S]:
   /** The immutable tip moved to `state`: make the store reflect it. */
-  def advance(state: S): F[Unit]
+  def advance(state: S)(using Raise[F, StorageError]): F[Unit]
 
   /** `state` with whatever the store now holds dropped from it (what a snapshot should contain). */
-  def settled(state: S): F[S]
+  def settled(state: S)(using Raise[F, StorageError]): F[S]
 
   /** Durable copy of the store, which is at `anchor`, to go with the snapshot of that block. */
-  def checkpoint(anchor: BlockRef): F[Unit]
+  def checkpoint(anchor: BlockRef)(using Raise[F, StorageError]): F[Unit]
 
   /** Whether the checkpoint of `anchor` exists. */
   def available(anchor: Option[BlockRef]): F[Boolean]
@@ -35,18 +35,18 @@ trait StateBacking[F[_], S]:
   def reset: F[Unit]
 
   /** Delete the checkpoints that no listed snapshot (by file stem) refers to. */
-  def retain(stems: Set[String]): F[Unit]
+  def retain(stems: Set[String])(using Raise[F, StorageError]): F[Unit]
 
 object StateBacking:
   def none[F[_]: Applicative, S]: StateBacking[F, S] = new StateBacking[F, S]:
     private val unit = Applicative[F].unit
-    def advance(state: S) = unit
-    def settled(state: S) = Applicative[F].pure(state)
-    def checkpoint(anchor: BlockRef) = unit
+    def advance(state: S)(using Raise[F, StorageError]) = unit
+    def settled(state: S)(using Raise[F, StorageError]) = Applicative[F].pure(state)
+    def checkpoint(anchor: BlockRef)(using Raise[F, StorageError]) = unit
     def available(anchor: Option[BlockRef]) = Applicative[F].pure(true)
     def restore(anchor: Option[BlockRef]) = Applicative[F].pure(true)
     def reset = unit
-    def retain(stems: Set[String]) = unit
+    def retain(stems: Set[String])(using Raise[F, StorageError]) = unit
 
   /** The name shared by a snapshot file (`<stem>.bin`) and its checkpoint directory. */
   def stem(a: BlockRef): String = f"snapshot-${a.slot}%020d-${a.blockNo}"
@@ -77,7 +77,7 @@ final class UtxoBacking[F[_]: Sync, S](store: UtxoStore[F], root: Path)(using
 
   private def dirOf(a: BlockRef): Path = root / StateBacking.stem(a)
 
-  private def guard[A](what: String)(body: => A): F[A] =
+  private def guard[A](what: String)(body: => A)(using Raise[F, StorageError]): F[A] =
     F.blocking(body).attempt.flatMap {
       case Right(a) => F.pure(a)
       case Left(e)  => StorageError.Io(what, e).raise[F, A]
@@ -92,14 +92,14 @@ final class UtxoBacking[F[_]: Sync, S](store: UtxoStore[F], root: Path)(using
     * (`translateLedgerStateByronToShelleyWrapper`, Ouroboros/Consensus/Cardano/CanHardFork.hs:
     * 343-358, `valuesAsDiffs . unstowLedgerTables`), so every entry is written.
     */
-  def advance(state: S): F[Unit] =
+  def advance(state: S)(using Raise[F, StorageError]): F[Unit] =
     handle.get(state).fold(F.unit)(UtxoStore.advance(store, _))
 
-  def settled(state: S): F[S] =
+  def settled(state: S)(using Raise[F, StorageError]): F[S] =
     if handle.get(state).isEmpty then F.pure(state)
     else store.flushed.map(at => handle.modify(state)(_.settled(at, force = true)))
 
-  def checkpoint(anchor: BlockRef): F[Unit] =
+  def checkpoint(anchor: BlockRef)(using Raise[F, StorageError]): F[Unit] =
     val dir = dirOf(anchor)
     guard(dir.toString)(RocksUtxoStore.deleteTree(dir.toNioPath)) *>
       guard(root.toString)(java.nio.file.Files.createDirectories(root.toNioPath)) *>
@@ -115,7 +115,7 @@ final class UtxoBacking[F[_]: Sync, S](store: UtxoStore[F], root: Path)(using
 
   def reset: F[Unit] = store.reset
 
-  def retain(stems: Set[String]): F[Unit] = guard(root.toString) {
+  def retain(stems: Set[String])(using Raise[F, StorageError]): F[Unit] = guard(root.toString) {
     val nio = root.toNioPath
     if java.nio.file.Files.isDirectory(nio) then
       val dirs = java.nio.file.Files.list(nio)

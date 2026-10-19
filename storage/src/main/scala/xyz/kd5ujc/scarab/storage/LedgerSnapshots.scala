@@ -19,7 +19,9 @@ trait LedgerSnapshots[F[_], S]:
   /** Write atomically (temp file, fsync, rename, fsync of the directory), then prune old ones. A
     * state the format refuses is not written (and nothing is pruned): the refusal is the result.
     */
-  def write(snapshot: StateSnapshot[S]): F[Either[SnapshotRefusal, LedgerSnapshots.Written]]
+  def write(snapshot: StateSnapshot[S])(using
+      Raise[F, StorageError]
+  ): F[Either[SnapshotRefusal, LedgerSnapshots.Written]]
 
   /** The newest snapshot that decodes, passes its checksum and whose anchor `usable` accepts.
     * Snapshots that fail are reported and skipped, never raised.
@@ -27,7 +29,7 @@ trait LedgerSnapshots[F[_], S]:
   def restore(usable: Option[BlockRef] => F[Boolean]): F[LedgerSnapshots.Restored[S]]
 
   /** File names, newest first. */
-  def list: F[Vector[String]]
+  def list(using Raise[F, StorageError]): F[Vector[String]]
 
 object LedgerSnapshots:
   final case class Written(name: String, bytes: Long, anchor: Option[BlockRef])
@@ -86,11 +88,11 @@ object FileLedgerSnapshots:
     val F = Async[F]
     val files = Files.forAsync[F]
 
-    def fail[A](e: StorageError): F[A] = e.raise[F, A]
-    def guard[A](what: String)(fa: F[A]): F[A] =
+    def fail[A](e: StorageError)(using Raise[F, StorageError]): F[A] = e.raise[F, A]
+    def guard[A](what: String)(fa: F[A])(using Raise[F, StorageError]): F[A] =
       fa.attempt.flatMap(_.fold(e => fail(StorageError.Io(what, e)), F.pure))
 
-    def names: F[Vector[String]] =
+    def names(using Raise[F, StorageError]): F[Vector[String]] =
       guard(dir.toString)(
         files
           .list(dir)
@@ -120,9 +122,11 @@ object FileLedgerSnapshots:
       )
 
     tidy.as(new LedgerSnapshots[F, S]:
-      def list: F[Vector[String]] = names
+      def list(using Raise[F, StorageError]): F[Vector[String]] = names
 
-      def write(snapshot: StateSnapshot[S]): F[Either[SnapshotRefusal, LedgerSnapshots.Written]] =
+      def write(snapshot: StateSnapshot[S])(using
+          Raise[F, StorageError]
+      ): F[Either[SnapshotRefusal, LedgerSnapshots.Written]] =
         snapshot.anchor match
           case None => fail(StorageError.OutOfOrder(StorageStructureError.GenesisSnapshot))
           case Some(anchor) =>
