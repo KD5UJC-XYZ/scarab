@@ -1,0 +1,48 @@
+{
+  "schema": "scarab-upstream-network-protocol-cases-v1",
+  "source": "ouroboros-network",
+  "sourceCommit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+  "upstreamTest": "ouroboros-network:protocols-tests / KeepAlive / codec v2 / prop_codec_v2",
+  "seed": 490201,
+  "requestedCases": 24,
+  "exportedCases": 24,
+  "upstreamPropertyOutcomes": {
+    "pass": 24,
+    "upstream-failure": 0
+  },
+  "dependencyPlanUnits": 167,
+  "dependencyPlanSha256": "b90adc9cc498b0d6789d6eeef6a6baa0811c2516a706cab0802ea58f0536477d",
+  "sourceFiles": {
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/KeepAlive/Test.hs": "1ee386a76b09e7e5ac2aeb5f97eb4658a66e2d6f1f9bea40c4dc0aec5faf24df",
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/PeerSharing/Test.hs": "e1980f57cc8bebe7a1530e68e68cf552b9e141b2b136381701e504607946b31a",
+    "ouroboros-network/protocols/tests/Main.hs": "32a3b5a431e0e00ce4f206ffe2c8d4b829f9135e82e0c2befdbe35b64adf58eb"
+  },
+  "observerPatchSha256": "35b1a0cc2461aed977804a7be1af0d7dacd2eae622a03436efae6fd5adb2e2cb",
+  "observerPatch": "disposable changes add deterministic exporter entrypoints using unchanged Arbitrary instances and property functions",
+  "caseFile": "keepalive.tsv",
+  "sha256": "68bfde5d45f320586738c5d3fcc7c13b057b916697fbfc580f084dc72cdefb34",
+  "scarabAdapterOutcomes": {
+    "match": 24,
+    "divergence": 0,
+    "unsupported": 0,
+    "missing": 0
+  },
+  "consumerSuite": "xyz.kd5ujc.scarab.protocol.UpstreamProtocolCodecCoverageSuite",
+  "filteredUpstreamSuite": {
+    "commands": [
+      "cabal test ouroboros-network:protocols-tests --test-options=--pattern=KeepAlive --builddir=/probe/builddir --jobs=2"
+    ],
+    "returncode": 0,
+    "quickCheckPropertiesPassed": 9,
+    "quickCheckCaseCounts": {
+      "100": 8,
+      "33": 1
+    },
+    "combinedResultLog": "/tmp/scarab/v02-49-protocol-probe/2.log"
+  },
+  "scalaConsumerResult": {
+    "returncode": 0,
+    "testsPassed": 2,
+    "result": "/tmp/scarab/v02-49-protocol-probe/scala-focused-result.json"
+  }
+}

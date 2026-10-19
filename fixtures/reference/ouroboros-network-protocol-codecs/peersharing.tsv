@@ -1,0 +1,24 @@
+peersharing-codec-int-v1	490201	0	30	idle	client	request	254	candidate	820018fe	pass
+peersharing-codec-int-v1	490202	1	31	idle	client	request	49	candidate	82001831	pass
+peersharing-codec-int-v1	490203	2	32	busy	server	peers	[-12,-31,-25,-10,18,18,-18,-10,-26,-2,18,-16,8,17,24,9]	unsupported-int-addresses	82019f2b381e38182912123129381921122f0811181809ff	pass
+peersharing-codec-int-v1	490204	3	33	idle	client	done		candidate	8102	pass
+peersharing-codec-int-v1	490205	4	34	idle	client	done		candidate	8102	pass
+peersharing-codec-int-v1	490206	5	35	idle	client	request	50	candidate	82001832	pass
+peersharing-codec-int-v1	490207	6	36	idle	client	done		candidate	8102	pass
+peersharing-codec-int-v1	490208	7	37	idle	client	request	243	candidate	820018f3	pass
+peersharing-codec-int-v1	490209	8	38	idle	client	done		candidate	8102	pass
+peersharing-codec-int-v1	490210	9	39	busy	server	peers	[1,-17,-31,-30,-25,39,2,-6,8,-7,17,19,-36,-3,-18,-19,21,11,25,0,-24,-38,0,26,-29,1,-30,31,6,-24,-8,2,12,4]	unsupported-int-addresses	82019f0130381e381d381818270225082611133823223132150b18190037382500181a381c01381d181f063727020c04ff	pass
+peersharing-codec-int-v1	490211	10	40	idle	client	done		candidate	8102	pass
+peersharing-codec-int-v1	490212	11	41	idle	client	request	40	candidate	82001828	pass
+peersharing-codec-int-v1	490213	12	42	idle	client	done		candidate	8102	pass
+peersharing-codec-int-v1	490214	13	43	idle	client	request	38	candidate	82001826	pass
+peersharing-codec-int-v1	490215	14	44	busy	server	peers	[-17,7,30,-24,-4,8,-17,33,27,-17,5,40,40,-29,-4,25,-30,-20,36,22,18,-12,21,1,-12,-17,-16,-23,-30,26]	unsupported-int-addresses	82019f3007181e372308301821181b300518281828381c231819381d33182416122b15012b302f36381d181aff	pass
+peersharing-codec-int-v1	490216	15	45	busy	server	peers	[-2,-6,-39,1,-27]	unsupported-int-addresses	82019f2125382601381aff	pass
+peersharing-codec-int-v1	490217	16	46	idle	client	done		candidate	8102	pass
+peersharing-codec-int-v1	490218	17	47	idle	client	done		candidate	8102	pass
+peersharing-codec-int-v1	490219	18	48	idle	client	done		candidate	8102	pass
+peersharing-codec-int-v1	490220	19	49	idle	client	request	94	candidate	8200185e	pass
+peersharing-codec-int-v1	490221	20	50	idle	client	done		candidate	8102	pass
+peersharing-codec-int-v1	490222	21	30	busy	server	peers	[-13,15,16,20,-5,-1,-6,18,-17,16,2,5,24,21,-17,18,-14,-29,1,20,-22,18,-13,23,24,-22,-4,-7,2]	unsupported-int-addresses	82019f2c0f1014242025123010020518181530122d381c011435122c17181835232602ff	pass
+peersharing-codec-int-v1	490223	22	31	idle	client	request	255	candidate	820018ff	pass
+peersharing-codec-int-v1	490224	23	32	busy	server	peers	[-27,-23,-5,-14,29,23,11,-24,-25,-25,-26,-26,-19,0,-32,14,23,-32,-19,27,11,27,-27,14,28,-13,-13,-16]	unsupported-int-addresses	82019f381a36242d181d170b3738183818381938193200381f0e17381f32181b0b181b381a0e181c2c2c2fff	pass

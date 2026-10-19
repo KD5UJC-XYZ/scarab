@@ -15,8 +15,9 @@ import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, Params, Wire}
-import HaskellStateCodecs.given
 import xyz.kd5ujc.scarab.storage.haskell.state.NodeOrders.given
+
+import HaskellStateCodecs.given
 
 /** One actual generated Conway CERTS trace decoded at Scarab's full typed CERTS boundary. */
 class UpstreamCertsCoverageSuite extends FunSuite:
