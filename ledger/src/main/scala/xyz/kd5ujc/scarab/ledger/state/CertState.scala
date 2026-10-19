@@ -5,6 +5,7 @@ import cats.{Eq, Order, Show}
 import cats.derived.*
 import monocle.{Focus, Lens}
 import scala.collection.immutable.{SortedMap, SortedSet}
+import scala.reflect.ClassTag
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger.{Anchor, GenDelegPair, PoolParams}
 
@@ -60,10 +61,10 @@ final case class DState[A <: AccountsRecord](
     genDelegs: SortedMap[KeyHash[Genesis], GenDelegPair],
     iRewards: InstantaneousRewards
 ) derives Eq,
-      Show,
-      Diff
+      Show
 
 object DState:
+  given [A <: AccountsRecord](using Diff[A], ClassTag[A]): Diff[DState[A]] = Diff.derived
   def accounts[A <: AccountsRecord]: Lens[DState[A], A] = Focus[DState[A]](_.accounts)
   def futureGenDelegs[A <: AccountsRecord]
       : Lens[DState[A], SortedMap[FutureGenDeleg, GenDelegPair]] =
