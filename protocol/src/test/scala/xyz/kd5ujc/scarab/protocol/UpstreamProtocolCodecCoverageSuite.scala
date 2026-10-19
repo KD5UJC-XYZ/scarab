@@ -589,3 +589,76 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
     }
     assertEquals(outcomes.size, 24)
     assertEquals(outcomes.count(_ == "matched"), 24)
+
+  test("consume generated LocalTxMonitor messages at the typed Scarab boundary"):
+    val input =
+      rows("localtxmonitor.tsv", "0baa7b0b184ffb0bf5ed502c784b10002f4f37d8a5318d96d809762944e5f58b")
+    assertEquals(input.size, 24)
+    assertEquals(input.count(f => f.size == 10 && f(8) == "pass" && f(9) == "pass"), 24)
+    assertEquals(
+      input.groupMapReduce(_(6))(_ => 1)(_ + _),
+      Map(
+        "acquire" -> 1,
+        "acquired" -> 1,
+        "await-acquire" -> 2,
+        "get-measures" -> 1,
+        "get-sizes" -> 5,
+        "has-tx" -> 2,
+        "next-tx" -> 1,
+        "release" -> 1,
+        "reply-get-measures" -> 2,
+        "reply-get-sizes" -> 1,
+        "reply-has-tx" -> 3,
+        "reply-next-tx" -> 4
+      )
+    )
+    val outcomes = input.map { fields =>
+      assertEquals(fields.size, 10)
+      assertEquals(fields(0), "local-tx-monitor-codec-v1")
+      val seed = fields(1).toInt
+      val ordinal = fields(2).toInt
+      assertEquals(seed, 494001 + ordinal)
+      assertEquals(fields(3).toInt, 30 + ordinal % 21)
+      val state = fields(4) match
+        case "idle"              => LocalTxMonitor.State.Idle
+        case "acquiring"         => LocalTxMonitor.State.Acquiring
+        case "acquired"          => LocalTxMonitor.State.Acquired
+        case "busy-next-tx"      => LocalTxMonitor.State.Busy(LocalTxMonitor.Kind.NextTx)
+        case "busy-has-tx"       => LocalTxMonitor.State.Busy(LocalTxMonitor.Kind.HasTx)
+        case "busy-get-sizes"    => LocalTxMonitor.State.Busy(LocalTxMonitor.Kind.GetSizes)
+        case "busy-get-measures" => LocalTxMonitor.State.Busy(LocalTxMonitor.Kind.GetMeasures)
+        case other => fail(s"unknown upstream LocalTxMonitor state $other at seed $seed")
+      val sender = fields(5) match
+        case "client" => ChainSync.Role.Client
+        case "server" => ChainSync.Role.Server
+        case other    => fail(s"unknown upstream LocalTxMonitor sender $other at seed $seed")
+      val wire = bytes(fields(7))
+      LocalTxMonitor.decodePrefix(state, sender, wire) match
+        case DecodeResult.Decoded(message, consumed) =>
+          assertEquals(consumed, wire.size, s"seed $seed consumed original wire")
+          val tag = message match
+            case LocalTxMonitor.Message.Acquire             => "acquire"
+            case LocalTxMonitor.Message.Acquired(_)         => "acquired"
+            case LocalTxMonitor.Message.AwaitAcquire        => "await-acquire"
+            case LocalTxMonitor.Message.NextTx              => "next-tx"
+            case LocalTxMonitor.Message.ReplyNextTx(_)      => "reply-next-tx"
+            case LocalTxMonitor.Message.HasTx(_)            => "has-tx"
+            case LocalTxMonitor.Message.ReplyHasTx(_)       => "reply-has-tx"
+            case LocalTxMonitor.Message.GetSizes            => "get-sizes"
+            case LocalTxMonitor.Message.ReplyGetSizes(_)    => "reply-get-sizes"
+            case LocalTxMonitor.Message.GetMeasures         => "get-measures"
+            case LocalTxMonitor.Message.ReplyGetMeasures(_) => "reply-get-measures"
+            case LocalTxMonitor.Message.Release             => "release"
+            case LocalTxMonitor.Message.Done                => "done"
+          assertEquals(tag, fields(6), s"seed $seed typed constructor")
+          val encoded = LocalTxMonitor
+            .encode(state, sender, message)
+            .fold(e => fail(s"seed $seed Scarab typed encode: ${e.toString}"), identity)
+          assertEquals(encoded, wire, s"seed $seed exact original wire roundtrip")
+          "matched"
+        case DecodeResult.Failed(error) =>
+          fail(s"seed $seed typed decode failed: ${error.toString}")
+        case DecodeResult.NeedMore => fail(s"seed $seed incomplete original wire")
+    }
+    assertEquals(outcomes.size, 24)
+    assertEquals(outcomes.count(_ == "matched"), 24)

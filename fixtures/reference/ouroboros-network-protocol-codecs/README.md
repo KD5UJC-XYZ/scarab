@@ -79,6 +79,14 @@ The LocalTxSubmission observer exports 24 rows from the pinned upstream
 checks the constructor and agency state, consumes the complete original wire, and re-encodes it
 byte-for-byte. `Tx` and `Reject Int` payloads are retained as their complete original CBOR items.
 
+The pinned LocalTxMonitor observer exports 24 messages from the unchanged
+`AnyMessage (LocalTxMonitor TxId Tx SlotNo)` generator at seed base 494001. Both
+`prop_codecM_LocalTxMonitor` and `prop_codec_cborM_LocalTxMonitor` pass 24/24. Scarab's typed
+consumer matches and exact-wire re-encodes all rows across acquire/acquired, busy replies, size and
+measure queries, transaction lookup, release, and await-acquire. This is a bounded codec sample;
+the split, codec-ID, valid-CBOR, client/server, channel and pipe properties remain separate suite
+coverage.
+
 The pinned ChainSync `codecSerialised` observer now exports 128 rows from the actual
 `AnyMessage ChainSync_Serialised_BlockHeader` generator, preserving each source state token,
 sender agency, constructor, original CBOR wire, generator seed/size, and separate verdicts from
