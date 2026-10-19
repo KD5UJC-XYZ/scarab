@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
-import cats.MonadThrow
+import cats.{Defer, MonadThrow}
 import cats.mtl.Handle
 import cats.syntax.all.*
 import scala.util.control.NonFatal
@@ -21,12 +21,15 @@ enum SnapshotFailure extends DomainError:
 
 object SnapshotFailure:
   /** Each snapshot worker/finalizer owns its error scope (ADR0017). Cancellation passes through. */
-  private[storage] def capture[F[_]: MonadThrow, A](
+  private[storage] def capture[F[_]: MonadThrow: Defer, A](
       body: Handle[F, StorageError] ?=> F[A]
   ): F[Either[SnapshotFailure, A]] =
-    Handle
-      .allow[StorageError](body.map(_.asRight[SnapshotFailure]))
-      .rescue(error => MonadThrow[F].pure(Left(Storage(error))))
+    Defer[F]
+      .defer {
+        Handle
+          .allow[StorageError](body.map(_.asRight[SnapshotFailure]))
+          .rescue(error => MonadThrow[F].pure(Left(Storage(error))))
+      }
       .handleErrorWith {
         case NonFatal(cause) => MonadThrow[F].pure(Left(Defect(cause)))
         case fatal           => MonadThrow[F].raiseError(fatal)

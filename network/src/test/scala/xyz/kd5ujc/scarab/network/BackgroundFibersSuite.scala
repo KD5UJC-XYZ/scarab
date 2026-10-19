@@ -14,6 +14,13 @@ import Peers.*
 class BackgroundFibersSuite extends FailsOnUncaught:
   override def munitIOTimeout: FiniteDuration = 30.seconds
 
+  test("a scoped worker captures defects raised while its effect is constructed") {
+    val cause = new IllegalStateException("worker construction defect")
+    IO.defer(Fibers.scoped[IO, NetworkError, Unit](NetworkError.Defect(_))(throw cause)).map {
+      result => assertEquals(result, Left(NetworkError.Defect(cause)))
+    }
+  }
+
   test("the runtime of these suites sees a Submarine that escapes its scope (the harness works)") {
     // a fiber started inside an `allow` scope raises after the scope has ended: nobody can handle it
     for

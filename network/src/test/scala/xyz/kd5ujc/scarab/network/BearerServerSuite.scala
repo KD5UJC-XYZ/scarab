@@ -71,6 +71,21 @@ class BearerServerSuite extends FailsOnUncaught:
     }
   }
 
+  test("a defect while constructing a handler effect is reported with its original cause") {
+    for
+      failures <- Queue.unbounded[IO, HandlerFailure[NetworkError]]
+      _ <- BearerServer
+        .listen[IO, NetworkError](Some(ip"127.0.0.1"), None)((_, error) => failures.offer(error)) {
+          (_, _) => throw bug
+        }
+        .use { bound =>
+          network.connect(bound).use(_.read(1)) *> failures.take.timeout(3.seconds).map { failure =>
+            assertEquals(failure, HandlerFailure.Defect(bug))
+          }
+        }
+    yield ()
+  }
+
   test("listener cancellation releases the active handler and reports no failure") {
     for
       entered <- Deferred[IO, Unit]

@@ -197,6 +197,13 @@ class SnapshotFailureSuite extends FailsOnUncaught:
     }
   }
 
+  test("a defect while constructing a snapshot effect is captured before it leaves the scope") {
+    val cause = new IllegalStateException("snapshot construction defect")
+    IO.defer(SnapshotFailure.capture[IO, Unit](throw cause)).map { result =>
+      assertEquals(result, Left(SnapshotFailure.Defect(cause)))
+    }
+  }
+
   test("format defects retain their original exception and cancellation stays cancellation") {
     val cause = new IllegalArgumentException("format defect")
     val broken = new SnapshotFormat[IO, Int]:

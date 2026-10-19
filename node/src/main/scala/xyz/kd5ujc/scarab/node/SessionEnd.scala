@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.codec.DomainError
-import cats.{ApplicativeThrow, MonadThrow}
+import cats.{ApplicativeThrow, Defer, MonadThrow}
 import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.{
@@ -28,7 +28,9 @@ object Fault:
     * value. The `Raise` the body gets is this fiber's, so what it raises is never an exception that
     * another fiber would have to catch (issue 132).
     */
-  def fiber[F[_]: ApplicativeThrow, A](body: Raise[F, PeerError] ?=> F[A]): F[Either[Fault, A]] =
+  def fiber[F[_]: ApplicativeThrow: Defer, A](
+      body: Raise[F, PeerError] ?=> F[A]
+  ): F[Either[Fault, A]] =
     Fibers.scoped[F, Fault, A](Fault.Defect(_)) {
       val faults = summon[Handle[F, Fault]]
       body(using Peer.contramapped[F, Fault, PeerError](faults)(Fault.Failed(_)))
@@ -115,7 +117,7 @@ object SessionEnd:
     * in the fiber that met them, and become outcomes ([[of]]); an exception that is not ours is
     * [[Defect]].
     */
-  def scoped[F[_]: MonadThrow](node: Handle[F, NodeError])(
+  def scoped[F[_]: MonadThrow: Defer](node: Handle[F, NodeError])(
       body: (Handle[F, SessionEnd], Raise[F, PeerError]) ?=> F[SessionEnd]
   ): F[SessionEnd] =
     Fibers
