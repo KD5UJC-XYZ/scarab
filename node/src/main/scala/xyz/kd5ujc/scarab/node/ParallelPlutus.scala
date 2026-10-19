@@ -22,27 +22,23 @@ final class ParallelPlutus[F[_]: Async] private (
   def apply(body: EraBlock.Body): F[EraBlock.Outcome] =
     if workers.value == 1 || !body.worthwhile then serial(body)
     else
-      Async[F].delay(body.prepare).attempt.flatMap {
-        // Preparation is speculative. A defect in a later, unreachable ordinary rule must not
-        // overtake the serial path's earlier script refusal (or its original defect).
-        case Left(_) => serial(body)
-        case Right(plan) =>
-          plan.batches
-            .foldLeftM(Vector.empty[xyz.kd5ujc.scarab.ledger.Phase2.Completed]) { (done, batch) =>
-              batch
-                .parTraverseN(workers.value) { job =>
-                  // blocking, rather than interruptible: cancellation joins the VM before giving
-                  // back the permit, so a cancelled validation cannot leave unbounded machines.
-                  permits.permit.use(_ => Async[F].blocking(plan.execute(job)))
-                }
-                .map(done ++ _)
-            }
-            .flatMap { completed =>
-              Async[F].delay(plan.resolve(completed)).flatMap {
-                case Left(defect)   => Async[F].raiseError(defect.cause)
-                case Right(outcome) => outcome.pure[F]
+      Async[F].delay(body.prepare).flatMap { plan =>
+        plan.batches
+          .foldLeftM(Vector.empty[xyz.kd5ujc.scarab.ledger.Phase2.Completed]) { (done, batch) =>
+            batch
+              .parTraverseN(workers.value) { job =>
+                // blocking, rather than interruptible: cancellation joins the VM before giving
+                // back the permit, so a cancelled validation cannot leave unbounded machines.
+                permits.permit.use(_ => Async[F].blocking(plan.execute(job)))
               }
+              .map(done ++ _)
+          }
+          .flatMap { completed =>
+            Async[F].delay(plan.resolve(completed)).flatMap {
+              case Left(defect)   => Async[F].raiseError(defect.cause)
+              case Right(outcome) => outcome.pure[F]
             }
+          }
       }
 
 object ParallelPlutus:

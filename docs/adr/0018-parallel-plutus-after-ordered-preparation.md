@@ -25,13 +25,13 @@ Evaluate transaction jobs in bounded dependency batches, then land results and o
 original order. Ordinary transactions transmit dependencies. Include normal, reference and collateral
 reads, read-before-consume edges and conditional collateral returns. Scripts inside a transaction
 keep the existing collection order and first-failure behavior. This changes scheduling, not the
-existing failure aggregation policy (the remaining reference correspondence is tracked in #176).
+existing failure aggregation policy (the remaining reference correspondence is tracked in #195).
 
 One node-wide semaphore bounds concurrent machines across block callers. Joined workers return values;
 raw defects land as their original exceptions in the owner, retaining the fatal classification of
-ADR 0017. Cancellation waits for the underlying machine before releasing its permit. Preparation
-defects fall back to exact serial execution so a later speculative defect cannot overtake an earlier
-script refusal. One worker, or at most one redeemer-bearing transaction, uses the serial fast path.
+ADR 0017. Cancellation waits for the underlying machine before releasing its permit. Preparation retains its original defect alongside any earlier recorded jobs. Ordered landing
+checks those jobs first, so an earlier script refusal wins, and otherwise raises that original defect
+without retrying or hiding it. One worker, or at most one redeemer-bearing transaction, uses the serial fast path.
 
 ## Consequences
 

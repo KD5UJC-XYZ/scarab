@@ -102,7 +102,7 @@ object EraBlock:
     * Missing or foreign completed values are evaluated directly, never treated as a success.
     */
   final class Plan private[EraBlock] (
-      tentative: Outcome,
+      tentative: Either[Phase2.Defect, Outcome],
       val jobs: Vector[Phase2.Job],
       txs: Vector[Tx],
       before: PlutusStats,
@@ -127,13 +127,14 @@ object EraBlock:
               xyz.kd5ujc.scarab.ledger.TxChecks.checkedPhase2(stats, observation.tx, result)
             }
         }
-        .map {
-          case Left(failure) => Outcome.Refused(BlockFailure.Tx(failure))
+        .flatMap {
+          case Left(failure) => Right(Outcome.Refused(BlockFailure.Tx(failure)))
           case Right(checked) =>
-            tentative match
+            tentative.map {
               case Outcome.Applied(nes, counters) =>
                 Outcome.Applied(nes, checked.copy(integrityChecked = counters.integrityChecked))
               case other => other
+            }
         }
 
   /** The state at the block's slot: the checks that need no ledger state (the header is the

@@ -122,7 +122,7 @@ class ParallelPlutusSuite extends FailsOnUncaught:
     yield ()
   }
 
-  test("a later speculative preparation defect cannot overtake the serial script refusal") {
+  test("an earlier script refusal precedes a later captured preparation defect") {
     val defect = new IllegalStateException("later phase-1 defect")
     val verdicts = new Verdicts:
       export Verdicts.Direct.{opCert, praosVrf, tpraosVrf, keyHash, takePrepared}
@@ -144,6 +144,26 @@ class ParallelPlutusSuite extends FailsOnUncaught:
       _ <- IO {
         assertEquals(actual, refused.serial)
         assert(reached.left.exists(_ eq defect))
+      }
+    yield ()
+  }
+
+  test("a transient preparation defect is retained even when a serial retry would succeed") {
+    val defect = new IllegalStateException("transient phase-1 defect")
+    val first = new java.util.concurrent.atomic.AtomicBoolean(true)
+    val verdicts = new Verdicts:
+      export Verdicts.Direct.{opCert, praosVrf, tpraosVrf, keyHash, takePrepared}
+      def witness(key: Bytes, signature: Bytes, message: Bytes): Boolean =
+        if message == PreparedBlockFixture.txs(1).body.id && first.compareAndSet(true, false) then
+          throw defect
+        else Verdicts.Direct.witness(key, signature, message)
+    val body = PreparedBlockFixture.body(TestLedger.scripted(true), verdicts = verdicts)
+    for
+      service <- ParallelPlutus.create[IO](workers(2))
+      result <- service(body).attempt
+      _ <- IO {
+        assert(result.left.exists(_ eq defect))
+        assert(body.serial.isInstanceOf[xyz.kd5ujc.scarab.ledger.rules.EraBlock.Outcome.Applied])
       }
     yield ()
   }

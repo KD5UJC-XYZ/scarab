@@ -5,6 +5,17 @@
 
 ## Execution and ownership
 
+```mermaid
+flowchart LR
+  headers[Header checks and HFC tick] --> prepare[Ordered ledger preparation]
+  prepare --> plan[Private tentative state and requests]
+  plan --> workers[Bounded dependency batches]
+  workers --> land[Ordered verdicts and observations]
+  land --> result{All validation passed?}
+  result -->|yes| state[Return ledger state]
+  result -->|no| refusal[Typed refusal or original defect]
+```
+
 `MirrorRules.applyBlock` and `EraBlock.body` remain pure serial references. The effectful mirror
 uses the same header validation and HFC tick, then hands an immutable `EraBlock.Body` to
 `ParallelPlutus`. With one worker, or fewer than two redeemer-bearing transactions, it calls the
@@ -35,8 +46,9 @@ machine returns, including cancellation. Joined fibers return `Phase2.Completed`
 `Raise`. The owner resolves them by transaction order, calls observers only for reached transactions,
 and returns the original typed refusal, unavailability or raw defect. Later failures cannot overtake
 earlier refusals. Missing or foreign completions are evaluated locally rather than accepted as a
-success. A speculative preparation defect retries the exact serial path, preserving earlier failure
-precedence; the defect is not converted into a domain refusal.
+success. Preparation retains an original raw defect alongside its recorded prefix. Earlier script refusals
+still win; when that prefix passes, the original defect lands without a retry. A transient defect
+cannot disappear because a second execution happened to succeed.
 
 On success only phase-2 counters need reconstruction; the already-checked integrity counter comes
 from preparation. On any refusal the entire tentative state is discarded. There is no state
@@ -52,7 +64,7 @@ Pinned ledger source: `f649f9751074d2ab3de033fc3912f29c9862c1f5`,
 [Alonzo/Plutus/Evaluate.hs, lines 134–177](https://github.com/IntersectMBO/cardano-ledger/blob/f649f9751074d2ab3de033fc3912f29c9862c1f5/eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Evaluate.hs#L134)
 for request collection, and lines 178–197 for reference evaluation. This scheduler retains Scarab's
 existing per-transaction first-failure behavior; the broader aggregation correspondence remains
-[#176](https://github.com/KD5UJC-XYZ/scarab/issues/176). The graph follows
+[#195](https://github.com/KD5UJC-XYZ/scarab/issues/195). The graph follows
 [CIP-31](https://cips.cardano.org/cip/CIP-0031) reference reads and
 [CIP-40](https://cips.cardano.org/cip/CIP-0040) collateral returns. Parallel evaluation is a local
 implementation choice, justified by immutable inputs and ordered landing, rather than a claim that
@@ -65,7 +77,7 @@ producer-dependent spends, invalid-tag collateral, validity mismatches, unavaila
 later ordinary refusals and absent/foreign completions. `TxDependenciesSuite` covers transitive
 ordinary paths, shared reads, anti-dependencies, collateral return indices and a 20,000-transaction
 chain on a 256 KiB stack. `ParallelPlutusSuite` proves actual overlap, one node-wide bound across
-callers, cancellation joining and original defect identity. CLI tests reject nonpositive bounds.
+callers, cancellation joining, original defect identity and the transient-preparation-defect regression. CLI tests reject nonpositive bounds.
 
 `PlutusReplaySuite` is opt-in offline evidence. Set `SCARAB_PLUTUS_CAPTURE` to a captured immutable
 window containing `immutable/` and `records.jsonl` (chunk, byte offset, byte length, slot),
