@@ -1889,6 +1889,58 @@ conditions. Neither the recovered comparison nor fixture extraction measures cur
 Current-rule Preview replay, its serial/parallel comparison and any timing result are recorded
 separately from this recovered evidence.
 
+**Continuous Preview replay baseline, 2026-10-19.** One uninterrupted offline run applied all
+4,758,521 captured blocks from origin through slot **125,366,428**, header block number
+4,758,520, hash `956541c0937e9cdc279514c10fec9706865bb6004ddcfb487bf53c7bbdc97ad1`.
+It started from genesis with no ledger snapshot. The endpoint and original bytes, rather than a
+moving testnet tip, define the range for a future comparison.
+
+| Measured interval | Elapsed | Scope |
+|---|---:|---|
+| Immutable replay (`ReplayFinished`) | 22,325.190 s (6 h 12 m 05.190 s) | 213.15 blocks/s over the complete captured range |
+| Store/cache ownership (`summary.elapsedNanos`) | 22,341.847 s | Also includes opening and resource finalizers |
+| Docker/JVM process wall time | 22,343.919 s (6 h 12 m 23.919 s) | Launch through exit; excludes the post-run acceptance audit |
+
+The replay interval includes original-block reads/decoding, signature checks, full header and ledger
+validation, phase-2 execution, UTxO updates, link/counter guards, all 1,451 full-UTxO reference
+projection exports and in-loop persistence/snapshots. It starts after database/index opening and
+genesis setup, and excludes the final graceful-close snapshot and post-run comparison/hashing.
+This is a run with correctness instrumentation on a shared host, not an isolated validation-only
+or live-network throughput benchmark.
+
+The run used four script workers, Docker JDK 21, four CPU quota/active JVM processors, 12 GiB
+container memory, `-Xms2g -Xmx10g -Xss1m`, networking disabled and a fresh private writable store.
+The host was an Intel Core Ultra 9 285K with 24 logical CPUs, running Linux 6.6.87.2 under WSL2;
+other sessions also built and tested. Host one-minute load was 3.37 at launch and 1.64 at exit;
+these endpoint readings do not bound load during the run. Docker working-set samples are retained,
+but no true peak RSS or isolated-host CPU measurement was taken. The JDK image was
+`sha256:c90140def52d2711644c85a81c9bf218ffbe5dc81003bfb866154c2da832af38`.
+
+Frozen tool `dc00416b` used production base `235cd12a`; the source/runtime binding has SHA-256
+`7ac9f68d3c6fd4995fb3a524a22976194bf55af0e035af80ee1745393cdfa40a`.
+The completed run exported all **1,451** authentic reference boundaries, all matching under the
+projection contract above, with no missing or duplicate epochs. Its ordered invalid-transaction
+list exactly matches the **242** pinned identities. Counters are 3,233,583 reached transactions,
+11,251,372 evaluated scripts and 244 failed scripts, with zero evaluator-unavailable or collection
+failures. **Six** runtime responsiveness warnings were retained; the run makes no zero-starvation
+claim. An independent integration audit rehashed all 1,467 accepted artifacts. The accepted manifest
+has SHA-256 `489094c44e9e97793aba1371c65eb3643bb18c7bb8d3416d7ce5391fb5b9dcde`;
+the summary has SHA-256 `15a3a2f937198caa10cf8191bae74a445d4b597995b9f241f94b5a90855a8a76`.
+Private evidence, exact command, resource observations and comparison conditions are retained under
+`/tmp/scarab/issue-21`, including `k1-performance-record.json`. The owned container was removed.
+
+**Comparison status.** No relative speed claim against another implementation follows from this
+run. The historical Haskell Preview oracle used `--minimum-block-validation --in-mem`, three
+parallel per-target jobs and different snapshot/seed replay spans. Its retained analyser/projection
+times are useful provenance, but cannot be summed into a matched full-validation wall time.
+[Dingo's published component benchmarks](https://github.com/blinklabs-io/dingo/blob/278bbde98187863e3b6a6fbf37f0398bfa2336ac/docs/benchmarks/benchmark_results.md)
+dated 2026-06-12 use early Preview data (40,000+ blocks, slots 0–863,996) on a 128-core ARM host;
+they do not cover this range or workload. No matched Preview timing for Amaru was located or retained
+as of this record. A later comparison must pin the same genesis, original blocks and endpoint hash,
+full header/ledger/phase-2 validation, invalid-transaction semantics, storage/cache policy and resource
+limits. Run on the same host without competing jobs; report startup, replay, projection exports and
+final checkpoint separately, and verify state/invalid-transaction equality before interpreting speed.
+
 **Current-rule timing, 2026-10-19.** The shared `RecordedReplay` runner validated the captured
 epoch-135 window: 6,494 original blocks, 67,163 reached phase-2 transactions and 138,358 evaluated
 scripts per pass. All 12 expected invalid transactions were reproduced, with zero unavailable or
