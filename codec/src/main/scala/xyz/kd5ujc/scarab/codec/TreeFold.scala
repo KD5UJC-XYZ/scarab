@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.codec
 
-import scala.reflect.ClassTag
 import scala.util.boundary
 
 /** A post-order fold over a tree on the heap: the recursion of a decoder over a nested item becomes
@@ -29,14 +28,14 @@ object TreeFold:
     def collected: Vector[A] = results.toVector
 
   /** The keys and values of a map in turn: `k0, v0, k1, v1, ...`. */
-  def flatten[A: ClassTag](ps: Vector[(A, A)]): Vector[A] =
-    val out = new Array[A](2 * ps.size)
+  def flatten[A](ps: Vector[(A, A)]): Vector[A] =
+    val out = scala.collection.mutable.ArrayBuffer[A](2 * ps.size)
     var i = 0
     while i < ps.size do
-      out(2 * i) = ps(i)._1
-      out(2 * i + 1) = ps(i)._2
+      out += ps(i)._1
+      out += ps(i)._2
       i += 1
-    Vector.from(scala.collection.immutable.ArraySeq.unsafeWrapArray(out))
+    Vector.from(out)
 
   /** The pairs `(ds(0), ds(1))`, `(ds(2), ds(3))`, ... of a flattened map. */
   def pairs[A](ds: Vector[A]): Vector[(A, A)] =
