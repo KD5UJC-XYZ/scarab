@@ -38,7 +38,9 @@ class SnapshotFailureSuite extends FailsOnUncaught:
       _ => IO.unit
     )
 
-  private def extend(recovered: ChainStorage.Recovered[IO, Int], n: Int): IO[Unit] =
+  private def extend(recovered: ChainStorage.Recovered[IO, Int], n: Int)(using
+      Handle[IO, NodeError]
+  ): IO[Unit] =
     val (ref, raw) = StorageTestKit.block(n)
     recovered.persistence.extended(ref, raw, Vector(ref), Anchor(Some(ref), n))
 
@@ -52,9 +54,9 @@ class SnapshotFailureSuite extends FailsOnUncaught:
     def advance(state: Int)(using Raise[IO, StorageError]) = advanceBody
     def settled(state: Int)(using Raise[IO, StorageError]) = IO.pure(state)
     def checkpoint(anchor: BlockRef)(using Raise[IO, StorageError]) = IO.unit
-    def available(anchor: Option[BlockRef]) = IO.pure(true)
-    def restore(anchor: Option[BlockRef]) = IO.pure(true)
-    def reset = IO.unit
+    def available(anchor: Option[BlockRef])(using Raise[IO, StorageError]) = IO.pure(true)
+    def restore(anchor: Option[BlockRef])(using Raise[IO, StorageError]) = IO.pure(true)
+    def reset(using Raise[IO, StorageError]) = IO.unit
     def retain(stems: Set[String])(using Raise[IO, StorageError]) = retainBody
 
   test(

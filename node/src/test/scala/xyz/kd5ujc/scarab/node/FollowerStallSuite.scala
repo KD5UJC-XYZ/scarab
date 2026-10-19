@@ -57,10 +57,11 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       server <- ChainServer.open[IO](
         None,
         None,
-        ChainServer.headerOfBlock(ForgedChain.geometry.byron.epochSlots)
+        ChainServer.headerOfBlock(ForgedChain.geometry.byron.epochSlots),
+        failure => IO.raiseError(new AssertionError(failure.message))
       )
       _ <- Handle
-        .allow[ChainError] {
+        .allow[xyz.kd5ujc.scarab.ledger.NodeError] {
           raws.traverse_ { raw =>
             val header = Block.decodeShelley(raw).toOption.get.asInstanceOf[Block.Shelley].header
             server
@@ -422,6 +423,9 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 raw: Bytes,
                 immutable: Vector[BlockRef],
                 anchor: Anchor[MirrorState]
+            )(using
+                cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError],
+                cats.mtl.Raise[IO, ChainError]
             ) = stored.getAndUpdate(_ + 1).flatMap { n =>
               if n != 4 then IO.unit
               else
@@ -448,7 +452,10 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                   case FatalCase.Defect | FatalCase.NetworkDefect =>
                     IO.raiseError(new IllegalStateException("injected"))
             }
-            def rolledBack(to: Point) = IO.unit
+            def rolledBack(to: Point)(using
+                cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError],
+                cats.mtl.Raise[IO, ChainError]
+            ) = IO.unit
           follower <- Follower.create[IO, MirrorState](
             ForgedChain.rules,
             events,

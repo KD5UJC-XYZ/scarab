@@ -2,16 +2,17 @@
 package xyz.kd5ujc.scarab.node.relay
 
 import cats.effect.IO
-import cats.mtl.Raise
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{Era, NtNHeader}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.network.ChainSyncServer.Update
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef}
-import xyz.kd5ujc.scarab.ledger.ChainError
 import xyz.kd5ujc.scarab.storage.{FileImmutableStore, StorageTestKit}
-import munit.{CatsEffectSuite, ScalaCheckSuite}
+import munit.ScalaCheckSuite
+import cats.mtl.Handle
+import xyz.kd5ujc.scarab.ledger.NodeError
+import xyz.kd5ujc.scarab.node.Fatal
 import org.scalacheck.{Gen, Prop}
 import org.scalacheck.Prop.*
 import scala.concurrent.duration.*
@@ -121,12 +122,13 @@ class ServedChainSuite extends ScalaCheckSuite:
   }
 
 /** The server over the immutable store and the volatile chain, read through its algebras. */
-class ChainServerSuite extends CatsEffectSuite:
+class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   import RelayKit.*
 
-  given Raise[IO, ChainError] = new Raise[IO, ChainError]:
-    def functor = cats.Functor[IO]
-    def raise[E2 <: ChainError, A](e: E2): IO[A] = IO.raiseError(RuntimeException(e.message))
+  private def ok[A](body: Handle[IO, NodeError] ?=> IO[A]): IO[A] =
+    Handle.allow[NodeError](body).rescue(error => IO(fail(error.message)))
+
+  private val fatal: Fatal => IO[Unit] = failure => IO(fail(failure.message))
 
   private val k = 3
 
@@ -146,7 +148,7 @@ class ChainServerSuite extends CatsEffectSuite:
       ok {
         FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
           for
-            server <- ChainServer.open[IO](Some(store), None, headerOf)
+            server <- ChainServer.open[IO](Some(store), None, headerOf, fatal)
             persistence = server.persistence[Unit]
             _ <- (1 to 10).toList.traverse_ { i =>
               val immutable = if i > k then Vector(ref(i - k)) else Vector.empty
@@ -185,7 +187,7 @@ class ChainServerSuite extends CatsEffectSuite:
       ok {
         FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
           for
-            server <- ChainServer.open[IO](Some(store), None, headerOf)
+            server <- ChainServer.open[IO](Some(store), None, headerOf, fatal)
             persistence = server.persistence[Unit]
             _ <- (1 to 8).toList.traverse_ { i =>
               val immutable = if i > k then Vector(ref(i - k)) else Vector.empty
@@ -217,7 +219,7 @@ class ChainServerSuite extends CatsEffectSuite:
       ok {
         FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
           for
-            server <- ChainServer.open[IO](Some(store), None, headerOf)
+            server <- ChainServer.open[IO](Some(store), None, headerOf, fatal)
             persistence = server.persistence[Unit]
             _ <- (1 to 4).toList.traverse_(i =>
               persistence.extended(ref(i), raw(i), Vector.empty, Anchor[Unit](None, ()))
@@ -251,7 +253,7 @@ class ChainServerSuite extends CatsEffectSuite:
       ok {
         FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
           for
-            server <- ChainServer.open[IO](Some(store), None, headerOf)
+            server <- ChainServer.open[IO](Some(store), None, headerOf, fatal)
             persistence = server.persistence[Unit]
             _ <- (1 to 2).toList.traverse_(i =>
               persistence.extended(ref(i), raw(i), Vector.empty, Anchor[Unit](None, ()))
@@ -287,7 +289,7 @@ class ChainServerSuite extends CatsEffectSuite:
       ok {
         FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
           for
-            server <- ChainServer.open[IO](Some(store), None, headerOf)
+            server <- ChainServer.open[IO](Some(store), None, headerOf, fatal)
             persistence = server.persistence[Unit]
             _ <- (1 to 10).toList.traverse_ { i =>
               val immutable = if i > k then Vector(ref(i - k)) else Vector.empty

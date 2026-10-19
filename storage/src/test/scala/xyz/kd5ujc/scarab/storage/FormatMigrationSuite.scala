@@ -55,10 +55,14 @@ class FormatMigrationSuite extends CatsEffectSuite with ScalaCheckSuite:
   private def open(dir: Path)(using cats.mtl.Raise[IO, StorageError]) =
     FileImmutableStore.open[IO](dir, chunkSlots)
 
-  private def fill(store: ImmutableStore[IO]): IO[Unit] =
+  private def fill(store: ImmutableStore[IO])(using
+      cats.mtl.Raise[cats.effect.IO, xyz.kd5ujc.scarab.ledger.StorageError]
+  ): IO[Unit] =
     blocks.toList.traverse_(i => block(i) match { case (ref, raw) => store.append(ref, raw) })
 
-  private def everything(store: ImmutableStore[IO]): IO[List[ImmutableStore.Stored]] =
+  private def everything(store: ImmutableStore[IO])(using
+      cats.mtl.Raise[cats.effect.IO, xyz.kd5ujc.scarab.ledger.StorageError]
+  ): IO[List[ImmutableStore.Stored]] =
     store.stream(ChainSync.Point.Origin).compile.toList
 
   /** Rewrite a current-format store as version 1 would have left it: the former magic and text. */

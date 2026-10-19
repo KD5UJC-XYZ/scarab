@@ -78,9 +78,9 @@ class UtxoEnumerationFaultSuite extends CatsEffectSuite:
     val ledger = Utxo.empty
     def run[A](
         name: String,
-        fa: RocksUtxoStore[IO] => IO[A]
+        fa: RocksUtxoStore[IO] => cats.mtl.Raise[IO, StorageError] ?=> IO[A]
     ): IO[(String, Either[StorageError, Any])] =
-      attempt(open(dir).use(fa)).map(name -> _)
+      attempt(open(dir).use(store => fa(store))).map(name -> _)
     List(
       run("read", _.read(List(probe))),
       run("all", _.all),

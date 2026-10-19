@@ -36,6 +36,8 @@ final class ChainServer[F[_]: Async] private (
 
   def tip: F[Tip] = state.get.map(_.tip)
 
+  private[relay] def activeFollowers: F[Int] = state.get.map(_.followers.size)
+
   /** The node's chain updates, to be composed with the storage persistence. The block must be
     * stored (by the persistence that runs before this one) before it leaves the volatile chain.
     */

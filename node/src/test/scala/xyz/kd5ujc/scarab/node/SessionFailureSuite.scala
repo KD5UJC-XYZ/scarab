@@ -82,13 +82,19 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               raw: Bytes,
               immutable: Vector[BlockRef],
               anchor: Anchor[BigInt]
+          )(using
+              Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError],
+              Raise[IO, xyz.kd5ujc.scarab.ledger.ChainError]
           ) =
             if breakStorage.contains(block.blockNo.toInt) then
               node.raise[NodeError, Unit](
                 StorageError.Io("volatile", new java.io.IOException("disk full"))
               )
             else stored.update(_ :+ block)
-          def rolledBack(to: ChainSync.Point) = IO.unit
+          def rolledBack(to: ChainSync.Point)(using
+              Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError],
+              Raise[IO, xyz.kd5ujc.scarab.ledger.ChainError]
+          ) = IO.unit
         rules: BlockRules[IO, BigInt] = (_, header, _) =>
           if explode.contains(header.blockNo.toInt) then
             IO.raiseError(new IllegalStateException("a bug in the rules"))

@@ -73,7 +73,9 @@ object UtxoScanBench:
       yield ()
     }
 
-  private def sampled(store: UtxoStore[IO]): IO[Set[Bytes]] =
+  private def sampled(store: UtxoStore[IO])(using
+      cats.mtl.Raise[cats.effect.IO, xyz.kd5ujc.scarab.ledger.StorageError]
+  ): IO[Set[Bytes]] =
     val picked = Set.newBuilder[Bytes]
     var i = 0L
     store
@@ -83,7 +85,9 @@ object UtxoScanBench:
       }
       .map(_ => picked.result())
 
-  private def compare(store: UtxoStore[IO], wanted: Set[Bytes], round: Int): IO[Unit] =
+  private def compare(store: UtxoStore[IO], wanted: Set[Bytes], round: Int)(using
+      cats.mtl.Raise[cats.effect.IO, xyz.kd5ujc.scarab.ledger.StorageError]
+  ): IO[Unit] =
     for
       old <- timed(s"round $round decode every output (select)")(
         store.select(out => wanted(out.address.raw))

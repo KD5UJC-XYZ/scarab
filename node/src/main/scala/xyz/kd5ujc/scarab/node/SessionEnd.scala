@@ -95,8 +95,8 @@ enum SessionEnd:
   case Stopped(clean: Boolean)
 
 object SessionEnd:
-  /** The outcome for an error raised in a scope that outlives the session (the node's own). Every
-    * case of [[NodeError]] is placed; none defaults to a failure of the peer.
+  /** The outcome for an error raised by the session or a live enclosing node scope. Every case of
+    * [[NodeError]] is placed; none defaults to a failure of the peer.
     */
   def of(error: NodeError): SessionEnd = error match
     case PeerError.InvalidBlock(
@@ -111,11 +111,9 @@ object SessionEnd:
     case e: StorageError          => Storage(e)
     case other                    => Internal(other)
 
-  /** `body` as a session: in an error scope of its own that has the outcome as its error, and
-    * finishing with the outcome as a value. `node` is the scope of the whole node, which the rules,
-    * the stores and the follower's other capabilities raise through: their errors are caught here,
-    * in the fiber that met them, and become outcomes ([[of]]); an exception that is not ours is
-    * [[Defect]].
+  /** The session owns a fresh node-error scope for its rule/store operations. The enclosing `node`
+    * scope remains live for compatibility with other enclosing services; its errors are caught in
+    * the session that meets them. Neither scope turns an unexpected exception into a peer failure.
     */
   def scoped[F[_]: MonadThrow: Defer](node: Handle[F, NodeError])(
       body: (Handle[F, SessionEnd], Handle[F, NodeError]) ?=> F[SessionEnd]

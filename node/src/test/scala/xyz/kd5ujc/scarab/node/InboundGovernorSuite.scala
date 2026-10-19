@@ -3,15 +3,7 @@ package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, Compute, VolatileChain}
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
-import xyz.kd5ujc.scarab.ledger.{
-  Block,
-  ChainError,
-  Header,
-  HeaderError,
-  NodeError,
-  PeerError,
-  Points
-}
+import xyz.kd5ujc.scarab.ledger.{Block, Header, HeaderError, NodeError, PeerError, Points}
 import cats.effect.{IO, Ref, Resource}
 import cats.mtl.{Handle, Stateful}
 import cats.syntax.all.*
@@ -57,11 +49,12 @@ class InboundGovernorSuite extends FailsOnUncaught:
       server <- ChainServer.open[IO](
         None,
         None,
-        ChainServer.headerOfBlock(ForgedChain.geometry.byron.epochSlots)
+        ChainServer.headerOfBlock(ForgedChain.geometry.byron.epochSlots),
+        failure => IO.raiseError(new AssertionError(failure.message))
       )
       extend = (more: Vector[Bytes]) =>
         Handle
-          .allow[ChainError] {
+          .allow[xyz.kd5ujc.scarab.ledger.NodeError] {
             more.traverse_ { raw =>
               val header =
                 Block.decodeShelley(raw).toOption.get.asInstanceOf[Block.Shelley].header

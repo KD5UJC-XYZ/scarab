@@ -7,7 +7,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef}
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
-import xyz.kd5ujc.scarab.ledger.{Block, ChainError}
+import xyz.kd5ujc.scarab.ledger.{Block}
 import xyz.kd5ujc.scarab.network.{ServerHandlers, TxSubmissionServer}
 import xyz.kd5ujc.scarab.node.forge.ForgedChain
 import xyz.kd5ujc.scarab.node.relay.ChainServer
@@ -20,10 +20,11 @@ object ServedChain:
       server <- ChainServer.open[IO](
         None,
         None,
-        ChainServer.headerOfBlock(ForgedChain.geometry.byron.epochSlots)
+        ChainServer.headerOfBlock(ForgedChain.geometry.byron.epochSlots),
+        failure => IO.raiseError(new AssertionError(failure.message))
       )
       _ <- Handle
-        .allow[ChainError] {
+        .allow[xyz.kd5ujc.scarab.ledger.NodeError] {
           forged.raws.traverse_ { raw =>
             val header = Block.decodeShelley(raw).toOption.get.asInstanceOf[Block.Shelley].header
             server

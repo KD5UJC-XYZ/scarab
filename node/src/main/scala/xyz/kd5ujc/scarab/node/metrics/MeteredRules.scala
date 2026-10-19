@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.metrics
 
-import cats.{Defer, Monad}
+import cats.{Defer, MonadThrow}
 import cats.effect.Clock
 import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.ledger.{Header, StorageError, ValidationError}
   * raise, passes through unchanged.
   */
 object MeteredRules:
-  def apply[F[_]: Monad: Clock: Defer, S](rules: BlockRules[F, S])(using
+  def apply[F[_]: MonadThrow: Clock: Defer, S](rules: BlockRules[F, S])(using
       metrics: Metrics[F]
   ): BlockRules[F, S] = new BlockRules[F, S]:
     def apply(state: S, header: Header, block: Bytes)(using
