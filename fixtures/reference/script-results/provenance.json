@@ -21,7 +21,7 @@
     "scripts/oracle/plutus/aggregation/Dockerfile": "2ba4db6bad0b6cdae266ed50fbc47975c7deb582cecc8db7bee21a27863c535b",
     "scripts/oracle/plutus/aggregation/Dockerfile.dockerignore": "4f5048adc98c32015482a9539cc7287b86c7c36aa1652094abcc66617657cfe5",
     "scripts/oracle/plutus/aggregation/prepare.py": "6aeee83de785885c8db18117fd16700fdb2b89ab8a6bd172b96b078457381dd0",
-    "scripts/oracle/plutus/aggregation/run.py": "6340fe885f1392b1ce9ba4ca711131f94e2133b88501446f792f3762122ad8e1"
+    "scripts/oracle/plutus/aggregation/run.py": "e8303b7f79412f39bd6b72298985809f069335e226dff4fc79a2295b45881d9f"
   },
   "scope": {
     "unchangedReleasedApis": true,

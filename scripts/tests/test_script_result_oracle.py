@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Byte-bound provenance and semantic coverage of the independent script-result API corpus."""
 import importlib.util
+import hashlib
 import json
 import subprocess
 from unittest.mock import patch
@@ -80,3 +81,17 @@ class ScriptResultOracleTests(unittest.TestCase):
         self.assertTrue(source['reference']['accepted'])
         self.assertEqual(control['transaction'], source['contextCase']['transaction'])
         self.assertTrue(source['contextCase']['inclusion'])
+
+    def test_stale_executable_is_rejected_even_with_matching_embedded_sources(self):
+        directory = ROOT / 'scripts/oracle/plutus/aggregation'
+        paths = {'Main.hs': '/oracle/aggregation/harness/Main.hs',
+                 'scarab-aggregation-oracle.cabal': '/oracle/aggregation/harness/scarab-aggregation-oracle.cabal',
+                 'cabal.project': '/oracle/aggregation/cabal.project',
+                 'cabal.project.freeze': '/oracle/aggregation/cabal.project.freeze'}
+        rows = [hashlib.sha256((directory / source).read_bytes()).hexdigest() + '  ' + path for source, path in paths.items()]
+        rows.append('0' * 64 + '  /usr/local/bin/scarab-aggregation-oracle')
+        stale = subprocess.CompletedProcess([], 0, stdout='\n'.join(rows) + '\n')
+        with patch.object(RUN, 'image_id', return_value='sha256:' + 'a' * 64):
+            with patch.object(RUN.subprocess, 'run', return_value=stale):
+                with self.assertRaises(ValueError):
+                    RUN.image_binding('stale-binary:local')

@@ -69,6 +69,9 @@ def image_binding(image):
     binary = hashes.get('/usr/local/bin/scarab-aggregation-oracle')
     if binary is None or re.fullmatch('[0-9a-f]{64}', binary) is None:
         raise ValueError('oracle image has no bound executable')
+    expected = json.loads((DIRECTORY / 'provenance.json').read_text())['oracleBinarySha256']
+    if binary != expected:
+        raise ValueError('oracle executable differs from the retained accepted binary')
     return {'imageId': digest, 'imageFilesSha256': hashes}
 
 
