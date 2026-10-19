@@ -156,7 +156,8 @@ inventory SHA-256 `322085ccb0b824c5a778b95f85a75bdb55546881c662c2622da6766acf66f
 Area scenarios ran sequentially because another session occupied the other shared devnet slot. The
 pre-hardening era run was superseded before completion; the accepted run above and final recorded
 comparison use the final source. Owned clusters and build containers are removed after the gates.
-The broader Preview acceptance and nightly reconciliation remain #21.
+The completed Preview reconciliation for #21 and its remaining merge/main-CI gate are recorded
+in the following section.
 
 ### Preview reconciliation gates
 

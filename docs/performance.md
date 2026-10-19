@@ -1870,7 +1870,8 @@ K1 compares the reference's projected fields, rather than complete Haskell-state
 projector omits `NonMyopic` and cost models, pool relays/metadata/reward-account network, and stake
 snapshot fields other than stake, delegations and pool identities; pending reward updates project
 as null. Comparison ignores the top-level era label and rounds floating-point fields to ten decimal
-places. Parameters absent from an era are absent from its projection. These are the existing
+places. Maps above 64 keys are compared by their count, modular SHA-256 sum and 16 digest
+buckets. Parameters absent from an era are absent from its projection. These are the existing
 comparison boundaries, not new masks introduced for the current replay. The historical wrapper
 names reference release 11.1.3, but no immutable historical Docker image ID was recovered.
 
