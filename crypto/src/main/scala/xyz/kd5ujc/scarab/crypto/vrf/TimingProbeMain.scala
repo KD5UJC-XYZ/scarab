@@ -20,7 +20,9 @@ import scala.util.control.NonFatal
   * exceed it by an order of magnitude — the "variable-time, public inputs only" contract of
   * `Draft03Math.java`, which the guard in `scripts/check_crypto_guard.py` enforces. A failed
   * operation is reported and aborts the run: exception handling is not measured as successful
-  * crypto timing.
+  * crypto timing. A repetition whose measured noise floor exceeds the contamination bound (see
+  * below) is retried once and then discarded: on shared or virtualized hosts the floor occasionally
+  * explodes with environmental spikes, and a verdict computed against such a floor is meaningless.
   *
   * Run: `sbt "crypto/runMain xyz.kd5ujc.scarab.crypto.vrf.TimingProbeMain [samples [buckets
   * [repetitions]]]"` on an idle machine, ideally with `-XX:+UseSerialGC -Xbatch`. Protocol and
@@ -157,6 +159,13 @@ object TimingProbeMain:
             if t > 10.0 && t > 5.0 * n then "leak" else "no leak detected"
     println(f"  $name%-52s max|t| = ${if t.isNaN then "    -" else f"$t%6.1f"}  $verdict")
 
+  /** A measured noise floor above this is environmental contamination, not signal: clean floors
+    * were observed at or below ~54 (audit sandbox 18–54, rutherford 45) while contaminated
+    * repetitions read 9,000 to 2e14 (docs/performance.md section 32). Verdicts are noise-relative,
+    * so a verdict computed against a contaminated floor is meaningless — discard and retry instead.
+    */
+  private val ContaminationBound = 1000.0
+
   def main(args: Array[String]): Unit =
     val samples = args.lift(0).flatMap(_.toIntOption).getOrElse(20000)
     val buckets = args.lift(1).flatMap(_.toIntOption).getOrElse(100)
@@ -202,35 +211,53 @@ object TimingProbeMain:
     val uniformRnd: Op = i => outcome(Draft03Math.uniform(inputs(i).bytes).encode().apply(0))
 
     var aborted = false
+    var discarded = 0
     var rep = 1
     while rep <= repetitions && !aborted do
       println(s"--- repetition $rep (samples=$samples, buckets=$buckets) ---")
-      System.gc()
-      val noise = run(noiseFix, noiseRnd, inputs, samples, buckets)
-      if noise.failures > 0 then
-        println(s"aborting: ${noise.failures} failed operations in the noise control")
-        aborted = true
-      else
-        row("noise: basepoint table multiply", noise.t, None)
+      var floor = Double.NaN
+      var attempts = 0
+      while floor.isNaN && attempts < 2 && !aborted do
+        attempts += 1
+        if attempts > 1 then println("  retrying the noise control after a contaminated floor")
+        System.gc()
+        val noise = run(noiseFix, noiseRnd, inputs, samples, buckets)
+        if noise.failures > 0 then
+          println(s"aborting: ${noise.failures} failed operations in the noise control")
+          aborted = true
+        else if noise.t <= ContaminationBound then floor = noise.t
+        else
+          println(
+            f"  contaminated noise floor: max|t| = ${noise.t}%.0f exceeds the contamination bound ($ContaminationBound%.0f); discarding this attempt"
+          )
+      if !aborted && floor.isNaN then
+        discarded += 1
+        println("  repetition discarded: the environment is too noisy for a meaningful verdict")
+      if !aborted && !floor.isNaN then
+        row("noise: basepoint table multiply", floor, None)
         System.gc()
         val point = run(pointMulFix, pointMulRnd, inputs, samples, buckets)
         if point.failures > 0 then
           println(s"aborting: ${point.failures} failed operations in point.multiply")
           aborted = true
         else
-          row("curve25519 point.multiply (secret scalar)", point.t, Some(noise.t))
+          row("curve25519 point.multiply (secret scalar)", point.t, Some(floor))
           System.gc()
           val java = run(javaMulFix, javaMulRnd, inputs, samples, buckets)
           if java.failures > 0 then
             println(s"aborting: ${java.failures} failed operations in scalarMultiply")
             aborted = true
           else
-            row("Ed25519Point.scalarMultiply (secret scalar)", java.t, Some(noise.t))
+            row("Ed25519Point.scalarMultiply (secret scalar)", java.t, Some(floor))
             System.gc()
             val uni = run(uniformFix, uniformRnd, inputs, samples, buckets)
             if uni.failures > 0 then
               println(s"aborting: ${uni.failures} failed operations in uniform")
               aborted = true
-            else row("Draft03Math.uniform (public input)", uni.t, Some(noise.t))
+            else row("Draft03Math.uniform (public input)", uni.t, Some(floor))
       rep += 1
+    if discarded > 0 then
+      println(
+        s"$discarded of $repetitions repetition(s) contaminated and discarded — re-run on a quieter machine"
+      )
     if aborted then sys.exit(1)

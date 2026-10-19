@@ -1821,3 +1821,15 @@ host recorded noise 18.5/53.9, `point.multiply` 24.6/11.0, `scalarMultiply` 693/
 `uniform` 3182 — attributed to that harness, not to the corrected protocol. The probe is a
 manual/nightly tool, not part of `check` (shared CI runners are too noisy).
 
+**Contamination and the discard rule.** On shared or virtualized hosts the noise floor
+occasionally explodes with environmental spikes, and since every verdict is noise-relative,
+a contaminated floor silently inverts verdicts (a genuinely leaky target reads "no leak
+detected" against an absurd floor). Measured floors (2026-10-19, rutherford — Windows + WSL2
++ Docker Desktop, container pinned `--cpuset-cpus` with no `--cpus` quota): clean
+repetitions read at or below ~54, contaminated ones read 9,000 to 2×10¹⁴. Docker CPU quotas
+(`--cpus`) make it worse with periodic CFS stalls, so pin instead of quota. The probe
+therefore discards any repetition whose noise floor exceeds the contamination bound (1,000)
+and retries it once; a discarded repetition emits no verdicts and is counted in the final
+summary. Expect a shared box to contaminate most repetitions — re-run until the wanted
+number of clean repetitions pass, or use a quiet machine.
+
