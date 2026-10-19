@@ -14,6 +14,7 @@ import xyz.kd5ujc.scarab.ledger.{
   DelegFailure,
   GovCertFailure,
   GovAction,
+  GovActionId,
   GovActionState,
   LedgerFailure,
   Mismatch,
@@ -21,7 +22,6 @@ import xyz.kd5ujc.scarab.ledger.{
   PoolParams,
   PredicateFailure,
   ProtocolParams,
-  Proposals,
   RewardAccount,
   Tx,
   TxDefect
@@ -36,15 +36,15 @@ import xyz.kd5ujc.scarab.ledger.state.*
 // key hashes, and the accounts.
 
 /** The environment of CERTS' sub-rules: `CertEnv` (`Cert.hs`) and `ConwayGovCertEnv` (`GovCert.hs`)
-  * in one: the parameters in force, the current epoch, the current committee and the proposals of
-  * the committee's lineage, and the transaction they are for (the failures name it).
+  * in one: the parameters in force, the current epoch, the current committee and exact committee
+  * proposal map, and the transaction they are for (the failures name it).
   */
 final case class CertEnv(
     id: Bytes,
     pp: ProtocolParams,
     epoch: BigInt,
     committee: Option[Committee],
-    proposals: Proposals
+    committeeProposals: Map[GovActionId, GovActionState]
 )
 
 /** `CertsEnv` (`Certs.hs:87`): the transaction too, for the withdrawals the rule drains. */
@@ -594,7 +594,7 @@ object GovCert extends Sts[CertEnv, ConwayCertState, ConwayGovCert, LedgerFailur
         state: CommitteeAuthorization
     ) =
       committeeTransition(
-        CommitteeRuleEnv(id, env.committee, env.proposals.actions.map(g => g.id -> g)),
+        CommitteeRuleEnv(id, env.committee, env.committeeProposals.toVector),
         s,
         cold,
         state

@@ -16,13 +16,13 @@
     "generated": 1,
     "upstreamImplementationAccepted": 1,
     "agdaAccepted": 1,
-    "scarabTypedRuleMatched": 0,
+    "scarabTypedRuleMatched": 1,
     "failed": 0,
-    "unsupported": 1,
+    "unsupported": 0,
     "missing": 0,
-    "scope": "one generated empty certificate vector preserved; no typed match claimed"
+    "scope": "one generated empty certificate vector; full actual CertsEnv decoded and Scarab CERTS matched the complete Haskell state"
   },
-  "unsupportedReason": "The exact CERTS translation exposes epoch, parameters, votes, withdrawals and cold committee credentials; Scarab Certs currently requires transaction proposal procedures for its dormancy/expiry base case. The exported CERTS judgment does not carry those proposal procedures, so the complete typed Scarab input cannot be reconstructed without fabricating a field or narrowing/refactoring the rule boundary.",
+  "adapter": "Scarab decodes all five fields of the actual upstream CertsEnv, including the complete serialized Conway Tx and exact committee proposal map. The related Agda context is checked against the withdrawals and voting procedures decoded from that Tx; all original trace files remain hashed and retained.",
   "runner": {
     "executable": "cardano-ledger-conformance:test:tests",
     "args": [
@@ -39,7 +39,7 @@
       "family": "CERTS",
       "upstreamStatus": "implementation-accepted",
       "agdaStatus": "agda-accepted",
-      "adapterStatus": "unsupported",
+      "adapterStatus": "matched",
       "files": {
         "context.cbor": {
           "bytes": 3,

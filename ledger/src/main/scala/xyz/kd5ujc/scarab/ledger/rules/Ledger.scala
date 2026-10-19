@@ -88,7 +88,13 @@ object Ledger extends Sts[LedgerEnv, ConwayLedger, Tx, LedgerFailure]:
     val epoch = ctx.epoch
     val treasury = env.treasury.value
     val refSize = RefScripts.refScriptsSize(utxo, body)
-    val certEnv = CertEnv(id, pp, epoch, gov.committee, gov.proposals)
+    val certEnv = CertEnv(
+      id,
+      pp,
+      epoch,
+      gov.committee,
+      gov.proposals.actions.map(g => g.id -> g).toMap
+    )
     for
       globals <- Sts.globals[F]
       network = globals.networkId
