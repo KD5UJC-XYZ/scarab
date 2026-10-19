@@ -42,8 +42,10 @@ object Block:
   ):
     lazy val id: Bytes = Blake2b.hash256.hash(body)
 
+  val MaxInputBytes: Int = 2500000
+
   private val limits = Cbor.Limits(
-    maxInputBytes = 2500000,
+    maxInputBytes = MaxInputBytes,
     maxItems = 1000000,
     maxStringBytes = 2500000
   )

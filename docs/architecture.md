@@ -575,22 +575,25 @@ identity, the immutable store's `format` file, every chunk `.index` and every le
 identifiers, per version (`FileKind.identifier`, `ledger/.../PersistedFormat.scala`); a kind has a
 new identifier only at a version at which its layout changed, and `FileKind.current` is the newest:
 
-| file | format 1 (until the rename) | format 2 | format 3 | format 4 | format 5 |
-|---|---|---|---|---|---|
-| `network-identity`, first line | `cardano-scala-lab network identity v1` | `scarab network identity v2` | (as 2) | (as 2) | (as 2) |
-| `immutable/format`, before ` chunkSlots=<n>` | `cardano-scala-lab immutable store v1` | `scarab immutable store v2` | (as 2) | (as 2) | (as 2) |
-| `immutable/<c>.index`, 8-byte magic | `CSLIDX01` | `SCRBIDX2` | (as 2) | (as 2) | (as 2) |
-| `snapshots/snapshot-*.bin`, 8-byte magic | `CSLSNAP1`, number 1 | `CSLSNAP1`, number 2 | `SCRBSNP3` | `SCRBSNP4` | `SCRBSNP5` |
+| file | format 1 (until the rename) | format 2 | format 3 | format 4 | format 5 | format 6 |
+|---|---|---|---|---|---|---|
+| `network-identity`, first line | `cardano-scala-lab network identity v1` | `scarab network identity v2` | (as 2) | (as 2) | (as 2) | `scarab network identity v6` |
+| `immutable/format`, before ` chunkSlots=<n>` | `cardano-scala-lab immutable store v1` | `scarab immutable store v2` | (as 2) | (as 2) | (as 2) | (as 2) |
+| `immutable/<c>.index`, 8-byte magic | `CSLIDX01` | `SCRBIDX2` | (as 2) | (as 2) | (as 2) | (as 2) |
+| `snapshots/snapshot-*.bin`, 8-byte magic | `CSLSNAP1`, number 1 | `CSLSNAP1`, number 2 | `SCRBSNP3` | `SCRBSNP4` | `SCRBSNP5` | (as 5) |
 
-The layouts of the first three are the same in every version; the format version only says which
-build wrote the file. Formats 3 to 5 are the snapshot as the Haskell ledger state plus a sidecar (see
+The immutable format and index layouts are unchanged after the V2 rename. V6 extends the identity
+record with Alonzo/Conway bindings and adoption provenance. Formats 3 to 5 are the snapshot as the
+Haskell ledger state plus a sidecar (see
 "Snapshot format"; 4 and 5 changed the sidecar). The versions are a closed `enum FormatVersion` (a version this build does not
 know cannot be represented) and each kind of file is a `FileKind` with its history of identifiers.
 On open, `Migrate` (storage) runs a `Migration[F]` over the files of a kind: it reads the version of
 every file first (so an unknown version raises `StorageError.UnknownVersion` and nothing has been
 rewritten), then steps each stale file to the next version until it is at the current version of its
-kind (so the 29,031 chunk indexes of a Preview database are not rewritten for a change of the
-snapshots). A step is `AtomicFile.replace`: a temporary file in the same directory, fsync, rename
+kind (or directly to the current version when one converter writes that format; snapshot V1–V4 go
+directly to V5). A kind that is unchanged at global V6 is not rewritten, so a V6 identity update
+does not touch the 29,031 chunk indexes of a Preview database. A step is `AtomicFile.replace`: a
+temporary file in the same directory, fsync, rename
 over the original, fsync of the directory; so a crash leaves every file whole at one version, and the
 next open finishes. The chunk indexes are migrated first and the `format` file last. Each kind
 migrated is reported once (`formatMigrated`); the second open reports nothing. Reading accepts every
@@ -612,24 +615,31 @@ is and reported (`snapshotRefused`), and `restore` skips it as it always skipped
 not read. The UTxO checkpoints are not touched. `scripts/oracle/export.py` reads both index magics.
 
 **Network identity** (`<db>/network-identity`). A plain-text file, written atomically when the
-database is created (the first line is its format identifier, see "Format versions and
-migration"; format 1 began `cardano-scala-lab network identity v1`):
+database is created. V6 is complete; V1 and V2 are retained as explicitly incomplete legacy
+records:
 
 ```
-scarab network identity v2
+scarab network identity v6
 magic 2
 shelley-genesis <blake2b-256 of the Shelley genesis file as read>
 byron-genesis <hash, or none for a chain that starts in Shelley>
+alonzo-genesis file:<blake2b-256 of the exact loaded file bytes>
+conway-genesis file:<blake2b-256 of the exact loaded file bytes>
+provenance fresh
 ```
 
-`ChainStorage.open` compares it with the identity of the genesis directory before anything else is
-opened; a difference raises `StorageError.NetworkMismatch` with both identities in the message (use
-the matching `--genesis-dir` or another `--db`). A database from before this existed has no file:
-if its immutable store holds a block, the first block must name the configured Byron genesis hash as
-its predecessor (none for a Shelley-start chain), else `StorageError.ForeignChain`; then the identity
-is recorded (`networkRecorded` with `adoptedExisting`). An empty database just records it. For a
-Shelley-start network the adoption check cannot tell two networks apart (neither names a hash); it
-then only rules out a Byron-start database.
+`ChainStorage.open` compares the complete record with the identity built from the files node setup
+loaded; a mismatch raises `StorageError.NetworkMismatch` (use the matching `--genesis-dir` or
+another `--db`). V1/V2 records do not contain Alonzo or Conway bindings and are never upgraded
+automatically. A populated legacy identity or an identity-less database requires the explicit
+`--adopt-legacy-network-identity` option. Before it writes a V6 identity, the node checks every
+known legacy field, checks the first immutable block's predecessor when available, and preflights
+snapshot and immutable-format headers read-only. The original legacy identity bytes are retained
+beside the new file; V6 records operator confirmation separately from identity equality and does
+not claim that adoption proves the database's historical genesis. A Shelley-start chain's first
+block has no Byron predecessor, so that check cannot distinguish historical Shelley-start networks.
+Fresh databases receive V6 immediately. Global V6 changes no snapshot or immutable layout, so
+unchanged file kinds are not rewritten.
 
 Tests (`storage/src/test/.../storage`, and `ChainStorageSuite` in `node/src/test`): round-trip properties for every persisted type from generators
 derived by the same `Mirror`s (so new fields are covered automatically), prefix/trailing/random-byte

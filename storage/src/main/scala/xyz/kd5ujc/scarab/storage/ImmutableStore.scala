@@ -20,7 +20,13 @@ import java.util.zip.CRC32
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.consensus.BlockRef
-import xyz.kd5ujc.scarab.ledger.{FileKind, FormatVersion, StorageError}
+import xyz.kd5ujc.scarab.ledger.{
+  Block,
+  FileKind,
+  FirstImmutableProblem,
+  FormatVersion,
+  StorageError
+}
 
 /** Append-only storage of the blocks older than `k`: the ImmutableDB of ouroboros-consensus. */
 trait ImmutableStore[F[_]]:
@@ -108,11 +114,11 @@ object FileImmutableStore:
                 .fold(_.raise[F, FormatVersion], Sync[F].pure)
           }
 
-      def step(file: Path, from: FormatVersion): F[Unit] =
-        from.next.traverse_ { next =>
+      def step(file: Path, from: FormatVersion, to: FormatVersion): F[Unit] =
+        validateStep(file, from, to) *> {
           AtomicFile
             .guard[F, Array[Byte]](file.toString)(JFiles.readAllBytes(file.toNioPath))
-            .flatMap(old => AtomicFile.replace[F](file, magicOf(next) ++ old.drop(HeaderSize)))
+            .flatMap(old => AtomicFile.replace[F](file, magicOf(to) ++ old.drop(HeaderSize)))
         }
 
   /** The `format` file (`<identifier> chunkSlots=<n>`) as a [[Migration]]. Reading it also checks
@@ -149,13 +155,52 @@ object FileImmutableStore:
             }
         }
 
-    def step(file: Path, from: FormatVersion): F[Unit] =
-      from.next.traverse_(next =>
+    def step(file: Path, from: FormatVersion, to: FormatVersion): F[Unit] =
+      validateStep(file, from, to) *> {
         AtomicFile.replace[F](
           file,
-          s"${kind.identifier(next)}$Suffix$chunkSlots\n".getBytes(StandardCharsets.UTF_8)
+          s"${kind.identifier(to)}$Suffix$chunkSlots\n".getBytes(StandardCharsets.UTF_8)
         )
-      )
+      }
+
+  /** Validate immutable format headers without opening the recovery-capable store. Identity
+    * adoption calls this before publishing a new identity, so an unknown or incompatible database
+    * remains byte-for-byte untouched.
+    */
+  private[storage] def preflightReadOnly[F[_]: Sync](dir: Path, chunkSlots: Long)(using
+      Raise[F, StorageError]
+  ): F[Unit] =
+    val format = dir / "format"
+    val formatMigration = FileImmutableStore.formatMigration[F](chunkSlots)
+    val indexMigration = FileImmutableStore.indexMigration[F]
+    AtomicFile.guard[F, Boolean](format.toString)(JFiles.exists(format.toNioPath)).flatMap {
+      exists => if exists then formatMigration.detect(format).void else Sync[F].unit
+    } *> AtomicFile
+      .guard[F, List[Int]](dir.toString) {
+        if !JFiles.isDirectory(dir.toNioPath) then Nil
+        else
+          val stream = JFiles.list(dir.toNioPath)
+          try
+            import scala.jdk.CollectionConverters.*
+            stream
+              .iterator()
+              .asScala
+              .toList
+              .flatMap { file =>
+                val name = file.getFileName.toString
+                Option.when(name.endsWith(".index"))(name.stripSuffix(".index").toIntOption).flatten
+              }
+              .sorted
+          finally stream.close()
+      }
+      .flatMap(_.traverse_ { chunk =>
+        val index = dir / f"$chunk%05d.index"
+        AtomicFile.guard[F, Long](index.toString)(JFiles.size(index.toNioPath)).flatMap { size =>
+          if size < HeaderSize || (size - HeaderSize) % EntrySize != 0 then
+            StorageError.FirstImmutable(FirstImmutableProblem.InvalidIndexEntry).raise[F, Unit]
+          else indexMigration.detect(index).void
+        }
+      })
 
   private[storage] final case class Entry(offset: Long, length: Int, crc: Int, ref: BlockRef):
     def end: Long = offset + length
@@ -180,7 +225,7 @@ object FileImmutableStore:
     b.position(b.position() + 3)
     Entry(offset, length, crc, BlockRef(slot, Bytes.fromArray(hash), blockNo, (flags & 1) != 0))
 
-  private def crcOf(a: Array[Byte], from: Int, len: Int): Int =
+  private[storage] def crcOf(a: Array[Byte], from: Int, len: Int): Int =
     val c = new CRC32()
     c.update(a, from, len)
     c.getValue.toInt
@@ -191,6 +236,102 @@ object FileImmutableStore:
       val count = (index.length - HeaderSize) / EntrySize
       val b = ByteBuffer.wrap(index, HeaderSize, count * EntrySize)
       Vector.fill(count)(decode(b))
+
+  /** Read the first immutable block without opening the mutable store or running tail recovery.
+    * Used by identity admission when an operator confirms a populated database with no identity.
+    */
+  private[storage] def firstBlockReadOnly[F[_]: Sync](dir: Path)(using
+      Raise[F, StorageError]
+  ): F[Option[Bytes]] =
+    @annotation.tailrec
+    def readFully(channel: FileChannel, buffer: ByteBuffer, position: Long): Boolean =
+      if !buffer.hasRemaining then true
+      else
+        val read = channel.read(buffer, position)
+        if read <= 0 then false else readFully(channel, buffer, position + read)
+
+    def readChunk(root: java.nio.file.Path, chunk: Int): Either[StorageError, Option[Bytes]] =
+      val indexPath = root.resolve(f"$chunk%05d.index")
+      val invalid = StorageError.FirstImmutable(FirstImmutableProblem.InvalidIndexEntry)
+      val index = FileChannel.open(indexPath, StandardOpenOption.READ)
+      try
+        val indexSize = index.size()
+        if indexSize < HeaderSize || (indexSize - HeaderSize) % EntrySize != 0 then Left(invalid)
+        else
+          val header = ByteBuffer.allocate(HeaderSize)
+          if !readFully(index, header, 0L) then Left(invalid)
+          else
+            val magic = new String(header.array(), StandardCharsets.ISO_8859_1)
+            FileKind.IndexFile.versionOf(indexPath.toString, magic).flatMap { _ =>
+              if indexSize == HeaderSize then Right(None)
+              else
+                val entryBytes = ByteBuffer.allocate(EntrySize)
+                if !readFully(index, entryBytes, HeaderSize.toLong) then Left(invalid)
+                else
+                  val entry = decode(ByteBuffer.wrap(entryBytes.array()))
+                  if entry.offset < 0 || entry.length <= 0 ||
+                    entry.length > Block.MaxInputBytes ||
+                    entry.offset > Long.MaxValue - entry.length.toLong
+                  then Left(invalid)
+                  else
+                    val dataPath = root.resolve(f"$chunk%05d.chunk")
+                    if !JFiles.isRegularFile(dataPath) then
+                      Left(StorageError.FirstImmutable(FirstImmutableProblem.MissingChunk))
+                    else
+                      val data = FileChannel.open(dataPath, StandardOpenOption.READ)
+                      try
+                        val end = entry.offset + entry.length.toLong
+                        if end > data.size() then Left(invalid)
+                        else
+                          val block = ByteBuffer.allocate(entry.length)
+                          if !readFully(data, block, entry.offset) then Left(invalid)
+                          else
+                            val bytes = block.array()
+                            if crcOf(bytes, 0, bytes.length) != entry.crc then
+                              Left(
+                                StorageError.FirstImmutable(FirstImmutableProblem.ChecksumMismatch)
+                              )
+                            else Right(Some(Bytes.fromArray(bytes)))
+                      finally data.close()
+            }
+      finally index.close()
+
+    def scan: Either[StorageError, Option[Bytes]] =
+      val root = dir.toNioPath
+      if !JFiles.isDirectory(root) then Right(None)
+      else
+        val names =
+          val stream = JFiles.list(root)
+          try
+            import scala.jdk.CollectionConverters.*
+            stream.iterator().asScala.map(_.getFileName.toString).toList
+          finally stream.close()
+        val chunks = names
+          .collect {
+            case name if name.endsWith(".index") => name.stripSuffix(".index").toIntOption
+          }
+          .flatten
+          .sorted
+        val indexed = chunks.toSet
+        val orphanedData = names.exists { name =>
+          name.endsWith(".chunk") &&
+          name.stripSuffix(".chunk").toIntOption.exists(chunk => !indexed.contains(chunk))
+        }
+        if orphanedData then
+          Left(StorageError.FirstImmutable(FirstImmutableProblem.InvalidIndexEntry))
+        else
+          cats.Monad[[A] =>> Either[StorageError, A]].tailRecM[List[Int], Option[Bytes]](chunks) {
+            case Nil => Right(Right(None))
+            case chunk :: rest =>
+              readChunk(root, chunk).flatMap {
+                case found @ Some(_) => Right(Right(found))
+                case None            => Right(Left(rest))
+              }
+          }
+
+    AtomicFile
+      .guard[F, Either[StorageError, Option[Bytes]]](dir.toString)(scan)
+      .flatMap(_.fold(_.raise[F, Option[Bytes]], Sync[F].pure))
 
   private final class Current[F[_]](
       val chunk: Int,

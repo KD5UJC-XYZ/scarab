@@ -10,8 +10,20 @@ import munit.{CatsEffectSuite, ScalaCheckSuite}
 import org.scalacheck.{Gen, Prop}
 import org.scalacheck.Prop.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{FileKind, FormatVersion, NetworkIdentity, StorageError}
+import xyz.kd5ujc.scarab.crypto.Blake2b
+import xyz.kd5ujc.scarab.ledger.{
+  Block,
+  FileKind,
+  FormatVersion,
+  FirstImmutableProblem,
+  IdentityProvenance,
+  LegacyNetworkIdentity,
+  NetworkIdentity,
+  StorageError,
+  StoredNetworkIdentity
+}
 import xyz.kd5ujc.scarab.protocol.ChainSync
+import xyz.kd5ujc.scarab.consensus.BlockRef
 
 import StorageTestKit.*
 
@@ -249,55 +261,250 @@ class FormatMigrationSuite extends CatsEffectSuite with ScalaCheckSuite:
     }
   }
 
+  test("read-only first-block lookup crosses empty chunks without reading whole chunk files") {
+    tempDir.use { dir =>
+      val (firstRef, firstRaw) = block(0)
+      val (laterRef, laterRaw) = block(1)
+      def index(chunk: Int) = dir / f"$chunk%05d.index"
+      def data(chunk: Int) = dir / f"$chunk%05d.chunk"
+      def entry(ref: BlockRef, raw: Bytes): Array[Byte] =
+        val crc = new java.util.zip.CRC32()
+        crc.update(raw.toArray)
+        FileImmutableStore.encode(
+          FileImmutableStore.Entry(0L, raw.size, crc.getValue.toInt, ref)
+        )
+      for
+        _ <- IO(JFiles.createDirectories(dir.toNioPath))
+        _ <- IO(JFiles.write(index(0).toNioPath, FileImmutableStore.IndexMagic))
+        _ <- IO(JFiles.write(data(1).toNioPath, laterRaw.toArray))
+        _ <- IO(
+          JFiles.write(
+            index(1).toNioPath,
+            FileImmutableStore.IndexMagic ++ entry(laterRef, laterRaw)
+          )
+        )
+        afterEmpty <- ok(FileImmutableStore.firstBlockReadOnly[IO](dir))
+        _ <- IO(assertEquals(afterEmpty, Some(laterRaw)))
+        _ <- IO(JFiles.write(data(0).toNioPath, firstRaw.toArray))
+        _ <- IO(
+          JFiles.write(
+            index(0).toNioPath,
+            FileImmutableStore.IndexMagic ++ entry(firstRef, firstRaw)
+          )
+        )
+        _ <- IO.blocking {
+          val channel = java.nio.channels.FileChannel.open(
+            data(0).toNioPath,
+            java.nio.file.StandardOpenOption.WRITE
+          )
+          try
+            channel.position(128L * 1024 * 1024 - 1)
+            channel.write(java.nio.ByteBuffer.wrap(Array[Byte](0)))
+          finally channel.close()
+        }
+        bounded <- ok(FileImmutableStore.firstBlockReadOnly[IO](dir))
+        _ <- IO(assertEquals(bounded, Some(firstRaw)))
+      yield ()
+    }
+  }
+
+  test("read-only first-block lookup refuses truncated indexes and missing referenced chunks") {
+    tempDir.use { dir =>
+      val (ref, raw) = block(0)
+      val index = dir / "00000.index"
+      val data = dir / "00000.chunk"
+      val crc = new java.util.zip.CRC32()
+      crc.update(raw.toArray)
+      val entry = FileImmutableStore.encode(
+        FileImmutableStore.Entry(0L, raw.size, crc.getValue.toInt, ref)
+      )
+      for
+        _ <- IO(JFiles.createDirectories(dir.toNioPath))
+        _ <- IO(
+          JFiles.write(
+            index.toNioPath,
+            FileImmutableStore.IndexMagic ++ entry.take(13)
+          )
+        )
+        truncated <- attempt(FileImmutableStore.firstBlockReadOnly[IO](dir))
+        _ <- IO(
+          assert(
+            truncated.left.exists(_.isInstanceOf[StorageError.FirstImmutable]),
+            truncated.toString
+          )
+        )
+        _ <- IO(JFiles.write(index.toNioPath, FileImmutableStore.IndexMagic ++ entry))
+        missing <- attempt(FileImmutableStore.firstBlockReadOnly[IO](dir))
+        _ <- IO {
+          assert(
+            missing.left.exists {
+              case StorageError.FirstImmutable(FirstImmutableProblem.MissingChunk) => true
+              case _                                                               => false
+            },
+            missing.toString
+          )
+        }
+        _ <- IO {
+          val tooLarge = FileImmutableStore.encode(
+            FileImmutableStore.Entry(0L, Block.MaxInputBytes + 1, 0, ref)
+          )
+          JFiles.write(index.toNioPath, FileImmutableStore.IndexMagic ++ tooLarge)
+          val channel = java.nio.channels.FileChannel.open(
+            data.toNioPath,
+            java.nio.file.StandardOpenOption.CREATE,
+            java.nio.file.StandardOpenOption.WRITE,
+            java.nio.file.StandardOpenOption.TRUNCATE_EXISTING
+          )
+          try
+            channel.position(Block.MaxInputBytes.toLong)
+            channel.write(java.nio.ByteBuffer.wrap(Array[Byte](0)))
+          finally channel.close()
+        }
+        oversized <- attempt(FileImmutableStore.firstBlockReadOnly[IO](dir))
+        _ <- IO {
+          assert(
+            oversized.left.exists {
+              case StorageError.FirstImmutable(FirstImmutableProblem.InvalidIndexEntry) => true
+              case _                                                                    => false
+            },
+            oversized.toString
+          )
+        }
+      yield ()
+    }
+  }
+
   // ---------------------------------------------------------------- the network identity file
 
   private val identity = NetworkIdentity(
     42L,
     Bytes.fromArray(Array.tabulate[Byte](32)(_.toByte)),
-    Some(Bytes.fromArray(Array.tabulate[Byte](32)(i => (i + 1).toByte)))
+    Some(Bytes.fromArray(Array.tabulate[Byte](32)(i => (i + 1).toByte))),
+    xyz.kd5ujc.scarab.ledger.GenesisFileHash(
+      Bytes.fromArray(Array.tabulate[Byte](32)(i => (i + 2).toByte))
+    ),
+    xyz.kd5ujc.scarab.ledger.GenesisFileHash(
+      Bytes.fromArray(Array.tabulate[Byte](32)(i => (i + 3).toByte))
+    )
   )
   private val v1Header = "cardano-scala-lab network identity v1"
 
   test("the identity text of each version round trips and carries its version") {
     assertEquals(identity.renderAs(FormatVersion.V1).linesIterator.next(), v1Header)
-    assertEquals(identity.render.linesIterator.next(), "scarab network identity v2")
+    assertEquals(identity.render.linesIterator.next(), "scarab network identity v6")
     for v <- FileKind.IdentityFile.history.toList.map(_._1) do
-      assertEquals(NetworkIdentity.parseVersioned("f", identity.renderAs(v)), Right((v, identity)))
+      val expected =
+        if v == FormatVersion.V6 then
+          StoredNetworkIdentity.Complete(identity, IdentityProvenance.Fresh)
+        else StoredNetworkIdentity.Legacy(v, identity.legacy)
+      assertEquals(NetworkIdentity.parseVersioned("f", identity.renderAs(v)), Right((v, expected)))
       val shelleyOnly = identity.copy(byronGenesis = None)
-      assertEquals(NetworkIdentity.parse("f", shelleyOnly.renderAs(v)), Right(shelleyOnly))
-    val unknown = identity.render.replace("v2", "v9")
+      val expectedShelleyOnly =
+        if v == FormatVersion.V6 then
+          StoredNetworkIdentity.Complete(shelleyOnly, IdentityProvenance.Fresh)
+        else
+          StoredNetworkIdentity.Legacy(v, LegacyNetworkIdentity(42L, identity.shelleyGenesis, None))
+      assertEquals(NetworkIdentity.parse("f", shelleyOnly.renderAs(v)), Right(expectedShelleyOnly))
+    val unknown = identity.render.replace("v6", "v9")
     assert(
       NetworkIdentity.parse("f", unknown).left.exists(_.isInstanceOf[StorageError.UnknownVersion])
     )
     assert(
       NetworkIdentity.parse("f", "garbage").left.exists(_.isInstanceOf[StorageError.Corrupt[?]])
     )
+    assert(
+      NetworkIdentity
+        .parse(
+          "f",
+          identity.render.replace(
+            "provenance fresh",
+            "provenance operator-confirmed-legacy:v2:none"
+          )
+        )
+        .left
+        .exists(_.isInstanceOf[StorageError.Corrupt[?]])
+    )
+    assert(
+      NetworkIdentity
+        .parse(
+          "f",
+          identity.render.replace(
+            "provenance fresh",
+            "provenance operator-confirmed-legacy:missing:blake2b256=" + "00" * 32
+          )
+        )
+        .left
+        .exists(_.isInstanceOf[StorageError.Corrupt[?]])
+    )
   }
 
-  test("a version 1 identity file is migrated once, atomically, and still names the same network") {
+  test(
+    "a legacy identity is incomplete until explicitly adopted, and its original bytes are backed up"
+  ) {
     tempDir.use { dir =>
       val file = dir / NetworkIdentityFile.FileName
+      val legacy = identity.renderAs(FormatVersion.V2)
+      val backup = dir / s"${NetworkIdentityFile.FileName}.legacy-v2"
       for
         _ <- IO(
           JFiles.write(
             file.toNioPath,
-            identity.renderAs(FormatVersion.V1).getBytes(StandardCharsets.UTF_8)
+            legacy.getBytes(StandardCharsets.UTF_8)
           )
         )
         read <- ok(NetworkIdentityFile.read[IO](dir))
-        migrated <- ok(NetworkIdentityFile.migrate[IO](dir))
-        again <- ok(NetworkIdentityFile.migrate[IO](dir))
+        refused <- attempt(NetworkIdentityFile.migrate[IO](dir))
+        plan <- ok(
+          NetworkIdentityFile.preflight[IO](dir, identity, populated = true, confirmLegacy = true)
+        )
+        _ <- ok(NetworkIdentityFile.admit[IO](dir, identity, plan))
+        second <- ok(
+          NetworkIdentityFile.preflight[IO](dir, identity, populated = true, confirmLegacy = true)
+        )
+        _ <- ok(NetworkIdentityFile.admit[IO](dir, identity, second))
         verified <- ok(NetworkIdentityFile.verify[IO](dir, identity))
         _ <- IO {
-          assertEquals(read, Some(identity)) // a version 1 file is read as it is
-          assertEquals(
-            migrated,
-            List(Migrated(FileKind.IdentityFile, FormatVersion.V1, FormatVersion.V2, 1))
-          )
-          assertEquals(again, Nil)
+          assertEquals(read, Some(StoredNetworkIdentity.Legacy(FormatVersion.V2, identity.legacy)))
+          assert(refused.left.exists(_.isInstanceOf[StorageError.LegacyIdentityNeedsConfirmation]))
           assert(verified)
-          assertEquals(text(file), identity.render)
+          val provenance = IdentityProvenance.OperatorConfirmedLegacy(
+            FormatVersion.V2,
+            Blake2b.hash256.hash(Bytes.fromArray(legacy.getBytes(StandardCharsets.UTF_8)))
+          )
+          assertEquals(text(file), identity.renderAs(FormatVersion.V6, provenance))
+          assertEquals(text(backup), legacy)
           assert(!JFiles.exists(dir.toNioPath.resolve(NetworkIdentityFile.FileName + ".tmp")))
+        }
+      yield ()
+    }
+  }
+
+  test("legacy adoption refuses a backup that aliases or differs from the original identity") {
+    tempDir.use { dir =>
+      val file = dir / NetworkIdentityFile.FileName
+      val backup = dir / s"${NetworkIdentityFile.FileName}.legacy-v2"
+      val legacy = identity.renderAs(FormatVersion.V2)
+      val legacyBytes = legacy.getBytes(StandardCharsets.UTF_8)
+      for
+        _ <- IO(JFiles.write(file.toNioPath, legacyBytes))
+        _ <- IO.blocking(JFiles.createLink(backup.toNioPath, file.toNioPath))
+        plan <- ok(
+          NetworkIdentityFile.preflight[IO](
+            dir,
+            identity,
+            populated = true,
+            confirmLegacy = true
+          )
+        )
+        aliased <- attempt(NetworkIdentityFile.admit[IO](dir, identity, plan))
+        _ <- IO.blocking(JFiles.delete(backup.toNioPath))
+        _ <- IO(JFiles.write(backup.toNioPath, "different".getBytes(StandardCharsets.UTF_8)))
+        different <- attempt(NetworkIdentityFile.admit[IO](dir, identity, plan))
+        _ <- IO {
+          assert(aliased.left.exists(_.isInstanceOf[StorageError.IdentityBackupConflict]))
+          assert(different.left.exists(_.isInstanceOf[StorageError.IdentityBackupConflict]))
+          assertEquals(text(file), legacy)
+          assertEquals(text(backup), "different")
         }
       yield ()
     }
@@ -306,7 +513,7 @@ class FormatMigrationSuite extends CatsEffectSuite with ScalaCheckSuite:
   test("an identity file of an unknown version is refused and left alone") {
     tempDir.use { dir =>
       val file = dir / NetworkIdentityFile.FileName
-      val unknown = identity.render.replace("v2", "v9")
+      val unknown = identity.render.replace("v6", "v9")
       for
         _ <- IO(JFiles.write(file.toNioPath, unknown.getBytes(StandardCharsets.UTF_8)))
         r <- attempt(NetworkIdentityFile.migrate[IO](dir))
@@ -320,7 +527,9 @@ class FormatMigrationSuite extends CatsEffectSuite with ScalaCheckSuite:
 
   // ---------------------------------------------------------------- the generic algebra
 
-  /** Files held in memory as the version they are at; a step moves one file up by one version. */
+  /** Files held in memory as the version they are at; a step moves each file to its next changed
+    * version, skipping shared database versions that did not alter this kind.
+    */
   private def inMemory(
       of: FileKind,
       state: Ref[IO, Map[Path, FormatVersion]],
@@ -328,9 +537,9 @@ class FormatMigrationSuite extends CatsEffectSuite with ScalaCheckSuite:
   ): Migration[IO] = new Migration[IO]:
     val kind = of
     def detect(file: Path) = state.get.map(_(file))
-    def step(file: Path, from: FormatVersion) =
+    def step(file: Path, from: FormatVersion, to: FormatVersion) =
       stepped.update(_ :+ (file -> from)) *>
-        from.next.traverse_(next => state.update(_.updated(file, next)))
+        state.update(_.updated(file, to))
 
   property(
     "Migrate brings every file to the current version, steps each stale file once, reports the stale count"
@@ -338,7 +547,7 @@ class FormatMigrationSuite extends CatsEffectSuite with ScalaCheckSuite:
     forAll(
       Gen.oneOf(FileKind.values.toList).flatMap { kind =>
         Gen
-          .listOf(Gen.oneOf(FormatVersion.values.toList.filter(_ <= kind.current)))
+          .listOf(Gen.oneOf(kind.history.toList.map(_._1)))
           .map(kind -> _)
       }
     ) { case (kind, versions) =>
@@ -357,7 +566,11 @@ class FormatMigrationSuite extends CatsEffectSuite with ScalaCheckSuite:
       Prop(after.values.forall(_ == current)) :| "all current" &&
       (report.map(_.count).sum ?= stale) :| "count" &&
       (steps.size ?= versions
-        .map(v => current.ordinal - v.ordinal)
+        .map(v =>
+          kind.history.toList.count { case (changed, _) =>
+            v.ordinal < changed.ordinal && changed.ordinal <= current.ordinal
+          }
+        )
         .sum) :| "steps" &&
       (Migrate(inMemory2(kind, after), paths).unsafeRunSync() ?= Nil) :| "idempotent"
     }
@@ -367,5 +580,13 @@ class FormatMigrationSuite extends CatsEffectSuite with ScalaCheckSuite:
     new Migration[IO]:
       val kind = of
       def detect(file: Path) = IO.pure(after(file))
-      def step(file: Path, from: FormatVersion) =
+      def step(file: Path, from: FormatVersion, to: FormatVersion) =
         IO.raiseError(new AssertionError("nothing is stale"))
+
+  test("global V6 changes only identity; each kind at its current layout is a no-op") {
+    assertEquals(FileKind.IdentityFile.current, FormatVersion.V6)
+    assertEquals(FileKind.SnapshotFile.current, FormatVersion.V5)
+    assertEquals(FileKind.FormatFile.current, FormatVersion.V2)
+    assertEquals(FileKind.IndexFile.current, FormatVersion.V2)
+    FileKind.values.foreach(kind => assertEquals(kind.nextChangedVersion(kind.current), None))
+  }

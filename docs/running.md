@@ -122,19 +122,24 @@ Caveats:
   lease file in place after the process exits: unlinking it can split ownership between two inodes.
   This coordinates new Scarab followers and import commands, not older Scarab or Haskell writers.
 
-- A `--db` records the network it was created for (`<db>/network-identity`: magic and the Shelley and
-  Byron genesis hashes) and refuses to open with another genesis directory: `error` event `kind`
-  `NetworkMismatch`, "the database belongs to another network: it was created for magic ..., this node
-  is configured for magic ...". A database from before the file existed is adopted if its first block
-  names the configured Byron genesis hash (`ForeignChain` otherwise); on a Shelley-start network that
-  check cannot tell two networks apart. The devnet rewrites its genesis at every cluster start, so a
-  `--db` of an earlier cluster is refused too.
+- A `--db` records the network it was created for (`<db>/network-identity`). Format V6 binds the
+  protocol magic, Byron and Shelley genesis hashes, and BLAKE2b-256 of the exact loaded Alonzo and
+  Conway genesis bytes. A mismatch refuses to open with `NetworkMismatch`. V1/V2 identity records
+  lack the Alonzo and Conway bindings and are never upgraded automatically. A populated legacy
+  identity or database without an identity requires `--adopt-legacy-network-identity`; the original
+  legacy identity bytes are retained beside the new file, and the recorded operator confirmation is
+  not historical proof. Before adoption, the node checks every known identity field, the first
+  immutable block when available, all snapshot headers, and immutable format/index headers. Any
+  refusal happens before RocksDB, recovery or format migration. A pre-identity Shelley-start database
+  cannot be historically distinguished from another network with the same first-block predecessor.
+  The devnet rewrites its genesis at every cluster start, so a `--db` of an earlier cluster is refused too.
 - A database written before the rename (format 1: `cardano-scala-lab ...` identifiers, index magic
-  `CSLIDX01`) is migrated to format 2 the first time it opens: the identity file, every chunk index and the
+  `CSLIDX01`) is migrated to format 2 the first time it opens: every chunk index and the
   `format` file are rewritten one by one (temporary file, fsync, rename), `formatMigrated` events say what,
   and the second open does nothing. A crash in the middle is harmless, the next open finishes. The
-  migration is one way and an older build cannot open the result: keep a copy (the chunk files are not
-  touched, so copying `network-identity`, `immutable/format` and `immutable/*.index` is enough to go back).
+  migration is one way and an older build cannot open the result: preserve a consistent database copy
+  before first open if rollback matters. The identity file is separately backed up during explicit
+  legacy adoption.
   A database of a format newer than the build refuses to open (`UnknownVersion`) and nothing is rewritten.
 - The ledger snapshots are format 5 since J2.9 (format 4 was the sidecar with the old rules' flat
   state in it; format 3 was the first with the Haskell ledger state plus a sidecar,
@@ -960,7 +965,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `immutableOpened` | `Storage.ImmutableOpened` | Info | `tip`, `blocks`, `chunks`, `truncatedEntries`, `truncatedBytes` |
 | `volatileOpened` | `Storage.VolatileOpened` | Info | `blocks`, `files`, `truncatedBytes`, `removedFiles` |
 | `volatileResumed` | `Storage.VolatileResumed` | Info | `resumed`, `dropped`, `millis` |
-| `networkRecorded` | `Storage.NetworkRecorded` | Info | `magic`, `shelleyGenesis`, `byronGenesis`, `adoptedExisting` |
+| `networkRecorded` | `Storage.NetworkRecorded` | Info | `magic`, `shelleyGenesis`, `byronGenesis`, `alonzoGenesis`, `conwayGenesis`, `adoptedExisting` |
 | `snapshotSkipped` | `Storage.SnapshotSkipped` | Warning | `file`, `reason` |
 | `snapshotRestored` | `Storage.SnapshotRestored` | Info | `file`, `anchor` |
 | `snapshotWritten` | `Storage.SnapshotWritten` | Info | `file`, `anchor`, `bytes`, `millis` |

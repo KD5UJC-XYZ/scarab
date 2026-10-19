@@ -371,6 +371,26 @@ class SnapshotV5Suite extends CatsEffectSuite:
     }
   }
 
+  test("the generic migration runner takes a legacy snapshot directly to V5") {
+    tempDir.use { dir =>
+      val l = flats.last
+      for
+        names <- writeV2(dir, Vector(l))
+        file = dir / names.head
+        report <- ok(Migrate(migration, List(file)))
+        version <- ok(migration.detect(file))
+        back <- restoreAll(dir)
+      yield
+        assertEquals(
+          report,
+          List(Migrated(FileKind.SnapshotFile, FormatVersion.V2, FormatVersion.V5, 1))
+        )
+        assertEquals(version, FormatVersion.V5)
+        assertEquals(back.map(_.anchor), List(l.anchor))
+        sameState(back.head.state, expectedOf(l).state, "generic V2-to-V5 migration")
+    }
+  }
+
   test("version 1 snapshots (the former package names) are migrated through version 2") {
     tempDir.use { dir =>
       val l = flats.last

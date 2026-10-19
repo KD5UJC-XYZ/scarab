@@ -2,6 +2,7 @@
 
 - **Status**: Accepted
 - **Date**: 2026-10-15
+- **Amended**: 2026-10-18 (#159 complete database identity)
 - **Issue**: [#83](https://github.com/KD5UJC-XYZ/scarab/issues/83)
 
 ## Context
@@ -16,7 +17,9 @@ it knows and migrates older files to the current one when it opens them, one fil
 atomically (write a temporary file, fsync, rename), logging each migration. An unknown version refuses
 the open. A migration never invents data: what an old file cannot supply is recorded as a gap and
 reported, and resyncing is the operator's choice, never forced. Migrations are one way; the docs say
-which files to copy to keep an older build working.
+which files to copy to keep an older build working. Global version V6 changes only the network
+identity record: it binds the loaded Byron, Shelley, Alonzo and Conway genesis inputs. Incomplete V1/V2
+identity records require explicit operator-confirmed adoption and retain their original bytes.
 
 ## Consequences
 

@@ -165,6 +165,12 @@ object Traced:
         "magic" -> id.magic.asJson,
         "shelleyGenesis" -> id.shelleyGenesis.hex.asJson,
         "byronGenesis" -> id.byronGenesis.map(_.hex).asJson,
+        "alonzoGenesis" -> xyz.kd5ujc.scarab.ledger.NetworkIdentity
+          .renderGenesisHash(id.alonzoGenesis)
+          .asJson,
+        "conwayGenesis" -> xyz.kd5ujc.scarab.ledger.NetworkIdentity
+          .renderGenesisHash(id.conwayGenesis)
+          .asJson,
         "adoptedExisting" -> adopted.asJson
       )
     case StorageEvent.VolatileOpened(r) =>

@@ -351,7 +351,13 @@ object LogSamples:
   )
 
   val anchor: Option[BlockRef] = Some(block)
-  val network: NetworkIdentity = NetworkIdentity(42L, hash, Some(hash))
+  val network: NetworkIdentity = NetworkIdentity(
+    42L,
+    hash,
+    Some(hash),
+    xyz.kd5ujc.scarab.ledger.GenesisFileHash(hash),
+    xyz.kd5ujc.scarab.ledger.GenesisFileHash(hash)
+  )
   val storage: List[StorageEvent] = List(
     StorageEvent.ImmutableOpened(ImmutableStore.OpenReport(anchor, 100L, 2, 1, 64L)),
     StorageEvent.ImmutableOpened(ImmutableStore.OpenReport(None, 0L, 0, 0, 0L)),
@@ -375,7 +381,16 @@ object LogSamples:
     StorageEvent.ReplayProgress(block, 1000L, 2000L),
     StorageEvent.ReplayFinished(anchor, 1000L, 2500L),
     StorageEvent.NetworkRecorded(network, adopted = false),
-    StorageEvent.NetworkRecorded(NetworkIdentity(1L, hash, None), adopted = true),
+    StorageEvent.NetworkRecorded(
+      NetworkIdentity(
+        1L,
+        hash,
+        None,
+        xyz.kd5ujc.scarab.ledger.GenesisFileHash(hash),
+        xyz.kd5ujc.scarab.ledger.GenesisFileHash(hash)
+      ),
+      adopted = true
+    ),
     StorageEvent.VolatileOpened(VolatileStore.OpenReport(10, 2, 0L, 0)),
     StorageEvent.VolatileResumed(10, 1, 300L),
     StorageEvent.ShutdownSnapshot(anchor, written = true)

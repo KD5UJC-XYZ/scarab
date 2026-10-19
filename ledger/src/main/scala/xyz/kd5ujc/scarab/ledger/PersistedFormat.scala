@@ -14,11 +14,12 @@ import cats.data.NonEmptyList
   * identity files; `V3` is the ledger snapshot as the Haskell ledger state plus a sidecar (the
   * chain index is unchanged by it); `V4` is the same layout with the chain-dependent state of the
   * node in the Haskell shape (the sidecar changed, J1.5); `V5` is the same layout with the sidecar
-  * of the era-indexed rules, which keep none of the old rules' bookkeeping (J2.9). New versions are
+  * of the era-indexed rules, which keep none of the old rules' bookkeeping (J2.9); `V6` adds the
+  * complete network identity including Alonzo and Conway genesis bindings. New versions are
   * appended.
   */
 enum FormatVersion derives CanEqual:
-  case V1, V2, V3, V4, V5
+  case V1, V2, V3, V4, V5, V6
 
   /** The version a migration step from this one produces; none for the newest. */
   def next: Option[FormatVersion] = FormatVersion.values.drop(ordinal + 1).headOption
@@ -48,7 +49,8 @@ enum FileKind(
         List("cardano-scala-lab network", "scarab network"),
         NonEmptyList.of(
           FormatVersion.V1 -> "cardano-scala-lab network identity v1",
-          FormatVersion.V2 -> "scarab network identity v2"
+          FormatVersion.V2 -> "scarab network identity v2",
+          FormatVersion.V6 -> "scarab network identity v6"
         )
       )
 
@@ -95,6 +97,12 @@ enum FileKind(
     * a migration brings the files of the kind to.
     */
   def current: FormatVersion = history.last._1
+
+  /** The next version that changes this kind after `from`; shared database versions which did not
+    * alter this file kind are skipped without rewriting it.
+    */
+  def nextChangedVersion(from: FormatVersion): Option[FormatVersion] =
+    history.toList.collectFirst { case (version, _) if from.ordinal < version.ordinal => version }
 
   /** How a file of this kind at version `v` starts. */
   def identifier(v: FormatVersion): String =

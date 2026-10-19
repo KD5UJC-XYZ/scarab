@@ -20,6 +20,7 @@ import xyz.kd5ujc.scarab.storage.{
   ChainPersistence,
   ChainStorage,
   ImmutableStore,
+  NetworkIdentityFile,
   MemoryUtxoStore,
   RocksUtxoStore,
   SnapshotFormat,
@@ -170,7 +171,8 @@ object Main extends IOApp:
         * often and no step waits longer than it (the reference's are 3300 s and 900 s with fuzz and
         * waits of up to 300 s). Off by default.
         */
-      churnInterval: Option[FiniteDuration] = None
+      churnInterval: Option[FiniteDuration] = None,
+      adoptLegacyNetworkIdentity: Boolean = false
   )
 
   val DefaultMempoolBytes: Long = 1048576L
@@ -363,7 +365,25 @@ object Main extends IOApp:
         val ownership = options.db.fold(Resource.unit[IO])(db =>
           xyz.kd5ujc.scarab.storage.DatabaseOwnership.resource[IO](fs2.io.file.Path.fromNioPath(db))
         )
-        (ownership *> (
+        val compatible = Resource.eval(
+          options.db.traverse_(db =>
+            ChainStorage
+              .preflight[IO](
+                fs2.io.file.Path.fromNioPath(db),
+                Some(setup.identity),
+                options.adoptLegacyNetworkIdentity,
+                setup.genesis.geometry.byron.epochSlots
+              )
+              .flatMap(admission =>
+                NetworkIdentityFile.admit[IO](
+                  fs2.io.file.Path.fromNioPath(db),
+                  setup.identity,
+                  admission
+                )
+              )
+          )
+        )
+        (ownership *> compatible *> (
           utxoBacking(options),
           VerificationCache.resource[IO](),
           Scheduling.resource[IO](options.cpuThreads)
@@ -520,7 +540,8 @@ object Main extends IOApp:
               policy,
               options.keepSnapshots,
               byronEpochSlots = genesis.geometry.byron.epochSlots,
-              identity = Some(setup.identity)
+              identity = Some(setup.identity),
+              adoptLegacyNetworkIdentity = options.adoptLegacyNetworkIdentity
             ),
             rules,
             setup.mirrorStart,
@@ -1044,7 +1065,7 @@ object Main extends IOApp:
       values.find(r => argument == s"--${r.flag}")
 
   private val Usage =
-    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>] " + LogSettings.Usage
+    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>] " + LogSettings.Usage
 
   /** Flags that take a value and may repeat. */
   private val RepeatedFlags = Set("peer") ++ LogSettings.RepeatedFlags
@@ -1103,6 +1124,10 @@ object Main extends IOApp:
           if acc.contains("dump-state-full") then
             bad(ConfigProblem.DuplicateFlag("--dump-state-full"))
           else go(tail, acc.updated("dump-state-full", List("true")))
+        case "--adopt-legacy-network-identity" :: tail =>
+          if acc.contains("adopt-legacy-network-identity") then
+            bad(ConfigProblem.DuplicateFlag("--adopt-legacy-network-identity"))
+          else go(tail, acc.updated("adopt-legacy-network-identity", List("true")))
         case flag :: value :: tail if RepeatedFlags(flag.drop(2)) && flag.startsWith("--") =>
           val name = flag.drop(2)
           go(tail, acc.updated(name, acc.getOrElse(name, Nil) :+ value))
@@ -1132,6 +1157,16 @@ object Main extends IOApp:
             dir.isDefined || config.isDefined,
             (),
             ConfigError(ConfigProblem.RequiredOneOf(Set("--genesis-dir", "--config")))
+          )
+          _ <- Either.cond(
+            !flags.contains("adopt-legacy-network-identity") || flags.contains("db"),
+            (),
+            ConfigError(
+              ConfigProblem.WithUsage(
+                ConfigProblem.FlagDependency(Set("--adopt-legacy-network-identity"), "--db"),
+                Usage
+              )
+            )
           )
           peerTexts = multi.getOrElse("peer", Nil)
           _ <- Either.cond(
@@ -1272,5 +1307,8 @@ object Main extends IOApp:
           maxInbound,
           inboundSync,
           log
-        ).copy(churnInterval = churnInterval)
+        ).copy(
+          churnInterval = churnInterval,
+          adoptLegacyNetworkIdentity = flags.contains("adopt-legacy-network-identity")
+        )
       case _ => Left(usage)

@@ -966,5 +966,58 @@ object Targets:
       )
     )
 
+  private val networkIdentity: Vector[Target] =
+    val rawHash = Bytes.fromArray(Array.tabulate[Byte](32)(_.toByte))
+    val identity = NetworkIdentity(
+      42L,
+      Bytes.fromArray(Array.fill[Byte](32)(1)),
+      Some(Bytes.fromArray(Array.fill[Byte](32)(2))),
+      GenesisFileHash(rawHash),
+      GenesisFileHash(Bytes.fromArray(Array.fill[Byte](32)(3)))
+    )
+    val legacyV1 = identity.legacy.renderAs(FormatVersion.V1)
+    val legacyV2 = identity.legacy.renderAs(FormatVersion.V2)
+    val current = identity.renderAs(FormatVersion.V6)
+    val confirmedMissing = identity.renderAs(
+      FormatVersion.V6,
+      IdentityProvenance.OperatorConfirmedMissing
+    )
+    val confirmedLegacy = identity.renderAs(
+      FormatVersion.V6,
+      IdentityProvenance.OperatorConfirmedLegacy(FormatVersion.V2, rawHash)
+    )
+    val malformed = Vector(
+      current.replace(
+        "provenance fresh",
+        "provenance operator-confirmed-legacy:v3:blake2b256=" + rawHash.hex
+      ),
+      current.replace("provenance fresh", "provenance operator-confirmed-legacy:v2"),
+      current.replace("provenance fresh", "provenance operator-confirmed-legacy:v2:blake2b256=00")
+    )
+    val seeds = Vector(legacyV1, legacyV2, current, confirmedMissing, confirmedLegacy) ++ malformed
+    Vector(
+      Target(
+        "network-identity-file",
+        () => seeds.map(_.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+        probe("network-identity-file") { bytes =>
+          val text = new String(bytes.toArray, java.nio.charset.StandardCharsets.UTF_8)
+          NetworkIdentity.parseVersioned("fuzz identity", text) match
+            case Right(parsed) =>
+              req(!malformed.contains(text), "malformed identity provenance was accepted")
+              hit("network-identity-file")
+              val canonical = parsed._2 match
+                case StoredNetworkIdentity.Legacy(_, value) => value.renderAs(parsed._1)
+                case StoredNetworkIdentity.Complete(value, provenance) =>
+                  value.renderAs(parsed._1, provenance)
+              req(
+                NetworkIdentity.parseVersioned("fuzz identity", canonical) == Right(parsed),
+                "identity parse/render/parse changed its version or stored value"
+              )
+            case Left(_) => req(!seeds.take(5).contains(text), "valid identity seed was refused")
+        }
+      )
+    )
+
   val all: Vector[Target] =
-    network ++ node ++ ledgerPeers ++ mempackTxOut ++ snapshotMeta ++ snapshotTables ++ ancillary ++ mithril
+    network ++ node ++ ledgerPeers ++ mempackTxOut ++ snapshotMeta ++ snapshotTables ++ ancillary ++
+      mithril ++ networkIdentity

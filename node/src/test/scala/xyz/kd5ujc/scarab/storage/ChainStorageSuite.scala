@@ -7,6 +7,7 @@ import cats.effect.std.Queue
 import cats.mtl.{Ask, Handle, Raise, Stateful}
 import cats.syntax.all.*
 import fs2.io.file.{Files, Path}
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files as JFiles
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
@@ -16,7 +17,13 @@ import xyz.kd5ujc.scarab.consensus.FollowerEvents
 import xyz.kd5ujc.scarab.consensus.state.{MirrorState, MirrorStep}
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
-import xyz.kd5ujc.scarab.ledger.{Block, FileKind, FormatVersion}
+import xyz.kd5ujc.scarab.ledger.{
+  Block,
+  FileKind,
+  FormatVersion,
+  IdentityProvenance,
+  StoredNetworkIdentity
+}
 import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.ledger.NetworkIdentity
 import xyz.kd5ujc.scarab.ledger.NodeError
@@ -506,7 +513,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       until: Int,
       every: Int = 120,
       identity: Option[NetworkIdentity] = Some(setup.identity),
-      tap: Int => IO[Unit] = _ => IO.unit
+      tap: Int => IO[Unit] = _ => IO.unit,
+      adoptLegacy: Boolean = false
   ): IO[Session] =
     Ref.of[IO, Vector[StorageEvent]](Vector.empty).flatMap { log =>
       Handle
@@ -522,7 +530,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           ChainStorage
             .open[IO, MirrorState](
               dir,
-              volatileConfig(every, identity),
+              volatileConfig(every, identity).copy(adoptLegacyNetworkIdentity = adoptLegacy),
               nodeRules,
               setup.mirrorStart,
               storageEvents(log),
@@ -801,11 +809,18 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         recorded <- Handle
           .allow[StorageError](NetworkIdentityFile.read[IO](dir).map(_.asRight[StorageError]))
           .rescue(e => IO.pure(e.asLeft))
-        _ <- IO(assertEquals(recorded, Right(Some(id))))
+        _ <- IO(
+          assertEquals(
+            recorded,
+            Right(Some(StoredNetworkIdentity.Complete(id, IdentityProvenance.Fresh)))
+          )
+        )
         _ <- session(dir, 60)
         wrongs = List(
           id.copy(magic = id.magic + 1),
           id.copy(shelleyGenesis = hashOf(1)),
+          id.copy(alonzoGenesis = xyz.kd5ujc.scarab.ledger.GenesisFileHash(hashOf(3))),
+          id.copy(conwayGenesis = xyz.kd5ujc.scarab.ledger.GenesisFileHash(hashOf(4))),
           id.copy(byronGenesis = None),
           id.copy(byronGenesis = Some(hashOf(2)))
         )
@@ -830,7 +845,9 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         _ <- session(root / "old", 120, identity = None)
         _ <- IO(assert(!JFiles.exists((root / "old" / NetworkIdentityFile.FileName).toNioPath)))
         _ <- copyTree(root / "old", root / "foreign")
-        adopted <- session(root / "old", 140)
+        needsConfirmation <- refusal(session(root / "old", 140))
+        _ <- IO(assert(needsConfirmation.contains("contains data but has no network identity")))
+        adopted <- session(root / "old", 140, adoptLegacy = true)
         _ <- IO(assertState(adopted.chain.state, states(140)))
         _ <- IO(
           assertEquals(
@@ -843,7 +860,9 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         other = id.copy(byronGenesis =
           Some(xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(Bytes.fromArray(Array[Byte](9))))
         )
-        message <- refusal(session(root / "foreign", 140, identity = Some(other)))
+        message <- refusal(
+          session(root / "foreign", 140, identity = Some(other), adoptLegacy = true)
+        )
         _ <- IO(assert(message.contains("first block names"), message))
         _ <- IO(
           assert(!JFiles.exists((root / "foreign" / NetworkIdentityFile.FileName).toNioPath))
@@ -856,14 +875,108 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
+  test("identity adoption preflights immutable headers before writing identity or backup") {
+    tempDir.use { root =>
+      val dir = root / "legacy"
+      val identityFile = dir / NetworkIdentityFile.FileName
+      val legacy = setup.identity.renderAs(xyz.kd5ujc.scarab.ledger.FormatVersion.V2)
+      def snapshotTree: IO[Map[String, Vector[Byte]]] = IO.blocking {
+        val walk = JFiles.walk(dir.toNioPath)
+        try
+          walk
+            .iterator()
+            .asScala
+            .filter(JFiles.isRegularFile(_))
+            .map { file =>
+              dir.toNioPath.relativize(file).toString -> JFiles.readAllBytes(file).toVector
+            }
+            .toList
+            .toMap
+        finally walk.close()
+      }
+      def rejectWith(mutator: IO[Unit], expected: String): IO[Unit] =
+        for
+          _ <- session(dir, 650, identity = None)
+          _ <- IO.blocking {
+            val snapshots = dir.toNioPath.resolve("snapshots")
+            val stream = JFiles.list(snapshots)
+            try
+              assert(
+                stream.iterator().asScala.exists { file =>
+                  JFiles.isRegularFile(file) &&
+                  new String(JFiles.readAllBytes(file).take(8), StandardCharsets.ISO_8859_1) ==
+                    "SCRBSNP5"
+                },
+                "expected a current V5 snapshot before the immutable-header refusal"
+              )
+            finally stream.close()
+          }
+          _ <- IO(JFiles.write(identityFile.toNioPath, legacy.getBytes(StandardCharsets.UTF_8)))
+          _ <- mutator
+          before <- snapshotTree
+          message <- refusal(session(dir, 650, adoptLegacy = true))
+          after <- snapshotTree
+          _ <- IO {
+            assert(message.contains(expected), message)
+            assertEquals(after, before)
+            assert(!JFiles.exists(dir.toNioPath.resolve("network-identity.legacy-v2")))
+          }
+        yield ()
+      for
+        _ <- rejectWith(
+          IO {
+            val path = (dir / "immutable" / "00000.index").toNioPath
+            val old = JFiles.readAllBytes(path)
+            JFiles.write(path, "SCRBIDX9".getBytes(StandardCharsets.US_ASCII) ++ old.drop(8))
+          },
+          "unknown chunk index format"
+        )
+        _ <- IO.blocking(RocksUtxoStore.deleteTree(dir.toNioPath))
+        _ <- rejectWith(
+          IO {
+            JFiles.write(
+              (dir / "immutable" / "format").toNioPath,
+              "scarab immutable store v9 chunkSlots=100\n".getBytes(StandardCharsets.UTF_8)
+            )
+          },
+          "unknown immutable store format"
+        )
+      yield ()
+    }
+  }
+
+  test("missing-identity adoption checks the first block beyond an empty earliest chunk") {
+    tempDir.use { dir =>
+      for
+        _ <- session(dir, 140, identity = None)
+        _ <- IO {
+          val index = (dir / "immutable" / "00000.index").toNioPath
+          assert(JFiles.exists((dir / "immutable" / "00001.index").toNioPath))
+          JFiles.write(index, FileImmutableStore.IndexMagic)
+        }
+        message <- refusal(session(dir, 140, adoptLegacy = true))
+        _ <- IO {
+          assert(message.contains("first block names"), message)
+          assert(!JFiles.exists((dir / NetworkIdentityFile.FileName).toNioPath))
+        }
+      yield ()
+    }
+  }
+
   test("network identity text round trips and rejects anything else") {
     val id = setup.identity
-    assertEquals(NetworkIdentity.parse("f", id.render), Right(id))
+    assertEquals(
+      NetworkIdentity.parse("f", id.render),
+      Right(StoredNetworkIdentity.Complete(id, IdentityProvenance.Fresh))
+    )
     val shelleyOnly = id.copy(byronGenesis = None)
-    assertEquals(NetworkIdentity.parse("f", shelleyOnly.render), Right(shelleyOnly))
+    assertEquals(
+      NetworkIdentity.parse("f", shelleyOnly.render),
+      Right(StoredNetworkIdentity.Complete(shelleyOnly, IdentityProvenance.Fresh))
+    )
     assert(NetworkIdentity.parse("f", "garbage").isLeft)
     assert(NetworkIdentity.parse("f", id.render.replace("magic", "magick")).isLeft)
-    assert(NetworkIdentity.parse("f", id.render.replace("v2", "v3")).isLeft)
+    assert(NetworkIdentity.parse("f", id.render.replace("v6", "v3")).isLeft)
   }
 
   // ---- databases the builds of the older snapshot formats wrote (#145) ----

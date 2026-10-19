@@ -17,6 +17,7 @@ import xyz.kd5ujc.scarab.ledger.{
   ConfigError,
   ConfigProblem,
   EpochGeometry,
+  GenesisFileHash,
   Genesis,
   NetworkIdentity,
   ShelleyGenesis
@@ -244,6 +245,8 @@ object NodeSetup:
       byron <-
         if firstShelley.contains(BigInt(0)) then Right(None)
         else ByronGenesisFile.parse(text(byronBytes), config.byronGenesisHash).map(Some(_))
+      alonzoBytes <- required("Alonzo", names.alonzo)
+      conwayBytes <- required("Conway", names.conway)
       prefixed <- Genesis.withByronPrefix(shelleyBase, byron, firstShelley)
       // the Byron genesis of a chain that starts in Shelley is read only for its parameters
       byronParams = byron.orElse(ByronGenesisFile.parse(text(byronBytes), None).toOption)
@@ -259,8 +262,8 @@ object NodeSetup:
       )
       files <- (
         json(names.shelley, shelleyBytes),
-        required("Alonzo", names.alonzo).flatMap(json(names.alonzo, _)),
-        required("Conway", names.conway).flatMap(json(names.conway, _)),
+        json(names.alonzo, alonzoBytes),
+        json(names.conway, conwayBytes),
         byronJson.asRight[ConfigError]
       ).mapN(GenesisState.Files(_, _, _, _, addressMagic))
       globals <- GenesisState.globals(files, genesis)
@@ -316,7 +319,13 @@ object NodeSetup:
         identity = NetworkIdentity(
           genesis.networkMagic,
           Blake2b.hash256.hash(Bytes.fromArray(shelleyBytes)),
-          byron.map(_.hash)
+          byron.map(_.hash),
+          GenesisFileHash(
+            Blake2b.hash256.hash(Bytes.fromArray(alonzoBytes))
+          ),
+          GenesisFileHash(
+            Blake2b.hash256.hash(Bytes.fromArray(conwayBytes))
+          )
         ),
         byronParams = byronParams,
         byronConfig = byronRules.map(_._2)

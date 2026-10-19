@@ -8,6 +8,7 @@ import cats.mtl.{Handle, Raise}
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import fs2.io.file.Path
+import java.nio.file.Files
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, BlockRules, VolatileChain}
@@ -15,6 +16,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Block,
   ChainError,
   NetworkIdentity,
+  FirstImmutableProblem,
   NodeError,
   StorageError,
   StorageStructureError
@@ -115,6 +117,8 @@ object ChainStorage:
       progressEvery: Int = 20000,
       /** The network the database must belong to; none: not recorded or checked (tests). */
       identity: Option[NetworkIdentity] = None,
+      /** Explicit operator acknowledgement for adopting incomplete or missing identity. */
+      adoptLegacyNetworkIdentity: Boolean = false,
       /** Blocks per volatile log file. */
       volatileFileBlocks: Int = 512,
       /** Blocks that become immutable between two forced syncs of the immutable store, each
@@ -144,6 +148,55 @@ object ChainStorage:
   /** A volatile block rebuilt by [[resume]]. */
   final case class Resumed[S](ref: BlockRef, raw: Bytes, state: S, view: SelectView)
 
+  /** Read-only identity and format checks, reusable before the backing store is acquired. Database
+    * ownership must already be held by callers that open an on-disk database.
+    */
+  def preflight[F[_]: Async](
+      dir: Path,
+      identity: Option[NetworkIdentity],
+      confirmLegacy: Boolean = false,
+      byronEpochSlots: BigInt = BigInt(0),
+      chunkSlots: Long = FileImmutableStore.DefaultChunkSlots
+  )(using Raise[F, StorageError]): F[NetworkIdentityFile.Admission] =
+    val F = Async[F]
+    def populated: F[Boolean] =
+      AtomicFile.guard[F, Boolean](dir.toString) {
+        val root = dir.toNioPath
+        if !Files.exists(root) then false
+        else
+          val stream = Files.walk(root)
+          try stream.skip(1).findAny().isPresent
+          finally stream.close()
+      }
+    def validateFirstPredecessor(expected: NetworkIdentity): F[Unit] =
+      FileImmutableStore.firstBlockReadOnly[F](dir / "immutable").flatMap {
+        case None => F.unit
+        case Some(raw) =>
+          Block.decode(raw, byronEpochSlots) match
+            case Left(error) =>
+              StorageError.FirstImmutable(FirstImmutableProblem.BlockDecode(error)).raise[F, Unit]
+            case Right(block) if block.header.prevHash == expected.byronGenesis => F.unit
+            case Right(block) =>
+              def show(h: Option[Bytes]) = h.fold("no predecessor (genesis)")(_.hex)
+              StorageError
+                .ForeignChain(show(block.header.prevHash), show(expected.byronGenesis))
+                .raise[F, Unit]
+      }
+    for
+      hasData <- populated
+      admission <- identity.fold(F.pure(NetworkIdentityFile.Admission.Unchanged))(
+        NetworkIdentityFile.preflight[F](dir, _, hasData, confirmLegacy)
+      )
+      _ <- admission match
+        case NetworkIdentityFile.Admission.AdoptMissing =>
+          identity.traverse_(validateFirstPredecessor)
+        case _ => F.unit
+      _ <- SnapshotMigration.preflight[F](dir / "snapshots")
+      _ <- F.whenA(admission != NetworkIdentityFile.Admission.Unchanged)(
+        FileImmutableStore.preflightReadOnly[F](dir / "immutable", chunkSlots)
+      )
+    yield admission
+
   def open[F[_]: Async, S](
       dir: Path,
       config: Config,
@@ -168,13 +221,20 @@ object ChainStorage:
   ): Resource[F, Recovered[F, S]] =
     val F = Async[F]
     for
-      // The identity file is brought to the current format, then checked, before anything else is opened.
+      // Complete read-only compatibility checks before identity admission or opening a store.
+      admission <- Resource.eval(
+        preflight(
+          dir,
+          config.identity,
+          config.adoptLegacyNetworkIdentity,
+          config.byronEpochSlots,
+          config.chunkSlots
+        )
+      )
+      _ <- Resource.eval(config.identity.traverse_(NetworkIdentityFile.admit[F](dir, _, admission)))
       migratedIdentity <- Resource.eval(NetworkIdentityFile.migrate[F](dir))
       _ <- Resource.eval(
         migratedIdentity.traverse_(m => events.emit(StorageEvent.FormatMigrated(m)))
-      )
-      recorded <- Resource.eval(
-        config.identity.fold(F.pure(true))(NetworkIdentityFile.verify[F](dir, _))
       )
       opened <- FileImmutableStore.open[F](dir / "immutable", config.chunkSlots)
       (store, report) = opened
@@ -182,15 +242,21 @@ object ChainStorage:
         report.migrated.traverse_(m => events.emit(StorageEvent.FormatMigrated(m)))
       )
       _ <- Resource.eval(events.emit(StorageEvent.ImmutableOpened(report)))
-      // A database from before the identity existed is adopted if its first block fits the genesis.
       _ <- Resource.eval(
-        config.identity.traverse_ { identity =>
-          F.unlessA(recorded)(
-            NetworkIdentityFile
-              .adopt[F](dir, identity, firstPredecessor(store, config.byronEpochSlots))
-              .productR(events.emit(StorageEvent.NetworkRecorded(identity, report.blocks > 0)))
+        config.identity.traverse_(identity =>
+          F.whenA(admission != NetworkIdentityFile.Admission.Unchanged)(
+            events.emit(
+              StorageEvent.NetworkRecorded(
+                identity,
+                adopted = admission match
+                  case NetworkIdentityFile.Admission.AdoptLegacy(_, _) |
+                      NetworkIdentityFile.Admission.AdoptMissing =>
+                    true
+                  case _ => false
+              )
+            )
           )
-        }
+        )
       )
       volatileOpened <- VolatileStore.open[F](dir / "volatile", config.volatileFileBlocks)
       (volatile, logged) = volatileOpened
@@ -277,22 +343,6 @@ object ChainStorage:
       logged.chain,
       persistence.adopt
     )
-
-  /** What the first stored block names as its predecessor (none: the store holds no block). */
-  private def firstPredecessor[F[_]: Async](
-      store: ImmutableStore[F],
-      byronEpochSlots: BigInt
-  )(using Raise[F, StorageError]): F[Option[Option[Bytes]]] =
-    store.stream(ChainSync.Point.Origin).take(1).compile.last.flatMap {
-      case None => Async[F].pure(None)
-      case Some(stored) =>
-        Block.decode(stored.raw, byronEpochSlots) match
-          case Right(b) => Async[F].pure(Some(b.header.prevHash))
-          case Left(e) =>
-            StorageError
-              .Corrupt("first immutable block", e)
-              .raise[F, Option[Option[Bytes]]]
-    }
 
   /** Rebuild the volatile chain from the log: apply the logged blocks after the immutable tip, in
     * order, on top of the recovered state. Blocks that do not connect or that the rules refuse end

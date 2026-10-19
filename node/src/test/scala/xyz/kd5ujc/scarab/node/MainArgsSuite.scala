@@ -37,6 +37,15 @@ class MainArgsSuite extends munit.FunSuite:
     assert(Main.parse(base ++ List("--seconds")).isLeft)
   }
 
+  test("legacy identity adoption is explicit, unique, and requires a database") {
+    val flag = "--adopt-legacy-network-identity"
+    assert(!Main.parse(base).toOption.get.adoptLegacyNetworkIdentity)
+    assert(Main.parse(base ++ List(flag)).isLeft)
+    val adopted = Main.parse(base ++ List("--db", "/db", flag))
+    assert(adopted.exists(_.adoptLegacyNetworkIdentity))
+    assert(Main.parse(base ++ List("--db", "/db", flag, flag)).isLeft)
+  }
+
   test("--header-first, --max-inbound and --inbound-sync have defaults and refuse bad values") {
     val defaults = Main.parse(base).toOption.get
     assert(defaults.headerFirst && defaults.inboundSync)

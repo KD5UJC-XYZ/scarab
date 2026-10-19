@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import xyz.kd5ujc.scarab.codec.DomainError
 import xyz.kd5ujc.scarab.blst.BlstProblem
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.DomainError
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
 import xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate
 import xyz.kd5ujc.scarab.crypto.vrf.{
@@ -154,11 +154,26 @@ enum CheckpointProblem:
 /** Failures of the on-disk chain database. Raised by the storage algebras; IO exceptions are mapped
   * to [[Io]] at the file boundary only.
   */
+enum FirstImmutableProblem extends DomainError:
+  case InvalidIndexEntry
+  case ChecksumMismatch
+  case MissingChunk
+  case BlockDecode(error: ChainError)
+
+  def message: String = this match
+    case InvalidIndexEntry  => "invalid first immutable index entry"
+    case ChecksumMismatch   => "first immutable block checksum mismatch"
+    case MissingChunk       => "first immutable index references a missing chunk"
+    case BlockDecode(error) => s"first immutable block cannot be decoded: ${error.message}"
+
 enum StorageError extends NodeError:
   case DatabaseInUse(database: String)
 
   /** The stored bytes fail validation (bad checksum, truncation, impossible structure). */
   case Corrupt[E <: DomainError](what: String, cause: E) extends StorageError
+
+  /** A read-only validation failure while checking the first block before legacy adoption. */
+  case FirstImmutable(problem: FirstImmutableProblem)
 
   /** An operating-system failure reading or writing `what`. */
   case Io(what: String, cause: Throwable)
@@ -180,6 +195,18 @@ enum StorageError extends NodeError:
   /** The database was created for another network than the one this node is configured for. */
   case NetworkMismatch(found: NetworkIdentity, expected: NetworkIdentity)
 
+  /** A v1/v2 identity proves these fields differ, but does not contain the newer genesis inputs. */
+  case LegacyNetworkMismatch(found: LegacyNetworkIdentity, expected: NetworkIdentity)
+
+  /** A matching but incomplete v1/v2 identity needs an explicit operator acknowledgement. */
+  case LegacyIdentityNeedsConfirmation(version: FormatVersion)
+
+  /** Populated data has no identity; associating it with a network needs explicit confirmation. */
+  case MissingIdentityNeedsConfirmation(database: String)
+
+  /** An operator-confirmation backup already exists but contains different bytes. */
+  case IdentityBackupConflict(path: String)
+
   /** A database without a recorded identity whose first block does not follow the configured
     * genesis (it belongs to another network, or to another genesis of the same one).
     */
@@ -193,6 +220,7 @@ enum StorageError extends NodeError:
   def message: String = this match
     case DatabaseInUse(db) => s"database $db is already owned by a follower or offline command"
     case Corrupt(w, r)     => s"corrupt $w: $r"
+    case FirstImmutable(p) => s"corrupt first immutable block: ${p.message}"
     case Io(w, r)          => s"io $w: $r"
     case VersionMismatch(w, f, e) => s"$w version $f, expected $e"
     case UnknownVersion(w, k, f) =>
@@ -201,6 +229,14 @@ enum StorageError extends NodeError:
     case OutOfOrder(r) => s"out of order: $r"
     case NetworkMismatch(f, e) =>
       s"the database belongs to another network: it was created for ${f.describe}, this node is configured for ${e.describe}; use the matching --genesis-dir or another --db"
+    case LegacyNetworkMismatch(f, e) =>
+      s"the legacy database identity differs from this node: it records ${f.describe}, configured identity is ${e.describe}; use the matching genesis configuration or another --db"
+    case LegacyIdentityNeedsConfirmation(version) =>
+      s"the database identity format ${FileKind.IdentityFile.identifier(version)} lacks Alonzo and Conway genesis bindings; rerun with --adopt-legacy-network-identity after verifying the database's origin (this acknowledgement is not historical proof)"
+    case MissingIdentityNeedsConfirmation(database) =>
+      s"database $database contains data but has no network identity; rerun with --adopt-legacy-network-identity only after verifying its origin (this acknowledgement is not historical proof)"
+    case IdentityBackupConflict(path) =>
+      s"cannot preserve the legacy network identity because $path already contains different bytes"
     case ForeignChain(f, e) =>
       s"the database holds a chain whose first block names $f as its predecessor, the configured genesis requires $e; use the matching --genesis-dir or another --db"
     case UtxoCheckpoint(d, p) =>

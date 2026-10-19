@@ -20,6 +20,52 @@ trait SnapshotMigration[F[_]]:
   def run(dir: Path): F[SnapshotMigration.Report]
 
 object SnapshotMigration:
+  /** Read only the bounded format header of every snapshot before identity admission or any mutable
+    * store is opened. The live migration continues to support every registered version.
+    */
+  def preflight[F[_]: Sync](dir: Path)(using
+      cats.mtl.Raise[F, StorageError]
+  ): F[Unit] =
+    val F = Sync[F]
+    def names: F[List[String]] =
+      F.blocking(JFiles.isDirectory(dir.toNioPath)).flatMap {
+        case false => F.pure(Nil)
+        case true =>
+          AtomicFile.guard[F, List[String]](dir.toString) {
+            val listing = JFiles.list(dir.toNioPath)
+            try
+              import scala.jdk.CollectionConverters.*
+              listing.iterator.asScala
+                .map(_.getFileName.toString)
+                .filter(FileLedgerSnapshots.isSnapshot)
+                .toList
+                .sorted
+            finally listing.close()
+          }
+      }
+    def version(file: Path): F[Unit] =
+      AtomicFile
+        .guard[F, Array[Byte]](file.toString) {
+          val in = JFiles.newInputStream(file.toNioPath)
+          try in.readNBytes(legacy.SnapshotV2.HeaderSize)
+          finally in.close()
+        }
+        .flatMap { header =>
+          val found =
+            legacy.SnapshotV2.numberOf(header) match
+              case Some(number) => legacy.SnapshotV2.versionOf(file.toString, number)
+              case None =>
+                FileKind.SnapshotFile.versionOf(
+                  file.toString,
+                  new String(
+                    header.take(legacy.SnapshotV2.Magic.length),
+                    StandardCharsets.ISO_8859_1
+                  )
+                )
+          found.fold(_.raise[F, Unit], _ => F.unit)
+        }
+    names.flatMap(_.traverse_(name => version(dir / name)))
+
   /** A snapshot left as it was, because this build could not bring it to the current format: it is
     * skipped when the snapshots are opened, as any snapshot that does not read.
     */
@@ -58,6 +104,10 @@ object SnapshotMigration:
     private val F = Sync[F]
     val kind: FileKind = FileKind.SnapshotFile
     private val current = kind.current
+
+    // Snapshot conversion is a direct conversion to V5, not a chain of intermediate encodings.
+    override def nextVersion(from: FormatVersion): Option[FormatVersion] =
+      Option.when(from.ordinal < current.ordinal)(current)
 
     /** The version of the file, or why it has none. */
     private def probe(file: Path): F[Either[StorageError, FormatVersion]] =
@@ -99,15 +149,17 @@ object SnapshotMigration:
       * intermediate versions are not written), so the steps after the first find the file current;
       * a snapshot that does not convert raises here, where [[run]] reports it instead.
       */
-    def step(file: Path, from: FormatVersion): F[Unit] =
-      if from == current then F.unit
-      else
-        convert(file).flatMap(
-          _.fold(
-            r => StorageError.Corrupt(file.toString, r).raise[F, Unit],
-            F.pure
+    def step(file: Path, from: FormatVersion, to: FormatVersion): F[Unit] =
+      validateStep(file, from, to) *> {
+        if from == current then F.unit
+        else
+          convert(file).flatMap(
+            _.fold(
+              r => StorageError.Corrupt(file.toString, r).raise[F, Unit],
+              F.pure
+            )
           )
-        )
+      }
 
     def run(dir: Path): F[Report] =
       for

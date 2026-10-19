@@ -13,8 +13,8 @@ import xyz.kd5ujc.scarab.ledger.{Block, ChainError, NetworkIdentity, StorageErro
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.storage.{
   DatabaseOwnership,
+  ChainStorage,
   FileImmutableStore,
-  ImmutableStore,
   NetworkIdentityFile
 }
 import scala.concurrent.duration.FiniteDuration
@@ -155,21 +155,6 @@ object HaskellImport:
             )
           yield (block, BlockRef(h.slot, h.hash, h.blockNo, h.isBoundary))
 
-    /** What the first block already stored names as its predecessor, for a store that predates the
-      * identity file.
-      */
-    def firstPredecessor(store: ImmutableStore[F]): F[Option[Option[Bytes]]] =
-      store.stream(xyz.kd5ujc.scarab.protocol.ChainSync.Point.Origin).take(1).compile.last.flatMap {
-        case None => F.pure(None)
-        case Some(stored) =>
-          Block.decode(stored.raw, config.byronEpochSlots) match
-            case Right(b) => F.pure(Some(b.header.prevHash))
-            case Left(e) =>
-              StorageError
-                .Corrupt("first immutable block", e)
-                .raise[F, Option[Option[Bytes]]]
-      }
-
     DatabaseOwnership.resource[F](config.db).use { _ =>
       for
         began <- Clock[F].monotonic
@@ -177,7 +162,14 @@ object HaskellImport:
         _ <- F.unlessA(magic == config.identity.magic)(
           fail[Unit](HaskellImportError.MagicMismatch(magic, config.identity.magic))
         )
-        recorded <- NetworkIdentityFile.verify[F](config.db, config.identity)
+        admission <- ChainStorage.preflight[F](
+          config.db,
+          Some(config.identity),
+          confirmLegacy = false,
+          byronEpochSlots = config.byronEpochSlots,
+          chunkSlots = config.chunkSlots.value
+        )
+        _ <- NetworkIdentityFile.admit[F](config.db, config.identity, admission)
         reader = HaskellImmutableReader[F](config.haskellDb / "immutable", config.chunkSlots)
         truncation <- cats.effect.Ref.of[F, Option[(ChunkNo, Truncation)]](None)
         chunkCount <- cats.effect.Ref.of[F, Int](0)
@@ -213,10 +205,6 @@ object HaskellImport:
                       )
                   for
                     _ <- link
-                    // The identity is recorded once the first block is known to fit the genesis.
-                    _ <- F.unlessA(st.identityKnown || recorded)(
-                      NetworkIdentityFile.write[F](config.db, config.identity)
-                    )
                     _ <- store.append(ref, b.bytes)
                     n = st.appended + 1
                     _ <- F.whenA(n % config.batch == 0)(
@@ -232,15 +220,11 @@ object HaskellImport:
 
           for
             tip <- store.tip
-            // A store that holds blocks but no identity file is adopted if it fits the genesis.
-            _ <- F.whenA(!recorded && tip.isDefined)(
-              NetworkIdentityFile.adopt[F](config.db, config.identity, firstPredecessor(store))
-            )
             initial = State(
               tip.fold[Phase](Phase.Linking(None))(Phase.Skipping(_)),
               0L,
               0L,
-              recorded || tip.isDefined
+              true
             )
             source = reader
               .contents()

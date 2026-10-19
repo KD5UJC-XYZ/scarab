@@ -19,20 +19,48 @@ final case class Migrated(kind: FileKind, from: FormatVersion, to: FormatVersion
 /** How the files of one [[FileKind]] are read and rewritten: the part of a format migration that is
   * specific to the format. The generic part, [[Migrate]], runs it over the files of a database.
   *
-  * A step rewrites a file from version `v` to `v.next` and must be atomic (see [[AtomicFile]]):
-  * after a crash the file is entirely at `v` or entirely at `v.next`, so a restart finds every file
-  * at some version and carries on. Reading a file's version raises [[StorageError.UnknownVersion]]
-  * for a version this build does not know. Later kinds (the ledger snapshots, issue #83) add a
-  * `Migration` and reuse [[Migrate]].
+  * A step rewrites a file from `from` to the next changed version `to` and must be atomic (see
+  * [[AtomicFile]]): after a crash the file is entirely at `v` or entirely at `v.next`, so a restart
+  * finds every file at some version and carries on. Reading a file's version raises
+  * [[StorageError.UnknownVersion]] for a version this build does not know. Later kinds (the ledger
+  * snapshots, issue #83) add a `Migration` and reuse [[Migrate]].
   */
 trait Migration[F[_]]:
   def kind: FileKind
+
+  /** The next on-disk version written by one step. Most formats use the next changed version;
+    * formats whose converter writes directly to the current version can override this.
+    */
+  def nextVersion(from: FormatVersion): Option[FormatVersion] = kind.nextChangedVersion(from)
 
   /** The version `file` is at (only its start is read). */
   def detect(file: Path): F[FormatVersion]
 
   /** Rewrite `file`, which is at `from`, as `from.next`. */
-  def step(file: Path, from: FormatVersion): F[Unit]
+  def step(file: Path, from: FormatVersion, to: FormatVersion): F[Unit]
+
+  /** A step is called only for the exact next changed version, and only when the on-disk source
+    * still has the version discovered during preflight.
+    */
+  protected def validateStep(file: Path, from: FormatVersion, to: FormatVersion)(using
+      cats.Monad[F],
+      Raise[F, StorageError]
+  ): F[Unit] =
+    detect(file).flatMap { actual =>
+      if actual != from then
+        StorageError
+          .VersionMismatch(file.toString, kind.identifier(actual), kind.identifier(from))
+          .raise[F, Unit]
+      else if nextVersion(from).contains(to) then cats.Monad[F].unit
+      else
+        StorageError
+          .VersionMismatch(
+            file.toString,
+            s"${kind.identifier(from)} -> ${kind.identifier(to)}",
+            "next changed version"
+          )
+          .raise[F, Unit]
+    }
 
 /** Bring files to the current version of their kind ([[FileKind.current]]), one step at a time,
   * each step atomic. A kind that did not change at a newer shared version is not touched by it.
@@ -47,7 +75,11 @@ object Migrate:
   def apply[F[_]: Monad](migration: Migration[F], files: List[Path]): F[List[Migrated]] =
     val current = migration.kind.current
     def steps(file: Path, at: FormatVersion): F[Unit] =
-      at.next.filter(_ <= current).traverse_(next => migration.step(file, at) *> steps(file, next))
+      Monad[F].tailRecM(at) { version =>
+        migration.nextVersion(version).filter(_ <= current) match
+          case Some(next) => migration.step(file, version, next).as(Left(next))
+          case None       => Monad[F].pure(Right(()))
+      }
     for
       found <- files.traverse(file => migration.detect(file).map(file -> _))
       moving = found.filter(_._2 != current)
