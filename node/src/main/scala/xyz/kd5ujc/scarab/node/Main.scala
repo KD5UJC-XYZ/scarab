@@ -511,7 +511,7 @@ object Main extends IOApp:
         )
       }
       afterBlock = (header: Header, s: MirrorState) =>
-        (storageError: cats.mtl.Raise[IO, StorageError]) ?=>
+        (storageError: cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError]) ?=>
           IO.delay(cache.noteEpochNonce(s.ledgerEpoch, s.protocol.epochNonce)) *>
             dumper.traverse_(_.afterBlock(header, s)) *>
             praosConfig

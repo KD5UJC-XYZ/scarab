@@ -10,7 +10,6 @@ import xyz.kd5ujc.scarab.consensus.{
   VolatileChain
 }
 import xyz.kd5ujc.scarab.ledger.{
-  ChainError,
   EpochGeometry,
   Header,
   NodeError,

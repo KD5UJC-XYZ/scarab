@@ -137,7 +137,7 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
             c <- client.channel(4)
             s <- server.channel(4, Mux.Role.Responder)
             _ <- typed(TxSubmissionClient.run(c, offered)).start
-            _ <- typed(TxSubmissionServer.run(s, mempool.sink)).start
+            _ <- typed(TxSubmissionServer.run(s, mempool.sink(failure => IO(fail(s"unexpected fatal: $failure"))))).start
             _ <- held(mempool).iterateUntil(_.nonEmpty).timeout(10.seconds)
           yield ()
         }
