@@ -128,10 +128,12 @@ final class HotKeys[F[_]: Async] private (
   /** Persist the evolved key before signing. A durability failure is terminal: another slot cannot
     * repair the safety guarantee that the previous key has been erased from disk.
     */
-  private def write(c: PoolCredentials)(using Raise[F, Fatal]): F[Unit] =
+  private def write(c: PoolCredentials, kesPeriod: BigInt)(using Raise[F, Fatal]): F[Unit] =
     source.traverse_ { s =>
       s.persist(c.kes).flatMap {
-        case Persisted.Failed(e) => HotKeys.persistenceFailure(e).raise[F, Unit]
+        case Persisted.Failed(e) =>
+          events.emit(ForgeEvent.KesPersistFailed(kesPeriod, e)) *>
+            HotKeys.persistenceFailure(e).raise[F, Unit]
         case Persisted.Written | Persisted.Unchanged | Persisted.Superseded => F.unit
       }
     }
@@ -146,7 +148,7 @@ final class HotKeys[F[_]: Async] private (
     F.delay(c.kes.period).flatMap { before =>
       F.blocking(c.kes.evolveTo(relative).leftMap(ForgeError.KesEvolution(_)))
         .flatTap(_.traverse_ { _ =>
-          (write(c) *> events.emit(ForgeEvent.KesEvolved(kesPeriod, relative)))
+          (write(c, kesPeriod) *> events.emit(ForgeEvent.KesEvolved(kesPeriod, relative)))
             .whenA(before != relative)
         })
     }
@@ -210,7 +212,7 @@ final class HotKeys[F[_]: Async] private (
       _ <- state.set(next)
       _ <- found.adopt
       // the key in use, further on than the file it was read again from, is written there too
-      _ <- write(next).whenA(sameKey)
+      _ <- write(next, kesPeriod).whenA(sameKey)
       // a key installed at period 0 is brought to the present at once; its file is rewritten
       _ <- evolved(next, kesPeriod).void.whenA(relative.toInt > kes.period)
       _ <- events.emit(

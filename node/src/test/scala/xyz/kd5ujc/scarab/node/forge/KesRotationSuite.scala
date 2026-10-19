@@ -602,7 +602,10 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
           assertEquals(chain.tipRef, None)
           assert(!events.exists(_.isInstanceOf[ForgeEvent.Forged]), events.toString)
           assert(!events.exists(_.isInstanceOf[ForgeEvent.Failed]), events.toString)
-          assert(!events.exists(_.isInstanceOf[ForgeEvent.KesPersistFailed]), events.toString)
+          assertEquals(
+            events.collect { case ForgeEvent.KesPersistFailed(period, _) => period },
+            Vector(BigInt(51))
+          )
       }
     }
   }

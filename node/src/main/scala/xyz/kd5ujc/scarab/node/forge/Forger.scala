@@ -75,7 +75,8 @@ enum ForgeEvent:
   /** A reload was refused: the credentials in use before it stay in force. */
   case KesReloadRefused(reason: ReloadRefusal)
 
-  /** Legacy log/metric vocabulary; durability failures now finish as typed fatal values. */
+  /** Key persistence failed; this observation is followed by a typed fatal outcome and node stop.
+    */
   case KesPersistFailed(kesPeriod: BigInt, error: ForgeError)
 
   /** A slot we cannot forge on (the tip is too old to forge from). */

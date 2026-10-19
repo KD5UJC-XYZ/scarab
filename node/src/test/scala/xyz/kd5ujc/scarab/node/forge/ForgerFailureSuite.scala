@@ -227,6 +227,10 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
           assertEquals(result, Left(expected))
           assert(!events.exists(_.isInstanceOf[ForgeEvent.Forged]))
           assert(!events.exists(_.isInstanceOf[ForgeEvent.Failed]))
+          assertEquals(
+            events.collect { case ForgeEvent.KesPersistFailed(_, cause) => cause },
+            Vector(error)
+          )
       }
     }
   }
