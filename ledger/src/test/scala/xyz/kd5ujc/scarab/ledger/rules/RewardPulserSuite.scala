@@ -104,3 +104,25 @@ class RewardPulserSuite extends ScalaCheckSuite:
     assert(completed.rs.size >= 20000, "wide control must retain positive member rewards")
     assertEquals(Rewards.complete(captured), Right(completed))
   }
+
+  test("invalid imported relative stake refuses only a member calculation that divides by it") {
+    val initial = pending(rewarding(conway(5, 1, 1)))
+    def withRelativeStake(value: xyz.kd5ujc.scarab.codec.Rational, distributable: Boolean) =
+      initial match
+        case PulsingRewUpdate.Pulsing(snapshot, p) =>
+          val pools = p.free.pools.transform((_, info) =>
+            info.copy(relativeStake = value, pot = if distributable then info.pot else coin(0))
+          )
+          PulsingRewUpdate.Pulsing(snapshot, p.copy(free = p.free.copy(pools = pools)))
+        case _ => fail("expected a captured pulser")
+    val zero = xyz.kd5ujc.scarab.codec.Rational.zero
+    val negative = xyz.kd5ujc.scarab.codec.Rational(-1, 2)
+    Vector(zero, negative).foreach { invalid =>
+      val imported = withRelativeStake(invalid, true)
+      assertEquals(Rewards.pulse(imported), Left(VocabError.InvalidRewardRelativeStake(invalid)))
+      assertEquals(Rewards.complete(imported), Left(VocabError.InvalidRewardRelativeStake(invalid)))
+    }
+    val harmless = withRelativeStake(zero, false)
+    assert(Rewards.pulse(harmless).isRight)
+    assert(Rewards.complete(harmless).isRight)
+  }

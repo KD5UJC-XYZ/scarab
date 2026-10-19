@@ -228,6 +228,8 @@ object Rewards:
             credential
           ))
         then Right(None)
+        else if info.pot.value > info.snapshot.cost.value && info.relativeStake.numerator.signum <= 0
+        then Left(VocabError.InvalidRewardRelativeStake(info.relativeStake))
         else
           val amount = memberReward(
             info.pot.value,

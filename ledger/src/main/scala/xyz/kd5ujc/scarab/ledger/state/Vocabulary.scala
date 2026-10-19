@@ -5,7 +5,7 @@ import xyz.kd5ujc.scarab.codec.DomainError
 import cats.{Order, Show}
 import cats.derived.*
 import cats.syntax.show.*
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 
 // The vocabulary of the ledger-state mirror: the leaf types of the Haskell ledger state under the
 // same names, so that a Haskell field and its mirror read alike. They live beside the types the node
@@ -21,6 +21,7 @@ enum VocabError extends DomainError derives Show:
   case OutOfRange(what: VocabError.Kind, value: BigInt)
   case WrongHashLength(what: VocabError.Kind, expected: Int, actual: Int)
   case Zero(what: VocabError.Kind)
+  case InvalidRewardRelativeStake(value: Rational)
 
 object VocabError:
   /** The vocabulary type a [[VocabError]] is about. */

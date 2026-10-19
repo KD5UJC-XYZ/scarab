@@ -98,3 +98,29 @@ class RewardOracleSuite extends FunSuite:
     assertEquals(Rewards.pulse(resumed), Rewards.pulse(initial))
     assertEquals(Rewards.complete(resumed), Rewards.complete(initial))
   }
+
+  test("codec-valid imported zero relative stake returns a typed failure when resumed") {
+    val row = load("results.json")
+      .find(j => field[String](j, "name") == "conway-v10")
+      .getOrElse(fail("no Conway case"))
+    val invalid = readState(row, "initial") match
+      case PulsingRewUpdate.Pulsing(snapshot, p) =>
+        val free = p.free.copy(pools =
+          p.free.pools.transform((_, info) =>
+            info.copy(
+              relativeStake = xyz.kd5ujc.scarab.codec.Rational.zero,
+              pot = RewardPulserFixture.coin(info.snapshot.cost.value + 1)
+            )
+          )
+        )
+        PulsingRewUpdate.Pulsing(snapshot, p.copy(free = free))
+      case _ => fail("expected pending reference state")
+    val encoded = pulsingRewUpdate.write(invalid).fold(e => fail(e.toString), identity)
+    val imported = pulsingRewUpdate
+      .decodeBytes(encoded, HaskellState.limits)
+      .fold(e => fail(e.render), identity)
+    assertEquals(
+      Rewards.complete(imported),
+      Left(VocabError.InvalidRewardRelativeStake(xyz.kd5ujc.scarab.codec.Rational.zero))
+    )
+  }
