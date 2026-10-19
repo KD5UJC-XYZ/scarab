@@ -627,6 +627,7 @@ exportLocalStateQueryCases path count seed = withFile path WriteMode $ \outputHa
     pad digits = digits
 ''',
         "import Control.Monad (forM_)\n"
+        "import Codec.Serialise (serialise)\n"
         "import Data.ByteString qualified as BS\n"
         "import Data.ByteString.Lazy qualified as BL\n"
         "import Data.List (intercalate)\n"
@@ -689,6 +690,53 @@ exportLocalStateQuerySplitCases path count seed = withFile path WriteMode $ \out
     pad [digit] = ['0', digit]
     pad digits = digits
 ''')
+    local_state_query.write_text(local_state_query.read_text() + r'''
+
+-- Disposable observer: retain the unchanged SetupData map and run every original
+-- direct/connect/channel property against that exact generated value.
+exportLocalStateQueryBehaviorCases :: FilePath -> FilePath -> Int -> Int -> IO ()
+exportLocalStateQueryBehaviorCases casesPath actionsPath count seed = do
+  withFile casesPath WriteMode $ \casesHandle ->
+    withFile actionsPath WriteMode $ \actionsHandle ->
+      forM_ [0 .. count - 1] $ \ordinal -> do
+        let caseSeed = seed + ordinal
+            caseSize = ordinal `mod` 7
+            input = unGen arbitrary (mkQCGen caseSeed) caseSize :: SetupData
+        directResult <- quickCheckWithResult stdArgs { chatty = False } (once (prop_direct input))
+        connectResult <- quickCheckWithResult stdArgs { chatty = False } (once (prop_connect input))
+        channelSTResult <- quickCheckWithResult stdArgs { chatty = False } (once (prop_channel_ST input))
+        channelIOResult <- quickCheckWithResult stdArgs { chatty = False } (once (prop_channel_IO input))
+        pipeIOResult <- quickCheckWithResult stdArgs { chatty = False } (once (prop_pipe_IO input))
+        let entries = Map.toList input
+            verdict result = if isSuccess result then "pass" else "upstream-failure"
+        hPutStrLn casesHandle $ intercalate "\t"
+          [ "localsq-behavior-case-v1", show caseSeed, show ordinal, show caseSize
+          , show (length entries), verdict directResult, verdict connectResult
+          , verdict channelSTResult, verdict channelIOResult, verdict pipeIOResult
+          ]
+        forM_ (zip [0 :: Int ..] entries) $ \(actionOrdinal, (target, (failure, _query))) -> do
+          let statefulCodec = codec
+                :: Stateful.Codec (LocalStateQuery Block (Point Block) Query)
+                     DeserialiseFailure State IO ByteString
+              acquireWire = BL.toStrict (Stateful.encode statefulCodec StateIdle (MsgAcquire target))
+              queryWire = BL.toStrict (serialise ())
+              resultWire = BL.toStrict (serialise (MockLedgerState target))
+              failureTag = case failure of
+                Nothing -> "acquired"
+                Just AcquireFailurePointTooOld -> "point-too-old"
+                Just AcquireFailurePointNotOnChain -> "point-not-on-chain"
+          hPutStrLn actionsHandle $ intercalate "\t"
+            [ "localsq-behavior-v1", show caseSeed, show ordinal, show caseSize
+            , show actionOrdinal, show (length entries), hex acquireWire
+            , failureTag, hex queryWire, hex resultWire
+            , verdict directResult, verdict connectResult, verdict channelSTResult
+            , verdict channelIOResult, verdict pipeIOResult
+            ]
+  where
+    hex = concatMap (pad . (`showHex` "")) . BS.unpack
+    pad [digit] = ['0', digit]
+    pad digits = digits
+''')
     local_state_module = local_state_query.read_text()
     local_state_export_anchor = "module Ouroboros.Network.Protocol.LocalStateQuery.Test\n"
     if local_state_module.count(local_state_export_anchor) != 1:
@@ -698,7 +746,7 @@ exportLocalStateQuerySplitCases path count seed = withFile path WriteMode $ \out
         raise SystemExit("LocalStateQuery observer module export list changed")
     local_state_query.write_text(local_state_module.replace(
         export_block_anchor,
-        "  ( tests\n  , exportLocalStateQueryCases\n  , exportLocalStateQuerySplitCases\n",
+        "  ( tests\n  , exportLocalStateQueryCases\n  , exportLocalStateQuerySplitCases\n  , exportLocalStateQueryBehaviorCases\n",
     ))
 
     local_tx_submission_original = inject(
@@ -1441,7 +1489,7 @@ exportBlockFetchBinaryCases path count seed = withFile path WriteMode $ \outputH
         "import Ouroboros.Network.Protocol.PeerSharing.Test qualified as PeerSharing (tests, exportPeerSharingCases)\n"
         "import Ouroboros.Network.Protocol.ChainSync.Test qualified as ChainSync (tests, exportChainSyncCases, exportChainSyncSplitCases, exportChainSyncBinaryCases)\n"
         "import Ouroboros.Network.Protocol.BlockFetch.Test qualified as BlockFetch (tests, exportBlockFetchCases, exportBlockFetchSplitCases, exportBlockFetchBinaryCases)\n"
-        "import Ouroboros.Network.Protocol.LocalStateQuery.Test qualified as LocalStateQuery (tests, exportLocalStateQueryCases, exportLocalStateQuerySplitCases)\n"
+        "import Ouroboros.Network.Protocol.LocalStateQuery.Test qualified as LocalStateQuery (tests, exportLocalStateQueryCases, exportLocalStateQuerySplitCases, exportLocalStateQueryBehaviorCases)\n"
         "import Ouroboros.Network.Protocol.LocalTxSubmission.Test qualified as LocalTxSubmission (tests, exportLocalTxSubmissionCases, exportLocalTxSubmissionSplitCases, exportLocalTxSubmissionAnnotatedCases, exportLocalTxSubmissionBehaviorCases)\n"
         "import Ouroboros.Network.Protocol.LocalTxMonitor.Test qualified as LocalTxMonitor (tests, exportLocalTxMonitorCases, exportLocalTxMonitorSplitCases, exportLocalTxMonitorBehaviorCases)\n"
         "import Ouroboros.Network.Protocol.TxSubmission2.Test qualified as TxSubmission2 (tests, exportTxSubmission2Cases, exportTxSubmission2SplitCases, exportTxSubmission2AnnotatedCases)\n"
@@ -1484,6 +1532,8 @@ exportBlockFetchBinaryCases path count seed = withFile path WriteMode $ \outputH
     main_text = main_text.replace(
         "main = defaultMain tests",
         "main = getArgs >>= \\args -> case args of\n"
+        "  [\"--export-lsq-behavior\", dir, count, seed] -> LocalStateQuery.exportLocalStateQueryBehaviorCases (dir <> \"/localsq-behavior-cases.tsv\") (dir <> \"/localsq-behavior-actions.tsv\") (read count) (read seed)\n"
+        "  [\"--export-lsq-behavior\", dir, count, seed] -> LocalStateQuery.exportLocalStateQueryBehaviorCases (dir <> \"/localsq-behavior-cases.tsv\") (dir <> \"/localsq-behavior-actions.tsv\") (read count) (read seed)\n"
         "  [\"--export-network-codecs\", dir, count, seed, chainCount] -> do\n"
         "    KeepAlive.exportKeepAliveBehaviorCases (dir <> \"/keepalive-behavior.tsv\") (read count) (read seed + 700)\n"
         "    KeepAlive.exportKeepAliveCases (dir <> \"/keepalive.tsv\") (read count) (read seed)\n"
@@ -1497,6 +1547,7 @@ exportBlockFetchBinaryCases path count seed = withFile path WriteMode $ \outputH
         "    BlockFetch.exportBlockFetchBinaryCases (dir <> \"/blockfetch-binary.tsv\") (read count) (read seed)\n"
         "    LocalStateQuery.exportLocalStateQueryCases (dir <> \"/localsq.tsv\") (read count) (read seed + 1800)\n"
         "    LocalStateQuery.exportLocalStateQuerySplitCases (dir <> \"/localsq-splits.tsv\") (read count) (read seed + 1800)\n"
+        "    LocalStateQuery.exportLocalStateQueryBehaviorCases (dir <> \"/localsq-behavior-cases.tsv\") (dir <> \"/localsq-behavior-actions.tsv\") (read count) (read seed + 11800)\n"
         "    LocalTxSubmission.exportLocalTxSubmissionCases (dir <> \"/localtxsubmission.tsv\") (read count) (read seed + 2800)\n"
         "    LocalTxSubmission.exportLocalTxSubmissionBehaviorCases (dir <> \"/localtxsubmission-behavior.tsv\") (read count) (read seed + 8800)\n"
         "    LocalTxMonitor.exportLocalTxMonitorCases (dir <> \"/localtxmonitor.tsv\") (read count) (read seed + 3800)\n"
@@ -1532,6 +1583,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=490201)
     parser.add_argument("--probe-dir", type=Path, default=Path("/tmp/scarab/v02-49-protocol-probe"))
     parser.add_argument("--reference-plan", type=Path)
+    parser.add_argument("--lsq-behavior-only", action="store_true")
     args = parser.parse_args()
     if not 1 <= args.count <= 128:
         raise SystemExit("case count must be 1..128")
@@ -1562,7 +1614,11 @@ def main() -> None:
             "-w", "/source", IMAGE, "-f", "/dev/null",
         ])
     checked(["docker", "start", CONTAINER_NAME])
-    for test_name in ("KeepAlive", "PeerSharing", "ChainSync", "BlockFetch", "LocalStateQuery", "LocalTxSubmission", "LocalTxMonitor", "TxSubmission2"):
+    test_names = ("LocalStateQuery",) if args.lsq_behavior_only else (
+        "KeepAlive", "PeerSharing", "ChainSync", "BlockFetch", "LocalStateQuery",
+        "LocalTxSubmission", "LocalTxMonitor", "TxSubmission2",
+    )
+    for test_name in test_names:
         checked([
             "docker", "exec", "-w", "/source", CONTAINER_NAME,
             "cabal", "test", "--project-file=/probe/protocols-tests.project",
@@ -1582,11 +1638,18 @@ def main() -> None:
     )
     if binary is None:
         raise SystemExit(f"cabal list-bin did not return a build executable path: {binary_output!r}")
-    checked([
-        "docker", "exec", "-w", "/source", CONTAINER_NAME,
-        binary, "--export-network-codecs", "/probe/exports",
-        str(args.count), str(args.seed), str(args.chainsync_count),
-    ])
+    if args.lsq_behavior_only:
+        checked([
+            "docker", "exec", "-w", "/source", CONTAINER_NAME,
+            binary, "--export-lsq-behavior", "/probe/exports",
+            str(args.count), str(args.seed + 11800),
+        ])
+    else:
+        checked([
+            "docker", "exec", "-w", "/source", CONTAINER_NAME,
+            binary, "--export-network-codecs", "/probe/exports",
+            str(args.count), str(args.seed), str(args.chainsync_count),
+        ])
     patch = ""
     for name, original in originals.items():
         target = (
@@ -1621,6 +1684,53 @@ def main() -> None:
             "python3", "scripts/oracle/network-protocols/compare_cabal_plans.py",
             str(args.reference_plan), str(build / "cache/plan.json"), "--output", str(equivalence_path),
         ])
+    if args.lsq_behavior_only:
+        cases_raw = (args.probe_dir / "exports/localsq-behavior-cases.tsv").read_bytes()
+        actions_raw = (args.probe_dir / "exports/localsq-behavior-actions.tsv").read_bytes()
+        case_rows = [line.split("\t") for line in cases_raw.decode().splitlines()]
+        action_rows = [line.split("\t") for line in actions_raw.decode().splitlines()]
+        outcomes = {
+            property_name: {
+                "pass": sum(row[column] == "pass" for row in case_rows),
+                "upstream-failure": sum(row[column] != "pass" for row in case_rows),
+            }
+            for property_name, column in zip(
+                ("prop_direct", "prop_connect", "prop_channel_ST", "prop_channel_IO", "prop_pipe_IO"),
+                range(5, 10),
+            )
+        }
+        manifest = {
+            "schema": "scarab-upstream-network-protocol-behavior-v1",
+            "source": "ouroboros-network",
+            "sourceCommit": UPSTREAM_COMMIT,
+            "upstreamTest": "ouroboros-network:protocols-tests / LocalStateQuery / prop_direct + prop_connect + prop_channel_ST + prop_channel_IO + prop_pipe_IO",
+            "requestedCases": args.count,
+            "exportedCases": len(case_rows),
+            "seed": int(case_rows[0][1]),
+            "generatorSizes": sorted({int(row[3]) for row in case_rows}),
+            "actionRows": len(action_rows),
+            "emptyMapCases": sum(int(row[4]) == 0 for row in case_rows),
+            "upstreamPropertyOutcomesByProperty": outcomes,
+            "allPropertiesPassCases": sum(all(row[column] == "pass" for column in range(5, 10)) for row in case_rows),
+            "sourceFiles": {
+                "LocalStateQuery/Test.hs": hashlib.sha256((args.source / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/LocalStateQuery/Test.hs").read_bytes()).hexdigest(),
+                "LocalStateQuery/Type.hs": hashlib.sha256((args.source / "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/LocalStateQuery/Type.hs").read_bytes()).hexdigest(),
+            },
+            "observerPatchSha256": hashlib.sha256(patch.encode()).hexdigest(),
+            "dependencyPlanSha256": hashlib.sha256(plan).hexdigest(),
+            "targetDependencyClosureUnitCount": len(target_closure),
+            "casesTsvSha256": hashlib.sha256(cases_raw).hexdigest(),
+            "actionsTsvSha256": hashlib.sha256(actions_raw).hexdigest(),
+            "limitations": [
+                "Rows preserve the complete generated SetupData map, each exact stateful Acquire wire, query/result CBOR, and unchanged upstream verdicts.",
+                "Scarab consumer may replay only targets its typed production codec decodes losslessly; SpecificPoint mock HeaderHash Int rows remain unsupported.",
+                "Server-side replay exercises LocalStateQueryServer; it does not claim a production LocalStateQuery client or ledger interpreter.",
+            ],
+        }
+        (args.output_dir / "localsq-behavior-cases.tsv").write_bytes(cases_raw)
+        (args.output_dir / "localsq-behavior-actions.tsv").write_bytes(actions_raw)
+        (args.output_dir / "localsq-behavior.manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+        return
     manifests = []
     for name, upstream_test in [
         ("keepalive.tsv", "ouroboros-network:protocols-tests / KeepAlive / codec v2 / prop_codec_v2"),

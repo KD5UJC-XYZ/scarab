@@ -156,6 +156,72 @@ class PropertyOutcomeColumnsTest(unittest.TestCase):
                 self.assertEqual(set(values), directions)
                 self.assertEqual(values["codec/codecSerialised"][8], values["codecSerialised/codec"][8])
 
+    def test_localsq_behavior_fixtures_preserve_complete_generated_cases_and_actions(self) -> None:
+        fixture_dir = (
+            Path(__file__).resolve().parents[3]
+            / "fixtures/reference/ouroboros-network-protocol-codecs"
+        )
+        case_bytes = (fixture_dir / "localsq-behavior-cases.tsv").read_bytes()
+        action_bytes = (fixture_dir / "localsq-behavior-actions.tsv").read_bytes()
+        manifest = json.loads((fixture_dir / "localsq-behavior.manifest.json").read_text())
+        cases = [line.split("\t") for line in case_bytes.decode("utf-8").splitlines()]
+        actions = [line.split("\t") for line in action_bytes.decode("utf-8").splitlines()]
+
+        self.assertEqual(manifest["sourceCommit"], "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776")
+        self.assertEqual(manifest["casesTsvSha256"], hashlib.sha256(case_bytes).hexdigest())
+        self.assertEqual(manifest["actionsTsvSha256"], hashlib.sha256(action_bytes).hexdigest())
+        self.assertEqual(manifest["requestedCases"], 32)
+        self.assertEqual(manifest["exportedCases"], 32)
+        self.assertEqual(manifest["actionRows"], 40)
+        self.assertEqual(manifest["emptyMapCases"], 10)
+        self.assertEqual(manifest["allPropertiesPassCases"], 32)
+        self.assertEqual(
+            manifest["scarabServerReplayCoverage"],
+            {
+                "totalOriginalSetupDataMaps": 32,
+                "wholeMapsAcceptedByTypedBoundary": 19,
+                "emptyMapsReplayedByDoneOnly": 10,
+                "nonemptyMapsReplayed": 9,
+                "serverActionsReplayed": 13,
+                "specificPointMockHeaderHashIntActionsUnsupported": 14,
+                "representableActionsNotPlayedBecauseTheirMapAlsoContainsUnsupportedTargets": 13,
+                "unsupportedMixedMaps": 13,
+            },
+        )
+        self.assertEqual(
+            [int(row[1]) for row in cases],
+            list(range(513801, 513833)),
+        )
+        self.assertTrue(all(len(row) == 10 for row in cases))
+        self.assertTrue(all(len(row) == 15 for row in actions))
+        self.assertEqual(
+            manifest["upstreamPropertyOutcomesByProperty"],
+            {
+                name: {"pass": 32, "upstream-failure": 0}
+                for name in (
+                    "prop_direct",
+                    "prop_connect",
+                    "prop_channel_ST",
+                    "prop_channel_IO",
+                    "prop_pipe_IO",
+                )
+            },
+        )
+        by_case = {(row[1], row[2]): row for row in cases}
+        action_groups: dict[tuple[str, str], list[list[str]]] = {}
+        for row in actions:
+            self.assertEqual(row[0], "localsq-behavior-v1")
+            key = (row[1], row[2])
+            self.assertIn(key, by_case)
+            action_groups.setdefault(key, []).append(row)
+            self.assertEqual(row[10:15], ["pass"] * 5)
+            self.assertTrue(row[6] and row[8] and row[9])
+        for key, case in by_case.items():
+            group = sorted(action_groups.get(key, []), key=lambda row: int(row[4]))
+            self.assertEqual(len(group), int(case[4]))
+            self.assertEqual([int(row[4]) for row in group], list(range(len(group))))
+            self.assertTrue(all(int(row[5]) == len(group) for row in group))
+
 
 if __name__ == "__main__":
     unittest.main()
