@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.effect.IO
+import cats.effect.{IO, Resource}
 import cats.syntax.all.*
 import munit.CatsEffectSuite
 import scala.io.Source
@@ -98,27 +98,31 @@ class UpstreamKeepAliveBehaviorSuite extends FailsOnUncaught:
             for
               c <- client.channel(8)
               s <- server.channel(8, Mux.Role.Responder)
-              serving <- typed(KeepAliveServer.run(s)).start
-              observed <- row.cookies.traverse { value =>
-                for
-                  cookie <- KeepAlive.Cookie
-                    .from(value)
-                    .fold(
-                      error => IO.raiseError(new IllegalStateException(error.message)),
-                      IO.pure
-                    )
-                  request <- encoded(KeepAlive.Message.Request(cookie))
-                  _ <- c.send(request)
-                  response <- c.recv(KeepAlive.UpstreamMessageBytes)(
-                    KeepAlive.decodePrefix(KeepAlive.State.Server, KeepAlive.Role.Server, _)
-                  )
-                  _ <- IO(assertEquals(response, KeepAlive.Message.Response(cookie)))
-                yield response
+              result <- Resource.make(typed(KeepAliveServer.run(s)).start)(_.cancel).use {
+                serving =>
+                  for
+                    observed <- row.cookies.traverse { value =>
+                      for
+                        cookie <- KeepAlive.Cookie
+                          .from(value)
+                          .fold(
+                            error => IO.raiseError(new IllegalStateException(error.message)),
+                            IO.pure
+                          )
+                        request <- encoded(KeepAlive.Message.Request(cookie))
+                        _ <- c.send(request)
+                        response <- c.recv(KeepAlive.UpstreamMessageBytes)(
+                          KeepAlive.decodePrefix(KeepAlive.State.Server, KeepAlive.Role.Server, _)
+                        )
+                        _ <- IO(assertEquals(response, KeepAlive.Message.Response(cookie)))
+                      yield response
+                    }
+                    done <- encoded(KeepAlive.Message.Done)
+                    _ <- c.send(done)
+                    serverResult <- serving.joinWithNever
+                  yield (observed, serverResult)
               }
-              done <- encoded(KeepAlive.Message.Done)
-              _ <- c.send(done)
-              serverResult <- serving.joinWithNever
-            yield (observed, serverResult)
+            yield result
           }
         }.map { outcome =>
           val (responses, serverResult) = outcome.fold(e => fail(s"seed ${row.seed}: $e"), identity)
