@@ -10,3 +10,5 @@
   bound (1,000; clean floors observed at or below ~54, contaminated at ~9,000 and up) is
   retried once and then discarded without verdicts, instead of emitting noise-inverted
   results.
+- Every measured output contributes to a checksum published outside the timed intervals,
+  preventing the diagnostic from relying on an unobserved local accumulator.

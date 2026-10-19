@@ -95,7 +95,7 @@ object TimingProbeMain:
   /** Warm both classes, then measure `samples` of each. Every sample uses its own pre-generated
     * random-class input; failed operations are counted and excluded, and reported at the end. The
     * mutation here is the point of the probe: a measurement loop over pre-allocated arrays with an
-    * observable sink so the measured operations cannot be eliminated.
+    * observable checksum printed after measurement so the produced bytes remain live.
     */
   private final class Measurement(val failures: Int, val t: Double)
 
@@ -114,7 +114,7 @@ object TimingProbeMain:
       i += 1
     val fix = new Array[Double](samples)
     val rnd = new Array[Double](samples)
-    val sink = new Array[Byte](1)
+    var checksum = 0
     var measured = 0
     var failures = 0
     var attempts = 0
@@ -126,7 +126,7 @@ object TimingProbeMain:
       fixOp(idx) match
         case OpOutcome.Produced(b) =>
           fix(measured) = (System.nanoTime() - startFix).toDouble
-          sink(0) = (sink(0) ^ b).toByte
+          checksum = Integer.rotateLeft(checksum, 1) ^ (b & 0xff)
         case OpOutcome.Failed(reason) =>
           failures += 1
           println(s"fix-class failure at sample $measured: $reason")
@@ -135,7 +135,7 @@ object TimingProbeMain:
       rndOp(idx) match
         case OpOutcome.Produced(b) =>
           rnd(measured) = (System.nanoTime() - startRnd).toDouble
-          sink(0) = (sink(0) ^ b).toByte
+          checksum = Integer.rotateLeft(checksum, 1) ^ (b & 0xff)
         case OpOutcome.Failed(reason) =>
           failures += 1
           println(s"random-class failure at sample $measured: $reason")
@@ -143,6 +143,8 @@ object TimingProbeMain:
       if !java.lang.Double.isNaN(fix(measured)) && !java.lang.Double.isNaN(rnd(measured)) then
         measured += 1
       // else: the sample slot is overwritten by the next attempt
+    // Publish after timing: an unobserved local accumulator is not a dead-code-elimination guard.
+    println(f"  output checksum: 0x$checksum%08x")
     if failures > 0 then Measurement(failures, Double.NaN)
     else
       java.util.Arrays.sort(fix)

@@ -1800,7 +1800,9 @@ every verdict is relative to a measured noise control (the basepoint table multi
 does not depend on its scalar's value); a target is reported as leaking when
 `t > 10 && t > 5 × noise`. A "no leak" verdict means **no leakage detected by this experiment** —
 evidence of absence within the experiment's power, not a proof of constant-time behaviour.
-Failed operations are reported and abort the run; they are never timed as successful crypto.
+Every successful output byte contributes to a checksum printed after measurement, outside the
+timed intervals, so the results remain observable. Failed operations are reported and abort the
+run; they are never timed as successful crypto.
 
 Run on an idle machine (an interactive session's scheduler noise raises the floor):
 
@@ -1813,11 +1815,13 @@ Defaults: 20,000 samples, 100 buckets, 2 repetitions; bounds are validated
 `-XX:+UseSerialGC -Xbatch`. Expected on a quiet machine: curve25519's `point.multiply` shows no
 leakage above the floor, while `Ed25519Point.scalarMultiply` and the `uniform` control exceed
 the floor by an order of magnitude — the "variable-time, public inputs only" contract of
-`Draft03Math.java`. The first measurement of the corrected protocol (2026-10-19, a busy
-2012-era i7-3770, JDK 21, defaults): noise 41.9/54.7, `point.multiply` 23.5/20.2 (no leak
+`Draft03Math.java`. An intermediate per-sample-input harness before the observable-checksum
+correction (2026-10-19, a busy 2012-era i7-3770, JDK 21, defaults): noise 41.9/54.7,
+`point.multiply` 23.5/20.2 (no leak
 detected), `scalarMultiply` 626.6/691.8 (leak, as designed), `uniform` 5989.5/13877.3
-(public input). A pre-review measurement with an earlier two-fixed-input harness on the same
-host recorded noise 18.5/53.9, `point.multiply` 24.6/11.0, `scalarMultiply` 693/1281,
+(public input). These numbers are historical measurements of that intermediate harness, not
+validation of the final observable-checksum harness. A pre-review measurement with an earlier
+two-fixed-input harness on the same host recorded noise 18.5/53.9, `point.multiply` 24.6/11.0, `scalarMultiply` 693/1281,
 `uniform` 3182 — attributed to that harness, not to the corrected protocol. The probe is a
 manual/nightly tool, not part of `check` (shared CI runners are too noisy).
 
