@@ -94,23 +94,73 @@ object ChainSync:
     def encode(value: P): Either[ProtocolError, Bytes]
     def decode(bytes: Bytes): Either[ProtocolError, P]
 
+  /** Strict Cardano point and tip adapters used by the generic network runtime. Their reader and
+    * writer hooks retain the direct validation order of this facade.
+    */
+  private[scarab] val enginePointCodec: ChainSyncEngine.PointCodec[Point] =
+    new ChainSyncEngine.PointCodec[Point]:
+      def encode(value: Point): Either[ProtocolError, Bytes] = encodePoint(value)
+      def decode(item: Bytes): Either[ProtocolError, Point] = decoded(decodePoint(item), item.size)
+      override private[protocol] def readFrom(reader: ProtocolWire.Reader)(using
+          ProtocolWire.Scope
+      ): Point = reader.point()
+      override private[protocol] def writeTo(
+          writer: ProtocolWire.Writer,
+          value: Point,
+          bounds: ProtocolWire.Limits
+      )(using ProtocolWire.Scope): Unit = writer.point(value)
+
+  private[scarab] val engineTipCodec: ChainSyncEngine.TipCodec[Tip] =
+    new ChainSyncEngine.TipCodec[Tip]:
+      def encode(value: Tip): Either[ProtocolError, Bytes] = encodeTip(value)
+      def decode(item: Bytes): Either[ProtocolError, Tip] = decoded(decodeTip(item), item.size)
+      override private[protocol] def readFrom(reader: ProtocolWire.Reader)(using
+          ProtocolWire.Scope
+      ): Tip = reader.tip()
+      override private[protocol] def writeTo(
+          writer: ProtocolWire.Writer,
+          value: Tip,
+          bounds: ProtocolWire.Limits
+      )(using ProtocolWire.Scope): Unit = writer.tip(value)
+
+  private[scarab] def enginePayloadCodec[P](
+      codec: PayloadCodec[P]
+  ): ChainSyncEngine.PayloadCodec[P] =
+    new ChainSyncEngine.PayloadCodec[P]:
+      def encode(value: P): Either[ProtocolError, Bytes] = codec.encode(value)
+      def decode(item: Bytes): Either[ProtocolError, P] = codec.decode(item)
+
+  private def decoded[A](result: DecodeResult[A], consumed: Int): Either[ProtocolError, A] =
+    result match
+      case DecodeResult.Decoded(value, n) if n == consumed => Right(value)
+      case DecodeResult.Decoded(_, _) => Left(ProtocolError.TrailingPayloadBytes)
+      case DecodeResult.NeedMore      => Left(ProtocolError.TruncatedCbor)
+      case DecodeResult.Failed(error) => Left(error)
+
+  private def toEngine[P](message: Message[P]): ChainSyncEngine.Message[Point, Tip, P] =
+    message match
+      case Message.RequestNext                => ChainSyncEngine.Message.RequestNext
+      case Message.AwaitReply                 => ChainSyncEngine.Message.AwaitReply
+      case Message.RollForward(payload, tip)  => ChainSyncEngine.Message.RollForward(payload, tip)
+      case Message.RollBackward(point, tip)   => ChainSyncEngine.Message.RollBackward(point, tip)
+      case Message.FindIntersect(points)      => ChainSyncEngine.Message.FindIntersect(points)
+      case Message.IntersectFound(point, tip) => ChainSyncEngine.Message.IntersectFound(point, tip)
+      case Message.IntersectNotFound(tip)     => ChainSyncEngine.Message.IntersectNotFound(tip)
+      case Message.Done                       => ChainSyncEngine.Message.Done
+
+  private def fromEngine[P](message: ChainSyncEngine.Message[Point, Tip, P]): Message[P] =
+    message match
+      case ChainSyncEngine.Message.RequestNext                => Message.RequestNext
+      case ChainSyncEngine.Message.AwaitReply                 => Message.AwaitReply
+      case ChainSyncEngine.Message.RollForward(payload, tip)  => Message.RollForward(payload, tip)
+      case ChainSyncEngine.Message.RollBackward(point, tip)   => Message.RollBackward(point, tip)
+      case ChainSyncEngine.Message.FindIntersect(points)      => Message.FindIntersect(points)
+      case ChainSyncEngine.Message.IntersectFound(point, tip) => Message.IntersectFound(point, tip)
+      case ChainSyncEngine.Message.IntersectNotFound(tip)     => Message.IntersectNotFound(tip)
+      case ChainSyncEngine.Message.Done                       => Message.Done
+
   def transition[P](state: State, sender: Role, message: Message[P]): Either[ProtocolError, State] =
-    import State.*
-    import Role.*
-    (state, sender, message) match
-      case (Idle, Client, Message.RequestNext)        => Right(NextCanAwait)
-      case (Idle, Client, Message.FindIntersect(_))   => Right(Intersect)
-      case (Idle, Client, Message.Done)               => Right(Done)
-      case (NextCanAwait, Server, Message.AwaitReply) => Right(NextMustReply)
-      case (
-            NextCanAwait | NextMustReply,
-            Server,
-            Message.RollForward(_, _) | Message.RollBackward(_, _)
-          ) =>
-        Right(Idle)
-      case (Intersect, Server, Message.IntersectFound(_, _) | Message.IntersectNotFound(_)) =>
-        Right(Idle)
-      case _ => Left(ProtocolError.ChainSyncAgency(state, sender))
+    ChainSyncEngine.transition(state, sender, toEngine(message))
 
   private[protocol] def bad(error: ProtocolError)(using ProtocolWire.Scope): Nothing =
     ProtocolWire.bad(error)
@@ -154,32 +204,16 @@ object ChainSync:
       message: Message[P],
       payload: PayloadCodec[P],
       limits: Limits = Limits()
-  ): Either[ProtocolError, Bytes] = attempt {
-    get(transition(state, sender, message))
-    val w = new ChainSyncWire.Writer(limits)
-    def outer(n: Int, tag: Int): Unit = { w.head(4, n); w.head(0, tag) }
-    message match
-      case Message.RequestNext => outer(1, 0)
-      case Message.AwaitReply  => outer(1, 1)
-      case Message.RollForward(p, tip) =>
-        outer(3, 2)
-        val raw = get(payload.encode(p))
-        get(validateItem(raw, limits))
-        w.raw(raw); w.tip(tip)
-      case Message.RollBackward(point, tip) => outer(3, 3); w.point(point); w.tip(tip)
-      case Message.FindIntersect(points) =>
-        if points.size > limits.maxCandidates then bad(ProtocolError.CandidateLimitExceeded)
-        outer(2, 4)
-        if points.isEmpty then w.head(4, 0)
-        else { w.byte(159); points.foreach(w.point); w.byte(255) }
-      case Message.IntersectFound(point, tip) => outer(3, 5); w.point(point); w.tip(tip)
-      case Message.IntersectNotFound(tip)     => outer(2, 6); w.tip(tip)
-      case Message.Done                       => outer(1, 7)
-    val result = w.result
-    // Enforce depth/item bounds on encoder output as well as decoder input.
-    get(validateItem(result, limits))
-    result
-  }
+  ): Either[ProtocolError, Bytes] =
+    ChainSyncEngine.encode(
+      state,
+      sender,
+      toEngine(message),
+      enginePointCodec,
+      engineTipCodec,
+      enginePayloadCodec(payload),
+      limits
+    )
 
   def decodePrefix[P](
       state: State,
@@ -187,29 +221,20 @@ object ChainSync:
       bytes: Bytes,
       payload: PayloadCodec[P],
       limits: Limits = Limits()
-  ): DecodeResult[Message[P]] = parse(bytes, limits) { r =>
-    val arity = r.arrayLength()
-    val tag = r.uint().value
-    val skeleton: Message[Nothing] = tag.toInt match
-      case 0 if tag == 0 && arity == 1 => Message.RequestNext
-      case 1 if tag == 1 && arity == 1 => Message.AwaitReply
-      case 2 if tag == 2 && arity == 3 => Message.RollBackward(Point.Origin, Tip.Origin)
-      case 3 if tag == 3 && arity == 3 => Message.RollBackward(Point.Origin, Tip.Origin)
-      case 4 if tag == 4 && arity == 2 => Message.FindIntersect(Vector.empty)
-      case 5 if tag == 5 && arity == 3 => Message.IntersectFound(Point.Origin, Tip.Origin)
-      case 6 if tag == 6 && arity == 2 => Message.IntersectNotFound(Tip.Origin)
-      case 7 if tag == 7 && arity == 1 => Message.Done
-      case _                           => bad(ProtocolError.UnknownTagOrWrongExactOuterArity)
-    get(transition(state, sender, skeleton))
-    val message: Message[P] = tag.toInt match
-      case 2 => Message.RollForward(get(payload.decode(r.item())), r.tip())
-      case 3 => Message.RollBackward(r.point(), r.tip())
-      case 4 => Message.FindIntersect(r.points())
-      case 5 => Message.IntersectFound(r.point(), r.tip())
-      case 6 => Message.IntersectNotFound(r.tip())
-      case _ => skeleton
-    message
-  }
+  ): DecodeResult[Message[P]] =
+    ChainSyncEngine.decodePrefix(
+      state,
+      sender,
+      bytes,
+      enginePointCodec,
+      engineTipCodec,
+      enginePayloadCodec(payload),
+      limits
+    ) match
+      case DecodeResult.NeedMore      => DecodeResult.NeedMore
+      case DecodeResult.Failed(error) => DecodeResult.Failed(error)
+      case DecodeResult.Decoded(message, consumed) =>
+        DecodeResult.Decoded(fromEngine(message), consumed)
 
   def validateItem(bytes: Bytes, limits: Limits = Limits()): Either[ProtocolError, Unit] = attempt {
     val r = new ChainSyncWire.Reader(bytes, limits)

@@ -3,6 +3,8 @@ package xyz.kd5ujc.scarab.fuzz
 
 import cats.syntax.all.*
 import fs2.Chunk
+import java.nio.file.Files
+import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.protocol.*
@@ -235,6 +237,125 @@ object Targets:
     def encode(value: Bytes): Either[ProtocolError, Bytes] = Right(value)
     def decode(bytes: Bytes): Either[ProtocolError, Bytes] = Right(bytes)
 
+  private val opaquePoint: ChainSyncEngine.PointCodec[Bytes] =
+    ChainSyncEngine.pointCodec[Bytes](Right(_), Right(_))
+  private val opaqueTip: ChainSyncEngine.TipCodec[Bytes] =
+    ChainSyncEngine.tipCodec[Bytes](Right(_), Right(_))
+  private val opaqueChainPayload: ChainSyncEngine.PayloadCodec[Bytes] =
+    ChainSyncEngine.payloadCodec[Bytes](Right(_), Right(_))
+  private val opaqueFetchPoint: BlockFetchEngine.PointCodec[Bytes] =
+    BlockFetchEngine.pointCodec[Bytes](Right(_), Right(_))
+  private val opaqueFetchPayload: BlockFetchEngine.PayloadCodec[Bytes] =
+    new BlockFetchEngine.PayloadCodec[Bytes]:
+      def encode(value: Bytes): Either[ProtocolError, Bytes] = Right(value)
+      def decode(item: Bytes): Either[ProtocolError, Bytes] = Right(item)
+
+  private def pinnedLines(path: String): Vector[String] =
+    Files.readAllLines(java.nio.file.Path.of(path)).asScala.toVector
+
+  private def encodedSeed(value: Either[ProtocolError, Bytes]): Vector[Array[Byte]] =
+    value.toOption.toVector.map(_.toArray)
+
+  /** Exact opaque-item messages seeded from the pinned Haskell-generated mock-chain fixtures. */
+  private val chainSyncEngineSeeds: () => Vector[Array[Byte]] = () =>
+    val fixture = "fixtures/reference/ouroboros-network-protocol-codecs"
+    val cases = pinnedLines(s"$fixture/chainsync-behavior-cases.tsv").map(_.split("\\t", -1))
+    val blocks = pinnedLines(s"$fixture/chainsync-behavior-blocks.tsv").map(_.split("\\t", -1))
+    val points = pinnedLines(s"$fixture/chainsync-behavior-points.tsv").map(_.split("\\t", -1))
+    cases.take(12).flatMap { row =>
+      val seed = row(1)
+      val ordinal = row(2)
+      val tip = Bytes.fromHex(row(8)).toOption
+      val genesis = Bytes.fromHex(row(12)).toOption
+      val candidates = points.collect {
+        case p if p(1) == seed && p(2) == ordinal => Bytes.fromHex(p(4)).toOption
+      }.flatten
+      val payloads = blocks.collect {
+        case b if b(1) == seed && b(2) == ordinal && b(3) == "producer" =>
+          Bytes.fromHex(b(6)).toOption
+      }.flatten
+      val seeds = for
+        serverTip <- tip
+        genesisPoint <- genesis
+        candidate <- candidates.headOption
+        firstBlock <- payloads.headOption
+      yield encodedSeed(
+        ChainSyncEngine.encode(
+          ChainSync.State.Idle,
+          ChainSync.Role.Client,
+          ChainSyncEngine.Message.FindIntersect(candidates.take(8)),
+          opaquePoint,
+          opaqueTip,
+          opaqueChainPayload
+        )
+      ) ++
+        encodedSeed(
+          ChainSyncEngine.encode(
+            ChainSync.State.Intersect,
+            ChainSync.Role.Server,
+            ChainSyncEngine.Message.IntersectFound(candidate, serverTip),
+            opaquePoint,
+            opaqueTip,
+            opaqueChainPayload
+          )
+        ) ++
+        encodedSeed(
+          ChainSyncEngine.encode(
+            ChainSync.State.NextCanAwait,
+            ChainSync.Role.Server,
+            ChainSyncEngine.Message.RollBackward(genesisPoint, serverTip),
+            opaquePoint,
+            opaqueTip,
+            opaqueChainPayload
+          )
+        ) ++
+        encodedSeed(
+          ChainSyncEngine.encode(
+            ChainSync.State.NextCanAwait,
+            ChainSync.Role.Server,
+            ChainSyncEngine.Message.RollForward(firstBlock, serverTip),
+            opaquePoint,
+            opaqueTip,
+            opaqueChainPayload
+          )
+        )
+      seeds.toVector.flatten
+    }
+
+  /** Exact upstream BlockFetch range endpoints and serialized block items seed the generic engine.
+    */
+  private val blockFetchEngineSeeds: () => Vector[Array[Byte]] = () =>
+    val fixture =
+      "network/src/test/resources/upstream/ouroboros-network-protocol-codecs/blockfetch-behavior-ranges.tsv"
+    pinnedLines(fixture).take(24).flatMap { line =>
+      val row = line.split("\\t", -1)
+      val from = Bytes.fromHex(row(4)).toOption
+      val to = Bytes.fromHex(row(5)).toOption
+      val bodies = row.drop(7).flatMap(hex => Bytes.fromHex(hex).toOption).take(3)
+      (from, to) match
+        case (Some(first), Some(last)) =>
+          encodedSeed(
+            BlockFetchEngine.encode(
+              BlockFetchEngine.State.Idle,
+              BlockFetchEngine.Role.Client,
+              BlockFetchEngine.Message.RequestRange(first, last),
+              opaqueFetchPoint,
+              opaqueFetchPayload
+            )
+          ) ++ bodies.toVector.flatMap { body =>
+            encodedSeed(
+              BlockFetchEngine.encode(
+                BlockFetchEngine.State.Streaming,
+                BlockFetchEngine.Role.Server,
+                BlockFetchEngine.Message.Block(body),
+                opaqueFetchPoint,
+                opaqueFetchPayload
+              )
+            )
+          }
+        case _ => Vector.empty
+    }
+
   private def handshake(name: String, suite: Handshake.Suite, rule: String): Target =
     Target(
       name,
@@ -375,12 +496,29 @@ object Targets:
       (s, r, m) => ChainSync.encode(s, r, m, anyItem, ChainSync.Limits.NodeToClient)
     ),
     roundTrip(
+      "chainsync-engine-opaque",
+      ChainSync.State.values.toSeq,
+      ChainSync.Role.values.toSeq,
+      chainSyncEngineSeeds,
+      (s, r, b) =>
+        ChainSyncEngine.decodePrefix(s, r, b, opaquePoint, opaqueTip, opaqueChainPayload),
+      (s, r, m) => ChainSyncEngine.encode(s, r, m, opaquePoint, opaqueTip, opaqueChainPayload)
+    ),
+    roundTrip(
       "blockfetch",
       BlockFetch.State.values.toSeq,
       BlockFetch.Role.values.toSeq,
       blockFetchSeeds,
       (s, r, b) => BlockFetch.decodePrefix(s, r, b, CardanoBlockFetch.payloadCodec()),
       (s, r, m) => BlockFetch.encode(s, r, m, CardanoBlockFetch.payloadCodec())
+    ),
+    roundTrip(
+      "blockfetch-engine-opaque",
+      BlockFetchEngine.State.values.toSeq,
+      BlockFetchEngine.Role.values.toSeq,
+      blockFetchEngineSeeds,
+      (s, r, b) => BlockFetchEngine.decodePrefix(s, r, b, opaqueFetchPoint, opaqueFetchPayload),
+      (s, r, m) => BlockFetchEngine.encode(s, r, m, opaqueFetchPoint, opaqueFetchPayload)
     ),
     roundTrip(
       "txsubmission2",

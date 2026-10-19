@@ -1,0 +1,35 @@
+{
+  "schema": "scarab-upstream-network-protocol-behavior-v1",
+  "source": "ouroboros-network",
+  "sourceCommit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+  "upstreamTest": "ouroboros-network:protocols-tests / ChainSync / propChainSyncDemoPipelinedMaxST",
+  "generatorType": "ChainProducerStateForkTest \u00d7 PipeliningDepth",
+  "requestedCases": 24,
+  "exportedCases": 24,
+  "seed": 504001,
+  "upstreamPropertyOutcomes": {
+    "pass": 24,
+    "upstream-failure": 0,
+    "precondition-discard": 0
+  },
+  "sourceFiles": {
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/Test.hs": "759c3e7ec58a89d34058773f43377cab759e8bbe875ee55c88dde52e561e43b9",
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/ExamplesPipelined.hs": "810544a5b37d40ae71e04eb3becbb73eeb25575bef9024665cbbc8c74857417b",
+    "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/PipelineDecision.hs": "d557b4aad0ed47fe291dea83cfdbd247d0efc0eb562d4b1799c1a8d674fba50d",
+    "ouroboros-network/protocols/tests-lib/Test/Data/PipeliningDepth.hs": "c0914dc089e9e563ab2fc4bdcc532b4173ad6780a1ee3a0094169ccfc6c0a7c9"
+  },
+  "observerPatchSha256": "2692cee025cb8aadf9b91538489c392bcb861aafa1e718a7f9435d22cb54c4ee",
+  "caseTsvSha256": "a3b1f8a495704991fb90ee701fe1bb31d56371346ce37f7e7bfd38f4e6c0cc49",
+  "generatorParameters": {
+    "forkCaseSeedPerOrdinal": "seed + ordinal",
+    "caseSizePerOrdinal": "30 + (ordinal mod 21)",
+    "depthSeedOffset": 7000003,
+    "depthGenerator": "unchanged Arbitrary PipeliningDepth, choose (0, 300)",
+    "zeroDepth": "recorded as precondition-discard from the unchanged omax > 0 implication; not replayed"
+  },
+  "limitations": [
+    "Rows link to the exact chain/body/point bytes and independent producer-chain oracle in chainsync-behavior v2 fixtures.",
+    "Scarab replay uses its production fixed-batch requestNextBatch API with the original max depth as a window bound and compares final chain only.",
+    "The observer preserves original generated depth and property verdicts; it does not claim Haskell max-policy request/collect trace equivalence."
+  ]
+}

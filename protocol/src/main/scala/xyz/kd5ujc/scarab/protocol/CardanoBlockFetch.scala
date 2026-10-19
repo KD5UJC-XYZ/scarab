@@ -13,6 +13,34 @@ object CardanoBlockFetch:
   val DefaultNtNVersion: Int = 14
   val CardanoCodecVersion: Int = 2
 
+  /** Strict point item profile used by both the facade and generic runtime adapter. */
+  val pointCodec: BlockFetchEngine.PointCodec[Point] =
+    new BlockFetchEngine.PointCodec[Point]:
+      private val bounds = ProtocolWire.Limits(65535, 65535, 64)
+
+      def encode(point: Point): Either[ProtocolError, Bytes] = attempt {
+        val writer = new ProtocolWire.Writer(bounds)
+        writer.point(point)
+        writer.result
+      }
+
+      def decode(item: Bytes): Either[ProtocolError, Point] = attempt {
+        val reader = new ProtocolWire.Reader(item, bounds)
+        val point = reader.point()
+        if reader.position != item.size then bad(ProtocolError.TrailingBlockFetchBytes)
+        point
+      }
+
+      override private[protocol] def readFrom(reader: ProtocolWire.Reader)(using
+          ProtocolWire.Scope
+      ): Point = reader.point()
+
+      override private[protocol] def writeTo(
+          writer: ProtocolWire.Writer,
+          point: Point,
+          limits: ProtocolWire.Limits
+      )(using ProtocolWire.Scope): Unit = writer.point(point)
+
   final class SpecificPoint private (val slot: UInt64, val hash: Bytes):
     def point: Point = Point.Block(slot, hash)
     override def equals(other: Any): Boolean = other match

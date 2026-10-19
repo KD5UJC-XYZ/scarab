@@ -1,0 +1,53 @@
+{
+  "fixture": "cardano-handshake.tsv",
+  "fixtureSha256": "b8d1870c1e470c128afbcfc78ed204747aeef116315b457d6350fa6059e4b34c",
+  "rowCount": 40,
+  "upstream": {
+    "repository": "IntersectMBO/ouroboros-network",
+    "commit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+    "source": "cardano-diffusion/protocols/tests-lib/Cardano/Network/Protocol/Handshake/Test.hs",
+    "sourceSha256": "70c04f90ecff381fd6f15422bed8ac8d97a1a14b7f3f2619521328f667645950",
+    "property": "prop_acceptable_symmetric_NodeToNode",
+    "propertyInvocations": 40,
+    "result": "all 40 pass; original Haskell test target protocols-tests passed 23/23 test cases",
+    "seed": "490801 + ordinal; Gen.run with deterministic per-row generator seed",
+    "observerPatch": "scripts/oracle/network-protocols/cardano-handshake-observer.patch",
+    "observerPatchSha256": "c07bf007fb8d3387df11667137723fadcf2ff806211a595bdf5fe5718ee01668"
+  },
+  "adapter": {
+    "scalaSuite": "xyz.kd5ujc.scarab.protocol.UpstreamProtocolCodecCoverageSuite",
+    "result": "40/40 rows decode and preserve both original proposal CBOR byte strings; typed responder outcomes are 1 Negotiated, 19 QueryResult, and 20 Rejected",
+    "limitations": "bounded generated symmetric NodeToNode v16 property sample, not full Handshake property or protocol suite coverage"
+  },
+  "schema": "tab-separated cardano-handshake-v1 rows; full original local and remote NodeToNode v16 proposal CBOR are retained",
+  "commands": {
+    "exportAndRunUpstream": [
+      "docker",
+      "exec",
+      "-e",
+      "SCARAB_HANDSHAKE_CASES=/probe/cardano-handshake.tsv",
+      "-w",
+      "/probe/cardano-handshake-overlay",
+      "scarab-v02-49-handshake-build",
+      "cabal",
+      "test",
+      "cardano-diffusion:protocols-tests",
+      "--project-file=/probe/cardano-handshake-overlay.project",
+      "--builddir=/probe/handshake-target-build",
+      "--jobs=2",
+      "--test-show-details=streaming"
+    ],
+    "exportAndRunUpstreamReturncode": 0,
+    "upstreamResultJson": "/tmp/scarab/v02-49-protocol-probe/cardano-handshake-export-build4-result.json",
+    "consumeInScarab": [
+      "docker",
+      "exec",
+      "scarab-v02-49-adapter-sbt",
+      "bash",
+      "scripts/sbtw",
+      "protocol/testOnly xyz.kd5ujc.scarab.protocol.UpstreamProtocolCodecCoverageSuite"
+    ],
+    "consumeReturncode": 0,
+    "consumerResultJson": "/tmp/scarab/v02-49-protocol-probe/scala-protocol-replay-export-result.json"
+  }
+}

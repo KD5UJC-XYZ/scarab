@@ -44,6 +44,11 @@ fixtures/block-evidence/source/preprod-explorer.json -whitespace
 
 # Preserve exact restricted-replay transaction, checkpoint and evidence bytes.
 fixtures/restricted-replay/** -text
+
+# Generated upstream conformance traces are pinned by manifest hashes and stay byte-identical.
+node/src/test/resources/upstream/**/cases/**/*.cbor -text -whitespace
+# Unified patch context can include upstream trailing spaces that the patch preserves verbatim.
+scripts/oracle/ledger-govcert/exporter.patch -whitespace
 # Preserve text dependencies whose exact bytes identify the restricted-replay profile/projector.
 crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/witness/StrictEd25519.scala -text
 codec/src/main/scala/xyz/kd5ujc/scarab/codec/Cbor.scala -text

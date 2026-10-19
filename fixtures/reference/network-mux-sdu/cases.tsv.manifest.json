@@ -1,0 +1,23 @@
+{
+  "schema": "scarab-upstream-mux-sdu-v1",
+  "source": "ouroboros-network",
+  "sourceCommit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+  "sourcePath": "network-mux/test/Test/Mux.hs",
+  "sourceFileSha256": "4db2e8967fa712334341d70f6f465655db337d54c471ccba1bcc8a9d743191a2",
+  "upstreamTest": "network-mux:test / Test.Mux.tests / sdu codec / prop_sdu_codec",
+  "generator": "Arbitrary SDUCodecCase; each row uses mkQCGen(seed + ordinal), size=30 + ordinal mod 21",
+  "seed": 490049,
+  "requestedCases": 40,
+  "exportedCases": 40,
+  "haskellTarget": "GHC 9.10.3, network-mux:test, Tasty --pattern=sdu",
+  "file": "cases.tsv",
+  "sha256": "49befe17b1a319bc3723fcce332517976203aa3296494dc74555354d29c87105",
+  "upstreamGeneratedPropertyResults": {
+    "pass": 40
+  },
+  "upstreamTestSuiteResult": "pass",
+  "dependencyPlanSha256": "b90adc9cc498b0d6789d6eeef6a6baa0811c2516a706cab0802ea58f0536477d",
+  "dependencyPlanUnits": 279,
+  "observerPatchSha256": "dabc4363ff2bfbd924c8f1b135fc06f7d638cb2e482ecd53995bb01af32578ad",
+  "observerPatch": "two disposable source changes: export actual upstream generator/property; add exporter CLI dispatch"
+}

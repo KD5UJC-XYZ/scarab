@@ -1,0 +1,142 @@
+--- a/cardano-diffusion/protocols/cddl/Main.hs
++++ b/cardano-diffusion/protocols/cddl/Main.hs
+@@ -38,13 +38,15 @@
+ import Data.ByteString.Lazy qualified as BL
+ import Data.ByteString.Lazy.Char8 qualified as BL.Char8
+ import Data.List (sortOn)
++import Data.List (intercalate)
+ import Data.Map qualified as Map
+ import Data.Ord (Down (..))
+ import Data.Text qualified as Text
+ import Data.Word (Word16)
++import Numeric (readHex, showHex)
+ 
+ import System.Directory (doesDirectoryExist)
+-import System.Environment (setEnv)
++import System.Environment (lookupEnv, setEnv)
+ import System.Exit (ExitCode (..))
+ import System.FilePath
+ import System.IO (hClose)
+@@ -674,7 +676,7 @@
+     case eterms of
+       Left err -> assertFailure err
+       Right terms ->
+-        forM_ terms $ \(generated_term, encoded_term) -> do
++        forM_ (zip [0 :: Int ..] terms) $ \(ordinal, (generated_term, encoded_term)) -> do
+           let encoded_term' = case transform of
+                  Nothing -> encoded_term
+                  Just tr -> case CBOR.deserialiseFromBytes CBOR.decodeTerm encoded_term of
+@@ -686,6 +688,7 @@
+               Right (_, decoded_term) =
+                 CBOR.deserialiseFromBytes CBOR.decodeTerm encoded_term'
+           res <- decodeMsg codec stoks encoded_term'
++          exportPeerSharingCase ordinal generated_term encoded_term' (if res == Nothing then "pass" else "fail")
+           case res of
+             Just errs -> assertFailure $ concat
+               [ "decoding failures:\n"
+@@ -697,6 +700,20 @@
+               , BL.Char8.unpack generated_term
+               ]
+             Nothing -> return ()
++
++exportPeerSharingCase :: Int -> BL.ByteString -> BL.ByteString -> String -> IO ()
++exportPeerSharingCase ordinal diagnostic encoded outcome = do
++    maybePath <- lookupEnv "SCARAB_CDDL_EXPORT"
++    maybeVersion <- lookupEnv "SCARAB_CDDL_VERSION"
++    case (maybePath, maybeVersion) of
++      (Just path, Just version) -> appendFile path $ intercalate "\t"
++        [ "cardano-peersharing-sockaddr-cddl-v1", version, show ordinal
++        , outcome, hexLazy diagnostic, hexLazy encoded
++        ] ++ "\n"
++      _ -> pure ()
++  where
++    hexLazy = concatMap hexByte . BL.unpack
++    hexByte w = let h = showHex (fromIntegral w :: Int) "" in if length h == 1 then '0' : h else h
+ 
+ -- | Generate valid encoded messages from a specification using `cddl generate`
+ -- (and encoded with `diag2cbor.rb`) and check that we can decode it using a given
+@@ -983,14 +1000,76 @@
+ unit_decodePeerSharingV14ToLast
+     :: CDDLSpec (PeerSharing.PeerSharing SockAddr)
+     -> Assertion
+-unit_decodePeerSharingV14ToLast spec =
+-    forM_ [NodeToNodeV_14 ..] $ \v ->
+-    validateDecoder Nothing
+-      spec (codecPeerSharing v)
+-      [ SomeAgency PeerSharing.SingIdle
+-      , SomeAgency PeerSharing.SingBusy
+-      ]
+-      100
++unit_decodePeerSharingV14ToLast spec = do
++    forM_ [NodeToNodeV_14 ..] $ \v -> do
++      setEnv "SCARAB_CDDL_VERSION" (show $ nodeToNodeVersionNumber v)
++      validateDecoder Nothing
++        spec (codecPeerSharing v)
++        [ SomeAgency PeerSharing.SingIdle
++        , SomeAgency PeerSharing.SingBusy
++        ]
++        100
++    replayScarabPeerSharing
++
++nodeToNodeVersionNumber :: NodeToNodeVersion -> Int
++nodeToNodeVersionNumber NodeToNodeV_14 = 14
++nodeToNodeVersionNumber NodeToNodeV_15 = 15
++nodeToNodeVersionNumber NodeToNodeV_16 = 16
++
++replayScarabPeerSharing :: Assertion
++replayScarabPeerSharing = do
++    maybePath <- lookupEnv "SCARAB_PEERSHARING_REPLAY"
++    case maybePath of
++      Nothing -> pure ()
++      Just path -> do
++        rows <- lines <$> readFile path
++        forM_ rows $ \row -> case splitTabs row of
++          [versionText, ordinalText, originalHex, scarabHex] -> do
++            let version = read versionText :: Int
++                ordinal = read ordinalText :: Int
++                ntnVersion = case version of
++                  14 -> NodeToNodeV_14
++                  15 -> NodeToNodeV_15
++                  16 -> NodeToNodeV_16
++                  _  -> error $ "unexpected PeerSharing replay version " ++ show version
++                codec = codecPeerSharing ntnVersion
++                agencies =
++                  [ SomeAgency PeerSharing.SingIdle
++                  , SomeAgency PeerSharing.SingBusy
++                  ]
++            original <- decodePeerSharingShow codec agencies (decodeHex originalHex)
++            scarab <- decodePeerSharingShow codec agencies (decodeHex scarabHex)
++            case (original, scarab) of
++              (Just originalMessage, Just scarabMessage) ->
++                assertEqual ("Haskell typed message v" ++ show version ++ "/" ++ show ordinal)
++                  originalMessage scarabMessage
++              _ -> assertFailure $ "upstream decoder rejected original or Scarab wire at v"
++                                ++ show version ++ "/" ++ show ordinal
++          _ -> assertFailure "malformed Scarab PeerSharing replay row"
++  where
++    splitTabs [] = [""]
++    splitTabs input = case break (== '\t') input of
++      (field, []) -> [field]
++      (field, _:rest) -> field : splitTabs rest
++    decodeHex [] = BL.empty
++    decodeHex (a:b:rest) = case readHex [a,b] of
++      [(value, "")] -> fromIntegral (value :: Int) `BL.cons` decodeHex rest
++      _ -> error "invalid hex in Scarab PeerSharing replay"
++    decodeHex _ = error "odd-length hex in Scarab PeerSharing replay"
++
++decodePeerSharingShow
++    :: Codec (PeerSharing.PeerSharing SockAddr) CBOR.DeserialiseFailure IO BL.ByteString
++    -> [SomeAgency (PeerSharing.PeerSharing SockAddr)]
++    -> BL.ByteString
++    -> IO (Maybe String)
++decodePeerSharingShow _ [] _ = pure Nothing
++decodePeerSharingShow codec (SomeAgency (stok :: StateToken st) : rest) bytes = do
++    decoder <- (decode codec stok :: IO
++      (DecodeStep BL.ByteString CBOR.DeserialiseFailure IO (SomeMessage st)))
++    result <- runDecoder [bytes] decoder
++    case result of
++      Right (SomeMessage message) -> pure (Just (show message))
++      Left _ -> decodePeerSharingShow codec rest bytes
+ 
+ unit_decodeNodeToNodeVersionDataV14ToV15
+     :: CDDLSpec NodeToNodeVersionData

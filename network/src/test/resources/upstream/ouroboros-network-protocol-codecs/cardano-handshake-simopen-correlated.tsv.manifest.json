@@ -1,0 +1,50 @@
+{
+  "fixture": "cardano-handshake-simopen-correlated.tsv",
+  "fixtureSha256": "2e5807e8f26d65667ead37afdbee7c18f40091a5c585ff0f9869a5fbcfe2fb04",
+  "rowCount": 64,
+  "upstream": {
+    "repository": "IntersectMBO/ouroboros-network",
+    "commit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+    "source": "cardano-diffusion/protocols/tests-lib/Cardano/Network/Protocol/Handshake/Test.hs",
+    "sourceSha256": "70c04f90ecff381fd6f15422bed8ac8d97a1a14b7f3f2619521328f667645950",
+    "observerAppliedSourceSha256": "9eef8232f8d235b8f3311b5239560f754bbaafac59131b54599140b2b5ea6734",
+    "property": "prop_channel_simultaneous_open_NodeToNode_ST (one unchanged generated map supplied to both arguments)",
+    "seed": "503001 + ordinal over 64 candidates; size = 60 + ordinal mod 31; original ArbitraryNodeToNodeVersions generator and property are unchanged",
+    "domain": "correlated generated map",
+    "result": "64 unchanged upstream property passes; 32 true/true, 31 false/false, 1 none/none; original wire proposals identical per pair; Scala runtime mapping not yet recorded",
+    "observerPatches": [
+      "scripts/oracle/network-protocols/cardano-handshake-observer.patch",
+      "scripts/oracle/network-protocols/cardano-handshake-query-observer.patch",
+      "scripts/oracle/network-protocols/cardano-handshake-simopen-correlated.patch"
+    ],
+    "exportResultJson": "/tmp/scarab/v02-49-protocol-probe/simopen-stage/simopen-correlated-export-result.json"
+  },
+  "adapter": {
+    "scalaSuite": "xyz.kd5ujc.scarab.network.HandshakeSuite",
+    "status": "production Mux runtime replay passed: HandshakeSuite focused result exit 0, 8/8 suite tests",
+    "limitations": "Bounded deterministic correlated-map slice of the unchanged property, distinct from independent-pair sample; no whole Handshake suite claim.",
+    "result": "Both production HandshakeClients replayed all 64 unchanged correlated proposal rows; expected negotiated version and complete Handshake.Data matched. The unchanged upstream ST property passed all 64; pureHandshake outcomes were 32 true/true, 31 false/false, 1 none/none.",
+    "runtimeResultJson": "/tmp/scarab/v02-49-protocol-probe/simopen-stage/scala-handshake-suite-5-result.json"
+  },
+  "schema": "TSV: schema, seed, ordinal, QuickCheck size, unchanged ST property pass, pureHandshake client result, pureHandshake server result, exact client proposal CBOR hex, exact server proposal CBOR hex",
+  "commands": {
+    "exportAndRunUpstream": [
+      "docker",
+      "exec",
+      "-e",
+      "SCARAB_HANDSHAKE_SIMOPEN_CASES=/probe/exports/cardano-handshake-simopen.tsv",
+      "-w",
+      "/probe/cardano-handshake-overlay",
+      "scarab-v02-49-simopen-exporter",
+      "cabal",
+      "test",
+      "cardano-diffusion:protocols-tests",
+      "--project-file=/probe/cardano-handshake-overlay.project",
+      "--builddir=/probe/handshake-target-build",
+      "--jobs=2",
+      "--test-show-details=streaming",
+      "--test-options=--pattern=simultaneous-open"
+    ],
+    "exportReturncode": 0
+  }
+}

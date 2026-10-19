@@ -31,6 +31,18 @@ class GuardSuite extends FunSuite:
     assertEquals(cold.toList, Nil, "targets that accepted none of their seeds")
   }
 
+  test("generic engine targets accept exact upstream ChainSync and BlockFetch mock-domain seeds") {
+    for name <- Vector("chainsync-engine-opaque", "blockfetch-engine-opaque") do
+      val target = Targets.all.find(_.name == name).getOrElse(fail(s"missing $name target"))
+      val before = Option(Targets.accepted.get(name)).fold(0L)(_.sum())
+      target.corpus().foreach { bytes =>
+        val input = new Input(bytes)
+        Probe.run(name, input)(target.check(input))
+      }
+      val after = Option(Targets.accepted.get(name)).fold(0L)(_.sum())
+      assert(after > before, s"pinned upstream fixture seeds were not accepted by $name")
+  }
+
   test("optional partial-schema samples may be absent while available rules still supply seeds") {
     for rule <- Vector(
         "chainsync-header:header",

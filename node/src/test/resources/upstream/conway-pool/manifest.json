@@ -1,0 +1,205 @@
+{
+  "schema": "scarab-upstream-ledger-conformance-v1",
+  "upstream": "cardano-ledger",
+  "upstreamCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "formalCommit": "b3a4fd47a1144ff1fb994f89b1045e78159e07ae",
+  "generatorCommit": "966f65f3c28cb22fc45220dbd1408baea93b53d8",
+  "suite": "cardano-ledger-conformance / Conway POOL",
+  "observerPatch": "scripts/oracle/ledger-govcert/exporter.patch",
+  "contextMeaning": "null (no additional ExecContext)",
+  "cases": [
+    {
+      "seed": 492101,
+      "family": "POOL",
+      "upstreamStatus": "implementation-accepted",
+      "agdaStatus": "agda-accepted",
+      "files": {
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        },
+        "environment.cbor": {
+          "bytes": 365,
+          "sha256": "1c525247c57d332129f617390cd8a3f62b58744cc879b996d8c4362bef7300de"
+        },
+        "state.cbor": {
+          "bytes": 5,
+          "sha256": "f9db872ed805a4634dad21a4bc6d61095fb2c3f2450a410858d43cbaa12b65fe"
+        },
+        "signal.cbor": {
+          "bytes": 195,
+          "sha256": "f567f41537f4bf8e682a9ed438e960d05bd90cf89d1f3601309edb173d9e6fe4"
+        },
+        "implementation-state.cbor": {
+          "bytes": 205,
+          "sha256": "b6abd046f45e9634e173639ad7496564b0f5a3842241803cd10e9a628ccdedd3"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        }
+      }
+    },
+    {
+      "seed": 492102,
+      "family": "POOL",
+      "upstreamStatus": "implementation-accepted",
+      "agdaStatus": "agda-accepted",
+      "files": {
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        },
+        "environment.cbor": {
+          "bytes": 357,
+          "sha256": "662ecad1812710144a46cfaec94ed90d73c8d53e2ed025d582e59c3b68b8fc93"
+        },
+        "state.cbor": {
+          "bytes": 5,
+          "sha256": "f9db872ed805a4634dad21a4bc6d61095fb2c3f2450a410858d43cbaa12b65fe"
+        },
+        "signal.cbor": {
+          "bytes": 205,
+          "sha256": "44be5a445c3409b254fddc0492401af8864ca7247cb1c02b1ff090714a33f955"
+        },
+        "implementation-state.cbor": {
+          "bytes": 214,
+          "sha256": "7ef1fd9412cc7cda41835ce88c5b4f1bd817ce65818d1e5f33eacd6660b7defa"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        }
+      }
+    },
+    {
+      "seed": 492103,
+      "family": "POOL",
+      "upstreamStatus": "implementation-accepted",
+      "agdaStatus": "agda-accepted",
+      "files": {
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        },
+        "environment.cbor": {
+          "bytes": 368,
+          "sha256": "21a7e2bd6cde3b148ed1ebe71a59446620ff107378118393d0812d8092468f34"
+        },
+        "state.cbor": {
+          "bytes": 5,
+          "sha256": "f9db872ed805a4634dad21a4bc6d61095fb2c3f2450a410858d43cbaa12b65fe"
+        },
+        "signal.cbor": {
+          "bytes": 212,
+          "sha256": "8dd55b9991284f5a0d20ccc2de2ee8e6727bdf72558554598ef1de3330c41203"
+        },
+        "implementation-state.cbor": {
+          "bytes": 221,
+          "sha256": "77afdcba4e2967413ab8fa6c125a303768c8aecc8424c92687048ee993cd2cb8"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        }
+      }
+    },
+    {
+      "seed": 492104,
+      "family": "POOL",
+      "upstreamStatus": "implementation-accepted",
+      "agdaStatus": "agda-accepted",
+      "files": {
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        },
+        "environment.cbor": {
+          "bytes": 350,
+          "sha256": "8517e38435de5207cbef72d6e79d2fb1a80c1e4765c775992b10d71d285a791c"
+        },
+        "state.cbor": {
+          "bytes": 5,
+          "sha256": "f9db872ed805a4634dad21a4bc6d61095fb2c3f2450a410858d43cbaa12b65fe"
+        },
+        "signal.cbor": {
+          "bytes": 218,
+          "sha256": "c4f31eb3b18a4b57b05cef5ace1e4404db323f3c2d565a7fd75902a75397b8db"
+        },
+        "implementation-state.cbor": {
+          "bytes": 228,
+          "sha256": "cf42d08a9590ac9cfff1b193d5cf9576c2f57304196f392d00441e05885ed22b"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        }
+      }
+    },
+    {
+      "seed": 492105,
+      "family": "POOL",
+      "upstreamStatus": "implementation-accepted",
+      "agdaStatus": "agda-accepted",
+      "files": {
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        },
+        "environment.cbor": {
+          "bytes": 354,
+          "sha256": "ff1e64427f5da25f583651406678ae2a2edc5fa970ad8a9c6d3a3e5582b3d1df"
+        },
+        "state.cbor": {
+          "bytes": 5,
+          "sha256": "f9db872ed805a4634dad21a4bc6d61095fb2c3f2450a410858d43cbaa12b65fe"
+        },
+        "signal.cbor": {
+          "bytes": 217,
+          "sha256": "ac30c0e2b2dc45b6b3b49bdf06f16a33c9d7e272579799e243937a166ada181e"
+        },
+        "implementation-state.cbor": {
+          "bytes": 226,
+          "sha256": "282d4bb0438a795d8bf0bfd69515e74eac34f7c6ab31c679a452b26e5a7a5373"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        }
+      }
+    }
+  ],
+  "ambientRuleInput": {
+    "networkIdName": "Testnet",
+    "networkIdValue": 0,
+    "sourcePath": "eras/shelley/impl/testlib/Test/Cardano/Ledger/Shelley/ImpTest.hs",
+    "sourceBlobSha": "4e782002be38f31a043ede98d2a504b3b029e896",
+    "reason": "defaultInitImpTestState derives ShelleyBase Globals from initGenesis; generated ImpTest genesis sets sgNetworkId = Testnet"
+  },
+  "observerPatchSha256": "7130e6e9c1b055f27a2f1a60984af5d58446e9441f088fea724b0dbcba165e31",
+  "sourceBlobs": {
+    "ExecSpecRuleConwayPool": "272e3888c9674c5f91a52c741158ef11c179e189",
+    "ShelleyPoolRule": "320047a02231f1cf0716cca65fe45c1a9c1c7f5b",
+    "ShelleyImpTestGenesis": "4e782002be38f31a043ede98d2a504b3b029e896"
+  },
+  "sampleContract": {
+    "generated": 5,
+    "upstreamImplementationAccepted": 5,
+    "agdaAccepted": 5,
+    "scarabAdapterMatched": 5,
+    "failed": 0,
+    "missing": 0,
+    "scope": "deterministic seed probe; not complete upstream property coverage"
+  },
+  "runner": {
+    "executable": "cardano-ledger-conformance:test:tests",
+    "argsTemplate": [
+      "-m",
+      "POOL",
+      "--seed=<seed>",
+      "--qc-max-success=1",
+      "--qc-max-size=30",
+      "--strict"
+    ]
+  }
+}

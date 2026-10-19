@@ -1,0 +1,49 @@
+{
+  "fixture": "cardano-handshake-simopen.tsv",
+  "fixtureSha256": "55b8b11d121b2061e37004114046aef55a4326c8e3d2a79bdeb9bcc126b78527",
+  "rowCount": 64,
+  "upstream": {
+    "repository": "IntersectMBO/ouroboros-network",
+    "commit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+    "source": "cardano-diffusion/protocols/tests-lib/Cardano/Network/Protocol/Handshake/Test.hs",
+    "sourceSha256": "70c04f90ecff381fd6f15422bed8ac8d97a1a14b7f3f2619521328f667645950",
+    "observerAppliedSourceSha256": "27866bffcdbf0290be5398c2c7b42bb73217c769f6cd83a1ac38714dc95fff54",
+    "property": "prop_channel_simultaneous_open_NodeToNode_ST",
+    "seed": "502001 + ordinal over 64 candidates; size = 60 + ordinal mod 31; original ArbitraryNodeToNodeVersions generator and property are unchanged",
+    "domain": "independent generated map pairs",
+    "result": "64 original independent generated pairs; 64 unchanged upstream property passes; Haskell pureHandshake returned none/none for all pairs; Scala runtime mapping not yet recorded",
+    "observerPatches": [
+      "scripts/oracle/network-protocols/cardano-handshake-observer.patch",
+      "scripts/oracle/network-protocols/cardano-handshake-query-observer.patch"
+    ],
+    "exportResultJson": "/tmp/scarab/v02-49-protocol-probe/simopen-stage/simopen-export-5-result.json"
+  },
+  "adapter": {
+    "scalaSuite": "xyz.kd5ujc.scarab.network.HandshakeSuite",
+    "status": "production Mux runtime replay passed: HandshakeSuite focused result exit 0, 8/8 suite tests",
+    "limitations": "Bounded deterministic independent-map sample; upstream reference returned no common negotiated result for all 64. Scarab typed error payload is recorded as local behavior, not reference diagnostic parity.",
+    "result": "Both production HandshakeClients replayed all 64 unchanged independent-pair rows. All yielded typed refusals matched the local production decision; upstream pureHandshake outcomes were none/none for all rows, so diagnostic payload parity is not claimed.",
+    "runtimeResultJson": "/tmp/scarab/v02-49-protocol-probe/simopen-stage/scala-handshake-suite-5-result.json"
+  },
+  "schema": "TSV: schema, seed, ordinal, QuickCheck size, unchanged ST property pass, pureHandshake client result, pureHandshake server result, exact client proposal CBOR hex, exact server proposal CBOR hex",
+  "commands": {
+    "exportAndRunUpstream": [
+      "docker",
+      "exec",
+      "-e",
+      "SCARAB_HANDSHAKE_SIMOPEN_CASES=/probe/exports/cardano-handshake-simopen.tsv",
+      "-w",
+      "/probe/cardano-handshake-overlay",
+      "scarab-v02-49-simopen-exporter",
+      "cabal",
+      "test",
+      "cardano-diffusion:protocols-tests",
+      "--project-file=/probe/cardano-handshake-overlay.project",
+      "--builddir=/probe/handshake-target-build",
+      "--jobs=2",
+      "--test-show-details=streaming",
+      "--test-options=--pattern=simultaneous-open"
+    ],
+    "exportReturncode": 0
+  }
+}

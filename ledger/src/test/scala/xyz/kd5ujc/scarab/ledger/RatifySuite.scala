@@ -82,6 +82,32 @@ class RatifySuite extends ScalaCheckSuite:
   private val treasuryAction = GovAction.TreasuryWithdrawals(Vector(account -> (10 * ada)), None)
   @unused private val infoAction = GovAction.Info
 
+  test("the native RATIFY transition keeps signal order while the pulser applies priority") {
+    val zeroThresholds = pp().copy(
+      poolVotingThresholds = PoolVotingThresholds.zero,
+      drepVotingThresholds = DRepVotingThresholds.zero
+    )
+    val start = enactState(params = zeroThresholds)
+    val noConfidence = gas(1, GovAction.NoConfidence(None))
+    val committee = gas(2, GovAction.UpdateCommittee(None, Set.empty, Map.empty, half))
+    val signal = Vector(committee, noConfidence)
+    val native =
+      Ratify.transition(env(), RatifyState(start, Vector.empty, Set.empty, false), signal)
+    assertEquals(native.enacted.map(_.id), Vector(id(2)))
+    assertEquals(Ratify.ratify(env(), start, signal).enacted.map(_.id), Vector(id(1)))
+  }
+
+  test("a delayed native RATIFY state retains prior results and still expires actions") {
+    val enacted = gas(1, GovAction.NoConfidence(None))
+    val old = gas(3, treasuryAction, expires = 9)
+    val initial = RatifyState(enactState(), Vector(enacted), Set(id(2)), delayed = true)
+    val actual = Ratify.transition(env(epoch = 10), initial, Vector(old))
+    assertEquals(actual.enacted, initial.enacted)
+    assertEquals(actual.expired, Set(id(2), id(3)))
+    assert(actual.delayed)
+    assertEquals(actual.enact, initial.enact.copy(treasury = 0))
+  }
+
   test("DReps: abstaining stake is out, always-no-confidence counts against, silence is no") {
     val a = cred(1)
     val b = cred(2)

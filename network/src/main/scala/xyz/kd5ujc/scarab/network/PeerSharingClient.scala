@@ -2,8 +2,7 @@
 package xyz.kd5ujc.scarab.network
 
 import xyz.kd5ujc.scarab.protocol.ProtocolError
-import cats.effect.{Ref, Temporal}
-import cats.effect.std.Mutex
+import cats.effect.Temporal
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -47,43 +46,28 @@ object PeerSharingClient:
         .encode(state, PeerSharing.Role.Client, message, settings.limits)
         .fold(e => illegal(ProtocolError.PeerSharing(e)), channel.send)
 
-    (Mutex[F], Ref.of[F, PeerSharing.State](PeerSharing.State.Idle)).mapN { (lock, state) =>
+    val wire = new PeerSharingRuntime.ClientWire[F, Address]:
+      type Reply = PeerSharing.Message
+      def request(state: PeerSharing.State, amount: Amount)(using Raise[F, NetworkError]): F[Unit] =
+        send(state, PeerSharing.Message.ShareRequest(amount))
+      def receive(using Raise[F, NetworkError]): F[Reply] =
+        channel.recv(settings.limits.maxMessageBytes)(
+          PeerSharing.decoder(PeerSharing.State.Busy, PeerSharing.Role.Server, settings.limits)
+        )
+      def peers(amount: Amount, reply: Reply)(using Raise[F, NetworkError]): F[Vector[Address]] =
+        reply match
+          case PeerSharing.Message.SharePeers(peers) if peers.size > amount.value =>
+            illegal[Vector[Address]](
+              RuntimeViolation
+                .PeerSharingPolicy(PeerSharing.Violation.TooManyPeers(amount, peers.size))
+            )
+          case PeerSharing.Message.SharePeers(peers) => F.pure(peers)
+          case other => illegal[Vector[Address]](RuntimeViolation.PeerSharingUnexpected(other))
+      def done(state: PeerSharing.State)(using Raise[F, NetworkError]): F[Unit] =
+        send(state, PeerSharing.Message.Done) *> channel.flush
+    PeerSharingRuntime.client(wire, settings.responseTimeout).map { client =>
       new PeerSharingClient[F]:
         def request(amount: Amount)(using Raise[F, NetworkError]): F[Vector[Address]] =
-          lock.lock.surround {
-            for
-              current <- state.get
-              _ <- send(current, PeerSharing.Message.ShareRequest(amount))
-              _ <- state.set(PeerSharing.State.Busy)
-              answer <- Timed.within(settings.responseTimeout, id, "StBusy")(
-                channel.recv(settings.limits.maxMessageBytes)(
-                  PeerSharing.decoder(
-                    PeerSharing.State.Busy,
-                    PeerSharing.Role.Server,
-                    settings.limits
-                  )
-                )
-              )
-              peers <- answer match
-                case PeerSharing.Message.SharePeers(peers) if peers.size > amount.value =>
-                  illegal[Vector[Address]](
-                    RuntimeViolation.PeerSharingPolicy(
-                      PeerSharing.Violation.TooManyPeers(amount, peers.size)
-                    )
-                  )
-                case PeerSharing.Message.SharePeers(peers) => F.pure(peers)
-                case other =>
-                  illegal[Vector[Address]](RuntimeViolation.PeerSharingUnexpected(other))
-              _ <- state.set(PeerSharing.State.Idle)
-            yield peers
-          }
-
-        def done(using Raise[F, NetworkError]): F[Unit] =
-          lock.lock.surround {
-            state.get.flatMap(current =>
-              send(current, PeerSharing.Message.Done) *> channel.flush *> state.set(
-                PeerSharing.State.Done
-              )
-            )
-          }
+          client.request(amount)
+        def done(using Raise[F, NetworkError]): F[Unit] = client.done
     }

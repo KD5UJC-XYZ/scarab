@@ -1,0 +1,147 @@
+{
+  "sourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "cases": [
+    {
+      "rule": "EPOCH",
+      "seed": 497101,
+      "upstreamPropertyExitCode": 1,
+      "nativeVerdict": "accepted",
+      "agdaVerdict": "accepted",
+      "files": {
+        "state.cbor": {
+          "bytes": 3059,
+          "sha256": "4e69bdb5ea9793c9f0bd4767dc191703ad548bf0c5226802300b3a45e6fc06a4"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 1,
+          "sha256": "4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a"
+        },
+        "environment.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        },
+        "implementation-state.cbor": {
+          "bytes": 2450,
+          "sha256": "0eb80f55d06f4916fd94737d09030ec765846f701b49a925de9b34ff97bbfecf"
+        },
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        }
+      },
+      "scarabStatus": "native-state-match",
+      "generatorSizeNote": "First QuickCheck input at size zero; --qc-max-size=30 is a maximum, not a fixed size.",
+      "runnerArgs": [
+        "--match",
+        "Conformance/Conway/Constrained Generators/Ticks transition graph/EPOCH/",
+        "--seed=497101",
+        "--qc-max-success=1",
+        "--qc-max-size=30"
+      ]
+    },
+    {
+      "rule": "NEWEPOCH",
+      "seed": 498101,
+      "upstreamPropertyExitCode": 0,
+      "nativeVerdict": "accepted",
+      "agdaVerdict": "accepted",
+      "files": {
+        "state.cbor": {
+          "bytes": 2954,
+          "sha256": "c4b5128bada40d5576d1b6be13606b54cbc680c7a81c0d70e5e153d28045cf1d"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 1,
+          "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+        },
+        "environment.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        },
+        "implementation-state.cbor": {
+          "bytes": 2570,
+          "sha256": "19ab4eb059ead66065efbc851321c3955d9b8d38d4ed718273952df16a821468"
+        },
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        }
+      },
+      "scarabStatus": "unsupported-zero-total-active-stake",
+      "generatorSizeNote": "First QuickCheck input at size zero; --qc-max-size=30 is a maximum, not a fixed size.",
+      "runnerArgs": [
+        "--match",
+        "Conformance/Conway/Constrained Generators/Ticks transition graph/NEWEPOCH/",
+        "--seed=498101",
+        "--qc-max-success=1",
+        "--qc-max-size=30"
+      ]
+    }
+  ],
+  "limitations": [
+    "EPOCH remains an upstream comparison failure despite both implementations accepting; it is not counted as an upstream conformance pass.",
+    "NEWEPOCH invokes constrainedNewEpoch rather than the incorrectly wired EPOCH bundle in the pinned registered label.",
+    "These initial seeded cases do not establish family-wide or boundary coverage.",
+    "The NEWEPOCH size-zero input encodes zero pdTotalActiveStake inside NonZero Coin; retained as unsupported without repairing bytes or weakening native vocabulary types."
+  ],
+  "schema": "scarab-upstream-ledger-conformance-v1",
+  "upstream": "cardano-ledger",
+  "formalCommit": "b3a4fd47a1144ff1fb994f89b1045e78159e07ae",
+  "generatorCommit": "966f65f3c28cb22fc45220dbd1408baea93b53d8",
+  "observerPatch": "scripts/oracle/ledger-govcert/exporter.patch",
+  "familyPatch": "scripts/oracle/ledger-govcert/epoch-families.patch",
+  "familyPatchSha256": "64ad562f84cfb1e52f7dddeb7dcf886803b2f9c30a5328f8f448a98f03608b3f",
+  "dependencyPlanSha256": "d5268a535a9e6c5a4158ddac6f9a1c310d05882c54f2c85b460de83e2e3453d6",
+  "sampleContract": {
+    "generated": 2,
+    "upstreamComparisonPassed": 1,
+    "upstreamComparisonFailed": 1,
+    "scarabNativeStateMatches": 1,
+    "scarabUnsupported": 1
+  },
+  "additionalProbes": [
+    {
+      "rule": "NEWEPOCH",
+      "seed": 498201,
+      "generatorSize": 10,
+      "upstreamExitCode": 1,
+      "outcome": "upstream-proposal-construction-exception",
+      "logSha256": "147836e7d4a2fdd7e5d39928580412eb4ecc3b91294fbbafd8c147a25fa90119"
+    },
+    {
+      "rule": "NEWEPOCH",
+      "seed": 498202,
+      "generatorSize": 10,
+      "upstreamExitCode": 1,
+      "outcome": "upstream-proposal-construction-exception",
+      "logSha256": "f4960b53115a250bb066435a15c0c54209d0bb9774e07dbe3694047377533844"
+    },
+    {
+      "rule": "NEWEPOCH",
+      "seed": 498203,
+      "generatorSize": 10,
+      "upstreamExitCode": 1,
+      "outcome": "upstream-proposal-construction-exception",
+      "logSha256": "c96aec407b29066bbde19bee7792407743a496717415b0b1ed799ebf2652dc8f"
+    },
+    {
+      "rule": "UTXO",
+      "seed": 499101,
+      "timeoutSeconds": 120,
+      "outcome": "no-judgment-before-timeout",
+      "originalContextRetained": true
+    }
+  ],
+  "observerPatchSha256": "7130e6e9c1b055f27a2f1a60984af5d58446e9441f088fea724b0dbcba165e31",
+  "additionalProbeInvocation": "conformsToImpl (resize 10 (genFromBundle_ constrainedNewEpoch)); each runs with --qc-max-success=1 and its recorded seed, without filtering or repairing generated states.",
+  "sizedProbePatch": "scripts/oracle/ledger-govcert/epoch-sized-probe.patch",
+  "sizedProbePatchSha256": "c9f55d9465527cf555b5d96fa85a8061285182c84b6c6e969b3c8b0d8c1e39ae"
+}

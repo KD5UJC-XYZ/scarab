@@ -17,7 +17,6 @@ import xyz.kd5ujc.scarab.ledger.{
   Pot,
   PredicateFailure,
   ProtocolParams,
-  Proposals,
   Ptr,
   TxDefect
 }
@@ -334,7 +333,7 @@ object ShelleyDelpl extends Sts[ShelleyDelegEnv, ShelleyCertState, Certificate, 
   ): F[Unit] =
     val delegs = env.delegs
     // the pool rule's environment: no committee and no proposals before Conway
-    val poolEnv = CertEnv(delegs.id, delegs.pp, delegs.ctx.epoch, None, Proposals.empty)
+    val poolEnv = CertEnv(delegs.id, delegs.pp, delegs.ctx.epoch, None, Map.empty)
     def pool(c: PoolCert): F[Unit] =
       Sts.trans[F, CertEnv, PState, ShelleyCertState, PoolCert, LedgerFailure, LedgerFailure](
         Pool,
