@@ -19,6 +19,14 @@ enum NetworkError extends DomainError:
   case Decode(protocol: Int, cause: ProtocolError)
   case IllegalTransition(protocol: Int, cause: NetworkError.Violation)
   case QueryRefused(refusal: QueryRefusal[?])
+
+  /** The selected ledger view and its backing UTxO generation did not have a provable relation. */
+  case StateAcquireFailure(
+      point: ChainSync.Point,
+      flushed: Long,
+      pinned: Long,
+      selected: BigInt
+  )
   case BearerClosed(reason: NetworkError.Closure)
 
   /** An unexpected library failure or bug; never a recoverable failure of the peer. */
@@ -47,6 +55,8 @@ enum NetworkError extends DomainError:
       s"${Protocols.name(p)} protocol violation: ${NetworkError.violationMessage(d)}"
     case QueryRefused(r) =>
       s"${Protocols.name(Protocols.LocalStateQuery)} query not answered: ${r.message}"
+    case StateAcquireFailure(point, flushed, pinned, selected) =>
+      s"${Protocols.name(Protocols.LocalStateQuery)} acquired UTxO view at $point with stamp $pinned; expected $flushed..$selected"
     case BearerClosed(r) => s"connection closed: ${r.message}"
     case Defect(t)       => s"network defect: ${Option(t.getMessage).getOrElse(t.getClass.getName)}"
     case Framing(e)      => s"multiplexer framing: ${e.message}"
@@ -54,6 +64,9 @@ enum NetworkError extends DomainError:
     case MuxWrite(e)     => s"multiplexer write: ${e.message}"
 
 object NetworkError:
+  /** Internal invariant failure crossing from the network's peer-error scope to the node owner. */
+  final class InternalFailure(val error: NetworkError) extends RuntimeException(error.message)
+
   enum ConnectionRole:
     case Initiator, Responder
 

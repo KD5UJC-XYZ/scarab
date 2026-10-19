@@ -13,8 +13,16 @@ import xyz.kd5ujc.scarab.consensus.{
 }
 import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.blst.{Blst, BlstProblem, BlstReport}
-import xyz.kd5ujc.scarab.ledger.{Block, ConfigError, ConfigProblem, NativeLibraryError, NodeError}
+import xyz.kd5ujc.scarab.ledger.{
+  Block,
+  ConfigError,
+  ConfigProblem,
+  NativeLibraryError,
+  NodeError,
+  StorageError
+}
 import cats.effect.{Deferred, ExitCode, IO, IOApp, Ref, Resource}
+import cats.effect.std.Mutex
 import cats.effect.metrics.CpuStarvationWarningMetrics
 import xyz.kd5ujc.scarab.storage.{
   ChainPersistence,
@@ -103,6 +111,16 @@ import scala.concurrent.duration.*
   * VRF key, KES key and operational certificate it also produces blocks in the slots it leads.
   */
 object Main extends IOApp:
+  /** Land a backend error after the network adapter has released its protocol resources. */
+  private[node] def landLocalBackend(
+      result: IO[Either[StorageError, LocalTxSubmissionServer.End]],
+      fatalSink: Fatal => IO[Unit]
+  ): IO[InboundEnd] =
+    result.flatMap {
+      case Left(error) => fatalSink(Fatal.Storage(error)).as(InboundEnd.Storage(error))
+      case Right(end)  => IO.pure(InboundEnd.Local(end))
+    }
+
   final case class Options(
       genesisDir: Option[Path],
       peers: List[SocketAddress[Host]],
@@ -615,6 +633,7 @@ object Main extends IOApp:
             )
             _ <- collectors.add(Collectors.mempool(mempool))
             served = server.persistence[MirrorState]
+            chainGate <- Mutex[IO]
             follower <- Follower.create[IO, MirrorState](
               MeteredRules[IO, MirrorState](rules),
               followerEvents,
@@ -647,7 +666,8 @@ object Main extends IOApp:
               ),
               epochOf = Some((s, slot) => s.geometry(genesis.geometry).epochOf(slot)),
               initialViews = resumed.map(r => r.ref.hash -> r.view).toMap,
-              compute = Some(scheduling.compute)
+              compute = Some(scheduling.compute),
+              chainGate = Some(chainGate)
             )
             seed <- IO.delay(java.util.concurrent.ThreadLocalRandom.current().nextLong())
             sharing <- PeerSharingRuntime.create[IO](seed)
@@ -873,25 +893,17 @@ object Main extends IOApp:
                   ListenerFailures.report(path.toString, failure, logged, fatalSink)
                 ) { bearer =>
                   logged(NodeEvent.Inbound(path.toString, InboundEvent.Accepted)) *>
-                    Handle
-                      .allow[NetworkError](
-                        NodeToClientServer.accept(
-                          bearer,
-                          genesis.networkMagic,
-                          LocalSubmission.handler(mempool),
-                          Some(StateQuerySource[IO, MirrorState](ref, queryEnv, store)),
-                          chainSync = Some(server.blockSource),
-                          txMonitor = Some(LocalMonitor.source(mempool))
-                        )
-                      )
-                      .rescue {
-                        case NetworkError.Defect(cause) =>
-                          fatalSink(Fatal.Defect(cause)).as(
-                            LocalTxSubmissionServer.End.ConnectionClosed(NetworkError.Defect(cause))
-                          )
-                        case other => IO.pure(LocalTxSubmissionServer.End.ConnectionClosed(other))
-                      }
-                      .map(InboundEnd.Local(_))
+                    landLocalBackend(
+                      NodeToClientServer.acceptBackend[IO, StorageError](
+                        bearer,
+                        genesis.networkMagic,
+                        LocalSubmission.handler(mempool),
+                        Some(StateQuerySource[IO, MirrorState](ref, queryEnv, store, chainGate)),
+                        chainSync = Some(server.blockSource),
+                        txMonitor = Some(LocalMonitor.source(mempool))
+                      ),
+                      fatalSink
+                    )
                       .flatMap(reason =>
                         logged(NodeEvent.Inbound(path.toString, InboundEvent.Closed(reason)))
                       )

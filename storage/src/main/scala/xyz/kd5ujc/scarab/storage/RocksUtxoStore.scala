@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
-import xyz.kd5ujc.scarab.ledger.StorageStructureError
 import cats.effect.{Resource, Sync}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -11,7 +10,13 @@ import fs2.Stream
 import java.nio.file.{Files, StandardCopyOption}
 import java.util.concurrent.atomic.AtomicReference
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{CheckpointProblem, StorageError, TxIn, TxOut}
+import xyz.kd5ujc.scarab.ledger.{
+  CheckpointProblem,
+  StorageError,
+  StorageStructureError,
+  TxIn,
+  TxOut
+}
 import org.rocksdb.{
   BlockBasedTableConfig,
   BloomFilter,
@@ -61,6 +66,127 @@ final class RocksUtxoStore[F[_]: Sync] private (
   private val F = Sync[F]
   private val StampKey = Array[Byte](0)
   private val writeOptions = new WriteOptions().setDisableWAL(true)
+
+  def readView: Resource[F, Either[StorageError, UtxoPinnedReadView[F]]] =
+    Resource.eval(F.delay(db.get)).flatMap { d =>
+      Resource
+        .make(
+          F.blocking(d.getSnapshot).attempt.map(_.leftMap(failure("utxo snapshot", _)))
+        )(snapshot => snapshot.traverse_(value => F.blocking(d.releaseSnapshot(value))))
+        .flatMap {
+          case Left(error) => Resource.pure(Left(error))
+          case Right(snapshot) =>
+            Resource
+              .make(
+                F.blocking(new ReadOptions())
+                  .attempt
+                  .map(
+                    _.leftMap(failure("utxo snapshot options", _))
+                  )
+              )(options => options.traverse_(value => F.blocking(value.close())))
+              .flatMap {
+                case Left(error) => Resource.pure(Left(error))
+                case Right(options) =>
+                  Resource.eval(F.blocking(options.setSnapshot(snapshot)).attempt).flatMap {
+                    case Left(error) =>
+                      Resource.pure(Left(failure("utxo snapshot options", error)))
+                    case Right(_) =>
+                      Resource.eval(
+                        F.blocking(d.get(options, StampKey))
+                          .attempt
+                          .map {
+                            case Left(error) => Left(failure("utxo snapshot stamp", error))
+                            case Right(raw) if raw == null => Right(-1L)
+                            case Right(raw) if raw.length == 8 =>
+                              Right(java.nio.ByteBuffer.wrap(raw).getLong)
+                            case Right(raw) =>
+                              Left(
+                                StorageError
+                                  .Corrupt(
+                                    "utxo stamp",
+                                    StorageStructureError.StampLength(raw.length)
+                                  )
+                              )
+                          }
+                          .map(_.map { at =>
+                            new UtxoPinnedReadView[F]:
+                              val stamp: Long = at
+
+                              def read(keys: Iterable[TxIn])
+                                  : F[Either[StorageError, Map[TxIn, TxOut]]] =
+                                val wanted = keys.iterator
+                                  .flatMap(k => Coding.encodeKey(k).map(k -> _))
+                                  .toVector
+                                if wanted.isEmpty then F.pure(Right(Map.empty))
+                                else
+                                  guardResult("utxo snapshot read") {
+                                    wanted.iterator
+                                      .zip(
+                                        d.multiGetAsList(options, wanted.map(_._2).asJava)
+                                          .asScala
+                                          .iterator
+                                      )
+                                      .collect {
+                                        case ((in, _), bytes) if bytes != null =>
+                                          Coding.decodeValue(bytes).map(in -> _)
+                                      }
+                                      .toVector
+                                      .sequence
+                                      .leftMap(reason => StorageError.Corrupt("utxo entry", reason))
+                                      .map(_.toMap)
+                                  }
+
+                              def all: F[Either[StorageError, Map[TxIn, TxOut]]] =
+                                select(_ => true)
+
+                              def select(keep: TxOut => Boolean) =
+                                guardResult("utxo snapshot scan") {
+                                  val it = d.newIterator(options)
+                                  try
+                                    val b = Map.newBuilder[TxIn, TxOut]
+                                    walk(it) { (k, positioned) =>
+                                      Coding.decodeValue(positioned.value()) match
+                                        case Right(out) =>
+                                          if keep(out) then b += Coding.decodeKey(k) -> out
+                                          None
+                                        case Left(reason) => Some(corruptEntry(k, reason))
+                                    }.map(_ => b.result())
+                                  finally it.close()
+                                }
+
+                              def selectAddresses(addresses: Set[Bytes]) =
+                                guardResult("utxo snapshot scan") {
+                                  val wanted = addresses.iterator.map(_.toArray).toArray
+                                  val it = d.newIterator(options)
+                                  try
+                                    val b = Map.newBuilder[TxIn, TxOut]
+                                    walk(it) { (k, positioned) =>
+                                      val value = positioned.value()
+                                      if !Coding.mayPayTo(value, wanted) then None
+                                      else
+                                        Coding.decodeValue(value) match
+                                          case Right(out) =>
+                                            if addresses(out.address.raw) then
+                                              b += Coding.decodeKey(k) -> out
+                                            None
+                                          case Left(reason) => Some(corruptEntry(k, reason))
+                                    }.map(_ => b.result())
+                                  finally it.close()
+                                }
+                          })
+                      )
+                  }
+              }
+        }
+    }
+
+  private def guardResult[A](what: String)(
+      body: => Either[StorageError, A]
+  ): F[Either[StorageError, A]] =
+    F.blocking(body).attempt.map {
+      case Right(result) => result
+      case Left(error)   => Left(failure(what, error))
+    }
 
   /** A failure of the database as a typed error: a checksum or format failure the library reports
     * is damaged data ([[StorageError.Corrupt[?]]]), anything else an I/O error
@@ -164,6 +290,7 @@ final class RocksUtxoStore[F[_]: Sync] private (
     else if v.length == 8 then Right(java.nio.ByteBuffer.wrap(v).getLong)
     else Left(StorageError.Corrupt("utxo stamp", StorageStructureError.StampLength(v.length)))
   }
+  def stamp(using Raise[F, StorageError]): F[Long] = flushed
 
   def all: F[Map[TxIn, TxOut]] = select(_ => true)
 
@@ -278,7 +405,8 @@ final class RocksUtxoStore[F[_]: Sync] private (
       "cur-size-all-mem-tables",
       "size-all-mem-tables",
       "estimate-live-data-size",
-      "total-sst-files-size"
+      "total-sst-files-size",
+      "num-snapshots"
     ).flatMap(prop).toMap ++ Map(
       "block-cache-usage" -> shared.cache.getUsage,
       "block-cache-pinned-usage" -> shared.cache.getPinnedUsage,

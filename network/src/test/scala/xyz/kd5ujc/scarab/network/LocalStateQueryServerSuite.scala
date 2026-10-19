@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.effect.{IO, Ref, Resource}
+import cats.effect.{IO, Outcome, Ref, Resource}
 import cats.mtl.Handle
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -9,6 +9,7 @@ import xyz.kd5ujc.scarab.protocol.{Handshake, LocalStateQuery, LocalTxSubmission
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, Role, UInt64}
 import xyz.kd5ujc.scarab.protocol.LocalStateQuery.{Failure, Message, State, Target}
 import munit.CatsEffectSuite
+import scala.concurrent.duration.*
 
 /** A node-to-client LocalStateQuery client against the server over an in-memory bearer, with a toy
   * ledger: the "state" is a number, a query answers with it, and the chain has three points.
@@ -25,44 +26,70 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
   private final class Toy(
       val acquired: Ref[IO, Vector[Target]],
       val tip: Ref[IO, Int],
-      val versions: Ref[IO, Vector[NtcVersion]]
+      val versions: Ref[IO, Vector[NtcVersion]],
+      val released: Ref[IO, Int],
+      val cancelServer: Ref[IO, Option[IO[Unit]]]
   ):
-    val source: LocalStateQueryServer.Source[IO] = new LocalStateQueryServer.Source[IO]:
-      override def forVersion(version: NtcVersion): LocalStateQueryServer.Source[IO] =
-        new LocalStateQueryServer.Source[IO]:
-          def acquire(target: Target) = versions.update(_ :+ version) *> source.acquire(target)
+    val source: LocalStateQueryServer.Source[IO, Nothing] =
+      new LocalStateQueryServer.Source[IO, Nothing]:
+        override def forVersion(version: NtcVersion): LocalStateQueryServer.Source[IO, Nothing] =
+          new LocalStateQueryServer.Source[IO, Nothing]:
+            def acquire(target: Target) =
+              Resource.eval(versions.update(_ :+ version)) *> source.acquire(target)
 
-      def acquire(target: Target) =
-        acquired.update(_ :+ target) *> tip.get.map { current =>
-          val chosen: Either[Failure, Int] = target match
-            case Target.VolatileTip  => Right(current)
-            case Target.ImmutableTip => Right(1)
-            case Target.Specific(p) =>
-              (1 to current).find(point(_) == p).toRight {
-                if p == Point.Origin then Failure.PointTooOld else Failure.PointNotOnChain
+        def acquire(target: Target) =
+          Resource
+            .eval(acquired.update(_ :+ target) *> tip.get.map { current =>
+              val chosen: Either[Failure, Int] = target match
+                case Target.VolatileTip  => Right(current)
+                case Target.ImmutableTip => Right(1)
+                case Target.Specific(p) =>
+                  (1 to current).find(point(_) == p).toRight {
+                    if p == Point.Origin then Failure.PointTooOld else Failure.PointNotOnChain
+                  }
+              chosen.leftMap(LocalStateQueryServer.AcquireFailure.Rejected(_)).map { state =>
+                new LocalStateQueryServer.Session[IO, Nothing]:
+                  def answer(query: Bytes) =
+                    IO.pure(
+                      if query == Bytes(Vector(0x01)) then Right(Right(item(state)))
+                      else Right(Left(LocalStateQueryServer.Refusal.Unsupported("unknown query")))
+                    )
               }
-          chosen.map { state =>
-            new LocalStateQueryServer.Session[IO]:
-              def answer(query: Bytes) =
-                IO.pure(
-                  if query == Bytes(Vector(0x01)) then Right(item(state))
-                  else Left(LocalStateQueryServer.Refusal.Unsupported("unknown query"))
-                )
-          }
-        }
+            })
+            .flatMap {
+              case Left(failure) =>
+                Resource.pure[IO, Either[
+                  LocalStateQueryServer.AcquireFailure[Nothing],
+                  LocalStateQueryServer.Session[IO, Nothing]
+                ]](Left(failure))
+              case Right(session) =>
+                Resource.make(
+                  IO.pure(
+                    Right(session): Either[
+                      LocalStateQueryServer.AcquireFailure[Nothing],
+                      LocalStateQueryServer.Session[IO, Nothing]
+                    ]
+                  )
+                )(_ => released.update(_ + 1))
+            }
 
   private def toy: IO[Toy] =
     (
       Ref.of[IO, Vector[Target]](Vector.empty),
       Ref.of[IO, Int](3),
-      Ref.of[IO, Vector[NtcVersion]](Vector.empty)
-    ).mapN(new Toy(_, _, _))
+      Ref.of[IO, Vector[NtcVersion]](Vector.empty),
+      Ref.of[IO, Int](0),
+      Ref.of[IO, Option[IO[Unit]]](None)
+    ).mapN(new Toy(_, _, _, _, _))
 
   private def send(ch: MuxChannel[IO], state: State, m: Message)(using
       Handle[IO, NetworkError]
   ): IO[Unit] =
     IO.fromEither(
-      LocalStateQuery.encode(state, Role.Client, m).left.map(e => RuntimeException(e.toString))
+      LocalStateQuery
+        .encode(state, Role.Client, m)
+        .left
+        .map(error => RuntimeException(error.message))
     ).flatMap(ch.send)
 
   private def receive(ch: MuxChannel[IO], state: State)(using Handle[IO, NetworkError]) =
@@ -86,38 +113,45 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
         .rescue(e => IO.pure(e.message))
         .start
         .flatMap { server =>
-          Handle
-            .allow[NetworkError] {
-              Mux.resource(clientEnd, Set(0, 6, 7), Mux.Config()).use { mux =>
-                for
-                  hs <- mux.channel(0)
-                  _ <- HandshakeClient.run(
-                    hs,
-                    versions.map(v => v -> Handshake.Data(magic)),
-                    suite = Handshake.Suite.NodeToClient
-                  )
-                  lsq <- mux.channel(7)
-                  tx <- mux.channel(6)
-                  out <- body(lsq, tx)
-                  // finish the submission protocol too, so the server ends by itself
-                  done <- IO.fromEither(
-                    LocalTxSubmission
-                      .encode(
-                        LocalTxSubmission.State.Idle,
-                        Role.Client,
-                        LocalTxSubmission.Message.Done
-                      )
-                      .left
-                      .map(e => RuntimeException(e.toString))
-                  )
-                  _ <- tx.send(done)
-                  _ <- lsq.flush
-                  _ <- tx.flush
-                yield out
+          t.cancelServer.set(Some(server.cancel)) *>
+            Handle
+              .allow[NetworkError] {
+                Mux.resource(clientEnd, Set(0, 6, 7), Mux.Config()).use { mux =>
+                  for
+                    hs <- mux.channel(0)
+                    _ <- HandshakeClient.run(
+                      hs,
+                      versions.map(v => v -> Handshake.Data(magic)),
+                      suite = Handshake.Suite.NodeToClient
+                    )
+                    lsq <- mux.channel(7)
+                    tx <- mux.channel(6)
+                    out <- body(lsq, tx)
+                    // finish the submission protocol too, so the server ends by itself
+                    done <- IO.fromEither(
+                      LocalTxSubmission
+                        .encode(
+                          LocalTxSubmission.State.Idle,
+                          Role.Client,
+                          LocalTxSubmission.Message.Done
+                        )
+                        .left
+                        .map(error => RuntimeException(error.message))
+                    )
+                    _ <- tx.send(done)
+                    _ <- lsq.flush
+                    _ <- tx.flush
+                  yield out
+                }
               }
-            }
-            .rescue(e => IO.raiseError[A](RuntimeException(e.message)))
-            .flatMap(out => server.joinWithNever.map(out -> _))
+              .rescue(e => IO.raiseError[A](RuntimeException(e.message)))
+              .flatMap(out =>
+                server.join.flatMap {
+                  case Outcome.Succeeded(result) => result.map(out -> _)
+                  case Outcome.Errored(error)    => IO.raiseError(error)
+                  case Outcome.Canceled()        => IO.pure(out -> "server canceled")
+                }
+              )
         }
     }
 
@@ -145,16 +179,19 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
           f2 <- receive(ch, State.Acquiring)
           _ <- send(ch, State.Idle, Message.Done)
         yield (a1, r1, a2, r2, f1, a3, r3, f2)
-      }.map { case ((a1, r1, a2, r2, f1, a3, r3, f2), ended) =>
-        assertEquals(a1, Message.Acquired)
-        assertEquals(r1, Message.Result(item(3)))
-        assertEquals(a2, Message.Acquired)
-        assertEquals(r2, Message.Result(item(2)))
-        assertEquals(f1, Message.Failed(Failure.PointNotOnChain))
-        assertEquals(a3, Message.Acquired)
-        assertEquals(r3, Message.Result(item(1)))
-        assertEquals(f2, Message.Failed(Failure.PointTooOld))
-        assert(ended.nonEmpty)
+      }.flatMap { case ((a1, r1, a2, r2, f1, a3, r3, f2), ended) =>
+        t.released.get.map { released =>
+          assertEquals(a1, Message.Acquired)
+          assertEquals(r1, Message.Result(item(3)))
+          assertEquals(a2, Message.Acquired)
+          assertEquals(r2, Message.Result(item(2)))
+          assertEquals(f1, Message.Failed(Failure.PointNotOnChain))
+          assertEquals(a3, Message.Acquired)
+          assertEquals(r3, Message.Result(item(1)))
+          assertEquals(f2, Message.Failed(Failure.PointTooOld))
+          assertEquals(released, 3)
+          assert(ended.nonEmpty)
+        }
       }
     }
   }
@@ -190,9 +227,27 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
           _ <- receive(ch, State.Acquiring)
           _ <- send(ch, State.Acquired, Message.Query(Bytes(Vector(0x02))))
         yield ()
-      }.map { case (_, ended) =>
-        assert(ended.contains("query not answered: unsupported query unknown query"), ended)
+      }.flatMap { case (_, ended) =>
+        t.released.get.map { releases =>
+          assert(ended.contains("query not answered: unsupported query unknown query"), ended)
+          assertEquals(releases, 1)
+        }
       }
+    }
+  }
+
+  test("canceling the acquired server fiber releases its session resource") {
+    toy.flatMap { t =>
+      session(t) { (ch, _) =>
+        for
+          _ <- send(ch, State.Idle, Message.Acquire(Target.VolatileTip))
+          _ <- receive(ch, State.Acquiring)
+          cancel <- t.cancelServer.get.map(_.getOrElse(IO.unit))
+          _ <- cancel
+          _ <- IO.sleep(20.millis)
+          released <- t.released.get
+        yield assertEquals(released, 1)
+      }.map { case (_, ended) => assertEquals(ended, "server canceled") }
     }
   }
 

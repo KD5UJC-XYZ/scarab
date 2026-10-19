@@ -21,12 +21,24 @@ object NodeToClientServer:
       bearer: Bearer[F],
       magic: Long,
       submit: Bytes => F[LocalTxSubmissionServer.Response],
-      stateQuery: Option[LocalStateQueryServer.Source[F]] = None,
+      stateQuery: Option[LocalStateQueryServer.Source[F, Nothing]] = None,
       settings: LocalTxSubmissionServer.Settings = LocalTxSubmissionServer.Settings(),
       /** One cursor over the chain per connection, serving whole blocks. */
       chainSync: Option[Resource[F, ChainSyncServer.Source[F, RawNtNBlock]]] = None,
       txMonitor: Option[LocalTxMonitorServer.Source[F]] = None
   )(using Raise[F, NetworkError]): F[LocalTxSubmissionServer.End] =
+    acceptBackend[F, Nothing](bearer, magic, submit, stateQuery, settings, chainSync, txMonitor)
+      .map(_.fold(identity, identity))
+
+  def acceptBackend[F[_]: Async, E](
+      bearer: Bearer[F],
+      magic: Long,
+      submit: Bytes => F[LocalTxSubmissionServer.Response],
+      stateQuery: Option[LocalStateQueryServer.Source[F, E]],
+      settings: LocalTxSubmissionServer.Settings = LocalTxSubmissionServer.Settings(),
+      chainSync: Option[Resource[F, ChainSyncServer.Source[F, RawNtNBlock]]] = None,
+      txMonitor: Option[LocalTxMonitorServer.Source[F]] = None
+  )(using Raise[F, NetworkError]): F[Either[E, LocalTxSubmissionServer.End]] =
     val protocols =
       Set(Protocols.Handshake, Protocols.LocalTxSubmission) ++
         stateQuery.map(_ => Protocols.LocalStateQuery) ++
@@ -66,6 +78,7 @@ object NodeToClientServer:
                 .raise[F, NtcVersion]
             )(Async[F].pure)
           unavailable <- Deferred[F, LocalTxSubmissionServer.Unavailable]
+          backendFailure <- Deferred[F, E]
           submission <- mux.channel(Protocols.LocalTxSubmission)
           querying <- stateQuery
             .traverse(source => mux.channel(Protocols.LocalStateQuery).map(_ -> source))
@@ -79,14 +92,24 @@ object NodeToClientServer:
                 case None        => Async[F].unit
                 case Some(error) => unavailable.complete(error).void *> Async[F].never[Unit]
               }),
-              child(querying.fold(Async[F].unit) { (c, source) =>
-                LocalStateQueryServer
-                  .run(
-                    c,
-                    source.forVersion(version),
-                    LocalStateQueryServer.Settings(settings.idleTimeout)
+              querying.fold(Async[F].pure(Right(()): Either[NetworkError, Unit])) { (c, source) =>
+                Fibers
+                  .scoped[F, NetworkError, Either[E, Unit]](t =>
+                    NetworkError.fromThrowable("local-state-query", t)
+                  )(
+                    LocalStateQueryServer.run(
+                      c,
+                      source.forVersion(version),
+                      LocalStateQueryServer.Settings(settings.idleTimeout)
+                    )
                   )
-              }),
+                  .flatMap {
+                    case Left(error) => Async[F].pure(Left(error))
+                    case Right(Left(error)) =>
+                      backendFailure.complete(error) *> Async[F].never[Either[NetworkError, Unit]]
+                    case Right(Right(())) => Async[F].pure(Right(()))
+                  }
+              },
               child(following.fold(Async[F].unit) { (c, source) =>
                 source.use(
                   ChainSyncServer.run(
@@ -103,17 +126,23 @@ object NodeToClientServer:
               })
             )
           )
-          ended <- Async[F].race(Async[F].race(served, mux.closed), unavailable.get)
+          ended <- Async[F].race(
+            Async[F].race(Async[F].race(served, mux.closed), unavailable.get),
+            backendFailure.get
+          )
           reason <- ended match
-            case Right(error) =>
-              Async[F].pure(LocalTxSubmissionServer.End.ServiceUnavailable(error))
-            case Left(Left(result)) =>
+            case Right(error) => Async[F].pure(Left(error))
+            case Left(Right(error)) =>
+              Async[F].pure(Right(LocalTxSubmissionServer.End.ServiceUnavailable(error)))
+            case Left(Left(Left(result))) =>
               Fibers
                 .land[F, NetworkError, Unit](result)
-                .as(LocalTxSubmissionServer.End.ClientFinished)
-            case Left(Right(defect: NetworkError.Defect)) =>
-              defect.raise[F, LocalTxSubmissionServer.End]
-            case Left(Right(other)) =>
-              Async[F].pure(LocalTxSubmissionServer.End.ConnectionClosed(other))
+                .as(
+                  Right(LocalTxSubmissionServer.End.ClientFinished)
+                )
+            case Left(Left(Right(defect: NetworkError.Defect))) =>
+              defect.raise[F, Either[E, LocalTxSubmissionServer.End]]
+            case Left(Left(Right(other))) =>
+              Async[F].pure(Right(LocalTxSubmissionServer.End.ConnectionClosed(other)))
         yield reason
       }

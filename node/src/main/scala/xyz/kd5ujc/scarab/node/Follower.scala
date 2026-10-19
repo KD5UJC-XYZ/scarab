@@ -401,14 +401,16 @@ object Follower:
       /** The select views of the blocks of a volatile chain restored from disk. */
       initialViews: Map[Bytes, SelectView] = Map.empty,
       /** The CPU pool the blocks are applied on; without one, on the calling fiber's pool. */
-      compute: Option[Compute[F]] = None
+      compute: Option[Compute[F]] = None,
+      /** Shared with the LSQ point/store capture; held only while a view is selected. */
+      chainGate: Option[Mutex[F]] = None
   )(using
       Stateful[F, VolatileChain[S]],
       Raise[F, ChainError]
   ): F[Follower[F, S]] =
     (
       SelectViews.create[F](initialViews),
-      Mutex[F],
+      chainGate.fold(Mutex[F])(_.pure[F]),
       Ref.of[F, Option[ChainSelection.Local]](None)
     ).mapN { (views, lock, window) =>
       new Follower[F, S](

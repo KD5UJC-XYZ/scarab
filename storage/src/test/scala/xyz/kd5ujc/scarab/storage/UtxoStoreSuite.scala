@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
-import cats.effect.IO
+import cats.effect.{Deferred, IO}
 import cats.effect.unsafe.implicits.global
 import cats.mtl.Handle
 import cats.syntax.all.*
@@ -258,6 +258,66 @@ class UtxoStoreSuite extends ScalaCheckSuite:
       .resource[IO](Path.fromNioPath(dir) / "live", 8L * 1024 * 1024)
       .use(use)
       .guarantee(IO.blocking(RocksUtxoStore.deleteTree(dir)))
+
+  test("a Rocks read view keeps its stamp and entries across later batches") {
+    val first = TxIn(Bytes.wrap(be(1, 32)), 0)
+    val second = TxIn(Bytes.wrap(be(2, 32)), 0)
+    val original = output(0, 1, 1, 10)
+    val later = output(0, 2, 2, 20)
+    orFail {
+      rocks { store =>
+        for
+          _ <- store.write(Vector(first -> Some(original)), 10L)
+          result <- store.readView.use { pinned =>
+            pinned match
+              case Left(error) => summon[Handle[IO, StorageError]].raise(error)
+              case Right(view) =>
+                for
+                  before <- view.all.flatMap(
+                    _.fold(summon[Handle[IO, StorageError]].raise, IO.pure)
+                  )
+                  _ <- store.write(Vector(first -> None, second -> Some(later)), 11L)
+                  after <- view.all.flatMap(_.fold(summon[Handle[IO, StorageError]].raise, IO.pure))
+                  oldInput <- view
+                    .read(Vector(first, second))
+                    .flatMap(_.fold(summon[Handle[IO, StorageError]].raise, IO.pure))
+                  current <- store.all
+                yield (before, after, oldInput, current, view.stamp)
+          }
+        yield
+          val (before, after, oldInput, current, pinnedStamp) = result
+          assertEquals(pinnedStamp, 10L)
+          assertEquals(before, Map(first -> original))
+          assertEquals(after, before)
+          assertEquals(oldInput, before)
+          assertEquals(current, Map(second -> later))
+      }
+    }
+  }
+
+  test("canceling a Rocks read view releases its native snapshot") {
+    val input = TxIn(Bytes.wrap(be(3, 32)), 0)
+    val out = output(0, 3, 3, 30)
+    orFail {
+      rocks { store =>
+        for
+          before <- store.memory
+          started <- Deferred[IO, Unit]
+          reader <- store.readView.use(_ => started.complete(()) *> IO.never[Unit]).start
+          _ <- started.get
+          held <- store.memory
+          _ <- reader.cancel
+          after <- store.memory
+          _ <- store.write(Vector(input -> Some(out)), 12L)
+          readBack <- store.read(Vector(input))
+        yield
+          assertEquals(before.get("num-snapshots"), Some(0L))
+          assertEquals(held.get("num-snapshots"), Some(1L))
+          assertEquals(after.get("num-snapshots"), Some(0L))
+          assertEquals(readBack, Map(input -> out))
+      }
+    }
+  }
 
   private val genActions: Gen[List[Action]] = Gen.choose(1, 40).flatMap(Gen.listOfN(_, genAction))
 

@@ -1411,3 +1411,23 @@ The independent genesis-derived continuation reaches the same anchor and recorde
 Scala dumps retain two inactive Conway parameter differences; every field represented by Haskell's
 Conway projection agrees (see [trust and acceptance scope](design/mithril-bootstrap.md#acceptance)).
 No heap/RSS sampling, ongoing public following or mainnet performance claim is made.
+
+## 28. Acquired LocalStateQuery UTxO view (#158)
+
+The read-view cost was measured on two already-local datasets. These are storage-cost
+measurements; neither is a new network sync. The archived Preview checkpoint is a 3,201,055-output
+copy, not mainnet scale. Its source archive remained unopened and unmodified. A separately
+constructed eight-million-record database is synthetic scale only; it does not claim mainnet
+state fidelity.
+
+| Dataset | Read-view acquisition/release | Held-view write workload and retention observation |
+|---|---:|---|
+| Archived Preview checkpoint copy: 3,201,055 outputs; stamp 4,756,803; selected anchor 4,756,810 | 26 ms | During a 10,000-key write batch snapshot count was 0 → 1 → 0; the old view did not see the appended key. |
+| Synthetic RocksDB: 8,000,000 fixed-size 34-byte keys with valid CBOR outputs | 36 ms initial; 30 ms after writes | 1,000,000 updates in 100 batches of 10,000 took 1,496 ms while the view was held. The pinned view returned prior values and live reads returned updates; snapshot count was 0 → 1 → 0. SST size grew 266,797,837 → 287,626,320 bytes and memtable size 2,048 → 33,556,736 bytes during the held-view workload. |
+
+The archived copy's checkpoint was 492,274,628 bytes and its paired V5 snapshot was
+55,298,361 bytes. The synthetic initial database was 235,447,729 bytes. These figures show
+measured acquisition and retention behavior for these datasets only; no query latency at eight
+million entries, heap/RSS, or actual mainnet state fidelity was measured. Runs used bounded 10,000
+entry writes and the approved owned copy under `/tmp/scarab/luna-158`; cost logs and exit records
+are under `/tmp/scarab/luna-158/gates/cost-*`.

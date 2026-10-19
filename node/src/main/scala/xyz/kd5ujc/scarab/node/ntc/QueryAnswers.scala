@@ -188,9 +188,12 @@ object QueryAnswers:
     case Addresses(addresses: Set[Bytes])
     case Inputs(inputs: Set[TxIn])
 
-  def utxoNeeds(q: NtcQuery): UtxoNeeds = q match
-    case NtcQuery.IfCurrent(_, inner) => ledgerNeeds(inner)
-    case _                            => UtxoNeeds.Nothing
+  def utxoNeeds[S](view: QueryView[S], q: NtcQuery): UtxoNeeds = q match
+    case NtcQuery.IfCurrent(index, inner)
+        if index == view.era.index &&
+          (view.era == Era.Conway || inEveryEra(inner)) =>
+      ledgerNeeds(inner)
+    case _ => UtxoNeeds.Nothing
 
   private def ledgerNeeds(q: LedgerQuery): UtxoNeeds = LedgerQuery.cborLayers(q)._2 match
     case LedgerQuery.GetUTxOWhole           => UtxoNeeds.Whole

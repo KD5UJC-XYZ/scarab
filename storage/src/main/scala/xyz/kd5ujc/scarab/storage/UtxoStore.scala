@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.storage
 
 import xyz.kd5ujc.scarab.codec.DomainError
-import cats.effect.{Ref, Sync}
+import cats.effect.{Ref, Resource, Sync}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -21,17 +21,12 @@ import xyz.kd5ujc.scarab.ledger.{TxIn, TxOut, Utxo}
   * its last batch; a checkpoint is a durable copy of it at that moment, kept next to a ledger
   * snapshot so that both restore to the same block.
   */
-trait UtxoStore[F[_]]:
+trait UtxoReadView[F[_]]:
   /** The entries of `keys` the store holds (absent keys are simply missing from the result). */
   def read(keys: Iterable[TxIn]): F[Map[TxIn, TxOut]]
 
-  /** Apply the batch atomically (`None` deletes) and move the store to `stamp`. */
-  def write(changes: Iterable[(TxIn, Option[TxOut])], stamp: Long)(using
-      Raise[F, StorageError]
-  ): F[Unit]
-
-  /** The stamp of the last batch (`-1` for a store nothing was written to). */
-  def flushed(using Raise[F, StorageError]): F[Long]
+  /** The immutable backing generation observed by this view. */
+  def stamp(using Raise[F, StorageError]): F[Long]
 
   /** Every entry (tools and tests; a disk store streams it into memory, so only for small sets). */
   def all: F[Map[TxIn, TxOut]]
@@ -46,6 +41,29 @@ trait UtxoStore[F[_]]:
     * `select(out => addresses(out.address.raw))`.
     */
   def selectAddresses(addresses: Set[Bytes]): F[Map[TxIn, TxOut]]
+
+/** A query view whose failures are values while its native snapshot is held. A typed `Raise`
+  * encoded as `EitherT` is a successful effect to cats-effect Resource, so it cannot be allowed to
+  * short-circuit a finalizer inside a held pinned view.
+  */
+trait UtxoPinnedReadView[F[_]]:
+  def stamp: Long
+  def read(keys: Iterable[TxIn]): F[Either[StorageError, Map[TxIn, TxOut]]]
+  def all: F[Either[StorageError, Map[TxIn, TxOut]]]
+  def select(keep: TxOut => Boolean): F[Either[StorageError, Map[TxIn, TxOut]]]
+  def selectAddresses(addresses: Set[Bytes]): F[Either[StorageError, Map[TxIn, TxOut]]]
+
+trait UtxoStore[F[_]] extends UtxoReadView[F]:
+  /** Apply the batch atomically (`None` deletes) and move the store to `stamp`. */
+  def write(changes: Iterable[(TxIn, Option[TxOut])], stamp: Long)(using
+      Raise[F, StorageError]
+  ): F[Unit]
+
+  /** The stamp of the last batch (`-1` for a store nothing was written to). */
+  def flushed(using Raise[F, StorageError]): F[Long]
+
+  /** A stable, resource-scoped view of the current backing generation. */
+  def readView: Resource[F, Either[StorageError, UtxoPinnedReadView[F]]]
 
   /** Visit every entry without collecting them (the state digests of `--dump-state`). */
   def scan(visit: (TxIn, TxOut) => Unit): F[Unit]
@@ -92,14 +110,18 @@ object UtxoStore:
     * so the pure rules see them: the mempool and the forger read the ledger the way the block path
     * does. Without a store the set is already complete.
     */
-  def complete[F[_]: Sync](store: Option[UtxoStore[F]], utxo: Utxo, ins: Iterable[TxIn]): F[Utxo] =
+  def complete[F[_]: Sync](
+      store: Option[UtxoReadView[F]],
+      utxo: Utxo,
+      ins: Iterable[TxIn]
+  ): F[Utxo] =
     store.fold(Sync[F].pure(utxo)) { s =>
       val wanted = utxo.missing(ins)
       if wanted.isEmpty then Sync[F].pure(utxo) else s.read(wanted).map(utxo.withResident)
     }
 
   /** The complete set as of `utxo`: the backing store with the state's changes on top. */
-  def materialize[F[_]: Sync](store: UtxoStore[F], utxo: Utxo): F[Map[TxIn, TxOut]] =
+  def materialize[F[_]: Sync](store: UtxoReadView[F], utxo: Utxo): F[Map[TxIn, TxOut]] =
     store.all.map { stored =>
       (stored ++ utxo.diff.collect { case (in, Utxo.Change(Some(out), _)) => in -> out }) --
         utxo.diff.collect { case (in, Utxo.Change(None, _)) => in }
@@ -110,7 +132,7 @@ object UtxoStore:
     * the state's changes on top.
     */
   def materializeWhere[F[_]: Sync](
-      store: UtxoStore[F],
+      store: UtxoReadView[F],
       utxo: Utxo,
       keep: TxOut => Boolean
   ): F[Map[TxIn, TxOut]] =
@@ -124,7 +146,7 @@ object UtxoStore:
     * others without decoding them, which is what makes a wallet's query fast on a large set.
     */
   def materializeAddresses[F[_]: Sync](
-      store: UtxoStore[F],
+      store: UtxoReadView[F],
       utxo: Utxo,
       addresses: Set[Bytes]
   ): F[Map[TxIn, TxOut]] =
@@ -133,6 +155,28 @@ object UtxoStore:
         case (in, Utxo.Change(Some(out), _)) if addresses(out.address.raw) => in -> out
       }
     }
+
+  def materializePinned[F[_]: Sync](
+      store: UtxoPinnedReadView[F],
+      utxo: Utxo
+  ): F[Either[StorageError, Map[TxIn, TxOut]]] =
+    store.all.map(_.map { stored =>
+      (stored ++ utxo.diff.collect { case (in, Utxo.Change(Some(out), _)) => in -> out }) --
+        utxo.diff.collect { case (in, Utxo.Change(None, _)) => in }
+    })
+
+  def materializePinnedAddresses[F[_]: Sync](
+      store: UtxoPinnedReadView[F],
+      utxo: Utxo,
+      addresses: Set[Bytes]
+  ): F[Either[StorageError, Map[TxIn, TxOut]]] =
+    store
+      .selectAddresses(addresses)
+      .map(_.map { stored =>
+        (stored -- utxo.diff.keys) ++ utxo.diff.collect {
+          case (in, Utxo.Change(Some(out), _)) if addresses(out.address.raw) => in -> out
+        }
+      })
 
   /** Value encoding shared by the stores: the original CBOR when it round-trips, else the codec. */
   object Coding:
@@ -251,6 +295,19 @@ final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.C
     }
 
   def flushed(using Raise[F, StorageError]): F[Long] = state.get.map(_.stamp)
+  def stamp(using Raise[F, StorageError]): F[Long] = flushed
+  def readView: Resource[F, Either[StorageError, UtxoPinnedReadView[F]]] =
+    Resource.eval(state.get).map { captured =>
+      Right(new UtxoPinnedReadView[F]:
+        val stamp = captured.stamp
+        def read(keys: Iterable[TxIn]) =
+          F.pure(Right(keys.iterator.flatMap(k => captured.entries.get(k).map(k -> _)).toMap))
+        def all = F.pure(Right(captured.entries))
+        def select(keep: TxOut => Boolean) =
+          F.pure(Right(captured.entries.filter((_, out) => keep(out))))
+        def selectAddresses(addresses: Set[Bytes]) =
+          select(out => addresses(out.address.raw)))
+    }
   def all: F[Map[TxIn, TxOut]] = state.get.map(_.entries)
   def select(keep: TxOut => Boolean): F[Map[TxIn, TxOut]] =
     state.get.map(_.entries.filter((_, out) => keep(out)))

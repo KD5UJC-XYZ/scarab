@@ -193,6 +193,8 @@ object Peer:
     case cause: (NetworkError.IngressLimit | NetworkError.Decode | NetworkError.IllegalTransition |
           NetworkError.QueryRefused | NetworkError.TxSubmission) =>
       Fault.Failed(PeerError.Protocol(cause))
+    case failure: NetworkError.StateAcquireFailure =>
+      Fault.Defect(new NetworkError.InternalFailure(failure))
 
   /** Node-to-node interpreter over `network`: ChainSync and BlockFetch share one multiplexed
     * connection (KeepAlive runs in the background). Expected network failures surface as typed
