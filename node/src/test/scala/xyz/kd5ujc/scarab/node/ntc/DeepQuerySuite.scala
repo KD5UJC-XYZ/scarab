@@ -74,9 +74,6 @@ class DeepQuerySuite extends FunSuite:
     }
 
   test("a typed pinned-view acquisition failure releases the StateQuerySource resource") {
-    given cats.mtl.Handle[StorageF, StorageError] =
-      cats.mtl.Handle.handleEitherT[IO, StorageError]
-
     val releases = new AtomicInteger(0)
     val storageFailure = StorageError.Io("snapshot", RuntimeException("test"))
     val program = (for
@@ -235,10 +232,6 @@ class DeepQuerySuite extends FunSuite:
   }
 
   test("an acquired session answers and logs a refusal at 20000 query layers on a small stack") {
-    given Raise[IO, StorageError] with
-      def functor = cats.Functor[IO]
-      def raise[E <: StorageError, A](error: E): IO[A] =
-        IO.raiseError(new RuntimeException(error.message))
     onSmallStack {
       val program = for
         chain <- Ref.of[IO, VolatileChain[MirrorState]](
@@ -425,10 +418,6 @@ class DeepQuerySuite extends FunSuite:
   }
 
   test("canceling LSQ acquisition while waiting for the publication gate completes promptly") {
-    given Raise[IO, StorageError] with
-      def functor = cats.Functor[IO]
-      def raise[E <: StorageError, A](error: E): IO[A] =
-        IO.raiseError(new RuntimeException(error.message))
     val program = for
       chain <- Ref.of[IO, VolatileChain[MirrorState]](
         VolatileChain(5, Anchor(None, setup.mirrorStart), Vector.empty)

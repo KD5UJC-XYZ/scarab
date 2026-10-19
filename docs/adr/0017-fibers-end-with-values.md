@@ -48,9 +48,9 @@ rules refused, a storage failure and a bug in the node were all retried like a l
    peer's protocol violation wherever it is seen.
 5. **A session ends with a closed set of outcomes.** `SessionEnd` is `Returned | Failed(PeerError) |
    Rejected(ValidationError) | Unavailable(EvaluationUnavailable) | Storage(StorageError) | Internal(NodeError) | Defect(Throwable) | Cancelled
-   | Stopped`. What the node's own scope raises (the rules, the stores, the follower's capabilities, which
-   are fixed when the node is built) is caught in the session's fiber by `Handle#attempt` on that scope
-   and placed by `SessionEnd.of`, which has no default case. An exception that is not ours is `Defect`,
+   | Stopped`. Each session gives rules, stores and the follower its own caller capability. A retained
+   whole-run `Handle` also catches failures from resources whose scope owns their lifetime. The typed
+   failure is placed by `SessionEnd.of`, which has no default case. An exception that is not ours is `Defect`,
    never an unavailable peer. `FailurePolicy.disposition` gives each a policy: a peer that broke the
    protocol, sent an invalid header or an invalid block is forgotten; a failed connection is tried again
    after a delay; storage, an internal failure, a defect and implementation unavailability stop the node
@@ -75,16 +75,26 @@ rules refused, a storage failure and a bug in the node were all retried like a l
   deliverer's fault, not the fault of the session that took it: the pool remembers who delivered each
   block, the session that took it ends as `Failed(Diverged)` (tried again, it fetches the block itself),
   and the deliverer is told (`BlockPool.Claims.blamed`) and ends as `Failed(InvalidBlock)`.
-- Not done, and tracked: the capabilities of the rules and the stores are still fixed when the node is
-  built (`Raise` of `Main`'s scope); the session catches them with the scope's own `Handle`, which is
-  sound while the scope lives, the whole run. Passing them per call, as for the network, needs a change
-  to the rule algebras: [#180 G7-F1](https://github.com/KD5UJC-XYZ/scarab/issues/180).
+- G7-F1 passes rule, store, persistence and migration capabilities per operation. A session allocates
+  a fresh node-error scope and gives it to the follower; the whole-run handle remains a lifetime
+  backstop. HTTP, submission and relay callbacks allocate their own storage scopes, and streams
+  carry typed results from a producer whose scope lasts through consumption. Their fatal reporter
+  stops the node; failed callbacks wait cancelably for shutdown, without blaming the requesting peer.
+  Local state queries instead preserve #158's resource-scoped pinned backing view: acquisition
+  shares the follower's publication mutex, and backend failures remain values until the acquired
+  view and sibling protocols have been released. `Main.landLocalBackend` then reports storage
+  failures as `Fatal.Storage`. An incoherent point/backing generation retains
+  `NetworkError.StateAcquireFailure` through cleanup; the listener wraps it in
+  `ChainError.StateAcquire` and reports `Fatal.Internal` (exit 6), without client blame or retry.
   G7-F2 gives periodic/shutdown snapshots their own storage-error scopes, with caller-scoped
   capabilities along the snapshot call path and `SnapshotFailure` values at the event boundary.
   G7-F4 gives TCP/Unix handlers their own scopes and a required typed failure reporter; unexpected
   handler defects reach `Fatal.Defect`. See the [as-built contracts](../design/domain-errors.md#snapshot-and-listener-scopes-g7-f2g7-f4).
-  The same issue still tracks forging defects (G7-F3) and attribution after the originating session
-  ends (G7-F5), as well as the remaining rule/store capabilities (G7-F1).
+  G7-F3 gives forging and reload terminal failure values and prevents signing after a key durability
+  failure. G7-F5 retains bounded source attribution after a cache-producing session ends, with a
+  governor observation that can distrust a disconnected or reconnected source. See the
+  [as-built contracts](../design/domain-errors.md#caller-capabilities-forging-and-cached-block-attribution-g7-f1f3f5)
+  for the bounds and policy differences from the reference.
 
 - An evaluator or decoder implementation limit is `Unavailable`, carrying the closed ledger failure,
   not a consensus rejection. It stops the node with exit 8, bypassing peer blame and reconnect policy.

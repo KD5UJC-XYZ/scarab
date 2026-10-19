@@ -23,24 +23,26 @@ import xyz.kd5ujc.scarab.ledger.{TxIn, TxOut, Utxo}
   */
 trait UtxoReadView[F[_]]:
   /** The entries of `keys` the store holds (absent keys are simply missing from the result). */
-  def read(keys: Iterable[TxIn]): F[Map[TxIn, TxOut]]
+  def read(keys: Iterable[TxIn])(using cats.mtl.Raise[F, StorageError]): F[Map[TxIn, TxOut]]
 
   /** The immutable backing generation observed by this view. */
   def stamp(using Raise[F, StorageError]): F[Long]
 
   /** Every entry (tools and tests; a disk store streams it into memory, so only for small sets). */
-  def all: F[Map[TxIn, TxOut]]
+  def all(using cats.mtl.Raise[F, StorageError]): F[Map[TxIn, TxOut]]
 
   /** The entries whose output satisfies `keep`, in one pass over the set (the redeem outputs the
     * block that enters Allegra returns to the reserves, `Epoch.entersAllegra`).
     */
-  def select(keep: TxOut => Boolean): F[Map[TxIn, TxOut]]
+  def select(keep: TxOut => Boolean)(using cats.mtl.Raise[F, StorageError]): F[Map[TxIn, TxOut]]
 
   /** The entries whose output pays to one of `addresses` (the ledger's address bytes), in one pass
     * that does not decode the outputs it passes over (`GetUTxOByAddress`); the same entries as
     * `select(out => addresses(out.address.raw))`.
     */
-  def selectAddresses(addresses: Set[Bytes]): F[Map[TxIn, TxOut]]
+  def selectAddresses(addresses: Set[Bytes])(using
+      cats.mtl.Raise[F, StorageError]
+  ): F[Map[TxIn, TxOut]]
 
 /** A query view whose failures are values while its native snapshot is held. A typed `Raise`
   * encoded as `EitherT` is a successful effect to cats-effect Resource, so it cannot be allowed to
@@ -66,29 +68,29 @@ trait UtxoStore[F[_]] extends UtxoReadView[F]:
   def readView: Resource[F, Either[StorageError, UtxoPinnedReadView[F]]]
 
   /** Visit every entry without collecting them (the state digests of `--dump-state`). */
-  def scan(visit: (TxIn, TxOut) => Unit): F[Unit]
+  def scan(visit: (TxIn, TxOut) => Unit)(using cats.mtl.Raise[F, StorageError]): F[Unit]
 
   /** Every entry in ascending Haskell table-key order, without collecting a disk-backed set. The
     * caller holds the store offline for a consistent snapshot export.
     */
-  def entries: Stream[F, (TxIn, TxOut)]
+  def entries(using cats.mtl.Raise[F, StorageError]): Stream[F, (TxIn, TxOut)]
 
   /** Number of entries. */
-  def size: F[Long]
+  def size(using cats.mtl.Raise[F, StorageError]): F[Long]
 
   /** Durable copy of the current contents in `dir` (created; must not exist). */
   def checkpoint(dir: Path)(using Raise[F, StorageError]): F[Unit]
 
   /** Make the store equal to the checkpoint in `dir`; `false` if there is none. */
-  def restore(dir: Path): F[Boolean]
+  def restore(dir: Path)(using cats.mtl.Raise[F, StorageError]): F[Boolean]
 
   /** Forget everything (a fresh store at stamp -1). */
-  def reset: F[Unit]
+  def reset(using cats.mtl.Raise[F, StorageError]): F[Unit]
 
   /** Native memory the store holds, in bytes by name (RocksDB: table readers, memtables, block
     * cache); empty for the memory store. For the memory report only.
     */
-  def memory: F[Map[String, Long]]
+  def memory(using cats.mtl.Raise[F, StorageError]): F[Map[String, Long]]
 
 object UtxoStore:
   /** Flush the diff of an immutable state: write every change the store does not have yet. */
@@ -110,10 +112,8 @@ object UtxoStore:
     * so the pure rules see them: the mempool and the forger read the ledger the way the block path
     * does. Without a store the set is already complete.
     */
-  def complete[F[_]: Sync](
-      store: Option[UtxoReadView[F]],
-      utxo: Utxo,
-      ins: Iterable[TxIn]
+  def complete[F[_]: Sync](store: Option[UtxoReadView[F]], utxo: Utxo, ins: Iterable[TxIn])(using
+      cats.mtl.Raise[F, StorageError]
   ): F[Utxo] =
     store.fold(Sync[F].pure(utxo)) { s =>
       val wanted = utxo.missing(ins)
@@ -121,7 +121,9 @@ object UtxoStore:
     }
 
   /** The complete set as of `utxo`: the backing store with the state's changes on top. */
-  def materialize[F[_]: Sync](store: UtxoReadView[F], utxo: Utxo): F[Map[TxIn, TxOut]] =
+  def materialize[F[_]: Sync](store: UtxoReadView[F], utxo: Utxo)(using
+      cats.mtl.Raise[F, StorageError]
+  ): F[Map[TxIn, TxOut]] =
     store.all.map { stored =>
       (stored ++ utxo.diff.collect { case (in, Utxo.Change(Some(out), _)) => in -> out }) --
         utxo.diff.collect { case (in, Utxo.Change(None, _)) => in }
@@ -135,7 +137,7 @@ object UtxoStore:
       store: UtxoReadView[F],
       utxo: Utxo,
       keep: TxOut => Boolean
-  ): F[Map[TxIn, TxOut]] =
+  )(using cats.mtl.Raise[F, StorageError]): F[Map[TxIn, TxOut]] =
     store.select(keep).map { stored =>
       (stored -- utxo.diff.keys) ++ utxo.diff.collect {
         case (in, Utxo.Change(Some(out), _)) if keep(out) => in -> out
@@ -149,7 +151,7 @@ object UtxoStore:
       store: UtxoReadView[F],
       utxo: Utxo,
       addresses: Set[Bytes]
-  ): F[Map[TxIn, TxOut]] =
+  )(using cats.mtl.Raise[F, StorageError]): F[Map[TxIn, TxOut]] =
     store.selectAddresses(addresses).map { stored =>
       (stored -- utxo.diff.keys) ++ utxo.diff.collect {
         case (in, Utxo.Change(Some(out), _)) if addresses(out.address.raw) => in -> out
@@ -274,13 +276,12 @@ object UtxoStore:
 /** The UTxO set in memory: tests, the devnet and `follow` without `--db`. Checkpoints are files
   * written with the snapshot codec, so a node with a database but no disk store still restarts.
   */
-final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.Contents])(using
-    Raise[F, StorageError]
-) extends UtxoStore[F]:
+final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.Contents])
+    extends UtxoStore[F]:
   import MemoryUtxoStore.Contents
   private val F = Sync[F]
 
-  def read(keys: Iterable[TxIn]): F[Map[TxIn, TxOut]] =
+  def read(keys: Iterable[TxIn])(using cats.mtl.Raise[F, StorageError]): F[Map[TxIn, TxOut]] =
     state.get.map(c => keys.iterator.flatMap(k => c.entries.get(k).map(k -> _)).toMap)
 
   def write(changes: Iterable[(TxIn, Option[TxOut])], stamp: Long)(using
@@ -308,14 +309,16 @@ final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.C
         def selectAddresses(addresses: Set[Bytes]) =
           select(out => addresses(out.address.raw)))
     }
-  def all: F[Map[TxIn, TxOut]] = state.get.map(_.entries)
-  def select(keep: TxOut => Boolean): F[Map[TxIn, TxOut]] =
+  def all(using cats.mtl.Raise[F, StorageError]): F[Map[TxIn, TxOut]] = state.get.map(_.entries)
+  def select(keep: TxOut => Boolean)(using cats.mtl.Raise[F, StorageError]): F[Map[TxIn, TxOut]] =
     state.get.map(_.entries.filter((_, out) => keep(out)))
-  def selectAddresses(addresses: Set[Bytes]): F[Map[TxIn, TxOut]] =
+  def selectAddresses(addresses: Set[Bytes])(using
+      cats.mtl.Raise[F, StorageError]
+  ): F[Map[TxIn, TxOut]] =
     select(out => addresses(out.address.raw))
-  def scan(visit: (TxIn, TxOut) => Unit): F[Unit] =
+  def scan(visit: (TxIn, TxOut) => Unit)(using cats.mtl.Raise[F, StorageError]): F[Unit] =
     state.get.map(_.entries.foreach((k, v) => visit(k, v)))
-  def entries: Stream[F, (TxIn, TxOut)] =
+  def entries(using cats.mtl.Raise[F, StorageError]): Stream[F, (TxIn, TxOut)] =
     Stream
       .eval(state.get)
       .flatMap(c =>
@@ -323,9 +326,9 @@ final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.C
           (in.id, in.index)
         })
       )
-  def size: F[Long] = state.get.map(_.entries.size.toLong)
-  def reset: F[Unit] = state.set(Contents(Map.empty, -1))
-  def memory: F[Map[String, Long]] = F.pure(Map.empty)
+  def size(using cats.mtl.Raise[F, StorageError]): F[Long] = state.get.map(_.entries.size.toLong)
+  def reset(using cats.mtl.Raise[F, StorageError]): F[Unit] = state.set(Contents(Map.empty, -1))
+  def memory(using cats.mtl.Raise[F, StorageError]): F[Map[String, Long]] = F.pure(Map.empty)
 
   private def guard[A](what: String)(fa: => A)(using Raise[F, StorageError]): F[A] =
     F.blocking(fa).attempt.flatMap {
@@ -349,7 +352,7 @@ final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.C
       }
     }
 
-  def restore(dir: Path): F[Boolean] =
+  def restore(dir: Path)(using cats.mtl.Raise[F, StorageError]): F[Boolean] =
     val file = dir.toNioPath.resolve("utxo.bin")
     F.blocking(java.nio.file.Files.exists(file)).flatMap {
       case false => F.pure(false)
@@ -374,5 +377,5 @@ final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.C
 object MemoryUtxoStore:
   final case class Contents(entries: Map[TxIn, TxOut], stamp: Long)
 
-  def apply[F[_]: Sync](using Raise[F, StorageError]): F[MemoryUtxoStore[F]] =
+  def apply[F[_]: Sync]: F[MemoryUtxoStore[F]] =
     Ref.of[F, Contents](Contents(Map.empty, -1)).map(new MemoryUtxoStore[F](_))

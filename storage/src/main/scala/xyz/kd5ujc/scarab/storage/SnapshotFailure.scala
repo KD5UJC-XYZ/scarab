@@ -21,7 +21,7 @@ enum SnapshotFailure extends DomainError:
 
 object SnapshotFailure:
   /** Each snapshot worker/finalizer owns its error scope (ADR0017). Cancellation passes through. */
-  private[storage] def capture[F[_]: MonadThrow: Defer, A](
+  private[scarab] def capture[F[_]: MonadThrow: Defer, A](
       body: Handle[F, StorageError] ?=> F[A]
   ): F[Either[SnapshotFailure, A]] =
     Defer[F]

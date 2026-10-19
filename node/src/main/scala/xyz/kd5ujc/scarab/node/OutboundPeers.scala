@@ -9,7 +9,7 @@ import cats.syntax.all.*
 import com.comcast.ip4s.{IpAddress, SocketAddress}
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.consensus.ChainSelection
-import xyz.kd5ujc.scarab.ledger.{NodeError, PeerError}
+import xyz.kd5ujc.scarab.ledger.{NodeError, PeerError, ValidationError}
 import xyz.kd5ujc.scarab.network.*
 import xyz.kd5ujc.scarab.network.selection.*
 import xyz.kd5ujc.scarab.protocol.{ConnectionState, NtNHeader}
@@ -171,6 +171,17 @@ final class OutboundPeers[F[_]: Async, A] private (
             .void
     }
 
+  /** Attribution outlives a connection. It refers only to the peer identity and the governor, never
+    * a released session's Raise or Link. Stop a newer connection to that same peer too.
+    */
+  private[node] def rejectedCachedBlock(peer: A, refusal: ValidationError): F[Unit] =
+    F.uncancelable { _ =>
+      table.get.flatMap(_.get(peer).traverse_ { link =>
+        link.phase.set(Phase.Ending()) *> link.release.complete(()).void
+      }) *> hot.lost(PeerError.InvalidBlock(refusal)) *>
+        report(Event.Observed(peer, Observation.CachedBlockRejected(refusal.message)))
+    }
+
   /** A request starts in its own scope. Domain network failures terminate that mini-protocol's
     * connection; defects stop the node without peer blame. A missing controller is no answer.
     */
@@ -276,7 +287,8 @@ final class OutboundPeers[F[_]: Async, A] private (
               hot.headers,
               Some(metered(peer)),
               Some(hot.pool),
-              hot.fetchMode
+              hot.fetchMode,
+              Some(rejectedCachedBlock(peer, _))
             )
             .use { over =>
               session.connection.complete(connection) *> started.complete(None) *>
@@ -418,7 +430,7 @@ object OutboundPeers:
   type Tracker[F[_]] = Ref[F, ChainSelection.Candidate] => F[Unit]
 
   /** The follower session over a peer, which hands its candidate chain to the tracker. */
-  type Follow[F[_]] = (Peer[F], Tracker[F]) => Raise[F, PeerError] ?=> F[Unit]
+  type Follow[F[_]] = (Peer[F], Tracker[F]) => Raise[F, NodeError] ?=> F[Unit]
 
   /** What the hot part needs, besides the connection: the follower session, the pool, the header
     * check, the transactions, the settings and how a candidate compares with our selection.

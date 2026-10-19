@@ -143,10 +143,12 @@ object NetworkIdentityFile:
   /** The identity file as a migration. Incomplete legacy files are not rewritten here: they need
     * operator confirmation and a complete identity from the actually loaded genesis inputs.
     */
-  def migration[F[_]: Sync](using Raise[F, StorageError]): Migration[F] = new Migration[F]:
+  def migration[F[_]: Sync]: Migration[F] = new Migration[F]:
     val kind = FileKind.IdentityFile
 
-    private def parsed(file: Path): F[(FormatVersion, StoredNetworkIdentity)] =
+    private def parsed(
+        file: Path
+    )(using cats.mtl.Raise[F, StorageError]): F[(FormatVersion, StoredNetworkIdentity)] =
       guard[F, String](file.toString)(
         new String(Files.readAllBytes(file.toNioPath), StandardCharsets.UTF_8)
       ).flatMap(text =>
@@ -155,9 +157,12 @@ object NetworkIdentityFile:
           .fold(_.raise[F, (FormatVersion, StoredNetworkIdentity)], Sync[F].pure)
       )
 
-    def detect(file: Path): F[FormatVersion] = parsed(file).map(_._1)
+    def detect(file: Path)(using cats.mtl.Raise[F, StorageError]): F[FormatVersion] =
+      parsed(file).map(_._1)
 
-    def step(file: Path, from: FormatVersion, to: FormatVersion): F[Unit] =
+    def step(file: Path, from: FormatVersion, to: FormatVersion)(using
+        cats.mtl.Raise[F, StorageError]
+    ): F[Unit] =
       validateStep(file, from, to) *> parsed(file).flatMap {
         case (_, StoredNetworkIdentity.Complete(identity, provenance)) =>
           AtomicFile.replace[F](

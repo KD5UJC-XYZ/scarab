@@ -2,12 +2,13 @@
 package xyz.kd5ujc.scarab.node.mempool
 
 import xyz.kd5ujc.scarab.ledger.{TransactionDecodeProblem, MempoolProblem, MempoolLedgerProblem}
-import cats.Applicative
+import cats.effect.Async
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.{LedgerFailure, PredicateFailure}
 import xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
+import xyz.kd5ujc.scarab.node.{Fatal, StorageBoundary}
 import xyz.kd5ujc.scarab.network.LocalTxSubmissionServer
 
 /** Transactions submitted by local clients (`cardano-cli transaction submit` over the
@@ -92,10 +93,12 @@ object LocalSubmission:
       LocalTxSubmissionServer.Response.Rejected(_)
     )
 
-  def handler[F[_]: Applicative](
+  def handler[F[_]: Async](
       mempool: Mempool[F]
-  ): Bytes => F[LocalTxSubmissionServer.Response] = item =>
+  )(fatal: Fatal => F[Unit]): Bytes => F[LocalTxSubmissionServer.Response] = item =>
     unwrap(item) match
-      case Left(rejection) => Applicative[F].pure(response(rejection))
+      case Left(rejection) => Async[F].pure(response(rejection))
       case Right(tx) =>
-        mempool.add(tx).map(_.fold(response, _ => LocalTxSubmissionServer.Response.Accepted))
+        StorageBoundary.run(fatal) {
+          mempool.add(tx).map(_.fold(response, _ => LocalTxSubmissionServer.Response.Accepted))
+        }

@@ -7,7 +7,23 @@ import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
 
 /** The node's chain-extension rule: the state after `header`/`block`, or a [[ValidationError]]. */
 trait BlockRules[F[_], S]:
-  def apply(state: S, header: Header, block: Bytes): F[S]
+  def apply(state: S, header: Header, block: Bytes)(using
+      cats.mtl.Raise[F, xyz.kd5ujc.scarab.ledger.ValidationError],
+      cats.mtl.Raise[F, xyz.kd5ujc.scarab.ledger.StorageError]
+  ): F[S]
+
+object BlockRules:
+  /** Build a rule whose failures are supplied when it is applied, never when it is built. */
+  def from[F[_], S](
+      run: (S, Header, Bytes) => (
+          cats.mtl.Raise[F, xyz.kd5ujc.scarab.ledger.ValidationError],
+          cats.mtl.Raise[F, xyz.kd5ujc.scarab.ledger.StorageError]
+      ) ?=> F[S]
+  ): BlockRules[F, S] = new BlockRules[F, S]:
+    def apply(state: S, header: Header, block: Bytes)(using
+        cats.mtl.Raise[F, xyz.kd5ujc.scarab.ledger.ValidationError],
+        cats.mtl.Raise[F, xyz.kd5ujc.scarab.ledger.StorageError]
+    ): F[S] = run(state, header, block)
 
 /** Observable follower milestones. */
 enum FollowerEvent:

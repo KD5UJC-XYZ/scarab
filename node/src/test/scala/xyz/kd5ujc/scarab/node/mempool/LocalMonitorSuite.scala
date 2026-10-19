@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.node.mempool
 import cats.effect.IO
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer
-import munit.{CatsEffectSuite, ScalaCheckSuite}
+import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
 import scala.concurrent.duration.*
@@ -12,7 +12,12 @@ import scala.concurrent.duration.*
 import TxKit.*
 
 /** The mempool as LocalTxMonitor reports it, against the rules the reference's server applies. */
-class LocalMonitorSuite extends CatsEffectSuite with ScalaCheckSuite:
+class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaCheckSuite:
+  private given cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError] with
+    def functor = cats.Functor[IO]
+    def raise[E <: xyz.kd5ujc.scarab.ledger.StorageError, A](error: E): IO[A] = IO(
+      fail(error.message)
+    )
   private def pool(capacity: Long = 100000) = MempoolState.empty(Right(ledger(4)), 1000, capacity)
 
   private def held(raws: Bytes*): MempoolState =

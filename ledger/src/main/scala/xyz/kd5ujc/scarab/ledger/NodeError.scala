@@ -106,14 +106,18 @@ object PeerError:
 
 /** Failures of the local chain model. These are not recoverable by reconnecting. */
 enum ChainError extends NodeError:
+  /** The retained ledger point and pinned backing generation do not describe one state. */
+  case StateAcquire(cause: NetworkError.StateAcquireFailure)
+
   case Decode(what: String, cause: LedgerDecodeError)
   case NotConnected(point: ChainSync.Point, tip: ChainSync.Point)
   case RollbackBeyondAnchor(target: ChainSync.Point, anchor: ChainSync.Point)
   case NoIntersection
 
   def message: String = this match
-    case Decode(w, r)       => s"decode $w: $r"
-    case NotConnected(p, t) => s"${Points.show(p)} does not extend tip ${Points.show(t)}"
+    case StateAcquire(cause) => cause.message
+    case Decode(w, r)        => s"decode $w: $r"
+    case NotConnected(p, t)  => s"${Points.show(p)} does not extend tip ${Points.show(t)}"
     case RollbackBeyondAnchor(t, a) =>
       s"rollback to ${Points.show(t)} beyond anchor ${Points.show(a)}"
     case NoIntersection => "peer shares no point with the local chain"
@@ -267,8 +271,8 @@ enum ForgeError extends NodeError:
   /** The KES period of the slot is outside the operational certificate's window. */
   case KeyPeriodOutOfRange(period: BigInt, start: BigInt, evolutions: BigInt)
 
-  /** Legacy unexpected forger-step failure; infrastructure/defect classification is #180 G7-F3. */
-  case KesFailure(cause: Throwable)
+  /** A cancelled key operation may have mutated key material without completing durability. */
+  case KesUpdateInterrupted
 
   /** The KES key could not be evolved to the slot's period (it has already moved past it). */
   case KesEvolution(cause: Sum6KesSigning.Failure)
@@ -293,9 +297,6 @@ enum ForgeError extends NodeError:
   /** Our own block rules refuse the block we built. */
   case SelfRejected(error: ValidationError)
 
-  case ServiceFailure(error: NodeError)
-  case Defect(cause: Throwable)
-
   def message: String = this match
     case KeyFile(f, r) => s"key file $f: $r"
     case KesFileFailure(f, op, cause) =>
@@ -308,7 +309,8 @@ enum ForgeError extends NodeError:
       "keys do not match: the operational certificate is not signed by its cold key"
     case KeyPeriodOutOfRange(p, s, e) =>
       s"KES period $p outside the operational certificate window [$s, ${s + e})"
-    case KesFailure(r)                  => s"KES: $r"
+    case KesUpdateInterrupted =>
+      "KES key operation was interrupted; restart to recover durable key material"
     case KesEvolution(e)                => s"KES: ${e.message}"
     case VrfInput(e)                    => s"VRF: $e"
     case VrfProof(e)                    => s"VRF: $e"
@@ -317,9 +319,7 @@ enum ForgeError extends NodeError:
     case LedgerViewUnavailable(slot, r) => s"no ledger view for slot $slot: $r"
     case UnsupportedProtocol(r)         => s"cannot forge: $r"
     case Assembly(r)                    => s"block assembly: $r"
-    case SelfRejected(e)   => s"our own ${e.rule} rules refuse the forged block: ${e.reason}"
-    case ServiceFailure(e) => e.message
-    case Defect(cause)     => s"forger defect: $cause"
+    case SelfRejected(e) => s"our own ${e.rule} rules refuse the forged block: ${e.reason}"
 
 enum KesFileOperation:
   case StageWrite, StageSync, StageReadback, DirectorySyncBeforeErase

@@ -129,7 +129,7 @@ object SnapshotTableStream:
     */
   def writeStore[F[_]: Sync, E <: EraTag: ShelleyBasedEra](store: UtxoStore[F])(
       emit: Bytes => F[Unit]
-  )(using Raise[F, Error]): F[Summary] =
+  )(using Raise[F, Error], Raise[F, xyz.kd5ujc.scarab.ledger.StorageError]): F[Summary] =
     store.size.flatMap(count => writeOutputs[F, E](count, store.entries)(emit))
 
   /** A read-only checkpoint supplies its snapshot's exact count without a second scan. */

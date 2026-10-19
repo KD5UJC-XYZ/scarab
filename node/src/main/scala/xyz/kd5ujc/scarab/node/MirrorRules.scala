@@ -73,17 +73,19 @@ final class MirrorRules[F[_]: Monad](
     /** Called with each block's header and the state it produces (the node uses it to tell the
       * verification pipeline which epoch nonce is current, and to write state digests).
       */
-    afterBlock: Option[(Header, MirrorState) => F[Unit]] = None,
+    afterBlock: Option[
+      (Header, MirrorState) => Raise[F, xyz.kd5ujc.scarab.ledger.StorageError] ?=> F[Unit]
+    ] = None,
     /** Measures the pure rules; without one they are not timed. */
     compute: Option[Compute[F]] = None
-)(using
-    Raise[F, ValidationError],
-    Raise[F, xyz.kd5ujc.scarab.ledger.StorageError]
 ) extends BlockRules[F, MirrorState]:
 
   private val cpu: Compute[F] = compute.getOrElse(Compute.inline[F])
 
-  def apply(state: MirrorState, header: Header, raw: Bytes): F[MirrorState] =
+  def apply(state: MirrorState, header: Header, raw: Bytes)(using
+      Raise[F, ValidationError],
+      Raise[F, xyz.kd5ujc.scarab.ledger.StorageError]
+  ): F[MirrorState] =
     def run(s: MirrorState, prepared: Option[Prepared]): F[MirrorState] =
       cpu
         .timed(MirrorRules.stepLabel(s))(

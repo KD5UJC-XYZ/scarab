@@ -20,7 +20,9 @@ class ImmutableStoreSuite extends CatsEffectSuite:
   private def open(dir: Path, slots: Long = chunkSlots)(using cats.mtl.Raise[IO, StorageError]) =
     FileImmutableStore.open[IO](dir, slots)
 
-  private def fill(store: ImmutableStore[IO], range: Range): IO[Unit] =
+  private def fill(store: ImmutableStore[IO], range: Range)(using
+      cats.mtl.Raise[cats.effect.IO, xyz.kd5ujc.scarab.ledger.StorageError]
+  ): IO[Unit] =
     range.toList.traverse_ { i =>
       val (ref, raw) = block(i)
       store.append(ref, raw)
@@ -145,7 +147,12 @@ class ImmutableStoreSuite extends CatsEffectSuite:
     */
   private def damaged(
       damage: (Path) => IO[Unit]
-  )(check: (ImmutableStore.OpenReport, ImmutableStore[IO]) => IO[Unit]) =
+  )(
+      check: (ImmutableStore.OpenReport, ImmutableStore[IO]) => cats.mtl.Raise[
+        IO,
+        StorageError
+      ] ?=> IO[Unit]
+  ) =
     tempDir.use { dir =>
       ok {
         for

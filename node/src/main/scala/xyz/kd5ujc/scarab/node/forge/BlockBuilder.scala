@@ -5,10 +5,11 @@ import xyz.kd5ujc.scarab.ledger.ForgeAssemblyProblem
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
-import xyz.kd5ujc.scarab.ledger.{EpochGeometry, ForgeError, Header, VrfCert}
+import xyz.kd5ujc.scarab.ledger.{EpochGeometry, ForgeError, Header, LedgerFailure, VrfCert}
 import xyz.kd5ujc.scarab.ledger.{RefScripts, LedgerGlobals, TxEnv}
 import xyz.kd5ujc.scarab.ledger.rules.Globals
-import xyz.kd5ujc.scarab.plutus.ExUnits
+import xyz.kd5ujc.scarab.plutus.{ExUnits, ScalusEvaluator, ScriptDecoder, ScriptEvaluator}
+import cats.Id
 import xyz.kd5ujc.scarab.node.mempool.{Entry, MempoolLedger}
 
 /** Conway block assembly, pure: choose the transactions that fit the protocol limits, encode the
@@ -117,7 +118,8 @@ object BlockBuilder:
     * the block's own environment and fit the body size, execution unit and reference script limits.
     * A candidate that does not apply (its inputs were spent by the block, it expired, a script now
     * fails) is skipped, not an error: the pool of a mempool is advisory. The rules are LEDGER of
-    * Conway on the era-indexed state ([[MempoolLedger]], the same that validates the pool).
+    * Conway on the era-indexed state ([[MempoolLedger]], the same that validates the pool). Missing
+    * evaluator support has no ledger verdict and stops selection instead of skipping it.
     */
   def select(
       ticked: MempoolLedger,
@@ -127,7 +129,10 @@ object BlockBuilder:
       globals: LedgerGlobals,
       candidates: Vector[Entry],
       limit: Limits
-  ): Vector[(Entry, Piece)] =
+  )(using
+      decoder: ScriptDecoder[Id] = ScalusEvaluator.defaultDecoder,
+      evaluator: ScriptEvaluator[Id] = ScalusEvaluator.default
+  ): Either[LedgerFailure.Unavailable, Vector[(Entry, Piece)]] =
     final case class Acc(
         state: MempoolLedger,
         chosen: Vector[(Entry, Piece)],
@@ -136,8 +141,8 @@ object BlockBuilder:
     )
     val rules = Globals(globals, geometry)
     candidates
-      .foldLeft(Acc(ticked, Vector.empty, ExUnits.zero, 0L)) { (acc, entry) =>
-        piece(entry).toOption.fold(acc) { p =>
+      .foldM(Acc(ticked, Vector.empty, ExUnits.zero, 0L)) { (acc, entry) =>
+        piece(entry).toOption.fold(Right(acc): Either[LedgerFailure.Unavailable, Acc]) { p =>
           val units = acc.units + entry.tx.witnesses.totalExUnits
           val size = bodySize(acc.chosen.map(_._2) :+ p)
           val refUsed =
@@ -155,21 +160,26 @@ object BlockBuilder:
             stabilityWindow = geometry.stabilityWindow,
             txIndex = acc.chosen.size,
             updateQuorum = globals.updateQuorum,
-            clock = Some(s => BigInt(geometry.slotStart(s).toEpochMilli))
+            clock = Some(s => BigInt(geometry.slotStart(s).toEpochMilli)),
+            decoder = decoder,
+            evaluator = evaluator
           )
           if size > limit.maxBodyBytes || !units.fits(limit.maxExUnits) ||
             refUsed > RefScripts.MaxRefScriptSizePerBlock
-          then acc
+          then Right(acc)
           else
             acc
               .state(entry.tx, env, rules)
               .fold(
-                _ => acc,
-                next => Acc(next, acc.chosen :+ (entry -> p), units, refUsed)
+                {
+                  case unavailable: LedgerFailure.Unavailable => Left(unavailable)
+                  case _                                      => Right(acc)
+                },
+                next => Right(Acc(next, acc.chosen :+ (entry -> p), units, refUsed))
               )
         }
       }
-      .chosen
+      .map(_.chosen)
 
   /** The ten-element Praos `header_body`; its exact bytes are what the KES key signs. */
   def headerBody(

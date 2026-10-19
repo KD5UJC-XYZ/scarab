@@ -33,6 +33,11 @@ enum Observation:
     */
   case Lost(failure: FailureClass, delay: FiniteDuration, released: Boolean, reason: String)
 
+  /** A retained block was rejected after its source session may already have disconnected. This is
+    * source misbehaviour independently of its current temperature; text is for tracing.
+    */
+  case CachedBlockRejected(reason: String)
+
 /** The peers a request for public roots found: ordinary public roots, bootstrap peers, and the
   * ledger peers the ledger answered with (when it answers, the configured public roots are not
   * offered: `requestPublicRootPeersImpl`, `PeerSelectionActions.hs` 132-184).

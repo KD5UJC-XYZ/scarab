@@ -208,7 +208,8 @@ object Peer:
       headers: Option[HeaderCheck[F]] = None,
       observe: Option[Peer.Observation => F[Unit]] = None,
       pool: Option[BlockPool[F]] = None,
-      fetchMode: Option[F[FetchMode]] = None
+      fetchMode: Option[F[FetchMode]] = None,
+      invalidCachedBlock: Option[ValidationError => F[Unit]] = None
   )(using
       Raise[F, PeerError]
   ): Resource[F, Peer[F]] =
@@ -220,7 +221,7 @@ object Peer:
         settings.network,
         transactions
       )
-      .flatMap(over(_, settings, prepare, headers, observe, pool, fetchMode))
+      .flatMap(over(_, settings, prepare, headers, observe, pool, fetchMode, invalidCachedBlock))
 
   /** The peer interface over a connection that is already negotiated: one we opened
     * ([[nodeToNode]]) or an inbound duplex connection on which we run our own clients (G2). The
@@ -248,7 +249,9 @@ object Peer:
       /** The fetch mode the node is in now (bulk sync or deadline): it decides whether a block
         * another session has claimed may be requested too ([[BlockPool]]). Bulk sync without it.
         */
-      fetchMode: Option[F[FetchMode]] = None
+      fetchMode: Option[F[FetchMode]] = None,
+      /** Report against the source peer independently of this session's lifetime or error scope. */
+      invalidCachedBlock: Option[ValidationError => F[Unit]] = None
   ): Resource[F, Controlled[F]] =
     val F = Async[F]
     val currentMode: F[FetchMode] = fetchMode.getOrElse(F.pure(FetchMode.BulkSync))
@@ -259,7 +262,7 @@ object Peer:
     // has cancelled and awaited the fibers that fetch, nothing the session claimed is left open.
     (for
       shared <- Resource.eval(pool.fold(BlockPool.create[F])(F.pure))
-      claims <- shared.session
+      claims <- shared.session(invalidCachedBlock)
       supervisor <- Supervisor[F](await = false)
     yield (claims, supervisor)).evalMap { (claims, supervisor) =>
       // Read-ahead: while the peer is far ahead, ChainSync requests are pipelined and the

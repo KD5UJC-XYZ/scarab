@@ -114,13 +114,15 @@ class AllegraRedeemMirrorSuite extends CatsEffectSuite:
   test("entering Allegra deletes it from the store and returns its lovelace to the reserves") {
     run.flatMap { r =>
       val utxo = r.allegra.utxo
-      for
-        found <- r.store.read(Vector(key))
-        whole <- UtxoStore.materialize(r.store, utxo)
-      yield
-        assertEquals(found, Map.empty)
-        // the store and the state's running totals agree: the deletion was written
-        assertEquals(whole.size.toLong, utxo.count)
-        assertEquals(whole.valuesIterator.map(_.value.coin).sum, utxo.coin)
+      StorageTestKit.ok {
+        for
+          found <- r.store.read(Vector(key))
+          whole <- UtxoStore.materialize(r.store, utxo)
+        yield
+          assertEquals(found, Map.empty)
+          // the store and the state's running totals agree: the deletion was written
+          assertEquals(whole.size.toLong, utxo.count)
+          assertEquals(whole.valuesIterator.map(_.value.coin).sum, utxo.coin)
+      }
     }
   }

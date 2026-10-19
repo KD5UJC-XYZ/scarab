@@ -511,14 +511,15 @@ object Main extends IOApp:
         )
       }
       afterBlock = (header: Header, s: MirrorState) =>
-        IO.delay(cache.noteEpochNonce(s.ledgerEpoch, s.protocol.epochNonce)) *>
-          dumper.traverse_(_.afterBlock(header, s)) *>
-          praosConfig
-            .update(c => c.copy(geometry = s.geometry(c.geometry)))
-            .whenA(s.consensus.byron.firstShelleyEpoch.isDefined) *>
-          blocks.updateAndGet(_ + 1).flatMap { n =>
-            logged(NodeEvent.VerificationCache(cache.summary)).whenA(n % 20000 == 0)
-          }
+        (storageError: cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError]) ?=>
+          IO.delay(cache.noteEpochNonce(s.ledgerEpoch, s.protocol.epochNonce)) *>
+            dumper.traverse_(_.afterBlock(header, s)) *>
+            praosConfig
+              .update(c => c.copy(geometry = s.geometry(c.geometry)))
+              .whenA(s.consensus.byron.firstShelleyEpoch.isDefined) *>
+            blocks.updateAndGet(_ + 1).flatMap { n =>
+              logged(NodeEvent.VerificationCache(cache.summary)).whenA(n % 20000 == 0)
+            }
       rules = MirrorRules[IO](
         setup.praos,
         setup.globals,
@@ -613,7 +614,8 @@ object Main extends IOApp:
             server <- ChainServer.open[IO](
               immutable,
               anchor,
-              ChainServer.headerOfBlock(genesis.geometry.byron.epochSlots)
+              ChainServer.headerOfBlock(genesis.geometry.byron.epochSlots),
+              fatalSink
             )
             _ <- resumed.traverse_(r =>
               server
@@ -676,7 +678,7 @@ object Main extends IOApp:
               NtNHeader.codec,
               server.source,
               server.blocks,
-              mempool.sink,
+              mempool.sink(fatalSink),
               peerSharing = Some(sharing.source)
             )
             // header-first validation (G6): signatures are verified through the cache's keeping
@@ -897,7 +899,7 @@ object Main extends IOApp:
                       NodeToClientServer.acceptBackend[IO, StorageError](
                         bearer,
                         genesis.networkMagic,
-                        LocalSubmission.handler(mempool),
+                        LocalSubmission.handler(mempool)(fatalSink),
                         Some(StateQuerySource[IO, MirrorState](ref, queryEnv, store, chainGate)),
                         chainSync = Some(server.blockSource),
                         txMonitor = Some(LocalMonitor.source(mempool))
@@ -932,7 +934,9 @@ object Main extends IOApp:
             _ <- forging.traverse_(f => collectors.add(Collectors.forging(f.stats)))
             // SIGHUP re-reads the KES key and operational certificate (as the Haskell node does)
             production = forging.fold(Resource.unit[IO])(f =>
-              Signals.hangup[IO](f.reload).flatMap(_ => f.run.background.void)
+              Signals
+                .hangup[IO](f.reload.flatMap(_.fold(fatalSink, _ => IO.unit)))
+                .flatMap(_ => f.run.flatMap(_.fold(fatalSink, _ => IO.unit)).background.void)
             )
             // the chain we start from is progress made: the watchdog counts from here
             _ <- ref.get.flatMap(c => c.tipRef.traverse_(t => watchdog.extended(t.blockNo)))
@@ -951,7 +955,7 @@ object Main extends IOApp:
                   MemoryReport
                     .sample(stores)
                     .flatMap(sample => logged(NodeEvent.Memory(sample)))).foreverM.background.void
-            run = network.use { net =>
+            run = blockPool.maintenance.surround(network.use { net =>
               // the governor ends the node only by a fault (an invariant, the bootstrap timeout)
               val sync: IO[Unit] =
                 collectors.add(Collectors.peerMetrics(net.metrics)) *>
@@ -974,14 +978,14 @@ object Main extends IOApp:
                   ),
                   forging.map(_.stats.byEpoch.map(Reports.forgeReport)),
                   Some(scrape)
-                )
+                )(fatalSink)
                 .flatMap(_ => relay)
                 .flatMap(_ => local)
                 .flatMap(_ => production)
                 .flatMap(_ => reporting)
                 .flatMap(_ => watching)
                 .surround(sync)
-            }
+            })
             _ <- metrics.set(
               Catalogue.buildInfo,
               (BuildInfo.version, BuildInfo.scalaVersion, BuildInfo.gitCommit),

@@ -688,8 +688,10 @@ has to change both before they run out. The node does four things for that; a dr
   has a complete replacement after predecessor erasure. Power-loss durability depends on the filesystem,
   mount, device and storage controller honoring file and directory force and same-filesystem atomic rename;
   unsupported or failed directory force is surfaced as a typed persistence failure. Injected tests do not
-  reproduce physical power loss. If persistence fails the node reports `kesPersistFailed` (once per period), counts
-  `scarab_kes_persist_failures_total`, keeps forging with the key in memory and writes again at each slot. A
+  reproduce physical power loss. If persistence fails the node reports `kesPersistFailed`, counts
+  `scarab_kes_persist_failures_total`, prevents further signing and stops through its typed fatal
+  policy: storage failure exits 5, an internal durability failure exits 6, and a defect exits 7.
+  Correct the cause and restart; the running process does not retry persistence or resume signing. A
   file system that keeps old blocks (copy-on-write, journalling) may keep the overwritten key; overwriting is
   not physical secure erasure, so put the key directory on an encrypted volume where that matters. The key signs only after the lock that also guards a
   reload is held, so a block is never signed with a key and certificate of two different reloads, and the key
@@ -717,7 +719,10 @@ has to change both before they run out. The node does four things for that; a dr
   erases the old key from memory and brings a period-0 key to the present period at once. Putting the same key
   back (a spurious HUP, or someone restoring the period-0 file) keeps the key in memory, which is further on.
   No reload can leave the node without credentials or with a mixture; a reload while a block is being signed
-  waits for it.
+  waits for it. A missing replacement file (`NoSuchFileException`) is also a reload refusal.
+  Other filesystem errors, verifier defects and failures to persist an evolved key are terminal,
+  with their typed cause preserved. An interrupted key update prevents later signing until restart;
+  cancellation itself remains cancellation.
 - **Alerts.** `cardano_node_metrics_remainingKESPeriods_int`, `currentKESPeriod_int`,
   `operationalCertificate{Start,Expiry}KESPeriod_int` and `scarab_opcert_counter` are set at start-up and after
   every reload (the first two also after every evolution); `forgeStarted` and `kesReloaded` carry the same
@@ -1423,7 +1428,7 @@ them in the file (`promtool test rules` covers them: `ops/monitoring/server/prom
 | `PoolKesRotationStale` | now minus `last_success_timestamp_seconds` > 3 h, 5 m | critical | Three hourly runs without a success. |
 | `PoolKesRotationMetricsMissing` | `absent(last_success_timestamp_seconds)`, 1 h | warning | The two alerts above cannot fire without the file. |
 | `PoolKesRotationFailing` | `last_exit_status != 0`, 10 m | warning | The last run failed; the exit status says why. |
-| `PoolKesPersistFailed` | `increase(kes_persist_failures_total[15m]) > 0` | critical | An evolved key was not written back (`kesPersistFailed`): the file is behind the memory. |
+| `PoolKesPersistFailed` | `increase(kes_persist_failures_total[15m]) > 0` | critical | Key persistence failed (`kesPersistFailed`); signing stopped. Repair the cause and restart. |
 | `PoolForgedBlockNotAdopted` | forged minus adopted minus didnt_adopt over 30 m > 0, 10 m | critical | A block was forged and neither adopted nor lost. |
 | `PoolBlockLost` | `increase(Forge_didnt_adopt_counter[15m]) > 0` | warning | A slot battle lost or a block replaced. |
 | `PoolForgeFailed` | `delta(nodeCannotForge_int[15m]) > 0` | critical | `forgeFailed`: the pool led a slot and could not forge. |

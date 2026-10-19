@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node
 
 import cats.effect.{IO, Ref}
 import cats.effect.std.Queue
-import cats.mtl.{Handle, Raise, Stateful}
+import cats.mtl.{Raise, Stateful}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.{EvalFailure, ExUnits}
@@ -68,7 +68,6 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       unavailable: Option[Int] = None
   ): IO[Result] =
     NodeScope.resource.use { node =>
-      given Handle[IO, NodeError] = node
       for
         ref <- Ref.of[IO, VolatileChain[BigInt]](
           VolatileChain.genesis(geometry.securityParam, -1)
@@ -82,18 +81,24 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               raw: Bytes,
               immutable: Vector[BlockRef],
               anchor: Anchor[BigInt]
+          )(using
+              Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError],
+              Raise[IO, xyz.kd5ujc.scarab.ledger.ChainError]
           ) =
             if breakStorage.contains(block.blockNo.toInt) then
               node.raise[NodeError, Unit](
                 StorageError.Io("volatile", new java.io.IOException("disk full"))
               )
             else stored.update(_ :+ block)
-          def rolledBack(to: ChainSync.Point) = IO.unit
-        rules: BlockRules[IO, BigInt] = (_, header, _) =>
+          def rolledBack(to: ChainSync.Point)(using
+              Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError],
+              Raise[IO, xyz.kd5ujc.scarab.ledger.ChainError]
+          ) = IO.unit
+        rules: BlockRules[IO, BigInt] = BlockRules.from { (_, header, _) =>
           if explode.contains(header.blockNo.toInt) then
             IO.raiseError(new IllegalStateException("a bug in the rules"))
           else if unavailable.contains(header.blockNo.toInt) then
-            node.raise[NodeError, BigInt](
+            Raise[IO, ValidationError].raise[ValidationError, BigInt](
               ValidationError(
                 header.point,
                 BlockFailure.Tx(
@@ -107,8 +112,11 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               )
             )
           else if refuse.contains(header.blockNo.toInt) then
-            node.raise[NodeError, BigInt](ValidationError(header.point, BlockFailure.HeaderDiffers))
+            Raise[IO, ValidationError].raise[ValidationError, BigInt](
+              ValidationError(header.point, BlockFailure.HeaderDiffers)
+            )
           else IO.pure(header.blockNo)
+        }
         follower <- Follower.create[IO, BigInt](
           rules,
           noEvents,

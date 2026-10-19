@@ -127,7 +127,7 @@ Strict-construction regressions cover the public TCP listener, snapshot adapter 
 scope. The snapshot call path takes the caller's `Raise`: immutable-store sync, snapshot write/list,
 backing advance/settle/checkpoint/retain, and the UTxO write/stamp/checkpoint calls they use. These
 operations no longer raise through the scope that opened the service. The broader rule/store
-capability migration remains G7-F1; it is not completed by this slice.
+capability migration is described under G7-F1 below; the snapshot slice alone does not complete it.
 
 `SnapshotFailure.Storage` retains the original `StorageError`, while `SnapshotFailure.Defect`
 retains an unexpected exception. `StorageEvent.SnapshotFailed` carries that value; only the log
@@ -146,7 +146,8 @@ This comparison establishes queue cleanup; it does not claim identical snapshot-
 once, releases its connection and keeps accepting. Cancellation releases the handler without
 calling the reporter. The node's reporter logs typed network endings and sends both raw handler
 defects and `NetworkError.Defect` to the existing `Fatal.Defect` sink (exit 7), without peer blame.
-The Unix handler no longer catches an unexpected exception merely to log and continue.
+The Unix handler no longer catches an unexpected exception merely to log and continue. The local
+state acquisition invariant policy is described below; its typed cause reaches `Fatal.Internal`.
 
 The reference traces non-cancellation server exceptions before rethrowing
 ([network `2fb69829`, Server.hs:169–175](https://github.com/IntersectMBO/ouroboros-network/blob/2fb69829a19b5c04e4fb212bdd78fb63f9d2d776/ouroboros-network/framework/lib/Ouroboros/Network/Server.hs#L169)).
@@ -154,4 +155,74 @@ Scarab expresses the node policy through typed values and its fatal reporter rat
 domain errors. Listener reporters are effect boundaries: their own failures propagate rather than
 being swallowed. Existing event fields, metrics and healthy-session wire behavior are preserved.
 
-[#180](https://github.com/KD5UJC-XYZ/scarab/issues/180) remains open for G7-F1, G7-F3 and G7-F5.
+[#180](https://github.com/KD5UJC-XYZ/scarab/issues/180) tracks validation and independent review of the G7-F1/F3/F5 implementation below.
+
+## Caller capabilities, forging and cached-block attribution (G7-F1/F3/F5)
+
+Rule, store, chain-persistence and startup-migration operations take their caller's error capability.
+Constructing a service does not retain the capability used to open it. Resource acquisition and
+finalization still use the scope that owns the resource; one-shot offline filesystem helpers remain
+within their tool's run scope. `SessionEnd.scoped` gives each follower session a fresh `Handle[NodeError]`
+and keeps the whole-run handle as a lifetime backstop. Local handling of `NoIntersection` uses that
+same wider error channel, so changing the capability does not change same-connection retry policy.
+
+HTTP state projection, local submission and relay callbacks own their storage scopes.
+`StorageBoundary` preserves a `StorageError` as `Fatal.Storage` and an unexpected exception as
+`Fatal.Defect`. After reporting, the callback waits cancelably for shutdown; it supplies neither a
+ledger refusal nor peer blame. A streamed store read runs in a scoped producer with a one-element
+queue of typed results. Its scope and iterator remain alive through consumption, and cancellation
+releases both. Mempool `add` and `sync` use the caller's storage capability; their network adapters
+supply scopes of their own.
+
+Local state queries retain the pinned-view contract from #158. Acquisition selects the retained
+ledger point and captures its backing generation under the same publication mutex the follower
+uses. `UtxoPinnedReadView` returns storage failures as values while its native snapshot is held;
+`LocalStateQueryServer` and `NodeToClientServer.acceptBackend` carry those values to the owner.
+The acquired view and sibling protocol resources are released before `Main.landLocalBackend`
+reports a backend `StorageError` as `Fatal.Storage` (exit 5). These paths do not park inside
+`StorageBoundary`, which would delay that cleanup until shutdown.
+
+A backing generation outside the selected ledger view's valid stamp interval is a local invariant
+failure, not a wire acquisition refusal. `NetworkError.StateAcquireFailure` retains the point and
+all three stamp values through protocol cleanup. The listener is the authoritative policy boundary:
+`ListenerFailures.report` wraps that original typed cause in `ChainError.StateAcquire` and sends
+`Fatal.Internal` (exit 6) to the node owner. It neither blames a client nor retries the acquisition.
+Tests exercise the real LSQ/NodeToClient backend path and require the acquired view and a sibling
+ChainSync cursor to be released before the fatal reporter runs.
+
+Forging `run`, `step` and `reload` finish with `Either[Fatal, Unit]`. Expected leadership, protocol,
+credential and self-validation refusals remain recoverable domain outcomes. Storage failures,
+implementation unavailability, internal failures and unexpected defects terminate through the node's
+existing fatal policy. Candidate transaction selection propagates evaluator unavailability rather
+than silently omitting transactions. Reload treats a missing replacement file (`NoSuchFileException`)
+and malformed replacement credentials as operator refusals; other I/O failures are terminal.
+KES persistence emits its existing typed failure event and metric, then stops. A terminal key state
+prevents another run/reload fiber from signing while shutdown is being reported; repair requires a
+restart. The pure on-disk KES replacement/recovery protocol is unchanged.
+
+The reference links forging workers to their owner and recovers its explicit `CannotForge`,
+`ForgeStateUpdateError` and `NotLeader` cases
+([consensus `82ecba329`, NodeKernel.hs:549–568,660–669](https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329d7d054340bf707d44fe6e9ac27cec40/ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/NodeKernel.hs#L549)).
+Its storage rethrow policy terminates the node
+([RethrowPolicy.hs:54–84](https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329d7d054340bf707d44fe6e9ac27cec40/ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Node/RethrowPolicy.hs#L54)).
+Scarab's persisted evolving KES file is an additional mechanism; applying terminal storage policy to
+its failures is a deliberate durability requirement, not a claim that the reference persists keys
+with this protocol.
+
+The shared block cache retains a typed source reporter after the producing session releases its
+claims. Attribution is bounded to 8,192 released origins plus live session owners. Released origins
+are available for ten minutes; access checks the deadline, and a resource-owned worker reaps idle
+records at intervals of at most one minute. Thus physical idle cleanup can lag expiry by one minute.
+Expiry or capacity eviction also drops untaken blocks from that origin. Already taken blocks retain
+attribution only within the same bounds. Releasing the pool clears reports and wakes pending claims.
+The maintenance resource surrounds the entire peer-network lifetime.
+
+A refusal atomically claims the origin's notification once. The source peer receives a typed
+`ValidationError`; only the governor observation renderer produces its reason text. A late cached-block
+rejection can forget a cold peer and close a newer connection or a connection still being established.
+Local roots retain their existing maximum-backoff policy. An innocent consumer still ends with the
+existing transient foreign-block divergence. No session-scoped `Raise` is retained by the reporter.
+The reference likewise associates invalid-block punishment with the sender
+([InvalidBlockPunishment.hs:48–56](https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329d7d054340bf707d44fe6e9ac27cec40/ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/API/Types/InvalidBlockPunishment.hs#L48));
+Scarab uses bounded peer attribution because its shared cache can deliver a block to a different
+validating session. The retention bounds are Scarab policy, not reference deployment parameters.

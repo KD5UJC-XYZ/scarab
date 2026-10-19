@@ -41,11 +41,12 @@ class FollowerSuite extends CatsEffectSuite:
   /** Records the block number of the tip as the state; rejects headers in `invalid`. */
   private def rules(
       invalid: Set[Bytes] = Set.empty
-  )(using h: Handle[IO, NodeError]): BlockRules[IO, BigInt] =
-    (_, header, _) =>
+  ): BlockRules[IO, BigInt] =
+    BlockRules.from { (_, header, _) =>
       if invalid(header.hash) then
-        h.raise(ValidationError(header.point, BlockFailure.HeaderDiffers))
+        Raise[IO, ValidationError].raise(ValidationError(header.point, BlockFailure.HeaderDiffers))
       else IO.pure(header.blockNo)
+    }
 
   private val noEvents: FollowerEvents[IO] = _ => IO.unit
 
@@ -53,8 +54,6 @@ class FollowerSuite extends CatsEffectSuite:
   private def scriptedPeers(
       sessions: List[List[Either[PeerError, SyncEvent]]],
       offered: Ref[IO, List[Vector[ChainSync.Point]]]
-  )(using
-      h: Handle[IO, PeerError]
   ): IO[Resource[IO, Peer[IO]]] =
     Queue
       .unbounded[IO, List[Either[PeerError, SyncEvent]]]
@@ -67,7 +66,7 @@ class FollowerSuite extends CatsEffectSuite:
                 offered.update(_ :+ candidates).as(candidates.headOption)
               def next(using Raise[IO, PeerError]) = remaining.modify {
                 case Nil                  => Nil -> IO.never
-                case Left(e) :: _         => Nil -> h.raise(e)
+                case Left(e) :: _         => Nil -> Raise[IO, PeerError].raise(e)
                 case Right(event) :: rest => rest -> IO.pure(event)
               }.flatten
               def fetch(header: Header)(using Raise[IO, PeerError]) = IO.pure(Bytes.empty)
@@ -92,9 +91,10 @@ class FollowerSuite extends CatsEffectSuite:
           for
             follower <- Follower.create[IO, BigInt](
               applied.fold(rules(invalid))(log =>
-                (state, header, block) =>
+                BlockRules.from { (state, header, block) =>
                   IO(Thread.currentThread.getName).flatMap(n => log.update(_ :+ n)) *>
                     rules(invalid).apply(state, header, block)
+                }
               ),
               noEvents,
               geometry,

@@ -2,7 +2,8 @@
 package xyz.kd5ujc.scarab.node.forge
 
 import cats.effect.{IO, Ref}
-import cats.mtl.{Handle, Stateful}
+import cats.mtl.{Handle, Raise, Stateful}
+import cats.mtl.syntax.all.*
 import java.time.Instant
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -167,7 +168,10 @@ trait ForgeFixture:
       live: Boolean = false,
       ready: Option[IO[Boolean]] = None,
       offsetMillis: Long = 0,
-      source: Option[HotKeySource[IO]] = None
+      source: Option[HotKeySource[IO]] = None,
+      ruleFailure: Option[BlockFailure] = None,
+      storageFailure: Option[StorageError] = None,
+      clock: Option[IO[Instant]] = None
   )(using Handle[IO, NodeError]): IO[Harness] =
     for
       start <- IO.pure(mirrorState(ledger))
@@ -175,7 +179,15 @@ trait ForgeFixture:
         VolatileChain.genesis(geometry.securityParam, start)
       )
       given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(ref)
-      rules = MirrorRules[IO](config, globals, None, None, mirrorEnv.byron)
+      realRules = MirrorRules[IO](config, globals, None, None, mirrorEnv.byron)
+      rules = new xyz.kd5ujc.scarab.consensus.BlockRules[IO, MirrorState]:
+        def apply(state: MirrorState, header: Header, raw: Bytes)(using
+            Raise[IO, ValidationError],
+            Raise[IO, StorageError]
+        ): IO[MirrorState] =
+          ruleFailure.fold(realRules(state, header, raw))(failure =>
+            ValidationError(header.point, failure).raise[IO, MirrorState]
+          )
       mempool <- Mempool.create[IO](
         MempoolLedger.at(start, None),
         4999,
@@ -194,8 +206,12 @@ trait ForgeFixture:
               raw: Bytes,
               immutable: Vector[BlockRef],
               anchor: xyz.kd5ujc.scarab.consensus.Anchor[MirrorState]
-          ) = raws.update(_.updated(ref.hash, raw))
-          def rolledBack(to: xyz.kd5ujc.scarab.protocol.ChainSync.Point) = IO.unit),
+          )(using Raise[IO, StorageError], Raise[IO, ChainError]) =
+            storageFailure.fold(raws.update(_.updated(ref.hash, raw)))(_.raise[IO, Unit])
+          def rolledBack(to: xyz.kd5ujc.scarab.protocol.ChainSync.Point)(using
+              Raise[IO, StorageError],
+              Raise[IO, ChainError]
+          ) = IO.unit),
         onTip = Some((c, _) =>
           mempool.sync(MempoolLedger.at(c.state, c.tipRef), c.tipRef.get.slot, Set.empty).void
         )
@@ -211,9 +227,11 @@ trait ForgeFixture:
         ready.getOrElse(IO.pure(connected)),
         maxTipAge = Some(maxTipAge),
         // `live`: the real loop on the (test) clock, starting at slot 5000; else steps are driven by hand
-        now = Some(
-          if live then IO.realTimeInstant.map(_.plusSeconds(5000).plusMillis(offsetMillis))
-          else IO.pure(Instant.EPOCH)
+        now = clock.orElse(
+          Some(
+            if live then IO.realTimeInstant.map(_.plusSeconds(5000).plusMillis(offsetMillis))
+            else IO.pure(Instant.EPOCH)
+          )
         ),
         sleep = if live then None else Some(_ => IO.unit),
         source = source
@@ -222,6 +240,16 @@ trait ForgeFixture:
 
   def withHandle[A](f: Handle[IO, NodeError] ?=> IO[A]): IO[A] =
     Handle.allow[NodeError](f).rescue(e => IO.raiseError(new RuntimeException(e.message)))
+
+  def currentHot(keys: HotKeys[IO]): IO[PoolCredentials] =
+    Forger
+      .scoped(keys.current)
+      .flatMap(
+        _.fold(
+          fatal => IO.raiseError(new AssertionError(fatal.message)),
+          IO.pure
+        )
+      )
 
   def forgedIn(h: Harness): IO[Vector[ForgeEvent.Forged]] =
     h.seen.map(_.collect { case f: ForgeEvent.Forged => f })

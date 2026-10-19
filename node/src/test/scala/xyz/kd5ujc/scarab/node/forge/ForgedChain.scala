@@ -191,8 +191,14 @@ object ForgedChain:
                   raw: Bytes,
                   immutable: Vector[BlockRef],
                   anchor: xyz.kd5ujc.scarab.consensus.Anchor[MirrorState]
+              )(using
+                  cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError],
+                  cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.ChainError]
               ) = raws.update(_ :+ raw)
-              def rolledBack(to: xyz.kd5ujc.scarab.protocol.ChainSync.Point) = IO.unit),
+              def rolledBack(to: xyz.kd5ujc.scarab.protocol.ChainSync.Point)(using
+                  cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError],
+                  cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.ChainError]
+              ) = IO.unit),
             onTip = Some((c, _) =>
               mempool
                 .sync(MempoolLedger.at(c.state, c.tipRef), c.tipRef.get.slot, Set.empty)

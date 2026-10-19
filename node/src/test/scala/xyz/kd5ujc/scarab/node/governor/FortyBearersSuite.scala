@@ -9,7 +9,7 @@ import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, FollowerEvent, FollowerEvents, VolatileChain}
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
-import xyz.kd5ujc.scarab.ledger.{Block, ChainError, NodeError}
+import xyz.kd5ujc.scarab.ledger.{Block, NodeError}
 import xyz.kd5ujc.scarab.network.*
 import xyz.kd5ujc.scarab.network.selection.*
 import xyz.kd5ujc.scarab.node.*
@@ -35,10 +35,11 @@ class FortyBearersSuite extends munit.CatsEffectSuite:
       server <- ChainServer.open[IO](
         None,
         None,
-        ChainServer.headerOfBlock(ForgedChain.geometry.byron.epochSlots)
+        ChainServer.headerOfBlock(ForgedChain.geometry.byron.epochSlots),
+        failure => IO.raiseError(new AssertionError(failure.message))
       )
       _ <- Handle
-        .allow[ChainError] {
+        .allow[xyz.kd5ujc.scarab.ledger.NodeError] {
           raws.traverse_ { raw =>
             val header = Block.decodeShelley(raw).toOption.get.asInstanceOf[Block.Shelley].header
             server

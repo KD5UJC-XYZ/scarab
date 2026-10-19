@@ -234,13 +234,13 @@ final class InboundGovernor[F[_]: Async] private (
   private def following(
       remote: SocketAddress[IpAddress],
       connection: NodeToNodeConnection[F, NtNHeader]
-  )(using Raise[F, PeerError]): F[Unit] =
+  )(using outer: Raise[F, NodeError]): F[Unit] =
     Handle
-      .allow[PeerError] {
+      .allow[NodeError] {
         Peer
           .over(connection, config.peer, prepare, headers, observe)
           .use(peer => follow(counted(remote, peer)))
-          .as(Option.empty[PeerError])
+          .as(Option.empty[NodeError])
       }
       .rescue(e => F.pure(Some(e)))
       .flatMap {
@@ -253,7 +253,7 @@ final class InboundGovernor[F[_]: Async] private (
                 .SessionEnded(InboundGovernor.SessionFailure.Peer(PeerError.NoIntersection), false)
             ) *>
             F.sleep(config.retryDelay) *> following(remote, connection)
-        case Some(error) => Raise[F, PeerError].raise(error)
+        case Some(error) => outer.raise(error)
       }
 
   /** The peer, with what the session sees of it counted. */
@@ -329,7 +329,7 @@ object InboundGovernor:
   )
 
   /** The follower session over the peer, raising a [[PeerError]] when the peer fails. */
-  type Follow[F[_]] = Peer[F] => Raise[F, PeerError] ?=> F[Unit]
+  type Follow[F[_]] = Peer[F] => Raise[F, NodeError] ?=> F[Unit]
 
   private val RetainedSessions = 64
 

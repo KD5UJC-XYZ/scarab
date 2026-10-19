@@ -31,23 +31,25 @@ import xyz.kd5ujc.scarab.ledger.{
 /** Append-only storage of the blocks older than `k`: the ImmutableDB of ouroboros-consensus. */
 trait ImmutableStore[F[_]]:
   /** Append a block that extends the stored chain. Durable after the next [[sync]]. */
-  def append(ref: BlockRef, raw: Bytes): F[Unit]
+  def append(ref: BlockRef, raw: Bytes)(using cats.mtl.Raise[F, StorageError]): F[Unit]
 
   /** Force everything appended so far to disk (data, then index). */
   def sync(using Raise[F, StorageError]): F[Unit]
 
-  def tip: F[Option[BlockRef]]
+  def tip(using cats.mtl.Raise[F, StorageError]): F[Option[BlockRef]]
 
   /** The raw block at `point` (slot and hash), if stored. */
-  def get(point: ChainSync.Point): F[Option[Bytes]]
+  def get(point: ChainSync.Point)(using cats.mtl.Raise[F, StorageError]): F[Option[Bytes]]
 
   /** The block with number `n` (the main block, for a Byron boundary/main pair). */
-  def byBlockNo(n: BigInt): F[Option[ImmutableStore.Stored]]
+  def byBlockNo(n: BigInt)(using cats.mtl.Raise[F, StorageError]): F[Option[ImmutableStore.Stored]]
 
   /** Every stored block strictly after `point` (`Origin`: from the first), oldest first. Raises
     * `StorageError.Missing` if `point` is not stored.
     */
-  def stream(after: ChainSync.Point): Stream[F, ImmutableStore.Stored]
+  def stream(after: ChainSync.Point)(using
+      cats.mtl.Raise[F, StorageError]
+  ): Stream[F, ImmutableStore.Stored]
 
 object ImmutableStore:
   final case class Stored(ref: BlockRef, raw: Bytes)
@@ -94,11 +96,11 @@ object FileImmutableStore:
     * step is the file with its header replaced. Reading the version looks at the header alone, once
     * per file at open: the per-entry read path never checks the magic.
     */
-  private[storage] def indexMigration[F[_]: Sync](using Raise[F, StorageError]): Migration[F] =
+  private[storage] def indexMigration[F[_]: Sync]: Migration[F] =
     new Migration[F]:
       val kind = FileKind.IndexFile
 
-      def detect(file: Path): F[FormatVersion] =
+      def detect(file: Path)(using cats.mtl.Raise[F, StorageError]): F[FormatVersion] =
         AtomicFile
           .guard[F, Array[Byte]](file.toString) {
             val in = JFiles.newInputStream(file.toNioPath)
@@ -114,7 +116,9 @@ object FileImmutableStore:
                 .fold(_.raise[F, FormatVersion], Sync[F].pure)
           }
 
-      def step(file: Path, from: FormatVersion, to: FormatVersion): F[Unit] =
+      def step(file: Path, from: FormatVersion, to: FormatVersion)(using
+          cats.mtl.Raise[F, StorageError]
+      ): F[Unit] =
         validateStep(file, from, to) *> {
           AtomicFile
             .guard[F, Array[Byte]](file.toString)(JFiles.readAllBytes(file.toNioPath))
@@ -125,43 +129,44 @@ object FileImmutableStore:
     * that the database was made with this build's `chunkSlots`: a different value is a
     * [[StorageError.VersionMismatch]], since the chunk a block lives in depends on it.
     */
-  private[storage] def formatMigration[F[_]: Sync](chunkSlots: Long)(using
-      Raise[F, StorageError]
-  ): Migration[F] = new Migration[F]:
-    val kind = FileKind.FormatFile
-    private val Suffix = " chunkSlots="
+  private[storage] def formatMigration[F[_]: Sync](chunkSlots: Long): Migration[F] =
+    new Migration[F]:
+      val kind = FileKind.FormatFile
+      private val Suffix = " chunkSlots="
 
-    def detect(file: Path): F[FormatVersion] =
-      AtomicFile
-        .guard[F, String](file.toString)(
-          new String(JFiles.readAllBytes(file.toNioPath), StandardCharsets.UTF_8).trim
-        )
-        .flatMap { text =>
-          val at = text.lastIndexOf(Suffix)
-          val (identifier, slots) = if at < 0 then (text, "") else text.splitAt(at)
-          kind
-            .versionOf(file.toString, identifier)
-            .fold(_.raise[F, FormatVersion], Sync[F].pure)
-            .flatMap { version =>
-              if slots == s"$Suffix$chunkSlots" then Sync[F].pure(version)
-              else
-                StorageError
-                  .VersionMismatch(
-                    file.toString,
-                    text,
-                    s"${kind.identifier(version)}$Suffix$chunkSlots"
-                  )
-                  .raise[F, FormatVersion]
-            }
+      def detect(file: Path)(using cats.mtl.Raise[F, StorageError]): F[FormatVersion] =
+        AtomicFile
+          .guard[F, String](file.toString)(
+            new String(JFiles.readAllBytes(file.toNioPath), StandardCharsets.UTF_8).trim
+          )
+          .flatMap { text =>
+            val at = text.lastIndexOf(Suffix)
+            val (identifier, slots) = if at < 0 then (text, "") else text.splitAt(at)
+            kind
+              .versionOf(file.toString, identifier)
+              .fold(_.raise[F, FormatVersion], Sync[F].pure)
+              .flatMap { version =>
+                if slots == s"$Suffix$chunkSlots" then Sync[F].pure(version)
+                else
+                  StorageError
+                    .VersionMismatch(
+                      file.toString,
+                      text,
+                      s"${kind.identifier(version)}$Suffix$chunkSlots"
+                    )
+                    .raise[F, FormatVersion]
+              }
+          }
+
+      def step(file: Path, from: FormatVersion, to: FormatVersion)(using
+          cats.mtl.Raise[F, StorageError]
+      ): F[Unit] =
+        validateStep(file, from, to) *> {
+          AtomicFile.replace[F](
+            file,
+            s"${kind.identifier(to)}$Suffix$chunkSlots\n".getBytes(StandardCharsets.UTF_8)
+          )
         }
-
-    def step(file: Path, from: FormatVersion, to: FormatVersion): F[Unit] =
-      validateStep(file, from, to) *> {
-        AtomicFile.replace[F](
-          file,
-          s"${kind.identifier(to)}$Suffix$chunkSlots\n".getBytes(StandardCharsets.UTF_8)
-        )
-      }
 
   /** Validate immutable format headers without opening the recovery-capable store. Identity
     * adoption calls this before publishing a new identity, so an unknown or incompatible database
@@ -250,7 +255,9 @@ object FileImmutableStore:
         val read = channel.read(buffer, position)
         if read <= 0 then false else readFully(channel, buffer, position + read)
 
-    def readChunk(root: java.nio.file.Path, chunk: Int): Either[StorageError, Option[Bytes]] =
+    def readChunk(root: java.nio.file.Path, chunk: Int)(using
+        cats.mtl.Raise[F, StorageError]
+    ): Either[StorageError, Option[Bytes]] =
       val indexPath = root.resolve(f"$chunk%05d.index")
       val invalid = StorageError.FirstImmutable(FirstImmutableProblem.InvalidIndexEntry)
       val index = FileChannel.open(indexPath, StandardOpenOption.READ)
@@ -361,16 +368,18 @@ object FileImmutableStore:
     def dataPath(c: Int) = dir / f"$c%05d.chunk"
     def indexPath(c: Int) = dir / f"$c%05d.index"
 
-    def readAll(path: Path): F[Array[Byte]] =
+    def readAll(path: Path)(using cats.mtl.Raise[F, StorageError]): F[Array[Byte]] =
       guard(path.toString)(files.readAll(path).compile.to(Chunk).map(_.toArray))
 
-    def syncDir: F[Unit] = guard(dir.toString)(F.blocking {
+    def syncDir(using cats.mtl.Raise[F, StorageError]): F[Unit] = guard(dir.toString)(F.blocking {
       val ch = FileChannel.open(dir.toNioPath, StandardOpenOption.READ)
       try ch.force(true)
       finally ch.close()
     })
 
-    def writeFully(h: FileHandle[F], bytes: Array[Byte], offset: Long): F[Unit] =
+    def writeFully(h: FileHandle[F], bytes: Array[Byte], offset: Long)(using
+        cats.mtl.Raise[F, StorageError]
+    ): F[Unit] =
       def go(chunk: Chunk[Byte], at: Long): F[Unit] =
         if chunk.isEmpty then F.unit
         else h.write(chunk, at).flatMap(n => go(chunk.drop(n), at + n))
@@ -378,7 +387,7 @@ object FileImmutableStore:
 
     val readWrite = Flags(Flag.Create, Flag.Read, Flag.Write)
 
-    def openChunk(c: Int): F[Current[F]] =
+    def openChunk(c: Int)(using cats.mtl.Raise[F, StorageError]): F[Current[F]] =
       guard(indexPath(c).toString) {
         for
           dataH <- files.open(dataPath(c), readWrite).allocated
@@ -522,61 +531,67 @@ object FileImmutableStore:
           def sync(using Raise[F, StorageError]): F[Unit] =
             mutex.lock.surround(current.get.flatMap(_.traverse_(forceCurrent)))
 
-          def tip: F[Option[BlockRef]] = tipRef.get
+          def tip(using cats.mtl.Raise[F, StorageError]): F[Option[BlockRef]] = tipRef.get
 
-          def append(ref: BlockRef, raw: Bytes): F[Unit] = mutex.lock.surround {
-            for
-              before <- tipRef.get
-              _ <- before.traverse_ { t =>
-                if ref.slot > t.slot || (ref.slot == t.slot && t.boundary) then F.unit
-                else
+          def append(ref: BlockRef, raw: Bytes)(using cats.mtl.Raise[F, StorageError]): F[Unit] =
+            mutex.lock.surround {
+              for
+                before <- tipRef.get
+                _ <- before.traverse_ { t =>
+                  if ref.slot > t.slot || (ref.slot == t.slot && t.boundary) then F.unit
+                  else
+                    fail[Unit](
+                      StorageError.OutOfOrder(StorageStructureError.SlotOrder(ref.slot, t.slot))
+                    )
+                }
+                _ <- F.unlessA(ref.hash.size == 32)(
                   fail[Unit](
-                    StorageError.OutOfOrder(StorageStructureError.SlotOrder(ref.slot, t.slot))
+                    StorageError.OutOfOrder(StorageStructureError.HashLength(ref.hash.size))
                   )
-              }
-              _ <- F.unlessA(ref.hash.size == 32)(
-                fail[Unit](StorageError.OutOfOrder(StorageStructureError.HashLength(ref.hash.size)))
-              )
-              _ <- F.unlessA(ref.slot.isValidLong && ref.blockNo.isValidLong)(
-                fail[Unit](
-                  StorageError
-                    .OutOfOrder(StorageStructureError.InvalidBlockNumbers(ref.slot, ref.blockNo))
                 )
-              )
-              wanted = (ref.slot / chunkSlots).toInt
-              cur <- current.get
-              target <- cur match
-                case Some(c) if c.chunk == wanted => F.pure(c)
-                case _ =>
-                  for
-                    _ <- cur.traverse_(c => forceCurrent(c) *> c.release)
-                    created <- openChunk(wanted)
-                    _ <- syncDir
-                    _ <- current.set(Some(created))
-                    _ <- chunksRef
-                      .update(cs => if cs.lastOption.contains(wanted) then cs else cs :+ wanted)
-                  yield created
-              bytes = raw.toArray
-              entry = Entry(target.dataSize, bytes.length, crcOf(bytes, 0, bytes.length), ref)
-              _ <- guard(dataPath(wanted).toString)(writeFully(target.data, bytes, target.dataSize))
-              _ <- guard(indexPath(wanted).toString)(
-                writeFully(
-                  target.index,
-                  encode(entry),
-                  HeaderSize.toLong + target.count.toLong * EntrySize
+                _ <- F.unlessA(ref.slot.isValidLong && ref.blockNo.isValidLong)(
+                  fail[Unit](
+                    StorageError
+                      .OutOfOrder(StorageStructureError.InvalidBlockNumbers(ref.slot, ref.blockNo))
+                  )
                 )
-              )
-              _ = {
-                target.dataSize += bytes.length
-                target.count += 1
-              }
-              _ <- tipRef.set(Some(ref))
-            yield ()
-          }
+                wanted = (ref.slot / chunkSlots).toInt
+                cur <- current.get
+                target <- cur match
+                  case Some(c) if c.chunk == wanted => F.pure(c)
+                  case _ =>
+                    for
+                      _ <- cur.traverse_(c => forceCurrent(c) *> c.release)
+                      created <- openChunk(wanted)
+                      _ <- syncDir
+                      _ <- current.set(Some(created))
+                      _ <- chunksRef
+                        .update(cs => if cs.lastOption.contains(wanted) then cs else cs :+ wanted)
+                    yield created
+                bytes = raw.toArray
+                entry = Entry(target.dataSize, bytes.length, crcOf(bytes, 0, bytes.length), ref)
+                _ <- guard(dataPath(wanted).toString)(
+                  writeFully(target.data, bytes, target.dataSize)
+                )
+                _ <- guard(indexPath(wanted).toString)(
+                  writeFully(
+                    target.index,
+                    encode(entry),
+                    HeaderSize.toLong + target.count.toLong * EntrySize
+                  )
+                )
+                _ = {
+                  target.dataSize += bytes.length
+                  target.count += 1
+                }
+                _ <- tipRef.set(Some(ref))
+              yield ()
+            }
 
-          private def indexOf(c: Int): F[Vector[Entry]] = readAll(indexPath(c)).map(entries)
+          private def indexOf(c: Int)(using cats.mtl.Raise[F, StorageError]): F[Vector[Entry]] =
+            readAll(indexPath(c)).map(entries)
 
-          private def read(c: Int, e: Entry): F[Bytes] =
+          private def read(c: Int, e: Entry)(using cats.mtl.Raise[F, StorageError]): F[Bytes] =
             guard(dataPath(c).toString)(
               files
                 .readRange(dataPath(c), 1 << 16, e.offset, e.end)
@@ -593,7 +608,9 @@ object FileImmutableStore:
                 )
             }
 
-          private def locate(point: ChainSync.Point.Block): F[Option[(Int, Int, Vector[Entry])]] =
+          private def locate(point: ChainSync.Point.Block)(using
+              cats.mtl.Raise[F, StorageError]
+          ): F[Option[(Int, Int, Vector[Entry])]] =
             val slot = point.slot.value
             val c = (slot / chunkSlots).toInt
             chunksRef.get.flatMap { cs =>
@@ -605,15 +622,20 @@ object FileImmutableStore:
                 }
             }
 
-          def get(point: ChainSync.Point): F[Option[Bytes]] = point match
-            case ChainSync.Point.Origin => F.pure(None)
-            case b: ChainSync.Point.Block =>
-              locate(b).flatMap(_.traverse { case (c, i, es) => read(c, es(i)) })
+          def get(point: ChainSync.Point)(using cats.mtl.Raise[F, StorageError]): F[Option[Bytes]] =
+            point match
+              case ChainSync.Point.Origin => F.pure(None)
+              case b: ChainSync.Point.Block =>
+                locate(b).flatMap(_.traverse { case (c, i, es) => read(c, es(i)) })
 
-          def byBlockNo(n: BigInt): F[Option[ImmutableStore.Stored]] =
+          def byBlockNo(n: BigInt)(using
+              cats.mtl.Raise[F, StorageError]
+          ): F[Option[ImmutableStore.Stored]] =
             chunksRef.get.flatMap { cs =>
               // First chunk whose newest block number reaches n.
-              def search(lo: Int, hi: Int): F[Option[(Int, Vector[Entry])]] =
+              def search(lo: Int, hi: Int)(using
+                  cats.mtl.Raise[F, StorageError]
+              ): F[Option[(Int, Vector[Entry])]] =
                 if lo >= hi then F.pure(None)
                 else
                   val mid = (lo + hi) / 2
@@ -633,7 +655,9 @@ object FileImmutableStore:
               }
             }
 
-          def stream(after: ChainSync.Point): Stream[F, ImmutableStore.Stored] =
+          def stream(after: ChainSync.Point)(using
+              cats.mtl.Raise[F, StorageError]
+          ): Stream[F, ImmutableStore.Stored] =
             val start: F[Option[(Int, Int)]] = after match
               case ChainSync.Point.Origin => F.pure(Some((-1, 0)))
               case b: ChainSync.Point.Block =>
@@ -653,7 +677,9 @@ object FileImmutableStore:
                 }
             }
 
-          private def readChunk(c: Int): F[Vector[ImmutableStore.Stored]] =
+          private def readChunk(c: Int)(using
+              cats.mtl.Raise[F, StorageError]
+          ): F[Vector[ImmutableStore.Stored]] =
             indexOf(c).flatMap { es =>
               if es.isEmpty then F.pure(Vector.empty)
               else

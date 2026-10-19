@@ -137,7 +137,10 @@ object TxKit:
   def pay(i: Int, fee: BigInt = ada, value: BigInt = 100 * ada): (Bytes, Bytes) =
     tx(Vector(txIn(i)), Vector(bob.address() -> (value - fee)), fee, Vector(alice))
 
-class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
+class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaCheckSuite:
+  private given cats.mtl.Raise[IO, StorageError] with
+    def functor = cats.Functor[IO]
+    def raise[E <: StorageError, A](error: E): IO[A] = IO(fail(error.message))
   import TxKit.*
 
   private def pool(ledger: MempoolLedger, capacity: Long = 100000) =
@@ -388,9 +391,11 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
       first <- mempool.add(t1)
       dup <- mempool.add(t1)
       // as a TxSubmission2 server we collect from a peer; known ids are not fetched
-      knownBefore <- mempool.sink.known(id1)
-      knownOther <- mempool.sink.known(id2)
-      _ <- mempool.sink.submit(Vector(t2, Bytes(Vector(1, 2))))
+      knownBefore <- mempool.sink(failure => IO(fail(s"unexpected fatal: $failure"))).known(id1)
+      knownOther <- mempool.sink(failure => IO(fail(s"unexpected fatal: $failure"))).known(id2)
+      _ <- mempool
+        .sink(failure => IO(fail(s"unexpected fatal: $failure")))
+        .submit(Vector(t2, Bytes(Vector(1, 2))))
       // as a client we offer what we hold, once per peer cursor
       offered <- mempool.source.after(0L, 10)
       later <- mempool.source.after(offered.head.ticket, 10)
@@ -444,12 +449,16 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
       mempool <- Mempool
         .create[IO](Right(base), 1000, env, 100000, MempoolEvents.none[IO], environment = Some(ask))
       first <- mempool.add(raw)
-      knownAfterUnavailableAdd <- mempool.sink.known(id)
+      knownAfterUnavailableAdd <- mempool
+        .sink(failure => IO(fail(s"unexpected fatal: $failure")))
+        .known(id)
       _ <- context.set(env)
       retried <- mempool.add(raw)
       _ <- context.set(unavailableEnv)
       dropped <- mempool.sync(Right(base), 1000)
-      knownAfterUnavailableSync <- mempool.sink.known(id)
+      knownAfterUnavailableSync <- mempool
+        .sink(failure => IO(fail(s"unexpected fatal: $failure")))
+        .known(id)
       _ <- context.set(env)
       retryAfterSync <- mempool.add(raw)
     yield
@@ -473,7 +482,7 @@ class MempoolStoreSuite extends CatsEffectSuite:
 
   private given cats.mtl.Raise[IO, StorageError] = new cats.mtl.Raise[IO, StorageError]:
     def functor = cats.Functor[IO]
-    def raise[E2 <: StorageError, A](e: E2): IO[A] = IO.raiseError(new RuntimeException(e.message))
+    def raise[E2 <: StorageError, A](e: E2): IO[A] = IO(fail(e.message))
 
   test("add and sync fetch the inputs a ledger state does not hold from the store") {
     val full = ledger(3)

@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.storage
 
 import xyz.kd5ujc.scarab.ledger.StorageStructureError
-import cats.effect.IO
+import cats.effect.{IO, Resource}
 import cats.syntax.all.*
 import fs2.io.file.Path
 import java.nio.file.{Files as JFiles, StandardOpenOption}
@@ -78,9 +78,9 @@ class UtxoEnumerationFaultSuite extends CatsEffectSuite:
     val ledger = Utxo.empty
     def run[A](
         name: String,
-        fa: RocksUtxoStore[IO] => IO[A]
+        fa: RocksUtxoStore[IO] => cats.mtl.Raise[IO, StorageError] ?=> IO[A]
     ): IO[(String, Either[StorageError, Any])] =
-      attempt(open(dir).use(fa)).map(name -> _)
+      attempt(open(dir).use(store => fa(store))).map(name -> _)
     List(
       run("read", _.read(List(probe))),
       run("all", _.all),
@@ -125,6 +125,35 @@ class UtxoEnumerationFaultSuite extends CatsEffectSuite:
         // short. The count still counts keys (it decodes nothing); the enumerations now fail.
         assertEquals(failureOf(results, "size"), Right((entries.size + 1).toLong))
       }
+    }
+  }
+
+  test("a live read view uses each caller after opening ends and pinned failures stay values") {
+    tempDir.use { dir =>
+      val path = dir / "db"
+      for
+        _ <- IO.blocking(writeRaw(path, List(key(damaged) -> Array[Byte](1, 0xff.toByte))))
+        _ <- Resource.make(ok(open(path).allocated))(_._2).use { (store, _) =>
+          val live: UtxoReadView[IO] = store
+          for
+            direct <- attempt(live.read(List(damaged)))
+            all <- attempt(live.all)
+            selected <- attempt(live.select(_ => true))
+            generation <- ok(live.stamp)
+            pinned <- store.readView.use {
+              case Left(error) => IO(fail(s"snapshot acquisition failed: ${error.message}"))
+              case Right(view) => view.read(List(damaged))
+            }
+            after <- ok(store.memory)
+          yield
+            assert(direct.swap.exists(_.isInstanceOf[StorageError.Corrupt[?]]))
+            assertEquals(all, direct)
+            assertEquals(selected, direct)
+            assertEquals(generation, stamp)
+            assert(pinned.swap.exists(_.isInstanceOf[StorageError.Corrupt[?]]))
+            assertEquals(after.get("num-snapshots"), Some(0L))
+        }
+      yield ()
     }
   }
 

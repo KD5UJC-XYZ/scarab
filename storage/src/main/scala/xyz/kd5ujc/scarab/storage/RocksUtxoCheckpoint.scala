@@ -14,8 +14,8 @@ import xyz.kd5ujc.scarab.ledger.{StorageError, TxIn, TxOut}
 
 /** An offline checkpoint, with no write, restore, recovery or migration capability. */
 trait UtxoCheckpoint[F[_]]:
-  def flushed: F[Long]
-  def entries: Stream[F, (TxIn, TxOut)]
+  def flushed(using Raise[F, StorageError]): F[Long]
+  def entries(using Raise[F, StorageError]): Stream[F, (TxIn, TxOut)]
 
 object RocksUtxoCheckpoint:
   /** Native diagnostic files belong to logs, outside the checkpoint: even opening a read-only
@@ -25,7 +25,7 @@ object RocksUtxoCheckpoint:
       errors: Raise[F, StorageError]
   ): Resource[F, UtxoCheckpoint[F]] =
     val F = Sync[F]
-    def guard[A](what: String)(body: => A): F[A] =
+    def guard[A](what: String)(body: => A)(using errors: Raise[F, StorageError]): F[A] =
       F.blocking(body).attempt.flatMap {
         case Right(value) => F.pure(value)
         case Left(error: RocksDBException)
@@ -33,7 +33,7 @@ object RocksUtxoCheckpoint:
           errors.raise(StorageError.Corrupt(what, StorageStructureError.RocksFailure(error)))
         case Left(error) => errors.raise(StorageError.Io(what, error))
       }
-    def lift[A](result: Either[StorageError, A]): F[A] =
+    def lift[A](result: Either[StorageError, A])(using Raise[F, StorageError]): F[A] =
       result.fold(_.raise[F, A], F.pure)
     for
       options <- Resource.make(guard(dir.toString) {
@@ -44,7 +44,7 @@ object RocksUtxoCheckpoint:
         F.blocking(db.close())
       )
     yield new UtxoCheckpoint[F]:
-      def flushed: F[Long] = guard(dir.toString) {
+      def flushed(using Raise[F, StorageError]): F[Long] = guard(dir.toString) {
         Option(db.get(Array[Byte](0))).toRight(StorageError.Missing("checkpoint stamp")).flatMap {
           case bytes if bytes.length == 8 => Right(ByteBuffer.wrap(bytes).getLong)
           case bytes =>
@@ -55,7 +55,7 @@ object RocksUtxoCheckpoint:
         }
       }.flatMap(lift)
 
-      def entries: Stream[F, (TxIn, TxOut)] =
+      def entries(using Raise[F, StorageError]): Stream[F, (TxIn, TxOut)] =
         Stream
           .resource(
             Resource.make(guard(dir.toString)(db.newIterator()))(it => F.blocking(it.close()))

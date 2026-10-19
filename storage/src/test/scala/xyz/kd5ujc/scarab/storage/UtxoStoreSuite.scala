@@ -92,7 +92,9 @@ class UtxoStoreSuite extends ScalaCheckSuite:
 
   private val k = 3
 
-  private def run(store: UtxoStore[IO], actions: List[Action]): IO[Boolean] =
+  private def run(store: UtxoStore[IO], actions: List[Action])(using
+      cats.mtl.Raise[cats.effect.IO, xyz.kd5ujc.scarab.ledger.StorageError]
+  ): IO[Boolean] =
     val start = Chain(Vector.empty, Utxo.empty, Vector.empty, Map.empty, 0, 0)
     actions
       .foldLeft(IO.pure((start, true))) { (acc, action) =>
@@ -104,7 +106,9 @@ class UtxoStoreSuite extends ScalaCheckSuite:
       }
       .map(_._2)
 
-  private def step(store: UtxoStore[IO], chain: Chain, action: Action): IO[Chain] = action match
+  private def step(store: UtxoStore[IO], chain: Chain, action: Action)(using
+      cats.mtl.Raise[cats.effect.IO, xyz.kd5ujc.scarab.ledger.StorageError]
+  ): IO[Chain] = action match
     case Action.Rollback(depth) =>
       val d = math.min(depth, chain.utxos.size)
       val kept = chain.utxos.dropRight(d)
@@ -184,7 +188,9 @@ class UtxoStoreSuite extends ScalaCheckSuite:
   /** Every retained state, completed from the store, equals its model; the incremental stake, total
     * and count equal a recomputation; and the store alone equals the anchor.
     */
-  private def check(store: UtxoStore[IO], chain: Chain): IO[Boolean] =
+  private def check(store: UtxoStore[IO], chain: Chain)(using
+      cats.mtl.Raise[cats.effect.IO, xyz.kd5ujc.scarab.ledger.StorageError]
+  ): IO[Boolean] =
     for
       stored <- store.all
       completed <- chain.utxos.traverse(u => UtxoStore.materialize(store, u))
@@ -357,7 +363,7 @@ class UtxoStoreSuite extends ScalaCheckSuite:
       open: (UtxoStore[IO] => IO[Boolean]) => IO[Boolean],
       actions: List[Action],
       more: List[Action]
-  ) =
+  )(using cats.mtl.Raise[cats.effect.IO, xyz.kd5ujc.scarab.ledger.StorageError]) =
     open { store =>
       val dir = tempDir()
       val cp = Path.fromNioPath(dir) / "cp"

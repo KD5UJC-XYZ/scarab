@@ -37,18 +37,18 @@ enum VolatileRecord:
   */
 trait VolatileStore[F[_]]:
   /** Log an adopted block. */
-  def append(ref: BlockRef, raw: Bytes): F[Unit]
+  def append(ref: BlockRef, raw: Bytes)(using cats.mtl.Raise[F, StorageError]): F[Unit]
 
   /** Log a rollback of the chain to `to` (`Origin` or a block). */
-  def rollback(to: ChainSync.Point): F[Unit]
+  def rollback(to: ChainSync.Point)(using cats.mtl.Raise[F, StorageError]): F[Unit]
 
   /** Delete the log files all of whose blocks are at or below `durableSlot` (the slot of the newest
     * block the immutable store has forced to disk). The newest file is kept.
     */
-  def gc(durableSlot: BigInt): F[Unit]
+  def gc(durableSlot: BigInt)(using cats.mtl.Raise[F, StorageError]): F[Unit]
 
   /** Force the log to disk. */
-  def sync: F[Unit]
+  def sync(using cats.mtl.Raise[F, StorageError]): F[Unit]
 
 object VolatileStore:
   /** What opening found. */
@@ -177,7 +177,7 @@ object VolatileStore:
     val F = Async[F]
     val root = dir.toNioPath
 
-    def guard[A](what: String)(body: => A): F[A] =
+    def guard[A](what: String)(body: => A)(using cats.mtl.Raise[F, StorageError]): F[A] =
       F.blocking(body).attempt.flatMap {
         case Right(a) => F.pure(a)
         case Left(e)  => StorageError.Io(what, e).raise[F, A]
@@ -283,7 +283,7 @@ object VolatileStore:
             while buf.hasRemaining do channel.write(buf)
 
           /** Start a new file when the current one holds `blocksPerFile` blocks. */
-          private def roll: F[Unit] =
+          private def roll(using cats.mtl.Raise[F, StorageError]): F[Unit] =
             files.get.flatMap { fs =>
               if fs.last.blocks < blocksPerFile then F.unit
               else
@@ -307,7 +307,7 @@ object VolatileStore:
                 }
             }
 
-          private def log(record: VolatileRecord): F[Unit] =
+          private def log(record: VolatileRecord)(using cats.mtl.Raise[F, StorageError]): F[Unit] =
             mutex.lock.surround {
               for
                 _ <- roll
@@ -325,16 +325,18 @@ object VolatileStore:
               yield ()
             }
 
-          def append(ref: BlockRef, raw: Bytes): F[Unit] = log(VolatileRecord.Block(ref, raw))
+          def append(ref: BlockRef, raw: Bytes)(using cats.mtl.Raise[F, StorageError]): F[Unit] =
+            log(VolatileRecord.Block(ref, raw))
 
-          def rollback(to: ChainSync.Point): F[Unit] = log(VolatileRecord.Rollback(to))
+          def rollback(to: ChainSync.Point)(using cats.mtl.Raise[F, StorageError]): F[Unit] =
+            log(VolatileRecord.Rollback(to))
 
-          def sync: F[Unit] =
+          def sync(using cats.mtl.Raise[F, StorageError]): F[Unit] =
             mutex.lock.surround(
               current.get.flatMap(c => guard(root.toString)(c.channel.force(true)))
             )
 
-          def gc(durableSlot: BigInt): F[Unit] =
+          def gc(durableSlot: BigInt)(using cats.mtl.Raise[F, StorageError]): F[Unit] =
             mutex.lock.surround {
               files.get.flatMap { fs =>
                 val doomed = fs.init.takeWhile(_.maxSlot <= durableSlot)

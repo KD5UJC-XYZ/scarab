@@ -2,11 +2,13 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.effect.{Async, Deferred, Ref, Resource}
+import cats.effect.syntax.all.*
 import cats.Functor
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.ValidationError
 import xyz.kd5ujc.scarab.network.selection.FetchMode
+import scala.concurrent.duration.*
 
 /** The blocks that peer sessions fetched ahead of the rules, by header hash, shared by the sessions
   * of all peers. A session claims the blocks of a range before it requests them, so a block is
@@ -32,24 +34,57 @@ import xyz.kd5ujc.scarab.network.selection.FetchMode
   */
 final class BlockPool[F[_]: Async] private (
     slots: Ref[F, BlockPool.Slots[F]],
-    policy: BlockPool.FetchPolicy
+    policy: BlockPool.FetchPolicy,
+    attribution: BlockPool.AttributionPolicy
 ):
   import BlockPool.*
   private val F = Async[F]
 
   /** The claims of one session, released when the resource is. */
-  def session: Resource[F, Claims[F]] =
+  def session: Resource[F, Claims[F]] = session(None)
+
+  /** A reporter belongs to the peer identity, not to the session's error scope. Its typed refusal
+    * can therefore reach that peer's governor even after this session has disconnected. The
+    * reference associates punishment with the block's sender (`ChainSel.hs` 1051-1067,
+    * ouroboros-consensus 82ecba329); its `mkPunishThisThread` targets the adding client
+    * (`InvalidBlockPunishment.hs` 48-56). Our shared cache instead retains a bounded peer reporter,
+    * because the session validating a cached block can be a different client's session.
+    */
+  private[node] def session(report: Option[ValidationError => F[Unit]]): Resource[F, Claims[F]] =
     Resource
       .make(
         Deferred[F, ValidationError].flatMap(blame =>
           slots
             .modify(s =>
-              (s.copy(owners = s.owners + 1, blame = s.blame.updated(s.owners, blame)), s.owners)
+              (
+                s.copy(
+                  owners = s.owners + 1,
+                  origins = s.origins.updated(s.owners, Origin(blame, report, false, None))
+                ),
+                s.owners
+              )
             )
             .map(_ -> blame)
         )
       ) { (owner, _) =>
-        releaseAll(owner) *> slots.update(s => s.copy(blame = s.blame - owner))
+        releaseAll(owner) *> F.monotonic.flatMap { now =>
+          slots.update { s =>
+            val origins = s.origins.get(owner) match
+              case Some(origin) if origin.delivered && origin.expires.isEmpty =>
+                s.origins.updated(owner, origin.copy(expires = Some(now + attribution.lifetime)))
+              case Some(origin) if origin.expires.isDefined => s.origins
+              case _                                        => s.origins - owner
+            val retained = s.origins.get(owner).exists(o => o.delivered && o.expires.isEmpty)
+            s.copy(
+              origins = origins,
+              released = s.released + (if retained then 1 else 0),
+              reapAt =
+                if retained then
+                  Some(s.reapAt.fold(now + attribution.lifetime)(_.min(now + attribution.lifetime)))
+                else s.reapAt
+            ).pruned(now, attribution)
+          }
+        }
       }
       .map((owner, blame) => new Claims(this, owner, blame))
 
@@ -58,29 +93,31 @@ final class BlockPool[F[_]: Async] private (
     * [[fill]] or [[release]] it).
     */
   private def claim(owner: Long, hashes: Vector[Bytes], mode: FetchMode): F[Vector[Boolean]] =
-    hashes.traverse(_ => Deferred[F, Option[Filled]]).flatMap { fresh =>
+    reap *> hashes.traverse(_ => Deferred[F, Option[Filled]]).flatMap { fresh =>
       slots.modify { s =>
         val (grown, owned) = hashes.zip(fresh).foldLeft((s, Vector.empty[Boolean])) {
           case ((acc, flags), (hash, done)) =>
-            acc.entries.get(hash) match
-              case None =>
-                (
-                  acc.copy(
-                    entries = acc.entries.updated(hash, Slot.Pending(done, acc.next, Set(owner))),
-                    next = acc.next + 1
-                  ),
-                  flags :+ true
-                )
-              case Some(Slot.Pending(waiting, seq, owners))
-                  if mode == FetchMode.Deadline && !owners(owner) &&
-                    owners.size < policy.deadlineConcurrency =>
-                (
-                  acc.copy(entries =
-                    acc.entries.updated(hash, Slot.Pending(waiting, seq, owners + owner))
-                  ),
-                  flags :+ true
-                )
-              case Some(_) => (acc, flags :+ false)
+            if !acc.origins.get(owner).exists(_.expires.isEmpty) then (acc, flags :+ false)
+            else
+              acc.entries.get(hash) match
+                case None =>
+                  (
+                    acc.copy(
+                      entries = acc.entries.updated(hash, Slot.Pending(done, acc.next, Set(owner))),
+                      next = acc.next + 1
+                    ),
+                    flags :+ true
+                  )
+                case Some(Slot.Pending(waiting, seq, owners))
+                    if mode == FetchMode.Deadline && !owners(owner) &&
+                      owners.size < policy.deadlineConcurrency =>
+                  (
+                    acc.copy(entries =
+                      acc.entries.updated(hash, Slot.Pending(waiting, seq, owners + owner))
+                    ),
+                    flags :+ true
+                  )
+                case Some(_) => (acc, flags :+ false)
         }
         (grown.trimmed, owned)
       }
@@ -88,14 +125,18 @@ final class BlockPool[F[_]: Async] private (
 
   /** The blocks `owner` claimed arrived: the first delivery of a block wins. */
   private def fill(owner: Long, blocks: Vector[(Bytes, Bytes)]): F[Unit] =
-    slots
+    reap *> slots
       .modify { s =>
         blocks.foldLeft((s, Vector.empty[(Deferred[F, Option[Filled]], Filled)])) {
           case ((acc, waiting), (hash, block)) =>
             acc.entries.get(hash) match
-              case Some(Slot.Pending(done, seq, owners)) if owners(owner) =>
+              case Some(Slot.Pending(done, seq, owners))
+                  if owners(owner) && acc.origins.get(owner).exists(_.expires.isEmpty) =>
                 (
-                  acc.copy(entries = acc.entries.updated(hash, Slot.Done(block, seq, owner))),
+                  acc.copy(
+                    entries = acc.entries.updated(hash, Slot.Done(block, seq, owner)),
+                    origins = acc.origins.updatedWith(owner)(_.map(_.copy(delivered = true)))
+                  ),
                   waiting :+ (done -> Filled(block, owner))
                 )
               case _ => (acc, waiting)
@@ -148,7 +189,7 @@ final class BlockPool[F[_]: Async] private (
 
   /** As [[take]], with the session that delivered the block. */
   def takeFilled(hash: Bytes): F[Option[Filled]] =
-    slots.modify { s =>
+    reap *> slots.modify { s =>
       s.entries.get(hash) match
         case Some(Slot.Done(block, _, origin)) =>
           (s.copy(entries = s.entries - hash), F.pure(Option(Filled(block, origin))))
@@ -162,17 +203,55 @@ final class BlockPool[F[_]: Async] private (
     * of them fetches it itself.
     */
   private def distrust(origin: Long, error: ValidationError): F[Unit] =
+    F.uncancelable { _ =>
+      reap *> slots
+        .modify { s =>
+          val pending = s.entries.collect {
+            case (hash, Slot.Pending(_, _, owners)) if owners(origin) => hash
+          }.toVector
+          val (released, waits) = release1(s, origin, pending)
+          (
+            released.copy(
+              entries = released.entries.filter {
+                case (_, Slot.Done(_, _, from)) => from != origin
+                case _                          => true
+              },
+              origins = s.origins - origin,
+              released =
+                s.released - (if s.origins.get(origin).exists(_.expires.isDefined) then 1 else 0)
+            ),
+            (s.origins.get(origin), waits)
+          )
+        }
+        .flatMap { (source, waits) =>
+          waits.traverse_(_.complete(None)) *>
+            source.traverse_(o => o.report.fold(o.blame.complete(error).void)(_(error)))
+        }
+    }
+
+  /** Expiry also drops untaken blocks: a cache entry never survives its retained source. */
+  private[node] def reap: F[Unit] =
+    F.monotonic.flatMap(now => slots.update(_.pruned(now, attribution)))
+
+  private def clear: F[Unit] =
     slots
-      .modify(s =>
-        (
-          s.copy(entries = s.entries.filter {
-            case (_, Slot.Done(_, _, from)) => from != origin
-            case _                          => true
-          }),
-          s.blame.get(origin)
-        )
+      .getAndUpdate(s =>
+        s.copy(entries = Map.empty, origins = Map.empty, released = 0, reapAt = None)
       )
-      .flatMap(_.traverse_(_.complete(error).void))
+      .flatMap(_.entries.values.toVector.traverse_ {
+        case Slot.Pending(done, _, _) => done.complete(None).void
+        case _                        => F.unit
+      })
+
+  /** Keep released provenance bounded while idle, then clear it after all sessions finish. */
+  def maintenance: Resource[F, Unit] =
+    Resource.make(F.unit)(_ => clear).flatMap { _ =>
+      (F.sleep(attribution.lifetime.min(1.minute)) *> reap).foreverM.background.void
+    }
+
+  /** Retained released sources (tests); active sessions keep their own live notification. */
+  private[node] def retainedOrigins: F[Int] =
+    reap *> slots.get.map(_.origins.values.count(_.expires.isDefined))
 
   /** Entries held (tests). */
   def size: F[Int] = slots.get.map(_.entries.size)
@@ -187,6 +266,15 @@ object BlockPool:
         * the configuration file sets it.
         */
       deadlineConcurrency: Int = 1
+  )
+
+  /** A released source remains accountable for at most this window, including a block already taken
+    * but not yet validated. The cap is independent of block count and live session count. The
+    * resource reaps expiry while idle; accesses also reap before serving cached data.
+    */
+  private[node] final case class AttributionPolicy(
+      retained: Int = Retained,
+      lifetime: FiniteDuration = 10.minutes
   )
 
   /** What one session may do with the pool: claim blocks to fetch, fill what it fetched, release
@@ -235,19 +323,73 @@ object BlockPool:
   def create[F[_]: Async]: F[BlockPool[F]] = create(FetchPolicy())
 
   def create[F[_]: Async](policy: FetchPolicy): F[BlockPool[F]] =
-    Ref.of[F, Slots[F]](Slots(Map.empty, 0L, 0L, Map.empty)).map(new BlockPool(_, policy))
+    create(policy, AttributionPolicy())
+
+  private[node] def create[F[_]: Async](
+      policy: FetchPolicy,
+      attribution: AttributionPolicy
+  ): F[BlockPool[F]] =
+    Ref
+      .of[F, Slots[F]](Slots(Map.empty, 0L, 0L, Map.empty, 0, None))
+      .map(new BlockPool(_, policy, attribution))
+
+  /** The node owns the expiry worker; release removes callbacks and wakes any remaining waiters. */
+  def resource[F[_]: Async](policy: FetchPolicy): Resource[F, BlockPool[F]] =
+    resource(policy, AttributionPolicy())
+
+  private[node] def resource[F[_]: Async](
+      policy: FetchPolicy,
+      attribution: AttributionPolicy
+  ): Resource[F, BlockPool[F]] =
+    Resource.eval(create[F](policy, attribution)).flatTap(_.maintenance)
 
   private enum Slot[F[_]]:
     case Pending(done: Deferred[F, Option[Filled]], seq: Long, owners: Set[Long])
     case Done(block: Bytes, seq: Long, origin: Long)
+
+  private final case class Origin[F[_]](
+      blame: Deferred[F, ValidationError],
+      report: Option[ValidationError => F[Unit]],
+      delivered: Boolean,
+      expires: Option[FiniteDuration]
+  )
 
   private final case class Slots[F[_]](
       entries: Map[Bytes, Slot[F]],
       next: Long,
       owners: Long,
       /** Where a session is told that a block it delivered was refused. */
-      blame: Map[Long, Deferred[F, ValidationError]]
+      origins: Map[Long, Origin[F]],
+      released: Int,
+      reapAt: Option[FiniteDuration]
   ):
+    def pruned(now: FiniteDuration, policy: AttributionPolicy): Slots[F] =
+      if released <= policy.retained && reapAt.forall(_ > now) then this
+      else prune(now, policy)
+
+    private def prune(now: FiniteDuration, policy: AttributionPolicy): Slots[F] =
+      val released = origins.toVector.collect {
+        case (id, o) if o.expires.isDefined =>
+          (id, o.expires.getOrElse(Duration.Zero))
+      }
+      val retained = released
+        .filter(_._2 > now)
+        .sortBy((id, expiry) => (expiry, id))
+        .takeRight(policy.retained.max(0))
+        .map(_._1)
+        .toSet
+      val keep = origins.filter((id, o) => o.expires.isEmpty || retained(id))
+      val dropped = origins.keySet -- keep.keySet
+      copy(
+        origins = keep,
+        released = retained.size,
+        reapAt = keep.values.flatMap(_.expires).minOption,
+        entries = entries.filter {
+          case (_, Slot.Done(_, _, origin)) => !dropped(origin)
+          case _                            => true
+        }
+      )
+
     /** Without the finished entries older than the newest `Retained` claims, once the pool holds
       * twice as many (a walk of the map, so not on every claim).
       */

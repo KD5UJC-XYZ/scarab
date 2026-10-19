@@ -79,7 +79,11 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
       .use { case (mempool, (clientEnd, serverEnd)) =>
         val server = typed(
           LocalTxSubmissionServer
-            .accept(serverEnd, magic, LocalSubmission.handler(mempool))
+            .accept(
+              serverEnd,
+              magic,
+              LocalSubmission.handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure")))
+            )
             .map(_.message)
         ).start
         server.flatMap { running =>
@@ -133,7 +137,10 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
             c <- client.channel(4)
             s <- server.channel(4, Mux.Role.Responder)
             _ <- typed(TxSubmissionClient.run(c, offered)).start
-            _ <- typed(TxSubmissionServer.run(s, mempool.sink)).start
+            _ <- typed(
+              TxSubmissionServer
+                .run(s, mempool.sink(failure => IO(fail(s"unexpected fatal: $failure"))))
+            ).start
             _ <- held(mempool).iterateUntil(_.nonEmpty).timeout(10.seconds)
           yield ()
         }
@@ -158,9 +165,10 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
         limit
       )
     )
-    assertEquals(chosen.map(_._1.id.hex), Vector(PreprodDeepTx.Id))
-    val body = BlockBuilder.body(chosen.map(_._2))
-    assertEquals(BlockBuilder.bodySize(chosen.map(_._2)), body.size)
+    val selected = chosen.fold(e => fail(e.message), identity)
+    assertEquals(selected.map(_._1.id.hex), Vector(PreprodDeepTx.Id))
+    val body = BlockBuilder.body(selected.map(_._2))
+    assertEquals(BlockBuilder.bodySize(selected.map(_._2)), body.size)
     val block = BlockBuilder.block(
       BlockBuilder.headerBody(
         1,

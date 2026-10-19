@@ -3,15 +3,7 @@ package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, Compute, VolatileChain}
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
-import xyz.kd5ujc.scarab.ledger.{
-  Block,
-  ChainError,
-  Header,
-  HeaderError,
-  NodeError,
-  PeerError,
-  Points
-}
+import xyz.kd5ujc.scarab.ledger.{Block, Header, HeaderError, NodeError, PeerError, Points}
 import cats.effect.{IO, Ref, Resource}
 import cats.mtl.{Handle, Stateful}
 import cats.syntax.all.*
@@ -57,11 +49,12 @@ class InboundGovernorSuite extends FailsOnUncaught:
       server <- ChainServer.open[IO](
         None,
         None,
-        ChainServer.headerOfBlock(ForgedChain.geometry.byron.epochSlots)
+        ChainServer.headerOfBlock(ForgedChain.geometry.byron.epochSlots),
+        failure => IO.raiseError(new AssertionError(failure.message))
       )
       extend = (more: Vector[Bytes]) =>
         Handle
-          .allow[ChainError] {
+          .allow[xyz.kd5ujc.scarab.ledger.NodeError] {
             more.traverse_ { raw =>
               val header =
                 Block.decodeShelley(raw).toOption.get.asInstanceOf[Block.Shelley].header
@@ -75,7 +68,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
                 )
             }
           }
-          .rescue(e => IO.raiseError(new RuntimeException(e.message)))
+          .rescue(e => IO(fail(e.message)))
       _ <- extend(raws)
       ranges <- Ref.of[IO, Vector[(Point, Point)]](Vector.empty)
       counting = new BlockFetchServer.Blocks[IO]:
@@ -126,11 +119,17 @@ class InboundGovernorSuite extends FailsOnUncaught:
                   raw: Bytes,
                   immutable: Vector[BlockRef],
                   anchor: Anchor[MirrorState]
+              )(using
+                  cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError],
+                  cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.ChainError]
               ) = applied.update(_ :+ raw)
-              def rolledBack(to: ChainSync.Point) = IO.unit)
+              def rolledBack(to: ChainSync.Point)(using
+                  cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError],
+                  cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.ChainError]
+              ) = IO.unit)
           )
         }
-        .rescue(e => IO.raiseError(new RuntimeException(e.message)))
+        .rescue(e => IO(fail(e.message)))
       manager <- ConnectionManager.create[IO](ConnectionManager.Limits(maxInbound = 4))
       validating = Option.when(headerFirst)(
         HeaderCheck.forChain[IO, MirrorState, xyz.kd5ujc.scarab.consensus.state.ProtocolState](
@@ -202,7 +201,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
               .use(_ => during(ended))
               .guarantee(theirs.close)
           }
-          .rescue(e => IO.raiseError(new RuntimeException(e.message)))
+          .rescue(e => IO(fail(e.message)))
           .flatMap(a => ended.map(a -> _))
       }
     }
@@ -470,6 +469,6 @@ class InboundGovernorSuite extends FailsOnUncaught:
             }
           }
         )
-        .rescue(e => IO.raiseError(new RuntimeException(e.message)))
+        .rescue(e => IO(fail(e.message)))
     yield assertEquals(outcome._1.outbound -> outcome._1.inbound, (1, 1))
   }

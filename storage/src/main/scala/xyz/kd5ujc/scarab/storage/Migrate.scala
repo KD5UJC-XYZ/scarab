@@ -34,10 +34,12 @@ trait Migration[F[_]]:
   def nextVersion(from: FormatVersion): Option[FormatVersion] = kind.nextChangedVersion(from)
 
   /** The version `file` is at (only its start is read). */
-  def detect(file: Path): F[FormatVersion]
+  def detect(file: Path)(using cats.mtl.Raise[F, StorageError]): F[FormatVersion]
 
   /** Rewrite `file`, which is at `from`, as `from.next`. */
-  def step(file: Path, from: FormatVersion, to: FormatVersion): F[Unit]
+  def step(file: Path, from: FormatVersion, to: FormatVersion)(using
+      cats.mtl.Raise[F, StorageError]
+  ): F[Unit]
 
   /** A step is called only for the exact next changed version, and only when the on-disk source
     * still has the version discovered during preflight.
@@ -72,7 +74,9 @@ object Migrate:
     * version in turn. The result groups the files that had to move by the version they were at
     * (nothing to report when everything was current, which is every run after the first).
     */
-  def apply[F[_]: Monad](migration: Migration[F], files: List[Path]): F[List[Migrated]] =
+  def apply[F[_]: Monad](migration: Migration[F], files: List[Path])(using
+      cats.mtl.Raise[F, StorageError]
+  ): F[List[Migrated]] =
     val current = migration.kind.current
     def steps(file: Path, at: FormatVersion): F[Unit] =
       Monad[F].tailRecM(at) { version =>
