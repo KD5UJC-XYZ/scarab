@@ -168,6 +168,44 @@ class PropertyOutcomeColumnsTest(unittest.TestCase):
         self.assertTrue(all(len(row) == 7 + int(row[6]) for row in range_rows))
         self.assertTrue(all(row[0] == "blockfetch-range-v1" for row in range_rows))
 
+    def test_chainsync_behavior_fixtures_match_pinned_fork_property_manifest(self) -> None:
+        repo = Path(__file__).resolve().parents[3]
+        reference_dir = repo / "fixtures/reference/ouroboros-network-protocol-codecs"
+        runtime_dir = repo / "network/src/test/resources/upstream/ouroboros-network-protocol-codecs"
+        manifest = json.loads((reference_dir / "chainsync-behavior.manifest.json").read_text())
+        self.assertEqual(
+            manifest["sourceCommit"], "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776"
+        )
+        for name, expected_hash in (
+            ("chainsync-behavior-cases.tsv", "a5736870dfe3aff9e6e975363ed64db34022a426b3c736b5d1eaf246a34513fd"),
+            ("chainsync-behavior-blocks.tsv", "98d1ee153282f811de0b287bf1c7b3a5e3b5c68482fd8223d7f5536744eda776"),
+            ("chainsync-behavior-points.tsv", "4093edd68ddf331771f9857899fcd32e14b4108b1249c400d624ba7d35740518"),
+        ):
+            raw = (reference_dir / name).read_bytes()
+            self.assertEqual(hashlib.sha256(raw).hexdigest(), expected_hash)
+            self.assertEqual(raw, (runtime_dir / name).read_bytes())
+
+        cases = [line.split("\t") for line in (reference_dir / "chainsync-behavior-cases.tsv").read_text().splitlines()]
+        blocks = [line.split("\t") for line in (reference_dir / "chainsync-behavior-blocks.tsv").read_text().splitlines()]
+        points = [line.split("\t") for line in (reference_dir / "chainsync-behavior-points.tsv").read_text().splitlines()]
+        self.assertEqual(manifest["exportedCases"], 24)
+        self.assertEqual(manifest["seed"], 504001)
+        self.assertEqual([int(row[1]) for row in cases], list(range(504001, 504025)))
+        self.assertTrue(all(len(row) == 13 and row[0] == "chainsync-behavior-case-v1" for row in cases))
+        self.assertTrue(all(row[4:7] == ["pass", "pass", "pass"] for row in cases))
+        self.assertEqual(len(blocks), manifest["blockRows"])
+        self.assertEqual(len(points), manifest["pointRows"])
+        self.assertTrue(all(len(row) == 7 and row[0] == "chainsync-behavior-block-v1" for row in blocks))
+        self.assertTrue(all(len(row) == 5 and row[0] == "chainsync-behavior-point-v1" for row in points))
+        self.assertEqual(
+            manifest["upstreamPropertyOutcomesByProperty"],
+            {
+                "propChainSyncDirectST": {"pass": 24, "upstream-failure": 0},
+                "propChainSyncConnectST": {"pass": 24, "upstream-failure": 0},
+                "propChainSyncDemoST": {"pass": 24, "upstream-failure": 0},
+            },
+        )
+
     def test_binary_compat_fixtures_preserve_both_original_directions_and_paired_wires(self) -> None:
         fixture_dir = (
             Path(__file__).resolve().parents[3]

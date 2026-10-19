@@ -150,6 +150,7 @@ def prepare(source: Path, overlay: Path) -> dict[str, str]:
         "KeepAlive": source / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/KeepAlive/Test.hs",
         "PeerSharing": source / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/PeerSharing/Test.hs",
         "ChainSync": source / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/Test.hs",
+        "ChainSync/Examples.hs": source / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/Examples.hs",
         "BlockFetch": source / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/BlockFetch/Test.hs",
         "LocalStateQuery": source / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/LocalStateQuery/Test.hs",
         "LocalTxSubmission": source / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/LocalTxSubmission/Test.hs",
@@ -162,6 +163,7 @@ def prepare(source: Path, overlay: Path) -> dict[str, str]:
     keep = overlay / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/KeepAlive/Test.hs"
     peer = overlay / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/PeerSharing/Test.hs"
     chain = overlay / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/Test.hs"
+    chain_examples = overlay / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/Examples.hs"
     block_fetch = overlay / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/BlockFetch/Test.hs"
     local_state_query = overlay / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/LocalStateQuery/Test.hs"
     local_tx_submission = overlay / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/LocalTxSubmission/Test.hs"
@@ -457,6 +459,77 @@ exportChainSyncSplitCases path count seed = withFile path WriteMode $ \outputHan
         "import Test.QuickCheck.Random (mkQCGen)\n"
         "",
     )
+    chain_examples_original = chain_examples.read_text()
+    recent_offsets_export = "  , chainSyncServerExample\n"
+    if chain_examples_original.count(recent_offsets_export) != 1:
+        raise SystemExit("ChainSync Examples recentOffsets export anchor changed")
+    chain_examples.write_text(chain_examples_original.replace(
+        recent_offsets_export,
+        recent_offsets_export + "  , recentOffsets\n",
+    ))
+    chain.write_text(chain.read_text().replace(
+        "import Codec.Serialise qualified as S\n",
+        "import Codec.Serialise qualified as S\nimport Codec.CBOR.Write qualified as CBOR\n",
+    ))
+    chain.write_text(chain.read_text() + r'''
+
+-- Disposable observer: preserve the unchanged ChainProducerStateForkTest
+-- generator and direct/connect/channel property verdicts for the typed runtime.
+exportChainSyncBehaviorCases :: FilePath -> FilePath -> FilePath -> Int -> Int -> IO ()
+exportChainSyncBehaviorCases casesPath blocksPath pointsPath count seed = do
+  withFile casesPath WriteMode $ \casesHandle ->
+    withFile blocksPath WriteMode $ \blocksHandle ->
+      withFile pointsPath WriteMode $ \pointsHandle ->
+        forM_ [0 .. count - 1] $ \ordinal -> do
+          let caseSeed = seed + ordinal
+              caseSize = 30 + (ordinal `mod` 21)
+              input = unGen arbitrary (mkQCGen caseSeed) caseSize
+                :: ChainProducerStateForkTest
+          directResult <- quickCheckWithResult stdArgs { chatty = False }
+            (once (propChainSyncDirectST input))
+          connectResult <- quickCheckWithResult stdArgs { chatty = False }
+            (once (propChainSyncConnectST input))
+          channelResult <- quickCheckWithResult stdArgs { chatty = False }
+            (once (propChainSyncDemoST input))
+          case input of
+            ChainProducerStateForkTest cps fork -> do
+              let producer = ChainProducerState.producerChain cps
+                  producerBlocks = Chain.toOldestFirst producer
+                  forkBlocks = Chain.toOldestFirst fork
+                  candidatePoints = Chain.selectPoints ChainSyncExamples.recentOffsets fork
+                  targetPoint = Chain.headPoint producer
+                  targetTip = Chain.headTip producer
+                  pointBytes = BL.toStrict . S.serialise
+                  blockBytes = BL.toStrict . S.serialise
+                  tipBytes = BL.toStrict . CBOR.toLazyByteString . encodeTip S.encode $ targetTip
+                  propertyResult result = if isSuccess result then "pass" else "upstream-failure"
+              hPutStrLn casesHandle $ intercalate "\t"
+                [ "chainsync-behavior-case-v1", show caseSeed, show ordinal, show caseSize
+                , propertyResult directResult, propertyResult connectResult, propertyResult channelResult
+                , hex (pointBytes targetPoint), hex tipBytes
+                , show (length producerBlocks), show (length forkBlocks), show (length candidatePoints)
+                , hex (pointBytes (Chain.headPoint Chain.genesis))
+                ]
+              forM_ (zip [0 :: Int ..] producerBlocks) $ \(blockOrdinal, block) ->
+                hPutStrLn blocksHandle $ intercalate "\t"
+                  [ "chainsync-behavior-block-v1", show caseSeed, show ordinal, "producer"
+                  , show blockOrdinal, hex (pointBytes (Chain.blockPoint block)), hex (blockBytes block)
+                  ]
+              forM_ (zip [0 :: Int ..] forkBlocks) $ \(blockOrdinal, block) ->
+                hPutStrLn blocksHandle $ intercalate "\t"
+                  [ "chainsync-behavior-block-v1", show caseSeed, show ordinal, "client"
+                  , show blockOrdinal, hex (pointBytes (Chain.blockPoint block)), hex (blockBytes block)
+                  ]
+              forM_ (zip [0 :: Int ..] candidatePoints) $ \(pointOrdinal, point) ->
+                hPutStrLn pointsHandle $ intercalate "\t"
+                  [ "chainsync-behavior-point-v1", show caseSeed, show ordinal
+                  , show pointOrdinal, hex (pointBytes point)
+                  ]
+  where
+    hex = concatMap (pad . (`showHex` "")) . BS.unpack
+    pad [digit] = ['0', digit]
+    pad digits = digits
+''')
     block_fetch_original = inject(
         block_fetch,
         "import Test.QuickCheck\n",
@@ -1434,7 +1507,7 @@ exportTxSubmission2BehaviorCases path count seed = withFile path WriteMode $ \ou
         raise SystemExit("ChainSync observer module export anchor changed")
     chain.write_text(chain_module.replace(
         chain_export_anchor,
-        "module Ouroboros.Network.Protocol.ChainSync.Test (tests, exportChainSyncCases, exportChainSyncSplitCases, exportChainSyncBinaryCases) where",
+        "module Ouroboros.Network.Protocol.ChainSync.Test (tests, exportChainSyncCases, exportChainSyncSplitCases, exportChainSyncBinaryCases, exportChainSyncBehaviorCases) where",
     ))
     chain.write_text(chain.read_text() + r'''
 
@@ -1593,7 +1666,7 @@ exportBlockFetchBinaryCases path count seed = withFile path WriteMode $ \outputH
     dispatch_imports = (
         "import Ouroboros.Network.Protocol.KeepAlive.Test qualified as KeepAlive (tests, exportKeepAliveCases, exportKeepAliveSplitCases, exportKeepAliveBehaviorCases)\n"
         "import Ouroboros.Network.Protocol.PeerSharing.Test qualified as PeerSharing (tests, exportPeerSharingCases)\n"
-        "import Ouroboros.Network.Protocol.ChainSync.Test qualified as ChainSync (tests, exportChainSyncCases, exportChainSyncSplitCases, exportChainSyncBinaryCases)\n"
+        "import Ouroboros.Network.Protocol.ChainSync.Test qualified as ChainSync (tests, exportChainSyncCases, exportChainSyncSplitCases, exportChainSyncBinaryCases, exportChainSyncBehaviorCases)\n"
         "import Ouroboros.Network.Protocol.BlockFetch.Test qualified as BlockFetch (tests, exportBlockFetchCases, exportBlockFetchSplitCases, exportBlockFetchBinaryCases, exportBlockFetchBehaviorCases)\n"
         "import Ouroboros.Network.Protocol.LocalStateQuery.Test qualified as LocalStateQuery (tests, exportLocalStateQueryCases, exportLocalStateQuerySplitCases, exportLocalStateQueryBehaviorCases)\n"
         "import Ouroboros.Network.Protocol.LocalTxSubmission.Test qualified as LocalTxSubmission (tests, exportLocalTxSubmissionCases, exportLocalTxSubmissionSplitCases, exportLocalTxSubmissionAnnotatedCases, exportLocalTxSubmissionBehaviorCases)\n"
@@ -1639,6 +1712,7 @@ exportBlockFetchBinaryCases path count seed = withFile path WriteMode $ \outputH
         "main = defaultMain tests",
         "main = getArgs >>= \\args -> case args of\n"
         "  [\"--export-lsq-behavior\", dir, count, seed] -> LocalStateQuery.exportLocalStateQueryBehaviorCases (dir <> \"/localsq-behavior-cases.tsv\") (dir <> \"/localsq-behavior-actions.tsv\") (read count) (read seed)\n"
+        "  [\"--export-chainsync-behavior\", dir, count, seed] -> ChainSync.exportChainSyncBehaviorCases (dir <> \"/chainsync-behavior-cases.tsv\") (dir <> \"/chainsync-behavior-blocks.tsv\") (dir <> \"/chainsync-behavior-points.tsv\") (read count) (read seed)\n"
         "  [\"--export-lsq-behavior\", dir, count, seed] -> LocalStateQuery.exportLocalStateQueryBehaviorCases (dir <> \"/localsq-behavior-cases.tsv\") (dir <> \"/localsq-behavior-actions.tsv\") (read count) (read seed)\n"
         "  [\"--export-txsubmission2-behavior\", dir, count, seed] -> TxSubmission2.exportTxSubmission2BehaviorCases (dir <> \"/txsubmission2-behavior.tsv\") (read count) (read seed)\n"
         "  [\"--export-blockfetch-behavior\", dir, count, seed] -> BlockFetch.exportBlockFetchBehaviorCases (dir <> \"/blockfetch-behavior.tsv\") (read count) (read seed)\n"
@@ -1674,6 +1748,7 @@ exportBlockFetchBinaryCases path count seed = withFile path WriteMode $ \outputH
         "KeepAlive/Test.hs": keep_original,
         "PeerSharing/Test.hs": peer_original,
         "ChainSync/Test.hs": chain_original,
+        "ChainSync/Examples.hs": chain_examples_original,
         "BlockFetch/Test.hs": block_fetch_original,
         "LocalStateQuery/Test.hs": local_state_query_original,
         "LocalTxSubmission/Test.hs": local_tx_submission_original,
@@ -1695,6 +1770,7 @@ def main() -> None:
     parser.add_argument("--lsq-behavior-only", action="store_true")
     parser.add_argument("--txsubmission2-behavior-only", action="store_true")
     parser.add_argument("--blockfetch-behavior-only", action="store_true")
+    parser.add_argument("--chainsync-behavior-only", action="store_true")
     args = parser.parse_args()
     if not 1 <= args.count <= 128:
         raise SystemExit("case count must be 1..128")
@@ -1725,7 +1801,7 @@ def main() -> None:
             "-w", "/source", IMAGE, "-f", "/dev/null",
         ])
     checked(["docker", "start", CONTAINER_NAME])
-    test_names = ("LocalStateQuery",) if args.lsq_behavior_only else ("TxSubmission2",) if args.txsubmission2_behavior_only else ("BlockFetch",) if args.blockfetch_behavior_only else (
+    test_names = ("LocalStateQuery",) if args.lsq_behavior_only else ("TxSubmission2",) if args.txsubmission2_behavior_only else ("BlockFetch",) if args.blockfetch_behavior_only else ("ChainSync",) if args.chainsync_behavior_only else (
         "KeepAlive", "PeerSharing", "ChainSync", "BlockFetch", "LocalStateQuery",
         "LocalTxSubmission", "LocalTxMonitor", "TxSubmission2",
     )
@@ -1749,7 +1825,13 @@ def main() -> None:
     )
     if binary is None:
         raise SystemExit(f"cabal list-bin did not return a build executable path: {binary_output!r}")
-    if args.lsq_behavior_only:
+    if args.chainsync_behavior_only:
+        checked([
+            "docker", "exec", "-w", "/source", CONTAINER_NAME,
+            binary, "--export-chainsync-behavior", "/probe/exports",
+            str(args.count), str(args.seed + 13800),
+        ])
+    elif args.lsq_behavior_only:
         checked([
             "docker", "exec", "-w", "/source", CONTAINER_NAME,
             binary, "--export-lsq-behavior", "/probe/exports",
@@ -1807,6 +1889,84 @@ def main() -> None:
             "python3", "scripts/oracle/network-protocols/compare_cabal_plans.py",
             str(args.reference_plan), str(build / "cache/plan.json"), "--output", str(equivalence_path),
         ])
+    if args.chainsync_behavior_only:
+        cases_raw = (args.probe_dir / "exports/chainsync-behavior-cases.tsv").read_bytes()
+        blocks_raw = (args.probe_dir / "exports/chainsync-behavior-blocks.tsv").read_bytes()
+        points_raw = (args.probe_dir / "exports/chainsync-behavior-points.tsv").read_bytes()
+        case_rows = [line.split("\t") for line in cases_raw.decode().splitlines()]
+        block_rows = [line.split("\t") for line in blocks_raw.decode().splitlines()]
+        point_rows = [line.split("\t") for line in points_raw.decode().splitlines()]
+        properties = {
+            "propChainSyncDirectST": 4,
+            "propChainSyncConnectST": 5,
+            "propChainSyncDemoST": 6,
+        }
+        if len(case_rows) != args.count or any(len(row) != 13 for row in case_rows):
+            raise SystemExit("ChainSync behavior case export does not match requested schema/count")
+        if any(len(row) != 7 or row[0] != "chainsync-behavior-block-v1" for row in block_rows):
+            raise SystemExit("ChainSync behavior block export has invalid schema")
+        if any(len(row) != 5 or row[0] != "chainsync-behavior-point-v1" for row in point_rows):
+            raise SystemExit("ChainSync behavior point export has invalid schema")
+        manifest = {
+            "schema": "scarab-upstream-network-protocol-behavior-v1",
+            "source": "ouroboros-network",
+            "sourceCommit": UPSTREAM_COMMIT,
+            "upstreamTest": "ouroboros-network:protocols-tests / ChainSync / unchanged Arbitrary ChainProducerStateForkTest + propChainSyncDirectST + propChainSyncConnectST + propChainSyncDemoST",
+            "generatorType": "ChainProducerStateForkTest",
+            "requestedCases": args.count,
+            "exportedCases": len(case_rows),
+            "seed": int(case_rows[0][1]),
+            "generatorSizes": sorted({int(row[3]) for row in case_rows}),
+            "blockRows": len(block_rows),
+            "pointRows": len(point_rows),
+            "upstreamPropertyOutcomesByProperty": {
+                name: {
+                    "pass": sum(row[column] == "pass" for row in case_rows),
+                    "upstream-failure": sum(row[column] != "pass" for row in case_rows),
+                }
+                for name, column in properties.items()
+            },
+            "sourceFiles": {
+                "ChainSync/Test.hs": hashlib.sha256((args.source / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/Test.hs").read_bytes()).hexdigest(),
+                "ChainSync/Examples.hs": hashlib.sha256((args.source / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/Examples.hs").read_bytes()).hexdigest(),
+                "ChainSync/Codec.hs": hashlib.sha256((args.source / "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/Codec.hs").read_bytes()).hexdigest(),
+                "Chain.hs": hashlib.sha256((args.source / "ouroboros-network/api/tests-lib/Ouroboros/Network/Mock/Chain.hs").read_bytes()).hexdigest(),
+                "ChainGenerators.hs": hashlib.sha256((args.source / "ouroboros-network/api/tests-lib/Ouroboros/Network/Mock/ChainGenerators.hs").read_bytes()).hexdigest(),
+                "ProducerState.hs": hashlib.sha256((args.source / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Mock/ProducerState.hs").read_bytes()).hexdigest(),
+                "ConcreteBlock.hs": hashlib.sha256((args.source / "ouroboros-network/api/tests-lib/Ouroboros/Network/Mock/ConcreteBlock.hs").read_bytes()).hexdigest(),
+                "Block.hs": hashlib.sha256((args.source / "ouroboros-network/api/lib/Ouroboros/Network/Block.hs").read_bytes()).hexdigest(),
+            },
+            "observerPatchSha256": hashlib.sha256(patch.encode()).hexdigest(),
+            "dependencyPlanSha256": hashlib.sha256(plan).hexdigest(),
+            "targetDependencyClosureUnitCount": len(target_closure),
+            "casesTsvSha256": hashlib.sha256(cases_raw).hexdigest(),
+            "blocksTsvSha256": hashlib.sha256(blocks_raw).hexdigest(),
+            "pointsTsvSha256": hashlib.sha256(points_raw).hexdigest(),
+            "generatorParameters": {
+                "seedPerCase": "seed + ordinal",
+                "sizePerCase": "30 + (ordinal mod 21)",
+                "forkChoiceOffsets": hashlib.sha256((args.source / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/Examples.hs").read_bytes()).hexdigest(),
+            },
+            "wireItems": {
+                "point": "exact Serialise (Point Block) bytes",
+                "tip": "exact encodeTip S.encode bytes used by the upstream codec",
+                "payload": "exact Serialise Block item bytes; generated mock Int hashes retained as CBOR integers",
+                "genesisPoint": "exact Serialise Point Block bytes used by the unchanged upstream chain model",
+            },
+            "limitations": [
+                "Rows retain the complete generated producer and fork chains plus exact candidate-point order and unchanged original property verdicts.",
+                "The Scarab consumer replays the bounded direct/connect/channel client-server behaviors over the generic production runtime and compares the final client chain to the independent producer-chain oracle.",
+                "This mock-domain replay does not claim Cardano block/hash instantiation, dynamic pipelining-policy equivalence, or node-level fork choice.",
+            ],
+        }
+        for filename, raw in (
+            ("chainsync-behavior-cases.tsv", cases_raw),
+            ("chainsync-behavior-blocks.tsv", blocks_raw),
+            ("chainsync-behavior-points.tsv", points_raw),
+        ):
+            (args.output_dir / filename).write_bytes(raw)
+        (args.output_dir / "chainsync-behavior.manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+        return
     if args.lsq_behavior_only:
         cases_raw = (args.probe_dir / "exports/localsq-behavior-cases.tsv").read_bytes()
         actions_raw = (args.probe_dir / "exports/localsq-behavior-actions.tsv").read_bytes()

@@ -1,0 +1,81 @@
+{
+  "schema": "scarab-upstream-network-protocol-behavior-v1",
+  "source": "ouroboros-network",
+  "sourceCommit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+  "upstreamTest": "ouroboros-network:protocols-tests / ChainSync / unchanged Arbitrary ChainProducerStateForkTest + propChainSyncDirectST + propChainSyncConnectST + propChainSyncDemoST",
+  "generatorType": "ChainProducerStateForkTest",
+  "requestedCases": 24,
+  "exportedCases": 24,
+  "seed": 504001,
+  "generatorSizes": [
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50
+  ],
+  "blockRows": 2110,
+  "pointRows": 234,
+  "upstreamPropertyOutcomesByProperty": {
+    "propChainSyncDirectST": {
+      "pass": 24,
+      "upstream-failure": 0
+    },
+    "propChainSyncConnectST": {
+      "pass": 24,
+      "upstream-failure": 0
+    },
+    "propChainSyncDemoST": {
+      "pass": 24,
+      "upstream-failure": 0
+    }
+  },
+  "sourceFiles": {
+    "ChainSync/Test.hs": "759c3e7ec58a89d34058773f43377cab759e8bbe875ee55c88dde52e561e43b9",
+    "ChainSync/Examples.hs": "2c8f33412bfa79828dcd3ec42ee049fffee8de1e5bac89deaf73da05342a06a7",
+    "ChainSync/Codec.hs": "ba2c582fa0e4ae02f26c0e9f412da8a6ce3384599a76f55c671f7a916a8c3fb1",
+    "Chain.hs": "afad321e38fe4398d2ca646675c9d9aeb247ec2e5f9bae7920cbe5446059efa1",
+    "ChainGenerators.hs": "4fb726bc6d6c1d5207a6372d2dfdb2e9c3617c85fa978cb9282b15f66fdb2587",
+    "ProducerState.hs": "8e9cdf054db69d4bcc0add2c566850fe5f739fe8dfb1737bb03252fdb8a52e52",
+    "ConcreteBlock.hs": "a8af2d74be6df4ce0067ca7adfbcf98bec9f8829d36e276261b2526d895e404f",
+    "Block.hs": "83e93f9be5a5bf30600c4d5257f8527bd06adc22d5f92bcc83165a479982a822"
+  },
+  "observerPatchSha256": "8b220cc3b1c2b278005f8edeaeed83e36cfefe0cff9779aebbfe6b69d853fc82",
+  "dependencyPlanSha256": "42d695659261546c8c90946f82f38389c61cf6588c16a931aad92a9c42ea183c",
+  "targetDependencyClosureUnitCount": 167,
+  "casesTsvSha256": "a5736870dfe3aff9e6e975363ed64db34022a426b3c736b5d1eaf246a34513fd",
+  "blocksTsvSha256": "98d1ee153282f811de0b287bf1c7b3a5e3b5c68482fd8223d7f5536744eda776",
+  "pointsTsvSha256": "4093edd68ddf331771f9857899fcd32e14b4108b1249c400d624ba7d35740518",
+  "generatorParameters": {
+    "seedPerCase": "seed + ordinal",
+    "sizePerCase": "30 + (ordinal mod 21)",
+    "forkChoiceOffsets": "2c8f33412bfa79828dcd3ec42ee049fffee8de1e5bac89deaf73da05342a06a7"
+  },
+  "wireItems": {
+    "point": "exact Serialise (Point Block) bytes",
+    "tip": "exact encodeTip S.encode bytes used by the upstream codec",
+    "payload": "exact Serialise Block item bytes; generated mock Int hashes retained as CBOR integers",
+    "genesisPoint": "exact Serialise Point Block bytes used by the unchanged upstream chain model"
+  },
+  "limitations": [
+    "Rows retain the complete generated producer and fork chains plus exact candidate-point order and unchanged original property verdicts.",
+    "The Scarab consumer replays the bounded direct/connect/channel client-server behaviors over the generic production runtime and compares the final client chain to the independent producer-chain oracle.",
+    "This mock-domain replay does not claim Cardano block/hash instantiation, dynamic pipelining-policy equivalence, or node-level fork choice."
+  ]
+}
