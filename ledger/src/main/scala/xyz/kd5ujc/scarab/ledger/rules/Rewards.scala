@@ -251,9 +251,10 @@ object Rewards:
         member(pulser.free, credential, swd).map {
           case None => answer
           case Some(reward) =>
+            val single = SingletonReward(reward)
             RewardAns(
-              answer.accumulated.updated(credential, reward),
-              answer.recent.updated(credential, RewardSet(List(reward)))
+              answer.accumulated.updated(credential, single),
+              answer.recent.updated(credential, single.asSet)
             )
         }
     }
@@ -275,7 +276,7 @@ object Rewards:
     case PulsingRewUpdate.Complete(result) => Right(result)
     case PulsingRewUpdate.Pulsing(snapshot, pulser) =>
       members(pulser, pulser.remaining).map { answer =>
-        val memberRewards = answer.accumulated.transform((_, reward) => RewardSet(List(reward)))
+        val memberRewards = SingletonReward.asSets(answer.accumulated)
         val rs = snapshot.leaders.foldLeft(memberRewards) { case (out, (c, rewards)) =>
           out.updated(c, RewardSet(out.getOrElse(c, RewardSet.empty).rewards ++ rewards.rewards))
         }

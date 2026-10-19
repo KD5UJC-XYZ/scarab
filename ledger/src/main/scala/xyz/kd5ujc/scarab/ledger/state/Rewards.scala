@@ -235,11 +235,30 @@ final case class RewardFreeVars(
       Show,
       Diff
 
+/** Exactly one reward, represented by its singleton set. The private representation lets completion
+  * reuse the accumulated covariant map without allocating a set and tree per account. On the wire
+  * this is still one `Reward`, as the reference's `RewardAns` requires.
+  */
+opaque type SingletonReward = RewardSet
+
+object SingletonReward:
+  def apply(reward: Reward): SingletonReward = RewardSet(List(reward))
+
+  extension (single: SingletonReward)
+    // Only apply constructs this opaque value, so the set has exactly one element.
+    def reward: Reward = RewardSet.rewards(single).head
+    def asSet: RewardSet = single
+
+  def asSets[K](rewards: SortedMap[K, SingletonReward]): SortedMap[K, RewardSet] = rewards
+
+  given Eq[SingletonReward] = Eq.instance((a, b) => Eq[Reward].eqv(a.reward, b.reward))
+  given Show[SingletonReward] = Show.show(_.reward.show)
+
 /** `RewardAns` (`Shelley/RewardUpdate.hs:89`): member rewards accumulated and emitted by the last
   * pulse.
   */
 final case class RewardAns(
-    accumulated: SortedMap[Credential[Staking], Reward],
+    accumulated: SortedMap[Credential[Staking], SingletonReward],
     recent: SortedMap[Credential[Staking], RewardSet]
 ) derives Eq,
       Show,

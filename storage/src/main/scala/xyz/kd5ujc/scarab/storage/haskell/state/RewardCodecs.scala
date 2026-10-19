@@ -105,9 +105,11 @@ trait RewardCodecs extends SnapshotCodecs:
       (setOf(credential[Staking]), coin, protVer, mapOf(keyHash[StakePool], poolRewardInfo))
     )
 
+  given singletonReward: Codec[SingletonReward] = reward.imap(SingletonReward(_))(_.reward)
+
   given rewardAns(using ProtVer): Codec[RewardAns] =
     Record.of[RewardAns](
-      (mapOf(credential[Staking], reward), mapOf(credential[Staking], rewardSet))
+      (mapOf(credential[Staking], singletonReward), mapOf(credential[Staking], rewardSet))
     )
 
   /** `RSLP` (`RewardUpdate.hs:332-339`): size, free variables, remaining stake, answer. */
