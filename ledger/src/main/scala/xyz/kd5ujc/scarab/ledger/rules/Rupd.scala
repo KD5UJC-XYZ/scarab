@@ -22,10 +22,8 @@ final case class RupdEnv[E <: EraTag](blocks: BlocksMade, es: EpochState[E])
   *   - past twice the window it is forced to completion (`RewardsTooLate`), so that tools can see
   *     the update before the epoch ends.
   *
-  * Haskell pulses the calculation over the blocks in between; the node computes it when it starts
-  * (design D8), so the state is `Complete` from the start, and `RewardsTooLate` only matters for a
-  * state with nothing started. An update the node found `Pulsing` (read from a Haskell state, never
-  * produced here) is left as it is.
+  * Each tick in the interval starts or advances the same pure pulser. Past the force point,
+  * remaining work completes synchronously, including an update imported from a Haskell state.
   */
 object Rupd:
   def sts[E <: EraTag](using
@@ -43,18 +41,19 @@ object Rupd:
           epoch = globals.epochOf(s)
           start = globals.firstSlot(epoch) + globals.randomnessStabilisationWindow
           current <- ru.get
-          // `RewardsTooEarly`: nothing yet; otherwise the calculation starts if it has not
-          next <-
-            if s <= start then Monad[F].pure(None)
-            else
-              current match
-                case None =>
-                  Sts.lift[F, TickFailure, Option[PulsingRewUpdate]](
-                    Rewards
-                      .update(env.es, env.blocks, globals, epoch)
-                      .map(u => Some(PulsingRewUpdate.Complete(u)))
-                      .leftMap(TickFailure.Vocab(_))
-                  )
-                case other => Monad[F].pure(other)
+          next <- Sts.lift[F, TickFailure, Option[PulsingRewUpdate]](
+            (if s <= start then Right(None)
+             else
+               val force = start + globals.randomnessStabilisationWindow
+               val advanced = current match
+                 case None                 => Rewards.start(env.es, env.blocks, globals, epoch)
+                 case Some(p) if s > force => Right(p)
+                 case Some(p)              => Rewards.pulse(p)
+               advanced.flatMap { p =>
+                 if s > force then Rewards.complete(p).map(u => Some(PulsingRewUpdate.Complete(u)))
+                 else Right(Some(p))
+               }
+            ) .leftMap(TickFailure.Vocab(_))
+          )
           _ <- ru.set(next)
         yield ()

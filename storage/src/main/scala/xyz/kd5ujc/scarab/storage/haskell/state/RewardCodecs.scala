@@ -86,12 +86,35 @@ trait RewardCodecs extends SnapshotCodecs:
       )
     )
 
-  /** The pulser (`RSLP`: the free variables, the stake still to visit and the answer so far) is not
-    * mirrored: it is the CBOR item it was read as, and written back as it was.
+  given rewardPulseSize: Codec[RewardPulseSize] =
+    Codec.uintBig(BigInt(Long.MaxValue)).validated(RewardPulseSize.fromBigInt)(n => BigInt(n.value))
+
+  given rewardBlockCount: Codec[RewardBlockCount] =
+    integer.validated(RewardBlockCount.fromBigInt)(_.value)
+
+  given leaderOnlyReward: Codec[LeaderOnlyReward] = Record.auto[LeaderOnlyReward]
+
+  /** `PoolRewardInfo` (`Shelley/Rewards.hs:260-278`). Pool block counts are unbounded naturals
+    * (including tag-2 bignums), as the reference decoder reads them.
     */
-  given rewardPulser: Codec[RewardPulser] = new Codec[RewardPulser]:
-    def decode(n: Node): Decoded[RewardPulser] = Right(RewardPulser(n.original))
-    def encode(a: RewardPulser, out: Writer): Unit = out.raw(a.item)
+  given poolRewardInfo(using ProtVer): Codec[PoolRewardInfo] =
+    Record.of[PoolRewardInfo]((ratio, coin, stakePoolSnapShot, rewardBlockCount, leaderOnlyReward))
+
+  given rewardFreeVars(using ProtVer): Codec[RewardFreeVars] =
+    Record.of[RewardFreeVars](
+      (setOf(credential[Staking]), coin, protVer, mapOf(keyHash[StakePool], poolRewardInfo))
+    )
+
+  given rewardAns(using ProtVer): Codec[RewardAns] =
+    Record.of[RewardAns](
+      (mapOf(credential[Staking], reward), mapOf(credential[Staking], rewardSet))
+    )
+
+  /** `RSLP` (`RewardUpdate.hs:332-339`): size, free variables, remaining stake, answer. */
+  given rewardPulser(using ProtVer): Codec[RewardPulser] =
+    Record.of[RewardPulser](
+      (rewardPulseSize, rewardFreeVars, mapOf(credential[Staking], stakeWithDelegation), rewardAns)
+    )
 
   /** `PulsingRewUpdate` (`RewardUpdate.hs:346-348`): `[0, snapshot, pulser]` or `[1, update]`. */
   given pulsingRewUpdate(using ProtVer): Codec[PulsingRewUpdate] =
@@ -114,4 +137,4 @@ trait RewardCodecs extends SnapshotCodecs:
           out.arrayHead(3); out.uint(0L); rewardSnapShot.encode(s, out); rewardPulser.encode(p, out)
       override def check(a: PulsingRewUpdate): Option[ConstraintViolation] = a match
         case PulsingRewUpdate.Complete(u)   => rewardUpdate.check(u)
-        case PulsingRewUpdate.Pulsing(s, _) => rewardSnapShot.check(s)
+        case PulsingRewUpdate.Pulsing(s, p) => rewardSnapShot.check(s).orElse(rewardPulser.check(p))

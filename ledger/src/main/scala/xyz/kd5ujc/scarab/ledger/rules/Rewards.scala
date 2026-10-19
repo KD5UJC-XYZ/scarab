@@ -11,15 +11,14 @@ import xyz.kd5ujc.scarab.ledger.state.*
   * PulsingReward.hs:89,242,284`, `mkPoolRewardInfo` `Rewards.hs:331`, `rewardOnePoolMember` `291`
   * and the reward formulas of `Shelley/Rewards.hs:86-190`), in exact rational arithmetic.
   *
-  * Haskell spreads the calculation over the blocks of the epoch (the pulser) and the node computes
-  * it in one go when the first block past the start of rewards arrives (design D8: the pulser is a
-  * prefix of the credentials in map order, so the result is the same); what differs from Haskell is
-  * therefore when, not what. The result is attributed: each credential's rewards are a set of
-  * [[Reward]] s that name the pool they came from and whether as leader or as member, so the
-  * per-pool accounting is there (the node's own reward update has only the sum per credential).
+  * The pure start/pulse/complete machine mirrors the reference: captured inputs are immutable, and
+  * each normal pulse consumes a bounded prefix in credential order. The result is attributed: each
+  * credential's rewards are a set of [[Reward]] s that name the pool they came from and whether as
+  * leader or as member, so the per-pool accounting is there (the node's own reward update has only
+  * the sum per credential).
   *
-  * The non-myopic ranking (`updateNonMyopic`, the likelihoods and the pot) is left as the epoch
-  * state has it: it is a gap of the node (`Gap.NonMyopic`, J3.6).
+  * New likelihood generation remains an explicit gap (`Gap.NonMyopic`, J3.6). Completion combines
+  * the captured likelihoods and previous history exactly, including imported updates.
   */
 object Rewards:
 
@@ -71,15 +70,6 @@ object Rewards:
       sum + delivered(major, entry._2).foldLeft(BigInt(0))(_ + _.rewardAmount.value)
     )
 
-  /** The pool-specific values of the calculation (`PoolRewardInfo`, `Rewards.hs:242`). */
-  private final case class PoolInfo(
-      pool: KeyHash[StakePool],
-      snapshot: StakePoolSnapShot,
-      sigma: Rational,
-      pot: BigInt,
-      leader: BigInt
-  )
-
   /** `maxPool'` (`State/SnapShots.hs:119`): the most a pool of relative stake `sigma` and relative
     * pledge `pledge` can earn of the pot `r`.
     */
@@ -129,9 +119,9 @@ object Rewards:
   /** `createRUpd` (`PulsingReward.hs:284`) for the epoch state `es` and the blocks of the previous
     * epoch `blocks`: the reward update that is applied at the next boundary.
     */
-  def update[E <: EraTag](es: EpochState[E], blocks: BlocksMade, globals: Globals, epoch: BigInt)(
+  def start[E <: EraTag](es: EpochState[E], blocks: BlocksMade, globals: Globals, epoch: BigInt)(
       using ShelleyBasedEra[E]
-  ): Either[VocabError, RewardUpdate] =
+  ): Either[VocabError, PulsingRewUpdate] =
     val pr = EraLedger.prevPParams(es.ls.utxo.gov)
     val major = pr.protocolMajor
     val go = es.snapshots.go
@@ -151,75 +141,171 @@ object Rewards:
     val pot = potTotal - deltaT1
     val totalStake = globals.maxLovelaceSupply - reserves
     val totalActive = go.totalActiveStake.value.value
-    val registered: Credential[Staking] => Boolean = EraLedger.isRegistered(es.ls, _)
+    val registered = EraLedger.registered(es.ls)
+    val version =
+      ProtVer(Word64.fromUnsigned(major.toLong), Word64.fromUnsigned(pr.protocolMinor.toLong))
 
-    // `mkPoolRewardInfo` for the pools that made blocks
-    val infos: Map[KeyHash[StakePool], PoolInfo] =
-      go.pools.iterator.flatMap { (id, spss) =>
-        blocks.blocks.get(id).map { made =>
-          val poolStake = spss.stake.toBigInt
-          val sigma = ratio(poolStake, totalStake)
-          val sigmaA = ratio(poolStake, totalActive)
-          val pledge = spss.pledge.value
-          val ownersStake = spss.selfDelegatedOwnersStake.value
-          val relativePledge = ratio(pledge, totalStake)
-          val maxP =
-            if pledge <= ownersStake then maxPool(pr.a0, pr.nOpt, pot, sigma, relativePledge)
-            else BigInt(0)
-          val performance =
-            if sigmaA.isZero then Rational.zero
-            else if d < Eighty then ratio(made.toBigInt, blocksMade.max(1)) / sigmaA
-            else Rational.one
-          val poolPot = (performance * Rational(maxP)).floor
-          val leader = operatorReward(
-            poolPot,
-            spss.cost.value,
-            spss.margin,
-            ratio(ownersStake, totalStake),
-            sigma
+    // `mkPoolRewardInfo`: only block-producing pools participate in monetary rewards.
+    val infos = go.pools.iterator.toVector.flatTraverse { (id, spss) =>
+      blocks.blocks.get(id).toVector.traverse { made =>
+        val sigma = ratio(spss.stake.toBigInt, totalStake)
+        val sigmaA = ratio(spss.stake.toBigInt, totalActive)
+        val ownersStake = spss.selfDelegatedOwnersStake.value
+        val maxP =
+          if spss.pledge.value <= ownersStake then
+            maxPool(pr.a0, pr.nOpt, pot, sigma, ratio(spss.pledge.value, totalStake))
+          else BigInt(0)
+        val performance =
+          if sigmaA.isZero then Rational.zero
+          else if d < Eighty then ratio(made.toBigInt, blocksMade.max(1)) / sigmaA
+          else Rational.one
+        val poolPot = (performance * Rational(maxP)).floor
+        for
+          blockCount <- RewardBlockCount.fromBigInt(made.toBigInt)
+          rewardPot <- Coin.fromBigInt(poolPot)
+          leader <- Coin.fromBigInt(
+            operatorReward(
+              poolPot,
+              spss.cost.value,
+              spss.margin,
+              ratio(ownersStake, totalStake),
+              sigma
+            )
           )
-          id -> PoolInfo(id, spss, sigma, poolPot, leader)
-        }
-      }.toMap
+        yield id -> PoolRewardInfo(sigma, rewardPot, spss, blockCount, LeaderOnlyReward(id, leader))
+      }
+    }
+    for
+      pools <- infos.map(Sorted.map(_))
+      leaders = pools.valuesIterator.foldLeft(Sorted.empty[Credential[Staking], RewardSet]) {
+        (rs, info) =>
+          val account = info.snapshot.accountId
+          if forgoPrefilter(major) || registered.contains(account) then
+            val reward = Reward(RewardType.LeaderReward, info.leader.pool, info.leader.amount)
+            rs.updated(account, RewardSet(rs.getOrElse(account, RewardSet.empty).rewards + reward))
+          else rs
+      }
+      security <- RewardPulseSize.fromBigInt(globals.securityParameter)
+      size <- RewardPulseSize.fromBigInt(
+        ((BigInt(go.activeStake.entries.size) + 4 * BigInt(security.value) - 1) /
+          (4 * BigInt(security.value))).max(1)
+      )
+      stake <- Coin.fromBigInt(totalStake)
+      deltaR <- Coin.fromBigInt(deltaR1)
+      r <- Coin.fromBigInt(pot)
+      deltaT <- Coin.fromBigInt(deltaT1)
+    yield PulsingRewUpdate.Pulsing(
+      RewardSnapShot(
+        es.snapshots.fee,
+        version,
+        es.nonMyopic,
+        deltaR,
+        r,
+        deltaT,
+        Sorted.empty,
+        leaders
+      ),
+      RewardPulser(
+        size,
+        RewardFreeVars(registered, stake, version, pools),
+        go.activeStake.entries,
+        RewardAns.empty
+      )
+    )
 
-    // `rewardOnePoolMember` over the active stake, and the leader rewards (`collectLRs`)
-    def reward(kind: RewardType, pool: KeyHash[StakePool], amount: BigInt) =
-      Coin.fromBigInt(amount).map(Reward(kind, pool, _))
-    val members: Iterator[Either[VocabError, (Credential[Staking], Reward)]] =
-      go.activeStake.entries.iterator.flatMap { (credential, swd) =>
-        infos.get(swd.delegation).flatMap { info =>
-          val owner = credential match
-            case Credential.KeyHashObj(h)    => info.snapshot.selfDelegatedOwners.contains(h)
-            case Credential.ScriptHashObj(_) => false
+  private def member(
+      free: RewardFreeVars,
+      credential: Credential[Staking],
+      swd: StakeWithDelegation
+  ): Either[VocabError, Option[Reward]] =
+    free.pools.get(swd.delegation) match
+      case None => Right(None)
+      case Some(info) =>
+        val owner = credential match
+          case Credential.KeyHashObj(h)    => info.snapshot.selfDelegatedOwners.contains(h)
+          case Credential.ScriptHashObj(_) => false
+        if free.totalStake.value == 0 || owner ||
+          (!forgoPrefilter(free.protocolVersion.major.toBigInt) && !free.registered.contains(
+            credential
+          ))
+        then Right(None)
+        else
           val amount = memberReward(
-            info.pot,
+            info.pot.value,
             info.snapshot.cost.value,
             info.snapshot.margin,
-            ratio(swd.stake.value.toBigInt, totalStake),
-            info.sigma
+            ratio(swd.stake.value.toBigInt, free.totalStake.value),
+            info.relativeStake
           )
-          Option.when(
-            totalStake.signum > 0 && (forgoPrefilter(major) || registered(credential)) &&
-              !owner && amount.signum != 0
-          )(reward(RewardType.MemberReward, info.pool, amount).map(credential -> _))
+          if amount == 0 then Right(None)
+          else
+            Coin
+              .fromBigInt(amount)
+              .map(n => Some(Reward(RewardType.MemberReward, swd.delegation, n)))
+
+  private def members(
+      pulser: RewardPulser,
+      source: Iterable[(Credential[Staking], StakeWithDelegation)]
+  ): Either[VocabError, RewardAns] =
+    source.iterator.toVector.foldLeftM(pulser.answer.copy(recent = Sorted.empty)) {
+      case (answer, (credential, swd)) =>
+        member(pulser.free, credential, swd).map {
+          case None => answer
+          case Some(reward) =>
+            RewardAns(
+              answer.accumulated.updated(credential, reward),
+              answer.recent.updated(credential, RewardSet(List(reward)))
+            )
         }
-      }
-    val leaders: Iterator[Either[VocabError, (Credential[Staking], Reward)]] =
-      infos.valuesIterator.flatMap { info =>
-        val account = info.snapshot.accountId
-        Option.when(forgoPrefilter(major) || registered(account))(
-          reward(RewardType.LeaderReward, info.pool, info.leader).map(account -> _)
+    }
+
+  /** `pulseStep`: the call after the last member pulse completes the update. */
+  def pulse(update: PulsingRewUpdate): Either[VocabError, PulsingRewUpdate] = update match
+    case c: PulsingRewUpdate.Complete => Right(c)
+    case p @ PulsingRewUpdate.Pulsing(_, pulser) if pulser.remaining.isEmpty =>
+      complete(p).map(PulsingRewUpdate.Complete(_))
+    case PulsingRewUpdate.Pulsing(snapshot, pulser) =>
+      val (prefix, suffix) =
+        pulser.remaining.splitAt(pulser.size.value.min(Int.MaxValue.toLong).toInt)
+      members(pulser, prefix).map(answer =>
+        PulsingRewUpdate.Pulsing(snapshot, pulser.copy(remaining = suffix, answer = answer))
+      )
+
+  /** `completeRupd`: finish any remaining prefix, merge leaders and balance the pots. */
+  def complete(update: PulsingRewUpdate): Either[VocabError, RewardUpdate] = update match
+    case PulsingRewUpdate.Complete(result) => Right(result)
+    case PulsingRewUpdate.Pulsing(snapshot, pulser) =>
+      members(pulser, pulser.remaining).map { answer =>
+        val memberRewards = answer.accumulated.transform((_, reward) => RewardSet(List(reward)))
+        val rs = snapshot.leaders.foldLeft(memberRewards) { case (out, (c, rewards)) =>
+          out.updated(c, RewardSet(out.getOrElse(c, RewardSet.empty).rewards ++ rewards.rewards))
+        }
+        val deltaR2 = snapshot.r.value - total(snapshot.protocolVersion.major.toBigInt, rs)
+        // `updateNonMyopic` maps the new keys only, including the empty-map case.
+        // Local start retains the explicit likelihood-computation gap; imported fields are complete.
+        val nonMyopic = NonMyopic(
+          snapshot.likelihoods.transform { (pool, current) =>
+            val old = snapshot.nonMyopic.likelihoods.get(pool)
+            val decayed = old
+              .fold(Vector.fill(100)(LogWeight(0f)))(_.weights.map(w => LogWeight(0.9f * w.float)))
+            Likelihood(
+              LogWeight.normalise(
+                decayed.zip(current.weights).map((a, b) => LogWeight(a.float + b.float))
+              )
+            )
+          },
+          snapshot.r
+        )
+        RewardUpdate(
+          DeltaCoin(snapshot.deltaT1.value),
+          DeltaCoin(-snapshot.deltaR1.value + deltaR2),
+          rs,
+          DeltaCoin(-snapshot.fees.value),
+          nonMyopic
         )
       }
-    (members ++ leaders).toVector.sequence.map { earned =>
-      val rs: SortedMap[Credential[Staking], RewardSet] =
-        Sorted.map(earned.groupMap(_._1)(_._2).map((c, rewards) => c -> RewardSet(rewards)))
-      val deltaR2 = pot - total(major, rs)
-      RewardUpdate(
-        DeltaCoin(deltaT1),
-        DeltaCoin(-deltaR1 + deltaR2),
-        rs,
-        DeltaCoin(-fee),
-        es.nonMyopic
-      )
-    }
+
+  /** Eager reference for tools: the same machine completed without intermediate ticks. */
+  def update[E <: EraTag](es: EpochState[E], blocks: BlocksMade, globals: Globals, epoch: BigInt)(
+      using ShelleyBasedEra[E]
+  ): Either[VocabError, RewardUpdate] = start(es, blocks, globals, epoch).flatMap(complete)

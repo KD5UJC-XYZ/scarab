@@ -6,7 +6,7 @@ import cats.derived.*
 import cats.syntax.show.*
 import monocle.{Focus, Lens, Prism}
 import scala.collection.immutable.{SortedMap, SortedSet}
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.Rational
 
 // The reward side of the epoch state: the non-myopic pool ranking, the reward update of the epoch
 // boundary and the state it is held in while it is computed. Sources: `Shelley/PoolRank.hs`,
@@ -173,22 +173,80 @@ final case class RewardSnapShot(
       Show,
       Diff
 
-/** The pulser of a reward update that is still being computed (`Pulser` of `RewardUpdate.hs:346`,
-  * the `RewardPulser` of `Pulsing.hs`: the free variables, the stake still to visit, the answer so
-  * far), as the CBOR item it was read as. The mirror does not model it (the node computes its
-  * rewards at the boundary), and what it does not model it keeps as the original bytes, so a state
-  * taken in the middle of an epoch is written again byte for byte. `item` is one complete, well
-  * formed CBOR item.
-  */
-final case class RewardPulser(item: Bytes) derives Eq, Show, Diff
+/** A positive Haskell `Int` pulse size. Decoded zero/negative sizes cannot stall the machine. */
+opaque type RewardPulseSize = Long
 
-/** `PulsingRewUpdate` (`RewardUpdate.hs:341-344`, encoding `346-348`: `[0, snapshot, pulser]` or
-  * `[1, update]`): a reward update that is either still being computed or complete.
-  *
-  * The node computes its rewards at the boundary (plan §7.5), so a mirror of our state is always
-  * [[PulsingRewUpdate.Complete]]. [[PulsingRewUpdate.Pulsing]] keeps the snapshot a Haskell state
-  * was left with and the pulser as the original bytes ([[RewardPulser]]): such a state round trips
-  * exactly, but a node cannot be made from it (importing one stays a refusal, `Gap`).
+object RewardPulseSize:
+  def fromBigInt(n: BigInt): Either[VocabError, RewardPulseSize] =
+    if n <= 0 || n > Long.MaxValue then
+      Left(VocabError.OutOfRange(VocabError.Kind.RewardPulseSize, n))
+    else Right(n.toLong)
+
+  extension (n: RewardPulseSize) def value: Long = n
+  given Eq[RewardPulseSize] = Eq.fromUniversalEquals
+  given Show[RewardPulseSize] = Show.show(_.toString)
+
+/** The reference's unbounded `Natural` in `PoolRewardInfo`, including imported bignums. */
+opaque type RewardBlockCount = BigInt
+
+object RewardBlockCount:
+  def fromBigInt(n: BigInt): Either[VocabError, RewardBlockCount] =
+    Either.cond(n.signum >= 0, n, VocabError.Negative(VocabError.Kind.RewardBlockCount, n))
+  extension (n: RewardBlockCount) def value: BigInt = n
+  given Eq[RewardBlockCount] = Eq.fromUniversalEquals
+  given Show[RewardBlockCount] = Show.show(_.toString)
+
+/** `LeaderOnlyReward` (`Shelley/Rewards.hs:223`): the pool and its operator's reward. */
+final case class LeaderOnlyReward(pool: KeyHash[StakePool], amount: Coin) derives Eq, Show, Diff
+
+/** `PoolRewardInfo` (`Shelley/Rewards.hs:242-253`), captured once at reward start. */
+final case class PoolRewardInfo(
+    relativeStake: Rational,
+    pot: Coin,
+    snapshot: StakePoolSnapShot,
+    blocks: RewardBlockCount,
+    leader: LeaderOnlyReward
+) derives Eq,
+      Show,
+      Diff
+
+/** `FreeVars` (`Shelley/RewardUpdate.hs:216`): immutable inputs of the member calculation. */
+final case class RewardFreeVars(
+    registered: SortedSet[Credential[Staking]],
+    totalStake: Coin,
+    protocolVersion: ProtVer,
+    pools: SortedMap[KeyHash[StakePool], PoolRewardInfo]
+) derives Eq,
+      Show,
+      Diff
+
+/** `RewardAns` (`Shelley/RewardUpdate.hs:89`): member rewards accumulated and emitted by the last
+  * pulse.
+  */
+final case class RewardAns(
+    accumulated: SortedMap[Credential[Staking], Reward],
+    recent: SortedMap[Credential[Staking], RewardSet]
+) derives Eq,
+      Show,
+      Diff
+
+object RewardAns:
+  val empty: RewardAns = RewardAns(Sorted.empty, Sorted.empty)
+
+/** `RSLP` (`Shelley/RewardUpdate.hs:285-290,332-339`), in the reference's field order. Remaining
+  * stake is a persistent ordered map: a pulse removes a prefix without copying the suffix.
+  */
+final case class RewardPulser(
+    size: RewardPulseSize,
+    free: RewardFreeVars,
+    remaining: SortedMap[Credential[Staking], StakeWithDelegation],
+    answer: RewardAns
+) derives Eq,
+      Show,
+      Diff
+
+/** `PulsingRewUpdate` (`RewardUpdate.hs:341-348`): `[0, snapshot, pulser]` or `[1, update]`. Both
+  * locally started and imported pending updates resume through the same pure machine.
   */
 enum PulsingRewUpdate derives Eq, Show, Diff:
   case Pulsing(snapshot: RewardSnapShot, pulser: RewardPulser)

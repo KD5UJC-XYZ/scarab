@@ -18,11 +18,6 @@ enum TickFailure derives Eq, Show:
   /** A quantity left the range of its vocabulary type (a balance below zero, a word above 2^64). */
   case Vocab(error: VocabError)
 
-  /** The state holds a reward update that is still being pulsed (it came from a Haskell state): the
-    * node computes its updates in one step and does not carry a pulser on (design D8, J3.5).
-    */
-  case PulsingRewardUpdate
-
   /** An output of the Byron UTxO has an address that does not decode (the hand-over to Shelley
     * carries every output).
     */

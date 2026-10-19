@@ -54,12 +54,13 @@ object NewEpoch:
         for
           _ <- before.ru match
             case None => Monad[F].unit
-            case Some(PulsingRewUpdate.Complete(update)) =>
-              Sts.modifyE[F, EpochState[E], TickFailure](
-                applyRewardUpdate(_, update).leftMap(TickFailure.Vocab(_))
+            case Some(pending) =>
+              Sts.modifyE[F, EpochState[E], TickFailure](state =>
+                Rewards
+                  .complete(pending)
+                  .flatMap(applyRewardUpdate(state, _))
+                  .leftMap(TickFailure.Vocab(_))
               )(using Monad[F], es, failures)
-            case Some(PulsingRewUpdate.Pulsing(_, _)) =>
-              failures.raise[TickFailure, Unit](TickFailure.PulsingRewardUpdate)
           _ <- era match
             case ShelleyBasedEra.SConway => Monad[F].unit
             case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
