@@ -2,6 +2,8 @@
 """Byte-bound provenance and semantic coverage of the independent script-result API corpus."""
 import importlib.util
 import json
+import subprocess
+from unittest.mock import patch
 from pathlib import Path
 import unittest
 
@@ -9,6 +11,9 @@ ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location('script_result_inputs', ROOT / 'scripts/oracle/plutus/aggregation/prepare.py')
 PREPARE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(PREPARE)
+RUN_SPEC = importlib.util.spec_from_file_location('script_result_runner', ROOT / 'scripts/oracle/plutus/aggregation/run.py')
+RUN = importlib.util.module_from_spec(RUN_SPEC)
+RUN_SPEC.loader.exec_module(RUN)
 
 
 class ScriptResultOracleTests(unittest.TestCase):
@@ -31,3 +36,36 @@ class ScriptResultOracleTests(unittest.TestCase):
                 self.assertEqual(row['oracle']['logs'], [])
                 self.assertEqual([trace for script in row['oracle']['scripts'] for trace in script['verboseLogs']], row['expectedExecutionLabels'])
                 self.assertEqual(len(row['oracle']['failures']), len(row['expectedFailures']))
+
+    def test_successful_budgets_are_required_and_have_an_exact_numeric_schema(self):
+        RUN.validate_budget({'success': True, 'used': {'mem': 800, 'steps': 161100}})
+        invalid = [None, {}, {'mem': 800}, {'mem': 800, 'steps': '161100'},
+                   {'mem': 800, 'steps': 1.5}, {'mem': True, 'steps': 1},
+                   {'mem': -1, 'steps': 1}, {'mem': 800, 'steps': 161100, 'other': 0}]
+        for used in invalid:
+            with self.subTest(used=used), self.assertRaises(ValueError):
+                RUN.validate_budget({'success': True, 'used': used})
+        with self.assertRaises(ValueError):
+            RUN.validate_budget({'success': True})
+
+    def test_failed_budgets_are_explicit_api_absence(self):
+        RUN.validate_budget({'success': False, 'used': None})
+        for row in ({'success': False}, {'success': False, 'used': {}},
+                    {'success': False, 'used': {'mem': 0, 'steps': 0}}):
+            with self.subTest(row=row), self.assertRaises(ValueError):
+                RUN.validate_budget(row)
+
+    def test_failed_build_never_resolves_or_executes_a_previous_tag(self):
+        with patch.object(RUN.subprocess, 'run', side_effect=subprocess.CalledProcessError(1, 'docker build')):
+            with patch.object(RUN, 'image_id') as resolve:
+                with self.assertRaises(subprocess.CalledProcessError):
+                    RUN.build_image('stale-tag:local')
+                resolve.assert_not_called()
+
+    def test_stale_image_wrapper_is_rejected_before_replay(self):
+        digest = 'sha256:' + 'a' * 64
+        stale = subprocess.CompletedProcess([], 0, stdout='0' * 64 + '  /oracle/aggregation/harness/Main.hs\n')
+        with patch.object(RUN, 'image_id', return_value=digest):
+            with patch.object(RUN.subprocess, 'run', return_value=stale):
+                with self.assertRaises(ValueError):
+                    RUN.image_binding('old-tag:local')

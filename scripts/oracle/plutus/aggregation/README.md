@@ -14,11 +14,17 @@ identical executable. The source/archive binding is in the fixture provenance.
 From the repository root:
 
 ```sh
-docker build -f scripts/oracle/plutus/aggregation/Dockerfile -t scarab-plutus195-aggregation-reference:local .
 python3 scripts/oracle/plutus/aggregation/prepare.py --out /tmp/aggregation-inputs.json
 python3 scripts/oracle/plutus/aggregation/run.py --verify-only
-python3 scripts/oracle/plutus/aggregation/run.py --out /tmp/aggregation-reference.json
+python3 scripts/oracle/plutus/aggregation/run.py --build --out /tmp/aggregation-reference.json
 ```
+
+The `--build` path stops on any build failure, binds Docker's successful `--iidfile` to the
+resolved image, and executes by immutable image ID. Existing-image replay independently compares
+the embedded Main/Cabal/freeze hashes against the checkout before execution, rejecting a stale
+wrapper. An output `.manifest.json` binds that image, executable and wrapper hashes to the exact
+corpus and output digests. Successful numeric budgets are required; missing/null/noninteger fields
+fail schema validation. A failed evaluation has explicit null units because the API supplies none.
 
 Replay runs offline with a read-only container and byte-compares the complete returned JSON,
 including the unmodified reference diagnostic text and full predicate CBOR. A failed reference

@@ -205,6 +205,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 161100, exBudgetMemory = ExMemory 800}",
      "scriptHash": "ScriptHash \"fc61e623d413aa67dc9367e8e48f5ab7f38093e871af6d9dd27b717e\"",
      "success": true,
+     "used": {
+      "mem": 800,
+      "steps": 161100
+     },
      "verboseLogs": []
     }
    ],
@@ -857,6 +861,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 534442, exBudgetMemory = ExMemory 1532}",
      "scriptHash": "ScriptHash \"adc091da3c6aa4acedfb43f86d44602577dc56bf75099890e08a60c9\"",
      "success": true,
+     "used": {
+      "mem": 1532,
+      "steps": 534442
+     },
      "verboseLogs": [
       "script-0-0"
      ]
@@ -867,6 +875,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 534442, exBudgetMemory = ExMemory 1532}",
      "scriptHash": "ScriptHash \"6b3c8dc4ab4dba410ec86fb7682df5ec11076123c0d281c6e9ba2bdf\"",
      "success": true,
+     "used": {
+      "mem": 1532,
+      "steps": 534442
+     },
      "verboseLogs": [
       "script-2-0"
      ]
@@ -877,6 +889,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 534442, exBudgetMemory = ExMemory 1532}",
      "scriptHash": "ScriptHash \"6445d992cc228859b467472ffba324123e1eb1805aa62fb25363363a\"",
      "success": true,
+     "used": {
+      "mem": 1532,
+      "steps": 534442
+     },
      "verboseLogs": [
       "script-1-0"
      ]
@@ -1537,6 +1553,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 534442, exBudgetMemory = ExMemory 1532}",
      "scriptHash": "ScriptHash \"adc091da3c6aa4acedfb43f86d44602577dc56bf75099890e08a60c9\"",
      "success": true,
+     "used": {
+      "mem": 1532,
+      "steps": 534442
+     },
      "verboseLogs": [
       "script-0-0"
      ]
@@ -1547,6 +1567,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 534442, exBudgetMemory = ExMemory 1532}",
      "scriptHash": "ScriptHash \"6445d992cc228859b467472ffba324123e1eb1805aa62fb25363363a\"",
      "success": true,
+     "used": {
+      "mem": 1532,
+      "steps": 534442
+     },
      "verboseLogs": [
       "script-1-0"
      ]
@@ -1557,6 +1581,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"5026c731c880f8511642b2a362b33d303f903f47036a24ec77333271\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-2-0"
      ]
@@ -2217,6 +2242,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 534442, exBudgetMemory = ExMemory 1532}",
      "scriptHash": "ScriptHash \"ffc6a076bf5af41561f0452c8683698a221539b787b47d7dc6edeb02\"",
      "success": true,
+     "used": {
+      "mem": 1532,
+      "steps": 534442
+     },
      "verboseLogs": [
       "script-0-2"
      ]
@@ -2227,6 +2256,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"c6bc367014f8cc9e0408f0977ef4da353954c5fc787969e327d315d7\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-1-2"
      ]
@@ -2237,6 +2267,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 534442, exBudgetMemory = ExMemory 1532}",
      "scriptHash": "ScriptHash \"17c37d6d1a236a17a56406098f6b3f130dec26e7660f5da41b05838d\"",
      "success": true,
+     "used": {
+      "mem": 1532,
+      "steps": 534442
+     },
      "verboseLogs": [
       "script-2-2"
      ]
@@ -2901,6 +2935,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 534442, exBudgetMemory = ExMemory 1532}",
      "scriptHash": "ScriptHash \"ffc6a076bf5af41561f0452c8683698a221539b787b47d7dc6edeb02\"",
      "success": true,
+     "used": {
+      "mem": 1532,
+      "steps": 534442
+     },
      "verboseLogs": [
       "script-0-2"
      ]
@@ -2911,6 +2949,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"c6bc367014f8cc9e0408f0977ef4da353954c5fc787969e327d315d7\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-1-2"
      ]
@@ -2921,6 +2960,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"90dff3f93b9fb14cb7c56a06f11cf2d93355170f958d81ddbac2c06f\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-2-2"
      ]
@@ -3581,6 +3621,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"80cf3adb58b1aaa44d64724eacce69e8e74dfb2ed993ddb2fae99917\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-0-0"
      ]
@@ -3591,6 +3632,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 534442, exBudgetMemory = ExMemory 1532}",
      "scriptHash": "ScriptHash \"6b3c8dc4ab4dba410ec86fb7682df5ec11076123c0d281c6e9ba2bdf\"",
      "success": true,
+     "used": {
+      "mem": 1532,
+      "steps": 534442
+     },
      "verboseLogs": [
       "script-2-0"
      ]
@@ -3601,6 +3646,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 534442, exBudgetMemory = ExMemory 1532}",
      "scriptHash": "ScriptHash \"6445d992cc228859b467472ffba324123e1eb1805aa62fb25363363a\"",
      "success": true,
+     "used": {
+      "mem": 1532,
+      "steps": 534442
+     },
      "verboseLogs": [
       "script-1-0"
      ]
@@ -4265,6 +4314,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"80cf3adb58b1aaa44d64724eacce69e8e74dfb2ed993ddb2fae99917\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-0-0"
      ]
@@ -4275,6 +4325,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 534442, exBudgetMemory = ExMemory 1532}",
      "scriptHash": "ScriptHash \"6445d992cc228859b467472ffba324123e1eb1805aa62fb25363363a\"",
      "success": true,
+     "used": {
+      "mem": 1532,
+      "steps": 534442
+     },
      "verboseLogs": [
       "script-1-0"
      ]
@@ -4285,6 +4339,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"5026c731c880f8511642b2a362b33d303f903f47036a24ec77333271\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-2-0"
      ]
@@ -4949,6 +5004,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"cf0aa52d270fc465be7cc76f78cab6b71f9b449b7f167b0d6574d495\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-1-0"
      ]
@@ -4959,6 +5015,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"80cf3adb58b1aaa44d64724eacce69e8e74dfb2ed993ddb2fae99917\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-0-0"
      ]
@@ -4969,6 +5026,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 534442, exBudgetMemory = ExMemory 1532}",
      "scriptHash": "ScriptHash \"6b3c8dc4ab4dba410ec86fb7682df5ec11076123c0d281c6e9ba2bdf\"",
      "success": true,
+     "used": {
+      "mem": 1532,
+      "steps": 534442
+     },
      "verboseLogs": [
       "script-2-0"
      ]
@@ -5636,6 +5697,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"cf0aa52d270fc465be7cc76f78cab6b71f9b449b7f167b0d6574d495\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-1-0"
      ]
@@ -5646,6 +5708,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"80cf3adb58b1aaa44d64724eacce69e8e74dfb2ed993ddb2fae99917\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-0-0"
      ]
@@ -5656,6 +5719,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"5026c731c880f8511642b2a362b33d303f903f47036a24ec77333271\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-2-0"
      ]
@@ -6310,6 +6374,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 534442, exBudgetMemory = ExMemory 1532}",
      "scriptHash": "ScriptHash \"45048ffb4498a8a44a4ee517b85b2bd41d76a82a1f0652e8ff64c833\"",
      "success": true,
+     "used": {
+      "mem": 1532,
+      "steps": 534442
+     },
      "verboseLogs": [
       "script-2-0"
      ]
@@ -6320,6 +6388,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 534442, exBudgetMemory = ExMemory 1532}",
      "scriptHash": "ScriptHash \"447b70b22c9c30d12ad26f29efe6a5942f89898aad530ce0125f64dc\"",
      "success": true,
+     "used": {
+      "mem": 1532,
+      "steps": 534442
+     },
      "verboseLogs": [
       "script-0-0"
      ]
@@ -6330,6 +6402,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 534442, exBudgetMemory = ExMemory 1532}",
      "scriptHash": "ScriptHash \"3b8e5bc6db0bf252e16bcf95b0fa515bc516c33d22980bd6fd767026\"",
      "success": true,
+     "used": {
+      "mem": 1532,
+      "steps": 534442
+     },
      "verboseLogs": [
       "script-1-0"
      ]
@@ -6990,6 +7066,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 534442, exBudgetMemory = ExMemory 1532}",
      "scriptHash": "ScriptHash \"ff2f416277348682e516c4072d0c61514cda0f6ef939d41bb7038b89\"",
      "success": true,
+     "used": {
+      "mem": 1532,
+      "steps": 534442
+     },
      "verboseLogs": [
       "script-0-2"
      ]
@@ -7000,6 +7080,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 534442, exBudgetMemory = ExMemory 1532}",
      "scriptHash": "ScriptHash \"d5eaef206a29790f104898e59d5312ad9654cf28fa7b70db58c43fef\"",
      "success": true,
+     "used": {
+      "mem": 1532,
+      "steps": 534442
+     },
      "verboseLogs": [
       "script-1-2"
      ]
@@ -7010,6 +7094,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"65bbbaf5514ff6d8982e3702f804bf2f6fa01579b203649c688173d9\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-2-2"
      ]
@@ -7670,6 +7755,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 534442, exBudgetMemory = ExMemory 1532}",
      "scriptHash": "ScriptHash \"d8d3747ce4f103c2689b03f3f9f25b3c6d56ba8225f722cb6a495c76\"",
      "success": true,
+     "used": {
+      "mem": 1532,
+      "steps": 534442
+     },
      "verboseLogs": [
       "script-2-1"
      ]
@@ -7680,6 +7769,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"bd4593c8519f3cabfd8365cdfcb04ee6e7646efdcfb32fce50877e4e\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-1-1"
      ]
@@ -7690,6 +7780,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 534442, exBudgetMemory = ExMemory 1532}",
      "scriptHash": "ScriptHash \"22c286f30e8c2faa8f88bbdc583971bb9bca614e86ca04f568577622\"",
      "success": true,
+     "used": {
+      "mem": 1532,
+      "steps": 534442
+     },
      "verboseLogs": [
       "script-0-1"
      ]
@@ -8354,6 +8448,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 534442, exBudgetMemory = ExMemory 1532}",
      "scriptHash": "ScriptHash \"ff2f416277348682e516c4072d0c61514cda0f6ef939d41bb7038b89\"",
      "success": true,
+     "used": {
+      "mem": 1532,
+      "steps": 534442
+     },
      "verboseLogs": [
       "script-0-2"
      ]
@@ -8364,6 +8462,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"b850b2570988177888a2906cc009228bb6234dad80139336651de172\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-1-2"
      ]
@@ -8374,6 +8473,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"65bbbaf5514ff6d8982e3702f804bf2f6fa01579b203649c688173d9\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-2-2"
      ]
@@ -9034,6 +9134,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"c5fbf38e8b24b037673c80e3bd13e42110d7ac28f0464c961d821934\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-0-0"
      ]
@@ -9044,6 +9145,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 534442, exBudgetMemory = ExMemory 1532}",
      "scriptHash": "ScriptHash \"45048ffb4498a8a44a4ee517b85b2bd41d76a82a1f0652e8ff64c833\"",
      "success": true,
+     "used": {
+      "mem": 1532,
+      "steps": 534442
+     },
      "verboseLogs": [
       "script-2-0"
      ]
@@ -9054,6 +9159,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 534442, exBudgetMemory = ExMemory 1532}",
      "scriptHash": "ScriptHash \"3b8e5bc6db0bf252e16bcf95b0fa515bc516c33d22980bd6fd767026\"",
      "success": true,
+     "used": {
+      "mem": 1532,
+      "steps": 534442
+     },
      "verboseLogs": [
       "script-1-0"
      ]
@@ -9718,6 +9827,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"c03cedda92c30281cf61d8585b470d2a27a8c231e80cdbcae56c907f\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-2-6"
      ]
@@ -9728,6 +9838,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 534442, exBudgetMemory = ExMemory 1532}",
      "scriptHash": "ScriptHash \"a4cff4eb77e1a67be8767446a6b4790d613303b86cce72ba8d6ba02d\"",
      "success": true,
+     "used": {
+      "mem": 1532,
+      "steps": 534442
+     },
      "verboseLogs": [
       "script-1-6"
      ]
@@ -9738,6 +9852,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"363edfbcb94a5b54d5076c3941601e3237272ca0b26b92b42df00836\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-0-6"
      ]
@@ -10402,6 +10517,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"ed3db7fa469e1181813918160369c90a14d0ee67a570e155d59c4f2a\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-1-0"
      ]
@@ -10412,6 +10528,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"c5fbf38e8b24b037673c80e3bd13e42110d7ac28f0464c961d821934\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-0-0"
      ]
@@ -10422,6 +10539,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 534442, exBudgetMemory = ExMemory 1532}",
      "scriptHash": "ScriptHash \"45048ffb4498a8a44a4ee517b85b2bd41d76a82a1f0652e8ff64c833\"",
      "success": true,
+     "used": {
+      "mem": 1532,
+      "steps": 534442
+     },
      "verboseLogs": [
       "script-2-0"
      ]
@@ -11089,6 +11210,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"ed3db7fa469e1181813918160369c90a14d0ee67a570e155d59c4f2a\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-1-0"
      ]
@@ -11099,6 +11221,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"c5fbf38e8b24b037673c80e3bd13e42110d7ac28f0464c961d821934\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-0-0"
      ]
@@ -11109,6 +11232,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"7867a87ecca9b4a58ddd73c43a5f2d01733dbaf88a71332bcc5dbeb2\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-2-0"
      ]
@@ -11763,6 +11887,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 235598, exBudgetMemory = ExMemory 1232}",
      "scriptHash": "ScriptHash \"ebbe70624e156349dd8116c2fd4df9dd93315de1285b234de31c0e8d\"",
      "success": true,
+     "used": {
+      "mem": 1232,
+      "steps": 235598
+     },
      "verboseLogs": [
       "script-1-0"
      ]
@@ -11773,6 +11901,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 235598, exBudgetMemory = ExMemory 1232}",
      "scriptHash": "ScriptHash \"b2d0614c779b2bc44d56f303ac2c5c789248a984ea347421c05482d3\"",
      "success": true,
+     "used": {
+      "mem": 1232,
+      "steps": 235598
+     },
      "verboseLogs": [
       "script-0-0"
      ]
@@ -11783,6 +11915,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 235598, exBudgetMemory = ExMemory 1232}",
      "scriptHash": "ScriptHash \"03b60113d1ed4b494527167a8aa34101b81db7247b4e1b928e1c103d\"",
      "success": true,
+     "used": {
+      "mem": 1232,
+      "steps": 235598
+     },
      "verboseLogs": [
       "script-2-0"
      ]
@@ -12443,6 +12579,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 235598, exBudgetMemory = ExMemory 1232}",
      "scriptHash": "ScriptHash \"ebbe70624e156349dd8116c2fd4df9dd93315de1285b234de31c0e8d\"",
      "success": true,
+     "used": {
+      "mem": 1232,
+      "steps": 235598
+     },
      "verboseLogs": [
       "script-1-0"
      ]
@@ -12453,6 +12593,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 235598, exBudgetMemory = ExMemory 1232}",
      "scriptHash": "ScriptHash \"b2d0614c779b2bc44d56f303ac2c5c789248a984ea347421c05482d3\"",
      "success": true,
+     "used": {
+      "mem": 1232,
+      "steps": 235598
+     },
      "verboseLogs": [
       "script-0-0"
      ]
@@ -12463,6 +12607,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"4e5f927994da48b847c3815abd6dd816e241751dfc35170a4424d221\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-2-0"
      ]
@@ -13123,6 +13268,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 235598, exBudgetMemory = ExMemory 1232}",
      "scriptHash": "ScriptHash \"b2d0614c779b2bc44d56f303ac2c5c789248a984ea347421c05482d3\"",
      "success": true,
+     "used": {
+      "mem": 1232,
+      "steps": 235598
+     },
      "verboseLogs": [
       "script-0-0"
      ]
@@ -13133,6 +13282,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"9d21845fbe5978df4a2989bfc0cad1da04ad1d19e782c4dd1338e6d3\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-1-0"
      ]
@@ -13143,6 +13293,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 235598, exBudgetMemory = ExMemory 1232}",
      "scriptHash": "ScriptHash \"03b60113d1ed4b494527167a8aa34101b81db7247b4e1b928e1c103d\"",
      "success": true,
+     "used": {
+      "mem": 1232,
+      "steps": 235598
+     },
      "verboseLogs": [
       "script-2-0"
      ]
@@ -13807,6 +13961,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 235598, exBudgetMemory = ExMemory 1232}",
      "scriptHash": "ScriptHash \"b2d0614c779b2bc44d56f303ac2c5c789248a984ea347421c05482d3\"",
      "success": true,
+     "used": {
+      "mem": 1232,
+      "steps": 235598
+     },
      "verboseLogs": [
       "script-0-0"
      ]
@@ -13817,6 +13975,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"9d21845fbe5978df4a2989bfc0cad1da04ad1d19e782c4dd1338e6d3\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-1-0"
      ]
@@ -13827,6 +13986,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"4e5f927994da48b847c3815abd6dd816e241751dfc35170a4424d221\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-2-0"
      ]
@@ -14487,6 +14647,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"9428a082e50aefcfb9db6573a0bfd350d661f7eee85ff461d01f53ca\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-0-2"
      ]
@@ -14497,6 +14658,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 235598, exBudgetMemory = ExMemory 1232}",
      "scriptHash": "ScriptHash \"3d4ae3c38d8987f34310aee43bf406f747740b2b4458e80ed39c1a12\"",
      "success": true,
+     "used": {
+      "mem": 1232,
+      "steps": 235598
+     },
      "verboseLogs": [
       "script-1-2"
      ]
@@ -14507,6 +14672,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 235598, exBudgetMemory = ExMemory 1232}",
      "scriptHash": "ScriptHash \"39d0ed3f5f09b26fd374335e76ca7ae74d67f39a45ad662ad9127e5d\"",
      "success": true,
+     "used": {
+      "mem": 1232,
+      "steps": 235598
+     },
      "verboseLogs": [
       "script-2-2"
      ]
@@ -15171,6 +15340,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"910986c23d2c15522e84ea6d90180e7511296c9ff16692c2a052811d\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-2-6"
      ]
@@ -15181,6 +15351,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 235598, exBudgetMemory = ExMemory 1232}",
      "scriptHash": "ScriptHash \"478e87877a661ff7867cfd646b7572184ed475c337d3385401cbda3b\"",
      "success": true,
+     "used": {
+      "mem": 1232,
+      "steps": 235598
+     },
      "verboseLogs": [
       "script-1-6"
      ]
@@ -15191,6 +15365,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"0ea75ea1631cc16cf3082eb2642e9a46f6a7e8fe311d49262c0db805\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-0-6"
      ]
@@ -15855,6 +16030,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"9d21845fbe5978df4a2989bfc0cad1da04ad1d19e782c4dd1338e6d3\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-1-0"
      ]
@@ -15865,6 +16041,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"04977543207a6608c7921b0521cac1ee67f555cbe8770d904f453224\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-0-0"
      ]
@@ -15875,6 +16052,10 @@
      "result": "ExBudget {exBudgetCPU = ExCPU 235598, exBudgetMemory = ExMemory 1232}",
      "scriptHash": "ScriptHash \"03b60113d1ed4b494527167a8aa34101b81db7247b4e1b928e1c103d\"",
      "success": true,
+     "used": {
+      "mem": 1232,
+      "steps": 235598
+     },
      "verboseLogs": [
       "script-2-0"
      ]
@@ -16542,6 +16723,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"9d21845fbe5978df4a2989bfc0cad1da04ad1d19e782c4dd1338e6d3\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-1-0"
      ]
@@ -16552,6 +16734,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"4e5f927994da48b847c3815abd6dd816e241751dfc35170a4424d221\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-2-0"
      ]
@@ -16562,6 +16745,7 @@
      "result": "CekError An error has occurred:\nThe machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\nCaused by: error",
      "scriptHash": "ScriptHash \"04977543207a6608c7921b0521cac1ee67f555cbe8770d904f453224\"",
      "success": false,
+     "used": null,
      "verboseLogs": [
       "script-0-0"
      ]

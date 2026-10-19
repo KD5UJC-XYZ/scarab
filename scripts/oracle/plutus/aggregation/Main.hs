@@ -101,14 +101,14 @@ runCase c = do
             in object ["scriptHash" .= show (pwcScriptHash pwc), "contextCbor" .= hex (Plain.serialize' pwc)
                       , "verboseLogs" .= verbose, "result" .= either show show evaluated
                       , "success" .= either (const False) (const True) evaluated
-                      , "used" .= either (const Nothing) (\(P.ExBudget (P.ExCPU cpu) (P.ExMemory mem)) -> Just (object ["steps" .= toInteger cpu, "mem" .= toInteger mem])) evaluated
+                      , "used" .= either (const Nothing) (\(P.ExBudget cpu mem) -> Just (object ["steps" .= cpu, "mem" .= mem])) evaluated
                       , "declaredUnits" .= show (pwcExUnits pwc)]
           (passing, failures) = case verdict of
             Passes ps -> (ps, [])
             Fails ps fs -> (ps, toList fs)
           mismatch valid = case (valid, failures) of
-            (False, []) -> Just (ValidationTagMismatch (Phase2Invalid) PassedUnexpectedly :: ConwayUtxosPredFailure ConwayEra)
-            (True, f:fs) -> Just (ValidationTagMismatch (Phase2Valid) (FailedUnexpectedly (scriptFailureToFailureDescription <$> (f :| fs))))
+            (False, []) -> Just (ValidationTagMismatch Phase2Invalid PassedUnexpectedly :: ConwayUtxosPredFailure ConwayEra)
+            (True, f:fs) -> Just (ValidationTagMismatch Phase2Valid (FailedUnexpectedly (scriptFailureToFailureDescription <$> (f :| fs))))
             _ -> Nothing
       in object
         [ "name" .= name c, "collected" .= True, "scripts" .= map scriptResult requests, "logs" .= logs
@@ -127,4 +127,4 @@ main = do
       cases <- either die pure (eitherDecode bytes :: Either String [Case])
       results <- traverse runCase cases
       LBS.putStr (encode results)
-    _ -> die "usage: scarab-context-oracle cases.json"
+    _ -> die "usage: scarab-aggregation-oracle cases.json"

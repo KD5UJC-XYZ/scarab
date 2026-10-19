@@ -34,13 +34,13 @@ class ScriptResultOracleSuite extends FunSuite:
       assertEquals(measured.logs, reference.flatMap(field[Vector[String]](_, "verboseLogs")))
       measured.evaluations.zip(reference).foreach { case (evaluation, expected) =>
         assertEquals(evaluation.result.isSuccess, field[Boolean](expected, "success"))
-        expected.hcursor.get[Option[Json]]("used").fold(e => fail(e.message), identity).foreach {
-          used =>
-            assertEquals(
-              evaluation.result.spent,
-              ExUnits(field[BigInt](used, "mem"), field[BigInt](used, "steps"))
-            )
-        }
+        val used = field[Json](expected, "used")
+        if evaluation.result.isSuccess then
+          assertEquals(
+            evaluation.result.spent,
+            ExUnits(field[BigInt](used, "mem"), field[BigInt](used, "steps"))
+          )
+        else assertEquals(used, Json.Null)
         assert(evaluation.result.spent.fits(evaluation.request.budget))
       }
       val failures = field[Vector[Json]](recorded.oracle, "failures")
