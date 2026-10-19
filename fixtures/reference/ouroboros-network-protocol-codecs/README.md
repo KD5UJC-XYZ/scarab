@@ -67,6 +67,16 @@ the full wire is present. Empty fragments at the beginning or end are included. 
 negative control that reorders two nonempty fragments and rejects any decoded result. Fixture
 SHA-256 and observer/property provenance are in `keepalive-splits.tsv.manifest.json`.
 
+The LocalTxSubmission and LocalTxMonitor split fixtures reuse the exact 24 generated messages from
+their existing codec fixtures (seeds 493001 and 494001 respectively), not a second or filtered
+generator. The unchanged upstream `prop_codec_splits2`/`prop_codec_splits3` and
+`prop_codec_splitsM_LocalTxMonitor splits2/splits3` each pass 24/24. Scarab consumes every 2- and
+3-part partition through the corresponding production `decodePrefix`, checks the retained original
+wire, exact typed value/consumed length, permits early completion before trailing empty fragments,
+and rejects a truncated-wire negative control. All 24 generated rows in each family map to a typed
+Scarab constructor. The two manifests record source hash, replay offsets and literal upstream
+property outcomes.
+
 The pinned BlockFetch observer exports 24 seeded `AnyMessage (BlockFetch (Serialised Block)
 (Point Block))` cases at seed base 490201. Both unchanged `prop_codec_BlockFetchSerialised` and
 `prop_codec_cbor_BlockFetchSerialised` pass for all 24 rows. Scarab's `CardanoBlockFetch` typed

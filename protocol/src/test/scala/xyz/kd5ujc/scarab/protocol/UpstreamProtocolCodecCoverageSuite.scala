@@ -183,6 +183,208 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
     )
     assertEquals(constructors.toMap, Map("request" -> 7, "response" -> 10, "done" -> 7))
 
+  private def verifyAllPartitions[A](
+      wire: Bytes,
+      expected: DecodeResult[A],
+      decode: Bytes => DecodeResult[A],
+      label: String
+  ): (Int, Int) =
+    val raw = wire.value.toVector
+    def verify(parts: Vector[Vector[Byte]], partition: String): Unit =
+      var retained = Vector.empty[Byte]
+      parts.foreach { fragment =>
+        retained = retained ++ fragment
+        val result = decode(Bytes(retained))
+        if retained.size < raw.size then
+          assertEquals(result, DecodeResult.NeedMore, s"$label $partition incomplete prefix")
+        else assertEquals(result, expected, s"$label $partition complete prefix")
+      }
+      assertEquals(retained, raw, s"$label $partition retained wire")
+
+    var splits2 = 0
+    var splits3 = 0
+    (0 to raw.size).foreach { first =>
+      verify(Vector(raw.take(first), raw.drop(first)), s"2-split@$first")
+      splits2 += 1
+    }
+    for
+      first <- 0 to raw.size
+      second <- first to raw.size
+    do
+      verify(
+        Vector(raw.take(first), raw.slice(first, second), raw.drop(second)),
+        s"3-split@$first/$second"
+      )
+      splits3 += 1
+    val truncated = decode(Bytes(raw.dropRight(1)))
+    assertNotEquals(truncated, expected, s"$label truncated-wire negative control")
+    (splits2, splits3)
+
+  test("consume upstream LocalTxSubmission split properties through Scarab's prefix decoder"):
+    val input = rows(
+      "localtxsubmission-splits.tsv",
+      "0a2ce345a9102aafbb5041353dcac1dc3a0410b54ab685ccfa4bd0b292f4b97d"
+    )
+    val constructors = scala.collection.mutable.Map.empty[String, Int].withDefaultValue(0)
+    var split2Count = 0
+    var split3Count = 0
+    input.foreach { fields =>
+      assertEquals(fields.size, 10)
+      assertEquals(fields(0), "local-tx-submission-splits-v1")
+      val seed = fields(1).toInt
+      val ordinal = fields(2).toInt
+      assertEquals(seed, 493001 + ordinal)
+      assertEquals(fields(3).toInt, 30 + ordinal % 21)
+      assertEquals(fields(8), "pass", s"upstream prop_codec_splits2 seed $seed")
+      assertEquals(fields(9), "pass", s"upstream prop_codec_splits3 seed $seed")
+      val state = fields(4) match
+        case "idle" => LocalTxSubmission.State.Idle
+        case "busy" => LocalTxSubmission.State.Busy
+        case other  => fail(s"unknown LocalTxSubmission state $other at seed $seed")
+      val sender = fields(5) match
+        case "client" => ChainSync.Role.Client
+        case "server" => ChainSync.Role.Server
+        case other    => fail(s"unknown LocalTxSubmission sender $other at seed $seed")
+      val wire = bytes(fields(7))
+      val message = LocalTxSubmission.decodePrefix(state, sender, wire) match
+        case DecodeResult.Decoded(value, consumed) =>
+          assertEquals(consumed, wire.size, s"seed $seed consumed length")
+          value
+        case other => fail(s"seed $seed full LocalTxSubmission wire did not decode: $other")
+      val tag = message match
+        case LocalTxSubmission.Message.SubmitTx(_) => "submit-tx"
+        case LocalTxSubmission.Message.AcceptTx    => "accept-tx"
+        case LocalTxSubmission.Message.RejectTx(_) => "reject-tx"
+        case LocalTxSubmission.Message.Done        => "done"
+      assertEquals(tag, fields(6), s"seed $seed constructor")
+      constructors.update(tag, constructors(tag) + 1)
+      assertEquals(
+        LocalTxSubmission.encode(state, sender, message),
+        Right(wire),
+        s"seed $seed wire"
+      )
+      val expected = DecodeResult.Decoded(message, wire.size)
+      val counts = verifyAllPartitions(
+        wire,
+        expected,
+        prefix => LocalTxSubmission.decodePrefix(state, sender, prefix),
+        s"seed $seed"
+      )
+      split2Count += counts._1
+      split3Count += counts._2
+    }
+    assertEquals(input.size, 24)
+    assertEquals(split2Count, input.map(fields => bytes(fields(7)).size + 1).sum)
+    assertEquals(
+      split3Count,
+      input.map { fields =>
+        val n = bytes(fields(7)).size
+        (n + 1) * (n + 2) / 2
+      }.sum
+    )
+    assertEquals(
+      constructors.toMap,
+      Map("accept-tx" -> 4, "done" -> 7, "reject-tx" -> 7, "submit-tx" -> 6)
+    )
+
+  test("consume upstream LocalTxMonitor split properties through Scarab's prefix decoder"):
+    val input = rows(
+      "localtxmonitor-splits.tsv",
+      "774026794eabf01ad8eaa73015b6c63a2057bfbd20c64204171483bb86e018b5"
+    )
+    val constructors = scala.collection.mutable.Map.empty[String, Int].withDefaultValue(0)
+    var split2Count = 0
+    var split3Count = 0
+    input.foreach { fields =>
+      assertEquals(fields.size, 10)
+      assertEquals(fields(0), "local-tx-monitor-splits-v1")
+      val seed = fields(1).toInt
+      val ordinal = fields(2).toInt
+      assertEquals(seed, 494001 + ordinal)
+      assertEquals(fields(3).toInt, 30 + ordinal % 21)
+      assertEquals(
+        fields(8),
+        "pass",
+        s"upstream prop_codec_splitsM_LocalTxMonitor splits2 seed $seed"
+      )
+      assertEquals(
+        fields(9),
+        "pass",
+        s"upstream prop_codec_splitsM_LocalTxMonitor splits3 seed $seed"
+      )
+      val state = fields(4) match
+        case "idle"              => LocalTxMonitor.State.Idle
+        case "acquiring"         => LocalTxMonitor.State.Acquiring
+        case "acquired"          => LocalTxMonitor.State.Acquired
+        case "busy-next-tx"      => LocalTxMonitor.State.Busy(LocalTxMonitor.Kind.NextTx)
+        case "busy-has-tx"       => LocalTxMonitor.State.Busy(LocalTxMonitor.Kind.HasTx)
+        case "busy-get-sizes"    => LocalTxMonitor.State.Busy(LocalTxMonitor.Kind.GetSizes)
+        case "busy-get-measures" => LocalTxMonitor.State.Busy(LocalTxMonitor.Kind.GetMeasures)
+        case other               => fail(s"unknown LocalTxMonitor state $other at seed $seed")
+      val sender = fields(5) match
+        case "client" => ChainSync.Role.Client
+        case "server" => ChainSync.Role.Server
+        case other    => fail(s"unknown LocalTxMonitor sender $other at seed $seed")
+      val wire = bytes(fields(7))
+      val message = LocalTxMonitor.decodePrefix(state, sender, wire) match
+        case DecodeResult.Decoded(value, consumed) =>
+          assertEquals(consumed, wire.size, s"seed $seed consumed length")
+          value
+        case other => fail(s"seed $seed full LocalTxMonitor wire did not decode: $other")
+      val tag = message match
+        case LocalTxMonitor.Message.Acquire             => "acquire"
+        case LocalTxMonitor.Message.Acquired(_)         => "acquired"
+        case LocalTxMonitor.Message.AwaitAcquire        => "await-acquire"
+        case LocalTxMonitor.Message.NextTx              => "next-tx"
+        case LocalTxMonitor.Message.ReplyNextTx(_)      => "reply-next-tx"
+        case LocalTxMonitor.Message.HasTx(_)            => "has-tx"
+        case LocalTxMonitor.Message.ReplyHasTx(_)       => "reply-has-tx"
+        case LocalTxMonitor.Message.GetSizes            => "get-sizes"
+        case LocalTxMonitor.Message.ReplyGetSizes(_)    => "reply-get-sizes"
+        case LocalTxMonitor.Message.GetMeasures         => "get-measures"
+        case LocalTxMonitor.Message.ReplyGetMeasures(_) => "reply-get-measures"
+        case LocalTxMonitor.Message.Release             => "release"
+        case LocalTxMonitor.Message.Done                => "done"
+      assertEquals(tag, fields(6), s"seed $seed constructor")
+      constructors.update(tag, constructors(tag) + 1)
+      assertEquals(LocalTxMonitor.encode(state, sender, message), Right(wire), s"seed $seed wire")
+      val expected = DecodeResult.Decoded(message, wire.size)
+      val counts = verifyAllPartitions(
+        wire,
+        expected,
+        prefix => LocalTxMonitor.decodePrefix(state, sender, prefix),
+        s"seed $seed"
+      )
+      split2Count += counts._1
+      split3Count += counts._2
+    }
+    assertEquals(input.size, 24)
+    assertEquals(split2Count, input.map(fields => bytes(fields(7)).size + 1).sum)
+    assertEquals(
+      split3Count,
+      input.map { fields =>
+        val n = bytes(fields(7)).size
+        (n + 1) * (n + 2) / 2
+      }.sum
+    )
+    assertEquals(
+      constructors.toMap,
+      Map(
+        "acquire" -> 1,
+        "acquired" -> 1,
+        "await-acquire" -> 2,
+        "get-measures" -> 1,
+        "get-sizes" -> 5,
+        "has-tx" -> 2,
+        "next-tx" -> 1,
+        "release" -> 1,
+        "reply-get-measures" -> 2,
+        "reply-get-sizes" -> 1,
+        "reply-has-tx" -> 3,
+        "reply-next-tx" -> 4
+      )
+    )
+
   test("retain and classify every seeded PeerSharing row, mapping only typed-compatible messages"):
     val input =
       rows("peersharing.tsv", "61fd52db28760ccfb88b3e0099e2f20e5f450ca0a690c495252243bed11df010")

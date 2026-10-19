@@ -470,6 +470,47 @@ exportLocalTxSubmissionCases path count seed = withFile path WriteMode $ \output
     hex = concatMap (pad . (`showHex` "")) . BS.unpack
     pad [digit] = ['0', digit]
     pad digits = digits
+
+-- Disposable observer: use the same generated message with unchanged split properties.
+exportLocalTxSubmissionSplitCases :: FilePath -> Int -> Int -> IO ()
+exportLocalTxSubmissionSplitCases path count seed = withFile path WriteMode $ \outputHandle ->
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 30 + (ordinal `mod` 21)
+        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize
+          :: AnyMessage (LocalTxSubmission Tx Reject)
+    split2Result <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 3000003), caseSize) }
+      (once (prop_codec_splits2 testCase))
+    split3Result <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 4000003), caseSize) }
+      (once (prop_codec_splits3 testCase))
+    case testCase of
+      AnyMessage (msg :: Message (LocalTxSubmission Tx Reject) st st') -> do
+        let txCodec = codec
+              :: Codec (LocalTxSubmission Tx Reject) DeserialiseFailure IO ByteString
+            raw = BL.toStrict (encode txCodec msg)
+            token = stateToken :: StateToken st
+            (state, sender) = case token of
+              SingIdle -> ("idle", "client")
+              SingBusy -> ("busy", "server")
+              SingDone -> ("done", "none")
+            tag = case msg of
+              MsgSubmitTx _ -> "submit-tx"
+              MsgAcceptTx -> "accept-tx"
+              MsgRejectTx _ -> "reject-tx"
+              MsgDone -> "done"
+            split2Outcome = if isSuccess split2Result then "pass" else "upstream-failure"
+            split3Outcome = if isSuccess split3Result then "pass" else "upstream-failure"
+        hPutStrLn outputHandle $ intercalate "\t"
+          [ "local-tx-submission-splits-v1", show caseSeed, show ordinal, show caseSize
+          , state, sender, tag, hex raw, split2Outcome, split3Outcome
+          ]
+  where
+    hex = concatMap (pad . (`showHex` "")) . BS.unpack
+    pad [digit] = ['0', digit]
+    pad digits = digits
+
 ''',
         "import Control.Monad (forM_)\n"
         "import Data.ByteString qualified as BS\n"
@@ -495,7 +536,7 @@ exportLocalTxSubmissionCases path count seed = withFile path WriteMode $ \output
         raise SystemExit("LocalTxSubmission observer module export list changed")
     local_tx_submission.write_text(local_tx_module.replace(
         local_tx_export_anchor,
-        "  ( tests\n  , exportLocalTxSubmissionCases\n",
+        "  ( tests\n  , exportLocalTxSubmissionCases\n  , exportLocalTxSubmissionSplitCases\n",
     ))
 
     local_tx_monitor_original = inject(
@@ -556,6 +597,61 @@ exportLocalTxMonitorCases path count seed = withFile path WriteMode $ \outputHan
     hex = concatMap (pad . (`showHex` "")) . BS.unpack
     pad [digit] = ['0', digit]
     pad digits = digits
+
+-- Disposable observer: use the same generated message with unchanged split properties.
+exportLocalTxMonitorSplitCases :: FilePath -> Int -> Int -> IO ()
+exportLocalTxMonitorSplitCases path count seed = withFile path WriteMode $ \outputHandle ->
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 30 + (ordinal `mod` 21)
+        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize
+          :: AnyMessage (LocalTxMonitor TxId Tx SlotNo)
+    split2Result <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 3000003), caseSize) }
+      (once (prop_codec_splitsM_LocalTxMonitor splits2 testCase))
+    split3Result <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 4000003), caseSize) }
+      (once (prop_codec_splitsM_LocalTxMonitor splits3 testCase))
+    case testCase of
+      AnyMessage (msg :: Message (LocalTxMonitor TxId Tx SlotNo) st st') -> do
+        let monitorCodec = codec
+              :: Codec (LocalTxMonitor TxId Tx SlotNo) S.DeserialiseFailure IO ByteString
+            raw = BL.toStrict (encode monitorCodec msg)
+            token = stateToken :: StateToken st
+            (state, sender) = case token of
+              SingIdle -> ("idle", "client")
+              SingAcquiring -> ("acquiring", "server")
+              SingAcquired -> ("acquired", "client")
+              SingBusy SingNextTx -> ("busy-next-tx", "server")
+              SingBusy SingHasTx -> ("busy-has-tx", "server")
+              SingBusy SingGetSizes -> ("busy-get-sizes", "server")
+              SingBusy SingGetMeasures -> ("busy-get-measures", "server")
+              SingDone -> ("done", "none")
+            tag = case msg of
+              MsgAcquire -> "acquire"
+              MsgAcquired _ -> "acquired"
+              MsgAwaitAcquire -> "await-acquire"
+              MsgNextTx -> "next-tx"
+              MsgReplyNextTx _ -> "reply-next-tx"
+              MsgHasTx _ -> "has-tx"
+              MsgReplyHasTx _ -> "reply-has-tx"
+              MsgGetSizes -> "get-sizes"
+              MsgReplyGetSizes _ -> "reply-get-sizes"
+              MsgGetMeasures -> "get-measures"
+              MsgReplyGetMeasures _ -> "reply-get-measures"
+              MsgRelease -> "release"
+              MsgDone -> "done"
+            split2Outcome = if isSuccess split2Result then "pass" else "upstream-failure"
+            split3Outcome = if isSuccess split3Result then "pass" else "upstream-failure"
+        hPutStrLn outputHandle $ intercalate "\t"
+          [ "local-tx-monitor-splits-v1", show caseSeed, show ordinal, show caseSize
+          , state, sender, tag, hex raw, split2Outcome, split3Outcome
+          ]
+  where
+    hex = concatMap (pad . (`showHex` "")) . BS.unpack
+    pad [digit] = ['0', digit]
+    pad digits = digits
+
 ''',
         "import Control.Monad (forM_)\n"
         "import Data.ByteString qualified as BS\n"
@@ -572,7 +668,7 @@ exportLocalTxMonitorCases path count seed = withFile path WriteMode $ \outputHan
         raise SystemExit("LocalTxMonitor observer module export anchor changed")
     local_tx_monitor.write_text(local_tx_monitor_module.replace(
         local_tx_monitor_export_anchor,
-        "module Ouroboros.Network.Protocol.LocalTxMonitor.Test (tests, exportLocalTxMonitorCases) where",
+        "module Ouroboros.Network.Protocol.LocalTxMonitor.Test (tests, exportLocalTxMonitorCases, exportLocalTxMonitorSplitCases) where",
     ))
 
     tx_submission2_original = inject(
@@ -669,8 +765,8 @@ exportTxSubmission2Cases path count seed = withFile path WriteMode $ \outputHand
         "import Ouroboros.Network.Protocol.ChainSync.Test qualified as ChainSync (tests, exportChainSyncCases)\n"
         "import Ouroboros.Network.Protocol.BlockFetch.Test qualified as BlockFetch (tests, exportBlockFetchCases)\n"
         "import Ouroboros.Network.Protocol.LocalStateQuery.Test qualified as LocalStateQuery (tests, exportLocalStateQueryCases)\n"
-        "import Ouroboros.Network.Protocol.LocalTxSubmission.Test qualified as LocalTxSubmission (tests, exportLocalTxSubmissionCases)\n"
-        "import Ouroboros.Network.Protocol.LocalTxMonitor.Test qualified as LocalTxMonitor (tests, exportLocalTxMonitorCases)\n"
+        "import Ouroboros.Network.Protocol.LocalTxSubmission.Test qualified as LocalTxSubmission (tests, exportLocalTxSubmissionCases, exportLocalTxSubmissionSplitCases)\n"
+        "import Ouroboros.Network.Protocol.LocalTxMonitor.Test qualified as LocalTxMonitor (tests, exportLocalTxMonitorCases, exportLocalTxMonitorSplitCases)\n"
         "import Ouroboros.Network.Protocol.TxSubmission2.Test qualified as TxSubmission2 (tests, exportTxSubmission2Cases)\n"
         "import System.Environment (getArgs)\n"
     )
@@ -720,6 +816,8 @@ exportTxSubmission2Cases path count seed = withFile path WriteMode $ \outputHand
         "    LocalStateQuery.exportLocalStateQueryCases (dir <> \"/localsq.tsv\") (read count) (read seed)\n"
         "    LocalTxSubmission.exportLocalTxSubmissionCases (dir <> \"/localtxsubmission.tsv\") (read count) (read seed)\n"
         "    LocalTxMonitor.exportLocalTxMonitorCases (dir <> \"/localtxmonitor.tsv\") (read count) (read seed)\n"
+        "    LocalTxSubmission.exportLocalTxSubmissionSplitCases (dir <> \"/localtxsubmission-splits.tsv\") (read count) (read seed + 2800)\n"
+        "    LocalTxMonitor.exportLocalTxMonitorSplitCases (dir <> \"/localtxmonitor-splits.tsv\") (read count) (read seed + 3800)\n"
         "    TxSubmission2.exportTxSubmission2Cases (dir <> \"/txsubmission2.tsv\") (read count) (read seed)\n"
         "  _ -> defaultMain tests",
     )
@@ -841,7 +939,9 @@ def main() -> None:
         ("blockfetch.tsv", "ouroboros-network:protocols-tests / BlockFetch / codecSerialised + codecSerialised cbor"),
         ("localsq.tsv", "ouroboros-network:protocols-tests / LocalStateQuery / codec + codec cbor"),
         ("localtxsubmission.tsv", "ouroboros-network:protocols-tests / LocalTxSubmission / codec + codec cbor"),
+        ("localtxsubmission-splits.tsv", "ouroboros-network:protocols-tests / LocalTxSubmission / prop_codec_splits2 + prop_codec_splits3"),
         ("localtxmonitor.tsv", "ouroboros-network:protocols-tests / LocalTxMonitor / codecM + codec cborM"),
+        ("localtxmonitor-splits.tsv", "ouroboros-network:protocols-tests / LocalTxMonitor / prop_codec_splitsM_LocalTxMonitor splits2 + splits3"),
         ("txsubmission2.tsv", "ouroboros-network:protocols-tests / TxSubmission2 / codec + codec cbor"),
     ]:
         raw = (args.probe_dir / "exports" / name).read_bytes()
@@ -851,13 +951,13 @@ def main() -> None:
             "source": "ouroboros-network",
             "sourceCommit": UPSTREAM_COMMIT,
             "upstreamTest": upstream_test,
-            "seed": args.seed,
+            "seed": int(rows[0][1]),
             "requestedCases": args.count,
             "exportedCases": len(rows),
             "upstreamPropertyOutcomes": {
                 "both-properties-pass": sum(row[-2:] == ["pass", "pass"] for row in rows),
                 "at-least-one-upstream-failure": sum(row[-2:] != ["pass", "pass"] for row in rows),
-            } if name in ("chainsync.tsv", "blockfetch.tsv", "localsq.tsv", "localtxsubmission.tsv", "localtxmonitor.tsv", "txsubmission2.tsv", "keepalive-splits.tsv") else {
+            } if name in ("chainsync.tsv", "blockfetch.tsv", "localsq.tsv", "localtxsubmission.tsv", "localtxmonitor.tsv", "txsubmission2.tsv", "keepalive-splits.tsv", "localtxsubmission-splits.tsv", "localtxmonitor-splits.tsv") else {
                 "pass": sum(row[-1] == "pass" for row in rows),
                 "upstream-failure": sum(row[-1] != "pass" for row in rows),
             },
@@ -929,6 +1029,18 @@ def main() -> None:
                 "prop_codec_v2_splits2": 3000003,
                 "prop_codec_v2_splits3": 4000003,
             }
+        if name in ("localtxsubmission-splits.tsv", "localtxmonitor-splits.tsv"):
+            split2 = "prop_codec_splits2" if name == "localtxsubmission-splits.tsv" else "prop_codec_splitsM_LocalTxMonitor_splits2"
+            split3 = "prop_codec_splits3" if name == "localtxsubmission-splits.tsv" else "prop_codec_splitsM_LocalTxMonitor_splits3"
+            manifest["upstreamPropertyOutcomesByProperty"] = {
+                split2: {"pass": sum(row[-2] == "pass" for row in rows), "upstream-failure": sum(row[-2] != "pass" for row in rows)},
+                split3: {"pass": sum(row[-1] == "pass" for row in rows), "upstream-failure": sum(row[-1] != "pass" for row in rows)},
+            }
+            manifest["adapterInputStatuses"] = {
+                "byConstructor": {tag: sum(row[6] == tag for row in rows) for tag in sorted({row[6] for row in rows})},
+                "sourceStates": {state: sum(row[4] == state for row in rows) for state in sorted({row[4] for row in rows})},
+            }
+            manifest["propertyReplaySeedOffsets"] = {split2: 3000003, split3: 4000003}
         if name == "chainsync.tsv":
             manifest["adapterInputStatuses"] = {
                 "byConstructor": {
