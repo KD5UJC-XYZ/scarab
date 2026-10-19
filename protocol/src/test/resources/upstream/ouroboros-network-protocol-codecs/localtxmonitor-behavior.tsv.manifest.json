@@ -1,0 +1,257 @@
+{
+  "schema": "scarab-upstream-network-protocol-cases-v1",
+  "source": "ouroboros-network",
+  "sourceCommit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+  "upstreamTest": "ouroboros-network:protocols-tests / LocalTxMonitor / prop_direct + prop_connect + prop_channel_ST",
+  "seed": 500001,
+  "requestedCases": 24,
+  "exportedCases": 148,
+  "upstreamPropertyOutcomes": {
+    "pass": 148,
+    "upstream-failure": 0
+  },
+  "projectPlanInstallUnits": 246,
+  "projectPlanConfiguredUnits": 218,
+  "projectPlanPreExistingUnits": 28,
+  "targetDependencyClosureUnitCount": 167,
+  "dependencyPlanSha256": "42d695659261546c8c90946f82f38389c61cf6588c16a931aad92a9c42ea183c",
+  "sourceFiles": {
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/KeepAlive/Test.hs": "1ee386a76b09e7e5ac2aeb5f97eb4658a66e2d6f1f9bea40c4dc0aec5faf24df",
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/PeerSharing/Test.hs": "e1980f57cc8bebe7a1530e68e68cf552b9e141b2b136381701e504607946b31a",
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/Test.hs": "759c3e7ec58a89d34058773f43377cab759e8bbe875ee55c88dde52e561e43b9",
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/BlockFetch/Test.hs": "97237113362bfc780c532586facc9227d2bdf29672c6687f5ae9c6107023fe0f",
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/LocalStateQuery/Test.hs": "9a0f831a997b47e42b0c5bf472a28567ceb4dc8ecb477da3e1f6b7580e98013f",
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/LocalTxSubmission/Test.hs": "1ce9e88ce19682e235ba1437f1189470e8e9f4292a4b35e051c58f3ab1fec288",
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/LocalTxMonitor/Test.hs": "fb33c4f05913146e61e7a6ee8716224256c0c276280ea4160a399ef71160aef5",
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/TxSubmission2/Test.hs": "c7e8237dbbef5af3f3bb827c08e626e97ee0fb4b04db3de37c48e5490326921d",
+    "ouroboros-network/protocols/tests/Main.hs": "32a3b5a431e0e00ce4f206ffe2c8d4b829f9135e82e0c2befdbe35b64adf58eb"
+  },
+  "observerPatchSha256": "684999b276edfa9dc07427330016a19dba1a522a4b9d7268f4a34710471843cb",
+  "observerPatch": "disposable changes add deterministic exporter entrypoints using unchanged Arbitrary instances and property functions",
+  "caseFile": "localtxmonitor-behavior.tsv",
+  "sha256": "61c200fe43e7f251b32060879f588cb68da4a6a301038053c26c4d9d52e28b77",
+  "filteredUpstreamSuiteCommands": [
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-v02-49-protocols-luna",
+        "cabal",
+        "test",
+        "--project-file=/probe/protocols-tests.project",
+        "ouroboros-network:protocols-tests",
+        "--test-options=--pattern=KeepAlive",
+        "--builddir=/probe/narrow-builddir",
+        "--jobs=2"
+      ],
+      "startedAt": "2026-10-19T14:41:37.648177+00:00",
+      "endedAt": "2026-10-19T14:41:43.625263+00:00",
+      "returncode": 0,
+      "status": "complete",
+      "log": "/tmp/scarab/v02-49-protocol-probe/3.log"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-v02-49-protocols-luna",
+        "cabal",
+        "test",
+        "--project-file=/probe/protocols-tests.project",
+        "ouroboros-network:protocols-tests",
+        "--test-options=--pattern=PeerSharing",
+        "--builddir=/probe/narrow-builddir",
+        "--jobs=2"
+      ],
+      "startedAt": "2026-10-19T14:41:43.625533+00:00",
+      "endedAt": "2026-10-19T14:41:45.232992+00:00",
+      "returncode": 0,
+      "status": "complete",
+      "log": "/tmp/scarab/v02-49-protocol-probe/4.log"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-v02-49-protocols-luna",
+        "cabal",
+        "test",
+        "--project-file=/probe/protocols-tests.project",
+        "ouroboros-network:protocols-tests",
+        "--test-options=--pattern=ChainSync",
+        "--builddir=/probe/narrow-builddir",
+        "--jobs=2"
+      ],
+      "startedAt": "2026-10-19T14:41:45.233296+00:00",
+      "endedAt": "2026-10-19T14:41:47.401773+00:00",
+      "returncode": 0,
+      "status": "complete",
+      "log": "/tmp/scarab/v02-49-protocol-probe/5.log"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-v02-49-protocols-luna",
+        "cabal",
+        "test",
+        "--project-file=/probe/protocols-tests.project",
+        "ouroboros-network:protocols-tests",
+        "--test-options=--pattern=BlockFetch",
+        "--builddir=/probe/narrow-builddir",
+        "--jobs=2"
+      ],
+      "startedAt": "2026-10-19T14:41:47.401996+00:00",
+      "endedAt": "2026-10-19T14:41:49.036755+00:00",
+      "returncode": 0,
+      "status": "complete",
+      "log": "/tmp/scarab/v02-49-protocol-probe/6.log"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-v02-49-protocols-luna",
+        "cabal",
+        "test",
+        "--project-file=/probe/protocols-tests.project",
+        "ouroboros-network:protocols-tests",
+        "--test-options=--pattern=LocalStateQuery",
+        "--builddir=/probe/narrow-builddir",
+        "--jobs=2"
+      ],
+      "startedAt": "2026-10-19T14:41:49.037063+00:00",
+      "endedAt": "2026-10-19T14:41:50.506140+00:00",
+      "returncode": 0,
+      "status": "complete",
+      "log": "/tmp/scarab/v02-49-protocol-probe/7.log"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-v02-49-protocols-luna",
+        "cabal",
+        "test",
+        "--project-file=/probe/protocols-tests.project",
+        "ouroboros-network:protocols-tests",
+        "--test-options=--pattern=LocalTxSubmission",
+        "--builddir=/probe/narrow-builddir",
+        "--jobs=2"
+      ],
+      "startedAt": "2026-10-19T14:41:50.506373+00:00",
+      "endedAt": "2026-10-19T14:41:52.380179+00:00",
+      "returncode": 0,
+      "status": "complete",
+      "log": "/tmp/scarab/v02-49-protocol-probe/8.log"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-v02-49-protocols-luna",
+        "cabal",
+        "test",
+        "--project-file=/probe/protocols-tests.project",
+        "ouroboros-network:protocols-tests",
+        "--test-options=--pattern=LocalTxMonitor",
+        "--builddir=/probe/narrow-builddir",
+        "--jobs=2"
+      ],
+      "startedAt": "2026-10-19T14:41:52.380497+00:00",
+      "endedAt": "2026-10-19T14:41:54.504779+00:00",
+      "returncode": 0,
+      "status": "complete",
+      "log": "/tmp/scarab/v02-49-protocol-probe/9.log"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-v02-49-protocols-luna",
+        "cabal",
+        "test",
+        "--project-file=/probe/protocols-tests.project",
+        "ouroboros-network:protocols-tests",
+        "--test-options=--pattern=TxSubmission2",
+        "--builddir=/probe/narrow-builddir",
+        "--jobs=2"
+      ],
+      "startedAt": "2026-10-19T14:41:54.505002+00:00",
+      "endedAt": "2026-10-19T14:41:58.116652+00:00",
+      "returncode": 0,
+      "status": "complete",
+      "log": "/tmp/scarab/v02-49-protocol-probe/10.log"
+    }
+  ],
+  "caseExportCommand": {
+    "argv": [
+      "docker",
+      "exec",
+      "-w",
+      "/source",
+      "scarab-v02-49-protocols-luna",
+      "/probe/narrow-builddir/build/x86_64-linux/ghc-9.10.3/ouroboros-network-1.3.0.0/t/protocols-tests/build/protocols-tests/protocols-tests",
+      "--export-network-codecs",
+      "/probe/exports",
+      "24",
+      "490201",
+      "1"
+    ],
+    "startedAt": "2026-10-19T14:41:58.567677+00:00",
+    "endedAt": "2026-10-19T14:43:57.403904+00:00",
+    "returncode": 0,
+    "status": "complete",
+    "log": "/tmp/scarab/v02-49-protocol-probe/12.log"
+  },
+  "execution": {
+    "image": "scarab-pre-conway178-oracle:local",
+    "imageDigest": "sha256:aa7e2d96e9f15eb8556f9b6a2685b0aaf3a22608ed1299821f7a7edc4c491847",
+    "containerNetwork": "none",
+    "cabalOffline": false,
+    "projectFile": "/tmp/scarab/v02-49-protocol-probe/protocols-tests.project",
+    "projectFileSha256": "8af20fd6f6389ab41dfcf016201b4da34ee518714abf528bf1115e40c14a6aef",
+    "projectPlanSha256": "42d695659261546c8c90946f82f38389c61cf6588c16a931aad92a9c42ea183c",
+    "projectPlanUnitCount": 246
+  },
+  "generatedInputSeedOffsets": {
+    "slotAndTransactionList": 0
+  },
+  "caseCount": 24,
+  "caseSizes": {
+    "8": 3,
+    "9": 3,
+    "10": 3,
+    "11": 3,
+    "12": 3,
+    "13": 3,
+    "14": 2,
+    "15": 2,
+    "16": 2
+  },
+  "observedBehaviorCounts": {
+    "transactionRows": 145,
+    "emptyInputCases": 3,
+    "allTxMembershipRows": 145,
+    "directPassCases": 24,
+    "connectPassCases": 24,
+    "channelPassCases": 24
+  },
+  "scope": "The unchanged properties assert ordered generated transactions, positive HasTx answers, and transaction count. The upstream example's byte capacity/size values are not asserted; Scarab reports byte measures from the exact serialized items."
+}

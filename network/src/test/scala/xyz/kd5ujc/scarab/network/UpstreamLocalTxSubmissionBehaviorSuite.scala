@@ -21,23 +21,44 @@ class UpstreamLocalTxSubmissionBehaviorSuite extends FailsOnUncaught:
     "/upstream/ouroboros-network-protocol-codecs/localtxsubmission-behavior.tsv"
   private val expectedSha256 = "cc74b908cb3b4888bccc015e0447b407757d6c14751735ad0e5bf575e98dc0a9"
 
+  private enum SubmitOutcome:
+    case Accepted
+    case Rejected(reason: Bytes)
+
+  private enum PropertyVerdict:
+    case Pass
+    case Failure
+
   private final case class Row(
       seed: Int,
       ordinal: Int,
       size: Int,
       index: Int,
       tx: Bytes,
-      outcome: String,
-      rejection: Option[Bytes],
-      direct: String,
-      connect: String,
-      channel: String
+      outcome: SubmitOutcome,
+      direct: PropertyVerdict,
+      connect: PropertyVerdict,
+      channel: PropertyVerdict
   )
 
   private def fromHex(hex: String): Bytes =
     Bytes
       .fromHex(hex)
       .fold(error => fail(s"invalid fixture CBOR hex: $error"), identity)
+
+  private def verdict(value: String): PropertyVerdict =
+    value match
+      case "pass"             => PropertyVerdict.Pass
+      case "upstream-failure" => PropertyVerdict.Failure
+      case other              => fail(s"unknown upstream property verdict $other")
+
+  private def submitOutcome(tag: String, rejectionHex: String): SubmitOutcome =
+    (tag, rejectionHex) match
+      case ("accepted", "")                      => SubmitOutcome.Accepted
+      case ("rejected", value) if value.nonEmpty => SubmitOutcome.Rejected(fromHex(value))
+      case ("accepted", _) => fail("accepted generated result unexpectedly carries rejection bytes")
+      case ("rejected", "") => fail("rejected generated result has no serialized reason")
+      case (other, _)       => fail(s"unknown generated SubmitResult tag $other")
 
   private def readRows(): Vector[Row] =
     val stream =
@@ -58,22 +79,16 @@ class UpstreamLocalTxSubmissionBehaviorSuite extends FailsOnUncaught:
           val fields = line.split("\\t", -1).toVector
           assertEquals(fields.size, 11)
           assertEquals(fields(0), "localtxsubmission-behavior-v1")
-          val outcome = fields(6)
-          val rejection = fields(7) match
-            case ""    => None
-            case value => Some(fromHex(value))
-          assertEquals(outcome == "rejected", rejection.nonEmpty)
           Row(
             fields(1).toInt,
             fields(2).toInt,
             fields(3).toInt,
             fields(4).toInt,
             fromHex(fields(5)),
-            outcome,
-            rejection,
-            fields(8),
-            fields(9),
-            fields(10)
+            submitOutcome(fields(6), fields(7)),
+            verdict(fields(8)),
+            verdict(fields(9)),
+            verdict(fields(10))
           )
         }
         .toVector
@@ -88,12 +103,29 @@ class UpstreamLocalTxSubmissionBehaviorSuite extends FailsOnUncaught:
     val rows = readRows()
     assertEquals(rows.size, 147)
     rows.foreach { row =>
-      assertEquals(row.direct, "pass", s"unchanged direct property at seed ${row.seed}")
-      assertEquals(row.connect, "pass", s"unchanged connect property at seed ${row.seed}")
-      assertEquals(row.channel, "pass", s"unchanged channel property at seed ${row.seed}")
+      assertEquals(
+        row.direct,
+        PropertyVerdict.Pass,
+        s"unchanged direct property at seed ${row.seed}"
+      )
+      assertEquals(
+        row.connect,
+        PropertyVerdict.Pass,
+        s"unchanged connect property at seed ${row.seed}"
+      )
+      assertEquals(
+        row.channel,
+        PropertyVerdict.Pass,
+        s"unchanged channel property at seed ${row.seed}"
+      )
     }
-    assertEquals(rows.count(_.outcome == "accepted"), 25)
-    assertEquals(rows.count(_.outcome == "rejected"), 122)
+    assertEquals(rows.count(_.outcome == SubmitOutcome.Accepted), 25)
+    assertEquals(
+      rows.count(_.outcome match
+        case SubmitOutcome.Rejected(_) => true
+        case SubmitOutcome.Accepted    => false),
+      122
+    )
     val cases = rows.groupBy(row => (row.seed, row.ordinal)).toVector.sortBy(_._1)
     assertEquals(cases.size, 24)
     assertEquals(cases.map(_._1._1), Vector.range(499001, 499025))
@@ -113,15 +145,12 @@ class UpstreamLocalTxSubmissionBehaviorSuite extends FailsOnUncaught:
         val txRows = unsorted.sortBy(_.index)
         assertEquals(txRows.map(_.index), txRows.indices.toVector)
         val aliases = txRows.groupBy(_.tx).values
-        aliases.foreach(group =>
-          assertEquals(group.map(row => row.outcome -> row.rejection).distinct.size, 1)
-        )
+        aliases.foreach(group => assertEquals(group.map(_.outcome).distinct.size, 1))
         val byWire = txRows.map { row =>
           val response = row.outcome match
-            case "accepted" => LocalTxSubmissionServer.Response.Accepted
-            case "rejected" =>
-              LocalTxSubmissionServer.Response.Rejected(row.rejection.get)
-            case other => fail(s"unexpected generated SubmitResult $other at seed $seed")
+            case SubmitOutcome.Accepted => LocalTxSubmissionServer.Response.Accepted
+            case SubmitOutcome.Rejected(reason) =>
+              LocalTxSubmissionServer.Response.Rejected(reason)
           row.tx -> response
         }.toMap
         assertEquals(byWire.size, txRows.map(_.tx).distinct.size)
@@ -168,9 +197,8 @@ class UpstreamLocalTxSubmissionBehaviorSuite extends FailsOnUncaught:
           val (replies, serverResult) = result.fold(e => fail(s"seed $seed: $e"), identity)
           val expected = txRows.map { row =>
             row.outcome match
-              case "accepted" => LocalTxSubmission.Message.AcceptTx
-              case "rejected" => LocalTxSubmission.Message.RejectTx(row.rejection.get)
-              case other      => fail(s"unexpected generated SubmitResult $other")
+              case SubmitOutcome.Accepted         => LocalTxSubmission.Message.AcceptTx
+              case SubmitOutcome.Rejected(reason) => LocalTxSubmission.Message.RejectTx(reason)
           }
           assertEquals(replies, expected, s"ordered exact response trace at seed $seed/$ordinal")
           assertEquals(serverResult, Right(None), s"production server completes on Done")

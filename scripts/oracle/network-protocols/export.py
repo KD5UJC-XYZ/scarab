@@ -1036,7 +1036,42 @@ exportLocalTxMonitorSplitCases path count seed = withFile path WriteMode $ \outp
     pad [digit] = ['0', digit]
     pad digits = digits
 
+-- Disposable observer: retain exact generated inputs and unchanged property verdicts.
+exportLocalTxMonitorBehaviorCases :: FilePath -> Int -> Int -> IO ()
+exportLocalTxMonitorBehaviorCases path count seed = withFile path WriteMode $ \outputHandle ->
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 8 + (ordinal `mod` 9)
+        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize :: (SlotNo, [Tx])
+        (slot, txs) = testCase
+        txRows =
+          [ (show txIndex, hex (BL.toStrict (CBOR.toLazyByteString (S.encode tx)))
+            , hex (BL.toStrict (CBOR.toLazyByteString (S.encode (txId tx)))))
+          | (txIndex, tx) <- zip [0 :: Int ..] txs
+          ]
+        rows = if null txRows then [("-1", "", "")] else txRows
+    directResult <- quickCheckWithResult stdArgs { chatty = False }
+      (once (prop_direct testCase))
+    connectResult <- quickCheckWithResult stdArgs { chatty = False }
+      (once (prop_connect testCase))
+    channelResult <- quickCheckWithResult stdArgs { chatty = False }
+      (once (prop_channel_ST testCase))
+    forM_ rows $ \(txIndex, txWire, idWire) ->
+      hPutStrLn outputHandle $ intercalate "\t"
+        [ "localtxmonitor-behavior-v1", show caseSeed, show ordinal, show caseSize
+        , hex (BL.toStrict (CBOR.toLazyByteString (S.encode slot))), txIndex, txWire, idWire
+        , if null txs then "empty" else "transaction"
+        , if isSuccess directResult then "pass" else "upstream-failure"
+        , if isSuccess connectResult then "pass" else "upstream-failure"
+        , if isSuccess channelResult then "pass" else "upstream-failure"
+        ]
+  where
+    hex = concatMap (pad . (`showHex` "")) . BS.unpack
+    pad [digit] = ['0', digit]
+    pad digits = digits
+
 ''',
+        "import Codec.CBOR.Write qualified as CBOR\n"
         "import Control.Monad (forM_)\n"
         "import Data.ByteString qualified as BS\n"
         "import Data.ByteString.Lazy qualified as BL\n"
@@ -1052,7 +1087,7 @@ exportLocalTxMonitorSplitCases path count seed = withFile path WriteMode $ \outp
         raise SystemExit("LocalTxMonitor observer module export anchor changed")
     local_tx_monitor.write_text(local_tx_monitor_module.replace(
         local_tx_monitor_export_anchor,
-        "module Ouroboros.Network.Protocol.LocalTxMonitor.Test (tests, exportLocalTxMonitorCases, exportLocalTxMonitorSplitCases) where",
+        "module Ouroboros.Network.Protocol.LocalTxMonitor.Test (tests, exportLocalTxMonitorCases, exportLocalTxMonitorSplitCases, exportLocalTxMonitorBehaviorCases) where",
     ))
 
     tx_submission2_original = inject(
@@ -1408,7 +1443,7 @@ exportBlockFetchBinaryCases path count seed = withFile path WriteMode $ \outputH
         "import Ouroboros.Network.Protocol.BlockFetch.Test qualified as BlockFetch (tests, exportBlockFetchCases, exportBlockFetchSplitCases, exportBlockFetchBinaryCases)\n"
         "import Ouroboros.Network.Protocol.LocalStateQuery.Test qualified as LocalStateQuery (tests, exportLocalStateQueryCases, exportLocalStateQuerySplitCases)\n"
         "import Ouroboros.Network.Protocol.LocalTxSubmission.Test qualified as LocalTxSubmission (tests, exportLocalTxSubmissionCases, exportLocalTxSubmissionSplitCases, exportLocalTxSubmissionAnnotatedCases, exportLocalTxSubmissionBehaviorCases)\n"
-        "import Ouroboros.Network.Protocol.LocalTxMonitor.Test qualified as LocalTxMonitor (tests, exportLocalTxMonitorCases, exportLocalTxMonitorSplitCases)\n"
+        "import Ouroboros.Network.Protocol.LocalTxMonitor.Test qualified as LocalTxMonitor (tests, exportLocalTxMonitorCases, exportLocalTxMonitorSplitCases, exportLocalTxMonitorBehaviorCases)\n"
         "import Ouroboros.Network.Protocol.TxSubmission2.Test qualified as TxSubmission2 (tests, exportTxSubmission2Cases, exportTxSubmission2SplitCases, exportTxSubmission2AnnotatedCases)\n"
         "import System.Environment (getArgs)\n"
     )
@@ -1465,6 +1500,7 @@ exportBlockFetchBinaryCases path count seed = withFile path WriteMode $ \outputH
         "    LocalTxSubmission.exportLocalTxSubmissionCases (dir <> \"/localtxsubmission.tsv\") (read count) (read seed + 2800)\n"
         "    LocalTxSubmission.exportLocalTxSubmissionBehaviorCases (dir <> \"/localtxsubmission-behavior.tsv\") (read count) (read seed + 8800)\n"
         "    LocalTxMonitor.exportLocalTxMonitorCases (dir <> \"/localtxmonitor.tsv\") (read count) (read seed + 3800)\n"
+        "    LocalTxMonitor.exportLocalTxMonitorBehaviorCases (dir <> \"/localtxmonitor-behavior.tsv\") (read count) (read seed + 9800)\n"
         "    LocalTxSubmission.exportLocalTxSubmissionSplitCases (dir <> \"/localtxsubmission-splits.tsv\") (read count) (read seed + 2800)\n"
         "    LocalTxSubmission.exportLocalTxSubmissionAnnotatedCases (dir <> \"/localtxsubmission-annotated.tsv\") (read count) (read seed + 5800)\n"
         "    LocalTxMonitor.exportLocalTxMonitorSplitCases (dir <> \"/localtxmonitor-splits.tsv\") (read count) (read seed + 3800)\n"
@@ -1604,6 +1640,7 @@ def main() -> None:
         ("localtxsubmission-annotated.tsv", "ouroboros-network:protocols-tests / LocalTxSubmission / prop_anncodec + prop_anncodec_splits2 + prop_anncodec_splits3"),
         ("localtxsubmission-splits.tsv", "ouroboros-network:protocols-tests / LocalTxSubmission / prop_codec_splits2 + prop_codec_splits3"),
         ("localtxmonitor.tsv", "ouroboros-network:protocols-tests / LocalTxMonitor / codecM + codec cborM"),
+        ("localtxmonitor-behavior.tsv", "ouroboros-network:protocols-tests / LocalTxMonitor / prop_direct + prop_connect + prop_channel_ST"),
         ("localtxmonitor-splits.tsv", "ouroboros-network:protocols-tests / LocalTxMonitor / prop_codec_splitsM_LocalTxMonitor splits2 + splits3"),
         ("txsubmission2.tsv", "ouroboros-network:protocols-tests / TxSubmission2 / codec + codec cbor"),
         ("txsubmission2-annotated.tsv", "ouroboros-network:protocols-tests / TxSubmission2 / prop_anncodec + prop_anncodec_splits2 + prop_anncodec_splits3"),
@@ -2002,6 +2039,38 @@ def main() -> None:
                 "Each row is one ordered input from the same generated Tx list and arbitrary "
                 "SubmitResult function passed to prop_direct, prop_connect, and prop_channel_ST; "
                 "Tx Any and Reject Int are retained as their exact serialized CBOR items."
+            )
+        if name == "localtxmonitor-behavior.tsv":
+            cases = {}
+            for row in rows:
+                cases.setdefault((row[1], row[2]), []).append(row)
+            manifest["generatedInputSeedOffsets"] = {"slotAndTransactionList": 0}
+            manifest["caseCount"] = manifest["requestedCases"]
+            manifest["caseSizes"] = {
+                str(size): sum(int(case_rows[0][3]) == size for case_rows in cases.values())
+                for size in sorted({int(row[3]) for row in rows})
+            }
+            manifest["observedBehaviorCounts"] = {
+                "transactionRows": sum(row[8] == "transaction" for row in rows),
+                "emptyInputCases": sum(row[8] == "empty" for row in rows),
+                "allTxMembershipRows": sum(row[8] == "transaction" for row in rows),
+                "directPassCases": sum(
+                    row[9] == "pass" and row[5] == ("-1" if row[8] == "empty" else "0")
+                    for row in rows
+                ),
+                "connectPassCases": sum(
+                    row[10] == "pass" and row[5] == ("-1" if row[8] == "empty" else "0")
+                    for row in rows
+                ),
+                "channelPassCases": sum(
+                    row[11] == "pass" and row[5] == ("-1" if row[8] == "empty" else "0")
+                    for row in rows
+                ),
+            }
+            manifest["scope"] = (
+                "The unchanged properties assert ordered generated transactions, positive HasTx "
+                "answers, and transaction count. The upstream example's byte capacity/size values "
+                "are not asserted; Scarab reports byte measures from the exact serialized items."
             )
         if name in ("localtxsubmission-annotated.tsv", "txsubmission2-annotated.tsv"):
             manifest["adapterInputStatuses"] = {
