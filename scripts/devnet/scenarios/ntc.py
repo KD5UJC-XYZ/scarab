@@ -34,7 +34,7 @@ import sys
 import time
 
 from .. import cborspan, gapmask, ntccli, ntcquery, ntcsafety
-from ..ntclocal import Session, compare_follow, live_follow, monitor_rounds, await_wakes, tx_id
+from ..ntclocal import Session, backlog_follow, compare_follow, live_follow, monitor_rounds, await_wakes, tx_id
 from ..cluster import database_mounts, freeze_classes, scala_container, up
 from ..ntccases import CLI, Builder, corpus
 from ..ntcqueries import compare_round
@@ -384,10 +384,10 @@ def chain_sync_comparison(args, root, out):
         if live:
             out["live"] = live
         if "live" in out:
-            points = out["live"]["points"]
-            if len(points) >= 5:
-                slot, hash_hex = points[-5]
-                out["backlog"] = compare_follow(opener_h, opener_s, (slot, bytes.fromhex(hash_hex)), 4, 60)
+            backlog = backlog_follow(out["live"]["points"],
+                                     lambda point: compare_follow(opener_h, opener_s, point, 4, 60))
+            if backlog:
+                out["backlog"] = backlog
     except Exception as e:  # noqa: BLE001 - reported as a failure of the scenario
         out["error"] = repr(e)
     for key in ("fromOrigin", "live", "backlog"):

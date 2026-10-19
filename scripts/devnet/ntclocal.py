@@ -202,9 +202,10 @@ def await_wakes(h_session, s_session, trigger, timeout=60):
 
 
 def follow_blocks(open_session, point, count, deadline, out):
-    """Follow a node from `point` for `count` blocks: {hash: (slot, raw block item)} into `out`, and the
-    number of roll-backwards seen."""
-    result = {"blocks": out, "rollbacks": 0, "intersect": None, "error": None, "order": [], "first": None}
+    """Keep every observed block for byte comparison, and a separate canonical sequence for selecting
+    future intersections. A rollback removes candidates, never historical byte comparisons."""
+    result = {"blocks": out, "rollbacks": 0, "intersect": None, "error": None, "order": [],
+              "canonical": [], "first": None}
     try:
         with open_session() as session:
             found = session.find_intersect([point])
@@ -221,8 +222,15 @@ def follow_blocks(open_session, point, count, deadline, out):
                     slot, ident = block_point(item)
                     out[ident] = (slot, item)
                     result["order"].append(ident)
+                    result["canonical"].append(ident)
                 elif reply[0] == 3:
                     result["rollbacks"] += 1
+                    rollback = reply[1]
+                    retained = next((i + 1 for i, ident in enumerate(result["canonical"])
+                                     if rollback == [out[ident][0], ident]), 0)
+                    # Origin, the initial intersection and points preceding our observations all
+                    # discard the observed suffix. Only a known point retains its ancestors.
+                    result["canonical"] = result["canonical"][:retained]
     except Exception as e:  # noqa: BLE001 - reported to the scenario
         result["error"] = repr(e)
     return result
@@ -242,18 +250,44 @@ def compare_follow(open_h, open_s, point, count, seconds):
         t.start()
     for t in threads:
         t.join(seconds + 30)
-    common = [k for k in results["h"]["order"] if k in got["s"]]
+    common = list(dict.fromkeys(k for k in results["h"]["order"] if k in got["s"]))
+    canonical_s = set(results["s"]["canonical"])
+    candidates = [k for k in results["h"]["canonical"] if k in canonical_s]
     differing = [k.hex() for k in common if got["h"][k][1] != got["s"][k][1]]
     return {"compared": len(common), "differing": differing,
-            "points": [(got["h"][k][0], k.hex()) for k in common],
-            "reference": {k: v for k, v in results["h"].items() if k not in ("blocks", "order")},
-            "scala": {k: v for k, v in results["s"].items() if k not in ("blocks", "order")},
+            "points": [(got["h"][k][0], k.hex()) for k in candidates],
+            "reference": {k: v for k, v in results["h"].items() if k not in ("blocks", "order", "canonical")},
+            "scala": {k: v for k, v in results["s"].items() if k not in ("blocks", "order", "canonical")},
             "sameFirstInstruction": results["h"]["first"] == results["s"]["first"],
             "referenceBlocks": len(got["h"]), "scalaBlocks": len(got["s"]),
             "bytes": sum(len(got["s"][k][1]) for k in common)}
 
 
 INTERSECT_NOT_FOUND = 6
+
+
+def backlog_follow(points, follow):
+    """Compare four backlog blocks from a canonical common point. If both nodes have already lost
+    that point, retry once from an older candidate; every other result is final evidence."""
+    if len(points) < 5:
+        return None
+    start = len(points) - 5
+    candidates = [points[start]]
+    if start:
+        candidates.append(points[max(0, start - 4)])
+    attempted = []
+    for slot, ident in candidates:
+        comparison = follow((slot, bytes.fromhex(ident)))
+        attempted.append({"point": (slot, ident), "comparison": comparison})
+        result = {**comparison, "attempts": len(attempted), "attemptResults": list(attempted)}
+        symmetric_stale = all(result[key]["intersect"] == INTERSECT_NOT_FOUND
+                              and result[key]["error"] is None and result[key]["first"] is None
+                              for key in ("reference", "scala"))
+        if not (symmetric_stale and result["compared"] == 0 and not result["differing"]
+                and result["referenceBlocks"] == result["scalaBlocks"] == 0
+                and result["sameFirstInstruction"]):
+            break
+    return result
 
 
 def live_follow(take_tip, follow, attempts=5):
