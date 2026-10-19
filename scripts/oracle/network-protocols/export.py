@@ -95,18 +95,22 @@ def summarize_property_outcomes(
     }
 
 
-def summarize_chainsync_pipeline_rows(rows: list[list[str]]) -> dict[str, int]:
+def summarize_chainsync_pipeline_rows(
+    rows: list[list[str]], version: str = "chainsync-pipelined-max-v1", depth_columns: tuple[int, ...] = (5,)
+) -> dict[str, int]:
     allowed = {"pass", "upstream-failure", "precondition-discard"}
     for ordinal, row in enumerate(rows):
-        if len(row) != 7 or row[0] != "chainsync-pipelined-max-v1":
+        if len(row) != 5 + 2 * len(depth_columns) or row[0] != version:
             raise ValueError(f"invalid ChainSync pipelined-max row {ordinal}")
         if int(row[2]) != ordinal or int(row[1]) != int(rows[0][1]) + ordinal:
             raise ValueError(f"noncontiguous ChainSync pipelined-max row identity {ordinal}")
-        if int(row[5]) < 0 or int(row[5]) > 300 or row[6] not in allowed:
+        depths = [int(row[index]) for index in depth_columns]
+        if any(depth < 0 or depth > 300 for depth in depths) or row[-1] not in allowed:
             raise ValueError(f"invalid ChainSync pipelined-max depth/outcome at row {ordinal}")
-        if (int(row[5]) == 0) != (row[6] == "precondition-discard"):
+        positive_precondition = max(depths) > 0
+        if positive_precondition != (row[-1] != "precondition-discard"):
             raise ValueError(f"pipelined-max precondition/outcome mismatch at row {ordinal}")
-    return {status: sum(row[6] == status for row in rows) for status in sorted(allowed)}
+    return {status: sum(row[-1] == status for row in rows) for status in sorted(allowed)}
 
 
 def checked(command: list[str], **kwargs: object) -> str:
@@ -1523,7 +1527,7 @@ exportTxSubmission2BehaviorCases path count seed = withFile path WriteMode $ \ou
         raise SystemExit("ChainSync observer module export anchor changed")
     chain.write_text(chain_module.replace(
         chain_export_anchor,
-        "module Ouroboros.Network.Protocol.ChainSync.Test (tests, exportChainSyncCases, exportChainSyncSplitCases, exportChainSyncBinaryCases, exportChainSyncBehaviorCases, exportChainSyncPipelinedMaxCases) where",
+        "module Ouroboros.Network.Protocol.ChainSync.Test (tests, exportChainSyncCases, exportChainSyncSplitCases, exportChainSyncBinaryCases, exportChainSyncBehaviorCases, exportChainSyncPipelinedMaxCases, exportChainSyncPipelinedMinCases, exportChainSyncPipelinedLowHighCases) where",
     ))
     chain.write_text(chain.read_text() + r'''
 
@@ -1629,6 +1633,60 @@ exportChainSyncPipelinedMaxCases path count seed = withFile path WriteMode $ \ou
       , show caseSize, show depthSeed, show maxDepth, outcome
       ]
 ''')
+    chain.write_text(chain.read_text() + r'''
+
+-- Disposable observer for the unchanged min-pipelining property over the same
+-- generated fork/depth pairs as exportChainSyncPipelinedMaxCases.
+exportChainSyncPipelinedMinCases :: FilePath -> Int -> Int -> IO ()
+exportChainSyncPipelinedMinCases path count seed = withFile path WriteMode $ \outputHandle ->
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 30 + (ordinal `mod` 21)
+        input = unGen arbitrary (mkQCGen caseSeed) caseSize
+          :: ChainProducerStateForkTest
+        depthSeed = caseSeed + 7000003
+        depth@(PipeliningDepth maxDepth) = unGen arbitrary (mkQCGen depthSeed) caseSize
+    outcome <- if maxDepth == 0
+      then pure "precondition-discard"
+      else do
+        result <- quickCheckWithResult
+          stdArgs { chatty = False }
+          (once (propChainSyncDemoPipelinedMinST input depth))
+        pure (if isSuccess result then "pass" else "upstream-failure")
+    hPutStrLn outputHandle $ intercalate "\t"
+      [ "chainsync-pipelined-min-v1", show caseSeed, show ordinal
+      , show caseSize, show depthSeed, show maxDepth, outcome
+      ]
+''')
+    chain.write_text(chain.read_text() + r'''
+
+-- Disposable observer for the unchanged low/high property and both original
+-- PipeliningDepth-domain values. The property itself orders the two marks.
+exportChainSyncPipelinedLowHighCases :: FilePath -> Int -> Int -> IO ()
+exportChainSyncPipelinedLowHighCases path count seed = withFile path WriteMode $ \outputHandle ->
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 30 + (ordinal `mod` 21)
+        input = unGen arbitrary (mkQCGen caseSeed) caseSize
+          :: ChainProducerStateForkTest
+        firstDepthSeed = caseSeed + 7000003
+        firstDepth@(PipeliningDepth firstDepthValue) = unGen arbitrary (mkQCGen firstDepthSeed) caseSize
+        secondDepthSeed = caseSeed + 8000003
+        secondDepth@(PipeliningDepth secondDepthValue) = unGen arbitrary (mkQCGen secondDepthSeed) caseSize
+        highDepth = max firstDepthValue secondDepthValue
+    outcome <- if highDepth == 0
+      then pure "precondition-discard"
+      else do
+        result <- quickCheckWithResult
+          stdArgs { chatty = False }
+          (once (propChainSyncDemoPipelinedLowHighST input firstDepth secondDepth))
+        pure (if isSuccess result then "pass" else "upstream-failure")
+    hPutStrLn outputHandle $ intercalate "\t"
+      [ "chainsync-pipelined-low-high-v1", show caseSeed, show ordinal
+      , show caseSize, show firstDepthSeed, show firstDepthValue
+      , show secondDepthSeed, show secondDepthValue, outcome
+      ]
+''')
     block_fetch.write_text(block_fetch.read_text() + r'''
 
 -- Disposable observer for the two original binary-compatibility directions.
@@ -1707,7 +1765,7 @@ exportBlockFetchBinaryCases path count seed = withFile path WriteMode $ \outputH
     dispatch_imports = (
         "import Ouroboros.Network.Protocol.KeepAlive.Test qualified as KeepAlive (tests, exportKeepAliveCases, exportKeepAliveSplitCases, exportKeepAliveBehaviorCases)\n"
         "import Ouroboros.Network.Protocol.PeerSharing.Test qualified as PeerSharing (tests, exportPeerSharingCases)\n"
-        "import Ouroboros.Network.Protocol.ChainSync.Test qualified as ChainSync (tests, exportChainSyncCases, exportChainSyncSplitCases, exportChainSyncBinaryCases, exportChainSyncBehaviorCases, exportChainSyncPipelinedMaxCases)\n"
+        "import Ouroboros.Network.Protocol.ChainSync.Test qualified as ChainSync (tests, exportChainSyncCases, exportChainSyncSplitCases, exportChainSyncBinaryCases, exportChainSyncBehaviorCases, exportChainSyncPipelinedMaxCases, exportChainSyncPipelinedMinCases, exportChainSyncPipelinedLowHighCases)\n"
         "import Ouroboros.Network.Protocol.BlockFetch.Test qualified as BlockFetch (tests, exportBlockFetchCases, exportBlockFetchSplitCases, exportBlockFetchBinaryCases, exportBlockFetchBehaviorCases)\n"
         "import Ouroboros.Network.Protocol.LocalStateQuery.Test qualified as LocalStateQuery (tests, exportLocalStateQueryCases, exportLocalStateQuerySplitCases, exportLocalStateQueryBehaviorCases)\n"
         "import Ouroboros.Network.Protocol.LocalTxSubmission.Test qualified as LocalTxSubmission (tests, exportLocalTxSubmissionCases, exportLocalTxSubmissionSplitCases, exportLocalTxSubmissionAnnotatedCases, exportLocalTxSubmissionBehaviorCases)\n"
@@ -1755,6 +1813,8 @@ exportBlockFetchBinaryCases path count seed = withFile path WriteMode $ \outputH
         "  [\"--export-lsq-behavior\", dir, count, seed] -> LocalStateQuery.exportLocalStateQueryBehaviorCases (dir <> \"/localsq-behavior-cases.tsv\") (dir <> \"/localsq-behavior-actions.tsv\") (read count) (read seed)\n"
         "  [\"--export-chainsync-behavior\", dir, count, seed] -> ChainSync.exportChainSyncBehaviorCases (dir <> \"/chainsync-behavior-cases.tsv\") (dir <> \"/chainsync-behavior-blocks.tsv\") (dir <> \"/chainsync-behavior-points.tsv\") (read count) (read seed)\n"
         "  [\"--export-chainsync-pipelined-max\", dir, count, seed] -> ChainSync.exportChainSyncPipelinedMaxCases (dir <> \"/chainsync-pipelined-max.tsv\") (read count) (read seed)\n"
+        "  [\"--export-chainsync-pipelined-min\", dir, count, seed] -> ChainSync.exportChainSyncPipelinedMinCases (dir <> \"/chainsync-pipelined-min.tsv\") (read count) (read seed)\n"
+        "  [\"--export-chainsync-pipelined-low-high\", dir, count, seed] -> ChainSync.exportChainSyncPipelinedLowHighCases (dir <> \"/chainsync-pipelined-low-high.tsv\") (read count) (read seed)\n"
         "  [\"--export-lsq-behavior\", dir, count, seed] -> LocalStateQuery.exportLocalStateQueryBehaviorCases (dir <> \"/localsq-behavior-cases.tsv\") (dir <> \"/localsq-behavior-actions.tsv\") (read count) (read seed)\n"
         "  [\"--export-txsubmission2-behavior\", dir, count, seed] -> TxSubmission2.exportTxSubmission2BehaviorCases (dir <> \"/txsubmission2-behavior.tsv\") (read count) (read seed)\n"
         "  [\"--export-blockfetch-behavior\", dir, count, seed] -> BlockFetch.exportBlockFetchBehaviorCases (dir <> \"/blockfetch-behavior.tsv\") (read count) (read seed)\n"
@@ -1814,6 +1874,8 @@ def main() -> None:
     parser.add_argument("--blockfetch-behavior-only", action="store_true")
     parser.add_argument("--chainsync-behavior-only", action="store_true")
     parser.add_argument("--chainsync-pipelined-max-only", action="store_true")
+    parser.add_argument("--chainsync-pipelined-min-only", action="store_true")
+    parser.add_argument("--chainsync-pipelined-low-high-only", action="store_true")
     args = parser.parse_args()
     if not 1 <= args.count <= 128:
         raise SystemExit("case count must be 1..128")
@@ -1844,7 +1906,7 @@ def main() -> None:
             "-w", "/source", IMAGE, "-f", "/dev/null",
         ])
     checked(["docker", "start", CONTAINER_NAME])
-    test_names = ("LocalStateQuery",) if args.lsq_behavior_only else ("TxSubmission2",) if args.txsubmission2_behavior_only else ("BlockFetch",) if args.blockfetch_behavior_only else ("ChainSync",) if args.chainsync_behavior_only or args.chainsync_pipelined_max_only else (
+    test_names = ("LocalStateQuery",) if args.lsq_behavior_only else ("TxSubmission2",) if args.txsubmission2_behavior_only else ("BlockFetch",) if args.blockfetch_behavior_only else ("ChainSync",) if args.chainsync_behavior_only or args.chainsync_pipelined_max_only or args.chainsync_pipelined_min_only or args.chainsync_pipelined_low_high_only else (
         "KeepAlive", "PeerSharing", "ChainSync", "BlockFetch", "LocalStateQuery",
         "LocalTxSubmission", "LocalTxMonitor", "TxSubmission2",
     )
@@ -1872,6 +1934,18 @@ def main() -> None:
         checked([
             "docker", "exec", "-w", "/source", CONTAINER_NAME,
             binary, "--export-chainsync-pipelined-max", "/probe/exports",
+            str(args.count), str(args.seed + 13800),
+        ])
+    elif args.chainsync_pipelined_min_only:
+        checked([
+            "docker", "exec", "-w", "/source", CONTAINER_NAME,
+            binary, "--export-chainsync-pipelined-min", "/probe/exports",
+            str(args.count), str(args.seed + 13800),
+        ])
+    elif args.chainsync_pipelined_low_high_only:
+        checked([
+            "docker", "exec", "-w", "/source", CONTAINER_NAME,
+            binary, "--export-chainsync-pipelined-low-high", "/probe/exports",
             str(args.count), str(args.seed + 13800),
         ])
     elif args.chainsync_behavior_only:
@@ -1987,6 +2061,109 @@ def main() -> None:
         }
         (args.output_dir / "chainsync-pipelined-max.tsv").write_bytes(raw)
         (args.output_dir / "chainsync-pipelined-max.manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+        return
+    if args.chainsync_pipelined_min_only:
+        raw = (args.probe_dir / "exports/chainsync-pipelined-min.tsv").read_bytes()
+        rows = [line.split("\t") for line in raw.decode().splitlines()]
+        if len(rows) != args.count:
+            raise SystemExit("ChainSync pipelined-min export does not match requested schema/count")
+        try:
+            statuses = summarize_chainsync_pipeline_rows(rows, "chainsync-pipelined-min-v1")
+        except ValueError as error:
+            raise SystemExit(str(error)) from error
+        manifest = {
+            "schema": "scarab-upstream-network-protocol-behavior-v1",
+            "source": "ouroboros-network",
+            "sourceCommit": UPSTREAM_COMMIT,
+            "upstreamTest": "ouroboros-network:protocols-tests / ChainSync / propChainSyncDemoPipelinedMinST",
+            "generatorType": "ChainProducerStateForkTest × PipeliningDepth",
+            "requestedCases": args.count,
+            "exportedCases": len(rows),
+            "seed": int(rows[0][1]),
+            "upstreamPropertyOutcomes": {
+                "pass": statuses["pass"],
+                "upstream-failure": statuses["upstream-failure"],
+                "precondition-discard": statuses["precondition-discard"],
+            },
+            "sourceFiles": {
+                relative: hashlib.sha256((args.source / relative).read_bytes()).hexdigest()
+                for relative in [
+                    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/Test.hs",
+                    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/ExamplesPipelined.hs",
+                    "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/PipelineDecision.hs",
+                    "ouroboros-network/protocols/tests-lib/Test/Data/PipeliningDepth.hs",
+                ]
+            },
+            "observerPatchSha256": hashlib.sha256(patch.encode()).hexdigest(),
+            "caseTsvSha256": hashlib.sha256(raw).hexdigest(),
+            "generatorParameters": {
+                "forkCaseSeedPerOrdinal": "seed + ordinal",
+                "caseSizePerOrdinal": "30 + (ordinal mod 21)",
+                "depthSeedOffset": 7000003,
+                "depthGenerator": "unchanged Arbitrary PipeliningDepth, choose (0, 300)",
+                "zeroDepth": "recorded as precondition-discard from the unchanged omax > 0 implication; not replayed",
+            },
+            "limitations": [
+                "Rows link to the exact chain/body/point bytes and independent producer-chain oracle in chainsync-behavior v2 fixtures.",
+                "Scarab replay uses its production fixed-batch requestNextBatch API with the original max depth as a window bound and compares final chain only.",
+                "The observer preserves original generated depth and property verdicts; it does not claim Haskell min-policy request/collect trace equivalence.",
+            ],
+        }
+        (args.output_dir / "chainsync-pipelined-min.tsv").write_bytes(raw)
+        (args.output_dir / "chainsync-pipelined-min.manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+        return
+    if args.chainsync_pipelined_low_high_only:
+        raw = (args.probe_dir / "exports/chainsync-pipelined-low-high.tsv").read_bytes()
+        rows = [line.split("\t") for line in raw.decode().splitlines()]
+        if len(rows) != args.count:
+            raise SystemExit("ChainSync pipelined-low-high export does not match requested schema/count")
+        try:
+            statuses = summarize_chainsync_pipeline_rows(
+                rows, "chainsync-pipelined-low-high-v1", depth_columns=(5, 7)
+            )
+        except ValueError as error:
+            raise SystemExit(str(error)) from error
+        manifest = {
+            "schema": "scarab-upstream-network-protocol-behavior-v1",
+            "source": "ouroboros-network",
+            "sourceCommit": UPSTREAM_COMMIT,
+            "upstreamTest": "ouroboros-network:protocols-tests / ChainSync / propChainSyncDemoPipelinedLowHighST",
+            "generatorType": "ChainProducerStateForkTest × PipeliningDepth × PipeliningDepth",
+            "requestedCases": args.count,
+            "exportedCases": len(rows),
+            "seed": int(rows[0][1]),
+            "upstreamPropertyOutcomes": {
+                "pass": statuses["pass"],
+                "upstream-failure": statuses["upstream-failure"],
+                "precondition-discard": statuses["precondition-discard"],
+            },
+            "sourceFiles": {
+                relative: hashlib.sha256((args.source / relative).read_bytes()).hexdigest()
+                for relative in [
+                    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/Test.hs",
+                    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/ExamplesPipelined.hs",
+                    "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/PipelineDecision.hs",
+                    "ouroboros-network/protocols/tests-lib/Test/Data/PipeliningDepth.hs",
+                ]
+            },
+            "observerPatchSha256": hashlib.sha256(patch.encode()).hexdigest(),
+            "caseTsvSha256": hashlib.sha256(raw).hexdigest(),
+            "generatorParameters": {
+                "forkCaseSeedPerOrdinal": "seed + ordinal",
+                "caseSizePerOrdinal": "30 + (ordinal mod 21)",
+                "firstDepthSeedOffset": 7000003,
+                "secondDepthSeedOffset": 8000003,
+                "depthGenerator": "unchanged Arbitrary PipeliningDepth, choose (0, 300), independently seeded",
+                "zeroHighMark": "recorded as precondition-discard when max(firstDepth, secondDepth) == 0; not replayed",
+            },
+            "limitations": [
+                "Rows link to the exact chain/body/point bytes and independent producer-chain oracle in chainsync-behavior v2 fixtures.",
+                "Scarab replay uses its production fixed-batch requestNextBatch API with max(firstDepth, secondDepth) as a window bound and compares final chain only.",
+                "The observer preserves both original depth inputs and verdict; it does not claim Haskell low/high decision-trace equivalence.",
+            ],
+        }
+        (args.output_dir / "chainsync-pipelined-low-high.tsv").write_bytes(raw)
+        (args.output_dir / "chainsync-pipelined-low-high.manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
         return
     if args.chainsync_behavior_only:
         cases_raw = (args.probe_dir / "exports/chainsync-behavior-cases.tsv").read_bytes()

@@ -75,6 +75,16 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
       maxDepth: Int,
       outcome: PipelineOutcome
   )
+  private final case class PipelineLowHighRow(
+      seed: Int,
+      ordinal: Int,
+      size: Int,
+      firstDepthSeed: Int,
+      firstDepth: Int,
+      secondDepthSeed: Int,
+      secondDepth: Int,
+      outcome: PipelineOutcome
+  )
   private final case class FixtureCase(
       row: CaseRow,
       producer: Vector[BlockRow],
@@ -160,14 +170,18 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
       PointRow(fields(1).toInt, fields(2).toInt, fields(3).toInt, fromHex(fields(4)))
     }
 
-  private def readPipelineRows(): Vector[PipelineRow] =
+  private def readPipelineRows(
+      fixture: String,
+      expectedSha: String,
+      schema: String
+  ): Vector[PipelineRow] =
     resource(
-      "/upstream/ouroboros-network-protocol-codecs/chainsync-pipelined-max.tsv",
-      "a3b1f8a495704991fb90ee701fe1bb31d56371346ce37f7e7bfd38f4e6c0cc49"
+      s"/upstream/ouroboros-network-protocol-codecs/$fixture",
+      expectedSha
     ).map { line =>
       val fields = line.split("\\t", -1).toVector
       assertEquals(fields.size, 7)
-      assertEquals(fields(0), "chainsync-pipelined-max-v1")
+      assertEquals(fields(0), schema)
       PipelineRow(
         fields(1).toInt,
         fields(2).toInt,
@@ -175,6 +189,26 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
         fields(4).toInt,
         fields(5).toInt,
         pipelineOutcome(fields(6))
+      )
+    }
+
+  private def readPipelineLowHighRows(expectedSha: String): Vector[PipelineLowHighRow] =
+    resource(
+      "/upstream/ouroboros-network-protocol-codecs/chainsync-pipelined-low-high.tsv",
+      expectedSha
+    ).map { line =>
+      val fields = line.split("\\t", -1).toVector
+      assertEquals(fields.size, 9)
+      assertEquals(fields(0), "chainsync-pipelined-low-high-v1")
+      PipelineLowHighRow(
+        fields(1).toInt,
+        fields(2).toInt,
+        fields(3).toInt,
+        fields(4).toInt,
+        fields(5).toInt,
+        fields(6).toInt,
+        fields(7).toInt,
+        pipelineOutcome(fields(8))
       )
     }
 
@@ -292,7 +326,7 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
       }
     }
 
-  private def replayPipelinedMax(
+  private def replayFixedWindow(
       client: ChainSyncRuntime.Client[IO, Bytes, Bytes, Bytes],
       testCase: FixtureCase,
       chain: Ref[IO, Vector[Bytes]],
@@ -429,9 +463,11 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
       }
     }
 
-  test("production generic ChainSync runtime matches generated max-pipelined final-chain cases"):
+  private def verifyPipelinedFinalChains(
+      pipelineRows: Vector[PipelineRow],
+      policyName: String
+  ): IO[Unit] =
     val fixture = readFixture()
-    val pipelineRows = readPipelineRows()
     assertEquals(pipelineRows.size, fixture.size)
     assertEquals(pipelineRows.map(_.seed), fixture.map(_.row.seed))
     assertEquals(pipelineRows.map(_.ordinal), fixture.map(_.row.ordinal))
@@ -451,7 +487,7 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
     val runnable = pipelineRows.filter(_.outcome == PipelineOutcome.Pass)
     assert(
       runnable.nonEmpty,
-      "the original generated sample must contain positive-depth passing rows"
+      s"the original generated $policyName sample must contain positive-depth passing rows"
     )
     assertEquals(pipelineRows.count(_.outcome == PipelineOutcome.UpstreamFailure), 0)
 
@@ -492,7 +528,7 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
                           )
                         )
                         intersection <- client.findIntersect(testCase.candidatePoints)
-                        _ <- replayPipelinedMax(client, testCase, chain, pipeline.maxDepth).timeout(
+                        _ <- replayFixedWindow(client, testCase, chain, pipeline.maxDepth).timeout(
                           10.seconds
                         )
                         _ <- serverFiber.joinWithNever
@@ -506,7 +542,7 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
                         assertEquals(
                           finalChain,
                           testCase.producer.map(_.payload),
-                          s"seed ${row.seed} fixed-window final chain equals upstream oracle"
+                          s"seed ${row.seed} fixed-window final chain equals upstream $policyName oracle"
                         )
                     }
                 yield ()
@@ -515,3 +551,52 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
           }
         }
     }
+
+  test("production generic ChainSync runtime matches generated max-pipelined final-chain cases"):
+    verifyPipelinedFinalChains(
+      readPipelineRows(
+        "chainsync-pipelined-max.tsv",
+        "a3b1f8a495704991fb90ee701fe1bb31d56371346ce37f7e7bfd38f4e6c0cc49",
+        "chainsync-pipelined-max-v1"
+      ),
+      "max-pipelined"
+    )
+
+  test("production generic ChainSync runtime matches generated min-pipelined final-chain cases"):
+    verifyPipelinedFinalChains(
+      readPipelineRows(
+        "chainsync-pipelined-min.tsv",
+        "0816948de7bcedcf89ce206214b0cc607d7e58c9a2ac94aa22d539ffd2e1e423",
+        "chainsync-pipelined-min-v1"
+      ),
+      "min-pipelined"
+    )
+
+  test("production generic ChainSync runtime matches generated low/high final-chain cases"):
+    val generated = readPipelineLowHighRows(
+      "5b1cddbee3ac695ab8a796aca7701c18ad95b4d85d72c03c4542b68fb782052b"
+    )
+    assertEquals(generated.size, 24)
+    assertEquals(generated.map(_.seed), Vector.range(504001, 504025))
+    assertEquals(generated.map(_.ordinal), Vector.range(0, 24))
+    assert(generated.forall(row => row.size == 30 + row.ordinal % 21))
+    assert(generated.forall(row => row.firstDepthSeed == row.seed + 7000003))
+    assert(generated.forall(row => row.secondDepthSeed == row.seed + 8000003))
+    assert(generated.forall(row => row.firstDepth >= 0 && row.firstDepth <= 300))
+    assert(generated.forall(row => row.secondDepth >= 0 && row.secondDepth <= 300))
+    assertEquals(generated.count(_.outcome == PipelineOutcome.Pass), 24)
+    assertEquals(generated.count(_.outcome == PipelineOutcome.UpstreamFailure), 0)
+    assertEquals(generated.count(_.outcome == PipelineOutcome.PreconditionDiscard), 0)
+    verifyPipelinedFinalChains(
+      generated.map(row =>
+        PipelineRow(
+          row.seed,
+          row.ordinal,
+          row.size,
+          row.firstDepthSeed,
+          math.max(row.firstDepth, row.secondDepth),
+          row.outcome
+        )
+      ),
+      "low/high-pipelined"
+    )

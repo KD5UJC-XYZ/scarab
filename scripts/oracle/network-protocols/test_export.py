@@ -30,6 +30,26 @@ class PropertyOutcomeColumnsTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "precondition/outcome mismatch"):
             summarize_chainsync_pipeline_rows(rows)
 
+        low_high = [
+            ["chainsync-pipelined-low-high-v1", "504001", "0", "30", "7504004", "0", "8504004", "21", "pass"],
+            ["chainsync-pipelined-low-high-v1", "504002", "1", "31", "7504005", "0", "8504005", "0", "precondition-discard"],
+        ]
+        self.assertEqual(
+            summarize_chainsync_pipeline_rows(
+                low_high,
+                "chainsync-pipelined-low-high-v1",
+                depth_columns=(5, 7),
+            ),
+            {"pass": 1, "precondition-discard": 1, "upstream-failure": 0},
+        )
+        low_high[1][-1] = "pass"
+        with self.assertRaisesRegex(ValueError, "precondition/outcome mismatch"):
+            summarize_chainsync_pipeline_rows(
+                low_high,
+                "chainsync-pipelined-low-high-v1",
+                depth_columns=(5, 7),
+            )
+
     def test_localsq_codec_cbor_and_valid_cbor_columns_are_distinct(self) -> None:
         rows = []
         for verdicts in (
@@ -254,6 +274,63 @@ class PropertyOutcomeColumnsTest(unittest.TestCase):
         self.assertTrue(all(int(row[4]) == int(row[1]) + 7000003 for row in rows))
         self.assertTrue(all(1 <= int(row[5]) <= 300 for row in rows))
         self.assertTrue(all(row[6] == "pass" for row in rows))
+        self.assertEqual(
+            manifest["upstreamPropertyOutcomes"],
+            {"pass": 24, "upstream-failure": 0, "precondition-discard": 0},
+        )
+
+    def test_chainsync_pipelined_min_fixture_preserves_original_depth_domain(self) -> None:
+        repo = Path(__file__).resolve().parents[3]
+        reference_dir = repo / "fixtures/reference/ouroboros-network-protocol-codecs"
+        runtime_dir = repo / "network/src/test/resources/upstream/ouroboros-network-protocol-codecs"
+        raw = (reference_dir / "chainsync-pipelined-min.tsv").read_bytes()
+        manifest = json.loads(
+            (reference_dir / "chainsync-pipelined-min.manifest.json").read_text()
+        )
+
+        self.assertEqual(raw, (runtime_dir / "chainsync-pipelined-min.tsv").read_bytes())
+        self.assertEqual(
+            manifest,
+            json.loads((runtime_dir / "chainsync-pipelined-min.manifest.json").read_text()),
+        )
+        self.assertEqual(manifest["sourceCommit"], "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776")
+        self.assertEqual(manifest["upstreamTest"].rsplit("/ ", 1)[-1], "propChainSyncDemoPipelinedMinST")
+        self.assertEqual(manifest["caseTsvSha256"], hashlib.sha256(raw).hexdigest())
+        self.assertEqual(manifest["exportedCases"], 24)
+        rows = [line.split("\t") for line in raw.decode("utf-8").splitlines()]
+        self.assertEqual([int(row[1]) for row in rows], list(range(504001, 504025)))
+        self.assertTrue(all(len(row) == 7 and row[0] == "chainsync-pipelined-min-v1" for row in rows))
+        self.assertTrue(all(int(row[4]) == int(row[1]) + 7000003 for row in rows))
+        self.assertTrue(all(1 <= int(row[5]) <= 300 and row[6] == "pass" for row in rows))
+        self.assertEqual(
+            manifest["upstreamPropertyOutcomes"],
+            {"pass": 24, "upstream-failure": 0, "precondition-discard": 0},
+        )
+
+    def test_chainsync_pipelined_low_high_fixture_preserves_both_depth_inputs(self) -> None:
+        repo = Path(__file__).resolve().parents[3]
+        reference_dir = repo / "fixtures/reference/ouroboros-network-protocol-codecs"
+        runtime_dir = repo / "network/src/test/resources/upstream/ouroboros-network-protocol-codecs"
+        raw = (reference_dir / "chainsync-pipelined-low-high.tsv").read_bytes()
+        manifest = json.loads(
+            (reference_dir / "chainsync-pipelined-low-high.manifest.json").read_text()
+        )
+
+        self.assertEqual(raw, (runtime_dir / "chainsync-pipelined-low-high.tsv").read_bytes())
+        self.assertEqual(
+            manifest,
+            json.loads((runtime_dir / "chainsync-pipelined-low-high.manifest.json").read_text()),
+        )
+        self.assertEqual(manifest["sourceCommit"], "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776")
+        self.assertEqual(manifest["caseTsvSha256"], hashlib.sha256(raw).hexdigest())
+        self.assertEqual(manifest["exportedCases"], 24)
+        rows = [line.split("\t") for line in raw.decode("utf-8").splitlines()]
+        self.assertEqual([int(row[1]) for row in rows], list(range(504001, 504025)))
+        self.assertTrue(all(len(row) == 9 and row[0] == "chainsync-pipelined-low-high-v1" for row in rows))
+        self.assertTrue(all(int(row[4]) == int(row[1]) + 7000003 for row in rows))
+        self.assertTrue(all(int(row[6]) == int(row[1]) + 8000003 for row in rows))
+        self.assertTrue(all(0 <= int(row[5]) <= 300 and 0 <= int(row[7]) <= 300 for row in rows))
+        self.assertTrue(all(row[8] == "pass" for row in rows))
         self.assertEqual(
             manifest["upstreamPropertyOutcomes"],
             {"pass": 24, "upstream-failure": 0, "precondition-discard": 0},
