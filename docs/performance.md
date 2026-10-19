@@ -205,6 +205,18 @@ on the apply path.
 
 ### Scheduling (D8)
 
+**Release decision, 2026-10-19.** The owner accepts the remaining one-CPU timer/forger-busy
+limitation for v0.2. Closing [#65](https://github.com/KD5UJC-XYZ/scarab/issues/65) records that
+decision; the approximately 50 ms step target and zero missed leader slots under load have not
+been demonstrated. Existing CPU boundaries, bounded verification and instrumentation remain.
+The later admission experiment reduced throughput by 38.4%; cancellation/lifetime obligations
+prevented adoption of the other prototypes ([recorded outcome](https://github.com/KD5UJC-XYZ/scarab/issues/65#issuecomment-6255538228)).
+Broader characterization belongs with [#25](https://github.com/KD5UJC-XYZ/scarab/issues/25): use
+a frozen runtime and representative recorded workloads, report CPU quota/host load and GC alongside
+throughput, validation/admission/forging latency distributions, timer lateness and missed slots,
+and verify unchanged results. This is future measurement scope, without expanding #25's existing
+mainnet-sync acceptance or starting an experiment. The historical measurements below are unchanged.
+
 **6 CPUs, `-Xmx3g`** (the flags of section 3), base and final together:
 
 | | base | final |
@@ -1778,7 +1790,7 @@ parity with the Haskell node.
 | Residual question | Where it remains | Evidence boundary |
 |---|---|---|
 | Safely parallelised ledger application and captured Preview verdict/digest acceptance | D2, #21 | Existing captured-block measurements do not establish uninterrupted live-sync throughput. |
-| Timer fairness and long forger stages on one CPU | D8, #65 | Stage attribution and bounded private-pool evidence remain in progress. |
+| Timer fairness and long forger stages on one CPU | D8, #65 closed with an accepted v0.2 limitation; later characterization with D6, #25 | Existing isolation/instrumentation retained; no proved 50 ms step bound or zero-miss guarantee under one-CPU load. |
 | Reward-update spikes | D15, #135, completed in PR #197 | Section 30 records incremental completion and sparse-chain forced completion separately. |
 | Evaluator environment-copy cost and the evaluator choice | I2, #43 | The historical Scalus profile does not prove the same hotspot in every current workload. |
 | Header-only relay reads, lagging candidates, snapshot sorting and commit locking | D17 in the roadmap | Historical #146 was folded into this investigation; these are later profiling candidates, not claimed implementations. |
