@@ -11,7 +11,6 @@ import xyz.kd5ujc.scarab.ledger.TestLedger.txIn
 import xyz.kd5ujc.scarab.protocol.{Handshake, LocalTxSubmission}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Role
 import xyz.kd5ujc.scarab.network.*
-import munit.CatsEffectSuite
 import scala.concurrent.duration.*
 
 import TxKit.*
@@ -19,7 +18,7 @@ import TxKit.*
 /** `cardano-cli transaction submit` as a client: node-to-client handshake, then LocalTxSubmission,
   * over a Unix socket into a real mempool.
   */
-class LocalSubmissionSuite extends CatsEffectSuite:
+class LocalSubmissionSuite extends FailsOnUncaught:
   private val magic = 42L
 
   private def wrap(tx: Bytes): Bytes =
@@ -60,7 +59,7 @@ class LocalSubmissionSuite extends CatsEffectSuite:
         Resource.eval(IO(java.nio.file.Files.createTempDirectory("csl-ntc"))).flatMap { dir =>
           val path = dir.resolve("node.socket")
           BearerServer
-            .listenUnix[IO](path) { bearer =>
+            .listenUnix[IO, NetworkError](path)(error => IO(fail(error.toString))) { bearer =>
               Handle
                 .allow[NetworkError](
                   LocalTxSubmissionServer
@@ -210,7 +209,7 @@ class LocalSubmissionSuite extends CatsEffectSuite:
       yield (mempool, context, ended, dir.resolve("node.socket")))
       .flatMap { (mempool, context, ended, path) =>
         BearerServer
-          .listenUnix[IO](path) { bearer =>
+          .listenUnix[IO, NetworkError](path)(error => IO(fail(error.toString))) { bearer =>
             Handle
               .allow[NetworkError](
                 NodeToClientServer.accept(bearer, magic, LocalSubmission.handler(mempool))
