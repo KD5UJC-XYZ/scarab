@@ -34,7 +34,7 @@ trait ImmutableStore[F[_]]:
   def append(ref: BlockRef, raw: Bytes): F[Unit]
 
   /** Force everything appended so far to disk (data, then index). */
-  def sync: F[Unit]
+  def sync(using Raise[F, StorageError]): F[Unit]
 
   def tip: F[Option[BlockRef]]
 
@@ -354,8 +354,8 @@ object FileImmutableStore:
     val F = Async[F]
     val files = Files.forAsync[F]
 
-    def fail[A](e: StorageError): F[A] = e.raise[F, A]
-    def guard[A](what: String)(fa: F[A]): F[A] =
+    def fail[A](e: StorageError)(using Raise[F, StorageError]): F[A] = e.raise[F, A]
+    def guard[A](what: String)(fa: F[A])(using Raise[F, StorageError]): F[A] =
       fa.attempt.flatMap(_.fold(e => fail(StorageError.Io(what, e)), F.pure))
 
     def dataPath(c: Int) = dir / f"$c%05d.chunk"
@@ -516,10 +516,11 @@ object FileImmutableStore:
             tipRef: Ref[F, Option[BlockRef]],
             chunksRef: Ref[F, Vector[Int]]
         ) extends ImmutableStore[F]:
-          private def forceCurrent(cur: Current[F]): F[Unit] =
+          private def forceCurrent(cur: Current[F])(using Raise[F, StorageError]): F[Unit] =
             guard(dir.toString)(cur.data.force(false) *> cur.index.force(false))
 
-          def sync: F[Unit] = mutex.lock.surround(current.get.flatMap(_.traverse_(forceCurrent)))
+          def sync(using Raise[F, StorageError]): F[Unit] =
+            mutex.lock.surround(current.get.flatMap(_.traverse_(forceCurrent)))
 
           def tip: F[Option[BlockRef]] = tipRef.get
 

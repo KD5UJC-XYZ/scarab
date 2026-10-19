@@ -26,10 +26,12 @@ trait UtxoStore[F[_]]:
   def read(keys: Iterable[TxIn]): F[Map[TxIn, TxOut]]
 
   /** Apply the batch atomically (`None` deletes) and move the store to `stamp`. */
-  def write(changes: Iterable[(TxIn, Option[TxOut])], stamp: Long): F[Unit]
+  def write(changes: Iterable[(TxIn, Option[TxOut])], stamp: Long)(using
+      Raise[F, StorageError]
+  ): F[Unit]
 
   /** The stamp of the last batch (`-1` for a store nothing was written to). */
-  def flushed: F[Long]
+  def flushed(using Raise[F, StorageError]): F[Long]
 
   /** Every entry (tools and tests; a disk store streams it into memory, so only for small sets). */
   def all: F[Map[TxIn, TxOut]]
@@ -57,7 +59,7 @@ trait UtxoStore[F[_]]:
   def size: F[Long]
 
   /** Durable copy of the current contents in `dir` (created; must not exist). */
-  def checkpoint(dir: Path): F[Unit]
+  def checkpoint(dir: Path)(using Raise[F, StorageError]): F[Unit]
 
   /** Make the store equal to the checkpoint in `dir`; `false` if there is none. */
   def restore(dir: Path): F[Boolean]
@@ -72,7 +74,7 @@ trait UtxoStore[F[_]]:
 
 object UtxoStore:
   /** Flush the diff of an immutable state: write every change the store does not have yet. */
-  def advance[F[_]: Sync](store: UtxoStore[F], utxo: Utxo): F[Unit] =
+  def advance[F[_]: Sync](store: UtxoStore[F], utxo: Utxo)(using Raise[F, StorageError]): F[Unit] =
     store.flushed.flatMap { at =>
       if utxo.stamp <= at && !utxo.diff.exists(_._2.stamp > at) then Sync[F].unit
       else
@@ -237,7 +239,9 @@ final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.C
   def read(keys: Iterable[TxIn]): F[Map[TxIn, TxOut]] =
     state.get.map(c => keys.iterator.flatMap(k => c.entries.get(k).map(k -> _)).toMap)
 
-  def write(changes: Iterable[(TxIn, Option[TxOut])], stamp: Long): F[Unit] =
+  def write(changes: Iterable[(TxIn, Option[TxOut])], stamp: Long)(using
+      Raise[F, StorageError]
+  ): F[Unit] =
     state.update { c =>
       val next = changes.foldLeft(c.entries) {
         case (m, (in, Some(out))) => m.updated(in, out.copy(raw = out.raw.compact))
@@ -246,7 +250,7 @@ final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.C
       Contents(next, math.max(c.stamp, stamp))
     }
 
-  def flushed: F[Long] = state.get.map(_.stamp)
+  def flushed(using Raise[F, StorageError]): F[Long] = state.get.map(_.stamp)
   def all: F[Map[TxIn, TxOut]] = state.get.map(_.entries)
   def select(keep: TxOut => Boolean): F[Map[TxIn, TxOut]] =
     state.get.map(_.entries.filter((_, out) => keep(out)))
@@ -266,13 +270,13 @@ final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.C
   def reset: F[Unit] = state.set(Contents(Map.empty, -1))
   def memory: F[Map[String, Long]] = F.pure(Map.empty)
 
-  private def guard[A](what: String)(fa: => A): F[A] =
+  private def guard[A](what: String)(fa: => A)(using Raise[F, StorageError]): F[A] =
     F.blocking(fa).attempt.flatMap {
       case Right(a) => F.pure(a)
       case Left(e)  => StorageError.Io(what, e).raise[F, A]
     }
 
-  def checkpoint(dir: Path): F[Unit] =
+  def checkpoint(dir: Path)(using Raise[F, StorageError]): F[Unit] =
     state.get.flatMap { c =>
       guard(dir.toString) {
         java.nio.file.Files.createDirectories(dir.toNioPath)

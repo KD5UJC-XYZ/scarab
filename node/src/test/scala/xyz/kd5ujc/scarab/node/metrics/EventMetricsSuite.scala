@@ -166,7 +166,11 @@ class EventMetricsSuite extends CatsEffectSuite:
     fixture.flatMap { (metrics, em) =>
       for
         _ <- em.storage.emit(StorageEvent.SnapshotWritten("a", Some(block(1)), 2048L, 1500L))
-        _ <- em.storage.emit(StorageEvent.SnapshotFailed(new java.io.IOException("disk")))
+        _ <- em.storage.emit(
+          StorageEvent.SnapshotFailed(
+            xyz.kd5ujc.scarab.storage.SnapshotFailure.Defect(new java.io.IOException("disk"))
+          )
+        )
         s <- metrics.snapshot
       yield
         assertEquals(counter(s, Catalogue.snapshotsWritten, ()), Some(1.0))

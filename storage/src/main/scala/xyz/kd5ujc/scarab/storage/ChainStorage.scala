@@ -36,7 +36,7 @@ enum StorageEvent:
   case SnapshotSkipped(name: String, error: StorageError)
   case SnapshotRestored(name: String, anchor: Option[BlockRef])
   case SnapshotWritten(name: String, anchor: Option[BlockRef], bytes: Long, millis: Long)
-  case SnapshotFailed(cause: Throwable)
+  case SnapshotFailed(failure: SnapshotFailure)
 
   /** A snapshot that was not written, or an old one not brought to the current format, because the
     * format refused the state (`name` is the file; `anchor` the block of a write, none for a
@@ -75,7 +75,9 @@ trait ChainPersistence[F[_], S]:
 
 object ChainPersistence:
   /** No block storage, but the backing store still follows the immutable tip. */
-  def backingOnly[F[_]: cats.Monad, S](backing: StateBacking[F, S]): ChainPersistence[F, S] =
+  def backingOnly[F[_]: cats.Monad, S](backing: StateBacking[F, S])(using
+      Raise[F, StorageError]
+  ): ChainPersistence[F, S] =
     new ChainPersistence[F, S]:
       def extended(ref: BlockRef, raw: Bytes, immutable: Vector[BlockRef], anchor: Anchor[S]) =
         if immutable.isEmpty then cats.Monad[F].unit else backing.advance(anchor.state)
@@ -572,21 +574,21 @@ object ChainStorage:
               settled <- backing.settled(state)
               _ <- backing.checkpoint(ref)
               _ <- supervisor.supervise(
-                snapshotLock.lock
-                  .surround(snapshot(ref, settled))
-                  .void
+                SnapshotFailure
+                  .capture {
+                    snapshotLock.lock.surround(snapshot(ref, settled))
+                  }
                   .guarantee(busy.set(false))
+                  .flatMap(reportSnapshot)
               )
             yield ()).onError(_ => busy.set(false))
         }
       }
 
-    /** Write a snapshot of `state` at `ref`; true if it was written (a failure is reported, not
-      * raised). Run under `snapshotLock`.
-      */
-    private def snapshot(ref: BlockRef, state: S): F[Boolean] =
+    /** Write under `snapshotLock`, using the capability of this snapshot worker/finalizer. */
+    private def snapshot(ref: BlockRef, state: S)(using Raise[F, StorageError]): F[Boolean] =
       val began = Clock[F].monotonic
-      (for
+      for
         t0 <- began
         _ <- store.sync
         outcome <- snapshots.write(StateSnapshot(Some(ref), state))
@@ -613,31 +615,32 @@ object ChainStorage:
               )
             yield true
         )
-      yield done).attempt.flatMap {
-        case Right(done) => F.pure(done)
-        case Left(e)     => events.emit(StorageEvent.SnapshotFailed(e)).as(false)
-      }
+      yield done
+
+    private def reportSnapshot[A](result: Either[SnapshotFailure, A]): F[Unit] =
+      result.fold(error => events.emit(StorageEvent.SnapshotFailed(error)), _ => F.unit)
 
     /** On release: wait for a snapshot in flight, then snapshot the immutable tip unless the newest
-      * snapshot already is there. Never fails: a snapshot that cannot be written only costs the
-      * next start a replay.
+      * snapshot already is there. Storage failures and defects are reported as values; a snapshot
+      * that cannot be written only costs the next start a replay.
       */
     def shutdownSnapshot: F[Unit] =
-      val idle = (F.sleep(20.millis) *> busy.get).iterateUntil(b => !b)
-      val body = snapshotLock.lock.surround {
-        (latest.get, written.get).flatMapN {
-          case (Some((ref, state)), done) if !done.contains(ref) =>
-            (for
-              _ <- backing.advance(state)
-              settled <- backing.settled(state)
-              _ <- backing.checkpoint(ref)
-              ok <- snapshot(ref, settled)
-              _ <- events.emit(StorageEvent.ShutdownSnapshot(Some(ref), ok))
-            yield ()).attempt.flatMap {
-              case Right(_) => F.unit
-              case Left(e)  => events.emit(StorageEvent.SnapshotFailed(e))
+      SnapshotFailure
+        .capture {
+          val idle = (F.sleep(20.millis) *> busy.get).iterateUntil(b => !b)
+          val body = snapshotLock.lock.surround {
+            (latest.get, written.get).flatMapN {
+              case (Some((ref, state)), done) if !done.contains(ref) =>
+                for
+                  _ <- backing.advance(state)
+                  settled <- backing.settled(state)
+                  _ <- backing.checkpoint(ref)
+                  ok <- snapshot(ref, settled)
+                  _ <- events.emit(StorageEvent.ShutdownSnapshot(Some(ref), ok))
+                yield ()
+              case (_, done) => events.emit(StorageEvent.ShutdownSnapshot(done, false))
             }
-          case (_, done) => events.emit(StorageEvent.ShutdownSnapshot(done, false))
+          }
+          idle.timeoutTo(2.minutes, F.pure(true)) *> body
         }
-      }
-      (idle.timeoutTo(2.minutes, F.pure(true)) *> body).attempt.void
+        .flatMap(reportSnapshot)

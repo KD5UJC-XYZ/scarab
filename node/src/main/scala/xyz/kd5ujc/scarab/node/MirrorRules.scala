@@ -77,7 +77,8 @@ final class MirrorRules[F[_]: Monad](
     /** Measures the pure rules; without one they are not timed. */
     compute: Option[Compute[F]] = None
 )(using
-    Raise[F, ValidationError]
+    Raise[F, ValidationError],
+    Raise[F, xyz.kd5ujc.scarab.ledger.StorageError]
 ) extends BlockRules[F, MirrorState]:
 
   private val cpu: Compute[F] = compute.getOrElse(Compute.inline[F])
