@@ -958,6 +958,13 @@ faster, and was not kept.
 to the old rules is this section's record.
 
 
+**Current replay input (#83).** The measurements and commands above retain their original source/data
+scope. Current `BoundaryTickMain` and `BoundaryDigestSuite` consume the verified V5 replacement
+corpus, with the original immutable chain available read-only; original flat files remain archived
+historical inputs for their pinned builds. Retarget `SCARAB_K1_DB` to the verified replacement before
+using the current tool. Existing golden digests remain unchanged; this is conversion validation,
+not a new performance comparison. See [Storage migrations](storage-migrations.md).
+
 ## 17. Per-block ledger application in late Alonzo (#133)
 
 **The question.** The mainnet follower in late Alonzo (epoch 327, block 7.0 M) applied about 26 blocks/s on 1.5 of 12 cores:

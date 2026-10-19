@@ -77,7 +77,7 @@ Each open item links to its GitHub issue, which carries its state (`status:` lab
 - **D7** [#26](https://github.com/KD5UJC-XYZ/scarab/issues/26) (done) Ed25519 throughput: the strict canonical-y check under [#147](https://github.com/KD5UJC-XYZ/scarab/issues/147) reduced mean verification time by 8.7% (134.0 to 122.3 microseconds; [performance.md](performance.md) section 19). Differential tests retain the prior strict verifier's edge-case verdicts; the archived pinned sodium source-profile corpus and historical Preview acceptance are linked in [compatibility.md](compatibility.md). Native or batch verification is optional future profiling work, not a prerequisite for D7.
 - **D8** [#65](https://github.com/KD5UJC-XYZ/scarab/issues/65) (P1, mostly done; open: the forger-busy misses at 1 CPU; numbers in [performance.md](performance.md) section 6) Scheduling fairness: the peer session runs on its own work-stealing pool (`Compute[F]`, `--cpu-threads`) instead of the cats-effect compute pool; timer lateness and the longest CPU-bound step per epoch are measured and logged (`scheduling` on the epoch lines, `GET /scheduling`). Evidence: Preview from genesis for 31 min, started together with the base build, -3.2% blocks at 6 CPUs and +0.2% at 1 CPU, 0 starvation warnings in both; devnet `pool --scala-cpus 1` 0 missed leader slots in 11 of 14 runs (the base build: 5 of 6); the others missed 16 to 19 of 69 to 88 scheduled slots because the node's slot clock was 1.0 s behind the network's (cause found and fixed under H6; the pool summary reports `slotClock`). Remaining ([#65](https://github.com/KD5UJC-XYZ/scarab/issues/65) stays open): the forger-busy misses at 1 CPU, which the pool scenario reports as missed leader slots (the slot-clock misses are fixed, H6); the 1-CPU starvation warnings were the serial collector's pauses and need `-XX:+UseG1GC -XX:MaxGCPauseMillis=20`; a step is one uninterrupted pure call (the longest is reported, not bounded: 167 ms at 6 CPUs, 512 ms at 1 CPU); mempool add/sync and several forger hot paths already use `blocking`, while the remaining long steps and forger-busy misses still need profiling and bounds; the measurements are exported at `/metrics` (`scarab_scheduling_*`, `scarab_cpu_*`, J3).
 - **D9** [#69](https://github.com/KD5UJC-XYZ/scarab/issues/69) (P1, v0.3) Mainnet: start from a Mithril snapshot (E1), follow to the tip and stay there for a week, comparing the ledger at every epoch boundary (K7).
-- **D10** [#83](https://github.com/KD5UJC-XYZ/scarab/issues/83) (P1, in progress) Versioned ledger snapshots with migrations: an additive change of the persisted state should not force a full replay ([ADR 0006](adr/0006-versioned-formats-migrate-on-open.md)). Done: every persisted file kind is versioned (`FormatVersion`, `FileKind`) and migrates on open, the ledger snapshot from formats 1 to 4 to format 5, one way, with no replay (architecture.md, "Format versions and migration"). Open: the registry written up with a golden per version, and the sunset of the frozen readers in `legacy` (J3.9 of the [step 2 design](design/ledger-mirror-step2.md)).
+- **D10** [#83](https://github.com/KD5UJC-XYZ/scarab/issues/83) (P1, done) Versioned persisted formats and reader retirement ([ADR 0006](adr/0006-versioned-formats-migrate-on-open.md)): native V5 stays unchanged; registry, fixed current goldens with historical conversion provenance, typed retired/unknown preflight before mutable stores, checkpoint/restart regressions and [future migration guide](storage-migrations.md). Local inputs and repository fixtures have verified V5 replacements; the separate pinned preprod producer upgrade remains #37/#115 and is not performed by source landing. Genesis conversion remains #134, live gap provenance #129. Historical migration measurements remain evidence, without keeping unused binary readers on the runtime classpath (J3.9 of the [step 2 design](design/ledger-mirror-step2.md)).
 - **D11** [#124](https://github.com/KD5UJC-XYZ/scarab/issues/124) (P2, done) Historical live-sync/replay gap investigated and fixes measured over the same 12,000 blocks: 70,500 to 255,200 blocks/hour ([performance.md](performance.md) sections 13 and 31). The original 4× comparison used different block windows. Residual work stays mapped to D2 (#21), D6 (#25), D8 (#65), D17 and I2 (#43); no current hardware-matched Haskell throughput claim.
 - **D12** [#125](https://github.com/KD5UJC-XYZ/scarab/issues/125) (P2, idea) Signature verification is about half the CPU of live sync after D11: cache checked public-key points, a native or batched strict Ed25519 that keeps the speccheck behaviour, and the same for VRF (see D7, [performance.md](performance.md) section 14).
 - **D13** [#131](https://github.com/KD5UJC-XYZ/scarab/issues/131) (P2, in progress) The new rules' epoch boundary is 1.4 to 1.7x the old rules' on the largest Preview state; sorted-map builds, `Bytes.compareTo` and rational arithmetic ([performance.md](performance.md) sections 10 and 15).
@@ -227,33 +227,36 @@ G4; N4 needs N3 and a buildable reference Leios node.
 - **O1** [#74](https://github.com/KD5UJC-XYZ/scarab/issues/74) (P1) Threat model and security-review scope.
 - **O2** [#75](https://github.com/KD5UJC-XYZ/scarab/issues/75) (P1) Reproducible, signed releases with an SBOM and published images.
 - **O3** [#76](https://github.com/KD5UJC-XYZ/scarab/issues/76) (P2) Operator packaging: container image, compose and Kubernetes manifests.
-- **O4** [#80](https://github.com/KD5UJC-XYZ/scarab/issues/80) (P1) Join the node-diversity conformance and benchmarking efforts (leaderboard, Cardano Blueprint).
+- **O4** [#80](https://github.com/KD5UJC-XYZ/scarab/issues/80) (owner-managed, closed outside development) Node-diversity participation, leaderboard submission and Cardano Blueprint contribution are handled by the owner outside the repository development queue. Existing reusable fixtures/scenarios remain available; upstream conformance implementation is K2 (#49).
 
-## Order of work (set 2026-10-18)
+## Order of work (set 2026-10-19)
 
 The order inside each milestone, with the reason for it. IDs are the roadmap IDs; the issues carry the
 state. This section is rewritten when the order changes.
 
 **v0.2, reference-grade evidence**
 
-1. *Correctness and safety.* The remaining audit follow-ups AUD-05 to AUD-07 (#157 to #159). These retain their reference-backed regression and persistence
-   requirements; completed fixes and their evidence remain recorded above.
-2. *Reference coverage and implementation.* The upstream conformance suites K2 (#49), canonical
-   ledger-state projection K8 (#77), ecosystem contributions O4 (#80), the remaining M11 checklist (#82),
-   format registry and reader policy D10 (#83), Genesis governor hooks (#139),
-   governor follow-ups (#142), and deterministic simulation K9 (#78).
-3. *Throughput and scheduling, in parallel.* Optimised apply D2 (#21), scheduling fairness D8 (#65),
-   the sync/replay gap D11 (#124), and reward-update pulsing D15 (#135). Strict Ed25519 D7 (#26) is done.
-   Parallel transaction application within a block is excluded. The stored-value decision under D16
-   retains CBOR; MemPack is used at the import/export boundary.
-4. *Final public gate and maintainer decision.* The first Scala-forged preprod block adopted on chain
+1. *Executable reference coverage.* Complete the applicable upstream conformance adapters K2 (#49),
+   retaining exact generated inputs and explicit coverage limits. Ledger-mirror gaps remain in their
+   existing follow-up items; a partial adapter is not whole-suite completion.
+2. *Throughput and scheduling, in parallel.* Finish the captured acceptance for optimised apply D2
+   (#21) and timer/forger attribution for scheduling fairness D8 (#65). Bounded Plutus dependency
+   batches retain ordered ledger preparation and verdict landing. Reward pulsing D15 (#135), the
+   original sync/replay investigation D11 (#124) and strict Ed25519 D7 (#26) are complete. Stored
+   values remain CBOR; MemPack is used at snapshot import/export.
+3. *Final public gate and maintainer decision.* One Scala-forged preprod block adopted on chain
    (H1/H1a, #37/#115; one shared outcome) and AUD-09's merge-protection decision (#161, owner).
-   Pool monitoring J3c (#117) is complete. Stake becomes active at epoch 321; actual block production
-   depends on the leader schedule.
+   Pool monitoring J3c (#117) is complete. Stake becomes active at epoch 321; actual production
+   depends on the leader schedule. Any upgrade of the existing producer first follows the storage
+   backup/conversion procedure; development changes do not restart it.
+
+SCLS interchange K8 (#77), Genesis governor hooks (#139), live topology networking (#142),
+deterministic simulation K9 (#78) and snapshot reader retirement D10 (#83) are complete. O4 (#80)
+is owner-managed outside development rather than an outstanding v0.2 implementation gate.
 
 *Exit of v0.2 = the remaining milestone work and an adopted preprod block.* Reference-backed
-correctness and conformance, bounded resource behaviour, the normal per-change gates and nightly CI
-remain required. Retained evidence includes the completed Preview epoch comparisons (K1), preprod
+correctness and conformance, bounded resource behaviour and the normal per-change gates remain
+required. Nightly CI continues as a safety net rather than an extra wait before closing each issue. Retained evidence includes the completed Preview epoch comparisons (K1), preprod
 sync (C4), memory investigation (K6), Mithril bootstrap (E1), and snapshot interoperability (E2).
 The adopted preprod block is the final public-network gate. Dedicated genesis/performance and
 observation campaigns D6, K4, K5, K7 and D9 move to v0.3 with their acceptance criteria unchanged

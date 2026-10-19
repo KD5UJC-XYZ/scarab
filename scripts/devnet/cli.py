@@ -34,8 +34,7 @@
                                    `e2e --oracle`, `soak --oracle` or `follow --dump-state`) with the
                                    Haskell ledger state db-analyser stores in the reference container
     devnet.py restart              up + follow --db, stop it with SIGTERM (the JVM must exit within 30 s, issue 89),
-                                   start it again (it must restore the snapshot, and the files are V5);
-                                   --migrate-from CLASSES: first a run of an older build, whose snapshots must migrate
+                                   start it again (it must restore the snapshot, and the files are V5)
     devnet.py down                 remove containers and the run directory
 
 Run data lives in ${SCARAB_DATA_DIR:-/tmp/scarab}/<name>. The Scala node shares the
@@ -265,9 +264,6 @@ def main():
     rs = sub.add_parser("restart", parents=[scala_options],
                         help="up + follow --db, SIGTERM (must exit within 30 s), follow --db again (must restore the snapshot)")
     rs.add_argument("--seconds", type=int, default=20, help="seconds the follower runs after its first block, before each stop")
-    rs.add_argument("--migrate-from", metavar="CLASSES",
-                    help="first run the build whose classes are in this directory (the `classes` of an earlier run) and "
-                         "stop it; this build must then migrate the snapshots that build wrote (V4 to V5 for 6ce5bb77, the last build with V4 files)")
     rs.set_defaults(run=restart)
     vc = sub.add_parser("v1-context", help="the Plutus V1 script context case by case against the reference "
                                            "(reference inputs, reference scripts, inline datums, Byron addresses, "

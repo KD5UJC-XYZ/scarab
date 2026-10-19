@@ -14,7 +14,7 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{ByronState, ConsensusExtras}
 import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorExtras, ProtocolExtras, StateMirror}
-import xyz.kd5ujc.scarab.ledger.{Nonce, StorageError, TxIn, Utxo}
+import xyz.kd5ujc.scarab.ledger.{FileKind, FormatVersion, Nonce, StorageError, TxIn, Utxo}
 import xyz.kd5ujc.scarab.ledger.mempack.TxOutMemPack
 import xyz.kd5ujc.scarab.ledger.state.{Gap, NodeExtras, ShelleyBasedEra, SlotNo}
 import xyz.kd5ujc.scarab.node.NodeSetup
@@ -288,10 +288,19 @@ class LedgerSnapshotExportSuite extends CatsEffectSuite:
         oldBefore <- IO(fingerprint(db))
         old <- attempt(LedgerSnapshotExport.run[IO](LedgerSnapshotExport.Config(db, root / "out")))
         _ <- IO {
-          assert(old.left.exists {
-            case LedgerSnapshotExport.Error.Storage(_: StorageError.VersionMismatch) => true
-            case _                                                                   => false
-          })
+          assertEquals(
+            old,
+            Left(
+              LedgerSnapshotExport.Error.Storage(
+                StorageError.RetiredVersion(
+                  "snapshot format",
+                  FileKind.SnapshotFile,
+                  FormatVersion.V4,
+                  FormatVersion.V5
+                )
+              )
+            )
+          )
           assertEquals(fingerprint(db), oldBefore)
           val listed = JFiles.list((root / "out").toNioPath)
           try assert(!listed.findAny().isPresent)

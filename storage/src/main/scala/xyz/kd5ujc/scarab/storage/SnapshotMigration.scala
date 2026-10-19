@@ -2,32 +2,70 @@
 package xyz.kd5ujc.scarab.storage
 
 import cats.effect.Sync
-import cats.mtl.Ask
+import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import fs2.io.file.Path
+import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files as JFiles
-import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
 import xyz.kd5ujc.scarab.ledger.{FileKind, FormatVersion, StorageError}
-import xyz.kd5ujc.scarab.legacy
 
-/** Bringing the snapshot files of a database to the current format ([[FileKind.SnapshotFile]]),
-  * before the snapshots are opened. A migration is one-way: it rewrites the files, atomically and
-  * one at a time, and does not keep the old ones (see docs/running.md for keeping a copy).
+/** Registered snapshot migration and read-only compatibility preflight. Retired payload readers are
+  * recovered from pinned historical source when converting archived data, not the live node.
   */
 trait SnapshotMigration[F[_]]:
-  def run(dir: Path)(using cats.mtl.Raise[F, StorageError]): F[SnapshotMigration.Report]
+  def preflight(dir: Path)(using Raise[F, StorageError]): F[Unit]
+  def run(dir: Path)(using Raise[F, StorageError]): F[SnapshotMigration.Report]
 
 object SnapshotMigration:
-  /** Read only the bounded format header of every snapshot before identity admission or any mutable
-    * store is opened. The live migration continues to support every registered version.
+  /** Check supported snapshot headers before identity admission or mutable store acquisition. */
+  def preflight[F[_]: Sync](dir: Path)(using Raise[F, StorageError]): F[Unit] =
+    toCurrent[F].preflight(dir)
+
+  /** Identify the registered header without retaining a previous-version payload decoder. */
+  private[storage] def versionOf(
+      what: String,
+      header: Array[Byte]
+  ): Either[StorageError, FormatVersion] =
+    val magic = new String(header.take(8), StandardCharsets.ISO_8859_1)
+    if magic == "CSLSNAP1" && header.length < 12 then
+      Left(StorageError.Corrupt(what, SnapshotReadError.VersionHeaderLength(header.length, 12)))
+    else
+      val identifier =
+        if magic == "CSLSNAP1" then s"$magic v${ByteBuffer.wrap(header, 8, 4).getInt}"
+        else magic
+      FileKind.SnapshotFile.versionOf(what, identifier)
+
+  final case class Refused(name: String, refusal: SnapshotRefusal)
+  final case class Report(migrated: List[Migrated], refused: List[Refused])
+
+  object Report:
+    val empty: Report = Report(Nil, Nil)
+
+  /** The native snapshot migration registration. V5 is currently the only supported payload format.
+    * A future format adds its frozen previous reader and atomic conversion here; retired V1–V4
+    * identifiers remain recognized and refuse admission before any mutable store opens.
     */
-  def preflight[F[_]: Sync](dir: Path)(using
-      cats.mtl.Raise[F, StorageError]
-  ): F[Unit] =
-    val F = Sync[F]
-    def names: F[List[String]] =
+  def toCurrent[F[_]: Sync]: NodeSnapshotMigration[F] =
+    new NodeSnapshotMigration[F]
+
+  final class NodeSnapshotMigration[F[_]: Sync] extends SnapshotMigration[F] with Migration[F]:
+    private val F = Sync[F]
+    val kind: FileKind = FileKind.SnapshotFile
+
+    private def probe(
+        file: Path
+    )(using Raise[F, StorageError]): F[Either[StorageError, FormatVersion]] =
+      AtomicFile
+        .guard[F, Array[Byte]](file.toString) {
+          val in = JFiles.newInputStream(file.toNioPath)
+          try in.readNBytes(12)
+          finally in.close()
+        }
+        .map(versionOf(file.toString, _))
+
+    private def files(dir: Path)(using Raise[F, StorageError]): F[List[String]] =
       F.blocking(JFiles.isDirectory(dir.toNioPath)).flatMap {
         case false => F.pure(Nil)
         case true =>
@@ -43,166 +81,43 @@ object SnapshotMigration:
             finally listing.close()
           }
       }
-    def version(file: Path): F[Unit] =
-      AtomicFile
-        .guard[F, Array[Byte]](file.toString) {
-          val in = JFiles.newInputStream(file.toNioPath)
-          try in.readNBytes(legacy.SnapshotV2.HeaderSize)
-          finally in.close()
-        }
-        .flatMap { header =>
-          val found =
-            legacy.SnapshotV2.numberOf(header) match
-              case Some(number) => legacy.SnapshotV2.versionOf(file.toString, number)
-              case None =>
-                FileKind.SnapshotFile.versionOf(
-                  file.toString,
-                  new String(
-                    header.take(legacy.SnapshotV2.Magic.length),
-                    StandardCharsets.ISO_8859_1
-                  )
-                )
-          found.fold(_.raise[F, Unit], _ => F.unit)
-        }
-    names.flatMap(_.traverse_(name => version(dir / name)))
 
-  /** A snapshot left as it was, because this build could not bring it to the current format: it is
-    * skipped when the snapshots are opened, as any snapshot that does not read.
-    */
-  final case class Refused(name: String, refusal: SnapshotRefusal)
+    private def supported(file: Path)(using
+        Raise[F, StorageError]
+    ): F[Either[StorageError, FormatVersion]] =
+      probe(file).map(_.flatMap(v => kind.readable(file.toString, v).as(v)))
 
-  /** What a run did: the files it rewrote, grouped by the version they were at, and the ones it
-    * could not.
-    */
-  final case class Report(migrated: List[Migrated], refused: List[Refused])
+    private def refusals(
+        found: List[(String, Either[StorageError, FormatVersion])]
+    )(using Raise[F, StorageError]): F[Unit] =
+      // These are bounded-header errors, not current payload corruption. Every refused header must
+      // stop identity admission before any backup or rewritten identity can be published.
+      found.collectFirst { case (_, Left(error)) => error }.traverse_(_.raise[F, Unit])
 
-  object Report:
-    val empty: Report = Report(Nil, Nil)
+    def preflight(dir: Path)(using Raise[F, StorageError]): F[Unit] =
+      files(dir)
+        .flatMap(_.traverse(name => supported(dir / name).map(name -> _)))
+        .flatMap(refusals)
 
-  /** The migration of the snapshots of the node state to the current format (V5): a version 1 file
-    * (written before the packages were renamed) and a version 2 file are decoded with the frozen
-    * reader of the `legacy` module and brought to the mirror, a version 3 or 4 file has its Haskell
-    * section decoded and its sidecar converted ([[SnapshotV5.migrated]]); each is written again as
-    * V5 under the same name.
-    *
-    * A version this build does not know, in a file that starts like a snapshot, refuses the whole
-    * run before any file is rewritten (it was written by a newer build). A file of a known version
-    * that does not convert (corrupt, another schema, a state the live types or the mirror refuse)
-    * is left alone and reported: it is a snapshot that will be skipped, which costs a replay at
-    * worst. Nothing is ever replayed here.
-    */
-  def toCurrent[F[_]: Sync](using
-      env: Ask[F, ConsensusMirrorEnv]
-  ): NodeSnapshotMigration[F] = new NodeSnapshotMigration[F]
+    def detect(file: Path)(using Raise[F, StorageError]): F[FormatVersion] =
+      supported(file).flatMap(_.fold(_.raise[F, FormatVersion], F.pure))
 
-  final class NodeSnapshotMigration[F[_]: Sync](using
-      env: Ask[F, ConsensusMirrorEnv]
-  ) extends SnapshotMigration[F]
-      with Migration[F]:
-    private val F = Sync[F]
-    val kind: FileKind = FileKind.SnapshotFile
-    private val current = kind.current
-
-    // Snapshot conversion is a direct conversion to V5, not a chain of intermediate encodings.
-    override def nextVersion(from: FormatVersion): Option[FormatVersion] =
-      Option.when(from.ordinal < current.ordinal)(current)
-
-    /** The version of the file, or why it has none. */
-    private def probe(
-        file: Path
-    )(using cats.mtl.Raise[F, StorageError]): F[Either[StorageError, FormatVersion]] =
-      AtomicFile
-        .guard[F, Array[Byte]](file.toString) {
-          val in = JFiles.newInputStream(file.toNioPath)
-          try in.readNBytes(legacy.SnapshotV2.HeaderSize)
-          finally in.close()
-        }
-        .map { header =>
-          legacy.SnapshotV2.numberOf(header) match
-            case Some(number) => legacy.SnapshotV2.versionOf(file.toString, number)
-            case None =>
-              kind.versionOf(
-                file.toString,
-                new String(header.take(legacy.SnapshotV2.Magic.length), StandardCharsets.ISO_8859_1)
-              )
-        }
-
-    def detect(file: Path)(using cats.mtl.Raise[F, StorageError]): F[FormatVersion] =
-      probe(file).flatMap(_.fold(_.raise[F, FormatVersion], F.pure))
-
-    /** The file rewritten as the current version, or why it was not. */
-    private def convert(
-        file: Path
-    )(using cats.mtl.Raise[F, StorageError]): F[Either[SnapshotRefusal, Unit]] =
-      for
-        mirrorEnv <- env.ask[ConsensusMirrorEnv]
-        raw <- AtomicFile.guard[F, Array[Byte]](file.toString)(JFiles.readAllBytes(file.toNioPath))
-        result <- FileLedgerSnapshots.verified(raw).leftMap(SnapshotRefusal.Unreadable(_)) match
-          case Left(refusal) => F.pure(Left(refusal))
-          case Right(content) =>
-            F.blocking(SnapshotV5.migrated(mirrorEnv, content)).flatMap {
-              case Left(refusal) => F.pure(Left(refusal))
-              case Right(migrated) =>
-                AtomicFile.replace[F](file, FileLedgerSnapshots.closed(migrated)).map(Right(_))
-            }
-      yield result
-
-    /** One step, as [[Migrate]] steps. Every older version goes straight to the current one (the
-      * intermediate versions are not written), so the steps after the first find the file current;
-      * a snapshot that does not convert raises here, where [[run]] reports it instead.
+    /** Verify the actual source header and the exact registered version transition. Retired or
+      * unknown source files refuse before a caller-provided version can bypass admission.
       */
     def step(file: Path, from: FormatVersion, to: FormatVersion)(using
-        cats.mtl.Raise[F, StorageError]
-    ): F[Unit] =
-      validateStep(file, from, to) *> {
-        if from == current then F.unit
-        else
-          convert(file).flatMap(
-            _.fold(
-              r => StorageError.Corrupt(file.toString, r).raise[F, Unit],
-              F.pure
-            )
-          )
-      }
+        Raise[F, StorageError]
+    ): F[Unit] = validateStep(file, from, to)
 
-    def run(dir: Path)(using cats.mtl.Raise[F, StorageError]): F[Report] =
+    def run(dir: Path)(using Raise[F, StorageError]): F[Report] =
       for
-        present <- F.blocking(JFiles.isDirectory(dir.toNioPath))
-        names <-
-          if present then
-            AtomicFile.guard[F, List[String]](dir.toString) {
-              val listing = JFiles.list(dir.toNioPath)
-              try
-                import scala.jdk.CollectionConverters.*
-                listing.iterator.asScala
-                  .map(_.getFileName.toString)
-                  .filter(FileLedgerSnapshots.isSnapshot)
-                  .toList
-                  .sorted
-              finally listing.close()
-            }
-          else F.pure(Nil)
-        probed <- names.traverse(n => probe(dir / n).map(n -> _))
-        // A version of the family that this build does not know refuses the open, with nothing rewritten.
-        _ <- probed
-          .collectFirst { case (_, Left(e: StorageError.UnknownVersion)) => e }
-          .traverse_(_.raise[F, Unit])
-        outcomes <- probed.traverse {
-          case (name, Left(error)) =>
-            F.pure(Left(Refused(name, SnapshotRefusal.Unreadable(error))))
-          case (_, Right(version)) if version == current => F.pure(Right(None))
-          case (name, Right(version)) =>
-            convert(dir / name).map {
-              case Left(refusal) => Left(Refused(name, refusal))
-              case Right(())     => Right(Some(version))
-            }
-        }
+        names <- files(dir)
+        found <- names.traverse(name => supported(dir / name).map(name -> _))
+        _ <- refusals(found)
+        migrated <- Migrate(this, found.collect { case (name, Right(_)) => dir / name })
       yield Report(
-        outcomes
-          .collect { case Right(Some(from)) => from }
-          .groupMapReduce(identity)(_ => 1)(_ + _)
-          .toList
-          .sortBy(_._1)
-          .map((from, count) => Migrated(kind, from, current, count)),
-        outcomes.collect { case Left(refused) => refused }
+        migrated,
+        found.collect { case (name, Left(error)) =>
+          Refused(name, SnapshotRefusal.Unreadable(error))
+        }
       )

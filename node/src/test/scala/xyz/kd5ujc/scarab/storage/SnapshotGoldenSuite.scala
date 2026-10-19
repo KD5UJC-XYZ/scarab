@@ -75,10 +75,13 @@ class SnapshotGoldenSuite extends CatsEffectSuite:
   private def sha256(bytes: Array[Byte]): String =
     MessageDigest.getInstance("SHA-256").digest(bytes).map(b => f"${b & 0xff}%02x").mkString
 
-  test("every maintained native snapshot golden uses the current complete-file format") {
+  test("every supported snapshot version has an immutable current-format golden") {
     assertEquals(
       goldens.map(_.version).toSet,
-      Set(FileKind.SnapshotFile.current)
+      FileKind.SnapshotFile.history.toList
+        .map(_._1)
+        .filter(FileKind.SnapshotFile.readableFrom <= _)
+        .toSet
     )
     goldens.foreach { g =>
       val raw = JFiles.readAllBytes(fixtures.resolve(g.file))

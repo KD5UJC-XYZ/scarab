@@ -142,28 +142,24 @@ Caveats:
   before first open if rollback matters. The identity file is separately backed up during explicit
   legacy adoption.
   A database of a format newer than the build refuses to open (`UnknownVersion`) and nothing is rewritten.
-- The ledger snapshots are format 5 since J2.9 (format 4 was the sidecar with the old rules' flat
-  state in it; format 3 was the first with the Haskell ledger state plus a sidecar,
-  `docs/architecture.md`, "Snapshot format"). A database with snapshots of format
-  1, 2, 3 or 4 has them rewritten as format 5 the first time this build opens it, before any block is
-  replayed: one file at a time, atomically, under the same name, so a crash leaves each snapshot whole
-  in either format and the next open finishes. It costs a few seconds per snapshot on a Preview-size
-  state (a Preview database with 3 kept snapshots opens in well under a minute); the log says
-  `formatMigrated` with `kind` `SnapshotFile` and, for a snapshot it could not convert (corrupt, another
-  schema, a state the mirror refuses), `snapshotRefused`: that one is left as it was, skipped when the
-  snapshots are opened, and the node falls back to an older snapshot or replays. Nothing is replayed
-  by the migration itself. It is one way and an older build cannot read format 5: to keep the option of
-  an older build, copy `<db>/snapshots/` (and nothing else changes: the chunk files, the indexes and
-  the UTxO checkpoints are not touched) before the first start with this build. A snapshot of a format
-  newer than the build refuses the open (`UnknownVersion`) before anything is rewritten.
-- A format-5 sidecar holds the chain's state as the mirror keeps it and no flat ledger state or old
-  bookkeeping. A format-4 file an older build wrote restores as the mirror of the state it holds, with
-  the old rules' bookkeeping put right once while it is migrated (`LegacySeed`), and the format-5 file is
-  written without it. What an older file cannot say is not invented: the delegator counts of the older
-  stake snapshots are the old rules' lower bounds until two epoch boundaries have passed, and a snapshot
-  taken in the Shelley era of a chain that began in Byron, before Allegra, has no stash of the redeem
-  outputs (a replay from the previous snapshot gives the reference's; the mainnet is the only network
-  affected). Keep a copy of `<db>/snapshots/` to go back to an older build.
+- Native ledger snapshots remain format 5 (`SCRBSNP5`, Haskell ledger CBOR plus a typed sidecar,
+  framing and checksum). Snapshot payload formats 1–4 are known retired identifiers, refused with
+  `RetiredVersion`; an unknown identifier of the family is `UnknownVersion`. Database ownership,
+  read-only identity verification and snapshot preflight happen before opening RocksDB, migrating
+  identity or recovering immutable/volatile stores. The old readers and one-shot conversions are
+  recoverable from pinned historical source; they are not retained in the runtime. Preserve the
+  original database and convert a separate copy with the matching historical build before opening
+  it. A pre-idle-pools fingerprint also needs its exact historical schema, not a guessed decoder.
+  [Storage migrations](storage-migrations.md) describes backup, inventory, verification and the
+  local input requirements for retirement and the separate deployment transition. An existing older
+  producer stays on its compatible pinned binary until its final database copy is converted and
+  verified for an explicitly approved upgrade (#37/#115); this source change does not restart it.
+  Do not delete snapshots to force replay as an upgrade procedure.
+- A format-5 sidecar holds the mirror state without the old rules' flat bookkeeping. Historical
+  conversions preserve the source gaps and observed eras rather than claiming information the old
+  state lacked. The delegator counts of older stake snapshots can remain lower bounds until two
+  boundaries; an old Byron-start snapshot before Allegra can lack the redeem stash. Keep the source
+  and matching checkpoint backup. Live gap-provenance persistence is separate (#129).
 - **The UTxO checkpoints beside the snapshots** (`<db>/utxo/checkpoints/<snapshot stem>`) are RocksDB
   directories whose key is `txid ++ index` as a big-endian u16 (34 bytes, the Haskell node's) since K6
   (2026-10-14). The snapshots of format 1 were written before it, with the key `txid ++ u32` (36 bytes):
@@ -194,9 +190,13 @@ Caveats:
   the earlier default), and `--keep-snapshots` the number kept. The snapshot at a graceful stop is independent of
   both. Details and numbers: [performance.md](performance.md) section 13.
 
-**Checking an older database before a node is moved to this build.** Work on a copy; the original is
-never opened by the new build. With the node stopped (a running node's last chunk and volatile files are
-moving), `D` the database and `C` the copy, on the same file system as `D`:
+**Checking a database before a node is moved to this build.** First inventory its snapshot versions.
+This procedure requires verified current V5 snapshots and their associated checkpoints. V1–V4 inputs
+need separate verified current-format replacements using pinned historical source, as described in
+[Storage migrations](storage-migrations.md); this build refuses retired formats before mutable stores
+open. Work on a copy; the original is never opened by the new build. With the node stopped (a running
+node's last chunk and volatile files are moving), `D` the database and `C` the copy, on the same file
+system as `D`:
 
 ```sh
 mkdir -p "$C/volatile"
@@ -225,16 +225,18 @@ docker stop -t 120 check-old-db                                 # a graceful sto
 grep -E '"event":"(formatMigrated|snapshotRestored|replayStarted|replayProgress|snapshotRefused|snapshotSkipped|error|shutdownSnapshot)"' node.log | cut -c1-300
 ```
 
-What shows the database opens: `formatMigrated` with `"kind":"SnapshotFile"` and `"from"` the format of
-the snapshots (`"V4"` for a mainnet database written before J2.9) `"to":"V5"` and a `count` equal to the
-snapshot files; `snapshotRestored` with the `anchor` of the newest snapshot; `replayStarted` from that
-anchor; `replayProgress` lines whose `tip` moves past it, with `replayed` growing by the progress interval
-each time and no `"event":"error"` (a `ValidationError ... BadInputsUTxO` right after the restore is this
+What shows the current-format database opens: `snapshotRestored` with the `anchor` of the newest
+snapshot; `replayStarted` from that anchor; `replayProgress` lines whose `tip` moves past it, with
+`replayed` growing by the progress interval each time and no `"event":"error"` (a `ValidationError ... BadInputsUTxO` right after the restore is this
 bug); no `snapshotRefused`, no `snapshotSkipped`, no `UtxoCheckpoint` error; and, after the stop, a
 `snapshotWritten`/`shutdownSnapshot` at a block past the restored anchor. A replay from the newest
 snapshot of a mainnet follower that is a day behind covers some thousands of blocks, so
 `replayFinished` appears; for a database whose newest snapshot is older, five progress lines (the
 `replayed` counts) are enough. Remove the copy afterwards.
+
+Historical builds that supported V4→V5 migration also emitted `formatMigrated` with
+`"kind":"SnapshotFile"`, `"from":"V4"`, `"to":"V5"` and the number of migrated files. That is
+historical conversion evidence, not an automatic upgrade supported by this build.
 
 ### Configuration and topology files
 
@@ -1575,7 +1577,7 @@ python3 scripts/devnet.py down                       # remove containers and the
 | `ntc [--seconds 240] [--warmup 60] [--every 10] [--chain-sync-blocks 60] [--monitor-burst 4]` | a fresh cluster, the Scala node following pool 1 with `--local-socket` and `--db` (and `--mempool-bytes` equal to the reference's default capacity), and the ordinary and governance load running. Rounds of LocalStateQuery: the Scala node's volatile tip is acquired on the reference node by point, and every query of the battery (`scripts/devnet/ntcqueries.py`, about 55 queries built from the live state) goes to both. Then `cardano-cli conway query ...` (24 commands) against both sockets, each pair accepted only when the tip read before and after is the same block on both nodes. Then 18 refused transactions (`scripts/devnet/ntccases.py`: fee too small, inputs spent, value not conserved, validity interval, missing witness, small and wrong-network outputs, treasury value, registration, delegation, DRep, pool retirement, proposal, vote, size) and one valid transaction through both sockets. In parallel with the query rounds, local ChainSync on both sockets (`scripts/devnet/ntclocal.py`): `--chain-sync-blocks` blocks from Origin (the Scala node reads its immutable store and then its volatile chain), 12 from the tip, 4 as a backlog from a recent block. Last, LocalTxMonitor: snapshots of both mempools walked step for step while bursts of `--monitor-burst` chained transactions go through the Scala socket (which forwards them to the reference node), `cardano-cli conway query tx-mempool info | next-tx | tx-exists` on both sockets at the same time, and `AwaitAcquire` on both | every query that is implemented gives equal bytes in every round (matched / total per query); every `cardano-cli` pair equal; every refusal equal as raw `ApplyTxErr` bytes and as the text `cardano-cli transaction submit` prints; the valid transaction is accepted by the Scala node and reaches a block; every block of local ChainSync equal as the raw item and the same first instruction (a roll-back to the point found); every pair of mempool snapshots with the same slot and transactions has equal raw answers (at least 3 rounds with transactions), the bracketed `tx-mempool` outputs are equal (one with transactions) and `AwaitAcquire` wakes on both. Queries not answered yet are listed with their counts and do not fail the run. Writes `ntc-summary.json` |
 | `pool [--seconds 480] [--pool 1\|2\|3] [--keep]` | the Scala node is one of three pools: pool 1's Haskell node is never started and the Scala node forges with its keys; `slotsPerKESPeriod = 250` | blocks forged, adopted and on the final chain; the Haskell ledger's blocks-made count for the pool equals the Scala-forged blocks on the chain; every slot the reference node's `query leadership-schedule --current` gives the pool (asked once per epoch) is either forged or taken by another pool's block, and a missed one is reported with the `forgeSkipped` reason; load transactions in Scala blocks; at least one KES period crossed; no rollback deeper than `k`; Haskell pools agree on the tip; comparisons match; no error event; the forger's own counters (`GET /forging`, per epoch: slots checked, leader slots, forged, adopted, lost slot battles, skips by reason, forge latency) agree with the log and, scraped from `GET /metrics` between two readings of `/forging`, the Haskell-named series `Forge_about_to_lead_counter`, `node_is_leader_counter`, `forged_counter`, `adopted_counter` and `didnt_adopt_counter` lie between the two readings and the KES gauges exist and no block took more than five slots from its slot's start to adoption. `--byron-start-offset N` writes the Byron genesis' `startTime` N seconds off the Shelley `systemStart` (the reference's clock follows the Byron one; the check that the Scala node does too). Records the host load; a run whose only misses are busy slots on a host with load above its CPU count exits 2 (inconclusive). Writes `pool-summary.json` (`forgerStats`, `slotClock`, `oracle`, `host`) |
 | `kes-rotate [--seconds 300] [--max-kes-evolutions 24] [--rotate-threshold 21] [--rotate-every 10] [--min-rotations 2]` | `pool` with unattended KES rotation (H2a): `slotsPerKESPeriod = 250`, `maxKESEvolutions` 24, the Scala node reads its key and certificate through a `current` link and serves a local socket; `scripts/pool/rotate_kes.py` runs on a loop with the pool's cold key (never mounted into the node) and rotates every three periods | everything `pool` asserts, and: at least `--min-rotations` `kesReloaded` events with strictly increasing counters; one `forgeStarted` (no restart) and no `kesReloadRefused` or `kesPersistFailed`; every driver run exits 0; blocks forged with every certificate counter but perhaps the last, none with an older counter after a newer one and none before its certificate was reloaded; the pool's counter as a Haskell node reports it (`query kes-period-info`) equals the last counter on the final chain, so the Haskell pools took the blocks of every certificate; only the newest generation directory remains and no temporary key file; the key file was rewritten by the node after the last certificate was installed. Writes `pool-summary.json` with a `kesRotation` block |
-| `restart [--seconds 20] [--migrate-from CLASSES]` | a fresh cluster, the Scala node follows with `--db`, is stopped with SIGTERM and started again on the same database; `--migrate-from` first runs an earlier build from its `classes` directory, so that this build must migrate the snapshots that build wrote (V4 to V5 for the last build with V4 files) | the stop ends the JVM within 25 s and writes a shutdown snapshot (issue #89); the second start logs `snapshotRestored`; every snapshot file is of the current format (`SCRBSNP5`); with `--migrate-from`, a `formatMigrated` event for the snapshots (`SnapshotFile`, to `V5`) and no `snapshotRefused` |
+| `restart [--seconds 20]` | a fresh cluster, the Scala node follows with `--db`, is stopped with SIGTERM and started again on the same V5 database | the stop ends the JVM within 25 s and writes a shutdown snapshot (issue #89); the second start logs `snapshotRestored`; every snapshot file is current (`SCRBSNP5`). The retired `--migrate-from` old-writer round is no longer accepted; historical conversion evidence uses pinned source and an offline recipe |
 | `v1-context [--eras] [--no-up]` | a fresh Conway cluster (or, with `--eras`, the cluster that walks Byron to Conway) and a set of transactions that each run one Plutus V1 script (some also V2 and V3 as controls): reference inputs, reference scripts, inline datums and Byron addresses in inputs, reference inputs and outputs, with the validity flag both ways; Alonzo 5 and 6, Babbage 7 and 8, Conway 9 (`--eras`) and the genesis protocol version of the Conway-only cluster | exit status fails on a case the reference decided otherwise than the case expects; writes `v1-context-cases.json` (the shape of `fixtures/reference/v1-context`, see [its README](../fixtures/reference/README.md)); `follow` against the same cluster validates the blocks of the accepted cases |
 
 `--scala-cpus N` (`follow`, `soak`, `relay`, `pool`, `e2e`; default 2) sets the CPUs of the Scala node's

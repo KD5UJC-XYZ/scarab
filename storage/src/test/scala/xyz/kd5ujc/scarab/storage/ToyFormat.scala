@@ -10,8 +10,8 @@ import xyz.kd5ujc.scarab.codec.BinaryError
 
 /** A one-codec snapshot format for the tests of the snapshot store, which exercise the file layout
   * (the atomic write, the pruning, the restore) with a small state rather than the node state. It
-  * is the layout of the V2 snapshots (the frozen reader is in the `legacy` module): the magic, a
-  * format number, the schema fingerprint of the codec, the payload.
+  * uses the historical V2 framing: the magic, a format number, the schema fingerprint of the codec,
+  * the payload. It is independent of the retired node snapshot readers.
   */
 object ToyFormat:
   private val Magic: Array[Byte] = "CSLSNAP1".getBytes("US-ASCII")

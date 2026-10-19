@@ -43,20 +43,8 @@ def format_problem(magics):
     return None
 
 
-def migration_problem(events, source="V4"):
-    """Why the start did not migrate the snapshots written by the older build (from `source` to V5), else None."""
-    migrated = [e for e in events if e["event"] == "formatMigrated" and e.get("kind") == "SnapshotFile"]
-    if not any(e.get("from") == source and e.get("to") == "V5" and e.get("count", 0) > 0 for e in migrated):
-        return f"the start did not migrate the {source} snapshots to V5 (formatMigrated: {migrated})"
-    if any(e["event"] == "snapshotRefused" for e in events):
-        return "a snapshot was refused"
-    return None
-
-
-def _start(name, classes=None):
+def _start(name):
     command = [sys.executable, str(ENTRY), "--name", name, "follow", "--db"]
-    if classes:
-        command += ["--classes", classes]
     return subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
 
@@ -79,19 +67,13 @@ def _stop(name, process):
 
 
 def restart(args):
-    """Fresh cluster; follow --db, SIGTERM, assert a prompt exit; follow --db again, assert the snapshot is restored.
-
-    With --migrate-from, a run of the older build comes first, and the first run of this build must migrate what
-    it wrote. At the end every snapshot file is of the current format.
-    """
+    """Follow with current V5 snapshots, SIGTERM, then restore the snapshot on restart."""
     root = data_root(args.name)
     up(args)
     failures, stops = [], []
-    rounds = [(0, args.migrate_from)] if args.migrate_from else []
-    rounds += [(1, None), (2, None)]
-    for round_, classes in rounds:
+    for round_ in (1, 2):
         before = len(read_log(root / "follower.jsonl")[0])
-        process = _start(args.name, classes)
+        process = _start(args.name)
         if not _wait_for(root, "extended", 120, before):
             failures.append(f"round {round_}: no block followed within 120 s")
             docker("rm", "-f", f"{args.name}-scala", check=False)
@@ -104,10 +86,6 @@ def restart(args):
         problem = stop_problem(elapsed, any(e["event"] == "shutdownSnapshot" for e in fresh))
         if problem:
             failures.append(f"round {round_}: {problem}")
-        if round_ == 1 and args.migrate_from:
-            problem = migration_problem(fresh) or restore_problem(fresh)
-            if problem:
-                failures.append(f"round {round_}: {problem}")
         if round_ == 2:
             problem = restore_problem(fresh)
             if problem:

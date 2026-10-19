@@ -98,6 +98,20 @@ enum FileKind(
     */
   def current: FormatVersion = history.last._1
 
+  /** The oldest version this build can read or migrate. Older identifiers remain registered so
+    * retirement is distinguished from a format this build has never known.
+    */
+  def readableFrom: FormatVersion = this match
+    case SnapshotFile => FormatVersion.V5
+    case _            => history.head._1
+
+  def readable(what: String, version: FormatVersion): Either[StorageError, Unit] =
+    Either.cond(
+      readableFrom <= version,
+      (),
+      StorageError.RetiredVersion(what, this, version, readableFrom)
+    )
+
   /** The next version that changes this kind after `from`; shared database versions which did not
     * alter this file kind are skipped without rewriting it.
     */

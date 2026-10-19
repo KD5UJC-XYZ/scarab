@@ -92,9 +92,10 @@ At each release milestone, and whenever the list feels stale:
 
 An item is closed as done when all of these hold:
 
-1. The change is on `main`, and the gates for its level passed
-   ([CONTRIBUTING.md](../CONTRIBUTING.md#gates-and-ceremony-by-level-of-change)); the next nightly CI
-   run is green.
+1. The change is on `main`, the gates for its level passed
+   ([CONTRIBUTING.md](../CONTRIBUTING.md#gates-and-ceremony-by-level-of-change)), and main CI is green.
+   Nightly CI remains the continuing safety net, not an additional wait before closing each issue.
+   A red nightly is fixed before new work lands, as CONTRIBUTING describes.
 2. Evidence is recorded where its level asks: a test or fixture always; the compatibility matrix for
    consensus-critical work (level 3); the evidence log for stage-boundary runs (level 4);
    performance numbers in performance.md.

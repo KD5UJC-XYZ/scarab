@@ -190,6 +190,14 @@ enum StorageError extends NodeError:
     */
   case UnknownVersion(what: String, kind: FileKind, found: String)
 
+  /** A known format whose migration reader has been retired. Refused before mutable stores open. */
+  case RetiredVersion(
+      what: String,
+      kind: FileKind,
+      found: FormatVersion,
+      readableFrom: FormatVersion
+  )
+
   /** A requested block or point is not stored. */
   case Missing(what: String)
 
@@ -228,7 +236,9 @@ enum StorageError extends NodeError:
     case Io(w, r)          => s"io $w: $r"
     case VersionMismatch(w, f, e) => s"$w version $f, expected $e"
     case UnknownVersion(w, k, f) =>
-      s"$w: unknown ${k.label} format '$f' (this build reads '${k.identifier(FormatVersion.V1)}' and '${k.identifier(k.current)}'); it was probably written by a newer build"
+      s"$w: unknown ${k.label} format '$f' (this build reads from '${k.identifier(k.readableFrom)}' through '${k.identifier(k.current)}'); it was probably written by a newer build"
+    case RetiredVersion(w, k, f, oldest) =>
+      s"$w: retired ${k.label} format '${k.identifier(f)}'; use the archived migration build to convert a copy to '${k.identifier(oldest)}' before opening it"
     case Missing(w)    => s"missing $w"
     case OutOfOrder(r) => s"out of order: $r"
     case NetworkMismatch(f, e) =>

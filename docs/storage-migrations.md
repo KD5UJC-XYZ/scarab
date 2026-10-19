@@ -1,0 +1,179 @@
+# Storage migrations
+
+**Status: Current.** This is the contributor procedure for changing a persisted format and the
+operator procedure for preserving a usable database through that change. The decision is
+[ADR 0006](adr/0006-versioned-formats-migrate-on-open.md); the current layout is described in
+[architecture.md](architecture.md). Commands for following a chain belong in
+[running.md](running.md).
+
+## Register the change before changing the writer
+
+[PersistedFormat.scala](../ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PersistedFormat.scala) owns `FormatVersion` and `FileKind`. Append a version, never renumber
+one. Add a file kind when its identity and migration are independent; otherwise append the changed
+kind's `(version, identifier)` entry to `history`. An unchanged kind keeps its last layout and is not
+rewritten merely because another kind changed. `identifier`, `current` and `versionOf` are the
+registry, rather than independent magic strings scattered through callers.
+
+Freeze a complete previous-version file before editing its writer or schema. Keep its checksum,
+header, schema fingerprint, source revision, file hash and the command that actually wrote or
+captured it. Distinguish a captured original from a reproduction by a pinned historical writer. A
+reproduction proves that writer's format; it does not establish an unknown capture's writer revision.
+Keep small public fixtures in Git. Large captures, checkpoint directories and logs stay outside the
+checkout with a hashed manifest and reproducible provenance.
+
+The snapshot fingerprint golden in `CodecSuite` must change together with the version, migration and
+previous-version regression. Regenerating a fingerprint to make a test pass is not a migration.
+Native snapshots retain V5 (Haskell ledger CBOR plus a typed binary sidecar, framing and checksum);
+stored values remain CBOR. MemPack is an import/export format, not a replacement stored value.
+
+## Convert typed values without inventing state
+
+Keep the old reader frozen while its migration is supported, including its transitive persisted
+types and codec instances; importing evolving live types can silently change the old schema. Decode
+its own schema into its own closed types, then perform a pure typed conversion to the new types.
+Use closed error ADTs and cats-mtl capabilities at file boundaries. Preserve anchor, era, protocol parameters, UTxO association,
+and all semantic state the old file actually held. Hashes and signatures continue to use original
+transaction/block bytes; re-encoding diagnostics or a container format does not replace those bytes.
+
+For ledger snapshots, `FileLedgerSnapshots.verified` checks the file checksum before a payload is
+used. `SnapshotV5.format[F](SnapshotCheck.Full).decode(content)` reads current content, and
+`SnapshotV5.sidecarOf` exposes carried metadata. The `Full` choice controls encode-time read-back
+checking; decoding itself validates the current file in either mode.
+A converter must carry the source `observed` eras and `gaps` exactly. Missing non-myopic data must
+remain missing; the caller's newer environment is not evidence that the old file observed an era.
+A derivation is allowed only when the old state supplies every input and a test proves the derivation.
+Record any unavoidable loss explicitly rather than filling it with an apparently complete default.
+
+Test semantic invariants as well as fixed bytes. Include a control that fails when a carried gap is
+dropped or missing state is invented. For snapshots backed by RocksDB, verify the checkpoint at the
+same anchor, its key layout and its association with the snapshot's UTxO handle. A file checksum or
+a header inventory alone does not prove ledger/checkpoint agreement. Distinguish exhaustive file
+inventory from representative complete-state restoration in the evidence.
+
+## Register atomic migration and refuse incompatible input first
+
+[Migrate.scala](../storage/src/main/scala/xyz/kd5ujc/scarab/storage/Migrate.scala) defines the generic `Migration[F]` (`kind`, `detect`, `step`) and `Migrate`.
+A step writes the exact next changed version of its file kind (`nextVersion`), with the explicit
+`step(file, from, to)` contract. Shared versions that did not change that kind require no rewrite. Snapshot
+migration uses `SnapshotMigration[F]` and its report while retaining that generic structure. Add the
+new conversion to the registered migration, rather than a startup-only special case that another
+caller can bypass. Enforce version support in direct `detect`, `step` and `run` entry points too.
+
+`AtomicFile.replace` / `replaceAll` write a sibling temporary file, force its data, atomically rename
+it and force the directory. A temporary file left by interruption is not a candidate snapshot. Each
+step must leave either a complete old file or a complete new file. A restart discovers each file's
+actual version and resumes; a second successful migration changes no bytes and reports no work.
+Do not replace this with delete-then-write or an in-place payload edit.
+
+For example, with global V6 already assigned to complete network identity, a future snapshot change
+can append global `V7` and the snapshot's `SCRBSNP7` history entry. Keep V5 readable while that
+migration is supported. `Migration.detect` identifies either registered header;
+`step(file, V5, V7)` validates that exact transition, verifies the old checksum, uses the frozen V5
+reader, converts the typed state and atomically writes V7. `Migrate` then has no work for V7.
+The identity kind remains at V6 and unchanged kinds retain their own current versions. Retire the
+old reader only after the inventory and conversion conditions below hold, then advance the snapshot
+kind's `readableFrom` to V7. Use caller-scoped `Raise[F, StorageError]` for every migration operation;
+do not capture an earlier caller's error interpreter in a long-lived migration object.
+
+Acquire `DatabaseOwnership` before inspecting a database that could have another writer. Its lock
+bookkeeping is separate from format mutation. `ChainStorage.preflight` first checks the complete
+network identity read-only, then supported snapshot headers and any immutable format/index checks
+required for identity adoption. `Main` runs this before acquiring RocksDB backing;
+`ChainStorage.open` also runs it before identity admission/migration, immutable/volatile recovery or
+backing reset. Preserve network mismatch precedence when several files are wrong. Complete identity
+binds the protocol magic and exact Byron, Shelley, Alonzo and Conway genesis inputs. Incomplete or
+missing identities require explicit adoption under #159, with original-byte backup and the existing
+first-block/predecessor checks; reader retirement must not weaken those admission requirements.
+
+Known retired versions raise `StorageError.RetiredVersion`. A recognized family with an unknown
+identifier raises `UnknownVersion`. Both refuse admission without falling back to replay or rewriting
+another file. The generic `FileLedgerSnapshots.restore` also propagates these typed incompatibility
+errors rather than skipping them. Its `open` tidies temporary files, so direct callers that need the
+whole-database no-mutation guarantee must run `ChainStorage.preflight` before opening it. A corrupt current-version snapshot remains subject to the existing recovery policy:
+it can be skipped for an older usable snapshot or replay. Do not classify an incompatible but known
+version as ordinary corrupt input to obtain that fallback.
+
+## RocksDB layouts and checkpoints
+
+RocksDB key/value and column-family layouts also need a migration plan. They are not currently
+registered `FileKind` values: do not imply that bumping the snapshot version alone versions their
+layout. A future incompatible change must deliberately add its version/admission mechanism and
+coordinate every database/checkpoint consumer.
+
+The existing `RocksUtxoStore.hasCurrentKeys` / `rekeyInto` path recognizes the historical 36-byte
+`txid | index-u32` checkpoint keys and restores them as current 34-byte `txid | index-u16` keys.
+It preserves the stamp and original output CBOR values. Its full scan rejects `MixedKeyLayouts`,
+`IndexTooLarge` and `UnknownKeyLength`; inspecting only the first and last key is not equivalent
+proof. This checkpoint conversion remains supported independently of retired snapshot readers.
+
+Work on consistent database/checkpoint copies, with all writers stopped or a supported checkpoint
+capture, rather than editing an active database in place. Verify complete restored count/coin,
+stamp and the snapshot's diff overlay as well as file integrity and key widths. The checkpoint is
+associated with the snapshot anchor by its directory/handle, but its last flushed change stamp can
+legitimately be behind that anchor. Compare the checkpoint's flushed stamp with the saved handle and
+apply the carried diff before comparing complete count/coin; do not require every checkpoint stamp
+to equal the block number or compare the raw backing set alone. Test mixed/invalid
+layouts, an interrupted restore and restart. The backup must include a matching snapshot and its
+checkpoint; a standalone converted snapshot is not proof of a usable restored UTxO set.
+
+## Verify and record the result
+
+Run builds only in the JDK image. From the worktree, with its dependency cache mounted at the same
+container path used for the build:
+
+```sh
+docker run --rm --name scarab-migration-check \
+  -v "$PWD":/work -v "${SCARAB_CACHE_DIR:-$PWD/.cache}":/work/.cache \
+  -w /work --user "$(id -u):$(id -g)" -e HOME=/work/.cache/home \
+  -e SBT_GLOBAL_BASE=/tmp/sbt-global scarab-jdk:local \
+  bash scripts/sbtw check 'scalafixAll --check' node/runtimeClasspathFile
+```
+
+Use [CONTRIBUTING's gates](../CONTRIBUTING.md#gates-and-ceremony-by-level-of-change) for the actual touched paths,
+including the storage restart scenario when applicable. Test previous-version bytes, semantic/gap
+preservation, current round trips, idempotence, mixed-version directories, interruption/restart,
+unknown and retired versions, and network-mismatch precedence. Retain byte-for-byte assertions for
+identity files, torn immutable/volatile files and backing state after preflight refusal. Test the
+real startup path too, so a late check cannot hide an earlier RocksDB open.
+
+Record actual process exit status, exact source/runtime binding, commands, fixture and image pins,
+what was compared, and any limits in [compatibility.md](compatibility.md). Update the matching design
+stage, roadmap item and changelog fragment with the substantive implementation commit. A started
+process, partial output or a timed-out assertion is not a passed gate.
+
+## Inventory, backups and reader retirement
+
+Before opening a new build against existing data, inventory every active database, snapshot corpus,
+checkpoint, optional test input and conversion tool. Include writers that may still emit an older
+format. Separate active inputs from immutable historical evidence and archives. Preserve originals
+and their hashes; create current-format copies in new paths and verify them before retargeting tools
+or changing the active database. Preserve hard links within a copied checkpoint corpus without
+sharing target inodes with the originals if the copies will be opened or modified.
+
+Migrations are one way. Keep a complete compatible backup for a downgrade, including snapshots and
+checkpoints at matching anchors, identity, immutable and volatile data. Do not expect an old binary
+to read a new file or mix arbitrary old checkpoints with new snapshots. Any operator transition of a
+running writer is an explicit operation; producing verified copies does not update that writer.
+
+For this greenfield repository, an old payload reader can leave the development runtime once all
+local active inputs and repository test/tool dependencies have verified current-format replacements,
+local writers no longer emit that format, and useful historical evidence is recoverable from pinned
+Git source or an archived one-shot bridge. There is no speculative release support horizon. Keep
+historical identifiers in the registry; a future reader or migration is added deliberately when a
+new format is introduced.
+
+Source landing and deployment are separate. An existing deployment may keep its pinned older
+binary and compatible database; reader retirement does not upgrade that writer or its data. Before
+using the new binary there, capture a consistent full rollback backup, bridge a separate copy of its
+final old snapshots with their matching checkpoints, and verify restoration with the exact new
+runtime. The existing preprod producer's V4-to-V5 rollout remains an explicit operational step under
+[#37](https://github.com/KD5UJC-XYZ/scarab/issues/37) /
+[#115](https://github.com/KD5UJC-XYZ/scarab/issues/115). Do not deploy a V5-only reader against its
+unconverted V4 database, stop that producer, or access signing keys as part of the source change.
+
+A one-shot bridge must name its exact old source/compiler/schema, refuse unexpected fingerprints,
+keep original inputs read-only, write separate outputs and verify them with the current reader.
+Archive its recipe and conversion manifest. There is no general shipped snapshot-bridge CLI: do not
+present a private conversion harness as an installed command. Retiring snapshot readers does not
+by itself remove legacy domain code still used by genesis conversion (#134) or the independent
+RocksDB checkpoint-key migration.

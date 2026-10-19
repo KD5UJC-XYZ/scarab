@@ -358,7 +358,7 @@ Goal: `NodeState(ext: ExtLedgerState, extras)` is live; new era-indexed rules ev
 
 ## 5. Jump 3: close the gaps, #83 migrations, byte equality, about 7–10 agent-days (NonMyopic float risk flagged)
 
-*Partially implemented.* J3.5's typed resumable runtime and newly computed reward attribution are
+*Partially implemented; J3.9 is complete under #83.* J3.5's typed resumable runtime and newly computed reward attribution are
 implemented under [#135](reward-pulser.md), superseding D8 through
 [ADR 0019](../adr/0019-incremental-reward-calculation.md). The remaining gap ledger is tracked by
 [#129](https://github.com/KD5UJC-XYZ/scarab/issues/129); the other outstanding items remain in
@@ -400,6 +400,17 @@ Goal: debug-query answers byte-equal to the reference with no mask, on a node sy
    - `MirrorAnswersSuite` asserts empty gaps from genesis;
    - the K1 comparison becomes a byte diff of the V3 Haskell section against the Haskell `state` at the same slot (`db-analyser --store-ledger`).
 9. **J3.9 #83 write-up:** the snapshot migration registry documented (V2→V3→V4, goldens per version, the "never invent, carry gaps" rule); CHANGELOG, compatibility, findings.
+   - *As built, #83:* historical identifiers remain in `FileKind`; `readableFrom` distinguishes supported
+     payload versions from known retired ones. V5 format/fingerprint stays unchanged. Verified current
+     fixtures replace obsolete V3 inputs, with original Git blobs and conversion source recorded;
+     retained historical readers are recovered from pinned source rather than the runtime. Current
+     golden tests assert fixed bytes and semantic/gap invariants. `ChainStorage.preflight` checks
+     identity then versions before mutable store acquisition; direct migration/restore paths retain
+     typed incompatibility errors. Genesis vocabulary (#134) and the checkpoint-key conversion remain.
+     [Storage migrations](../storage-migrations.md) is the future contributor/operator procedure;
+     local/repository inputs have verified V5 replacements. The separate old producer's operational
+     transition remains #37/#115; its pinned compatible binary stays running until that approved upgrade.
+
 
 **Jump gates:** Preview corpus (byte diff at the Haskell snapshot slots); preprod from genesis; devnet e2e, soak, relay, pool and ntc with no mask.
 

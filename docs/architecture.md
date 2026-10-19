@@ -20,7 +20,7 @@ enforced by sbt: a cycle does not load.
 | `plutus` | `ScriptEvaluator[F]` algebra, the Scalus adapter, `PlutusData`, `ExUnits` | `F[_]` at the evaluator, pure otherwise |
 | `ledger` | Blocks, headers, genesis files, transactions, scripts, the Shelley to Conway rules, the Byron ledger, `Verdicts`, `OCertRules`, the node error hierarchy, `Nonce`, `LedgerView` | Pure |
 | `consensus` | Praos, TPraos and PBFT, chain selection, the hard-fork combinator, header rules, `VolatileChain`, `MirrorState` and the mirror's types, `BlockRules`, `Scheduling` | Pure, `Compute[F]` in `Scheduling` |
-| `legacy` | The frozen readers of the snapshot formats before the current one (V1 to V4, the flat node state and ledger state of their time, the binary `Codec` they were written with), the upgrade of that state to the live one, and the one-way conversion of the flat state to the mirror with the seeding of the old rules' bookkeeping (`Mirroring`, `LegacySeed`); the migration is its only caller, and it is deleted at its sunset (ADR 0006) | Pure |
+| `legacy` | Flat genesis/domain vocabulary and its one-way conversion to the mirror (`Mirroring`, `LegacySeed`), retained for genesis conversion (#134); retired V1–V4 binary snapshot codecs are recovered from pinned history, not shipped runtime readers | Pure |
 | `storage` | `ImmutableStore`, `VolatileStore`, `LedgerSnapshots`, `ChainStorage`, `UtxoStore` (memory, RocksDB), derived `Codec`s, format migrations, the Haskell ImmutableDB reader and the Haskell ledger-state codec | Algebras over `F[_]` |
 | `node` | Peer, follower, header gate, block rules (`MirrorRules`, with what they share in `NodeRules`), mempool, forging, relay, node-to-client, query server, `Main` | Algebras over `F[_]`; `IO` only in `Main` and the tools |
 | `models-gen`, `models` | CDDL parser and Scala generator; the generated models, their runtime and the equivalence tests. A spike: the node does not decode with the generated models, only `storage` uses the runtime (docs/models.md) | Build-time tool; pure |
@@ -31,13 +31,14 @@ blst-native -> crypto, plutus (before blst-java on their class paths)
 
 codec <- crypto <- protocol <- network ------------------------.
   ^                  ^                                          \
-  |                  '--- ledger <- consensus <- legacy <- storage <-- node
+  |                  '--- ledger <- consensus <- storage <------ node
+  |                                           '--- legacy <------'
   '------ plutus <------'
 ```
 
-`ledger` depends on `protocol` and `plutus`; `consensus` on `ledger`; `legacy` on `consensus`; `storage` on `legacy` and
+`ledger` depends on `protocol` and `plutus`; `consensus` on `ledger`; `legacy` on `consensus`; `storage` on `consensus` and
 `models` (which stands on `codec` and `crypto`; the Haskell ledger-state codec reuses the models runtime; `models` itself sees `ledger` only in
-its tests); `node` on `storage` and `network`. The ledger cannot import the network runtime, and storage cannot
+its tests); `node` on `storage`, `legacy` and `network`. The ledger cannot import the network runtime, and storage cannot
 import the node. Note that `protocol/Mux.scala` (the pure framing) and `network/Mux.scala` (the
 effectful multiplexer) are different files. The pure `NetworkError` vocabulary lives in `protocol`;
 `network.NetworkError` aliases it. This lets ledger and node adapters retain transport causes
@@ -425,8 +426,8 @@ composition and `Follower` the consumer, both in `node`):
 | Part | Where | Role |
 |---|---|---|
 | `ImmutableStore[F]` | `ImmutableStore.scala` (`FileImmutableStore`) | Append-only raw blocks older than `k`: `append`, `sync`, `tip`, `get(point)`, `byBlockNo`, `stream(after)` |
-| `LedgerSnapshots[F, S]` | `LedgerSnapshots.scala` (`FileLedgerSnapshots`) | Atomic, checksummed snapshots of the full `MirrorState` at an immutable point; newest valid wins. The file's content is a `SnapshotFormat[F, S]` (`SnapshotV3`: the Haskell ledger state and a `SnapshotSidecar`; `SnapshotV2`: the frozen reader), a refusal of the format is a value (`SnapshotRefusal`) |
-| `SnapshotMigration[F]` | `SnapshotMigration.scala` | Brings V1 to V4 snapshot files to V5 before they are opened |
+| `LedgerSnapshots[F, S]` | `LedgerSnapshots.scala` (`FileLedgerSnapshots`) | Atomic, checksummed snapshots of the full `MirrorState` at an immutable point; newest valid wins. The file's content is a `SnapshotFormat[F, S]` (`SnapshotV5`: Haskell ledger state and a `SnapshotSidecar`); a write refusal is a value (`SnapshotRefusal`), while retired/unknown reads refuse restoration |
+| `SnapshotMigration[F]` | `SnapshotMigration.scala` | Registered migration structure and read-only version admission; historical V1–V4 payloads are retired, V5 is current |
 | `VolatileStore[F]` | `VolatileStore.scala` | Append-only log of the volatile chain's updates (blocks, rollback markers); lets a restart continue at the previous tip |
 | `NetworkIdentityFile` | `NetworkIdentityFile.scala`, `NetworkIdentity.scala` | The network the database was created for (`<db>/network-identity`), checked on every open |
 | `SnapshotPolicy` | `SnapshotPolicy.scala` | When the immutable tip is snapshotted: `Aligned` (the Haskell node's default, a multiple of 40 k slots and at most one per 10 minutes) or `EverySlots` (`--snapshot-every`); the pure `due` |
@@ -510,19 +511,14 @@ skipped, nothing is pruned) what would not restore to that state, and the full c
 optimisation, so a refusal costs a replay at worst. An empty relay list of a pool is `Bytes.empty` after
 a read (the Haskell encoding writes both the item as given and none as the empty array).
 
-A file of version 4 or earlier is brought to this one by the migration, once, when the database opens
-(`SnapshotV5.migrated`): a version 4 file's sidecar is read by the frozen reader (`legacy.v4`), its
-Haskell section decoded, and the old rules' bookkeeping put right by `LegacySeed` (the reward update
-attributed to a placeholder pool, `mark` as the snapshot was taken, the pulser's parameters without the
-fields Conway lacks) before it is dropped; the version 5 file is written without it.
+Versions 1–4 are known retired formats. Their payload readers were used by the historical migration
+build at `648aed117f826d06117f616b5c0a3716a50485a7`; verified current V5 replacements and conversion
+provenance are the maintained inputs. Historical source remains recoverable for offline conversion.
+The runtime retains their identifiers to raise `RetiredVersion` rather than treating them as corrupt
+snapshots and silently replaying. [Storage migrations](storage-migrations.md) describes the conversion
+and retirement conditions, and how to add a future migration without inventing state.
 
-Versions 1 to 4 are read only by the migration, through the frozen readers of the `legacy` module
-(`legacy.SnapshotV2`, `legacy.SnapshotV3`, `legacy.v4.SnapshotV4`, the node state of their time and the binary `Codec` they were
-written with): a V1 or V2 file is decoded and `legacy.Upgrade` brings the state to the live one, a V3 or V4
-file's Haskell section is decoded and its sidecar converted, the state is written again (and read back to check
-it is equal), and its gaps and observed eras are carried over verbatim.
-
-Format version 2 (`legacy.SnapshotV2`, magic `CSLSNAP1`) was
+Historically, format version 2 (`legacy.SnapshotV2`, magic `CSLSNAP1`) was
 `"CSLSNAP1" | format number u32 | schema fingerprint[8] | payload | SHA-256`, the payload the codec of
 `StateSnapshot(anchor, NodeState)`; integers are LEB128 varints, `BigInt` is length-prefixed two's
 complement, containers are a count then the elements, sums a variant index then the variant. The
@@ -603,23 +599,34 @@ does not touch the 29,031 chunk indexes of a Preview database. A step is `Atomic
 temporary file in the same directory, fsync, rename
 over the original, fsync of the directory; so a crash leaves every file whole at one version, and the
 next open finishes. The chunk indexes are migrated first and the `format` file last. Each kind
-migrated is reported once (`formatMigrated`); the second open reports nothing. Reading accepts every
-version (the network identity parser does, and the index scan at open does once per file; the
-per-entry read path never looks at the magic). The migration is one way: an older build does not
+migrated is reported once (`formatMigrated`); the second open reports nothing. Reading accepts each
+kind's supported versions (`readableFrom` through `current`); old identity/index spellings remain
+supported, while snapshot V1–V4 identifiers are recognized as retired. The per-entry index read path
+never looks at the magic. The migration is one way: an older build does not
 know the newer formats (keep a copy of a database to run an older build on it).
 
-The snapshots are migrated by `SnapshotMigration` (storage), which `Main` hands to `ChainStorage.open`
-and which runs after the identity of the database is checked and before the snapshots are opened,
-because the conversion needs the node's configuration (`Ask[F, ConsensusMirrorEnv]`: the epoch
-geometry, the hard-fork configuration, the Byron parameters). Per file, atomically: a version 1 file
-gets its header and checksum rewritten in memory (the payload is the same bytes), a version 2 file is
-decoded with the frozen V2 reader (`legacy.SnapshotV2`, the derived codecs of `legacy.NodeCodecs`, in
-the `legacy` module), brought to the live state (`legacy.Upgrade`), turned into
-the mirror and written in the current format (5) under the same name. No block is replayed. A file of a version of the
-family that this build does not know refuses the whole run before any file is rewritten
-(`UnknownVersion`); a file that is corrupt, of another schema or that the mirror refuses is left as it
-is and reported (`snapshotRefused`), and `restore` skips it as it always skipped a snapshot it could
-not read. The UTxO checkpoints are not touched. `scripts/oracle/export.py` reads both index magics.
+`SnapshotMigration` retains the generic `Migration` / `Migrate` registration for future versioned
+conversions. Currently only V5 snapshot payloads are supported. A read-only identity verification
+precedes snapshot version preflight; `Main` holds database ownership and performs this before opening
+RocksDB, and `ChainStorage.open` repeats it before identity migration or immutable/volatile recovery.
+A mismatch of network identity takes precedence. Retired and unknown formats refuse admission without
+rewriting another file or resetting backing state. Direct migration entry points verify support too;
+`step` probes the real file before accepting a caller's claimed current version. Corrupt current files
+retain their existing recovery policy. Generic `FileLedgerSnapshots.open` tidies temporary files, so
+callers needing the full no-mutation admission guarantee first use `ChainStorage.preflight`; direct
+restore propagates typed incompatible-version errors rather than skipping them. The RocksDB
+checkpoint-key conversion remains independent. `scripts/oracle/export.py` still reads both index
+magics.
+
+**Snapshot reader retirement (D10).** Current data uses V5; historical V1–V4 identifiers stay in
+`FileKind` so startup can distinguish a known retired format from an unknown one. Retirement requires
+verified current-format replacements for every active local and repository input and transition of
+local old writers. Originals and pinned historical conversion evidence remain recoverable outside
+the runtime reader path. A separately pinned older deployment keeps its compatible binary until an
+explicit upgrade converts and verifies its final database copy; source landing does not perform that
+operational transition (#37/#115 for preprod). The procedure and required checks are in
+[Storage migrations](storage-migrations.md); genesis conversion (#134) and RocksDB checkpoint-key
+migration have separate dependencies.
 
 **Network identity** (`<db>/network-identity`). A plain-text file, written atomically when the
 database is created. V6 is complete; V1 and V2 are retained as explicitly incomplete legacy

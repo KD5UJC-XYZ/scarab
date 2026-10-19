@@ -48,11 +48,10 @@ object LedgerSnapshots:
   * }}}
   *
   * The content is a [[SnapshotFormat]]'s and starts with the magic that names the format (see
-  * [[SnapshotV4]]); the store adds the checksum and does the rest: the atomic write, the pruning,
-  * and the restore of the newest snapshot that reads. A file of an older format or schema fails
-  * with `VersionMismatch` instead of decoding garbage; recovery then falls back to an older
-  * snapshot or, with none usable, to replaying the immutable blocks from genesis. Files of the
-  * older formats are brought to the current one before the store is opened ([[SnapshotMigration]]).
+  * [[SnapshotV5]]); the store adds the checksum, atomic write, pruning and restore. Corrupt files
+  * can be skipped; known retired or unknown versions refuse restoration rather than cause replay.
+  * Opening this generic store tidies temporary files: callers requiring admission before any
+  * mutation must first run [[ChainStorage.preflight]], as the node does.
   */
 object FileLedgerSnapshots:
   val DigestSize = 32
@@ -159,6 +158,8 @@ object FileLedgerSnapshots:
           case Nil => F.pure(LedgerSnapshots.Restored(None, skipped))
           case name :: tail =>
             readFile(name).flatMap {
+              case Left(error: StorageError.UnknownVersion) => fail(error)
+              case Left(error: StorageError.RetiredVersion) => fail(error)
               case Left(error) => go(tail, skipped :+ LedgerSnapshots.Skipped(name, error))
               case Right(snapshot) =>
                 usable(snapshot.anchor).flatMap {

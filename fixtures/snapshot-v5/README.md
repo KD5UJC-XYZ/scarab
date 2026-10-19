@@ -5,8 +5,12 @@ contain public keys/signatures only, with no signing keys or operational node da
 
 These complete checksummed native V5 files are the maintained snapshot test inputs. They replace
 `fixtures/snapshot-v3`; the historical originals remain in Git at the blobs in `manifest.json`.
-This fixture migration changes no production reader, version registry or persisted layout. Reader
-support and operational writer upgrades remain [#83](https://github.com/KD5UJC-XYZ/scarab/issues/83).
+The current registry recognizes V1–V4 identifiers and refuses their retired payload formats; it
+reads native V5 only. The original readers are retained in pinned historical source, not on the
+runtime classpath. Future format changes still require migration and previous-version tests under
+[ADR 0006](../../docs/adr/0006-versioned-formats-migrate-on-open.md). Operational writer upgrades
+remain [#37](https://github.com/KD5UJC-XYZ/scarab/issues/37) /
+[#115](https://github.com/KD5UJC-XYZ/scarab/issues/115). The native V5 layout is unchanged.
 
 `eras/` contains fifteen verified conversions of the historical V3 files, covering Byron through
 Conway. Their precise original writer execution revision was not recorded. The files and conversion

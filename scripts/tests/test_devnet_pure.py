@@ -260,12 +260,20 @@ class RestartScenarioTest(unittest.TestCase):
         self.assertIn("SCRBSNP4", format_problem([b"SCRBSNP5", b"SCRBSNP4"]))
         self.assertIn("no snapshot", format_problem([]))
 
-    def test_the_older_snapshots_must_be_migrated(self):
-        from devnet.scenarios.restart import migration_problem
-        migrated = {"event": "formatMigrated", "kind": "SnapshotFile", "from": "V4", "to": "V5", "count": 3}
-        self.assertIsNone(migration_problem([migrated]))
-        self.assertIn("did not migrate", migration_problem([{"event": "extended"}]))
-        self.assertIn("refused", migration_problem([migrated, {"event": "snapshotRefused"}]))
+    def test_retired_migration_flag_is_refused_before_starting_a_cluster(self):
+        import io
+        from unittest.mock import patch
+        from devnet import cli
+        with patch("sys.argv", ["devnet.py", "restart", "--migrate-from", "/unused"]), \
+                patch("sys.stderr", io.StringIO()), patch("devnet.cli.restart") as run:
+            with self.assertRaises(SystemExit) as refusal:
+                cli.main()
+            self.assertEqual(refusal.exception.code, 2)
+            run.assert_not_called()
+        with patch("sys.argv", ["devnet.py", "restart"]), patch("devnet.cli.restart") as run:
+            cli.main()
+            run.assert_called_once()
+            self.assertEqual(run.call_args.args[0].command, "restart")
 
 
 class PoolOracleTest(unittest.TestCase):

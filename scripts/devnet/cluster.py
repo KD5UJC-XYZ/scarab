@@ -354,8 +354,8 @@ def freeze_classes(root, previous=None):
 
     Returns the container classpath (the copy is mounted at /run/classes). With `previous`, the
     directory of a copy made earlier (`<run dir>/classes` of a run of another build) is used instead of the
-    checkout's classes: the node of that build runs on the checkout's dependencies, so a database it
-    wrote can be opened by this build (the `restart --migrate-from` scenario).
+    checkout's classes, for explicit comparisons of pinned builds. This does not imply that the
+    current node supports an earlier build's persisted formats; snapshot retirement is independent.
     """
     frozen = root / "classes"
     shutil.rmtree(frozen, ignore_errors=True)

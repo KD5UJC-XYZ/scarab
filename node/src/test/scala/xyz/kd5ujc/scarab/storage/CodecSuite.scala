@@ -186,6 +186,7 @@ class CodecSuite extends ScalaCheckSuite:
   // A deliberate persisted-layout change needs a new FormatVersion, migration and previous-version
   // read test (ADR 0006). These are the native V5 writer's current sidecar goldens; complete-file
   // fixture hashes and their historical conversion provenance are pinned in SnapshotGoldenSuite.
+  // Retired V1–V4 readers and fingerprints remain in pinned historical source and conversion evidence.
   // Last regenerated for the previous epoch nonce of PraosState, the PlutusV2 cost model that the
   // Alonzo genesis carries in `extraConfig` (part of the fixture's initial protocol parameters) and
   // the Byron ledger state (UTxO, delegation, update system) carried in NodeState, and the idle

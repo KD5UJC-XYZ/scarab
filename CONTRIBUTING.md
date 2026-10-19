@@ -240,3 +240,6 @@ A claim of compatibility needs evidence a reader can check:
 - Do not rewrite shared history. Do not commit generated run data (`/tmp/scarab`
   is outside the checkout on purpose; set `SCARAB_DATA_DIR` to move it; the old name `CSL_DATA_DIR` still works, and an existing `/tmp/cardano-scala-lab` is used while `/tmp/scarab` is absent).
 - Fill in the pull request template; it asks for the level of the change and the gates you ran.
+
+For a persisted-format change, follow the [storage migration procedure](docs/storage-migrations.md)
+alongside the applicable gates above.

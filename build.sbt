@@ -44,9 +44,9 @@ val testDependencies = Seq(
 //   blstNative <- crypto, plutus
 //   codec <- crypto <- protocol <- network
 //   codec <- plutus
-//   protocol, plutus <- ledger <- consensus <- legacy <- storage
+//   protocol, plutus <- ledger <- consensus <- legacy, storage
 //   models <- storage (the Haskell ledger-state codec reuses the models runtime)
-//   storage, network <- node
+//   storage, legacy, network <- node
 def scarab(id: String, dir: String = null): Project =
   Project(id, file(Option(dir).getOrElse(id)))
     // sbt-tpolecat would add its own option set; the options above are the whole set here.
@@ -164,8 +164,6 @@ lazy val consensus = scarab("consensus")
 lazy val legacy = scarab("legacy")
   .dependsOn(consensus % "compile->compile;test->test")
   .settings(
-    // The snapshot codecs are derived by inline `Mirror` recursion.
-    scalacOptions += "-Xmax-inlines:512",
     libraryDependencies ++= Seq(
       Libraries.cats
     )
@@ -175,7 +173,6 @@ lazy val legacy = scarab("legacy")
 lazy val storage = scarab("storage")
   .dependsOn(
     consensus % "compile->compile;test->test",
-    legacy % "compile->compile;test->test",
     models
   )
   .settings(
@@ -214,6 +211,7 @@ lazy val node = scarab("node")
   .enablePlugins(BuildInfoPlugin)
   .dependsOn(
     storage % "compile->compile;test->test",
+    legacy % "compile->compile;test->test",
     network % "compile->compile;test->test"
   )
   .settings(
