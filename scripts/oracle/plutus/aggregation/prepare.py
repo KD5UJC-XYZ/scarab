@@ -41,7 +41,7 @@ def prepare():
     source_path = ROOT / 'fixtures/reference/context-errors/collection.json'
     originals = json.loads(source_path.read_text())
     original = next(row for row in originals if row['name'] == 'conway-pv10-v1-plain')
-    base = original
+    base = {key: value for key, value in original.items() if key != 'oracle'}
     rows = []
     # Retain a genuine, byte-identical signed admission as a distinct control.
     rows.append(dict(name='original-signed-v1-control', transaction=base['transaction'],

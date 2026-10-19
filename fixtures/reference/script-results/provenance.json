@@ -20,7 +20,7 @@
     "scripts/oracle/plutus/aggregation/cabal.project.freeze": "f7e6220cf1d723bb8722b4a7e90be5993c4f1fa5a380e64a13c3303546e8a68c",
     "scripts/oracle/plutus/aggregation/Dockerfile": "2ba4db6bad0b6cdae266ed50fbc47975c7deb582cecc8db7bee21a27863c535b",
     "scripts/oracle/plutus/aggregation/Dockerfile.dockerignore": "4f5048adc98c32015482a9539cc7287b86c7c36aa1652094abcc66617657cfe5",
-    "scripts/oracle/plutus/aggregation/prepare.py": "2163deeeb4a8b90c39ccc9a3838d0e3b0a0136793f1137460e614619bcf89cbe",
+    "scripts/oracle/plutus/aggregation/prepare.py": "6aeee83de785885c8db18117fd16700fdb2b89ab8a6bd172b96b078457381dd0",
     "scripts/oracle/plutus/aggregation/run.py": "c541338235e77d306e77a212234e864556a1a8cf6eb5afcc841a3ce9d7587b98"
   },
   "scope": {
