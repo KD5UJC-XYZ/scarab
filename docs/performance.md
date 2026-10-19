@@ -1431,3 +1431,89 @@ measured acquisition and retention behavior for these datasets only; no query la
 million entries, heap/RSS, or actual mainnet state fidelity was measured. Runs used bounded 10,000
 entry writes and the approved owned copy under `/tmp/scarab/luna-158`; cost logs and exit records
 are under `/tmp/scarab/luna-158/gates/cost-*`.
+
+## Bounded parallel Plutus after ordered preparation (D2, 2026-10-18)
+
+[ADR 0018](adr/0018-parallel-plutus-after-ordered-preparation.md) and the
+[as-built design](design/parallel-plutus.md) replace the earlier scope restriction on
+cross-transaction Plutus evaluation. Ledger application remains ordered; only immutable evaluator
+requests run concurrently. `--plutus-workers 1` retains the serial rules. The node default is
+`min(4, availableProcessors)`, with at least one worker, shared across validation calls including
+serial fast paths. This does not close the broader Preview acceptance in [#21](https://github.com/KD5UJC-XYZ/scarab/issues/21).
+
+**Dataset and binding.** A read-only capture of eight sealed preprod immutable chunks (6318–6325,
+active chunk excluded) contains 7,674 blocks, 49,266 transactions and 32,324 redeemer-bearing
+transactions, slots 136468829–136641596, blocks 5298878–5306551. Indexed CRCs, file SHA-256,
+header BLAKE2b hashes, slots, block numbers and previous-header links were checked. Capture archive
+SHA-256: `3a71ba315d3b17bd00e9f812113aa4a6d1748c506461fecd7a0d523c93618e7c`.
+A larger initial capture failed with an I/O error on an older chunk; it produced no usable sample.
+This window is the successful narrower capture, not a claim about the omitted data or a diagnosis
+of that error.
+
+The replay starts after snapshot slot 136511997/block 5300868/hash
+`1f6f537bf2809a8bac92e4d64a9489fa97a5361afacdc0e70fe37a3bb8fe77e7`.
+Snapshot file SHA-256: `4fc7424aa6439ef10727dd22425c198b51023fd0d6489c7cce83a9bb2ba36134`.
+The snapshot checksum and decoded anchor were independently bound to the captured index/header;
+its UTxO checkpoint is restored into a fresh scratch store. The remaining 5,683 blocks contain
+43,061 transactions, 27,461 redeemer-bearing transactions across 3,875 blocks, 104,392 collected
+requests and 104,388 reached evaluations. Two invalid-tag transactions stop four later scripts.
+Only 225 blocks have UTxO dependencies; the graph also accounts for reference reads and
+read-before-consume edges. No network sync, deployment or restart was needed.
+
+**Prior evaluator-only experiment.** Every actual context was recorded during serial full-rule
+replay, then bound back to its transaction's original body hash, slot and validity flag. Three
+rotated rounds over the complete post-baseline window, keeping each transaction's first-failure
+order and using dependency batches, gave median sums of per-block evaluator time:
+
+| Concurrent transaction jobs | Evaluator time | Relative to 1 |
+|---|---:|---:|
+| 1 | 9.194 s | 1.00× |
+| 2 | 6.326 s | 1.45× |
+| 4 | 4.617 s | 1.99× |
+| 8 | 3.798 s | 2.42× |
+
+All 329,532 transaction-result comparisons and 1,252,656 script-result comparisons matched,
+including execution units, logs and typed failure payloads. These are prepared-request timings;
+they exclude context construction and ledger application. A selected-heavy-block pilot gave larger
+speedups and was not used for these claims. On this same post-baseline window, a structural
+model weighted by declared execution-step budgets predicted 1.37×/1.47×/1.50× at 2/4/8 workers.
+Those budgets are caps, not elapsed work; they were not used as scheduling weights.
+
+**Environment and limits.** Linux x86-64, 24 logical host CPUs, about 139 GiB RAM; Docker JDK
+21.0.11, Scala 3.3.8, sbt 1.10.7, Scalus 1.3.0. `scripts/sbtw` uses a 2 GiB maximum heap and
+`-XX:ActiveProcessorCount=4`; eight jobs means eight admitted machines, not an eight-core JVM.
+Shared-host measurements are not guaranteed throughput. The local, one-block recorder is the
+performance-critical imperative exception: the earlier profile attributed 23% to the CEK workers
+and the serial apply thread also held the remaining ledger work. A second complete rules pass would
+repeat that work. The integrated comparison measures one preparation pass plus scheduling/landing,
+rather than presenting the evaluator-only gain as a node gain.
+
+**Integrated full-validation comparison.** Code `7ba8c7f3`, Docker JDK, the same capture and baseline
+mounted read-only; `node/testOnly *PlutusReplaySuite` restored a fresh scratch store. Every block
+first warmed the original pure serial interpreter, then each of three rounds rotated that interpreter
+and 1/2/4/8-worker services within the block. This made 68,196 feature-versus-original complete mirror
+state comparisons plus 17,049 repeated-original controls, all equal. The two invalid-tag transactions,
+collateral effects, 104,388 reached script evaluations per pass, UTxO diffs, counters and non-UTxO
+ledger/consensus state all matched. Total harness duration was 509.2 s; this includes repetitions,
+comparisons, snapshot loading and store flushes and is not a throughput result.
+
+Median sums of timed validation over the 5,683 blocks (three rounds):
+
+| Interpreter / worker bound | Full validation | Round range | Speedup vs original serial |
+|---|---:|---:|---:|
+| Original serial | 34.649 s | 34.603–34.959 s | 1.00× |
+| 1, exact serial rules with admission | 34.660 s | 34.647–34.922 s | 1.00× |
+| 2 | 29.337 s | 29.327–29.757 s | 1.18× |
+| 4 | 26.913 s | 26.895–27.050 s | 1.29× |
+| 8 | 26.052 s | 26.045–26.235 s | 1.33× |
+
+Times include direct signature/header validation, HFC ticking, ordinary ledger rules, context
+collection, worker admission/scheduling, ordered landing and store reads. File loading, result
+comparison, context recording, snapshot loading and store flushes are outside the timed interval.
+There is no ahead-of-rules verification cache or scheduling-statistics interpreter in this harness.
+These are full block-validation timings on this window, not live follower throughput, network,
+forging or whole-node latency measurements. Gains are smaller than the earlier evaluator-only result
+because the remaining ledger work stays sequential. Eight workers improve only modestly over four
+on this sample; the bounded default remains at most four. The final harness shared the host with
+a private era-transition gate; condition order rotated within each block and round ranges are shown.
+Pre-hardening replays are preserved separately and are not used for these numbers.

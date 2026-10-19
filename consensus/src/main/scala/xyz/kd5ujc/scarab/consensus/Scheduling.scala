@@ -115,11 +115,15 @@ trait Compute[F[_]]:
     */
   def timed[A](label: A => String)(step: => A): F[A]
 
+  /** Measure a step that joins bounded workers, including preparation and ordered landing. */
+  def timedF[A](label: A => String)(step: => F[A]): F[A]
+
 object Compute:
   /** Everything where it is, unmeasured: tests and pure interpreters. */
   def inline[F[_]: Monad]: Compute[F] = new Compute[F]:
     def within[A](fa: F[A]): F[A] = fa
     def timed[A](label: A => String)(step: => A): F[A] = Monad[F].unit.map(_ => step)
+    def timedF[A](label: A => String)(step: => F[A]): F[A] = Monad[F].unit.flatMap(_ => step)
 
   /** No separate pool, but steps measured: what the node did before D8, kept as `--cpu-threads 0`
     * to compare against.
@@ -127,6 +131,7 @@ object Compute:
   def measured[F[_]: Sync](stats: SchedulingStats[F]): Compute[F] = new Compute[F]:
     def within[A](fa: F[A]): F[A] = fa
     def timed[A](label: A => String)(step: => A): F[A] = timeStep(stats, label, step)
+    def timedF[A](label: A => String)(step: => F[A]): F[A] = timeEffect(stats, label, step)
 
   private def timeStep[F[_]: Sync, A](
       stats: SchedulingStats[F],
@@ -140,6 +145,18 @@ object Compute:
         (result, System.nanoTime() - began)
       }
       .flatMap((result, nanos) => stats.step(label(result), nanos).as(result))
+
+  private def timeEffect[F[_]: Sync, A](
+      stats: SchedulingStats[F],
+      label: A => String,
+      step: => F[A]
+  ): F[A] =
+    for
+      began <- Clock[F].monotonic
+      result <- Sync[F].defer(step)
+      ended <- Clock[F].monotonic
+      _ <- stats.step(label(result), (ended - began).toNanos)
+    yield result
 
   /** `fa` on `pool`, as a fiber of its own that the caller joins from its own thread.
     *
@@ -180,6 +197,7 @@ object Compute:
         new Compute[F]:
           def within[A](fa: F[A]): F[A] = onPool(fa, pool._1)
           def timed[A](label: A => String)(step: => A): F[A] = timeStep(stats, label, step)
+          def timedF[A](label: A => String)(step: => F[A]): F[A] = timeEffect(stats, label, step)
       }
 
 /** The node's scheduling facilities: the CPU pool and the timer monitor. */

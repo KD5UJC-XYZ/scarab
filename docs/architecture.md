@@ -381,6 +381,13 @@ forger.
   `ScalusEvaluator.default`). The interpreter only memoises decoded scripts and machines per cost
   model. `ScalusEvaluator.suspended[F]` is the same interpreter in `F` (`Sync.interruptible`) for a
   node that wants evaluation off the main thread. The machine runs on a thread with a large stack.
+- **Block scheduling** (`ledger/rules/EraBlock.scala`, `node/ParallelPlutus.scala`): ordered
+  preparation freezes each transaction's requests after the existing ordinary checks. A private plan
+  retains tentative state while dependency batches run under one shared block-validation worker
+  bound; verdicts and observers land in transaction order before any state is returned. Serial fast
+  paths also acquire admission when they can run a machine. `--plutus-workers 1` selects the serial
+  rules; the default is at most four workers. Mempool single-transaction validation retains its
+  serial interpreter. See [the design](design/parallel-plutus.md) and ADR 0018.
 - **Script context** (`ledger/ScriptContexts.scala`, `ledger/Purpose.scala`): ours, written against
   the ledger's `Plutus/TxInfo.hs` modules. V1 and V2 `TxInfo` (V1 rejects inline datums, reference
   scripts and reference inputs; V2 adds reference inputs, redeemers and a datum map; withdrawals in

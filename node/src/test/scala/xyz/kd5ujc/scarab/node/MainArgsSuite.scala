@@ -184,3 +184,12 @@ class MainArgsSuite extends munit.FunSuite:
       refused.left.exists(e => e.message.contains("no namespace") && e.message.contains("usage:"))
     )
   }
+
+  test("--plutus-workers admits a positive bound and supports exact serial validation") {
+    assertEquals(
+      Main.parse(base ++ List("--plutus-workers", "1")).toOption.get.plutusWorkers.value,
+      1
+    )
+    for value <- List("0", "-1", "many", "2147483648") do
+      assert(Main.parse(base ++ List("--plutus-workers", value)).isLeft)
+  }

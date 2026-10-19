@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import cats.{Id, Monad}
+import cats.Id
 import cats.data.{EitherT, NonEmptyVector, State}
 import cats.mtl.Stateful
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
 import xyz.kd5ujc.scarab.plutus.*
 
 /** Phase-2 validation: every redeemer is evaluated against its script with the script context the
@@ -43,6 +43,61 @@ object Phase2:
       case _         => false
 
   type Collected[A] = Either[NonEmptyVector[CollectError], A]
+
+  /** A block-local request group. Identity is intentional: completed values cannot be reused for
+    * another block, even when its transaction bytes happen to match.
+    */
+  final class Job private[Phase2] (
+      val index: Int,
+      val requests: Collected[Vector[(Redeemer, EvalRequest)]],
+      private[ledger] val observation: Collected[Outcome] => Observation
+  )
+
+  final case class Defect(cause: Throwable) extends DomainError
+
+  final class Completed private[Phase2] (
+      private[ledger] val job: Job,
+      private[ledger] val outcome: Either[Defect, Collected[Outcome]]
+  )
+
+  /** Only values cross the worker boundary. Raw defects are landed in order by the owner. */
+  private[ledger] def execute(job: Job, evaluator: ScriptEvaluator[Id]): Completed =
+    val outcome =
+      try Right(job.requests.map(run(_, evaluator)))
+      catch case scala.util.control.NonFatal(cause) => Left(Defect(cause))
+    new Completed(job, outcome)
+
+  /** Only the ledger's preparation factory can install this capability. */
+  sealed abstract class Preparation:
+    private[ledger] def append(job: Job): Unit
+
+  private[ledger] def job(
+      index: Int,
+      tx: Tx,
+      pp: ProtocolParams,
+      slot: BigInt,
+      spent: Map[TxIn, TxOut],
+      references: Map[TxIn, TxOut],
+      clock: Option[BigInt => BigInt],
+      requests: Collected[Vector[(Redeemer, EvalRequest)]]
+  ): Job =
+    new Job(
+      index,
+      requests,
+      outcome => Observation(tx, pp, slot, spent, references, clock, outcome)
+    )
+
+  /** Instance-local builder behind a pure, block-local interface. It avoids a second ledger pass on
+    * the measured hot path; neither the capability nor the tentative state escapes the plan.
+    */
+  private[ledger] def capture[A](body: Preparation => A): (Either[Defect, A], Vector[Job]) =
+    val jobs = Vector.newBuilder[Job]
+    val recorder = new Preparation:
+      def append(job: Job): Unit = { val _ = jobs.addOne(job); () }
+    val result =
+      try Right(body(recorder))
+      catch case scala.util.control.NonFatal(cause) => Left(Defect(cause))
+    (result, jobs.result())
 
   /** Every required, provided Plutus script in the reference's collection order, reversed on
     * success. Missing redeemers keep accumulating after a setup failure, but later contexts are not
@@ -139,20 +194,20 @@ object Phase2:
       posix: BigInt => Either[TranslationError, BigInt],
       evaluator: ScriptEvaluator[Id]
   ): Collected[Outcome] =
-    collect(tx, pp, scripts, spent, references, posix).flatMap { requests =>
-      Monad[Collected].tailRecM(Progress(requests.toList, 0)) {
-        case Progress(Nil, done) => Right(Right(Outcome.Passed(done)))
-        case Progress((redeemer, request) :: tail, done) =>
-          Right(evaluator.evaluate(request) match
-            case EvalResult.Success(_, _) => Left(Progress(tail, done + 1))
-            case EvalResult.Failure(reason: EvalFailure.Unsupported, _, _) =>
-              Right(Outcome.Unavailable(done, redeemer, reason))
-            case EvalResult.Failure(reason, _, _) => Right(Outcome.Failed(done, redeemer, reason)))
-      }
-    }
+    collect(tx, pp, scripts, spent, references, posix).map(requests => run(requests, evaluator))
 
-  /** Prepared requests still to run, and how many have passed. */
-  private final case class Progress(rest: List[(Redeemer, EvalRequest)], done: Int)
+  /** Evaluate in reference order, retaining the first failure and its original typed cause. */
+  def run(requests: Vector[(Redeemer, EvalRequest)], evaluator: ScriptEvaluator[Id]): Outcome =
+    @scala.annotation.tailrec
+    def loop(rest: List[(Redeemer, EvalRequest)], done: Int): Outcome = rest match
+      case Nil => Outcome.Passed(done)
+      case (redeemer, request) :: tail =>
+        evaluator.evaluate(request) match
+          case EvalResult.Success(_, _) => loop(tail, done + 1)
+          case EvalResult.Failure(reason: EvalFailure.Unsupported, _, _) =>
+            Outcome.Unavailable(done, redeemer, reason)
+          case EvalResult.Failure(reason, _, _) => Outcome.Failed(done, redeemer, reason)
+    loop(requests.toList, 0)
 
   private[ledger] def languageOf(script: Script): Either[TranslationError, PlutusLanguage] =
     script.kind match

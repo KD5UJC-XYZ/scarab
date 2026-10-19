@@ -36,7 +36,8 @@ object EraBlock:
       eraAt: Hfc.EraAt,
       verdicts: Verdicts = Verdicts.Direct,
       evaluator: ScriptEvaluator[cats.Id] = ScalusEvaluator.default,
-      observer: Option[Phase2.Observation => Unit] = None
+      observer: Option[Phase2.Observation => Unit] = None,
+      private[ledger] val preparation: Option[Phase2.Preparation] = None
   )
 
   /** What became of the block. */
@@ -54,6 +55,87 @@ object EraBlock:
 
     /** The block is refused. */
     case Refused(failure: BlockFailure)
+
+  /** An immutable body program. Ordinary callers use [[serial]]; the node can prepare a sealed plan
+    * without publishing its tentative ledger state.
+    */
+  final class Body private[EraBlock] (
+      ctx: Context,
+      ticked: EraNes,
+      header: Header.Shelley,
+      block: Block.Shelley,
+      txs: Vector[Either[LedgerDecodeError, Tx]],
+      before: PlutusStats
+  ):
+    def serial: Outcome = body(ctx)(ticked, header, block, txs, before)
+    def hasScripts: Boolean = txs.exists(_.exists(_.witnesses.redeemers.nonEmpty))
+    def worthwhile: Boolean = txs.count(_.exists(_.witnesses.redeemers.nonEmpty)) > 1
+    def prepare: Plan =
+      val (tentative, jobs) = Phase2.capture { recorder =>
+        body(ctx.copy(observer = None, preparation = Some(recorder)))(
+          ticked,
+          header,
+          block,
+          txs,
+          before
+        )
+      }
+      new Plan(
+        tentative,
+        jobs,
+        txs.sequence.getOrElse(Vector.empty),
+        before,
+        ctx.observer,
+        ctx.evaluator
+      )
+
+  def program(ctx: Context)(
+      ticked: EraNes,
+      header: Header.Shelley,
+      block: Block.Shelley,
+      txs: Vector[Either[LedgerDecodeError, Tx]],
+      before: PlutusStats
+  ): Body =
+    new Body(ctx, ticked, header, block, txs, before)
+
+  /** The only route from tentative state to a body result checks every reached phase-2 verdict.
+    * Missing or foreign completed values are evaluated directly, never treated as a success.
+    */
+  final class Plan private[EraBlock] (
+      tentative: Either[Phase2.Defect, Outcome],
+      val jobs: Vector[Phase2.Job],
+      txs: Vector[Tx],
+      before: PlutusStats,
+      observer: Option[Phase2.Observation => Unit],
+      evaluator: ScriptEvaluator[cats.Id]
+  ):
+    def batches: Vector[Vector[Phase2.Job]] = TxDependencies.batches(txs, jobs)
+    def execute(job: Phase2.Job): Phase2.Completed = Phase2.execute(job, evaluator)
+
+    def resolve(completed: Vector[Phase2.Completed]): Either[Phase2.Defect, Outcome] =
+      val values = completed.iterator.map(c => c.job -> c).toMap
+      type Resolved[A] = Either[Phase2.Defect, A]
+      jobs
+        .foldLeftM[Resolved, Either[xyz.kd5ujc.scarab.ledger.LedgerFailure, PlutusStats]](
+          Right(before)
+        ) {
+          case (failure @ Left(_), _) => Right(failure)
+          case (Right(stats), job) =>
+            values.getOrElse(job, Phase2.execute(job, evaluator)).outcome.map { result =>
+              val observation = job.observation(result)
+              observer.foreach(_(observation))
+              xyz.kd5ujc.scarab.ledger.TxChecks.checkedPhase2(stats, observation.tx, result)
+            }
+        }
+        .flatMap {
+          case Left(failure) => Right(Outcome.Refused(BlockFailure.Tx(failure)))
+          case Right(checked) =>
+            tentative.map {
+              case Outcome.Applied(nes, counters) =>
+                Outcome.Applied(nes, checked.copy(integrityChecked = counters.integrityChecked))
+              case other => other
+            }
+        }
 
   /** The state at the block's slot: the checks that need no ledger state (the header is the
     * block's, the era the header announces is the block's, the epoch does not precede the
@@ -138,7 +220,8 @@ object EraBlock:
       clock = Some(slot => BigInt(geometry.slotStart(slot).toEpochMilli)),
       evaluator = ctx.evaluator,
       observer = ctx.observer,
-      verdicts = ctx.verdicts
+      verdicts = ctx.verdicts,
+      preparation = ctx.preparation
     )
 
   /** The pool that made the block (the hash of the issuer's key). */

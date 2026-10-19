@@ -58,58 +58,76 @@ object TxChecks:
         val inputs = body.inputs.zip(spent).toMap
         val references = body.referenceInputs.zip(refOuts).toMap
         val posix = env.clock.toRight(TranslationError.NoEraHistory)
-        val outcome = Phase2.evaluate(
-          tx,
-          pp,
-          scripts,
-          inputs,
-          references,
-          slot => posix.map(_(slot)),
-          env.evaluator
-        )
-        env.observer.foreach(
-          _(Phase2.Observation(tx, pp, env.slot, inputs, references, env.clock, outcome))
-        )
-        outcome.left
-          .map(e =>
-            LedgerFailure.Rejected(
-              id,
-              PredicateFailure.utxo(UtxoFailure.Utxos(UtxosFailure.CollectErrors(e)))
+        env.preparation match
+          case Some(recording) =>
+            val requests =
+              Phase2.collect(tx, pp, scripts, inputs, references, slot => posix.map(_(slot)))
+            recording.append(
+              Phase2.job(env.txIndex, tx, pp, env.slot, inputs, references, env.clock, requests)
             )
-          )
-          .flatMap {
-            case Phase2.Outcome.Unavailable(_, redeemer, reason) =>
-              Left(LedgerFailure.Unavailable(id, ScriptLocation.Phase2(redeemer), reason))
-            case Phase2.Outcome.Passed(n) =>
-              if tx.isValid then
-                Right(stats.copy(succeeded = stats.succeeded + 1, scripts = stats.scripts + n))
-              else
-                Left(
-                  LedgerFailure.Rejected(
-                    id,
-                    PredicateFailure.utxo(
-                      UtxoFailure.Utxos(UtxosFailure.ValidationTagMismatch(false, None))
+            requests.fold(errors => checkedPhase2(stats, tx, Left(errors)), _ => Right(stats))
+          case None =>
+            val outcome = Phase2.evaluate(
+              tx,
+              pp,
+              scripts,
+              inputs,
+              references,
+              slot => posix.map(_(slot)),
+              env.evaluator
+            )
+            env.observer.foreach(
+              _(Phase2.Observation(tx, pp, env.slot, inputs, references, env.clock, outcome))
+            )
+            checkedPhase2(stats, tx, outcome)
+
+  /** The ordered phase-2 verdict check, also used when a prepared block lands its worker values. */
+  private[ledger] def checkedPhase2(
+      stats: PlutusStats,
+      tx: Tx,
+      outcome: Phase2.Collected[Phase2.Outcome]
+  ): Result[PlutusStats] =
+    val id = tx.body.id
+    outcome.left
+      .map(e =>
+        LedgerFailure.Rejected(
+          id,
+          PredicateFailure.utxo(UtxoFailure.Utxos(UtxosFailure.CollectErrors(e)))
+        )
+      )
+      .flatMap {
+        case Phase2.Outcome.Unavailable(_, redeemer, reason) =>
+          Left(LedgerFailure.Unavailable(id, ScriptLocation.Phase2(redeemer), reason))
+        case Phase2.Outcome.Passed(n) =>
+          if tx.isValid then
+            Right(stats.copy(succeeded = stats.succeeded + 1, scripts = stats.scripts + n))
+          else
+            Left(
+              LedgerFailure.Rejected(
+                id,
+                PredicateFailure.utxo(
+                  UtxoFailure.Utxos(UtxosFailure.ValidationTagMismatch(false, None))
+                )
+              )
+            )
+        case Phase2.Outcome.Failed(n, redeemer, reason) =>
+          if !tx.isValid then
+            Right(stats.copy(failed = stats.failed + 1, scripts = stats.scripts + n + 1))
+          else
+            Left(
+              LedgerFailure.Rejected(
+                id,
+                PredicateFailure.utxo(
+                  UtxoFailure.Utxos(
+                    UtxosFailure.ValidationTagMismatch(
+                      true,
+                      Some(Vector(PlutusFailure(reason, Bytes.empty)))
                     )
                   )
                 )
-            case Phase2.Outcome.Failed(n, redeemer, reason) =>
-              if !tx.isValid then
-                Right(stats.copy(failed = stats.failed + 1, scripts = stats.scripts + n + 1))
-              else
-                Left(
-                  LedgerFailure.Rejected(
-                    id,
-                    PredicateFailure.utxo(
-                      UtxoFailure.Utxos(
-                        UtxosFailure.ValidationTagMismatch(
-                          true,
-                          Some(Vector(PlutusFailure(reason, Bytes.empty)))
-                        )
-                      )
-                    )
-                  )
-                )
-          }
+              )
+            )
+      }
 
   // ---------------------------------------------------------------------------------------------
   // UTXO
