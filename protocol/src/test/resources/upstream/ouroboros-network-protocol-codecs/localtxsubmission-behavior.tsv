@@ -1,26 +1,147 @@
-localtxsubmission-behavior-v1	499001	0	30	0	6744f0a2bfa83135	rejected	07	pass	pass	pass
-localtxsubmission-behavior-v1	499001	0	30	1	f6	rejected	0b	pass	pass	pass
-localtxsubmission-behavior-v1	499001	0	30	2	f4	rejected	1818	pass	pass	pass
-localtxsubmission-behavior-v1	499001	0	30	3	fb402e000000000000	rejected	04	pass	pass	pass
-localtxsubmission-behavior-v1	499001	0	30	4	a680fabf0000005f45eeb200e2c1ffa1fbbff0000000000000fa3f8000005f41a5ff7f6df0a798a9f0a2bfb5692c795401ff819fff5f466927b430df17ff207f66f4838ab71c6aff81bfff81bfff	rejected	07	pass	pass	pass
-localtxsubmission-behavior-v1	499001	0	30	5	766c28f3bb8e8b163071f0a8b39bf0a28dad0ff4839381	rejected	07	pass	pass	pass
-localtxsubmission-behavior-v1	499001	0	30	6	83461e590bf16e518160fac08ccccd	accepted		pass	pass	pass
-localtxsubmission-behavior-v1	499001	0	30	7	5f579465b58d38ff1732d6eb46f35e232acd63d7344628cd94ff	rejected	00	pass	pass	pass
-localtxsubmission-behavior-v1	499001	0	30	8	fa41ea5a5a	rejected	02	pass	pass	pass
-localtxsubmission-behavior-v1	499001	0	30	9	4bebaff793143b6d2869185a	rejected	12	pass	pass	pass
-localtxsubmission-behavior-v1	499001	0	30	10	9f805f430d7541ff816103a080819fffff	rejected	1818	pass	pass	pass
-localtxsubmission-behavior-v1	499001	0	30	11	5f48e6f0c3b160af59b9ff	rejected	181c	pass	pass	pass
-localtxsubmission-behavior-v1	499001	0	30	12	f6	rejected	0b	pass	pass	pass
-localtxsubmission-behavior-v1	499001	0	30	13	a19fff9fff	accepted		pass	pass	pass
-localtxsubmission-behavior-v1	499001	0	30	14	a406f6fbc0055555555555555f4516349b5bd5fffa40400000a05f45e3e2eda409ff06	rejected	21	pass	pass	pass
-localtxsubmission-behavior-v1	499001	0	30	15	fa3f000000	accepted		pass	pass	pass
-localtxsubmission-behavior-v1	499001	0	30	16	a2fb40140000000000005f43572bfbffa0f6	accepted		pass	pass	pass
-localtxsubmission-behavior-v1	499001	0	30	17	8425fbbff00000000000007f675a12f09d86ab75fffa40100000	rejected	03	pass	pass	pass
-localtxsubmission-behavior-v1	499001	0	30	18	5f4aa19ce82eb7b7e2420a59ff	accepted		pass	pass	pass
-localtxsubmission-behavior-v1	499001	0	30	19	782f1d051350086d03f4889592f09eb28ff3b5b3bb42f0a8b5a7e482b2f091809d5173323c072d624732f0a5abb82a4160	rejected	14	pass	pass	pass
-localtxsubmission-behavior-v1	499001	0	30	20	6126	rejected	381a	pass	pass	pass
-localtxsubmission-behavior-v1	499001	0	30	21	fbc035111111111111	accepted		pass	pass	pass
-localtxsubmission-behavior-v1	499001	0	30	22	5f4374c894ff	rejected	0f	pass	pass	pass
-localtxsubmission-behavior-v1	499001	0	30	23	83bf016147ff269ff5ff	rejected	02	pass	pass	pass
-localtxsubmission-behavior-v1	499001	0	30	24	5f4423a70366ff	rejected	0d	pass	pass	pass
-localtxsubmission-behavior-v1	499001	0	30	25	5f4e7e8ba5112c4598e8a9a2cfa6b878ff	rejected	181b	pass	pass	pass
+localtxsubmission-behavior-v1	499001	0	8	0	6744f0a2bfa83135	rejected	22	pass	pass	pass
+localtxsubmission-behavior-v1	499001	0	8	1	f6	rejected	01	pass	pass	pass
+localtxsubmission-behavior-v1	499001	0	8	2	f4	rejected	22	pass	pass	pass
+localtxsubmission-behavior-v1	499001	0	8	3	fb4014000000000000	rejected	07	pass	pass	pass
+localtxsubmission-behavior-v1	499001	0	8	4	a280fa3f8000005fffa0	rejected	03	pass	pass	pass
+localtxsubmission-behavior-v1	499001	0	8	5	626c28	rejected	05	pass	pass	pass
+localtxsubmission-behavior-v1	499001	0	8	6	80	rejected	01	pass	pass	pass
+localtxsubmission-behavior-v1	499002	1	9	0	635a4c3a	rejected	08	pass	pass	pass
+localtxsubmission-behavior-v1	499003	2	10	0	fb0000000000000000	rejected	06	pass	pass	pass
+localtxsubmission-behavior-v1	499003	2	10	1	490de182183bec71d577	accepted		pass	pass	pass
+localtxsubmission-behavior-v1	499003	2	10	2	9f613bff	rejected	07	pass	pass	pass
+localtxsubmission-behavior-v1	499003	2	10	3	fb0000000000000000	rejected	06	pass	pass	pass
+localtxsubmission-behavior-v1	499003	2	10	4	25	rejected	08	pass	pass	pass
+localtxsubmission-behavior-v1	499003	2	10	5	f4	rejected	26	pass	pass	pass
+localtxsubmission-behavior-v1	499004	3	11	0	a2bffff65fff20	rejected	07	pass	pass	pass
+localtxsubmission-behavior-v1	499005	4	12	0	a29fffa0a0fa40000000	accepted		pass	pass	pass
+localtxsubmission-behavior-v1	499005	4	12	1	7f681a372af09b8baf4bff	accepted		pass	pass	pass
+localtxsubmission-behavior-v1	499005	4	12	2	83bfff9ffff6	accepted		pass	pass	pass
+localtxsubmission-behavior-v1	499005	4	12	3	f4	rejected	04	pass	pass	pass
+localtxsubmission-behavior-v1	499005	4	12	4	71e393a9f486a59c7f5ff0aea6aff0aa94bb	rejected	24	pass	pass	pass
+localtxsubmission-behavior-v1	499005	4	12	5	40	rejected	24	pass	pass	pass
+localtxsubmission-behavior-v1	499005	4	12	6	0b	rejected	06	pass	pass	pass
+localtxsubmission-behavior-v1	499005	4	12	7	60	rejected	0c	pass	pass	pass
+localtxsubmission-behavior-v1	499005	4	12	8	80	rejected	07	pass	pass	pass
+localtxsubmission-behavior-v1	499005	4	12	9	9f5f41ffff9fffff	rejected	2b	pass	pass	pass
+localtxsubmission-behavior-v1	499006	5	13	0	bf02a0ff	accepted		pass	pass	pass
+localtxsubmission-behavior-v1	499006	5	13	1	26	rejected	25	pass	pass	pass
+localtxsubmission-behavior-v1	499006	5	13	2	f6	rejected	02	pass	pass	pass
+localtxsubmission-behavior-v1	499006	5	13	3	4a778c0ac2bdb1c03cf239	accepted		pass	pass	pass
+localtxsubmission-behavior-v1	499006	5	13	4	bfff	rejected	2c	pass	pass	pass
+localtxsubmission-behavior-v1	499006	5	13	5	5f4c7ffb94e590fb9ca43e99eeceff	rejected	26	pass	pass	pass
+localtxsubmission-behavior-v1	499006	5	13	6	6b4ef0a59dae355c2f433b3c	accepted		pass	pass	pass
+localtxsubmission-behavior-v1	499006	5	13	7	9f6336077ef6ff	rejected	0b	pass	pass	pass
+localtxsubmission-behavior-v1	499007	6	14	0	fac1100000	rejected	0d	pass	pass	pass
+localtxsubmission-behavior-v1	499007	6	14	1	2b	rejected	2b	pass	pass	pass
+localtxsubmission-behavior-v1	499007	6	14	2	8364eca9817d665e69f0ad97a4615d	rejected	2c	pass	pass	pass
+localtxsubmission-behavior-v1	499007	6	14	3	f4	rejected	29	pass	pass	pass
+localtxsubmission-behavior-v1	499008	7	15	0	81f5	rejected	2e	pass	pass	pass
+localtxsubmission-behavior-v1	499008	7	15	1	a15f42b5b1ff01	rejected	20	pass	pass	pass
+localtxsubmission-behavior-v1	499008	7	15	2	f4	rejected	2b	pass	pass	pass
+localtxsubmission-behavior-v1	499008	7	15	3	f5	accepted		pass	pass	pass
+localtxsubmission-behavior-v1	499009	8	16	0	9fa081fa3f800000819fffff	rejected	27	pass	pass	pass
+localtxsubmission-behavior-v1	499009	8	16	1	bffb400c0000000000007fffff	accepted		pass	pass	pass
+localtxsubmission-behavior-v1	499009	8	16	2	73f0a6a9bd3ff3b6849d411637f3b4bca427231d	accepted		pass	pass	pass
+localtxsubmission-behavior-v1	499009	8	16	3	5f41d4ff	rejected	0f	pass	pass	pass
+localtxsubmission-behavior-v1	499009	8	16	4	a3409ffa3f13e439fffa000000005ffff6f4	rejected	09	pass	pass	pass
+localtxsubmission-behavior-v1	499009	8	16	5	fb4008000000000000	rejected	09	pass	pass	pass
+localtxsubmission-behavior-v1	499010	9	8	0	7f6972e3859bf0908eba11ff	accepted		pass	pass	pass
+localtxsubmission-behavior-v1	499010	9	8	1	9fff	rejected	22	pass	pass	pass
+localtxsubmission-behavior-v1	499010	9	8	2	5f4511c89f467dff	rejected	07	pass	pass	pass
+localtxsubmission-behavior-v1	499010	9	8	3	bfff	rejected	05	pass	pass	pass
+localtxsubmission-behavior-v1	499010	9	8	4	fbbff0000000000000	rejected	07	pass	pass	pass
+localtxsubmission-behavior-v1	499010	9	8	5	fbbfd8000000000000	rejected	05	pass	pass	pass
+localtxsubmission-behavior-v1	499011	10	9	0	5f453b60d5829aff	rejected	03	pass	pass	pass
+localtxsubmission-behavior-v1	499011	10	9	1	666636f3b78882	rejected	03	pass	pass	pass
+localtxsubmission-behavior-v1	499011	10	9	2	9f80bfffff	rejected	28	pass	pass	pass
+localtxsubmission-behavior-v1	499011	10	9	3	fbc018000000000000	rejected	09	pass	pass	pass
+localtxsubmission-behavior-v1	499011	10	9	4	f6	rejected	03	pass	pass	pass
+localtxsubmission-behavior-v1	499011	10	9	5	fa41100000	accepted		pass	pass	pass
+localtxsubmission-behavior-v1	499011	10	9	6	bfff	rejected	21	pass	pass	pass
+localtxsubmission-behavior-v1	499011	10	9	7	fac0a49249	rejected	01	pass	pass	pass
+localtxsubmission-behavior-v1	499012	11	10	0	f6	accepted		pass	pass	pass
+localtxsubmission-behavior-v1	499012	11	10	1	7f677e5762f0ad9193ff	rejected	04	pass	pass	pass
+localtxsubmission-behavior-v1	499012	11	10	2	7fff	rejected	27	pass	pass	pass
+localtxsubmission-behavior-v1	499012	11	10	3	bff480ff	rejected	27	pass	pass	pass
+localtxsubmission-behavior-v1	499012	11	10	4	fa3eed6fe6	rejected	06	pass	pass	pass
+localtxsubmission-behavior-v1	499012	11	10	5	9f417e80ff	rejected	00	pass	pass	pass
+localtxsubmission-behavior-v1	499013	12	11	0	fbc018000000000000	rejected	22	pass	pass	pass
+localtxsubmission-behavior-v1	499013	12	11	1	fbc018000000000000	rejected	22	pass	pass	pass
+localtxsubmission-behavior-v1	499013	12	11	2	fabeaaaaab	rejected	29	pass	pass	pass
+localtxsubmission-behavior-v1	499013	12	11	3	fa3efc19ca	rejected	03	pass	pass	pass
+localtxsubmission-behavior-v1	499013	12	11	4	06	rejected	0b	pass	pass	pass
+localtxsubmission-behavior-v1	499013	12	11	5	65ebb4a27e13	rejected	28	pass	pass	pass
+localtxsubmission-behavior-v1	499014	13	12	0	9ff5ff	rejected	03	pass	pass	pass
+localtxsubmission-behavior-v1	499014	13	12	1	0c	rejected	04	pass	pass	pass
+localtxsubmission-behavior-v1	499014	13	12	2	455430d529c2	rejected	2a	pass	pass	pass
+localtxsubmission-behavior-v1	499014	13	12	3	f4	rejected	22	pass	pass	pass
+localtxsubmission-behavior-v1	499014	13	12	4	f4	rejected	22	pass	pass	pass
+localtxsubmission-behavior-v1	499015	14	13	0	6af0aab3b1255bf48cb3a7	rejected	06	pass	pass	pass
+localtxsubmission-behavior-v1	499015	14	13	1	f6	rejected	21	pass	pass	pass
+localtxsubmission-behavior-v1	499015	14	13	2	617e	rejected	20	pass	pass	pass
+localtxsubmission-behavior-v1	499015	14	13	3	f4	accepted		pass	pass	pass
+localtxsubmission-behavior-v1	499015	14	13	4	7f622e0fff	accepted		pass	pass	pass
+localtxsubmission-behavior-v1	499015	14	13	5	4c2d29eaa73ee08ff42888846d	rejected	25	pass	pass	pass
+localtxsubmission-behavior-v1	499015	14	13	6	24	accepted		pass	pass	pass
+localtxsubmission-behavior-v1	499015	14	13	7	06	rejected	26	pass	pass	pass
+localtxsubmission-behavior-v1	499015	14	13	8	a1f69fff	rejected	04	pass	pass	pass
+localtxsubmission-behavior-v1	499015	14	13	9	47d40b522a67f99f	rejected	27	pass	pass	pass
+localtxsubmission-behavior-v1	499016	15	14	0	9f80f4ff	accepted		pass	pass	pass
+localtxsubmission-behavior-v1	499016	15	14	1	bff59fff9fffbfffff	rejected	2a	pass	pass	pass
+localtxsubmission-behavior-v1	499016	15	14	2	834289acbfffa0	rejected	01	pass	pass	pass
+localtxsubmission-behavior-v1	499016	15	14	3	81651bf090ada8	rejected	2d	pass	pass	pass
+localtxsubmission-behavior-v1	499016	15	14	4	f6	rejected	22	pass	pass	pass
+localtxsubmission-behavior-v1	499016	15	14	5	fb3fc6df9b78719ebc	rejected	07	pass	pass	pass
+localtxsubmission-behavior-v1	499016	15	14	6	5f410bff	rejected	0e	pass	pass	pass
+localtxsubmission-behavior-v1	499016	15	14	7	82fa40400000a0	rejected	22	pass	pass	pass
+localtxsubmission-behavior-v1	499016	15	14	8	7336f3b2bb8df3be839ef09895bc0df3b98b9239	rejected	09	pass	pass	pass
+localtxsubmission-behavior-v1	499016	15	14	9	f6	rejected	22	pass	pass	pass
+localtxsubmission-behavior-v1	499016	15	14	10	7f6d0e6e5cf3a087a02d7e57682513ff	accepted		pass	pass	pass
+localtxsubmission-behavior-v1	499016	15	14	11	f4	accepted		pass	pass	pass
+localtxsubmission-behavior-v1	499017	16	15	0	22	rejected	0d	pass	pass	pass
+localtxsubmission-behavior-v1	499017	16	15	1	fbc02dc71c71c71c72	rejected	2d	pass	pass	pass
+localtxsubmission-behavior-v1	499017	16	15	2	bff464f3bb888cff	accepted		pass	pass	pass
+localtxsubmission-behavior-v1	499017	16	15	3	9f609fff21ff	rejected	21	pass	pass	pass
+localtxsubmission-behavior-v1	499018	17	16	0	fbc004000000000000	rejected	0e	pass	pass	pass
+localtxsubmission-behavior-v1	499018	17	16	1	5f4c5895b4ffe66e32fe011c77a2ff	accepted		pass	pass	pass
+localtxsubmission-behavior-v1	499018	17	16	2	9f5f43abfea8fff6ff	rejected	06	pass	pass	pass
+localtxsubmission-behavior-v1	499018	17	16	3	fbc000000000000000	rejected	2b	pass	pass	pass
+localtxsubmission-behavior-v1	499018	17	16	4	fa41236db7	accepted		pass	pass	pass
+localtxsubmission-behavior-v1	499018	17	16	5	f6	rejected	08	pass	pass	pass
+localtxsubmission-behavior-v1	499018	17	16	6	81fbbff0000000000000	accepted		pass	pass	pass
+localtxsubmission-behavior-v1	499018	17	16	7	f5	rejected	21	pass	pass	pass
+localtxsubmission-behavior-v1	499018	17	16	8	7f6c09f3bfb896f0adb8a5173a36ff	rejected	23	pass	pass	pass
+localtxsubmission-behavior-v1	499018	17	16	9	8100	rejected	0f	pass	pass	pass
+localtxsubmission-behavior-v1	499018	17	16	10	fac1340000	rejected	27	pass	pass	pass
+localtxsubmission-behavior-v1	499018	17	16	11	bf7fff7fff407f654df0a08ba8ffff	rejected	26	pass	pass	pass
+localtxsubmission-behavior-v1	499018	17	16	12	a3bffffb0000000000000000fabf800000fbc00000000000000000817f6158ff	rejected	21	pass	pass	pass
+localtxsubmission-behavior-v1	499019	18	8	0	6c5555f485baad7cf0acb2ae18	rejected	22	pass	pass	pass
+localtxsubmission-behavior-v1	499019	18	8	1	a0	rejected	01	pass	pass	pass
+localtxsubmission-behavior-v1	499019	18	8	2	7fff	rejected	27	pass	pass	pass
+localtxsubmission-behavior-v1	499019	18	8	3	a1f4f6	rejected	25	pass	pass	pass
+localtxsubmission-behavior-v1	499019	18	8	4	9fff	rejected	07	pass	pass	pass
+localtxsubmission-behavior-v1	499019	18	8	5	80	rejected	02	pass	pass	pass
+localtxsubmission-behavior-v1	499019	18	8	6	fa40400000	rejected	03	pass	pass	pass
+localtxsubmission-behavior-v1	499020	19	9	0	bf5fff5fffff	rejected	01	pass	pass	pass
+localtxsubmission-behavior-v1	499020	19	9	1	fa40524925	rejected	04	pass	pass	pass
+localtxsubmission-behavior-v1	499020	19	9	2	27	rejected	20	pass	pass	pass
+localtxsubmission-behavior-v1	499020	19	9	3	9fff	rejected	03	pass	pass	pass
+localtxsubmission-behavior-v1	499021	20	10	0	9f7fff5fffff	rejected	23	pass	pass	pass
+localtxsubmission-behavior-v1	499021	20	10	1	f6	rejected	01	pass	pass	pass
+localtxsubmission-behavior-v1	499022	21	11	0	9f80ff	rejected	28	pass	pass	pass
+localtxsubmission-behavior-v1	499022	21	11	1	7f6b2e07f3b4a1aa3161193a71ff	rejected	22	pass	pass	pass
+localtxsubmission-behavior-v1	499022	21	11	2	5fff	rejected	26	pass	pass	pass
+localtxsubmission-behavior-v1	499022	21	11	3	a160bfff	rejected	06	pass	pass	pass
+localtxsubmission-behavior-v1	499023	22	12	0	4a33a4bb1cc2948e5b7951	rejected	20	pass	pass	pass
+localtxsubmission-behavior-v1	499023	22	12	1	02	rejected	01	pass	pass	pass
+localtxsubmission-behavior-v1	499024	23	13	0	9ff5ff	accepted		pass	pass	pass
+localtxsubmission-behavior-v1	499024	23	13	1	9f80fa00000000ff	rejected	00	pass	pass	pass
+localtxsubmission-behavior-v1	499024	23	13	2	6e69eeaabd1f485f1c173e47472173	rejected	2b	pass	pass	pass
+localtxsubmission-behavior-v1	499024	23	13	3	bf20a05f42d13cfff5ff	rejected	0d	pass	pass	pass
+localtxsubmission-behavior-v1	499024	23	13	4	72281045520522f0a8a5851ff0adb5ab664c59	rejected	25	pass	pass	pass
+localtxsubmission-behavior-v1	499024	23	13	5	66e2af85565e32	rejected	08	pass	pass	pass
+localtxsubmission-behavior-v1	499024	23	13	6	bf5f4151ff9ffffbbff00000000000009fffff	rejected	0b	pass	pass	pass
+localtxsubmission-behavior-v1	499024	23	13	7	7330efb6a12b6df098a8bf615f7225f3b5a58919	rejected	28	pass	pass	pass
+localtxsubmission-behavior-v1	499024	23	13	8	f6	rejected	05	pass	pass	pass
+localtxsubmission-behavior-v1	499024	23	13	9	7f6e53672f0577f3be88a378e89cbd0fff	rejected	20	pass	pass	pass
+localtxsubmission-behavior-v1	499024	23	13	10	9f7f632f065cffff	accepted		pass	pass	pass

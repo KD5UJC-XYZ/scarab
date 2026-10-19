@@ -856,7 +856,7 @@ exportLocalTxSubmissionBehaviorCases :: FilePath -> Int -> Int -> IO ()
 exportLocalTxSubmissionBehaviorCases path count seed = withFile path WriteMode $ \outputHandle ->
   forM_ [0 .. count - 1] $ \ordinal -> do
     let caseSeed = seed + ordinal
-        caseSize = 30 + (ordinal `mod` 21)
+        caseSize = 8 + (ordinal `mod` 9)
         p = unGen arbitrary (mkQCGen (caseSeed + 1000003)) caseSize
               :: Tx -> SubmitResult Reject
         txs = unGen arbitrary (mkQCGen caseSeed) caseSize :: [Tx]
@@ -1978,6 +1978,25 @@ def main() -> None:
             manifest["generatedInputSeedOffsets"] = {
                 "transactionList": 0,
                 "submitResultFunction": 1000003,
+            }
+            manifest["caseCount"] = manifest["requestedCases"]
+            cases = {}
+            for row in rows:
+                key = (row[1], row[2])
+                cases.setdefault(key, []).append(row)
+            manifest["caseSizes"] = {
+                str(size): sum(int(case_rows[0][3]) == size for case_rows in cases.values())
+                for size in sorted({int(row[3]) for row in rows})
+            }
+            manifest["observedBehaviorCounts"] = {
+                "acceptedTransactions": sum(row[6] == "accepted" for row in rows),
+                "rejectedTransactions": sum(row[6] == "rejected" for row in rows),
+                "emptyInputCases": manifest["requestedCases"] - len(cases),
+                "duplicateRequestCases": sum(
+                    len([row[5] for row in case_rows])
+                    != len({row[5] for row in case_rows})
+                    for case_rows in cases.values()
+                ),
             }
             manifest["rowMeaning"] = (
                 "Each row is one ordered input from the same generated Tx list and arbitrary "

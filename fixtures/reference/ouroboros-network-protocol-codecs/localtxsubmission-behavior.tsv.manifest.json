@@ -4,10 +4,10 @@
   "sourceCommit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
   "upstreamTest": "ouroboros-network:protocols-tests / LocalTxSubmission / prop_direct + prop_connect + prop_channel_ST",
   "seed": 499001,
-  "requestedCases": 1,
-  "exportedCases": 26,
+  "requestedCases": 24,
+  "exportedCases": 147,
   "upstreamPropertyOutcomes": {
-    "pass": 26,
+    "pass": 147,
     "upstream-failure": 0
   },
   "projectPlanInstallUnits": 246,
@@ -26,10 +26,10 @@
     "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/TxSubmission2/Test.hs": "c7e8237dbbef5af3f3bb827c08e626e97ee0fb4b04db3de37c48e5490326921d",
     "ouroboros-network/protocols/tests/Main.hs": "32a3b5a431e0e00ce4f206ffe2c8d4b829f9135e82e0c2befdbe35b64adf58eb"
   },
-  "observerPatchSha256": "a69866f8e394295f7fbc1222f011be5eabc62c99fe6d860e7ea4bb4f6a13dc64",
+  "observerPatchSha256": "16841717b706671b847ee6d561186dcd8140296428b87da2fbf8cb5414ee7a3b",
   "observerPatch": "disposable changes add deterministic exporter entrypoints using unchanged Arbitrary instances and property functions",
   "caseFile": "localtxsubmission-behavior.tsv",
-  "sha256": "6e46d3223ff925c3e295e8421575cb8869d0b32b5386145368589c2c4b5db454",
+  "sha256": "cc74b908cb3b4888bccc015e0447b407757d6c14751735ad0e5bf575e98dc0a9",
   "filteredUpstreamSuiteCommands": [
     {
       "argv": [
@@ -46,8 +46,8 @@
         "--builddir=/probe/narrow-builddir",
         "--jobs=2"
       ],
-      "startedAt": "2026-10-19T14:30:07.757036+00:00",
-      "endedAt": "2026-10-19T14:30:12.147334+00:00",
+      "startedAt": "2026-10-19T14:34:06.217650+00:00",
+      "endedAt": "2026-10-19T14:34:10.488702+00:00",
       "returncode": 0,
       "status": "complete",
       "log": "/tmp/scarab/v02-49-protocol-probe/3.log"
@@ -67,8 +67,8 @@
         "--builddir=/probe/narrow-builddir",
         "--jobs=2"
       ],
-      "startedAt": "2026-10-19T14:30:12.147557+00:00",
-      "endedAt": "2026-10-19T14:30:13.494333+00:00",
+      "startedAt": "2026-10-19T14:34:10.488925+00:00",
+      "endedAt": "2026-10-19T14:34:11.794926+00:00",
       "returncode": 0,
       "status": "complete",
       "log": "/tmp/scarab/v02-49-protocol-probe/4.log"
@@ -88,8 +88,8 @@
         "--builddir=/probe/narrow-builddir",
         "--jobs=2"
       ],
-      "startedAt": "2026-10-19T14:30:13.494536+00:00",
-      "endedAt": "2026-10-19T14:30:15.218459+00:00",
+      "startedAt": "2026-10-19T14:34:11.795175+00:00",
+      "endedAt": "2026-10-19T14:34:13.794257+00:00",
       "returncode": 0,
       "status": "complete",
       "log": "/tmp/scarab/v02-49-protocol-probe/5.log"
@@ -109,8 +109,8 @@
         "--builddir=/probe/narrow-builddir",
         "--jobs=2"
       ],
-      "startedAt": "2026-10-19T14:30:15.218689+00:00",
-      "endedAt": "2026-10-19T14:30:16.545915+00:00",
+      "startedAt": "2026-10-19T14:34:13.794496+00:00",
+      "endedAt": "2026-10-19T14:34:15.383674+00:00",
       "returncode": 0,
       "status": "complete",
       "log": "/tmp/scarab/v02-49-protocol-probe/6.log"
@@ -130,8 +130,8 @@
         "--builddir=/probe/narrow-builddir",
         "--jobs=2"
       ],
-      "startedAt": "2026-10-19T14:30:16.546136+00:00",
-      "endedAt": "2026-10-19T14:30:17.783027+00:00",
+      "startedAt": "2026-10-19T14:34:15.383913+00:00",
+      "endedAt": "2026-10-19T14:34:16.741631+00:00",
       "returncode": 0,
       "status": "complete",
       "log": "/tmp/scarab/v02-49-protocol-probe/7.log"
@@ -151,8 +151,8 @@
         "--builddir=/probe/narrow-builddir",
         "--jobs=2"
       ],
-      "startedAt": "2026-10-19T14:30:17.783248+00:00",
-      "endedAt": "2026-10-19T14:30:19.296044+00:00",
+      "startedAt": "2026-10-19T14:34:16.741858+00:00",
+      "endedAt": "2026-10-19T14:34:18.452915+00:00",
       "returncode": 0,
       "status": "complete",
       "log": "/tmp/scarab/v02-49-protocol-probe/8.log"
@@ -172,8 +172,8 @@
         "--builddir=/probe/narrow-builddir",
         "--jobs=2"
       ],
-      "startedAt": "2026-10-19T14:30:19.296258+00:00",
-      "endedAt": "2026-10-19T14:30:20.997509+00:00",
+      "startedAt": "2026-10-19T14:34:18.453167+00:00",
+      "endedAt": "2026-10-19T14:34:20.228154+00:00",
       "returncode": 0,
       "status": "complete",
       "log": "/tmp/scarab/v02-49-protocol-probe/9.log"
@@ -193,8 +193,8 @@
         "--builddir=/probe/narrow-builddir",
         "--jobs=2"
       ],
-      "startedAt": "2026-10-19T14:30:20.997725+00:00",
-      "endedAt": "2026-10-19T14:30:24.086447+00:00",
+      "startedAt": "2026-10-19T14:34:20.228413+00:00",
+      "endedAt": "2026-10-19T14:34:23.234343+00:00",
       "returncode": 0,
       "status": "complete",
       "log": "/tmp/scarab/v02-49-protocol-probe/10.log"
@@ -210,12 +210,12 @@
       "/probe/narrow-builddir/build/x86_64-linux/ghc-9.10.3/ouroboros-network-1.3.0.0/t/protocols-tests/build/protocols-tests/protocols-tests",
       "--export-network-codecs",
       "/probe/exports",
-      "1",
+      "24",
       "490201",
       "1"
     ],
-    "startedAt": "2026-10-19T14:30:24.475004+00:00",
-    "endedAt": "2026-10-19T14:30:24.580657+00:00",
+    "startedAt": "2026-10-19T14:34:23.612206+00:00",
+    "endedAt": "2026-10-19T14:36:55.460943+00:00",
     "returncode": 0,
     "status": "complete",
     "log": "/tmp/scarab/v02-49-protocol-probe/12.log"
@@ -233,6 +233,24 @@
   "generatedInputSeedOffsets": {
     "transactionList": 0,
     "submitResultFunction": 1000003
+  },
+  "caseCount": 24,
+  "caseSizes": {
+    "8": 3,
+    "9": 3,
+    "10": 3,
+    "11": 3,
+    "12": 3,
+    "13": 3,
+    "14": 2,
+    "15": 2,
+    "16": 2
+  },
+  "observedBehaviorCounts": {
+    "acceptedTransactions": 25,
+    "rejectedTransactions": 122,
+    "emptyInputCases": 0,
+    "duplicateRequestCases": 4
   },
   "rowMeaning": "Each row is one ordered input from the same generated Tx list and arbitrary SubmitResult function passed to prop_direct, prop_connect, and prop_channel_ST; Tx Any and Reject Int are retained as their exact serialized CBOR items."
 }

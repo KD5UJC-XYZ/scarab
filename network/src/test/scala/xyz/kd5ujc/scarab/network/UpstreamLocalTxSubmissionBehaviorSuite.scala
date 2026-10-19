@@ -19,7 +19,7 @@ import xyz.kd5ujc.scarab.protocol.ChainSync.Role
 class UpstreamLocalTxSubmissionBehaviorSuite extends FailsOnUncaught:
   private val fixture =
     "/upstream/ouroboros-network-protocol-codecs/localtxsubmission-behavior.tsv"
-  private val expectedSha256 = "6e46d3223ff925c3e295e8421575cb8869d0b32b5386145368589c2c4b5db454"
+  private val expectedSha256 = "cc74b908cb3b4888bccc015e0447b407757d6c14751735ad0e5bf575e98dc0a9"
 
   private final case class Row(
       seed: Int,
@@ -86,14 +86,28 @@ class UpstreamLocalTxSubmissionBehaviorSuite extends FailsOnUncaught:
 
   test("replay unchanged LocalTxSubmission properties through the production server"):
     val rows = readRows()
-    assertEquals(rows.size, 26)
+    assertEquals(rows.size, 147)
     rows.foreach { row =>
       assertEquals(row.direct, "pass", s"unchanged direct property at seed ${row.seed}")
       assertEquals(row.connect, "pass", s"unchanged connect property at seed ${row.seed}")
       assertEquals(row.channel, "pass", s"unchanged channel property at seed ${row.seed}")
     }
+    assertEquals(rows.count(_.outcome == "accepted"), 25)
+    assertEquals(rows.count(_.outcome == "rejected"), 122)
     val cases = rows.groupBy(row => (row.seed, row.ordinal)).toVector.sortBy(_._1)
-    assertEquals(cases.size, 1)
+    assertEquals(cases.size, 24)
+    assertEquals(cases.map(_._1._1), Vector.range(499001, 499025))
+    assertEquals(cases.count(_._2.isEmpty), 0, "empty input lists are absent in this sample")
+    assertEquals(
+      cases.count { case (_, caseRows) => caseRows.map(_.tx).distinct.size < caseRows.size },
+      4,
+      "four generated cases contain repeated requests"
+    )
+    assertEquals(
+      cases.map { case (_, caseRows) => caseRows.head.size },
+      Vector(8, 9, 10, 11, 12, 13, 14, 15, 16, 8, 9, 10, 11, 12, 13, 14, 15, 16, 8, 9, 10, 11, 12,
+        13)
+    )
     cases
       .traverse { case ((seed, ordinal), unsorted) =>
         val txRows = unsorted.sortBy(_.index)
@@ -162,4 +176,4 @@ class UpstreamLocalTxSubmissionBehaviorSuite extends FailsOnUncaught:
           assertEquals(serverResult, Right(None), s"production server completes on Done")
         }
       }
-      .map(_ => assertEquals(rows.map(_.seed).distinct, Vector(499001)))
+      .map(_ => assertEquals(rows.map(_.seed).distinct, Vector.range(499001, 499025)))
