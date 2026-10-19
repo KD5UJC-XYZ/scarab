@@ -69,3 +69,14 @@ class ScriptResultOracleTests(unittest.TestCase):
             with patch.object(RUN.subprocess, 'run', return_value=stale):
                 with self.assertRaises(ValueError):
                     RUN.image_binding('old-tag:local')
+
+    def test_original_control_is_byte_identical_to_a_retained_signed_admission(self):
+        corpus = json.loads((ROOT / 'fixtures/reference/script-results/aggregation.json').read_text())
+        originals = [row for row in corpus if row['provenance']['ledgerAdmissionClaim']]
+        self.assertEqual(len(originals), 1)
+        control = originals[0]
+        submitted = json.loads((ROOT / 'fixtures/reference/context-errors/submissions/conway-pv10.json').read_text())
+        source = next(row for row in submitted if row['name'] == control['provenance']['sourceCase'])
+        self.assertTrue(source['reference']['accepted'])
+        self.assertEqual(control['transaction'], source['contextCase']['transaction'])
+        self.assertTrue(source['contextCase']['inclusion'])
