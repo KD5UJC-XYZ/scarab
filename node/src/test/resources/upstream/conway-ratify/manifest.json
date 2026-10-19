@@ -415,5 +415,13 @@
     "Four native STS samples and six accepted-property samples; no complete family or all-positive-outcome claim.",
     "All three nonempty STS signals begin delayed; these native samples cover state retention, expiry and the empty base case, not positive enactment or priority-order discrimination. Dedicated local regressions exercise those boundaries separately.",
     "DRep and SPO samples are all false; committee samples include both true and false. No all-branches approval coverage is claimed."
-  ]
+  ],
+  "referenceRunner": {
+    "image": "scarab-pre-conway178-oracle:local",
+    "compiler": "GHC 9.10.3",
+    "target": "cardano-ledger-conformance:test:tests",
+    "dependencyPlanSha256": "d5268a535a9e6c5a4158ddac6f9a1c310d05882c54f2c85b460de83e2e3453d6",
+    "executableSha256": "4e14dfbf4568c6ca6860fea8f98c3c36ed725ca276afab4e1f20e2c302bb5b77",
+    "sampling": "Exactly one QuickCheck input per invocation; STS uses resize 5 and approval properties use mapSize (const 5). No observer changes to native rule, formal rule, original constraints or equality."
+  }
 }

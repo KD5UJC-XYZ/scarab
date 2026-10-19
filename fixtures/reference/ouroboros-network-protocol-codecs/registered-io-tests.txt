@@ -1,0 +1,2 @@
+ouroboros-network:io-tests.Pipe.pipe sync demo
+ouroboros-network:io-tests.Socket.socket sync demo
