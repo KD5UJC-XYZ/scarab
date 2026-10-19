@@ -14,6 +14,13 @@ private enum ChainSyncSplitCoverage:
   case Matched(twoPartitions: Int, threePartitions: Int)
   case Unsupported(error: ProtocolError)
 
+private enum BinaryCodecDirection:
+  case WrappedToSerialised, SerialisedToWrapped
+
+private enum BinaryCodecCoverage:
+  case Matched(direction: BinaryCodecDirection)
+  case UnsupportedMockHash(direction: BinaryCodecDirection, error: ProtocolError)
+
 /** Consumes actual generated codec messages exported from the pinned upstream QuickCheck tests. */
 class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
   private val prefix = "/upstream/ouroboros-network-protocol-codecs/"
@@ -40,6 +47,11 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
   private def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(e => fail(e.toString), identity)
   private def cookie(value: String): KeepAlive.Cookie =
     KeepAlive.Cookie.from(value.toInt).fold(e => fail(e.toString), identity)
+
+  private def binaryDirection(value: String): BinaryCodecDirection = value match
+    case "codec/codecSerialised" => BinaryCodecDirection.WrappedToSerialised
+    case "codecSerialised/codec" => BinaryCodecDirection.SerialisedToWrapped
+    case other                   => fail(s"unknown binary compatibility direction $other")
 
   private def cardanoVersionData(fields: Vector[String], start: Int): Handshake.Data =
     val diffusion = fields(start + 1) match
@@ -721,6 +733,139 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
       )
     )
 
+  test("consume original ChainSync wrapped/Serialised binary compatibility properties"):
+    val input = rows(
+      "chainsync-binary.tsv",
+      "2bb4450b478eba153716ad5a65c3267ee63cedf2d1d0d6850768729ee932ec1c"
+    )
+    val payloadCodec = new ChainSync.PayloadCodec[Bytes]:
+      def encode(value: Bytes): Either[ProtocolError, Bytes] = Right(value)
+      def decode(value: Bytes): Either[ProtocolError, Bytes] = Right(value)
+    val byDirection = input.groupBy(fields => binaryDirection(fields(4)))
+    assertEquals(
+      byDirection.view.mapValues(_.size).toMap,
+      Map(
+        BinaryCodecDirection.WrappedToSerialised -> 128,
+        BinaryCodecDirection.SerialisedToWrapped -> 128
+      )
+    )
+    assertEquals(
+      input.groupMapReduce(_(7))(_ => 1)(_ + _),
+      Map(
+        "await-reply" -> 18,
+        "done" -> 30,
+        "find-intersect" -> 18,
+        "intersect-found" -> 26,
+        "intersect-not-found" -> 18,
+        "request-next" -> 28,
+        "roll-backward" -> 62,
+        "roll-forward" -> 56
+      )
+    )
+    val matched = input.map { fields =>
+      assertEquals(fields.size, 10)
+      assertEquals(fields(0), "chainsync-binary-v1")
+      val seed = fields(1).toInt
+      val ordinal = fields(2).toInt
+      assertEquals(seed, 491101 + ordinal)
+      assertEquals(fields(3).toInt, 30 + ordinal % 21)
+      assertEquals(fields(9), "pass", s"upstream binary compatibility seed $seed")
+      val direction = binaryDirection(fields(4))
+      val state = fields(5) match
+        case "idle"            => ChainSync.State.Idle
+        case "next-can-await"  => ChainSync.State.NextCanAwait
+        case "next-must-reply" => ChainSync.State.NextMustReply
+        case "intersect"       => ChainSync.State.Intersect
+        case other             => fail(s"unknown ChainSync binary state $other at seed $seed")
+      val sender = fields(6) match
+        case "client" => ChainSync.Role.Client
+        case "server" => ChainSync.Role.Server
+        case other    => fail(s"unknown ChainSync binary agency $other at seed $seed")
+      val tag = fields(7)
+      val wire = bytes(fields(8))
+      ChainSync.decodePrefix(state, sender, wire, payloadCodec) match
+        case ChainSync.DecodeResult.Failed(error @ ProtocolError.ExpectedDefiniteByteString) =>
+          assert(
+            Set(
+              "roll-forward",
+              "roll-backward",
+              "find-intersect",
+              "intersect-found",
+              "intersect-not-found"
+            )
+              .contains(tag),
+            s"only the upstream mock hash representation is unsupported at seed $seed"
+          )
+          BinaryCodecCoverage.UnsupportedMockHash(direction, error)
+        case ChainSync.DecodeResult.Failed(error) =>
+          fail(s"seed $seed unexpected typed ChainSync binary decode error: $error")
+        case ChainSync.DecodeResult.NeedMore =>
+          fail(s"seed $seed complete ChainSync binary wire unexpectedly needs more bytes")
+        case ChainSync.DecodeResult.Decoded(message, consumed) =>
+          assertEquals(consumed, wire.size, s"seed $seed consumed full binary wire")
+          val decodedTag = message match
+            case ChainSync.Message.RequestNext          => "request-next"
+            case ChainSync.Message.AwaitReply           => "await-reply"
+            case ChainSync.Message.RollForward(_, _)    => "roll-forward"
+            case ChainSync.Message.RollBackward(_, _)   => "roll-backward"
+            case ChainSync.Message.FindIntersect(_)     => "find-intersect"
+            case ChainSync.Message.IntersectFound(_, _) => "intersect-found"
+            case ChainSync.Message.IntersectNotFound(_) => "intersect-not-found"
+            case ChainSync.Message.Done                 => "done"
+          assertEquals(decodedTag, tag, s"seed $seed typed binary constructor")
+          assertEquals(
+            ChainSync.encode(state, sender, message, payloadCodec),
+            Right(wire),
+            s"seed $seed Scarab preserves original binary-compatible wire"
+          )
+          BinaryCodecCoverage.Matched(direction)
+    }
+    assertEquals(matched.collect { case BinaryCodecCoverage.Matched(_) => 1 }.size, 98)
+    assertEquals(
+      matched.collect { case BinaryCodecCoverage.UnsupportedMockHash(_, _) => 1 }.size,
+      158
+    )
+    assertEquals(
+      matched.collect { case BinaryCodecCoverage.UnsupportedMockHash(_, error) => error }.distinct,
+      Vector(ProtocolError.ExpectedDefiniteByteString)
+    )
+    assertEquals(
+      input
+        .zip(matched)
+        .groupBy((fields, _) => binaryDirection(fields(4)))
+        .view
+        .mapValues { rows =>
+          rows.count { case (_, BinaryCodecCoverage.Matched(_)) => true; case _ => false } ->
+            rows.count {
+              case (_, BinaryCodecCoverage.UnsupportedMockHash(_, _)) => true; case _ => false
+            }
+        }
+        .toMap,
+      Map(
+        BinaryCodecDirection.WrappedToSerialised -> (49 -> 79),
+        BinaryCodecDirection.SerialisedToWrapped -> (49 -> 79)
+      )
+    )
+    assertEquals(
+      input
+        .groupBy(fields => (fields(2), fields(7)))
+        .view
+        .mapValues(rows => rows.map(_(4)).toSet)
+        .toMap
+        .values
+        .forall(_ == Set("codec/codecSerialised", "codecSerialised/codec")),
+      true,
+      "both original generator domains retain paired constructor rows"
+    )
+    assertEquals(
+      input
+        .groupBy(fields => (fields(2), fields(7)))
+        .values
+        .forall(rows => rows.map(_(8)).distinct.size == 1),
+      true,
+      "the pinned original binary compatibility properties retain identical paired wire bytes"
+    )
+
   test("consume upstream ChainSync serialized split properties through Scarab's prefix decoder"):
     val splitInput = rows(
       "chainsync-splits.tsv",
@@ -911,6 +1056,102 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
     assertEquals(
       outcomes.groupMapReduce(identity)(_ => 1)(_ + _),
       Map("matched" -> 20, "unsupported-mock-point" -> 4)
+    )
+
+  test("consume original BlockFetch wrapped/Serialised binary compatibility properties"):
+    val input = rows(
+      "blockfetch-binary.tsv",
+      "fd28eb73baef1556606482c004d78e03b3296414d99b4a15800f171f636cbeeb"
+    )
+    val payloadCodec = CardanoBlockFetch.payloadCodec()
+    val byDirection = input.groupBy(fields => binaryDirection(fields(4)))
+    assertEquals(
+      byDirection.view.mapValues(_.size).toMap,
+      Map(
+        BinaryCodecDirection.WrappedToSerialised -> 24,
+        BinaryCodecDirection.SerialisedToWrapped -> 24
+      )
+    )
+    assertEquals(
+      input.groupMapReduce(_(7))(_ => 1)(_ + _),
+      Map(
+        "block" -> 8,
+        "client-done" -> 10,
+        "no-blocks" -> 10,
+        "request-range" -> 8,
+        "start-batch" -> 12
+      )
+    )
+    val outcomes = input.map { fields =>
+      assertEquals(fields.size, 10)
+      assertEquals(fields(0), "blockfetch-binary-v1")
+      val seed = fields(1).toInt
+      val ordinal = fields(2).toInt
+      assertEquals(seed, 490201 + ordinal)
+      assertEquals(fields(3).toInt, 30 + ordinal % 21)
+      assertEquals(fields(9), "pass", s"upstream binary compatibility seed $seed")
+      val direction = binaryDirection(fields(4))
+      val state = fields(5) match
+        case "idle"      => BlockFetch.State.Idle
+        case "busy"      => BlockFetch.State.Busy
+        case "streaming" => BlockFetch.State.Streaming
+        case other       => fail(s"unknown BlockFetch binary state $other at seed $seed")
+      val sender = fields(6) match
+        case "client" => BlockFetch.Role.Client
+        case "server" => BlockFetch.Role.Server
+        case other    => fail(s"unknown BlockFetch binary agency $other at seed $seed")
+      val tag = fields(7)
+      val wire = bytes(fields(8))
+      BlockFetch.decodePrefix(state, sender, wire, payloadCodec) match
+        case DecodeResult.Failed(error @ ProtocolError.ExpectedDefiniteByteString) =>
+          assertEquals(tag, "request-range", s"only mock Int points are unsupported at seed $seed")
+          BinaryCodecCoverage.UnsupportedMockHash(direction, error)
+        case DecodeResult.Failed(error) =>
+          fail(s"seed $seed unexpected typed BlockFetch binary decode error: $error")
+        case DecodeResult.NeedMore =>
+          fail(s"seed $seed complete BlockFetch binary wire unexpectedly needs more bytes")
+        case DecodeResult.Decoded(message, consumed) =>
+          assertEquals(consumed, wire.size, s"seed $seed consumed full binary wire")
+          val decodedTag = message match
+            case BlockFetch.Message.RequestRange(_, _) => "request-range"
+            case BlockFetch.Message.ClientDone         => "client-done"
+            case BlockFetch.Message.StartBatch         => "start-batch"
+            case BlockFetch.Message.NoBlocks           => "no-blocks"
+            case BlockFetch.Message.Block(_)           => "block"
+            case BlockFetch.Message.BatchDone          => "batch-done"
+          assertEquals(decodedTag, tag, s"seed $seed typed binary constructor")
+          assertEquals(
+            BlockFetch.encode(state, sender, message, payloadCodec),
+            Right(wire),
+            s"seed $seed Scarab preserves original binary-compatible wire"
+          )
+          BinaryCodecCoverage.Matched(direction)
+    }
+    assertEquals(outcomes.collect { case BinaryCodecCoverage.Matched(_) => 1 }.size, 40)
+    assertEquals(
+      outcomes.collect { case BinaryCodecCoverage.UnsupportedMockHash(_, _) => 1 }.size,
+      8
+    )
+    assertEquals(
+      outcomes.collect { case BinaryCodecCoverage.UnsupportedMockHash(_, error) => error }.distinct,
+      Vector(ProtocolError.ExpectedDefiniteByteString)
+    )
+    assertEquals(
+      input
+        .zip(outcomes)
+        .groupBy((fields, _) => binaryDirection(fields(4)))
+        .view
+        .mapValues { rows =>
+          rows.count { case (_, BinaryCodecCoverage.Matched(_)) => true; case _ => false } ->
+            rows.count {
+              case (_, BinaryCodecCoverage.UnsupportedMockHash(_, _)) => true; case _ => false
+            }
+        }
+        .toMap,
+      Map(
+        BinaryCodecDirection.WrappedToSerialised -> (20 -> 4),
+        BinaryCodecDirection.SerialisedToWrapped -> (20 -> 4)
+      )
     )
 
   test("consume upstream BlockFetch serialized split properties through Scarab's prefix decoder"):

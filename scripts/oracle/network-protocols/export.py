@@ -525,7 +525,7 @@ exportBlockFetchSplitCases path count seed = withFile path WriteMode $ \outputHa
         raise SystemExit("BlockFetch observer module export anchor changed")
     block_fetch.write_text(block_module.replace(
         block_export_anchor,
-        "module Ouroboros.Network.Protocol.BlockFetch.Test (tests, exportBlockFetchCases, exportBlockFetchSplitCases) where",
+        "module Ouroboros.Network.Protocol.BlockFetch.Test (tests, exportBlockFetchCases, exportBlockFetchSplitCases, exportBlockFetchBinaryCases) where",
     ))
 
     local_state_query_original = inject(
@@ -1156,15 +1156,167 @@ exportTxSubmission2AnnotatedCases path count seed = withFile path WriteMode $ \o
         raise SystemExit("ChainSync observer module export anchor changed")
     chain.write_text(chain_module.replace(
         chain_export_anchor,
-        "module Ouroboros.Network.Protocol.ChainSync.Test (tests, exportChainSyncCases, exportChainSyncSplitCases) where",
+        "module Ouroboros.Network.Protocol.ChainSync.Test (tests, exportChainSyncCases, exportChainSyncSplitCases, exportChainSyncBinaryCases) where",
     ))
+    chain.write_text(chain.read_text() + r'''
+
+-- Disposable observer: execute both original binary-compatibility properties
+-- and retain the wire emitted by each property's original generator domain.
+exportChainSyncBinaryCases :: FilePath -> Int -> Int -> IO ()
+exportChainSyncBinaryCases path count seed = withFile path WriteMode $ \outputHandle -> do
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 30 + (ordinal `mod` 21)
+        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize :: AnyMessage ChainSync_BlockHeader
+    result <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 5000003), caseSize) }
+      (once (prop_codec_binary_compat_ChainSync_ChainSyncSerialised testCase))
+    case testCase of
+      AnyMessage (msg :: Message ChainSync_BlockHeader st st') -> do
+        let wrappedCodec = codecWrapped
+              :: Codec (ChainSync BlockHeader (Point BlockHeader) (Tip BlockHeader))
+                   S.DeserialiseFailure IO ByteString
+            raw = encode wrappedCodec msg
+            token = stateToken :: StateToken st
+            (state, sender) = case token of
+              SingIdle -> ("idle", "client")
+              SingNext SingCanAwait -> ("next-can-await", "server")
+              SingNext SingMustReply -> ("next-must-reply", "server")
+              SingIntersect -> ("intersect", "server")
+              SingDone -> ("done", "client")
+            tag = case msg of
+              MsgRequestNext -> "request-next"
+              MsgAwaitReply -> "await-reply"
+              MsgRollForward _ _ -> "roll-forward"
+              MsgRollBackward _ _ -> "roll-backward"
+              MsgFindIntersect _ -> "find-intersect"
+              MsgIntersectFound _ _ -> "intersect-found"
+              MsgIntersectNotFound _ -> "intersect-not-found"
+              MsgDone -> "done"
+        hPutStrLn outputHandle $ intercalate "\t"
+          [ "chainsync-binary-v1", show caseSeed, show ordinal, show caseSize
+          , "codec/codecSerialised", state, sender, tag, hex (BL.toStrict raw)
+          , if isSuccess result then "pass" else "upstream-failure"
+          ]
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 30 + (ordinal `mod` 21)
+        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize :: AnyMessage ChainSync_Serialised_BlockHeader
+    result <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 6000003), caseSize) }
+      (once (prop_codec_binary_compat_ChainSyncSerialised_ChainSync testCase))
+    case testCase of
+      AnyMessage (msg :: Message ChainSync_Serialised_BlockHeader st st') -> do
+        let serialisedCodec = codecSerialised
+              :: Codec (ChainSync (Serialised BlockHeader) (Point BlockHeader) (Tip BlockHeader))
+                   S.DeserialiseFailure IO ByteString
+            raw = encode serialisedCodec msg
+            token = stateToken :: StateToken st
+            (state, sender) = case token of
+              SingIdle -> ("idle", "client")
+              SingNext SingCanAwait -> ("next-can-await", "server")
+              SingNext SingMustReply -> ("next-must-reply", "server")
+              SingIntersect -> ("intersect", "server")
+              SingDone -> ("done", "client")
+            tag = case msg of
+              MsgRequestNext -> "request-next"
+              MsgAwaitReply -> "await-reply"
+              MsgRollForward _ _ -> "roll-forward"
+              MsgRollBackward _ _ -> "roll-backward"
+              MsgFindIntersect _ -> "find-intersect"
+              MsgIntersectFound _ _ -> "intersect-found"
+              MsgIntersectNotFound _ -> "intersect-not-found"
+              MsgDone -> "done"
+        hPutStrLn outputHandle $ intercalate "\t"
+          [ "chainsync-binary-v1", show caseSeed, show ordinal, show caseSize
+          , "codecSerialised/codec", state, sender, tag, hex (BL.toStrict raw)
+          , if isSuccess result then "pass" else "upstream-failure"
+          ]
+  where
+    hex = concatMap (pad . (`showHex` "")) . BS.unpack
+    pad [digit] = ['0', digit]
+    pad digits = digits
+''')
+    block_fetch.write_text(block_fetch.read_text() + r'''
+
+-- Disposable observer for the two original binary-compatibility directions.
+exportBlockFetchBinaryCases :: FilePath -> Int -> Int -> IO ()
+exportBlockFetchBinaryCases path count seed = withFile path WriteMode $ \outputHandle -> do
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 30 + (ordinal `mod` 21)
+        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize
+          :: AnyMessage (BlockFetch Block (Point Block))
+    result <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 5000003), caseSize) }
+      (once (prop_codec_binary_compat_BlockFetch_BlockFetchSerialised testCase))
+    case testCase of
+      AnyMessage (msg :: Message (BlockFetch Block (Point Block)) st st') -> do
+        let wrappedCodec = codecWrapped
+              :: Codec (BlockFetch Block (Point Block)) S.DeserialiseFailure IO ByteString
+            raw = encode wrappedCodec msg
+            token = stateToken :: StateToken st
+            (state, sender) = case token of
+              SingBFIdle -> ("idle", "client")
+              SingBFBusy -> ("busy", "server")
+              SingBFStreaming -> ("streaming", "server")
+              SingBFDone -> ("done", "client")
+            tag = case msg of
+              MsgRequestRange _ -> "request-range"
+              MsgClientDone -> "client-done"
+              MsgStartBatch -> "start-batch"
+              MsgNoBlocks -> "no-blocks"
+              MsgBlock _ -> "block"
+              MsgBatchDone -> "batch-done"
+        hPutStrLn outputHandle $ intercalate "\t"
+          [ "blockfetch-binary-v1", show caseSeed, show ordinal, show caseSize
+          , "codec/codecSerialised", state, sender, tag, hex (BL.toStrict raw)
+          , if isSuccess result then "pass" else "upstream-failure"
+          ]
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 30 + (ordinal `mod` 21)
+        testCase = unGen arbitrary (mkQCGen caseSeed) caseSize
+          :: AnyMessage (BlockFetch (Serialised Block) (Point Block))
+    result <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 6000003), caseSize) }
+      (once (prop_codec_binary_compat_BlockFetchSerialised_BlockFetch testCase))
+    case testCase of
+      AnyMessage (msg :: Message (BlockFetch (Serialised Block) (Point Block)) st st') -> do
+        let serialisedCodec = codecSerialised
+              :: Codec (BlockFetch (Serialised Block) (Point Block))
+                   S.DeserialiseFailure IO ByteString
+            raw = encode serialisedCodec msg
+            token = stateToken :: StateToken st
+            (state, sender) = case token of
+              SingBFIdle -> ("idle", "client")
+              SingBFBusy -> ("busy", "server")
+              SingBFStreaming -> ("streaming", "server")
+              SingBFDone -> ("done", "client")
+            tag = case msg of
+              MsgRequestRange _ -> "request-range"
+              MsgClientDone -> "client-done"
+              MsgStartBatch -> "start-batch"
+              MsgNoBlocks -> "no-blocks"
+              MsgBlock _ -> "block"
+              MsgBatchDone -> "batch-done"
+        hPutStrLn outputHandle $ intercalate "\t"
+          [ "blockfetch-binary-v1", show caseSeed, show ordinal, show caseSize
+          , "codecSerialised/codec", state, sender, tag, hex (BL.toStrict raw)
+          , if isSuccess result then "pass" else "upstream-failure"
+          ]
+  where
+    hex = concatMap (pad . (`showHex` "")) . BS.unpack
+    pad [digit] = ['0', digit]
+    pad digits = digits
+''')
     main = overlay / "ouroboros-network/protocols/tests/Main.hs"
     main_original = main.read_text()
     dispatch_imports = (
         "import Ouroboros.Network.Protocol.KeepAlive.Test qualified as KeepAlive (tests, exportKeepAliveCases, exportKeepAliveSplitCases)\n"
         "import Ouroboros.Network.Protocol.PeerSharing.Test qualified as PeerSharing (tests, exportPeerSharingCases)\n"
-        "import Ouroboros.Network.Protocol.ChainSync.Test qualified as ChainSync (tests, exportChainSyncCases, exportChainSyncSplitCases)\n"
-        "import Ouroboros.Network.Protocol.BlockFetch.Test qualified as BlockFetch (tests, exportBlockFetchCases, exportBlockFetchSplitCases)\n"
+        "import Ouroboros.Network.Protocol.ChainSync.Test qualified as ChainSync (tests, exportChainSyncCases, exportChainSyncSplitCases, exportChainSyncBinaryCases)\n"
+        "import Ouroboros.Network.Protocol.BlockFetch.Test qualified as BlockFetch (tests, exportBlockFetchCases, exportBlockFetchSplitCases, exportBlockFetchBinaryCases)\n"
         "import Ouroboros.Network.Protocol.LocalStateQuery.Test qualified as LocalStateQuery (tests, exportLocalStateQueryCases, exportLocalStateQuerySplitCases)\n"
         "import Ouroboros.Network.Protocol.LocalTxSubmission.Test qualified as LocalTxSubmission (tests, exportLocalTxSubmissionCases, exportLocalTxSubmissionSplitCases, exportLocalTxSubmissionAnnotatedCases)\n"
         "import Ouroboros.Network.Protocol.LocalTxMonitor.Test qualified as LocalTxMonitor (tests, exportLocalTxMonitorCases, exportLocalTxMonitorSplitCases)\n"
@@ -1214,8 +1366,10 @@ exportTxSubmission2AnnotatedCases path count seed = withFile path WriteMode $ \o
         "    PeerSharing.exportPeerSharingCases (dir <> \"/peersharing.tsv\") (read count) (read seed)\n"
         "    ChainSync.exportChainSyncCases (dir <> \"/chainsync.tsv\") (read chainCount) (read seed + 900)\n"
         "    ChainSync.exportChainSyncSplitCases (dir <> \"/chainsync-splits.tsv\") (read chainCount) (read seed + 900)\n"
+        "    ChainSync.exportChainSyncBinaryCases (dir <> \"/chainsync-binary.tsv\") (read chainCount) (read seed + 900)\n"
         "    BlockFetch.exportBlockFetchCases (dir <> \"/blockfetch.tsv\") (read count) (read seed)\n"
         "    BlockFetch.exportBlockFetchSplitCases (dir <> \"/blockfetch-splits.tsv\") (read count) (read seed)\n"
+        "    BlockFetch.exportBlockFetchBinaryCases (dir <> \"/blockfetch-binary.tsv\") (read count) (read seed)\n"
         "    LocalStateQuery.exportLocalStateQueryCases (dir <> \"/localsq.tsv\") (read count) (read seed + 1800)\n"
         "    LocalStateQuery.exportLocalStateQuerySplitCases (dir <> \"/localsq-splits.tsv\") (read count) (read seed + 1800)\n"
         "    LocalTxSubmission.exportLocalTxSubmissionCases (dir <> \"/localtxsubmission.tsv\") (read count) (read seed + 2800)\n"
@@ -1349,6 +1503,8 @@ def main() -> None:
         ("blockfetch.tsv", "ouroboros-network:protocols-tests / BlockFetch / codecSerialised + codecSerialised cbor"),
         ("chainsync-splits.tsv", "ouroboros-network:protocols-tests / ChainSync / prop_codec_splits2_ChainSyncSerialised + prop_codec_splits3_ChainSyncSerialised"),
         ("blockfetch-splits.tsv", "ouroboros-network:protocols-tests / BlockFetch / prop_codec_splits2_BlockFetchSerialised + prop_codec_splits3_BlockFetchSerialised"),
+        ("chainsync-binary.tsv", "ouroboros-network:protocols-tests / ChainSync / prop_codec_binary_compat_ChainSync_ChainSyncSerialised + prop_codec_binary_compat_ChainSyncSerialised_ChainSync"),
+        ("blockfetch-binary.tsv", "ouroboros-network:protocols-tests / BlockFetch / prop_codec_binary_compat_BlockFetch_BlockFetchSerialised + prop_codec_binary_compat_BlockFetchSerialised_BlockFetch"),
         ("localsq.tsv", "ouroboros-network:protocols-tests / LocalStateQuery / codec + codec cbor"),
         ("localsq-splits.tsv", "ouroboros-network:protocols-tests / LocalStateQuery / prop_codec_splits2 + prop_codec_splits3"),
         ("localtxsubmission.tsv", "ouroboros-network:protocols-tests / LocalTxSubmission / codec + codec cbor"),
@@ -1398,6 +1554,48 @@ def main() -> None:
             "caseFile": name,
             "sha256": hashlib.sha256(raw).hexdigest(),
         }
+        if name in ("chainsync-binary.tsv", "blockfetch-binary.tsv"):
+            is_chain = name == "chainsync-binary.tsv"
+            wrapped_to_serialised = "codec/codecSerialised"
+            serialised_to_wrapped = "codecSerialised/codec"
+            first_property = (
+                "prop_codec_binary_compat_ChainSync_ChainSyncSerialised"
+                if is_chain else "prop_codec_binary_compat_BlockFetch_BlockFetchSerialised"
+            )
+            second_property = (
+                "prop_codec_binary_compat_ChainSyncSerialised_ChainSync"
+                if is_chain else "prop_codec_binary_compat_BlockFetchSerialised_BlockFetch"
+            )
+            per_direction = {
+                first_property: [row for row in rows if row[4] == wrapped_to_serialised],
+                second_property: [row for row in rows if row[4] == serialised_to_wrapped],
+            }
+            manifest["requestedCases"] = args.chainsync_count if is_chain else args.count
+            manifest["upstreamPropertyOutcomesByProperty"] = {
+                property_name: {
+                    "pass": sum(row[-1] == "pass" for row in property_rows),
+                    "upstream-failure": sum(row[-1] != "pass" for row in property_rows),
+                }
+                for property_name, property_rows in per_direction.items()
+            }
+            manifest["upstreamPropertyOutcomes"] = {
+                "directional-cases-pass": sum(row[-1] == "pass" for row in rows),
+                "directional-cases-failure": sum(row[-1] != "pass" for row in rows),
+                "paired-generator-ordinals": len(rows) // 2,
+                "paired-ordinals-all-directions-pass": sum(
+                    all(row[-1] == "pass" for row in rows if row[2] == ordinal)
+                    for ordinal in {row[2] for row in rows}
+                ),
+            }
+            manifest["adapterInputStatuses"] = {
+                "byDirection": {direction: len(direction_rows) for direction, direction_rows in per_direction.items()},
+                "byConstructor": {tag: sum(row[7] == tag for row in rows) for tag in sorted({row[7] for row in rows})},
+                "sourceStates": {state: sum(row[5] == state for row in rows) for state in sorted({row[5] for row in rows})},
+            }
+            manifest["propertyReplaySeedOffsets"] = {
+                first_property: 5000003,
+                second_property: 6000003,
+            }
         manifest["filteredUpstreamSuiteCommands"] = [
             result for result in COMMAND_RESULTS
             if "test" in result["argv"]

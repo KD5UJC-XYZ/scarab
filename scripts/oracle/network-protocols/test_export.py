@@ -112,6 +112,50 @@ class PropertyOutcomeColumnsTest(unittest.TestCase):
                 "at-least-one-recorded-property-failure": 0,
             })
 
+    def test_binary_compat_fixtures_preserve_both_original_directions_and_paired_wires(self) -> None:
+        fixture_dir = (
+            Path(__file__).resolve().parents[3]
+            / "fixtures/reference/ouroboros-network-protocol-codecs"
+        )
+        cases = (
+            ("chainsync-binary.tsv", 491101, 128, "chainsync"),
+            ("blockfetch-binary.tsv", 490201, 24, "blockfetch"),
+        )
+        for name, seed, count, family in cases:
+            raw = (fixture_dir / name).read_bytes()
+            manifest = json.loads((fixture_dir / f"{name}.manifest.json").read_text())
+            rows = [line.split("\t") for line in raw.decode("utf-8").splitlines()]
+            directions = {"codec/codecSerialised", "codecSerialised/codec"}
+            paired: dict[tuple[str, str], dict[str, list[str]]] = {}
+
+            self.assertEqual(manifest["sourceCommit"], "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776")
+            self.assertEqual(manifest["sha256"], hashlib.sha256(raw).hexdigest())
+            self.assertEqual(manifest["requestedCases"], count)
+            self.assertEqual(manifest["exportedCases"], count * 2)
+            self.assertEqual(
+                manifest["upstreamPropertyOutcomes"],
+                {
+                    "directional-cases-pass": count * 2,
+                    "directional-cases-failure": 0,
+                    "paired-generator-ordinals": count,
+                    "paired-ordinals-all-directions-pass": count,
+                },
+            )
+            self.assertEqual(len(rows), count * 2)
+            for row in rows:
+                self.assertEqual(len(row), 10)
+                self.assertEqual(row[0], f"{family}-binary-v1")
+                ordinal = int(row[2])
+                self.assertEqual(int(row[1]), seed + ordinal)
+                self.assertEqual(int(row[3]), 30 + ordinal % 21)
+                self.assertIn(row[4], directions)
+                self.assertEqual(row[9], "pass")
+                paired.setdefault((row[2], row[7]), {})[row[4]] = row
+            self.assertEqual(len(paired), count)
+            for values in paired.values():
+                self.assertEqual(set(values), directions)
+                self.assertEqual(values["codec/codecSerialised"][8], values["codecSerialised/codec"][8])
+
 
 if __name__ == "__main__":
     unittest.main()

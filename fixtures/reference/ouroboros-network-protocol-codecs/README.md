@@ -182,3 +182,15 @@ separate property counts and exact replay offsets. ChainSync remains 128 rows an
 remain 24; its serialized properties and all previously recorded split fixtures were regenerated
 with byte-identical rows. These property results are upstream oracle results; Scarab's focused consumer
 tests are reported separately from this manifest-level evidence.
+
+The new `chainsync-binary.tsv` and `blockfetch-binary.tsv` fixtures retain both directions of
+the pinned binary-compatibility properties: wrapped codec to `Serialised`, and `Serialised` back
+to wrapped codec. They are generated from the original direction-specific `AnyMessage` domains,
+with the existing ChainSync base seed/count (491101/128) and BlockFetch seed/count (490201/24).
+Both original properties pass for every row in both directions. Paired rows retain identical wire
+bytes, as required by those properties. Scarab matches 98/256 ChainSync directional rows and
+40/48 BlockFetch directional rows. The remaining rows retain exact original wires and upstream
+pass verdicts; ChainSync's mock `HeaderHash Int` points and BlockFetch's mock `Point Int` ranges
+remain typed `ExpectedDefiniteByteString` unsupported cases. No mock integer is converted into a
+Cardano hash. This observes the upstream binary-compatibility properties and the Scarab typed
+boundary separately; it does not claim Cardano-instantiated ChainSync header/hash coverage.
