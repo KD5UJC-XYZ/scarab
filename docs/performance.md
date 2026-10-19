@@ -1888,3 +1888,36 @@ The section 3 figure of about 365 blocks/s retains its original build, hardware 
 conditions. Neither the recovered comparison nor fixture extraction measures current throughput.
 Current-rule Preview replay, its serial/parallel comparison and any timing result are recorded
 separately from this recovered evidence.
+
+**Current-rule timing, 2026-10-19.** The shared `RecordedReplay` runner validated the captured
+epoch-135 window: 6,494 original blocks, 67,163 reached phase-2 transactions and 138,358 evaluated
+scripts per pass. All 12 expected invalid transactions were reproduced, with zero unavailable or
+collection failures. Complete mirror states and ordered typed evaluator requests, results, declared
+and used budgets, diagnostics and logs agreed between serial validation and four workers.
+
+Each block had a warm serial reference followed by three rotated serial/four-worker rounds. Only
+the reference advanced the UTxO store. Timings include full validation, signature checks and store
+reads; they exclude input loading, comparisons, context serialization and store flushing.
+
+| Round | Summed serial validation | Four workers | Serial / four workers |
+|---|---:|---:|---:|
+| 1 | 77.518 s | 65.970 s | 1.1751× |
+| 2 | 77.533 s | 65.796 s | 1.1784× |
+| 3 | 77.615 s | 65.395 s | 1.1869× |
+
+The median ratio is **1.1784×**, about **15.1% less summed validation time**. This is a selected
+Preview window on a shared host, not live follower throughput. The Docker JDK container had a
+four-CPU quota, four active JVM processors, 16 GiB memory and a 10 GiB test heap, with networking
+disabled. The host had 24 logical CPUs and 139 GiB RAM; its one-minute load ranged from 3.54 to
+8.65 while other sessions built and tested. The image ID was
+`sha256:c90140def52d2711644c85a81c9bf218ffbe5dc81003bfb866154c2da832af38`.
+
+The runner source was `a5a9bdf01ba3e96e5a4e96ce0747560ea8cbdf93`; its 450 production Scala
+files matched integration source `3c27c84cff6109f31a896060b78fd92d7f51501b` on base `235cd12a`.
+The isolated-worktree build reported `BuildInfo.gitCommit=unknown`, so independent source and
+class manifests bind this run instead. All 16,345 class files remained unchanged; their normalized
+manifest SHA-256 was `9461cca620c595e21703527c9783c08e48854feed5afccc91f43e3d3192d89a7`.
+The retained 21-artifact evidence manifest, independently rehashed after the run, has SHA-256
+`395d0ff72707146701e688ea8e61a9871c3067a87e9996f12519ea6a7c6e4af7`.
+The [shared-runner recipe](design/parallel-plutus.md#preview-replay-using-the-same-runner) describes
+the input export and environment controls.

@@ -63,3 +63,20 @@ index hashes, both final-chunk hashes, count and authenticated first/last points
 `--max-blocks` selects the complete archive; an explicit count selects exactly that many records,
 starting at block zero, and refuses a shorter source. The historical K1 Haskell endpoint requires
 4,758,521 records through block 4,758,520 at slot 125366428, rather than the later Scala archive tip.
+
+In the Docker JDK image, with that staged database mounted at `/scratch/db`, the authenticated
+Haskell projection directory at `/reference`, and a fresh writable `/scratch/out`:
+
+```sh
+bash scripts/sbtw 'set node / Test / fork := true' \
+  'set node / Test / javaOptions := Seq("-Xmx10g", "-XX:ActiveProcessorCount=4", "-Duser.dir=/work")' \
+  'node/Test/runMain xyz.kd5ujc.scarab.node.preview.K1OfflineMain /scratch/db /work/fixtures/preview/genesis /reference/index.jsonl /scratch/out 4758521 125366428 956541c0937e9cdc279514c10fec9706865bb6004ddcfb487bf53c7bbdc97ad1'
+```
+
+The last three arguments are the independently staged block count, last slot and header hash.
+The caller runs production startup replay, checks links and observer counters, writes current K1
+projections, and exits before any follower or network connection. Afterwards require
+`scripts/oracle_compare.py diff --reference /reference --dump /scratch/out/dump
+--results /scratch/comparison.json --expected-epochs 1451`. A successful replay alone does not
+establish reference equality. Compare its ordered `failedTransactionIds` with this fixture as well;
+the early 10,000-block smoke prefix contains no phase-two transactions.

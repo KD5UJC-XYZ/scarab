@@ -103,6 +103,38 @@ For a finished epoch comparison, use `scripts/oracle_compare.py diff --require-c
 options reject empty references, duplicate epochs, missing points and wrong block hashes. The
 default mode continues to report points still waiting for a running follower.
 
+### Preview replay using the same runner
+
+`PlutusReplaySuite` and `PreviewReplaySuite` both delegate to `RecordedReplay`; there is one
+block-validation loop. The preprod entry point retains its pinned baseline, existing environment
+variables and rotated measurement schedule. Preview supplies explicit native V5 snapshots and
+separate UTxO checkpoints through the [failure-corpus exporter](../../fixtures/preview/phase2-failures/README.md).
+
+Set `SCARAB_PREVIEW_WINDOWS` to the exported `windows.jsonl`,
+`SCARAB_PREVIEW_GENESIS` to the absolute Preview genesis directory, and
+`SCARAB_PREVIEW_WORKERS=4`, then run `scripts/sbtw 'node/testOnly *PreviewReplaySuite'` in Docker.
+For a forked test JVM, set its heap explicitly (10 GiB for the largest captured states) and use
+absolute input paths; sbt normally starts it in the node module directory. Mount capture records,
+snapshots, checkpoints, genesis files and optional reference data read-only, with fresh writable
+output paths supplied in the batch manifest.
+
+The default `Comparison` schedule validates each block once serially and once at every requested
+worker bound. It checks decoded block metadata, raw-byte hashes, parent links and block-number
+continuity from the authenticated snapshot anchor. Complete mirror states and ordered typed
+requests/results, used and declared budgets, native diagnostics and logs must agree. Unavailability
+or collection failures refuse acceptance. Each window must reproduce its exact ordered invalid
+transaction identities. Windows intentionally overlap; historical coverage is the unique union of
+the pinned 242 identities, rather than the sum of window counters. `RotatedMeasurements` with
+`SCARAB_PREVIEW_ROUNDS=3` adds warmed, rotated timing controls for a selected window; ordinary
+comparison timings are not treated as that benchmark.
+
+With `SCARAB_PREVIEW_REFERENCE` naming the authentic reference directory, reached reference points
+also produce the follower's full-UTxO K1 projections. `K1OfflineMain` reuses the production
+`ChainStorage.open` stored-block replay for the contiguous genesis prefix; it constructs no follower
+or peer. The [staging recipe](../../fixtures/preview/phase2-failures/README.md) gives it private
+indexes, format metadata and a writable tail, with older bodies linked into a read-only mount.
+These are offline acceptance entry points, not additional transaction-application implementations.
+
 ## Accepted feature gates
 
 Level 3, source `7ba8c7f3` (2026-10-19 UTC): Docker `check` passed 4,819 tests with 16 skips,
