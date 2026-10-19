@@ -60,7 +60,7 @@ def prepare():
         body[9] = {policy: {b't': 1} for policy, _, _ in ordered}
         witnesses[{1: 3, 2: 6, 3: 7}[language]] = scripts
         witnesses[5] = {(1, i): [0, [200_000, 100_000_000]] for i in range(3)}
-        
+
         if language != 1: witnesses.pop(3, None)
         row['name'] = f'api-v{language}-' + ''.join('fail' if failed else 'pass' for failed in pattern)
         row['transaction'] = enc([body, witnesses, valid, auxiliary]).hex()
