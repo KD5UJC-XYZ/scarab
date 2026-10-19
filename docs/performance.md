@@ -1789,3 +1789,27 @@ public-network sync or operational restart. Stored CBOR and native V5 remain; Me
 Haskell snapshot import/export. Future optimization should use the same captured block window,
 record the exact source/runtime and resource limits, and compare complete verdict/state results
 before claiming an improvement.
+
+## 32. Timing probe for the crypto math (#234)
+
+`TimingProbeMain` (`crypto`, package `vrf`, diagnostic tool — never called by the node) measures
+the crypto math for secret-dependent timing with a dudect-style protocol: a fixed-secret class
+and a random-secret class, percentile bucketing of the two timing distributions, and Welch's t
+per bucket. JVM timing is noisy, so every verdict is relative to a measured noise control (the
+basepoint table multiply, whose cost does not depend on its scalar's value); a target is a leak
+when `t > 10 && t > 5 × noise`.
+
+Run on an idle machine (an interactive session's scheduler noise raises the floor):
+
+```
+sbt "crypto/runMain xyz.kd5ujc.scarab.crypto.vrf.TimingProbeMain [samples [buckets [repetitions]]]"
+```
+
+Defaults: 20,000 samples, 100 buckets, 2 repetitions; ideally `-XX:+UseSerialGC -Xbatch`.
+Expected on a quiet machine: the curve25519 `point.multiply` stays near the noise floor (its
+constant-time claim), while `Ed25519Point.scalarMultiply` and the `uniform` control exceed the
+floor by an order of magnitude — the "variable-time, public inputs only" contract of
+`Draft03Math.java`. The first measurement (2026-10-19, a busy 2012-era i7-3770, JDK 21): noise
+18.5/53.9, `point.multiply` 24.6/11.0 (clean), `scalarMultiply` 693/1281 (leak, as designed).
+The probe is a manual/nightly tool, not part of `check` (shared CI runners are too noisy).
+
