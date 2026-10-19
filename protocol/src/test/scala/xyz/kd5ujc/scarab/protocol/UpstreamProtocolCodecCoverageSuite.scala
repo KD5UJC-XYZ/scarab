@@ -291,3 +291,86 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
     sys.env.get("SCARAB_PEERSHARING_REPLAY_EXPORT").foreach { path =>
       Files.writeString(Path.of(path), replayRows.result().mkString("\n") + "\n")
     }
+
+  test("classify generated pinned ChainSync Serialised-block rows at the typed boundary"):
+    val input =
+      rows("chainsync.tsv", "d2c840ebcb1f4b55b59055e8ef4b9ff55da80a0d0d428dc2b090c3c0c840224e")
+    val payloadCodec = new ChainSync.PayloadCodec[Bytes]:
+      def encode(value: Bytes): Either[ProtocolError, Bytes] = Right(value)
+      def decode(value: Bytes): Either[ProtocolError, Bytes] = Right(value)
+
+    assertEquals(input.size, 128)
+    assertEquals(input.count(f => f.size == 10 && f(8) == "pass" && f(9) == "pass"), 128)
+    val expectedConstructors = Map(
+      "request-next" -> 14,
+      "await-reply" -> 9,
+      "roll-forward" -> 28,
+      "roll-backward" -> 31,
+      "find-intersect" -> 9,
+      "intersect-found" -> 13,
+      "intersect-not-found" -> 9,
+      "done" -> 15
+    )
+    val expectedStates = Map(
+      "idle" -> 38,
+      "intersect" -> 22,
+      "next-can-await" -> 37,
+      "next-must-reply" -> 31
+    )
+    assertEquals(input.groupMapReduce(_(6))(_ => 1)(_ + _), expectedConstructors)
+    assertEquals(input.groupMapReduce(_(4))(_ => 1)(_ + _), expectedStates)
+    val mapped = input.map { fields =>
+      assertEquals(fields.size, 10)
+      assertEquals(fields(0), "chainsync-serialised-codec-v1")
+      val seed = fields(1).toInt
+      val ordinal = fields(2).toInt
+      assertEquals(seed, 491101 + ordinal)
+      assertEquals(fields(3).toInt, 30 + ordinal % 21)
+      val state = fields(4) match
+        case "idle"            => ChainSync.State.Idle
+        case "next-can-await"  => ChainSync.State.NextCanAwait
+        case "next-must-reply" => ChainSync.State.NextMustReply
+        case "intersect"       => ChainSync.State.Intersect
+        case other             => fail(s"unknown upstream ChainSync state $other at seed $seed")
+      val sender = fields(5) match
+        case "client" => ChainSync.Role.Client
+        case "server" => ChainSync.Role.Server
+        case other    => fail(s"unknown upstream ChainSync sender $other at seed $seed")
+      val wire = bytes(fields(7))
+      val decoded = ChainSync.decodePrefix(state, sender, wire, payloadCodec) match
+        case ChainSync.DecodeResult.Decoded(message, consumed) =>
+          assertEquals(consumed, wire.size, s"seed $seed consumed full original wire")
+          Right(message)
+        case ChainSync.DecodeResult.Failed(error) => Left(error.toString)
+        case ChainSync.DecodeResult.NeedMore      => Left("NeedMore")
+      decoded match
+        case Left(reason) => s"unsupported:${fields(6)}:$reason"
+        case Right(message) =>
+          val decodedTag = message match
+            case ChainSync.Message.RequestNext          => "request-next"
+            case ChainSync.Message.AwaitReply           => "await-reply"
+            case ChainSync.Message.RollForward(_, _)    => "roll-forward"
+            case ChainSync.Message.RollBackward(_, _)   => "roll-backward"
+            case ChainSync.Message.FindIntersect(_)     => "find-intersect"
+            case ChainSync.Message.IntersectFound(_, _) => "intersect-found"
+            case ChainSync.Message.IntersectNotFound(_) => "intersect-not-found"
+            case ChainSync.Message.Done                 => "done"
+          assertEquals(decodedTag, fields(6), s"seed $seed typed constructor")
+          val encoded = ChainSync
+            .encode(state, sender, message, payloadCodec)
+            .fold(e => fail(s"seed $seed Scarab typed encode: ${e.toString}"), identity)
+          assertEquals(encoded, wire, s"seed $seed exact original wire roundtrip")
+          "matched"
+    }
+    assertEquals(mapped.size, 128)
+    assertEquals(
+      mapped.groupMapReduce(identity)(_ => 1)(_ + _),
+      Map(
+        "matched" -> 49,
+        "unsupported:roll-forward:ExpectedDefiniteByteString" -> 20,
+        "unsupported:roll-backward:ExpectedDefiniteByteString" -> 29,
+        "unsupported:intersect-not-found:ExpectedDefiniteByteString" -> 8,
+        "unsupported:intersect-found:ExpectedDefiniteByteString" -> 13,
+        "unsupported:find-intersect:ExpectedDefiniteByteString" -> 9
+      )
+    )

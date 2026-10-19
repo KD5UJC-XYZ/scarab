@@ -47,3 +47,14 @@ This is bounded evidence for selected codec properties, not a claim that all pro
 Ouroboros-network tests are covered. Other applicable protocols and typed-protocol behaviors remain
 open under #49. Source licensing is Apache-2.0; see `fixtures/licenses/ouroboros-network-LICENSE`
 and `fixtures/licenses/ouroboros-network-NOTICE`.
+
+The pinned ChainSync `codecSerialised` observer now exports 128 rows from the actual
+`AnyMessage ChainSync_Serialised_BlockHeader` generator, preserving each source state token,
+sender agency, constructor, original CBOR wire, generator seed/size, and separate verdicts from
+`prop_codec_ChainSyncSerialised` and `prop_codec_cbor_ChainSyncSerialised`. Both properties passed
+128/128; the filtered upstream ChainSync test group passed all 34 tests (each QuickCheck property
+reported 100 cases). The fixture manifest records the exact command logs, source hashes, observer
+patch hash, and constructor/state counts. The Scala consumer is set up to verify typed
+decode/encode parity for these rows; the focused consumer result is pending. This bounded sample
+does not imply coverage of ChainSync split, binary-compatibility, valid-CBOR, pipelining or
+transport tests.
