@@ -172,7 +172,7 @@ class BigLedgerSuite extends FunSuite:
     )
     val (after, jobs, _) = settle(st, t0)
     assertEquals(
-      count(jobs) { case Job.Connect(_, DiffusionMode.InitiatorAndResponder, _) => () },
+      count(jobs) { case Job.Connect(_, DiffusionMode.InitiatorAndResponder, _, _) => () },
       2
     )
     assertEquals(after.view(t0).counters.coldBigLedgerPromotions, 2)
@@ -206,7 +206,7 @@ class BigLedgerSuite extends FunSuite:
       4 -> big(Status.Warm(t0))
     )
     val (_, jobs, traces) = settle(st, t0)
-    assertEquals(count(jobs) { case Job.Close(_) => () }, 3)
+    assertEquals(count(jobs) { case Job.Close(_, _) => () }, 3)
     assert(traces.exists {
       case Trace.DemoteBigLedger(Temperature.Warm, _, 1, 4) => true; case _ => false
     })
@@ -296,7 +296,7 @@ class BigLedgerSuite extends FunSuite:
     // the cold ones are forgotten
     val zero = tooOld.copy(targets = Targets.zero)
     val (after, jobs, _) = settle(zero, t0)
-    assertEquals(jobs, List(Job.Close(3)))
+    assertEquals(jobs, List(Job.Close(3, None)))
     assertEquals(after.view(t0).big.known.size, 1)
   }
 
@@ -334,7 +334,7 @@ class BigLedgerSuite extends FunSuite:
     )
     // in the sensitive state the node asks for bootstrap peers only
     val (_, jobsOld, _) = settle(tooOld, t0)
-    assert(jobsOld.forall { case Job.RequestBigLedger(_) => false; case _ => true })
+    assert(jobsOld.forall { case Job.RequestBigLedger(_, _) => false; case _ => true })
     val young = PeerSelection
       .apply(tooOld, Event.JudgementReported(LedgerStateJudgement.YoungEnough), t0)
       .state
@@ -361,7 +361,7 @@ class BigLedgerSuite extends FunSuite:
     )
     assertEquals(Set(2, 3, 4).map(done.peers(_).origin), Set(Origin.Ledger))
     val (after, jobs, _) = settle(done, t0)
-    assertEquals(count(jobs) { case Job.Connect(_, _, _) => () }, 3)
+    assertEquals(count(jobs) { case Job.Connect(_, _, _, _) => () }, 3)
     assertEquals(after.view(t0).counters.byOrigin(Origin.Ledger), 3)
   }
 

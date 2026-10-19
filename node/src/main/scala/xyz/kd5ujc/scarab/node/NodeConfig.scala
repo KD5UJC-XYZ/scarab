@@ -6,6 +6,7 @@ import cats.syntax.all.*
 import io.circe.{Decoder, HCursor, Json, parser}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{Era, NtnVersion}
+import xyz.kd5ujc.scarab.network.selection.{ConsensusMode, Targets}
 
 /** The genesis files a configuration names (`ByronGenesisFile` or the older `GenesisFile`,
   * `ShelleyGenesisFile`, `AlonzoGenesisFile`, `ConwayGenesisFile`, and, with experimental hard
@@ -85,7 +86,7 @@ final case class ConfigSettings(
     maxKnownMajorProtocolVersion: Option[BigInt] = None,
     experimentalHardForksEnabled: Boolean = false,
     experimentalProtocolsEnabled: Boolean = false,
-    consensusMode: Option[String] = None,
+    consensusMode: ConsensusMode = ConsensusMode.PraosMode,
     peerSharing: Option[Boolean] = None,
     diffusionMode: Option[String] = None,
     socketPath: Option[String] = None,
@@ -96,6 +97,9 @@ final case class ConfigSettings(
     hardForkVersions: Map[Era, BigInt] = Map.empty,
     /** `TargetNumberOf...Peers`: the governor's targets, when the file sets any. */
     peerTargets: PeerTargetOverrides = PeerTargetOverrides(),
+    /** `SyncTargetNumberOf...Peers`: Genesis-mode sync targets, when the file sets any. */
+    syncPeerTargets: PeerTargetOverrides = PeerTargetOverrides(),
+    minBigLedgerPeersForTrustedState: Int = 5,
     /** `MaxConcurrencyDeadline` (`POM.hs` 345): how many peers may be asked for the same block in
       * the fetch mode deadline; absent is the library's default, 1.
       */
@@ -110,15 +114,17 @@ final case class ConfigSettings(
   /** POM.hs:899-905: relays default on, producers off; an explicit setting wins. */
   def peerSharingEnabled(producer: Boolean): Boolean = peerSharing.getOrElse(!producer)
 
+  def syncTargets(defaults: Targets): Either[ConfigError, Targets] = syncPeerTargets(defaults)
+
   /** Settings that ask for something the node does not implement. */
   def unsupported: List[String] =
     List(
       Option.when(experimentalHardForksEnabled)(
         "ExperimentalHardForksEnabled: the Dijkstra era is not implemented"
       ),
-      Option.when(consensusMode.contains("GenesisMode"))(
-        "ConsensusMode GenesisMode: Genesis syncing (GDD, ledger peers) is not implemented; " +
-          "the configured peers are followed as in Praos mode"
+      Option.when(consensusMode == ConsensusMode.GenesisMode)(
+        "ConsensusMode GenesisMode: chain-density and ledger-dependent fork choice are not " +
+          "implemented; peer selection provides sync targets and trusted-state hooks only"
       ),
       Option.when(hardForkVersions.nonEmpty)(
         "Test<Era>HardForkAtVersion: hard forks triggered by a version are not honoured"
@@ -288,9 +294,19 @@ object NodeConfig:
         "ExperimentalProtocolsEnabled",
         "TestEnableDevelopmentNetworkProtocols"
       )
-      mode <- k
+      modeName <- k
         .opt[String]("ConsensusMode")
         .flatMap(oneOf("ConsensusMode", _, Set("PraosMode", "GenesisMode")))
+      mode <- modeName match
+        case None                => Right(ConsensusMode.PraosMode)
+        case Some("PraosMode")   => Right(ConsensusMode.PraosMode)
+        case Some("GenesisMode") => Right(ConsensusMode.GenesisMode)
+        case Some(other) =>
+          Left(
+            ConfigError(
+              ConfigProblem.Selection("ConsensusMode", other, Set("PraosMode", "GenesisMode"))
+            )
+          )
       sharing <- k.opt[Boolean]("PeerSharing")
       diffusion <- k
         .opt[String]("DiffusionMode")
@@ -307,6 +323,15 @@ object NodeConfig:
         k.opt[Int]("TargetNumberOfEstablishedBigLedgerPeers"),
         k.opt[Int]("TargetNumberOfActiveBigLedgerPeers")
       ).mapN(PeerTargetOverrides.apply)
+      syncTargets <- (
+        k.opt[Int]("SyncTargetNumberOfRootPeers"),
+        k.opt[Int]("SyncTargetNumberOfKnownPeers"),
+        k.opt[Int]("SyncTargetNumberOfEstablishedPeers"),
+        k.opt[Int]("SyncTargetNumberOfActivePeers"),
+        k.opt[Int]("SyncTargetNumberOfKnownBigLedgerPeers"),
+        k.opt[Int]("SyncTargetNumberOfEstablishedBigLedgerPeers"),
+        k.opt[Int]("SyncTargetNumberOfActiveBigLedgerPeers")
+      ).mapN(PeerTargetOverrides.apply)
       deadlineConcurrency <- k
         .opt[Int]("MaxConcurrencyDeadline")
         .flatMap(n =>
@@ -318,6 +343,16 @@ object NodeConfig:
             )
           )
         )
+      minBigLedgerPeers <- k.opt[Int]("MinBigLedgerPeersForTrustedState").flatMap {
+        case None                     => Right(5)
+        case Some(value) if value > 0 => Right(value)
+        case Some(value) =>
+          Left(
+            ConfigError(
+              ConfigProblem.NonPositive("MinBigLedgerPeersForTrustedState", BigDecimal(value))
+            )
+          )
+      }
       required = (name: String, present: Boolean) =>
         Either.cond(
           present || !strict,
@@ -369,6 +404,8 @@ object NodeConfig:
           mempool,
           versions.flatten.toMap,
           targets,
+          syncTargets,
+          minBigLedgerPeers,
           deadlineConcurrency
         )
       )

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.effect.{IO, Ref, Resource}
+import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.syntax.all.*
 import fs2.Stream
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSyncFixtures
-import xyz.kd5ujc.scarab.protocol.ChainSync.Point
+import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, Tip}
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
 
@@ -53,13 +53,132 @@ class WarmHotSuite extends FailsOnUncaught:
     def awaitAfter(ticket: Long) = IO.never
     def body(id: Bytes) = IO.pure(None)
 
-  private def warm(using Net): Resource[IO, WarmConnection[IO, Bytes]] =
+  private def warm(duplex: Boolean = false)(using Net): Resource[IO, WarmConnection[IO, Bytes]] =
     Resource
       .eval(Bearer.inMemory[IO]())
       .flatMap { (ours, theirs) =>
         typed(NodeToNodeServer.accept(theirs, magic, handlers)).void.background
-          .flatMap(_ => NodeToNode.warmOver[IO, Bytes](ours, magic, ChainSyncFixtures.rawItem))
+          .flatMap(_ =>
+            NodeToNode.warmOver[IO, Bytes](
+              ours,
+              magic,
+              ChainSyncFixtures.rawItem,
+              serve = Option.when(duplex)(handlers)
+            )
+          )
       }
+
+  private final case class DuplexPair(
+      local: WarmConnection[IO, Bytes],
+      responses: Deferred[
+        IO,
+        (
+            (Option[(Point, Tip)], ChainSyncClient.Update[Bytes], Boolean),
+            (Option[(Point, Tip)], ChainSyncClient.Update[Bytes], Boolean)
+        )
+      ]
+  )
+
+  /** The inbound server runs on one end of the bearer pair and starts ChainSync clients from the
+    * negotiated callback. This issues real peer-initiated protocol requests over our outbound
+    * duplex connection.
+    */
+  private def duplexPair(closed: Ref[IO, Int])(using Net): Resource[IO, DuplexPair] =
+    Resource
+      .make(Bearer.inMemory[IO]()) { (ours, theirs) =>
+        closed.update(_ + 1) *> ours.close *> closed.update(_ + 1) *> theirs.close
+      }
+      .flatMap { (ours, theirs) =>
+        for
+          responses <- Resource.eval(
+            Deferred[
+              IO,
+              (
+                  (Option[(Point, Tip)], ChainSyncClient.Update[Bytes], Boolean),
+                  (Option[(Point, Tip)], ChainSyncClient.Update[Bytes], Boolean)
+              )
+            ]
+          )
+          _ <- Resource.make(
+            Fibers
+              .scoped[IO, NetworkError, Unit](NetworkError.fromThrowable("duplex peer", _)) {
+                def request(mux: Mux[IO], version: Int) =
+                  NodeToNode
+                    .clients[IO, Bytes](
+                      mux,
+                      Mux.Role.Initiator,
+                      version,
+                      ChainSyncFixtures.rawItem
+                    )
+                    .use { connection =>
+                      for
+                        found <- connection.chainSync.findIntersect(Vector(Point.Origin))
+                        next <- connection.chainSync.requestNext
+                        ended <- connection.finish(5.seconds)
+                      yield (found, next, ended)
+                    }
+
+                NodeToNodeServer
+                  .accept[IO, Bytes](
+                    theirs,
+                    magic,
+                    handlers,
+                    negotiated = (agreed, mux) =>
+                      Resource.eval(
+                        (request(mux, agreed.version), request(mux, agreed.version)).tupled
+                          .flatMap(responses.complete(_).void)
+                      )
+                  )
+                  .void
+              }
+              .start
+          )(_.cancel)
+          local <- NodeToNode.warmOver[IO, Bytes](
+            ours,
+            magic,
+            ChainSyncFixtures.rawItem,
+            serve = Some(handlers)
+          )
+        yield DuplexPair(local, responses)
+      }
+
+  test("an outbound duplex offer retains the negotiated data flow"):
+    typed(warm(duplex = true).use(connection => IO.pure(connection.duplex))).map { result =>
+      assertEquals(result, Right(true))
+    }
+
+  test("a duplex responder answers inbound ChainSync, demotes, and releases on cancellation"):
+    typed {
+      Ref.of[IO, Int](0).flatMap { closed =>
+        duplexPair(closed).allocated.flatMap { (pair, release) =>
+          val exercise =
+            for
+              responses <- pair.responses.get.timeout(5.seconds)
+              _ <- IO(assert(pair.local.duplex))
+              first = responses._1
+              second = responses._2
+              _ <- IO(assert(first._1.isDefined))
+              _ <- IO(
+                assertEquals(first._2, ChainSyncClient.Update.RollForward(header(1), Peers.tip(3)))
+              )
+              _ <- IO(assert(first._3))
+              _ <- IO(
+                assertEquals(
+                  second,
+                  (
+                    Some(Point.Origin -> Peers.tip(3)),
+                    ChainSyncClient.Update.RollForward(header(1), Peers.tip(3)),
+                    true
+                  )
+                )
+              )
+              beforeRelease <- closed.get
+              _ <- IO(assertEquals(beforeRelease, 0))
+            yield ()
+          exercise.guarantee(release) *> closed.get.map(count => assertEquals(count, 2))
+        }
+      }
+    }.map(result => assertEquals(result, Right(())))
 
   test("a connection is activated, finished and activated again on one bearer"):
     def round(warm: WarmConnection[IO, Bytes])(using Net) =
@@ -73,7 +192,7 @@ class WarmHotSuite extends FailsOnUncaught:
           ended <- hot.finish(5.seconds)
         yield (found.isDefined, first, blocks, ended)
       }
-    typed(warm.use(w => (round(w), round(w)).tupled)).map { r =>
+    typed(warm().use(w => (round(w), round(w)).tupled)).map { r =>
       val expected = (
         true,
         ChainSyncClient.Update.RollForward(header(1), Peers.tip(3)),
@@ -85,7 +204,7 @@ class WarmHotSuite extends FailsOnUncaught:
 
   test("a connection with a request outstanding cannot be finished"):
     typed(
-      warm.use(
+      warm().use(
         _.activate().use { hot =>
           for
             _ <- hot.chainSync.findIntersect(Vector(Point.Origin))

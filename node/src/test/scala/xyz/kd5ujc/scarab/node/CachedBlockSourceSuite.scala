@@ -80,8 +80,9 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
             DiffusionMode.InitiatorAndResponder,
             Provenance.Outbound
           )
-          _ <- pool.session(Some(outbound.rejectedCachedBlock(source, _))).use { claims =>
-            claims.claim(Vector(hash)) *> claims.fill(Vector(hash -> block))
+          _ <- pool.session(Some(outbound.rejectedCachedBlock(source, BigInt(0), _))).use {
+            claims =>
+              claims.claim(Vector(hash)) *> claims.fill(Vector(hash -> block))
           }
           _ <- outbound.close(source)
           second <- outbound.establish(
@@ -115,7 +116,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
           innocent <- manager.lookup(consumerRemote)
           observed <- events.get
           rejected = observed.collect {
-            case Event.Observed(peer, Observation.CachedBlockRejected(reason)) =>
+            case Event.Observed(peer, Observation.CachedBlockRejected(reason), _) =>
               peer -> reason
           }
           _ <- outbound.close(consumer)

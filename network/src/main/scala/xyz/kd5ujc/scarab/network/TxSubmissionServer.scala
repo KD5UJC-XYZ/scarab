@@ -34,8 +34,10 @@ object TxSubmissionServer:
       idsPerRequest: Int = 3,
       /** Time the client may take to send the transactions we asked for. */
       bodiesTimeout: FiniteDuration = TxSubmissionPolicy.ShortWait,
-      /** Time to wait for the client's Init. */
-      initTimeout: FiniteDuration = 60.seconds
+      /** Optional local bound for the client's first Init. The reference waits indefinitely in
+        * `StInit`; an absent value preserves that behavior for an idle duplex responder.
+        */
+      initTimeout: Option[FiniteDuration] = None
   )
 
   def run[F[_]: Temporal](
@@ -99,7 +101,7 @@ object TxSubmissionServer:
         case other                      => illegal(RuntimeViolation.TxSubmissionUnexpected(other))
       }
 
-    receive(TxSubmission2.State.Init, Some(settings.initTimeout)).flatMap {
+    receive(TxSubmission2.State.Init, settings.initTimeout).flatMap {
       case TxSubmission2.Message.Init => loop(0)
       case other                      => illegal(RuntimeViolation.TxSubmissionUnexpected(other))
     }

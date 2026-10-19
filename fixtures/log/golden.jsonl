@@ -61,6 +61,7 @@
 {"event":"peerSelectionChurn","at":"2026-10-16T12:00:00Z","action":"wait","delaySeconds":3412.0}
 {"event":"ledgerPeers","at":"2026-10-16T12:00:00Z","action":"snapshotLoaded","slot":123624952,"pools":37}
 {"event":"ledgerPeers","at":"2026-10-16T12:00:00Z","action":"snapshotIgnored","reason":"Missing(bigLedgerPools)"}
+{"event":"ledgerPeers","at":"2026-10-16T12:00:00Z","action":"snapshotVerified","matchesImmutablePoint":true}
 {"event":"ledgerPeers","at":"2026-10-16T12:00:00Z","action":"refreshed","source":"Ledger","pools":612,"bigLedgerPools":118,"ledgerSlot":125430904}
 {"event":"ledgerPeers","at":"2026-10-16T12:00:00Z","action":"refreshed","source":"Nothing","pools":0,"bigLedgerPools":0,"ledgerSlot":"origin"}
 {"event":"ledgerPeers","at":"2026-10-16T12:00:00Z","action":"poolSkipped","pool":"07070707070707070707070707070707070707070707070707070707","reason":"BadPort(1)"}

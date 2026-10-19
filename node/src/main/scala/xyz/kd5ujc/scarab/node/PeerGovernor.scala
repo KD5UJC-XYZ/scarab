@@ -20,6 +20,14 @@ trait PeerStateActions[F[_], A]:
   /** Open a connection and start the warm protocols; none when it worked. */
   def establish(peer: A, mode: DiffusionMode, provenance: Provenance): F[Option[FailureClass]]
 
+  /** Open a connection for one roots generation; stale completion cleanup can target that link. */
+  def establishAt(
+      peer: A,
+      mode: DiffusionMode,
+      provenance: Provenance,
+      generation: BigInt
+  ): F[Option[FailureClass]]
+
   /** Start the hot protocols on an established connection; none when it worked. */
   def activate(peer: A): F[Option[FailureClass]]
 
@@ -30,6 +38,9 @@ trait PeerStateActions[F[_], A]:
     * within the demotion timeout.
     */
   def close(peer: A): F[Boolean]
+
+  /** Close a link only if it is still the attempt completed by `generation`. */
+  def closeIfGeneration(peer: A, generation: BigInt): F[Option[Boolean]]
 
 object PeerStateActions:
   /** How a deactivation ended. */
@@ -118,7 +129,9 @@ object PeerGovernor:
       roots: RootProvider[F, A],
       events: Queue[F, Event[A]],
       supervisor: Supervisor[F],
-      sharing: Option[PeerSharingActions[F, A]] = None
+      sharing: Option[PeerSharingActions[F, A]] = None,
+      beforeEventApplied: Option[Event[A] => F[Unit]] = None,
+      onEventApplied: Option[Event[A] => F[Unit]] = None
   )(using
       state: Stateful[F, GovernorState[A]],
       config: Ask[F, GovernorConfig],
@@ -128,7 +141,18 @@ object PeerGovernor:
   ): F[Nothing] =
     Ref
       .of[F, Set[Time]](Set.empty)
-      .flatMap(scheduled => loop(actions, roots, events, supervisor, scheduled, sharing))
+      .flatMap(scheduled =>
+        loop(
+          actions,
+          roots,
+          events,
+          supervisor,
+          scheduled,
+          sharing,
+          beforeEventApplied,
+          onEventApplied
+        )
+      )
 
   private def loop[F[_]: Temporal, A](
       actions: PeerStateActions[F, A],
@@ -137,7 +161,9 @@ object PeerGovernor:
       supervisor: Supervisor[F],
       /** The times a wake-up is already asked for. */
       scheduled: Ref[F, Set[Time]],
-      sharing: Option[PeerSharingActions[F, A]]
+      sharing: Option[PeerSharingActions[F, A]],
+      beforeEventApplied: Option[Event[A] => F[Unit]],
+      onEventApplied: Option[Event[A] => F[Unit]]
   )(using
       state: Stateful[F, GovernorState[A]],
       config: Ask[F, GovernorConfig],
@@ -153,6 +179,11 @@ object PeerGovernor:
     /** Start an ordinary job and report its outcome to its owner. */
     def complete(result: F[Outcome[A]]): F[Unit] =
       supervisor.supervise(result.flatMap(outcome => events.offer(Event.Completed(outcome)))).void
+
+    def completeMaybe(result: F[Option[Outcome[A]]]): F[Unit] =
+      supervisor
+        .supervise(result.flatMap(_.traverse_(outcome => events.offer(Event.Completed(outcome)))))
+        .void
 
     /** Start a job in a fiber of the supervisor; it ends by offering its outcome. */
     def start(job: Job[A]): F[Unit] = job match
@@ -211,11 +242,15 @@ object PeerGovernor:
               supervisor.supervise(phases).void
             }
         }
-      case Job.Connect(peer, mode, provenance) =>
+      case Job.Connect(peer, mode, provenance, generation) =>
         complete(
           actions
-            .establish(peer, mode, provenance)
-            .map(_.fold[Outcome[A]](Outcome.Connected(peer))(Outcome.ConnectFailed(peer, _)))
+            .establishAt(peer, mode, provenance, generation)
+            .map(
+              _.fold[Outcome[A]](Outcome.Connected(peer, generation))(failure =>
+                Outcome.ConnectFailed(peer, failure, generation)
+              )
+            )
         )
       case Job.Activate(peer) =>
         complete(
@@ -234,29 +269,43 @@ object PeerGovernor:
             case PeerStateActions.Deactivation.Lingering => Outcome.CloseTimedOut(peer)
           }
         )
-      case Job.Close(peer) =>
-        complete(
-          actions
-            .close(peer)
-            .map(released => if released then Outcome.Closed(peer) else Outcome.CloseTimedOut(peer))
-        )
-      case Job.RequestRoots(max, bootstrap) =>
+      case Job.Close(peer, generation) =>
+        generation match
+          case None =>
+            complete(
+              actions
+                .close(peer)
+                .map(released =>
+                  if released then Outcome.Closed(peer) else Outcome.CloseTimedOut(peer)
+                )
+            )
+          case Some(expected) =>
+            completeMaybe(
+              actions
+                .closeIfGeneration(peer, expected)
+                .map(
+                  _.map(released =>
+                    if released then Outcome.Closed(peer) else Outcome.CloseTimedOut(peer)
+                  )
+                )
+            )
+      case Job.RequestRoots(max, bootstrap, generation) =>
         complete(
           roots
             .request(max, bootstrap)
             .map(
-              _.fold[Outcome[A]](Outcome.RootsFailed())((found, ttl) =>
-                Outcome.RootsFound(found, ttl)
+              _.fold[Outcome[A]](Outcome.RootsFailed(generation))((found, ttl) =>
+                Outcome.RootsFound(found, ttl, generation)
               )
             )
         )
-      case Job.RequestBigLedger(max) =>
+      case Job.RequestBigLedger(max, generation) =>
         complete(
           roots
             .requestBigLedger(max)
             .map(
-              _.fold[Outcome[A]](Outcome.BigLedgerFailed())((found, ttl) =>
-                Outcome.BigLedgerFound(found, ttl)
+              _.fold[Outcome[A]](Outcome.BigLedgerFailed(generation))((found, ttl) =>
+                Outcome.BigLedgerFound(found, ttl, generation)
               )
             )
         )
@@ -276,9 +325,11 @@ object PeerGovernor:
     def apply(event: Event[A]): F[Unit] =
       for
         at <- now
+        _ <- beforeEventApplied.traverse_(_(event))
         st <- state.get
         policy <- config.reader(_.policy)
         _ <- commit(PeerSelection.apply(st, event, at, policy))
+        _ <- onEventApplied.traverse_(_(event))
       yield ()
 
     /** Apply the events that are waiting. */

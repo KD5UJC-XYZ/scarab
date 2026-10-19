@@ -9,7 +9,7 @@ import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{Era, NtnVersion}
-import xyz.kd5ujc.scarab.network.selection.{AfterSlot, UseLedgerPeers}
+import xyz.kd5ujc.scarab.network.selection.{AfterSlot, ConsensusMode, Targets, UseLedgerPeers}
 import munit.FunSuite
 
 /** The Haskell node's `config.json` and `topology.json`, read as `cardano-node run` reads them,
@@ -48,7 +48,7 @@ class ConfigSuite extends FunSuite:
     assertEquals(preview.requiresNetworkMagic, Some(true))
     assertEquals(preview.settings.lastKnownBlockVersion, Some((3, 1, 0)))
     assertEquals(preview.settings.experimentalHardForksEnabled, false)
-    assertEquals(preview.settings.consensusMode, Some("GenesisMode"))
+    assertEquals(preview.settings.consensusMode, ConsensusMode.GenesisMode)
     assertEquals(preview.files.checkpoints, Some("checkpoints.json"))
     val preprod = parsed("preprod")
     assertEquals(preprod.settings.lastKnownBlockVersion, Some((2, 0, 0)))
@@ -308,6 +308,27 @@ class ConfigSuite extends FunSuite:
     assert(NodeConfig.parse("{").isLeft)
   }
 
+  test("Genesis sync targets and trusted-state threshold are typed settings") {
+    val input = Json.obj(
+      "SyncTargetNumberOfRootPeers" -> Json.fromInt(0),
+      "SyncTargetNumberOfKnownPeers" -> Json.fromInt(40),
+      "SyncTargetNumberOfEstablishedPeers" -> Json.fromInt(8),
+      "SyncTargetNumberOfActivePeers" -> Json.fromInt(4),
+      "SyncTargetNumberOfKnownBigLedgerPeers" -> Json.fromInt(50),
+      "SyncTargetNumberOfEstablishedBigLedgerPeers" -> Json.fromInt(20),
+      "SyncTargetNumberOfActiveBigLedgerPeers" -> Json.fromInt(10),
+      "MinBigLedgerPeersForTrustedState" -> Json.fromInt(3)
+    )
+    val settings =
+      NodeConfig.parse(input.noSpaces).fold(error => fail(error.message), identity).settings
+    val expected = Targets.validated(0, 40, 8, 4, 50, 20, 10).fold(e => fail(e.message), identity)
+    assertEquals(
+      settings.syncTargets(Targets.sync),
+      Right(expected)
+    )
+    assertEquals(settings.minBigLedgerPeersForTrustedState, 3)
+  }
+
   test(
     "the public topologies: the peers are the bootstrap peers, the ledger peers start at a slot"
   ) {
@@ -369,6 +390,19 @@ class ConfigSuite extends FunSuite:
     assertEquals(topology.useLedgerAfterSlot, UseLedgerPeers.Disabled)
   }
 
+  test("public and bootstrap topology roots accept SRV access points") {
+    val topology = Topology
+      .parse(
+        """{"localRoots": [], "publicRoots": [{"accessPoints": [{"address": "relay.example"}]}], "bootstrapPeers": [{"address": "boot.example"}]}"""
+      )
+      .fold(e => fail(e.message), identity)
+    assertEquals(
+      topology.publicRoots.flatMap(_.srvAccessPoints).map(_.value),
+      Vector("relay.example.")
+    )
+    assertEquals(topology.bootstrapSrvPeers.map(_.value), Vector("boot.example."))
+  }
+
   test("a negative slot disables ledger peers; the legacy Producers format is unsupported") {
     val negative =
       Topology.parse("""{"localRoots": [], "publicRoots": [], "useLedgerAfterSlot": -1}""")
@@ -378,17 +412,20 @@ class ConfigSuite extends FunSuite:
     assertEquals(legacy.left.map(_.problem), Left(ConfigProblem.UnsupportedTopology))
   }
 
-  test(
-    "topology refusals: SRV names, bad ports and addresses, missing fields, no way to progress"
-  ) {
+  test("topology validates bad ports and addresses, missing fields, and no way to progress") {
     def topology(extra: String) =
       Topology.parse(s"""{"localRoots": [$extra], "publicRoots": []}""")
     def group(point: String) = s"""{"accessPoints": [$point], "valency": 1}"""
-    // an address without a port is an SRV name
-    assertEquals(
-      topology(group("""{"address": "_cardano._tcp.example"}""")).left.map(_.problem),
-      Left(ConfigProblem.SrvAccessPoint("_cardano._tcp.example"))
-    )
+    // An address without a port is an SRV name and is accepted for every root class.
+    val srv =
+      Topology.parse(
+        """{"localRoots": [{"accessPoints": [{"address": "local.example"}], "valency": 1}], "publicRoots": []}"""
+      )
+    val parsed = srv.fold(e => fail(e.message), identity)
+    assertEquals(parsed.localRoots.head.srvAccessPoints.map(_.value), Vector("local.example."))
+    val roots = PeerNetwork.roots(Nil, Some(parsed))
+    assertEquals(roots.localSrv.head.map(_._1.value), List("local.example."))
+    assert(roots.hasPeers)
     assert(topology(group("""{"address": "relay.example", "port": 70000}""")).isLeft)
     assert(topology(group("""{"address": "relay.example", "port": "3001"}""")).isLeft)
     assert(topology(group("""{"address": "0.0.0.0", "port": 3001}""")).isLeft)
@@ -442,7 +479,18 @@ class ConfigSuite extends FunSuite:
   test(
     "the options are completed from the files: peers after the flags' ones, socket and database only with --config"
   ) {
-    val config = dir("preview").resolve("config.json")
+    val praos = Files.createTempDirectory("config-suite-praos")
+    List("byron", "shelley", "alonzo", "conway").foreach { n =>
+      Files.copy(dir("preview").resolve(s"$n-genesis.json"), praos.resolve(s"$n-genesis.json"))
+    }
+    val preview = parser
+      .parse(text("preview", "config.json"))
+      .fold(error => fail(error.toString), identity)
+    Files.writeString(
+      praos.resolve("config.json"),
+      preview.deepMerge(Json.obj("ConsensusMode" -> Json.fromString("PraosMode"))).noSpaces
+    )
+    val config = praos.resolve("config.json")
     val topology = dir("preview").resolve("topology.json")
     val options = Main
       .parse(
@@ -465,6 +513,31 @@ class ConfigSuite extends FunSuite:
     )
     assertEquals(setup.identity.magic, 2L)
     assert(loaded.isDefined)
+    val topologyA = Files.createTempFile("topology-a", ".json")
+    val topologyB = Files.createTempFile("topology-b", ".json")
+    Files.writeString(
+      topologyA,
+      """{"localRoots": [], "publicRoots": [{"accessPoints": [{"address": "a.example", "port": 3001}]}]}"""
+    )
+    Files.writeString(
+      topologyB,
+      """{"localRoots": [], "publicRoots": [{"accessPoints": [{"address": "b.example", "port": 3002}]}]}"""
+    )
+    val requestedA = options.copy(topologyFile = Some(topologyA))
+    val (_, reloadSetup, _) = Main.configured(requestedA).fold(e => fail(e.message), identity)
+    val (_, rootsA) = Main
+      .topologyRoots(requestedA, reloadSetup)
+      .fold(e => fail(e.message), identity)
+    val requestedB = requestedA.copy(topologyFile = Some(topologyB))
+    val (_, rootsB) = Main
+      .topologyRoots(requestedB, reloadSetup)
+      .fold(e => fail(e.message), identity)
+    assertEquals(rootsA.public.map(_.toString), Set("a.example:3001"))
+    assertEquals(rootsB.public.map(_.toString), Set("b.example:3002"))
+    assertEquals(
+      rootsB.local.flatMap(_.members.map(_._1.toString)),
+      List("127.0.0.1:9")
+    )
     // the file's defaults for the flags (here none are set), and a flag wins over the file
     val withSettings = Files.createTempDirectory("config-suite-settings")
     List("byron", "shelley", "alonzo", "conway").foreach { n =>
@@ -515,6 +588,26 @@ class ConfigSuite extends FunSuite:
       .toOption
       .get
     assertEquals(Main.configured(nobody).left.map(_.problem), Left(ConfigProblem.NoPeers))
+    val bootstrap = Files.createTempFile("genesis-topology", ".json")
+    Files.writeString(
+      bootstrap,
+      """{"localRoots": [], "publicRoots": [], "bootstrapPeers": [{"address":"127.0.0.1","port":3001}]}"""
+    )
+    val genesisMode = Main
+      .parse(
+        List(
+          "follow",
+          "--config",
+          dir("preview").resolve("config.json").toString,
+          "--topology",
+          bootstrap.toString
+        )
+      )
+      .fold(error => fail(error.message), identity)
+    assertEquals(
+      Main.configured(genesisMode).left.map(_.problem),
+      Left(ConfigProblem.BootstrapPeersInGenesisMode)
+    )
     // the same settings in a genesis directory's configuration are not applied
     val directoryMode = Main
       .parse(List("follow", "--genesis-dir", withSettings.toString, "--peer", "127.0.0.1:9"))

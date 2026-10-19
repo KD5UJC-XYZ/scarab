@@ -62,7 +62,7 @@ private[selection] final class BigLedgerGuards[A](
         Go(
           Decision(
             st.copy(bigLedgerInFlight = true, rng = next),
-            List(Job.RequestBigLedger(missing)),
+            List(Job.RequestBigLedger(missing, st.rootsGeneration)),
             List(Trace.BigLedgerRequest(st.targets.knownBig, big.known.size))
           )
         )
@@ -104,7 +104,14 @@ private[selection] final class BigLedgerGuards[A](
       Go(
         Decision(
           withStatus(picked, Status.Connecting).copy(rng = next),
-          picked.map(Job.Connect(_, DiffusionMode.InitiatorAndResponder, Provenance.Outbound)),
+          picked.map(p =>
+            Job.Connect(
+              p,
+              DiffusionMode.InitiatorAndResponder,
+              Provenance.Outbound,
+              st.rootsGeneration
+            )
+          ),
           List(
             Trace.PromoteBigLedger(
               Temperature.Cold,

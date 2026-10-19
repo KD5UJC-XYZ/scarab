@@ -3,11 +3,11 @@ package xyz.kd5ujc.scarab.node
 
 import java.nio.file.{Files, Path}
 import munit.FunSuite
-import xyz.kd5ujc.scarab.network.selection.{AfterSlot, UseLedgerPeers}
+import xyz.kd5ujc.scarab.network.selection.{AfterSlot, ConsensusMode, UseLedgerPeers}
 
 /** What the node does with `peerSnapshotFile` (`updateLedgerPeerSnapshot`, `cardano-node` `Run.hs`
-  * 705-760): used only with ledger peers on, an unreadable file is ignored, and a legacy version,
-  * the origin, another network and a snapshot older than `useLedgerAfterSlot` stop the node.
+  * 705-760): used only with ledger peers on; Praos ignores an unreadable file, Genesis refuses it,
+  * and a legacy version, the origin, another network and an old snapshot stop the node.
   */
 class PeerSnapshotUseSuite extends FunSuite:
   private val Always = UseLedgerPeers.Use(AfterSlot.Always)
@@ -53,6 +53,15 @@ class PeerSnapshotUseSuite extends FunSuite:
     assert(PeerSnapshot.use(Some(file("{")), 2L, Always).exists {
       case SnapshotUse.Ignored(PeerSnapshotError.NotJson(_)) => true
       case _                                                 => false
+    })
+  }
+
+  test("Genesis refuses an unreadable configured peer snapshot") {
+    val missing = Path.of("/nonexistent/peer-snapshot.json")
+    assert(PeerSnapshot.use(Some(missing), 2L, Always, ConsensusMode.GenesisMode).left.exists {
+      case PeerSnapshotRefusal.UnreadableSnapshot(PeerSnapshotError.Unreadable(path, _)) =>
+        path == missing.toString
+      case _ => false
     })
   }
 

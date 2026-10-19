@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.governor
 
-import cats.effect.{IO, Ref}
+import cats.effect.{Deferred, IO, Ref}
 import cats.effect.std.{Queue, Supervisor}
 import cats.effect.testkit.TestControl
 import cats.mtl.{Ask, Handle, Stateful, Tell}
@@ -14,6 +14,7 @@ import xyz.kd5ujc.scarab.node.{
   GovernorConfig,
   Output,
   PeerGovernor,
+  PeerNetwork,
   PeerSharingActions,
   PeerStateActions,
   RefStateful,
@@ -75,9 +76,18 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
       actions = new PeerStateActions[IO, Int]:
         def establish(peer: Int, mode: DiffusionMode, provenance: ConnectionState.Provenance) =
           events.offer(Event.SharingNegotiated(peer, true)).as(Option.empty[FailureClass])
+        def establishAt(
+            peer: Int,
+            mode: DiffusionMode,
+            provenance: ConnectionState.Provenance,
+            generation: BigInt
+        ) =
+          generation match
+            case _ => establish(peer, mode, provenance)
         def activate(peer: Int) = IO.pure(Option.empty[FailureClass])
         def deactivate(peer: Int) = IO.pure(PeerStateActions.Deactivation.Warm)
         def close(peer: Int) = IO.pure(true)
+        def closeIfGeneration(peer: Int, generation: BigInt) = IO.pure(Some(true))
       roots = new RootProvider[IO, Int]:
         def request(max: Int, bootstrap: Boolean) = IO.pure(None)
         def requestBigLedger(max: Int) = IO.pure(None)
@@ -97,6 +107,333 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
         )
       }
     yield recording
+  }
+
+  test("the roots installation callback runs after the owner state reaches its generation") {
+    Supervisor[IO](await = false).use { supervisor =>
+      val initial =
+        GovernorState.initial[Int](1L, LocalRoots.empty, Targets.relay, Sensitivity.initial(false))
+      for
+        events <- Queue.unbounded[IO, Event[Int]]
+        state <- Ref.of[IO, GovernorState[Int]](initial)
+        applied <- Deferred[IO, BigInt]
+        given Stateful[IO, GovernorState[Int]] = RefStateful(state)
+        given Ask[IO, GovernorConfig] = Ask.const[IO, GovernorConfig](
+          GovernorConfig(association = AssociationMode.Unrestricted)
+        )
+        given Ask[IO, PeerMetrics[Int]] = Ask.const[IO, PeerMetrics[Int]](PeerMetrics.empty())
+        given Tell[IO, Output[Int]] = new Tell[IO, Output[Int]]:
+          def functor = cats.Functor[IO]
+          def tell(output: Output[Int]) = IO.unit
+        actions = new PeerStateActions[IO, Int]:
+          def establish(peer: Int, mode: DiffusionMode, provenance: ConnectionState.Provenance) =
+            IO.pure(Option.empty[FailureClass])
+          def establishAt(
+              peer: Int,
+              mode: DiffusionMode,
+              provenance: ConnectionState.Provenance,
+              generation: BigInt
+          ) =
+            generation match
+              case _ => establish(peer, mode, provenance)
+          def activate(peer: Int) = IO.pure(Option.empty[FailureClass])
+          def deactivate(peer: Int) = IO.pure(PeerStateActions.Deactivation.Warm)
+          def close(peer: Int) = IO.pure(true)
+          def closeIfGeneration(peer: Int, generation: BigInt) = IO.pure(Some(true))
+        roots = new RootProvider[IO, Int]:
+          def request(max: Int, bootstrap: Boolean) = IO.pure(None)
+          def requestBigLedger(max: Int) = IO.pure(None)
+        onEventApplied = (
+            (event: Event[Int]) =>
+              event match {
+                case Event.RootsConfigured(_, _, _, Some(generation)) =>
+                  state.get.flatMap { current =>
+                    if current.rootsGeneration >= generation then
+                      applied.complete(current.rootsGeneration).void
+                    else
+                      IO.raiseError(
+                        new AssertionError("roots callback preceded state installation")
+                      )
+                  }
+                case _ => IO.unit
+              }
+        )
+        runner = Handle
+          .allow[GovernorError] {
+            PeerGovernor.run(
+              actions,
+              roots,
+              events,
+              supervisor,
+              onEventApplied = Some(onEventApplied)
+            )
+          }
+          .rescue(error => IO.raiseError(new AssertionError(error.toString)))
+        fiber <- runner.start
+        _ <- events.offer(
+          Event.RootsConfigured(LocalRoots.empty, false, Set.empty, Some(BigInt(3)))
+        )
+        generation <- applied.get.timeout(1.second)
+        current <- state.get
+        _ <- fiber.cancel
+      yield
+        assertEquals(generation, BigInt(3))
+        assertEquals(current.rootsGeneration, BigInt(3))
+    }
+  }
+
+  test("a delayed install applies only the newest queued roots generation") {
+    Supervisor[IO](await = false).use { supervisor =>
+      val initial =
+        GovernorState.initial[Int](1L, LocalRoots.empty, Targets.relay, Sensitivity.initial(false))
+      for
+        events <- Queue.unbounded[IO, Event[Int]]
+        state <- Ref.of[IO, GovernorState[Int]](initial)
+        entered <- Deferred[IO, Unit]
+        release <- Deferred[IO, Unit]
+        installed <- Deferred[IO, BigInt]
+        given Stateful[IO, GovernorState[Int]] = RefStateful(state)
+        given Ask[IO, GovernorConfig] = Ask.const[IO, GovernorConfig](
+          GovernorConfig(association = AssociationMode.Unrestricted)
+        )
+        given Ask[IO, PeerMetrics[Int]] = Ask.const[IO, PeerMetrics[Int]](PeerMetrics.empty())
+        given Tell[IO, Output[Int]] = new Tell[IO, Output[Int]]:
+          def functor = cats.Functor[IO]
+          def tell(output: Output[Int]) = IO.unit
+        actions = new PeerStateActions[IO, Int]:
+          def establish(peer: Int, mode: DiffusionMode, provenance: ConnectionState.Provenance) =
+            IO.pure(Option.empty[FailureClass])
+          def establishAt(
+              peer: Int,
+              mode: DiffusionMode,
+              provenance: ConnectionState.Provenance,
+              generation: BigInt
+          ) =
+            generation match
+              case _ => establish(peer, mode, provenance)
+          def activate(peer: Int) = IO.pure(Option.empty[FailureClass])
+          def deactivate(peer: Int) = IO.pure(PeerStateActions.Deactivation.Warm)
+          def close(peer: Int) = IO.pure(true)
+          def closeIfGeneration(peer: Int, generation: BigInt) = IO.pure(Some(true))
+        roots = new RootProvider[IO, Int]:
+          def request(max: Int, bootstrap: Boolean) = IO.pure(None)
+          def requestBigLedger(max: Int) = IO.pure(None)
+        before = (
+            (event: Event[Int]) =>
+              event match
+                case Event.RootsConfigured(_, _, _, Some(generation)) if generation == 1 =>
+                  entered.complete(()).void *> release.get
+                case _ => IO.unit
+        )
+        after = (
+            (event: Event[Int]) =>
+              event match
+                case Event.RootsConfigured(_, _, _, Some(generation)) if generation == 2 =>
+                  installed.complete(generation).void
+                case _ => IO.unit
+        )
+        runner = Handle
+          .allow[GovernorError] {
+            PeerGovernor.run(
+              actions,
+              roots,
+              events,
+              supervisor,
+              beforeEventApplied = Some(before),
+              onEventApplied = Some(after)
+            )
+          }
+          .rescue(error => IO.raiseError(new AssertionError(error.toString)))
+        fiber <- runner.start
+        _ <- events.offer(
+          Event.RootsConfigured(LocalRoots.empty, false, Set.empty, Some(BigInt(1)))
+        )
+        _ <- entered.get.timeout(1.second)
+        _ <- events.offer(
+          Event.RootsConfigured(LocalRoots.empty, false, Set.empty, Some(BigInt(2)))
+        )
+        _ <- release.complete(())
+        generation <- installed.get.timeout(1.second)
+        current <- state.get
+        _ <- fiber.cancel
+      yield
+        assertEquals(generation, BigInt(2))
+        assertEquals(current.rootsGeneration, BigInt(2))
+    }
+  }
+
+  test("cancelling a blocked roots install leaves owner state unchanged") {
+    Supervisor[IO](await = false).use { supervisor =>
+      val initial =
+        GovernorState.initial[Int](1L, LocalRoots.empty, Targets.relay, Sensitivity.initial(false))
+      for
+        events <- Queue.unbounded[IO, Event[Int]]
+        state <- Ref.of[IO, GovernorState[Int]](initial)
+        entered <- Deferred[IO, Unit]
+        given Stateful[IO, GovernorState[Int]] = RefStateful(state)
+        given Ask[IO, GovernorConfig] = Ask.const[IO, GovernorConfig](
+          GovernorConfig(association = AssociationMode.Unrestricted)
+        )
+        given Ask[IO, PeerMetrics[Int]] = Ask.const[IO, PeerMetrics[Int]](PeerMetrics.empty())
+        given Tell[IO, Output[Int]] = new Tell[IO, Output[Int]]:
+          def functor = cats.Functor[IO]
+          def tell(output: Output[Int]) = IO.unit
+        actions = new PeerStateActions[IO, Int]:
+          def establish(peer: Int, mode: DiffusionMode, provenance: ConnectionState.Provenance) =
+            IO.pure(Option.empty[FailureClass])
+          def establishAt(
+              peer: Int,
+              mode: DiffusionMode,
+              provenance: ConnectionState.Provenance,
+              generation: BigInt
+          ) =
+            generation match
+              case _ => establish(peer, mode, provenance)
+          def activate(peer: Int) = IO.pure(Option.empty[FailureClass])
+          def deactivate(peer: Int) = IO.pure(PeerStateActions.Deactivation.Warm)
+          def close(peer: Int) = IO.pure(true)
+          def closeIfGeneration(peer: Int, generation: BigInt) = IO.pure(Some(true))
+        roots = new RootProvider[IO, Int]:
+          def request(max: Int, bootstrap: Boolean) = IO.pure(None)
+          def requestBigLedger(max: Int) = IO.pure(None)
+        before = (
+            (event: Event[Int]) =>
+              event match
+                case Event.RootsConfigured(_, _, _, Some(_)) =>
+                  entered.complete(()).void *> IO.never
+                case _ => IO.unit
+        )
+        runner = Handle
+          .allow[GovernorError] {
+            PeerGovernor.run(actions, roots, events, supervisor, beforeEventApplied = Some(before))
+          }
+          .rescue(error => IO.raiseError(new AssertionError(error.toString)))
+        fiber <- runner.start
+        _ <- events.offer(
+          Event.RootsConfigured(LocalRoots.empty, false, Set.empty, Some(BigInt(1)))
+        )
+        _ <- entered.get.timeout(1.second)
+        _ <- fiber.cancel
+        current <- state.get
+      yield assertEquals(current.rootsGeneration, BigInt(0))
+    }
+  }
+
+  test("a superseding generation cancels its snapshot wait and only the new check publishes") {
+    for
+      oldResult <- Deferred[IO, Boolean]
+      oldCanceled <- Deferred[IO, Unit]
+      currentGeneration <- Ref.of[IO, BigInt](1)
+      traces <- Ref.of[IO, Vector[(BigInt, Boolean)]](Vector.empty)
+      events <- Queue.unbounded[IO, Event[Int]]
+      oldCheck <- PeerNetwork
+        .runSnapshotCheck(
+          oldResult.get,
+          oldCanceled.get,
+          BigInt(1),
+          events
+        )
+        .start
+      _ <- oldCanceled.complete(()).void
+      _ <- oldCheck.joinWithNever
+      _ <- oldResult.complete(true)
+      _ <- events.offer(
+        Event.RootsConfigured(LocalRoots.empty, false, Set.empty, Some(BigInt(2)))
+      )
+      newResult <- Deferred[IO, Boolean]
+      newCanceled <- Deferred[IO, Unit]
+      newCheck <- PeerNetwork
+        .runSnapshotCheck(newResult.get, newCanceled.get, BigInt(1), events)
+        .start
+      _ <- newResult.complete(true)
+      _ <- newCheck.joinWithNever
+      installed <- events.take
+      _ <- IO {
+        installed match
+          case Event.RootsConfigured(_, _, _, Some(generation)) =>
+            assertEquals(generation, BigInt(2))
+          case _ => fail("expected the queued roots reload before the delayed snapshot verdict")
+      }
+      _ <- currentGeneration.set(2)
+      staleVerdict <- events.take
+      _ <- PeerNetwork.publishSnapshotVerification(
+        staleVerdict,
+        currentGeneration.get,
+        matched => traces.update(_ :+ (BigInt(1) -> matched))
+      )
+      currentResult <- Deferred[IO, Boolean]
+      currentCanceled <- Deferred[IO, Unit]
+      currentCheck <- PeerNetwork
+        .runSnapshotCheck(currentResult.get, currentCanceled.get, BigInt(2), events)
+        .start
+      _ <- currentResult.complete(true)
+      _ <- currentCheck.joinWithNever
+      currentVerdict <- events.take
+      _ <- PeerNetwork.publishSnapshotVerification(
+        currentVerdict,
+        currentGeneration.get,
+        matched => traces.update(_ :+ (BigInt(2) -> matched))
+      )
+      actual <- traces.get
+    yield assertEquals(actual, Vector(BigInt(2) -> true))
+  }
+
+  test("a stale close for an address leaves its newer-generation link open") {
+    Supervisor[IO](await = false).use { supervisor =>
+      val initial = GovernorState
+        .initial[Int](1L, LocalRoots.empty, Targets.relay, Sensitivity.initial(false))
+        .copy(rootsGeneration = BigInt(1))
+      for
+        events <- Queue.unbounded[IO, Event[Int]]
+        state <- Ref.of[IO, GovernorState[Int]](initial)
+        liveLinkGeneration <- Ref.of[IO, Option[BigInt]](Some(BigInt(1)))
+        closeCalls <- Ref.of[IO, Vector[Int]](Vector.empty)
+        checked <- Deferred[IO, BigInt]
+        given Stateful[IO, GovernorState[Int]] = RefStateful(state)
+        given Ask[IO, GovernorConfig] = Ask.const[IO, GovernorConfig](
+          GovernorConfig(association = AssociationMode.Unrestricted)
+        )
+        given Ask[IO, PeerMetrics[Int]] = Ask.const[IO, PeerMetrics[Int]](PeerMetrics.empty())
+        given Tell[IO, Output[Int]] = new Tell[IO, Output[Int]]:
+          def functor = cats.Functor[IO]
+          def tell(output: Output[Int]) = IO.unit
+        actions = new PeerStateActions[IO, Int]:
+          def establish(peer: Int, mode: DiffusionMode, provenance: ConnectionState.Provenance) =
+            IO.pure(Option.empty[FailureClass])
+          def establishAt(
+              peer: Int,
+              mode: DiffusionMode,
+              provenance: ConnectionState.Provenance,
+              generation: BigInt
+          ) =
+            liveLinkGeneration.set(Some(generation)) *> establish(peer, mode, provenance)
+          def activate(peer: Int) = IO.pure(Option.empty[FailureClass])
+          def deactivate(peer: Int) = IO.pure(PeerStateActions.Deactivation.Warm)
+          def close(peer: Int) = closeCalls.update(_ :+ peer).as(true)
+          def closeIfGeneration(peer: Int, generation: BigInt) =
+            checked.complete(generation).void *>
+              liveLinkGeneration.modify { current =>
+                if current.contains(generation) then (None, Some(true)) else (current, None)
+              }
+        roots = new RootProvider[IO, Int]:
+          def request(max: Int, bootstrap: Boolean) = IO.pure(None)
+          def requestBigLedger(max: Int) = IO.pure(None)
+        runner = Handle
+          .allow[GovernorError] {
+            PeerGovernor.run(actions, roots, events, supervisor)
+          }
+          .rescue(error => IO.raiseError(new AssertionError(error.toString)))
+        fiber <- runner.start
+        _ <- events.offer(Event.Completed(Outcome.Connected(7, BigInt(0))))
+        generation <- checked.get.timeout(1.second)
+        calls <- closeCalls.get
+        currentLink <- liveLinkGeneration.get
+        _ <- fiber.cancel
+      yield
+        assertEquals(generation, BigInt(0))
+        assertEquals(calls, Vector.empty)
+        assertEquals(currentLink, Some(BigInt(1)))
+    }
   }
 
   test("phase1 publishes the fast reply at3s, phase2 at4s uses only the remaining objective") {

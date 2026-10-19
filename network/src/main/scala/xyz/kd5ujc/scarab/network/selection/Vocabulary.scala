@@ -55,8 +55,8 @@ final case class PublicRoots[A](
   * traced as aborted (the reference's `Completion`, `Types.hs` 1613-1644, as a closed value).
   */
 enum Outcome[A]:
-  case Connected(peer: A)
-  case ConnectFailed(peer: A, failure: FailureClass)
+  case Connected(peer: A, generation: BigInt = BigInt(0))
+  case ConnectFailed(peer: A, failure: FailureClass, generation: BigInt = BigInt(0))
   case Activated(peer: A)
   case ActivateFailed(peer: A, failure: FailureClass)
   case Deactivated(peer: A)
@@ -69,28 +69,28 @@ enum Outcome[A]:
   case CloseTimedOut(peer: A)
 
   /** The request for public roots answered, with the time its answer is good for. */
-  case RootsFound(found: PublicRoots[A], ttl: FiniteDuration)
-  case RootsFailed()
+  case RootsFound(found: PublicRoots[A], ttl: FiniteDuration, generation: BigInt = BigInt(0))
+  case RootsFailed(generation: BigInt = BigInt(0))
 
   /** The request for big ledger peers answered, with the time its answer is good for. */
-  case BigLedgerFound(found: Set[A], ttl: FiniteDuration)
-  case BigLedgerFailed()
+  case BigLedgerFound(found: Set[A], ttl: FiniteDuration, generation: BigInt = BigInt(0))
+  case BigLedgerFailed(generation: BigInt = BigInt(0))
 
   /** One completed phase of a peer-sharing batch. */
   case Shared(batch: Long, results: List[(A, PeerShare.Result[A])])
 
 /** A piece of work for the effect layer (a job of the reference's `JobPool`). */
 enum Job[A]:
-  case Connect(peer: A, mode: DiffusionMode, provenance: Provenance)
+  case Connect(peer: A, mode: DiffusionMode, provenance: Provenance, generation: BigInt = BigInt(0))
   case Activate(peer: A)
   case Deactivate(peer: A)
-  case Close(peer: A)
+  case Close(peer: A, generation: Option[BigInt] = None)
 
   /** Ask for up to `max` public roots; bootstrap peers when `bootstrap` (the sensitive state). */
-  case RequestRoots(max: Int, bootstrap: Boolean)
+  case RequestRoots(max: Int, bootstrap: Boolean, generation: BigInt = BigInt(0))
 
   /** Ask for up to `max` big ledger peers (`jobReqBigLedgerPeers`). */
-  case RequestBigLedger(max: Int)
+  case RequestBigLedger(max: Int, generation: BigInt = BigInt(0))
 
   /** Parallel requests, reported in a short batch followed by the remaining timeout. */
   case Share(batch: Long, amount: xyz.kd5ujc.scarab.protocol.PeerSharing.Amount, peers: List[A])
@@ -171,25 +171,33 @@ enum Step[A]:
 /** What the effect loop feeds to the governor besides time. */
 enum Event[A]:
   /** What a look at the connection of `peer` shows (an asynchronous demotion). */
-  case Observed(peer: A, observation: Observation)
+  case Observed(peer: A, observation: Observation, generation: Option[BigInt] = None)
 
   /** A job ended. */
   case Completed(outcome: Outcome[A])
 
   /** The churn governor's variable changed (here the regime's targets). */
-  case TargetsRequested(targets: Targets)
+  case TargetsRequested(targets: Targets, generation: Option[BigInt] = None)
 
   /** The Genesis State Machine's judgement of the ledger changed. */
   case JudgementReported(judgement: LedgerStateJudgement)
 
+  /** A supervised immutable peer-snapshot check completed for one roots generation. */
+  case SnapshotVerificationCompleted(generation: BigInt, matches: Boolean)
+
   /** The configured local roots changed (a reload). */
-  case RootsConfigured(roots: LocalRoots[A])
+  case RootsConfigured(
+      roots: LocalRoots[A],
+      useBootstrapPeers: Boolean,
+      configuredPublicPeers: Set[A],
+      generation: Option[BigInt] = None
+  )
 
   /** The time the governor asked to be woken at has come (it changes nothing by itself). */
   case Wake(at: Time)
 
   /** Negotiated willingness on a newly established connection. */
-  case SharingNegotiated(peer: A, enabled: Boolean)
+  case SharingNegotiated(peer: A, enabled: Boolean, generation: Option[BigInt] = None)
 
 /** What ends the governor (the reference's `abortGovernor`, `Governor.hs` 596, and the invariant
   * check): closed, raised through `Raise` by the effect loop.

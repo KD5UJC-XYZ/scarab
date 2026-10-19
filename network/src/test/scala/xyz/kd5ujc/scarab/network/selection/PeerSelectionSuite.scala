@@ -56,12 +56,12 @@ class PeerSelectionSuite extends FunSuite:
       else
         val done = jobs.foldLeft(settled) { (s, job) =>
           val outcome: Outcome[Int] = job match
-            case Job.Connect(p, _, _)    => Outcome.Connected(p)
-            case Job.Activate(p)         => Outcome.Activated(p)
-            case Job.Deactivate(p)       => Outcome.Deactivated(p)
-            case Job.Close(p)            => Outcome.Closed(p)
-            case Job.RequestRoots(_, _)  => Outcome.RootsFailed()
-            case Job.RequestBigLedger(_) => Outcome.BigLedgerFailed()
+            case Job.Connect(p, _, _, generation)    => Outcome.Connected(p, generation)
+            case Job.Activate(p)                     => Outcome.Activated(p)
+            case Job.Deactivate(p)                   => Outcome.Deactivated(p)
+            case Job.Close(p, _)                     => Outcome.Closed(p)
+            case Job.RequestRoots(_, _, generation)  => Outcome.RootsFailed(generation)
+            case Job.RequestBigLedger(_, generation) => Outcome.BigLedgerFailed(generation)
             case Job.Share(id, _, peers) =>
               Outcome.Shared(id, peers.map(_ -> PeerShare.Result.NotRegistered()))
           complete(s, outcome, now)
@@ -72,7 +72,7 @@ class PeerSelectionSuite extends FunSuite:
   test("local roots are connected and activated up to their valencies, in the reference's steps") {
     val (st1, jobs1, _) = settle(start(List(group(2, 3, 1, 2, 3, 4))), t0)
     // the group wants three established: three connects, and not the fourth
-    val connects = jobs1.collect { case Job.Connect(p, _, _) => p }
+    val connects = jobs1.collect { case Job.Connect(p, _, _, _) => p }
     assertEquals(connects.size, 3)
     assert(connects.forall(p => statusOf(st1, p) == Status.Connecting))
     assertEquals(st1.view(t0).counters.coldPromotions, 3)
@@ -92,11 +92,11 @@ class PeerSelectionSuite extends FunSuite:
     val targets = Targets.validated(60, 150, 1, 1, 0, 0, 0).toOption.get
     val st0 = start(List(group(3, 3, 1, 2, 3)), targets)
     val (st1, jobs1, _) = settle(st0, t0)
-    assertEquals(jobs1.collect { case Job.Connect(p, _, _) => p }.toSet, Set(1, 2, 3))
+    assertEquals(jobs1.collect { case Job.Connect(p, _, _, _) => p }.toSet, Set(1, 2, 3))
     val st2 = Set(1, 2, 3).foldLeft(st1)((s, p) => complete(s, Outcome.Connected(p), t0))
     val (st3, jobs3, _) = settle(st2, t0)
     assertEquals(jobs3.collect { case Job.Activate(p) => p }.toSet, Set(1, 2, 3))
-    assert(!jobs3.exists { case Job.Close(_) | Job.Deactivate(_) => true; case _ => false })
+    assert(!jobs3.exists { case Job.Close(_, _) | Job.Deactivate(_) => true; case _ => false })
     assertEquals(st3.view(t0).established.size, 3)
   }
 
@@ -132,7 +132,7 @@ class PeerSelectionSuite extends FunSuite:
       case Step.Idle(_, wake) => assertEquals(wake, Some(at))
       case other              => fail(s"expected to wait, got $other")
     val (_, later, _) = settle(st2, at)
-    assertEquals(later.collect { case Job.Connect(p, _, _) => p }, List(7))
+    assertEquals(later.collect { case Job.Connect(p, _, _, _) => p }, List(7))
   }
 
   test("a peer that is not a root is forgotten after six failures; a root never is") {
@@ -244,7 +244,7 @@ class PeerSelectionSuite extends FunSuite:
     )
     assert(!rejected.state.peers.contains(7))
     assertEquals(rejected.state.peers(8), consumer)
-    assertEquals(rejected.jobs, List(Job.Close(7)))
+    assertEquals(rejected.jobs, List(Job.Close(7, None)))
     assert(rejected.traces.contains(Trace.Forgotten(List(7))))
     val innocent = PeerSelection.apply(
       rejected.state,
@@ -264,7 +264,7 @@ class PeerSelectionSuite extends FunSuite:
       1.minute
     )
     assert(rejected.state.peers.contains(7))
-    assertEquals(rejected.jobs, List(Job.Close(7)))
+    assertEquals(rejected.jobs, List(Job.Close(7, None)))
     assertEquals(rejected.state.peers(7).failCount, 1)
     val Status.Cold(Some(retryAt)) = rejected.state.peers(7).status: @unchecked
     assertEquals(
@@ -291,7 +291,7 @@ class PeerSelectionSuite extends FunSuite:
     val connected =
       PeerSelection.apply(rejected.state, Event.Completed(Outcome.Connected(7)), 2.minutes)
     assert(!connected.state.peers.contains(7))
-    assertEquals(connected.jobs, List(Job.Close(7)))
+    assertEquals(connected.jobs, List(Job.Close(7, Some(BigInt(0)))))
     assertEquals(connected.traces, List(Trace.PromoteAborted(Temperature.Cold, 7)))
   }
 
@@ -304,7 +304,7 @@ class PeerSelectionSuite extends FunSuite:
     val st = base.copy(peers = peers, targets = targets, requested = targets)
     val (after, jobs, _) = settle(st, t0)
     // one is activated for the active target, then the surplus of the established target is closed
-    assertEquals(jobs.count { case Job.Close(_) => true; case _ => false }, 3)
+    assertEquals(jobs.count { case Job.Close(_, _) => true; case _ => false }, 3)
     assertEquals(jobs.count { case Job.Activate(_) => true; case _ => false }, 1)
     assertEquals(after.view(t0).established.size, 5)
   }
@@ -494,6 +494,217 @@ class PeerSelectionSuite extends FunSuite:
     assertEquals(after.targets, Targets.relay)
   }
 
+  test("Genesis mode installs sync targets while TooOld and restores requested targets") {
+    val sensitivity = Sensitivity.initial(
+      useBootstrapPeers = false,
+      consensusMode = ConsensusMode.GenesisMode,
+      syncTargets = Targets.sync
+    )
+    val initial = GovernorState
+      .initial[Int](7L, LocalRoots.empty, Targets.relay, sensitivity)
+      .copy(targets = Targets.relay, requested = Targets.relay)
+    val reportedOld = PeerSelection
+      .apply(
+        initial,
+        Event.JudgementReported(LedgerStateJudgement.TooOld),
+        t0
+      )
+      .state
+    val sync = PeerSelection.decide(reportedOld, t0) match
+      case Step.Act(decision)  => decision.state
+      case Step.Idle(state, _) => state
+    assertEquals(sync.targets, Targets.sync)
+    assert(sync.sensitivity.syncingGenesis)
+    assert(!sync.sensitivity.sensitive)
+
+    val atGenesisBaseline = PeerSelection
+      .apply(
+        sync,
+        Event.TargetsRequested(Targets.sync),
+        t0
+      )
+      .state
+    val reportedYoung = PeerSelection
+      .apply(
+        atGenesisBaseline.copy(reported = LedgerStateJudgement.YoungEnough),
+        Event.JudgementReported(LedgerStateJudgement.YoungEnough),
+        t0
+      )
+      .state
+    val steady = PeerSelection.decide(reportedYoung, t0) match
+      case Step.Act(decision)  => decision.state
+      case Step.Idle(state, _) => state
+    assertEquals(steady.targets, Targets.relay)
+    assertEquals(steady.sensitivity.judgement, LedgerStateJudgement.YoungEnough)
+
+    val intermediate = Targets.sync.withActive(4).toOption.get
+    val inProgress = PeerSelection
+      .apply(
+        initial.copy(requested = intermediate),
+        Event.JudgementReported(LedgerStateJudgement.TooOld),
+        t0
+      )
+      .state
+    val preserved = PeerSelection.decide(inProgress, t0) match
+      case Step.Act(decision)  => decision.state
+      case Step.Idle(state, _) => state
+    assertEquals(preserved.targets, intermediate)
+  }
+
+  test("Genesis trusted-state output counts active big ledger peers") {
+    val sensitivity = Sensitivity.initial(
+      useBootstrapPeers = false,
+      consensusMode = ConsensusMode.GenesisMode,
+      minBigLedgerPeersForTrustedState = 2
+    )
+    val initial = GovernorState.initial[Int](7L, LocalRoots.empty, Targets.relay, sensitivity)
+    val one = initial.copy(peers =
+      initial.peers.updated(1, PeerRecord.cold(Origin.BigLedger).copy(status = Status.Hot))
+    )
+    val two = one.copy(peers =
+      one.peers.updated(2, PeerRecord.cold(Origin.BigLedger).copy(status = Status.Hot))
+    )
+    assertEquals(
+      GovernorState.outboundConnectionsState(AssociationMode.Unrestricted, one.view(t0)),
+      OutboundConnectionsState.UntrustedState
+    )
+    assertEquals(
+      GovernorState.outboundConnectionsState(AssociationMode.Unrestricted, two.view(t0)),
+      OutboundConnectionsState.TrustedStateWithExternalPeers
+    )
+  }
+
+  test("Genesis LocalRootsOnly trust is decided before the big-ledger threshold") {
+    val trustable = config.copy(trustable = true)
+    val roots = LocalRoots.fromGroups(
+      List(RootGroupSpec(1, 1, List(1 -> trustable)))
+    )
+    val sensitivity = Sensitivity.initial(
+      useBootstrapPeers = false,
+      consensusMode = ConsensusMode.GenesisMode,
+      minBigLedgerPeersForTrustedState = 2
+    )
+    val initial = GovernorState.initial[Int](7L, roots, Targets.relay, sensitivity)
+    val established = initial.copy(
+      localRoots = roots,
+      peers = initial.peers.updated(
+        1,
+        PeerRecord.cold(Origin.Local).copy(status = Status.Warm(t0))
+      )
+    )
+    assertEquals(
+      GovernorState.outboundConnectionsState(AssociationMode.LocalRootsOnly, established.view(t0)),
+      OutboundConnectionsState.TrustedStateWithExternalPeers
+    )
+  }
+
+  test("reloading roots demotes every removed root population") {
+    val initial = start(Nil)
+    val withRoots = initial.copy(peers =
+      initial.peers ++ Map(
+        1 -> PeerRecord.cold(Origin.Public),
+        2 -> PeerRecord.cold(Origin.Bootstrap),
+        3 -> PeerRecord.cold(Origin.Ledger),
+        4 -> PeerRecord.cold(Origin.BigLedger)
+      )
+    )
+    val reloaded = PeerSelection
+      .apply(withRoots, Event.RootsConfigured(LocalRoots.empty, false, Set.empty), t0)
+      .state
+
+    assertEquals(reloaded.peers.values.map(_.origin).toSet, Set(Origin.Other))
+  }
+
+  test("a delayed older roots event cannot replace a newer installed generation") {
+    val initial = start(Nil)
+    val newerRoots = LocalRoots.fromGroups(List(group(1, 1, 22)))
+    val installed = PeerSelection
+      .apply(
+        initial,
+        Event.RootsConfigured(newerRoots, false, Set(22), Some(BigInt(2))),
+        t0
+      )
+      .state
+    val delayed = PeerSelection
+      .apply(
+        installed,
+        Event.RootsConfigured(LocalRoots.empty, false, Set.empty, Some(BigInt(1))),
+        t0
+      )
+      .state
+
+    assertEquals(installed.rootsGeneration, BigInt(2))
+    assertEquals(delayed.rootsGeneration, BigInt(2))
+    assertEquals(delayed.configuredRoots, newerRoots)
+  }
+
+  test("roots generation changes release pending connects and close late successes") {
+    val (connecting, _, _) = settle(start(List(group(1, 1, 7))), t0)
+    assertEquals(statusOf(connecting, 7), Status.Connecting)
+
+    val reloaded = PeerSelection
+      .apply(
+        connecting,
+        Event.RootsConfigured(LocalRoots.empty, false, Set.empty, Some(BigInt(1))),
+        t0
+      )
+      .state
+    assertEquals(statusOf(reloaded, 7), Status.Cold(None))
+
+    val late = PeerSelection.apply(
+      reloaded,
+      Event.Completed(Outcome.Connected(7, BigInt(0))),
+      t0
+    )
+    assertEquals(late.jobs, List(Job.Close(7, Some(BigInt(0)))))
+    assertEquals(statusOf(late.state, 7), Status.Cold(None))
+  }
+
+  test("a root request completing after reload cannot restore the previous roots") {
+    val initial = start(Nil).copy(publicRootsInFlight = true, bigLedgerInFlight = true)
+    val reloaded = PeerSelection
+      .apply(initial, Event.RootsConfigured(LocalRoots.empty, false, Set.empty), t0)
+      .state
+    val staleRoots = PeerSelection
+      .apply(
+        reloaded,
+        Event.Completed(
+          Outcome.RootsFound(
+            PublicRoots(Set(8), Set.empty),
+            5.seconds,
+            initial.rootsGeneration
+          )
+        ),
+        t0
+      )
+      .state
+    val staleBigLedger = PeerSelection
+      .apply(
+        staleRoots,
+        Event.Completed(
+          Outcome.BigLedgerFound(Set(9), 5.seconds, initial.rootsGeneration)
+        ),
+        t0
+      )
+      .state
+
+    assertEquals(reloaded.rootsGeneration, initial.rootsGeneration + 1)
+    assert(!reloaded.publicRootsInFlight && !reloaded.bigLedgerInFlight)
+    assertEquals(staleBigLedger.peers.get(8), None)
+    assertEquals(staleBigLedger.peers.get(9), None)
+    assertEquals(staleBigLedger.rootsGeneration, reloaded.rootsGeneration)
+  }
+
+  test("churn targets computed under an old roots generation are ignored") {
+    val initial = start(Nil).copy(rootsGeneration = BigInt(2), requested = Targets.relay)
+    val stale = PeerSelection.apply(
+      initial,
+      Event.TargetsRequested(Targets.sync, Some(BigInt(1))),
+      t0
+    )
+    assertEquals(stale.state.requested, Targets.relay)
+  }
+
   test(
     "the decision, the events and the invariant need no deep stack for thousands of peers (ADR 0011)"
   ) {
@@ -507,7 +718,7 @@ class PeerSelectionSuite extends FunSuite:
           scala.util.Try {
             val st0 = start(List(group(peers, peers, (1 to peers)*)))
             val (settled, jobs, _) = settle(st0, t0)
-            val connects = jobs.collect { case Job.Connect(p, _, _) => p }
+            val connects = jobs.collect { case Job.Connect(p, _, _, _) => p }
             val connected =
               connects.foldLeft(settled)((s, p) => complete(s, Outcome.Connected(p), t0))
             val (after, _, _) = settle(connected, t0)

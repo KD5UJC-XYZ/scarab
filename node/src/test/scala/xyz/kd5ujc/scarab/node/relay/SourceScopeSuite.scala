@@ -25,6 +25,8 @@ class SourceScopeSuite extends FailsOnUncaught:
     def sync(using Raise[IO, StorageError]) = IO.unit
     def tip(using Raise[IO, StorageError]) = IO.pure(None)
     def get(point: Point)(using Raise[IO, StorageError]) = getBody(point)
+    def pointsAtSlot(slot: BigInt)(using Raise[IO, StorageError]) = IO.pure(Vector.empty)
+    def pointAtOrAfterSlot(slot: BigInt)(using Raise[IO, StorageError]) = IO.pure(None)
     def byBlockNo(n: BigInt)(using Raise[IO, StorageError]) = IO.pure(None)
     def stream(after: Point)(using Raise[IO, StorageError]) = streamBody
 

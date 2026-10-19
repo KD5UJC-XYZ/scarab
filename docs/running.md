@@ -252,7 +252,7 @@ What the configuration does:
 | `DijkstraGenesisFile`/`Hash`, `CheckpointsFile`/`Hash` | the hash is verified when the file is present; the Dijkstra era and checkpoints are not implemented |
 | `TestShelleyHardForkAtEpoch` ... `TestConwayHardForkAtEpoch` | the first epoch of each era (`0` for all of them: the chain starts in that era, as Preview); absent for Shelley: the Byron ledger decides |
 | `RequiresNetworkMagic`, `PBftSignatureThreshold` | the Byron address magic and the PBFT signing threshold |
-| `LastKnownBlockVersion-Major/Minor/Alt`, `MaxKnownMajorProtocolVersion`, `Protocol` (must be `Cardano`), `ExperimentalHardForksEnabled`, `ConsensusMode`, `DiffusionMode` | read, validated and logged (`started`); the node does not act on them. `configUnsupported` in the `started` line lists the ones that ask for something not implemented: experimental hard forks (the Dijkstra era), `GenesisMode` (no Genesis syncing: the configured peers are followed as in Praos mode), `Test<Era>HardForkAtVersion` |
+| `LastKnownBlockVersion-Major/Minor/Alt`, `MaxKnownMajorProtocolVersion`, `Protocol` (must be `Cardano`), `ExperimentalHardForksEnabled`, `ConsensusMode`, `DiffusionMode` | read, validated and logged (`started`). In `GenesisMode`, the governor uses the Genesis judgement and sync targets while `TooOld`, refuses configured bootstrap peers, verifies the peer snapshot against the exact immutable slot and hash, and emits trusted-state output from active big-ledger peers. Genesis density, ledger-dependent fork choice and the consensus trusted-state consumer remain unimplemented; `configUnsupported` reports GenesisMode as partial. Praos remains the default. Experimental hard forks (the Dijkstra era) and `Test<Era>HardForkAtVersion` remain unsupported |
 | `PeerSharing` | used by both handshakes and the governor; absent means on for a relay and off with `--forge`, an explicit Boolean wins. Both peers must enable it. Eligible connected peers are asked below the known target; only advertised, previously connected peers with no failures are shared (G1.4) |
 | `ExperimentalProtocolsEnabled` (also `TestEnableDevelopmentNetworkProtocols`, which must agree) | the highest node-to-node version the node offers and accepts (G4): absent or `false`, **15**, the latest release of cardano-node 11.1.3 (14 and 15 are offered, as the reference does, `Cardano/Node.hs` 456 and `limitToLatestReleasedVersion`); `true`, **16**, which adds the Peras flag to the version data (always sent as false: the node has no Peras mini-protocols). A relay or pool of the reference needs the same key to agree on 16. The public Leios testnet sets it; its relay accepts 14 to 16. Node-to-client versions 16 to 23 are always accepted. The devnet `relay` scenario takes `--max-ntn-version 16` to turn the key on for the Scala node and the Haskell relay |
 | `SocketPath`, `DatabasePath`, `MempoolCapacityBytesOverride` (a byte count; `NoOverride` leaves the default) | the defaults of `--local-socket`, `--db` and `--mempool-bytes`, with `--config` only; a flag wins |
@@ -261,21 +261,25 @@ What the configuration does:
 | everything else (`TraceOptions`, `LedgerDB`, ...) | ignored |
 
 The topology needs `localRoots` and `publicRoots`; `bootstrapPeers` (a list or `null`), `useLedgerAfterSlot`
-(above 0: after that slot, `0`: always, below: never) and `peerSnapshotFile` are optional. An access point is
-`{"address": <name or IP>, "port": <number>}`; an access point without a port (a DNS SRV name), the
-unspecified address, a port that is not a number, the legacy `Producers` format, and an empty
-`bootstrapPeers` with no trustable local root are `ConfigError`s. `useLedgerAfterSlot` and `peerSnapshotFile` are acted on
-(ledger peers and big ledger peers, below); `advertise` and `behindFirewall` are read and logged (`started.topology`), not
-acted on: there is no peer sharing yet (G1.4). `trustable` and the valencies are acted on, as the next section says.
+(above 0: after that slot, `0`: always, below: never) and `peerSnapshotFile` are optional. An access point with a
+port is `{"address": <name or IP>, "port": <number>}`; a DNS name without a port is an SRV relay resolved through
+`_cardano._tcp.<domain>`. The unspecified address, a port that is not a number, the legacy `Producers` format, and an empty
+`bootstrapPeers` with no trustable local root are `ConfigError`s. Bootstrap peers are refused in GenesisMode.
+`useLedgerAfterSlot` and `peerSnapshotFile` are acted on (ledger peers and big ledger peers, below); `advertise`,
+`trustable` and the valencies feed peer selection and peer sharing; `behindFirewall` is retained in topology metadata.
+SIGHUP reloads the topology. A malformed replacement leaves the active settings running; a valid reload preserves
+original CLI roots and installs the new runtime/governor roots at an acknowledged generation boundary.
 
 - **`useLedgerAfterSlot`.** A number above 0: take peers from the ledger once the ledger's tip is at or past that slot;
   `0`: always; below 0 or absent: never (`UseLedgerPeers`). The official Preview file has 119231973.
-- **`peerSnapshotFile`.** The big ledger peer snapshot, relative to the topology file's directory, read once at start when
-  ledger peers are on (`updateLedgerPeerSnapshot`, `cardano-node` `Run.hs`): a file that cannot be read is ignored with a
-  `ledgerPeers` event `snapshotIgnored`; a legacy (version 1, 2) file, a snapshot at the origin, of another network
+- **`peerSnapshotFile`.** The big ledger peer snapshot, relative to the topology file's directory, read at startup and
+  when topology is reloaded while ledger peers are on (`updateLedgerPeerSnapshot`, `cardano-node` `Run.hs`): a file
+  that cannot be read is ignored with a `ledgerPeers` event `snapshotIgnored`; a legacy (version 1, 2) file, a snapshot at the origin, of another network
   (`NetworkMagic`) or older than `useLedgerAfterSlot` stops the node with a `ConfigError`. The snapshot is used for the
   stake maps only while it is not older than the ledger's tip: the official Preview file is at slot 123.6 M, so a node whose
-  ledger is further ahead takes its peers from the ledger (event `ledgerPeers`, `source`).
+  ledger is further ahead takes its peers from the ledger (event `ledgerPeers`, `source`). In GenesisMode, when the
+  judgement enters `TooOld`, the monitor waits cancelably for the exact immutable slot and checks both slot and hash;
+  it emits `snapshotVerified` with the nonfatal match verdict. A storage failure remains fatal.
 
 ### Peer selection
 
@@ -359,8 +363,9 @@ The outbound peers are chosen by the peer governor (roadmap G1.1, [design](desig
   `gsmTransition` and `fetchModeChanged` (table in "Logging"); the gauges of "Peer selection (G1)" in "Metrics";
   `GET /connections` has a `peerSelection` object next to the connection table: `counters` (cold, warm, hot, known, root),
   `targets`, `judgement`, `sensitive` and each `peer` with its `temperature`, `origin`, `failCount`, `advertise`, `everConnected` and negotiated `peerSharing`.
-- **Follow-ups.** The Genesis hooks (G1.5), a
-  re-read of the topology on SIGHUP, SRV access points and duplex outbound connections ([#142](https://github.com/KD5UJC-XYZ/scarab/issues/142)).
+- **Follow-ups.** Full Genesis density and ledger-dependent fork choice remain in [#33](https://github.com/KD5UJC-XYZ/scarab/issues/33).
+  Topology reload, SRV/TTL resolution and duplex outbound service are implemented in [#142](https://github.com/KD5UJC-XYZ/scarab/issues/142).
+  The private relay scenario confirms sync and duplex following but currently fails transaction inclusion; see the compatibility evidence.
 
 ### Preview
 
@@ -705,13 +710,13 @@ has to change both before they run out. The node does four things for that; a dr
   `forgetSignKeyKES` on the old key: `HotKey.hs` lines 385 to 436 in ouroboros-consensus-protocol at the tag
   `release-ouroboros-consensus-4.2.1.0`, the release series that cardano-node 11.1.3 requires, `^>= 4.2.0.1`
   in `cardano-node.cabal` line 179), so the period-0 key stays on
-  disk for ever. Scarab takes the improvement ([ADR 0001](adr/0001-haskell-node-as-reference.md): the format is
-  unchanged, the behaviour is better): when the key moves to a new period, at the first slot of the period
+  disk for ever. Scarab retains a different file-backed policy ([ADR 0015](adr/0015-kes-key-written-back-and-checked-reload.md)): when the key moves to a new period, at the first slot of the period
   whether or not the pool leads in it, the new key is written back to the `--kes-skey` file and the earlier key
   is overwritten, before the key signs in the new period. The file stays a `cardano-cli` envelope: the period
   is read off the key itself (the erased seeds of the tree spell it), so there is no new format and no
-  migration. A restart needs no earlier key than the one on disk, and a copy of the disk gets no earlier
-  period's key after successful persistence. The replacement protocol writes every byte to `<file>.next`,
+  migration. A restart needs no earlier key than the live file contains. This reduces the state available from
+  a later read of that path if earlier copies have not been retained; it does not establish complete
+  past-key erasure. The replacement protocol writes every byte to `<file>.next`,
   forces the file, decodes it again to check the key structure, verification key, period and serialized bytes,
   then forces its directory entry before it erases any predecessor byte. It overwrites the predecessor fully,
   forces that file, renames `.next` over the file atomically and forces the directory again. Recovery applies
@@ -725,7 +730,9 @@ has to change both before they run out. The node does four things for that; a dr
   policy: storage failure exits 5, an internal durability failure exits 6, and a defect exits 7.
   Correct the cause and restart; the running process does not retry persistence or resume signing. A
   file system that keeps old blocks (copy-on-write, journalling) may keep the overwritten key; overwriting is
-  not physical secure erasure, so put the key directory on an encrypted volume where that matters. The key signs only after the lock that also guards a
+  not physical secure erasure. Use an encrypted filesystem and restrict key-directory access;
+  encryption does not block plaintext reads of a mounted volume. The owner accepts this file-backed
+  policy for now. The separate upstream KES agent process is tracked in [H2 / #38](https://github.com/KD5UJC-XYZ/scarab/issues/38). The key signs only after the lock that also guards a
   reload is held, so a block is never signed with a key and certificate of two different reloads, and the key
   only moves forward, so it never signs one period with two states.
 - **Reload on SIGHUP.** `kill -HUP` (or `docker kill -s HUP`) makes the node read the KES key and the
@@ -978,7 +985,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `peerSelectionSensitive` | `Net.PeerSelectionSensitive` | Notice | `action`, `judgement` |
 | `peerSelectionCounters` | `Net.PeerSelectionCounters` | Info | `root`, `cold`, `warm`, `hot`, `known`, `established`, `active`, `availableToConnect`, `coldPromotions`, `warmPromotions`, `warmDemotions`, `activeDemotions`, `localRoots`, `bootstrap`, `bigLedger`, `origins` |
 | `peerSelectionChurn` | `Net.PeerSelectionChurn` | Info | `action` (`round`, `step`, `timeout`, `wait`), `mode`, `step`, `number`, `tookSeconds`, `change`, `delaySeconds` |
-| `ledgerPeers` | `Net.LedgerPeers` | Info (Warning when `action` is `snapshotIgnored`, `poolSkipped` or `unreadable`) | `action`, `slot`, `pools`, `source`, `bigLedgerPools`, `ledgerSlot`, `pool`, `reason` |
+| `ledgerPeers` | `Net.LedgerPeers` | Info (Warning when `action` is `snapshotIgnored`, `poolSkipped` or `unreadable`) | `action` (`snapshotLoaded`, `snapshotIgnored`, `snapshotVerified`, `refreshed`, `poolSkipped`, `unreadable`), `matchesImmutablePoint`, `slot`, `pools`, `source`, `bigLedgerPools`, `ledgerSlot`, `pool`, `reason` |
 | `outboundConnections` | `Net.OutboundConnections` | Info | `state`, `trusted` |
 | `gsmTransition` | `Net.GsmTransition` | Notice | `transition`, `state`, `peers`, `tipTooOld` |
 | `fetchModeChanged` | `Net.FetchModeChanged` | Info | `mode` |

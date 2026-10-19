@@ -76,6 +76,30 @@ class ImmutableStoreSuite extends CatsEffectSuite:
     }
   }
 
+  test("pointAtOrAfterSlot reads bounded index metadata across gaps and chunks") {
+    tempDir.use { dir =>
+      ok {
+        open(dir).use { (store, _) =>
+          for
+            _ <- fill(store, 0 until 35)
+            exact <- store.pointAtOrAfterSlot(90)
+            afterGap <- store.pointAtOrAfterSlot(92)
+            _ <- IO(assertEquals(exact, Some(block(30)._1)))
+            _ <- IO(assertEquals(afterGap, Some(block(31)._1)))
+            beyond <- store.pointAtOrAfterSlot(200)
+            negative <- store.pointAtOrAfterSlot(-1)
+            huge <- store.pointAtOrAfterSlot(BigInt(Long.MaxValue) + 1)
+            wrappedChunk <- store.pointAtOrAfterSlot(BigInt(Int.MaxValue + 1L) * chunkSlots)
+            _ <- IO(assertEquals(beyond, None))
+            _ <- IO(assertEquals(negative, None))
+            _ <- IO(assertEquals(huge, None))
+            _ <- IO(assertEquals(wrappedChunk, None))
+          yield ()
+        }
+      }
+    }
+  }
+
   test("reopening finds everything and keeps appending") {
     tempDir.use { dir =>
       ok {
@@ -126,6 +150,39 @@ class ImmutableStoreSuite extends CatsEffectSuite:
             _ <- IO(assertEquals(both.map(_.ref), List(boundary, first)))
             _ <- store.get(first.point).map(r => assertEquals(r, Some(Bytes(Vector(2)))))
             _ <- store.get(boundary.point).map(r => assertEquals(r, Some(Bytes(Vector(1)))))
+            atSlot <- store.pointAtOrAfterSlot(60)
+            _ <- IO(assertEquals(atSlot, Some(first)))
+          yield ()
+        }
+      }
+    }
+  }
+
+  test("slot metadata reads distinguish both hashes in a Byron boundary/main pair") {
+    tempDir.use { dir =>
+      ok {
+        open(dir).use { (store, _) =>
+          val boundary = BlockRef(60, hash(1), 7, boundary = true)
+          val main = BlockRef(60, hash(2), 8)
+          for
+            before <- store.pointsAtSlot(60)
+            _ <- store.append(boundary, Bytes(Vector(1)))
+            _ <- store.append(main, Bytes(Vector(2)))
+            both <- store.pointsAtSlot(60)
+            absent <- store.pointsAtSlot(61)
+            negative <- store.pointsAtSlot(-1)
+            wrappedChunk = BigInt(Int.MaxValue + 1L) * FileImmutableStore.DefaultChunkSlots
+            wrappedChunkResult <- store.pointsAtSlot(wrappedChunk)
+            outside <- store.pointsAtSlot(BigInt(Long.MaxValue) + 1)
+            _ <- IO(assertEquals(before, Vector.empty))
+            _ <- IO(assertEquals(both, Vector(boundary, main)))
+            _ <- IO(assertEquals(both.map(_.hash), Vector(hash(1), hash(2))))
+            _ <- IO(assert(!both.exists(_.hash == hash(3))))
+            _ <- IO(assertEquals(absent, Vector.empty))
+            _ <- IO(assertEquals(negative, Vector.empty))
+            _ <- IO(assert(wrappedChunk.isValidLong))
+            _ <- IO(assertEquals(wrappedChunkResult, Vector.empty))
+            _ <- IO(assertEquals(outside, Vector.empty))
           yield ()
         }
       }

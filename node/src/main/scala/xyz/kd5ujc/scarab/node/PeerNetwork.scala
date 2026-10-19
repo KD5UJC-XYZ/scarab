@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.node
 
 import cats.effect.{Async, Clock, Deferred, Ref, Resource}
 import cats.effect.std.{Queue, Supervisor}
+import cats.effect.syntax.all.*
 import cats.mtl.{Ask, Handle, Raise, Stateful, Tell}
 import cats.syntax.all.*
 import com.comcast.ip4s.{Host, IpAddress, SocketAddress}
@@ -10,9 +11,10 @@ import java.time.Instant
 import scala.concurrent.duration.*
 import io.circe.Json
 import io.circe.syntax.*
-import xyz.kd5ujc.scarab.ledger.{EpochGeometry, GovernorFault, NodeError, PeerError}
+import xyz.kd5ujc.scarab.ledger.{EpochGeometry, GovernorFault, NodeError, PeerError, StorageError}
 import xyz.kd5ujc.scarab.network.*
 import xyz.kd5ujc.scarab.network.selection.*
+import xyz.kd5ujc.scarab.storage.ImmutableStore
 
 /** The outbound peer network of the node: the governor ([[PeerGovernor]]), the connections it moves
   * between temperatures ([[OutboundPeers]]), the Genesis State Machine ([[GsmRunner]]) that tells
@@ -24,6 +26,47 @@ object PeerNetwork:
   type Addr = SocketAddress[Host]
 
   given Ordering[Addr] = Ordering.by(_.toString)
+
+  private[node] def runSnapshotCheck[F[_]: Async, A](
+      check: F[Boolean],
+      canceled: F[Unit],
+      generation: BigInt,
+      events: Queue[F, Event[A]]
+  ): F[Unit] =
+    Async[F].race(check, canceled).flatMap {
+      case Left(matches) => events.offer(Event.SnapshotVerificationCompleted(generation, matches))
+      case Right(())     => Async[F].unit
+    }
+
+  private[node] def publishSnapshotVerification[F[_]: Async, A](
+      event: Event[A],
+      activeGeneration: F[BigInt],
+      publish: Boolean => F[Unit]
+  ): F[Unit] = event match
+    case Event.SnapshotVerificationCompleted(generation, matches) =>
+      activeGeneration.flatMap(current =>
+        if current == generation then publish(matches) else Async[F].unit
+      )
+    case _ => Async[F].unit
+
+  /** Long-lived supervisor children report unexpected failures to the network owner. Cancellation
+    * remains cancellation; the fatal Deferred carries the original defect cause unchanged.
+    */
+  private[node] def reportBackgroundDefect[F[_]: Async, A](
+      job: F[A],
+      fatal: Deferred[F, GovernorFault],
+      toFault: Throwable => GovernorFault
+  ): F[A] =
+    val F = Async[F]
+    F.handleErrorWith(job) { cause =>
+      fatal.complete(toFault(cause)).void *> F.never[A]
+    }
+
+  private[node] def fatalForGovernor(fault: GovernorFault): Option[Fatal] = fault match
+    case GovernorFault.SnapshotStorage(error)            => Some(Fatal.Storage(error))
+    case GovernorFault.SnapshotVerificationDefect(cause) => Some(Fatal.Defect(cause))
+    case GovernorFault.LocalDnsRefreshDefect(cause)      => Some(Fatal.Defect(cause))
+    case _                                               => None
 
   /** The roots of the node, from `--peer` and the topology. */
   final case class Roots(
@@ -37,7 +80,10 @@ object PeerNetwork:
       ledger: UseLedgerPeers,
       /** The peer snapshot file of the topology, as the node starts with it. */
       snapshot: SnapshotUse = SnapshotUse.Unused,
-      advertise: Map[Addr, Boolean] = Map.empty
+      advertise: Map[Addr, Boolean] = Map.empty,
+      publicSrv: Vector[(DnsName, Boolean)] = Vector.empty,
+      bootstrapSrv: Vector[DnsName] = Vector.empty,
+      localSrv: List[List[(DnsName, RootConfig)]] = Nil
   ):
     /** Whether the topology enables ledger peers (it matters for the association mode). */
     def ledgerPeers: Boolean = ledger.isEnabled
@@ -48,6 +94,9 @@ object PeerNetwork:
         * configured.
         */
       targets: Targets,
+      consensusMode: ConsensusMode = ConsensusMode.PraosMode,
+      syncTargets: Targets = Targets.sync,
+      minBigLedgerPeersForTrustedState: Int = 5,
       policy: Policy = Policy(),
       peerSharing: Boolean = false,
       /** The sleep between churn rounds and the waits of their steps (3300 s with fuzz 600 s in the
@@ -57,6 +106,18 @@ object PeerNetwork:
       intervals: Churn.Intervals = Churn.Intervals(),
       timeouts: Churn.Timeouts = Churn.Timeouts(),
       seed: Long
+  )
+
+  final case class Runtime[F[_]](
+      generation: BigInt,
+      roots: Roots,
+      resolvedLocalRoots: List[RootGroupSpec[Addr]],
+      localDnsCache: LocalRootDnsCache.State[NodeRootProvider.LocalDnsKey, Addr],
+      worker: LedgerPeersWorker[F],
+      association: AssociationMode,
+      churn: ChurnLoop.Config,
+      snapshotCheckStarted: Boolean,
+      snapshotCheckCanceled: Deferred[F, Unit]
   )
 
   /** What the node reads of its chain for the Genesis State Machine and the fetch mode. */
@@ -77,6 +138,8 @@ object PeerNetwork:
       val judgement: Ref[F, LedgerStateJudgement],
       /** The peer metrics the hot sessions report to and the governor ranks demotions by. */
       val metrics: Ref[F, PeerMetrics[A]],
+      /** Replace a fully parsed topology and peer snapshot as one root-provider update. */
+      val reloadRoots: Roots => F[Unit],
       /** Never returns normally; raises through `fatal` when the governor stops the node. */
       val run: F[Nothing],
       val fatal: Deferred[F, GovernorFault]
@@ -114,6 +177,17 @@ object PeerNetwork:
         g.accessPoints.toList.map(_.socketAddress -> config)
       )
     }
+    val fileSrv = topology.toList.flatMap(_.localRoots).map { group =>
+      val config = RootConfig(
+        group.advertise,
+        if group.diffusionMode == "InitiatorOnly" then DiffusionMode.InitiatorOnly
+        else DiffusionMode.InitiatorAndResponder,
+        if group.behindFirewall then xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance.Inbound
+        else xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance.Outbound,
+        group.trustable
+      )
+      group.srvAccessPoints.toList.map(_ -> config)
+    }
     Roots(
       local = cli.toList ++ file,
       public =
@@ -124,14 +198,23 @@ object PeerNetwork:
       advertise = topology.toList
         .flatMap(_.publicRoots)
         .flatMap(g => g.accessPoints.map(_.socketAddress -> g.advertise))
-        .toMap
+        .toMap,
+      publicSrv = topology.toList
+        .flatMap(_.publicRoots)
+        .flatMap(group => group.srvAccessPoints.map(_ -> group.advertise))
+        .toVector,
+      bootstrapSrv = topology.toList.flatMap(_.bootstrapSrvPeers).toVector,
+      localSrv = cli.toList.map(_ => List.empty) ++ fileSrv
     )
 
   /** Whether there is anything to start from: a local root, a public root or a bootstrap peer. */
   extension (roots: Roots)
     def hasPeers: Boolean =
       roots.local.exists(_.members.nonEmpty) || roots.public.nonEmpty ||
-        roots.bootstrap.exists(_.nonEmpty)
+        roots.bootstrap.exists(
+          _.nonEmpty
+        ) || roots.publicSrv.nonEmpty || roots.bootstrapSrv.nonEmpty ||
+        roots.localSrv.exists(_.nonEmpty)
 
   /** The peers the governor knows, with their temperature, for `GET /connections`. */
   def json(state: GovernorState[Addr], now: Time): Json =
@@ -205,10 +288,16 @@ object PeerNetwork:
       marker: GsmRunner.Marker[F],
       /** The ledger the ledger peers are taken from. */
       ledgerSource: LedgerPeersSource[F],
-      sharing: Option[PeerSharingRuntime[F]] = None
+      sharing: Option[PeerSharingRuntime[F]] = None,
+      immutable: Option[ImmutableStore[F]] = None
   )(using Handle[F, NodeError]): Resource[F, Running[F, Addr]] =
     val F = Async[F]
-    val roots = configuredRoots(settings.roots)
+    def baseFor(current: Roots): Targets =
+      if current.ledgerPeers then settings.targets
+      else
+        settings.targets
+          .revised(knownBig = 0, establishedBig = 0, activeBig = 0)
+          .getOrElse(settings.targets)
     // Without ledger peers there are no big ledger peers to want: the targets for them are zero,
     // and the churn governor leaves its six steps for them out (a node that never has any would
     // only wait out their timeouts). The reference asks all the same and gets the public roots.
@@ -219,16 +308,55 @@ object PeerNetwork:
           .revised(knownBig = 0, establishedBig = 0, activeBig = 0)
           .getOrElse(settings.targets)
     val bootstrapOn = settings.roots.bootstrap.isDefined
-    val localHot = roots.groups.map(_.hot.value).sum
     val association = AssociationMode.of(
       useLedgerPeers = settings.roots.ledgerPeers,
       peerSharing = settings.peerSharing,
       useBootstrapPeers = bootstrapOn,
-      bootstrapEmpty = settings.roots.bootstrap.exists(_.isEmpty)
+      bootstrapEmpty =
+        settings.roots.bootstrap.exists(_.isEmpty) && settings.roots.bootstrapSrv.isEmpty
     )
+    val workerTrace = new Tell[F, LedgerPeersTrace]:
+      def functor = F
+      def tell(l: LedgerPeersTrace): F[Unit] = emit(Output.LedgerPeers(l))
+    def createWorker(roots: Roots): F[LedgerPeersWorker[F]] =
+      given Tell[F, LedgerPeersTrace] = workerTrace
+      val snapshot = roots.snapshot
+      val workerRng = Rng(settings.seed).split._1
+      LedgerPeersWorker
+        .create[F](roots.ledger, ledgerSource, snapshot.snapshot, workerRng)
+        .flatTap(_ =>
+          snapshot match
+            case SnapshotUse.Loaded(s) =>
+              emit(Output.LedgerPeers(LedgerPeersTrace.SnapshotLoaded(s.slot, s.pools.size)))
+            case SnapshotUse.Ignored(error) =>
+              emit(Output.LedgerPeers(LedgerPeersTrace.SnapshotIgnored(error)))
+            case SnapshotUse.Unused => F.unit
+        )
     for
       supervisor <- Supervisor[F](await = false)
+      dns <- PeerDns.dnsJava[F]
+      dnsRng <- Resource.eval(Ref.of[F, Rng](Rng(settings.seed).split._2))
+      initialLocalDnsCache <- Resource.eval(
+        refreshLocalDnsCache(
+          settings.roots,
+          LocalRootDnsCache.empty[NodeRootProvider.LocalDnsKey, Addr],
+          dns,
+          dnsRng
+        )
+      )
+      initialLocal = NodeRootProvider.localGroupsFromCache(
+        settings.roots.local,
+        settings.roots.localSrv,
+        initialLocalDnsCache
+      )
+      roots = LocalRoots.fromGroups(initialLocal)
+      localHot = roots.groups.map(_.hot.value).sum
       events <- Resource.eval(Queue.unbounded[F, Event[Addr]])
+      rootInstallAcks <- Resource.eval(
+        Ref.of[F, Map[BigInt, (Runtime[F], Deferred[F, Unit])]](Map.empty)
+      )
+      nextRootGeneration <- Resource.eval(Ref.of[F, BigInt](BigInt(0)))
+      rootRefreshWake <- Resource.eval(Queue.bounded[F, Unit](1))
       _ <- sharing.traverse_(runtime =>
         Resource
           .eval(
@@ -248,7 +376,13 @@ object PeerNetwork:
               settings.seed,
               roots,
               Regime.initial(initialKind, base, localHot),
-              Sensitivity.initial(bootstrapOn)
+              Sensitivity.initial(
+                bootstrapOn,
+                settings.consensusMode,
+                settings.syncTargets,
+                base,
+                settings.minBigLedgerPeersForTrustedState
+              )
             )
             .copy(sharing = PeerShare.Governor[Addr](enabled = settings.peerSharing))
         )
@@ -258,26 +392,32 @@ object PeerNetwork:
       )
       metrics <- Resource.eval(Ref.of[F, PeerMetrics[Addr]](PeerMetrics.empty[Addr]()))
       judgement <- Resource.eval(Ref.of[F, LedgerStateJudgement](LedgerStateJudgement.TooOld))
-      worker <- Resource.eval {
-        given Tell[F, LedgerPeersTrace] = new Tell[F, LedgerPeersTrace]:
-          def functor = F
-          def tell(l: LedgerPeersTrace): F[Unit] = emit(Output.LedgerPeers(l))
-        val snapshot = settings.roots.snapshot
-        // the worker's generator is split from the governor's seed: a stream of its own
-        val workerRng = Rng(settings.seed).split._1
-        LedgerPeersWorker
-          .create[F](settings.roots.ledger, ledgerSource, snapshot.snapshot, workerRng)
-          .flatTap(_ =>
-            snapshot match
-              case SnapshotUse.Loaded(s) =>
-                emit(
-                  Output.LedgerPeers(LedgerPeersTrace.SnapshotLoaded(s.slot, s.pools.size))
-                )
-              case SnapshotUse.Ignored(error) =>
-                emit(Output.LedgerPeers(LedgerPeersTrace.SnapshotIgnored(error)))
-              case SnapshotUse.Unused => F.unit
+      worker <- Resource.eval(createWorker(settings.roots))
+      initialSnapshotCheckCanceled <- Resource.eval(Deferred[F, Unit])
+      runtime <- Resource.eval(
+        Ref.of[F, Runtime[F]](
+          Runtime(
+            BigInt(0),
+            settings.roots,
+            initialLocal,
+            initialLocalDnsCache,
+            worker,
+            association,
+            ChurnLoop.Config(
+              base = base,
+              regime = Regime.kind(_, bootstrapOn),
+              consensusMode = settings.consensusMode,
+              syncTargets = settings.syncTargets,
+              bigLedger = settings.roots.ledgerPeers,
+              intervals = settings.intervals,
+              timeouts = settings.timeouts,
+              seed = settings.seed
+            ),
+            snapshotCheckStarted = false,
+            snapshotCheckCanceled = initialSnapshotCheckCanceled
           )
-      }
+        )
+      )
       outbound <- Resource.eval(
         OutboundPeers.create[F, Addr](
           transport,
@@ -294,9 +434,10 @@ object PeerNetwork:
       )
     yield
       given Stateful[F, GovernorState[Addr]] = RefStateful(state)
-      given Ask[F, GovernorConfig] = Ask.const[F, GovernorConfig](
-        GovernorConfig(settings.policy, association)
-      )
+      given Ask[F, GovernorConfig] = new Ask[F, GovernorConfig]:
+        def applicative = F
+        def ask[E2 >: GovernorConfig]: F[E2] =
+          runtime.get.map(value => GovernorConfig(settings.policy, value.association): E2)
       given Ask[F, PeerMetrics[Addr]] = RefStateful.reader(metrics)
       given Raise[F, GovernorError] = new Raise[F, GovernorError]:
         def functor = F
@@ -315,15 +456,92 @@ object PeerNetwork:
             case _                     => F.unit
           ) *> emit(l)
 
-      val rootProvider: RootProvider[F, Addr] =
-        NodeRootProvider[F](
-          settings.roots.public,
-          settings.roots.bootstrap.getOrElse(Vector.empty),
-          worker,
-          settings.roots.advertise
-        )
+      val rootProvider: RootProvider[F, Addr] = NodeRootProvider.dynamic(runtime, dns, dnsRng)
+
+      def configuredPublicPeers(current: Roots): F[Set[Addr]] =
+        for
+          public <- NodeRootProvider
+            .resolveRoots(current.public, current.publicSrv, dns, dnsRng)
+          bootstrap <- NodeRootProvider.resolveRoots(
+            current.bootstrap.getOrElse(Vector.empty).toSet,
+            current.bootstrapSrv.map(_ -> false),
+            dns,
+            dnsRng
+          )
+        yield public._1 ++ bootstrap._1
+
+      def publishRootUpdate(
+          staged: Runtime[F],
+          local: List[RootGroupSpec[Addr]],
+          public: Set[Addr]
+      ): F[Unit] =
+        Deferred[F, Unit].flatMap { installed =>
+          F.uncancelable { _ =>
+            for
+              _ <- rootInstallAcks.update(_ + (staged.generation -> (staged, installed)))
+              _ <- events.offer(
+                Event.RootsConfigured(
+                  LocalRoots.fromGroups(local),
+                  staged.roots.bootstrap.isDefined || staged.roots.bootstrapSrv.nonEmpty,
+                  public,
+                  Some(staged.generation)
+                )
+              )
+            yield ()
+          } *> installed.get
+        }
 
       val modeCell: Ref[F, FetchMode] = fetchMode
+      val judgementCell: Ref[F, LedgerStateJudgement] = judgement
+
+      /** Start one snapshot monitor per published root generation. The result is only traced; a
+        * reload that wins while the wait is suspended makes the old completion stale.
+        */
+      def verifySnapshot(j: LedgerStateJudgement): F[Unit] =
+        if settings.consensusMode != ConsensusMode.GenesisMode ||
+          j != LedgerStateJudgement.TooOld
+        then F.unit
+        else
+          runtime.get.flatMap { captured =>
+            val point = captured.roots.snapshot.snapshot.collect {
+              case LedgerPeerSnapshot.V23(SnapshotPoint.Block(slot, hash), _, _) => slot -> hash
+            }
+            point.traverse_ { (slot, hash) =>
+              runtime
+                .modify { current =>
+                  if current.generation != captured.generation || current.snapshotCheckStarted then
+                    (current, false)
+                  else (current.copy(snapshotCheckStarted = true), true)
+                }
+                .flatMap {
+                  case false => F.unit
+                  case true =>
+                    supervisor
+                      .supervise(
+                        reportBackgroundDefect(
+                          {
+                            val check = immutable.fold(F.pure(false)) { store =>
+                              given Raise[F, StorageError] = new Raise[F, StorageError]:
+                                def functor = F
+                                def raise[E2 <: StorageError, B](error: E2): F[B] =
+                                  fatal.complete(GovernorFault.SnapshotStorage(error)) *> F.never[B]
+                              ImmutablePeerSnapshotVerifier.matches(store, slot, hash)
+                            }
+                            runSnapshotCheck(
+                              check,
+                              captured.snapshotCheckCanceled.get,
+                              captured.generation,
+                              events
+                            )
+                          },
+                          fatal,
+                          GovernorFault.SnapshotVerificationDefect.apply
+                        )
+                      )
+                      .void
+                }
+            }
+          }
       // the fetch mode of the node, once a second (the reference reads it from consensus when it needs
       // it); published for BlockFetch and the churn governor, told when it changes
       val modes: F[Nothing] =
@@ -337,16 +555,9 @@ object PeerNetwork:
 
       // the targets: the head start, then the churn rounds; the one writer of the governor's targets
       val churn: F[Nothing] =
-        given Ask[F, ChurnLoop.Config] = Ask.const[F, ChurnLoop.Config](
-          ChurnLoop.Config(
-            base = base,
-            regime = Regime.kind(_, bootstrapOn),
-            bigLedger = settings.roots.ledgerPeers,
-            intervals = settings.intervals,
-            timeouts = settings.timeouts,
-            seed = settings.seed
-          )
-        )
+        given Ask[F, ChurnLoop.Config] = new Ask[F, ChurnLoop.Config]:
+          def applicative = F
+          def ask[E2 >: ChurnLoop.Config]: F[E2] = runtime.get.map(_.churn: E2)
         given Tell[F, Churn.Trace] = new Tell[F, Churn.Trace]:
           def functor = F
           def tell(l: Churn.Trace): F[Unit] = emit(Output.Churned(l))
@@ -357,15 +568,20 @@ object PeerNetwork:
             if effective > 0 then effective else st.configuredRoots.groups.map(_.hot.value).sum
           }
           def fetchMode = modeCell.get
+          def judgement = judgementCell.get
           def requested = state.get.map(_.requested)
-          def request(targets: Targets) = events.offer(Event.TargetsRequested(targets)))
+          def request(targets: Targets) =
+            runtime.get.flatMap(current =>
+              events.offer(Event.TargetsRequested(targets, Some(current.generation)))
+            ))
 
       val gsmLoop: F[Nothing] =
         GsmRunner.run[F](
           GsmRunner.Env[F](
             reading = gsmReading(outbound, connections, chain),
             marker = marker,
-            publish = j => judgement.set(j) *> events.offer(Event.JudgementReported(j)),
+            publish = j =>
+              judgement.set(j) *> events.offer(Event.JudgementReported(j)) *> verifySnapshot(j),
             initial = gsmInitial,
             emit = gsm,
             seed = settings.seed
@@ -382,12 +598,195 @@ object PeerNetwork:
                 PeerSharingAddress.socket(address).map(ip => SocketAddress[Host](ip.host, ip.port))
               )
         }
-        PeerGovernor.run[F, Addr](outbound, rootProvider, events, supervisor, actions)
+        PeerGovernor.run[F, Addr](
+          outbound,
+          rootProvider,
+          events,
+          supervisor,
+          actions,
+          beforeEventApplied = Some {
+            case Event.RootsConfigured(_, _, _, Some(generation)) =>
+              rootInstallAcks.get.flatMap(_.get(generation).traverse_ { (staged, _) =>
+                installRuntimeGeneration(runtime, staged).void
+              }) *> judgement.get.flatMap(verifySnapshot)
+            case _ => F.unit
+          },
+          onEventApplied = Some {
+            case event @ Event.SnapshotVerificationCompleted(_, _) =>
+              publishSnapshotVerification(
+                event,
+                runtime.get.map(_.generation),
+                matches => emit(Output.LedgerPeers(LedgerPeersTrace.SnapshotVerified(matches)))
+              )
+            case Event.RootsConfigured(_, _, _, Some(generation)) =>
+              state.get.flatMap { current =>
+                if current.rootsGeneration < generation then F.unit
+                else
+                  rootInstallAcks
+                    .modify { pending =>
+                      val (installed, remaining) =
+                        pending.partition(_._1 <= current.rootsGeneration)
+                      (remaining, installed.values.map(_._2).toList)
+                    }
+                    .flatMap(_.traverse_(_.complete(()).void))
+              }
+            case _ => F.unit
+          }
+        )
+
+      val reloadRoots: Roots => F[Unit] = next =>
+        for
+          previous <- runtime.get
+          nextWorker <- createWorker(next)
+          nextLocalDnsCache <- refreshLocalDnsCache(next, previous.localDnsCache, dns, dnsRng)
+          resolvedLocal = NodeRootProvider.localGroupsFromCache(
+            next.local,
+            next.localSrv,
+            nextLocalDnsCache
+          )
+          resolvedPublic <- configuredPublicPeers(next)
+          nextAssociation = AssociationMode.of(
+            useLedgerPeers = next.ledgerPeers,
+            peerSharing = settings.peerSharing,
+            useBootstrapPeers = next.bootstrap.isDefined,
+            bootstrapEmpty = next.bootstrap.exists(_.isEmpty) && next.bootstrapSrv.isEmpty
+          )
+          generation <- nextRootGeneration.modify(value => (value + 1, value + 1))
+          snapshotCheckCanceled <- Deferred[F, Unit]
+          staged = Runtime(
+            generation,
+            next,
+            resolvedLocal,
+            nextLocalDnsCache,
+            nextWorker,
+            nextAssociation,
+            previous.churn.copy(
+              base = baseFor(next),
+              regime = Regime.kind(_, next.bootstrap.isDefined),
+              bigLedger = next.ledgerPeers
+            ),
+            snapshotCheckStarted = false,
+            snapshotCheckCanceled = snapshotCheckCanceled
+          )
+          _ <- publishRootUpdate(staged, resolvedLocal, resolvedPublic)
+          _ <- rootRefreshWake.tryOffer(()).void
+        yield ()
+
+      val refreshLocalRoots: F[Nothing] =
+        F.tailRecM[Unit, Nothing](()) { _ =>
+          for
+            captured <- runtime.get
+            cache <- refreshLocalDnsCache(captured.roots, captured.localDnsCache, dns, dnsRng)
+            resolved = NodeRootProvider.localGroupsFromCache(
+              captured.roots.local,
+              captured.roots.localSrv,
+              cache
+            )
+            latest <- runtime.get
+            current <-
+              if latest.generation != captured.generation then F.pure(latest)
+              else if resolved != captured.resolvedLocalRoots then
+                for
+                  public <- configuredPublicPeers(captured.roots)
+                  generation <- nextRootGeneration.modify { value =>
+                    if value == captured.generation then (value + 1, Some(value + 1))
+                    else (value, None)
+                  }
+                  _ <- generation.traverse_ { installedGeneration =>
+                    for
+                      snapshotCheckCanceled <- Deferred[F, Unit]
+                      staged = captured.copy(
+                        generation = installedGeneration,
+                        resolvedLocalRoots = resolved,
+                        localDnsCache = cache,
+                        snapshotCheckStarted = false,
+                        snapshotCheckCanceled = snapshotCheckCanceled
+                      )
+                      _ <- publishRootUpdate(staged, resolved, public)
+                    yield ()
+                  }
+                  installed <- runtime.get
+                yield installed
+              else
+                runtime.modify { current =>
+                  if current.generation == captured.generation then
+                    (current.copy(localDnsCache = cache), current.copy(localDnsCache = cache))
+                  else (current, current)
+                }
+            now <- Clock[F].monotonic
+            delay = LocalRootDnsCache.nextDelay(current.localDnsCache, now).getOrElse(900.seconds)
+            _ <- F.race(F.sleep(delay), rootRefreshWake.take).void
+          yield Left(())
+        }
 
       val loops: F[Nothing] =
         F.race(governor, F.race(modes, F.race(churn, gsmLoop)))
           .flatMap(_.fold(identity, _.fold(identity, _.fold(identity, identity))))
-      Running(state, outbound, connections, fetchMode, judgement, metrics, loops, fatal)
+      Running(
+        state,
+        outbound,
+        connections,
+        fetchMode,
+        judgement,
+        metrics,
+        reloadRoots,
+        supervisor
+          .supervise(
+            reportBackgroundDefect(
+              refreshLocalRoots,
+              fatal,
+              GovernorFault.LocalDnsRefreshDefect.apply
+            )
+          )
+          .void *> loops,
+        fatal
+      )
+
+  private[node] def installRuntimeGeneration[F[_]: Async](
+      runtime: Ref[F, Runtime[F]],
+      staged: Runtime[F]
+  ): F[Boolean] =
+    runtime
+      .modify { current =>
+        if staged.generation > current.generation then (staged, Some(current))
+        else (current, None)
+      }
+      .flatMap {
+        case Some(previous) => previous.snapshotCheckCanceled.complete(()).as(true)
+        case None           => Async[F].pure(false)
+      }
+
+  private val LocalDnsParallelism = 4
+
+  /** Run due local DNS lookups with a fixed job bound and apply each result to its own key. */
+  private[node] def refreshLocalDnsCache[F[_]: Async](
+      roots: Roots,
+      previous: LocalRootDnsCache.State[NodeRootProvider.LocalDnsKey, Addr],
+      dns: PeerDns[F],
+      rng: Ref[F, Rng]
+  ): F[LocalRootDnsCache.State[NodeRootProvider.LocalDnsKey, Addr]] =
+    val F = Async[F]
+    for
+      now <- Clock[F].monotonic
+      entries = NodeRootProvider.localDnsEntries(roots.local, roots.localSrv)
+      activeKeys = entries.map(_.key)
+      tracked = LocalRootDnsCache.track(previous, activeKeys, now)
+      requests = LocalRootDnsCache.due(tracked, activeKeys, now)
+      byKey = entries.map(entry => entry.key -> entry).toMap
+      completed <- requests.parTraverseN(LocalDnsParallelism) { request =>
+        byKey.get(request.key).traverse { entry =>
+          NodeRootProvider
+            .resolveLocalDns(entry, dns, rng)
+            .product(Clock[F].monotonic)
+            .map { case (result, at) => (request, result, at) }
+        }
+      }
+      updated <- completed.flatten.foldLeftM(tracked) { case (state, (request, result, at)) =>
+        LocalRootDnsCache.complete(state, request, at, result) match
+          case Left(LocalRootDnsCache.CacheError.StaleRequest) => F.pure(state)
+          case Right(next)                                     => F.pure(next)
+      }
+    yield updated
 
   /** `readFetchModeDefault` (Praos): bulk sync in the sensitive state, else by the distance of the
     * chain from the wall clock.

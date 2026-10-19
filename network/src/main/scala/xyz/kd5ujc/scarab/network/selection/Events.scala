@@ -149,7 +149,8 @@ private[selection] object Events:
 
     outcome match
       case Outcome.Shared(batch, results) => PeerShare.completed(st0, batch, results, now, policy)
-      case Outcome.Connected(peer) if status(peer).contains(Status.Connecting) =>
+      case Outcome.Connected(peer, generation)
+          if generation == st0.rootsGeneration && status(peer).contains(Status.Connecting) =>
         val st = st0.updated(peer)(r =>
           r.copy(
             status = Status.Warm(now),
@@ -171,7 +172,8 @@ private[selection] object Events:
           )
         )
 
-      case Outcome.ConnectFailed(peer, failure) if status(peer).contains(Status.Connecting) =>
+      case Outcome.ConnectFailed(peer, failure, generation)
+          if generation == st0.rootsGeneration && status(peer).contains(Status.Connecting) =>
         val (extra, st) = fuzz(st0, -2.seconds, 2.seconds)
         val backoff = (count: Int) =>
           extra + policy.baseColdRetry * (1L << (count - 1).min(policy.maxColdRetryBackoff).toLong)
@@ -236,7 +238,8 @@ private[selection] object Events:
           List(Trace.DemoteFailed(from, peer, timedOut = true))
         )
 
-      case Outcome.RootsFound(found, ttl) if st0.publicRootsInFlight =>
+      case Outcome.RootsFound(found, ttl, generation)
+          if st0.publicRootsInFlight && generation == st0.rootsGeneration =>
         val local = st0.localRoots.keys
         val offered = found.ordinary ++ found.bootstrap ++ found.ledger
         // new peers only: not a local root, and not a public root of any kind already (the reference
@@ -271,7 +274,8 @@ private[selection] object Events:
           List(Trace.RootsResults(fresh, backoffs, retryIn))
         )
 
-      case Outcome.RootsFailed() if st0.publicRootsInFlight =>
+      case Outcome.RootsFailed(generation)
+          if st0.publicRootsInFlight && generation == st0.rootsGeneration =>
         // one step in the failure direction (negative), an exponential delay of up to 2^8 seconds
         val backoffs = st0.publicRootBackoffs.min(0) - 1
         val retryIn = (1L << math.abs(backoffs).min(policy.maxPublicRootBackoff).toLong).seconds
@@ -285,7 +289,8 @@ private[selection] object Events:
           List(Trace.RootsFailure(backoffs, retryIn))
         )
 
-      case Outcome.BigLedgerFound(found, ttl) if st0.bigLedgerInFlight =>
+      case Outcome.BigLedgerFound(found, ttl, generation)
+          if st0.bigLedgerInFlight && generation == st0.rootsGeneration =>
         // as the public roots, but into the big ledger population; a peer that is a local root or
         // a root of any kind already is left as it is (`BigLedgerPeers.hs` 138-147)
         val local = st0.localRoots.keys
@@ -310,7 +315,8 @@ private[selection] object Events:
           List(Trace.BigLedgerResults(fresh, backoffs, retryIn))
         )
 
-      case Outcome.BigLedgerFailed() if st0.bigLedgerInFlight =>
+      case Outcome.BigLedgerFailed(generation)
+          if st0.bigLedgerInFlight && generation == st0.rootsGeneration =>
         val backoffs = st0.bigLedgerBackoffs.min(0) - 1
         val retryIn = (1L << math.abs(backoffs).min(policy.maxPublicRootBackoff).toLong).seconds
         Decision(
@@ -325,19 +331,19 @@ private[selection] object Events:
 
       // A late rejection can forget a connecting source before its bearer is registered. Close
       // its subsequently successful job too; the earlier Close may have found nothing yet.
-      case connected @ Outcome.Connected(peer) if status(peer).forall {
+      case connected @ Outcome.Connected(peer, generation) if status(peer).forall {
             case Status.Cold(_) => true
             case _              => false
           } =>
-        Decision(st0, List(Job.Close(peer)), aborted(connected))
+        Decision(st0, List(Job.Close(peer, Some(generation))), aborted(connected))
 
       // the world moved on while the job ran: nothing to apply
       case other => Decision(st0, Nil, aborted(other))
 
   private def aborted[A](outcome: Outcome[A]): List[Trace[A]] =
     outcome match
-      case Outcome.Connected(p)         => List(Trace.PromoteAborted(Temperature.Cold, p))
-      case Outcome.ConnectFailed(p, _)  => List(Trace.PromoteAborted(Temperature.Cold, p))
-      case Outcome.Activated(p)         => List(Trace.PromoteAborted(Temperature.Warm, p))
-      case Outcome.ActivateFailed(p, _) => List(Trace.PromoteAborted(Temperature.Warm, p))
-      case _                            => Nil
+      case Outcome.Connected(p, _)        => List(Trace.PromoteAborted(Temperature.Cold, p))
+      case Outcome.ConnectFailed(p, _, _) => List(Trace.PromoteAborted(Temperature.Cold, p))
+      case Outcome.Activated(p)           => List(Trace.PromoteAborted(Temperature.Warm, p))
+      case Outcome.ActivateFailed(p, _)   => List(Trace.PromoteAborted(Temperature.Warm, p))
+      case _                              => Nil

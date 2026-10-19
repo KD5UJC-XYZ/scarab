@@ -305,6 +305,68 @@ class ServerSuite extends FailsOnUncaught:
       assertEquals(outcome, Right(()))
       assertEquals(got, txs.patch(1, Nil, 1))
 
+  test("an idle duplex TxSubmission2 responder keeps the bearer usable and cancels with its owner"):
+    val chain = new Chain(Vector(1, 2, 3))
+    val duplexClient = Mux.Config(role = Mux.Role.Initiator, duplex = true)
+    val duplexServer = Mux.Config(role = Mux.Role.Responder, duplex = true)
+    for
+      bounded <- typed {
+        linked(
+          protocols = NodeToNodeServer.Protocol,
+          client = duplexClient,
+          server = duplexServer
+        ).use { (local, _) =>
+          val settings = NodeToNodeServer.Settings(
+            transactions = TxSubmissionServer.Settings(initTimeout = Some(40.millis))
+          )
+          NodeToNodeServer.start(local, handlers(chain), settings).use(_ => local.closed)
+        }
+      }
+      unbounded <- typed {
+        linked(
+          protocols = NodeToNodeServer.Protocol,
+          client = duplexClient,
+          server = duplexServer
+        ).use { (local, remote) =>
+          for
+            during <- NodeToNodeServer.start(local, handlers(chain)).use { _ =>
+              for
+                _ <- IO.sleep(100.millis)
+                channel <- remote.channel(Protocols.ChainSync, Mux.Role.Initiator)
+                api <- ChainSyncClient(channel, ChainSyncFixtures.rawItem)
+                intersection <- api.findIntersect(Vector(Point.Origin))
+                stillOpen <- IO.race(local.closed, IO.sleep(40.millis))
+              yield (intersection, stillOpen.isRight)
+            }
+            channel <- remote.channel(Protocols.TxSubmission2, Mux.Role.Initiator)
+            init = TxSubmission2
+              .encode(
+                TxSubmission2.State.Init,
+                ChainSync.Role.Client,
+                TxSubmission2.Message.Init
+              )
+              .fold(e => fail(e.message), identity)
+            reply <- channel.send(init) *> IO
+              .race(
+                channel
+                  .recv(TxSubmission2.maxMessageBytes(TxSubmission2.State.Idle))(
+                    TxSubmission2.decodePrefix(TxSubmission2.State.Idle, ChainSync.Role.Server, _)
+                  )
+                  .map(Some(_)),
+                IO.sleep(40.millis).as(Option.empty[TxSubmission2.Message])
+              )
+              .map(_.merge)
+          yield (during, reply)
+        }
+      }
+    yield
+      assertEquals(bounded, Right(NetworkError.Timeout(Protocols.TxSubmission2, "Init")))
+      assert(
+        unbounded.exists { case ((intersection, stillOpen), reply) =>
+          intersection.nonEmpty && stillOpen && reply.isEmpty
+        }
+      )
+
   test("duplex: one bearer carries a client and a server of the same protocol both ways"):
     val mine = Chain(Vector(1, 2, 3))
     val theirs = Chain(Vector(7, 8))

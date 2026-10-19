@@ -1757,3 +1757,28 @@ The feature author's independent manifest of 8 reward sources, 452 main sources 
 is `candidate-binding-rebased.json` in `/tmp/scarab/issue-135`, SHA-256
 `9e8b987d17d35b1e1a4b9df5677bca8c59ccbce874e9d2cf4d4ae49b4a6808d3`.
 Final verification confirms all original inputs, copied classes and bound sources unchanged.
+
+## 31. Live-sync investigation closeout (#124)
+
+The original live-sync/replay investigation is complete; its residual work is tracked separately.
+Section 13 explains the observed bottlenecks: repeated UTxO diff walks and pointer-map scans, then
+signature CPU once those costs were removed. The same 12,000-block window improved from 70,500 to
+255,200 blocks/hour on four CPUs. The original approximately 4× comparison used different block
+windows, so it is not a remaining measured ratio to eliminate. Later Alonzo samples in sections
+17–19 used other builds and workloads; none establishes present hardware-matched throughput
+parity with the Haskell node.
+
+| Residual question | Where it remains | Evidence boundary |
+|---|---|---|
+| Safely parallelised ledger application and captured Preview verdict/digest acceptance | D2, #21 | Existing captured-block measurements do not establish uninterrupted live-sync throughput. |
+| Timer fairness and long forger stages on one CPU | D8, #65 | Stage attribution and bounded private-pool evidence remain in progress. |
+| Reward-update spikes | D15, #135, completed in PR #197 | Section 30 records incremental completion and sparse-chain forced completion separately. |
+| Evaluator environment-copy cost and the evaluator choice | I2, #43 | The historical Scalus profile does not prove the same hotspot in every current workload. |
+| Header-only relay reads, lagging candidates, snapshot sorting and commit locking | D17 in the roadmap | Historical #146 was folded into this investigation; these are later profiling candidates, not claimed implementations. |
+| Uninterrupted throughput/RSS/disk and the unexplained restart slow window | D6, #25 | Cold RocksDB cache, JIT and host scheduling remain hypotheses from section 19. |
+
+This closeout audits existing evidence and follow-up ownership. It adds no performance experiment,
+public-network sync or operational restart. Stored CBOR and native V5 remain; MemPack serves
+Haskell snapshot import/export. Future optimization should use the same captured block window,
+record the exact source/runtime and resource limits, and compare complete verdict/state results
+before claiming an improvement.

@@ -41,6 +41,16 @@ trait ImmutableStore[F[_]]:
   /** The raw block at `point` (slot and hash), if stored. */
   def get(point: ChainSync.Point)(using cats.mtl.Raise[F, StorageError]): F[Option[Bytes]]
 
+  /** Immutable index entries at a slot, without reading block bodies. A Byron boundary block and
+    * the following main block can share a slot, so both references are returned in index order.
+    */
+  def pointsAtSlot(slot: BigInt)(using cats.mtl.Raise[F, StorageError]): F[Vector[BlockRef]]
+
+  /** The first indexed block at or after a slot, by immutable index metadata only. */
+  def pointAtOrAfterSlot(slot: BigInt)(using
+      cats.mtl.Raise[F, StorageError]
+  ): F[Option[BlockRef]]
+
   /** The block with number `n` (the main block, for a Byron boundary/main pair). */
   def byBlockNo(n: BigInt)(using cats.mtl.Raise[F, StorageError]): F[Option[ImmutableStore.Stored]]
 
@@ -627,6 +637,51 @@ object FileImmutableStore:
               case ChainSync.Point.Origin => F.pure(None)
               case b: ChainSync.Point.Block =>
                 locate(b).flatMap(_.traverse { case (c, i, es) => read(c, es(i)) })
+
+          def pointsAtSlot(slot: BigInt)(using
+              cats.mtl.Raise[F, StorageError]
+          ): F[Vector[BlockRef]] =
+            val chunkIndex = slot / chunkSlots
+            if !slot.isValidLong || slot < 0 || !chunkIndex.isValidInt then F.pure(Vector.empty)
+            else
+              val chunk = chunkIndex.toInt
+              chunksRef.get.flatMap { chunks =>
+                if !chunks.contains(chunk) then F.pure(Vector.empty)
+                else
+                  indexOf(chunk)
+                    .map(_.collect { case entry if entry.ref.slot == slot => entry.ref })
+              }
+
+          def pointAtOrAfterSlot(slot: BigInt)(using
+              cats.mtl.Raise[F, StorageError]
+          ): F[Option[BlockRef]] =
+            val chunkIndex = slot / chunkSlots
+            if !slot.isValidLong || slot < 0 || !chunkIndex.isValidInt then F.pure(None)
+            else
+              chunksRef.get.flatMap { chunks =>
+                def locate(lo: Int, hi: Int): F[Int] =
+                  F.tailRecM((lo, hi)) { (left, right) =>
+                    if left >= right then F.pure(Right(left))
+                    else
+                      val middle = left + (right - left) / 2
+                      indexOf(chunks(middle)).map { entries =>
+                        if entries.lastOption.exists(_.ref.slot < slot) then
+                          Left((middle + 1, right))
+                        else Left((left, middle))
+                      }
+                  }
+                locate(0, chunks.size).flatMap { at =>
+                  if at >= chunks.size then F.pure(None)
+                  else
+                    indexOf(chunks(at)).map { entries =>
+                      val from = entries.dropWhile(_.ref.slot < slot)
+                      from.headOption.flatMap { first =>
+                        val sameSlot = from.takeWhile(_.ref.slot == first.ref.slot)
+                        sameSlot.find(!_.ref.boundary).orElse(sameSlot.headOption).map(_.ref)
+                      }
+                    }
+                }
+              }
 
           def byBlockNo(n: BigInt)(using
               cats.mtl.Raise[F, StorageError]

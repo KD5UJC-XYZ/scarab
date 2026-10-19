@@ -47,7 +47,9 @@ final class WarmConnection[F[_], P] private[network] (
     /** The PeerSharing client, when both sides agreed to peer sharing (the established temperature,
       * like KeepAlive); the governor asks through it.
       */
-    val peerSharing: Option[PeerSharingClient[F]] = None
+    val peerSharing: Option[PeerSharingClient[F]] = None,
+    /** The handshake agreed InitiatorAndResponder for this bearer. */
+    val duplex: Boolean = false
 ):
   /** Start the hot protocols as the initiator side of each. With `transactions` the node offers
     * those transactions over TxSubmission2 for the life of the resource.
@@ -177,7 +179,8 @@ object NodeToNode:
         agreed.version,
         codec,
         settings,
-        peerSharing = agreed.data.peerSharing
+        peerSharing = agreed.data.peerSharing,
+        duplex = !agreed.data.initiatorOnly
       )
     yield warm
 
@@ -191,7 +194,8 @@ object NodeToNode:
       version: Int,
       codec: ChainSync.PayloadCodec[P],
       settings: Settings = Settings(),
-      peerSharing: Boolean = false
+      peerSharing: Boolean = false,
+      duplex: Boolean = false
   )(using Raise[F, NetworkError]): Resource[F, WarmConnection[F, P]] =
     for
       keepAliveChannel <- Resource.eval(mux.channel(Protocols.KeepAlive, role))
@@ -205,7 +209,7 @@ object NodeToNode:
               .flatMap(PeerSharingClient(_, settings.peerSharing))
           )
       )
-    yield WarmConnection(version, mux, role, codec, settings, sharing)
+    yield WarmConnection(version, mux, role, codec, settings, sharing, duplex)
 
   /** Our own clients (ChainSync, BlockFetch, KeepAlive and, with `transactions`, TxSubmission2) on
     * an established multiplexer, as the initiator side of each mini-protocol. A connection we

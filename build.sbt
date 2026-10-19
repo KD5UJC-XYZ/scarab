@@ -237,7 +237,8 @@ lazy val node = scarab("node")
       Libraries.http4sEmberServer,
       Libraries.http4sDsl,
       Libraries.http4sCirce,
-      Libraries.slf4jApi
+      Libraries.slf4jApi,
+      Libraries.dnsjava
     ),
     runtimeClasspathFile := {
       val output = target.value / "runtime-classpath.txt"

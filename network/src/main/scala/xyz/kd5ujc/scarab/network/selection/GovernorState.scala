@@ -42,6 +42,9 @@ final case class GovernorState[A](
     bigLedgerBackoffs: Int = 0,
     bigLedgerRetryAt: Time = Time.Zero,
     bigLedgerInFlight: Boolean = false,
+    /** Reload generation for root-provider jobs; old completions cannot repopulate replaced roots.
+      */
+    rootsGeneration: BigInt = BigInt(0),
     sharing: PeerShare.Governor[A] = PeerShare.Governor[A]()
 ):
   def record(peer: A): Option[PeerRecord] = peers.get(peer)
@@ -169,12 +172,19 @@ object GovernorState:
       case AssociationMode.LocalRootsOnly =>
         if established.subsetOf(trustableRoots) then TrustedStateWithExternalPeers
         else UntrustedState
-      case AssociationMode.Unrestricted if view.state.sensitivity.useBootstrapPeers =>
-        if established.subsetOf(establishedBootstrap ++ trustableRoots) &&
-          active.exists(view.bootstrap)
-        then TrustedStateWithExternalPeers
-        else UntrustedState
-      case AssociationMode.Unrestricted => UntrustedState
+      case AssociationMode.Unrestricted =>
+        view.state.sensitivity.consensusMode match
+          case ConsensusMode.GenesisMode =>
+            if view.big.active.size >=
+                view.state.sensitivity.minBigLedgerPeersForTrustedState
+            then TrustedStateWithExternalPeers
+            else UntrustedState
+          case ConsensusMode.PraosMode if view.state.sensitivity.useBootstrapPeers =>
+            if established.subsetOf(establishedBootstrap ++ trustableRoots) &&
+              active.exists(view.bootstrap)
+            then TrustedStateWithExternalPeers
+            else UntrustedState
+          case ConsensusMode.PraosMode => UntrustedState
 
   /** What a state fails to satisfy of the reference's invariants (`assertPeerSelectionState`,
     * `Types.hs` 1328-1427) that the status representation does not already guarantee: the local

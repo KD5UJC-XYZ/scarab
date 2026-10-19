@@ -12,6 +12,7 @@ import xyz.kd5ujc.scarab.ledger.{LedgerRelay, RelayIp, RelayPort}
 import xyz.kd5ujc.scarab.network.selection.{
   AccPoolStake,
   AfterSlot,
+  ConsensusMode,
   LedgerPeerSnapshot,
   PoolStake,
   SnapshotPoint,
@@ -55,6 +56,9 @@ enum PeerSnapshotRefusal extends DomainError:
   /** The snapshot is older than `useLedgerAfterSlot` (`LedgerPeerSnapshotTooOld`). */
   case TooOld(after: BigInt, snapshot: BigInt)
 
+  /** Genesis mode cannot make a safe ledger-peer set from an unreadable configured snapshot. */
+  case UnreadableSnapshot(error: PeerSnapshotError)
+
   def message: String = this match
     case LegacyVersion => "the peer snapshot file is of a legacy version, which is not supported"
     case AtOrigin      => "the peer snapshot is at the origin, which is not a valid point"
@@ -62,6 +66,8 @@ enum PeerSnapshotRefusal extends DomainError:
       s"the network magic $expected differs from the peer snapshot's $found"
     case TooOld(after, snapshot) =>
       s"the peer snapshot slot $snapshot is older than useLedgerAfterSlot $after: update the file"
+    case UnreadableSnapshot(error) =>
+      s"the Genesis peer snapshot could not be read: ${error.toString}"
 
 /** What the node does with the peer snapshot file of its topology. */
 enum SnapshotUse:
@@ -115,11 +121,14 @@ object PeerSnapshot:
   def use(
       file: Option[Path],
       networkMagic: Long,
-      ledger: UseLedgerPeers
+      ledger: UseLedgerPeers,
+      consensusMode: ConsensusMode = ConsensusMode.PraosMode
   ): Either[PeerSnapshotRefusal, SnapshotUse] =
     (file, ledger) match
       case (Some(path), UseLedgerPeers.Use(after)) =>
         read(path) match
+          case Left(error) if consensusMode == ConsensusMode.GenesisMode =>
+            Left(PeerSnapshotRefusal.UnreadableSnapshot(error))
           case Left(error)                        => Right(SnapshotUse.Ignored(error))
           case Right(LedgerPeerSnapshot.V2(_, _)) => Left(PeerSnapshotRefusal.LegacyVersion)
           case Right(s @ LedgerPeerSnapshot.V23(point, magic, _)) =>

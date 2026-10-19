@@ -23,11 +23,16 @@ final case class LocalRoots(
     warmValency: Int,
     trustable: Boolean,
     behindFirewall: Boolean,
-    diffusionMode: String
+    diffusionMode: String,
+    srvAccessPoints: Vector[DnsName] = Vector.empty
 )
 
 /** A group of `publicRoots`. */
-final case class PublicRoots(accessPoints: Vector[AccessPoint], advertise: Boolean)
+final case class PublicRoots(
+    accessPoints: Vector[AccessPoint],
+    advertise: Boolean,
+    srvAccessPoints: Vector[DnsName] = Vector.empty
+)
 
 /** A P2P topology (`topology.json`), as `cardano-node` reads it (`Cardano.Node.Configuration.
   * TopologyP2P`): `localRoots` and `publicRoots` are required, `bootstrapPeers` (a list, or null
@@ -44,14 +49,17 @@ final case class Topology(
     /** `None` when the file says `null` or leaves the key out (bootstrap peers off). */
     bootstrapPeers: Option[Vector[AccessPoint]],
     useLedgerAfterSlot: UseLedgerPeers,
-    peerSnapshotFile: Option[String]
+    peerSnapshotFile: Option[String],
+    bootstrapSrvPeers: Vector[DnsName] = Vector.empty
 ):
   /** The peers to follow, in order and without repeats: local roots, bootstrap peers, and, when
     * there are none of either, the public roots.
     */
   def peers: Vector[SocketAddress[Host]] =
     val configured = localRoots.flatMap(_.accessPoints) ++ bootstrapPeers.getOrElse(Vector.empty)
-    val all = if configured.nonEmpty then configured else publicRoots.flatMap(_.accessPoints)
+    val hasConfigured = configured.nonEmpty || localRoots.exists(_.srvAccessPoints.nonEmpty) ||
+      bootstrapSrvPeers.nonEmpty
+    val all = if hasConfigured then configured else publicRoots.flatMap(_.accessPoints)
     all.map(_.socketAddress).distinct
 
 object Topology:
@@ -66,8 +74,9 @@ object Topology:
       j.as[A].leftMap(e => ConfigError(ConfigProblem.JsonField("topology", name, e)))
     }
 
-  /** `{"address": ..., "port": ...}`. An address without a port is a DNS SRV name, which this node
-    * does not resolve; the unspecified address (0.0.0.0, ::) is never a destination.
+  /** `{"address": ..., "port": ...}`. An address without a port is an SRV name; fixed socket
+    * addresses reject it here, while root parsers retain the typed DNS name. The unspecified
+    * address (0.0.0.0, ::) is never a destination.
     */
   private[node] def accessPoint(j: Json): Either[ConfigError, AccessPoint] =
     val c = j.hcursor
@@ -92,13 +101,38 @@ object Topology:
         case _ => Right(())
     yield AccessPoint(host, port)
 
-  private def accessPoints(c: ACursor): Either[ConfigError, Vector[AccessPoint]] =
-    field[Vector[Json]](c, "accessPoints").flatMap(_.traverse(accessPoint))
+  private def mixedAccessPoints(
+      c: ACursor
+  ): Either[ConfigError, (Vector[AccessPoint], Vector[DnsName])] =
+    field[Vector[Json]](c, "accessPoints").flatMap(parseMixedAccessPoints)
+
+  private def parseMixedAccessPoints(
+      json: Vector[Json]
+  ): Either[ConfigError, (Vector[AccessPoint], Vector[DnsName])] =
+    json
+      .traverse { json =>
+        val cursor = json.hcursor
+        optional[Json](cursor, "port").flatMap {
+          case Some(_) => accessPoint(json).map(Left(_))
+          case None =>
+            field[String](cursor, "address").flatMap { address =>
+              DnsName
+                .from(address)
+                .leftMap(error => ConfigError(ConfigProblem.TopologyHost(error.value)))
+                .map(Right(_))
+            }
+        }
+      }
+      .map { points =>
+        (points.collect { case Left(point) => point }, points.collect { case Right(name) => name })
+      }
 
   private def localRoots(j: Json): Either[ConfigError, LocalRoots] =
     val c = j.hcursor
     for
-      points <- accessPoints(c)
+      accessPoints <- mixedAccessPoints(c)
+      points = accessPoints._1
+      srv = accessPoints._2
       hot <- (optional[Int](c, "valency"), optional[Int](c, "hotValency")).tupled.flatMap {
         case (Some(v), _) => Right(v)
         case (_, Some(v)) => Right(v)
@@ -120,12 +154,12 @@ object Topology:
         )
       )
       trustable <- optional[Boolean](c, "trustable").map(_.getOrElse(false))
-    yield LocalRoots(points, advertise, hot, warm, trustable, firewall, mode)
+    yield LocalRoots(points, advertise, hot, warm, trustable, firewall, mode, srv)
 
   private def publicRoots(j: Json): Either[ConfigError, PublicRoots] =
     val c = j.hcursor
-    (accessPoints(c), optional[Boolean](c, "advertise").map(_.getOrElse(false)))
-      .mapN(PublicRoots(_, _))
+    (mixedAccessPoints(c), optional[Boolean](c, "advertise").map(_.getOrElse(false)))
+      .mapN { case ((points, srv), advertise) => PublicRoots(points, advertise, srv) }
 
   private def ledgerPeers(c: ACursor): Either[ConfigError, UseLedgerPeers] =
     optional[BigDecimal](c, "useLedgerAfterSlot").map {
@@ -155,16 +189,24 @@ object Topology:
       locals <- field[Vector[Json]](c, "localRoots").flatMap(_.traverse(localRoots))
       publics <- field[Vector[Json]](c, "publicRoots").flatMap(_.traverse(publicRoots))
       bootstrap <- optional[Vector[Json]](c, "bootstrapPeers")
-        .flatMap(_.traverse(_.traverse(accessPoint)))
+        .flatMap(_.traverse(parseMixedAccessPoints))
       ledger <- ledgerPeers(c)
       snapshot <- optional[String](c, "peerSnapshotFile")
       // as `isValidTrustedPeerConfiguration`: an empty bootstrap list needs a trustable local root
       _ <- Either.cond(
-        bootstrap.forall(_.nonEmpty) || locals.exists(_.trustable),
+        bootstrap.forall { case (fixed, srv) => fixed.nonEmpty || srv.nonEmpty } ||
+          locals.exists(_.trustable),
         (),
         ConfigError(ConfigProblem.UntrustedBootstrap)
       )
-    yield Topology(locals, publics, bootstrap, ledger, snapshot)
+    yield Topology(
+      locals,
+      publics,
+      bootstrap.map(_._1),
+      ledger,
+      snapshot,
+      bootstrap.fold(Vector.empty[DnsName])(_._2)
+    )
 
   def read(path: Path): Either[ConfigError, Topology] =
     Either

@@ -42,6 +42,9 @@ enum LedgerPeersTrace:
     */
   case SnapshotIgnored(error: PeerSnapshotError)
 
+  /** Whether a Genesis peer snapshot's exact immutable slot and hash were found. */
+  case SnapshotVerified(matches: Boolean)
+
   /** The stake maps were rebuilt from `source`, with `ordinary` pools and `big` big ledger pools.
     */
   case Refreshed(source: StakeSource, ordinary: Int, big: Int, slot: WithOrigin[BigInt])

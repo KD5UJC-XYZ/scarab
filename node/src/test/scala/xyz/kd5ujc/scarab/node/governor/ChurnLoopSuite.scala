@@ -34,6 +34,9 @@ class ChurnLoopSuite extends CatsEffectSuite:
       mode: Ref[IO, FetchMode],
       stuck: Boolean = false,
       regime: FetchMode => Regime.Kind = Regime.kind(_, false),
+      consensusMode: ConsensusMode = ConsensusMode.PraosMode,
+      ledgerJudgement: LedgerStateJudgement = LedgerStateJudgement.YoungEnough,
+      syncTargets: Targets = Targets.sync,
       intervals: Churn.Intervals = Churn.Intervals(),
       bigLedger: Boolean = false
   ): IO[Log] =
@@ -56,6 +59,7 @@ class ChurnLoopSuite extends CatsEffectSuite:
         def counters: IO[GovernorState.Counters] = counterCell.get
         def localHot: IO[Int] = IO.pure(2)
         def fetchMode: IO[FetchMode] = mode.get
+        def judgement: IO[LedgerStateJudgement] = IO.pure(ledgerJudgement)
         def requested: IO[Targets] = requestedCell.get
         def request(t: Targets): IO[Unit] =
           for
@@ -78,7 +82,15 @@ class ChurnLoopSuite extends CatsEffectSuite:
             }
           yield ()
       given Ask[IO, ChurnLoop.Config] = Ask.const[IO, ChurnLoop.Config](
-        ChurnLoop.Config(base, regime, intervals = intervals, bigLedger = bigLedger, seed = 5L)
+        ChurnLoop.Config(
+          base,
+          regime,
+          consensusMode = consensusMode,
+          syncTargets = syncTargets,
+          intervals = intervals,
+          bigLedger = bigLedger,
+          seed = 5L
+        )
       )
       given Tell[IO, Churn.Trace] = new Tell[IO, Churn.Trace]:
         def functor = cats.Functor[IO]
@@ -102,6 +114,26 @@ class ChurnLoopSuite extends CatsEffectSuite:
         log.requests.head._2,
         Churn.head(Churn.Context(Regime.Kind.Default, 2, Targets.relay))
       ))
+  }
+
+  test("Genesis churn uses sync targets while the ledger judgement is TooOld") {
+    embed(
+      for
+        mode <- Ref.of[IO, FetchMode](FetchMode.Deadline)
+        log <- run(
+          4.seconds,
+          mode = mode,
+          consensusMode = ConsensusMode.GenesisMode,
+          ledgerJudgement = LedgerStateJudgement.TooOld
+        )
+      yield assertEquals(
+        log.requests.take(2).map(_._2),
+        Vector(
+          Churn.head(Churn.Context(Regime.Kind.Default, 2, Targets.sync)),
+          Targets.sync
+        )
+      )
+    )
   }
 
   test(

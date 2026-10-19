@@ -127,6 +127,19 @@ object Churn:
     */
   final case class Context(kind: Regime.Kind, localHot: Int, base: Targets)
 
+  /** `getPeerSelectionTargets` (`Cardano/Network/PeerSelection/Churn.hs` 98-107): Genesis uses its
+    * sync targets only while the ledger judgement is too old.
+    */
+  def targetsFor(
+      consensusMode: ConsensusMode,
+      judgement: LedgerStateJudgement,
+      deadlineTargets: Targets,
+      syncTargets: Targets
+  ): Targets =
+    if consensusMode == ConsensusMode.GenesisMode && judgement == LedgerStateJudgement.TooOld then
+      syncTargets
+    else deadlineTargets
+
   /** `decrease` (`Churn.hs` 692-693): replace 20% of a target, or at least one. */
   def decrease(n: Int): Int = decreaseWithMin(1)(n)
 

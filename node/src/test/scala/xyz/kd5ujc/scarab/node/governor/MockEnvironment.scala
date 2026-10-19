@@ -246,6 +246,15 @@ object MockEnvironment:
                 }
             }
 
+          def establishAt(
+              peer: Peer,
+              mode: DiffusionMode,
+              provenance: Provenance,
+              generation: BigInt
+          ) =
+            generation match
+              case _ => establish(peer, mode, provenance)
+
           def activate(peer: Peer) =
             note(Seen.Env(EnvEvent.Activate(peer))) *> IO.sleep(1.second) *>
               statuses.get.map(_.get(peer)).flatMap {
@@ -279,6 +288,9 @@ object MockEnvironment:
               case Some(conn) =>
                 conn.set(Conn.Cold) *> statuses.update(_ - peer) *> snapshot.as(true)
             }
+
+          def closeIfGeneration(peer: Peer, generation: BigInt) =
+            close(peer).map(Some(_))
 
         val provider = new RootProvider[IO, Peer]:
           def request(max: Int, bootstrap: Boolean) =

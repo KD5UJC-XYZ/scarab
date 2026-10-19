@@ -1,7 +1,8 @@
 # Multi-script Plutus result aggregation
 
 **Status: Current, as built for evaluation and reconstruction.**
-[I4 #195](https://github.com/KD5UJC-XYZ/scarab/issues/195) retains the diagnostic-presentation gap below.
+[I4 #195](https://github.com/KD5UJC-XYZ/scarab/issues/195) is complete for v0.2; exact diagnostic wording
+is optional future work in [#208](https://github.com/KD5UJC-XYZ/scarab/issues/208).
 
 `Phase2.run` evaluates every collected request in collection order, including scripts after a proven
 script failure. `Report` retains each redeemer, original script/request, typed `EvalResult`, actual
@@ -39,9 +40,9 @@ invalid-tag failures match the complete reference UTXOS predicate bytes. A faili
 retains every failure and matching reconstruction payload, but **its diagnostic text still uses
 Scarab's typed-cause rendering rather than Haskell's complete pretty-printed context/error prose**.
 The unchanged-reference full predicate golden is retained without masking this difference. General
-diagnostic-byte compatibility remains part of #195; no closing claim is made for that part.
+diagnostic-byte compatibility is optional future work in #208; it is outside v0.2 acceptance.
 
-The bounded diagnostic follow-up is to render the retained typed evaluator error and immutable
+Possible future work in #208 would render the retained typed evaluator error and immutable
 request into the reference's `explainPlutusEvaluationError`/`Pretty PlutusArgs` presentation, entirely
 at the wire boundary. It must compare complete failing-tag predicate bytes for every retained case,
 then cover budget/scope failures and historical context variants. It must not classify native error
@@ -94,4 +95,4 @@ Their 10,782-file frozen runtime inventories exactly matched the checked compila
 `e5bb119fc4eb7db8bd6eab1820ccd85874fbdc0c70bf2a9fe49f0bb024f33eed`.
 They ran sequentially under shared-host coordination. All owned cluster/build containers were
 removed afterward. No persisted format changed. Full Haskell failing-tag diagnostic prose remains
-open under #195; matching reconstruction bytes do not imply full failing-predicate byte parity.
+optional under #208; matching reconstruction bytes do not imply full failing-predicate byte parity.

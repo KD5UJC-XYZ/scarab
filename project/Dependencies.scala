@@ -18,6 +18,7 @@ object Dependencies {
     // The API the node's own SLF4J backend implements (node/log/LibraryLogs.scala); http4s brings
     // 1.7.36 through log4cats and log4s, whose calls 2.0 keeps.
     val slf4j = "2.0.17"
+    val dnsjava = "3.6.5"
 
     val scalus = "1.3.0"
     val bouncyCastle = "1.85.2"
@@ -44,6 +45,8 @@ object Dependencies {
     val http4sCirce = "org.http4s" %% "http4s-circe" % V.http4s
     val catsParse = "org.typelevel" %% "cats-parse" % V.catsParse
     val slf4jApi = "org.slf4j" % "slf4j-api" % V.slf4j
+    // DNS SRV and address records with answer TTLs for the node's relay-root resolver.
+    val dnsjava = "dnsjava" % "dnsjava" % V.dnsjava
     // Optics and derived Eq/Show for the ledger-state mirror (ledger/state).
     val monocleCore = "dev.optics" %% "monocle-core" % V.monocle
     val monocleMacro = "dev.optics" %% "monocle-macro" % V.monocle

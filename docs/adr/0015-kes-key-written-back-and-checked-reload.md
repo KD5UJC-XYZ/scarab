@@ -1,6 +1,6 @@
 # 0015. The evolved KES key is written back, and credentials are reloaded on SIGHUP only after a check
 
-- **Status**: Accepted
+- **Status**: Accepted; file-backed writeback retained by owner review on 2026-10-19. A separate KES agent is tracked in [H2 / #38](https://github.com/KD5UJC-XYZ/scarab/issues/38).
 - **Date**: 2026-10-17
 - **Issue**: [#116](https://github.com/KD5UJC-XYZ/scarab/issues/116)
 
@@ -23,7 +23,8 @@ test-network pool (#116).
    force the file, decode and validate its structure, verification key, period and serialized bytes, then
    force the containing directory. Only then overwrite every predecessor byte with zeros and force that
    file, atomically rename the staged file over it, and force the directory again. Directory-sync failures
-   are typed persistence failures and are retried with the evolved key on later slots. The file stays a
+   are typed persistence failures; the current terminal key-update policy prevents further signing
+   and stops the node. Recovery is performed on a subsequent start, not by continuing to forge. The file stays a
    `cardano-cli` envelope;
    the period is read off the key (the erased `r1` seeds spell it in binary), so no persisted format changes
    and [ADR 0006](0006-versioned-formats-migrate-on-open.md) needs no migration. For a process crash, the
@@ -46,14 +47,22 @@ test-network pool (#116).
   same-filesystem atomic rename. A failed or unsupported directory force is reported; persistence is not
   called durable in that case. Injected tests cover process-crash boundaries and sync failures, not physical
   power loss.
-- Forward security holds for the key visible through the live file path after successful persistence. A
-  copy-on-write or journalling file system may retain overwritten blocks, so overwrite is not a physical
-  secure-erase guarantee; use an encrypted volume where that matters.
-- The key file must be writable by the node. A write failure is reported (`kesPersistFailed`) and does not stop
-  forging.
+- After successful persistence, the live file contains the latest evolved state rather than the
+  provisioned period-0 key. Under the assumption that earlier material has not been retained, this
+  reduces what a later read of that path reveals. It is not an unconditional forward-security or
+  physical secure-erasure guarantee: copies, backups, filesystem snapshots and retained blocks are
+  outside that live-path replacement. The owner accepts this file-backed tradeoff for now.
+- Use an encrypted filesystem and restrict access to the key directory. Encryption protects stored
+  data under its key-management assumptions; it does not prevent a reader of the mounted filesystem
+  from copying plaintext keys, or make every earlier copy inaccessible. A separate upstream KES
+  agent process is the planned way to keep generated/evolved signing keys out of persistent storage
+  ([#38](https://github.com/KD5UJC-XYZ/scarab/issues/38)).
+- The key file must be writable by the node. A write failure is reported (`kesPersistFailed`) and prevents further signing.
 - A bad rotation cannot take the pool off the air: the node keeps what it has and the driver restores the
   previous pair. The Haskell node would have switched.
-- Revisit if a KES agent (H2) supplies the key: the agent owns evolution and the file is not written then.
+- Revisit if a KES agent (H2) manages secret lifecycle and distribution. The node still performs KES
+  evolution and block signing locally; remote signing is not part of the plan. Any agent-backed
+  persistence boundary must be reviewed explicitly before changing this file-backed policy.
 
 ## Error representation (2026-10-18, #82)
 

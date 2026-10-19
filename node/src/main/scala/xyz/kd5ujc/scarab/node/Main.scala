@@ -321,28 +321,12 @@ object Main extends IOApp:
           options.genesisDir
             .toRight(ConfigError(ConfigProblem.RequiredOneOf(Set("--config", "--genesis-dir"))))
             .flatMap(NodeSetup.fromDirectory)
-      topology <- options.topologyFile.traverse(Topology.read)
-      // `peerSnapshotFile` is relative to the topology file, as the reference reads it
-      snapshotFile = for
-        file <- options.topologyFile
-        name <- topology.flatMap(_.peerSnapshotFile)
-      yield file.resolveSibling(name)
-      snapshot <- PeerSnapshot
-        .use(
-          snapshotFile,
-          setup.genesis.networkMagic.toLong,
-          topology.fold[UseLedgerPeers](UseLedgerPeers.Disabled)(_.useLedgerAfterSlot)
-        )
-        .leftMap(r => ConfigError(ConfigProblem.PeerSnapshot(r)))
+      loadedTopology <- topologyRoots(options, setup)
+      topology = loadedTopology._1
+      roots = loadedTopology._2
       settings = setup.config.settings
       fromFile = options.configFile.isDefined
       peers = (options.peers ++ topology.toList.flatMap(_.peers)).distinct
-      roots = PeerNetwork.roots(options.peers, topology, snapshot)
-      _ <- Either.cond(
-        roots.hasPeers,
-        (),
-        ConfigError(ConfigProblem.NoPeers)
-      )
     yield (
       options.copy(
         peers = peers,
@@ -359,6 +343,38 @@ object Main extends IOApp:
       setup,
       topology
     )
+
+  /** Read a complete topology and its optional snapshot before any running network state changes.
+    */
+  private[node] def topologyRoots(
+      options: Options,
+      setup: NodeSetup
+  ): Either[ConfigError, (Option[Topology], PeerNetwork.Roots)] =
+    for
+      topology <- options.topologyFile.traverse(Topology.read)
+      _ <- Either.cond(
+        setup.config.settings.consensusMode !=
+          xyz.kd5ujc.scarab.network.selection.ConsensusMode.GenesisMode ||
+          topology.flatMap(_.bootstrapPeers).isEmpty,
+        (),
+        ConfigError(ConfigProblem.BootstrapPeersInGenesisMode)
+      )
+      // `peerSnapshotFile` is relative to the topology file, as the reference reads it
+      snapshotFile = for
+        file <- options.topologyFile
+        name <- topology.flatMap(_.peerSnapshotFile)
+      yield file.resolveSibling(name)
+      snapshot <- PeerSnapshot
+        .use(
+          snapshotFile,
+          setup.genesis.networkMagic.toLong,
+          topology.fold[UseLedgerPeers](UseLedgerPeers.Disabled)(_.useLedgerAfterSlot),
+          setup.config.settings.consensusMode
+        )
+        .leftMap(r => ConfigError(ConfigProblem.PeerSnapshot(r)))
+      roots = PeerNetwork.roots(options.peers, topology, snapshot)
+      _ <- Either.cond(roots.hasPeers, (), ConfigError(ConfigProblem.NoPeers))
+    yield (topology, roots)
 
   /** The BLS12-381 library the JVM is going to load, checked before anything evaluates a script: a
     * library built for processor features this one lacks kills the JVM with SIGILL, with no event
@@ -413,6 +429,7 @@ object Main extends IOApp:
         ).tupled).use { case ((store, checkpoints), cache, scheduling) =>
           followWith(
             options,
+            requested.peers,
             setup,
             topology,
             store,
@@ -425,6 +442,7 @@ object Main extends IOApp:
 
   private def followWith(
       options: Options,
+      cliPeers: List[SocketAddress[Host]],
       loaded: NodeSetup,
       topology: Option[Topology],
       store: UtxoStore[IO],
@@ -789,6 +807,9 @@ object Main extends IOApp:
             targets <- setup.config.settings
               .peerTargets(defaults)
               .fold(e => fail[Targets](e), IO.pure)
+            syncTargets <- setup.config.settings
+              .syncTargets(Targets.sync)
+              .fold(e => fail[Targets](e), IO.pure)
             losses <- Ref.of[IO, Int](0)
             fetchModeRef <- Ref.of[IO, FetchMode](FetchMode.BulkSync)
             chainView = new PeerNetwork.ChainView[IO]:
@@ -824,7 +845,8 @@ object Main extends IOApp:
                   .updateAndGet(_ + 1)
                   .flatMap(n => events.emit(FollowerEvent.Reconnecting(error, n))),
               fatal = fatalSink,
-              fetchMode = Some(fetchModeRef.get)
+              fetchMode = Some(fetchModeRef.get),
+              serve = Some(handlers)
             )
             emitOutput = (out: Output[PeerNetwork.Addr]) =>
               measured.peerSelection(out) *> (out match
@@ -839,6 +861,10 @@ object Main extends IOApp:
                   PeerNetwork.Roots(Nil, Set.empty, None, UseLedgerPeers.Disabled)
                 ),
                 targets,
+                consensusMode = setup.config.settings.consensusMode,
+                syncTargets = syncTargets,
+                minBigLedgerPeersForTrustedState =
+                  setup.config.settings.minBigLedgerPeersForTrustedState,
                 peerSharing = peerSharing,
                 intervals = options.churnInterval.fold(Churn.Intervals())(Churn.Intervals.every),
                 timeouts = options.churnInterval.fold(Churn.Timeouts())(Churn.Timeouts().within),
@@ -857,7 +883,8 @@ object Main extends IOApp:
               mode => measured.fetchMode(mode) *> logged(NodeEvent.FetchModeChanged(mode)),
               marker,
               LedgerPeersSource.fromChain[IO, MirrorState](ref.get),
-              sharing = Some(sharing)
+              sharing = Some(sharing),
+              immutable = immutable
             )
             relay = options.listen.fold(Resource.unit[IO])(address =>
               BearerServer
@@ -939,11 +966,9 @@ object Main extends IOApp:
               yield forger
             }
             _ <- forging.traverse_(f => collectors.add(Collectors.forging(f.stats)))
-            // SIGHUP re-reads the KES key and operational certificate (as the Haskell node does)
+            // The process owns the forger loop; SIGHUP is installed with the live network below.
             production = forging.fold(Resource.unit[IO])(f =>
-              Signals
-                .hangup[IO](f.reload.flatMap(_.fold(fatalSink, _ => IO.unit)))
-                .flatMap(_ => f.run.flatMap(_.fold(fatalSink, _ => IO.unit)).background.void)
+              f.run.flatMap(_.fold(fatalSink, _ => IO.unit)).background.void
             )
             // the chain we start from is progress made: the watchdog counts from here
             _ <- ref.get.flatMap(c => c.tipRef.traverse_(t => watchdog.extended(t.blockNo)))
@@ -963,10 +988,39 @@ object Main extends IOApp:
                     .sample(stores)
                     .flatMap(sample => logged(NodeEvent.Memory(sample)))).foreverM.background.void
             run = blockPool.maintenance.surround(network.use { net =>
+              val reloadTopology: IO[Unit] = options.topologyFile.traverse_ { _ =>
+                // `options.peers` includes the topology loaded at startup. Keep reload roots tied
+                // to the original CLI peers so a removed topology peer cannot become permanent.
+                IO.blocking(topologyRoots(options.copy(peers = cliPeers), loaded)).flatMap {
+                  case Left(error) =>
+                    logged(
+                      NodeEvent.Library(
+                        "scarab.topology",
+                        Severity.Warning,
+                        s"topology reload refused: ${error.message}",
+                        None
+                      )
+                    )
+                  case Right((_, nextRoots)) => net.reloadRoots(nextRoots)
+                }
+              }
+              val reload =
+                forging.traverse_(f => f.reload.flatMap(_.fold(fatalSink, _ => IO.unit))) *>
+                  reloadTopology
+              val signals =
+                if options.topologyFile.isDefined || forging.isDefined then
+                  Signals.hangup[IO](reload)
+                else Resource.unit[IO]
               // the governor ends the node only by a fault (an invariant, the bootstrap timeout)
               val sync: IO[Unit] =
                 collectors.add(Collectors.peerMetrics(net.metrics)) *>
-                  IO.race(net.run, net.fatal.get).flatMap(_.fold(identity, fail[Unit]))
+                  IO.race(net.run, net.fatal.get).flatMap {
+                    case Left(done) => done
+                    case Right(fault) =>
+                      PeerNetwork.fatalForGovernor(fault) match
+                        case Some(nodeFault) => fatalSink(nodeFault) *> IO.never
+                        case None            => fail[Unit](fault)
+                  }
               QueryServer
                 .resource[IO, MirrorState](
                   ChainView.fromRef(ref),
@@ -988,6 +1042,7 @@ object Main extends IOApp:
                 )(fatalSink)
                 .flatMap(_ => relay)
                 .flatMap(_ => local)
+                .flatMap(_ => signals)
                 .flatMap(_ => production)
                 .flatMap(_ => reporting)
                 .flatMap(_ => watching)

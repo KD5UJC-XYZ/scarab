@@ -66,12 +66,20 @@ final class OutboundPeers[F[_]: Async, A] private (
   // ------------------------------------------------------------------ warm
 
   def establish(peer: A, mode: DiffusionMode, provenance: Provenance): F[Option[FailureClass]] =
+    establishAt(peer, mode, provenance, BigInt(0))
+
+  override def establishAt(
+      peer: A,
+      mode: DiffusionMode,
+      provenance: Provenance,
+      generation: BigInt
+  ): F[Option[FailureClass]] =
     transport.resolve(peer).flatMap {
       case Left(error) => F.pure(Some(FailurePolicy.classify(error)))
       case Right(remote) =>
         for
           ready <- Deferred[F, Option[FailureClass]]
-          _ <- supervisor.supervise(connection(peer, remote, ready))
+          _ <- supervisor.supervise(connection(peer, remote, mode, generation, ready))
           result <- ready.get
         yield result
     }
@@ -83,6 +91,8 @@ final class OutboundPeers[F[_]: Async, A] private (
   private def connection(
       peer: A,
       remote: SocketAddress[IpAddress],
+      mode: DiffusionMode,
+      generation: BigInt,
       ready: Deferred[F, Option[FailureClass]]
   ): F[Unit] =
     (Deferred[F, Unit], Deferred[F, Unit], Ref.of[F, Option[Link[F]]](None)).tupled.flatMap {
@@ -100,28 +110,45 @@ final class OutboundPeers[F[_]: Async, A] private (
                 bearer,
                 hot.magic,
                 NtNHeader.codec,
-                hot.network
+                hot.network,
+                serve = mode match
+                  case DiffusionMode.InitiatorOnly         => None
+                  case DiffusionMode.InitiatorAndResponder => hot.serve
               )
               _ <- Resource.eval(
-                slot.connected *> slot.negotiated(ConnectionState.DataFlow.Unidirectional)
+                slot.connected *> slot.negotiated(
+                  if warm.duplex then ConnectionState.DataFlow.Duplex
+                  else ConnectionState.DataFlow.Unidirectional
+                )
               )
             yield warm
 
           open.use { warm =>
             for
               phase <- Ref.of[F, Phase[F]](Phase.Warm())
-              link = Link(warm, release, gone, phase)
-              _ <- linked.set(Some(link))
-              _ <- table.update(_ + (peer -> link))
-              _ <- connected.traverse_(_(peer, remote))
-              _ <- report(Event.SharingNegotiated(peer, warm.peerSharing.isDefined))
-              _ <- ready.complete(None)
-              closed <- F.race(release.get, warm.mux.closed)
-              _ <- closed.traverse_(reason =>
-                Peer.networkFault(reason) match
-                  case Fault.Failed(error) => lost(peer, link, error)
-                  case Fault.Defect(cause) => stop(link, Fatal.Defect(cause))
-              )
+              link = Link(warm, release, gone, phase, generation)
+              installed <- table.modify { current =>
+                if current.contains(peer) then (current, false)
+                else (current.updated(peer, link), true)
+              }
+              _ <-
+                if !installed then
+                  ready.complete(Some(FailureClass.Transient)).void *> release.complete(()).void
+                else
+                  linked.set(Some(link)) *>
+                    connected.traverse_(_(peer, remote)) *>
+                    report(
+                      Event.SharingNegotiated(peer, warm.peerSharing.isDefined, Some(generation))
+                    ) *>
+                    ready.complete(None) *>
+                    F.race(release.get, warm.mux.closed)
+                      .flatMap(
+                        _.traverse_(reason =>
+                          Peer.networkFault(reason) match
+                            case Fault.Failed(error) => lost(peer, link, error)
+                            case Fault.Defect(cause) => stop(link, Fatal.Defect(cause))
+                        )
+                      )
             yield ()
           }
 
@@ -143,7 +170,11 @@ final class OutboundPeers[F[_]: Async, A] private (
               ready.complete(None).void *>
                 linked.get.flatMap(_.fold(hot.fatal(fatal))(stop(_, fatal)))
           }
-          .guarantee(table.update(_ - peer) *> gone.complete(()).void)
+          .guarantee(
+            table.update { current =>
+              if current.get(peer).exists(_.release eq release) then current - peer else current
+            } *> gone.complete(()).void
+          )
     }
 
   /** Fatal outcomes release the transport without entering peer-selection failure policy. */
@@ -161,7 +192,8 @@ final class OutboundPeers[F[_]: Async, A] private (
         def observation(released: Boolean) =
           Event.Observed(
             peer,
-            Observation.Lost(failure, config.repromoteDelay, released, error.message)
+            Observation.Lost(failure, config.repromoteDelay, released, error.message),
+            Some(link.rootsGeneration)
           )
         hot.lost(error) *> report(observation(released = false)) *>
           supervisor
@@ -174,12 +206,19 @@ final class OutboundPeers[F[_]: Async, A] private (
   /** Attribution outlives a connection. It refers only to the peer identity and the governor, never
     * a released session's Raise or Link. Stop a newer connection to that same peer too.
     */
-  private[node] def rejectedCachedBlock(peer: A, refusal: ValidationError): F[Unit] =
+  private[node] def rejectedCachedBlock(
+      peer: A,
+      generation: BigInt,
+      refusal: ValidationError
+  ): F[Unit] =
     F.uncancelable { _ =>
-      table.get.flatMap(_.get(peer).traverse_ { link =>
-        link.phase.set(Phase.Ending()) *> link.release.complete(()).void
-      }) *> hot.lost(PeerError.InvalidBlock(refusal)) *>
-        report(Event.Observed(peer, Observation.CachedBlockRejected(refusal.message)))
+      table.get.flatMap(_.get(peer).filter(_.rootsGeneration == generation).traverse_ { link =>
+        link.phase.set(Phase.Ending()) *> link.release.complete(()).void *>
+          hot.lost(PeerError.InvalidBlock(refusal)) *>
+          report(
+            Event.Observed(peer, Observation.CachedBlockRejected(refusal.message), Some(generation))
+          )
+      })
     }
 
   /** A request starts in its own scope. Domain network failures terminate that mini-protocol's
@@ -288,7 +327,7 @@ final class OutboundPeers[F[_]: Async, A] private (
               Some(metered(peer)),
               Some(hot.pool),
               hot.fetchMode,
-              Some(rejectedCachedBlock(peer, _))
+              Some(rejectedCachedBlock(peer, link.rootsGeneration, _))
             )
             .use { over =>
               session.connection.complete(connection) *> started.complete(None) *>
@@ -386,6 +425,12 @@ final class OutboundPeers[F[_]: Async, A] private (
   def close(peer: A): F[Boolean] =
     table.get.map(_.get(peer)).flatMap(_.fold(F.pure(true))(close))
 
+  override def closeIfGeneration(peer: A, generation: BigInt): F[Option[Boolean]] =
+    table.get.map(_.get(peer)).flatMap {
+      case Some(link) if link.rootsGeneration == generation => close(link).map(Some(_))
+      case _                                                => F.pure(None)
+    }
+
   /** End the connection and wait for it to be released; false when it is not within the demotion
     * timeout.
     */
@@ -455,7 +500,9 @@ object OutboundPeers:
       /** The fetch mode, which BlockFetch reads to decide whether a block another session has
         * claimed may be requested too.
         */
-      fetchMode: Option[F[FetchMode]] = None
+      fetchMode: Option[F[FetchMode]] = None,
+      /** Responder protocols served on outbound peers whose diffusion mode is duplex. */
+      serve: Option[ServerHandlers[F, NtNHeader]] = None
   )
 
   /** A connection of ours, and what its owner can do to it. */
@@ -465,7 +512,8 @@ object OutboundPeers:
       val release: Deferred[F, Unit],
       /** Completed once the connection has been released everywhere. */
       val gone: Deferred[F, Unit],
-      val phase: Ref[F, Phase[F]]
+      val phase: Ref[F, Phase[F]],
+      val rootsGeneration: BigInt
   )
 
   private[node] enum Phase[F[_]]:

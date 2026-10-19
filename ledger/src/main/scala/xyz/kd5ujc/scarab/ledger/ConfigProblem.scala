@@ -55,6 +55,7 @@ enum ConfigProblem:
   case UnspecifiedDestination(value: String)
   case SrvAccessPoint(value: String)
   case UntrustedBootstrap
+  case BootstrapPeersInGenesisMode
   case MissingValency
   case UnknownFlag(flag: String)
   case DuplicateFlag(flag: String)
@@ -92,5 +93,7 @@ enum ConfigProblem:
     case ConflictingFields(fields) =>
       s"specify one of ${fields.toVector.sorted.mkString(", ")}, not both"
     case NoPeers => "no peer to follow: the topology names no local root, bootstrap or public root"
+    case BootstrapPeersInGenesisMode =>
+      "topology bootstrapPeers cannot be configured with ConsensusMode GenesisMode"
     case WithUsage(cause, usage) => s"${cause.message}\n$usage"
     case _                       => toString

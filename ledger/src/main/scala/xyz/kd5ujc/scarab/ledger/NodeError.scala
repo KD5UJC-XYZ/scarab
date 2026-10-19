@@ -356,11 +356,19 @@ enum KesStageMismatch:
 enum GovernorFault extends NodeError:
   case InvariantBroken[E <: DomainError](violations: List[E]) extends GovernorFault
   case BootstrapPeersCriticalTimeout
+  case SnapshotStorage(error: StorageError)
+  case SnapshotVerificationDefect(cause: Throwable)
+  case LocalDnsRefreshDefect(cause: Throwable)
 
   def message: String = this match
     case InvariantBroken(vs) => s"the peer selection state broke an invariant: ${vs.mkString(", ")}"
     case BootstrapPeersCriticalTimeout =>
       "the node did not reach a clean state with only bootstrap peers within 15 minutes"
+    case SnapshotStorage(error) => s"peer snapshot verification: ${error.message}"
+    case SnapshotVerificationDefect(cause) =>
+      s"peer snapshot verification defect: ${Option(cause.getMessage).getOrElse(cause.getClass.getName)}"
+    case LocalDnsRefreshDefect(cause) =>
+      s"local root DNS refresh defect: ${Option(cause.getMessage).getOrElse(cause.getClass.getName)}"
 
 /** The BLS12-381 library the JVM would load cannot run on this machine, or computes a wrong answer
   * (checked at start-up; ADR 0012). Without the check the JVM dies with SIGILL, without an event.

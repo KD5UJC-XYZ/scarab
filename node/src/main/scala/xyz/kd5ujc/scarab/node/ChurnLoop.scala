@@ -16,6 +16,7 @@ trait ChurnWorld[F[_]]:
   def counters: F[GovernorState.Counters]
   def localHot: F[Int]
   def fetchMode: F[FetchMode]
+  def judgement: F[LedgerStateJudgement]
   def requested: F[Targets]
   def request(targets: Targets): F[Unit]
 
@@ -39,6 +40,8 @@ object ChurnLoop:
       base: Targets,
       /** The regime for a fetch mode (bootstrap peers configured or not). */
       regime: FetchMode => Regime.Kind,
+      consensusMode: ConsensusMode = ConsensusMode.PraosMode,
+      syncTargets: Targets = Targets.sync,
       intervals: Churn.Intervals = Churn.Intervals(),
       timeouts: Churn.Timeouts = Churn.Timeouts(),
       /** Whether the node has big ledger peers: the six steps for them are skipped otherwise. */
@@ -57,8 +60,21 @@ object ChurnLoop:
     val F = Temporal[F]
     config.ask[Config].flatMap { cfg =>
       def context: F[Churn.Context] =
-        (world.fetchMode, world.localHot)
-          .mapN((mode, hot) => Churn.Context(cfg.regime(mode), hot, cfg.base))
+        config.ask[Config].flatMap { current =>
+          (world.fetchMode, world.localHot, world.judgement)
+            .mapN { (mode, hot, judgement) =>
+              Churn.Context(
+                current.regime(mode),
+                hot,
+                Churn.targetsFor(
+                  current.consensusMode,
+                  judgement,
+                  current.base,
+                  current.syncTargets
+                )
+              )
+            }
+        }
 
       /** Sleep `total`, watching the regime: when the node changes it (it left bulk sync, or was
         * far behind again) the steady targets of the new regime are asked for at once, rather than
@@ -66,16 +82,16 @@ object ChurnLoop:
         * old regime until the next round; the node starts in bulk sync and leaves it once, so
         * waiting would hold it at the cut targets for the whole interval.)
         */
-      def sleeping(total: FiniteDuration, from: Regime.Kind): F[Unit] =
-        F.tailRecM((total, from)) { (left, kind) =>
+      def sleeping(total: FiniteDuration, from: Churn.Context): F[Unit] =
+        F.tailRecM((total, from)) { (left, previous) =>
           if left <= Duration.Zero then F.pure(Right(()))
           else
             val tick = left.min(cfg.poll * 2)
             F.sleep(tick) *> context.flatMap { ctx =>
               world
                 .request(Churn.steady(ctx))
-                .whenA(ctx.kind != kind)
-                .as(Left((left - tick, ctx.kind)))
+                .whenA(ctx != previous)
+                .as(Left((left - tick, ctx)))
             }
         }
 
@@ -119,8 +135,12 @@ object ChurnLoop:
         yield achieved.updated(s, change.abs)
 
       def round: F[Unit] =
-        world.fetchMode.flatMap(mode => out.tell(Churn.Trace.Mode(mode))) *>
-          Churn.round(cfg.bigLedger).foldLeftM(Map.empty[Churn.Step, Int])(step).void
+        for
+          current <- config.ask[Config]
+          mode <- world.fetchMode
+          _ <- out.tell(Churn.Trace.Mode(mode))
+          _ <- Churn.round(current.bigLedger).foldLeftM(Map.empty[Churn.Step, Int])(step).void
+        yield ()
 
       for
         // the head start: the local roots first, the root peers after
@@ -135,10 +155,10 @@ object ChurnLoop:
           (rng, elapsed) =>
             for
               mode <- world.fetchMode
-              kind = cfg.regime(mode)
               (delay, rng1) = Churn.delay(mode, cfg.intervals, elapsed, rng)
               _ <- out.tell(Churn.Trace.Wait(delay))
-              _ <- sleeping(delay, kind)
+              current <- context
+              _ <- sleeping(delay, current)
               roundBegan <- F.monotonic
               _ <- round
               took <- F.monotonic.map(_ - roundBegan)

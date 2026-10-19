@@ -28,6 +28,20 @@ import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
   */
 object PeerSelection:
 
+  /** `targetPeers` (`Cardano/Network/PeerSelection/Governor/Monitor.hs` 134-142) repairs only a
+    * stale baseline after a judgement flip. Targets emitted by churn between those baselines stay
+    * in force.
+    */
+  private def effectiveTargets(sensitivity: Sensitivity, requested: Targets): Targets =
+    if sensitivity.consensusMode != ConsensusMode.GenesisMode then requested
+    else
+      sensitivity.judgement match
+        case LedgerStateJudgement.TooOld if requested == sensitivity.deadlineTargets =>
+          sensitivity.syncTargets
+        case LedgerStateJudgement.YoungEnough if requested == sensitivity.syncTargets =>
+          sensitivity.deadlineTargets
+        case _ => requested
+
   /** Whether `st` is the state to act on at `now`: bookkeeping that depends on time only
     * (`KnownPeers.setCurrentTime`): a peer that stayed hot long enough has its fail count reset.
     */
@@ -168,46 +182,83 @@ object PeerSelection:
       */
     def judgement: Guard[A] =
       val s = st.sensitivity
-      if !s.useBootstrapPeers || st.reported == s.judgement then Skip(None)
+      val genesis = s.consensusMode == ConsensusMode.GenesisMode
+      if (!s.useBootstrapPeers && !genesis) || st.reported == s.judgement then Skip(None)
       else
         st.reported match
           case LedgerStateJudgement.TooOld =>
-            val demoted = st.peers.map { (p, r) =>
-              p -> (if r.origin == Origin.Local then r.copy(origin = Origin.Other) else r)
-            }
-            go(
-              st.copy(
-                targets = Targets.zero,
-                peers = demoted,
-                localRoots = LocalRoots.empty[A],
-                publicRootBackoffs = 0,
-                publicRootRetryAt = now,
-                sensitivity = s.copy(
-                  judgement = LedgerStateJudgement.TooOld,
-                  hasOnlyBootstrapPeers = false,
-                  timeout = Some(now + Sensitivity.CleanStateTimeout)
+            if genesis then
+              val nextSensitivity = s.copy(
+                judgement = LedgerStateJudgement.TooOld,
+                timeout = None
+              )
+              val nextTargets = effectiveTargets(nextSensitivity, st.requested)
+              go(
+                st.copy(
+                  targets = nextTargets,
+                  sensitivity = nextSensitivity
+                ),
+                Nil,
+                List(
+                  Trace.JudgementChanged(LedgerStateJudgement.TooOld),
+                  Trace.TargetsChanged(nextTargets)
                 )
-              ),
-              Nil,
-              List(Trace.JudgementChanged(LedgerStateJudgement.TooOld))
-            )
+              )
+            else
+              val demoted = st.peers.map { (p, r) =>
+                p -> (if r.origin == Origin.Local then r.copy(origin = Origin.Other) else r)
+              }
+              go(
+                st.copy(
+                  targets = Targets.zero,
+                  peers = demoted,
+                  localRoots = LocalRoots.empty[A],
+                  publicRootBackoffs = 0,
+                  publicRootRetryAt = now,
+                  sensitivity = s.copy(
+                    judgement = LedgerStateJudgement.TooOld,
+                    hasOnlyBootstrapPeers = false,
+                    timeout = Some(now + Sensitivity.CleanStateTimeout)
+                  )
+                ),
+                Nil,
+                List(Trace.JudgementChanged(LedgerStateJudgement.TooOld))
+              )
           case LedgerStateJudgement.YoungEnough =>
-            val dropped = view.bootstrap -- view.established -- view.connecting
-            go(
-              st.copy(
-                peers = st.peers -- dropped,
-                publicRootBackoffs = 0,
-                publicRootRetryAt = now,
-                sensitivity = s.copy(
-                  judgement = LedgerStateJudgement.YoungEnough,
-                  hasOnlyBootstrapPeers = false,
-                  timeout = None
+            if genesis then
+              val nextSensitivity = s.copy(
+                judgement = LedgerStateJudgement.YoungEnough,
+                timeout = None
+              )
+              val nextTargets = effectiveTargets(nextSensitivity, st.requested)
+              go(
+                st.copy(
+                  targets = nextTargets,
+                  sensitivity = nextSensitivity
+                ),
+                Nil,
+                List(
+                  Trace.JudgementChanged(LedgerStateJudgement.YoungEnough),
+                  Trace.TargetsChanged(nextTargets)
                 )
-              ),
-              Nil,
-              Trace.JudgementChanged(LedgerStateJudgement.YoungEnough) ::
-                (if dropped.isEmpty then Nil else List(Trace.Forgotten(dropped.toList)))
-            )
+              )
+            else
+              val dropped = view.bootstrap -- view.established -- view.connecting
+              go(
+                st.copy(
+                  peers = st.peers -- dropped,
+                  publicRootBackoffs = 0,
+                  publicRootRetryAt = now,
+                  sensitivity = s.copy(
+                    judgement = LedgerStateJudgement.YoungEnough,
+                    hasOnlyBootstrapPeers = false,
+                    timeout = None
+                  )
+                ),
+                Nil,
+                Trace.JudgementChanged(LedgerStateJudgement.YoungEnough) ::
+                  (if dropped.isEmpty then Nil else List(Trace.Forgotten(dropped.toList)))
+              )
 
     // ---------------------------------------------------------------- targets and local roots
 
@@ -216,7 +267,7 @@ object PeerSelection:
       * known target (and, in the sensitive state, to the trustable ones).
       */
     def targets: Guard[A] =
-      val wanted = st.requested
+      val wanted = effectiveTargets(st.sensitivity, st.requested)
       if wanted == Targets.zero || !st.sensitivity.ableToMakeProgress || wanted == st.targets then
         Skip(None)
       else
@@ -321,7 +372,7 @@ object PeerSelection:
           val (_, next) = st.rng.split
           go(
             st.copy(publicRootsInFlight = true, rng = next),
-            List(Job.RequestRoots(missing, st.sensitivity.sensitive)),
+            List(Job.RequestRoots(missing, st.sensitivity.sensitive, st.rootsGeneration)),
             List(Trace.RootsRequest(st.targets.root, view.roots.size))
           )
         else Skip(Some(st.publicRootRetryAt))
@@ -383,7 +434,7 @@ object PeerSelection:
           withStatus(picked, Status.Connecting).copy(rng = next),
           picked.map { p =>
             val c = settings(p)
-            Job.Connect(p, c.diffusionMode, c.provenance)
+            Job.Connect(p, c.diffusionMode, c.provenance, st.rootsGeneration)
           },
           List(
             Trace.Promote(
@@ -412,7 +463,14 @@ object PeerSelection:
         val (picked, next) = Picks.promotion(available, missing, st.rng)
         go(
           withStatus(picked, Status.Connecting).copy(rng = next),
-          picked.map(Job.Connect(_, DiffusionMode.InitiatorAndResponder, Provenance.Outbound)),
+          picked.map(p =>
+            Job.Connect(
+              p,
+              DiffusionMode.InitiatorAndResponder,
+              Provenance.Outbound,
+              st.rootsGeneration
+            )
+          ),
           List(
             Trace.Promote(
               Temperature.Cold,
@@ -600,10 +658,46 @@ object PeerSelection:
     given Ordering[A] = st0.peers.ordering
     val st = tick(st0, now)
     event match
-      case Event.TargetsRequested(t)    => Decision(st.copy(requested = t), Nil, Nil)
-      case Event.JudgementReported(j)   => Decision(st.copy(reported = j), Nil, Nil)
-      case Event.RootsConfigured(roots) => Decision(st.copy(configuredRoots = roots), Nil, Nil)
-      case Event.SharingNegotiated(peer, enabled) =>
+      case Event.TargetsRequested(t, generation) =>
+        if generation.exists(_ != st.rootsGeneration) then Decision(st, Nil, Nil)
+        else Decision(st.copy(requested = t), Nil, Nil)
+      case Event.JudgementReported(j)                => Decision(st.copy(reported = j), Nil, Nil)
+      case Event.SnapshotVerificationCompleted(_, _) => Decision(st, Nil, Nil)
+      case Event.RootsConfigured(roots, bootstrap, configuredPublic, configuredGeneration) =>
+        val generation = configuredGeneration.getOrElse(st.rootsGeneration + 1)
+        if generation <= st.rootsGeneration then Decision(st, Nil, Nil)
+        else
+          val stillConfigured = roots.keys ++ configuredPublic
+          val peers = st.peers.map { (peer, record) =>
+            val statusCleared =
+              if record.status == Status.Connecting then record.copy(status = Status.Cold(None))
+              else record
+            val current =
+              if statusCleared.origin.root && !stillConfigured(peer) then
+                statusCleared.copy(origin = Origin.Other)
+              else statusCleared
+            peer -> current
+          }
+          Decision(
+            st.copy(
+              peers = peers,
+              configuredRoots = roots,
+              publicRootBackoffs = 0,
+              publicRootRetryAt = now,
+              bigLedgerBackoffs = 0,
+              bigLedgerRetryAt = now,
+              publicRootsInFlight = false,
+              bigLedgerInFlight = false,
+              rootsGeneration = generation,
+              sensitivity = st.sensitivity.copy(useBootstrapPeers = bootstrap)
+            ),
+            Nil,
+            Nil
+          )
+      case Event.SharingNegotiated(peer, enabled, generation)
+          if generation.exists(_ != st.rootsGeneration) =>
+        Decision(st, Nil, Nil)
+      case Event.SharingNegotiated(peer, enabled, _) =>
         Decision(
           st.updated(peer)(
             _.copy(sharing = Some(enabled))
@@ -611,6 +705,9 @@ object PeerSelection:
           Nil,
           Nil
         )
-      case Event.Wake(_)                     => Decision(st, Nil, Nil)
-      case Event.Observed(peer, observation) => Events.observed(st, peer, observation, now, policy)
-      case Event.Completed(outcome)          => Events.completed(st, outcome, now, policy)
+      case Event.Wake(_) => Decision(st, Nil, Nil)
+      case Event.Observed(peer, _, generation) if generation.exists(_ != st.rootsGeneration) =>
+        Decision(st, Nil, Nil)
+      case Event.Observed(peer, observation, _) =>
+        Events.observed(st, peer, observation, now, policy)
+      case Event.Completed(outcome) => Events.completed(st, outcome, now, policy)

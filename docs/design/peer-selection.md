@@ -1,7 +1,8 @@
 # Peer selection: the P2P governor (G1)
 
-**Status**: G1.1–G1.4 are implemented; G1.4b's private reference proof and gates are recorded in section 7f
-(2026-10-18). The original parent acceptance is evidenced below. Genesis hooks (G1.5) and the follow-ups remain separate. Tracked in
+**Status**: G1.1–G1.5 and the #142 topology/DNS/duplex implementation are present on the feature branch. The original parent acceptance
+and private reference evidence are recorded below. Full Genesis chain-density and ledger-dependent fork choice
+remain G3. Tracked in
 [#31](https://github.com/KD5UJC-XYZ/scarab/issues/31) (roadmap G1). Written against `main` at 6ce5bb77 and the
 reference sources named in section 1.1, which were read in full for the governor, the churn governor, the peer
 metrics, ledger peers, PeerSharing and the Cardano configuration; every claim about the reference carries its
@@ -25,7 +26,7 @@ targets and choices (feedback from the chain).
 | D6 | Where the Genesis boundary is | G1 ends at hooks: the `ConsensusMode` and `LedgerStateJudgement` inputs, the sync targets, the bootstrap-peers sensitive state. The density and fork-comparison rules (GDD, LoE, LoP) are G3 ([#33](https://github.com/KD5UJC-XYZ/scarab/issues/33)). The bootstrap-peers state is in G1.1, not G1.5, because the official Preview topology depends on it (section 1.15). |
 | D7 | How the "feedback" metrics reach the governor | A `PeerMetrics` component fed by two new observations from the `Peer` (the first header of each slot, the first block of each slot, each with its arrival time and its peer) and read by the hot-demotion pick (section 1.9). The reference feeds the same two events from consensus through `ReportPeerMetrics` (`PeerMetric/Type.hs:29-37`). |
 | D8 | Test oracle | The reference's governor tests are property tests over a simulated environment (`GovernorMockEnvironment`, `Test/Cardano/Network/PeerSelection/MockEnvironment.hs:139-163`) run by `IOSim`. We port the environment and the properties by name (section 6) on `TestControl`, as `FollowerSuite` already runs on it. The Haskell tests themselves are not run (the sources are not in the reference image). |
-| D9 | What to do about SRV and DNS | Out of scope for G1: `Topology` refuses a DNS SRV access point with `UnsupportedTopology` today, and ledger relays that are SRV or multi-host names are skipped when drawing ledger peers. A host name that resolves to addresses is resolved once at the time of the connection attempt (section 4.6). Tracked in section 8. |
+| D9 | SRV and DNS root selection | #142 implements topology and ledger SRV roots, all successful A/AAAA answers, TTL refresh, and SIGHUP topology reload. DNS follows the pinned `ouroboros-network` RootPeersDNS policy; see section 6.1 and the remaining limits in section 8. |
 | D10 | ADR | One ADR at G1.1: "Outbound peer selection is a pure decision function over a status-carrying state" (D2), so the next sessions do not reopen it. |
 
 ## 1. The reference model
@@ -491,14 +492,13 @@ does not discover or connect to anything else. After every pass the governor als
 use, only trustable local roots; in bootstrap mode, only trustable local roots and bootstrap peers with at least
 one bootstrap peer active; in Genesis mode, at least `minNumberOfBigLedgerPeers` active big ledger peers), and
 `UntrustedState` otherwise (and always in Praos mode with public roots). Consensus uses it to decide whether it
-may consider itself caught up. Scarab has no consumer for it until G3; G1.1 computes it and exports it as a
-gauge and a log line, so the output exists and is tested before anything depends on it.
+may consider itself caught up. G1.1 computes and exports it as a gauge and log line; #139 exposes the typed
+trusted-state output for a future consumer. Full Genesis consensus and that consumer remain G3.
 
-*What a `LedgerStateJudgement` is.* `TooOld` or `YoungEnough`, a function of the age of the ledger tip, supplied
-by consensus (the Genesis State Machine); the rule is in ouroboros-consensus, which was not read. Scarab needs a
-rule for it (open question 2).
+*What a `LedgerStateJudgement` is.* `TooOld` or `YoungEnough`, supplied by the Genesis State Machine. Scarab
+ports the pinned reference state machine; see section 7g and the source citations there.
 
-*Genesis mode, only enough to stage it.* `ConsensusMode` is `PraosMode` (default) or `GenesisMode`
+*Genesis mode.* `ConsensusMode` is `PraosMode` (default) or `GenesisMode`
 (`POM.hs:396`, `CDA/ConsensusMode.hs:28-29`). In Genesis mode the sync targets apply while `TooOld`
 (`Churn.hs:98-107`, `CD/PeerSelection/Governor/Monitor.hs:118-143`), bootstrap peers are not used (`TopologyP2P.hs:104-108`), the node
 needs `MinBigLedgerPeersForTrustedState` (5) active big ledger peers before consensus is told the state is
@@ -518,7 +518,7 @@ client and server implementation notes (`miniprotocols.tex:1612-1773`), and the 
 The authoritative statement of the algorithm is therefore the module header of `Governor.hs` (lines 80-448),
 which is where the numbers above come from; this document cites the code, as ADR 0001 prescribes.
 
-## 2. Scarab today
+## 2. Scarab before G1
 
 | Piece | What it does | Where |
 |---|---|---|
@@ -539,10 +539,8 @@ which is where the numbers above come from; this document cites the code, as ADR
 What this means for the design: the governor *replaces* the fan-out in `Main` and the fixed-delay retry in
 `Follower.supervise` (for outbound peers: a peer that fails becomes a backed-off cold peer, section 1.6), and
 sits *above* `ConnectionManager`, `Outbound`, `Peer`, `Follower.session` and `BlockPool`, which keep their
-roles. Two gaps in the lower layers are the main code risk and are named in section 4.5: there is no *warm*
-state (a connection is either not open or running everything), and a connection we open is initiator-only
-(G2's known limit), while the reference's warm connection on a duplex bearer is what makes an inbound peer
-useful as a known peer.
+roles. This section records the pre-governor baseline; the current warm/duplex connection behavior and
+generation-safe reload are described in sections 4.5 and 7g.
 
 ## 3. Reference module to Scala component
 
@@ -565,7 +563,7 @@ useful as a known peer.
 | `LedgerPeers.hs`, `LedgerPeers/Utils.hs` | `LedgerPeers` (pure: `accumulate`, `draw`, `bigQuota`) + relay decoder | `ledger`/`network` | G1.3 |
 | `PeerSharing.hs`, `Protocol/PeerSharing/*` | `protocol/PeerSharing.scala` (state machine, codec), `network/PeerSharingClient/Server` | `protocol`, `network` | G1.4 |
 | `PeerStateActions.hs` | `PeerStateActions[F]` algebra + interpreter | `node` | wraps `ConnectionManager`, `NodeToNode`, `Peer`, `Follower.session` |
-| `PeerSelectionActions.hs`, `RootPeersDNS*` | `RootProvider[F]` (topology, DNS, ledger, bootstrap) | `node` | DNS: resolve once (D9) |
+| `PeerSelectionActions.hs`, `RootPeersDNS*` | `RootProvider[F]` (topology, DNS, ledger, bootstrap) | `node` | DNS refresh follows the pinned root-peer TTL policy (D9) |
 | `Cardano/.../Governor/Monitor.hs`, `PeerSelectionState.hs` (`ExtraState`) | `Sensitivity` (the judgement and bootstrap machine) in `GovernorState` | `network` | G1.1 (bootstrap), G1.5 (Genesis hooks) |
 | `Cardano.Node.Configuration.TopologyP2P` | `Topology` (exists) + validation of the trustable rule | `node` | already refuses the same files |
 | `POM.hs` targets and defaults | `PeerSelectionConfig` read from `config.json` and flags | `node` | section 4.7 |
@@ -746,9 +744,10 @@ Inbound connections. The reference treats a duplex inbound connection as one the
 may add them as known peers (section 1.6). Scarab's `InboundGovernor` already runs clients on duplex inbound
 connections and `Outbound.connect` already reuses them, so in G1.1 an inbound duplex peer is reported to the
 governor as `Inbound` known peers and, when it is promoted, `establish` finds the existing connection (the
-`reused` event) instead of dialling. A connection that Scarab opens is still initiator-only (G2); making the
-warm connection duplex, as the reference's `InitiatorAndResponder` is, is a G4/G2 follow-up and is not
-required by G1.
+`reused` event) instead of dialling. An outbound connection configured as `InitiatorAndResponder` now offers the
+duplex handshake and owns the negotiated responder protocols in the same connection resource. Outbound attempt
+generations and link identity fence stale completion and cleanup after topology reload; an old attempt cannot
+replace or close a newer link for the same address.
 
 Limits. `ConnectionManager.Limits.maxOutbound` (64, not exposed) must be at least `established +
 establishedBig + local warm`; the governor's default established target is 30 + 10 on a relay, so the default is
@@ -759,12 +758,16 @@ delay 5 s, `Configuration.hs:76-81`; mapping it is G5's).
 ### 4.6 Roots and providers
 
 `RootProvider[F]` has three operations, each returning a typed result: `localRoots: F[List[LocalRootGroup]]`
-(from the topology and `--peer`; re-read on SIGHUP is the reference's behaviour and is a follow-up),
-`requestPublicRoots(kind, n, rng): F[(PublicRoots, Duration)]` (configured public roots, bootstrap peers in
-the sensitive state, ledger peers when `UseLedgerPeers` allows), and `ledgerPeers: F[Option[LedgerSnapshot]]`.
-Host names are resolved at connect time to an address by `ConnectionManager.resolve` (it exists), and a
-resolution failure is a connect failure like any other (counted, backed off), not a provider failure. DNS SRV
-stays refused (D9).
+(from the topology and `--peer`; re-read on SIGHUP), `requestPublicRoots(kind, n, rng): F[(PublicRoots, Duration)]`
+(configured public roots, bootstrap peers in the sensitive state, ledger peers when `UseLedgerPeers` allows),
+and `ledgerPeers: F[Option[LedgerSnapshot]]`.
+The node-owned `PeerDns` resource resolves topology and ledger host names to every successful A/AAAA answer.
+Local groups are re-resolved at independent per-source deadlines and installed through the acknowledged
+`RootsConfigured` owner event; a failed lookup retains the last successful addresses, while a successful empty
+answer removes them. Public and bootstrap requests return a refresh TTL to the governor. SRV names query `_cardano._tcp.<domain>`, retain
+only the lowest priority group, choose within that group by SRV weight, discard target `.`, resolve every address of
+the selected target, and use the selected SRV TTL for those addresses. Lookup failures produce no addresses and the
+reference's 60-second empty-answer retry.
 
 ### 4.7 Configuration
 
@@ -780,8 +783,9 @@ built from the topology, `config.json` (`TargetNumberOf...`, `SyncTargetNumberOf
 flags, with the defaults of section 1.5 chosen by `--forge`. Errors are `ConfigError` with new
 `ConfigProblem` cases (`TargetsNotSane`, `OutboundLimitBelowTargets`). No new flag is proposed: the reference has none for
 this, and a switch that kept the old fan-out in the running node would be a second copy of the logic (the
-owner's rule: once migrated, drop the dual copy; see open question 12). The
-`ConfigSettings.unsupported` entries for GenesisMode and PeerSharing are removed by G1.5 and G1.4.
+owner's rule: once migrated, drop the dual copy; see open question 12). `PeerSharing` is no longer unsupported
+(G1.4). `GenesisMode` is accepted and its governor hooks run, while its explicit partial-implementation diagnostic
+remains until G3 supplies the density and ledger-dependent rules.
 
 ### 4.8 Peer metrics
 
@@ -891,6 +895,43 @@ The Haskell tests themselves are not run: the reference image has no test binari
 fixed script (the four `prop_issue_*`, the `LocalRootPeers` examples) the script is ported as data and
 cited by line in the test.
 
+### 6.1 DNS roots and re-resolution
+
+`PeerDns` is a node-owned resource backed by dnsjava 3.6.5's query-aware `LookupSession`; its asynchronous
+lookups are cancelable, each A, AAAA, or SRV request has a five-second timeout, and its four-thread executor closes with the network resource. A and AAAA requests run concurrently, so a hostname lookup is bounded by the same five-second budget. Host roots retain every
+successful A and AAAA address and source provenance, including aliases that resolve to the same socket. Local
+group valencies, per-root flags, and the original hostname/SRV specification remain available for refresh. A
+valid topology reload replaces that specification and its resolved view through the acknowledged
+`RootsConfigured` event; a failed parse does not publish a partial replacement. Each configured DNS source has
+an independent cache and deadline. A successful empty answer removes that source's old addresses and retries
+after 60 seconds; a failed answer retains its last successful addresses. Name errors retry after 900 seconds,
+and other errors retry after `clip(previous interval * 2 + 5 seconds, 60, 900)`. DNS refreshes carry a root
+generation, so a late answer cannot replace a newer topology or answer.
+
+SRV queries for topology and ledger relay names use `_cardano._tcp.<domain>`. Scarab follows the pinned
+`ouroboros-network` behavior: discard target `.`, retain the numerically lowest priority, choose by advertised
+weight within that priority, resolve all A/AAAA records for the chosen target, and use the chosen SRV record's
+TTL instead of target-address TTLs. Successful RR TTLs are clipped to 60–900 seconds; the refresh interval is
+the maximum successful clipped TTL, or 60 seconds if there are no successful answers. Fixed IP roots do not
+contribute a DNS TTL. DNSSEC validation is not implemented or claimed.
+
+Reference: `ouroboros-network` pin `c45735a56c567fa977969173d18943bac6bb3821`,
+[`RootPeersDNS/DNSActions.hs`](https://github.com/IntersectMBO/ouroboros-network/blob/c45735a56c567fa977969173d18943bac6bb3821/ouroboros-network/src/Ouroboros/Network/PeerSelection/RootPeersDNS/DNSActions.hs#L406-L460)
+for SRV filtering/priority/weight and selected-target TTL, the same file's lines 614–635 for TTL clipping,
+and [`RootPeersDNS/LocalRootPeers.hs`](https://github.com/IntersectMBO/ouroboros-network/blob/c45735a56c567fa977969173d18943bac6bb3821/ouroboros-network/src/Ouroboros/Network/PeerSelection/RootPeersDNS/LocalRootPeers.hs#L195-L253)
+for retaining prior addresses on failure and independent per-source monitoring, lines 295–308 for TTL selection,
+clipping, and failure retry policy. The ledger relay prefix comes from
+[`RelayAccessPoint.hs`](https://github.com/IntersectMBO/ouroboros-network/blob/c45735a56c567fa977969173d18943bac6bb3821/ouroboros-network-api/src/Ouroboros/Network/PeerSelection/RelayAccessPoint.hs#L312-L320).
+The resolver dependency is pinned to `dnsjava:dnsjava:3.6.5`; this artifact is beyond the fix in the
+[GHSA-cfxw-4h78-h7fw advisory](https://github.com/dnsjava/dnsjava/security/advisories/GHSA-cfxw-4h78-h7fw)
+and corresponds to the [3.6.5 release](https://github.com/dnsjava/dnsjava/releases/tag/v3.6.5-1)
+(`ca25720`).
+
+The fake-DNS evidence is in `PeerDnsSuite`: it distinguishes unequal SRV weights and TTLs, lowest-priority
+selection, root-target filtering, selected port/TTL, multiple A/AAAA answers, alias provenance, fixed-IP
+coexistence, and local group refresh. The owner-event tests cover generation supersession. The private relay gate
+is recorded in section 7g when available.
+
 ## 7. Stages
 
 Each stage lands on its own, with the gates of its level ([CONTRIBUTING.md](../../CONTRIBUTING.md#gates-and-ceremony-by-level-of-change)).
@@ -936,8 +977,8 @@ showing the temperatures, the `cold/warm/hot` counters at the end). Not claimed:
 stage hot demotion is random); `Churn` (the three regimes, the twelve-step round, the head start, the intervals
 3300/900 s with fuzz 600/60 s, the timeouts) and `ChurnLoop`; a `FetchMode` input (bulk sync or deadline) from
 the node (open question 3); the Prometheus counters for the whole `peerSelection_*` group and the churn trace;
-the `governor` devnet scenario of section 6. Churn needs a sync-versus-deadline signal; until G1.5 the sync
-targets are used only through the Praos regimes of section 1.10.
+the `governor` devnet scenario of section 6. At this stage the fetch mode used the Praos regimes; #139 later
+added Genesis sync targets to churn (section 7g).
 
 *Files.* `network/.../selection/{PeerMetrics,Churn}.scala`, `node/.../ChurnLoop.scala`, `Peer.scala`
 (observations), `node/.../metrics/*`, `scripts/devnet/scenarios/governor.py`, `scripts/devnet.py`, tests as above.
@@ -953,8 +994,7 @@ the evidence-log row.
 
 ### G1.3 Ledger peers and big ledger peers
 
-*Scope.* A decoder for pool relays (single-host address, single-host name, multi-host name; the last is SRV and
-is skipped, D9) from the ledger state's `relays: Bytes`; `LedgerPeers.accumulate`, the 90% quota, the two
+*Scope.* A decoder for pool relays (single-host address, single-host name, multi-host name; SRV is resolved by the root provider, D9) from the ledger state's `relays: Bytes`; `LedgerPeers.accumulate`, the 90% quota, the two
 weightings and the draw; `useLedgerAfterSlot` honoured; the ledger-peers worker's cache lifetimes (30 s empty,
 1847 s); the big-ledger-peer families of `decide` and their targets (promotion, demotion, forgetting excluded,
 churn steps 1 to 6); the big-ledger peer snapshot file (`peerSnapshotFile`: read, the slot rule of
@@ -1003,28 +1043,28 @@ relay (`known` grows past the local roots; the relay shares only peers it advert
 server, answers the Haskell relay's request with peers that are `DoAdvertisePeer`, successfully connected and
 with fail count 0 and never more than asked; a row in the compatibility matrix for the mini-protocol.
 
-### G1.5 Genesis hooks
+### G1.5 Genesis hooks (#139, implemented)
 
-*Scope.* Hooks only. `ConsensusMode` as an input; the sync targets chosen while `TooOld` in `GenesisMode`; the
+*Delivered scope.* Hooks only. `ConsensusMode` as an input; the sync targets chosen while `TooOld` in `GenesisMode`; the
 Genesis monitors (`monitorLedgerStateJudgement` in Genesis mode, the stale-targets rule at
 `Monitor.hs:114-140`); `minNumberOfBigLedgerPeers` as the output "trusted state" boolean for consensus (an
 `Ask`/`Tell` seam, unused until G3); the `jobVerifyPeerSnapshot`; the `OutboundConnectionsState` output with its Genesis case (G1.1 has the bootstrap and local-root cases); refusing `bootstrapPeers` in Genesis mode as
-`TopologyP2P.hs:104-108`; removing the `GenesisMode` entry of `ConfigSettings.unsupported` only when G3 lands
-(until then `GenesisMode` is accepted but logs that the density rule is not implemented).
+`TopologyP2P.hs:104-108`; `GenesisMode` remains accepted with a partial-implementation diagnostic until G3 lands.
 
 *Files.* `network/.../selection/Sensitivity.scala` (extended), `node/.../PeerGovernor.scala`, `NodeConfig.scala`,
 tests: the bootstrap/Genesis properties of section 6 in Genesis form.
 
-*Gates.* Level 2; `check` and `relay`. No stage-boundary run: the Genesis end-to-end evidence belongs to G3.
+*Gates.* Level 2; `check` and `relay`. Genesis chain-density and ledger-dependent fork-choice evidence belongs to G3.
 
-*Evidence.* The properties of the "bootstrap / Genesis" group of section 6 in both modes; a unit test that the
-sync targets are installed on the flip to `TooOld` and restored on `YoungEnough`; every gap that is left
-(GDD, LoE, LoP, the trusted-state consumer) is [#33](https://github.com/KD5UJC-XYZ/scarab/issues/33).
+*Evidence.* Section 7g records the focused suites, frozen-source gates and private relay result. The relay's network and
+duplex checks pass, but its transaction-inclusion gate fails on two attempts; this acceptance gap remains open. The remaining GDD, LoE, LoP and trusted-state consumer are
+[#33](https://github.com/KD5UJC-XYZ/scarab/issues/33).
 
 ### When G1 is done
 
-[Roadmap](../roadmap.md) G1 is marked done after G1.4 (the issue's scope: targets per peer set, churn, PeerSharing,
-simulation properties, the Preview acceptance); G1.5 is the hand-over to G3 and may follow. The compatibility
+[Roadmap](../roadmap.md) G1 is marked done after G1.4 (the original issue's scope: targets per peer set, churn,
+PeerSharing, simulation properties, the Preview acceptance). G1.5's #139 hooks and the #142 topology/DNS/duplex
+follow-ups are also implemented; the remaining Genesis consensus rules are G3. The compatibility
 matrix row "Network" gains "outbound peer selection" with the evidence log rows of G1.1 and G1.3; the issue's
 closing comment lists the commits and the evidence of each stage; the architecture chapter gains
 "Peer selection (G1)" next to "Connections" in the same change as each stage; `docs/running.md` loses the
@@ -1059,11 +1099,10 @@ peer; `Unavailable`, `Handshake`, `NoIntersection` and `Diverged` (a new `PeerEr
 our chain moved on so that its candidate no longer joins it, nobody's fault) are `Transient`, so the peer is backed off.
 "Peer does not have the announced block" used to be a `Protocol` error and is now `Unavailable`.
 
-**Fetch mode.** Derived as the reference does under `PraosMode` (`readFetchModeDefault`: bulk sync in the sensitive state, else by
-the distance of the tip from the wall clock, 1000 slots). `ConsensusMode: GenesisMode` in the official configuration is still
-ignored and logged as unsupported, so the GSM-state-based `readFetchMode` of the Genesis mode is not used; the GSM runs, drives the
-judgement and so the sensitive state, and is published. The mode is published (`fetchModeChanged`, `scarab_fetch_mode`) and picks
-the regime of the targets; **BlockFetch does not read it yet** (follow-up issue).
+**Fetch mode.** Praos mode uses `readFetchModeDefault`: bulk sync in the sensitive state, else by the distance of the tip from
+the wall clock (1000 slots). The earlier G1.1 implementation ignored `GenesisMode`; #139 now supplies its GSM judgement and sync
+targets to churn and peer selection. The mode is published (`fetchModeChanged`, `scarab_fetch_mode`) and picks the regime of the
+targets; BlockFetch follows the current mode as described in section 7g.
 
 **Properties.** Ported by name from `Test.Cardano.Network.PeerSelection` (ouroboros-network 1.2.0.0) onto `TestControl`, with a
 mock environment and `Signals` (the reference's `signalProperty`): `prop_peerSelectionView_sizes`, `prop_governor_hasoutput`,
@@ -1087,7 +1126,7 @@ the hot set is repaired.
 **Deviations, in one place.**
 
 1. Decisions 1 to 12 of section 8a hold; `GovernorFault` and `PeerError.Diverged` are new error cases.
-2. The fetch mode follows the Praos function, not the GSM state (above); no consumer yet.
+2. At the G1.1 baseline, the fetch mode followed the Praos function rather than the GSM state; #139 adds Genesis sync-target selection through churn. Full Genesis consensus remains G3.
 3. The node does not stop after 30 failed attempts any more; its only governor stop is `BootstrapPeersCriticalTimeout`.
 4. The big ledger targets are carried and published but nothing uses them (no ledger peers, G1.3). The public roots request returns
    the bootstrap peers and the configured public roots only.
@@ -1168,7 +1207,7 @@ Branch `g1/3a-ledger-peers`; the pure part of [#137](https://github.com/KD5UJC-X
 decision function, the governor loop, `Peer` or `Main` is touched. The governor integration (G1.3b) is below.
 
 **Placement.** `ledger/.../PoolRelays.scala`: `PoolRelay` (the reference's `StakePoolRelay`: `SingleHostAddr`, `SingleHostName`,
-`MultiHostName`), `LedgerRelay` (`Address`, `Domain`, `Srv`; `Srv.skipped` is D9), `Ipv4`/`Ipv6`/`RelayIp`, `RelayPort`, `PoolRelayError`
+`MultiHostName`), `LedgerRelay` (`Address`, `Domain`, `Srv`; `Srv` is resolved by `NodeRootProvider` under D9), `Ipv4`/`Ipv6`/`RelayIp`, `RelayPort`, `PoolRelayError`
 (ten cases, no strings in control flow), `PoolRelays.decode`/`encode`/`ledgerRelays`/`connectable`/`peerRelays`.
 `network/.../selection/LedgerPeers.scala`: the stake maps (`StakeMap[K, R]` with the phantom kinds `LedgerKind.All`/`Big`, `StakeMaps`),
 the `Kind` type class (weighting, draw scale, which map) and `object LedgerPeerStake` with `recompute`, `weighted`
@@ -1195,9 +1234,7 @@ cardano-ledger-binary 1.9.1.0 rev 048b78d and ouroboros-consensus 4.2.1.0 rev 82
    `SingleHostName` without a port is an SRV domain** as well as every `MultiHostName`; a pool without a usable relay is no ledger peer.
    The ledger's list is ordered by stake, largest first, and its relays are the pool's current relays followed by its future relays
    (`queryStakePoolRelays`, cardano-ledger-api `State/Query.hs:720-736`), with the stake of the pool distribution (`nesPd`, the *set* snapshot).
-5. *SRV pools stay in the maps.* D9 skips SRV relays when connecting, but the reference weighs and accumulates the pools that have them,
-   so the maps keep them (the relay is `LedgerRelay.Srv`, `skipped == true`) and the 90% set is the reference's. A draw can return an SRV
-   relay; G1.3b discards it (the governor asks again after the 5 s `ttl`).
+5. *SRV pools stay in the maps and resolve after selection.* The reference weighs and accumulates pools with SRV relays, and a draw can return `LedgerRelay.Srv`. D9 resolves the selected SRV domain through RootPeersDNS and returns every address for its selected target.
 6. *The snapshot replaces both maps* (`stakeMapWithSlotOverSource`, `LedgerPeers.hs:419-431`): section 1.12 says "for big ledger peers"; the
    ordinary map is weighted (square root) from the snapshot's pools as well. The snapshot wins when it is at a block (not the origin), at
    or after the ledger's slot (origin = 0) and at or after `useLedgerAfterSlot` (`Always` = 0); the maps already made from a snapshot are
@@ -1315,9 +1352,7 @@ copy of ouroboros-network `main` in the workspace (1.3.0.0), which agree with th
 **The flow.** `LedgerPeersWorker.request[K](count)` takes the lock, and if the cache has passed its lifetime (30 s while the ordinary map is empty and
 ledger peers are on, else 1847 s) rebuilds it with `LedgerPeerStake.rebuild` from the snapshot when it is not older than the ledger's tip,
 else from the ledger once the tip is at the `useLedgerAfterSlot` slot, reading `LedgerPeersSource.pools` only then; it draws with its own
-`Rng`, split from the governor's seed, and answers `Picked` or `FallBackToPublicRoots`. `NodeRootProvider` turns relays into peer addresses
-(an IP address, or a host name that `Transport.resolve` resolves when the connection is made; an SRV relay is dropped, D9; the unspecified
-address is dropped) and answers the governor's two requests. The governor files the answer by `Events.completed`: new peers only (not a local root,
+`Rng`, split from the governor's seed, and answers `Picked` or `FallBackToPublicRoots`. `NodeRootProvider` resolves selected IP, hostname, and SRV relays into peer addresses and answers the governor's two requests. The governor files the answer by `Events.completed`: new peers only (not a local root,
 not a root already), `Origin.Ledger` or `Origin.BigLedger`, the same exponential backoff as the public roots when nothing is new, the ttl otherwise.
 `LedgerPeersSource.of` is pure over an `EraRead`: for each pool of `nesPd` (its share is the ratio of `IndividualPoolStake`), the registered relays
 followed by the pending ones (`queryStakePoolRelays`, `State/Query.hs` 720-736), each decoded on its own, the pools with no usable relay dropped,
@@ -1334,9 +1369,8 @@ a pool whose relays do not decode skipped and reported (`poolSkipped`), stable s
    an unrelated event.
 4. *Close and deactivate subtract the transitions in progress among the big ledger peers*; the reference subtracts those of all peers
    (`EstablishedPeers.hs` 848-849), so an ordinary demotion in flight delays a big one there.
-5. *A host name is resolved when the connection is made*, to the first address `ConnectionManager.resolve` gives; the reference resolves it in the
-   ledger-peers worker and picks one address of the answer at random (`pickDomainAddrs`).
-6. *An unreadable snapshot file is ignored* (Praos mode, as the reference); a Genesis-mode refusal belongs to G1.5.
+5. *DNS root addresses are resolved by the provider.* The reference resolves in RootPeersDNS (`pickDomainAddrs`); Scarab retains all successful A/AAAA addresses for the governor. SRV priority, weight, selected-target TTL, and empty-answer TTL follow the pinned policy.
+6. *An unreadable snapshot file is ignored* (Praos mode, as the reference); Genesis-mode snapshot validation is implemented in G1.5.
 7. *`Source` is `Origin`; the traces* of the big ledger families are cases of their own (`ForgetBigLedger`, `PromoteBigLedger`, `DemoteBigLedger`,
    `BigLedgerRequest/Results/Failure`) rather than a flag on the ordinary ones, and are logged as the same events with `bigLedger: true`.
 8. *Ledger relays are not filtered.* A pool can register a private, loopback or documentation address (`10.60.132.169`, `127.0.0.1`,
@@ -1355,13 +1389,12 @@ over a flag this governor does not keep; the YoungEnough forgetting is covered b
 the clean state and ten thousand big ledger peers on a 256 KiB stack; `LedgerPeersWiringSuite` (8) the pools of a Conway state, the worker
 and the roots; `ChurnLoopSuite` the twelve steps with `bigLedger`; `PeerSnapshotUseSuite` the snapshot refusals.
 
-**Not done, and where it is tracked.**
+**Remaining work, and where it is tracked.**
 
-- `jobVerifyPeerSnapshot` (Genesis mode checks the snapshot against the ledger when the state turns `TooOld`) and the minimum of active big
-  ledger peers for the trusted state: G1.5 ([#139](https://github.com/KD5UJC-XYZ/scarab/issues/139)).
-- A reload of the snapshot file on SIGHUP (`Monitor.ledgerPeerSnapshotChange`) with the topology reload: G1.6 ([#142](https://github.com/KD5UJC-XYZ/scarab/issues/142)).
+- Full Genesis density, ledger-dependent fork choice and the consensus use of trusted-state output remain G3
+  ([#33](https://github.com/KD5UJC-XYZ/scarab/issues/33)).
 - The rename of `LedgerPeerStake` to `LedgerPeers`: not needed once the enum is gone, and the churn in the diff buys nothing.
-- DNS answer selection/re-resolution and the big-ledger fallback to configured public roots remain G1.6 ([#142](https://github.com/KD5UJC-XYZ/scarab/issues/142)); current differences are listed above. Registered non-public addresses are dialled as the reference does; an optional operator filtering policy belongs to the same follow-up, without changing ledger decoding.
+- DNSSEC validation is not implemented or claimed. DNS root selection and TTL refresh are described in section 6.1. Registered non-public addresses are dialled as the reference does; an optional operator filtering policy remains separate from DNS and ledger decoding.
 - One live Preview churn round exercised all twelve steps (section 7e); steps 11 and 12 timed out below their targets. More rounds and transitions back into the sensitive state remain nightly/long-run coverage.
 
 ## 7e. G1.3b acceptance run
@@ -1622,7 +1655,7 @@ The pure `PeerSharingAddress` conversion reverses IPv4 octets only; IPv6 retains
 words. Both incoming and outgoing negotiated flags reach the clients. Governor request dispatch uses
 `OutboundPeers`' live connection table; accepting an inbound peer makes it known and subject to the
 existing connection-manager rules. Reusing the accepted connection for an outbound governor job remains
-the G2/#142 boundary. The actual client proof below uses an outbound connection; it does not prove a
+a separate G2 connection-manager question. The actual client proof below uses an outbound connection; it does not prove a
 governor request executed through the inbound client's instance. `Main` uses one resolved setting:
 relay default on, producer default off, explicit configuration wins (`POM.hs:899–905`).
 `PeerSharing` is removed from `configUnsupported`.
@@ -1647,9 +1680,7 @@ validator rejects empty, refused, wrong-peer, unregistered, duplicated, unproven
 Every owned container is removed even if evidence archiving fails. Gate results are recorded in the
 compatibility evidence log; initial excluded setup attempts are disclosed there.
 
-Broader follow-ups remain [#139](https://github.com/KD5UJC-XYZ/scarab/issues/139),
-[#142](https://github.com/KD5UJC-XYZ/scarab/issues/142),
-[#150](https://github.com/KD5UJC-XYZ/scarab/issues/150),
+Broader follow-ups remain [#150](https://github.com/KD5UJC-XYZ/scarab/issues/150),
 [#152](https://github.com/KD5UJC-XYZ/scarab/issues/152), and
 [#180](https://github.com/KD5UJC-XYZ/scarab/issues/180). This stage does not claim a new public-network
 sync: earlier Preview evidence covers its unchanged target/churn/ledger-peer paths; the new sharing
@@ -1661,8 +1692,38 @@ following the tip from the sole official bootstrap root at `5f3b6174`, with no `
 an existing database copy and is not claimed as a fresh genesis sync. G1.3b repeats root-led discovery.
 These historical runs cover the unchanged root/bootstrap behavior. Section 7f supplies the missing
 actual nonempty two-way sharing proof on a private Haskell topology. Together they meet the original
-parent criteria without a new public run. The explicit live-churn observation limits and separately
-tracked Genesis/duplex/DNS/fetch/metrics/reintersection follow-ups above remain unchanged.
+parent criteria without a new public run. The explicit live-churn observation limits, full Genesis rules,
+fetch/metrics and reintersection follow-ups above remain unchanged.
+
+## 7g. G1.5 (#139) and topology/DNS/duplex (#142) as built
+
+**#139 Genesis hooks.** The governor receives `ConsensusMode` and the Genesis State Machine judgement through
+its typed configuration. While `GenesisMode` is `TooOld`, the sync targets are used by both churn and peer
+selection; `YoungEnough` restores the deadline targets. The monitor emits trusted-state output from the configured
+minimum of active big-ledger peers, and verifies the configured peer snapshot against the exact immutable slot
+and hash when the Genesis judgement enters `TooOld`. The immutable metadata wait is cancelable, does not read block
+bodies, and reports real storage failures through the node's typed fatal boundary. Genesis refuses `bootstrapPeers`
+as required by the reference. `GenesisMode` remains a partial mode: chain density, ledger-dependent fork choice
+and the trusted-state consensus consumer remain G3 (#33); Praos defaults are unchanged.
+
+**#142 topology and outbound networking.** SIGHUP re-reads the original topology path and preserves the original
+CLI roots separately from dynamic topology roots. Parse failure leaves the active configuration usable. Successful
+reload installs runtime and governor roots under an acknowledged owner event; work from older generations cannot
+publish roots, DNS answers, snapshot verdicts or outbound links after a newer generation is installed. Hostname and
+SRV inputs, group valencies, advertise flags and alias provenance are retained across refresh. SRV queries for
+topology and ledger relays follow the pinned policy in section 6.1. Outbound connections configured as duplex run
+the responder side over the negotiated bearer; link-table registration and cleanup compare attempt identity so a
+late old handshake cannot overwrite or remove the new link.
+
+**Focused evidence.** `ConfigSuite`, `PeerSharingLoopSuite`, `PeerDnsSuite`, `LedgerPeersWiringSuite`,
+`ImmutablePeerSnapshotVerifierSuite`, `OutboundLinkIdentitySuite`, `InboundGovernorSuite` and `LogGoldenSuite`
+cover configuration, generation ordering, per-source DNS deadlines and failure retention, SRV provenance/TTL,
+exact snapshot slot-and-hash comparison, stale link completion, duplex protocol service and the diagnostic event.
+At source `0be9982a`, Docker `check` passed 4,270 tests with 16 optional skips and no failures; explicit Scalafix
+also passed. Two private `relay --seconds 300` attempts passed sync, duplex, header-following and final-tip agreement,
+but failed the transaction-inclusion assertions: three transactions reached the Scala mempool, none were adopted, and
+the local submission was not included. Exact summaries are preserved under `/tmp/scarab/scarab-v02-139-142` and
+`/tmp/scarab/scarab-v02-139-142-repeat`. No public sync or DNSSEC claim is made.
 
 ## 8. Open questions for the owner
 
@@ -1670,26 +1731,18 @@ tracked Genesis/duplex/DNS/fetch/metrics/reintersection follow-ups above remain 
    the intent, or should a bare `--peer` list be public-root-like (so only `targetNumberOfActivePeers` of them
    are followed)? A topology with `valency` below its access points will, from G1.1, follow fewer peers than it
    does now.
-2. **The ledger-state judgement.** The reference gets `TooOld`/`YoungEnough` from the Genesis State Machine of
-   ouroboros-consensus (not read for this document). Scarab has no GSM. Proposal for G1.1: `YoungEnough` when the
-   tip's slot time is within a configured age of the wall clock (the age a flag and a documented default),
-   `TooOld` otherwise, flipping with hysteresis; to be replaced by a faithful GSM port when the consensus sources
-   are read. Does the owner want the GSM read and mirrored first (it also feeds G3)?
-3. **Fetch mode.** Churn needs bulk-sync versus deadline (section 1.10), which consensus supplies. Scarab's
-   `BlockPool` and the follower have the notion implicitly (far ahead of the tip: deep pipeline). Proposal: derive
-   it from the same tip age as the judgement, with its own threshold. Acceptable?
+2. **The ledger-state judgement (resolved in G1.5).** Genesis hooks use the reference GSM `TooOld`/`YoungEnough`
+   judgement; no wall-clock age replacement is used. See section 7g.
+3. **Fetch mode (resolved).** Churn receives the consensus-selected mode and applies the matching sync or deadline
+   targets; it does not infer the mode from tip age.
 4. **D5, the default of 20 active peers.** If the measured cost per extra header-validating session on Preview
    is high, do we ship Scarab with a lower default active target (a recorded deviation) or accept the cost?
-5. **D9, SRV and DNS.** Out of scope as proposed: SRV access points and ledger SRV relays are skipped, host
-   names are resolved at connect time. Is DNS-based root re-resolution (the reference's `RootPeersDNS`, TTL-driven)
-   needed for the Preview and mainnet use the owner has in mind, or can it wait for a separate item?
-6. **Warm connections are not duplex.** G2's initiator-only limit stays. The reference opens
-   `InitiatorAndResponder` for non-local-root peers (`EstablishedPeers.hs:297-302`), so a Haskell peer that we
-   dial can use the connection to follow us. Making Scarab's outbound connections duplex touches the mux and
-   G2's reuse logic. Separate item before or after G1.4? PeerSharing works without it.
-7. **Reload.** The reference re-reads the topology (local roots, public roots, ledger and bootstrap flags) on
-   SIGHUP (the P2P SIGHUP handler, `CN/Run.hs:413` and `574-700`, which re-reads the topology file and can reconfigure the network). Is topology reload in scope for G1, or a follow-up
-   after the KES/credentials reload (ADR 0015) pattern is reused?
+5. **D9, SRV and DNS (implemented in #142).** Topology and ledger SRV access points use the pinned RootPeersDNS
+   selection and TTL policy; implementation details and evidence are in section 6.1.
+6. **Duplex outbound (implemented in #142).** Outbound roots configured as `InitiatorAndResponder` serve over
+   the same negotiated bearer, with lifecycle ownership recorded in section 7g.
+7. **Reload (implemented in #142).** SIGHUP reloads topology through the acknowledged owner event, retaining the
+   active configuration on invalid input; generation fences discard stale completions. See section 7g.
 8. **Misbehaving peers.** The reference's overview says an adversarial peer is dropped from all sets
    immediately, and the classification lives in consensus's `RethrowPolicy`/`ExitPolicy` (not read). Scarab's
    `PeerError.InvalidHeader` ends the session today. Proposal: an `InvalidHeader`, protocol violation or
@@ -1700,10 +1753,8 @@ tracked Genesis/duplex/DNS/fetch/metrics/reintersection follow-ups above remain 
 10. **Evidence runs.** The two level-4 Preview runs (G1.1, G1.3) are 30-minute runs against the public relay. Is
     that acceptable to run from the usual box, or should they run on the long-run machine of the owner's
     choosing (not named here)?
-11. **The trusted-state output.** The governor's `OutboundConnectionsState` (section 1.15) is consensus's input for
-    deciding it is caught up. Scarab has no GSM, so G1.1 only publishes it (gauge and log line). Confirm that the
-    consumer (a faithful GSM, which also yields the ledger-state judgement of question 2) is a separate item to
-    schedule with G3, not part of G1.
+11. **The trusted-state output.** Resolved by the owner: G1.1 publishes the value and G1.5 (#139) exposes the typed
+    trusted-state hook; the consensus consumer remains with the faithful GSM and full Genesis work in G3 (#33).
 12. **No escape hatch.** Replacing the fan-out in `Main` with the governor in G1.1 leaves no `--governor off`; the
     safety net is the layer-2 simulation, `relay` and `peercut`. A flag that kept the old path for a release would be
     a dual copy in the running node, which contradicts the rule that a migrated path replaces its predecessor.
@@ -1721,8 +1772,8 @@ Answers to section 8, taken before G1.1 started. They override the proposals abo
 3. The fetch mode (bulk sync or deadline) is derived from the GSM, as the reference does.
 4. The reference default targets are kept (relay 60/150/30/20/15/10/5); the cost per extra hot session is
    measured in the G1.1 relay run and reported.
-5. and 7. SRV records and topology reload on SIGHUP are out of scope; follow-up issues.
-6. Outbound connections stay initiator-only for now (G2).
+5. and 7. SRV records, TTL refresh, topology reload on SIGHUP, and duplex outbound connections are tracked together by #142; see section 6.1 for DNS behavior and the implementation stage's connection tests.
+6. The former initiator-only decision is superseded by #142's duplex outbound stage; inbound and outbound connection ownership follows the negotiated bearer lifecycle.
 8. **Decided by the owner (confirmed 2026-10-17, no longer pending):** a protocol violation, an invalid header or
    an oversize message means the peer is forgotten; a network failure means backoff. The classification is one
    typed function (`FailurePolicy.classify`), so a later change touches one place.
