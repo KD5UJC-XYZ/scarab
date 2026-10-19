@@ -21,6 +21,23 @@ private enum BinaryCodecCoverage:
   case Matched(direction: BinaryCodecDirection)
   case UnsupportedMockHash(direction: BinaryCodecDirection, error: ProtocolError)
 
+private enum HandshakeRejectionCoverage:
+  case VersionMismatch
+  case DecodeError
+  case Refused
+
+private enum HandshakeOutcomeCoverage:
+  case Negotiated(version: Int, data: Handshake.Data)
+  case QueryReply
+  case Rejected(reason: HandshakeRejectionCoverage)
+
+private enum QueryVersionCoverage:
+  case QueryReply
+  case VersionMismatch
+  case DecodeError
+  case Refused
+  case PreconditionFilteredEmptyMap
+
 /** Consumes actual generated codec messages exported from the pinned upstream QuickCheck tests. */
 class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
   private val prefix = "/upstream/ouroboros-network-protocol-codecs/"
@@ -582,6 +599,397 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
     assertEquals(outcomes.count(_._1.isInstanceOf[Handshake.Result.Negotiated]), 1)
     assertEquals(outcomes.count(_._1.isInstanceOf[Handshake.Result.QueryResult]), 19)
     assertEquals(outcomes.count(_._1.isInstanceOf[Handshake.Result.Rejected]), 20)
+
+  test("replay Cardano query-version ST cases through the typed Handshake client and responder"):
+    val input = rows(
+      "cardano-handshake-query.tsv",
+      "c7d73ff87683b26013acece7b1eea01dfec83bd39a7860f466ec9a20f6520de0"
+    )
+    def offers(message: Handshake.Message): Vector[(Int, Handshake.Data)] =
+      val entries = message match
+        case Handshake.Message.Propose(vs)    => vs
+        case Handshake.Message.QueryReply(vs) => vs
+        case other                            => fail(s"expected a version map, got $other")
+      entries.map { case (version, data) =>
+        version -> Handshake
+          .decodeData(Handshake.Suite.NodeToNode, version, data)
+          .fold(e => fail(e.message), identity)
+      }
+
+    val replay = input.map { fields =>
+      assertEquals(fields.size, 8)
+      assertEquals(fields(0), "cardano-handshake-query-v1")
+      val seed = fields(1).toInt
+      val ordinal = fields(2).toInt
+      assertEquals(seed, 498101 + ordinal)
+      assertEquals(fields(3).toInt, 60 + ordinal % 31)
+      assertEquals(fields(4), "pass", s"unchanged upstream query-version ST property at seed $seed")
+      val originalClientWire = bytes(fields(5))
+      val queryClientWire = bytes(fields(6))
+      val serverReplyWire = bytes(fields(7))
+      val originalClient = Handshake
+        .decode(Handshake.Suite.NodeToNode, Handshake.State.Propose, originalClientWire)
+        .fold(e => fail(e.message), identity)
+      val queryClient = Handshake
+        .decode(Handshake.Suite.NodeToNode, Handshake.State.Propose, queryClientWire)
+        .fold(e => fail(e.message), identity)
+      val serverProposal = Handshake
+        .decode(Handshake.Suite.NodeToNode, Handshake.State.Propose, serverReplyWire)
+        .fold(e => fail(e.message), identity)
+      val originalOffers = offers(originalClient)
+      val clientOffers = offers(queryClient)
+      val serverOffers = offers(serverProposal)
+      assertEquals(
+        clientOffers,
+        originalOffers.map { case (version, data) =>
+          version -> data.copy(query = true, peerSharing = true)
+        },
+        s"exact upstream query transform at seed $seed"
+      )
+      val (_, proposal) = Handshake
+        .clientStart(Handshake.Suite.NodeToNode, clientOffers)
+        .fold(e => fail(e.toString), identity)
+      assertEquals(
+        Handshake
+          .encode(Handshake.Suite.NodeToNode, proposal)
+          .fold(e => fail(e.toString), identity),
+        queryClientWire,
+        s"Cardano client proposal wire at seed $seed"
+      )
+      val (answer, serverResult) = Handshake
+        .responder(Handshake.Suite.NodeToNode, serverOffers, proposal)
+        .fold(e => fail(e.toString), identity)
+      serverResult match
+        case Handshake.Result.QueryResult(_) =>
+          QueryVersionCoverage.QueryReply
+        case Handshake.Result.Rejected(Handshake.Reason.VersionMismatch(_, _)) =>
+          assert(answer.isInstanceOf[Handshake.Message.Refuse])
+          QueryVersionCoverage.VersionMismatch
+        case Handshake.Result.Rejected(Handshake.Reason.Refused(_, _)) =>
+          assert(answer.isInstanceOf[Handshake.Message.Refuse])
+          QueryVersionCoverage.Refused
+        case Handshake.Result.Rejected(Handshake.Reason.DecodeError(_, _)) =>
+          assert(answer.isInstanceOf[Handshake.Message.Refuse])
+          QueryVersionCoverage.DecodeError
+        case other =>
+          fail(s"query-enabled proposal had unexpected responder result $other at seed $seed")
+    }
+    assertEquals(replay.size, 64)
+    assertEquals(
+      replay.count(_ == QueryVersionCoverage.QueryReply),
+      0,
+      "the independent-pair property sample has no QueryReply cases"
+    )
+    assertEquals(replay.count(_ == QueryVersionCoverage.Refused), 62)
+    assertEquals(replay.count(_ == QueryVersionCoverage.VersionMismatch), 2)
+
+  test("replay the separately labeled correlated Cardano query-version ST slice through Scarab"):
+    val input = rows(
+      "cardano-handshake-query-correlated.tsv",
+      "824c4d2b96e0b0a49770dd47b931778690e429df2ff2cb4cf27004074b494ee5"
+    )
+    def typedOffers(message: Handshake.Message): Vector[(Int, Handshake.Data)] =
+      val entries = message match
+        case Handshake.Message.Propose(vs)    => vs
+        case Handshake.Message.QueryReply(vs) => vs
+        case other                            => fail(s"expected a version map, got $other")
+      entries.map { case (version, data) =>
+        version -> Handshake
+          .decodeData(Handshake.Suite.NodeToNode, version, data)
+          .fold(e => fail(e.message), identity)
+      }
+    val outcomes = input.map { fields =>
+      assertEquals(fields.size, 8)
+      assertEquals(fields(0), "cardano-handshake-query-correlated-v1")
+      val seed = fields(1).toInt
+      val ordinal = fields(2).toInt
+      assertEquals(seed, 499001 + ordinal)
+      assertEquals(fields(3).toInt, 60 + ordinal % 31)
+      val status = fields(4)
+      val originalWire = bytes(fields(5))
+      val queryWire = bytes(fields(6))
+      val serverReplyWire = bytes(fields(7))
+      val originalMessage = Handshake
+        .decode(
+          Handshake.Suite.NodeToNode,
+          Handshake.State.Propose,
+          originalWire
+        )
+        .fold(e => fail(e.message), identity)
+      val queryMessage = Handshake
+        .decode(
+          Handshake.Suite.NodeToNode,
+          Handshake.State.Propose,
+          queryWire
+        )
+        .fold(e => fail(e.message), identity)
+      val originalOffers = typedOffers(originalMessage)
+      val clientOffers = typedOffers(queryMessage)
+      if status == "empty-version-map" then
+        assertEquals(originalOffers, Vector.empty)
+        QueryVersionCoverage.PreconditionFilteredEmptyMap
+      else
+        assertEquals(status, "pass", s"unchanged query ST property at seed $seed")
+        val serverReply = Handshake
+          .decode(
+            Handshake.Suite.NodeToNode,
+            Handshake.State.Confirm,
+            serverReplyWire
+          )
+          .fold(e => fail(e.message), identity)
+        val serverOffers = typedOffers(serverReply)
+        assertEquals(
+          serverOffers,
+          originalOffers,
+          s"same generated map used on both sides at seed $seed"
+        )
+        assertEquals(
+          clientOffers,
+          originalOffers.map { case (version, data) =>
+            version -> data.copy(query = true, peerSharing = true)
+          },
+          s"original Cardano query transform at seed $seed"
+        )
+        val (client, proposal) = Handshake
+          .clientStart(Handshake.Suite.NodeToNode, clientOffers)
+          .fold(e => fail(e.toString), identity)
+        assertEquals(
+          Handshake
+            .encode(Handshake.Suite.NodeToNode, proposal)
+            .fold(e => fail(e.toString), identity),
+          queryWire,
+          s"exact generated client proposal at seed $seed"
+        )
+        val (answer, responderResult) = Handshake
+          .responder(Handshake.Suite.NodeToNode, serverOffers, proposal)
+          .fold(e => fail(e.toString), identity)
+        assert(
+          responderResult.isInstanceOf[Handshake.Result.QueryResult],
+          s"expected QueryReply at seed $seed"
+        )
+        assertEquals(answer, serverReply, s"full server version map in QueryReply at seed $seed")
+        assertEquals(
+          Handshake
+            .encode(Handshake.Suite.NodeToNode, answer)
+            .fold(e => fail(e.toString), identity),
+          serverReplyWire,
+          s"QueryReply wire at seed $seed"
+        )
+        val (completedClient, clientResult) = client
+          .receive(serverReply)
+          .fold(e => fail(e.toString), identity)
+        assertEquals(completedClient.state, Handshake.State.Done)
+        assertEquals(
+          clientResult,
+          Handshake.Result.QueryResult(serverOffers.map((version, data) => version -> Right(data))),
+          s"client query result preserves full server version data at seed $seed"
+        )
+        QueryVersionCoverage.QueryReply
+    }
+    assertEquals(outcomes.count(_ == QueryVersionCoverage.QueryReply), 63)
+    assertEquals(outcomes.count(_ == QueryVersionCoverage.PreconditionFilteredEmptyMap), 1)
+
+  test(
+    "replay Cardano accept-or-refuse property cases through Scarab's typed client and responder"
+  ):
+    val input = rows(
+      "cardano-handshake-accept-refuse.tsv",
+      "3859981bf743643c9300858bc69dee0e991a1e828fc7dd66f958f83f5ca4db00"
+    )
+    def offers(message: Handshake.Message): Vector[(Int, Handshake.Data)] = message match
+      case Handshake.Message.Propose(vs) =>
+        vs.map { case (version, data) =>
+          version -> Handshake
+            .decodeData(Handshake.Suite.NodeToNode, version, data)
+            .fold(e => fail(e.message), identity)
+        }
+      case other => fail(s"expected generated Cardano proposal, got $other")
+    def outcome(result: Handshake.Result): HandshakeOutcomeCoverage = result match
+      case Handshake.Result.Negotiated(version, data) =>
+        HandshakeOutcomeCoverage.Negotiated(version, data)
+      case Handshake.Result.QueryResult(_) => HandshakeOutcomeCoverage.QueryReply
+      case Handshake.Result.Rejected(Handshake.Reason.VersionMismatch(_, _)) =>
+        HandshakeOutcomeCoverage.Rejected(HandshakeRejectionCoverage.VersionMismatch)
+      case Handshake.Result.Rejected(Handshake.Reason.DecodeError(_, _)) =>
+        HandshakeOutcomeCoverage.Rejected(HandshakeRejectionCoverage.DecodeError)
+      case Handshake.Result.Rejected(Handshake.Reason.Refused(_, _)) =>
+        HandshakeOutcomeCoverage.Rejected(HandshakeRejectionCoverage.Refused)
+    def direction(
+        initiatorOffers: Vector[(Int, Handshake.Data)],
+        responderOffers: Vector[(Int, Handshake.Data)],
+        originalInitiatorWire: Bytes,
+        seed: Int
+    ): HandshakeOutcomeCoverage =
+      val (client, proposal) = Handshake
+        .clientStart(Handshake.Suite.NodeToNode, initiatorOffers)
+        .fold(e => fail(e.toString), identity)
+      assertEquals(
+        Handshake
+          .encode(Handshake.Suite.NodeToNode, proposal)
+          .fold(e => fail(e.toString), identity),
+        originalInitiatorWire,
+        s"generated proposal wire at seed $seed"
+      )
+      val (reply, responderResult) = Handshake
+        .responder(Handshake.Suite.NodeToNode, responderOffers, proposal)
+        .fold(e => fail(e.toString), identity)
+      val (_, clientResult) = client.receive(reply).fold(e => fail(e.toString), identity)
+      val serverOutcome = outcome(responderResult)
+      val clientOutcome = outcome(clientResult)
+      assertEquals(clientOutcome, serverOutcome, s"client and responder result at seed $seed")
+      serverOutcome
+
+    val results = input.map { fields =>
+      assertEquals(fields.size, 7)
+      assertEquals(fields(0), "cardano-handshake-accept-refuse-v1")
+      val seed = fields(1).toInt
+      val ordinal = fields(2).toInt
+      assertEquals(seed, 500001 + ordinal)
+      assertEquals(fields(3).toInt, 60 + ordinal % 31)
+      assertEquals(fields(4), "pass", s"unchanged upstream property at seed $seed")
+      val clientWire = bytes(fields(5))
+      val serverWire = bytes(fields(6))
+      val clientMessage = Handshake
+        .decode(
+          Handshake.Suite.NodeToNode,
+          Handshake.State.Propose,
+          clientWire
+        )
+        .fold(e => fail(e.message), identity)
+      val serverMessage = Handshake
+        .decode(
+          Handshake.Suite.NodeToNode,
+          Handshake.State.Propose,
+          serverWire
+        )
+        .fold(e => fail(e.message), identity)
+      val clientOffers = offers(clientMessage)
+      val serverOffers = offers(serverMessage)
+      val clientOutcome = direction(clientOffers, serverOffers, clientWire, seed)
+      val serverOutcome = direction(serverOffers, clientOffers, serverWire, seed)
+      assertEquals(clientOutcome, serverOutcome, s"symmetric Cardano decision at seed $seed")
+      clientOutcome
+    }
+    assertEquals(results.size, 64)
+    assertEquals(
+      results.count(_ == HandshakeOutcomeCoverage.Rejected(HandshakeRejectionCoverage.Refused)),
+      62
+    )
+    assertEquals(
+      results.count(
+        _ == HandshakeOutcomeCoverage.Rejected(HandshakeRejectionCoverage.VersionMismatch)
+      ),
+      2
+    )
+    assertEquals(
+      results.count {
+        case HandshakeOutcomeCoverage.Negotiated(_, _) => true
+        case _                                         => false
+      },
+      0
+    )
+
+  test(
+    "replay correlated Cardano accept-or-refuse cases with one unchanged generated map per side"
+  ):
+    val input = rows(
+      "cardano-handshake-accept-refuse-correlated.tsv",
+      "ac8b54e2ec6fffe372e1b2638c1edbca256cf389c10e030d32fb4bd7fc9792f2"
+    )
+    def offers(message: Handshake.Message): Vector[(Int, Handshake.Data)] = message match
+      case Handshake.Message.Propose(vs) =>
+        vs.map { case (version, data) =>
+          version -> Handshake
+            .decodeData(Handshake.Suite.NodeToNode, version, data)
+            .fold(e => fail(e.message), identity)
+        }
+      case other => fail(s"expected generated Cardano proposal, got $other")
+    val outcomes = input.map { fields =>
+      assertEquals(fields.size, 6)
+      assertEquals(fields(0), "cardano-handshake-accept-refuse-correlated-v1")
+      val seed = fields(1).toInt
+      val ordinal = fields(2).toInt
+      assertEquals(seed, 501001 + ordinal)
+      assertEquals(fields(3).toInt, 60 + ordinal % 31)
+      val message = Handshake
+        .decode(
+          Handshake.Suite.NodeToNode,
+          Handshake.State.Propose,
+          bytes(fields(5))
+        )
+        .fold(e => fail(e.message), identity)
+      val typed = offers(message)
+      if fields(4) == "empty-version-map" then
+        assertEquals(typed, Vector.empty)
+        HandshakeOutcomeCoverage.Rejected(HandshakeRejectionCoverage.VersionMismatch)
+      else
+        assertEquals(
+          fields(4),
+          "pass",
+          s"unchanged upstream accept-or-refuse property at seed $seed"
+        )
+        assert(typed.nonEmpty)
+        val (client, proposal) = Handshake
+          .clientStart(Handshake.Suite.NodeToNode, typed)
+          .fold(e => fail(e.toString), identity)
+        assertEquals(
+          Handshake
+            .encode(Handshake.Suite.NodeToNode, proposal)
+            .fold(e => fail(e.toString), identity),
+          bytes(fields(5)),
+          s"same generated map proposal at seed $seed"
+        )
+        val (reply, responderResult) = Handshake
+          .responder(Handshake.Suite.NodeToNode, typed, proposal)
+          .fold(e => fail(e.toString), identity)
+        val (_, clientResult) = client.receive(reply).fold(e => fail(e.toString), identity)
+        val serverOutcome = responderResult match
+          case Handshake.Result.Negotiated(version, data) =>
+            HandshakeOutcomeCoverage.Negotiated(version, data)
+          case Handshake.Result.QueryResult(_) => HandshakeOutcomeCoverage.QueryReply
+          case Handshake.Result.Rejected(Handshake.Reason.VersionMismatch(_, _)) =>
+            HandshakeOutcomeCoverage.Rejected(HandshakeRejectionCoverage.VersionMismatch)
+          case Handshake.Result.Rejected(Handshake.Reason.DecodeError(_, _)) =>
+            HandshakeOutcomeCoverage.Rejected(HandshakeRejectionCoverage.DecodeError)
+          case Handshake.Result.Rejected(Handshake.Reason.Refused(_, _)) =>
+            HandshakeOutcomeCoverage.Rejected(HandshakeRejectionCoverage.Refused)
+        val clientOutcome = clientResult match
+          case Handshake.Result.Negotiated(version, data) =>
+            HandshakeOutcomeCoverage.Negotiated(version, data)
+          case Handshake.Result.QueryResult(_) => HandshakeOutcomeCoverage.QueryReply
+          case Handshake.Result.Rejected(Handshake.Reason.VersionMismatch(_, _)) =>
+            HandshakeOutcomeCoverage.Rejected(HandshakeRejectionCoverage.VersionMismatch)
+          case Handshake.Result.Rejected(Handshake.Reason.DecodeError(_, _)) =>
+            HandshakeOutcomeCoverage.Rejected(HandshakeRejectionCoverage.DecodeError)
+          case Handshake.Result.Rejected(Handshake.Reason.Refused(_, _)) =>
+            HandshakeOutcomeCoverage.Rejected(HandshakeRejectionCoverage.Refused)
+        assertEquals(clientOutcome, serverOutcome, s"same-map handshake outcome at seed $seed")
+        assert(serverOutcome match
+          case HandshakeOutcomeCoverage.Rejected(_) => false
+          case _                                    => true)
+        serverOutcome
+    }
+    assertEquals(
+      outcomes.count {
+        case HandshakeOutcomeCoverage.Rejected(_) => false
+        case _                                    => true
+      },
+      63
+    )
+    assertEquals(
+      outcomes.count(
+        _ == HandshakeOutcomeCoverage.Rejected(HandshakeRejectionCoverage.VersionMismatch)
+      ),
+      1
+    )
+    assertEquals(
+      outcomes.count {
+        case HandshakeOutcomeCoverage.Negotiated(_, _) => true
+        case _                                         => false
+      },
+      32
+    )
+    assertEquals(outcomes.count(_ == HandshakeOutcomeCoverage.QueryReply), 31)
 
   test(
     "consume all generated Cardano SockAddr PeerSharing CDDL messages without address projection"

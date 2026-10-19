@@ -26,6 +26,26 @@ messages and has explicit generator seed provenance. Scarab consumes all 40, wit
 result, 19 query results, and 20 refusals. This is a bounded sample of one property, not the full
 Cardano Handshake suite.
 
+
+The separate `cardano-handshake-query.tsv` retains 64 independent original
+`ArbitraryNodeToNodeVersions` pairs from `prop_query_version_NodeToNode_ST`. All 64
+upstream property invocations pass, but the property intentionally treats handshake errors as
+`True`: Scarab maps this deterministic sample to 62 network-magic refusals, two version-mismatch
+refusals, and zero query replies. It therefore does not demonstrate query success. The separately
+labeled `cardano-handshake-query-correlated.tsv` uses one unchanged generated version map as both
+inputs to the same ST property; 63 nonempty maps produce actual typed `QueryReply` exchanges through
+Scarab's client and responder, with complete version maps and data checked. One empty-map candidate
+is retained as a precondition-filtered row. This correlated slice is reported separately from the
+independent-pair property sample.
+
+`cardano-handshake-accept-refuse.tsv` retains 64 more independently generated pairs from the
+unchanged `prop_acceptOrRefuse_symmetric_NodeToNode`; all upstream property invocations pass. The
+current sample exercises 62 symmetric refusals and two symmetric version-mismatch refusals in the
+Scarab typed client/responder replay. It contains no negotiated success cases, so this bounded
+property sample does not establish accepted-negotiation coverage. The separate
+`cardano-handshake-accept-refuse-correlated.tsv` reuses one unchanged generated map on both sides
+for each property invocation; 63 nonempty maps pass, producing 32 Negotiated results and 31 QueryReply
+results through Scarab, while one empty map is recorded as a precondition-filtered VersionMismatch.
 `cardano-peersharing-sockaddr.tsv` contains 300 real CDDL-generated messages: 100 each from the
 pinned `unit_decodePeerSharingV14ToLast` test for NodeToNode v14, v15, and v16. The upstream
 `unit_encodePeerSharingV14ToLast` SockAddr property also passes 100 generated cases. The CDDL

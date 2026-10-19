@@ -1,0 +1,49 @@
+{
+  "fixture": "cardano-handshake-accept-refuse.tsv",
+  "fixtureSha256": "3859981bf743643c9300858bc69dee0e991a1e828fc7dd66f958f83f5ca4db00",
+  "rowCount": 64,
+  "upstream": {
+    "repository": "IntersectMBO/ouroboros-network",
+    "commit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+    "source": "cardano-diffusion/protocols/tests-lib/Cardano/Network/Protocol/Handshake/Test.hs",
+    "sourceSha256": "70c04f90ecff381fd6f15422bed8ac8d97a1a14b7f3f2619521328f667645950",
+    "property": "prop_acceptOrRefuse_symmetric_NodeToNode",
+    "propertyInvocations": 64,
+    "result": "all 64 unchanged property invocations passed; Scarab replay: 62 symmetric Refused (network magic), 2 symmetric VersionMismatch, 0 negotiated acceptance",
+    "seed": "500001 + ordinal; Gen.unGen unchanged independent ArbitraryNodeToNodeVersions pair per deterministic seed",
+    "observerPatch": "scripts/oracle/network-protocols/cardano-handshake-query-observer.patch applied after cardano-handshake-observer.patch",
+    "observerPatchSha256": "71bcd4913e5f59b8d29deff81c835ce4b782da88d87f2f5567bd192d6bfa9bab"
+  },
+  "adapter": {
+    "scalaSuite": "xyz.kd5ujc.scarab.protocol.UpstreamProtocolCodecCoverageSuite",
+    "result": "64/64 typed client/responder cases matched symmetric rejection: 62 Refused, 2 VersionMismatch, 0 negotiated acceptances. The independent sample does not establish accepted-negotiation coverage.",
+    "limitations": "bounded seeded NodeToNode property sample; correlated domain is explicitly separate from independent pair sampling; not full Cardano Handshake property or protocol suite coverage"
+  },
+  "schema": "TSV: schema, seed, ordinal, size, unchanged upstream property verdict, exact generated client proposal wire, exact generated server proposal wire",
+  "commands": {
+    "exportAndRunUpstream": [
+      "docker",
+      "exec",
+      "-e",
+      "SCARAB_HANDSHAKE_QUERY_CASES=/probe/cardano-handshake-query.tsv",
+      "-e",
+      "SCARAB_HANDSHAKE_QUERY_CORRELATED_CASES=/probe/cardano-handshake-query-correlated.tsv",
+      "-e",
+      "SCARAB_HANDSHAKE_ACCEPT_REFUSE_CASES=/probe/cardano-handshake-accept-refuse.tsv",
+      "-e",
+      "SCARAB_HANDSHAKE_ACCEPT_REFUSE_CORRELATED_CASES=/probe/cardano-handshake-accept-refuse-correlated.tsv",
+      "-w",
+      "/probe/cardano-handshake-overlay",
+      "scarab-v02-49-handshake-build",
+      "cabal",
+      "test",
+      "cardano-diffusion:protocols-tests",
+      "--project-file=/probe/cardano-handshake-overlay.project",
+      "--builddir=/probe/handshake-target-build",
+      "--jobs=2",
+      "--test-show-details=streaming"
+    ],
+    "exportAndRunUpstreamReturncode": 0,
+    "upstreamResultJson": "/tmp/scarab/v02-49-protocol-probe/cardano-handshake-final-export-result.json"
+  }
+}
