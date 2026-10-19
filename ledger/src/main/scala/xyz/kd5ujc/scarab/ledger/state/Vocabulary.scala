@@ -258,11 +258,14 @@ object Credential:
     case KeyHashObj(h)    => s"KeyHashObj(${h.show})"
   }
 
-  // The same comparator for every role (the phantom role does not affect the bytes): maps
-  // keyed by credentials of different roles therefore share one ordering.
+  // One stable order per role: `Sorted.orderingOf` hands out the `SortOrder`'s own `ordering`, so
+  // every map of one key type must see the same instance (the same object, not merely an equal
+  // comparator) — `TreeMap.from` copies a sorted source in linear time only then, and the epoch
+  // boundary tests pin the identity. The comparison is one implementation for every role; only
+  // the instance differs.
   private val scriptOrder: Order[ScriptHash] = Order[ScriptHash]
 
-  given [R <: KeyRole]: Order[Credential[R]] = new SortOrder[Credential[R]]:
+  private final class CredentialOrder[R <: KeyRole] extends SortOrder[Credential[R]]:
     private val keyOrder: Order[KeyHash[R]] = Order[KeyHash[R]]
     def compare(x: Credential[R], y: Credential[R]): Int = x match
       case ScriptHashObj(a) =>
@@ -273,6 +276,27 @@ object Credential:
         y match
           case KeyHashObj(b) => keyOrder.compare(a, b)
           case _             => 1
+
+  private val stakePoolOrder: Order[Credential[StakePool]] = new CredentialOrder[StakePool]
+  private val stakingOrder: Order[Credential[Staking]] = new CredentialOrder[Staking]
+  private val genesisOrder: Order[Credential[Genesis]] = new CredentialOrder[Genesis]
+  private val genesisDelegateOrder: Order[Credential[GenesisDelegate]] =
+    new CredentialOrder[GenesisDelegate]
+  private val blockIssuerOrder: Order[Credential[BlockIssuer]] = new CredentialOrder[BlockIssuer]
+  private val drepOrder: Order[Credential[DRepRole]] = new CredentialOrder[DRepRole]
+  private val coldCommitteeOrder: Order[Credential[ColdCommittee]] =
+    new CredentialOrder[ColdCommittee]
+  private val hotCommitteeOrder: Order[Credential[HotCommittee]] =
+    new CredentialOrder[HotCommittee]
+
+  given Order[Credential[StakePool]] = stakePoolOrder
+  given Order[Credential[Staking]] = stakingOrder
+  given Order[Credential[Genesis]] = genesisOrder
+  given Order[Credential[GenesisDelegate]] = genesisDelegateOrder
+  given Order[Credential[BlockIssuer]] = blockIssuerOrder
+  given Order[Credential[DRepRole]] = drepOrder
+  given Order[Credential[ColdCommittee]] = coldCommitteeOrder
+  given Order[Credential[HotCommittee]] = hotCommitteeOrder
 
 /** `DRep` (`DRep.hs:67-72`, `deriving Ord`): key hash, script hash, always-abstain,
   * always-no-confidence.
