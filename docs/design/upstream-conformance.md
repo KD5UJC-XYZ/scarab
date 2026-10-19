@@ -73,6 +73,28 @@ retain address validation, amount/byte clamping, over-response refusal and the e
 receive-only deadline. The generic adapter retains unconstrained upstream responses
 and uses real linked Mux; it does not fabricate addresses.
 
+Handshake shares its bounded parser and wire codec through contextual `VersionCodec[V]`
+and `Ordering[V]` instances. `WireMessage[V]` and `WireReason[V]` keep the version domain
+in their types: node-to-node, node-to-client and the original closed mock 0/1/2 domain
+cannot select each other's codec. Existing Cardano integer facades convert once through
+their closed `NtnVersion`/`NtcVersion` profiles; only the node-to-client wire codec applies
+bit 15. Its highest-common selector uses a contextual `DataCodec[V, A, E]` and returns
+closed `SelectionError[V, E]`, preserving version values and typed decode/agreement causes
+until an explicit wire-refusal conversion. Missing or mismatched codec instances are
+compile-time errors, covered alongside the original negotiation regressions. It mirrors `ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Client.hs:191–227`
+at the pinned revision. Original mock versions 0/1/2 and version-dependent data are
+retained in 792 original property observations plus nine controlled cross-version
+judgments. Native checks compare the shared pure wire/selection contracts; original
+ST/IO/pipe/SimNet verdicts do not establish native interpreter or scheduling parity.
+
+The ordinary BlockFetch/ChainSync codec adapters retain 64 original mock-domain
+messages each and all five original property verdicts (640 invocations). They compare
+independently exported fields as structural CBOR through the production generic
+engines, including every two/three-part partition. Ordinary inline payloads remain
+distinct from the tag-24 wrapped and serialised binary-compatibility corpora. These
+checks do not establish Cardano payload semantics or independent mock `Serialise`
+implementation equivalence. The linked fixture inventories retain exact scope.
+
 Every retained network fiber owns its error scope and returns an Either; its owner
 lands the value in the caller's scope, following [ADR 0017](../adr/0017-fibers-end-with-values.md).
 The tests use production Mux/runtime paths and FailsOnUncaught. A final ordered result
@@ -81,9 +103,10 @@ does not establish pipeline scheduling equivalence.
 ## Network, Plutus and remaining scope
 
 The [network inventory](../../fixtures/reference/ouroboros-network-protocol-codecs/COVERAGE.md)
-retains exact registered names and family dispositions. It names remaining generic
-Handshake, BlockFetch pipeline, wrapped-codec, mux lifecycle and portable timer
-adapters separately from typed mock-domain gaps and unsupported Peras ObjectDiffusion.
+retains exact registered names and family dispositions. It distinguishes the bounded
+generic Handshake and ordinary-codec adapters from remaining BlockFetch pipeline,
+runtime/interpreter, mux lifecycle and portable timer work, broader seeds, typed
+mock-domain gaps and unsupported Peras ObjectDiffusion.
 Peras remains unadvertised; it is not silently treated as a passing protocol.
 
 The existing [Plutus evidence](../plutus-conformance.md) remains 996/1009 passing,

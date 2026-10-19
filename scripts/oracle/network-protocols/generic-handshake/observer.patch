@@ -1,0 +1,147 @@
+diff --git a/ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/Handshake/Test.hs b/ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/Handshake/Test.hs
+index 450db9fe8..ffc1d25ea 100644
+--- a/ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/Handshake/Test.hs
++++ b/ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/Handshake/Test.hs
+@@ -17,7 +17,12 @@ module Ouroboros.Network.Protocol.Handshake.Test where
+
+ import Data.ByteString.Lazy (ByteString)
+ import Data.ByteString.Lazy qualified as BL
+-import Data.List (nub)
++import Data.List (nub, intercalate)
++import Control.Monad (forM)
++import Numeric (showHex)
++import System.Environment (lookupEnv)
++import Test.QuickCheck.Gen (unGen)
++import Test.QuickCheck.Random (mkQCGen)
+ import Data.Map (Map)
+ import Data.Map qualified as Map
+ import Data.Maybe (fromMaybe)
+@@ -75,7 +80,8 @@ tests :: TestTree
+ tests =
+   testGroup "Ouroboros.Network.Protocol"
+     [ testGroup "Handshake"
+-        [ testProperty "connect"               prop_connect
++        [ testProperty "scarab generic export" (once (ioProperty scarabGenericExport))
++        , testProperty "connect"               prop_connect
+         , testProperty "channel ST"            prop_channel_ST
+         , testProperty "channel IO"            prop_channel_IO
+         , testProperty "pipe IO"               prop_pipe_IO
+@@ -1012,3 +1018,118 @@ prop_codec_valid_cbor
+   :: AnyMessage (Handshake VersionNumber CBOR.Term)
+   -> Property
+ prop_codec_valid_cbor = prop_codec_valid_cbor_encoding (codecHandshake versionNumberCodec)
++
++
++-- Disposable observation of the original generators, peers and property functions.
++scarabGenericExport :: IO Bool
++scarabGenericExport = do
++  output <- lookupEnv "SCARAB_GENERIC_HANDSHAKE_OUTPUT"
++  case output of
++    Nothing -> pure True
++    Just prefix -> do
++      codecRows <- forM [0..47] $ \i -> do
++        let seed = 490301 + i
++            size = 8 + i `mod` 13
++            msg = unGen arbitrary (mkQCGen seed) size
++              :: AnyMessage (Handshake VersionNumber CBOR.Term)
++            (state, encoded) = case msg of
++              AnyMessage m@MsgProposeVersions{} -> ("propose", encode (versionNumberHandshakeCodec :: Codec (Handshake VersionNumber CBOR.Term) CBOR.DeserialiseFailure IO ByteString) m)
++              AnyMessage m -> ("confirm", encode (versionNumberHandshakeCodec :: Codec (Handshake VersionNumber CBOR.Term) CBOR.DeserialiseFailure IO ByteString) m)
++        results <- mapM scarabVerdict
++          [prop_codec_Handshake msg, prop_codec_splits2_Handshake msg,
++           prop_codec_splits3_Handshake msg, prop_codec_cbor msg,
++           prop_codec_valid_cbor msg]
++        pure $ scarabRow ([show seed, show size, state, scarabHex encoded] ++ results)
++      reasonRows <- forM [0..23] $ \i -> do
++        let seed = 490401 + i
++            size = 8 + i `mod` 13
++            reason = unGen arbitrary (mkQCGen seed) size :: ArbitraryRefuseReason
++            encoded = CBOR.toLazyByteString
++              (encodeRefuseReason versionNumberCodec (runArbitraryRefuseReason reason))
++        verdict <- scarabVerdict (prop_codec_RefuseReason reason)
++        pure $ scarabRow [show seed, show size, scarabHex encoded, verdict]
++      behaviorRows <- forM [0..47] $ \i -> do
++        let seed = 490501 + i
++            size = 8 + i `mod` 13
++            av@(ArbitraryVersions cv sv) = unGen arbitrary (mkQCGen seed) size
++            wire vs = CBOR.toLazyByteString $ CBOR.encodeTerm $ CBOR.TMap
++              [(encodeTerm versionNumberCodec vn, encodeTerm (dataCodecCBORTerm vn) (versionData vd)) |
++                (vn, vd) <- Map.toAscList (getVersions vs)]
++            raw vs = concatMap (\(vn, vd) ->
++              let d = versionData vd in intercalate "," [show (fromEnum vn), show (dataVersion0 d),
++                show (dataVersion1 d), show (dataVersion2 d)] ++ ";")
++              (Map.toAscList (getVersions vs))
++        ordinary <- mapM scarabVerdict [prop_connect av, prop_channel_ST av,
++          prop_channel_IO av, prop_pipe_IO av]
++        asymmetric <- mapM scarabVerdict [prop_channel_asymmetric_ST av,
++          prop_channel_asymmetric_IO av, prop_pipe_asymmetric_IO av]
++        simultaneous <- mapM scarabVerdict [prop_channel_simultaneous_open_ST av,
++          prop_channel_simultaneous_open_IO av, prop_channel_simultaneous_open_SimNet av]
++        -- Actual acceptOrRefuse result, before presentation in a peer result.
++        let accepted vs remote = case acceptOrRefuse
++                (mkVersionedCodecCBORTerm dataCodecCBORTerm) acceptableVersion vs remote of
++              Left reason -> "refuse:" ++ scarabHex (CBOR.toLazyByteString
++                (encodeRefuseReason versionNumberCodec reason))
++              Right (_, vn, d) -> intercalate ":" ["accept", show (fromEnum vn),
++                show (dataVersion0 d), show (dataVersion1 d), show (dataVersion2 d)]
++            remote vs = Map.mapWithKey (\vn vd -> encodeTerm (dataCodecCBORTerm vn) (versionData vd))
++              (getVersions vs)
++            as = Versions $ Map.singleton Version_1 $ let d = VersionData 0 True True
++              in Version (application d) d
++            asymmetricRemote = Map.filterWithKey (\vn _ -> vn == Version_1) (remote cv)
++        pure $ scarabRow [show seed, show size, scarabHex (wire cv), scarabHex (wire sv),
++          raw cv, raw sv, accepted sv (remote cv), accepted cv (remote sv),
++          accepted as asymmetricRemote] ++ "\t" ++ scarabRow (ordinary ++ asymmetric ++ simultaneous)
++      symmetryRows <- forM [0..23] $ \i -> do
++        let seed = 490601 + i
++            size = 8 + i `mod` 13
++            a = unGen arbitrary (mkQCGen seed) size :: VersionData
++            b = unGen arbitrary (mkQCGen (seed + 1000)) size :: VersionData
++            fields d = [show (dataVersion0 d), show (dataVersion1 d), show (dataVersion2 d)]
++            va = unGen arbitrary (mkQCGen seed) size :: ArbitraryValidVersions
++            vb = unGen arbitrary (mkQCGen (seed + 1000)) size :: ArbitraryValidVersions
++            raw (ArbitraryValidVersions vs) = intercalate ";"
++              [intercalate "," (show (fromEnum vn) : fields (versionData vd)) |
++                (vn, vd) <- Map.toAscList (getVersions vs)]
++        symmetric <- scarabVerdict (prop_acceptable_symmetric_VersionData a b)
++        accepted <- scarabVerdict (prop_acceptOrRefuse_symmetric_VersionData va vb)
++        pure $ scarabRow ([show seed, show size] ++ fields a ++ fields b ++
++          [symmetric, raw va, raw vb, accepted])
++      probeRows <- forM [0..8] $ \i -> do
++        let sourceVersion = toEnum (i `div` 3) :: VersionNumber
++            targetVersion = toEnum (i `mod` 3) :: VersionNumber
++            seed = 490701 + i
++            d = unGen (arbitraryVersionData sourceVersion) (mkQCGen seed) 12
++            entry = Version (application d) d
++            lower = if targetVersion == Version_2 then [(Version_0, entry)] else []
++            local = Versions $ Map.fromList (lower ++ [(targetVersion, entry)])
++            remote = Map.fromList
++              ([(vn, encodeTerm (dataCodecCBORTerm vn) d) | (vn, _) <- lower] ++
++                [(targetVersion, encodeTerm (dataCodecCBORTerm sourceVersion) d)])
++            encoded = CBOR.toLazyByteString $ CBOR.encodeTerm $ CBOR.TMap
++              [(encodeTerm versionNumberCodec vn, term) | (vn, term) <- Map.toAscList remote]
++            result = case acceptOrRefuse (mkVersionedCodecCBORTerm dataCodecCBORTerm)
++                  acceptableVersion local remote of
++              Left reason -> "refuse:" ++ scarabHex (CBOR.toLazyByteString
++                (encodeRefuseReason versionNumberCodec reason))
++              Right (_, vn, agreed) -> intercalate ":" ["accept", show (fromEnum vn),
++                show (dataVersion0 agreed), show (dataVersion1 agreed), show (dataVersion2 agreed)]
++        pure $ scarabRow [show seed, show (fromEnum sourceVersion), show (fromEnum targetVersion),
++          show (dataVersion0 d), show (dataVersion1 d), show (dataVersion2 d), scarabHex encoded, result]
++      writeFile (prefix ++ "-probes.tsv") (unlines probeRows)
++      writeFile (prefix ++ "-symmetry.tsv") (unlines symmetryRows)
++      writeFile (prefix ++ "-codec.tsv") (unlines codecRows)
++      writeFile (prefix ++ "-refuse.tsv") (unlines reasonRows)
++      writeFile (prefix ++ "-behavior.tsv") (unlines behaviorRows)
++      pure True
++
++scarabHex :: ByteString -> String
++scarabHex = concatMap (\b -> let h = showHex b "" in if length h == 1 then '0':h else h) . BL.unpack
++
++scarabRow :: [String] -> String
++scarabRow = foldr1 (\a b -> a ++ "\t" ++ b)
++
++scarabVerdict :: Testable p => p -> IO String
++scarabVerdict p = do
++  r <- quickCheckWithResult stdArgs {maxSuccess = 1, chatty = False} p
++  pure (if isSuccess r then "pass" else "upstream-failure")

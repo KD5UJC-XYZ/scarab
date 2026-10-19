@@ -1,0 +1,12 @@
+{
+  "target": "ouroboros-network:protocols-tests",
+  "referencePlan": "/tmp/scarab/issue-49-handshake-reproduction-final/full-plan/cache/plan.json",
+  "referencePlanSha256": "3c0b26e26a13727364b6c8b567a90aa109c67b5c4914f41057ec8faaf3c5202c",
+  "referenceUnitCount": 167,
+  "selectedPlan": "/tmp/scarab/issue-49-handshake-reproduction-final/narrow-builddir/cache/plan.json",
+  "selectedPlanSha256": "42d695659261546c8c90946f82f38389c61cf6588c16a931aad92a9c42ea183c",
+  "selectedUnitCount": 167,
+  "sameTargetClosure": true,
+  "mismatchedKeys": [],
+  "mismatchedSignatures": []
+}

@@ -382,6 +382,78 @@ object Targets:
       }
     )
 
+  private enum MockVersion(val number: Int):
+    case V0 extends MockVersion(0)
+    case V1 extends MockVersion(1)
+    case V2 extends MockVersion(2)
+  private object MockVersion:
+    given Ordering[MockVersion] = Ordering.by(_.number)
+    given Handshake.VersionCodec[MockVersion] with
+      def decode(wire: Int): Option[MockVersion] = MockVersion.values.find(_.number == wire)
+      def encode(version: MockVersion): Either[ProtocolError, Int] = Right(version.number)
+
+  private def genericHandshakeSeeds(file: String, column: Int): Vector[Array[Byte]] =
+    pinnedLines(s"protocol/src/test/resources/upstream/generic-handshake/$file.tsv")
+      .flatMap(row =>
+        Bytes.fromHex(row.split('\t')(column)).toOption.map(_.toArray)
+      ) ++ Corpus.tricky
+
+  private def knownReason(
+      reason: Handshake.WireReason[MockVersion]
+  ): Handshake.WireReason[MockVersion] = reason match
+    case mismatch: Handshake.WireReason.VersionMismatch[MockVersion] =>
+      mismatch.copy(unknown = Vector.empty)
+    case other => other
+
+  private val genericHandshake: Target = Target(
+    "handshake-generic",
+    () => genericHandshakeSeeds("codec", 3),
+    probe("handshake-generic") { b =>
+      for state <- Handshake.State.values do
+        Handshake.decodePrefix[MockVersion](state, b).foreach { case (message, rest) =>
+          hit("handshake-generic")
+          val used = b.size - rest.size
+          req(used > 0, "decoded nothing")
+          req(
+            Handshake.decode[MockVersion](state, b.take(used)) == Right(message),
+            "consumed prefix decodes differently"
+          )
+          req(
+            Handshake.decode[MockVersion](state, b.take(used - 1)).isLeft,
+            "a shorter prefix decodes too"
+          )
+          val kept = message match
+            case Handshake.WireMessage.Refuse(reason) =>
+              Handshake.WireMessage.Refuse(knownReason(reason))
+            case other => other
+          Handshake.encode(message) match
+            case Left(e) => throw new Violation(s"$state: decoded $message does not encode: $e")
+            case Right(encoded) =>
+              req(
+                Handshake.decode[MockVersion](state, encoded) == Right(kept),
+                s"$state: $message re-decodes differently"
+              )
+        }
+    }
+  )
+
+  private val handshakeReason: Target = Target(
+    "handshake-refusal",
+    () => genericHandshakeSeeds("refuse", 2),
+    probe("handshake-refusal") { b =>
+      Handshake.decodeReason[MockVersion](b).foreach { reason =>
+        hit("handshake-refusal")
+        Handshake.encodeReason(reason) match
+          case Left(e) => throw new Violation(s"decoded $reason does not encode: $e")
+          case Right(encoded) =>
+            req(
+              Handshake.decodeReason[MockVersion](encoded) == Right(knownReason(reason)),
+              s"$reason re-decodes differently"
+            )
+      }
+    }
+  )
+
   private val network: Vector[Target] = Vector(
     cbor("cbor", Cbor.Limits()),
     cbor(
@@ -398,6 +470,8 @@ object Targets:
       Handshake.Suite.NodeToClient,
       "handshake-node-to-client:handshakeMessage"
     ),
+    genericHandshake,
+    handshakeReason,
     Target(
       "mux-header-and-sdu",
       () => Corpus.networkFixtures ++ Corpus.tricky,

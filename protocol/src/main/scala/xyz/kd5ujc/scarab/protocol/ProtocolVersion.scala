@@ -9,8 +9,9 @@ package xyz.kd5ujc.scarab.protocol
   *   - V15: SRV support in the topology (nothing changes on the wire);
   *   - V16: experimental; adds the Peras flag to the version data (the fifth element, `Version.hs`
   *     187 to 189) and, if both sides set it, the Peras mini-protocols.
-  * The wire number stays an `Int` in [[Handshake]], whose refusals must carry numbers this ADT does
-  * not know; [[fromNumber]] is the one way in.
+  * [[Handshake]] keeps this domain in its generic wire types. Its Cardano compatibility facade
+  * retains integer versions and unknown refusal numbers; [[fromNumber]] admits logical versions at
+  * that boundary.
   */
 enum NtnVersion(val number: Int):
   case V14 extends NtnVersion(14)
