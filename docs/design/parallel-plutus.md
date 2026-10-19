@@ -157,3 +157,48 @@ Area scenarios ran sequentially because another session occupied the other share
 pre-hardening era run was superseded before completion; the accepted run above and final recorded
 comparison use the final source. Owned clusters and build containers are removed after the gates.
 The broader Preview acceptance and nightly reconciliation remain #21.
+
+### Preview reconciliation gates
+
+Level 4 evidence reconciliation for #21, 2026-10-19 UTC: source `e3dbe2da`, based on
+`edf8a887`, passes Docker `check` (5,153 tests, 17 optional-data skips, all 14 modules, default fuzz and
+scalafix) and 241 Python tests. Source `3c27c84c` passes private `e2e` with 1,663 block applications
+and all 66 ledger comparisons equal through Conway epoch 17, with zero validation/fatal errors,
+reconnects or starvation warnings. The explicitly required `soak --seconds 480` passes 24/24
+comparisons, 258 block applications and both metrics endpoints' 230-series checks, with zero
+validation errors or reconnects. Both private clusters and the build container were removed.
+The [Preview measurement](../performance.md#32-preview-acceptance-evidence-reconciliation-21)
+records its source/runtime binding and limits separately from the historical runs.
+
+The preserved preprod `PlutusReplaySuite` entry point also passes on frozen source `2ffad2d8`:
+5,683 original blocks, 85,245 timing rows (17,049 for serial and each 1/2/4/8-worker mode), with
+complete current-rule state agreement. The original capture and native V5 snapshot match the
+PR #196 hashes; all 16,529 runtime files/jars remain unchanged. Its current script counter is
+104,392, versus 104,388 in the historical pre-aggregation run. This establishes entry-point
+compatibility and current serial/parallel agreement, not historical counter identity or another
+performance result. The independently rehashed ten-artifact validation manifest has SHA-256
+`f89e9eeaad84c9530773746fab063de7dfa2db6e23db39d37e90c792e9882f9d`.
+
+The complete 68-window Preview comparison passes 428,517 original blocks in both serial and
+four-worker modes (857,034 full validations). Ordered invalid transaction lists agree with the
+original bytes: 319 overlapping observations produce exactly the 242 pinned identities. Complete
+states and ordered typed requests/results, budgets, diagnostics and logs agree. All 68 selected
+Haskell boundary projections match with strict coverage, with zero unavailable/collection
+failures. The accepted execution manifest and scope are recorded in
+[performance section 32](../performance.md#32-preview-acceptance-evidence-reconciliation-21).
+The continuous genesis-to-K1-endpoint run also passes: 4,758,521 original blocks through slot
+125,366,428/hash `956541c0937e9cdc279514c10fec9706865bb6004ddcfb487bf53c7bbdc97ad1`, all
+1,451 authentic Haskell projections equal under the existing projection contract, and the exact
+ordered 242 invalid transaction identities. It evaluated 11,251,372 scripts; 244 scripts failed,
+with zero unavailable or collection failures. Six responsiveness warnings are retained, rather
+than inheriting the private e2e's zero-warning claim. The 6 h 12 m 05.190 s replay interval includes
+projection exports and persistence; performance section 32 records the separate timer scopes.
+
+The frozen runtime remains bound to production base `235cd12a`, tool `dc00416b`; subsequent
+integration builds are recorded separately. The accepted K1 manifest has SHA-256
+`489094c44e9e97793aba1371c65eb3643bb18c7bb8d3416d7ce5391fb5b9dcde`; independent integration
+verification rehashed all 1,467 artifacts and checked the endpoint, strict reference coverage and
+ordered invalid identities. Original archived inputs remain unchanged and the owned container is
+removed. Local D2 data acceptance is complete; #21 stays open for merge and green main CI under
+[the definition of done](../process.md#definition-of-done). Nightly CI is the continuing safety net,
+not an additional new run required before closing this item.

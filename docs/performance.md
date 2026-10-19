@@ -1941,6 +1941,33 @@ full header/ledger/phase-2 validation, invalid-transaction semantics, storage/ca
 limits. Run on the same host without competing jobs; report startup, replay, projection exports and
 final checkpoint separately, and verify state/invalid-transaction equality before interpreting speed.
 
+**Current-rule failure windows, 2026-10-19.** All 68 authenticated windows passed: 428,517
+original blocks, each validated serially and with four workers, for 857,034 full validation
+applications. Every block produced equal complete mirror states and ordered typed evaluator
+requests/results, declared and consumed budgets, diagnostics and logs. All per-window invalid
+transaction lists matched in order. The 319 observations include overlap between windows; their
+union is exactly the 242 pinned transaction identities. Reference-path counters, including that
+overlap, are 447,674 reached transactions, 1,201,042 evaluated scripts and 321 failed scripts, with
+zero evaluator-unavailable or collection failures. The corresponding consumed units sum to
+659,922,009,346 memory and 248,661,954,179,859 steps. These are correctness counters, not a
+throughput measurement.
+
+All 68 selected epoch-boundary projections matched the authentic Haskell reference with strict
+coverage: zero missing, duplicate or mismatching epochs. This subset supplements the exact
+serial/parallel comparison; it does not constitute a complete independent Haskell per-script
+request/log/budget oracle. Historical per-script diagnostics were not retained.
+
+The run used frozen source `a5a9bdf01ba3e96e5a4e96ce0747560ea8cbdf93` and the unchanged
+16,345-file runtime classpath inventory named below. All 68 native V5 snapshots and checkpoint paths were
+bound to the earlier conversion/copy manifests; the external checkpoint proof has SHA-256
+`6454c12f54274472c4d38256552c13f758a09c2bc24e684e5023517956210ad2`.
+That proof establishes continuity to the retained capture, independently of the Haskell boundary
+comparisons. The accepted 503-artifact execution manifest has SHA-256
+`d09232851f34225d57a95391729e9381c731764d065d9001f8b5b4a60da6024d`.
+A separate integration audit rehashed every artifact, counted all validation rows, checked each
+ordered invalid list and the exact golden union. All 68 scratch stores and the owned container
+were removed after their evidence was retained.
+
 **Current-rule timing, 2026-10-19.** The shared `RecordedReplay` runner validated the captured
 epoch-135 window: 6,494 original blocks, 67,163 reached phase-2 transactions and 138,358 evaluated
 scripts per pass. All 12 expected invalid transactions were reproduced, with zero unavailable or
@@ -1949,7 +1976,8 @@ and used budgets, diagnostics and logs agreed between serial validation and four
 
 Each block had a warm serial reference followed by three rotated serial/four-worker rounds. Only
 the reference advanced the UTxO store. Timings include full validation, signature checks and store
-reads; they exclude input loading, comparisons, context serialization and store flushing.
+reads and script-context construction; they exclude input loading, comparisons, trace serialization
+and store flushing.
 
 | Round | Summed serial validation | Four workers | Serial / four workers |
 |---|---:|---:|---:|
@@ -1967,8 +1995,8 @@ disabled. The host had 24 logical CPUs and 139 GiB RAM; its one-minute load rang
 The runner source was `a5a9bdf01ba3e96e5a4e96ce0747560ea8cbdf93`; its 450 production Scala
 files matched integration source `3c27c84cff6109f31a896060b78fd92d7f51501b` on base `235cd12a`.
 The isolated-worktree build reported `BuildInfo.gitCommit=unknown`, so independent source and
-class manifests bind this run instead. All 16,345 class files remained unchanged; their normalized
-manifest SHA-256 was `9461cca620c595e21703527c9783c08e48854feed5afccc91f43e3d3192d89a7`.
+class manifests bind this run instead. All 16,345 runtime classpath files (compiled classes, resources and jars) remained unchanged;
+their normalized manifest SHA-256 was `9461cca620c595e21703527c9783c08e48854feed5afccc91f43e3d3192d89a7`.
 The retained 21-artifact evidence manifest, independently rehashed after the run, has SHA-256
 `395d0ff72707146701e688ea8e61a9871c3067a87e9996f12519ea6a7c6e4af7`.
 The [shared-runner recipe](design/parallel-plutus.md#preview-replay-using-the-same-runner) describes
@@ -1980,3 +2008,22 @@ The replay does not call those new methods; existing immutable open/recovery/str
 ledger, evaluator, reward, snapshot and projection paths are unchanged. The frozen replay manifests
 retain their earlier source and class bindings; they are not claimed to be identical to every file
 on the rebased branch.
+
+A further rebase onto `edf8a887` retires V1–V4 snapshot payload readers. The authenticated
+Preview and preprod inputs are native V5; the continuous K1 scratch starts from genesis without
+snapshots. The valid V5 section decoder, native decode body, and encoder with its former default
+`carried=None` are unchanged, as are the sidecar/ledger codecs and production immutable replay.
+Retired/unknown snapshot admission behavior is outside these inputs and is not claimed unchanged.
+Original immutable-index migration remains supported on private staging metadata. The retained
+native-path audit has SHA-256
+`ebc16aee86b54988f7391e763bf07f0e0605e57e8172fe8d1ab8c620aa216dde`.
+Source `e3dbe2da` on that base passes a fresh Docker `check`: 5,153 tests, 17 optional-data skips, all 14
+modules, 77 default fuzz targets and scalafix; all 241 Python tests pass. Frozen replay evidence
+retains its actual earlier source/class identities rather than claiming execution on the new base.
+
+The subsequent rebase onto `57608c6e` adds upstream Wycheproof tests and a Mithril bootstrap-stage
+identity write; none of these replay entry points invokes Mithril bootstrap. All feature Scala and
+Python sources remain byte-identical to checked source `e3dbe2da`, and the used core replay paths
+are unchanged. The additional audit has SHA-256
+`7504d11b69dc39157655309259dc8de2aa1bf7f6948d781d182846307d709ade`.
+The accepted one-CPU v0.2 limitation in section 31 is retained.
