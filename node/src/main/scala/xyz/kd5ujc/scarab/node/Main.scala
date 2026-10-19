@@ -955,7 +955,7 @@ object Main extends IOApp:
                   MemoryReport
                     .sample(stores)
                     .flatMap(sample => logged(NodeEvent.Memory(sample)))).foreverM.background.void
-            run = network.use { net =>
+            run = blockPool.maintenance.surround(network.use { net =>
               // the governor ends the node only by a fault (an invariant, the bootstrap timeout)
               val sync: IO[Unit] =
                 collectors.add(Collectors.peerMetrics(net.metrics)) *>
@@ -985,7 +985,7 @@ object Main extends IOApp:
                 .flatMap(_ => reporting)
                 .flatMap(_ => watching)
                 .surround(sync)
-            }
+            })
             _ <- metrics.set(
               Catalogue.buildInfo,
               (BuildInfo.version, BuildInfo.scalaVersion, BuildInfo.gitCommit),

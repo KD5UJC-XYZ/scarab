@@ -68,7 +68,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
                 )
             }
           }
-          .rescue(e => IO.raiseError(new RuntimeException(e.message)))
+          .rescue(e => IO(fail(e.message)))
       _ <- extend(raws)
       ranges <- Ref.of[IO, Vector[(Point, Point)]](Vector.empty)
       counting = new BlockFetchServer.Blocks[IO]:
@@ -119,11 +119,17 @@ class InboundGovernorSuite extends FailsOnUncaught:
                   raw: Bytes,
                   immutable: Vector[BlockRef],
                   anchor: Anchor[MirrorState]
+              )(using
+                  cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError],
+                  cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.ChainError]
               ) = applied.update(_ :+ raw)
-              def rolledBack(to: ChainSync.Point) = IO.unit)
+              def rolledBack(to: ChainSync.Point)(using
+                  cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError],
+                  cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.ChainError]
+              ) = IO.unit)
           )
         }
-        .rescue(e => IO.raiseError(new RuntimeException(e.message)))
+        .rescue(e => IO(fail(e.message)))
       manager <- ConnectionManager.create[IO](ConnectionManager.Limits(maxInbound = 4))
       validating = Option.when(headerFirst)(
         HeaderCheck.forChain[IO, MirrorState, xyz.kd5ujc.scarab.consensus.state.ProtocolState](
@@ -195,7 +201,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
               .use(_ => during(ended))
               .guarantee(theirs.close)
           }
-          .rescue(e => IO.raiseError(new RuntimeException(e.message)))
+          .rescue(e => IO(fail(e.message)))
           .flatMap(a => ended.map(a -> _))
       }
     }
@@ -463,6 +469,6 @@ class InboundGovernorSuite extends FailsOnUncaught:
             }
           }
         )
-        .rescue(e => IO.raiseError(new RuntimeException(e.message)))
+        .rescue(e => IO(fail(e.message)))
     yield assertEquals(outcome._1.outbound -> outcome._1.inbound, (1, 1))
   }

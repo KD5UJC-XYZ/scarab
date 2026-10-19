@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node
 
 import cats.effect.{IO, Ref}
 import cats.effect.std.Queue
-import cats.mtl.{Handle, Raise, Stateful}
+import cats.mtl.{Raise, Stateful}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.{EvalFailure, ExUnits}
@@ -68,7 +68,6 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       unavailable: Option[Int] = None
   ): IO[Result] =
     NodeScope.resource.use { node =>
-      given Handle[IO, NodeError] = node
       for
         ref <- Ref.of[IO, VolatileChain[BigInt]](
           VolatileChain.genesis(geometry.securityParam, -1)

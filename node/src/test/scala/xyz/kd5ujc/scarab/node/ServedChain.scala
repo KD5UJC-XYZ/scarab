@@ -7,7 +7,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef}
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
-import xyz.kd5ujc.scarab.ledger.{Block}
+import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.network.{ServerHandlers, TxSubmissionServer}
 import xyz.kd5ujc.scarab.node.forge.ForgedChain
 import xyz.kd5ujc.scarab.node.relay.ChainServer

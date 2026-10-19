@@ -4,8 +4,8 @@ package xyz.kd5ujc.scarab.node.relay
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
-import cats.syntax.all.*
 import fs2.Stream
+import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.ledger.StorageError
@@ -44,7 +44,7 @@ class SourceScopeSuite extends FailsOnUncaught:
       _ <- server.source.use { source =>
         source.intersect(Vector(ref(1).point)).background.use { _ =>
           for
-            failure <- reported.get
+            failure <- reported.get.timeout(3.seconds)
             count <- server.activeFollowers
           yield
             assertEquals(failure, Fatal.Storage(error))
@@ -64,7 +64,7 @@ class SourceScopeSuite extends FailsOnUncaught:
       server <- ChainServer.open[IO](
         Some(
           store(
-            point => IO.pure(Some(if point == ref(1).point then raw(1) else raw(2))),
+            point => IO.pure(Some(if point == ref(1).point then raw(1) else raw(3))),
             Stream.resource(Resource.make(IO.unit)(_ => released.set(true))).flatMap { _ =>
               Stream.emit(ImmutableStore.Stored(ref(2), raw(2))) ++
                 Stream.eval(error.raise[IO, ImmutableStore.Stored])
@@ -75,11 +75,11 @@ class SourceScopeSuite extends FailsOnUncaught:
         headerOf,
         failure => reported.complete(failure).void
       )
-      range <- server.blocks.range(ref(1).point, ref(2).point, 10)
+      range <- server.blocks.range(ref(1).point, ref(3).point, 10)
       _ <- range.fold(IO(fail("expected range"))) { blocks =>
         blocks.evalMap(value => seen.update(_ :+ value)).compile.drain.background.use { _ =>
           for
-            failure <- reported.get
+            failure <- reported.get.timeout(3.seconds)
             closed <- released.get
             values <- seen.get
           yield

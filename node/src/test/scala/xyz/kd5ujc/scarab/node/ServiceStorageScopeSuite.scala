@@ -2,9 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.effect.{Deferred, IO, Ref}
-import cats.effect.syntax.all.*
 import cats.mtl.Raise
-import cats.syntax.all.*
 import java.io.IOException
 import java.nio.file.Path
 import org.http4s.{Method, Request, Uri}
