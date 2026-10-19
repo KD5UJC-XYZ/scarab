@@ -1,0 +1,145 @@
+--- a/libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/ExecSpecRule/Core.hs
++++ b/libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/ExecSpecRule/Core.hs
+@@ -30,6 +30,7 @@
+   ForAllExecTypes,
+   diffConformance,
+   dumpCbor,
++  runSTS,
+   runFromAgdaFunction,
+ ) where
+ 
+@@ -64,6 +65,7 @@
+   withCtxSpecTransM,
+  )
+ import Test.Cardano.Ledger.Imp.Common
++import Test.Cardano.Ledger.Shelley.Utils (runSTS)
+ import Test.Cardano.Ledger.Shelley.ImpTest (
+   ImpTestM,
+   ShelleyEraImp,
+--- a/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Core.hs
++++ b/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Core.hs
+@@ -51,6 +51,26 @@
+   ImpM t ()
+ conformanceHook globals trc@(TRC (env, state, signal)) ctx impRuleResult =
+   impAnn ("Conformance hook (" <> symbolVal (Proxy @rule) <> ")") $ do
++    -- Export-only observer: preserve each real integration-hook judgment.
++    exportRoot <- liftIO $ lookupEnv "SCARAB_IMP_EXPORT_DIR"
++    captureDir <- case exportRoot of
++      Nothing -> pure Nothing
++      Just path -> do
++        ordinal <- liftIO $ hashUnique <$> newUnique
++        let dir = path <> "/" <> symbolVal (Proxy @rule) <> "-" <> show ordinal
++        liftIO $ createDirectoryIfMissing True dir
++        dumpCbor @era dir ctx "context"
++        dumpCbor @era dir env "environment"
++        dumpCbor @era dir state "state"
++        dumpCbor @era dir signal "signal"
++        liftIO $ writeFile (dir <> "/result.txt") "native-output-not-yet-observed\nagda-not-yet-observed\n"
++        case impRuleResult of
++          Right (out, _) -> do
++            dumpCbor @era dir out "implementation-state"
++            liftIO $ writeFile (dir <> "/result.txt") "implementation-accepted\nagda-not-yet-observed\n"
++          Left _ -> liftIO $ writeFile (dir <> "/result.txt") "implementation-rejected\nagda-not-yet-observed\n"
++        pure $ Just dir
++
+     -- translate inputs
+     specTRC@(SpecTRC specEnv specState specSignal) <-
+       impAnn "Translating inputs" . expectRightDeepExpr $ runSpecTransM ctx $ translateInputs trc
+@@ -64,25 +84,12 @@
+       impRuleResult' = bimap (T.pack . show) fst impRuleResult
+       impResponse = first (T.pack . show) . runSpecTransM @era ctx . translateOutput trc =<< impRuleResult'
+ 
+-    -- Export-only observer: preserve each real integration-hook judgment.
+-    exportRoot <- liftIO $ lookupEnv "SCARAB_IMP_EXPORT_DIR"
+-    case exportRoot of
++    case captureDir of
+       Nothing -> pure ()
+-      Just path -> do
+-        ordinal <- liftIO $ hashUnique <$> newUnique
+-        let dir = path <> "/" <> symbolVal (Proxy @rule) <> "-" <> show ordinal
+-        liftIO $ createDirectoryIfMissing True dir
+-        dumpCbor @era dir ctx "context"
+-        dumpCbor @era dir env "environment"
+-        dumpCbor @era dir state "state"
+-        dumpCbor @era dir signal "signal"
+-        implStatus <- case impRuleResult of
+-          Right (out, _) -> do
+-            dumpCbor @era dir out "implementation-state"
+-            pure "implementation-accepted"
+-          Left _ -> pure "implementation-rejected"
+-        let agdaStatus = either (const "agda-rejected") (const "agda-accepted") agdaResponse
+-        let verdict = if impResponse == agdaResponse then "outputs-equal" else "outputs-differ"
++      Just dir -> do
++        let implStatus = either (const "implementation-rejected") (const "implementation-accepted") impRuleResult
++            agdaStatus = either (const "agda-rejected") (const "agda-accepted") agdaResponse
++            verdict = if impResponse == agdaResponse then "outputs-equal" else "outputs-differ"
+         liftIO $ writeFile (dir <> "/result.txt") (unlines [implStatus, agdaStatus, verdict])
+ 
+     logString "implEnv"
+--- a/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Conway.hs
++++ b/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Conway.hs
+@@ -6,6 +6,17 @@
+ 
+ import Cardano.Ledger.BaseTypes
+ import Cardano.Ledger.Conway (ConwayEra)
++import Cardano.Ledger.Conway.Core
++import Cardano.Ledger.Shelley.LedgerState (LedgerState (..))
++import Cardano.Ledger.Shelley.Rules qualified as Shelley
++import Control.State.Transition (TRC (..), State, Event, PredicateFailure)
++import Data.List.NonEmpty (NonEmpty)
++import Data.Sequence qualified as Seq
++import Lens.Micro ((^.))
++import Test.Cardano.Ledger.Conformance.ExecSpecRule.Conway (ConwayLedgerExecContext (..))
++import Test.Cardano.Ledger.Conformance.ExecSpecRule.Core (ExecSpecTopLevelRule (..), runSTS)
++import Test.Cardano.Ledger.Constrained.Conway (UtxoExecContext (..))
++
+ import Test.Cardano.Ledger.Conformance.Imp.Conway.Ratify qualified as RatifySpec
+ import Test.Cardano.Ledger.Conformance.Imp.Core
+ import Test.Cardano.Ledger.Conway.Imp.BbodySpec qualified as BBODY
+@@ -28,7 +39,7 @@
+   describe "Imp" $ do
+     withImpInit @(LedgerSpec ConwayEra) $
+       modifyImpInitProtVer @ConwayEra (natVersion @11) $
+-        modifyImpInitPostSubmitTxHook submitTxConformanceHook $ do
++        modifyImpInitPostSubmitTxHook scarabSubmitHook $ do
+           modifyImpInitPostEpochBoundaryHook epochBoundaryConformanceHook $ do
+             BBODY.spec
+             CERTS.spec
+@@ -44,3 +55,37 @@
+             UTXOS.spec
+   describe "Imp (only spec)" $ do
+     RatifySpec.spec
++
++-- Supplemental native judgments from the original clean payment input. The
++-- original LEDGER hook remains intact; these are separately typed rule calls.
++scarabSubmitHook ::
++  Globals ->
++  TRC (EraRule "LEDGER" ConwayEra) ->
++  Either
++    (NonEmpty (PredicateFailure (EraRule "LEDGER" ConwayEra)))
++    (State (EraRule "LEDGER" ConwayEra), [Event (EraRule "LEDGER" ConwayEra)]) ->
++  ImpM t ()
++scarabSubmitHook globals trc@(TRC (env, st, sig)) result = do
++  submitTxConformanceHook globals trc result
++  let tx = sig ^. txStAnnTxG
++      body = tx ^. bodyTxL
++  when (null (body ^. certsTxBodyL) && null (body ^. proposalProceduresTxBodyL)) $ do
++    let ctx = mkRuleExecContext @"LEDGER" @ConwayEra globals trc
++        utxoCtx = clecUtxoExecContext ctx
++        utxoEnv = uecUtxoEnv utxoCtx
++        utxoState = lsUTxOState st
++    let utxoResult = runSTS @"UTXO" @ConwayEra globals utxoEnv utxoState sig
++    conformanceHook @"UTXO" @ConwayEra globals
++      (TRC (utxoEnv, utxoState, sig)) utxoCtx utxoResult
++    let utxowResult = runSTS @"UTXOW" @ConwayEra globals utxoEnv utxoState sig
++    conformanceHook @"UTXOW" @ConwayEra globals
++      (TRC (utxoEnv, utxoState, sig)) utxoCtx utxowResult
++    case Shelley.ledgerEpochNo env of
++      Nothing -> pure ()
++      Just epoch -> do
++        let batchEnv = Shelley.LedgersEnv
++              (Shelley.ledgerSlotNo env) epoch (Shelley.ledgerPp env) (Shelley.ledgerAccount env)
++            signal = Seq.singleton tx
++        let batchResult = runSTS @"LEDGERS" @ConwayEra globals batchEnv st signal
++        conformanceHook @"LEDGERS" @ConwayEra globals
++          (TRC (batchEnv, st, signal)) (clecEnactState ctx) batchResult

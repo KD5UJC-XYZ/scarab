@@ -1,0 +1,221 @@
+{
+  "sourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "seed": 498301,
+  "upstreamProperty": "Conformance/Conway/Imp/EPOCH/Proposals/Expired proposal deposit refunded",
+  "upstreamExitCode": 0,
+  "cases": [
+    {
+      "id": "LEDGER-1",
+      "rule": "LEDGER",
+      "files": {
+        "state.cbor": {
+          "bytes": 8351,
+          "sha256": "e94eacf0fdf13343ce332f6469c991fa3bd78d2635230fae53df8474e956a323"
+        },
+        "result.txt": {
+          "bytes": 52,
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f"
+        },
+        "signal.cbor": {
+          "bytes": 243,
+          "sha256": "29895230ead7a504a65099a6cfd8df39fae8fec60619ea9e88fce91036a063ed"
+        },
+        "environment.cbor": {
+          "bytes": 2252,
+          "sha256": "e6fef2a4abc41143a868ce83306db29e18407dfa50566be6bddb3894b174298d"
+        },
+        "implementation-state.cbor": {
+          "bytes": 8403,
+          "sha256": "fa0439e45a56e41f51310894d65ca60182113daef1050f119588fbfccf1efa23"
+        },
+        "context.cbor": {
+          "bytes": 6725,
+          "sha256": "3b1af1ff77203d8a18fce9dfe10c41b919c3b8113382d21b89a57ad908f7c381"
+        }
+      }
+    },
+    {
+      "id": "LEDGER-2",
+      "rule": "LEDGER",
+      "files": {
+        "state.cbor": {
+          "bytes": 8403,
+          "sha256": "fa0439e45a56e41f51310894d65ca60182113daef1050f119588fbfccf1efa23"
+        },
+        "result.txt": {
+          "bytes": 52,
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f"
+        },
+        "signal.cbor": {
+          "bytes": 266,
+          "sha256": "b0583a034105164ad73161282723537033f49680c61c39abb20aad01adf9fa6b"
+        },
+        "environment.cbor": {
+          "bytes": 2252,
+          "sha256": "e6fef2a4abc41143a868ce83306db29e18407dfa50566be6bddb3894b174298d"
+        },
+        "implementation-state.cbor": {
+          "bytes": 8542,
+          "sha256": "fb4fefd0f34377e668e2cdf06372e0bdad59dd714c554e2b56b96bea13e7ab15"
+        },
+        "context.cbor": {
+          "bytes": 6792,
+          "sha256": "fcb4a98caef7919f6a0420c9e068923ebca83bc46a4d9a47e8230cdf1aeae76f"
+        }
+      }
+    },
+    {
+      "id": "LEDGER-3",
+      "rule": "LEDGER",
+      "files": {
+        "state.cbor": {
+          "bytes": 8542,
+          "sha256": "fb4fefd0f34377e668e2cdf06372e0bdad59dd714c554e2b56b96bea13e7ab15"
+        },
+        "result.txt": {
+          "bytes": 52,
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f"
+        },
+        "signal.cbor": {
+          "bytes": 2704,
+          "sha256": "a684b884139734da490acc03bb8cb1d81d7376097a07902f2851016d59e83c1e"
+        },
+        "environment.cbor": {
+          "bytes": 2252,
+          "sha256": "e6fef2a4abc41143a868ce83306db29e18407dfa50566be6bddb3894b174298d"
+        },
+        "implementation-state.cbor": {
+          "bytes": 8795,
+          "sha256": "4bfd58ee83713a0b438bc78c5fd6fba895251c3646e91a756aec1a2adfbf931b"
+        },
+        "context.cbor": {
+          "bytes": 9328,
+          "sha256": "adaf73f6a580f4df1a288440758c88855a5b0f7d9d9b23c9ee2350fb380e60fc"
+        }
+      }
+    },
+    {
+      "id": "NEWEPOCH-4",
+      "rule": "NEWEPOCH",
+      "files": {
+        "state.cbor": {
+          "bytes": 8842,
+          "sha256": "66cdf5edb44c7a9d14eb13f0cb49253c26db8720d64d311b2fe3da7b44a3cecb"
+        },
+        "result.txt": {
+          "bytes": 52,
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f"
+        },
+        "signal.cbor": {
+          "bytes": 3,
+          "sha256": "1412c74268ac9721d6727fdfa077655da0d5ab37bb9f59e4fbb12efdd5451487"
+        },
+        "environment.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        },
+        "implementation-state.cbor": {
+          "bytes": 10084,
+          "sha256": "ff9c47a61dee7af265a3bc61e4da64f8ef3e172fef7777298a2a72748a8db796"
+        },
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        }
+      }
+    },
+    {
+      "id": "NEWEPOCH-5",
+      "rule": "NEWEPOCH",
+      "files": {
+        "state.cbor": {
+          "bytes": 10109,
+          "sha256": "ad01cd046c9d20955586a5b13319dcd7b4f41422afd5eb2e1b80a66bd40e9e60"
+        },
+        "result.txt": {
+          "bytes": 52,
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f"
+        },
+        "signal.cbor": {
+          "bytes": 3,
+          "sha256": "976f41d7a25cd562ed76347aaf592936d87ef10c8f11f372bc8781b518db3fb5"
+        },
+        "environment.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        },
+        "implementation-state.cbor": {
+          "bytes": 10120,
+          "sha256": "311d2a1c18eb4e5e0132caa1ad8fa16c9a35fe0f163c87f9981f44dcde873e55"
+        },
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        }
+      }
+    },
+    {
+      "id": "NEWEPOCH-6",
+      "rule": "NEWEPOCH",
+      "files": {
+        "state.cbor": {
+          "bytes": 10129,
+          "sha256": "c27c2460fd4cdde08ed63856bf4bb016ee1c8c216ec60035ccd30bff9ab70048"
+        },
+        "result.txt": {
+          "bytes": 52,
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f"
+        },
+        "signal.cbor": {
+          "bytes": 3,
+          "sha256": "a35048057c8b753132967fdf74b9c066d8a3b49276e1abcfdb8b80c246106bdc"
+        },
+        "environment.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        },
+        "implementation-state.cbor": {
+          "bytes": 9720,
+          "sha256": "2bba7e3edcd50200f31ea8f22d1eeb3f12469e76829dc9335090921f1c068309"
+        },
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        }
+      }
+    }
+  ],
+  "schema": "scarab-upstream-ledger-conformance-v1",
+  "formalCommit": "b3a4fd47a1144ff1fb994f89b1045e78159e07ae",
+  "generatorCommit": "966f65f3c28cb22fc45220dbd1408baea93b53d8",
+  "observerPatches": [
+    "scripts/oracle/ledger-govcert/exporter.patch",
+    "scripts/oracle/ledger-govcert/native-hooks.patch"
+  ],
+  "observerPatchHashes": {
+    "scripts/oracle/ledger-govcert/exporter.patch": "7130e6e9c1b055f27a2f1a60984af5d58446e9441f088fea724b0dbcba165e31",
+    "scripts/oracle/ledger-govcert/native-hooks.patch": "764892d352c6780fa0121c03c2eb29eef08e33f5e4e3c383155a261cda5a951f"
+  },
+  "dependencyPlanSha256": "d5268a535a9e6c5a4158ddac6f9a1c310d05882c54f2c85b460de83e2e3453d6",
+  "sourceBlobs": {
+    "libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/ExecSpecRule/Core.hs": "0ace12d82bb6d21457d49bfee619e2b0e69c41d9",
+    "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Core.hs": "9f325137c736ebba89bed7605601c4175e614595",
+    "eras/conway/impl/testlib/Test/Cardano/Ledger/Conway/Imp/EpochSpec.hs": "7b9f60b5d0728135c72496879dcd38b4372467c6",
+    "eras/shelley/impl/testlib/Test/Cardano/Ledger/Shelley/ImpTest.hs": "4e782002be38f31a043ede98d2a504b3b029e896"
+  },
+  "globals": {
+    "maxLovelaceSupply": 45000000000000000,
+    "epochLength": 4320,
+    "activeSlotCoeff": "1/5",
+    "network": "Testnet",
+    "securityParameter": 108,
+    "slotLengthSeconds": 1,
+    "systemStart": "2017-09-23T21:44:51Z",
+    "quorum": 5
+  },
+  "limitations": [
+    "The original integration test and conformance hooks run unchanged apart from observation; none of the six judgments is fabricated or adapted from another rule label.",
+    "These are three transactions and three genuine consecutive boundaries for one expired-proposal-refund case, not complete rule-family coverage.",
+    "The hook compares the formal projected state; Scarab separately compares the complete native state, including reward state."
+  ]
+}
