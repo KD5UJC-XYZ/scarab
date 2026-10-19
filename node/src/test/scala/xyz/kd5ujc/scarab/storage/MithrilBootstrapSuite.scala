@@ -10,13 +10,16 @@ import fs2.io.file.Path
 import java.nio.file.{Files, Path as JPath}
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorExtras}
-import xyz.kd5ujc.scarab.ledger.StorageError
+import xyz.kd5ujc.scarab.consensus.state.*
+import xyz.kd5ujc.scarab.ledger.{Block, NetworkIdentity, StorageError}
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.node.NodeSetup
+import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
 import xyz.kd5ujc.scarab.storage.haskell.{ChunkSlots, HaskellImport}
+import xyz.kd5ujc.scarab.storage.haskell.state.*
+import xyz.kd5ujc.scarab.storage.haskell.{BlockPosition, HaskellDbKit}
 import xyz.kd5ujc.scarab.storage.mithril.{MithrilBootstrap as Bootstrap, MithrilClient as Client}
 
 /** Stub clients exercise orchestration only; cryptographic acceptance uses the pinned real client.
@@ -63,6 +66,95 @@ class MithrilBootstrapSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         LedgerSnapshotImport.Trust.Unverified
       )
     )
+  private val fixtureRaws =
+    Files
+      .readAllLines(JPath.of("fixtures/eras/blocks.hex"))
+      .asScala
+      .toVector
+      .filter(_.nonEmpty)
+      .map(line => Bytes.fromHex(line).fold(error => fail(error.message), identity))
+  private val fixtureBlocks = fixtureRaws.map(raw =>
+    Block.decode(raw, setup.geometry.byron.epochSlots).fold(error => fail(error.message), identity)
+  )
+  private lazy val fixtureStates = fixtureBlocks.indices
+    .scanLeft(setup.mirrorStart) { (before, index) =>
+      MirrorSteps
+        .block(setup, before, fixtureBlocks(index).header, fixtureRaws(index))
+        .fold(error => fail(error.reason), identity)
+    }
+    .tail
+  private val fixtureChunkSlots = ChunkSlots.fromSecurityParam(10).getOrElse(fail("slots"))
+  private val ledgerIndex = fixtureBlocks.lastIndexWhere(_.era == Era.Shelley)
+  private def immutableItems: Vector[HaskellDbKit.Item] = fixtureRaws.map { raw =>
+    val block = Block
+      .decode(raw, setup.geometry.byron.epochSlots)
+      .fold(error => fail(error.message), identity)
+    val header = block.header
+    val position =
+      if header.isBoundary then
+        BlockPosition.Ebb((header.slot / setup.geometry.byron.epochSlots).toLong)
+      else BlockPosition.Regular(header.slot.toLong)
+    val offset = raw.toArray.indexOfSlice(header.raw.toArray)
+    val (headerOffset, headerSize) =
+      if offset >= 0 && xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(header.raw) == header.hash
+      then (offset, header.raw.size)
+      else (0, 0)
+    HaskellDbKit.Item(position, raw.toArray, header.hash, headerOffset, headerSize)
+  }
+
+  private def writeVerifiedInput(directory: Path, identity: NetworkIdentity): IO[BlockRef] =
+    val state = fixtureStates(ledgerIndex)
+    val anchor =
+      xyz.kd5ujc.scarab.consensus.state.StateMirror
+        .anchorOf(state.ext.headerState.tip)
+        .getOrElse(fail("fixture state has no anchor"))
+    val ledger = directory / "ledger" / anchor.slot.toString
+    val encoded = HaskellLedgerFile
+      .of(state.ext)
+      .flatMap(HaskellLedgerFile.encode)
+      .fold(error => fail(error.toString), bytes => bytes)
+    val tableCrc = state.ext.ledgerState.state match
+      case inEra: EraLedgerState.InShelleyEra[era] =>
+        given ShelleyBasedEra[era] = inEra.era
+        StorageTestKit.ok {
+          for
+            store <- MemoryUtxoStore[IO]
+            utxo = inEra.state.nes.es.ls.utxo.utxo.utxo
+            _ <- store.write(utxo.toMap.map((input, output) => input -> Some(output)), 0)
+            chunks <- IO.ref(Vector.empty[Bytes])
+            summary <- Handle
+              .allow[SnapshotTables.Error] {
+                SnapshotTableStream.writeStore[IO, era](store)(chunk => chunks.update(_ :+ chunk))
+              }
+              .rescue(error => IO.raiseError(new AssertionError(error.toString)))
+            collected <- chunks.get
+            _ <- IO.blocking(
+              Files.write((ledger / "tables").toNioPath, collected.flatMap(_.toArray).toArray)
+            )
+          yield summary.crc
+        }
+      case _ => IO.pure(SnapshotCrc.empty)
+    for
+      _ <- IO.blocking {
+        Files.createDirectories((directory / "ledger").toNioPath)
+        HaskellDbKit.write(
+          directory.toNioPath,
+          identity.magic,
+          fixtureChunkSlots,
+          immutableItems
+        )
+        Files.createDirectories(ledger.toNioPath)
+        Files.write((ledger / "state").toNioPath, encoded.toArray)
+      }
+      crc <- tableCrc
+      metadata = SnapshotMeta
+        .encode(SnapshotMeta.fromCrcs(SnapshotCrc.of(encoded), crc))
+        .fold(error => fail(error.toString), value => value)
+      _ <- IO.blocking {
+        Files.writeString((ledger / "meta").toNioPath, metadata)
+        Files.writeString((directory / "ancillary_manifest.json").toNioPath, "{}")
+      }
+    yield anchor
   private def attempt[A](
       body: Handle[IO, Bootstrap.Error] ?=> IO[A]
   ): IO[Either[Bootstrap.Error, A]] =
@@ -78,6 +170,46 @@ class MithrilBootstrapSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         Raise[IO, Client.Error]
     ): IO[Client.Verified] =
       refused *> Client.Error.RefusedVerification.raise[IO, Client.Verified]
+
+  test("a cached bootstrap with owned work files imports and publishes its fresh stores") {
+    StorageTestKit.tempDir.use { root =>
+      val cache = root / "cache"
+      val requested = config(root, Client.Source.Cached(cache))
+      val client = new Client[IO]:
+        def acquire(request: Client.Request, work: Path)(using
+            Raise[IO, Client.Error]
+        ): IO[Client.Verified] =
+          val directory = work / "verified"
+          for
+            _ <- IO(assert(request.source.isInstanceOf[Client.Source.Cached]))
+            _ <- writeVerifiedInput(directory, requested.immutable.identity)
+          yield Client.Verified(directory, id, request.network, id, Bytes.empty)
+      for
+        _ <- IO.blocking {
+          Files.createDirectory(cache.toNioPath)
+          Files.writeString((cache / "untouched").toNioPath, "source cache")
+        }
+        result <- attempt(Bootstrap.run(requested, client))
+        report = result.fold(error => fail(error.message), identity)
+        identity <- IO.blocking(
+          Files.readString((root / "db" / NetworkIdentityFile.FileName).toNioPath)
+        )
+        cached <- IO.blocking(Files.readString((cache / "untouched").toNioPath))
+        immutable <- IO.blocking(Files.isDirectory((root / "db" / "immutable").toNioPath))
+        snapshot <- IO.blocking(Files.isDirectory((root / "db" / "snapshots").toNioPath))
+        evidence <- IO.blocking(
+          Files.isRegularFile((root / "db" / "mithril-bootstrap.json").toNioPath)
+        )
+      yield
+        assertEquals(identity, requested.immutable.identity.render)
+        assertEquals(cached, "source cache")
+        assert(immutable)
+        assert(snapshot)
+        assert(evidence)
+        assert(report.immutable.appended > 0L)
+        assertEquals(report.ledger.anchor.slot, fixtureBlocks(ledgerIndex).header.slot)
+    }
+  }
 
   test("existing destinations are unchanged and refused before invoking the verifier") {
     StorageTestKit.tempDir.use { root =>

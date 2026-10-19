@@ -132,6 +132,9 @@ object MithrilBootstrap:
     def prepare(stage: Path): F[Report] =
       val work = stage / ".mithril-work"
       for
+        // Network magic was matched before stage creation. Record the configured identity before
+        // work files, so strict importer preflight sees the fresh stage's identity.
+        _ <- NetworkIdentityFile.write[F](stage, config.immutable.identity)
         _ <- guard(work.toString)(JFiles.createDirectory(work.toNioPath))
         requested <- source(work)
         verified <- client.acquire(requested, work)
