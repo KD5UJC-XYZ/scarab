@@ -125,7 +125,7 @@ object Ratify:
   private def ratio(n: BigInt, d: BigInt): Rational =
     if d <= 0 then Rational.zero else Rational(n, d)
 
-  private def committeeAccepted(env: Env, st: EnactState, gas: GovActionState): Boolean =
+  def committeeAccepted(env: Env, st: EnactState, gas: GovActionState): Boolean =
     committeeThreshold(env.epoch, st.params, st.committee, env.committeeState, gas.action) match
       case Required(r) =>
         r.isZero || {
@@ -155,7 +155,7 @@ object Ratify:
       .flatMap(p => env.accounts.get(p.params.rewardAccount.credential))
       .flatMap(_.drep)
 
-  private def spoAccepted(env: Env, st: EnactState, gas: GovActionState): Boolean =
+  def spoAccepted(env: Env, st: EnactState, gas: GovActionState): Boolean =
     spoThreshold(st.params, st.committee.isDefined, gas.action) match
       case Required(r) =>
         r.isZero || {
@@ -180,7 +180,7 @@ object Ratify:
       case NotAllowed  => true
       case Unavailable => false
 
-  private def drepAccepted(env: Env, st: EnactState, gas: GovActionState): Boolean =
+  def drepAccepted(env: Env, st: EnactState, gas: GovActionState): Boolean =
     drepThreshold(st.params, st.committee.isDefined, gas.action) match
       case Required(r) =>
         r.isZero || {
@@ -236,25 +236,35 @@ object Ratify:
 
   /** RATIFY over the proposals, in the ledger's priority order. */
   def ratify(env: Env, start: EnactState, proposals: Vector[GovActionState]): RatifyState =
-    val ordered = proposals.sortBy(g => priority(g.action))
-    val end = ordered.foldLeft(RatifyState(start, Vector.empty, Set.empty, delayed = false)) {
-      (rs, gas) =>
-        val st = rs.enact
-        val action = gas.action
-        if prevActionAsExpected(gas, st.prevIds) &&
-          validCommitteeTerm(action, st.params, env.epoch) && !rs.delayed &&
-          canWithdraw(action, st.treasury) &&
-          committeeAccepted(env, st, gas) && spoAccepted(env, st, gas) &&
-          drepAccepted(env, st, gas)
-        then
-          RatifyState(
-            enact(st, gas.id, action),
-            rs.enacted :+ gas,
-            rs.expired,
-            delaying(action)
-          )
-        else if gas.expiresAfter < env.epoch then rs.copy(expired = rs.expired + gas.id)
-        else rs
+    transition(
+      env,
+      RatifyState(start, Vector.empty, Set.empty, delayed = false),
+      proposals.sortBy(g => priority(g.action))
+    )
+
+  /** The native RATIFY judgment preserves the supplied state and signal order
+    * (`cardano-ledger@f649f975`, `Conway/Rules/Ratify.hs:318–363`). The pulser's fresh invocation
+    * and action-priority policy are supplied by [[ratify]]; conformance can exercise the same
+    * transition with an existing delayed state or an independently generated signal.
+    */
+  def transition(env: Env, initial: RatifyState, signal: Vector[GovActionState]): RatifyState =
+    val end = signal.foldLeft(initial) { (rs, gas) =>
+      val st = rs.enact
+      val action = gas.action
+      if prevActionAsExpected(gas, st.prevIds) &&
+        validCommitteeTerm(action, st.params, env.epoch) && !rs.delayed &&
+        canWithdraw(action, st.treasury) &&
+        committeeAccepted(env, st, gas) && spoAccepted(env, st, gas) &&
+        drepAccepted(env, st, gas)
+      then
+        RatifyState(
+          enact(st, gas.id, action),
+          rs.enacted :+ gas,
+          rs.expired,
+          delaying(action)
+        )
+      else if gas.expiresAfter < env.epoch then rs.copy(expired = rs.expired + gas.id)
+      else rs
     }
     end.copy(enact = end.enact.copy(treasury = 0))
 
