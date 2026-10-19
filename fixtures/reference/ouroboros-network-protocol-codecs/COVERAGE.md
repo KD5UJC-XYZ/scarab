@@ -17,11 +17,11 @@ upstream invocation and verdicts; the [fixture recipe](README.md) describes nati
 | BlockFetch | 23 | Bounded serialised codecs, partitions, binary compatibility and 24 original generic behavior cases through the shared production engine/runtime: 298 ranges, 694 bodies, 180 empty ranges | `directPipelined 1/2`, `connect_pipelined 1–5` generated scheduling cases; ordinary wrapped-codec split/valid-CBOR families; separate IO/pipe backend outcomes |
 | ChainSync | 34 | Bounded serialised codecs, partitions, binary compatibility; 24 exact generic fork cases through production engine/runtime; original direct/connect/demo/pipeline outcomes and parameters retained | Wrapped-codec split/valid-CBOR families; request/collect decisions and buffer occupancy are not implied by final-chain parity or the fixed-window native profile |
 | Generic Handshake | 21 | Separate Cardano-specific properties exercise production negotiation, query, refusal and simultaneous open | Generic versions 0/1/2, version-specific arbitrary data, asymmetric unknown-version server, RefuseReason/ordinary codecs and partitions remain unadapted. Mock versions cannot be silently substituted for Cardano 14/15/16 |
-| KeepAlive | 9 | 24 original finite server conversations; codec, split-2/3 and valid-CBOR samples | Automatic client cookie policy and independent IO-backend outcome coverage are distinct; byte-limit property scope is reported in its own fixture |
+| KeepAlive | 9 | 24 original finite server conversations; codec, split-2/3 and valid-CBOR samples | 24 original byte-limit observations match the per-state ceiling; automatic client cookie policy and independent IO-backend outcome coverage remain distinct |
 | LocalStateQuery | 10 | Bounded codecs/partitions and original acquisition/query conversations through production server | Specific-point mock integer hashes cause retained whole-map exclusions; backend/interpreter equivalence is not inferred from linked Mux |
 | LocalTxMonitor | 11 | Codec, partitions, valid-CBOR, codec-ID and 24 original fixed-snapshot conversations | Independent IO/pipe outcomes; upstream observed snapshot samples contain no AwaitAcquire requests |
 | LocalTxSubmission | 13 | Codec, annotated codec, partitions and 24 original conversations: 147 submissions, 25 accepts, 122 refusals | Independent IO/pipe outcomes and complete state/error branch coverage |
-| PeerSharing | 10 | Bounded generic codec samples plus 300 genuine Cardano SockAddr cases; finite conversation and byte-limit evidence is reported separately | Mock integer peers retain their original domain; Cardano address and response-limit policy must remain explicit |
+| PeerSharing | 10 | Bounded generic codecs plus 300 genuine Cardano SockAddr cases; 24 exact generic conversations through the shared production runtime and real linked Mux, 217 requests / 985 Int items; 24 original byte-limit observations | Mock integer peers and unclamped generic replies retain their original domain; Cardano address and response-limit policies remain independently tested |
 | TxSubmission2 | 15 | Codec/annotated partitions and 24 original generic conversations through the production engine/runtime, 94 ordered transactions | `connect 2` choice vectors are retained, not a replay of its scheduler; independent IO/pipe outcomes |
 | ObjectDiffusion | 14 | No Scala adapter | Genuine Peras protocol, outside Scarab's advertised feature set: Peras is false, protocols 16/17 are absent. Not test infrastructure, not Leios 18/19, and not interchangeable with TxSubmission2 |
 | Generic CDDL `serialise Any` | 1 | Cardano CDDL validation is separate | Haskell library/test-value roundtrip; no extra Scala mini-protocol to implement |
@@ -65,3 +65,10 @@ ObjectDiffusion scope is established by
 and `cardano-diffusion/lib/Cardano/Network/NodeToNode.hs:281–295,490–494` at the pin.
 All unsupported feature and applicable adapter gaps remain under #49; this inventory
 is not a whole-suite completion declaration.
+
+The [PeerSharing finite/byte-limit corpus](../../../network/src/test/resources/upstream/peer-acceptance/README.md)
+retains all four direct/connect/channel-ST/channel-IO verdicts per finite case.
+Its three over-sized generic replies and 94 negative generated function results
+are retained without Cardano policy coercion. KeepAlive and PeerSharing ceilings
+are compared with actual upstream state limits; this is not a new mux enforcement
+or generic-Int-to-Cardano-address claim.

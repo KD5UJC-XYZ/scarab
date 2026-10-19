@@ -8,6 +8,7 @@ import unittest
 
 from export import (
     PROPERTY_COLUMNS,
+    summarize_peer_acceptance_rows,
     summarize_chainsync_direct_connect_rows,
     summarize_chainsync_pipeline_rows,
     validate_pipe_demo_export,
@@ -17,6 +18,25 @@ from export import (
 
 
 class PropertyOutcomeColumnsTest(unittest.TestCase):
+    def test_peer_acceptance_retains_an_upstream_failure_in_any_property(self) -> None:
+        passing = ["peersharing-behavior-v1", "1", "0", "30", "[]", "[]", "[]"] + ["pass"] * 4
+        failing = passing.copy()
+        failing[9] = "upstream-failure"
+        self.assertEqual(
+            summarize_peer_acceptance_rows("peersharing-behavior.tsv", [passing, failing], 2),
+            {"pass": 1, "upstream-failure": 1},
+        )
+
+    def test_byte_limit_failures_keep_the_original_oversized_message(self) -> None:
+        row = ["peersharing-byte-limits-v1", "1", "0", "30", "busy", "8101", "2", "1", "upstream-failure"]
+        self.assertEqual(
+            summarize_peer_acceptance_rows("peersharing-byte-limits.tsv", [row], 1),
+            {"pass": 0, "upstream-failure": 1},
+        )
+        row[6] = "3"
+        with self.assertRaisesRegex(ValueError, "encoded size differs"):
+            summarize_peer_acceptance_rows("peersharing-byte-limits.tsv", [row], 1)
+
     def test_socket_outcome_rows_are_tied_to_unchanged_pipe_generator_identity(self) -> None:
         inputs = [
             ["ouroboros-pipe-demo-v1", "505001", "0", "30"],

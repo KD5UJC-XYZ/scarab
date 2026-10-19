@@ -73,6 +73,20 @@ PROPERTY_COLUMNS: dict[str, tuple[tuple[str, int], ...]] = {
 }
 
 
+def summarize_peer_acceptance_rows(name: str, rows: list[list[str]], count: int) -> dict[str, int]:
+    finite = name == "peersharing-behavior.tsv"
+    width = 11 if finite else 9
+    if len(rows) != count or any(len(row) != width for row in rows):
+        raise ValueError(f"invalid peer acceptance export {name}")
+    verdicts = [row[7:] if finite else row[8:] for row in rows]
+    if any(value not in ("pass", "upstream-failure") for values in verdicts for value in values):
+        raise ValueError(f"unknown upstream outcome in {name}")
+    if not finite and any(len(bytes.fromhex(row[5])) != int(row[6]) for row in rows):
+        raise ValueError(f"encoded size differs from original bytes in {name}")
+    passed = sum(all(value == "pass" for value in values) for values in verdicts)
+    return {"pass": passed, "upstream-failure": len(rows) - passed}
+
+
 def summarize_property_outcomes(
     rows: list[list[str]], properties: tuple[tuple[str, int], ...]
 ) -> dict[str, object]:
@@ -2416,12 +2430,11 @@ def main() -> None:
     originals = prepare(args.source.resolve(), overlay)
     # Keep the upstream source/project pins and every target dependency exact,
     # while restricting Cabal's project-wide solver to the three local packages
-    # that own this test target.  Closure equivalence to the recorded full
-    # project plan is checked and retained alongside the probe result.
+    # that own this test target. With --reference-plan, closure equivalence to
+    # that independent plan is checked and retained alongside the probe result.
     project_file = args.probe_dir / "protocols-tests.project"
     build = args.probe_dir / "narrow-builddir"
     build.mkdir(exist_ok=True)
-    image_digest = checked(["docker", "image", "inspect", IMAGE, "--format", "{{.Id}}"])
     container = subprocess.run(["docker", "container", "inspect", CONTAINER_NAME], text=True, capture_output=True)
     if container.returncode != 0:
         checked([
@@ -2430,6 +2443,8 @@ def main() -> None:
             "-w", "/source", IMAGE, "-f", "/dev/null",
         ])
     checked(["docker", "start", CONTAINER_NAME])
+    # A reused warm container can have a different image from the configured creation tag.
+    image_digest = checked(["docker", "container", "inspect", CONTAINER_NAME, "--format", "{{.Image}}"])
     test_names = ("PeerSharing", "KeepAlive") if args.peer_acceptance_only else () if args.pipe_demo_behavior_only or args.socket_demo_behavior_only else ("LocalStateQuery",) if args.lsq_behavior_only else ("TxSubmission2",) if args.txsubmission2_behavior_only else ("BlockFetch",) if args.blockfetch_behavior_only else ("ChainSync",) if args.chainsync_behavior_only or args.chainsync_pipelined_max_only or args.chainsync_pipelined_min_only or args.chainsync_pipelined_low_high_only or args.chainsync_pipelined_direct_connect_only or args.chainsync_pipelined_min_buffered_only or args.chainsync_demo_pipelined_io_only or args.chainsync_io_behavior_only else (
         "KeepAlive", "PeerSharing", "ChainSync", "BlockFetch", "LocalStateQuery",
         "LocalTxSubmission", "LocalTxMonitor", "TxSubmission2",
@@ -2639,19 +2654,15 @@ def main() -> None:
         for name in files:
             raw = (args.probe_dir / "exports" / name).read_bytes()
             rows = [line.split("\t") for line in raw.decode().splitlines()]
-            width = 11 if name == "peersharing-behavior.tsv" else 9
-            if len(rows) != args.count or any(len(row) != width for row in rows):
-                raise SystemExit(f"invalid peer acceptance export {name}")
-            if any(value != "pass" for row in rows for value in row[7:] if name.endswith("behavior.tsv")):
-                raise SystemExit(f"upstream finite property failed: {name}")
-            if name.endswith("byte-limits.tsv") and any(row[8] != "pass" or len(bytes.fromhex(row[5])) != int(row[6]) or int(row[6]) > int(row[7]) for row in rows):
-                raise SystemExit(f"upstream byte limit property failed: {name}")
+            counts = summarize_peer_acceptance_rows(name, rows, args.count)
             (args.output_dir / name).write_bytes(raw)
             hashes[name] = hashlib.sha256(raw).hexdigest()
-            outcomes[name] = len(rows)
+            outcomes[name] = counts
         manifest = {
             "schema": "scarab-upstream-peer-acceptance-v1", "sourceCommit": UPSTREAM_COMMIT,
-            "count": args.count, "seed": args.seed, "files": hashes, "passingRows": outcomes,
+            "count": args.count, "seed": args.seed, "files": hashes,
+            "passingRows": {name: counts["pass"] for name, counts in outcomes.items()},
+            "upstreamFailureRows": {name: counts["upstream-failure"] for name, counts in outcomes.items()},
             "observerPatchSha256": hashlib.sha256(patch.encode()).hexdigest(),
             "sourceFiles": {
                 path: hashlib.sha256((args.source / path).read_bytes()).hexdigest()

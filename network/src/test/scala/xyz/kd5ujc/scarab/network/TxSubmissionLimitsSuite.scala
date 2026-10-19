@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.effect.{Deferred, IO, Ref}
+import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.testkit.TestControl
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{RelayOffer, TxSubmission2}
@@ -303,16 +303,22 @@ class TxSubmissionLimitsSuite extends FailsOnUncaught with ScalaCheckSuite:
         for
           c <- client.channel(4)
           s <- server.channel(4)
-          request <- Fibers.scoped[IO, NetworkError, Unit](NetworkError.Defect(_)) {
-            TxSubmissionServer.run(s, sink, TxSubmissionServer.Settings(idsPerRequest = 9))
-          }.background.use { serving =>
-            for
-              _ <- send(c, State.Init, Role.Client, Message.Init)
-              request <- receive(c, State.Idle, Role.Server)
-              _ <- send(c, State.Ids(true), Role.Client, Message.Done)
-              _ <- serving.joinWithNever.flatMap(Fibers.land[IO, NetworkError, Unit])
-            yield request
-          }
+          request <- Resource
+            .make(
+              Fibers
+                .scoped[IO, NetworkError, Unit](NetworkError.Defect(_)) {
+                  TxSubmissionServer.run(s, sink, TxSubmissionServer.Settings(idsPerRequest = 9))
+                }
+                .start
+            )(_.cancel)
+            .use { serving =>
+              for
+                _ <- send(c, State.Init, Role.Client, Message.Init)
+                request <- receive(c, State.Idle, Role.Server)
+                _ <- send(c, State.Ids(true), Role.Client, Message.Done)
+                _ <- serving.joinWithNever.flatMap(Fibers.land[IO, NetworkError, Unit])
+              yield request
+            }
         yield request
       }
     }.map(result => assertEquals(result, Right(Message.RequestIds(true, 0, 9))))

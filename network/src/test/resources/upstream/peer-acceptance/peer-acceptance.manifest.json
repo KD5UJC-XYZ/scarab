@@ -31,7 +31,7 @@
   "targetDependencyClosureUnitCount": 167,
   "projectPlanUnitCount": 246,
   "dependencyPlanComparison": "Only the selected target closure is bound; no independent full-project equivalence is claimed.",
-  "imageDigest": "sha256:aa7e2d96e9f15eb8556f9b6a2685b0aaf3a22608ed1299821f7a7edc4c491847",
+  "imageDigest": "sha256:c84fee725e7bb9d6957dbe0ecf5cff69a71625b42c650477427126e3d00ed534",
   "commands": [
     {
       "argv": [
@@ -160,5 +160,12 @@
     "Original byteLimits properties and actual source-state limit/dataSize for both protocols.",
     "Scarab generic runtime replay checks finite functional results, not scheduler trace equivalence.",
     "Generic Int peer payloads are not Cardano addresses; their wire codecs remain distinct."
-  ]
+  ],
+  "configuredCreationImageDigest": "sha256:aa7e2d96e9f15eb8556f9b6a2685b0aaf3a22608ed1299821f7a7edc4c491847",
+  "imageIdentityNote": "The capture reused the already-created warm container scarab-v02-49-blockfetch-luna. imageDigest is its actual immutable image; configuredCreationImageDigest records the creation tag inspected by the original runner. Both identities are retained rather than treating the configured tag as the executing image.",
+  "upstreamFailureRows": {
+    "peersharing-behavior.tsv": 0,
+    "peersharing-byte-limits.tsv": 0,
+    "keepalive-byte-limits.tsv": 0
+  }
 }

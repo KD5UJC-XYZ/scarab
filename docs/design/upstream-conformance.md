@@ -67,6 +67,12 @@ applies its caller's outstanding-credit bound. Invalid runtime settings fail wit
 typed configuration error before waiting for Init, rather than failing later during
 wire encoding. Valid default settings retain the reference's indefinite Init wait.
 
+PeerSharing uses a peer-polymorphic conversation shared by the production address
+client/server and the original integer-domain adapter. Its Cardano wire interpreters
+retain address validation, amount/byte clamping, over-response refusal and the exact
+receive-only deadline. The generic adapter retains unconstrained upstream responses
+and uses real linked Mux; it does not fabricate addresses.
+
 Every retained network fiber owns its error scope and returns an Either; its owner
 lands the value in the caller's scope, following [ADR 0017](../adr/0017-fibers-end-with-values.md).
 The tests use production Mux/runtime paths and FailsOnUncaught. A final ordered result
