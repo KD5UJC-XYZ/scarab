@@ -540,3 +540,52 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
         "unsupported:reacquire-specific-point:ExpectedDefiniteByteString" -> 3
       )
     )
+
+  test("consume actual generated LocalTxSubmission codec cases at the typed boundary"):
+    val input = rows(
+      "localtxsubmission.tsv",
+      "003b00977beb431d5e9b59712af67f026b10d9a684daa37a208fc1c4a4cf88d1"
+    )
+    assertEquals(input.size, 24)
+    assertEquals(input.count(f => f.size == 10 && f(8) == "pass" && f(9) == "pass"), 24)
+    assertEquals(
+      input.groupMapReduce(_(6))(_ => 1)(_ + _),
+      Map("accept-tx" -> 4, "done" -> 7, "reject-tx" -> 7, "submit-tx" -> 6)
+    )
+    assertEquals(input.groupMapReduce(_(4))(_ => 1)(_ + _), Map("busy" -> 11, "idle" -> 13))
+    val outcomes = input.map { fields =>
+      assertEquals(fields.size, 10)
+      assertEquals(fields(0), "local-tx-submission-codec-v1")
+      val seed = fields(1).toInt
+      val ordinal = fields(2).toInt
+      assertEquals(seed, 493001 + ordinal)
+      assertEquals(fields(3).toInt, 30 + ordinal % 21)
+      val state = fields(4) match
+        case "idle" => LocalTxSubmission.State.Idle
+        case "busy" => LocalTxSubmission.State.Busy
+        case other  => fail(s"unknown upstream LocalTxSubmission state $other at seed $seed")
+      val sender = fields(5) match
+        case "client" => ChainSync.Role.Client
+        case "server" => ChainSync.Role.Server
+        case other    => fail(s"unknown upstream LocalTxSubmission sender $other at seed $seed")
+      val wire = bytes(fields(7))
+      LocalTxSubmission.decodePrefix(state, sender, wire) match
+        case DecodeResult.Decoded(message, consumed) =>
+          assertEquals(consumed, wire.size, s"seed $seed consumed original wire")
+          val tag = message match
+            case LocalTxSubmission.Message.SubmitTx(_) => "submit-tx"
+            case LocalTxSubmission.Message.AcceptTx    => "accept-tx"
+            case LocalTxSubmission.Message.RejectTx(_) => "reject-tx"
+            case LocalTxSubmission.Message.Done        => "done"
+          assertEquals(tag, fields(6), s"seed $seed typed constructor")
+          val encoded = LocalTxSubmission
+            .encode(state, sender, message)
+            .fold(e => fail(s"seed $seed Scarab typed encode: ${e.toString}"), identity)
+          assertEquals(encoded, wire, s"seed $seed exact original wire roundtrip")
+          "matched"
+        case DecodeResult.Failed(error) =>
+          fail(s"seed $seed typed decode failed: ${error.toString}")
+        case DecodeResult.NeedMore => fail(s"seed $seed incomplete original wire")
+    }
+    assertEquals(outcomes.size, 24)
+    assertEquals(outcomes.count(_ == "matched"), 24)

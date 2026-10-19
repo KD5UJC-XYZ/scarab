@@ -73,6 +73,12 @@ upstream pass status but are unsupported at `ExpectedDefiniteByteString`: upstre
 `HeaderHash Int` is integer-encoded, while Scarab's point type requires byte-string hashes. No
 point conversion or fabricated value is used; query/result payloads remain opaque full CBOR items.
 
+The LocalTxSubmission observer exports 24 rows from the pinned upstream
+`AnyMessage (LocalTxSubmission Tx Reject)` generator at seed base 493001. Both unchanged
+`prop_codec` and `prop_codec_cbor` pass for all 24. Scarab's typed consumer decodes all 24,
+checks the constructor and agency state, consumes the complete original wire, and re-encodes it
+byte-for-byte. `Tx` and `Reject Int` payloads are retained as their complete original CBOR items.
+
 The pinned ChainSync `codecSerialised` observer now exports 128 rows from the actual
 `AnyMessage ChainSync_Serialised_BlockHeader` generator, preserving each source state token,
 sender agency, constructor, original CBOR wire, generator seed/size, and separate verdicts from
