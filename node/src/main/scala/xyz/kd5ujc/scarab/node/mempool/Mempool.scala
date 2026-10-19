@@ -3,13 +3,14 @@ package xyz.kd5ujc.scarab.node.mempool
 
 import cats.effect.{Async, Ref}
 import cats.effect.std.Mutex
-import cats.mtl.Ask
-import xyz.kd5ujc.scarab.ledger.LedgerFailure
+import cats.mtl.{Ask, Raise}
+import xyz.kd5ujc.scarab.ledger.{LedgerFailure, StorageError}
 import cats.syntax.all.*
 import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.network.{TxSubmissionClient, TxSubmissionServer}
 import xyz.kd5ujc.scarab.node.read.ConwayView
+import xyz.kd5ujc.scarab.node.{Fatal, StorageBoundary}
 import xyz.kd5ujc.scarab.storage.UtxoStore
 
 /** Observable mempool milestones, for the JSON log. */
@@ -43,7 +44,7 @@ object MempoolEvents:
   */
 trait Mempool[F[_]]:
   /** The transaction id, or why the transaction was refused. */
-  def add(raw: Bytes): F[Either[Rejection, Bytes]]
+  def add(raw: Bytes)(using Raise[F, StorageError]): F[Either[Rejection, Bytes]]
 
   def snapshot: F[MempoolState]
 
@@ -65,13 +66,13 @@ trait Mempool[F[_]]:
       ledger: Either[ConwayView.Unavailable, MempoolLedger],
       tipSlot: BigInt,
       adopted: Set[Bytes] = Set.empty
-  ): F[Vector[(Entry, Rejection)]]
+  )(using Raise[F, StorageError]): F[Vector[(Entry, Rejection)]]
 
   /** Offer our transactions to a peer (we are the TxSubmission2 client). */
   def source: TxSubmissionClient.Source[F]
 
   /** Collect a peer's transactions (we are the TxSubmission2 server). */
-  def sink: TxSubmissionServer.Sink[F]
+  def sink(fatal: Fatal => F[Unit]): TxSubmissionServer.Sink[F]
 
 object Mempool:
   /** Ids of recently refused or removed transactions, remembered so peers that offer them again are
@@ -108,7 +109,7 @@ object Mempool:
       private val F = Async[F]
       private val readEnv = environment.fold(F.pure(env))(_.ask[MempoolEnv])
 
-      def add(raw: Bytes) = lock.lock.surround {
+      def add(raw: Bytes)(using Raise[F, StorageError]) = lock.lock.surround {
         for
           held <- state.get
           current <- MempoolState.parse(raw) match
@@ -163,7 +164,7 @@ object Mempool:
           ledger: Either[ConwayView.Unavailable, MempoolLedger],
           tipSlot: BigInt,
           adopted: Set[Bytes]
-      ) = lock.lock.surround {
+      )(using Raise[F, StorageError]) = lock.lock.surround {
         for
           current <- state.get
           completed <- ledger.traverse(l =>
@@ -205,7 +206,8 @@ object Mempool:
           }
         def body(id: Bytes) = state.get.map(_.entries.find(_.id == id).map(_.raw))
 
-      val sink: TxSubmissionServer.Sink[F] = new TxSubmissionServer.Sink[F]:
+      def sink(fatal: Fatal => F[Unit]): TxSubmissionServer.Sink[F] = new TxSubmissionServer.Sink[F]:
         def known(id: Bytes) =
           (state.get.map(_.contains(id)), seen.get.map(_.ids(id))).mapN(_ || _)
-        def submit(originals: Vector[Bytes]) = originals.traverse_(add(_).void)
+        def submit(originals: Vector[Bytes]) =
+          StorageBoundary.run(fatal)(originals.traverse_(add(_).void))

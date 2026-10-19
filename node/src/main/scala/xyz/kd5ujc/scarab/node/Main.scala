@@ -510,7 +510,7 @@ object Main extends IOApp:
           options.dumpStateFull
         )
       }
-      afterBlock = (header: Header, s: MirrorState) =>
+      afterBlock = (header: Header, s: MirrorState) => (storageError: cats.mtl.Raise[IO, StorageError]) ?=>
         IO.delay(cache.noteEpochNonce(s.ledgerEpoch, s.protocol.epochNonce)) *>
           dumper.traverse_(_.afterBlock(header, s)) *>
           praosConfig
@@ -613,7 +613,8 @@ object Main extends IOApp:
             server <- ChainServer.open[IO](
               immutable,
               anchor,
-              ChainServer.headerOfBlock(genesis.geometry.byron.epochSlots)
+              ChainServer.headerOfBlock(genesis.geometry.byron.epochSlots),
+              fatalSink
             )
             _ <- resumed.traverse_(r =>
               server
@@ -676,7 +677,7 @@ object Main extends IOApp:
               NtNHeader.codec,
               server.source,
               server.blocks,
-              mempool.sink,
+              mempool.sink(fatalSink),
               peerSharing = Some(sharing.source)
             )
             // header-first validation (G6): signatures are verified through the cache's keeping
@@ -897,7 +898,7 @@ object Main extends IOApp:
                       NodeToClientServer.acceptBackend[IO, StorageError](
                         bearer,
                         genesis.networkMagic,
-                        LocalSubmission.handler(mempool),
+                        LocalSubmission.handler(mempool)(fatalSink),
                         Some(StateQuerySource[IO, MirrorState](ref, queryEnv, store, chainGate)),
                         chainSync = Some(server.blockSource),
                         txMonitor = Some(LocalMonitor.source(mempool))
@@ -974,7 +975,7 @@ object Main extends IOApp:
                   ),
                   forging.map(_.stats.byEpoch.map(Reports.forgeReport)),
                   Some(scrape)
-                )
+                )(fatalSink)
                 .flatMap(_ => relay)
                 .flatMap(_ => local)
                 .flatMap(_ => production)

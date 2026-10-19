@@ -63,7 +63,7 @@ class LocalSubmissionSuite extends FailsOnUncaught:
               Handle
                 .allow[NetworkError](
                   LocalTxSubmissionServer
-                    .accept(bearer, magic, LocalSubmission.handler(mempool))
+                    .accept(bearer, magic, LocalSubmission.handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure"))))
                     .map(_.message)
                 )
                 .rescue(e => IO.pure(e.message))
@@ -128,7 +128,7 @@ class LocalSubmissionSuite extends FailsOnUncaught:
             Handle
               .allow[NetworkError](
                 LocalTxSubmissionServer
-                  .accept(serverEnd, magic, LocalSubmission.handler(mempool))
+                  .accept(serverEnd, magic, LocalSubmission.handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure"))))
                   .map(_.message)
               )
               .rescue(e => IO.pure(e.message))
@@ -212,7 +212,7 @@ class LocalSubmissionSuite extends FailsOnUncaught:
           .listenUnix[IO, NetworkError](path)(error => IO(fail(error.toString))) { bearer =>
             Handle
               .allow[NetworkError](
-                NodeToClientServer.accept(bearer, magic, LocalSubmission.handler(mempool))
+                NodeToClientServer.accept(bearer, magic, LocalSubmission.handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure"))))
               )
               .rescue(error => IO.pure(LocalTxSubmissionServer.End.ConnectionClosed(error)))
               .flatMap(end => ended.complete(end).void)

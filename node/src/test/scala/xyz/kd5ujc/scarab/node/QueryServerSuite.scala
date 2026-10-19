@@ -51,7 +51,7 @@ class QueryServerSuite extends CatsEffectSuite:
     )
     for
       reads <- Ref.of[IO, Reads](Reads(0, Vector.empty))
-      app = QueryServer.routes(view(reads)).orNotFound
+      app = QueryServer.routes(view(reads))(failure => IO(fail(s"unexpected fatal: $failure"))).orNotFound
       _ <- malformed.traverse_ { path =>
         app
           .run(request(path))
@@ -64,7 +64,7 @@ class QueryServerSuite extends CatsEffectSuite:
   test("bare state reads the tip and a retained explicit point reads that point") {
     for
       reads <- Ref.of[IO, Reads](Reads(0, Vector.empty))
-      app = QueryServer.routes(view(reads)).orNotFound
+      app = QueryServer.routes(view(reads))(failure => IO(fail(s"unexpected fatal: $failure"))).orNotFound
       tip <- app.run(request("/state"))
       at <- app.run(request(s"/state?slot=17&hash=$hash"))
       observed <- reads.get
@@ -78,7 +78,7 @@ class QueryServerSuite extends CatsEffectSuite:
     val slots = List(BigInt(18), BigInt("18446744073709551615"))
     for
       reads <- Ref.of[IO, Reads](Reads(0, Vector.empty))
-      app = QueryServer.routes(view(reads)).orNotFound
+      app = QueryServer.routes(view(reads))(failure => IO(fail(s"unexpected fatal: $failure"))).orNotFound
       _ <- slots.traverse_ { slot =>
         app.run(request(s"/state?slot=$slot&hash=$hash")).map { response =>
           assertEquals(response.status, Status.NotFound)

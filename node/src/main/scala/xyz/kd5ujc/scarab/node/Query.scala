@@ -481,12 +481,12 @@ object QueryServer:
       /** The metrics in the Prometheus text format, served at `/metrics` (see [[MetricsServer]]).
         */
       metrics: Option[F[String]] = None
-  )(using read: ChainRead[S]): Resource[F, Server] =
+  )(fatal: Fatal => F[Unit])(using read: ChainRead[S]): Resource[F, Server] =
     EmberServerBuilder
       .default[F]
       .withHost(Host.fromString("127.0.0.1").get)
       .withPort(Port.fromInt(port).get)
-      .withHttpApp(routes(view, utxoStore, scheduling, connections, forging, metrics).orNotFound)
+      .withHttpApp(routes(view, utxoStore, scheduling, connections, forging, metrics)(fatal).orNotFound)
       .build
 
   private enum StateTarget:
@@ -526,16 +526,18 @@ object QueryServer:
       connections: Option[F[Json]] = None,
       forging: Option[F[Json]] = None,
       metrics: Option[F[String]] = None
-  )(using read: ChainRead[S]): HttpRoutes[F] =
+  )(fatal: Fatal => F[Unit])(using read: ChainRead[S]): HttpRoutes[F] =
     val dsl = Http4sDsl[F]
     import dsl.*
     // With the UTxO set in a backing store the state holds only its recent changes: the whole set
     // is put back together for the projection.
     def complete(s: S): F[xyz.kd5ujc.scarab.ledger.Utxo] =
       utxoStore.fold(Async[F].pure(s.utxo)) { store =>
-        xyz.kd5ujc.scarab.storage.UtxoStore
-          .materialize(store, s.utxo)
-          .map(xyz.kd5ujc.scarab.ledger.Utxo.fromMap)
+        StorageBoundary.run(fatal) {
+          xyz.kd5ujc.scarab.storage.UtxoStore
+            .materialize(store, s.utxo)
+            .map(xyz.kd5ujc.scarab.ledger.Utxo.fromMap)
+        }
       }
     def projected(p: ChainSync.Point, s: S): F[Response[F]] =
       complete(s).flatMap { utxo =>
