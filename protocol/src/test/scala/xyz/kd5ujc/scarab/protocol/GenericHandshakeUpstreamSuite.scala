@@ -229,9 +229,11 @@ class GenericHandshakeUpstreamSuite extends munit.FunSuite:
       val r = select(server, client.map((v, d) => v -> encoded(v, d)))
       (c, r) match
         case (Right(x), Right(y)) => assertEquals(x, y)
-        case (Left(Reason.VersionMismatch(_, _)), Left(Reason.VersionMismatch(_, _))) => ()
-        case (Left(Reason.DecodeError(_, _)), Left(_))                                => ()
-        case (Left(_), Left(Reason.DecodeError(_, _)))                                => ()
+        case (Left(Reason.VersionMismatch(vs, _)), Left(Reason.VersionMismatch(ws, _))) =>
+          assertEquals(vs, client.map(_._1))
+          assertEquals(ws, server.map(_._1))
+        case (Left(Reason.DecodeError(_, _)), Left(_))                => ()
+        case (Left(_), Left(Reason.DecodeError(_, _)))                => ()
         case (Left(Reason.Refused(v, _)), Left(Reason.Refused(w, _))) => assertEquals(v, w)
         case other => fail(s"selection was not symmetric: $other")
     }

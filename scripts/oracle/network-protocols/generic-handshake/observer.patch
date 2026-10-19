@@ -3,7 +3,7 @@ index 450db9fe8..ffc1d25ea 100644
 --- a/ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/Handshake/Test.hs
 +++ b/ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/Handshake/Test.hs
 @@ -17,7 +17,12 @@ module Ouroboros.Network.Protocol.Handshake.Test where
- 
+
  import Data.ByteString.Lazy (ByteString)
  import Data.ByteString.Lazy qualified as BL
 -import Data.List (nub)

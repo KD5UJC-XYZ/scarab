@@ -382,6 +382,69 @@ object Targets:
       }
     )
 
+  private val genericVersions: Handshake.VersionCodec = new Handshake.VersionCodec:
+    def decode(wire: Int): Option[Int] = Option.when(wire >= 0 && wire <= 2)(wire)
+    def encode(version: Int): Either[ProtocolError, Int] =
+      decode(version).toRight(ProtocolError.UnsupportedLogicalVersion)
+
+  private def genericHandshakeSeeds(file: String, column: Int): Vector[Array[Byte]] =
+    pinnedLines(s"protocol/src/test/resources/upstream/generic-handshake/$file.tsv")
+      .flatMap(row =>
+        Bytes.fromHex(row.split('\t')(column)).toOption.map(_.toArray)
+      ) ++ Corpus.tricky
+
+  private def knownReason(reason: Handshake.Reason): Handshake.Reason = reason match
+    case mismatch: Handshake.Reason.VersionMismatch => mismatch.copy(unknown = Vector.empty)
+    case other                                      => other
+
+  private val genericHandshake: Target = Target(
+    "handshake-generic",
+    () => genericHandshakeSeeds("codec", 3),
+    probe("handshake-generic") { b =>
+      for state <- Handshake.State.values do
+        Handshake.decodePrefix(genericVersions, state, b).foreach { case (message, rest) =>
+          hit("handshake-generic")
+          val used = b.size - rest.size
+          req(used > 0, "decoded nothing")
+          req(
+            Handshake.decode(genericVersions, state, b.take(used)) == Right(message),
+            "consumed prefix decodes differently"
+          )
+          req(
+            Handshake.decode(genericVersions, state, b.take(used - 1)).isLeft,
+            "a shorter prefix decodes too"
+          )
+          val kept = message match
+            case Handshake.Message.Refuse(reason) => Handshake.Message.Refuse(knownReason(reason))
+            case other                            => other
+          Handshake.encode(genericVersions, message) match
+            case Left(e) => throw new Violation(s"$state: decoded $message does not encode: $e")
+            case Right(encoded) =>
+              req(
+                Handshake.decode(genericVersions, state, encoded) == Right(kept),
+                s"$state: $message re-decodes differently"
+              )
+        }
+    }
+  )
+
+  private val handshakeReason: Target = Target(
+    "handshake-refusal",
+    () => genericHandshakeSeeds("refuse", 2),
+    probe("handshake-refusal") { b =>
+      Handshake.decodeReason(genericVersions, b).foreach { reason =>
+        hit("handshake-refusal")
+        Handshake.encodeReason(genericVersions, reason) match
+          case Left(e) => throw new Violation(s"decoded $reason does not encode: $e")
+          case Right(encoded) =>
+            req(
+              Handshake.decodeReason(genericVersions, encoded) == Right(knownReason(reason)),
+              s"$reason re-decodes differently"
+            )
+      }
+    }
+  )
+
   private val network: Vector[Target] = Vector(
     cbor("cbor", Cbor.Limits()),
     cbor(
@@ -398,6 +461,8 @@ object Targets:
       Handshake.Suite.NodeToClient,
       "handshake-node-to-client:handshakeMessage"
     ),
+    genericHandshake,
+    handshakeReason,
     Target(
       "mux-header-and-sdu",
       () => Corpus.networkFixtures ++ Corpus.tricky,

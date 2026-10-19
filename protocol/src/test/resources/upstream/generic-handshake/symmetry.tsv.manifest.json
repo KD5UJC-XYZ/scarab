@@ -33,7 +33,7 @@
     "originalSourceSha256": "8f70ade7feaf6012677f038cd91dd7ed42a3355fab6d0a304dd22fe931bc5be0",
     "observedSourceSha256": "abeb2e97167a32ae47fc50f4fefe1a5ef6d4ed0e4e39f802b8a3c2a35283275d",
     "observerPatch": "scripts/oracle/network-protocols/generic-handshake/observer.patch",
-    "observerPatchSha256": "35d33a7f1966962ee15d0deff7cbc06bcc12acc2c8591f407cc456642245fe97"
+    "observerPatchSha256": "4a99f7cc6eee3e7b4e8d466ac2d8a2d77f10c6ff78ac86e4557ded5cc80d89cc"
   },
   "build": {
     "image": "scarab-v02-49-protocols-cache:peer-acceptance-20261019",
