@@ -1517,3 +1517,99 @@ because the remaining ledger work stays sequential. Eight workers improve only m
 on this sample; the bounded default remains at most four. The final harness shared the host with
 a private era-transition gate; condition order rotated within each block and round ranges are shown.
 Pre-hardening replays are preserved separately and are not used for these numbers.
+
+## 29. Reward-update shaping (#135)
+
+**2026-10-19, baseline `7dfcded1` (merged #196), no runtime change.** The approximately 1.1 s
+reward-update cost in section 10 was an older, loaded-host measurement. A fresh isolated profile
+does not reproduce that absolute duration, but confirms that eager reward calculation concentrates
+substantial work into one tick. The proposed incremental implementation and acceptance gates are
+in [reward-pulser.md](design/reward-pulser.md); #135 remains open.
+
+**Inputs and method.** Read-only original Preview K1 snapshot files from
+`.workspace/data/2026-10-14-k1-scala-preview/db`, sorted by filename; indices 1400, 1420 and 1449.
+`LegacySnapshots.read` and `legacy.Mirroring.toMirror` load/convert each legacy snapshot, as the
+boundary harness of section 16 does. Use the resulting `nes.es`, `nes.bprev`, epoch and Preview
+globals to call the unchanged `Rewards.update`. Load, conversion, result hashing and Haskell
+state encoding are outside timing. Each input warms update and trigger once, then runs 31
+repetitions of update, ordinary tick, trigger tick and completed-state tick in that fixed order.
+
+For the tick controls, clear only `nes.ru`: tick exactly at the start slot for the ordinary case
+and at `start + 1` for the eager trigger. The completed-state control uses the snapshot's existing
+completed update at `start + 2`. These are immutable, middle-epoch snapshot-derived workloads,
+**not** replayed states immediately before the historical trigger block. No transaction bodies,
+signature checks, complete block application or network work are measured. Legacy seeding and
+the existing non-myopic gap remain; this is profiling, not a new Haskell-equivalence claim.
+
+| Snapshot index / epoch | Accounts | Active stake credentials | Snapshot pools / block-producing pools | Reward accounts returned |
+|---|---:|---:|---:|---:|
+| 1400 / 1401 | 110,718 | 79,745 | 725 / 93 | 5,908 |
+| 1420 / 1421 | 111,081 | 79,748 | 727 / 72 | 6,035 |
+| 1449 / 1450 | 112,311 | 79,723 | 727 / 74 | 75,616 |
+
+Pool participation, stake distribution and the number of nonzero rewards matter; account count
+alone does not explain these workloads' different costs. At `k = 432`, the reference formula
+would choose **47 credentials per pulse** for all three. That is a work-item count, not a
+measured pulse duration or a guarantee on the separate start/completion phases.
+
+| Index | `Rewards.update` median / range (ms) | Trigger tick median / range (ms) | Ordinary tick median (ms) | Completed tick median (ms) |
+|---|---:|---:|---:|---:|
+| 1400 | 23.705 / 22.212–59.662 | 24.180 / 22.444–41.456 | 0.219 | 0.152 |
+| 1420 | 25.525 / 22.727–44.033 | 25.614 / 22.874–42.534 | 0.221 | 0.162 |
+| 1449 | 285.902 / 243.375–368.318 | 291.572 / 237.261–367.183 | 0.230 | 0.174 |
+
+The largest update's median current-thread CPU is 275.339 ms; the trigger's is 286.739 ms.
+Its trigger/ordinary tick median ratio is about 1,270, **not a whole-block slowdown ratio**.
+All 31 updates of each input produce the same encoded-state digest (93 stable outputs total).
+
+**Setup and sampling.** Linux x86-64, WSL2 shared host, Docker `scarab-jdk:local`, JDK 21.0.11,
+Scala 3.3.8, `--cpus 4 --memory 12g`, `-Xms3g -Xmx9g -XX:ActiveProcessorCount=4`, default G1,
+network disabled, original database/config/cache mounted read-only. Image ID:
+`sha256:c90140def52d2711644c85a81c9bf218ffbe5dc81003bfb866154c2da832af38`.
+A separate reference devnet and other
+sessions' sbt containers existed; host load before the run was approximately 2.8–3.4 on 24 logical
+CPUs. The fixed condition order and limited warm-up mean these absolute times are diagnostic,
+not an optimisation A/B or a universal latency estimate. An initial seven-repeat run of the same
+recipe gave a largest update median 262.739 ms; the 31-repeat run above is the retained profile.
+
+JFR `profile` settings with `stackdepth=256` yielded 4,315 execution/native samples overall;
+383 retained a `ledger.rules.Rewards` frame. Of those, 168 included immutable `HashMap.get`,
+159 had `Bytes.hashCode` as leaf, 146 included `Rational.apply`, and 92 included `BigInt.gcd`.
+These overlapping, sampled stacks suggest pool lookup/hashing and rational normalisation as
+targets for investigation. They do not attribute all elapsed time precisely: inlining can remove
+the frame used by the filter, and loading, conversion and hashing appear elsewhere in the JFR.
+
+**Reproduction and binding.** The private standalone test-side entry point is
+`xyz.kd5ujc.scarab.node.differential.RewardProfile`; its source, exact Docker argument vector,
+runner, class inventory, input/output log, analysis script and JFR are retained outside Git under
+`/tmp/scarab/issue-135`. Compile the standalone source against `node/Test/fullClasspath` from
+the baseline, in the JDK image; invoke it with `<K1 db> <Preview genesis directory> 1400 1420 1449`.
+Its algorithm is the load/convert and four timed calls described above, using `System.nanoTime`
+and `ThreadMXBean.getCurrentThreadCpuTime`, then SHA-256 of
+`HaskellState.encode(nes.copy(ru = Some(Complete(result))))` outside the timer. The profile used
+an isolated copy of the previously gated #196 classes: all Scala source files match merged main
+(`git diff 7dfcded1 38936f9b -- '*.scala'` is empty), and `Rewards.scala` SHA-256 is
+`a5fb5ebea36fc908000e35bac89c9bd28b996dafec205f58ec049bf4ff6580bf`.
+
+Input SHA-256, with exact snapshot names:
+
+| Snapshot | SHA-256 |
+|---|---|
+| `snapshot-00000000000121083462-4605407.bin` | `79ce0874f6f8e1abb56a7d83e2ba49e5c0059ecd3bc07545fdaaa7d1d22b7172` |
+| `snapshot-00000000000122811953-4664563.bin` | `745df2af04cdcacd4b17cc433e68c54e53bcb13c2e10377ac51ac7c93b3c9f38` |
+| `snapshot-00000000000125318360-4756810.bin` | `5ce9ac8813202eb376c12f41f7d00d3c238c52458fb5eb6a77b5dfb364633545` |
+
+Artifact SHA-256:
+
+| Artifact | SHA-256 |
+|---|---|
+| Standalone source `RewardProfile.scala` | `8c38916527bcb8a11dc8adba35de4f60588edb00decc3bde7ddc3deb0d4e58cc` |
+| Baseline class inventory `class-manifest.json` | `a9ddd74851c5171075317d260fea4b7354a0e7d5fdf300f5784c854bc68e945f` |
+| Exact invocation `command.json` | `f866809ddba0e3e235761409d26228ad522187932ba5ea2f5112383441062bc5` |
+| Output `profile.log` | `66f6aaf22c46cbae2476ae381bce7e8fd8cad865561f3c3cdeb7fc089e2ac868` |
+| Recording `rewards.jfr` | `994083d5f323fa3517aceccae49ac9a77e50d71e903e7016be3b73ad865d37ab` |
+
+The resulting-state digests for indices 1400/1420/1449 are respectively
+`08da6612ee4a403ad358492b3ccde05199570ba1ff02d66d6c45978c8c63f2f2`,
+`7f6cbc39c031526555749b0869aec8fd0cc3d11adc9983ac0fb193c338b0c9b5`, and
+`a2912a1475bf177677e31589f4a9832116a5fe619706999851a8b7634ced936b`.
