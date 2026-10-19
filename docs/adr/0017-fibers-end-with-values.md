@@ -77,9 +77,15 @@ rules refused, a storage failure and a bug in the node were all retried like a l
   and the deliverer is told (`BlockPool.Claims.blamed`) and ends as `Failed(InvalidBlock)`.
 - G7-F1 passes rule, store, persistence and migration capabilities per operation. A session allocates
   a fresh node-error scope and gives it to the follower; the whole-run handle remains a lifetime
-  backstop. Serving callbacks allocate their own storage scopes, and streams carry typed results
-  from a producer whose scope lasts through consumption. Their fatal reporter stops the node;
-  failed callbacks wait cancelably for shutdown, without blaming the requesting peer.
+  backstop. HTTP, submission and relay callbacks allocate their own storage scopes, and streams
+  carry typed results from a producer whose scope lasts through consumption. Their fatal reporter
+  stops the node; failed callbacks wait cancelably for shutdown, without blaming the requesting peer.
+  Local state queries instead preserve #158's resource-scoped pinned backing view: acquisition
+  shares the follower's publication mutex, and backend failures remain values until the acquired
+  view and sibling protocols have been released. `Main.landLocalBackend` then reports storage
+  failures as `Fatal.Storage`. An incoherent point/backing generation retains
+  `NetworkError.StateAcquireFailure` through cleanup; the listener wraps it in
+  `ChainError.StateAcquire` and reports `Fatal.Internal` (exit 6), without client blame or retry.
   G7-F2 gives periodic/shutdown snapshots their own storage-error scopes, with caller-scoped
   capabilities along the snapshot call path and `SnapshotFailure` values at the event boundary.
   G7-F4 gives TCP/Unix handlers their own scopes and a required typed failure reporter; unexpected

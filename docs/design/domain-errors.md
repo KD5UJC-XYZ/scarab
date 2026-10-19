@@ -146,7 +146,8 @@ This comparison establishes queue cleanup; it does not claim identical snapshot-
 once, releases its connection and keeps accepting. Cancellation releases the handler without
 calling the reporter. The node's reporter logs typed network endings and sends both raw handler
 defects and `NetworkError.Defect` to the existing `Fatal.Defect` sink (exit 7), without peer blame.
-The Unix handler no longer catches an unexpected exception merely to log and continue.
+The Unix handler no longer catches an unexpected exception merely to log and continue. The local
+state acquisition invariant policy is described below; its typed cause reaches `Fatal.Internal`.
 
 The reference traces non-cancellation server exceptions before rethrowing
 ([network `2fb69829`, Server.hs:169–175](https://github.com/IntersectMBO/ouroboros-network/blob/2fb69829a19b5c04e4fb212bdd78fb63f9d2d776/ouroboros-network/framework/lib/Ouroboros/Network/Server.hs#L169)).
@@ -165,14 +166,29 @@ within their tool's run scope. `SessionEnd.scoped` gives each follower session a
 and keeps the whole-run handle as a lifetime backstop. Local handling of `NoIntersection` uses that
 same wider error channel, so changing the capability does not change same-connection retry policy.
 
-HTTP state projection, local state queries, local submission and relay callbacks own their storage
-scopes. `StorageBoundary` preserves a `StorageError` as `Fatal.Storage` and an unexpected exception as
+HTTP state projection, local submission and relay callbacks own their storage scopes.
+`StorageBoundary` preserves a `StorageError` as `Fatal.Storage` and an unexpected exception as
 `Fatal.Defect`. After reporting, the callback waits cancelably for shutdown; it supplies neither a
 ledger refusal nor peer blame. A streamed store read runs in a scoped producer with a one-element
 queue of typed results. Its scope and iterator remain alive through consumption, and cancellation
-releases both. Injecting this boundary into the state-query interpreter preserves its `Sync` API and
-its small-stack `SyncIO` regression. Mempool `add` and `sync` instead use the caller's storage capability;
-the escaping network adapters supply scopes of their own.
+releases both. Mempool `add` and `sync` use the caller's storage capability; their network adapters
+supply scopes of their own.
+
+Local state queries retain the pinned-view contract from #158. Acquisition selects the retained
+ledger point and captures its backing generation under the same publication mutex the follower
+uses. `UtxoPinnedReadView` returns storage failures as values while its native snapshot is held;
+`LocalStateQueryServer` and `NodeToClientServer.acceptBackend` carry those values to the owner.
+The acquired view and sibling protocol resources are released before `Main.landLocalBackend`
+reports a backend `StorageError` as `Fatal.Storage` (exit 5). These paths do not park inside
+`StorageBoundary`, which would delay that cleanup until shutdown.
+
+A backing generation outside the selected ledger view's valid stamp interval is a local invariant
+failure, not a wire acquisition refusal. `NetworkError.StateAcquireFailure` retains the point and
+all three stamp values through protocol cleanup. The listener is the authoritative policy boundary:
+`ListenerFailures.report` wraps that original typed cause in `ChainError.StateAcquire` and sends
+`Fatal.Internal` (exit 6) to the node owner. It neither blames a client nor retries the acquisition.
+Tests exercise the real LSQ/NodeToClient backend path and require the acquired view and a sibling
+ChainSync cursor to be released before the fatal reporter runs.
 
 Forging `run`, `step` and `reload` finish with `Either[Fatal, Unit]`. Expected leadership, protocol,
 credential and self-validation refusals remain recoverable domain outcomes. Storage failures,
