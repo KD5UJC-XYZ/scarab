@@ -26,7 +26,7 @@
     "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/TxSubmission2/Test.hs": "c7e8237dbbef5af3f3bb827c08e626e97ee0fb4b04db3de37c48e5490326921d",
     "ouroboros-network/protocols/tests/Main.hs": "32a3b5a431e0e00ce4f206ffe2c8d4b829f9135e82e0c2befdbe35b64adf58eb"
   },
-  "observerPatchSha256": "4b093b3a392d9b52ec331e0512d5562dc0a70037f6552440a1335e7b4f061f08",
+  "observerPatchSha256": "65e2304aac2045c4e4f84168c7dda0b5ce57540545e4a40cc04bd7f5119b0cc7",
   "observerPatch": "disposable changes add deterministic exporter entrypoints using unchanged Arbitrary instances and property functions",
   "caseFile": "blockfetch-splits.tsv",
   "sha256": "7d1ff263248c4d206df352d7f7e6e0b8a1735c204db7d30f761f25fffa61cb2a",
@@ -46,8 +46,8 @@
         "--builddir=/probe/narrow-builddir",
         "--jobs=2"
       ],
-      "startedAt": "2026-10-19T04:40:02.434574+00:00",
-      "endedAt": "2026-10-19T04:40:04.713009+00:00",
+      "startedAt": "2026-10-19T05:19:17.899003+00:00",
+      "endedAt": "2026-10-19T05:19:19.360138+00:00",
       "returncode": 0,
       "status": "complete",
       "log": "/tmp/scarab/v02-49-protocol-probe/3.log"
@@ -67,8 +67,8 @@
         "--builddir=/probe/narrow-builddir",
         "--jobs=2"
       ],
-      "startedAt": "2026-10-19T04:40:04.713199+00:00",
-      "endedAt": "2026-10-19T04:40:05.993989+00:00",
+      "startedAt": "2026-10-19T05:19:19.360417+00:00",
+      "endedAt": "2026-10-19T05:19:20.801722+00:00",
       "returncode": 0,
       "status": "complete",
       "log": "/tmp/scarab/v02-49-protocol-probe/4.log"
@@ -88,8 +88,8 @@
         "--builddir=/probe/narrow-builddir",
         "--jobs=2"
       ],
-      "startedAt": "2026-10-19T04:40:05.994189+00:00",
-      "endedAt": "2026-10-19T04:40:07.763698+00:00",
+      "startedAt": "2026-10-19T05:19:20.802060+00:00",
+      "endedAt": "2026-10-19T05:19:22.778478+00:00",
       "returncode": 0,
       "status": "complete",
       "log": "/tmp/scarab/v02-49-protocol-probe/5.log"
@@ -109,8 +109,8 @@
         "--builddir=/probe/narrow-builddir",
         "--jobs=2"
       ],
-      "startedAt": "2026-10-19T04:40:07.763911+00:00",
-      "endedAt": "2026-10-19T04:40:09.153025+00:00",
+      "startedAt": "2026-10-19T05:19:22.778752+00:00",
+      "endedAt": "2026-10-19T05:19:24.286294+00:00",
       "returncode": 0,
       "status": "complete",
       "log": "/tmp/scarab/v02-49-protocol-probe/6.log"
@@ -130,8 +130,8 @@
         "--builddir=/probe/narrow-builddir",
         "--jobs=2"
       ],
-      "startedAt": "2026-10-19T04:40:09.153238+00:00",
-      "endedAt": "2026-10-19T04:40:10.431618+00:00",
+      "startedAt": "2026-10-19T05:19:24.286508+00:00",
+      "endedAt": "2026-10-19T05:19:25.747411+00:00",
       "returncode": 0,
       "status": "complete",
       "log": "/tmp/scarab/v02-49-protocol-probe/7.log"
@@ -151,8 +151,8 @@
         "--builddir=/probe/narrow-builddir",
         "--jobs=2"
       ],
-      "startedAt": "2026-10-19T04:40:10.431860+00:00",
-      "endedAt": "2026-10-19T04:40:12.003968+00:00",
+      "startedAt": "2026-10-19T05:19:25.747697+00:00",
+      "endedAt": "2026-10-19T05:19:27.433383+00:00",
       "returncode": 0,
       "status": "complete",
       "log": "/tmp/scarab/v02-49-protocol-probe/8.log"
@@ -172,8 +172,8 @@
         "--builddir=/probe/narrow-builddir",
         "--jobs=2"
       ],
-      "startedAt": "2026-10-19T04:40:12.004203+00:00",
-      "endedAt": "2026-10-19T04:40:13.757983+00:00",
+      "startedAt": "2026-10-19T05:19:27.433649+00:00",
+      "endedAt": "2026-10-19T05:19:29.230611+00:00",
       "returncode": 0,
       "status": "complete",
       "log": "/tmp/scarab/v02-49-protocol-probe/9.log"
@@ -193,8 +193,8 @@
         "--builddir=/probe/narrow-builddir",
         "--jobs=2"
       ],
-      "startedAt": "2026-10-19T04:40:13.758199+00:00",
-      "endedAt": "2026-10-19T04:40:15.930272+00:00",
+      "startedAt": "2026-10-19T05:19:29.230835+00:00",
+      "endedAt": "2026-10-19T05:19:31.596256+00:00",
       "returncode": 0,
       "status": "complete",
       "log": "/tmp/scarab/v02-49-protocol-probe/10.log"
@@ -214,8 +214,8 @@
       "490201",
       "128"
     ],
-    "startedAt": "2026-10-19T04:40:16.290073+00:00",
-    "endedAt": "2026-10-19T04:42:25.083109+00:00",
+    "startedAt": "2026-10-19T05:19:31.969375+00:00",
+    "endedAt": "2026-10-19T05:21:26.185881+00:00",
     "returncode": 0,
     "status": "complete",
     "log": "/tmp/scarab/v02-49-protocol-probe/12.log"

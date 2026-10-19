@@ -4,7 +4,8 @@ These are deterministic observations from the real `ouroboros-network:protocols-
 at commit `2fb69829a19b5c04e4fb212bdd78fb63f9d2d776`. The disposable observer overlay only adds
 export entrypoints; it retains the upstream `AnyMessage` `Arbitrary` instances, codec functions,
 and property bodies. `keepalive.tsv` is generated from `KeepAlive/Test.hs`'s `prop_codec_v2` and
-`peersharing.tsv` from `PeerSharing/Test.hs`'s `prop_codec_PeerSharing`. The adjacent manifests
+`peersharing.tsv` from `PeerSharing/Test.hs`'s `prop_codec_PeerSharing`, `prop_codec_valid_cbor`,
+`prop_codec_splits2`, and `prop_codec_splits3` on the same original generated messages. The adjacent manifests
 record source file hashes, exact seed/size values, dependency plan, overlay patch hash, upstream
 property result, and raw fixture hash.
 
@@ -44,7 +45,11 @@ boundary. KeepAlive matches all 24 rows. PeerSharing matches its 18 request/done
 actual `MsgSharePeers` rows are retained with upstream pass status and `unsupported-int-addresses`:
 the upstream property instantiates peer payloads as `Int`, while Scarab's protocol codec requires
 typed IPv4/IPv6 addresses, so there is no lossless field mapping. No synthetic peer addresses or
-default values are inserted.
+default values are inserted. The same generated rows now include unchanged upstream split-2 and
+split-3 verdicts (24/24 pass each). Scarab's production prefix decoder is replayed over every
+partition for the 18 mapped rows, with a reordered-fragment negative control; the six generic
+integer-address rows retain the typed `DefiniteArray` boundary error and are not counted as Scarab
+split matches.
 
 This is bounded evidence for selected codec properties, not a claim that all protocol properties or
 Ouroboros-network tests are covered. Other applicable protocols and typed-protocol behaviors remain

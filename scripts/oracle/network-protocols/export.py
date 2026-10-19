@@ -21,7 +21,12 @@ COMMAND_LOG: Path | None = None
 
 PROPERTY_COLUMNS: dict[str, tuple[tuple[str, int], ...]] = {
     "keepalive.tsv": (("prop_codec_v2", 9), ("prop_codec_v2_valid_cbor", 10)),
-    "peersharing.tsv": (("prop_codec_PeerSharing", 10), ("prop_codec_valid_cbor", 11)),
+    "peersharing.tsv": (
+        ("prop_codec_PeerSharing", 10),
+        ("prop_codec_valid_cbor", 11),
+        ("prop_codec_splits2", 12),
+        ("prop_codec_splits3", 13),
+    ),
     "localsq.tsv": (
         ("prop_codec_LocalStateQuery", 8),
         ("prop_codec_cbor", 9),
@@ -257,6 +262,12 @@ exportPeerSharingCases path count seed = withFile path WriteMode $ \outputHandle
     validCborResult <- quickCheckWithResult
       stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 6000003), caseSize) }
       (once (prop_codec_valid_cbor testCase))
+    split2Result <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 3000003), caseSize) }
+      (once (prop_codec_splits2 testCase))
+    split3Result <- quickCheckWithResult
+      stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + 4000003), caseSize) }
+      (once (prop_codec_splits3 testCase))
     case testCase of
       AnyMessage msg -> do
         let Codec { encode } = codecPeerSharing @IO CBOR.encodeInt CBOR.decodeInt
@@ -269,9 +280,12 @@ exportPeerSharingCases path count seed = withFile path WriteMode $ \outputHandle
               MsgDone -> ("idle", "client", "done", "", "candidate")
             outcome = if isSuccess result then "pass" else "upstream-failure"
             validCborOutcome = if isSuccess validCborResult then "pass" else "upstream-failure"
+            split2Outcome = if isSuccess split2Result then "pass" else "upstream-failure"
+            split3Outcome = if isSuccess split3Result then "pass" else "upstream-failure"
         hPutStrLn outputHandle $ intercalate "\t"
           [ "peersharing-codec-int-v1", show caseSeed, show ordinal, show caseSize
           , state, sender, tag, fields, adapterStatus, hex (BL.toStrict raw), outcome, validCborOutcome
+          , split2Outcome, split3Outcome
           ]
   where
     hex = concatMap (pad . (`showHex` "")) . BS.unpack
@@ -1325,7 +1339,7 @@ def main() -> None:
     for name, upstream_test in [
         ("keepalive.tsv", "ouroboros-network:protocols-tests / KeepAlive / codec v2 / prop_codec_v2"),
         ("keepalive-splits.tsv", "ouroboros-network:protocols-tests / KeepAlive / prop_codec_v2_splits2 + prop_codec_v2_splits3"),
-        ("peersharing.tsv", "ouroboros-network:protocols-tests / PeerSharing / codec / prop_codec_PeerSharing"),
+        ("peersharing.tsv", "ouroboros-network:protocols-tests / PeerSharing / prop_codec_PeerSharing + prop_codec_valid_cbor + prop_codec_splits2 + prop_codec_splits3"),
         ("chainsync.tsv", "ouroboros-network:protocols-tests / ChainSync / codecSerialised + codecSerialised cbor"),
         ("blockfetch.tsv", "ouroboros-network:protocols-tests / BlockFetch / codecSerialised + codecSerialised cbor"),
         ("chainsync-splits.tsv", "ouroboros-network:protocols-tests / ChainSync / prop_codec_splits2_ChainSyncSerialised + prop_codec_splits3_ChainSyncSerialised"),
@@ -1410,6 +1424,12 @@ def main() -> None:
             manifest["adapterInputStatuses"] = {
                 status: sum(row[8] == status for row in rows)
                 for status in sorted({row[8] for row in rows})
+            }
+            manifest["propertyReplaySeedOffsets"] = {
+                "prop_codec_PeerSharing": 1000003,
+                "prop_codec_valid_cbor": 6000003,
+                "prop_codec_splits2": 3000003,
+                "prop_codec_splits3": 4000003,
             }
         if name == "keepalive-splits.tsv":
             manifest["upstreamPropertyOutcomesByProperty"] = {

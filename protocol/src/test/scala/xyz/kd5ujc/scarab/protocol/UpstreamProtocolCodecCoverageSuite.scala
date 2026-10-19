@@ -395,9 +395,13 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
 
   test("retain and classify every seeded PeerSharing row, mapping only typed-compatible messages"):
     val input =
-      rows("peersharing.tsv", "bb25935c495d1710279755a043bd37c59c3bc1575049149973b41373c4cd1381")
-    val statuses = input.map { fields =>
-      assertEquals(fields.size, 12)
+      rows("peersharing.tsv", "814e9bbdc85e4c1b8d345dc9d3c8e042bc924cbf45629d3f46e525ae646f84dc")
+    assertEquals(
+      input.groupMapReduce(_(8))(_ => 1)(_ + _),
+      Map("candidate" -> 18, "unsupported-int-addresses" -> 6)
+    )
+    val outcomes = input.map { fields =>
+      assertEquals(fields.size, 14)
       assertEquals(fields(0), "peersharing-codec-int-v1")
       val seed = fields(1).toInt
       val ordinal = fields(2).toInt
@@ -405,6 +409,8 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
       assertEquals(fields(3).toInt, 30 + ordinal % 21)
       assertEquals(fields(10), "pass", s"upstream codec property seed $seed")
       assertEquals(fields(11), "pass", s"upstream valid-CBOR property seed $seed")
+      assertEquals(fields(12), "pass", s"upstream split-2 property seed $seed")
+      assertEquals(fields(13), "pass", s"upstream split-3 property seed $seed")
       val wire = bytes(fields(9))
       fields(8) match
         case "candidate" =>
@@ -421,13 +427,22 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
             case "done" =>
               (PeerSharing.State.Idle, PeerSharing.Role.Client, PeerSharing.Message.Done)
             case other => fail(s"unexpected candidate PeerSharing message $other at seed $seed")
-          assertEquals(
-            PeerSharing.decode(state, sender, wire),
-            Right(message),
-            s"seed $seed decode"
-          )
           assertEquals(PeerSharing.encode(state, sender, message), Right(wire), s"seed $seed wire")
-          "match"
+          val expected = DecodeResult.Decoded(message, wire.size)
+          assertEquals(PeerSharing.decoder(state, sender)(wire), expected, s"seed $seed decode")
+          val counts = verifyAllPartitions(
+            wire,
+            expected,
+            prefix => PeerSharing.decoder(state, sender)(prefix),
+            s"PeerSharing seed $seed"
+          )
+          val midpoint = wire.size / 2
+          val reordered = Bytes(wire.value.drop(midpoint) ++ wire.value.take(midpoint))
+          assert(wire.value.take(midpoint).nonEmpty && wire.value.drop(midpoint).nonEmpty)
+          PeerSharing.decoder(state, sender)(reordered) match
+            case DecodeResult.Decoded(_, _) => fail(s"seed $seed reordered wire decoded")
+            case DecodeResult.NeedMore | DecodeResult.Failed(_) => ()
+          ("match", Some(counts))
         case "unsupported-int-addresses" =>
           assertEquals(fields(4), "busy")
           assertEquals(fields(5), "server")
@@ -435,12 +450,37 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
           // The Haskell-generated Int list and its original CBOR are preserved in this row. There
           // is no honest conversion to Scarab's typed Address enum.
           assert(wire.size > 0, s"missing original peer-list bytes at seed $seed")
-          "unsupported"
+          PeerSharing.decoder(PeerSharing.State.Busy, PeerSharing.Role.Server)(wire) match
+            case DecodeResult.Failed(
+                  ProtocolError.PeerSharing(
+                    PeerSharing.Error.Unexpected(PeerSharing.Expectation.DefiniteArray, _)
+                  )
+                ) =>
+              ()
+            case other => fail(s"seed $seed expected typed Int-address error, found $other")
+          ("unsupported", Option.empty[(Int, Int)])
         case other => fail(s"unknown PeerSharing adapter status $other at seed $seed")
     }
-    assertEquals(statuses.size, 24)
-    assertEquals(statuses.count(_ == "match"), 18)
-    assertEquals(statuses.count(_ == "unsupported"), 6)
+    assertEquals(outcomes.size, 24)
+    assertEquals(
+      outcomes.groupMapReduce(_._1)(_ => 1)(_ + _),
+      Map("match" -> 18, "unsupported" -> 6)
+    )
+    val mappedPartitions = outcomes.flatMap(_._2)
+    assertEquals(
+      mappedPartitions.map(_._1).sum,
+      input.filter(_(8) == "candidate").map(fields => bytes(fields(9)).size + 1).sum
+    )
+    assertEquals(
+      mappedPartitions.map(_._2).sum,
+      input
+        .filter(_(8) == "candidate")
+        .map { fields =>
+          val size = bytes(fields(9)).size
+          (size + 1) * (size + 2) / 2
+        }
+        .sum
+    )
 
   test("consume seeded Cardano NodeToNode negotiation cases at the typed Handshake boundary"):
     val input = rows(
