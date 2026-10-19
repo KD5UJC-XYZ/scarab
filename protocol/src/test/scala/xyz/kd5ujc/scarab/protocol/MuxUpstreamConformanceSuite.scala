@@ -27,7 +27,7 @@ class MuxUpstreamConformanceSuite extends munit.FunSuite:
       Source.fromString(new String(raw, StandardCharsets.UTF_8)).getLines().toVector
     finally stream.close()
 
-  private def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(fail(_), identity)
+  private def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(e => fail(e.toString), identity)
 
   test("consume the exact seeded upstream mux SDU codec cases"):
     val rows = fixture.map { line =>
