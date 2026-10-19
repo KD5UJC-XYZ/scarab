@@ -422,6 +422,41 @@
     "target": "cardano-ledger-conformance:test:tests",
     "dependencyPlanSha256": "d5268a535a9e6c5a4158ddac6f9a1c310d05882c54f2c85b460de83e2e3453d6",
     "executableSha256": "4e14dfbf4568c6ca6860fea8f98c3c36ed725ca276afab4e1f20e2c302bb5b77",
-    "sampling": "Exactly one QuickCheck input per invocation; STS uses resize 5 and approval properties use mapSize (const 5). No observer changes to native rule, formal rule, original constraints or equality."
+    "sampling": "Exactly one QuickCheck input per invocation; STS uses resize 5 and approval properties use mapSize (const 5). No observer changes to native rule, formal rule, original constraints or equality.",
+    "orderedBuildPatchStack": [
+      {
+        "path": "scripts/oracle/ledger-govcert/exporter.patch",
+        "sha256": "7130e6e9c1b055f27a2f1a60984af5d58446e9441f088fea724b0dbcba165e31"
+      },
+      {
+        "path": "scripts/oracle/ledger-govcert/epoch-families.patch",
+        "sha256": "64ad562f84cfb1e52f7dddeb7dcf886803b2f9c30a5328f8f448a98f03608b3f"
+      },
+      {
+        "path": "scripts/oracle/ledger-govcert/epoch-sized-probe.patch",
+        "sha256": "c9f55d9465527cf555b5d96fa85a8061285182c84b6c6e969b3c8b0d8c1e39ae"
+      },
+      {
+        "path": "scripts/oracle/ledger-govcert/native-hooks.patch",
+        "sha256": "764892d352c6780fa0121c03c2eb29eef08e33f5e4e3c383155a261cda5a951f"
+      },
+      {
+        "path": "scripts/oracle/ledger-govcert/derived-payment.patch",
+        "sha256": "25d3c5f3fc62f5bb7c7bb5c69f23a372f2196e457b875e68eeace15e24a4954c"
+      },
+      {
+        "path": "scripts/oracle/ledger-govcert/ratify.patch",
+        "sha256": "9611b79ab4543445cd68161d0810293fd7ed809daadcc0a99ca2ddad5cfcafde"
+      }
+    ],
+    "patchedSourceSha256": {
+      "cabal.project": "13b3941a475b9c2362c6e994a0c160f09f6d22b8a0261a80bf75559a0883e5f1",
+      "libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/ExecSpecRule/Core.hs": "d58912388f5e904b96a9762ef92eda35e40756d399f1c2813e9dca9590f89cb3",
+      "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Conway.hs": "6dc5251cb30bc72d08c9a601721ff9b869a878ec44174d91ca9e5971c0dec0f2",
+      "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Core.hs": "8e52bf75a5848a3112760d8e0b1147c137312ac3f9941d08b2ff0034820a7bbf",
+      "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway.hs": "5f7d78806b0317023d1824cbb732b335d87ea5731beb37db6ceb4a21c7c766ef",
+      "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway/Ratify.hs": "4f0af483e82ff222e7d5d22de3a6c82bba61df11043168eab59e07c7c2a9a3fa"
+    },
+    "extraObservers": "Epoch/proposal-payment observer registrations were present in the same target build but are not selected by the RATIFY invocations. The complete patch stack reconstructs every modified source byte exactly."
   }
 }

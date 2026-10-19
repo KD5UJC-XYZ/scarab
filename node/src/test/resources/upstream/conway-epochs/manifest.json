@@ -141,5 +141,7 @@
     }
   ],
   "observerPatchSha256": "7130e6e9c1b055f27a2f1a60984af5d58446e9441f088fea724b0dbcba165e31",
-  "additionalProbeInvocation": "conformsToImpl (resize 10 (genFromBundle_ constrainedNewEpoch)); each runs with --qc-max-success=1 and its recorded seed, without filtering or repairing generated states."
+  "additionalProbeInvocation": "conformsToImpl (resize 10 (genFromBundle_ constrainedNewEpoch)); each runs with --qc-max-success=1 and its recorded seed, without filtering or repairing generated states.",
+  "sizedProbePatch": "scripts/oracle/ledger-govcert/epoch-sized-probe.patch",
+  "sizedProbePatchSha256": "c9f55d9465527cf555b5d96fa85a8061285182c84b6c6e969b3c8b0d8c1e39ae"
 }

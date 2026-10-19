@@ -1,0 +1,10 @@
+--- a/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway.hs
++++ b/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway.hs
+@@ -40,6 +40,7 @@
+       Ratify.spec
+       prop "EPOCH" $ conformsToImplConstrained_ constrainedEpoch
+       prop "NEWEPOCH" $ conformsToImplConstrained_ constrainedNewEpoch
++      prop "NEWEPOCH-sized10" $ conformsToImpl (resize 10 (genFromBundle_ constrainedNewEpoch))
+     describe "Blocks transition graph" $ do
+       prop "DELEG" $
+         conformsToImplConstrained constrainedDeleg $

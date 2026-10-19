@@ -11,6 +11,9 @@ The patch stack is [exporter.patch](../../../../../../scripts/oracle/ledger-govc
 Run the recorded `runnerArgs` with `SCARAB_CONFORMANCE_EXPORT_DIR` (STS) or
 `SCARAB_RATIFY_ACCEPTED_EXPORT_DIR` (approval predicates) pointing at a private output directory.
 The observer does not replace the rule or its native/formal comparison.
+The complete reference executable also contains the independently named epoch and
+payment observers. `referenceRunner.orderedBuildPatchStack` records that full build
+stack and the resulting source hashes; apply it for exact executable-source reproduction.
 
 Four explicitly size-five STS samples retain the complete initial RatifyState,
 eight-field environment, original ordered action signal and native post-state.
