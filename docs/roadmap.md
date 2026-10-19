@@ -144,6 +144,8 @@ Each open item links to its GitHub issue, which carries its state (`status:` lab
 
 - **I3** [#44](https://github.com/KD5UJC-XYZ/scarab/issues/44) Drive Plutus V1 and V2 scripts in the devnet load (`scripts/devnet/eraload.py` TODO) so the Haskell comparator covers them; today they are verified by the Preview sync and unit/oracle tests only.
 
+- **I4** [#195](https://github.com/KD5UJC-XYZ/scarab/issues/195) (P2, backlog) Pin multi-script CEK result/log aggregation against the unchanged reference API and align serial/prepared verdicts and predicate bytes where needed. D2 retains the existing first-failure policy; closed REF-11 #176 covers context collection, not this separate boundary.
+
 ## J. Operational parity (P2)
 
 - **J1** [#45](https://github.com/KD5UJC-XYZ/scarab/issues/45) (done) Config and topology: `follow --config <config.json> --topology <topology.json>` read the Haskell node's `config.json` and P2P `topology.json`, and every genesis hash a configuration lists (Byron, Shelley, Alonzo, Conway, and Dijkstra and checkpoints when the file is there) is verified; a mismatch is a typed `ConfigError`. Tested with the public Preview, preprod and mainnet files. The Alonzo and Conway inputs are part of database identity (D5/#159). Remaining: the settings the node reads and does not act on (`ConsensusMode`, peer sharing, `LastKnownBlockVersion-*`, ledger peers and the peer snapshot), YAML configuration files, DNS SRV access points, `hotValency`.

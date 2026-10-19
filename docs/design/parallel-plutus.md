@@ -94,3 +94,26 @@ Normal `check` skips only this externally supplied capture, not the deterministi
 The capture's integrity, baseline binding, sample limits and measured results are recorded in
 [performance.md](../performance.md). These data establish serial/parallel equivalence on that
 preprod window, not the complete historical Preview 242-failure/K1 acceptance of #21.
+
+## Accepted feature gates
+
+Level 3, source `7ba8c7f3` (2026-10-19 UTC): Docker `check` passed 4,819 tests with 16 skips,
+including fuzzing and scalafix. The external-data replay is one normal-check skip and was then run
+explicitly with its inputs mounted read-only: 68,196 feature-versus-original complete state matches,
+17,049 original-interpreter controls and 104,388 reached script evaluations per pass.
+
+`python3 scripts/devnet.py --name scarab-parallel-plutus-e2e e2e`: 1,687 blocks through all seven eras,
+66 equal ledger comparisons, zero validation/fatal/reconnect/starvation events, Conway epoch 17.
+The reference CLI cannot query a Byron ledger directly; its UTxO is compared through Shelley entry.
+
+`python3 scripts/devnet.py --name scarab-parallel-plutus-pool pool --seconds 180 --scala-flags
+'--plutus-workers 4'`: 34 forged blocks, all 34 observed adopted (32 on the final chain after two slot
+battles), 33/33 scheduled leaders in the oracle window, 7/7 equal ledger comparisons, 30 transactions
+in Scala-forged blocks, zero forge failures, validation errors, reconnects or starvation warnings.
+
+The scenario class directories matched each other and the compiled feature tree: normalized binary
+inventory SHA-256 `322085ccb0b824c5a778b95f85a75bdb55546881c662c2622da6766acf66f73c`.
+Area scenarios ran sequentially because another session occupied the other shared devnet slot. The
+pre-hardening era run was superseded before completion; the accepted run above and final recorded
+comparison use the final source. Owned clusters and build containers are removed after the gates.
+The broader Preview acceptance and nightly reconciliation remain #21.

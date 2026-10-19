@@ -1475,8 +1475,9 @@ order and using dependency batches, gave median sums of per-block evaluator time
 All 329,532 transaction-result comparisons and 1,252,656 script-result comparisons matched,
 including execution units, logs and typed failure payloads. These are prepared-request timings;
 they exclude context construction and ledger application. A selected-heavy-block pilot gave larger
-speedups and was not used for these claims. Declared execution budgets predicted much less gain
-and were a poor proxy for actual elapsed work.
+speedups and was not used for these claims. On this same post-baseline window, a structural
+model weighted by declared execution-step budgets predicted 1.37×/1.47×/1.50× at 2/4/8 workers.
+Those budgets are caps, not elapsed work; they were not used as scheduling weights.
 
 **Environment and limits.** Linux x86-64, 24 logical host CPUs, about 139 GiB RAM; Docker JDK
 21.0.11, Scala 3.3.8, sbt 1.10.7, Scalus 1.3.0. `scripts/sbtw` uses a 2 GiB maximum heap and
@@ -1486,3 +1487,33 @@ performance-critical imperative exception: the earlier profile attributed 23% to
 and the serial apply thread also held the remaining ledger work. A second complete rules pass would
 repeat that work. The integrated comparison measures one preparation pass plus scheduling/landing,
 rather than presenting the evaluator-only gain as a node gain.
+
+**Integrated full-validation comparison.** Code `7ba8c7f3`, Docker JDK, the same capture and baseline
+mounted read-only; `node/testOnly *PlutusReplaySuite` restored a fresh scratch store. Every block
+first warmed the original pure serial interpreter, then each of three rounds rotated that interpreter
+and 1/2/4/8-worker services within the block. This made 68,196 feature-versus-original complete mirror
+state comparisons plus 17,049 repeated-original controls, all equal. The two invalid-tag transactions,
+collateral effects, 104,388 reached script evaluations per pass, UTxO diffs, counters and non-UTxO
+ledger/consensus state all matched. Total harness duration was 509.2 s; this includes repetitions,
+comparisons, snapshot loading and store flushes and is not a throughput result.
+
+Median sums of timed validation over the 5,683 blocks (three rounds):
+
+| Interpreter / worker bound | Full validation | Round range | Speedup vs original serial |
+|---|---:|---:|---:|
+| Original serial | 34.649 s | 34.603–34.959 s | 1.00× |
+| 1, exact serial rules with admission | 34.660 s | 34.647–34.922 s | 1.00× |
+| 2 | 29.337 s | 29.327–29.757 s | 1.18× |
+| 4 | 26.913 s | 26.895–27.050 s | 1.29× |
+| 8 | 26.052 s | 26.045–26.235 s | 1.33× |
+
+Times include direct signature/header validation, HFC ticking, ordinary ledger rules, context
+collection, worker admission/scheduling, ordered landing and store reads. File loading, result
+comparison, context recording, snapshot loading and store flushes are outside the timed interval.
+There is no ahead-of-rules verification cache or scheduling-statistics interpreter in this harness.
+These are full block-validation timings on this window, not live follower throughput, network,
+forging or whole-node latency measurements. Gains are smaller than the earlier evaluator-only result
+because the remaining ledger work stays sequential. Eight workers improve only modestly over four
+on this sample; the bounded default remains at most four. The final harness shared the host with
+a private era-transition gate; condition order rotated within each block and round ranges are shown.
+Pre-hardening replays are preserved separately and are not used for these numbers.
