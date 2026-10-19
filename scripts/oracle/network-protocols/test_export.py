@@ -112,6 +112,38 @@ class PropertyOutcomeColumnsTest(unittest.TestCase):
                 "at-least-one-recorded-property-failure": 0,
             })
 
+    def test_txsubmission2_behavior_fixture_retains_exact_connect2_choices(self) -> None:
+        repo = Path(__file__).resolve().parents[3]
+        fixture_dir = (
+            repo
+            / "network/src/test/resources/upstream/ouroboros-network-protocol-codecs"
+        )
+        raw = (fixture_dir / "txsubmission2-behavior.tsv").read_bytes()
+        manifest = json.loads(
+            (fixture_dir / "txsubmission2-behavior.manifest.json").read_text()
+        )
+        rows = [line.split("\t") for line in raw.decode("utf-8").splitlines()]
+        choices = [
+            {"seed": int(row[1]), "choices": row[13]}
+            for row in rows
+        ]
+
+        self.assertEqual(manifest["sourceCommit"], "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776")
+        self.assertEqual(manifest["caseTsvSha256"], hashlib.sha256(raw).hexdigest())
+        self.assertEqual(manifest["exportedCases"], 24)
+        self.assertTrue(all(len(row) == 14 for row in rows))
+        self.assertTrue(all(row[0] == "txsubmission2-behavior-v2" for row in rows))
+        self.assertTrue(all(row[13] and set(row[13]) <= {"0", "1"} for row in rows))
+        self.assertEqual(
+            manifest["adapterInputStatuses"]["connect2PipelineChoicesBySeed"], choices
+        )
+        self.assertEqual(
+            manifest["adapterInputStatuses"]["connect2PipelineChoiceTrueValues"], 52
+        )
+        self.assertEqual(
+            manifest["adapterInputStatuses"]["connect2PipelineChoiceFalseValues"], 38
+        )
+
     def test_binary_compat_fixtures_preserve_both_original_directions_and_paired_wires(self) -> None:
         fixture_dir = (
             Path(__file__).resolve().parents[3]

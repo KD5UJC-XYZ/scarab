@@ -3,11 +3,8 @@ package xyz.kd5ujc.scarab.network
 
 import cats.effect.Temporal
 import cats.mtl.Raise
-import cats.mtl.syntax.all.*
-import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.TxSubmission2
-import xyz.kd5ujc.scarab.protocol.ChainSync.Role
 import scala.concurrent.duration.*
 
 import NetworkError.RuntimeViolation
@@ -34,10 +31,8 @@ object TxSubmissionServer:
       idsPerRequest: Int = 3,
       /** Time the client may take to send the transactions we asked for. */
       bodiesTimeout: FiniteDuration = TxSubmissionPolicy.ShortWait,
-      /** Optional local bound for the client's first Init. The reference waits indefinitely in
-        * `StInit`; an absent value preserves that behavior for an idle duplex responder.
-        */
-      initTimeout: Option[FiniteDuration] = None
+      /** Time to wait for the client's Init. */
+      initTimeout: FiniteDuration = 60.seconds
   )
 
   def run[F[_]: Temporal](
@@ -45,63 +40,21 @@ object TxSubmissionServer:
       sink: Sink[F],
       settings: Settings = Settings()
   )(using Raise[F, NetworkError]): F[Unit] =
-    val F = Temporal[F]
-    val id = Protocols.TxSubmission2
-    def illegal[A](detail: NetworkError.Violation): F[A] =
-      NetworkError.IllegalTransition(id, detail).raise[F, A]
-
-    def send(state: TxSubmission2.State, message: TxSubmission2.Message): F[Unit] =
-      TxSubmission2.encode(state, Role.Server, message).fold(illegal, channel.send)
-
-    def receive(
-        state: TxSubmission2.State,
-        limit: Option[FiniteDuration]
-    ): F[TxSubmission2.Message] =
-      val read = channel.recv(TxSubmission2.maxMessageBytes(state))(
-        TxSubmission2.decodePrefix(state, Role.Client, _)
-      )
-      limit
-        .orElse(TxSubmissionPolicy.timeLimit(state))
-        .fold(read)(l => Timed.within(l, id, state.toString)(read))
-
-    def fetch(wanted: Vector[Bytes]): F[Unit] =
-      if wanted.isEmpty then F.unit
-      else
-        wanted.grouped(TxSubmission2.MaxBatch).toVector.traverse_ { group =>
-          send(TxSubmission2.State.Idle, TxSubmission2.Message.RequestTxs(group)) *>
-            receive(TxSubmission2.State.Txs, Some(settings.bodiesTimeout)).flatMap {
-              case TxSubmission2.Message.ReplyTxs(originals) =>
-                originals
-                  .traverse(o =>
-                    TxSubmission2.bodyId(o).fold(illegal[Bytes], F.pure).flatMap { txId =>
-                      if group.contains(txId) then F.pure(o)
-                      else illegal(RuntimeViolation.TransactionNotRequested)
-                    }
-                  )
-                  .flatMap(sink.submit)
-              case other => illegal(RuntimeViolation.TxSubmissionUnexpected(other))
-            }
-        }
-
-    def loop(ack: Int): F[Unit] =
-      send(
-        TxSubmission2.State.Idle,
-        TxSubmission2.Message.RequestIds(blocking = true, ack, settings.idsPerRequest)
-      ) *> receive(TxSubmission2.State.Ids(true), None).flatMap {
-        case TxSubmission2.Message.ReplyIds(offers) =>
-          TxSubmissionPolicy
-            .offers(offers.map(_.transactionId), settings.idsPerRequest)
-            .fold(v => NetworkError.TxSubmission(v).raise[F, Unit], F.pure) *> offers
-            .filter(o => o.advertisedSize <= TxSubmission2.MaxOriginalBytes + 16L)
-            .traverseFilter(o =>
-              sink.known(o.transactionId).map(k => Option.unless(k)(o.transactionId))
-            )
-            .flatMap(fetch) *> loop(offers.size)
-        case TxSubmission2.Message.Done => F.unit
-        case other                      => illegal(RuntimeViolation.TxSubmissionUnexpected(other))
-      }
-
-    receive(TxSubmission2.State.Init, settings.initTimeout).flatMap {
-      case TxSubmission2.Message.Init => loop(0)
-      case other                      => illegal(RuntimeViolation.TxSubmissionUnexpected(other))
-    }
+    val typedSink = new TxSubmission2Runtime.Sink[F, Bytes, Bytes]:
+      def known(id: Bytes) = sink.known(id)
+      def submit(originals: Vector[Bytes]) = sink.submit(originals)
+    val rules = new TxSubmission2Runtime.Rules[Bytes]:
+      def acknowledge(unacked: Vector[Bytes], blocking: Boolean, ack: Int, request: Int) =
+        TxSubmissionPolicy.acknowledge(unacked, blocking, ack, request)
+      def bodies(unacked: Vector[Bytes], ids: Vector[Bytes]) =
+        TxSubmissionPolicy.bodies(unacked, ids)
+      def offers(ids: Vector[Bytes], requested: Int) = TxSubmissionPolicy.offers(ids, requested)
+    TxSubmission2Runtime.server(
+      channel,
+      typedSink,
+      TxSubmission2.conwayCodec,
+      rules,
+      TxSubmission2Runtime
+        .ServerSettings(settings.idsPerRequest, settings.bodiesTimeout, settings.initTimeout),
+      message => RuntimeViolation.TxSubmissionUnexpected(TxSubmission2.fromEngine(message))
+    )

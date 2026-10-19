@@ -71,6 +71,7 @@ enum ProtocolError extends DomainError:
   case InvalidRefusalTagOrArity
   case InvalidRequestAccountingLimitsBytes
   case InvalidRequestLimits
+  case InvalidTxSubmission2Limits
   case InvalidSimpleValue
   case InvalidStringChunk
   case InvalidUTF8
@@ -242,6 +243,7 @@ enum ProtocolError extends DomainError:
     case InvalidRefusalTagOrArity                => "invalid refusal tag or arity"
     case InvalidRequestAccountingLimitsBytes     => "invalid request accounting limits/bytes"
     case InvalidRequestLimits                    => "invalid request limits"
+    case InvalidTxSubmission2Limits              => "invalid TxSubmission2 limits"
     case InvalidSimpleValue                      => "invalid simple value"
     case InvalidStringChunk                      => "invalid string chunk"
     case InvalidUTF8                             => "invalid UTF-8"

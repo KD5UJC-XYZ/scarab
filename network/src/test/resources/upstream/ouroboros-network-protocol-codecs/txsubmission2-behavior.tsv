@@ -1,0 +1,24 @@
+txsubmission2-behavior-v2	503001	0	4	1	3	4	pass	pass	pass	pass	2	fb0000000000000000:fb0000000000000000;f5:f5	1110
+txsubmission2-behavior-v2	503002	1	5	6	3	2	pass	pass	pass	pass	5	9fff:9fff;6528f3bf9a88:6528f3bf9a88;00:00;5f426983ff:5f426983ff;f5:f5	1
+txsubmission2-behavior-v2	503003	2	6	2	2	3	pass	pass	pass	pass	2	f5:f5;a0:a0	11
+txsubmission2-behavior-v2	503004	3	7	5	1	4	pass	pass	pass	pass	2	fac0000000:fac0000000;7f63382526ff:7f63382526ff	11101
+txsubmission2-behavior-v2	503005	4	8	1	8	3	pass	pass	pass	pass	6	5fff:5fff;fa3e924925:fa3e924925;44819a3c5d:44819a3c5d;f6:f6;fbc014000000000000:fbc014000000000000;fa40b6db6e:fa40b6db6e	1111
+txsubmission2-behavior-v2	503006	5	9	4	5	3	pass	pass	pass	pass	4	06:06;fac0e00000:fac0e00000;fa40200000:fa40200000;5fff:5fff	000000010
+txsubmission2-behavior-v2	503007	6	10	10	9	7	pass	pass	pass	pass	2	8180:8180;40:40	1011
+txsubmission2-behavior-v2	503008	7	11	11	11	7	pass	pass	pass	pass	7	24:24;f4:f4;425aee:425aee;fabee38e39:fabee38e39;bf027ffffa3f800000f5ff:bf027ffffa3f800000f5ff;f5:f5;bffb3fd47b982cd79b30f6ff:bffb3fd47b982cd79b30f6ff	1101100
+txsubmission2-behavior-v2	503009	8	12	7	11	4	pass	pass	pass	pass	12	f6:f6;f5:f5;452ce0ba43ec:452ce0ba43ec;a0:a0;03:03;bffa3f8000005f41d1ff5f42362eff7f6163ff621627f6ff:bffa3f8000005f41d1ff5f42362eff7f6163ff621627f6ff;815f425297ff:815f425297ff;bff680f6f4fa3f800000fbc000000000000000ff:bff680f6f4fa3f800000fbc000000000000000ff;824258a7fa3f800000:824258a7fa3f800000;5f42bc3bff:5f42bc3bff;5f43d733c6ff:5f43d733c6ff;5f41cdff:5f41cdff	010110
+txsubmission2-behavior-v2	503010	9	4	1	3	3	pass	pass	pass	pass	4	bf64f0ad808880ff:bf64f0ad808880ff;fb4000000000000000:fb4000000000000000;22:22;66f0a585ae2b19:66f0a585ae2b19	0
+txsubmission2-behavior-v2	503011	10	5	4	4	4	pass	pass	pass	pass	5	f6:f6;80:80;5fff:5fff;f4:f4;fb3ff0000000000000:fb3ff0000000000000	01100
+txsubmission2-behavior-v2	503012	11	6	2	1	2	pass	pass	pass	pass	2	5f425594ff:5f425594ff;5f45b5d505b3baff:5f45b5d505b3baff	01
+txsubmission2-behavior-v2	503013	12	7	8	7	3	pass	pass	pass	pass	3	fabf800000:fabf800000;81fa3e4959d4:81fa3e4959d4;fb3fd08b9b822e9b0a:fb3fd08b9b822e9b0a	0
+txsubmission2-behavior-v2	503014	13	8	5	7	1	pass	pass	pass	pass	3	a29fff9fff21fb3faedf328ff6f6f0:a29fff9fff21fb3faedf328ff6f6f0;5f44d95ca3d9ff:5f44d95ca3d9ff;5f43c6f4b8ff:5f43c6f4b8ff	011010
+txsubmission2-behavior-v2	503015	14	9	9	6	8	pass	pass	pass	pass	8	f4:f4;42d1a5:42d1a5;f5:f5;9fff:9fff;bf5f4165ff02a021ff:bf5f4165ff02a021ff;7f6bf3baa7b502f0ab92b83d7fff:7f6bf3baa7b502f0ab92b83d7fff;7f67343868f48b9399ff:7f67343868f48b9399ff;bf7f620f53ffa05f41e4fffb0000000000000000ff:bf7f620f53ffa05f41e4fffb0000000000000000ff	111
+txsubmission2-behavior-v2	503016	15	10	10	2	8	pass	pass	pass	pass	2	80:80;01:01	111101
+txsubmission2-behavior-v2	503017	16	11	9	9	9	pass	pass	pass	pass	1	bf80f661447f6579f0ac8abfffff:bf80f661447f6579f0ac8abfffff	01
+txsubmission2-behavior-v2	503018	17	12	11	5	5	pass	pass	pass	pass	6	9ff4fabf800000611aff:9ff4fabf800000611aff;fbc022000000000000:fbc022000000000000;f5:f5;80:80;83fa3eb41f127f63510f34fff6:83fa3eb41f127f63510f34fff6;9f5f420174ffa0ff:9f5f420174ffa0ff	111
+txsubmission2-behavior-v2	503019	18	4	4	3	1	pass	pass	pass	pass	2	9fff:9fff;425702:425702	1010
+txsubmission2-behavior-v2	503020	19	5	1	3	1	pass	pass	pass	pass	3	81fb3ff0000000000000:81fb3ff0000000000000;80:80;652f56e6968c:652f56e6968c	1
+txsubmission2-behavior-v2	503021	20	6	4	1	1	pass	pass	pass	pass	4	9fff:9fff;f4:f4;5f457f81ddb1e5ff:5f457f81ddb1e5ff;a0:a0	1000
+txsubmission2-behavior-v2	503022	21	7	6	3	2	pass	pass	pass	pass	4	fbbfe0000000000000:fbbfe0000000000000;03:03;02:02;bfff:bfff	1
+txsubmission2-behavior-v2	503023	22	8	6	7	6	pass	pass	pass	pass	0		01010110
+txsubmission2-behavior-v2	503024	23	9	2	4	7	pass	pass	pass	pass	5	66785d39307969:66785d39307969;26:26;81a0:81a0;9ffbbff0000000000000ff:9ffbbff0000000000000ff;f6:f6	0

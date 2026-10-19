@@ -1304,6 +1304,60 @@ exportTxSubmission2AnnotatedCases path count seed = withFile path WriteMode $ \o
         "import Test.QuickCheck.Gen (unGen)\n"
         "import Test.QuickCheck.Random (mkQCGen)\n",
     )
+    tx_submission2_original = tx_submission2.read_text()
+    tx_behavior_anchor = "-- Disposable observer: preserve the original typed-protocol generator, codec, and properties.\n"
+    tx_behavior_observer = r'''
+-- Disposable observer: export original TxSubmission2 test params and their
+-- unchanged direct/connect/channel property verdicts for Scarab runtime replay.
+exportTxSubmission2BehaviorCases :: FilePath -> Int -> Int -> IO ()
+exportTxSubmission2BehaviorCases path count seed = withFile path WriteMode $ \outputHandle ->
+  forM_ [0 .. count - 1] $ \ordinal -> do
+    let caseSeed = seed + ordinal
+        caseSize = 4 + (ordinal `mod` 9)
+        params = unGen arbitrary (mkQCGen caseSeed) caseSize :: TxSubmissionTestParams
+        choices = unGen arbitrary (mkQCGen (caseSeed + 3000007)) caseSize :: NonEmptyList Bool
+    directResult <- quickCheckWithResult stdArgs { chatty = False }
+      (once (prop_direct params))
+    connectResult <- quickCheckWithResult stdArgs { chatty = False }
+      (once (prop_connect1 params))
+    pipelinedResult <- quickCheckWithResult stdArgs { chatty = False }
+      (once (prop_connect2 params choices))
+    channelResult <- quickCheckWithResult stdArgs { chatty = False }
+      (once (prop_channel_ST params))
+    case params of
+      TxSubmissionTestParams
+        { testMaxUnacked = Positive (Small maxUnacked)
+        , testMaxTxIdsToRequest = Positive (Small maxIdsToRequest)
+        , testMaxTxToRequest = Positive (Small maxTxToRequest)
+        , testTransactions = DistinctList txs
+        } -> do
+          let pairs = intercalate ";"
+                [ hex (BL.toStrict (CBOR.toLazyByteString (Serialise.encode (txId tx)))) <> ":" <>
+                  hex (BL.toStrict (CBOR.toLazyByteString (Serialise.encode tx)))
+                | tx <- txs
+                ]
+          hPutStrLn outputHandle $ intercalate "\t"
+            [ "txsubmission2-behavior-v2", show caseSeed, show ordinal, show caseSize
+            , show maxUnacked, show maxIdsToRequest, show maxTxToRequest
+            , if isSuccess directResult then "pass" else "upstream-failure"
+            , if isSuccess connectResult then "pass" else "upstream-failure"
+            , if isSuccess pipelinedResult then "pass" else "upstream-failure"
+            , if isSuccess channelResult then "pass" else "upstream-failure"
+            , show (length txs), pairs
+            , map (\choice -> if choice then '1' else '0') (getNonEmpty choices)
+            ]
+  where
+    hex = concatMap (pad . (`showHex` "")) . BS.unpack
+    pad [digit] = ['0', digit]
+    pad digits = digits
+
+'''
+    if tx_submission2_original.count(tx_behavior_anchor) != 1:
+        raise SystemExit("TxSubmission2 behavior observer insertion anchor changed")
+    tx_submission2.write_text(tx_submission2_original.replace(
+        tx_behavior_anchor,
+        tx_behavior_observer + tx_behavior_anchor,
+    ))
     tx_submission2_module = tx_submission2.read_text()
     tx_scoped_anchor = "{-# LANGUAGE RankNTypes                 #-}\n"
     if tx_submission2_module.count(tx_scoped_anchor) != 1:
@@ -1319,7 +1373,7 @@ exportTxSubmission2AnnotatedCases path count seed = withFile path WriteMode $ \o
         raise SystemExit("TxSubmission2 observer module export list changed")
     tx_submission2.write_text(tx_submission2_module.replace(
         tx_submission2_export_anchor,
-        "  , labelMsg\n  , exportTxSubmission2Cases\n  , exportTxSubmission2SplitCases\n  , exportTxSubmission2AnnotatedCases\n",
+        "  , labelMsg\n  , exportTxSubmission2Cases\n  , exportTxSubmission2SplitCases\n  , exportTxSubmission2AnnotatedCases\n  , exportTxSubmission2BehaviorCases\n",
     ))
 
     chain_module = chain.read_text()
@@ -1492,7 +1546,7 @@ exportBlockFetchBinaryCases path count seed = withFile path WriteMode $ \outputH
         "import Ouroboros.Network.Protocol.LocalStateQuery.Test qualified as LocalStateQuery (tests, exportLocalStateQueryCases, exportLocalStateQuerySplitCases, exportLocalStateQueryBehaviorCases)\n"
         "import Ouroboros.Network.Protocol.LocalTxSubmission.Test qualified as LocalTxSubmission (tests, exportLocalTxSubmissionCases, exportLocalTxSubmissionSplitCases, exportLocalTxSubmissionAnnotatedCases, exportLocalTxSubmissionBehaviorCases)\n"
         "import Ouroboros.Network.Protocol.LocalTxMonitor.Test qualified as LocalTxMonitor (tests, exportLocalTxMonitorCases, exportLocalTxMonitorSplitCases, exportLocalTxMonitorBehaviorCases)\n"
-        "import Ouroboros.Network.Protocol.TxSubmission2.Test qualified as TxSubmission2 (tests, exportTxSubmission2Cases, exportTxSubmission2SplitCases, exportTxSubmission2AnnotatedCases)\n"
+        "import Ouroboros.Network.Protocol.TxSubmission2.Test qualified as TxSubmission2 (tests, exportTxSubmission2Cases, exportTxSubmission2SplitCases, exportTxSubmission2AnnotatedCases, exportTxSubmission2BehaviorCases)\n"
         "import System.Environment (getArgs)\n"
     )
     main_text = main_original.replace(
@@ -1534,6 +1588,7 @@ exportBlockFetchBinaryCases path count seed = withFile path WriteMode $ \outputH
         "main = getArgs >>= \\args -> case args of\n"
         "  [\"--export-lsq-behavior\", dir, count, seed] -> LocalStateQuery.exportLocalStateQueryBehaviorCases (dir <> \"/localsq-behavior-cases.tsv\") (dir <> \"/localsq-behavior-actions.tsv\") (read count) (read seed)\n"
         "  [\"--export-lsq-behavior\", dir, count, seed] -> LocalStateQuery.exportLocalStateQueryBehaviorCases (dir <> \"/localsq-behavior-cases.tsv\") (dir <> \"/localsq-behavior-actions.tsv\") (read count) (read seed)\n"
+        "  [\"--export-txsubmission2-behavior\", dir, count, seed] -> TxSubmission2.exportTxSubmission2BehaviorCases (dir <> \"/txsubmission2-behavior.tsv\") (read count) (read seed)\n"
         "  [\"--export-network-codecs\", dir, count, seed, chainCount] -> do\n"
         "    KeepAlive.exportKeepAliveBehaviorCases (dir <> \"/keepalive-behavior.tsv\") (read count) (read seed + 700)\n"
         "    KeepAlive.exportKeepAliveCases (dir <> \"/keepalive.tsv\") (read count) (read seed)\n"
@@ -1558,6 +1613,7 @@ exportBlockFetchBinaryCases path count seed = withFile path WriteMode $ \outputH
         "    TxSubmission2.exportTxSubmission2Cases (dir <> \"/txsubmission2.tsv\") (read count) (read seed + 4800)\n"
         "    TxSubmission2.exportTxSubmission2SplitCases (dir <> \"/txsubmission2-splits.tsv\") (read count) (read seed + 4800)\n"
         "    TxSubmission2.exportTxSubmission2AnnotatedCases (dir <> \"/txsubmission2-annotated.tsv\") (read count) (read seed + 6800)\n"
+        "    TxSubmission2.exportTxSubmission2BehaviorCases (dir <> \"/txsubmission2-behavior.tsv\") (read count) (read seed + 12800)\n"
         "  _ -> defaultMain tests",
     )
     main.write_text(main_text)
@@ -1584,6 +1640,7 @@ def main() -> None:
     parser.add_argument("--probe-dir", type=Path, default=Path("/tmp/scarab/v02-49-protocol-probe"))
     parser.add_argument("--reference-plan", type=Path)
     parser.add_argument("--lsq-behavior-only", action="store_true")
+    parser.add_argument("--txsubmission2-behavior-only", action="store_true")
     args = parser.parse_args()
     if not 1 <= args.count <= 128:
         raise SystemExit("case count must be 1..128")
@@ -1614,7 +1671,7 @@ def main() -> None:
             "-w", "/source", IMAGE, "-f", "/dev/null",
         ])
     checked(["docker", "start", CONTAINER_NAME])
-    test_names = ("LocalStateQuery",) if args.lsq_behavior_only else (
+    test_names = ("LocalStateQuery",) if args.lsq_behavior_only else ("TxSubmission2",) if args.txsubmission2_behavior_only else (
         "KeepAlive", "PeerSharing", "ChainSync", "BlockFetch", "LocalStateQuery",
         "LocalTxSubmission", "LocalTxMonitor", "TxSubmission2",
     )
@@ -1643,6 +1700,12 @@ def main() -> None:
             "docker", "exec", "-w", "/source", CONTAINER_NAME,
             binary, "--export-lsq-behavior", "/probe/exports",
             str(args.count), str(args.seed + 11800),
+        ])
+    elif args.txsubmission2_behavior_only:
+        checked([
+            "docker", "exec", "-w", "/source", CONTAINER_NAME,
+            binary, "--export-txsubmission2-behavior", "/probe/exports",
+            str(args.count), str(args.seed + 12800),
         ])
     else:
         checked([
@@ -1731,6 +1794,91 @@ def main() -> None:
         (args.output_dir / "localsq-behavior-actions.tsv").write_bytes(actions_raw)
         (args.output_dir / "localsq-behavior.manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
         return
+    if args.txsubmission2_behavior_only:
+        raw = (args.probe_dir / "exports/txsubmission2-behavior.tsv").read_bytes()
+        rows = [line.split("\t") for line in raw.decode().splitlines()]
+        property_columns = {
+            "prop_direct": 7,
+            "prop_connect1": 8,
+            "prop_connect2": 9,
+            "prop_channel_ST": 10,
+        }
+        manifest = {
+            "schema": "scarab-upstream-network-protocol-behavior-v1",
+            "source": "ouroboros-network",
+            "sourceCommit": UPSTREAM_COMMIT,
+            "upstreamTest": "ouroboros-network:protocols-tests / TxSubmission2 / unchanged Arbitrary TxSubmissionTestParams + prop_direct + prop_connect1 + prop_connect2 + prop_channel_ST",
+            "caseFile": "txsubmission2-behavior.tsv",
+            "seed": int(rows[0][1]),
+            "requestedCases": args.count,
+            "exportedCases": len(rows),
+            "generatorSizes": sorted({int(row[3]) for row in rows}),
+            "upstreamPropertyOutcomesByProperty": {
+                property_name: {
+                    "pass": sum(row[column] == "pass" for row in rows),
+                    "upstream-failure": sum(row[column] != "pass" for row in rows),
+                }
+                for property_name, column in property_columns.items()
+            },
+            "upstreamPropertyOutcomes": {
+                "allFourPropertiesPass": sum(all(row[column] == "pass" for column in property_columns.values()) for row in rows),
+                "atLeastOnePropertyFailure": sum(any(row[column] != "pass" for column in property_columns.values()) for row in rows),
+            },
+            "generatorParameters": {
+                "unchangedType": "TxSubmissionTestParams",
+                "propertyInput": "original Arbitrary instance, one deterministic seed/case size per row",
+                "codec2PipelineChoicesSeedOffset": 3000007,
+                "codec2PipelineChoicesColumn": 13,
+                "codec2PipelineChoicesEncoding": "one character per original NonEmptyList Bool element: 1=True, 0=False",
+                "transactionPairing": "original txId mapping; each TxId and Tx serialized independently with Serialise",
+            },
+            "adapterInputStatuses": {
+                "casesWithTransactions": sum(int(row[11]) > 0 for row in rows),
+                "emptyTransactionCases": sum(int(row[11]) == 0 for row in rows),
+                "transactionPairs": sum(int(row[11]) for row in rows),
+                "maxUnackedValues": sorted({int(row[4]) for row in rows}),
+                "maxTxIdsToRequestValues": sorted({int(row[5]) for row in rows}),
+                "maxTxToRequestValues": sorted({int(row[6]) for row in rows}),
+                "connect2PipelineChoiceLengths": sorted({len(row[13]) for row in rows}),
+                "connect2PipelineChoiceTrueValues": sum(row[13].count("1") for row in rows),
+                "connect2PipelineChoiceFalseValues": sum(row[13].count("0") for row in rows),
+                "connect2PipelineChoicesBySeed": [
+                    {"seed": int(row[1]), "choices": row[13]} for row in rows
+                ],
+            },
+            "propertyReplaySeedOffsets": {
+                "prop_direct": 0,
+                "prop_connect1": 0,
+                "prop_connect2_choices": 3000007,
+                "prop_channel_ST": 0,
+            },
+            "sourceFiles": {
+                "TxSubmission2/Test.hs": hashlib.sha256((args.source / "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/TxSubmission2/Test.hs").read_bytes()).hexdigest(),
+                "TxSubmission2/Client.hs": hashlib.sha256((args.source / "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/TxSubmission2/Client.hs").read_bytes()).hexdigest(),
+                "TxSubmission2/Server.hs": hashlib.sha256((args.source / "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/TxSubmission2/Server.hs").read_bytes()).hexdigest(),
+            },
+            "observerPatchSha256": hashlib.sha256(patch.encode()).hexdigest(),
+            "dependencyPlanSha256": hashlib.sha256(plan).hexdigest(),
+            "targetDependencyClosureUnitCount": len(target_closure),
+            "caseTsvSha256": hashlib.sha256(raw).hexdigest(),
+            "filteredUpstreamSuiteCommands": [
+                result for result in COMMAND_RESULTS
+                if "test" in result["argv"] and any("protocols-tests" in arg for arg in result["argv"])
+            ],
+            "caseExportCommand": next(result for result in COMMAND_RESULTS if "--export-txsubmission2-behavior" in result["argv"]),
+            "execution": {
+                "image": IMAGE,
+                "imageDigest": image_digest,
+                "containerNetwork": "none",
+                "cabalOffline": False,
+                "projectFileSha256": hashlib.sha256(project_file.read_bytes()).hexdigest(),
+                "projectPlanSha256": hashlib.sha256(plan).hexdigest(),
+                "projectPlanUnitCount": len(plan_units),
+            },
+        }
+        (args.output_dir / "txsubmission2-behavior.tsv").write_bytes(raw)
+        (args.output_dir / "txsubmission2-behavior.manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+        return
     manifests = []
     for name, upstream_test in [
         ("keepalive.tsv", "ouroboros-network:protocols-tests / KeepAlive / codec v2 / prop_codec_v2"),
@@ -1755,6 +1903,7 @@ def main() -> None:
         ("txsubmission2.tsv", "ouroboros-network:protocols-tests / TxSubmission2 / codec + codec cbor"),
         ("txsubmission2-annotated.tsv", "ouroboros-network:protocols-tests / TxSubmission2 / prop_anncodec + prop_anncodec_splits2 + prop_anncodec_splits3"),
         ("txsubmission2-splits.tsv", "ouroboros-network:protocols-tests / TxSubmission2 / prop_codec_splits2 + prop_codec_splits3"),
+        ("txsubmission2-behavior.tsv", "ouroboros-network:protocols-tests / TxSubmission2 / unchanged Arbitrary TxSubmissionTestParams + prop_direct + prop_connect1 + prop_connect2 + prop_channel_ST"),
     ]:
         raw = (args.probe_dir / "exports" / name).read_bytes()
         rows = [line.split("\t") for line in raw.decode().splitlines()]
@@ -1794,6 +1943,44 @@ def main() -> None:
             "caseFile": name,
             "sha256": hashlib.sha256(raw).hexdigest(),
         }
+        if name == "txsubmission2-behavior.tsv":
+            property_columns = {
+                "prop_direct": 7,
+                "prop_connect1": 8,
+                "prop_connect2": 9,
+                "prop_channel_ST": 10,
+            }
+            manifest["upstreamPropertyOutcomesByProperty"] = {
+                property_name: {
+                    "pass": sum(row[column] == "pass" for row in rows),
+                    "upstream-failure": sum(row[column] != "pass" for row in rows),
+                }
+                for property_name, column in property_columns.items()
+            }
+            manifest["upstreamPropertyOutcomes"] = {
+                "allFourPropertiesPass": sum(all(row[column] == "pass" for column in property_columns.values()) for row in rows),
+                "atLeastOnePropertyFailure": sum(any(row[column] != "pass" for column in property_columns.values()) for row in rows),
+            }
+            manifest["generatorParameters"] = {
+                "unchangedType": "TxSubmissionTestParams",
+                "properties": "original Arbitrary instance, one deterministic seed/case size per row",
+                "codec2PipelineChoicesSeedOffset": 3000007,
+                "expectedTransactions": "exact Serialise TxId and Tx wire paired after original txId mapping",
+            }
+            manifest["adapterInputStatuses"] = {
+                "casesWithTransactions": sum(int(row[11]) > 0 for row in rows),
+                "emptyTransactionCases": sum(int(row[11]) == 0 for row in rows),
+                "transactionPairs": sum(int(row[11]) for row in rows),
+                "maxUnackedValues": sorted({int(row[4]) for row in rows}),
+                "maxTxIdsToRequestValues": sorted({int(row[5]) for row in rows}),
+                "maxTxToRequestValues": sorted({int(row[6]) for row in rows}),
+            }
+            manifest["propertyReplaySeedOffsets"] = {
+                "prop_direct": 0,
+                "prop_connect1": 0,
+                "prop_connect2_choices": 3000007,
+                "prop_channel_ST": 0,
+            }
         if name in ("chainsync-binary.tsv", "blockfetch-binary.tsv"):
             is_chain = name == "chainsync-binary.tsv"
             wrapped_to_serialised = "codec/codecSerialised"
