@@ -4,8 +4,9 @@ These are deterministic observations from the real `ouroboros-network:protocols-
 at commit `2fb69829a19b5c04e4fb212bdd78fb63f9d2d776`. The disposable observer overlay only adds
 export entrypoints; it retains the upstream `AnyMessage` `Arbitrary` instances, codec functions,
 and property bodies. `keepalive.tsv` is generated from `KeepAlive/Test.hs`'s `prop_codec_v2` and
-`peersharing.tsv` from `PeerSharing/Test.hs`'s `prop_codec_PeerSharing`, `prop_codec_valid_cbor`,
-`prop_codec_splits2`, and `prop_codec_splits3` on the same original generated messages. The adjacent manifests
+`peersharing.tsv` from `PeerSharing/Test.hs`'s `prop_codec_PeerSharing`, `prop_codec_cbor`,
+`prop_codec_valid_cbor`, `prop_codec_splits2`, and `prop_codec_splits3` on the same original generated
+messages. The adjacent manifests
 record source file hashes, exact seed/size values, dependency plan, overlay patch hash, upstream
 property result, and raw fixture hash.
 

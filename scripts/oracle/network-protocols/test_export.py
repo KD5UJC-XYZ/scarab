@@ -42,12 +42,12 @@ class PropertyOutcomeColumnsTest(unittest.TestCase):
     def test_peersharing_split_outcomes_are_not_conflated(self) -> None:
         rows = []
         for verdicts in (
-            ("pass", "pass", "fail", "pass"),
-            ("pass", "pass", "pass", "fail"),
-            ("fail", "pass", "pass", "pass"),
+            ("pass", "fail", "pass", "fail", "pass"),
+            ("pass", "pass", "fail", "pass", "fail"),
+            ("fail", "pass", "pass", "pass", "pass"),
         ):
-            row = [""] * 14
-            row[10:14] = verdicts
+            row = [""] * 15
+            row[10:15] = verdicts
             rows.append(row)
 
         summary = summarize_property_outcomes(rows, PROPERTY_COLUMNS["peersharing.tsv"])
@@ -56,7 +56,8 @@ class PropertyOutcomeColumnsTest(unittest.TestCase):
             summary["upstreamPropertyOutcomesByProperty"],
             {
                 "prop_codec_PeerSharing": {"pass": 2, "upstream-failure": 1},
-                "prop_codec_valid_cbor": {"pass": 3, "upstream-failure": 0},
+                "prop_codec_cbor": {"pass": 2, "upstream-failure": 1},
+                "prop_codec_valid_cbor": {"pass": 2, "upstream-failure": 1},
                 "prop_codec_splits2": {"pass": 2, "upstream-failure": 1},
                 "prop_codec_splits3": {"pass": 2, "upstream-failure": 1},
             },

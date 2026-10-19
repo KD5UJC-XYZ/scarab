@@ -395,22 +395,23 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
 
   test("retain and classify every seeded PeerSharing row, mapping only typed-compatible messages"):
     val input =
-      rows("peersharing.tsv", "814e9bbdc85e4c1b8d345dc9d3c8e042bc924cbf45629d3f46e525ae646f84dc")
+      rows("peersharing.tsv", "f68fcdbd0e087c87b57600303b0ab9e32877675b4c30397215354e87ecc65620")
     assertEquals(
       input.groupMapReduce(_(8))(_ => 1)(_ + _),
       Map("candidate" -> 18, "unsupported-int-addresses" -> 6)
     )
     val outcomes = input.map { fields =>
-      assertEquals(fields.size, 14)
+      assertEquals(fields.size, 15)
       assertEquals(fields(0), "peersharing-codec-int-v1")
       val seed = fields(1).toInt
       val ordinal = fields(2).toInt
       assertEquals(seed, 490201 + ordinal)
       assertEquals(fields(3).toInt, 30 + ordinal % 21)
       assertEquals(fields(10), "pass", s"upstream codec property seed $seed")
-      assertEquals(fields(11), "pass", s"upstream valid-CBOR property seed $seed")
-      assertEquals(fields(12), "pass", s"upstream split-2 property seed $seed")
-      assertEquals(fields(13), "pass", s"upstream split-3 property seed $seed")
+      assertEquals(fields(11), "pass", s"upstream CBOR roundtrip property seed $seed")
+      assertEquals(fields(12), "pass", s"upstream valid-CBOR property seed $seed")
+      assertEquals(fields(13), "pass", s"upstream split-2 property seed $seed")
+      assertEquals(fields(14), "pass", s"upstream split-3 property seed $seed")
       val wire = bytes(fields(9))
       fields(8) match
         case "candidate" =>
