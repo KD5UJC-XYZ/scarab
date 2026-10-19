@@ -1653,8 +1653,9 @@ head. Independent source/class hashes bind the measured implementation.
 
 
 This controlled profile is bound to the **pre-rebase, pre-import-validation** runtime above.
-The final gates and paired block replay use main `0b5dde8f` plus the subsequent typed refusal for
-invalid imported relative stake; they have a separate binding. All nine largest-state output
+The paired block replay uses main `0b5dde8f` plus the subsequent typed refusal for invalid
+imported relative stake; it has a separate binding. Final gate/rebase bindings are recorded
+separately in the compatibility log. All nine largest-state output
 digests agree with the baseline's `a2912a1475bf177677e31589f4a9832116a5fe619706999851a8b7634ced936b`.
 
 | Controlled API condition | Wall median (ms) | Largest wall call (ms) | Current-thread CPU median (ms) | Allocation per sequence (MB) |
@@ -1699,7 +1700,7 @@ other sessions compiled on the shared WSL2 host, and no other owned timed benchm
 concurrently. Ordinary JVM JIT/GC and host scheduling remain sources of variation.
 
 
-**Current-main recorded block replay.** The final comparison uses eager main `0b5dde8f` and
+**Recorded block replay against main `0b5dde8f`.** The final comparison uses eager main `0b5dde8f` and
 feature runtime `c8265de3`, including the imported-divisor guard. Both load the same checksummed
 native V5 copy of the archived K1 snapshot at slot 125231955/block 4753556, paired with its
 RocksDB checkpoint. Authentication checks original block CRCs, original-header hashes, slot/block

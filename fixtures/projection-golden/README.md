@@ -25,7 +25,7 @@ A separate assertion pins all 19 native pending states and their absent complete
 Completed reward accounting is independently checked by the
 [unchanged Haskell API corpus](../../storage/src/test/resources/rewards-1.19.0.1/README.md).
 
-- Original fixture at `c8265de3:fixtures/projection-golden/eras.tsv`: SHA-256
+- Original fixture at `0b5dde8f:fixtures/projection-golden/eras.tsv`: SHA-256
   `2517167e46bd6bf3f30d4c8730981dc6a88c9bec1e7e73d13707b9233b4a2632`.
 - Updated fixture SHA-256: `6c3e409a85bfaf66d7e2fb8a2c40353ad1a10abf2e901dd3e9953680ad73d3a6`.
 - Proof source SHA-256: `4f515139cc098d87e5c6e3bfa10dcf7a63d2bb71816f621531e441efe25955be`.

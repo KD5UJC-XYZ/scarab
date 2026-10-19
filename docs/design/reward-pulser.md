@@ -185,4 +185,4 @@ but normal completion still performs the reference's linear delivered-reward red
 15.99 ms median exceeded the original proposed 5 ms API target; the owner accepted that measured
 result on 2026-10-19. #135 follows the normal main-plus-nightly definition of done, with no
 remaining 5 ms follow-up requirement. [performance.md](../performance.md#30-incremental-reward-implementation-135)
-records measured scope and limitations, separately from the final current-main block replay.
+records measured scope and limitations, separately from the final recorded block replay.
