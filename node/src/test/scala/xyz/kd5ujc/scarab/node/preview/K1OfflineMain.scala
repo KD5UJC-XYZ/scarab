@@ -10,9 +10,10 @@ import io.circe.Json
 import io.circe.syntax.*
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.codec.DomainError
+import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
+import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorState}
-import xyz.kd5ujc.scarab.ledger.{Header, NodeError, StorageError}
+import xyz.kd5ujc.scarab.ledger.{Header, NodeError, PlutusStats, StorageError}
 import xyz.kd5ujc.scarab.node.{MirrorRules, NodeSetup, ParallelPlutus, VerificationCache}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.storage.*
@@ -29,6 +30,14 @@ object K1OfflineMain extends IOApp:
     case Arguments
     case NotFresh(path: Path)
     case BlockOrder(expected: BigInt, actual: BigInt)
+    case InitialParent(expected: Option[Bytes], actual: Option[Bytes])
+    case NotShelley
+    case Link(cause: ReplayInputs.Error)
+    case ObservationCounters(
+        initial: PlutusStats,
+        actual: PlutusStats,
+        observed: ReplayTrace.Counts
+    )
     case ReferencePoint(slot: BigInt, expected: String, actual: String)
     case Endpoint(expectedBlocks: Long, actualBlocks: Long, slot: BigInt, hash: String)
     case MissingTargets(slots: Set[BigInt])
@@ -50,8 +59,42 @@ object K1OfflineMain extends IOApp:
       hash: String = "",
       counts: ReplayTrace.Counts = ReplayTrace.Counts(),
       failed: Vector[String] = Vector.empty,
-      exported: Set[BigInt] = Set.empty
+      exported: Set[BigInt] = Set.empty,
+      last: Option[BlockRef] = None
   )
+
+  private[preview] def link(
+      previous: Option[BlockRef],
+      origin: Option[Bytes],
+      header: Header
+  ): Either[Error, BlockRef] = header match
+    case shelley: Header.Shelley =>
+      previous match
+        case Some(ref) => ReplayInputs.link(ref, shelley).left.map(Error.Link(_))
+        case None =>
+          for
+            _ <- Either.cond(shelley.blockNo == 0, (), Error.BlockOrder(0, shelley.blockNo))
+            _ <- Either.cond(
+              shelley.prevHash == origin,
+              (),
+              Error.InitialParent(origin, shelley.prevHash)
+            )
+          yield BlockRef(shelley.slot, shelley.hash, shelley.blockNo)
+    case _ => Left(Error.NotShelley)
+
+  private[preview] def reconcile(
+      initial: PlutusStats,
+      actual: PlutusStats,
+      observed: ReplayTrace.Counts
+  ): Either[Error, Unit] =
+    Either.cond(
+      observed.unavailableTransactions == 0 && observed.collectionFailures == 0 &&
+        actual.scripts - initial.scripts == observed.evaluatedScripts &&
+        actual.failed - initial.failed == observed.failedTransactions &&
+        actual.succeeded - initial.succeeded + actual.failed - initial.failed == observed.reachedTransactions,
+      (),
+      Error.ObservationCounters(initial, actual, observed)
+    )
 
   private def refuse[A](error: Error)(using Raise[IO, StorageError]): IO[A] =
     StorageError.Corrupt("offline K1 acceptance", error).raise[IO, A]
@@ -103,8 +146,10 @@ object K1OfflineMain extends IOApp:
                 _ <- IO.delay(cache.noteEpochNonce(state.ledgerEpoch, state.protocol.epochNonce))
                 traces <- IO.delay(observations.drain())
                 previous <- progress.get
-                _ <- refuse[Unit](Error.BlockOrder(BigInt(previous.blocks), header.blockNo))
-                  .unlessA(header.blockNo == BigInt(previous.blocks))
+                linked <- link(previous.last, setup.origin, header).fold(refuse[BlockRef], IO.pure)
+                counts = previous.counts.add(traces)
+                _ <- reconcile(setup.mirrorStart.plutus, state.plutus, counts)
+                  .fold(refuse[Unit], IO.pure)
                 exported <- targets.get(header.slot).traverse { expected =>
                   for
                     _ <- refuse[Unit](Error.ReferencePoint(header.slot, expected, header.hash.hex))
@@ -124,12 +169,13 @@ object K1OfflineMain extends IOApp:
                     previous.blocks + 1,
                     header.slot,
                     header.hash.hex,
-                    previous.counts.add(traces),
+                    counts,
                     previous.failed ++ traces.collect {
                       case t @ ReplayTrace.Transaction(_, _, _, ReplayTrace.Outcome.Failed(_, _)) =>
                         t.id.hex
                     },
-                    previous.exported ++ exported
+                    previous.exported ++ exported,
+                    Some(linked)
                   )
                 )
               yield ()
