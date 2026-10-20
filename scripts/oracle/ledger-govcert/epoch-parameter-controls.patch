@@ -1,0 +1,71 @@
+# SPDX-License-Identifier: Apache-2.0
+--- a/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway.hs
++++ b/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway.hs
+@@ -10,6 +10,16 @@
+ 
+ module Test.Cardano.Ledger.Conformance.Spec.Conway (spec) where
+ 
++import Cardano.Ledger.BaseTypes (EpochNo (..), ProtVer (..), boundRational, natVersion)
++import Cardano.Ledger.Conway (ConwayEra)
++import Cardano.Ledger.Conway.Core (EraRule, PParams, ppProtocolVersionL, ppRhoL)
++import Cardano.Ledger.Conway.Governance
++import Cardano.Ledger.Shelley.LedgerState
++import Cardano.Ledger.State (FuturePParams (..))
++import Control.State.Transition.Extended (TRC (..))
++import Constrained.API (genFromSpec, trueSpec)
++import Lens.Micro ((&), (.~))
++import Data.Default (def)
+ import Data.Map.Strict qualified as Map
+ import Test.Cardano.Ledger.Conformance.ExecSpecRule.Conway (ConwayCertExecContext (..))
+ import Test.Cardano.Ledger.Conformance.Spec.Conway.Ratify qualified as Ratify
+@@ -39,6 +49,10 @@
+           \curEpoch _ _ _ -> pure curEpoch
+       Ratify.spec
+       prop "EPOCH" $ conformsToImplConstrained_ constrainedEpoch
++      -- Derived controls; the original property above is retained unchanged.
++      prop "EPOCH-lawful-no-actions" $ conformsToImpl @"EPOCH" @ConwayEra genLawfulNoActionEpoch
++      prop "EPOCH-minimal-inconsistent" $ conformsToImpl @"EPOCH" @ConwayEra $ pure ((), TRC ((), minimalEpoch False, EpochNo 1))
++      prop "EPOCH-minimal-consistent" $ conformsToImpl @"EPOCH" @ConwayEra $ pure ((), TRC ((), minimalEpoch True, EpochNo 1))
+       prop "NEWEPOCH" $ conformsToImplConstrained_ constrainedNewEpoch
+       prop "NEWEPOCH-sized10" $ conformsToImpl (resize 10 (genFromBundle_ constrainedNewEpoch))
+     describe "Blocks transition graph" $ do
+@@ -62,3 +76,29 @@
+       xprop "UTXOW" $ conformsToImplConstrained constrainedUtxo $ \_ _ _ _ -> genUtxoExecContext
+       xprop "LEDGER" $ conformsToImplConstrained constrainedUtxo $ \_ _ _ _ -> genUtxoExecContext
+       xprop "LEDGERS" $ conformsToImplConstrained constrainedUtxo $ \_ _ _ _ -> genUtxoExecContext
++
++-- Empty governance/state except for a single intentionally inconsistent parameter.
++-- Formal EPOCH takes the completed enactment state; native uses future PParams.
++minimalEpoch :: Bool -> EpochState ConwayEra
++minimalEpoch consistent = def & esLStateL . lsUTxOStateL . utxosGovStateL .~ gov
++  where
++    current = def & ppProtocolVersionL .~ ProtVer (natVersion @9) 0
++    enactedParams = if consistent then current else current & ppRhoL .~ maybe minBound id (boundRational (1 / 2))
++    ratify = def & rsEnactStateL . ensCurPParamsL .~ enactedParams
++    gov = def
++      & cgsCurPParamsL .~ current
++      & cgsFuturePParamsL .~ NoPParamsUpdate
++      & cgsDRepPulsingStateL .~ DRComplete def ratify
++
++-- Generate correlated fields together, rather than repairing an original upstream input.
++-- mkEnactState is the constructor used by setFreshDRepPulsingState in native Haskell.
++genLawfulNoActionEpoch :: Gen ((), TRC (EraRule "EPOCH" ConwayEra))
++genLawfulNoActionEpoch = do
++  generatedParams <- genFromSpec (trueSpec @(PParams ConwayEra))
++  epoch <- arbitrary
++  let params = generatedParams & ppProtocolVersionL .~ ProtVer (natVersion @9) 0
++      gov0 = def & cgsCurPParamsL .~ params & cgsPrevPParamsL .~ params
++      ratify = def & rsEnactStateL .~ mkEnactState gov0
++      gov = gov0 & cgsDRepPulsingStateL .~ DRComplete def ratify
++      st = def & esLStateL . lsUTxOStateL . utxosGovStateL .~ gov
++  pure ((), TRC ((), st, epoch))
+--- a/libs/cardano-ledger-conformance/cardano-ledger-conformance.cabal
++++ b/libs/cardano-ledger-conformance/cardano-ledger-conformance.cabal
+@@ -168,6 +168,7 @@
+     cardano-strict-containers,
+     constrained-generators,
+     containers,
++    data-default,
+     microlens,
+     microlens-mtl,
+     mtl,

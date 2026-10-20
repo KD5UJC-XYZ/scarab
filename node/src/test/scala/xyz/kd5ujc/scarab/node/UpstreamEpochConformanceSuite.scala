@@ -85,6 +85,18 @@ class UpstreamEpochConformanceSuite extends FunSuite:
     val before = decode(seed, "state", codec)
     val expected = decode(seed, "implementation-state", codec)
     val epoch = decode(seed, "signal", summon[Codec[EpochNo]])
+    val gov = before.ls.utxo.gov
+    val pending = gov.drepPulsing.ratify
+    assert(pending.enacted.isEmpty)
+    assert(pending.expired.isEmpty)
+    assertEquals(gov.futurePParams, FuturePParams.PotentialPParamsUpdate(None))
+    assertEquals(gov.curPParams.rho, Rational(8606909, 10000000))
+    assertEquals(
+      pending.enact.params.rho,
+      Rational(BigInt("633925279839594401"), BigInt("1250000000000000000"))
+    )
+    assertNotEquals(pending.enact.params, gov.curPParams)
+    assertEquals(expected.ls.utxo.gov.curPParams, gov.curPParams)
     val actual = Sts
       .apply(ConwayEpoch.sts)(globals, (), before, epoch)
       .fold(e => fail(s"native-accepted EPOCH refused: $e"), identity)

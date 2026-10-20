@@ -18,6 +18,12 @@ The manifest retains runner arguments, source/dependency pins and every original
 The NEWEPOCH bytes are not repaired and the decoder's nonzero invariant is retained. A passing
 test that checks this explicit unsupported classification is not a successful Scarab rule replay.
 The EPOCH fixture's two accepted verdicts likewise do not mean that the upstream comparison passes.
+[#267's parameter-consistency controls](../conway-epoch-parameters/README.md) classify it:
+the generator constructs changed completed-pulser parameters without any enacted action, while
+its future-parameter prediction retains the current parameters. The native rule and formal rule
+choose their documented different parameter sources on that inconsistent input. A minimal
+single-parameter negative and a separate lawful no-action generator retain both outcomes;
+the original fixture and its failed comparison remain unchanged.
 
 Both remain bounded probes. EPOCH's constrained generator excludes incomplete DRep pulsers and
 limits enacted actions; NEWEPOCH's state specification is `trueSpec` and does not establish native

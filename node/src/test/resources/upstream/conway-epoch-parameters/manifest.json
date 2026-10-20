@@ -1,0 +1,538 @@
+{
+  "schema": "scarab-upstream-epoch-parameter-controls-v1",
+  "sourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "formalCommit": "b3a4fd47a1144ff1fb994f89b1045e78159e07ae",
+  "formalSourceCommit": "caffe9223abb7b7406da2f3f14a3bc3b5cd2f13f",
+  "generatorCommit": "966f65f3c28cb22fc45220dbd1408baea93b53d8",
+  "buildPatches": [
+    {
+      "path": "scripts/oracle/ledger-govcert/exporter.patch",
+      "sha256": "7130e6e9c1b055f27a2f1a60984af5d58446e9441f088fea724b0dbcba165e31"
+    },
+    {
+      "path": "scripts/oracle/ledger-govcert/epoch-families.patch",
+      "sha256": "64ad562f84cfb1e52f7dddeb7dcf886803b2f9c30a5328f8f448a98f03608b3f"
+    },
+    {
+      "path": "scripts/oracle/ledger-govcert/epoch-sized-probe.patch",
+      "sha256": "c9f55d9465527cf555b5d96fa85a8061285182c84b6c6e969b3c8b0d8c1e39ae"
+    },
+    {
+      "path": "scripts/oracle/ledger-govcert/native-hooks.patch",
+      "sha256": "764892d352c6780fa0121c03c2eb29eef08e33f5e4e3c383155a261cda5a951f"
+    },
+    {
+      "path": "scripts/oracle/ledger-govcert/derived-payment.patch",
+      "sha256": "25d3c5f3fc62f5bb7c7bb5c69f23a372f2196e457b875e68eeace15e24a4954c"
+    },
+    {
+      "path": "scripts/oracle/ledger-govcert/ratify.patch",
+      "sha256": "9611b79ab4543445cd68161d0810293fd7ed809daadcc0a99ca2ddad5cfcafde"
+    },
+    {
+      "path": "scripts/oracle/ledger-govcert/epoch-parameter-controls.patch",
+      "sha256": "2d58184feae5a91780d31ccaa3b9b1080f67c96c2be3aae4a0e27e45f5e3a27d"
+    }
+  ],
+  "dependencyPlanSha256": "1dc9a8000b249f401146b15a7de71bced3c744be5bfb99801dcaa94dd2f8d3b0",
+  "executableSha256": "6b273af8e0f8491eb14893b40dad85e7cd46eab5fc6b1d20b952790ad4275590",
+  "originalReproduction": {
+    "id": "original-rebuilt",
+    "property": "EPOCH",
+    "seed": 497101,
+    "upstreamPropertyExitCode": 1,
+    "expectedExitCode": 1,
+    "elapsedSeconds": 1.1679644584655762,
+    "runnerArgs": [
+      "--match",
+      "Conformance/Conway/Constrained Generators/Ticks transition graph/EPOCH/",
+      "--seed=497101",
+      "--qc-max-success=1",
+      "--qc-max-size=30"
+    ],
+    "files": {
+      "state.cbor": {
+        "bytes": 3059,
+        "sha256": "4e69bdb5ea9793c9f0bd4767dc191703ad548bf0c5226802300b3a45e6fc06a4"
+      },
+      "result.txt": {
+        "bytes": 38,
+        "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+      },
+      "signal.cbor": {
+        "bytes": 1,
+        "sha256": "4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a"
+      },
+      "environment.cbor": {
+        "bytes": 1,
+        "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+      },
+      "implementation-state.cbor": {
+        "bytes": 2450,
+        "sha256": "0eb80f55d06f4916fd94737d09030ec765846f701b49a925de9b34ff97bbfecf"
+      },
+      "context.cbor": {
+        "bytes": 1,
+        "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+      }
+    },
+    "logSha256": "0a74a5dc156bfc48a38113409c4374513422c7afcc21ac26d569d970e4d629a9"
+  },
+  "classification": {
+    "responsibility": "missing-generator-relational-invariant",
+    "firstDifferingParameter": "ppMonetaryExpansion",
+    "current": "8606909/10000000",
+    "completedRatification": "633925279839594401/1250000000000000000",
+    "enactedActions": 0,
+    "expiredActions": 0,
+    "futurePParams": "PotentialPParamsUpdate Nothing",
+    "nativeAndScarab": "retain-current-parameters",
+    "formal": "adopt-completed-ratification-parameters"
+  },
+  "sampleContract": {
+    "originalFailuresRetained": 1,
+    "minimalComparisonFailed": 1,
+    "minimalComparisonPassed": 1,
+    "lawfulNoActionGenerated": 8,
+    "lawfulNoActionComparisonPassed": 8,
+    "scarabFullNativeStateMatches": 10
+  },
+  "cases": [
+    {
+      "id": "minimal-inconsistent",
+      "property": "EPOCH-minimal-inconsistent",
+      "seed": 497101,
+      "upstreamPropertyExitCode": 1,
+      "runnerArgs": [
+        "--match",
+        "Conformance/Conway/Constrained Generators/Ticks transition graph/EPOCH-minimal-inconsistent/",
+        "--seed=497101",
+        "--qc-max-success=1",
+        "--qc-max-size=30"
+      ],
+      "files": {
+        "state.cbor": {
+          "bytes": 729,
+          "sha256": "df117301f7abf05e670e24520803b489bbdeedc848a174af3796b62cb42eed6e"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 1,
+          "sha256": "4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a"
+        },
+        "environment.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        },
+        "implementation-state.cbor": {
+          "bytes": 730,
+          "sha256": "998aebe19af106621d655d143d9e4cd3dfdec341e87c58bdf1e38e8bf892b99e"
+        },
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        }
+      },
+      "logSha256": "8acc3807f2ee702da4796141d09e8689b86d6290b7758113fec8ffce54ab944c",
+      "nativeVerdict": "accepted",
+      "agdaVerdict": "accepted",
+      "comparison": "failed"
+    },
+    {
+      "id": "minimal-consistent",
+      "property": "EPOCH-minimal-consistent",
+      "seed": 497101,
+      "upstreamPropertyExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "Conformance/Conway/Constrained Generators/Ticks transition graph/EPOCH-minimal-consistent/",
+        "--seed=497101",
+        "--qc-max-success=1",
+        "--qc-max-size=30"
+      ],
+      "files": {
+        "state.cbor": {
+          "bytes": 729,
+          "sha256": "7c6f48ccc71f822f3e17af365781cf7e467b3335d3901a08f5f2ce959c2cbb0b"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 1,
+          "sha256": "4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a"
+        },
+        "environment.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        },
+        "implementation-state.cbor": {
+          "bytes": 730,
+          "sha256": "998aebe19af106621d655d143d9e4cd3dfdec341e87c58bdf1e38e8bf892b99e"
+        },
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        }
+      },
+      "logSha256": "e7e644b7ee3f8c3a8d7efa89bdaad29201e6abc6fee853106933f4ff1a61e4b7",
+      "nativeVerdict": "accepted",
+      "agdaVerdict": "accepted",
+      "comparison": "passed"
+    },
+    {
+      "id": "497201",
+      "property": "EPOCH-lawful-no-actions",
+      "seed": 497201,
+      "upstreamPropertyExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "Conformance/Conway/Constrained Generators/Ticks transition graph/EPOCH-lawful-no-actions/",
+        "--seed=497201",
+        "--qc-max-success=1",
+        "--qc-max-size=30"
+      ],
+      "files": {
+        "state.cbor": {
+          "bytes": 2725,
+          "sha256": "a85ce1ac52eac7eb2787c30213ee3d11fc455207b845b83cfd391ef51e2ffa95"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 1,
+          "sha256": "4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a"
+        },
+        "environment.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        },
+        "implementation-state.cbor": {
+          "bytes": 2726,
+          "sha256": "51352846876d2013b97148c3bdf620c9001e627a91697a93da63356bfba1e240"
+        },
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        }
+      },
+      "logSha256": "4396e7454fede23dfc8f0f8d8ec8209f7ed3e377129a4d6fa675db8fc3d5fd1a",
+      "nativeVerdict": "accepted",
+      "agdaVerdict": "accepted",
+      "comparison": "passed"
+    },
+    {
+      "id": "497202",
+      "property": "EPOCH-lawful-no-actions",
+      "seed": 497202,
+      "upstreamPropertyExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "Conformance/Conway/Constrained Generators/Ticks transition graph/EPOCH-lawful-no-actions/",
+        "--seed=497202",
+        "--qc-max-success=1",
+        "--qc-max-size=30"
+      ],
+      "files": {
+        "state.cbor": {
+          "bytes": 2569,
+          "sha256": "3f6b36a5331363dc70b8011297e9ff77a2c6de450e5ebf1a585814e37acd695e"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 1,
+          "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+        },
+        "environment.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        },
+        "implementation-state.cbor": {
+          "bytes": 2570,
+          "sha256": "ae3e377c2489e35440571a46f2d79db19b9dcb7782485f72beab38724298fd69"
+        },
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        }
+      },
+      "logSha256": "bdfcd3b312799a48197ac049f6fda41c118e668bfd0fddca81ca4b1c04a6e5a6",
+      "nativeVerdict": "accepted",
+      "agdaVerdict": "accepted",
+      "comparison": "passed"
+    },
+    {
+      "id": "497203",
+      "property": "EPOCH-lawful-no-actions",
+      "seed": 497203,
+      "upstreamPropertyExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "Conformance/Conway/Constrained Generators/Ticks transition graph/EPOCH-lawful-no-actions/",
+        "--seed=497203",
+        "--qc-max-success=1",
+        "--qc-max-size=30"
+      ],
+      "files": {
+        "state.cbor": {
+          "bytes": 2657,
+          "sha256": "347e92c88a9ea66645f6c5a6d8628924039e3a7e297d7e41bfe9efc098f3dc51"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 1,
+          "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+        },
+        "environment.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        },
+        "implementation-state.cbor": {
+          "bytes": 2658,
+          "sha256": "ba997f0404ab5e9f61078c5c98ae847b6478c0e6f69aaeff0af259b7996659fa"
+        },
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        }
+      },
+      "logSha256": "de0d7aaea1b8af497a159a555a996be3c6e44dbe837352255ba58b8c083c6022",
+      "nativeVerdict": "accepted",
+      "agdaVerdict": "accepted",
+      "comparison": "passed"
+    },
+    {
+      "id": "497204",
+      "property": "EPOCH-lawful-no-actions",
+      "seed": 497204,
+      "upstreamPropertyExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "Conformance/Conway/Constrained Generators/Ticks transition graph/EPOCH-lawful-no-actions/",
+        "--seed=497204",
+        "--qc-max-success=1",
+        "--qc-max-size=30"
+      ],
+      "files": {
+        "state.cbor": {
+          "bytes": 3381,
+          "sha256": "d89a0616c1af46b7ddc786d0eb27467d8c08099f13fd17104023e55c0584bce3"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 1,
+          "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+        },
+        "environment.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        },
+        "implementation-state.cbor": {
+          "bytes": 3382,
+          "sha256": "6f5ccbc48df85ede9c3e358be98a15b85ee2159842ffee24611b5000ec8efc10"
+        },
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        }
+      },
+      "logSha256": "685e31434a2a0336afaafb53c9649b659771e3d73fa6de36651b360b7ee11152",
+      "nativeVerdict": "accepted",
+      "agdaVerdict": "accepted",
+      "comparison": "passed"
+    },
+    {
+      "id": "497205",
+      "property": "EPOCH-lawful-no-actions",
+      "seed": 497205,
+      "upstreamPropertyExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "Conformance/Conway/Constrained Generators/Ticks transition graph/EPOCH-lawful-no-actions/",
+        "--seed=497205",
+        "--qc-max-success=1",
+        "--qc-max-size=30"
+      ],
+      "files": {
+        "state.cbor": {
+          "bytes": 3165,
+          "sha256": "c62076afaad404c28f9e350246b128b90eda59dda7ab666dad38d1cc6a4716d3"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 1,
+          "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+        },
+        "environment.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        },
+        "implementation-state.cbor": {
+          "bytes": 3166,
+          "sha256": "08afdba38d9aca12cd1b4bfb96817d044b9b1e469fe7ef683ee430136ef215b2"
+        },
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        }
+      },
+      "logSha256": "7ec41c17ec4b3940a885dec495640f9098043003d88ec4a0a3ed16ff5c6d7be2",
+      "nativeVerdict": "accepted",
+      "agdaVerdict": "accepted",
+      "comparison": "passed"
+    },
+    {
+      "id": "497206",
+      "property": "EPOCH-lawful-no-actions",
+      "seed": 497206,
+      "upstreamPropertyExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "Conformance/Conway/Constrained Generators/Ticks transition graph/EPOCH-lawful-no-actions/",
+        "--seed=497206",
+        "--qc-max-success=1",
+        "--qc-max-size=30"
+      ],
+      "files": {
+        "state.cbor": {
+          "bytes": 2489,
+          "sha256": "53e9c83d059ca2a682b5e3d10473d8c6766c89fe01e3cfc22e0ebfbd2fe979f0"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 1,
+          "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+        },
+        "environment.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        },
+        "implementation-state.cbor": {
+          "bytes": 2490,
+          "sha256": "1e51d7a08847d0d3991f5508f3767be60402366ebb30e3174e8844218a62f2d6"
+        },
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        }
+      },
+      "logSha256": "9248d5e8a14608ebc36351d490ba3f3b3b5e137c486a7d8af76b4f88a28630f8",
+      "nativeVerdict": "accepted",
+      "agdaVerdict": "accepted",
+      "comparison": "passed"
+    },
+    {
+      "id": "497207",
+      "property": "EPOCH-lawful-no-actions",
+      "seed": 497207,
+      "upstreamPropertyExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "Conformance/Conway/Constrained Generators/Ticks transition graph/EPOCH-lawful-no-actions/",
+        "--seed=497207",
+        "--qc-max-success=1",
+        "--qc-max-size=30"
+      ],
+      "files": {
+        "state.cbor": {
+          "bytes": 2589,
+          "sha256": "b2260b5f3d2e33066ee68dc3af9f781875bdbeb64625557c8e7402afbf2717df"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 1,
+          "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+        },
+        "environment.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        },
+        "implementation-state.cbor": {
+          "bytes": 2590,
+          "sha256": "5cd08b7f4681ca71c129591bb21d8e0971440dc0c73568d5b655a0309fc8248c"
+        },
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        }
+      },
+      "logSha256": "1eb5d687fe71560481a5dfd1c922e716e9e2d84817dbca90de7d27ea513cda23",
+      "nativeVerdict": "accepted",
+      "agdaVerdict": "accepted",
+      "comparison": "passed"
+    },
+    {
+      "id": "497208",
+      "property": "EPOCH-lawful-no-actions",
+      "seed": 497208,
+      "upstreamPropertyExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "Conformance/Conway/Constrained Generators/Ticks transition graph/EPOCH-lawful-no-actions/",
+        "--seed=497208",
+        "--qc-max-success=1",
+        "--qc-max-size=30"
+      ],
+      "files": {
+        "state.cbor": {
+          "bytes": 2649,
+          "sha256": "cfc77996b4a3d0bee9d6aed8d6dc30f6c2ffdeef2219a6f214410eba49bcb616"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 1,
+          "sha256": "4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a"
+        },
+        "environment.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        },
+        "implementation-state.cbor": {
+          "bytes": 2650,
+          "sha256": "c47cb9df44d9ba23e26f6f51e71ce7a1036ee9f86db21ba5dbdd9049a9c9d2f3"
+        },
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        }
+      },
+      "logSha256": "605def2837b8005d72e16c2364e6575c94189b42bf704a7fc90c3b7d477ff2ec",
+      "nativeVerdict": "accepted",
+      "agdaVerdict": "accepted",
+      "comparison": "passed"
+    }
+  ],
+  "limitations": [
+    "No original generated input or comparison is repaired, filtered or relabelled.",
+    "The supplemental lawful generator covers empty governance action sets, not every EPOCH action family.",
+    "Each recorded seed generates its first QuickCheck sample at size zero; max-size=30 is a ceiling."
+  ],
+  "supplementalProtocolMajor": 9
+}
