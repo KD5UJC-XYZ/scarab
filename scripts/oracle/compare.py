@@ -64,7 +64,7 @@ def compare_files(reference, scala_path, pre_alonzo_ok=False):
     return differences
 
 
-def compare_dirs(ref_dir, dump_dir, results):
+def compare_dirs(ref_dir, dump_dir, results, expected_epochs=None):
     """Pair the reference projections of `ref_dir` (see `reference.py`) with the Scala digests of `dump_dir`
     by block, compare them and write `results` (JSON: a summary and one row per epoch). Returns the summary."""
     ref_dir = pathlib.Path(ref_dir)
@@ -91,5 +91,12 @@ def compare_dirs(ref_dir, dump_dir, results):
     summary = {"referenceEpochs": len(index), "compared": len(rows), "matched": len(rows) - len(mismatched),
                "mismatched": len(mismatched), "waitingForScala": len(waiting),
                "firstMismatch": mismatched[0] if mismatched else None}
+    # A live comparison may still be waiting for the follower. Acceptance must also establish
+    # coverage: an empty reference or duplicate epoch must never make a partial replay pass.
+    summary["duplicateEpochs"] = len(index) - len({r["epoch"] for r in index})
+    summary["complete"] = bool(index) and not summary["duplicateEpochs"] and not waiting and not mismatched
+    if expected_epochs is not None:
+        summary["expectedEpochs"] = expected_epochs
+        summary["complete"] = summary["complete"] and len(index) == expected_epochs
     pathlib.Path(results).write_text(json.dumps({"summary": summary, "rows": rows}, indent=1))
     return summary

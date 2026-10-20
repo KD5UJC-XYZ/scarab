@@ -8,10 +8,11 @@ import io.circe.Json
 import io.circe.parser.parse
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational, Value}
-import xyz.kd5ujc.scarab.ledger.{EpochGeometry, LedgerGlobals, PoolParams}
+import xyz.kd5ujc.scarab.ledger.{Block, Certificate, EpochGeometry, LedgerGlobals, PoolParams, Tx}
 import xyz.kd5ujc.scarab.ledger.rules.{Globals, Pool, PoolCert, Sts}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.Codec
+import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, Params}
 
 import HaskellStateCodecs.given
@@ -89,6 +90,42 @@ class UpstreamPoolConformanceSuite extends FunSuite:
       Some(Files.size(path).toInt),
       s"seed $seed $name size"
     )
+
+  test(
+    "an empty-relay registration normalizes typed state and preserves original transaction bytes"
+  ) {
+    given ProtVer = protVer
+    def hex(text: String): Bytes =
+      Bytes.fromHex(text).fold(error => fail(error.toString), identity)
+
+    // Pool registration tag 3, nine parameters: zero pledge/cost, margin 0/1, a network-0
+    // reward account, no owners, canonical empty relay array and no metadata.
+    val registrationHex =
+      "8a03581c" + ("00" * 28) + "5820" + ("00" * 32) +
+        "0000d81e820001581de0" + ("00" * 28) + "8080f6"
+    val registration = hex(registrationHex)
+    val original = Cbor.decode(registration).fold(error => fail(error.toString), identity)
+    val params = Certificate.decode(original) match
+      case Right(Certificate.RegisterPool(value)) => value
+      case other                                  => fail(s"expected pool registration, got $other")
+    assertEquals(params.relays, Bytes.empty)
+    assertEquals(original.original, registration)
+
+    val codec = summon[Codec[PoolParams]]
+    val encoded = codec.encodeUnchecked(params)
+    assertEquals(encoded, codec.encodeUnchecked(params.copy(relays = hex("80"))))
+    assertEquals(codec.decodeBytes(encoded).fold(error => fail(error.render), identity), params)
+
+    // Indefinite maps make accidental canonical re-encoding observable at this boundary.
+    val body = hex("bf0080018002000481" + registrationHex + "ff")
+    val witnesses = hex("bfff")
+    val transaction = Tx
+      .fromBlock(Block.Transaction(body, witnesses, None, true), Era.Conway)
+      .fold(error => fail(error.toString), identity)
+    assertEquals(transaction.body.certificates, Vector(Certificate.RegisterPool(params)))
+    assertEquals(transaction.body.raw, body)
+    assertEquals(transaction.witnesses.raw, Some(witnesses))
+  }
 
   test("pinned POOL properties retain all generated verdicts and full trace hashes") {
     seeds.foreach { seed =>

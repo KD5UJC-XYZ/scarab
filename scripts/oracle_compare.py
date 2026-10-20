@@ -57,9 +57,17 @@ def export_cmd(args):
 
 
 def diff_cmd(args):
-    summary = compare.compare_dirs(args.reference, args.dump, args.results)
+    summary = compare.compare_dirs(args.reference, args.dump, args.results, args.expected_epochs)
     print(json.dumps(summary, indent=1))
-    sys.exit(0 if summary["mismatched"] == 0 else 1)
+    passed = summary["complete"] if args.require_complete or args.expected_epochs is not None else summary["mismatched"] == 0
+    sys.exit(0 if passed else 1)
+
+
+def positive_int(value):
+    n = int(value)
+    if n < 1:
+        raise argparse.ArgumentTypeError("must be positive")
+    return n
 
 
 def main():
@@ -103,6 +111,10 @@ def main():
     df.add_argument("--reference", required=True, help="the --out directory of `reference`")
     df.add_argument("--dump", required=True, help="directory of the Scala node's --dump-state digests")
     df.add_argument("--results", required=True, help="JSON file to write")
+    df.add_argument("--require-complete", action="store_true",
+                    help="require a nonempty reference, one entry per epoch and every exact block matched")
+    df.add_argument("--expected-epochs", type=positive_int,
+                    help="require complete comparison of exactly this many reference epochs")
     df.set_defaults(run=diff_cmd)
     args = p.parse_args()
     args.run(args)
