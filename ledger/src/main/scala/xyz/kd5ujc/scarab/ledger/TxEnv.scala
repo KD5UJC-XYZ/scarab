@@ -37,6 +37,8 @@ enum TxDefect:
   /** The protocol version of an update proposal is not a pair of numbers. */
   case UnreadableProtocolVersion
 
+  case PoolMetadata(cause: LedgerDecodeError)
+
   def message: String = this match
     case DelegationWithoutDelegatee   => "a delegation to nothing"
     case PreConwayCertificate(c)      => s"a pre-Conway certificate in Conway: $c"
@@ -45,6 +47,7 @@ enum TxDefect:
     case PlutusFieldsBeforeAlonzo     => "Plutus fields before Alonzo"
     case AuxiliaryData(cause)         => s"malformed auxiliary data: $cause"
     case UnreadableProtocolVersion    => "an update with an unreadable protocol version"
+    case PoolMetadata(cause)          => s"invalid pool metadata: ${cause.message}"
 
 /** Where this implementation could not supply a script verdict. */
 enum ScriptLocation:

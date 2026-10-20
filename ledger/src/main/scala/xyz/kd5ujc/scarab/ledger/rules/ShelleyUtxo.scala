@@ -303,6 +303,7 @@ object ShelleyUtxo:
         body.networkId.forall(_ == ctx.network),
         UtxoFailure.WrongNetworkInTxBody(Mismatch(body.networkId.fold(0)(_.toInt), ctx.network))
       )
+      _ <- if !alonzo then TxChecks.outputNetwork(ctx, id, outputs) else Right(())
       wrongWithdrawals = body.withdrawals.map(_._1).filter(_.network != ctx.network).toSet
       _ <- check(
         wrongWithdrawals.isEmpty,

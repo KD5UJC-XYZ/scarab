@@ -189,6 +189,67 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
           )
       }
 
+  private def earlyCases[E <: EraTag](name: String, major: Int)(using
+      era: ShelleyBasedEra[E],
+      pre: PreConway[E]
+  ): Unit =
+    val pp = TestLedger.params(major)
+    val initial = Empty.ledgerState[E](pp)
+    val funded = initial.copy[E](utxo = initial.utxo.copy[E](utxo = UtxoTables(utxo)))
+    def admit(tx: Tx, network: Int = 0) = Sts(ShelleyLedger.sts[E])(
+      TestLedger.globals.copy(ledger = TestLedger.globals.ledger.copy(network = network)),
+      ShelleyLedgerEnv(
+        TestLedger.env.copy(network = network),
+        ChainAccountState(Coin.zero, Coin.zero)
+      ),
+      Counted(funded, PlutusStats.zero),
+      tx
+    )
+    def rejected(tx: Tx, expected: UtxoFailure, network: Int = 0): Unit =
+      assertEquals(
+        admit(tx, network),
+        Left(LedgerFailure.Rejected(tx.body.id, PredicateFailure.utxo(expected)))
+      )
+
+    test(s"$name: signed LEDGER admission allows 64 bootstrap attribute bytes and refuses 65") {
+      for derivation <- Vector(false, true) do
+        val allowed =
+          transaction(Vector(TestLedger.out(bootstrap(64, Some(42), derivation), funds - fee)))
+        assert(admit(allowed).isRight)
+        val tx =
+          transaction(Vector(TestLedger.out(bootstrap(65, Some(42), derivation), funds - fee)))
+        val original = tx.body.raw
+        rejected(tx, UtxoFailure.OutputBootAddrAttrsTooBig(tx.body.outputs))
+        assertEquals(tx.body.raw, original)
+        assertEquals(funded.utxo.utxo.utxo, utxo)
+    }
+
+    test(s"$name: bootstrap network precedes value conservation and attribute-size failures") {
+      val out = TestLedger.out(bootstrap(65, None), funds - fee - 1)
+      val tx = transaction(Vector(out))
+      rejected(tx, UtxoFailure.WrongNetwork(0, Set(out.address.raw)))
+      // Once network agrees, value conservation still precedes attributes.
+      rejected(
+        tx,
+        UtxoFailure.ValueNotConserved(Mismatch(Value.coin(funds), Value.coin(funds - 1))),
+        1
+      )
+      val balanced = transaction(Vector(out.copy(value = Value.coin(funds - fee))))
+      rejected(balanced, UtxoFailure.OutputBootAddrAttrsTooBig(balanced.body.outputs), 1)
+      val allowed = transaction(Vector(TestLedger.out(bootstrap(64, None), funds - fee)))
+      assert(admit(allowed, 1).isRight)
+    }
+
+    test(s"$name: minimum output precedes bootstrap attribute size") {
+      val big = TestLedger.out(bootstrap(65, Some(42)), 1)
+      val change = TestLedger.out(alice.address(), funds - fee - 1)
+      rejected(transaction(Vector(big, change)), UtxoFailure.OutputTooSmall(Vector(big)))
+    }
+
+  earlyCases[Shelley]("Shelley", 2)
+  earlyCases[Allegra]("Allegra", 3)
+  earlyCases[Mary]("Mary", 4)
+
   cases[Alonzo]("Alonzo", 5)(using ShelleyBasedEra.SAlonzo, summon[PreConway[Alonzo]])
   cases[Babbage]("Babbage", 7)(using ShelleyBasedEra.SBabbage, summon[PreConway[Babbage]])
 
