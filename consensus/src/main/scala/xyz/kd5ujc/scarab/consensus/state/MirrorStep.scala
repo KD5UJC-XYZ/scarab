@@ -126,15 +126,16 @@ object MirrorStep:
               (
                 vocab(SlotNo.fromBigInt(header.slot)),
                 vocab(BlockNo.fromBigInt(header.blockNo)),
-                vocab(Hash32.fromBytes(header.hash))
-              ).tupled.map { (slot, blockNo, hash) =>
+                vocab(Hash32.fromBytes(header.hash)),
+                transition(m, placement.geometry, header.slot)
+              ).tupled.map { (slot, blockNo, hash, counter) =>
                 (
                   EraNes.eraOf(n.era),
                   EraLedgerState.inEra[e](
                     ShelleyLedgerState[e](
                       WithOrigin.At(ShelleyTip(slot, blockNo, hash)),
                       n.nes,
-                      transition(m, placement.geometry, header.slot),
+                      counter,
                       None
                     )
                   )(using n.era),
@@ -157,7 +158,8 @@ object MirrorStep:
         )
 
   /** Consensus `Shelley/Ledger/Ledger.hs:568-575,713-741` (82ecba3): reset at a new epoch, then
-    * increment at/after the voting deadline. `subSlots` saturates at zero; Word32 successor wraps.
+    * increment at/after the voting deadline. `subSlots` saturates at zero. Native `succ` throws on
+    * Word32 overflow; this pure boundary reports a typed refusal instead of an uncaught exception.
     * Across-Shelley translation preserves the counter (`Cardano/CanHardFork.hs:704`); Byron enters
     * with zero (:360).
     */
@@ -166,13 +168,18 @@ object MirrorStep:
       slot: BigInt,
       previousEpoch: Option[BigInt],
       previous: Word32
-  ): Word32 =
+  ): Either[StateMirrorError, Word32] =
     val epoch = geometry.epochOf(slot)
     val before = if previousEpoch.contains(epoch) then previous.bits else 0
     val deadline = (geometry.firstSlot(epoch + 1) - 2 * geometry.stabilityWindow).max(0)
-    Word32.fromUnsigned(if slot >= deadline then before + 1 else before)
+    if slot >= deadline && before == -1 then Left(StateMirrorError.TransitionCounterOverflow)
+    else Right(Word32.fromUnsigned(if slot >= deadline then before + 1 else before))
 
-  private def transition(m: MirrorState, geometry: EpochGeometry, slot: BigInt): ShelleyTransition =
+  private def transition(
+      m: MirrorState,
+      geometry: EpochGeometry,
+      slot: BigInt
+  ): Either[StateMirrorError, ShelleyTransition] =
     val previous = m.ext.ledgerState.state match
       case EraLedgerState.ByronCurrent(_) => None
       case i: EraLedgerState.InShelleyEra[e] =>
@@ -180,9 +187,8 @@ object MirrorStep:
           case WithOrigin.Origin => None
           case WithOrigin.At(tip) =>
             Some(geometry.epochOf(tip.slot.toBigInt) -> i.state.transition.afterVoting)
-    ShelleyTransition(
-      afterVoting(geometry, slot, previous.map(_._1), previous.fold(Word32.fromUnsigned(0))(_._2))
-    )
+    afterVoting(geometry, slot, previous.map(_._1), previous.fold(Word32.fromUnsigned(0))(_._2))
+      .map(ShelleyTransition(_))
 
   private def provenanceAfter(
       m: MirrorState,

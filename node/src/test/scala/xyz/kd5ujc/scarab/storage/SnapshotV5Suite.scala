@@ -532,4 +532,26 @@ class SnapshotV5Suite extends CatsEffectSuite:
         assertEquals(i.state.transition.afterVoting.toLong, expected)
       case _ => fail("translation did not enter a Shelley-based era")
     assertEquals(projected.era, Era.Mary)
+    val exhausted = before.ext.ledgerState.state match
+      case i: EraLedgerState.InShelleyEra[e] =>
+        val state = i.state.copy(transition = ShelleyTransition(Word32.fromUnsigned(-1)))
+        before.copy(ext =
+          before.ext.copy(ledgerState =
+            before.ext.ledgerState.withState(EraLedgerState.InShelleyEra(i.era, state))
+          )
+        )
+      case _ => fail("expected a Shelley-based state")
+    val lastSlot = header.copy(slot = setup.geometry.firstSlot(epoch + 1) - 1)
+    assertEquals(
+      MirrorStep.block(
+        exhausted,
+        Placement(setup.geometry, setup.byronHistory, setup.praos.forks),
+        lastSlot,
+        nes,
+        after.protocol,
+        after.consensus,
+        after.plutus
+      ),
+      Left(xyz.kd5ujc.scarab.consensus.state.StateMirrorError.TransitionCounterOverflow)
+    )
   }

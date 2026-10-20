@@ -67,6 +67,11 @@ enum StateMirrorError extends DomainError derives Show:
   /** The anchor is a Byron epoch boundary block, which no Shelley-based era has. */
   case BoundaryOutsideByron(era: Era)
 
+  /** The imported consensus counter cannot take another Word32 successor. Native `Enum.succ` throws
+    * here; the pure mirror reports a typed invalid-state refusal.
+    */
+  case TransitionCounterOverflow
+
 object StateMirrorError:
   private given Show[Era] = Show.fromToString
 

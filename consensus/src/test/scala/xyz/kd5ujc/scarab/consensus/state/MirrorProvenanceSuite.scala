@@ -57,7 +57,7 @@ class MirrorProvenanceSuite extends FunSuite:
   private def count(slot: Int, epoch: Option[Int], previous: Int): Long =
     MirrorStep
       .afterVoting(geometry, BigInt(slot), epoch.map(BigInt(_)), Word32.fromUnsigned(previous))
-      .toLong
+      .fold(e => fail(e.toString), _.toLong)
 
   test(
     "native transition count increments at the inclusive voting deadline and resets at the next epoch"
@@ -71,13 +71,18 @@ class MirrorProvenanceSuite extends FunSuite:
     assertEquals(count(1940, Some(0), 10), 1L)
   }
 
-  test("native transition count starts at zero and wraps as Word32") {
+  test("native transition count starts at zero and refuses Word32 successor overflow") {
     assertEquals(count(440, None, 123), 1L)
-    assertEquals(count(440, Some(0), -1), 0L)
+    assertEquals(
+      MirrorStep.afterVoting(geometry, BigInt(440), Some(BigInt(0)), Word32.fromUnsigned(-1)),
+      Left(StateMirrorError.TransitionCounterOverflow)
+    )
+    assertEquals(count(439, Some(0), -1), 0xffffffffL)
+    assertEquals(count(500, Some(0), -1), 0L)
   }
 
   test("the native voting deadline saturates at slot zero for a short configured epoch") {
     val short = geometry.copy(epochLength = 50)
     val result = MirrorStep.afterVoting(short, BigInt(0), None, Word32.fromUnsigned(0))
-    assertEquals(result.toLong, 1L)
+    assertEquals(result.map(_.toLong), Right(1L))
   }
