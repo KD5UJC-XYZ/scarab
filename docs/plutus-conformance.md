@@ -202,3 +202,28 @@ Noncanonical pool relay/metadata and proposal parameter-update controls establis
 normalization while preserving original signed bytes and body hashes. Reference lists keep the measured
 nonempty-list framing. Small-stack regressions exercise 20,000 errors, distinct pointers and anchored votes.
 Broader CEK aggregation/log behavior is separate from this context-collection boundary.
+
+## Original CBOR byte-string chunks
+
+`PlutusData.decode` and `fromNode` enforce the original per-chunk 64-byte bound for byte strings
+and tag 2/tag 3 bignum payloads. The joined value may be larger: chunks of 64 and 1 are valid;
+a definite 65-byte value or an indefinite string containing one 65-byte chunk is refused.
+`ByteStringChunks` examines retained original framing after generic CBOR syntax validation,
+so it does not confuse the joined payload size with an individual chunk's length. Construction
+of an in-memory `PlutusData.B` remains independent of wire admission, and `DataSerialiser`
+writes longer payloads in bounded chunks.
+
+This follows `PlutusCore/Data.hs:232-265` at the pinned Plutus `507cab8c` revision. The
+[native CLI corpus](../fixtures/reference/plutus-data-chunks/README.md) retains twelve exact
+parser/hash verdicts for bytes and positive/negative bignums. `PlutusDataChunkSuite` reproduces
+six incorrect pre-fix admissions, checks the typed refusals and both public decoder entry points,
+and preserves all six accepted native hashes. The same original inputs seed the existing
+`plutus-data` fuzz target. These are parser/hash observations, not signed transaction verdicts.
+
+Validation on the combined `edb5eef7` main baseline: Docker `check` passes 5,575 tests with
+17 optional-data skips and no failures; the affected four-seed campaigns pass 3.6 million inputs
+across whole transactions, block preparation, Leios blocks and Plutus Data. The private seven-era
+e2e reaches Conway epoch 17 with 1,678 applied blocks and 65 equal ledger comparisons. One Conway
+comparison has no stable sampling bracket; none differs. The run records 43 rollbacks and seven
+reconnects, with no validation, fatal or CPU-starvation errors. These operational observations
+are separate from the twelve exact parser/hash cases above.
