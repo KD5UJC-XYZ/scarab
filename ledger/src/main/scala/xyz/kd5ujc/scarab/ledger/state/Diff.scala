@@ -63,9 +63,8 @@ object Difference:
   * `ledger-mirror-step2.md` §2.5) names the path of a divergence in its repro bundle, and a failing
   * property test shows it instead of two states of a hundred thousand accounts.
   *
-  * The laws, and the property tests in `DiffSuite`: `diff(a, b)` is empty exactly when `a` and `b`
-  * are equal (by the `Eq` of the type), and a difference is found by the same path from either
-  * side.
+  * The laws, and the tests in `DiffSuite`: `diff(a, b)` is empty exactly when `a` and `b` are
+  * equal (by the `Eq` of the type), and a difference is found by the same path from either side.
   *
   * Records and enums derive it (`derives Diff`: the first field that differs, by name; for an enum
   * the case, then its fields); leaves take it from their `Eq` and `Show` ([[Diff.leaf]], the
