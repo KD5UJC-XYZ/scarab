@@ -177,3 +177,8 @@ and storage/src/test/resources/rewards-timing-1.19.0.1 retain deterministic gene
 unchanged Haskell reference outcomes. Only public keys/signatures, synthetic state and protocol
 payloads are included; no signing keys. Original upstream pins, Apache-2.0 source/observer provenance
 and package notices are recorded in their READMEs/manifests and the existing fixture license files.
+
+fixtures/reference/ntc-wallet-peers-11.1.3 retains original cardano-node 11.1.3 query replies,
+public genesis/configuration and synthetic native ledger states from throwaway networks. No signing
+keys are included. The manifest and README pin runtime/source provenance; upstream Apache-2.0
+notices remain in fixtures/licenses. The capture tools are original Apache-2.0 code.

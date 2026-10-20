@@ -1,0 +1,44 @@
+{
+  "scope": "only relays of three generated pools, before native cluster startup",
+  "originalShelleySha256": "f12b315bdbce380afd1b2b4a77af762667787454a617ef1ebefcc3b234fa96b3",
+  "modifiedShelleyBeforeStartupSha256": "c3bfac7ab3088418f071383603f3196e144216f50eea208e9199d4d149b0df13",
+  "poolRelays": {
+    "510175806c1812b03884dc93906e6f758cc846f3e5e38cd64e00d555": [
+      {
+        "single host address": {
+          "port": 3001,
+          "IPv4": "192.0.2.10",
+          "IPv6": "2001:db8::10"
+        }
+      },
+      {
+        "single host name": {
+          "port": 3002,
+          "dnsName": "relay.example."
+        }
+      }
+    ],
+    "c6fe3db3da9924c3ff48a9338632a60267cd9df66165e4a306adad2e": [
+      {
+        "single host name": {
+          "port": null,
+          "dnsName": "srv.example."
+        }
+      }
+    ],
+    "c7bb89d8cb6530fa9a14fde661d20cfca9b3529cdf474d78fb3975a0": [
+      {
+        "single host address": {
+          "port": 3003,
+          "IPv4": null,
+          "IPv6": "2001:db8::c"
+        }
+      },
+      {
+        "multi host name": {
+          "dnsName": "multi.example."
+        }
+      }
+    ]
+  }
+}

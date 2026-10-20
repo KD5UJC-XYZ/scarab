@@ -466,6 +466,12 @@ object QueryAnswers:
             )
           })
         }
+      case GetRewardInfoPools                => conway(f => RewardQueries.poolInfo(env, f))
+      case GetNonMyopicMemberRewards(inputs) => conway(f => RewardQueries.members(env, f, inputs))
+      case GetLedgerPeerSnapshotLegacy =>
+        conway(f => PeerSnapshotQuery.answer(env, view.point, f, 1, true, version))
+      case GetLedgerPeerSnapshot(kind) =>
+        conway(f => PeerSnapshotQuery.answer(env, view.point, f, kind, false, version))
       case GetStakePools =>
         conway(f => Wire.definiteSetOf(poolId).answerRead(f.pools.map(_.keySet)))
       // a registered pool's reward account on the node's network, its future parameters' as they
