@@ -6,7 +6,7 @@ import cats.{Eq, Show}
 import cats.derived.*
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.consensus.{BlockRef, BootstrapState, ConsensusExtras, HardForkConfig}
-import xyz.kd5ujc.scarab.ledger.state.{Diff, MirrorEnv, MirrorError, NodeExtras, WithOrigin}
+import xyz.kd5ujc.scarab.ledger.state.{Diff, Gap, MirrorEnv, MirrorError, NodeExtras, WithOrigin}
 import xyz.kd5ujc.scarab.protocol.Era
 
 // The consensus side of the mirror: the Haskell `ExtLedgerState` of the Cardano block
@@ -91,16 +91,79 @@ object MirrorExtras:
   given Eq[MirrorExtras] = Eq.fromUniversalEquals
   given Show[MirrorExtras] = Show.fromToString
 
-/** The mirror of the node's state: the Haskell `ExtLedgerState` and the node-only bookkeeping. */
-final case class MirrorState(ext: ExtLedgerState, extras: MirrorExtras)
+/** Completeness and era observations belonging to one chain state, including restored imports. No
+  * transition can infer missing historical likelihoods from a newly computed reward update. This
+  * record is live bookkeeping; V5 stores its fields in the existing snapshot sidecar.
+  */
+final case class MirrorProvenance private (
+    gaps: Set[Gap],
+    observed: Map[Era, BigInt],
+    private val rotations: MirrorProvenance.Rotations
+):
+  /** Retain source observations when a configured era start and its observed start disagree. */
+  def entered(era: Era, epoch: BigInt): MirrorProvenance =
+    copy(observed = observed.updatedWith(era)(_.orElse(Some(epoch))))
+
+  /** NEWEPOCH discards the old reward update and resets the voting count. Count one SNAP witness
+    * per successful block crossing an epoch, even when its tick traverses several: this
+    * conservatively understates recovery. Three witnesses replace every imported mark/set/go and
+    * the distribution derived from mark (`Rules/Snap.hs:75`, `Rules/NewEpoch.hs:148`). Reopening
+    * restarts the proof: V5 records gaps, not this transient witness.
+    */
+  def epochBoundary: MirrorProvenance =
+    val expired = Set(Gap.RewardAttribution, Gap.PendingPulsingUpdate, Gap.ShelleyTransition)
+    val advanced =
+      if gaps.contains(Gap.NumDelegatorsLowerBound) then
+        rotations match
+          case MirrorProvenance.Rotations.None => (MirrorProvenance.Rotations.One, false)
+          case MirrorProvenance.Rotations.One  => (MirrorProvenance.Rotations.Two, false)
+          case MirrorProvenance.Rotations.Two  => (MirrorProvenance.Rotations.None, true)
+      else (MirrorProvenance.Rotations.None, false)
+    copy(
+      gaps = gaps -- expired -- Option.when(advanced._2)(Gap.NumDelegatorsLowerBound),
+      rotations = advanced._1
+    )
+
+object MirrorProvenance:
+  private enum Rotations:
+    case None, One, Two
+
+  /** Source metadata, with no invented evidence about how many native rotations preceded it. */
+  def recorded(gaps: Set[Gap], observed: Map[Era, BigInt]): MirrorProvenance =
+    MirrorProvenance(gaps, observed, Rotations.None)
+
+  val complete: MirrorProvenance = recorded(Set.empty, Map.empty)
+
+  // Reopening deliberately resets the transient proof; equality still includes it because
+  // its progress affects when a subsequent boundary can clear the diagnostic.
+  given Eq[MirrorProvenance] = Eq.fromUniversalEquals
+  given Show[MirrorProvenance] = Show.fromToString
+  given Diff[MirrorProvenance] = Diff.leaf(summon[Eq[MirrorProvenance]], _.toString)
+
+/** The mirror of the node's state: the Haskell `ExtLedgerState` and node-only bookkeeping.
+  * Provenance is mandatory: a constructor cannot silently turn an incomplete import into a complete
+  * state.
+  */
+final case class MirrorState(
+    ext: ExtLedgerState,
+    extras: MirrorExtras,
+    provenance: MirrorProvenance
+)
 
 object MirrorState:
-  given Eq[MirrorState] = Eq.instance((a, b) => a.ext === b.ext && a.extras === b.extras)
+  given Eq[MirrorState] =
+    Eq.instance((a, b) => a.ext === b.ext && a.extras === b.extras && a.provenance === b.provenance)
 
-  given Diff[MirrorState] = Diff.record(Diff.at("ext")(_.ext), Diff.at("extras")(_.extras))
+  given Diff[MirrorState] = Diff.record(
+    Diff.at("ext")(_.ext),
+    Diff.at("extras")(_.extras),
+    Diff.at("provenance")(_.provenance)
+  )
 
   given Show[MirrorState] =
-    Show.show(m => s"MirrorState(ext = ${m.ext.show}, extras = ${m.extras.show})")
+    Show.show(m =>
+      s"MirrorState(ext = ${m.ext.show}, extras = ${m.extras.show}, provenance = ${m.provenance.show})"
+    )
 
 /** The tip of the header state as the node's block reference. */
 object StateMirror:

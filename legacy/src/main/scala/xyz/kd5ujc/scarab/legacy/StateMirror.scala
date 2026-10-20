@@ -163,7 +163,13 @@ object StateMirror:
         s: FlatNodeState
     ): F[Mirrored[MirrorState]] =
       ByronMirror
-        .of(env, anchor, s.header.chainDep.state, s.extras)
+        .of(
+          env,
+          anchor,
+          s.header.chainDep.state,
+          s.extras,
+          MirrorProvenance.recorded(Set.empty, env.observed)
+        )
         .fold(fail(_), m => monad.pure(Mirrored(m, Set.empty)))
 
     private def shelley[E <: EraTag](
@@ -208,7 +214,8 @@ object StateMirror:
           LegacySeed(
             MirrorState(
               ExtLedgerState(ledgerTelescope, HeaderState(tip, depTelescope)),
-              MirrorExtras.InShelley(NodeExtras(image.value.extras.plutus), s.extras)
+              MirrorExtras.InShelley(NodeExtras(image.value.extras.plutus), s.extras),
+              MirrorProvenance.recorded(image.gaps + Gap.ShelleyTransition, env.observed)
             ),
             image.value.extras
           ),

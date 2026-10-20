@@ -29,6 +29,9 @@ trait ChainRead[S]:
       */
     def era: Era
 
+    /** Completeness and era observations belonging to this exact acquired/rollback state. */
+    def provenance: MirrorProvenance
+
     /** The epoch of the ledger state (of the placeholder ledger while the chain is in Byron). */
     def ledgerEpoch: BigInt
 
@@ -66,6 +69,7 @@ object ChainRead:
   given ChainRead[MirrorState] with
     extension (m: MirrorState)
       def era: Era = m.ext.ledgerState.era
+      def provenance: MirrorProvenance = m.provenance
       def ledgerEpoch: BigInt = m.ext.ledgerState.state match
         case EraLedgerState.ByronCurrent(_)    => BigInt(0)
         case i: EraLedgerState.InShelleyEra[e] => i.state.nes.epoch.toBigInt

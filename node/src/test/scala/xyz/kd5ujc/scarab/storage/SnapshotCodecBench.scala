@@ -50,8 +50,8 @@ object SnapshotCodecBench extends Assertions:
     println(s"INPUT $label bytes=${raw.length} sha256=${sha(raw)}")
     val initial = checked(SnapshotV5.decode(env, content))
     println(s"INPUT_STATE $label ${sha(initial.toString.getBytes("UTF-8"))}")
-    val expected = checked(SnapshotV5.encoded(env, initial))
-    val encoded = measure(s"$label.encode")(SnapshotV5.encoded(env, initial)) { result =>
+    val expected = checked(SnapshotV5.encoded(initial))
+    val encoded = measure(s"$label.encode")(SnapshotV5.encoded(initial)) { result =>
       assert(java.util.Arrays.equals(checked(result), expected))
     }
     println(s"DIGEST $label.encode bytes=${expected.length} sha256=${sha(checked(encoded))}")
