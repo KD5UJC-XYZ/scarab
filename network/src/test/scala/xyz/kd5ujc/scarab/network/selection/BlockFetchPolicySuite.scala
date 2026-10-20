@@ -155,3 +155,9 @@ class BlockFetchPolicySuite extends FunSuite:
       Vector(Decision.Declined(1, Refusal.RequestsInFlight(0)))
     )
   }
+
+  test("EWMA uses native Pico floor rounding for intermediate and signed products") {
+    val sample = fromSample(BigInt(999999999), BigInt(1000000002))
+    assertEquals(sample.outbound.gPicos, BigInt(1))
+    assertEquals(sample.update(default).outbound.gPicos, BigInt(499999500000L))
+  }

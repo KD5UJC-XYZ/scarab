@@ -31,9 +31,11 @@ object FetchGsv:
     def update(previous: PeerGsv): PeerGsv =
       val interval = (sampleTimePicos - previous.sampleTimePicos).max(0)
       val constant = 1000 * PicosPerSecond
-      val weight = interval.min(constant)
+      val alphaPicos = interval.min(constant) * PicosPerSecond / constant
       def smooth(current: Gsv, old: Gsv): Gsv =
-        current.copy(gPicos = old.gPicos + weight * (current.gPicos - old.gPicos) / constant)
+        current.copy(gPicos =
+          old.gPicos + floorDivide(alphaPicos * (current.gPicos - old.gPicos), PicosPerSecond)
+        )
       copy(
         outbound = smooth(outbound, previous.outbound),
         inbound = smooth(inbound, previous.inbound)
@@ -48,5 +50,10 @@ object FetchGsv:
   def fromSample(startPicos: BigInt, endPicos: BigInt): PeerGsv =
     val direction = Gsv((endPicos - startPicos).max(0) / 2, 2000000)
     PeerGsv(startPicos, direction, direction)
+
+  // Fixed/Pico floors signed products; BigInt division alone truncates towards zero.
+  private def floorDivide(numerator: BigInt, denominator: BigInt): BigInt =
+    val quotient = numerator / denominator
+    if numerator < 0 && numerator % denominator != 0 then quotient - 1 else quotient
 
   private def saturated(bytes: BigInt): Long = bytes.max(0).min(BigInt(Long.MaxValue)).toLong
