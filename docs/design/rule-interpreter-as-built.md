@@ -1,5 +1,7 @@
 # The rule interpreter, as built (#202)
 
+**Status:** As built; acceptance evidence below.
+
 The pure `RuleT[Fail, S, A]` interpreter behind every `Sts` ledger rule. This note is the as-built
 description the ticket asks for: the shape of the machine, why it is typed the way it is, and the
 evidence that the ledger verdicts do not change.
@@ -69,27 +71,39 @@ balances, outputs and fees. It was `159017f549d74b4d4cb6a520` on all four runs.
 | new (`#202` `9d2fa735`) | 3073.9 / 3256.9 | 5,216,691,040 / 5,227,079,360 |
 
 The two builds are inside each other's span on this host: the new build is 2.7% faster on one
-paired run and 1.5% slower on the other, and the old build's own two runs differ by 0.5%. The
-result is "no measurable change", not a speed-up.
+paired run and 2.6% slower on the other, and the old build's own two runs differ by 0.5%. These
+historical samples do not establish a speed-up or a confidence interval.
 
-**The issue's pinned Preview block/epoch workload is not measured here.** The 10,000-transaction
-block is synthetic; it is additional evidence for the same code path, not a substitute for #202's
-acceptance criterion. No Preview capture is in-tree and none was produced for this PR. The ledger
-`e2e` area scenario is likewise outstanding: it failed with `follower exited with 1` before any era
-comparison (the follower's `<run>/classes` directory was empty at teardown), and its checkbox below
-stays unchecked.
+The synthetic workload is supplementary. The representative Preview block/epoch comparison,
+its input and source identities, full sample summary, diagnostic warmup investigation and limits
+are recorded in [performance.md](../performance.md#typed-rule-interpreter-202).
 
-## Gates
+## Verification
 
-- `check` on rutherford (documented non-root `--user` invocation, `--cpuset-cpus 0-7`): **1077 tests,
-  one failure** — `ChainStorageSuite`'s 3-minute munit timeout on that host (the same environmental
-  class as #213; the suite passes on the CI runners). Every ledger, rules and consensus suite passed,
-  including the small-stack and differential suites. `VolatileStoreSuite` is excluded for the same
-  documented reason.
-- `check` on the exact head in CI: the `scalafmt, compile and test` job (the full-suite run on
-  GitHub runners, where the two long storage suites fit their budgets).
-- The ledger area scenario (`python3 scripts/devnet.py --name <name> e2e`) on the reference image
-  `cardano-reference-11.1.3:local`: **not passing** — the reference cluster comes up, then
-  `follower exited with 1` before any era comparison (the follower's `<run>/classes` directory was
-  empty at teardown), so there is no per-era verdict. This is the one gate still open, and it is a
-  harness/host defect, not a verdict from either interpreter.
+`StsSuite`, the law suites and `TickRulesSuite`/`BbodySuite` retain the original semantics, including
+rollback and scoped globals on success and failure. The production interpreter is unchanged
+since the reviewed implementation. No persisted format or rule change is part of this work.
+
+The devnet launch investigation confirmed that the old driver could return `/run/classes/*`
+entries after skipping every missing source directory. Reproducing that configuration in Docker
+exits 1 with `ClassNotFoundException: xyz.kd5ujc.scarab.node.Main`. The driver now validates all
+module directories before replacing an earlier freeze, refuses empty classes or classpaths from
+another build mount, and diagnoses the required `node/runtimeClasspathFile` build. Four regression
+tests fail against the old driver; all 227 Python tests pass with the repair. This explains a
+reproducible failure mechanism, not the historical host failure whose stderr was not preserved.
+
+The classpath for verification was generated in this worktree mounted at `/work`, with the shared
+dependency cache mounted at `/work/.cache`. The frozen module directories and dependency mounts
+were inspected before launch. The complete Docker `check` at `83c76b45` passed: 5,140 passed,
+16 optional-data skips, no failures, all 14 modules, formatting and scalafix; neither long storage
+suite was excluded. Final candidate evidence is recorded in the
+[compatibility log](../compatibility.md#evidence-log).
+
+The ledger scenario at `83c76b45` passed on 2026-10-20: 1,654 applications through Conway
+epoch 17, all 66 Shelley–Conway comparisons matched, no validation/fatal errors. Direct Byron
+ledger queries remain unavailable in the reference CLI; its UTxO is checked through Shelley.
+The final representative comparison is below the +10% bar for every block and the epoch tick;
+all 21 complete-result fingerprints match across six JVMs. Additional tests in `b4aabcd4` make
+BBODY success/refusal, Tick failure, and nested scoped-Globals/rollback coverage explicit.
+The scenario and benchmark gaps identified by review are discharged; final-head check is reported
+on PR #248. That PR targets `dev`; #202 remains open until the change lands on `main` with green CI.
