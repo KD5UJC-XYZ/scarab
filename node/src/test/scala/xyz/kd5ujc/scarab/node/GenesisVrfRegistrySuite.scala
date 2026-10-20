@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.node
 import io.circe.{Json, parser}
 import java.nio.file.{Files, Path}
 import munit.FunSuite
-import xyz.kd5ujc.scarab.consensus.state.EraLedgerState
+import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorProvenance}
 import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
 
 class GenesisVrfRegistrySuite extends FunSuite:
@@ -50,7 +50,9 @@ class GenesisVrfRegistrySuite extends FunSuite:
 
   test("native genesis retains injected pools without deriving VRF registrations") {
     List(9, 10, 11).foreach { major =>
-      setup(major).mirrorStart.ext.ledgerState.state match
+      val initial = setup(major).mirrorStart
+      assertEquals(initial.provenance, MirrorProvenance.complete)
+      initial.ext.ledgerState.state match
         case EraLedgerState.InShelleyEra(ShelleyBasedEra.SConway, state) =>
           val pools = state.nes.es.ls.cert.pState
           assertEquals(

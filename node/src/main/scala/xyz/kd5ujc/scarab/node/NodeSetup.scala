@@ -6,6 +6,7 @@ import xyz.kd5ujc.scarab.consensus.state.{
   ConsensusMirrorEnv,
   EraHistory,
   EraLedgerState,
+  MirrorProvenance,
   MirrorState,
   ProtocolState
 }
@@ -143,7 +144,10 @@ object NodeSetup:
           state.copy(nes = registry.replace(Sorted.empty)(state.nes))
         )
       case other => other
-    mirror.copy(ext = mirror.ext.copy(ledgerState = mirror.ext.ledgerState.withState(current)))
+    mirror.copy(
+      ext = mirror.ext.copy(ledgerState = mirror.ext.ledgerState.withState(current)),
+      provenance = MirrorProvenance.complete
+    )
 
   val ConfigNames: List[String] = List("configuration.yaml", "configuration.json", "config.json")
 
