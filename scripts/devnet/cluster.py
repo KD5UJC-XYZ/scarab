@@ -357,15 +357,31 @@ def freeze_classes(root, previous=None):
     checkout's classes, for explicit comparisons of pinned builds. This does not imply that the
     current node supports an earlier build's persisted formats; snapshot retirement is independent.
     """
+    classpath = (REPO / "node/target/runtime-classpath.txt").read_text().strip().split(":")
+    sources = []
+    for entry in classpath:
+        if entry.endswith("/classes"):
+            path = pathlib.PurePosixPath(entry)
+            if not path.is_relative_to("/work"):
+                raise SystemExit(f"classpath classes must be built under /work: {entry}; "
+                                 "run node/runtimeClasspathFile in the checkout's Docker build")
+            relative = path.relative_to("/work")
+            module = relative.parts[0]
+            source = pathlib.Path(previous) / module if previous else REPO / relative
+            if not source.is_dir() or not any(source.rglob("*.class")):
+                raise SystemExit(f"missing compiled classes: {source}; "
+                                 "run node/runtimeClasspathFile in the checkout's Docker build")
+            sources.append((module, source))
+    if not sources:
+        raise SystemExit("runtime classpath contains no compiled classes; run node/runtimeClasspathFile")
     frozen = root / "classes"
     shutil.rmtree(frozen, ignore_errors=True)
+    for module, source in sources:
+        shutil.copytree(source, frozen / module)
     entries = []
-    for entry in (REPO / "node/target/runtime-classpath.txt").read_text().strip().split(":"):
+    for entry in classpath:
         if entry.endswith("/classes"):
             module = entry[len("/work/"):].split("/")[0]
-            source = pathlib.Path(previous) / module if previous else REPO / entry[len("/work/"):]
-            if source.is_dir():
-                shutil.copytree(source, frozen / module)
             entries.append(f"/run/classes/{module}")
         else:
             entries.append(entry)
