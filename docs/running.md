@@ -842,6 +842,11 @@ Earlier qualified measurements are retained in [compatibility.md](compatibility.
 Conway (roadmap F1). A transaction refused over the socket carries the ledger's predicate failure, so `cardano-cli
 transaction submit` prints the same error as against the Haskell node.
 
+Fresh native genesis retains injected pool records with an empty VRF registry, matching the
+reference's genesis injection. The same-point `ntc` regression for this initialization fix compares
+all four ledger-state wrappers as raw bytes and checks CLI `ledger-state` output. Existing database
+state is restored as stored; historical provenance remains [#129](https://github.com/KD5UJC-XYZ/scarab/issues/129).
+
 If this build cannot decode or evaluate a script, it has no ledger rejection to return. Local submission
 ends that connection with a typed service-unavailable outcome and sends no `ApplyTxErr` bytes. The
 listener and node continue serving fresh clients. Unavailable validations are not remembered in the
