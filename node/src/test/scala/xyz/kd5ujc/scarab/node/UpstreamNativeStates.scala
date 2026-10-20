@@ -17,7 +17,7 @@ private[node] object UpstreamNativeStates extends EpochStateCodecs with munit.As
   private enum TraceError extends DomainError:
     case MemPack(cause: xyz.kd5ujc.scarab.ledger.mempack.MemPack.Failure)
 
-  val inlineUtxoTables: Codec[UtxoTables] = new Codec[UtxoTables]:
+  def inlineUtxoTables(using ProtVer): Codec[UtxoTables] = new Codec[UtxoTables]:
     def decode(n: Node): Decoded[UtxoTables] =
       Wire.sortedMapOf(Codec.bytes, Codec.bytes).decode(n).flatMap { entries =>
         entries.toVector
