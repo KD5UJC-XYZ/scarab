@@ -93,7 +93,8 @@ object NodeCodecs:
       }(_ + _)
     def shape: String = s"SortedMap[${k.shape},${v.shape}]"
 
-  given withOrigin[A](using Codec[A]): Codec[WithOrigin[A]] = Codec.auto
+  given withOrigin[A](using Codec[A]): Codec[WithOrigin[A]] =
+    Codec.auto
   given pbftSigner: Codec[PBftSigner] = Codec.auto
   given pbftState: Codec[PBftState] = Codec.auto
   given prtclState: Codec[PrtclState] = Codec.auto
