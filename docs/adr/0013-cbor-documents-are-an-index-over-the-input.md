@@ -113,10 +113,11 @@ Consequences:
 A kind now owns a homogeneous weak index from decode scopes to `Table[A]`. A document's
 `Interns` strongly retains its tables through an existential owner (`Keep[A]` fixes the member
 `Value = A`); nothing retrieves a value or applies an operation through that ownership list.
-`Interned[A].table(scope)` returns `Table[A]`, whose `Array[A]` accepts and returns only `A`.
+`Interned[A].table(scope)` returns `Table[A]`, whose `Array[Entry[A]]` accepts only entries
+containing `A`; reading an entry yields that same `A`.
 There is no heterogeneous table retrieval, cast, erased value buffer, or runtime recovery of a
-generic argument/phantom role. `ClassTag[A]` allocates the empty array; it does not validate or
-narrow decoded values. Kinds and `Node.share` require reference types, as identity sharing does;
+generic argument/phantom role. No `ClassTag[A]` is required, including for generic/phantom arguments; the compiler allocates an
+array of the concrete `Entry` class and preserves its type argument for all reads and writes. Kinds and `Node.share` require reference types, as identity sharing does;
 the production kinds remain `Bytes` and `Credential`.
 
 The kind's index has weak scope keys **and weak table values**. A kind cannot retain a completed
@@ -130,9 +131,11 @@ single-threaded contract is unchanged.
 
 The compact mutable open-addressed table remains behind the sharing API for the measured
 large-state memory path described above. It retains Fibonacci hashing, linear probing, initial
-size1024 and the two-thirds growth threshold. No wrapper is allocated per slot. The additional
-weak lookup has a separate representative decode/allocation/retention measurement in
+size 1024 and the two-thirds growth threshold. Each occupied slot has a typed entry carrying the immutable value and its cached hash.
+Hash equality skips deep equality on unequal collisions; growth reuses the hash. This trades
+entry allocation for less repeated hashing/equality work. The weak lookup and entry cost have
+a representative decode/allocation/peak/live-retention measurement in
 [performance.md](../performance.md); it is not justified merely by moving a cast. Tests cover
-first-instance identity, distinct kinds/documents, concurrent documents,4096 deliberately
+first-instance identity, distinct kinds/documents, concurrent documents, 4096 deliberately
 colliding values through growth, collection of completed scopes/values, and positive/negative
 compiler probes for identical-runtime-class phantom arguments.

@@ -3,14 +3,13 @@ package xyz.kd5ujc.scarab.codec
 
 import java.lang.ref.WeakReference
 import java.util.WeakHashMap
-import scala.reflect.ClassTag
 
 /** A kind of value that one decode shares: the credentials, say, or the hashes. A kind is a value
   * declared once (a `val` of the codec that decodes it) and is the key of one table in the
   * [[Interns]] of each decode, so the tables of two kinds never meet and the type `A` is the type
   * the table holds.
   */
-final class Interned[A <: AnyRef: ClassTag]:
+final class Interned[A <: AnyRef]:
   // Both links are weak: this kind keeps no decode, table or decoded value alive. The decode
   // itself retains its tables. Each index is homogeneous at this kind's A, so lookup never has
   // to recover a type from a heterogeneous registry.
@@ -75,12 +74,14 @@ private[codec] object Interns:
   private[codec] final class Keep[A <: AnyRef](val table: Table[A]) extends Kept:
     type Value = A
 
-  /** Typed open-addressed storage. ClassTag allocates Array[A]; every write and read stays A, with
-    * no runtime value narrowing or entry object. Growth retains the original probe policy.
+  private final class Entry[A <: AnyRef](val value: A, val hash: Int)
+
+  /** Typed open-addressed storage. Entry[A] keeps each value and its hash together without runtime
+    * narrowing; cached hashes avoid repeated hashing on growth and unequal collision checks.
     */
-  private[codec] final class Table[A <: AnyRef: ClassTag]:
+  private[codec] final class Table[A <: AnyRef]:
     private var bits = 10
-    private var slots = new Array[A](1 << bits)
+    private var slots = new Array[Entry[A]](1 << bits)
     private var count = 0
 
     /** The slot to begin at: Fibonacci hashing, whose top bits depend on all of the hash's (the
@@ -89,12 +90,14 @@ private[codec] object Interns:
     private def home(h: Int, bits: Int): Int = (h * 0x9e3779b9) >>> (32 - bits)
 
     def share(a: A): A =
-      var i = home(a.hashCode, bits)
+      val hash = a.hashCode
+      var i = home(hash, bits)
       val mask = slots.length - 1
-      while slots(i) != null && !slots(i).equals(a) do i = (i + 1) & mask
-      if slots(i) != null then slots(i)
+      while slots(i) != null && !(slots(i).hash == hash && slots(i).value.equals(a)) do
+        i = (i + 1) & mask
+      if slots(i) != null then slots(i).value
       else
-        slots(i) = a
+        slots(i) = new Entry(a, hash)
         count += 1
         // at most two thirds full, so that a probe is short
         if count * 3 > slots.length * 2 then grow()
@@ -103,13 +106,13 @@ private[codec] object Interns:
     private def grow(): Unit =
       val old = slots
       bits += 1
-      slots = new Array[A](1 << bits)
+      slots = new Array[Entry[A]](1 << bits)
       val mask = slots.length - 1
       var k = 0
       while k < old.length do
         val v = old(k)
         if v != null then
-          var i = home(v.hashCode, bits)
+          var i = home(v.hash, bits)
           while slots(i) != null do i = (i + 1) & mask
           slots(i) = v
         k += 1
