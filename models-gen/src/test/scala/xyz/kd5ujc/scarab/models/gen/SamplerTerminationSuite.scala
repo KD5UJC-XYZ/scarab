@@ -38,6 +38,22 @@ class SamplerTerminationSuite extends munit.FunSuite:
     assert(terminating.isRight)
   }
 
+  test("greedy optional samples retain required suffixes through enclosing groups") {
+    val cases = Vector(
+      "r = [? before: uint, after: uint]\n" -> 2,
+      "r = [g, tail: uint]\ng = (? before: uint, after: uint)\n" -> 3,
+      "r = [g, tail: uint]\ng = (? before: uint)\n" -> 2
+    )
+    cases.foreach { (cddl, size) =>
+      val s = sampler(cddl)
+      (1L to 64L).foreach { seed =>
+        val result =
+          s.sample(QName("t", "r"), new Random(seed)).fold(e => fail(e.message), identity)
+        assertEquals(result.headOption.map(_ & 0xff), Some(0x80 + size), s"schema=$cddl seed=$seed")
+      }
+    }
+  }
+
   test("fixed-seed recursive and compound samples preserve their original bytes") {
     val samplers = Vector(
       sampler("r = uint / [r]\n"),

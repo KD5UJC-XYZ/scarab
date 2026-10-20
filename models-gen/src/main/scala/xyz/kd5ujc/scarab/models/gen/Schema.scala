@@ -260,28 +260,54 @@ final class Schema(val modules: Map[String, Module]):
       ctx: String,
       expanding: Set[QName]
   ): GenResult[RT] =
-    ty(base, scope, env, ctx, expanding).flatMap { b =>
-      (b, op) match
-        case (RT.Prim(PrimKind.Uint), "size") =>
-          arg match
-            case Ast.Ty.Literal(Ast.Lit.IntL(n)) if n >= 0 && n <= Int.MaxValue / 8 =>
-              success(RT.IntRange(0, (BigInt(1) << (8 * n.toInt)) - 1))
-            case _ => success(RT.Unsupported(UnsupportedFeature.UnsignedSize(arg)))
-        case (RT.Prim(PrimKind.Bytes), "size") =>
-          success(
-            sizes(arg).fold(RT.Unsupported(UnsupportedFeature.SizeBound(arg)))(RT.SizedBytes(_, _))
-          )
-        case (RT.Prim(PrimKind.Text), "size") =>
-          success(
-            sizes(arg).fold(RT.Unsupported(UnsupportedFeature.SizeBound(arg)))(RT.SizedText(_, _))
-          )
-        case (RT.Prim(PrimKind.Bytes), "cbor") =>
-          ty(arg, scope, env, ctx, expanding).map(RT.CborOf(_))
-        case (RT.Prim(PrimKind.Uint), "lt") =>
-          intOf(arg, scope, env, ctx).map(n => RT.IntRange(0, n - 1))
-        case (RT.Prim(PrimKind.Uint), "le") => intOf(arg, scope, env, ctx).map(RT.IntRange(0, _))
-        case (_, "default")                 => success(b)
-        case _ => success(RT.Unsupported(UnsupportedFeature.Control(op)))
+    def underlying(value: RT, seen: Set[QName]): GenResult[RT] = deferred {
+      value match
+        case RT.Ref(q) if seen(q) => failure(GenError.CyclicExpansion(q))
+        case RT.Ref(q) =>
+          resolveRule(q).flatMap {
+            case RuleDef(_, RuleBody.Type(t)) => underlying(t, seen + q)
+            case _                            => success(value)
+          }
+        case other => success(other)
+    }
+    def constrained(lo: BigInt, hi: BigInt, bound: BigInt): RT =
+      val ranges = op match
+        case "gt" => Vector((lo.max(bound + 1), hi))
+        case "ge" => Vector((lo.max(bound), hi))
+        case "lt" => Vector((lo, hi.min(bound - 1)))
+        case "le" => Vector((lo, hi.min(bound)))
+        case "ne" => Vector((lo, hi.min(bound - 1)), (lo.max(bound + 1), hi))
+        case _    => Vector.empty
+      val valid = ranges.collect { case (a, b) if a <= b => RT.IntRange(a, b) }
+      if valid.isEmpty then RT.IntRange(1, 0) else flattenChoice(valid)
+    ty(base, scope, env, ctx, expanding).flatMap { resolved =>
+      val comparison = Set("gt", "ge", "lt", "le", "ne")(op)
+      (if comparison then underlying(resolved, Set.empty) else success(resolved)).flatMap { b =>
+        (b, op) match
+          case (RT.Prim(PrimKind.Uint), "size") =>
+            arg match
+              case Ast.Ty.Literal(Ast.Lit.IntL(n)) if n >= 0 && n <= Int.MaxValue / 8 =>
+                success(RT.IntRange(0, (BigInt(1) << (8 * n.toInt)) - 1))
+              case _ => success(RT.Unsupported(UnsupportedFeature.UnsignedSize(arg)))
+          case (RT.Prim(PrimKind.Bytes), "size") =>
+            success(
+              sizes(arg).fold(RT.Unsupported(UnsupportedFeature.SizeBound(arg)))(
+                RT.SizedBytes(_, _)
+              )
+            )
+          case (RT.Prim(PrimKind.Text), "size") =>
+            success(
+              sizes(arg).fold(RT.Unsupported(UnsupportedFeature.SizeBound(arg)))(RT.SizedText(_, _))
+            )
+          case (RT.Prim(PrimKind.Bytes), "cbor") =>
+            ty(arg, scope, env, ctx, expanding).map(RT.CborOf(_))
+          case (RT.Prim(PrimKind.Uint), _) if comparison =>
+            intOf(arg, scope, env, ctx).map(constrained(0, (BigInt(1) << 64) - 1, _))
+          case (RT.IntRange(lo, hi), _) if comparison =>
+            intOf(arg, scope, env, ctx).map(constrained(lo, hi, _))
+          case (_, "default") => success(b)
+          case _              => success(RT.Unsupported(UnsupportedFeature.Control(op)))
+      }
     }
 
   private def sizes(arg: Ast.Ty): Option[(Int, Int)] = arg match

@@ -111,6 +111,116 @@ class AllowlistTest(unittest.TestCase):
         for m, rules in table.items():
             cc.closure(table, [(m, r) for r in rules if not rules[r].chunks[0][1]])
 
+class StrictVerdictTest(unittest.TestCase):
+    def verdict(self, *, preserved=False, normalized_valid=1, accepted=1):
+        import contextlib
+        import io
+        import tempfile
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as directory:
+            work = pathlib.Path(directory)
+            (work / "decode.tsv").write_text("".join(
+                f"m:r\t{mode}\t1\t{accepted}\t0\t{accepted}\tdecode rejected\tkey order differs\n"
+                for mode in ("exact", "twiddle")))
+            (work / "rules.tsv").write_text("")
+            (work / "unsupported.tsv").write_text("")
+            results = [
+                {"op": "validate", "id": "m:r", "valid": 1, "invalid": []},
+                {"op": "validate", "id": "control:m:r", "valid": 0, "invalid": []},
+            ]
+            for mode in ("exact", "twiddle"):
+                results.extend([
+                    {"op": "gen", "id": "m:r", "mode": mode, "terms": ["00"], "errors": [], "count": 1},
+                    {"op": "validate", "id": f"generated:{mode}:m:r", "valid": 1, "invalid": []},
+                    {"op": "validate", "id": f"normalized:{mode}:m:r", "valid": normalized_valid, "invalid": []},
+                ])
+            with contextlib.redirect_stdout(io.StringIO()):
+                return cc.judge(work, results, ["m:r"], {"m:r": "root"}, SimpleNamespace(),
+                                {"m:r"} if preserved else set())
+
+    def test_non_preserved_map_may_change_order_after_independent_validation(self):
+        self.assertEqual(self.verdict(), [])
+
+    def test_preserved_values_must_remain_byte_exact_in_both_modes(self):
+        failures = self.verdict(preserved=True)
+        self.assertEqual(sum("not-byte-exact" in failure for failure in failures), 2)
+
+    def test_normalized_writer_output_must_pass_independent_validation(self):
+        self.assertTrue(any("independent validation" in failure for failure in self.verdict(normalized_valid=0)))
+
+    def test_no_decoder_rejection_is_suppressed(self):
+        self.assertTrue(any("decode-reject" in failure for failure in self.verdict(accepted=0, normalized_valid=0)))
+
+class GenerationAdaptationTest(unittest.TestCase):
+    def test_unsigned_controls_keep_the_exact_named_domain(self):
+        original = 'u8 = uint .size 1\nu64 = uint .size 8\nr = [u8 .ne 4, u64 .gt 2]\n'
+        adapted, controls = cc.generation_controls(original)
+        self.assertIn('(0..3 / 5..255)', adapted)
+        self.assertIn('(3..18446744073709551615)', adapted)
+        self.assertEqual([control['expression'] for control in controls], ['u8 .ne 4', 'u64 .gt 2'])
+        self.assertIn('u8 .ne 4', original)
+
+    def test_generation_adaptation_does_not_rewrite_literals_or_comments(self):
+        original = 'u8 = uint .size 1\nr = ["u8 .gt 2", h\'7538202e67742032\'] ; u8 .ne 4\n'
+        adapted, controls = cc.generation_controls(original)
+        self.assertEqual(adapted, original)
+        self.assertEqual(controls, [])
+
+    def test_unproved_or_empty_domains_fail_instead_of_widening_the_schema(self):
+        for original in ('u = tstr\nr = u .gt 2\n', 'u = uint .size 1\nr = u .gt 255\n'):
+            with self.assertRaises(ValueError):
+                cc.generation_controls(original)
+
+    def test_uint_controls_encode_full_widths(self):
+        self.assertEqual(cc.uint_hex(2), '02')
+        self.assertEqual(cc.uint_hex(256), '190100')
+        self.assertEqual(cc.uint_hex((1 << 64) - 1), '1bffffffffffffffff')
+
+
+class NativeGeneratorAccountingTest(unittest.TestCase):
+    def job(self):
+        return {"op": "gen", "count": 2, "seed": 1, "size": 12, "twiddle": False, "rule": "r", "file": "r.cddl"}
+
+    def test_only_exact_pinned_duplicate_key_abort_is_resampled_and_recorded(self):
+        from unittest.mock import patch
+        reason = "cuddle: toCanonical: encountered a map with duplicate keys, which is not currently supported.\ntrace"
+        with patch.object(cc, "cuddle", side_effect=[(1, "", reason), (0, "01\n", ""), (0, "02\n", "")]):
+            result = cc.do_job(self.job())
+        self.assertEqual(result["terms"], ["01", "02"])
+        self.assertEqual(result["generated_seeds"], [2, 3])
+        self.assertEqual(result["attempts"], 3)
+        self.assertEqual(result["errors"], [])
+        self.assertEqual(result["native_generator_non_results"], [{"seed": 1, "attempt": 1, "rc": 1, "error": reason}])
+
+    def test_a_returned_term_is_never_discarded_or_resampled(self):
+        from unittest.mock import patch
+        with patch.object(cc, "cuddle", side_effect=[(0, "f4\n", ""), (0, "01\n", "")]):
+            result = cc.do_job(self.job())
+        self.assertEqual(result["terms"], ["f4", "01"])
+        self.assertEqual(result["attempts"], 2)
+        self.assertEqual(result["native_generator_non_results"], [])
+
+    def test_unknown_errors_and_exhausted_retry_budget_fail(self):
+        from unittest.mock import patch
+        with patch.object(cc, "cuddle", return_value=(1, "", "another error")):
+            result = cc.do_job(self.job())
+        self.assertTrue(result["errors"])
+        self.assertEqual(result["attempts"], 1)
+        reason = "cuddle: toCanonical: encountered a map with duplicate keys, which is not currently supported."
+        with patch.object(cc, "cuddle", return_value=(1, "", reason)):
+            result = cc.do_job(self.job())
+        self.assertTrue(result["errors"])
+        self.assertEqual(result["attempts"], 8)
+        self.assertEqual(len(result["native_generator_non_results"]), 8)
+
+    def test_literal_enum_generation_expansion_keeps_exact_choices(self):
+        original = 'r = &("PubKey": 0, "Script": 1, "Redeem": 2) / uint\n'
+        adapted, changes = cc.generation_controls(original)
+        self.assertEqual(adapted, 'r = (0 / 1 / 2) / uint\n')
+        self.assertEqual(changes[0]["choices"], [0, 1, 2])
+        original = 'r = &("label: 123": 2)\n'
+        self.assertEqual(cc.generation_controls(original)[1][0]["choices"], [2])
+
 
 if __name__ == "__main__":
     unittest.main()

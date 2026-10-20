@@ -52,7 +52,7 @@ upstream *.cddl ──► CddlParser ──► Ast ──► Schema (resolve) �
  + overrides/*.cddl                syntax   generics, groups,   tree    per module
  + models.conf                              sockets, controls
                                     │                │
-                                    └──► CddlSampler ┘  random valid CBOR (tests)
+                                    └──► CddlSampler ┘  CBOR candidates (tests)
 
 hand-written runtime (rt): Codec, Writer, DecodeError, Alternatives, Maps, Lit   ◄── generated code calls it
 ```
@@ -93,6 +93,7 @@ folded into the enum case (`msgRollForward` is a case, not a class).
 | `cases <module>:<rule> N0 N1 …` | Scala names of the alternatives of a choice, in order |
 | `strip <module>:<rule> p1 p2 …` | prefixes removed from derived case names (`msgRollForward` becomes `RollForward`) |
 | `field <module>:<rule> <key or index> <name>` | name of an integer-keyed map entry or an anonymous array member |
+| `chunks <module>:<rule> <positive limit>` | byte-string runtime refinement: bound each original definite chunk; write long values as bounded indefinite chunks |
 | `rename`, `external` | Scala type name; or "not generated, a raw `Node`" (the hand-written boundary) |
 
 A directive naming a rule that no root reaches is an error, so a typo cannot silently stop a property being declared.
@@ -167,8 +168,12 @@ A preserved type is `final case class Header(headerBody: HeaderBody, bodySignatu
   canonically and that encoding becomes `raw`.
 - The hash of a Shelley-era header is `Blake2b-256(header.raw)`; the tests check this against the hand-written decoder. (A Byron header hashes the `[subtag, header]` pair as `NtNHeader` frames it, as `Header.byronFromRaw` does; the Byron golden test checks `raw` only, not that hash.)
 
-Everything not marked is encoded canonically: shortest integers and lengths, definite-length containers, map entries in
-rule order. Known gaps (M13, section 8): `preserve` is only on arrays and maps (not on choices such as `auxiliary_data`; workaround:
+For structured types without `preserve`, writers use shortest integers and lengths, definite-length containers and
+map entries in schema order. Opaque `any` nodes retain original bytes; configured bounded byte strings use
+indefinite chunks when their total exceeds the chunk limit. This is deterministic normalization, not a promise of RFC 8949 deterministic map-key
+ordering. CDDL maps describe key/value membership, not wire order ([RFC 8610 section 3.5](https://www.rfc-editor.org/rfc/rfc8610.html#section-3.5)). A valid writer may reorder
+map keys; semantic equality, an encoding fixed point and independent CDDL validation are required. `preserve`
+keeps key order, widths and indefinite containers byte-for-byte, including when a containing value is normalized. Known gaps (M13, section 8): `preserve` is only on arrays and maps (not on choices such as `auxiliary_data`; workaround:
 preserve the alternatives or decode the item as `any`); a per-rule "indefinite-length output" property is not
 modelled (the hand-written ChainSync writes `FindIntersect` points as an indefinite list, like the Haskell node; the
 generated writer writes a definite list; both decode, see the test "the other ChainSync messages").
@@ -194,8 +199,8 @@ enum Kind: Syntax(cause: Cbor.Error), Domain[E <: DomainError](cause: E),
   Syntax errors still have offset 0 because that API does not supply a location.
 - `Kind.Domain[E <: DomainError](cause)` retains a downstream service's typed cause without a
   reverse module dependency. The marker is an intent contract, not proof of a closed error family.
-- The build-time generator's `GenError`/`GenException` cleanup remains M11-E; it is independent of
-  generated-model node adoption (M14). See [the runtime error design](design/domain-errors.md).
+- The build-time generator uses closed `GenError` cases and trampolined schema resolution. Its error transport is
+  independent of generated-model node adoption (M14). See [the runtime error design](design/domain-errors.md).
 
 ## 7. Modelling eras
 
@@ -220,33 +225,41 @@ Supported = parsed, resolved, emitted, compiled with `-Werror` and exercised by 
 | Feature | Status | Evidence |
 |---|---|---|
 | rules, `=`, `/=`, `//=` (sockets `$name`, `$$name`) | supported | `features.cddl`, byron |
-| arrays, `[* x]`, `[+ x]`, `[n*m x]`, optional trailing `?` | supported | headers, blocks |
+| arrays, `[* x]`, `[+ x]`, `[n*m x]`, optional members before or after required members | supported | headers, blocks, `ConformanceRegressionSuite` |
 | maps with integer or text keys, `?` entries, duplicates and unknown keys rejected | supported | transaction body, `Person` |
 | maps `{* k => v}` and several typed `* k => v` entries | supported | multiasset, `versionTable` |
 | type choice `/` and group choice `//` | supported (ordered trial, all causes reported) | `msgAcceptVersion`, certificates |
 | group rules `(…)` spliced into arrays | supported | Alonzo `header_body` |
 | generics `name<a, b>`, nested instantiation | supported (expanded at use) | `ns8<…>`, `set<a>` |
-| `.size n`, `.size (a..b)`, `a..b`, `a...b`, `.lt`, `.le`, named bounds (`max_word64`) | supported | |
+| `.size n`, `.size (a..b)`, `a..b`, `a...b`, unsigned `.gt`, `.ge`, `.lt`, `.le`, `.ne`, named bounds | supported | Byron named `u8` controls; finite-domain regressions |
 | `.cbor`, tags `#6.n(x)`, `#6.n` | supported | `serialisedShelleyHeader`, plutus data |
 | `bool`, `nil`, `any`, literals (int, text, bool), `x / nil` | supported | |
 | `;# import/include` namespaces, per-module overrides | supported | |
-| required member after an optional one (`[a, ? b, c]`) | **not yet** (M13) | Dijkstra `pool_params`; needs a backtracking array decoder (12 rules) |
-| `.gt .ge .eq .ne .regexp .and .within .cborseq .bits`, floats, `~` unwrap, `&` as a type | **not yet** (M13) | 8 rules use `.gt` and 5 `.ne` (all Byron, on a named `u8`); none of the rest in the pinned files except as noted |
+| spliced groups containing optional-before-required members | supported | Dijkstra `pool_params`; greedy optional matching and complete-suffix checks; array headers use the actual member count |
+| `.eq .regexp .and .within .cborseq .bits`, explicit float models, `~` unwrap, `&` as a type | **not yet** (M13) | Not used by the pinned roots. Floats nested in generic `any` are accepted and retained losslessly; hand-written wire decoders retain their own float policy |
 | the RFC 8610 prelude (`bigint`, `encoded-cbor`, `tdate`, `uri`, …) | supported | `features:prelude_use`; found missing by the cuddle cross-check (section 13) |
 | `preserve` on a choice | **not yet** (M13) | `auxiliary_data` |
-| `bytes` chunking limit (`bounded_bytes`) | cannot be expressed in CDDL | overridden, section 10 |
+| `bytes` chunking limit (`bounded_bytes`) | runtime refinement | `chunks module:rule 64` in `models.conf`; original chunk heads checked separately from CDDL, section 10 |
 | indefinite-length output as a per-rule property | **not yet** (M13) | the hand-written ChainSync writes `FindIntersect` points as an indefinite list (section 5) |
-| map entries in canonical key order as an option | **not yet** (M13) | `features:person` in the cuddle allowlist (section 13) |
+| map entries in RFC 8949 deterministic key order as an option | **not yet** (M13) | Schema-order output is a documented CDDL-valid contract; `preserve` remains byte-exact (section 13) |
 | era dedup (`type X = prev.X` when the resolved tree equals the previous era's) | **not yet** (M13) | output size only, section 7 |
 | recursive types | supported (lazy codecs) | `metadatum`, `plutus_data`, `person` |
 
 Whole-specification coverage, measured by generating each non-generic rule as a root of its own (`GeneratorSuite`):
-**955 of 980 rules** (97%) across the 16 modules; Shelley, Allegra, Mary, Alonzo, Babbage and Conway generate
-completely, Dijkstra 157/169, Byron 51/64. The 25 failures are the 12 "required after optional" cases (Dijkstra), 8 `.gt`
-and 5 `.ne` bounds (Byron); they are listed one by one in `models/cuddle-allowlist.tsv` and the cross-check fails
-when the set changes.
-Six whole eras' blocks compile (about 14,000 lines of generated code for headers, blocks and transactions of
-Shelley to Conway, the Dijkstra header, Byron headers and the network protocols).
+**1,030 of 1,030 non-generic rules** across 21 configured modules, including all 64 Byron and 169 Dijkstra
+rules. This includes the existing upstream corpus and local feature schemas; it is source-generation coverage,
+not proof of runtime correctness for every value. `GeneratorSuite` requires every rule to generate. The independent
+cross-check executes the 25 original formerly unsupported rules, with group rules tested in an explicit enclosing
+array because a CDDL group has no standalone CBOR representation.
+
+The sampler conservatively includes optional members whenever a required suffix follows, propagating that suffix
+through groups. This avoids proposing an absent overlapping member that greedy matching would consume as part
+of the suffix. Trailing optionals still vary, and explicit decoder tests retain disjoint present/absent cases.
+Original-schema Cuddle controls independently validate samples of `g = (? before: uint, after: uint); r = [g, tail: uint]`
+and reject the ambiguous short array. This is not an arbitrary-constructor proof: public generated case classes
+can still represent `None` for that overlapping field and write an invalid short array. Restricting or validating
+such manually constructed states is an open [M13/M14 adoption obligation](roadmap.md); successful decoding and
+bounded corpus conformance do not discharge it.
 
 ## 9. What stays hand-written
 
@@ -301,12 +314,19 @@ random-byte inputs produce a value or a typed error, and never `Kind.Internal`; 
 
 1. The CDDL's own `bounded_bytes = bytes .size (0 .. 64)` rejects real Conway governance blocks: chain data uses
    indefinite-length strings of 64-byte chunks, which a joining CBOR reader sees as one long string. The upstream comment
-   says as much. Handled by `overrides/bounded-bytes.cddl`.
+   says as much. `overrides/bounded-bytes.cddl` permits the joined value in CDDL; the `chunks` configuration
+   additionally enforces the released decoder's per-chunk limit using original bytes. It rejects a definite 65-byte
+   string and an oversized indefinite chunk, accepts a 64+1-byte chunked string, and writes long values in chunks.
+   This corresponds to `decodeBoundedBytes` and `decodeBoundedBytesIndef` in
+   [Plutus 1.70.0.0 `PlutusCore/Data.hs`, pinned source](https://github.com/IntersectMBO/plutus/blob/507cab8cf6192e5143f12be5b2d3005a2928dc6d/plutus-core/plutus-core/src/PlutusCore/Data.hs#L248-L265).
+   Cuddle checks the CDDL approximation and refinement independently; it cannot establish the runtime chunk bound.
 2. A first version of the range emitter ignored the lower bound of `positive_coin = 1 .. 2^64-1`; the feature tests caught it.
 3. Alonzo's `operational_cert` and `protocol_version` are *groups* (spliced, 15 header members) but Babbage's are
    arrays (10 members): the generator takes this from the CDDL, where hand-written code carries two layouts by hand.
-4. `pool_params` in the Dijkstra CDDL has an optional member in the middle of a group, which the current array decoder
-   cannot express (listed in section 8).
+4. `pool_params` in the Dijkstra CDDL has an optional member in the middle of a group. Its decoder now tracks the
+   actual group size and checks the complete enclosing suffix. Optional matches are greedy, as RFC 8610 Appendix A
+   requires; a later failure cannot reconsider a successful match. Tests cover disjoint present/absent members,
+   ambiguous-short rejection and trailing values.
 
 **Decode throughput** (`DecodeBench`, a timed loop; no JMH so as not to add an sbt plugin; the host was busy and
 shared, so read these as orders of magnitude: two runs differed by up to 5x in absolute time, the ratios by less):
@@ -329,7 +349,7 @@ real data; the per-era and per-protocol rows are independent of each other. Row 
 
 | Work | Days | Notes |
 |---|---|---|
-| Generator gaps: optional-in-the-middle (backtracking array decode), `.gt/.ge/.cborseq`, enum `preserve`, per-rule indefinite output, canonical map-key order option | 5 to 7 | the only research-ish item is the array decode |
+| Remaining generator features: `.cborseq`, enum `preserve`, per-rule indefinite output, deterministic map-key order option | not re-estimated | The earlier estimate included the now-completed unsigned comparison controls and optional-group decoder |
 | Era dedup (`type X = prev.X` when the resolved tree is equal) and per-era `field`/`cases` config | 3 to 4 | about 300 config lines |
 | Conway/Babbage/Alonzo/Shelley/Allegra/Mary/Byron models replace hand decoders: blocks, headers, transactions, witnesses, certificates, governance | 8 to 12 | in the node, per module, behind the existing golden tests |
 | All NtN mini-protocols from their CDDL (KeepAlive, BlockFetch, TxSubmission2, PeerSharing, handshake) | 3 to 4 | the policy and state machines stay |
@@ -409,63 +429,50 @@ No upstream binary or image of cuddle is published, hence the build. The command
 integers, "twiddled"), `cuddle validate-cbor -f binary RULE CBOR_FILE CDDL_FILE` (the `-f` is ignored for the input in
 1.8.1.0, which is always read as raw bytes). cuddle reads one self-contained file and knows no `;# import`, so the
 driver writes, per target, the transitive closure of its rules from the vendored files with module-qualified names
-(`conway__block`); the rule text is upstream's, only identifiers are renamed, and the same module and override
+(`conway__block`); the validation rule text is upstream's, only identifiers are renamed, and the same module and override
 semantics as `models.conf` apply (`overrides/bounded-bytes.cddl` is part of the closure).
 
-**Driver.** `scripts/cddl_crosscheck.py run` (standard library, like `devnet.py`) orchestrates, because neither tool can
-host the other: cuddle only exists in Docker and the generated codecs only on the JVM. It calls the Scala half
-(`CuddleCrossCheck` in `models/src/test`, run through `sbt models/Test/runMain`) to export our sampler's
-terms and our parser's rule lists, runs cuddle in one container with a parallel worker (the same script, `worker`
-subcommand), calls the Scala half again to decode and re-encode what cuddle produced, and compares everything with
-`models/cuddle-allowlist.tsv`. The whole run takes about 25 seconds warm.
+**Driver.** `scripts/cddl_crosscheck.py run` uses standard-library Python to orchestrate the Scala tool and pinned
+Cuddle container. `CuddleCrossCheck` exports sampler terms and parser rule lists, decodes every Cuddle-generated
+term, and writes normalized output for a second independent Cuddle validation pass.
 
 | Direction | What is asserted |
 |---|---|
-| a. cuddle to us | N terms per target from `cuddle gen --no-twiddle` decode with the generated codec and re-encode byte for byte; N terms with indefinite lengths and non-shortest integers decode, and their re-encoding is a stable value (decode of it is equal, its encoding a fixed point) |
-| b. us to cuddle | N terms per target from `CddlSampler` pass `cuddle validate-cbor` for the same rule; a control (`false` against every rule) must fail, so the validator is known to discriminate |
-| c. rule sets | for every vendored file, the set of (rule name, generic arity) of `cuddle format` equals the one of our parser; every module (all rules, not only the roots) resolves in `cuddle validate` |
-| d. coverage | the set of rules our generator cannot produce on their own equals the allowlist |
+| Cuddle to us | Every generated term in both ordinary and twiddled modes decodes. Re-encoding decodes to an equal value and is an encoding fixed point. Every normalized output passes independent Cuddle validation. A configured `preserve` root must reproduce every input byte in both modes. |
+| Us to Cuddle | Every sampled term passes `cuddle validate-cbor` for the same rule. A negative control (`false`) must fail for each target. |
+| Rule sets | Each vendored file has the same (rule name, generic arity) set in our parser and `cuddle format`. Every configured module resolves in `cuddle validate`. |
+| Coverage | Every non-generic configured rule generates; no historical Scarab failure is exempted. |
+| Upstream correspondence | Both definite and 64+1-byte chunked strings expose the upstream `bounded_bytes` total-size approximation; both satisfy its CDDL refinement. Runtime tests separately enforce the actual per-chunk limit. |
 
-Targets: every `root` of `models.conf` (14, `models.conf` and the target list must agree or the export fails) plus the
-generated types the sampled tests exercise (headers of Shelley to Dijkstra, the hard-fork envelope, point and tip), 23
-in all.
+Targets include every configured root, era headers and envelopes, all 25 original formerly unsupported Byron and
+Dijkstra rules, and focused map-preservation, float and optional-group regressions. The original upstream schemas
+remain pinned and unchanged. Cuddle 1.8.1.0's generator raises `Controller not yet implemented` for `.gt` and `.ne`.
+For generation only, the driver replaces these controls with mathematically equivalent ranges intersected with the
+named unsigned domain. It records every replacement in `report.json`; validation always uses the original schema.
+Original control expressions additionally receive positive and negative boundary witnesses, so the validator must
+accept the included point and reject the lower-bound/excluded point. The generator also needs literal labelled
+integer enums expanded to their exact choices; the original enum validator must accept every member and reject a
+non-member. These are explicitly changed generation profiles; the validation corpus remains unchanged.
 
-**Result** (N = 40, seed 1, cuddle size 12; the same on a re-run, since every seed is fixed):
+The pinned native generator can also abort without returning a term when its random map has duplicate keys and
+its canonicalizer cannot handle them. Only that exact abort is resampled, with a maximum of four attempts per
+requested term. Every attempted seed, abort reason and successful seed is recorded in `report.json` under
+`native_generator_non_results`. Exhausting the budget or encountering another generator failure fails the run.
+A returned term is never discarded or retried: every one must pass the original validator and Scarab decoder.
+These native-tool non-results are separate from executed conformance cases and are not Scarab exemptions. `pool_params` and `pool_registration_cert` are group rules, so the driver appends an
+explicit array wrapper referencing the original group; it does not replace the group's definition.
 
-| Target | cuddle to us (byte-exact) | twiddled (non-canonical inputs) | us to cuddle |
-|---|---|---|---|
-| handshake v14, ChainSync messages | 40/40 (40), 40/40 (40) | 40/40 (37), 40/40 (32) | 40/40, 40/40 |
-| `conway` header, block, transaction | 40/40 (40) each | 40/40 (0 for the preserved header, 38, 29) | 40/40 each |
-| `shelley`, `allegra`, `mary`, `alonzo`, `babbage` blocks | 40/40 (40) each | 40/40 (38) each | 40/40 each |
-| `shelley`..`babbage`, `dijkstra` headers | 40/40 (40) each | 40/40 (0: preserved, rewritten verbatim) | 40/40 each |
-| `features` transaction, key_descriptor, prelude_use | 40/40 (40) each | 40/40 (40, 29, 37) | 40/40 each |
-| `features:person` | 40/40 (0, listed below) | 40/40 (40) | 40/40 |
-| hard-fork header (`chainsync-header`) | 37/40 (37, 3 hold floats, listed below) | 37/40 (32) | 40/40 |
-| `leios-notify` messages (the announcement holds that header) | 39/40 (39, 1 holds a float, listed below) | 39/40 (29) | 40/40 |
-| `leios-fetch` messages (the Blueprint's file; transactions are `any`) | 33/40 (33, 7 hold a float, listed below) | 33/40 (26) | 40/40 |
-| `network.base:tip`, `base:point` | 40/40 (40) each | 40/40 (29, 24) | 40/40 each |
+The original cross-check recorded 32 exceptions: 25 unsupported rules, three float decoder rejections, one map-order
+byte mismatch and three upstream `bounded_bytes` correspondences. They are no longer permitted Scarab failures.
+`models/cuddle-allowlist.tsv` contains no exemptions. The map-order requirement now follows the documented CDDL
+contract rather than treating every writer as byte-preserving; the original Person ordering case and a matching
+preserved-map case remain executable regressions. Float payloads preserve their width, NaN payload and signed zero. Undefined and unassigned simple values remain
+distinct from null and retain their bytes. Both extended forms require explicit syntax-decoder opt-in; ordinary
+wire defaults remain unchanged.
 
-The rule sets agree on all 27 files (1,108 rule name and arity pairs); cuddle resolves all 16 modules completely.
-
-**Allowlist** (`models/cuddle-allowlist.tsv`; each entry is asserted, an entry that no longer holds fails the run
-as stale, a divergence that is not listed fails it as new):
-
-| Entry | Why |
-|---|---|
-| `override` alonzo, babbage, conway `bounded_bytes` | Upstream `bytes .size (0 .. 64)` is stricter than the chain (64-byte chunks of an indefinite string, finding 1). The driver sends a 65-byte string through cuddle with the upstream rule (must be rejected) and with the override (must be accepted) |
-| `decode-float` `chainsync-header:header` | cuddle fills `any` (Byron `attributes = {* any => any}`) with floats; `xyz.kd5ujc.scarab.codec` reads floats only when `Cbor.Limits.allowFloats` is set (off for every wire decoder; the ledger-state codec of `storage` sets it), so such a term is rejected here. Cardano data contains none |
-| `decode-float` `leios-notify:leiosNotifyMessage` | The same floats, reached through the header an announcement carries (`leios-notify` imports `header.cddl`) |
-| `decode-float` `leios-fetch:leiosBlockFetchMessage` | `tx = any` (`overrides/leios-fetch-tx.cddl`): cuddle fills `any` with floats |
-| `not-byte-exact` `features:person` | cuddle writes map entries sorted by key, the generated writer in rule order (the canonical-order option of section 5 is a listed gap); the value is equal |
-| `unsupported` x25 | 12 Dijkstra rules with a required member after an optional one, 8 Byron `.gt` and 5 `.ne` bounds on a named `u8` (section 8) |
-
-**Found and fixed.** The cross-check found one generator bug: the RFC 8610 prelude (appendix D) was missing, so Byron's
-`bigint` and `encoded-cbor` (which `byron.cddl` uses without defining) did not resolve although cuddle's postlude
-defines them. `Schema` now knows `biguint`, `bignint`, `bigint`, `integer`, `unsigned`, `tdate`, `encoded-cbor`, `uri`,
-`b64url`, `b64legacy`, `regexp`, `mime-message`, `eb64url`, `eb64legacy`, `eb16` and `cbor-any`. Regression tests: the
-`GeneratorSuite` prelude test and `features:prelude_use` (a root of `features.cddl`, sampled and cross-checked). The
-other divergences are properties of the tools, listed above; none was an error in the generated decoders or in the
-parser.
+`target/crosscheck/report.json` records the current run's per-target counts, independent validation results and
+coverage. Generation alone and a finite sample do not prove all-value conformance. Any future exemption requires a
+specific evidenced JVM constraint; historical implementation gaps are not justification.
 
 Run it locally:
 

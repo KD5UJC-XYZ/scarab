@@ -17,6 +17,7 @@ enum GenError:
   case BadConfig(line: Int, problem: ConfigProblem)
   case CyclicExpansion(rule: QName)
   case SamplingCycle(rule: QName)
+  case EmptyIntegerDomain(lower: BigInt, upper: BigInt)
 
   def message: String = this match
     case Parse(f, e)            => s"$f: ${e.message}"
@@ -28,8 +29,9 @@ enum GenError:
     case Unsupported(r, f)      => s"unsupported CDDL feature in `$r`: ${f.message}"
     case NameClash(s, n, rs) =>
       s"in $s the rules ${rs.mkString(", ")} all map to the Scala name `$n`"
-    case BadConfig(l, p)    => s"config line $l: ${p.message}"
-    case CyclicExpansion(q) => s"cyclic expansion of `$q`"
+    case BadConfig(l, p)            => s"config line $l: ${p.message}"
+    case CyclicExpansion(q)         => s"cyclic expansion of `$q`"
+    case EmptyIntegerDomain(lo, hi) => s"cannot sample an empty integer domain ($lo .. $hi)"
     case SamplingCycle(q) => s"recursive sampling of `$q` cannot terminate beyond the depth cutoff"
 
 enum ConfigProblem:
@@ -54,7 +56,7 @@ enum UnsupportedFeature:
   case SizeBound(value: Ast.Ty)
   case Control(operator: String)
   case LiteralKey(value: Ast.Lit)
-  case PairsWithoutTypeKey, RepeatedGroupReference, RequiredAfterOptional
+  case PairsWithoutTypeKey, RepeatedGroupReference
   case FixedArrayOccurrence(occurrence: Ast.Occ)
   case RepeatedLiteralMapKey, MapMinimumAboveOne, MapWithoutKey
   case TypeInPosition(value: RT)
@@ -79,7 +81,6 @@ enum UnsupportedFeature:
     case LiteralKey(_)             => "non-integer, non-text literal key"
     case PairsWithoutTypeKey       => "pairs without a type key"
     case RepeatedGroupReference    => "repeated or optional group reference"
-    case RequiredAfterOptional     => "required entry after an optional one"
     case FixedArrayOccurrence(occ) => s"entry with occurrence $occ in a fixed array"
     case RepeatedLiteralMapKey     => "repeated literal map key"
     case MapMinimumAboveOne        => "map entry with a minimum above one"

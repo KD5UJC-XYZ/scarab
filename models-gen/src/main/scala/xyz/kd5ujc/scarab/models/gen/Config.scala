@@ -25,7 +25,8 @@ final case class Config(
     cases: Map[QName, Vector[String]],
     strip: Map[QName, Vector[String]],
     fields: Map[(QName, String), String],
-    external: Set[QName]
+    external: Set[QName],
+    chunks: Map[QName, Int] = Map.empty
 )
 
 object Config:
@@ -68,6 +69,8 @@ object Config:
             case Vector("field", r, k, n) =>
               q(r).map(r => cfg.copy(fields = cfg.fields.updated((r, k), n)))
             case Vector("external", r) => q(r).map(r => cfg.copy(external = cfg.external + r))
+            case Vector("chunks", r, size) if size.toIntOption.exists(_ > 0) =>
+              q(r).map(r => cfg.copy(chunks = cfg.chunks.updated(r, size.toInt)))
             case other => Left(GenError.BadConfig(line, ConfigProblem.Directive(other)))
         }
       }

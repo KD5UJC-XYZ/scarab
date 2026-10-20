@@ -104,3 +104,16 @@ person = { "name" : tstr, ? "age" : uint .size 1, ? "tags" : [* tstr], "active" 
 ; Names of the RFC 8610 prelude (appendix D). cuddle's postlude defines them; the cuddle cross-check found that the
 ; generator's own prelude did not (the Byron specification uses `bigint` and `encoded-cbor`).
 prelude_use = [amount : bigint, embedded : encoded-cbor, when : tdate, count : unsigned, total : integer]
+
+; Optional members must be selected against the complete suffix, not greedily by arity or type.
+optional_middle = [? before : bytes, after : uint, ? payload : bytes, enabled : bool]
+preserved_optional = [? before : bytes, after : uint]
+constrained_u8 = uint .size 1
+above_two = constrained_u8 .gt 2
+except_four = constrained_u8 .ne 4
+comparison_controls = [above_two, except_four]
+any_payload = [any]
+preserved_person = { "name" : tstr, "active" : bool }
+
+optional_group = (? before: bytes, after: uint)
+group_suffix = [optional_group, final: uint]
