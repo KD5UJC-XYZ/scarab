@@ -72,10 +72,12 @@ final class FetchCoordinator[F[_]: Async] private (
     }
 
   private def updatePerformance(id: Long, performance: FetchGsv.PeerGsv): F[Unit] =
-    change(s => s.copy(peers = s.peers.updatedWith(id)(_.map { peer =>
-      if performance.sampleTimePicos < peer.performance.sampleTimePicos then peer
-      else peer.copy(performance = performance)
-    })))
+    change(s =>
+      s.copy(peers = s.peers.updatedWith(id)(_.map { peer =>
+        if performance.sampleTimePicos < peer.performance.sampleTimePicos then peer
+        else peer.copy(performance = performance)
+      }))
+    )
 
   private def announce(
       id: Long,
@@ -99,10 +101,16 @@ final class FetchCoordinator[F[_]: Async] private (
         next = s.next + 1,
         hints = retained,
         peers = s.peers.updatedWith(id)(
-          _.map(peer => peer.copy(tip = tip,
-            performance = if performance.sampleTimePicos < peer.performance.sampleTimePicos then
-              peer.performance else performance,
-            candidate = candidate))
+          _.map(peer =>
+            peer.copy(
+              tip = tip,
+              performance =
+                if performance.sampleTimePicos < peer.performance.sampleTimePicos then
+                  peer.performance
+                else performance,
+              candidate = candidate
+            )
+          )
         )
       )
     }

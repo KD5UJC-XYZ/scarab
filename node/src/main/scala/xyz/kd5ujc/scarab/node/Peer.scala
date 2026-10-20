@@ -191,9 +191,9 @@ object Peer:
   /** Batches the peer keeps in flight: one being applied, the others being fetched. */
   private[node] val Depth = 3
 
-  /** Same interval as the pinned Praos decision loop. A stalled header producer must not
-    * prevent KeepAlive measurements from changing peer preference. Unchanged samples do not
-    * rebuild decisions; the resource's supervised fiber owns failures and cancellation.
+  /** Same interval as the pinned Praos decision loop. A stalled header producer must not prevent
+    * KeepAlive measurements from changing peer preference. Unchanged samples do not rebuild
+    * decisions; the resource's supervised fiber owns failures and cancellation.
     */
   private[node] val FetchPerformanceInterval: FiniteDuration = 10.millis
 
@@ -600,9 +600,11 @@ object Peer:
               case true => F.unit
               case false =>
                 performanceStarted.getAndSet(true).flatMap { alreadyRunning =>
-                  connection.fetchPerformance.traverse_(read =>
-                    supervised(refreshFetchPerformance(read, fetcher.updatePerformance))
-                  ).unlessA(alreadyRunning)
+                  connection.fetchPerformance
+                    .traverse_(read =>
+                      supervised(refreshFetchPerformance(read, fetcher.updatePerformance))
+                    )
+                    .unlessA(alreadyRunning)
                 } *> supervised(Deferred[F, Unit].flatTap(_.complete(())).flatMap(produce))
             }
 

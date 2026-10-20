@@ -18,7 +18,9 @@ protocol/resource behavior, without requiring identical thread schedules.
 consensus comparison ordinals, salted peer ties and one snapshot of in-flight work.
 The pinned GSV distribution is degenerate: KeepAlive RTT/2 with a fixed 4Mbps
 serialization estimate and time-dependent smoothing. It is not an adaptive bandwidth
-estimator. The native oracle records the actual ascending bulk and descending
+estimator. A resource-owned updater samples changed KeepAlive estimates independently
+of header progress at the pinned Praos decision interval (10ms); older header
+announcements cannot replace newer samples. The native oracle records the actual ascending bulk and descending
 deadline comparator directions; comments describing a generic preferred-first sort
 are insufficient to define this behavior.
 

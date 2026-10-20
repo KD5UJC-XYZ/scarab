@@ -304,7 +304,9 @@ class ConfigSuite extends FunSuite:
     )
     assertEquals(parsed("preview").settings.maxConcurrencyDeadline, None)
     assertEquals(
-      NodeConfig.parse(with_("MaxConcurrencyDeadline", Json.fromInt(0))).map(_.settings.maxConcurrencyDeadline),
+      NodeConfig
+        .parse(with_("MaxConcurrencyDeadline", Json.fromInt(0)))
+        .map(_.settings.maxConcurrencyDeadline),
       Right(Some(0))
     )
     assertEquals(
@@ -318,7 +320,9 @@ class ConfigSuite extends FunSuite:
       Right(Some(3))
     )
     assertEquals(
-      NodeConfig.parse(with_("MaxConcurrencyBulkSync", Json.fromInt(0))).map(_.settings.maxConcurrencyBulkSync),
+      NodeConfig
+        .parse(with_("MaxConcurrencyBulkSync", Json.fromInt(0)))
+        .map(_.settings.maxConcurrencyBulkSync),
       Right(Some(0))
     )
     assertEquals(
