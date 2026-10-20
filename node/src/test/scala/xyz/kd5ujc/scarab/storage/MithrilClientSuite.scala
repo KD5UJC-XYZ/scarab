@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
-import cats.effect.IO
+import cats.effect.{IO, Resource}
 import cats.mtl.Handle
 import cats.syntax.all.*
 import fs2.io.file.Path
@@ -14,6 +14,8 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.storage.mithril.MithrilClient
 
 class MithrilClientSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
+  override def munitIOTimeout: Duration = 2.minutes
+
   import MithrilClient.{Error, ReceiptKind}
   private val root = MithrilClient.Artifact.parse("a" * 64).fold(e => fail(e.toString), identity)
   private val artifact = MithrilClient.artifact(BigInt(1), root)
@@ -25,6 +27,10 @@ class MithrilClientSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     .fold(e => fail(e.toString), identity)
   private val roots = MithrilClient.Roots(key, key)
   private def quoted(text: String): String = "'" + text.replace("'", "'\"'\"'") + "'"
+  private def sleepingChild(pidFile: Path, beforeWrite: String = ":"): String =
+    val pending = quoted(pidFile.toString + ".pending")
+    s"{\n$beforeWrite\nprintf '%s' \"$$$$\"\n} > $pending\n/bin/mv $pending ${quoted(pidFile.toString)}\nexec /bin/sleep 30"
+
   private def success(path: Path): String =
     Json
       .obj(
@@ -180,7 +186,7 @@ class MithrilClientSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       for
         result <- execute(
           root,
-          s"printf '%s' \"$$$$\" > ${quoted(pidFile.toString)}\nexec /bin/sleep 30",
+          sleepingChild(pidFile),
           250.millis
         )
         pid <- IO.blocking(Files.readString(pidFile.toNioPath).toLong)
@@ -191,20 +197,59 @@ class MithrilClientSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
+  test("PID readiness is published only after the complete PID has been written") {
+    StorageTestKit.tempDir.use { root =>
+      val pidFile = root / "ready-pid"
+      val started = root / "writer-started"
+      val gate = root / "allow-write"
+      val beforeWrite =
+        s"/usr/bin/touch ${quoted(started.toString)}\nwhile [ ! -f ${quoted(gate.toString)} ]; do /bin/sleep 0.01; done"
+      Resource
+        .make(execute(root, sleepingChild(pidFile, beforeWrite), 30.seconds).start)(_.cancel)
+        .use { fiber =>
+          for
+            _ <- IO
+              .blocking(Files.exists(started.toNioPath))
+              .iterateUntil(identity)
+              .timeout(5.seconds)
+            published <- IO.blocking(Files.exists(pidFile.toNioPath))
+            _ <- IO(
+              assert(!published, "an incomplete PID was published while its writer was gated")
+            )
+            _ <- IO.blocking(Files.write(gate.toNioPath, Array.emptyByteArray)).void
+            _ <- IO
+              .blocking(Files.exists(pidFile.toNioPath))
+              .iterateUntil(identity)
+              .timeout(5.seconds)
+            pid <- IO.blocking(Files.readString(pidFile.toNioPath).toLong)
+            _ <- fiber.cancel
+            outcome <- fiber.join
+            alive <- IO.blocking(java.lang.ProcessHandle.of(pid).stream().anyMatch(_.isAlive))
+          yield
+            assert(outcome.isCanceled)
+            assert(!alive, s"verifier child $pid survived cancellation")
+        }
+    }
+  }
+
   test("cancelling the owner releases the actual child process") {
     StorageTestKit.tempDir.use { root =>
       val pidFile = root / "cancel-pid"
-      for
-        fiber <- execute(
-          root,
-          s"printf '%s' \"$$$$\" > ${quoted(pidFile.toString)}\nexec /bin/sleep 30"
-        ).start
-        _ <- IO.blocking(Files.exists(pidFile.toNioPath)).iterateUntil(identity).timeout(5.seconds)
-        pid <- IO.blocking(Files.readString(pidFile.toNioPath).toLong)
-        _ <- fiber.cancel
-        _ <- fiber.join
-        alive <- IO.blocking(java.lang.ProcessHandle.of(pid).stream().anyMatch(_.isAlive))
-      yield assert(!alive, s"verifier child $pid survived cancellation")
+      Resource.make(execute(root, sleepingChild(pidFile), 30.seconds).start)(_.cancel).use {
+        fiber =>
+          for
+            _ <- IO
+              .blocking(Files.exists(pidFile.toNioPath))
+              .iterateUntil(identity)
+              .timeout(5.seconds)
+            pid <- IO.blocking(Files.readString(pidFile.toNioPath).toLong)
+            _ <- fiber.cancel
+            outcome <- fiber.join
+            alive <- IO.blocking(java.lang.ProcessHandle.of(pid).stream().anyMatch(_.isAlive))
+          yield
+            assert(outcome.isCanceled)
+            assert(!alive, s"verifier child $pid survived cancellation")
+      }
     }
   }
 
