@@ -543,11 +543,13 @@ class NtcQueriesTest(unittest.TestCase):
         self.assertEqual(encoded[:3], bytes.fromhex("d90102"))
         self.assertLess(encoded.index(b"a"), encoded.index(b"b"))
 
-    def test_unimplemented_queries_are_marked(self):
-        marked = {label for label, _, implemented in ntcqueries.battery(self.universe()) if not implemented}
-        self.assertIn("GetRewardInfoPools", marked)
-        self.assertNotIn("DebugNewEpochState", marked)
-        self.assertNotIn("GetCurrentPParams", marked)
+    def test_conway_battery_requires_all_queries_including_wallet_and_peers(self):
+        rows = ntcqueries.battery(self.universe())
+        self.assertEqual({label for label, _, implemented in rows if not implemented}, set())
+        labels = {label for label, _, _ in rows}
+        self.assertTrue({"GetRewardInfoPools", "GetNonMyopicMemberRewards/empty",
+                         "GetNonMyopicMemberRewards/mixed", "GetLedgerPeerSnapshot/big",
+                         "GetLedgerPeerSnapshot/legacy", "GetCBOR/GetLedgerPeerSnapshot"} <= labels)
 
     def test_the_cli_queries_name_their_arguments(self):
         for label, text in ntc.CLI_QUERIES:

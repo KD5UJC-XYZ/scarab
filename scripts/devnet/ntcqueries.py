@@ -62,8 +62,7 @@ def universe(session):
 
 
 def battery(u):
-    """(label, query, implemented) for every query. `implemented` is False for the ones the Scala
-    node answers with a closed connection (roadmap F1)."""
+    """(label, query, implemented) for the Conway battery; every row must match."""
     cr = [list(c) for c in u.creds]
     some_creds = cr[:3]
     some_pools = u.pools[:2]
@@ -130,10 +129,19 @@ def battery(u):
     add("DebugNewEpochState", [12])
     add("GetCBOR/DebugEpochState", [9, [8]])
     add("GetCBOR/DebugNewEpochState", [9, [12]])
-    # not answered yet
-    add("GetRewardInfoPools", [18], False)
-    add("GetNonMyopicMemberRewards", [2, sset([[0, 1000000000]])], False)
-    add("GetLedgerPeerSnapshot", [34, 0], False)
+    add("GetRewardInfoPools", [18])
+    add("GetCBOR/GetRewardInfoPools", [9, [18]])
+    members = [[0, 0], [0, 1], [0, 1000000000]] + [[1, c] for c in some_creds]
+    add("GetNonMyopicMemberRewards", [2, sset([[0, 1000000000]])])
+    add("GetNonMyopicMemberRewards/empty", [2, sset([])])
+    add("GetNonMyopicMemberRewards/mixed", [2, sset(members)])
+    add("GetCBOR/GetNonMyopicMemberRewards", [9, [2, sset(members)]])
+    add("GetLedgerPeerSnapshot", [34, 0])
+    add("GetLedgerPeerSnapshot/big", [34, 1])
+    add("GetLedgerPeerSnapshot/legacy", [34])
+    add("GetCBOR/GetLedgerPeerSnapshot", [9, [34, 0]])
+    add("GetCBOR/GetLedgerPeerSnapshot/big", [9, [34, 1]])
+    add("GetCBOR/GetLedgerPeerSnapshot/legacy", [9, [34]])
     return q
 
 
