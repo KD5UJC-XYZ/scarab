@@ -142,5 +142,40 @@
     "Haskell accumulates predicate failures; Scarab fails fast. A Scala rejection is compared with the native accumulated typed failure payloads, without requiring identical failure order or multiplicity.",
     "The separate formal LEDGERS SIGSEGV remains uninvestigated and is not counted as a formal pass.",
     "MemPack native output lacks original TxOut raw bytes and Scala UTxO change-history bookkeeping; all output fields and remaining typed state are compared."
-  ]
+  ],
+  "image": "scarab-pre-conway178-oracle:local",
+  "imageId": "sha256:aa7e2d96e9f15eb8556f9b6a2685b0aaf3a22608ed1299821f7a7edc4c491847",
+  "network": "none",
+  "executableSha256": "8c068d79ffc5ca5e03c95361334eb2c9fbdf5340d122413c6ed83c49e2c8bbfc",
+  "patchedSourcesSha256": {
+    "cabal.project": "13b3941a475b9c2362c6e994a0c160f09f6d22b8a0261a80bf75559a0883e5f1",
+    "libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/ExecSpecRule/Core.hs": "87adcbc1abbba0356875be45c8deadcb039b3e2539b98bbe9c29610994f75180",
+    "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Conway.hs": "6a1de7d558fb9338c63e80e60ffdaa55187a30ded93049ecd03a19914cc3f599"
+  },
+  "buildCommand": [
+    "cabal",
+    "build",
+    "cardano-ledger-conformance:test:tests",
+    "--builddir=/probe/builddir",
+    "--offline",
+    "--jobs=2",
+    "--extra-lib-dirs=/usr/local/lib"
+  ],
+  "runCommand": [
+    "docker",
+    "exec",
+    "-e",
+    "SCARAB_BATCH_INPUT_DIR=/input",
+    "-e",
+    "SCARAB_BATCH_EXPORT_DIR=/probe/cases",
+    "scarab-49-ledgers-native",
+    "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+    "--match",
+    "Conformance/Conway/Imp/EPOCH/Proposals/Expired proposal deposit refunded",
+    "--seed=498301",
+    "--qc-max-success=1",
+    "--qc-max-size=30"
+  ],
+  "buildLogSha256": "7fb5397447483947e024227856753748a1d48abff28eafd404364d9095bcd378",
+  "sourceHead": "f649f9751074d2ab3de033fc3912f29c9862c1f5"
 }

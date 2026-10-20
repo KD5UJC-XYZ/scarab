@@ -35,3 +35,39 @@ LEDGERS pass or a broad generated-block campaign. The separate formal evaluator 
 and broader coverage remain tracked by [#49](https://github.com/KD5UJC-XYZ/scarab/issues/49).
 Raw upstream trace CBOR is not a native snapshot format; no persisted format changes.
 Upstream license notices remain in `fixtures/witness/licenses/`.
+
+## Reproduction
+
+Use a disposable checkout of the source pin and the pinned formal/generator checkouts.
+Apply the repository patches in this order (the first also points Cabal at the local
+`/formal` and `/constrained` mounts):
+
+```sh
+git -C /path/to/disposable/cardano-ledger apply /path/to/scarab/scripts/oracle/ledger-govcert/exporter.patch
+git -C /path/to/disposable/cardano-ledger apply /path/to/scarab/scripts/oracle/ledger-govcert/multi-ledgers.patch
+```
+
+Start an isolated container from the manifest's exact oracle image, overriding its
+application entrypoint. Mount the disposable source at `/source`, a private output/build
+directory at `/probe`, the pinned formal source at `/formal`, constrained generators at
+`/constrained`, and the CLS source selected by `exporter.patch` at `/clssrc`. Mount the
+existing dependency caches at `/root/.cabal` and `/root/.local/state/cabal`. The original
+`conway-native-refund/cases` resource directory is mounted **read-only** at `/input`.
+Keep `/source` as the working directory and use `--network none`. With the container
+named `scarab-49-ledgers-native`:
+
+```sh
+docker exec scarab-49-ledgers-native cabal build cardano-ledger-conformance:test:tests \
+  --builddir=/probe/builddir --offline --jobs=2 --extra-lib-dirs=/usr/local/lib
+docker exec -e SCARAB_BATCH_INPUT_DIR=/input -e SCARAB_BATCH_EXPORT_DIR=/probe/cases \
+  scarab-49-ledgers-native \
+  /probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests \
+  --match 'Conformance/Conway/Imp/EPOCH/Proposals/Expired proposal deposit refunded' \
+  --seed=498301 --qc-max-success=1 --qc-max-size=30
+docker rm -f scarab-49-ledgers-native
+```
+
+The manifest includes the exact image identity, executed binary hash, patched source
+hashes, dependency-plan hash and build/run arguments. Build caches are optional; they
+must resolve the same pinned dependency plan. The observer's expected final-state
+controls and native rejection assertions must pass before copying the four cases.
