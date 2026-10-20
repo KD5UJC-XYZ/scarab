@@ -52,7 +52,7 @@ class BulkControlCharacterizationSuite extends FailsOnUncaught:
       release <- Deferred[IO, Unit]
       admittedPing <- Deferred[IO, Unit]
       pingAdmission <- Ref.of[IO, Option[FiniteDuration]](None)
-      pingArrival <- Ref.of[IO, Option[FiniteDuration]](None)
+      pingArrival <- Deferred[IO, FiniteDuration]
       replies <- Ref.of[IO, Int](0)
       delivered <- Ref.of[IO, Long](0L)
       toClient <- Queue.bounded[IO, Option[Chunk[Byte]]](1)
@@ -67,7 +67,7 @@ class BulkControlCharacterizationSuite extends FailsOnUncaught:
           enteredWriter.complete(()).void *> release.get *>
             bytes.toVector.grouped(4096).toVector.traverse_ { part =>
               val wait = (part.size.toLong * 1000000000L / load.bytesPerSecond).nanos
-              IO.sleep(wait) *> toClient.offer(Some(Chunk.vector(part))) *>
+              IO.sleep(wait) *> toClient.offer(Some(Chunk.from(part))) *>
                 delivered.update(_ + part.size)
             }
         def close = IO.unit
@@ -114,7 +114,7 @@ class BulkControlCharacterizationSuite extends FailsOnUncaught:
             )
             observedAnswer = observed(
               answering,
-              received = IO.monotonic.flatMap(now => pingArrival.set(Some(now - started)))
+              received = IO.monotonic.flatMap(now => pingArrival.complete(now - started).void)
             )
             result <- (
               Resource.make(Peers.typed(BlockFetchServer.run(serving, source)).start)(_.cancel),
@@ -148,7 +148,18 @@ class BulkControlCharacterizationSuite extends FailsOnUncaught:
                     yield (fetched, finished - started, None)
                 (fetched, finished, measured) = measurement
                 admission <- pingAdmission.get
-                arrival <- pingArrival.get
+                // BatchDone may reach the fetch client before the queued ping reaches its server.
+                // Keep the measured fetch completion above; observe the late ping before teardown.
+                arrival <-
+                  if control then
+                    // Harness watchdog only; this is not a proposed control-message deadline.
+                    pingArrival.get
+                      .timeoutTo(
+                        120.seconds,
+                        IO(fail("queued control ping never reached responder"))
+                      )
+                      .map(Some(_))
+                  else IO.pure(None)
                 bytes <- delivered.get
               yield Observation(fetched, finished, measured, admission, arrival, bytes)
             }
@@ -159,7 +170,7 @@ class BulkControlCharacterizationSuite extends FailsOnUncaught:
 
   for load <- List(
       Load("forty 60KiB messages at 32KiB/s", 40, 60 * 1024, 32 * 1024),
-      Load("three historical-size 2000000-byte messages at 64KiB/s", 3, 2000000, 64 * 1024)
+      Load("three 2000000-byte messages at 64KiB/s", 3, 2000000, 64 * 1024)
     )
   do
     test(s"FIFO bulk/control characterization: ${load.name}"):
@@ -168,10 +179,14 @@ class BulkControlCharacterizationSuite extends FailsOnUncaught:
         mixed <- TestControl.executeEmbed(run(load, control = true))
       yield
         val expected = Some(Vector.fill(load.blocks)(Bytes(Vector.fill(load.rawBytes)(1.toByte))))
-        assertEquals(bulk.result, Right(expected))
-        assertEquals(mixed.result, Right(expected))
-        assert(bulk.finished > 60.seconds && bulk.finished < 120.seconds, bulk.toString)
-        assert(mixed.finished > 60.seconds && mixed.finished < 120.seconds, mixed.toString)
+        def summary(value: Observation): String =
+          s"finished=${value.finished} blocks=${value.result.map(_.map(_.size))} " +
+            s"probe=${value.probe} admitted=${value.admitted} arrived=${value.arrived} " +
+            s"deliveredBytes=${value.deliveredBytes}"
+        assert(bulk.result == Right(expected), summary(bulk))
+        assert(mixed.result == Right(expected), summary(mixed))
+        assert(bulk.finished > 60.seconds && bulk.finished < 120.seconds, summary(bulk))
+        assert(mixed.finished > 60.seconds && mixed.finished < 120.seconds, summary(mixed))
         assertEquals(mixed.admitted, Some(Duration.Zero))
         val probe = mixed.probe.getOrElse(fail("control probe did not run"))
         assertEquals(probe.result, Left(NetworkError.Timeout(Protocols.KeepAlive, "server")))
@@ -182,7 +197,7 @@ class BulkControlCharacterizationSuite extends FailsOnUncaught:
           probe.deliveredBytes > 0 && probe.deliveredBytes < mixed.deliveredBytes,
           probe.toString
         )
-        assert(mixed.arrived.exists(_ > probe.finished), mixed.toString)
+        assert(mixed.arrived.exists(_ > probe.finished), summary(mixed))
         println(
           s"BULK_CONTROL ${load.name}: baseline=${bulk.finished} mixed=${mixed.finished} " +
             s"blocks=${mixed.result.map(_.map(_.size))} admitted=${mixed.admitted} " +

@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.network
 
 import cats.effect.{Deferred, IO, Ref}
+import cats.effect.std.Queue
 import cats.effect.testkit.TestControl
 import cats.syntax.all.*
 import fs2.{Chunk, Stream}
@@ -60,27 +61,33 @@ class MuxSeededTrafficSuite extends FailsOnUncaught:
 
   /** Each pair of Mux writes is coalesced, then repartitioned independently of its SDU/message
     * boundaries. Every round submits four writes per direction, so no final half-pair is withheld.
+    * Keep writes as queue elements until pairing: a byte stream may merge their chunk boundaries.
     */
   private def partitioned(
-      underlying: Bearer[IO],
+      incoming: Queue[IO, Option[Chunk[Byte]]],
+      outgoing: Queue[IO, Option[Chunk[Byte]]],
       groups: Ref[IO, Vector[Int]],
       sdu: Int
   ): Bearer[IO] = new Bearer[IO]:
-    def reads = underlying.reads.chunks.chunkN(2, allowFewer = true).evalMap { writes =>
-      groups.update(_ :+ writes.size).as(Chunk.concat(writes.toVector))
-    }.flatMap { bytes =>
-      val widths = Vector(1, 7, 9, sdu + 17)
-      Stream
-        .unfold((0, 0)) { (offset, part) =>
-          if offset >= bytes.size then None
-          else
-            val piece = bytes.drop(offset).take(widths(part % widths.size))
-            Some((piece, (offset + piece.size, part + 1)))
-        }
-        .flatMap(Stream.chunk)
-    }
-    def write(bytes: Chunk[Byte]) = underlying.write(bytes)
-    def close = underlying.close
+    def reads = Stream
+      .fromQueueNoneTerminated(incoming)
+      .chunkN(2, allowFewer = true)
+      .evalMap { writes =>
+        groups.update(_ :+ writes.size).as(Chunk.concat(writes.toVector))
+      }
+      .flatMap { bytes =>
+        val widths = Vector(1, 7, 9, sdu + 17)
+        Stream
+          .unfold((0, 0)) { (offset, part) =>
+            if offset >= bytes.size then None
+            else
+              val piece = bytes.drop(offset).take(widths(part % widths.size))
+              Some((piece, (offset + piece.size, part + 1)))
+          }
+          .flatMap(Stream.chunk)
+      }
+    def write(bytes: Chunk[Byte]) = outgoing.offer(Some(bytes))
+    def close = outgoing.offer(None)
 
   private def exactly(size: Int)(bytes: Bytes): DecodeResult[Bytes] =
     if bytes.size >= size then DecodeResult.Decoded(bytes.take(size), size)
@@ -120,14 +127,14 @@ class MuxSeededTrafficSuite extends FailsOnUncaught:
       egressQueueMessages = 2
     )
     for
-      ends <- Bearer.inMemory[IO](4)
-      (a, b) = ends
+      toLeft <- Queue.bounded[IO, Option[Chunk[Byte]]](4)
+      toRight <- Queue.bounded[IO, Option[Chunk[Byte]]](4)
       leftGroups <- Ref.of[IO, Vector[Int]](Vector.empty)
       rightGroups <- Ref.of[IO, Vector[Int]](Vector.empty)
       _ <- (
-        Mux.resource(partitioned(a, leftGroups, value.sdu), Set(2, 3), config),
+        Mux.resource(partitioned(toLeft, toRight, leftGroups, value.sdu), Set(2, 3), config),
         Mux.resource(
-          partitioned(b, rightGroups, value.sdu),
+          partitioned(toRight, toLeft, rightGroups, value.sdu),
           Set(2, 3),
           config.copy(role = Mux.Role.Responder)
         )
@@ -176,8 +183,12 @@ class MuxSeededTrafficSuite extends FailsOnUncaught:
       490308L -> 65535
     )
   do
-    test(s"seed $seed preserves duplex channel FIFO across $sdu-byte SDUs and transport partitions"):
+    test(
+      s"seed $seed preserves duplex channel FIFO across $sdu-byte SDUs and transport partitions"
+    ):
       val value = sample(seed, sdu)
       assert((value.leftOrder ++ value.rightOrder).forall(_.toSet == lanes.toSet))
       assert(value.leftOrder.distinct.size > 1 && value.rightOrder.distinct.size > 1)
-      TestControl.executeEmbed(Peers.typed(run(value))).map(result => assertEquals(result, Right(())))
+      TestControl
+        .executeEmbed(Peers.typed(run(value)))
+        .map(result => assertEquals(result, Right(())))

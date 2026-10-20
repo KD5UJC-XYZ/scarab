@@ -9,7 +9,8 @@ import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult
 
-/** Deadline results are observable only after their cancelled operation has released its resources. */
+/** Deadline results are observable only after their cancelled operation has released its resources.
+  */
 class DeadlineCleanupSuite extends FailsOnUncaught:
   private def hex(value: String): Bytes =
     Bytes.fromHex(value).fold(error => fail(error.message), identity)
@@ -67,40 +68,45 @@ class DeadlineCleanupSuite extends FailsOnUncaught:
                 observed,
                 Some(NetworkError.SduTimeout(NetworkError.SduOperation.Write) -> Some(()))
               )
-              assert(result.exists {
-                case Outcome.Succeeded(Right(())) => true
-                case _                            => false
-              }, result.toString)
+              assert(
+                result.exists {
+                  case Outcome.Succeeded(Right(())) => true
+                  case _                            => false
+                },
+                result.toString
+              )
             }
           yield ()
         }
     yield ()
 
   test("receive deadline joins cancellation before returning and preserves the partial message"):
-    TestControl.executeEmbed {
-      Peers.typed {
-        Peers.linked(protocols = Set(1)).use { (client, server) =>
-          for
-            c <- client.channel(1)
-            s <- server.channel(1)
-            cancelled <- Deferred[IO, Unit]
-            _ <- c.send(hex("0102"))
-            _ <- c.flush
-            expired <- Peers.typed {
-              Timed.within(1.second, 1, "partial")(
-                s.recv(65536)(exactly(4)).onCancel(cancelled.complete(()).void)
-              )
-            }
-            cleaned <- cancelled.tryGet
-            _ <- IO {
-              assertEquals(expired, Left(NetworkError.Timeout(1, "partial")))
-              assertEquals(cleaned, Some(()), "cancellation has completed before timeout returns")
-            }
-            // Immediate reuse must acquire the same receive lock and retain its buffered prefix.
-            resumed <- (s.recv(65536)(exactly(4)), c.send(hex("0304"))).parTupled.map(_._1)
-            _ <- c.send(hex("0506"))
-            next <- s.recv(65536)(exactly(2))
-          yield (resumed, next)
+    TestControl
+      .executeEmbed {
+        Peers.typed {
+          Peers.linked(protocols = Set(1)).use { (client, server) =>
+            for
+              c <- client.channel(1)
+              s <- server.channel(1)
+              cancelled <- Deferred[IO, Unit]
+              _ <- c.send(hex("0102"))
+              _ <- c.flush
+              expired <- Peers.typed {
+                Timed.within(1.second, 1, "partial")(
+                  s.recv(65536)(exactly(4)).onCancel(cancelled.complete(()).void)
+                )
+              }
+              cleaned <- cancelled.tryGet
+              _ <- IO {
+                assertEquals(expired, Left(NetworkError.Timeout(1, "partial")))
+                assertEquals(cleaned, Some(()), "cancellation has completed before timeout returns")
+              }
+              // Immediate reuse must acquire the same receive lock and retain its buffered prefix.
+              resumed <- (s.recv(65536)(exactly(4)), c.send(hex("0304"))).parTupled.map(_._1)
+              _ <- c.send(hex("0506"))
+              next <- s.recv(65536)(exactly(2))
+            yield (resumed, next)
+          }
         }
       }
-    }.map(result => assertEquals(result, Right((hex("01020304"), hex("0506")))))
+      .map(result => assertEquals(result, Right((hex("01020304"), hex("0506")))))
