@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.protocol
 
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 
 import ChainSync.{DecodeResult, Role}
 
@@ -77,11 +77,109 @@ class UpstreamGenericCodecCoverageSuite extends munit.FunSuite:
     )
     .fold(e => fail(e.toString), identity)
 
+  private def array(node: Node): Vector[Node] = node.value match
+    case Value.Arr(items) => items
+    case other            => fail(s"expected a native message array, got $other")
+
+  private def uint(node: Node): BigInt = node.value match
+    case Value.UInt(value) => value
+    case other             => fail(s"expected a native unsigned field, got $other")
+
+  private def bool(node: Node): Boolean = node.value match
+    case Value.Bool(value) => value
+    case other             => fail(s"expected a native boolean field, got $other")
+
+  /** The retained constructors come from the native generator; a separate CBOR parser supplies
+    * their field positions and exact item slices. This does not call a protocol decoder or encoder,
+    * so an inverse pair of field swaps cannot satisfy both message equality and wire round-trip.
+    */
+  private def fields(sample: Sample): Vector[Node] =
+    array(
+      Cbor
+        .decode(sample.wire, Cbor.Limits(allowFloats = true))
+        .fold(e => fail(e.toString), identity)
+    )
+
+  private def expectedChainSync(sample: Sample): ChainSyncEngine.Message[Bytes, Bytes, Bytes] =
+    import ChainSyncEngine.Message.*
+    val items = fields(sample)
+    sample.constructor match
+      case "request-next"        => RequestNext
+      case "await-reply"         => AwaitReply
+      case "roll-forward"        => RollForward(items(1).original, items(2).original)
+      case "roll-backward"       => RollBackward(items(1).original, items(2).original)
+      case "find-intersect"      => FindIntersect(array(items(1)).map(_.original))
+      case "intersect-found"     => IntersectFound(items(1).original, items(2).original)
+      case "intersect-not-found" => IntersectNotFound(items(1).original)
+      case "done"                => Done
+      case other                 => fail(s"unknown native ChainSync constructor $other")
+
+  private def expectedBlockFetch(sample: Sample): BlockFetchEngine.Message[Bytes, Bytes] =
+    import BlockFetchEngine.Message.*
+    val items = fields(sample)
+    sample.constructor match
+      case "request-range" => RequestRange(items(1).original, items(2).original)
+      case "client-done"   => ClientDone
+      case "start-batch"   => StartBatch
+      case "no-blocks"     => NoBlocks
+      case "block"         => Block(items(1).original)
+      case "batch-done"    => BatchDone
+      case other           => fail(s"unknown native BlockFetch constructor $other")
+
+  private def expectedLocalStateQuery(sample: Sample): LocalStateQueryEngine.Message[Bytes] =
+    import LocalStateQueryEngine.{Message, Target}
+    val items = fields(sample)
+    sample.constructor match
+      case "acquire-specific-point"     => Message.Acquire(Target.Specific(items(1).original))
+      case "acquire-volatile-tip"       => Message.Acquire(Target.VolatileTip)
+      case "acquire-immutable-tip"      => Message.Acquire(Target.ImmutableTip)
+      case "reacquire-specific-point"   => Message.ReAcquire(Target.Specific(items(1).original))
+      case "reacquire-volatile-tip"     => Message.ReAcquire(Target.VolatileTip)
+      case "reacquire-immutable-tip"    => Message.ReAcquire(Target.ImmutableTip)
+      case "acquired"                   => Message.Acquired
+      case "failure-point-too-old"      => Message.Failed(LocalStateQuery.Failure.PointTooOld)
+      case "failure-point-not-on-chain" => Message.Failed(LocalStateQuery.Failure.PointNotOnChain)
+      case "query"                      => Message.Query(items(1).original)
+      case "result"                     => Message.Result(items(1).original)
+      case "release"                    => Message.Release
+      case "done"                       => Message.Done
+      case other => fail(s"unknown native LocalStateQuery constructor $other")
+
+  private def expectedTxSubmission(sample: Sample): TxSubmission2Engine.Message[Bytes, Bytes] =
+    import TxSubmission2Engine.{Message, Offer}
+    val items = fields(sample)
+    sample.constructor match
+      case "init" => Message.Init
+      case "done" => Message.Done
+      case "request-ids-blocking" | "request-ids-nonblocking" =>
+        Message.RequestIds(bool(items(1)), uint(items(2)).toInt, uint(items(3)).toInt)
+      case "reply-ids" =>
+        Message.ReplyIds(array(items(1)).map { item =>
+          val pair = array(item)
+          Offer(pair(0).original, uint(pair(1)).toLong)
+        })
+      case "request-txs" => Message.RequestTxs(array(items(1)).map(_.original))
+      case "reply-txs"   => Message.ReplyTxs(array(items(1)).map(_.original))
+      case other         => fail(s"unknown native TxSubmission2 constructor $other")
+
+  private def expectedPeerSharing(sample: Sample): PeerSharingEngine.Message[Bytes] =
+    import PeerSharingEngine.Message.*
+    val items = fields(sample)
+    sample.constructor match
+      case "request" =>
+        ShareRequest(
+          PeerSharing.Values.Amount.from(uint(items(1)).toInt).getOrElse(fail("native amount"))
+        )
+      case "peers" => SharePeers(array(items(1)).map(_.original))
+      case "done"  => Done
+      case other   => fail(s"unknown native PeerSharing constructor $other")
+
   private def verify[A](
       sample: Sample,
       partitions: Boolean,
       decode: Bytes => DecodeResult[A],
       encode: A => Either[ProtocolError, Bytes],
+      expected: A,
       constructor: A => String
   ): Unit =
     val complete = decode(sample.wire)
@@ -90,6 +188,7 @@ class UpstreamGenericCodecCoverageSuite extends munit.FunSuite:
         assertEquals(consumed, sample.wire.size, s"complete original row ${sample.seed}")
         value
       case other => fail(s"original mock-domain row ${sample.seed} must decode: $other")
+    assertEquals(value, expected, s"independent native message fields ${sample.seed}")
     assertEquals(constructor(value), sample.constructor, s"original constructor ${sample.seed}")
     assertEquals(encode(value), Right(sample.wire), s"exact original bytes ${sample.seed}")
     assertEquals(decode(sample.wire ++ bytes("00")), complete, s"preserve suffix ${sample.seed}")
@@ -128,6 +227,7 @@ class UpstreamGenericCodecCoverageSuite extends munit.FunSuite:
           name.endsWith("-splits"),
           ChainSyncEngine.decodePrefix(state, role, _, point, tip, header),
           ChainSyncEngine.encode(state, role, _, point, tip, header),
+          expectedChainSync(sample),
           {
             case ChainSyncEngine.Message.RequestNext          => "request-next"
             case ChainSyncEngine.Message.AwaitReply           => "await-reply"
@@ -165,6 +265,7 @@ class UpstreamGenericCodecCoverageSuite extends munit.FunSuite:
           name.endsWith("-splits"),
           BlockFetchEngine.decodePrefix(state, role, _, fetchPoint, block),
           BlockFetchEngine.encode(state, role, _, fetchPoint, block),
+          expectedBlockFetch(sample),
           {
             case BlockFetchEngine.Message.RequestRange(_, _) => "request-range"
             case BlockFetchEngine.Message.ClientDone         => "client-done"
@@ -200,6 +301,7 @@ class UpstreamGenericCodecCoverageSuite extends munit.FunSuite:
           name.endsWith("-splits"),
           LocalStateQueryEngine.decodePrefix(state, role, _, point),
           LocalStateQueryEngine.encode(state, role, _, point),
+          expectedLocalStateQuery(sample),
           {
             case LocalStateQueryEngine.Message.Acquire(t)   => s"acquire-${target(t)}"
             case LocalStateQueryEngine.Message.ReAcquire(t) => s"reacquire-${target(t)}"
@@ -248,6 +350,7 @@ class UpstreamGenericCodecCoverageSuite extends munit.FunSuite:
           name.endsWith("-splits") || name.endsWith("-annotated"),
           tx.decodePrefix(state, role, _),
           tx.encode(state, role, _),
+          expectedTxSubmission(sample),
           {
             case TxSubmission2Engine.Message.Init                    => "init"
             case TxSubmission2Engine.Message.Done                    => "done"
@@ -280,6 +383,7 @@ class UpstreamGenericCodecCoverageSuite extends munit.FunSuite:
         true,
         PeerSharingEngine.decodePrefix(state, role, _, peer),
         PeerSharingEngine.encode(state, role, _, peer),
+        expectedPeerSharing(sample),
         {
           case PeerSharingEngine.Message.ShareRequest(_) => "request"
           case PeerSharingEngine.Message.SharePeers(_)   => "peers"

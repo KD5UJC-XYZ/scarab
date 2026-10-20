@@ -41,8 +41,10 @@ original rows in total**, without changing a fixture byte or native verdict.
 | TxSubmission2 | 24 | 13 / 11 | 24 annotated + 24 splits |
 | PeerSharing | 24 | 18 / 6 | 0 |
 
-Each row checks complete consumption, the original constructor and exact re-encoding. Split and
-annotated observations check every distinct byte prefix: the prefix API is stateless, so every
+Each row checks complete consumption, the original constructor, every decoded message field and
+exact re-encoding. Expected fields come from a separate general CBOR parse of the unchanged native
+wire, retaining each opaque item's original bytes; they do not use the production protocol decoder
+or its encoder. Split and annotated observations check every distinct byte prefix: the prefix API is stateless, so every
 accumulated prefix of any ordered two/three-way partition is covered without repeating identical
 decodes. Suffix and truncation controls remain explicit. Mock integer hashes, peers and transaction
 items retain their complete original CBOR representation; none is converted into a Cardano value.

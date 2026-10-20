@@ -91,8 +91,9 @@ and `fixtures/licenses/ouroboros-network-NOTICE`.
 `UpstreamGenericCodecCoverageSuite` now executes every retained original ChainSync, BlockFetch,
 LocalStateQuery, TxSubmission2 and PeerSharing codec row through the shared production generic
 engines. This includes all base, split, binary-direction and separately seeded annotated rows:
-752 total, with immutable fixture hashes and native verdicts. It verifies exact original bytes and
-every distinct prefix for split observations. See [the row inventory](COVERAGE.md) for counts.
+752 total, with immutable fixture hashes and native verdicts. It verifies exact original bytes,
+message fields independently extracted by the general CBOR parser, and every distinct prefix for
+split observations. See [the row inventory](COVERAGE.md) for counts.
 The typed compatibility counts below describe the **strict Cardano projection** only; its refusals
 remain tested separately and no longer exclude the original mock rows from generic execution.
 
