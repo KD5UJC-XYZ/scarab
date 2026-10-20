@@ -26,9 +26,10 @@ def compare(first, second):
     if sha256(first) == sha256(second):
         return
     with zipfile.ZipFile(first) as left, zipfile.ZipFile(second) as right:
-        names = sorted(set(left.namelist()) | set(right.namelist()))
-        changed = [name for name in names if name not in left.namelist()
-                   or name not in right.namelist() or left.read(name) != right.read(name)]
+        left_names, right_names = set(left.namelist()), set(right.namelist())
+        names = sorted(left_names | right_names)
+        changed = [name for name in names if name not in left_names
+                   or name not in right_names or left.read(name) != right.read(name)]
     detail = ", ".join(changed[:20]) or "JAR metadata or entry ordering"
     raise ValueError(f"artifacts differ: {detail}")
 

@@ -19,7 +19,8 @@ checkout, dependency cache, launcher script or external classpath.
 
 The pinned [sbt-assembly plugin](https://github.com/sbt/sbt-assembly#usage) supplies assembly and
 repeatable entry ordering. Fixed package timestamps, relative compiler source paths and stable
-generated-source ordering remove build-path and output-state differences. BuildInfo retains source
+generated-source ordering remove build-path and output-state differences. Explicit enum export
+selectors keep generated forwarder ordering stable. BuildInfo retains source
 identity; `META-INF/scarab/build-info.properties` records the full commit, project/Scala/sbt versions
 and JDK vendor/runtime. Direct `node/assembly` invocation packages current working files while
 identifying HEAD; use the immutable-source wrapper below for verified release-candidate identity.
