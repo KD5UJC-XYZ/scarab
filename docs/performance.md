@@ -2749,3 +2749,31 @@ Private profile summary SHA-256:
 probe source `b93ed1804e9432c0e79b398f2409f14237fb27e344f11607b5677e422489d49d`;
 baseline source `b2d7bf0edf4898bc8ab0deeb71fbb25648c7e8963c2d321f7ec9cf6a1f53b3c1`.
 Full states and run logs remain outside Git under `/tmp/scarab/268-likelihood`.
+
+## 37. Coordinated BlockFetch service model (#148)
+
+2026-10-20, JDK21 Docker, `SCARAB_BENCH=1 node/testOnly *FetchCoordinationBenchSuite`,
+fixed TestControl seed 13. The production coordinator serves 24 advertised 32KiB
+blocks through 20ms and 400ms RTT virtual peers, fixed 4Mbps serialization and at
+most three outstanding requests per peer. Each peer has one serialized body writer;
+parallel requests cannot multiply its link bandwidth. The comparison baseline is an
+explicit idle-worker/serial-request model, not a run of the historical executable.
+
+| Policy | All blocks available (virtual ms) | Fully drained (virtual ms) | Duplicate bytes |
+|---|---:|---:|---:|
+| Modeled idle/serial baseline | 1324.288 | 1324.288 | 0 |
+| Bulk, target 1 | 1186.432 | 1186.432 | 0 |
+| Bulk, target 2 | 1186.432 | 1186.432 | 0 |
+| Deadline, target 1 | 1592.864 | 1592.864 | 0 |
+| Deadline, target 2 | 1592.864 | 1710.720 | 655360 |
+
+Bulk's preferred-peer handover briefly has two active peers even with target 1,
+as permitted upstream. The default deadline target stays on the fast peer; target 2
+can duplicate traffic without improving this workload's tip time. Base payload is
+786432 bytes. Per-peer peaks are three requests and 393216 estimated bytes, within
+the GSV window including complete-block overshoot; all credit drains. These are
+controlled service-model results, not host throughput, a mainnet forecast or an
+argument to change the reference defaults. They support retaining default target 1
+and exposing `MaxConcurrencyBulkSync`/`MaxConcurrencyDeadline` for measured tuning.
+The former real two-peer observations above remain historical evidence for the old
+range-per-idle-connection policy.

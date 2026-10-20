@@ -260,7 +260,8 @@ What the configuration does:
 | `PeerSharing` | used by both handshakes and the governor; absent means on for a relay and off with `--forge`, an explicit Boolean wins. Both peers must enable it. Eligible connected peers are asked below the known target; only advertised, previously connected peers with no failures are shared (G1.4) |
 | `ExperimentalProtocolsEnabled` (also `TestEnableDevelopmentNetworkProtocols`, which must agree) | the highest node-to-node version the node offers and accepts (G4): absent or `false`, **15**, the latest release of cardano-node 11.1.3 (14 and 15 are offered, as the reference does, `Cardano/Node.hs` 456 and `limitToLatestReleasedVersion`); `true`, **16**, which adds the Peras flag to the version data (always sent as false: the node has no Peras mini-protocols). A relay or pool of the reference needs the same key to agree on 16. The public Leios testnet sets it; its relay accepts 14 to 16. Node-to-client versions 16 to 23 are always accepted. The devnet `relay` scenario takes `--max-ntn-version 16` to turn the key on for the Scala node and the Haskell relay |
 | `SocketPath`, `DatabasePath`, `MempoolCapacityBytesOverride` (a byte count; `NoOverride` leaves the default) | the defaults of `--local-socket`, `--db` and `--mempool-bytes`, with `--config` only; a flag wins |
-| `MaxConcurrencyDeadline` | how many peers may be asked for the same block in the fetch mode deadline (default 1, the reference's: one peer per block); see "Peer selection" |
+| `MaxConcurrencyDeadline` | target active fetching peers in deadline mode (default 1); preferred-peer handover can temporarily exceed it |
+| `MaxConcurrencyBulkSync` | corresponding bulk-sync fetching-peer target (default 1) |
 | `TargetNumberOfRootPeers`, `TargetNumberOfKnownPeers`, `TargetNumberOfEstablishedPeers`, `TargetNumberOfActivePeers`, and the three `...BigLedgerPeers` | the targets of the peer governor (see "Peer selection"); absent keys leave the reference defaults |
 | everything else (`TraceOptions`, `LedgerDB`, ...) | ignored |
 
@@ -346,11 +347,13 @@ The outbound peers are chosen by the peer governor (roadmap G1.1, [design](desig
 - **How long a demotion takes.** A hot peer is deactivated by ending its protocols cleanly, which waits for the peer's next
   blocking TxSubmission2 request and for the ChainSync reply in flight: on the devnet about a minute, at most the 300 s of
   `deactivateTimeout`; then the connection is closed. A churn round's active decrease therefore takes that long.
-- **Fetch mode and BlockFetch.** The node reads the fetch mode every second (`BulkSync` while behind or in the sensitive
-  state, `Deadline` when less than 1000 slots behind the wall clock) and BlockFetch follows it as the reference's decision
-  policy does (`Decision.hs`, `filterNotAlreadyInFlightWithOtherPeers`): in bulk sync a block another session has claimed is
-  not requested, in deadline mode it may be, by up to `MaxConcurrencyDeadline` sessions at once (default 1, the reference's,
-  so the two modes fetch alike unless the key is set), and the first delivery wins.
+- **Fetch mode and BlockFetch.** Bulk sync suppresses duplicate in-flight blocks; deadline mode
+  can fetch the same block through different admitted peers and uses the first delivery.
+  `MaxConcurrencyBulkSync` and `MaxConcurrencyDeadline` are global fetching-peer targets,
+  both defaulting to 1. The pinned preferred-peer handover exception can temporarily exceed
+  a target while old requests drain. Per-peer GSV byte windows and a ten-request pipeline
+  regulate outstanding work. Inbound duplex clients and recovery share the same coordinator.
+  See the [as-built contract](design/block-fetch-coordination.md).
 - **Failures.** A protocol violation, an invalid header or an oversize message makes the peer forgotten (unless it is a local
   root or a bootstrap peer); a network failure, a timeout or a refused connection is backed off: 5 s doubling to 160 s
   (plus or minus 2 s) for connecting, 10 s (plus or minus 2 s) before a peer whose activation failed is activated again. One function decides, `FailurePolicy.classify`
@@ -1706,3 +1709,6 @@ block (stages done, refusals, what the reference's ratification enacted or let e
 
 Recorded results and the commits they were obtained on are in
 [compatibility.md](compatibility.md) (evidence log).
+
+BlockFetch coordination retains bounded candidate histories: individual ChainSync batches
+use at most 2048 requests even when `--read-ahead` is larger. The default 128 is unchanged.
