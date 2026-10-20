@@ -111,11 +111,14 @@ class BlockPoolSuite extends CatsEffectSuite:
       waiting <- pool.take(hash(1)).start
       _ <- IO.sleep(50.millis)
       _ <- end
+      cachedCount <- pool.size
       got <- waiting.joinWithNever
       filled <- pool.take(hash(2))
       held <- pool.size
     yield
       assertEquals(got, None)
+      // size counts cached blocks too: a released claim does not imply an empty live pool.
+      assertEquals(cachedCount, 1)
       // what the session had filled stays for whoever applies it
       assertEquals(filled, Some(block(2)))
       assertEquals(held, 0)

@@ -271,6 +271,8 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         )
         reconnects <- network.use { net =>
           // as in Main: the governor runs beside the node, and ends it only by a fault
+          // Live cache occupancy is not pending-claim ownership. BlockPoolSuite checks
+          // scoped claim release while allowing filled blocks to remain cached.
           net.run.background.use { _ =>
             eventually("our chain reaches the tip")(chainRef.get.map(_.tip))(_ == last.point) *>
               // the stalling peer failed: a typed, logged loss of the connection
@@ -278,8 +280,6 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 case FollowerEvent.Reconnecting(_: PeerError.Unavailable, _) => true
                 case _                                                       => false
               }) <*
-              // what the timed-out session had claimed is not held for ever: nothing waits on it
-              eventually("no claim is left in the pool")(pool.size)(_ == 0) <*
               net.fatal.tryGet.map(fault => assertEquals(fault, None))
           }
         }
@@ -389,8 +389,6 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                   case FollowerEvent.Reconnecting(_: PeerError.InvalidBlock, _) => true
                   case _                                                        => false
                 }) *>
-                // what the failed session had claimed is not held for ever: nothing waits on it
-                eventually("no claim is left in the pool")(pool.size)(_ == 0) <*
                 net.fatal.tryGet.map(fault => assertEquals(fault, None))
             }
           }
