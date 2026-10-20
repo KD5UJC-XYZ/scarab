@@ -16,6 +16,10 @@ class DiffSuite extends FunSuite:
 
   private final case class Record(a: Long, b: String, c: Long)
 
+  private enum Tree derives Diff:
+    case Leaf(value: Long)
+    case Branch(left: Tree, right: Tree)
+
   private given Diff[Record] = Diff.derived[Record]
 
   private val first = Example.First(1)
@@ -34,14 +38,30 @@ class DiffSuite extends FunSuite:
 
   test("a case's Diff is built once per derivation, not once per comparison"):
     val built = new AtomicInteger(0)
-    // Every construction of the case's instance increments the counter. If the sum dispatch derives
-    // a case per comparison, the comparisons drive the counter; with the memo, it is one.
-    given Diff[Example.First] =
-      built.incrementAndGet()
+    given AtomicInteger = built
+    // A conditional given is a factory: unlike a parameterless given, each summon constructs an
+    // instance. The old dispatcher called it per comparison; the memo calls it once per derivation.
+    given firstCase(using counter: AtomicInteger): Diff[Example.First] =
+      val _ = counter.incrementAndGet()
       Diff.leaf(Eq.fromUniversalEquals, (a: Example.First) => a.value.toString)
     val d = Diff.derived[Example]
-    var i = 0
-    while i < 100 do
+    assertEquals(built.get(), 0, "deriving the sum does not force its cases")
+    assert(d.diff(Example.Second("x"), Example.Second("y")).isDefined)
+    assertEquals(built.get(), 0, "comparing another case does not force this case")
+    (0 until 100).foreach { _ =>
       assert(d.diff(first, second).isDefined, "the two cases differ")
-      i += 1
-    assertEquals(built.get, 1, "the case's instance is built once, then reused")
+    }
+    assertEquals(built.get(), 1, "the case's instance is built once, then reused")
+    val other = Diff.derived[Example]
+    assertEquals(built.get(), 1, "a second derivation still initializes lazily")
+    assert(other.diff(first, second).isDefined)
+    assertEquals(built.get(), 2, "each derivation owns its case instance")
+
+  test("recursive enum cases initialize lazily and retain the first nested difference"):
+    val left = Tree.Branch(Tree.Leaf(1), Tree.Branch(Tree.Leaf(2), Tree.Leaf(3)))
+    val equal = Tree.Branch(Tree.Leaf(1), Tree.Branch(Tree.Leaf(2), Tree.Leaf(3)))
+    val right = Tree.Branch(Tree.Leaf(1), Tree.Branch(Tree.Leaf(4), Tree.Leaf(5)))
+    val d = Diff[Tree]
+    assertEquals(d.diff(left, equal).map(_.path.render), None)
+    assertEquals(d.diff(left, right).map(_.path.render), Some("right.left.value"))
+    assertEquals(d.diff(right, left).map(_.path.render), Some("right.left.value"))
