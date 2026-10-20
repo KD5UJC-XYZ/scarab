@@ -306,9 +306,9 @@ object Diff extends LowPriorityDiff:
       else cases(m.ordinal(a))(a, b)
     )
 
-  /** One step per case, in declaration order: the case's instance (made on first use and kept) and
-    * the `ClassTag` check that narrows the values to the case type. A step that does not recognise
-    * the values answers none; the first that does is the case both inhabit.
+  /** One step per case, in ordinal order: the case's instance (made on first use and kept) and the
+    * `ClassTag` check that narrows the values to the case type. The mirror selects the step for the
+    * known ordinal of both values.
     */
   private inline def caseSteps[Ts <: Tuple, A]: List[(A, A) => Option[Difference]] =
     inline erasedValue[Ts] match

@@ -22,6 +22,10 @@ class DiffSuite extends FunSuite:
     case Leaf(value: Long)
     case Branch(left: Tree, right: Tree)
 
+  private enum Mixed derives Diff:
+    case Empty
+    case Full(value: Long)
+
   private given Diff[Record] = Diff.derived[Record]
 
   private val first = Example.First(1)
@@ -86,3 +90,12 @@ class DiffSuite extends FunSuite:
       assertEquals(d.diff(left, right).map(_.path.render), Some("right"))
     }
     assertEquals(built.get(), 2, "each field instance is made once, then reused")
+
+  test("a singleton case's erased class tag does not hide a data case's difference"):
+    val d = Diff[Mixed]
+    assertEquals(d.diff(Mixed.Full(1), Mixed.Full(2)).map(_.path.render), Some("value"))
+    assertEquals(d.diff(Mixed.Full(1), Mixed.Full(1)), None)
+    assertEquals(
+      d.diff(Mixed.Empty, Mixed.Full(1)).map(d => (d.path.render, d.left, d.right)),
+      Some(("", "Empty: Empty", "Full: Full(1)"))
+    )
