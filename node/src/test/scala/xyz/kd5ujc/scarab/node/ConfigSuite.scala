@@ -304,8 +304,12 @@ class ConfigSuite extends FunSuite:
     )
     assertEquals(parsed("preview").settings.maxConcurrencyDeadline, None)
     assert(NodeConfig.parse(with_("MaxConcurrencyDeadline", Json.fromInt(0))).isLeft)
-    assertEquals(NodeConfig.parse(with_("MaxConcurrencyBulkSync", Json.fromInt(3)))
-      .map(_.settings.maxConcurrencyBulkSync), Right(Some(3)))
+    assertEquals(
+      NodeConfig
+        .parse(with_("MaxConcurrencyBulkSync", Json.fromInt(3)))
+        .map(_.settings.maxConcurrencyBulkSync),
+      Right(Some(3))
+    )
     assert(NodeConfig.parse(with_("MaxConcurrencyBulkSync", Json.fromInt(0))).isLeft)
     assert(NodeConfig.parse("[]").isLeft)
     assert(NodeConfig.parse("{").isLeft)

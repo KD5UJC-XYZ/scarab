@@ -83,6 +83,9 @@ object KeepAliveClient:
     Fibers
       .scoped[F, NetworkError, Unit](t => NetworkError.fromThrowable("keep-alive", t)) {
         apply[F](channel, settings)
-          .flatMap(client => (client.ping.flatMap(duration => sample.traverse_(_(duration))) *> Temporal[F].sleep(settings.interval)).foreverM[Unit])
+          .flatMap(client =>
+            (client.ping.flatMap(duration => sample.traverse_(_(duration))) *> Temporal[F]
+              .sleep(settings.interval)).foreverM[Unit]
+          )
       }
       .flatMap(_.fold(mux.abort, _ => Temporal[F].unit))

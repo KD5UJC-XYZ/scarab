@@ -8,6 +8,7 @@ import io.circe.parser.parse
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.network.selection.{BlockFetchPolicy, FetchGsv, FetchMode}
+
 import BlockFetchPolicy.*
 
 /** Exact observations of native Decision.hs, with generated mock headers retained losslessly. */

@@ -24,6 +24,12 @@ class PeerSuite extends ScalaCheckSuite:
     }
   }
 
+  test("large read-ahead settings fit the retained current and queued candidate histories") {
+    assertEquals(Peer.requestDepth(100000, 10000), 2048)
+    assertEquals(Peer.requestDepth(100000, 128), 128)
+    assertEquals(Peer.requestDepth(0, 128), 1)
+  }
+
   private def header(i: Int, bodySize: Long): Header =
     Header.Shelley(
       Era.Babbage,
@@ -32,7 +38,7 @@ class PeerSuite extends ScalaCheckSuite:
       Bytes.wrap(Array.fill(32)(i.toByte)),
       BigInt(i),
       BigInt(i),
-      None,
+      Some(Bytes.wrap(Array.fill(32)((i - 1).toByte))),
       Bytes.empty,
       Bytes.empty,
       HeaderVrf.Praos(VrfCert(Bytes.empty, Bytes.empty)),
@@ -72,6 +78,15 @@ class PeerSuite extends ScalaCheckSuite:
       // two runs are never adjacent: something not owned lies between them
       runs.zip(runs.drop(1)).foreach((a, b) => assert(b.head.blockNo - a.last.blockNo > 1))
     }
+  }
+
+  test("selected fragments never merge across an excluded parent") {
+    val first = header(1, 1000L)
+    val third = header(3, 1000L)
+    assertEquals(
+      Peer.ownedRuns(Vector(first -> true, third -> true)),
+      Vector(Vector(first), Vector(third))
+    )
   }
 
   test("what the network layer raises is a peer error, and a peer that broke a rule is forgotten") {

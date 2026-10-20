@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.network.selection
 
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
+
 import BlockFetchPolicy.*
 import FetchGsv.*
 

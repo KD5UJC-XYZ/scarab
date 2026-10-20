@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.ledger.{
   StorageError,
   ValidationError
 }
-import xyz.kd5ujc.scarab.network.Fibers
+import xyz.kd5ujc.scarab.network.{Fibers, NetworkError}
 
 /** What a fiber of the pipeline of a session ends with, as a value: the peer or the connection
   * failed, or something that is not ours threw (a library, a bug).
@@ -141,6 +141,21 @@ object SessionEnd:
     case Failed(e)   => Some(e)
     case Rejected(e) => Some(PeerError.InvalidBlock(e))
     case _           => None
+
+  /** Install the classified cause before resource cleanup cancels outstanding wire requests. */
+  private[node] def networkFailure(end: SessionEnd): Option[NetworkError] = end match
+    case Failed(PeerError.NoIntersection) => None
+    case Failed(error) => Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error)))
+    case Rejected(error) =>
+      Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(PeerError.InvalidBlock(error))))
+    case Unavailable(error) =>
+      Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(Fatal.Unavailable(error))))
+    case Storage(error) =>
+      Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(Fatal.Storage(error))))
+    case Internal(error) =>
+      Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(Fatal.Internal(error))))
+    case Defect(cause)                     => Some(NetworkError.Defect(cause))
+    case Returned | Cancelled | Stopped(_) => None
 
   /** The scope of a session's fiber has the outcome as its error. */
   def raiseOf[F[_]](scope: Raise[F, SessionEnd]): Raise[F, PeerError] =

@@ -89,8 +89,8 @@ final case class PeerTargetOverrides(
   * @param syncPeerTargets
   *   `SyncTargetNumberOf...Peers`: Genesis-mode sync targets, when the file sets any.
   * @param maxConcurrencyDeadline
-  *   `MaxConcurrencyDeadline` (`POM.hs` 345): the target number of active fetching peers in deadline
-  *   mode; preferred-peer handover follows the reference. Absent is the default, 1.
+  *   `MaxConcurrencyDeadline` (`POM.hs` 345): the target number of active fetching peers in
+  *   deadline mode; preferred-peer handover follows the reference. Absent is the default, 1.
   * @param maxConcurrencyBulkSync
   *   `MaxConcurrencyBulkSync`: the corresponding bulk-sync target (default 1).
   */
@@ -351,10 +351,17 @@ object NodeConfig:
             )
           )
         )
-      bulkConcurrency <- k.opt[Int]("MaxConcurrencyBulkSync").flatMap(n =>
-        n.traverse(c => Either.cond(c >= 1, c,
-          ConfigError(ConfigProblem.NonPositive("MaxConcurrencyBulkSync", BigDecimal(c)))))
-      )
+      bulkConcurrency <- k
+        .opt[Int]("MaxConcurrencyBulkSync")
+        .flatMap(n =>
+          n.traverse(c =>
+            Either.cond(
+              c >= 1,
+              c,
+              ConfigError(ConfigProblem.NonPositive("MaxConcurrencyBulkSync", BigDecimal(c)))
+            )
+          )
+        )
       minBigLedgerPeers <- k.opt[Int]("MinBigLedgerPeersForTrustedState").flatMap {
         case None                     => Right(5)
         case Some(value) if value > 0 => Right(value)

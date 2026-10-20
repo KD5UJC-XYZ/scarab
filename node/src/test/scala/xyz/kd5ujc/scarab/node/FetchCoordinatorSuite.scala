@@ -12,7 +12,13 @@ import scala.concurrent.duration.*
 
 class FetchCoordinatorSuite extends FailsOnUncaught:
   private def header(n: Int): Header = Header.Byron(
-    Bytes.empty, Bytes.wrap(Array(n.toByte)), false, 0, n, 21600, n,
+    Bytes.empty,
+    Bytes.wrap(Array(n.toByte)),
+    false,
+    0,
+    n,
+    21600,
+    n,
     Some(Bytes.wrap(Array((n - 1).toByte)))
   )
 
@@ -26,11 +32,15 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
             held <- Deferred[IO, Unit]
             release <- Deferred[IO, Unit]
             seen <- Ref.of[IO, Vector[Int]](Vector.empty)
-            first <- a.reserve(Vector(header(1)), FetchMode.BulkSync)
-              .use(_ => held.complete(()) *> release.get).start
+            first <- a
+              .reserve(Vector(header(1)), FetchMode.BulkSync)
+              .use(_ => held.complete(()) *> release.get)
+              .start
             _ <- held.get
-            second <- b.reserve(Vector(header(2)), FetchMode.BulkSync)
-              .use(allocation => seen.update(_ ++ allocation.headers.map(_.slot.toInt))).start
+            second <- b
+              .reserve(Vector(header(2)), FetchMode.BulkSync)
+              .use(allocation => seen.update(_ ++ allocation.headers.map(_.slot.toInt)))
+              .start
             _ <- IO.sleep(1.second)
             before <- seen.get
             _ <- release.complete(())
@@ -52,7 +62,8 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
             slow.reserve(Vector(header(1)), FetchMode.BulkSync).use { _ =>
               val measured = FetchGsv.fromSample(0, FetchGsv.PicosPerSecond / 100)
               fast.announce(Some(header(2)), measured) *>
-                fast.reserve(Vector(header(2)), FetchMode.BulkSync)
+                fast
+                  .reserve(Vector(header(2)), FetchMode.BulkSync)
                   .use(a => IO(assertEquals(a.headers.map(_.slot), Vector(BigInt(2)))))
             }
         }
@@ -69,14 +80,19 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
             _ <- b.announce(Some(header(2)), FetchGsv.default)
             held <- Deferred[IO, Unit]
             release <- Deferred[IO, Unit]
-            first <- a.reserve(Vector(header(1)), FetchMode.BulkSync)
-              .use(_ => held.complete(()) *> release.get).start
+            first <- a
+              .reserve(Vector(header(1)), FetchMode.BulkSync)
+              .use(_ => held.complete(()) *> release.get)
+              .start
             _ <- held.get
             waiting <- b.reserve(Vector(header(2)), FetchMode.BulkSync).use(_ => IO.unit).start
             _ <- IO.sleep(1.second) *> waiting.cancel
             _ <- release.complete(()) *> first.joinWithNever
-            _ <- b.reserve(Vector(header(3)), FetchMode.BulkSync)
-              .use(allocation => IO(assertEquals(allocation.headers.map(_.slot), Vector(BigInt(3)))))
+            _ <- b
+              .reserve(Vector(header(3)), FetchMode.BulkSync)
+              .use(allocation =>
+                IO(assertEquals(allocation.headers.map(_.slot), Vector(BigInt(3))))
+              )
           yield ()
         }
       }
@@ -85,24 +101,29 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
 
   test("deadline targets fetching peers globally across disjoint blocks") {
     TestControl.executeEmbed {
-      FetchCoordinator.create[IO](BlockFetchPolicy.Config(deadlineConcurrency = 1)).flatMap { coordinator =>
-        (coordinator.session(0), coordinator.session(1)).tupled.use { (a, b) =>
-          for
-            _ <- a.announce(Some(header(1)), FetchGsv.default)
-            _ <- b.announce(Some(header(2)), FetchGsv.default)
-            held <- Deferred[IO, Unit]
-            release <- Deferred[IO, Unit]
-            admitted <- Ref.of[IO, Boolean](false)
-            first <- a.reserve(Vector(header(1)), FetchMode.Deadline)
-              .use(_ => held.complete(()) *> release.get).start
-            _ <- held.get
-            second <- b.reserve(Vector(header(2)), FetchMode.Deadline)
-              .use(_ => admitted.set(true)).start
-            _ <- IO.sleep(1.second)
-            early <- admitted.get
-            _ <- release.complete(()) *> first.joinWithNever *> second.joinWithNever
-          yield assert(!early)
-        }
+      FetchCoordinator.create[IO](BlockFetchPolicy.Config(deadlineConcurrency = 1)).flatMap {
+        coordinator =>
+          (coordinator.session(0), coordinator.session(1)).tupled.use { (a, b) =>
+            for
+              _ <- a.announce(Some(header(1)), FetchGsv.default)
+              _ <- b.announce(Some(header(2)), FetchGsv.default)
+              held <- Deferred[IO, Unit]
+              release <- Deferred[IO, Unit]
+              admitted <- Ref.of[IO, Boolean](false)
+              first <- a
+                .reserve(Vector(header(1)), FetchMode.Deadline)
+                .use(_ => held.complete(()) *> release.get)
+                .start
+              _ <- held.get
+              second <- b
+                .reserve(Vector(header(2)), FetchMode.Deadline)
+                .use(_ => admitted.set(true))
+                .start
+              _ <- IO.sleep(1.second)
+              early <- admitted.get
+              _ <- release.complete(()) *> first.joinWithNever *> second.joinWithNever
+            yield assert(!early)
+          }
       }
     }
   }

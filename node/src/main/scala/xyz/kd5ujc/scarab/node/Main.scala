@@ -774,11 +774,14 @@ object Main extends IOApp:
                 case Peer.Observation.HeadersArrived(_, _) | Peer.Observation.BlocksArrived(_, _) =>
                   IO.unit)
             // blocks fetched ahead, shared by the sessions of all peers: one peer fetches each block
+            fetchSalt <- cats.effect.std.Random.scalaUtilRandom[IO].flatMap(_.nextLong)
             blockPool <- BlockPool.create[IO](
               BlockPool.FetchPolicy(
                 deadlineConcurrency = setup.config.settings.maxConcurrencyDeadline.getOrElse(1),
-                bulkConcurrency = setup.config.settings.maxConcurrencyBulkSync.getOrElse(1)
-              )
+                bulkConcurrency = setup.config.settings.maxConcurrencyBulkSync.getOrElse(1),
+                peerSalt = fetchSalt
+              ),
+              follower.fetchSelection
             )
             // the connection manager (G2): one connection per peer address, limits, accounting
             manager <- ConnectionManager.create[IO](
@@ -896,7 +899,9 @@ object Main extends IOApp:
               (phase, event) =>
                 measured.gsm(phase) *> logged(NodeEvent.GsmTransition(phase, event)),
               phase => measured.gsm(phase),
-              mode => measured.fetchMode(mode) *> logged(NodeEvent.FetchModeChanged(mode)),
+              mode =>
+                blockPool.fetchCoordinator.setMode(mode) *>
+                  measured.fetchMode(mode) *> logged(NodeEvent.FetchModeChanged(mode)),
               marker,
               LedgerPeersSource.fromChain[IO, MirrorState](ref.get),
               sharing = Some(sharing),

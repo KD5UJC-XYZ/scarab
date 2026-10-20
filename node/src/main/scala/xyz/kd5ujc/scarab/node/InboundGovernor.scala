@@ -91,6 +91,24 @@ final class InboundGovernor[F[_]: Async] private (
           .takeRight(InboundGovernor.RetainedSessions - live.size)
     }
 
+  private def reportFatal(remote: SocketAddress[IpAddress], problem: Fatal): F[Unit] =
+    F.uncancelable { _ =>
+      sessionTable
+        .modify { table =>
+          val key = remote.toString
+          val current = table.getOrElse(key, InboundGovernor.Session(key))
+          val already = current.ended.contains(InboundGovernor.SessionFailure.Fatal(problem))
+          (
+            table.updated(
+              key,
+              current.copy(ended = Some(InboundGovernor.SessionFailure.Fatal(problem)))
+            ),
+            !already
+          )
+        }
+        .flatMap(first => fatal(problem).whenA(first))
+    }
+
   /** Serve one accepted connection until it ends; returns why it ended. Never raises. */
   def serve(bearer: Bearer[F], remote: SocketAddress[IpAddress]): F[ConnectionEnd] =
     Handle
@@ -220,13 +238,18 @@ final class InboundGovernor[F[_]: Async] private (
           .fold[NetworkError.Closure](
             NetworkError.Closure.Aborted
           )(NetworkError.Closure.AbortedBy(_))
-        update(remote)(_.copy(ended = Some(why))) *>
+        (why match
+          case InboundGovernor.SessionFailure.Fatal(problem) => reportFatal(remote, problem)
+          case _ => update(remote)(_.copy(ended = Some(why)))
+        ) *>
           emit(remote, InboundEvent.SessionEnded(why, drop)) *>
           mux.abort(NetworkError.BearerClosed(closure)).whenA(drop)
       }
       _ <- disposition match
         case Disposition.StopNode(f) =>
-          fatal(f) *> mux.abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(f)))
+          reportFatal(remote, f) *> mux.abort(
+            NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(f))
+          )
         case _ => F.unit
     yield ()
 
@@ -239,9 +262,58 @@ final class InboundGovernor[F[_]: Async] private (
   )(using outer: Raise[F, NodeError]): F[Unit] =
     Handle
       .allow[NodeError] {
+        val caller = summon[Raise[F, NodeError]]
         Peer
-          .over(connection, config.peer, prepare, headers, observe, pool, fetchMode)
-          .use(peer => follow(counted(remote, peer)))
+          .over(
+            connection,
+            config.peer.copy(address = SocketAddress(remote.host, remote.port)),
+            prepare,
+            headers,
+            observe,
+            pool,
+            fetchMode,
+            pipelineFailed = Some {
+              case Fault.Failed(error) =>
+                update(remote)(s =>
+                  if s.ended.isDefined then s
+                  else s.copy(ended = Some(InboundGovernor.SessionFailure.Peer(error)))
+                )
+              case Fault.Defect(cause) =>
+                reportFatal(remote, Fatal.Defect(cause))
+            }
+          )
+          .use { peer =>
+            SessionEnd
+              .scoped(node) { (_, _) ?=>
+                follow(counted(remote, peer)).as(SessionEnd.Returned)
+              }
+              .flatMap { end =>
+                val record = FailurePolicy.disposition(end) match
+                  case Disposition.StopNode(problem) =>
+                    reportFatal(remote, problem)
+                  case Disposition.Forget | Disposition.Backoff =>
+                    SessionEnd
+                      .peerError(end)
+                      .filterNot(_ == PeerError.NoIntersection)
+                      .traverse_(problem =>
+                        update(remote)(
+                          _.copy(ended = Some(InboundGovernor.SessionFailure.Peer(problem)))
+                        )
+                      )
+                  case Disposition.Settled => F.unit
+                record *> SessionEnd
+                  .networkFailure(end)
+                  .traverse_(connection.mux.abort) *> (end match
+                  case SessionEnd.Failed(error)      => caller.raise[NodeError, Unit](error)
+                  case SessionEnd.Rejected(error)    => caller.raise[NodeError, Unit](error)
+                  case SessionEnd.Unavailable(error) => caller.raise[NodeError, Unit](error)
+                  case SessionEnd.Storage(error)     => caller.raise[NodeError, Unit](error)
+                  case SessionEnd.Internal(error)    => caller.raise[NodeError, Unit](error)
+                  case SessionEnd.Defect(error)      => F.raiseError[Unit](error)
+                  case SessionEnd.Cancelled          => F.canceled *> F.never[Unit]
+                  case SessionEnd.Returned | SessionEnd.Stopped(_) => F.unit)
+              }
+          }
           .as(Option.empty[NodeError])
       }
       .rescue(e => F.pure(Some(e)))

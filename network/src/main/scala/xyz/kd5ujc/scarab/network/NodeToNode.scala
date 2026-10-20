@@ -208,12 +208,18 @@ object NodeToNode:
     for
       performance <- Resource.eval(Ref.of[F, FetchGsv.PeerGsv](FetchGsv.default))
       keepAliveChannel <- Resource.eval(mux.channel(Protocols.KeepAlive, role))
-      _ <- KeepAliveClient.background(keepAliveChannel, mux, settings.keepAlive,
-        Some(duration => Async[F].monotonic.flatMap { end =>
-          val endPicos = BigInt(end.toNanos) * 1000
-          val measured = FetchGsv.fromSample(endPicos - BigInt(duration.toNanos) * 1000, endPicos)
-          performance.update(previous => measured.update(previous))
-        }))
+      _ <- KeepAliveClient.background(
+        keepAliveChannel,
+        mux,
+        settings.keepAlive,
+        Some(duration =>
+          Async[F].monotonic.flatMap { end =>
+            val endPicos = BigInt(end.toNanos) * 1000
+            val measured = FetchGsv.fromSample(endPicos - BigInt(duration.toNanos) * 1000, endPicos)
+            performance.update(previous => measured.update(previous))
+          }
+        )
+      )
       sharing <- Resource.eval(
         Option
           .when(peerSharing)(())
@@ -223,7 +229,16 @@ object NodeToNode:
               .flatMap(PeerSharingClient(_, settings.peerSharing))
           )
       )
-    yield WarmConnection(version, mux, role, codec, settings, sharing, duplex, Some(performance.get))
+    yield WarmConnection(
+      version,
+      mux,
+      role,
+      codec,
+      settings,
+      sharing,
+      duplex,
+      Some(performance.get)
+    )
 
   /** Our own clients (ChainSync, BlockFetch, KeepAlive and, with `transactions`, TxSubmission2) on
     * an established multiplexer, as the initiator side of each mini-protocol. A connection we

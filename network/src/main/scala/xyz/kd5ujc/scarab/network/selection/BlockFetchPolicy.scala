@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.network.selection
 
 import xyz.kd5ujc.scarab.codec.Bytes
+
 import FetchGsv.PeerGsv
 
 /** Praos fetch decisions from ouroboros-network 2fb69829, BlockFetch/Decision.hs

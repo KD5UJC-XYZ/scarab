@@ -7,6 +7,7 @@ import cats.Functor
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.ValidationError
+import xyz.kd5ujc.scarab.consensus.ChainSelection
 import xyz.kd5ujc.scarab.network.selection.{BlockFetchPolicy, FetchMode}
 import scala.concurrent.duration.*
 
@@ -16,12 +17,10 @@ import scala.concurrent.duration.*
   * sync, ouroboros-network `Ouroboros.Network.BlockFetch.Decision`), and the session that applies a
   * block takes it whichever peer it came from, waiting if that peer has not delivered it yet.
   *
-  * The fetch mode decides whether a block that another session holds a claim on can be claimed too.
-  * In bulk sync it cannot. In deadline mode the reference does not filter the blocks in flight with
-  * other peers (`Decision.hs` 659-662 of ouroboros-network main, 1.3.0.0), and bounds the number of
-  * peers fetching at once by `maxConcurrencyDeadline` (`fetchRequestDecision`, 1100-1120); here the
-  * same block can be claimed by up to [[BlockPool.FetchPolicy.deadlineConcurrency]] sessions, and
-  * the first to deliver it wins (a later delivery is dropped).
+  * The fetch mode decides whether another admitted session may also claim a block. Bulk sync keeps
+  * claims exclusive; deadline mode retains the first delivery. [[FetchCoordinator]] owns the global
+  * fetching-peer targets, preferred-peer handover and per-peer outstanding windows, rather than
+  * imposing a second, incompatible per-block duplicate cap here.
   *
   * A claim that is not filled (the connection failed, the peer lacks the block) is released, and a
   * session waiting for it fetches the block itself. Blocks that nobody takes (a candidate that was
@@ -270,7 +269,8 @@ object BlockPool:
   final case class FetchPolicy(
       deadlineConcurrency: Int = 1,
       bulkConcurrency: Int = 1,
-      maxRequestsPerPeer: Int = 10
+      maxRequestsPerPeer: Int = 10,
+      peerSalt: Long = 0L
   )
 
   /** A released source remains accountable for at most this window, including a block already taken
@@ -330,16 +330,40 @@ object BlockPool:
   def create[F[_]: Async](policy: FetchPolicy): F[BlockPool[F]] =
     create(policy, AttributionPolicy())
 
+  def create[F[_]: Async](
+      policy: FetchPolicy,
+      selection: F[ChainSelection.Local]
+  ): F[BlockPool[F]] =
+    create(policy, AttributionPolicy(), Some(selection))
+
   private[node] def create[F[_]: Async](
       policy: FetchPolicy,
-      attribution: AttributionPolicy
+      attribution: AttributionPolicy,
+      selection: Option[F[ChainSelection.Local]] = None
   ): F[BlockPool[F]] =
     Ref
       .of[F, Slots[F]](Slots(Map.empty, 0L, 0L, Map.empty, 0, None))
       .flatMap(slots =>
-        FetchCoordinator.create[F](BlockFetchPolicy.Config(
-          policy.bulkConcurrency, policy.deadlineConcurrency, policy.maxRequestsPerPeer
-        )).map(new BlockPool(slots, policy, attribution, _))
+        FetchCoordinator
+          .create[F](
+            BlockFetchPolicy.Config(
+              policy.bulkConcurrency,
+              policy.deadlineConcurrency,
+              policy.maxRequestsPerPeer
+            ),
+            selection,
+            Some(
+              slots.get.map(
+                _.entries
+                  .collect { case (hash, Slot.Done(_, _, _)) =>
+                    hash
+                  }
+                  .toSet
+              )
+            ),
+            policy.peerSalt
+          )
+          .map(new BlockPool(slots, policy, attribution, _))
       )
 
   /** The node owns the expiry worker; release removes callbacks and wakes any remaining waiters. */
