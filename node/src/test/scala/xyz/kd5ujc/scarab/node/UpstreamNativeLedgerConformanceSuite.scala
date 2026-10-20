@@ -296,8 +296,15 @@ class UpstreamNativeLedgerConformanceSuite extends FunSuite:
     val patch = manifest.downField("repair")
     val patchPath = patch.get[String]("patch").fold(e => fail(e.message), Path.of(_))
     assertEquals(patch.get[String]("patchSha256").toOption, Some(sha(patchPath)))
+    val batch = manifest.downField("batchReplay")
+    val batchPatch = batch.get[String]("batchPatch").fold(e => fail(e.message), Path.of(_))
+    assertEquals(batch.get[String]("batchPatchSha256").toOption, Some(sha(batchPatch)))
     val cases = manifest.get[Vector[Json]]("cases").fold(e => fail(e.message), identity)
     assertEquals(cases.size, 5)
+    assertEquals(
+      cases.map(_.hcursor.get[String]("id").fold(e => fail(e.message), identity)).toSet,
+      Set("singleton", "ordered-three", "dependent-two", "reversed-dependency", "double-spend")
+    )
     cases.foreach { row =>
       val c = row.hcursor
       val id = c.get[String]("id").fold(e => fail(e.message), identity)

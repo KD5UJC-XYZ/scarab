@@ -46,9 +46,14 @@ and GHC 9.10.3. Apply the conversion patch to the **formal checkout**. Apply
 `exporter.patch` and `native-hooks.patch` to the **native checkout**, then either
 `derived-payment.patch` for the singleton, or `multi-ledgers.patch` followed by
 `formal-ledgers-batches.patch` for the four batches. Patches live in
-`scripts/oracle/ledger-govcert/`. Point the native project's formal
-`source-repository-package` to the patched disposable formal checkout. Keep
-constrained-generators and the other recorded dependencies unchanged.
+`scripts/oracle/ledger-govcert/`. Commit the formal patch in its disposable clone,
+then point the native project's formal `source-repository-package` location to
+that clone and change its tag to the **new local patched commit SHA**. Merely
+pointing its location to a dirty checkout while retaining tag `b3a4fd47` builds
+the original code, not the repair. Alternatively remove that formal
+`source-repository-package` stanza and register the patched checkout's `hs`
+directory as a local Cabal package. Keep constrained-generators and the other
+recorded dependencies unchanged.
 
 Build `cardano-ledger-conformance:tests` in the pinned Haskell Docker environment.
 Execute its binary with these arguments:
