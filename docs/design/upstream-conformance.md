@@ -41,6 +41,12 @@ This report is not a generator execution or a compatibility verdict. New upstrea
 inputs still need the actual exporter and Scala replay before adopting a new pin.
 The supported Haskell release remains authoritative even when upstream HEAD moves.
 
+The [2026-10-20 source review](../conformance-source-review.md) classifies all 291
+watched path changes in the first observation. It confirms released ledger/reward
+and Plutus source alignment, separates generator repairs and formal-rule changes
+from future-era work, and records missing network watch roots and a DNS reload
+publication follow-up. It is a static review, not a new oracle or replay verdict.
+
 | Input or generator boundary | Current disposition |
 |---|---|
 | Generated BlockFetch pipeline policies, ChainSync collect/request choices and TxSubmission2 scheduling choices | Bounded observations and some local wire regressions exist; not every original generated policy is replayed. This is separate from requiring identical thread schedules |
