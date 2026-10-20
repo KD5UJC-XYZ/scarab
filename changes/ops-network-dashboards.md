@@ -1,6 +1,7 @@
 ### Added (operations dashboards)
 
 - Add linked fleet overview, detailed peer/governor and chain-tip/ledger Grafana dashboards using existing node metrics and retained logs, with collapsed diagnostics and explicit sampling/measurement limits.
+- Extend the pool view with our forged block body sizes, slot-start-to-local-adoption timing, public producer identity and outcome details from existing logs.
 - Add read-only live query verification and semantic Prometheus fixtures for peer totals, target shortfalls and missing data.
 
 ### Fixed (operations dashboards)

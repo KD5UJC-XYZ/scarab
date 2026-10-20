@@ -2868,6 +2868,597 @@
         "x": 12,
         "y": 76
       }
+    },
+    {
+      "type": "row",
+      "title": "Our producer \u00b7 block bodies, adoption and public identity",
+      "id": 49,
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 84
+      },
+      "panels": [
+        {
+          "type": "text",
+          "title": "Scope of these measurements",
+          "options": {
+            "mode": "markdown",
+            "content": "**Our producer only.** `forged.bodySize` is the body size reported for blocks this node forged. It is not the whole wire block size, a protocol-limit utilization percentage, or a feed of all received network blocks. The latest/max body cards search the selected time range; an empty result means no retained matching forge event. A forged block may subsequently be lost. Public pool and VRF hashes identify our producer; they do not reveal future network-wide leadership winners. Expand raw events for the exact transaction ID array; no transaction count is guessed from its encoded string."
+          },
+          "id": 50,
+          "gridPos": {
+            "h": 4,
+            "w": 24,
+            "x": 0,
+            "y": 85
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Latest own block body \u00b7 selected range",
+          "description": "bodySize from the most recent retained forged event per matching log stream. No event in the selected range gives no data.",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "last_over_time({host=~\"$host\", container=~\"$container\", event=~\"forged\"} | json bodySize=\"bodySize\" | unwrap bodySize | __error__=\"\" [$__range])",
+              "legendFormat": "{{host}} {{container}}",
+              "refId": "A",
+              "queryType": "instant"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "noValue": "No samples",
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value_and_name",
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "horizontal"
+          },
+          "id": 51,
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 0,
+            "y": 89
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Largest own block body \u00b7 selected range",
+          "description": "Maximum bodySize among our retained forged events in the selected range. This is an observation, not the chain protocol maximum.",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "max_over_time({host=~\"$host\", container=~\"$container\", event=~\"forged\"} | json bodySize=\"bodySize\" | unwrap bodySize | __error__=\"\" [$__range])",
+              "legendFormat": "{{host}} {{container}}",
+              "refId": "A",
+              "queryType": "instant"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "noValue": "No samples",
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value_and_name",
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "horizontal"
+          },
+          "id": 52,
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 6,
+            "y": 89
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Last own forged slot \u00b7 process",
+          "description": "Latest slot forged by this process. May be unavailable until the first measured forge; it does not imply adoption or public-chain inclusion.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (host, container) (cardano_node_metrics_forgedSlotLast_int{host=~\"$host\", container=~\"$container\"})",
+              "legendFormat": "{{host}} {{container}}",
+              "refId": "A",
+              "instant": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "noValue": "No samples",
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value_and_name",
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "horizontal"
+          },
+          "id": 53,
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 12,
+            "y": 89
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Own adoption latency samples \u00b7 selected range",
+          "description": "Recorded adoption events with known latency in the selected range. No samples means latency estimates are unavailable.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum by (host, container) (increase(scarab_forge_adoption_seconds_count{host=~\"$host\", container=~\"$container\"}[$__range]))",
+              "legendFormat": "{{host}} {{container}}",
+              "refId": "A",
+              "instant": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "noValue": "No samples",
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value_and_name",
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "horizontal"
+          },
+          "id": 54,
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 18,
+            "y": 89
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Our forged body size \u00b7 rolling one hour",
+          "description": "Each point summarizes our retained forged events in the trailing hour. Windows without any matching event stay empty. Not representative of all network blocks.",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "avg_over_time({host=~\"$host\", container=~\"$container\", event=~\"forged\"} | json bodySize=\"bodySize\" | unwrap bodySize | __error__=\"\" [1h])",
+              "legendFormat": "mean own body",
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "max_over_time({host=~\"$host\", container=~\"$container\", event=~\"forged\"} | json bodySize=\"bodySize\" | unwrap bodySize | __error__=\"\" [1h])",
+              "legendFormat": "largest own body",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "mode": "none"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "id": 55,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 94
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Our slot start \u2192 local adoption latency",
+          "description": "Existing adoption histogram: time from the start of the slot to local adoption of our forged block. Guarded by positive sample count; not peer RTT or proof of adoption elsewhere. A p95 based on few blocks is only a coarse histogram estimate.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "(sum by (host, container) (rate(scarab_forge_adoption_seconds_sum{host=~\"$host\", container=~\"$container\"}[$__rate_interval])) / sum by (host, container) (rate(scarab_forge_adoption_seconds_count{host=~\"$host\", container=~\"$container\"}[$__rate_interval]))) and on (host, container) (sum by (host, container) (increase(scarab_forge_adoption_seconds_count{host=~\"$host\", container=~\"$container\"}[$__rate_interval])) > 0)",
+              "legendFormat": "mean own adoption",
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "histogram_quantile(0.95, sum by (host, container, le) (rate(scarab_forge_adoption_seconds_bucket{host=~\"$host\", container=~\"$container\"}[$__rate_interval]))) and on (host, container) (sum by (host, container) (increase(scarab_forge_adoption_seconds_count{host=~\"$host\", container=~\"$container\"}[$__rate_interval])) > 0)",
+              "legendFormat": "p95 own adoption",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "mode": "none"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "id": 56,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 94
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Our adoption latency observations \u00b7 rolling hour",
+          "description": "Assess sample support alongside latency. Histogram buckets do not give per-block timing detail.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum by (host, container) (increase(scarab_forge_adoption_seconds_count{host=~\"$host\", container=~\"$container\"}[1h]))",
+              "legendFormat": "observations / rolling hour",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "mode": "none"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "id": 57,
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 0,
+            "y": 102
+          }
+        },
+        {
+          "type": "logs",
+          "title": "Our public producer identity \u00b7 start events",
+          "description": "Public pool hash, VRF public-key hash, certificate counter and KES window from ForgeEvent.Started. Expand time range to include a startup; these identifiers are not signing keys.",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "{host=~\"$host\", container=~\"$container\", event=~\"forgeStarted\"}",
+              "refId": "A",
+              "maxLines": 200
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "wrapLogMessage": true,
+            "sortOrder": "Descending",
+            "enableLogDetails": true,
+            "prettifyLogMessage": false,
+            "dedupStrategy": "none"
+          },
+          "id": 58,
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 12,
+            "y": 102
+          }
+        },
+        {
+          "type": "logs",
+          "title": "Our forged blocks \u00b7 body bytes and original transaction IDs",
+          "description": "Unmodified forged events include slot, epoch, blockNo, hash, prev, txs[], bodySize, stake, totalStake and certificate counters. Source: log/Traced.scala ForgeEvent.Forged. These are locally forged candidates; inspect outcomes below.",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "{host=~\"$host\", container=~\"$container\", event=~\"forged\"}",
+              "refId": "A",
+              "maxLines": 200
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "wrapLogMessage": true,
+            "sortOrder": "Descending",
+            "enableLogDetails": true,
+            "prettifyLogMessage": false,
+            "dedupStrategy": "none"
+          },
+          "id": 59,
+          "gridPos": {
+            "h": 10,
+            "w": 24,
+            "x": 0,
+            "y": 111
+          }
+        },
+        {
+          "type": "logs",
+          "title": "Our producer outcomes",
+          "description": "Local adoption, lost candidates, skip/failure reasons and epoch summaries. Adopted here means adopted by our node, not independently verified public-chain finality.",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "{host=~\"$host\", container=~\"$container\", event=~\"adopted|lost|forgeSkipped|forgeFailed|forgeEpoch\"}",
+              "refId": "A",
+              "maxLines": 200
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "wrapLogMessage": true,
+            "sortOrder": "Descending",
+            "enableLogDetails": true,
+            "prettifyLogMessage": false,
+            "dedupStrategy": "none"
+          },
+          "id": 60,
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 0,
+            "y": 121
+          }
+        },
+        {
+          "type": "logs",
+          "title": "KES and producer failure details",
+          "description": "Retained event details complement the pool KES counters and host rotation metrics. Absence of logs alone does not establish health.",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "{host=~\"$host\", container=~\"$container\", event=~\"kesReloaded|kesReloadRefused|kesPersistFailed|forgeFailed\"}",
+              "refId": "A",
+              "maxLines": 200
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "wrapLogMessage": true,
+            "sortOrder": "Descending",
+            "enableLogDetails": true,
+            "prettifyLogMessage": false,
+            "dedupStrategy": "none"
+          },
+          "id": 61,
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 12,
+            "y": 121
+          }
+        }
+      ]
     }
   ],
   "schemaVersion": 39,

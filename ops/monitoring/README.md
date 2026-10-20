@@ -39,7 +39,7 @@ when opened. The existing Node Exporter Full dashboard remains available for mac
 | **Scarab overview** | `scarab-overview` | Fleet comparison: scrape health, phase, uptime, ordinary plus big-ledger peer totals versus targets, observed tip difference, application activity and notable events. Start here. |
 | **Scarab network** | `scarab-network` | One node's governor temperatures/targets, discovery origins and ledger maps, promotion/demotion failures and jobs, retry backoff, churn, transport lifecycle/directions, inbound events and searchable peer investigations. |
 | **Scarab chain tip and ledger** | `scarab-chain-tip` | One node's tip, applications and validation timings with sample counts, density, headers/ChainSync, rollbacks, epoch/ledger population, local mempool and restart/snapshot evidence. |
-| **Scarab pool** | `scarab-pool` | Our producer's forging/adoption/loss, leadership, KES and certificate, rotation driver, alerts, sync and total peer temperatures. Node, host-only rotation and global missing-metrics alert scopes are shown separately. |
+| **Scarab pool** | `scarab-pool` | Our producer's forging/adoption/loss, leadership, KES and certificate, rotation driver, alerts, sync and total peer temperatures; collapsed details show our forged body sizes, slot-start-to-adoption timing and public identity. Node, host-only rotation and global missing-metrics alert scopes are shown separately. |
 | **Scarab runs** | `scarab-runs` | Live metric-based sync summary, retained sampled synchronization history, raw node logs and host/container resource charts. Its log-based block panels sample one in 1,000 extensions; use the new metric-based views at the tip. |
 
 The **Network** and **Chain tip** views select one host and dependent node, keeping networks
@@ -51,7 +51,8 @@ new dashboard files automatically; dashboard-only updates do not require node re
 The sources are [`build_dashboards.py`](server/grafana/build_dashboards.py) and its
 [`overview_dashboard.py`](server/grafana/overview_dashboard.py),
 [`network_dashboard.py`](server/grafana/network_dashboard.py) and
-[`chain_dashboard.py`](server/grafana/chain_dashboard.py) modules. Edit the sources and regenerate:
+[`chain_dashboard.py`](server/grafana/chain_dashboard.py) and
+[`pool_details.py`](server/grafana/pool_details.py) modules. Edit the sources and regenerate:
 
 ```sh
 python3 ops/monitoring/server/grafana/build_dashboards.py
@@ -85,7 +86,7 @@ python3 -m unittest discover -s scripts/tests -p 'test_dashboard*.py' -v
   fractional. Empty latency quantiles do not become zero; missing chart segments are not bridged.
 - **Scope limits:** current telemetry has no continuous received-block size/transaction-count or
   producing-pool feed, per-peer RTT/bandwidth, or complete competing-branch/tine graph. Sampled
-  extension and rollback logs do carry block hashes. Own-pool leader wins and forged/adopted/lost
+  extension and rollback logs do carry block hashes. Own-pool body sizes from retained `forged` events, slot-start-to-local-adoption timings, leader wins and forged/adopted/lost
   events are available in **Pool**; they do not enumerate winners across the whole network.
 
 No dashboard collects additional chain data, changes log sampling, adds metric labels or reads
@@ -105,8 +106,8 @@ python3 scripts/verify_dashboards.py \
   --host <worker> --container <node> --output /tmp/dashboard-queries.json
 ```
 
-Repeat for each node. `scripts/test_dashboard_queries.py` extracts the generated peer totals and
-shortfall expressions and checks them with Prometheus `promtool`, including separate populations,
+Repeat for each node. `scripts/test_dashboard_queries.py` extracts the generated peer totals, target shortfalls and
+node/host/global alert-scope expressions and checks them with Prometheus `promtool`, including separate populations,
 local-root double-counting, overshoot, observed zero and missing data. To use Docker's promtool,
 prepare fixtures with `--write-dir /tmp/dashboard-query-tests`, then run
 `promtool test rules dashboard.tests.json` with that directory as the working directory inside the

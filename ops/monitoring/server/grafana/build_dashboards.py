@@ -450,6 +450,10 @@ def dashboards():
         spec.loader.exec_module(module)
         dashboard = getattr(module, function)(ui)
         result[dashboard["uid"]] = dashboard
+    spec = importlib.util.spec_from_file_location("pool_details", pathlib.Path(__file__).with_name("pool_details.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    result["scarab-pool"] = module.extend_pool_dashboard(ui, result["scarab-pool"])
     for dashboard in result.values():
         dashboard["links"] = suite_links(dashboard["uid"] in {"scarab-network", "scarab-chain-tip"})
     return result

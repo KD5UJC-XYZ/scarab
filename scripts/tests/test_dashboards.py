@@ -99,6 +99,14 @@ class DashboardTest(unittest.TestCase):
                 self.assertTrue(links["/d/" + uid]["includeVars"])
                 self.assertTrue(links["/d/" + uid]["keepTime"])
 
+    def test_forged_body_windows_do_not_group_by_block_identity(self):
+        # Extracting all JSON fields makes each hash/slot a separate series and prevents
+        # latest/mean windows from combining successive blocks from one node.
+        for title, query in exprs(self.dashboards["scarab-pool"]):
+            if "unwrap bodySize" in query:
+                self.assertIn('json bodySize="bodySize"', query, title)
+                self.assertNotIn("| json |", query, title)
+
     def test_fleet_all_is_not_forwarded_to_single_node_selectors(self):
         # Grafana accepts the literal $__all from links even when includeAll=False,
         # leaving every panel empty. Fleet links must reset single-node selectors.
