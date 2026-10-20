@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
-import scala.annotation.unused
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.BinaryError
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, InputStream, OutputStream}
@@ -9,8 +8,9 @@ import java.nio.charset.StandardCharsets
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.NativeScript
 import xyz.kd5ujc.scarab.codec.Rational
-import scala.compiletime.{constValue, constValueTuple, erasedValue, summonInline}
+import scala.compiletime.{constValue, erasedValue, summonInline}
 import scala.deriving.Mirror
+import scala.reflect.ClassTag
 
 /** Byte sink with the primitives of the snapshot format. Integers are LEB128 varints. */
 final class Out(stream: OutputStream):
@@ -326,59 +326,171 @@ object Codec extends LowPriorityCodec:
       "NativeScript{Sig(Bytes)|AllOf(Vector[NativeScript])|AnyOf(Vector[NativeScript])|" +
         "NOfK(BigInt,Vector[NativeScript])|InvalidBefore(BigInt)|InvalidHereafter(BigInt)}"
 
-/** Derivation by `Mirror`, at lower priority than the explicit instances above. */
+/** Derivation by `Mirror`, at lower priority than the explicit instances above.
+  *
+  * A derived product or sum applies the codec summoned for each field or variant at that same type:
+  * a field value taken from the product (or a value of the sum) is narrowed by the `ClassTag`
+  * extractor of its declared type, so the check, and the only cast, live in the standard library's
+  * `unapply`. There is no `Codec[Any]` and no unchecked projection; field order, variant tags and
+  * the `shape` strings (and so the schema fingerprints) are those of the previous derivation, so
+  * persisted bytes do not change.
+  *
+  * The per-field (and per-variant) work lives in the [[LowPriorityCodec.Fields]] and
+  * [[LowPriorityCodec.Variants]] chains, built once per derived type by implicit search rather than
+  * duplicated at every inline site.
+  */
 trait LowPriorityCodec:
   inline given auto[A](using m: Mirror.Of[A]): Codec[A] =
-    val name: String = constValue[m.MirroredLabel]
-    val labels = constValueTuple[m.MirroredElemLabels].toList.asInstanceOf[List[String]]
-    val codecs = LowPriorityCodec.summonAll[m.MirroredElemTypes]
     inline m match
-      case s: Mirror.SumOf[A]     => LowPriorityCodec.sum[A](name, s, labels, codecs)
-      case p: Mirror.ProductOf[A] => LowPriorityCodec.product[A](name, p, labels, codecs)
+      case s: Mirror.SumOf[A]     => LowPriorityCodec.sum[A](using s)
+      case p: Mirror.ProductOf[A] => LowPriorityCodec.product[A](using p)
 
 object LowPriorityCodec:
-  inline def summonAll[T <: Tuple]: List[Codec[?]] = inline erasedValue[T] match
+  /** The labels of a mirror's elements, in declaration order: string literals kept at their own
+    * type and widened by `toString` (the identity on a string, no cast).
+    */
+  private inline def labels[L <: Tuple]: List[String] = inline erasedValue[L] match
     case _: EmptyTuple => Nil
-    case _: (t *: ts)  => summonInline[Codec[t]] :: summonAll[ts]
+    case _: (l *: ls)  => constValue[l].toString :: labels[ls]
 
-  def product[A](
-      name: String,
-      m: Mirror.ProductOf[A],
-      labels: List[String],
-      codecs: List[Codec[?]]
-  ): Codec[A] = new Codec[A]:
-    private val fields = codecs.toArray.asInstanceOf[Array[Codec[Any]]]
-    def write(out: Out, a: A): Unit =
-      val p = a.asInstanceOf[Product]
-      var i = 0
-      while i < fields.length do
-        fields(i).write(out, p.productElement(i))
-        i += 1
-    def read(in: In): Either[BinaryError, A] =
-      fields.toVector.traverse(_.read(in)).map { values =>
-        m.fromProduct(new Product:
-          def canEqual(that: Any): Boolean = false
-          def productArity: Int = values.length
-          def productElement(n: Int): Any = values(n))
-      }
-    def shape: String =
-      if labels.isEmpty then name
-      else s"$name(${labels.zip(codecs).map((l, c) => s"$l:${c.shape}").mkString(",")})"
+  /** The codecs of a product's fields, one per field, in declaration order: each field value is
+    * narrowed to its declared type by that type's `ClassTag` and written by the codec of the same
+    * type, and each field is decoded by the codec of its own type into the tuple the mirror's
+    * `fromProduct` takes.
+    */
+  private[scarab] sealed trait Fields[Ts <: Tuple]:
+    def write(out: Out, product: Product, index: Int): Unit
+    def read(in: In): Either[BinaryError, Tuple]
+    def shapes: List[String]
 
-  def sum[A](
-      name: String,
-      m: Mirror.SumOf[A],
-      @unused labels: List[String],
-      codecs: List[Codec[?]]
+  private[scarab] object NoFields extends Fields[EmptyTuple.type]:
+    def write(out: Out, product: Product, index: Int): Unit = ()
+    def read(in: In): Either[BinaryError, Tuple] = Right(EmptyTuple)
+    def shapes: List[String] = Nil
+
+  private[scarab] final class OneField[T, Ts <: Tuple](tail: Fields[Ts])(using
+      codec: Codec[T],
+      tag: ClassTag[T]
+  ) extends Fields[T *: Ts]:
+    def write(out: Out, product: Product, index: Int): Unit =
+      tag.unapply(product.productElement(index)) match
+        case Some(value) => codec.write(out, value)
+        case None =>
+          throw new IllegalStateException(s"field $index is not of its declared type")
+      tail.write(out, product, index + 1)
+
+    def read(in: In): Either[BinaryError, Tuple] =
+      codec.read(in) match
+        case Right(value) => tail.read(in).map(value *: _)
+        case Left(error)  => Left(error)
+
+    def shapes: List[String] = codec.shape :: tail.shapes
+
+  private[scarab] given noFields: Fields[EmptyTuple.type] = NoFields
+
+  private[scarab] given oneField[T, Ts <: Tuple](using
+      codec: Codec[T],
+      tag: ClassTag[T],
+      tail: Fields[Ts]
+  ): Fields[T *: Ts] = new OneField[T, Ts](tail)
+
+  /** The codecs of a sum's variants, one per case, in declaration order: the tag is the case's
+    * ordinal, as before, and the case's codec is applied at the case's own type.
+    */
+  private[scarab] sealed trait Variants[A, Ts <: Tuple]:
+    def write(out: Out, a: A, index: Int): Unit
+    def read(in: In, index: Int): Either[BinaryError, A]
+    def shapes: List[String]
+
+  private[scarab] final class NoVariants[A] extends Variants[A, EmptyTuple.type]:
+    def write(out: Out, a: A, index: Int): Unit = ()
+    def read(in: In, index: Int): Either[BinaryError, A] =
+      throw new IllegalStateException(s"no variant at ordinal $index")
+    def shapes: List[String] = Nil
+
+  private[scarab] final class OneVariant[A, T, Ts <: Tuple](tail: Variants[A, Ts])(using
+      codec: Codec[T],
+      tag: ClassTag[T],
+      sum: ClassTag[A]
+  ) extends Variants[A, T *: Ts]:
+    def write(out: Out, a: A, index: Int): Unit =
+      if index == 0 then
+        a match
+          case tag(value) => codec.write(out, value)
+          case _ =>
+            throw new IllegalStateException(s"the value at ordinal 0 is not of its variant's type")
+      else tail.write(out, a, index - 1)
+
+    def read(in: In, index: Int): Either[BinaryError, A] =
+      if index == 0 then
+        codec.read(in).flatMap { value =>
+          // a case value is an instance of the sum it belongs to; the test is the standard
+          // library's, and the failure is unreachable
+          sum.unapply(value) match
+            case Some(a) => Right(a)
+            case None =>
+              throw new IllegalStateException("a variant value is not an instance of its sum")
+        }
+      else tail.read(in, index - 1)
+
+    def shapes: List[String] = codec.shape :: tail.shapes
+
+  private[scarab] given noVariants[A]: Variants[A, EmptyTuple.type] = new NoVariants[A]
+
+  private[scarab] given oneVariant[A, T, Ts <: Tuple](using
+      codec: Codec[T],
+      tag: ClassTag[T],
+      sum: ClassTag[A],
+      tail: Variants[A, Ts]
+  ): Variants[A, T *: Ts] = new OneVariant[A, T, Ts](tail)
+
+  /** A product's codec from its field chain: the instance is made here, not at the inline site, so
+    * a derivation does not duplicate an anonymous class.
+    */
+  private def productCodec[A](
+      shapeOf: String,
+      fields: Fields[?],
+      m: Mirror.ProductOf[A]
   ): Codec[A] = new Codec[A]:
-    private val variants = codecs.toArray.asInstanceOf[Array[Codec[Any]]]
+    private val asProduct = summon[ClassTag[Product]]
     def write(out: Out, a: A): Unit =
-      val i = m.ordinal(a)
-      out.varint(i.toLong)
-      variants(i).write(out, a)
-    def read(in: In): Either[BinaryError, A] = in.varint().flatMap { i =>
-      if i < 0 || i >= variants.length then
-        Left(BinaryError.InvalidVariant(name, i, variants.length))
-      else variants(i.toInt).read(in).map(_.asInstanceOf[A])
+      asProduct.unapply(a) match
+        case Some(product) => fields.write(out, product, 0)
+        case None =>
+          throw new IllegalStateException("a value of a product type is not a Product")
+    def read(in: In): Either[BinaryError, A] = fields.read(in).map(m.fromProduct)
+    def shape: String = shapeOf
+
+  /** The codec of a case class: its fields in declaration order, in the same order and with the
+    * same shape as before.
+    */
+  inline def product[A](using m: Mirror.ProductOf[A]): Codec[A] =
+    val name: String = constValue[m.MirroredLabel]
+    val fieldLabels = labels[m.MirroredElemLabels]
+    val fields = summonInline[Fields[m.MirroredElemTypes]]
+    val shape =
+      if fieldLabels.isEmpty then name
+      else s"$name(${fieldLabels.zip(fields.shapes).map((l, s) => s"$l:$s").mkString(",")})"
+    productCodec[A](shape, fields, m)
+
+  /** A sum's codec from its variant chain. */
+  private def sumCodec[A](
+      name: String,
+      variants: Variants[A, ?],
+      m: Mirror.SumOf[A]
+  ): Codec[A] = new Codec[A]:
+    private val arity = variants.shapes.length
+    def write(out: Out, a: A): Unit =
+      val index = m.ordinal(a)
+      out.varint(index.toLong)
+      variants.write(out, a, index)
+    def read(in: In): Either[BinaryError, A] = in.varint().flatMap { index =>
+      if index < 0 || index >= arity then Left(BinaryError.InvalidVariant(name, index, arity))
+      else variants.read(in, index.toInt)
     }
-    def shape: String = s"$name{${codecs.map(_.shape).mkString("|")}}"
+    def shape: String = s"$name{${variants.shapes.mkString("|")}}"
+
+  /** The codec of an enum: the variant index as before, then the variant's own codec. */
+  inline def sum[A](using m: Mirror.SumOf[A]): Codec[A] =
+    val name: String = constValue[m.MirroredLabel]
+    sumCodec[A](name, summonInline[Variants[A, m.MirroredElemTypes]], m)

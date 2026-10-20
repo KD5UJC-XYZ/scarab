@@ -1,0 +1,2 @@
+### Changed (snapshot codecs, #205)
+- **The snapshot codecs derive without erased field instances**: each field's and variant's codec is summoned and applied at its own type, the value narrowed by that type's `ClassTag` (or, for a record, read from the compiler's typed product accessors), so no `asInstanceOf` remains in `Codec.scala` or `Record.scala`, while field order, variant tags, `shape` fingerprints and the encoded bytes are unchanged.

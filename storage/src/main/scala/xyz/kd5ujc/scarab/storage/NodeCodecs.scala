@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import scala.reflect.ClassTag
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.BinaryError
 import xyz.kd5ujc.scarab.protocol.Era
@@ -93,7 +94,8 @@ object NodeCodecs:
       }(_ + _)
     def shape: String = s"SortedMap[${k.shape},${v.shape}]"
 
-  given withOrigin[A](using Codec[A]): Codec[WithOrigin[A]] = Codec.auto
+  given withOrigin[A](using Codec[A], ClassTag[A]): Codec[WithOrigin[A]] =
+    Codec.auto
   given pbftSigner: Codec[PBftSigner] = Codec.auto
   given pbftState: Codec[PBftState] = Codec.auto
   given prtclState: Codec[PrtclState] = Codec.auto
