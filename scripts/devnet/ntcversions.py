@@ -43,6 +43,11 @@ def compare_versions(name, ref_socket, scala_socket, dump_dir):
         ("GetLedgerPeerSnapshot/legacy", [34], 19, 23),
         ("GetLedgerPeerSnapshot/all", [34, 0], 23, 23),
         ("GetLedgerPeerSnapshot/big", [34, 1], 23, 23),
+        ("GetCBOR/GetRewardInfoPools", [9, [18]], 16, 23),
+        ("GetCBOR/GetNonMyopicMemberRewards", [9, [2, sset([])]], 16, 23),
+        ("GetCBOR/GetLedgerPeerSnapshot/legacy", [9, [34]], 19, 23),
+        ("GetCBOR/GetLedgerPeerSnapshot/all", [9, [34, 0]], 23, 23),
+        ("GetCBOR/GetLedgerPeerSnapshot/big", [9, [34, 1]], 23, 23),
         ("GetCBOR/GetPoolDistr", [9, [21, []]], 16, 20),
         ("GetCBOR/GetPoolDistr2", [9, [36, []]], 21, 23),
     ]
