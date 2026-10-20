@@ -1497,7 +1497,7 @@ data from a peer, a client or a block: raw CBOR, the node-to-node and node-to-cl
 frame, stream), ChainSync, BlockFetch, TxSubmission2, KeepAlive, LocalStateQuery, LocalTxSubmission and
 LocalTxMonitor in every state and for both roles, headers and blocks (Byron and each later era), transaction bodies,
 witness sets and whole submitted transactions per era, addresses and outputs, scripts, Plutus data, node-to-client
-queries and protocol-parameter updates. 53 targets in all (`Targets.scala`).
+queries and protocol-parameter updates. `Targets.all` is the maintained target registry.
 
 Inputs (`Mutate.scala`, `Corpus.scala`): ScalaCheck generators that take a seed item and apply one to four
 mutations (bit flips, truncation, extension, a head rewritten to declare 2^60 elements, a fresh head with a huge
@@ -1505,17 +1505,25 @@ length, nesting of up to 100,000 levels, an indefinite item without its break or
 tags, a whole item replaced by a deeply nested one, splicing two items), random bytes, and random heads with random
 tails. The seed items are the committed fixtures (`fixtures/*/*.hex`, every era) and valid items sampled from the
 pinned CDDL by the `models-gen` sampler (messages of each mini-protocol, headers, blocks, transaction bodies and
-witness sets of each era, Plutus data).
+witness sets of each era, Plutus data). [Native-serialized early-era transactions](../fixtures/fuzz/early-era-transactions/README.md)
+exercise nonempty input/output decoding without asserting ledger admission. Whole-transaction envelopes have
+three fields before Alonzo and four from Alonzo; the harness preserves that era boundary.
 
 Properties (`Harness.scala`, `Targets.scala`): the decoder never throws (a result or a typed error), finishes within
 2 s (a decode stuck for 30 s kills the fork after printing the input), allocates at most 24 MB plus 400 bytes per
 input byte (so a declared length cannot buy memory), and what decodes re-encodes and decodes to the same message
 (mini-protocols: also the consumed prefix decodes alone and a shorter prefix does not). `GuardSuite` adds the fixed
-cases: the seeds of every target are accepted by it, and a short input that declares 2^60 or 2^32 elements or bytes
+cases: every registered target accepts at least one seed in that run, without exemptions, and a short input that declares 2^60 or 2^32 elements or bytes
 (alone, nested, behind tags) fails within 4 MB of allocation in every decoder.
 
+The block target compares the Shelley-only block decoder with the block retained by node
+preparation. Both accept the same block envelopes; transaction decoding failures remain inside
+`Prepared` rather than rejecting the block envelope. General block decoding additionally accepts
+Byron with its epoch geometry. These entry points share their parser, so the comparison checks
+their integration contract rather than providing an independent reference oracle.
+
 ```sh
-scripts/sbtw check                    # includes fuzz/Test/test: 20,000 cases per target, seed 1, about a minute
+scripts/sbtw check                    # includes fuzz/Test/test: 20,000 cases per target, seed 1
 scripts/sbtw "fuzz"                   # the same suite with 2,000 cases, seed 1
 scripts/sbtw "fuzz 100000 1000 8"     # fuzz <cases per target and seed> <first seed> <number of seeds> [target]
 scripts/sbtw "fuzz 100000 1000 8 block-header"   # only targets whose name contains the text
@@ -1524,6 +1532,30 @@ scripts/sbtw "fuzz 100000 1000 8 block-header"   # only targets whose name conta
 The suite runs in a forked JVM (`-Xmx1536m`) from the repository root, so a hang or an out-of-memory ends the fork
 and not the build server. The cases are deterministic functions of (target name, seed, case number): the same
 command repeats the run.
+
+### Early-era positive seeds (#179)
+
+The default campaign on the audit baseline `c9f0ba99` accepted 434 Shelley and 160 Allegra
+whole transactions in 20,000 cases each, but no Mary transactions. All three targets were
+exempted from the seed guard. The repaired corpus adds native-serialized transactions for each
+era, and every registered target now needs a positive seed in that guard's own run.
+
+On 2026-10-20, `fuzz 100000 1 4 tx-whole` passes with the following decoded-input counts;
+these are decoder results, not ledger-admission verdicts:
+
+| Era | Generated inputs | Decoded inputs |
+|---|---:|---:|
+| Shelley | 400,000 | 10,843 |
+| Allegra | 400,000 | 5,851 |
+| Mary | 400,000 | 3,050 |
+| Alonzo | 400,000 | 11,009 |
+| Babbage | 400,000 | 16,911 |
+| Conway | 400,000 | 49,362 |
+
+The same four-seed campaign passes the block/preparation agreement target with 44,634 decoded
+inputs out of 400,000. The block selector also runs the existing Leios block target (15,378 decoded
+inputs). No target is exempted from the default suite; targeted command filters select the
+extended campaign's scope.
 
 **Reproducing a failure.** A failing target prints the seed, the shrunk input in hex and the command, for example
 

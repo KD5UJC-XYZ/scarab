@@ -1,34 +1,48 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.fuzz
 
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
+import xyz.kd5ujc.scarab.ledger.Tx
+import xyz.kd5ujc.scarab.protocol.Era
 import munit.FunSuite
 
 /** Deterministic guards check seed acceptance and allocation bounds for representative malformed
   * length heads, independently of the random mutation seed.
   */
 class GuardSuite extends FunSuite:
-  /** Targets whose seeds are valid items of the decoder: at least one must be accepted. */
-  // Exclude targets for which the committed and sampled corpora supply no valid seed.
-  private val mustAccept = Targets.all.map(_.name).toSet -- Set(
-    "tx-whole-shelley",
-    "tx-whole-allegra",
-    "tx-whole-mary",
-    "tx-body-dijkstra",
-    "tx-witnesses-dijkstra",
-    "tx-whole-dijkstra",
-    "block-header-dijkstra",
-    "tx-body-unused"
-  )
+  test("early-era whole transactions have nonempty inputs and outputs decoded in their era") {
+    for era <- Vector(Era.Shelley, Era.Allegra, Era.Mary) do
+      val seeds = Corpus.transactionsOf(era)
+      assert(seeds.nonEmpty, s"$era needs valid whole-transaction seeds")
+      seeds.foreach { seed =>
+        val bytes = Bytes.fromArray(seed)
+        Cbor.decode(bytes).fold(e => fail(e.toString), _.value) match
+          case Value.Arr(fields) => assertEquals(fields.size, 3, s"$era original envelope")
+          case other             => fail(s"$era transaction is not an array: $other")
+        assertEquals(
+          Corpus.asTransaction(bytes, Era.Alonzo),
+          None,
+          s"$era is not a four-field transaction"
+        )
+        val parts = Corpus
+          .asTransaction(bytes, era)
+          .getOrElse(fail(s"$era seed is not a whole transaction"))
+        val tx = Tx.fromBlock(parts, era).fold(e => fail(s"$era seed: $e"), identity)
+        assert(tx.body.inputs.nonEmpty, s"$era seed has no inputs")
+        assert(tx.body.outputs.nonEmpty, s"$era seed has no outputs")
+      }
+  }
 
-  test("the seeds of every target are valid for it (otherwise the fuzzing stays at the surface)") {
-    val cold = scala.collection.mutable.Buffer.empty[String]
-    Targets.all.foreach { t =>
-      t.corpus().foreach(c => Probe.run(t.name, new Input(c))(t.check(new Input(c))))
-      val n = Option(Targets.accepted.get(t.name)).fold(0L)(_.sum())
-      if n == 0 && mustAccept(t.name) then cold += t.name
-    }
-    assertEquals(cold.toList, Nil, "targets that accepted none of their seeds")
+  test("every target accepts a seed from its corpus in this run") {
+    val cold = Targets.all
+      .filter { t =>
+        val before = Option(Targets.accepted.get(t.name)).fold(0L)(_.sum())
+        t.corpus().foreach(c => Probe.run(t.name, new Input(c))(t.check(new Input(c))))
+        val after = Option(Targets.accepted.get(t.name)).fold(0L)(_.sum())
+        after == before
+      }
+      .map(_.name)
+    assertEquals(cold, Vector.empty, "targets that accepted none of their seeds in this run")
   }
 
   test("generic engine targets accept exact upstream ChainSync and BlockFetch mock-domain seeds") {

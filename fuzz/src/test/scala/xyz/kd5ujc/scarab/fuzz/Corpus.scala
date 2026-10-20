@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.fuzz
 
 import cats.syntax.all.*
 import java.nio.file.{Files, Path}
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.protocol.{Era, NtNHeader}
 import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.ledger.byron.ByronBody
@@ -232,34 +232,42 @@ object Corpus extends munit.Assertions:
   lazy val byronHeaders: Vector[Array[Byte]] =
     decoded.collect { case b: Block.Byron => b.header.raw.toArray }
 
-  /** Whole transactions `[body, witnesses, is_valid, aux]` of one era. */
+  /** Original submitted-transaction envelopes: three fields before Alonzo, four from Alonzo. */
   def transactionsOf(era: Era): Vector[Array[Byte]] =
-    shelleyBlocks.filter(_.era == era).flatMap(_.transactions.map(wholeTx))
+    val reference = era match
+      case Era.Shelley | Era.Allegra | Era.Mary =>
+        lines(s"fixtures/fuzz/early-era-transactions/${era.toString.toLowerCase}.hex")
+      case _ => Vector.empty
+    reference ++ shelleyBlocks.filter(_.era == era).flatMap(_.transactions.map(wholeTx(_, era)))
 
-  private def wholeTx(t: Block.Transaction): Array[Byte] =
+  private def wholeTx(t: Block.Transaction, era: Era): Array[Byte] =
     val aux = t.auxiliaryData.fold(Array(0xf6.toByte))(_.toArray)
-    Array(0x84.toByte) ++ t.body.toArray ++ t.witnesses.toArray ++
-      Array((if t.isValid then 0xf5 else 0xf4).toByte) ++ aux
+    val head = Array((if era.hasInvalidTransactions then 0x84 else 0x83).toByte)
+    val valid =
+      if era.hasInvalidTransactions then Array((if t.isValid then 0xf5 else 0xf4).toByte)
+      else Array.emptyByteArray
+    head ++ t.body.toArray ++ t.witnesses.toArray ++ valid ++ aux
 
-  /** Split `[body, witnesses, is_valid, aux]` into the parts a block holds. */
-  def asTransaction(b: Bytes): Option[Block.Transaction] =
+  /** Split the era's submitted-transaction envelope into the parts a block holds. */
+  def asTransaction(b: Bytes, era: Era): Option[Block.Transaction] =
+    def transaction(body: Node, wit: Node, aux: Node, valid: Boolean): Block.Transaction =
+      Block.Transaction(
+        body.original,
+        wit.original,
+        aux.value match
+          case Value.Null => None
+          case _          => Some(aux.original)
+        ,
+        valid
+      )
     Cbor.decode(b).toOption.flatMap { n =>
       n.value match
-        case Value.Arr(Vector(body, wit, valid, aux)) =>
+        case Value.Arr(Vector(body, wit, aux)) if era != Era.Byron && !era.hasInvalidTransactions =>
+          Some(transaction(body, wit, aux, true))
+        case Value.Arr(Vector(body, wit, valid, aux)) if era.hasInvalidTransactions =>
           valid.value match
-            case Value.Bool(v) =>
-              Some(
-                Block.Transaction(
-                  body.original,
-                  wit.original,
-                  aux.value match
-                    case Value.Null => None
-                    case _          => Some(aux.original)
-                  ,
-                  v
-                )
-              )
-            case _ => None
+            case Value.Bool(v) => Some(transaction(body, wit, aux, v))
+            case _             => None
         case _ => None
     }
 

@@ -690,8 +690,11 @@ object Targets:
         () => Corpus.blocks ++ Corpus.sampledEras("block", "alonzo") ++ Corpus.tricky,
         probe("block") { b =>
           seen("block", Block.decode(b, Corpus.byronEpochSlots).isRight)
-          Block.decodeShelley(b)
-          xyz.kd5ujc.scarab.node.NodeRules.decodeShelley(b)
+          // The general decoder also admits Byron; compare the two Shelley-only contracts.
+          val shelley =
+            Block.decodeShelley(b).toOption.collect { case block: Block.Shelley => block }
+          val prepared = xyz.kd5ujc.scarab.node.NodeRules.decodeShelley(b)
+          req(prepared.map(_.block) == shelley, "Shelley block decoding and preparation disagree")
         }
       ),
       Target(
@@ -905,7 +908,7 @@ object Targets:
           () => Corpus.transactionsOf(era) ++ Corpus.tricky,
           probe(s"tx-whole-$tag") { b =>
             Corpus
-              .asTransaction(b)
+              .asTransaction(b, era)
               .foreach(t => seen(s"tx-whole-$tag", Tx.fromBlock(t, era).isRight))
           }
         ),
