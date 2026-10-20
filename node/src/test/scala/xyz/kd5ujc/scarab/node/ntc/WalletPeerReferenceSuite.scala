@@ -189,7 +189,11 @@ class WalletPeerReferenceSuite extends FunSuite:
       NtcQuery.IfCurrent(Era.Conway.index, LedgerQuery.GetLedgerPeerSnapshot(LedgerPeerKind.All))
     assertEquals(
       QueryAnswers.answerOrWhy(fixture.env, view, Map.empty, query),
-      Left(Unanswered.StoredRelays(NonEmptyVector.one(SkippedPool(id.bytes, PoolRelayError.NotASequence))))
+      Left(
+        Unanswered.StoredRelays(
+          NonEmptyVector.one(SkippedPool(id.bytes, PoolRelayError.NotASequence))
+        )
+      )
     )
   }
 
