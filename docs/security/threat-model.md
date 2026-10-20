@@ -91,9 +91,9 @@ comparison exclusions unless a specific JVM constraint is demonstrated and docum
 reproducer, narrow scope and an explicit residual risk. An upstream difference, inconvenient fixture
 or historical classification alone does not justify an exemption. This is a requirement for the
 remaining work, not a claim that current exceptions have been eliminated. Review the retained
-[Plutus exceptions](../plutus-conformance.md), [upstream adapter coverage](../design/upstream-conformance.md)
-and [query masks](../../scripts/devnet/gapmask.py) individually against that policy; tracked coverage
-and mask reconciliation remain K2 / [#49](https://github.com/KD5UJC-XYZ/scarab/issues/49) and
+[Plutus harness coverage](../plutus-conformance.md), [upstream adapter coverage](../design/upstream-conformance.md)
+and [query comparison evidence](../compatibility.md) individually against that policy; tracked coverage
+and state reconstruction remain K2 / [#49](https://github.com/KD5UJC-XYZ/scarab/issues/49) and
 M11/J3.1 / [#129](https://github.com/KD5UJC-XYZ/scarab/issues/129).
 
 The reviewer evidence bundle (O5) is deferred until an audit candidate is selected. No bundle or
