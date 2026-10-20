@@ -63,6 +63,11 @@ scala code … I love the use of type parameters when I can use them"*.
   A fiber that its owner joins at once (`race`, `parSequence`, `Compute.within`) may use the owner's
   capabilities. An exception that is not ours is wrapped at the boundary into a typed case that says
   it is a defect; it is never "the peer is unavailable". Suites that start fibers extend `FailsOnUncaught`.
+- In concurrency tests, evaluate blocking latch waits and joins before passing their results to
+  MUnit assertions: clue capture holds the suite monitor while evaluating an assertion, so a worker
+  assertion can deadlock with a parent's asserted wait. Release latches and finish owned workers in
+  guaranteed cleanup. Positive synchronization uses an observable condition or controlled schedule;
+  bounded negative observations without a product-side hook remain explicitly tracked in #251.
 - Opaque types, type classes with extension syntax, instances in companions, `derives` where it
   works, Monocle optics for nested state. Type parameters for roles and eras (`KeyHash[StakePool]`,
   `LedgerState[Conway]`).

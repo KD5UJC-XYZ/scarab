@@ -1,13 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.plutus
 
-import java.util.concurrent.{CountDownLatch, TimeUnit}
+import java.util.concurrent.{ConcurrentLinkedQueue, CountDownLatch, TimeUnit}
 import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
 import munit.FunSuite
+import scala.concurrent.duration.*
+import scala.jdk.CollectionConverters.*
+import scala.util.control.NonFatal
 
 class RetryingMemoSuite extends FunSuite:
+  override def munitTimeout: Duration = 2.minutes
+
   /** How long a test latch may wait: generous on purpose, so a loaded runner cannot fail the
-    * concurrency test for being late, while a real deadlock still fails it with a message.
+    * concurrency test merely for modest scheduling lateness. A real stall still fails with a
+    * message.
     */
   private val WaitSeconds = 30
   test("an unavailable VM construction is retried, then its recovered value is retained") {
@@ -30,6 +36,7 @@ class RetryingMemoSuite extends FunSuite:
     val finish = CountDownLatch(1)
     val done = CountDownLatch(8)
     val recovered = new Object
+    val failures = new ConcurrentLinkedQueue[Throwable]
     val results = Vector.fill(8)(
       AtomicReference[Either[EvalFailure.Unsupported, Object]](
         Left(EvalFailure.Unsupported(BackendFailure.NoResult))
@@ -37,30 +44,49 @@ class RetryingMemoSuite extends FunSuite:
     )
     val workers = results.map { result =>
       val worker = new Thread(() =>
-        result.set(memo.getOrElseUpdate("model") {
-          calls.incrementAndGet()
-          constructing.countDown()
-          if finish.await(WaitSeconds, TimeUnit.SECONDS) then Right(recovered)
-          else Left(EvalFailure.Unsupported(BackendFailure.NoResult))
-        })
-        done.countDown()
+        try
+          result.set(memo.getOrElseUpdate("model") {
+            calls.incrementAndGet()
+            constructing.countDown()
+            val finishReady = finish.await(WaitSeconds, TimeUnit.SECONDS)
+            assert(
+              finishReady,
+              s"the VM construction was not released within $WaitSeconds s"
+            )
+            Right(recovered)
+          })
+        catch
+          case NonFatal(cause) =>
+            failures.add(cause)
+            ()
+        finally done.countDown()
       )
       worker.setDaemon(true)
       worker
     }
     workers.foreach(_.start())
-    assert(
-      constructing.await(WaitSeconds, TimeUnit.SECONDS),
-      s"no caller reached the construction within $WaitSeconds s"
-    )
-    finish.countDown()
-    assert(
-      done.await(WaitSeconds, TimeUnit.SECONDS),
-      s"${done.getCount.toInt} of 8 callers did not finish within $WaitSeconds s"
-    )
-    workers.foreach(_.join())
-    assertEquals(calls.get(), 1)
-    results.foreach(result => assertEquals(result.get(), Right(recovered)))
+    try
+      val constructingReady = constructing.await(WaitSeconds, TimeUnit.SECONDS)
+      assert(
+        constructingReady,
+        s"no caller reached the construction within $WaitSeconds s"
+      )
+      finish.countDown()
+      val doneReady = done.await(WaitSeconds, TimeUnit.SECONDS)
+      assert(
+        doneReady,
+        s"${done.getCount.toInt} of 8 callers did not finish within $WaitSeconds s"
+      )
+      assert(failures.isEmpty, s"VM construction workers failed: ${failures.asScala.toList}")
+      assertEquals(calls.get(), 1)
+      results.foreach(result => assertEquals(result.get(), Right(recovered)))
+    finally
+      finish.countDown()
+      val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(WaitSeconds)
+      workers.foreach { worker =>
+        val remaining = deadline - System.nanoTime()
+        if remaining > 0 then worker.join((remaining.nanos.toMillis).max(1L))
+      }
   }
 
   test("the bounded decoder cache skips unavailable results and retains known malformed input") {
