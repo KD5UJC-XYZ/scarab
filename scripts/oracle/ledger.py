@@ -54,7 +54,7 @@ def double(f):
     f = Fraction(f[0], f[1]) if isinstance(f, (list, tuple)) else Fraction(f)
     getcontext().prec = 16
     getcontext().rounding = ROUND_HALF_EVEN
-    return round(float(Decimal(f.numerator) / Decimal(f.denominator)), 10)
+    return float(Decimal(f.numerator) / Decimal(f.denominator))
 
 
 def strict_maybe(x):

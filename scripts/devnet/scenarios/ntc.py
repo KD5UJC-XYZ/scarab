@@ -33,7 +33,7 @@ import subprocess
 import sys
 import time
 
-from .. import cborspan, gapmask, ntccli, ntcquery, ntcsafety
+from .. import cborspan, ledgercompare, ntccli, ntcquery, ntcsafety
 from ..ntclocal import Session, backlog_follow, compare_follow, live_follow, monitor_rounds, await_wakes, tx_id
 from ..cluster import database_mounts, freeze_classes, scala_container, up
 from ..ntccases import CLI, Builder, corpus
@@ -74,10 +74,8 @@ CLI_QUERIES = [
     ("ledger-state", "ledger-state"),
 ]
 
-# `cardano-cli query ledger-state` prints the whole state: the Scala node answers it since the mirror (S9) but
-# differs from the reference inside the documented gaps (`gapmask`), which the LocalStateQuery comparison masks
-# and a text comparison cannot. Reported, not failed on.
-NOT_IMPLEMENTED = {"ledger-state"}
+# The same-point raw protocol battery checks ledger-state byte-exactly. CLI output also
+# participates whenever its reference-before/after bracket establishes comparable state.
 
 
 def mempool_bytes(args):
@@ -164,13 +162,13 @@ def settle(args, root, seconds=90):
     return None
 
 
-def query_rounds(args, root, stats, until, every, masks=None):
+def query_rounds(args, root, stats, until, every, ledger_states=None):
     rounds = 0
     while time.monotonic() < until:
         try:
             point, results = compare_round(args.name, f"{ENV}/socket/node1/sock",
                                            str(root / "scala-sock" / "node.socket"), dump_dir=root,
-                                           masks=masks)
+                                           ledger_states=ledger_states)
         except (RuntimeError, EOFError, OSError) as e:
             print(json.dumps({"round": "failed", "error": str(e)[:200]}), flush=True)
             time.sleep(1)
@@ -509,14 +507,14 @@ def ntc(args):
             log = root / f"{command[0]}.log"
             loaders.append(subprocess.Popen([sys.executable, str(ENTRY), "--name", args.name, *command],
                                             stdout=log.open("w"), stderr=subprocess.STDOUT))
-        stats, masks = {}, {}
+        stats, ledger_states = {}, {}
         started = time.monotonic()
         # let the load build some state (stake, pools, DReps, proposals) before the first round
         time.sleep(args.warmup)
         chain_sync = {}
         follower_thread = threading.Thread(target=chain_sync_comparison, args=(args, root, chain_sync))
         follower_thread.start()
-        rounds = query_rounds(args, root, stats, started + args.seconds, args.every, masks)
+        rounds = query_rounds(args, root, stats, started + args.seconds, args.every, ledger_states)
         follower_thread.join(300)
         for loader in loaders:
             loader.terminate()
@@ -561,24 +559,23 @@ def ntc(args):
         except (RuntimeError, EOFError, OSError, AssertionError) as e:
             monitor["error"] = repr(e)
 
-        implemented = {k: v for k, v in stats.items() if v["implemented"]}
         gaps = {k: v for k, v in stats.items() if not v["implemented"]}
         summary = {
             "rounds": rounds,
             "queryVersions": versions,
-            "queries": {"matched": sum(v["matched"] for v in implemented.values()),
-                        "total": sum(v["total"] for v in implemented.values()),
-                        "perQuery": {k: f"{v['matched']}/{v['total']}" for k, v in sorted(implemented.items())},
+            "queries": {"matched": sum(v["matched"] for v in stats.values()),
+                        "total": sum(v["total"] for v in stats.values()),
+                        "perQuery": {k: f"{v['matched']}/{v['total']}" for k, v in sorted(stats.items())},
                         "notImplemented": {k: f"{v['matched']}/{v['total']}" for k, v in sorted(gaps.items())}},
             "cli": {k: (f"{v['matched']}/{v['total']}" if v["total"] else f"unbracketed x{v['unbracketed']}")
                     for k, v in cli_results.items()},
-            "cliDetails": {k: v for k, v in cli_results.items() if v["total"] and not v["matched"]},
+            "cliDetails": {k: v for k, v in cli_results.items() if not v["total"] or v["matched"] != v["total"]},
             "submissions": {"cases": len(sub_results),
                             "rawEqual": sum(r["rawEqual"] for r in sub_results),
                             "textEqual": sum(r["textEqual"] for r in sub_results),
                             "referenceNamedTheRule": sum(r["referenceNamesRule"] for r in sub_results),
                             "differences": [r for r in sub_results if not (r["rawEqual"] and r["textEqual"])]},
-            "ledgerState": {"gaps": list(gapmask.GAPS), "perQuery": masks},
+            "ledgerState": {"comparison": "byte-exact", "perQuery": ledger_states},
             "validSubmission": valid,
             "flaggedSubmission": flagged,
             "userCli": {"queries": user_queries, "build": user_build,
@@ -587,17 +584,16 @@ def ntc(args):
             "txMonitor": monitor,
             "querySafety": safety,
         }
-        mismatched = [k for k, v in implemented.items() if v["matched"] != v["total"]]
+        mismatched = [k for k, v in stats.items() if v["matched"] != v["total"]]
         if mismatched:
             failures.append(f"queries that differ from the reference: {mismatched}")
         if not rounds:
             failures.append("no comparison round completed")
-        for label in gapmask.LABELS:
-            row = masks.get(label)
-            if row is None or row.get("equalMasked") != row.get("answers") or row.get("problems"):
-                failures.append(f"{label} is not equal to the reference's outside the documented gaps: {row}")
-        badcli = [k for k, v in cli_results.items()
-                  if v["total"] and not v["matched"] and k not in NOT_IMPLEMENTED]
+        for label in ledgercompare.LABELS:
+            row = ledger_states.get(label)
+            if row is None or row.get("matched") != row.get("answers") or row.get("problems"):
+                failures.append(f"{label} does not exactly match the reference: {row}")
+        badcli = [k for k, v in cli_results.items() if not v["total"] or v["matched"] != v["total"]]
         if badcli:
             failures.append(f"cardano-cli outputs that differ: {badcli}")
         if any(r["case"] and not r["referenceNamesRule"] for r in sub_results):

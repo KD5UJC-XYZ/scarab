@@ -148,8 +148,6 @@ def compare_once(name, attempts=10, scala_wait=30):
         # the Conway load makes no datums or reference scripts; the CLI JSON shapes for them are not compared
         scala_view["utxo"] = {k: {a: b for a, b in v.items() if a in ("address", "lovelace", "assets")}
                               for k, v in scala_view["utxo"].items()}
-        if reference["rewardUpdate"] is None:
-            scala_view["rewardUpdate"] = None  # reference still pulsing: nothing to compare
         differences = diff(reference, scala_view)
         return {"tip": {k: after[k] for k in ("slot", "block", "epoch", "hash")}, "utxoSize": len(utxo),
                 "blocksCurrent": reference["blocksCurrent"], "blocksBefore": reference["blocksBefore"],
@@ -202,9 +200,7 @@ def compare_pre_conway(name, era, attempts=10):
             continue  # the node moved past the retained window (k blocks) while the queries ran
         evidence = reference.pop("_evidence", None)  # what the comparison exercised, not compared
         scala_view = {k: v for k, v in scala.items() if k in reference}
-        if reference["rewardUpdate"] is None:
-            scala_view["rewardUpdate"] = None  # reference pulser incomplete: nothing to compare
-        scala_view["params"] = {k: eraview._float(v) for k, v in scala_view["params"].items()
+        scala_view["params"] = {k: v for k, v in scala_view["params"].items()
                                 if k in reference["params"]}
         differences = diff(reference, scala_view)
         return {"tip": tip, "epoch": reference["epoch"], "utxoSize": len(reference["utxo"]),

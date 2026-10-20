@@ -87,6 +87,16 @@ scala code … I love the use of type parameters when I can use them"*.
   Refer to maintained symbols, ADRs and pinned upstream sources rather than private notes,
   implementation-stage labels or unpinned line numbers.
 
+## Conformance expectations
+
+- Run original upstream cases without Scarab-specific expected-failure lists, field masks or
+  numeric tolerances. Historical differences and transaction reachability do not justify an
+  exclusion. A JVM-specific exception needs a minimal reproducer, evidence of the platform
+  limitation, exact affected cases and an issue with a removal condition.
+- A missing implementation or fixture is an explicit incomplete gate, never a conformance pass.
+  Environmental availability skips and intentionally partial projections must be reported with
+  their scope; neither establishes agreement for untested cases or fields.
+
 ## Before you hand back
 
 - Name the level of your change and run its gates, no more
