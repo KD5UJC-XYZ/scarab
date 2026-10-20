@@ -53,6 +53,12 @@ object MockEnvironment:
   final case class Timed[A](first: A, later: Vector[(FiniteDuration, A)]):
     def all: Vector[(FiniteDuration, A)] = (Duration.Zero -> first) +: later
 
+  /** @param ledgerPeers
+    *   The relays the ledger offers an ordinary request (when there are any, they are offered
+    *   instead of the public roots, as the reference's `requestPublicRootPeers` does).
+    * @param bigLedgerPeers
+    *   The relays the ledger offers a request for big ledger peers.
+    */
   final case class Env(
       peers: Int,
       scripts: Map[Peer, PeerScript],
@@ -63,11 +69,7 @@ object MockEnvironment:
       targets: Timed[Targets],
       judgement: Timed[LedgerStateJudgement],
       seed: Long,
-      /** The relays the ledger offers an ordinary request (when there are any, they are offered
-        * instead of the public roots, as the reference's `requestPublicRootPeers` does).
-        */
       ledgerPeers: Set[Peer] = Set.empty,
-      /** The relays the ledger offers a request for big ledger peers. */
       bigLedgerPeers: Set[Peer] = Set.empty
   ):
     def script(peer: Peer): PeerScript = scripts.getOrElse(peer, PeerScript.steady)
@@ -116,10 +118,12 @@ object MockEnvironment:
   enum Conn:
     case Warm, Hot, Cooling, Cold
 
+  /** @param overflowed
+    *   The run was stopped because it recorded far more than any sane run does: a livelock.
+    */
   final case class Recording(
       seen: Vector[(Time, Seen)],
       fatal: Option[GovernorFault],
-      /** The run was stopped because it recorded far more than any sane run does: a livelock. */
       overflowed: Boolean,
       env: Env,
       horizon: Time

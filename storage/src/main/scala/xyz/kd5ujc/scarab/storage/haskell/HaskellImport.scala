@@ -71,30 +71,38 @@ enum HaskellImportError:
       s"the target database ends at slot $s (${h.take(16)}), which the Haskell database does not contain"
 
 object HaskellImport:
+  /** @param haskellDb
+    *   The Haskell node's database directory (holding `immutable/` and `protocolMagicId`).
+    * @param db
+    *   Our database directory (`--db`).
+    * @param stopSlot
+    *   Stop after the last block at or before this slot.
+    * @param batch
+    *   Blocks between two forced syncs and two progress reports.
+    */
   final case class Config(
-      /** The Haskell node's database directory (holding `immutable/` and `protocolMagicId`). */
       haskellDb: Path,
-      /** Our database directory (`--db`). */
       db: Path,
       identity: NetworkIdentity,
       byronEpochSlots: BigInt,
       chunkSlots: ChunkSlots,
-      /** Stop after the last block at or before this slot. */
       stopSlot: Option[Long] = None,
-      /** Blocks between two forced syncs and two progress reports. */
       batch: Int = 10000
   )
 
   final case class Progress(appended: Long, skipped: Long, chunks: Int, slot: Long)
 
+  /** @param stoppedAtSlot
+    *   The source went on past `stopSlot`.
+    * @param truncation
+    *   What was ignored at the end of the source's most recent chunk, if anything.
+    */
   final case class Report(
       appended: Long,
       skipped: Long,
       chunks: Int,
       tip: Option[BlockRef],
-      /** The source went on past `stopSlot`. */
       stoppedAtSlot: Boolean,
-      /** What was ignored at the end of the source's most recent chunk, if anything. */
       truncation: Option[(ChunkNo, Truncation)],
       elapsed: FiniteDuration
   )

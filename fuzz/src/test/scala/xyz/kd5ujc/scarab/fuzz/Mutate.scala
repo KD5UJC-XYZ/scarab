@@ -71,31 +71,32 @@ object Mutate:
       others: IndexedSeq[Array[Byte]]
   ): Vector[(Array[Byte], Random) => Array[Byte]] =
     Vector(
-      // flip one bit
       (a, r) =>
+        // flip one bit
         if a.isEmpty then a
         else
           val c = a.clone(); val i = r.nextInt(a.length)
           c(i) = (c(i) ^ (1 << r.nextInt(8))).toByte; c
       ,
-      // set one byte to a CBOR-significant value
       (a, r) =>
+        // set one byte to a CBOR-significant value
         if a.isEmpty then a
         else
           val c = a.clone();
           c(r.nextInt(a.length)) = interesting(r.nextInt(interesting.length)).toByte; c
       ,
-      // truncate
-      (a, r) => a.take(r.nextInt(a.length + 1)),
-      // extend with random bytes, a copy of itself, or a break
       (a, r) =>
+        // Truncate at any prefix, including the empty input.
+        a.take(r.nextInt(a.length + 1)),
+      (a, r) =>
+        // extend with random bytes, a copy of itself, or a break
         r.nextInt(3) match
           case 0 => a ++ Array.fill(1 + r.nextInt(16))(r.nextInt(256).toByte)
           case 1 => a ++ a
           case _ => a :+ 0xff.toByte
       ,
-      // overwrite the bytes after a head with a huge declared length (the head keeps its major type)
       (a, r) =>
+        // overwrite the bytes after a head with a huge declared length (the head keeps its major type)
         val heads = headPositions(a)
         if heads.isEmpty then a
         else
@@ -103,15 +104,15 @@ object Mutate:
           val major = (a(p) & 0xff) >> 5
           a.take(p) ++ head8(major, pick(r, huge)) ++ a.drop(p + 1)
       ,
-      // a fresh head with a huge declared length, anywhere, followed by little or nothing
       (a, r) =>
+        // a fresh head with a huge declared length, anywhere, followed by little or nothing
         insert(
           a,
           at(r, a),
           head8(2 + r.nextInt(4), pick(r, huge)) ++ Array.fill(r.nextInt(4))(0.toByte)
         ),
-      // deep nesting in front of or inside the input
       (a, r) =>
+        // deep nesting in front of or inside the input
         val depth = Array(5, 24, 25, 33, 64, 65, 100, 500, 1024, 2047, 2048, 2049, 5000, 100000)(
           r.nextInt(14)
         )
@@ -123,8 +124,8 @@ object Mutate:
           case _ => Array(0x82.toByte, 0x00.toByte)
         insert(a, if r.nextBoolean() then 0 else at(r, a), repeat(unit, depth))
       ,
-      // indefinite-length abuse: start one without a break, break without a start, wrong chunk types
       (a, r) =>
+        // indefinite-length abuse: start one without a break, break without a start, wrong chunk types
         r.nextInt(5) match
           case 0 => insert(a, at(r, a), Array(Array(0x9f, 0xbf, 0x5f, 0x7f)(r.nextInt(4)).toByte))
           case 1 => insert(a, at(r, a), Array(0xff.toByte))
@@ -136,8 +137,8 @@ object Mutate:
               val c = a.clone(); val p = at(r, a)
               c(p) = ((c(p) & 0xe0) | 31).toByte; c
       ,
-      // tag abuse: an extra tag in front of a random item, with a small or huge number
       (a, r) =>
+        // tag abuse: an extra tag in front of a random item, with a small or huge number
         val tag =
           r.nextInt(4) match
             case 0 => Array((0xc0 + r.nextInt(24)).toByte)
@@ -147,15 +148,15 @@ object Mutate:
             case _ => head8(6, pick(r, huge))
         insert(a, at(r, a), tag)
       ,
-      // splice with another input
       (a, r) =>
+        // splice with another input
         if others.isEmpty then a
         else
           val b = others(r.nextInt(others.size))
           a.take(at(r, a)) ++ b.drop(at(r, b))
       ,
-      // delete or duplicate a range
       (a, r) =>
+        // delete or duplicate a range
         if a.isEmpty then a
         else
           val from = r.nextInt(a.length); val len = 1 + r.nextInt(math.min(16, a.length - from))

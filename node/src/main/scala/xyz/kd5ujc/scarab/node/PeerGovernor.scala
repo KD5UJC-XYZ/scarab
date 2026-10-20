@@ -91,13 +91,15 @@ trait PeerSharingActions[F[_], A]:
   ): F[PeerShare.Result[A]]
   def publish(state: GovernorState[A]): F[Unit]
 
-/** The settings of the effect loop. */
+/** The settings of the effect loop.
+  *
+  * @param activationPause
+  *   The pause after a failed activation, so a failing promotion cannot spin (`threadDelay 1`,
+  *   `ActivePeers.hs` 476).
+  */
 final case class GovernorConfig(
     policy: Policy = Policy(),
     association: AssociationMode,
-    /** The pause after a failed activation, so a failing promotion cannot spin (`threadDelay 1`,
-      * `ActivePeers.hs` 476).
-      */
     activationPause: FiniteDuration = 1.second
 )
 
@@ -154,12 +156,14 @@ object PeerGovernor:
         )
       )
 
+  /** @param scheduled
+    *   The times a wake-up is already asked for.
+    */
   private def loop[F[_]: Temporal, A](
       actions: PeerStateActions[F, A],
       roots: RootProvider[F, A],
       events: Queue[F, Event[A]],
       supervisor: Supervisor[F],
-      /** The times a wake-up is already asked for. */
       scheduled: Ref[F, Set[Time]],
       sharing: Option[PeerSharingActions[F, A]],
       beforeEventApplied: Option[Event[A] => F[Unit]],

@@ -117,16 +117,17 @@ object Peer:
       */
     case BlocksArrived(blocks: Vector[(Long, Long)], at: Time)
 
+  /** @param readAhead
+    *   Most ChainSync requests pipelined at once while the peer is far ahead (D3: 128, see
+    *   docs/performance.md; 64 to 256 were measured against the public Preview relay).
+    * @param byronEpochSlots
+    *   Slots per Byron epoch (10k of the Byron genesis), to place Byron headers on the slot axis.
+    */
   final case class Settings(
       address: SocketAddress[Host],
       magic: Long,
       network: NodeToNode.Settings = NodeToNode.Settings(),
-      /** Most ChainSync requests pipelined at once while the peer is far ahead (D3: 128, see
-        * docs/performance.md; 64 to 256 were measured against the public Preview relay).
-        */
       readAhead: Int = 128,
-      /** Slots per Byron epoch (10k of the Byron genesis), to place Byron headers on the slot axis.
-        */
       byronEpochSlots: BigInt
   )
 
@@ -247,6 +248,16 @@ object Peer:
     * The fibers of the pipeline each run in an error scope of their own ([[Fault.fiber]]) and hand
     * their fault to the session as a value in the queue of batches; the session raises it again in
     * its own fiber, through the `Raise` it passes to [[Peer.next]].
+    *
+    * @param pool
+    *   Where fetched blocks wait for the session that applies them; share one between the sessions
+    *   of several peers so that each block is fetched from one of them only. Without one, the
+    *   session has a pool of its own.
+    * @param fetchMode
+    *   The fetch mode the node is in now (bulk sync or deadline): it decides whether a block
+    *   another session has claimed may be requested too ([[BlockPool]]). Bulk sync without it.
+    * @param invalidCachedBlock
+    *   Report against the source peer independently of this session's lifetime or error scope.
     */
   def over[F[_]: Async](
       connection: NodeToNodeConnection[F, NtNHeader],
@@ -254,16 +265,8 @@ object Peer:
       prepare: Prepare[F],
       headers: Option[HeaderCheck[F]] = None,
       observe: Option[Peer.Observation => F[Unit]] = None,
-      /** Where fetched blocks wait for the session that applies them; share one between the
-        * sessions of several peers so that each block is fetched from one of them only. Without
-        * one, the session has a pool of its own.
-        */
       pool: Option[BlockPool[F]] = None,
-      /** The fetch mode the node is in now (bulk sync or deadline): it decides whether a block
-        * another session has claimed may be requested too ([[BlockPool]]). Bulk sync without it.
-        */
       fetchMode: Option[F[FetchMode]] = None,
-      /** Report against the source peer independently of this session's lifetime or error scope. */
       invalidCachedBlock: Option[ValidationError => F[Unit]] = None
   ): Resource[F, Controlled[F]] =
     val F = Async[F]

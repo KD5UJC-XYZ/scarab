@@ -52,13 +52,15 @@ import scala.jdk.CollectionConverters.*
   * snapshots of format 1 go with checkpoints of that layout. [[restore]] reads such a checkpoint
   * and writes the live store in the current layout ([[RocksUtxoStore.rekeyInto]]); the checkpoint
   * itself is not touched.
+  *
+  * @param db
+  *   The handle is swapped when the database is reopened (see `open`); the holder is private to
+  *   this store and its lifetime is the enclosing Resource. A Ref would only add a suspension
+  *   around every JNI call on the hot read path.
   */
 final class RocksUtxoStore[F[_]: Sync] private (
     dir: java.nio.file.Path,
     shared: RocksUtxoStore.Shared,
-    // The handle is swapped when the database is reopened (see `open`); the holder is private to
-    // this store and its lifetime is the enclosing Resource. A Ref would only add a suspension
-    // around every JNI call on the hot read path.
     db: AtomicReference[RocksDB]
 ) extends UtxoStore[F]:
   import UtxoStore.Coding

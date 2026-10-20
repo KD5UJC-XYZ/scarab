@@ -14,9 +14,10 @@ import Signals.*
 
 /** The reference's governor properties (`Test.Cardano.Network.PeerSelection`, ouroboros-network
   * 1.2.0.0), by name, on the real governor loop of the node in the mock environment on
-  * `TestControl`. A property that the reference states for big ledger peers, peer sharing or ledger
-  * peers is not here: those are later stages. The reference's `signalProperty` is a check at every
-  * instant of the recording ([[Signals]]); its `MaxTime` is ten hours.
+  * `TestControl`. This suite covers the base governor properties; big-ledger properties live in
+  * [[BigLedgerPropertiesSuite]], and peer-sharing integration in [[PeerSharingLoopSuite]]. The
+  * reference's `signalProperty` checks every instant of the recording ([[Signals]]); its `MaxTime`
+  * is ten hours.
   *
   * The seed is fixed so that a run is the same run: `prop_governor_nobusyness` is a heuristic (a
   * credit per second to a stretch of events with gaps under 45 s) that the doubling cold backoff of

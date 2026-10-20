@@ -158,10 +158,12 @@ object Collectors:
 
 /** One reading of the JVM's management beans and of `/proc`. */
 private[metrics] object Jvm:
+  /** @param collectors
+    *   Name, collections, milliseconds spent.
+    */
   final case class Sample(
       heap: java.lang.management.MemoryUsage,
       nonHeap: java.lang.management.MemoryUsage,
-      /** Name, collections, milliseconds spent. */
       collectors: List[(String, Long, Long)],
       threads: Int,
       classes: Int,

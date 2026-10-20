@@ -86,6 +86,12 @@ object Mempool:
         if grown.size > limit then Seen(ids + id - grown.head, grown.tail)
         else Seen(ids + id, grown)
 
+  /** @param utxoStore
+    *   Where the UTxO entries outside the ledger state's diff live; the pool fetches the read set
+    *   of each transaction from it, as the block path does.
+    * @param environment
+    *   A caller may refresh backend capabilities between validations.
+    */
   def create[F[_]: Async](
       ledger: Either[ConwayView.Unavailable, MempoolLedger],
       tipSlot: BigInt,
@@ -93,11 +99,7 @@ object Mempool:
       capacityBytes: Long,
       events: MempoolEvents[F],
       seenLimit: Int = 8192,
-      /** Where the UTxO entries outside the ledger state's diff live; the pool fetches the read set
-        * of each transaction from it, as the block path does.
-        */
       utxoStore: Option[UtxoStore[F]] = None,
-      /** A caller may refresh backend capabilities between validations. */
       environment: Option[Ask[F, MempoolEnv]] = None
   ): F[Mempool[F]] =
     for

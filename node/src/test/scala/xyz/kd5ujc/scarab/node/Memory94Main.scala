@@ -13,7 +13,7 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, HaskellState}
 
 /** SPIKE for issue #94 (docs/design/memory-lean-decoding.md): what the snapshot read-back costs in
   * heap, stage by stage. Not a test and not part of the node: it is run by hand under different
-  * `-Xmx` values to find the minimum heap of each stage.
+  * `-Xmx` values inside the JDK build container to find the minimum heap of each stage.
   *
   * {{{
   * java -Xmx3g -cp <test classpath> xyz.kd5ujc.scarab.node.Memory94Main <mode> <snapshot> [genesis-dir]

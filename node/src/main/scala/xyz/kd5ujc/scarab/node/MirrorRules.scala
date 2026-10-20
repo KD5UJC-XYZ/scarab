@@ -60,6 +60,14 @@ import xyz.kd5ujc.scarab.storage.UtxoStore
   *   starts in Shelley
   * @param byronParams
   *   the Byron parameters of the era history, where the telescopes are placed
+  *
+  * @param utxoStore
+  *   The backing store of the UTxO set. Without one the state's set holds all of it.
+  * @param afterBlock
+  *   Called with each block's header and the state it produces (the node uses it to tell the
+  *   verification pipeline which epoch nonce is current, and to write state digests).
+  * @param compute
+  *   Measures the pure rules; without one they are not timed.
   */
 final class MirrorRules[F[_]: Monad](
     config: PraosConfig,
@@ -68,15 +76,10 @@ final class MirrorRules[F[_]: Monad](
     handOver: Option[FromByron],
     byronParams: EraHistory.ByronParams,
     phase2Observer: Option[Phase2.Observation => Unit] = None,
-    /** The backing store of the UTxO set. Without one the state's set holds all of it. */
     utxoStore: Option[UtxoStore[F]] = None,
-    /** Called with each block's header and the state it produces (the node uses it to tell the
-      * verification pipeline which epoch nonce is current, and to write state digests).
-      */
     afterBlock: Option[
       (Header, MirrorState) => Raise[F, xyz.kd5ujc.scarab.ledger.StorageError] ?=> F[Unit]
     ] = None,
-    /** Measures the pure rules; without one they are not timed. */
     compute: Option[Compute[F]] = None,
     parallelPlutus: Option[ParallelPlutus[F]] = None
 ) extends BlockRules[F, MirrorState]:

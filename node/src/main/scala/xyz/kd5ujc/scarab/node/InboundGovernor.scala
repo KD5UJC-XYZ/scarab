@@ -315,14 +315,17 @@ object InboundGovernor:
       }.asJson
     )
 
-  /** The session of one inbound connection: what our clients saw of the peer. */
+  /** The session of one inbound connection: what our clients saw of the peer.
+    *
+    * @param retries
+    *   Times the peer shared no point with our chain and the session was started again.
+    */
   final case class Session(
       remote: String,
       number: Long = 0,
       intersection: Option[String] = None,
       headers: Long = 0,
       rollbacks: Long = 0,
-      /** Times the peer shared no point with our chain and the session was started again. */
       retries: Long = 0,
       peerTip: Option[BigInt] = None,
       ended: Option[SessionFailure] = None
@@ -333,13 +336,16 @@ object InboundGovernor:
 
   private val RetainedSessions = 64
 
-  /** `runClients` off serves inbound connections without following them. */
+  /** `runClients` off serves inbound connections without following them.
+    *
+    * @param retryDelay
+    *   How long to wait before following a peer again that shared no point with our chain.
+    */
   final case class Config(
       magic: Long,
       server: NodeToNodeServer.Settings,
       peer: Peer.Settings,
       runClients: Boolean = true,
-      /** How long to wait before following a peer again that shared no point with our chain. */
       retryDelay: scala.concurrent.duration.FiniteDuration =
         scala.concurrent.duration.DurationInt(10).seconds
   )

@@ -256,7 +256,7 @@ class GoldenHeaderSuite extends munit.FunSuite:
 
   test("a header decoded from a wrong era layout is a typed error with a path and offset") {
     val raw = Fixtures.headerBytes(Fixtures.hexLines("fixtures/preview/conway.hex").head)
-    conway.Header.decodeBytes(raw).toOption.get // sanity
+    conway.Header.decodeBytes(raw).toOption.get // The same fixture must decode under its own era.
     val err = alonzo.Header.decodeBytes(raw).left.toOption.getOrElse(fail("expected an error"))
     assertEquals(err.path.headOption, Some("header_body"))
     assert(err.render.nonEmpty)

@@ -12,8 +12,8 @@ final case class StateNotWritable(violation: ConstraintViolation)
 
 /** The ledger part of the Haskell node's `state` file, as bytes: the `NewEpochState` of an era
   * (`Types.hs:397-405`), written at the version the reference writes the era at ([[Versions]]). The
-  * envelopes around it (the snapshot version, the hard-fork telescope, the header state) are the
-  * next stage.
+  * enclosing snapshot version, hard-fork telescope and header state are handled by
+  * [[HaskellLedgerFile]].
   */
 object HaskellState:
   /** The limits for reading a state: no cap below the sizes a state has (tens of megabytes, and
