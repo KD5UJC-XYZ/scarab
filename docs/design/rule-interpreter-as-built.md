@@ -64,7 +64,12 @@ identical (the applied state's count); the table is filled from the rutherford r
 
 ## Gates
 
-- `check` on the exact head: the CI job (the rutherford local run documents the storage suites that
-  time out on that host — #213 and the 3-minute `ChainStorageSuite` case — and excludes them).
+- `check` on rutherford (documented non-root `--user` invocation, `--cpuset-cpus 0-7`): **1077 tests,
+  one failure** — `ChainStorageSuite`'s 3-minute munit timeout on that host (the same environmental
+  class as #213; the suite passes on the CI runners). Every ledger, rules and consensus suite passed,
+  including the small-stack and differential suites. `VolatileStoreSuite` is excluded for the same
+  documented reason.
+- `check` on the exact head in CI: the `scalafmt, compile and test` job (the full-suite run on
+  GitHub runners, where the two long storage suites fit their budgets).
 - The ledger area scenario (`python3 scripts/devnet.py --name <name> e2e`) on the reference image
   `cardano-reference-11.1.3:local`.
