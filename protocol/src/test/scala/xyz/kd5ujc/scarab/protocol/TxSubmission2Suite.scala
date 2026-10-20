@@ -155,9 +155,32 @@ class TxSubmission2Suite extends munit.FunSuite:
       Mux.segmentProtocolMessage(bytes, 0L, Mux.Direction.Initiator, 65535, 4, 80000).toOption.get
     assertEquals(frames.map(_.payload.size), Vector(65535, 4465))
     assertEquals(Bytes(frames.flatMap(_.payload.value)), bytes)
-    assert(Mux.segmentBounded(bytes, 0L, Mux.Direction.Initiator, 65535, 4, 80000).isLeft)
-    assert(Mux.segmentProtocolMessage(bytes, 0L, Mux.Direction.Initiator, 65535, 4, 2500001).isLeft)
-    assert(Mux.segmentProtocolMessage(bytes, 0L, Mux.Direction.Initiator, 65535, 4, 69999).isLeft)
+    assertEquals(
+      Mux.segmentBounded(bytes, 0L, Mux.Direction.Initiator, 65535, 4, 80000),
+      Left(Mux.Error.InvalidMessageLimit(80000, 65535))
+    )
+    for limit <- Vector(0, -1) do
+      assertEquals(
+        Mux.segmentProtocolMessage(bytes, 0L, Mux.Direction.Initiator, 65535, 4, limit),
+        Left(Mux.Error.InvalidMessageLimit(limit, Int.MaxValue))
+      )
+    assertEquals(
+      Mux.segmentProtocolMessage(bytes, 0L, Mux.Direction.Initiator, 65535, 4, 69999),
+      Left(Mux.Error.MessageLength(70000, 69999))
+    )
+  }
+
+  test("an explicit larger message budget preserves uint16 SDUs and the supplied payload bound") {
+    val bytes = Bytes.fromArray(Array.tabulate[Byte](2500001)(_.toByte))
+    assertEquals(
+      Mux.segmentProtocolMessage(bytes, 0L, Mux.Direction.Initiator, 65535, 4, 2500000),
+      Left(Mux.Error.MessageLength(2500001, 2500000))
+    )
+    val frames = Mux
+      .segmentProtocolMessage(bytes, 0L, Mux.Direction.Initiator, 65535, 4, 3000000)
+      .fold(e => fail(e.toString), identity)
+    assertEquals(frames.map(_.payload.size), Vector.fill(38)(65535) :+ 9671)
+    assertEquals(Bytes(frames.flatMap(_.payload.value)), bytes)
   }
 
   test("indefinite transaction envelopes retain exact noncanonical and indefinite body identity") {

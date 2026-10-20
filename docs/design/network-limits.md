@@ -62,8 +62,10 @@ the framing codec, so counting positive payload bytes also bounds the number of 
 
 Egress admission holds at most 65 messages/fences by default: the configured 64 queue slots plus
 one writer allowance. One semaphore covers the inbox, staged per-channel queues and the current
-write, so importing work never frees admission capacity. Each message has a 2500000-byte ceiling;
-`send` waits for a credit. No additional byte budget is introduced without a measured need.
+write, so importing work never frees admission capacity. The default message ceiling is 2500000
+bytes; an explicit positive `Mux.Config.maxMessageBytes` also sets the aggregate segmentation
+bound, independently of the uint16 SDU bound. Protocol-specific ingress and receive limits remain
+separate. `send` waits for a credit. No additional byte budget is introduced without a measured need.
 Node-to-client's separate queue ceiling is 4294967295 bytes, matching the reference local-interface
 allowance; it should not be described as an unbounded queue.
 

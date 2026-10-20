@@ -25,14 +25,16 @@ patched. The original code and this adapter are Apache-2.0.
 The pinned property passes **response1 to both protocols**; response0 only participates in the
 `> 2*1280` precondition. This apparent upstream typo is preserved, not silently repaired. Both original
 generated responses and their native ReqResp CBOR encodings are retained. `UpstreamMuxStarvationSuite`
-replays all 18 passing cases whose actual response fits Scarab's unchanged 2500000-byte message limit,
-using the original response1/response1 bytes, 1280-byte SDUs, queue capacity 10 and mock ingress 3 MB.
+replays all 22 passing cases using the original response1/response1 bytes, 1280-byte SDUs,
+queue capacity 10 and an explicit mock profile with 3 MB message and ingress bounds. The default
+public Mux message bound remains 2500000 bytes.
 Requests, responses and Done are compared byte-for-byte through real production Mux channels.
 
-Four native passes have an actual response above Scarab's limit. They remain
-`unsupported-message-limit`, with original inputs, hashes, traces and native passes intact; no
-truncation, changed production ceiling or pass claim is introduced. Ten precondition discards also
-remain visible. These are generic mock-domain exclusions, not extra advertised Cardano messages.
+Four native passes have responses above the default profile. The original TSV retains their
+`unsupported-message-limit` classification as historical export metadata, but the explicit mock
+profile now executes them unchanged. Their original inputs, hashes, traces and native judgments
+remain intact. Ten native precondition discards remain discards. This generic mock workload does
+not advertise larger Cardano protocol messages.
 
 Twelve separately labelled supplemental conversations use the original unequal response0/response1
 pairs where both fit. They apply the same ordering law and exact bytes, but their verdicts are **local

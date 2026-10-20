@@ -114,6 +114,7 @@ object NetworkError:
     case LocalTxSubmissionUnexpected(message: LocalTxSubmission.Message)
     case LocalTxMonitorUnexpected(message: LocalTxMonitor.Message)
     case LocalStateQueryUnexpected(message: LocalStateQuery.Message)
+    case LocalStateQueryEngineUnexpected(message: LocalStateQueryEngine.Message[?])
 
   def violationMessage(cause: Violation): String = cause match
     case error: ProtocolError    => error.message

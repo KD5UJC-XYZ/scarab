@@ -86,17 +86,28 @@ Ouroboros-network tests are covered. Other applicable protocols and typed-protoc
 open under #49. Source licensing is Apache-2.0; see `fixtures/licenses/ouroboros-network-LICENSE`
 and `fixtures/licenses/ouroboros-network-NOTICE`.
 
+## Original mock-domain replay and strict Cardano projections
+
+`UpstreamGenericCodecCoverageSuite` now executes every retained original ChainSync, BlockFetch,
+LocalStateQuery, TxSubmission2 and PeerSharing codec row through the shared production generic
+engines. This includes all base, split, binary-direction and separately seeded annotated rows:
+752 total, with immutable fixture hashes and native verdicts. It verifies exact original bytes,
+message fields independently extracted by the general CBOR parser, and every distinct prefix for
+split observations. See [the row inventory](COVERAGE.md) for counts.
+The typed compatibility counts below describe the **strict Cardano projection** only; its refusals
+remain tested separately and no longer exclude the original mock rows from generic execution.
+
 The ChainSync `codecSerialised` observer exports 128 rows from the real
 `AnyMessage ChainSync_Serialised_BlockHeader` generator. Both unchanged
-`prop_codec_ChainSyncSerialised` and `prop_codec_cbor_ChainSyncSerialised` pass 128/128. Scarab
-decodes and exact-wire re-encodes 49 rows. The other 79 retain their original bytes and pass
+`prop_codec_ChainSyncSerialised` and `prop_codec_cbor_ChainSyncSerialised` pass 128/128.
+Scarab's strict Cardano facade decodes and exact-wire re-encodes 49 rows. The other 79 retain their original bytes and pass
 verdicts but are unsupported at `ExpectedDefiniteByteString`: the upstream mock uses
 `HeaderHash Int`, while Scarab requires hash bytes. No integer-to-byte mapping is applied. The
 adjacent `chainsync-splits.tsv` reuses all 128 rows for the unchanged serialized split2 and split3
 properties; both pass 128/128. Scarab replays every partition through its production prefix decoder
 for the 49 typed-compatible rows, including empty fragments and truncation controls. The 79 generic
 integer-hash rows preserve their passing upstream split verdicts and remain unsupported; they are not
-counted as Scarab split passes.
+counted as strict Cardano split passes.
 
 The same 24 KeepAlive rows are now also run through the unchanged upstream
 `prop_codec_v2_splits2` and `prop_codec_v2_splits3` properties. Both pass 24/24; the Scala
@@ -131,24 +142,24 @@ The adjacent `blockfetch-splits.tsv` reuses those exact rows for the unchanged
 properties; each passed 24/24. Scarab replays every two- and three-part partition, including empty
 segments, through its production prefix decoder for the 20 typed-compatible rows and checks a
 truncated-wire negative control. The four mock-point rows preserve both passing upstream split
-verdicts but remain unsupported at `ExpectedDefiniteByteString`; they are not counted as Scarab
-split passes.
+verdicts but remain unsupported at `ExpectedDefiniteByteString`; they are not counted as
+strict Cardano split passes.
 
 The LocalStateQuery observer exports 24 seeded stateful messages from the unchanged
 `AnyMessageWithResult` generator. `prop_codec_LocalStateQuery` and `prop_codec_cbor` pass for all 24.
-Scarab exactly decodes and re-encodes 20 rows, including acquire/reacquire tips, result, release,
-failure, and done messages. Four specific-point acquire/reacquire rows retain original wire and
+Scarab's strict Cardano facade exactly decodes and re-encodes 20 rows, including acquire/reacquire
+tips, result, release, failure, and done messages. Four specific-point acquire/reacquire rows retain original wire and
 upstream pass status but are unsupported at `ExpectedDefiniteByteString`: upstream mock
 `HeaderHash Int` is integer-encoded, while Scarab's point type requires byte-string hashes. No
 point conversion or fabricated value is used; query/result payloads remain opaque full CBOR items.
-This is a generic mock-to-Cardano typed-API gap, not evidence of an invalid Cardano wire message.
+These are distinct point domains; generic production-engine replay covers every original row.
 The separate `localsq-splits.tsv` fixture reuses these exact 24 rows and records the unchanged
 `prop_codec_splits2` and `prop_codec_splits3` verdicts (24/24 each). Scarab runs every two- and
 three-part partition through its production stateful prefix decoder for the 20 typed-compatible
 rows, including trailing-empty-segment handling and a truncated-wire negative control. The four
 specific-point mock rows retain their original wire and both passing upstream verdicts, but remain
 unsupported by the typed adapter for the same `ExpectedDefiniteByteString` reason. Their upstream
-passes are not counted as Scarab split passes.
+passes are not counted as strict Cardano split passes.
 
 The LocalTxSubmission observer exports 24 rows from the pinned upstream
 `AnyMessage (LocalTxSubmission Tx Reject)` generator at seed base 493001. Both unchanged
@@ -176,7 +187,7 @@ rows for unchanged `prop_codec_splits2` and `prop_codec_splits3`; each passes 24
 every partition through its production prefix decoder for the 13 typed-compatible rows, including
 empty segments and a truncated-wire negative control. The 11 arbitrary CDDL transaction rows retain
 the original wire and both passing upstream verdicts but remain unsupported at `ExpectedDefiniteArray`;
-they are not counted as Scarab split passes. ID codec, annotated-codec, valid-CBOR and channel
+they are not counted as strict Cardano split passes. ID codec, annotated-codec, valid-CBOR and channel
 properties remain separate coverage.
 
 The pinned ChainSync `codecSerialised` observer now exports 128 rows from the actual

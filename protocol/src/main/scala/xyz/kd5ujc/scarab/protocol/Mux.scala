@@ -67,7 +67,11 @@ object Mux:
   private def validPayloadLimit(limit: Int): Either[Error, Unit] =
     Either.cond(limit >= 1 && limit <= WireMaxPayloadBytes, (), Error.InvalidPayloadLimit(limit))
 
-  private def validate(header: Header, limit: Int): Either[Error, Unit] =
+  private def validate(
+      header: Header,
+      limit: Int,
+      allowEmpty: Boolean = false
+  ): Either[Error, Unit] =
     for
       _ <- validPayloadLimit(limit)
       _ <- Either.cond(
@@ -81,14 +85,15 @@ object Mux:
         Error.ProtocolOutOfRange(header.protocol)
       )
       _ <- Either.cond(
-        header.payloadLength > 0 && header.payloadLength <= limit,
+        header.payloadLength >= (if allowEmpty then 0 else 1) && header.payloadLength <= limit,
         (),
         Error.PayloadLengthOutOfRange(header.payloadLength, limit)
       )
     yield ()
 
+  /** The native wire encoder permits empty SDUs; admission and the native decoder reject them. */
   def encodeHeader(header: Header): Either[Error, Bytes] =
-    validate(header, WireMaxPayloadBytes).map { _ =>
+    validate(header, WireMaxPayloadBytes, allowEmpty = true).map { _ =>
       // Follow putNumAndMode/getDir, not the reversed prose comment in the pinned source.
       val protocol =
         header.protocol | (if header.direction == Direction.Responder then 0x8000 else 0)
@@ -170,7 +175,14 @@ object Mux:
         maxPayloadBytes
       )
     yield (0 until payload.size by maxPayloadBytes).toVector
-      .map(from => Sdu(timestamp, protocol, direction, payload.slice(from, from + maxPayloadBytes)))
+      .map(from =>
+        Sdu(
+          timestamp,
+          protocol,
+          direction,
+          payload.slice(from, from + math.min(maxPayloadBytes, payload.size - from))
+        )
+      )
 
   /** General bounded segmentation; message and SDU limits are independent. */
   def segmentBounded(
@@ -210,9 +222,9 @@ object Mux:
     for
       _ <- validPayloadLimit(maxPayloadBytes)
       _ <- Either.cond(
-        maxMessageBytes > 0 && maxMessageBytes <= 2500000,
+        maxMessageBytes > 0,
         (),
-        Error.InvalidMessageLimit(maxMessageBytes, 2500000)
+        Error.InvalidMessageLimit(maxMessageBytes, Int.MaxValue)
       )
       _ <- Either.cond(
         payload.size > 0 && payload.size <= maxMessageBytes,
@@ -224,7 +236,14 @@ object Mux:
         maxPayloadBytes
       )
     yield (0 until payload.size by maxPayloadBytes).toVector
-      .map(from => Sdu(timestamp, protocol, direction, payload.slice(from, from + maxPayloadBytes)))
+      .map(from =>
+        Sdu(
+          timestamp,
+          protocol,
+          direction,
+          payload.slice(from, from + math.min(maxPayloadBytes, payload.size - from))
+        )
+      )
 
   /** Immutable partial-frame state. Failed feeds publish neither state nor partially decoded
     * output. An empty feed is a no-op, not EOF; finish explicitly verifies EOF. Retained data is at

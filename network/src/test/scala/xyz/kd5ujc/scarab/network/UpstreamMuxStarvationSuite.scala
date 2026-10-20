@@ -126,7 +126,11 @@ class UpstreamMuxStarvationSuite extends FailsOnUncaught:
               assertEquals(frame.length, 8 + length)
               first.getAndSet(false).flatMap(flag => release.get.whenA(flag)) *>
                 trace.update(_ :+ (number & 0x7fff)) *> b.write(bytes)
-          config = Mux.Config(maxSduPayload = 1280, ingressLimit = _ => 3000000L)
+          config = Mux.Config(
+            maxSduPayload = 1280,
+            maxMessageBytes = 3000000,
+            ingressLimit = _ => 3000000L
+          )
           result <- (
             Mux.resource(a, Set(2, 3), config),
             Mux.resource(observing, Set(2, 3), config.copy(role = Mux.Role.Responder))
@@ -161,7 +165,9 @@ class UpstreamMuxStarvationSuite extends FailsOnUncaught:
       })
       .map(_.fold(e => fail(s"seed ${sample.seed}: ${e.message}"), identity))
 
-  test("retain all 32 original generated outcomes, including discards and local size exclusions"):
+  test(
+    "retain all 32 original generated outcomes, including discards and historical default-profile classifications"
+  ):
     assertEquals(samples.size, 32)
     assertEquals(samples.map(_.seed), (512001 until 512033).toVector)
     assertEquals(samples.count(_.verdict == Verdict.Pass), 22)
@@ -180,7 +186,7 @@ class UpstreamMuxStarvationSuite extends FailsOnUncaught:
     }
 
   test("replay original response1/response1 bytes and the unchanged upstream ordering assertion"):
-    samples.filter(_.domain == Domain.Applicable).traverse_ { sample =>
+    samples.filter(_.verdict == Verdict.Pass).traverse_ { sample =>
       val response = sample.responseB
       run(sample, response, response).map { trace =>
         assert(alternates(trace), s"upstream ordering assertion at seed ${sample.seed}")

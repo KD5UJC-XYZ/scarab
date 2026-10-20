@@ -4,19 +4,18 @@ package xyz.kd5ujc.scarab.network
 import cats.effect.{IO, Resource}
 import cats.syntax.all.*
 import cats.mtl.Handle
-import munit.CatsEffectSuite
 import scala.io.Source
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.network.Peers.*
-import xyz.kd5ujc.scarab.protocol.LocalStateQuery
+import xyz.kd5ujc.scarab.protocol.{ChainSyncEngine, LocalStateQuery, LocalStateQueryEngine}
 import xyz.kd5ujc.scarab.protocol.ChainSync.{DecodeResult, Role}
-import xyz.kd5ujc.scarab.protocol.LocalStateQuery.{Message, State, Target}
+import xyz.kd5ujc.scarab.protocol.LocalStateQuery.State
+import xyz.kd5ujc.scarab.protocol.LocalStateQueryEngine.{Message, Target}
 
-/** Replays complete, representable maps from the unchanged upstream LSQ behavior properties through
-  * Scarab's production server. Generated mock block hashes serialized as Int remain explicit
-  * unsupported inputs; no generated map is rewritten to Cardano hashes.
+/** Replays every original upstream LSQ map with its complete CBOR mock points through the runtime
+  * shared by the Cardano server. Strict Cardano point refusals remain separate assertions.
   */
 class UpstreamLocalStateQueryBehaviorSuite extends FailsOnUncaught:
   private val casesFixture =
@@ -37,7 +36,7 @@ class UpstreamLocalStateQueryBehaviorSuite extends FailsOnUncaught:
     case Rejected(failure: LocalStateQuery.Failure)
 
   private enum ParsedTarget:
-    case Supported(value: Target)
+    case Supported(value: LocalStateQuery.Target)
     case Unsupported(error: xyz.kd5ujc.scarab.protocol.ProtocolError)
 
   private final case class CaseRow(
@@ -93,7 +92,7 @@ class UpstreamLocalStateQueryBehaviorSuite extends FailsOnUncaught:
 
   private def parseTarget(targetWire: Bytes, seed: Int): ParsedTarget =
     LocalStateQuery.decodePrefix(State.Idle, Role.Client, targetWire) match
-      case DecodeResult.Decoded(Message.Acquire(target), consumed) =>
+      case DecodeResult.Decoded(LocalStateQuery.Message.Acquire(target), consumed) =>
         assertEquals(consumed, targetWire.size, s"consume exact acquire message at seed $seed")
         ParsedTarget.Supported(target)
       case DecodeResult.Failed(
@@ -167,19 +166,33 @@ class UpstreamLocalStateQueryBehaviorSuite extends FailsOnUncaught:
       )
     }
 
-  private def send(channel: MuxChannel[IO], state: State, message: Message)(using
+  private val point = ChainSyncEngine.pointCodec[Bytes](Right(_), Right(_))
+
+  private def mockTarget(action: ActionRow): Target[Bytes] =
+    LocalStateQueryEngine.decodePrefix(State.Idle, Role.Client, action.targetWire, point) match
+      case DecodeResult.Decoded(Message.Acquire(target), consumed) =>
+        assertEquals(consumed, action.targetWire.size)
+        assertEquals(
+          LocalStateQueryEngine.encode(State.Idle, Role.Client, Message.Acquire(target), point),
+          Right(action.targetWire),
+          s"unchanged original target bytes at seed ${action.seed}"
+        )
+        target
+      case other => fail(s"original complete mock target must decode: $other")
+
+  private def send(channel: MuxChannel[IO], state: State, message: Message[Bytes])(using
       Handle[IO, NetworkError]
   ): IO[Unit] =
-    LocalStateQuery
-      .encode(state, Role.Client, message)
+    LocalStateQueryEngine
+      .encode(state, Role.Client, message, point)
       .fold(error => IO.raiseError(new IllegalStateException(error.message)), channel.send)
 
   private def receive(channel: MuxChannel[IO], state: State)(using Handle[IO, NetworkError]) =
     channel.recv(LocalStateQuery.MaxMessageBytes)(
-      LocalStateQuery.decodePrefix(state, Role.Server, _)
+      LocalStateQueryEngine.decodePrefix(state, Role.Server, _, point)
     )
 
-  test("replay representable unchanged LocalStateQuery maps through the production server"):
+  test("replay all unchanged LocalStateQuery maps through the shared production runtime"):
     val cases = readCases()
     val actions = readActions()
     assertEquals(cases.size, 32)
@@ -213,52 +226,19 @@ class UpstreamLocalStateQueryBehaviorSuite extends FailsOnUncaught:
     }
     assertEquals(unsupported.size, 14)
     assertEquals(unsupported.map(_.seed).distinct.size, 13)
-    val unsupportedCaseKeys = unsupported.map(row => (row.seed, row.ordinal)).distinct.toSet
-    val supportedCases = cases.filterNot(row =>
-      actionGroups
-        .getOrElse((row.seed, row.ordinal), Vector.empty)
-        .exists(_.target match
-          case ParsedTarget.Unsupported(_) => true
-          case ParsedTarget.Supported(_)   => false)
-    )
-    assertEquals(supportedCases.size, 19)
-    assertEquals(supportedCases.count(_.actionCount > 0), 9)
-    assertEquals(supportedCases.count(_.actionCount == 0), 10)
-    assertEquals(supportedCases.map(_.actionCount).sum, 13)
-    val unplayedRepresentable = actions.count { action =>
-      action.target match
-        case ParsedTarget.Supported(_) =>
-          unsupportedCaseKeys.contains((action.seed, action.ordinal))
-        case ParsedTarget.Unsupported(_) => false
-    }
-    assertEquals(unplayedRepresentable, 13)
-    supportedCases
+    assertEquals(cases.count(_.actionCount > 0), 22)
+    assertEquals(cases.count(_.actionCount == 0), 10)
+    assertEquals(cases.map(_.actionCount).sum, 40)
+    cases
       .traverse { row =>
         val entries = actionGroups.getOrElse((row.seed, row.ordinal), Vector.empty).sortBy(_.index)
-        val sources = entries.collect {
-          case ActionRow(
-                _,
-                _,
-                _,
-                _,
-                _,
-                _,
-                ParsedTarget.Supported(target),
-                outcome,
-                _,
-                _,
-                _,
-                _,
-                _,
-                _
-              ) =>
-            target -> outcome
-        }.toMap
+        val sources =
+          entries.map(action => mockTarget(action) -> (action.result, action.query)).toMap
         assertEquals(sources.size, entries.size)
-        val source = new LocalStateQueryServer.Source[IO, Nothing]:
-          def acquire(target: Target): Resource[IO, Either[
-            LocalStateQueryServer.AcquireFailure[Nothing],
-            LocalStateQueryServer.Session[IO, Nothing]
+        val source = new LocalStateQueryRuntime.Source[IO, Nothing, Bytes]:
+          def acquire(target: Target[Bytes]): Resource[IO, Either[
+            LocalStateQueryRuntime.AcquireFailure[Nothing],
+            LocalStateQueryRuntime.Session[IO, Nothing]
           ]] =
             sources.get(target) match
               case None =>
@@ -267,17 +247,15 @@ class UpstreamLocalStateQueryBehaviorSuite extends FailsOnUncaught:
                     new IllegalStateException(s"unexported generated target at seed ${row.seed}")
                   )
                 )
-              case Some(AcquireResult.Rejected(failure)) =>
-                Resource.pure(Left(LocalStateQueryServer.AcquireFailure.Rejected(failure)))
-              case Some(AcquireResult.Acquired(resultWire)) =>
-                val expectedQuery =
-                  entries.find(_.target == ParsedTarget.Supported(target)).get.query
+              case Some((AcquireResult.Rejected(failure), _)) =>
+                Resource.pure(Left(LocalStateQueryRuntime.AcquireFailure.Rejected(failure)))
+              case Some((AcquireResult.Acquired(resultWire), expectedQuery)) =>
                 Resource.pure(
                   Right(
-                    new LocalStateQueryServer.Session[IO, Nothing]:
+                    new LocalStateQueryRuntime.Session[IO, Nothing]:
                       def answer(
                           query: Bytes
-                      ): IO[Either[Nothing, Either[LocalStateQueryServer.Refusal, Bytes]]] =
+                      ): IO[Either[Nothing, Either[LocalStateQueryRuntime.Refusal, Bytes]]] =
                         if query != expectedQuery then
                           IO.raiseError(
                             new IllegalStateException(s"query bytes changed at seed ${row.seed}")
@@ -295,8 +273,8 @@ class UpstreamLocalStateQueryBehaviorSuite extends FailsOnUncaught:
                 .make(
                   Fibers
                     .scoped[IO, NetworkError, Unit](NetworkError.Defect(_)) {
-                      LocalStateQueryServer
-                        .run(s, source)
+                      LocalStateQueryRuntime
+                        .run(s, source, point)
                         .flatMap {
                           case Right(()) => IO.unit
                           case Left(error) =>
@@ -310,12 +288,7 @@ class UpstreamLocalStateQueryBehaviorSuite extends FailsOnUncaught:
                 .use { serving =>
                   entries
                     .foldLeftM(false) { (wasAcquired, action) =>
-                      val target = action.target match
-                        case ParsedTarget.Supported(value) => value
-                        case ParsedTarget.Unsupported(error) =>
-                          throw new IllegalStateException(
-                            s"unexpected unsupported target in replay: $error"
-                          )
+                      val target = mockTarget(action)
                       val request =
                         if wasAcquired then Message.ReAcquire(target) else Message.Acquire(target)
                       val state = if wasAcquired then State.Acquired else State.Idle

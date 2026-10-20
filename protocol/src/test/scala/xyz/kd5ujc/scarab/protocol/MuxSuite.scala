@@ -43,13 +43,12 @@ class MuxSuite extends munit.FunSuite:
       valid.copy(timestamp = 0x100000000L) -> Error.TimestampOutOfRange(0x100000000L),
       valid.copy(protocol = -1) -> Error.ProtocolOutOfRange(-1),
       valid.copy(protocol = 0x8000) -> Error.ProtocolOutOfRange(0x8000),
-      valid.copy(payloadLength = 0) -> Error.PayloadLengthOutOfRange(0, WireMaxPayloadBytes),
       valid.copy(payloadLength = -1) -> Error.PayloadLengthOutOfRange(-1, WireMaxPayloadBytes),
       valid.copy(payloadLength = 65536) -> Error.PayloadLengthOutOfRange(65536, WireMaxPayloadBytes)
     ).foreach { case (header, error) => assertEquals(encodeHeader(header), Left(error)) }
     assertEquals(
       encode(Sdu(0, 0, Direction.Initiator, Bytes.empty)),
-      Left(Error.PayloadLengthOutOfRange(0, WireMaxPayloadBytes))
+      Right(bytes("0000000000000000"))
     )
     assertEquals(
       decodeHeader(bytes("0000000000000000")),
@@ -192,15 +191,30 @@ class MuxSuite extends munit.FunSuite:
       Mux.segmentBounded(payload, 0L, Mux.Direction.Responder, 256, 5, 65536),
       Left(Error.InvalidMessageLimit(65536, 65535))
     )
-    Vector(0, -1, 2500001).foreach { limit =>
+    Vector(0, -1).foreach { limit =>
       assertEquals(
         segmentProtocolMessage(payload, 0, Direction.Responder, 256, 5, limit),
-        Left(Error.InvalidMessageLimit(limit, 2500000))
+        Left(Error.InvalidMessageLimit(limit, Int.MaxValue))
       )
     }
     assertEquals(
       segmentProtocolMessage(Bytes.empty, 0, Direction.Responder, 256, 5, 100),
       Left(Error.MessageLength(0, 100))
+    )
+  }
+
+  test("an explicit aggregate profile spans SDUs without changing their wire bound") {
+    val payload = Bytes(Vector.fill(2500001)(0.toByte))
+    val frames = right(segmentProtocolMessage(payload, 0, Direction.Responder, 1280, 5, 3000000))
+    assertEquals(Bytes(frames.flatMap(_.payload.value)), payload)
+    assert(frames.forall(frame => frame.payload.size > 0 && frame.payload.size <= 1280))
+    assertEquals(
+      segmentProtocolMessage(payload, 0, Direction.Responder, 1280, 5, 2500000),
+      Left(Error.MessageLength(2500001, 2500000))
+    )
+    assertEquals(
+      segmentProtocolMessage(payload, 0, Direction.Responder, 1280, 5, 2500001),
+      Right(frames)
     )
   }
 
