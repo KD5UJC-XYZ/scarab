@@ -157,8 +157,8 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
           .attempt
         afterFailure <- cm.snapshot
         fiber <- cm.outbound(peer(2)).use(_ => IO.never).start
-        _ <- IO.sleep(50.millis)
-        during <- cm.snapshot
+        // wait for the fiber to hold the slot, rather than betting 50 ms on it
+        during <- Wait.until(cm.snapshot)(_.counters == Counters(0, 1, 0, 0))
         _ <- fiber.cancel
         afterCancel <- cm.snapshot
       yield (failed.isLeft, afterFailure.counters, during.counters, afterCancel.counters)
