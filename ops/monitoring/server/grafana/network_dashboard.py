@@ -36,7 +36,8 @@ def network_dashboard(ui):
     def event(kind, pipeline='', filter_peer=False):
         expr = '{' + m + f', event=~"{kind}"' + '}'
         if filter_peer:
-            expr += ' |~ "${peer:raw}"'
+            # A query-time label filter avoids Grafana highlighting an entire line for .* .
+            expr += ' | label_format dashboard_match="{{ __line__ }}" | dashboard_match=~".*(${peer:raw}).*" | drop dashboard_match'
         return expr + pipeline
 
     def table(title, expr, desc):

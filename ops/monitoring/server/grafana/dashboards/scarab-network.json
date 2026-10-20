@@ -2716,7 +2716,7 @@
                 "type": "loki",
                 "uid": "loki"
               },
-              "expr": "topk(20, sum by (peer, failure) (count_over_time({host=~\"$host\", container=~\"$container\", event=~\"peerSelectionPromote\"} |~ \"${peer:raw}\" | json | action=\"failed\" | __error__=\"\" [$__range])))",
+              "expr": "topk(20, sum by (peer, failure) (count_over_time({host=~\"$host\", container=~\"$container\", event=~\"peerSelectionPromote\"} | label_format dashboard_match=\"{{ __line__ }}\" | dashboard_match=~\".*(${peer:raw}).*\" | drop dashboard_match | json | action=\"failed\" | __error__=\"\" [$__range])))",
               "legendFormat": "{{host}} {{container}}",
               "refId": "A",
               "queryType": "instant"
@@ -2775,7 +2775,7 @@
                 "type": "loki",
                 "uid": "loki"
               },
-              "expr": "sum by (failure, from) (count_over_time({host=~\"$host\", container=~\"$container\", event=~\"peerSelectionPromote\"} |~ \"${peer:raw}\" | json | action=\"failed\" | __error__=\"\" [$__range]))",
+              "expr": "sum by (failure, from) (count_over_time({host=~\"$host\", container=~\"$container\", event=~\"peerSelectionPromote\"} | label_format dashboard_match=\"{{ __line__ }}\" | dashboard_match=~\".*(${peer:raw}).*\" | drop dashboard_match | json | action=\"failed\" | __error__=\"\" [$__range]))",
               "legendFormat": "{{host}} {{container}}",
               "refId": "A",
               "queryType": "instant"
@@ -2834,7 +2834,7 @@
                 "type": "loki",
                 "uid": "loki"
               },
-              "expr": "{host=~\"$host\", container=~\"$container\", event=~\"peerSelectionPromote|peerSelectionDemote\"} |~ \"${peer:raw}\" | json | action=~\"failed|asynchronous|aborted\" | __error__=\"\"",
+              "expr": "{host=~\"$host\", container=~\"$container\", event=~\"peerSelectionPromote|peerSelectionDemote\"} | label_format dashboard_match=\"{{ __line__ }}\" | dashboard_match=~\".*(${peer:raw}).*\" | drop dashboard_match | json | action=~\"failed|asynchronous|aborted\" | __error__=\"\"",
               "refId": "A",
               "maxLines": 200
             }
@@ -2869,7 +2869,7 @@
                 "type": "loki",
                 "uid": "loki"
               },
-              "expr": "{host=~\"$host\", container=~\"$container\", event=~\"peerSelectionPromote|peerSelectionDemote|peerSelectionForget\"} |~ \"${peer:raw}\"",
+              "expr": "{host=~\"$host\", container=~\"$container\", event=~\"peerSelectionPromote|peerSelectionDemote|peerSelectionForget\"} | label_format dashboard_match=\"{{ __line__ }}\" | dashboard_match=~\".*(${peer:raw}).*\" | drop dashboard_match",
               "refId": "A",
               "maxLines": 200
             }
@@ -2904,7 +2904,7 @@
                 "type": "loki",
                 "uid": "loki"
               },
-              "expr": "{host=~\"$host\", container=~\"$container\", event=~\"connection|inbound\"} |~ \"${peer:raw}\"",
+              "expr": "{host=~\"$host\", container=~\"$container\", event=~\"connection|inbound\"} | label_format dashboard_match=\"{{ __line__ }}\" | dashboard_match=~\".*(${peer:raw}).*\" | drop dashboard_match",
               "refId": "A",
               "maxLines": 200
             }
