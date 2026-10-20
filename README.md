@@ -139,24 +139,12 @@ What each scenario asserts is in [docs/running.md](docs/running.md).
 
 ## Modules
 
-```mermaid
-flowchart LR
-  codec --> crypto --> protocol --> network
-  blstNative[blst-native] --> crypto
-  blstNative --> plutus
-  codec --> plutus
-  protocol --> ledger
-  plutus --> ledger
-  ledger --> consensus --> storage
-  consensus --> legacy --> node
-  codec --> models
-  crypto --> models
-  models --> storage
-  storage --> node
-  network --> node
-```
+![Runtime module dependency graph](docs/assets/modules.png)
 
-Each module may depend only on those before it; sbt enforces the direction.
+Arrows point from dependency to consumer; sbt enforces an acyclic graph. The diagram shows direct
+compile dependencies of runtime modules; generation and test modules are listed below. Its
+[Graphviz source](docs/assets/modules.dot) is kept beside the rendered image; `build.sbt` defines
+the dependencies.
 
 <details>
 <summary>What each module holds</summary>

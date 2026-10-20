@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: Apache-2.0
+digraph Modules {
+  graph [rankdir=LR, bgcolor="white", pad="0.2", nodesep="0.3", ranksep="0.5"];
+  node [shape=box, style="rounded,filled", fillcolor="#f2f5f8", color="#4b6578", fontname="DejaVu Sans", fontsize=12];
+  edge [color="#4b6578", arrowsize=0.7];
+  blst [label="blst-native"];
+  blst -> crypto;
+  blst -> plutus;
+  codec -> crypto;
+  codec -> plutus;
+  codec -> models;
+  crypto -> protocol;
+  crypto -> models;
+  protocol -> network;
+  protocol -> ledger;
+  plutus -> ledger;
+  ledger -> consensus;
+  consensus -> legacy;
+  consensus -> storage;
+  models -> storage;
+  storage -> "node";
+  legacy -> "node";
+  network -> "node";
+}
