@@ -78,6 +78,16 @@ is disabled upstream with issue #2612's CPU-interference explanation. Scarab's
 existing deterministic deadline tests are local controls, not new upstream adapter
 passes. No exact real-clock or scheduler-trace equivalence is claimed.
 
+The practical local follow-up adds `MuxSeededTrafficSuite` (eight seed/SDU profiles, 320 complete
+messages and 160 observed paired write groups across duplex channels) and `DeadlineCleanupSuite`
+(writer-finalizer publication order and partial-receive cancellation/lock reuse). These supplement
+observable transport and timer cleanup coverage without adding upstream invocation counts.
+`BulkControlCharacterizationSuite` reproduces a direct KeepAlive deadline miss behind bulk FIFO
+traffic using bounded paced transport and opaque bodies. It is a virtual-time baseline, not a native
+starvation-property pass, host benchmark or observed background disconnect. The
+[measurements and refactor scope](../../../docs/design/network-limits.md#bulkcontrol-scheduling-characterization-49)
+track the confirmed writer-fairness gap as [#258](https://github.com/KD5UJC-XYZ/scarab/issues/258).
+
 ObjectDiffusion scope is established by
 `ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ObjectDiffusion/Test.hs:82–101`
 and `cardano-diffusion/lib/Cardano/Network/NodeToNode.hs:281–295,490–494` at the pin.
