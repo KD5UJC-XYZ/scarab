@@ -123,9 +123,13 @@ object CastErasureBench:
     val deep = nested(depth)
     val wide = wideMap(entries)
     println(s"#203 decode depth=$depth entries=$entries")
-    measure("decode.nested")(Cbor.decode(deep).fold(e => sys.error(e.toString), n => n.value.hashCode.toLong))
+    measure("decode.nested")(
+      Cbor.decode(deep).fold(e => sys.error(e.toString), n => n.value.hashCode.toLong)
+    )
     val wideLimits = Cbor.Limits(maxItems = 400000)
-    measure("decode.wide")(Cbor.decode(wide, wideLimits).fold(e => sys.error(e.toString), n => n.value.hashCode.toLong))
+    measure("decode.wide")(
+      Cbor.decode(wide, wideLimits).fold(e => sys.error(e.toString), n => n.value.hashCode.toLong)
+    )
     val d = Cbor.decode(wide, wideLimits).fold(e => sys.error(e.toString), n => n.value)
     println(s"DIGEST decode ${digest(d.toString)}")
 
@@ -215,7 +219,8 @@ object CastErasureBench:
     measure("rules.bbody")(
       run(pp, txs, from).fold(f => sys.error(f.reason), s => s.ledger.state.utxo.utxo.utxo.count)
     )
-    val result = run(pp, txs, from).fold(f => sys.error(f.reason), s => s.ledger.state.utxo.utxo.utxo.count)
+    val result =
+      run(pp, txs, from).fold(f => sys.error(f.reason), s => s.ledger.state.utxo.utxo.utxo.count)
     println(s"DIGEST rules ${digest(result.toString)}")
 
   def main(args: Array[String]): Unit =
