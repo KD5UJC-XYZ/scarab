@@ -8,6 +8,57 @@ Scarab native-state match are separate results. Original inputs, outputs, source
 observer patches, runner arguments and hashes stay in each fixture manifest. Failures,
 unsupported inputs and unobserved judgments are never counted as passes.
 
+## Generator execution, replay and freshness
+
+The Scala suites replay committed original outputs of the pinned upstream generators.
+They do not contain a Scala translation of QuickCheck's generators, nor do ordinary
+PR builds download moving upstream sources. The Docker-based exporters under
+`scripts/oracle/` execute the actual pinned Haskell generators and properties in
+disposable source copies; manifests retain the original source, observer patch,
+dependency plan, executable, seeds, sizes and independently observed outcomes.
+Regenerating inputs is an explicit operation, separate from updating expected results.
+
+The [source-freshness workflow](../../.github/workflows/conformance-sources.yml),
+tracked by [#272](https://github.com/KD5UJC-XYZ/scarab/issues/272), runs weekly and on
+manual dispatch. It downloads GitHub source-tree metadata and compares watched
+paths at the existing pins with immutable snapshots of upstream default branches.
+Formal generated Haskell is compared with `master-artifacts`, rather than the
+source-only default branch. The JSON artifact lists exact commits, watched paths
+and added/removed/changed files. API or incomplete-tree failures fail the check;
+source drift is reported without automatically changing pins or declaring a
+behavioral discrepancy. Changes outside watched paths remain unassessed.
+
+Run the same read-only check locally:
+
+```sh
+python3 scripts/check_conformance_sources.py \
+  --output /tmp/conformance-sources.json --summary /tmp/conformance-sources.md
+```
+
+This report is not a generator execution or a compatibility verdict. New upstream
+inputs still need the actual exporter and Scala replay before adopting a new pin.
+The supported Haskell release remains authoritative even when upstream HEAD moves.
+
+| Input or generator boundary | Current disposition |
+|---|---|
+| Generated BlockFetch pipeline policies, ChainSync collect/request choices and TxSubmission2 scheduling choices | Bounded observations and some local wire regressions exist; not every original generated policy is replayed. This is separate from requiring identical thread schedules |
+| Mock integer point hashes, generic transaction values and integer peers | Strict Cardano codecs reject incompatible mock domains. Generic production-engine adapters cover some original values separately; no fabricated Cardano replacements count as matches |
+| Mux `Uneven` replies over the 2.5 MB production ceiling | Four original native passes are retained as size exclusions; eighteen applicable original passes are replayed unchanged |
+| Zero-length generated SDUs | Six original encoder-policy differences remain explicit in the SDU corpus |
+| Peras ObjectDiffusion | No adapter or advertised production support; not interchangeable with Leios or TxSubmission2 |
+| Generated NEWEPOCH states and proposal-constructor failures | Invalid/failed originals remain unchanged; lawful generator work is [#269](https://github.com/KD5UJC-XYZ/scarab/issues/269) |
+| Other eras, broader seeds and Haskell-specific interpreters | The fixtures establish their named bounded domains, not an exhaustive generator or backend campaign |
+
+The EPOCH disagreement is tracked separately by
+[#267](https://github.com/KD5UJC-XYZ/scarab/issues/267), the formal LEDGERS evaluator
+crash by [#270](https://github.com/KD5UJC-XYZ/scarab/issues/270), and actual missing
+reward-likelihood generation by [#268](https://github.com/KD5UJC-XYZ/scarab/issues/268).
+The formal crash is not a crash of the running native Haskell node. The thirteen
+remaining Plutus exceptions are six constants without a Flat representation, five
+counting-versus-restricting budget observations, and two protocol-gated generic
+`case` expectations; their [classification](../plutus-conformance.md#3-the-22-cases)
+is distinct from the nine reachable cases already addressed.
+
 ## Ledger boundary
 
 The source is `cardano-ledger` `f649f9751074d2ab3de033fc3912f29c9862c1f5`, formal
