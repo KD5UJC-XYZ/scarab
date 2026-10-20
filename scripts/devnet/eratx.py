@@ -350,7 +350,7 @@ def build_tx(era, inputs, outputs, fee, signers, ttl=None, valid_from=None, cert
              update=None, mint=None, native_scripts=(), collateral=None, required_signers=None,
              collateral_return=None, total_collateral=None, reference_inputs=None, metadata=None, network_id=None,
              is_valid=True, aux_scripts=(), votes=None, proposals=None, treasury=None, donation=None,
-             plutus=None, redeemers=None, datums=None, script_data=None):
+             plutus=None, redeemers=None, datums=None, script_data=None, aux_plutus=None):
     """Signed transaction CBOR of any Shelley-based era. `inputs` are (txid_hex, ix); `signers` are Keys."""
     index = ERA_INDEX[era]
     body = {0: [[bytes.fromhex(t), i] for t, i in inputs], 1: outputs, 2: fee}
@@ -363,8 +363,18 @@ def build_tx(era, inputs, outputs, fee, signers, ttl=None, valid_from=None, cert
     if update is not None:
         body[6] = update
     aux = None
-    if metadata is not None or aux_scripts:
-        if aux_scripts and index >= ERA_INDEX["allegra"]:
+    if aux_plutus and index < ERA_INDEX["alonzo"]:
+        raise ValueError("Plutus auxiliary scripts require an Alonzo-or-later envelope")
+    if aux_plutus and any(language not in (1, 2, 3) for language in aux_plutus):
+        raise ValueError("auxiliary Plutus language must be 1, 2 or 3")
+    if metadata is not None or aux_scripts or aux_plutus:
+        if aux_plutus:
+            fields = {0: metadata} if metadata is not None else {}
+            if aux_scripts:
+                fields[1] = list(aux_scripts)
+            fields.update({language + 1: list(scripts) for language, scripts in aux_plutus.items()})
+            aux = Tag(259, fields)
+        elif aux_scripts and index >= ERA_INDEX["allegra"]:
             aux = [metadata or {}, list(aux_scripts)]
         else:
             aux = metadata or {}

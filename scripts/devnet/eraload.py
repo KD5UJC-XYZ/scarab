@@ -100,6 +100,7 @@ class EraLoad:
         self.evidence = []  # expected rejections and what the reference said
         self.era_first = {}
         self.plutus_evidence = []
+        self.auxiliary_evidence = []
 
     # ------------------------------------------------------------ reference plumbing
     def sh(self, script, stdin=None, timeout=60):
@@ -1004,6 +1005,9 @@ class EraLoad:
             self.conway_features(epoch)
         if era in ("alonzo", "babbage", "conway") and self.once(f"legacy-plutus-{era}"):
             from .eraplutus import exercise
+            exercise(self, era)
+        if era in ("alonzo", "babbage", "conway") and self.once(f"auxiliary-plutus-{era}"):
+            from .eraauxiliary import exercise
             exercise(self, era)
         self.transfers(era, 2)
         if era != "conway":  # the ledger-state layout the withdrawals read is the pre-Conway one
