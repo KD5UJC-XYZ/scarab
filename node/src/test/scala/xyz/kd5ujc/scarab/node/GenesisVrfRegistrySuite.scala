@@ -53,7 +53,11 @@ class GenesisVrfRegistrySuite extends FunSuite:
       setup(major).mirrorStart.ext.ledgerState.state match
         case EraLedgerState.InShelleyEra(ShelleyBasedEra.SConway, state) =>
           val pools = state.nes.es.ls.cert.pState
-          assertEquals(pools.stakePools.size, 4, s"protocol $major retains three fixture pools and the injected pool")
+          assertEquals(
+            pools.stakePools.size,
+            4,
+            s"protocol $major retains three fixture pools and the injected pool"
+          )
           assertEquals(
             pools.stakePools.find((id, _) => id.bytes.hex == operator).map(_._2.vrf.bytes.hex),
             Some(vrf),

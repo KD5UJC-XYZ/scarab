@@ -128,9 +128,9 @@ object NodeSetup:
   private val MainnetMagic = 764824073L
 
   /** Genesis pool injection (`Shelley/Transition.hs:532-543`, cardano-ledger 4c81e90) does not
-    * register VRF hashes. Native certificate rules maintain the
-    * registry, and [[xyz.kd5ujc.scarab.ledger.rules.ConwayEpoch.populateVRFKeyHashes]] populates it
-    * at the protocol-11 transition. The frozen flat conversion reconstructs a different registry.
+    * register VRF hashes. Native certificate rules maintain the registry, and
+    * [[xyz.kd5ujc.scarab.ledger.rules.ConwayEpoch.populateVRFKeyHashes]] populates it at the
+    * protocol-11 transition. The frozen flat conversion reconstructs a different registry.
     */
   private def nativeGenesis(mirror: MirrorState): MirrorState =
     val current = mirror.ext.ledgerState.state match
