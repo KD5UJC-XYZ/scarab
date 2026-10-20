@@ -1,0 +1,118 @@
+{
+  "schema": "scarab-ledger-api-pool-goldens-v1",
+  "repository": "IntersectMBO/cardano-ledger",
+  "pin": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "head": "7fa3963cce708eae06f2443820de7adfa5dd3ecf",
+  "prefix": "libs/cardano-ledger-api/golden/conway",
+  "productionQuery": "GetStakePoolParams",
+  "fullQueryCases": 2,
+  "scope": "Complete original queryPoolParameters golden vector through native-state production QueryAnswers. PoolRelays.decode compares published IP fields, including the unsupported direct-query vector. queryPoolState arbitrary independent deposit maps cannot be represented by native StakePoolState, so no complete query replay is claimed.",
+  "files": {
+    "head/queryPoolParameters.cbor": "084c1b500360c4c89f263cd7b771fe5dc7314bc3735923d72c019279102a2b52",
+    "head/queryPoolParameters.json": "8be561c2c6af36bf52661c107bc04d1ee5e4951337758e68702542b42d2658c0",
+    "head/queryPoolState.cbor": "811719ba1e3e14ce6ba4b9b3b41ecfd5554c5a15e67c48a14bcf7473970329d4",
+    "head/queryPoolState.json": "8ba1284996d267b74d908427656bfaef2f6c0a4cb1a6d8bc8cad7cdca8714e3e",
+    "head/queryStakePoolRelays.cbor": "6db2ce862aea14897cecac9b94c2da54493c4f0e4a36e70deb7480d4c4fcdf66",
+    "pin/queryPoolParameters.cbor": "5c31f3c6dfb88443dfb49a7e102e65951dd10d6c29406972e5d4809fb075f71b",
+    "pin/queryPoolState.cbor": "41425f310a8497011a4b264b223f6a045d6f55f85a7f5ac02bb039adbebe32a9",
+    "pin/queryStakePoolRelays.cbor": "3ae735200d5dd0b27a2c87930b9e65edd5f34b970fdd0863dab742cd149a56c2"
+  },
+  "byteDifferences": {
+    "queryPoolParameters.cbor": [
+      {
+        "offset": 177,
+        "pin": 1,
+        "head": 127
+      },
+      {
+        "offset": 180,
+        "pin": 127,
+        "head": 1
+      },
+      {
+        "offset": 442,
+        "pin": 1,
+        "head": 10
+      },
+      {
+        "offset": 445,
+        "pin": 10,
+        "head": 1
+      },
+      {
+        "offset": 675,
+        "pin": 1,
+        "head": 127
+      },
+      {
+        "offset": 678,
+        "pin": 127,
+        "head": 1
+      }
+    ],
+    "queryPoolState.cbor": [
+      {
+        "offset": 182,
+        "pin": 1,
+        "head": 127
+      },
+      {
+        "offset": 185,
+        "pin": 127,
+        "head": 1
+      },
+      {
+        "offset": 439,
+        "pin": 1,
+        "head": 127
+      },
+      {
+        "offset": 442,
+        "pin": 127,
+        "head": 1
+      },
+      {
+        "offset": 697,
+        "pin": 1,
+        "head": 127
+      },
+      {
+        "offset": 700,
+        "pin": 127,
+        "head": 1
+      }
+    ],
+    "queryStakePoolRelays.cbor": [
+      {
+        "offset": 44,
+        "pin": 5,
+        "head": 10
+      },
+      {
+        "offset": 47,
+        "pin": 10,
+        "head": 5
+      },
+      {
+        "offset": 122,
+        "pin": 1,
+        "head": 192
+      },
+      {
+        "offset": 123,
+        "pin": 1,
+        "head": 168
+      },
+      {
+        "offset": 124,
+        "pin": 168,
+        "head": 1
+      },
+      {
+        "offset": 125,
+        "pin": 192,
+        "head": 1
+      }
+    ]
+  }
+}
