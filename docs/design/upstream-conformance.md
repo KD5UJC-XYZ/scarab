@@ -1,6 +1,6 @@
 # Upstream conformance adapters
 
-Status: current implementation and bounded evidence; [K2 / #49](https://github.com/KD5UJC-XYZ/scarab/issues/49) remains in progress.
+Status: current implementation and bounded evidence; the agreed risk-based v0.2 scope of [K2 / #49](https://github.com/KD5UJC-XYZ/scarab/issues/49) is complete. This is not whole-suite or every-interpreter equivalence.
 
 The Haskell implementations and their formal adapters are independent observations.
 A native acceptance, a formal acceptance, equality of their translated outputs, and a
@@ -166,7 +166,8 @@ exclusions. Native wiring uses response1 for both protocols; twelve unequal orig
 separately labelled local controls. A controlled overlap barrier and extra nonvacuity assertion ensure
 Scarab actually services both admitted lanes. Neither trace identity nor identical runtime scheduling
 is required. Original bytes, native verdicts, observed headers and executable/source provenance are
-retained; broader generator and transport coverage remains #49.
+retained; broader generator and transport campaigns are optional K2 follow-ups in the
+[roadmap](../roadmap.md).
 
 Local wire regressions complement the exported observations. `ChainSyncBatchSuite`
 requires all three requests to arrive before any response, then collects forward,
@@ -196,8 +197,20 @@ distinguishes the remaining reference limitations from optional broader seeded a
 rejection campaigns. The retained EPOCH case matches native output despite an
 unclassified native/formal disagreement; invalid NEWEPOCH generation is unsupported;
 the formal LEDGERS crash supplies no verdict. None is relabeled as a formal pass.
-Operational Mux fairness and timeout cleanup remain behavioral questions worth
-characterizing; reproducing exact Haskell schedules or timer internals is not the
-acceptance criterion. Final issue completion remains tracked by #49.
+The bounded operational Mux fairness and timeout-cleanup checks above satisfy the
+agreed scope; reproducing exact Haskell schedules or timer internals is not the
+acceptance criterion. Broader seeds, action families and backend campaigns remain
+optional K2 roadmap follow-ups, rather than additional v0.2 blockers. The reward
+comparison retains the J3.6 non-myopic likelihood-generation exclusion; monetary
+accounting is compared, without claiming likelihood equivalence.
+
+The final implementation stages merged as [#256](https://github.com/KD5UJC-XYZ/scarab/pull/256)
+(`b0d7a4b2`, local wire regressions) and [#265](https://github.com/KD5UJC-XYZ/scarab/pull/265)
+(`61d87a79`, same-connection ChainSync recovery). The unchanged private relay gate
+passes on the recovery implementation, including observed recovery of the same
+inbound connection. Original failed relay attempts remain failures in the evidence
+log. Post-merge [main CI](https://github.com/KD5UJC-XYZ/scarab/actions/runs/39472451943)
+and [Security](https://github.com/KD5UJC-XYZ/scarab/actions/runs/39472451919) both pass
+on `61d87a79`. Detailed stage gates remain in [compatibility.md](../compatibility.md).
 No persisted native format is changed; maintained native
 snapshots remain V5. Raw upstream trace CBOR is not a native snapshot version.
