@@ -5,11 +5,19 @@ import xyz.kd5ujc.scarab.consensus.{BootstrapState, ByronState}
 import xyz.kd5ujc.scarab.consensus.state.{
   ConsensusMirrorEnv,
   EraHistory,
+  EraLedgerState,
   MirrorState,
   ProtocolState
 }
 import xyz.kd5ujc.scarab.ledger.rules.FromByron
-import xyz.kd5ujc.scarab.ledger.state.MirrorEnv
+import xyz.kd5ujc.scarab.ledger.state.{
+  ConwayLedgerState,
+  ConwayNewEpochState,
+  MirrorEnv,
+  PState,
+  ShelleyBasedEra,
+  Sorted
+}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.{
   ByronGenesis,
@@ -118,6 +126,24 @@ object NodeSetup:
     )
 
   private val MainnetMagic = 764824073L
+
+  /** Genesis pool injection (`Shelley/Transition.hs:532-543`, cardano-ledger 4c81e90) does not
+    * register VRF hashes. Native certificate rules maintain the
+    * registry, and [[xyz.kd5ujc.scarab.ledger.rules.ConwayEpoch.populateVRFKeyHashes]] populates it
+    * at the protocol-11 transition. The frozen flat conversion reconstructs a different registry.
+    */
+  private def nativeGenesis(mirror: MirrorState): MirrorState =
+    val current = mirror.ext.ledgerState.state match
+      case EraLedgerState.InShelleyEra(ShelleyBasedEra.SConway, state) =>
+        val registry = ConwayNewEpochState.ls
+          .andThen(ConwayLedgerState.pState)
+          .andThen(PState.vrfKeyHashes)
+        EraLedgerState.InShelleyEra(
+          ShelleyBasedEra.SConway,
+          state.copy(nes = registry.replace(Sorted.empty)(state.nes))
+        )
+      case other => other
+    mirror.copy(ext = mirror.ext.copy(ledgerState = mirror.ext.ledgerState.withState(current)))
 
   val ConfigNames: List[String] = List("configuration.yaml", "configuration.json", "config.json")
 
@@ -317,7 +343,7 @@ object NodeSetup:
         byron,
         globals,
         praos,
-        mirrored.value,
+        nativeGenesis(mirrored.value),
         byronRules.map(_ => FromByron(initial.genDelegs, initial.params, globals.maxSupply)),
         identity = NetworkIdentity(
           genesis.networkMagic,
