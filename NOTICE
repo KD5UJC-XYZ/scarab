@@ -162,3 +162,10 @@ fixtures/snapshot-v5 contains native snapshot encodings of the repository's thro
 state fixtures and a native-writer reproduction, with pinned source/conversion provenance in its
 manifest and README. The conversion wrapper is original Apache-2.0 code. Public state, keys and
 signatures only; no signing keys or operational node data.
+
+The functional conformance corpora under node/src/test/resources/upstream/conway-governance-functional,
+node/src/test/resources/upstream/conway-native-ledgers, network/src/test/resources/upstream/mux-lifecycle
+and storage/src/test/resources/rewards-timing-1.19.0.1 retain deterministic generated inputs and
+unchanged Haskell reference outcomes. Only public keys/signatures, synthetic state and protocol
+payloads are included; no signing keys. Original upstream pins, Apache-2.0 source/observer provenance
+and package notices are recorded in their READMEs/manifests and the existing fixture license files.
