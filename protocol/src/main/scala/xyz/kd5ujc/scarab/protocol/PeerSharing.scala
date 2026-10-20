@@ -2,13 +2,13 @@
 package xyz.kd5ujc.scarab.protocol
 
 import xyz.kd5ujc.scarab.codec.Bytes
-import scala.annotation.tailrec
 import scala.concurrent.duration.*
 
 import ChainSync.DecodeResult
 
 /** The PeerSharing mini-protocol (node-to-node, number 10, from version 14): the pure codec, the
-  * agency and the limits. No transport and no timer is implemented here.
+  * agency and the limits. [[PeerSharingEngine]] owns the generic framing; this facade supplies
+  * the Cardano address domain. No transport and no timer is implemented here.
   *
   * Reference (ouroboros-network, `2fb69829`, the commit of the vendored CDDL, models/.../SOURCES;
   * the tag `ouroboros-network-1.2.0.0` of docs/design/peer-selection.md section 1.1 has the same
@@ -132,12 +132,7 @@ object PeerSharing:
 
   /** The message is legal in `state` from `sender`; the state after it. */
   def transition(state: State, sender: Role, message: Message): Either[Error, State] =
-    (state, sender, message) match
-      case (State.Idle, Role.Client, Message.ShareRequest(_)) => Right(State.Busy)
-      case (State.Busy, Role.Server, Message.SharePeers(_))   => Right(State.Idle)
-      case (State.Idle, Role.Client, Message.Done)            => Right(State.Done)
-      case (State.Done, _, _)                                 => Left(Error.Terminal)
-      case _ => Left(Error.WrongAgency(state, sender))
+    PeerSharingEngine.transitionTyped(state, sender, toEngine(message))
 
   // --- errors -----------------------------------------------------------------------------------
 
@@ -181,6 +176,9 @@ object PeerSharing:
     /** [[PeerSharing.decode]]: bytes follow the message. */
     case Trailing(surplus: Int)
 
+    /** A generic peer codec refused its complete CBOR item. */
+    case PeerItem(cause: ProtocolError)
+
     def message: String = this match
       case Terminal             => "PeerSharing is terminal"
       case WrongAgency(s, r)    => s"illegal PeerSharing message in $s from $r"
@@ -192,6 +190,7 @@ object PeerSharing:
       case TooLarge(limit)  => s"PeerSharing message exceeds $limit bytes"
       case Truncated        => "truncated PeerSharing message"
       case Trailing(n)      => s"$n trailing bytes after a PeerSharing message"
+      case PeerItem(cause)  => s"PeerSharing peer item: ${cause.message}"
 
   /** A message the peer sent that the protocol forbids although it decoded. */
   enum Violation:
@@ -222,138 +221,25 @@ object PeerSharing:
       case Decoding.Failed(error)         => DecodeResult.Failed(ProtocolError.PeerSharing(error))
       case Decoding.Decoded(value, taken) => DecodeResult.Decoded(value, taken)
 
-  // --- encoding ---------------------------------------------------------------------------------
+  private def toEngine(message: Message): PeerSharingEngine.Message[Address] = message match
+    case Message.ShareRequest(amount) => PeerSharingEngine.Message.ShareRequest(amount)
+    case Message.SharePeers(peers)    => PeerSharingEngine.Message.SharePeers(peers)
+    case Message.Done                 => PeerSharingEngine.Message.Done
 
-  def encode(
-      state: State,
-      sender: Role,
-      message: Message,
-      limits: Limits = Limits()
-  ): Either[Error, Bytes] =
-    transition(state, sender, message)
-      .map { _ =>
-        val out = new java.io.ByteArrayOutputStream()
-        def head(major: Int, value: Long): Unit =
-          // `value` is an unsigned 32-bit value or less; the shortest form, as cborg writes it.
-          if value < 24 then out.write(major * 32 + value.toInt)
-          else if value <= 0xff then { out.write(major * 32 + 24); out.write(value.toInt) }
-          else if value <= 0xffff then
-            out.write(major * 32 + 25); out.write((value >> 8).toInt); out.write(value.toInt & 255)
-          else
-            out.write(major * 32 + 26)
-            (3 to 0 by -1).foreach(i => out.write(((value >> (i * 8)) & 255).toInt))
-        def address(a: Address): Unit = a match
-          case Address.V4(x, p) =>
-            head(4, 3); head(0, 0); head(0, x.value); head(0, p.value.toLong)
-          case Address.V6(w, x, y, z, p) =>
-            head(4, 6); head(0, 1)
-            Vector(w, x, y, z).foreach(q => head(0, q.value))
-            head(0, p.value.toLong)
-        message match
-          case Message.ShareRequest(amount) => head(4, 2); head(0, 0); head(0, amount.value.toLong)
-          case Message.SharePeers(peers) =>
-            head(4, 2); head(0, 1)
-            if peers.isEmpty then head(4, 0)
-            else
-              out.write(0x9f)
-              peers.foreach(address)
-              out.write(0xff)
-          case Message.Done => head(4, 1); head(0, 2)
-        Bytes.fromArray(out.toByteArray)
-      }
-      .flatMap(bytes =>
-        Either
-          .cond(bytes.size <= limits.maxMessageBytes, bytes, Error.TooLarge(limits.maxMessageBytes))
-      )
+  private def fromEngine(message: PeerSharingEngine.Message[Address]): Message = message match
+    case PeerSharingEngine.Message.ShareRequest(amount) => Message.ShareRequest(amount)
+    case PeerSharingEngine.Message.SharePeers(peers)    => Message.SharePeers(peers)
+    case PeerSharingEngine.Message.Done                 => Message.Done
 
-  // --- decoding ---------------------------------------------------------------------------------
+  private def writeAddress(writer: PeerSharingEngine.Writer, address: Address): Unit = address match
+    case Address.V4(x, p) =>
+      writer.head(4, 3); writer.head(0, 0); writer.head(0, x.value); writer.head(0, p.value.toLong)
+    case Address.V6(w, x, y, z, p) =>
+      writer.head(4, 6); writer.head(0, 1)
+      Vector(w, x, y, z).foreach(q => writer.head(0, q.value))
+      writer.head(0, p.value.toLong)
 
-  /** Why a read stopped: the input ended, or the bytes are wrong. */
-  private enum Stop:
-    case Short
-    case Fail(error: Error)
-  private type Read[A] = Either[Stop, A]
-
-  private def fail[A](error: Error): Read[A] = Left(Stop.Fail(error))
-
-  /** The head of a CBOR item: its initial byte, major type, and the argument (absent when
-    * indefinite).
-    */
-  private final case class Head(initial: Int, major: Int, argument: Option[BigInt])
-
-  /** A cursor over a prefix; the bytes read so far never pass `limit`. */
-  private final class Cursor(input: Bytes, limit: Int):
-    private var at = 0
-    def position: Int = at
-
-    private def need(n: Int): Read[Unit] =
-      if n > limit - at then fail(Error.TooLarge(limit))
-      else if n > input.size - at then Left(Stop.Short)
-      else Right(())
-
-    private def byte(): Read[Int] =
-      need(1).map { _ =>
-        val b = input(at) & 255
-        at += 1
-        b
-      }
-
-    def head(): Read[Head] =
-      byte().flatMap { initial =>
-        val major = initial >> 5
-        val info = initial & 31
-        if info < 24 then Right(Head(initial, major, Some(BigInt(info))))
-        else if info == 31 then Right(Head(initial, major, None))
-        else if info > 27 then fail(Error.ReservedHead(initial))
-        else
-          val width = 1 << (info - 24)
-          need(width).map { _ =>
-            val value = (0 until width).foldLeft(BigInt(0))((acc, i) =>
-              (acc << 8) | BigInt(input(at + i) & 255)
-            )
-            at += width
-            Head(initial, major, Some(value))
-          }
-      }
-
-    /** An unsigned integer in any definite width. */
-    def uint(): Read[BigInt] =
-      head().flatMap {
-        case Head(_, 0, Some(value)) => Right(value)
-        case Head(initial, 0, None)  => fail(Error.ReservedHead(initial))
-        case Head(initial, _, _)     => fail(Error.Unexpected(Expectation.UnsignedInteger, initial))
-      }
-
-    def ranged(field: Field, max: BigInt): Read[Long] =
-      uint().flatMap(v => if v > max then fail(Error.OutOfRange(field, v)) else Right(v.toLong))
-
-    def definiteArray(): Read[BigInt] =
-      head().flatMap {
-        case Head(_, 4, Some(n)) => Right(n)
-        case Head(initial, _, _) => fail(Error.Unexpected(Expectation.DefiniteArray, initial))
-      }
-
-    /** The length of an array, or `None` for an indefinite one. */
-    def arrayOrIndefinite(): Read[Option[BigInt]] =
-      head().flatMap {
-        case Head(_, 4, length) => Right(length)
-        case Head(initial, _, _) =>
-          fail(Error.Unexpected(Expectation.ArrayOrIndefiniteArray, initial))
-      }
-
-    def peekBreak(): Read[Boolean] =
-      need(1).map(_ => (input(at) & 255) == 0xff)
-
-    def break(): Read[Unit] =
-      head().flatMap {
-        case Head(_, 7, None)    => Right(())
-        case Head(initial, _, _) => fail(Error.Unexpected(Expectation.Break, initial))
-      }
-
-  private def arity(found: BigInt, expected: Int): Read[Unit] =
-    if found == BigInt(expected) then Right(()) else fail(Error.Arity(expected, found))
-
-  private def address(c: Cursor): Read[Address] =
+  private def readAddress(c: PeerSharingEngine.Cursor): PeerSharingEngine.Read[Address] =
     def word() = c.ranged(Field.Word32, BigInt(Word32.Max)).map(Word32.trusted)
     def port() = c.ranged(Field.Port, BigInt(Port.Max)).map(Port.trusted)
     for
@@ -362,13 +248,13 @@ object PeerSharing:
       decoded <- tag match
         case 0 =>
           for
-            _ <- arity(n, 3)
+            _ <- PeerSharingEngine.arity(n, 3)
             a <- word()
             p <- port()
           yield Address.V4(a, p)
         case _ =>
           for
-            _ <- arity(n, 6)
+            _ <- PeerSharingEngine.arity(n, 6)
             a <- word()
             b <- word()
             d <- word()
@@ -377,65 +263,45 @@ object PeerSharing:
           yield Address.V6(a, b, d, e, p)
     yield decoded
 
-  /** The peers of a `MsgSharePeers`: a definite or an indefinite list (`Codec.hs:89-93`). */
-  private def peers(c: Cursor): Read[Vector[Address]] =
-    @tailrec def definite(left: BigInt, acc: Vector[Address]): Read[Vector[Address]] =
-      if left == 0 then Right(acc)
-      else
-        address(c) match
-          case Right(a) => definite(left - 1, acc :+ a)
-          case Left(s)  => Left(s)
-    @tailrec def indefinite(acc: Vector[Address]): Read[Vector[Address]] =
-      c.peekBreak() match
-        case Left(s)     => Left(s)
-        case Right(true) => c.break().map(_ => acc)
-        case Right(false) =>
-          address(c) match
-            case Right(a) => indefinite(acc :+ a)
-            case Left(s)  => Left(s)
-    c.arrayOrIndefinite().flatMap {
-      case Some(n) => definite(n, Vector.empty)
-      case None    => indefinite(Vector.empty)
-    }
+  private val addressCodec: PeerSharingEngine.PeerCodec[Address] =
+    new PeerSharingEngine.PeerCodec[Address]:
+      def encode(value: Address): Either[ProtocolError, Bytes] =
+        val writer = new PeerSharingEngine.Writer
+        writeAddress(writer, value)
+        Right(writer.result)
+      def decode(item: Bytes): Either[ProtocolError, Address] =
+        PeerSharingEngine.decodePeer(item, this).left.map(ProtocolError.PeerSharing.apply)
+      override private[protocol] def readFrom(
+          cursor: PeerSharingEngine.Cursor
+      ): PeerSharingEngine.Read[Address] =
+        readAddress(cursor)
+      override private[protocol] def writeTo(
+          writer: PeerSharingEngine.Writer,
+          value: Address,
+          limits: Limits
+      ): Either[Error, Unit] =
+        writeAddress(writer, value)
+        Right(())
 
-  /** One message from the front of `bytes`; surplus bytes are left to the caller. The caller bounds
-    * what it keeps: a message cannot be longer than `limits.maxMessageBytes`, which this checks as
-    * it reads, so a declared length that cannot fit fails at once.
-    */
+  def encode(
+      state: State,
+      sender: Role,
+      message: Message,
+      limits: Limits = Limits()
+  ): Either[Error, Bytes] =
+    PeerSharingEngine.encodeTyped(state, sender, toEngine(message), addressCodec, limits)
+
+  /** One message prefix; the strict address domain keeps its original validation order. */
   def decodePrefix(
       state: State,
       sender: Role,
       bytes: Bytes,
       limits: Limits = Limits()
   ): Decoding[Message] =
-    val cursor = new Cursor(bytes, limits.maxMessageBytes)
-    val agency = state match
-      case State.Done => Left(Error.Terminal)
-      case State.Idle => Either.cond(sender == Role.Client, (), Error.WrongAgency(state, sender))
-      case State.Busy => Either.cond(sender == Role.Server, (), Error.WrongAgency(state, sender))
-    val decoded: Read[Message] = agency.left.map(Stop.Fail(_)).flatMap { _ =>
-      for
-        n <- cursor.definiteArray()
-        key <- cursor.uint()
-        message <- (state, key) match
-          case (State.Idle, k) if k == 0 =>
-            for
-              _ <- arity(n, 2)
-              amount <- cursor.ranged(Field.Amount, BigInt(Amount.Max))
-            yield Message.ShareRequest(Amount.trusted(amount))
-          case (State.Busy, k) if k == 1 =>
-            for
-              _ <- arity(n, 2)
-              found <- peers(cursor)
-            yield Message.SharePeers(found)
-          case (State.Idle, k) if k == 2 => arity(n, 1).map(_ => Message.Done)
-          case _                         => fail(Error.UnexpectedKey(state, key))
-      yield message
-    }
-    decoded match
-      case Right(message)         => Decoding.Decoded(message, cursor.position)
-      case Left(Stop.Short)       => Decoding.NeedMore
-      case Left(Stop.Fail(error)) => Decoding.Failed(error)
+    PeerSharingEngine.decodeTyped(state, sender, bytes, addressCodec, limits) match
+      case Decoding.NeedMore               => Decoding.NeedMore
+      case Decoding.Failed(error)          => Decoding.Failed(error)
+      case Decoding.Decoded(message, used) => Decoding.Decoded(fromEngine(message), used)
 
   /** The whole of `bytes` is one message. */
   def decode(

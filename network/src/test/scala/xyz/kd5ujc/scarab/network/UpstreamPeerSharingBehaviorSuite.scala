@@ -8,14 +8,14 @@ import cats.syntax.all.*
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 import scala.concurrent.duration.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
-import xyz.kd5ujc.scarab.protocol.{KeepAlive, PeerSharing, ProtocolError}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
+import xyz.kd5ujc.scarab.protocol.{KeepAlive, PeerSharing, PeerSharingEngine, ProtocolError}
 import xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult
 
 import Peers.*
 
 /** Exact finite Int payloads through the production conversation and real in-memory mux pair. The
-  * Int wire interpreter is a test instantiation, not the Cardano Address codec or policy.
+  * Int item codec instantiates the same production wire engine as the Cardano Address facade.
   */
 class UpstreamPeerSharingBehaviorSuite extends FailsOnUncaught:
   private val base = Path.of("network/src/test/resources/upstream/peer-acceptance")
@@ -56,32 +56,43 @@ class UpstreamPeerSharingBehaviorSuite extends FailsOnUncaught:
         channel.send
       )
 
-  private def intReply(bytes: Bytes): DecodeResult[Vector[Int]] =
-    Cbor.decode(bytes) match
-      case Left(Cbor.Error.UnexpectedEnd | Cbor.Error.TruncatedString) => DecodeResult.NeedMore
-      case Left(error) => DecodeResult.Failed(ProtocolError.Codec(error))
-      case Right(node) =>
+  private val intPeer = PeerSharingEngine.peerCodec[Int](
+    n =>
+      Cbor
+        .encode(if n >= 0 then Value.UInt(n) else Value.NInt(n))
+        .left
+        .map(ProtocolError.Codec.apply),
+    item =>
+      Cbor.decode(item).left.map(ProtocolError.Codec.apply).flatMap { node =>
         node.value match
-          case Value.Arr(Vector(tag, items)) if tag.value == Value.UInt(1) =>
-            items.value match
-              case Value.Arr(values) =>
-                values
-                  .traverse { n =>
-                    n.value match
-                      case Value.UInt(value) if value.isValidInt => Right(value.toInt)
-                      case Value.NInt(value) if value.isValidInt => Right(value.toInt)
-                      case _ => Left(ProtocolError.ExpectedUint64)
-                  }
-                  .fold(DecodeResult.Failed(_), values => DecodeResult.Decoded(values, bytes.size))
-              case _ => DecodeResult.Failed(ProtocolError.ExpectedCandidateArray)
-          case _ => DecodeResult.Failed(ProtocolError.ExpectedCandidateArray)
+          case Value.UInt(value) if value.isValidInt => Right(value.toInt)
+          case Value.NInt(value) if value.isValidInt => Right(value.toInt)
+          case _                                     => Left(ProtocolError.ExpectedUint64)
+      }
+  )
+
+  private def intReply(bytes: Bytes): DecodeResult[Vector[Int]] =
+    PeerSharingEngine.decodePrefix(
+      PeerSharing.State.Busy,
+      PeerSharing.Role.Server,
+      bytes,
+      intPeer
+    ) match
+      case DecodeResult.NeedMore      => DecodeResult.NeedMore
+      case DecodeResult.Failed(error) => DecodeResult.Failed(error)
+      case DecodeResult.Decoded(PeerSharingEngine.Message.SharePeers(peers), used) =>
+        DecodeResult.Decoded(peers, used)
+      case DecodeResult.Decoded(_, _) => DecodeResult.Failed(ProtocolError.ExpectedCandidateArray)
 
   private def reply(values: Vector[Int]): Bytes =
-    def node(v: Value) = Node(v, Bytes.empty)
-    val items = values.map(n => node(if n >= 0 then Value.UInt(n) else Value.NInt(n)))
-    Cbor
-      .encode(Value.Arr(Vector(node(Value.UInt(1)), node(Value.Arr(items)))))
-      .fold(e => fail(e.message), identity)
+    PeerSharingEngine
+      .encode(
+        PeerSharing.State.Busy,
+        PeerSharing.Role.Server,
+        PeerSharingEngine.Message.SharePeers(values),
+        intPeer
+      )
+      .fold(error => fail(error.message), identity)
 
   test("original finite PeerSharing results survive the production generic conversation") {
     val inputs = rows("peersharing-behavior.tsv")
