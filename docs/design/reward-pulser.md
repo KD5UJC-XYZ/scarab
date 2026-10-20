@@ -82,10 +82,19 @@ change requires a version bump, migration and a previous-version read test under
 [ADR 0006](../adr/0006-versioned-formats-migrate-on-open.md). Run the restart scenario when storage
 code changes. Prove that restart and rollback resume the same prefix with the same frozen inputs.
 
-J3.6 specifies the existing non-myopic ranking gap;
-[#129](https://github.com/KD5UJC-XYZ/scarab/issues/129) tracks preservation of the live gap mask. Compare reward-accounting fields independently of that gap and retain its explicit mask.
-Full reference-state byte equality also requires real likelihoods and the reference's non-myopic
-update; do not claim it from reward-amount equality or fill missing fields with an unlabelled default.
+J3.6 / [#268](https://github.com/KD5UJC-XYZ/scarab/issues/268) now generates the non-myopic
+likelihoods at start: every snapshot pool contributes 100 samples, including nonproducing pools.
+The reference computes each probability/logarithm as Double and rounds the final weight to Float;
+monetary reward formulas remain exact rational arithmetic. Completion retains the reference Float
+0.9 decay, addition and normalization. No new persisted field is required.
+
+[#129](https://github.com/KD5UJC-XYZ/scarab/issues/129) still owns live provenance. A V5 state
+imported from an earlier runtime may lack previous likelihood history; new generation does not
+recover it. The existing constant sidecar flag conservatively marks even complete fresh-genesis
+states because the live state does not retain per-state gaps. Do not clear that flag globally or
+invent historical samples. A format migration is required only if the persisted layout actually
+changes, as ADR 0006 specifies. The reward API oracle and native V5 prefix comparisons now compare
+all likelihood fields without numerical masks, independently of this provenance limitation.
 
 ## Implementation and acceptance
 
@@ -155,8 +164,11 @@ per case: 180 encoded-state comparisons in total, and events for normal pulses. 
 positive members, script/owner credentials, version-2/3 aggregation and prefiltering, imported
 pool-identifier discrepancies, a count above 2^64, the full positive Haskell `Int` range, and
 non-myopic history/empty-map/identity-length cases. See the
-[oracle fixtures](../../storage/src/test/resources/rewards-1.19.0.1/README.md). Only local newly
-computed likelihood vectors are masked. Codec-write failures fail the comparison.
+[oracle fixtures](../../storage/src/test/resources/rewards-1.19.0.1/README.md). These original
+inputs and outputs are unchanged. The comparison now includes every encoded field, including
+newly computed likelihoods; codec-write failures fail it. Eight additional complete-state cases
+and a real 727-pool scalar/Float corpus are recorded in
+[the likelihood fixtures](../../storage/src/test/resources/reward-likelihood-1.19.0.1/README.md).
 
 The old opaque V5 writer rewrote a 20,227-byte pending state to identical bytes. The new reader
 loads it, checkpoints a prefix, restores and resumes it, and reproduces the original prefix after
@@ -208,3 +220,31 @@ or skips; restart writes two V5 shutdown snapshots and restores the exact prior 
 compatibility log records their projection limits, workload retry, class bindings and cleanup.
 The final source edits correct two Scaladoc descriptions only; the executable implementation
 remains the one checked and measured above.
+
+## Likelihood generation evidence (#268)
+
+The unchanged released reference reward API and Scarab match full encoded start and completion
+states for a retained Preview epoch-1449 V5 input: 727 pools, 79,851 active credentials, 71
+block-producing map entries and 72,700 generated Float samples. The reduced CI corpus preserves
+original pool hashes, stakes, block counts and every sample bit. A second explicitly constructed
+API observation feeds the first native completed NonMyopic bytes into the same input and checks
+history decay/normalization; it is not a second observed chain epoch or recovery of the archive's
+missing history. Synthetic registrations in the reduced test affect only its monetary work; the
+likelihood inputs remain original. The fixture README pins all source/input/output hashes.
+
+A controlled measurement on that retained input compares the entire `Rewards.start` API against
+unchanged main's implementation, with alternating order, ten warmup rounds and 25 measured rounds
+per condition in the same Docker JVM (2 CPUs, 4 GiB container limit, 2 GiB JVM maximum):
+
+| Whole start API | Before | With likelihood generation |
+|---|---:|---:|
+| Median wall time | 1.980 ms | 3.823 ms |
+| Wall range | 1.797–2.502 ms | 3.661–38.083 ms |
+| Median calling-thread CPU | 1.980 ms | 3.813 ms |
+| Median calling-thread allocation | 5,165,256 bytes | 8,208,128 bytes |
+
+Every measured new start includes all 72,700 samples and frozen reward inputs. This is an API
+measurement, not a whole block/tick latency guarantee; GC/host contention remains visible in the
+38 ms tail. No mutation, memoized hidden eager member result, or performance-style exception is
+introduced. Full current-feature gates and scenario evidence belong to the compatibility log;
+these focused measurements do not replace them.
