@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.protocol
 
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.Bytes
+
 import ChainSync.DecodeResult
 import PeerSharing.{Amount, Decoding, Error, Expectation, Field, Limits, Role, State}
 

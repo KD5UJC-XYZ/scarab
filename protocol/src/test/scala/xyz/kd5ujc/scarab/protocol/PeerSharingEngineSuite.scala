@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.protocol
 
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
+
 import ChainSync.DecodeResult
 import PeerSharing.{Error, Expectation, Limits, Role, State}
 import PeerSharingEngine.Message
