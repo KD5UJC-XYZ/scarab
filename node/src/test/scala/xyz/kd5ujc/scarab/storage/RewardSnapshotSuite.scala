@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.consensus.state.{
 import xyz.kd5ujc.scarab.ledger.rules.Rewards
 import xyz.kd5ujc.scarab.ledger.state.{PulsingRewUpdate, ProtVer, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.node.NodeSetup
-import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, Versions}
+import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, RewardTimingCases, Versions}
 
 class RewardSnapshotSuite extends CatsEffectSuite:
   private val setup =
@@ -65,4 +65,40 @@ class RewardSnapshotSuite extends CatsEffectSuite:
       assertEquals(Rewards.complete(pending(restarted.state)), Rewards.complete(initial))
       // Rollback to the retained immutable pre-pulse snapshot reproduces the original prefix.
       assertEquals(Rewards.pulse(pending(restored.state)).map(encoded), Right(encoded(first)))
+  }
+
+  test(
+    "native V5 restart completes independently observed Haskell prefixes with exact accounting"
+  ) {
+    import RewardTimingCases.{accounting, complete, field, load, state}
+    val stream = Option(getClass.getClassLoader.getResourceAsStream("rewards-pending-v5.bin"))
+      .getOrElse(fail("missing V5 fixture"))
+    val bytes =
+      try stream.readAllBytes()
+      finally stream.close()
+    val rows = load("results.json").filter { row =>
+      field[String](row, "name") == "conway-v10/dense"
+    }
+    assertEquals(rows.size, 1)
+    val row = rows.head
+    val wanted = accounting(complete(row))
+    val prefixes = (Vector(state(field[String](row, "initial"))) ++
+      field[Vector[io.circe.Json]](row, "timing")
+        .flatMap(r => field[Option[String]](r, "state").map(state))).collect {
+      case p: PulsingRewUpdate.Pulsing => p
+    }.distinct
+    assert(prefixes.size > 2, "restart controls must include partially consumed captured inputs")
+    for
+      snapshot <- format.decode(bytes).map(_.fold(e => fail(e.toString), identity))
+      _ <- prefixes.foldLeft(IO.unit) { (previous, prefix) =>
+        previous *> (for
+          written <- format
+            .encode(snapshot.copy(state = replace(snapshot.state, prefix)))
+            .map(_.fold(e => fail(e.toString), identity))
+          restarted <- format.decode(written).map(_.fold(e => fail(e.toString), identity))
+        yield
+          assertEquals(encoded(pending(restarted.state)), encoded(prefix))
+          assertEquals(Rewards.complete(pending(restarted.state)).map(accounting), Right(wanted)))
+      }
+    yield ()
   }

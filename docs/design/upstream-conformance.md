@@ -12,7 +12,7 @@ unsupported inputs and unobserved judgments are never counted as passes.
 
 The source is `cardano-ledger` `f649f9751074d2ab3de033fc3912f29c9862c1f5`, formal
 specification `b3a4fd47a1144ff1fb994f89b1045e78159e07ae`, constrained generators
-`966f65f3c28cb22fc45220dbd1408baea93b53d8`. These are bounded Conway/PV9 samples,
+`966f65f3c28cb22fc45220dbd1408baea93b53d8`. These are bounded Conway/PV9 rule samples and PV11 lawful RATIFY integrations,
 not a complete property campaign or evidence for every era.
 
 | Native family | Sample and Scarab comparison | Independent upstream result / limit |
@@ -23,22 +23,23 @@ not a complete property campaign or evidence for every era.
 | CERT | One complete POOL substate from pool registration | Native/Agda accept and compare equal; not every CERT branch |
 | CERTS | One complete ConwayCertState, all five actual environment fields decoded | Native/Agda accept and compare equal |
 | ENACT | One full EnactState | Native/Agda accept and compare equal |
-| GOV | One full proposal state, empty signal | Native/Agda accept and compare equal; no nonempty GOV coverage |
+| GOV | Original empty signal, ten lawful generated nonempty outcomes, a real cast-vote integration and a deposit-refusal control | Native/formal comparisons pass. The refusal retains the native structured deposit mismatch. Original generated environments with zero NonZero VRF counts remain unsupported; they are not normalized or counted as matches |
 | EPOCH | One full native EpochState | Both accept, but native/formal outputs differ and upstream exits 1 |
 | NEWEPOCH | Three full native NewEpochState outcomes from unchanged integration hooks | All three native/formal comparisons pass. Separate generated size-zero case is unsupported: zero stake inside NonZero Coin; larger probes fail upstream proposal construction |
 | LEDGER | Three full native states and original signed transactions from integration hooks | Native/formal comparisons pass. Inline MemPack UTxO is compared independently, excluding only unavailable raw-output bytes and Scala change-history bookkeeping |
 | UTXO / UTXOW | One full native UTxOState each, genuine supplemental judgments of the integration's payment transaction | Both native/formal comparisons pass. Original contexts retained; payment has no certificate/proposal pretransitions |
-| LEDGERS | One full native LedgerState, singleton original payment batch | Native accepts; formal evaluation crashes with SIGSEGV/139 before its verdict. Captured native result remains usable; no formal pass or multi-transaction claim |
-| RATIFY | Four full native RatifyState outcomes plus six independent approval-property samples | All native/formal comparisons pass. Nonempty STS samples start delayed; DRep/SPO samples are false; committee samples include both outcomes. Local regressions separately check positive order sensitivity and prior result retention |
+| LEDGERS | Original singleton plus two accepted dependent multi-transaction batches and two rejected batches | Complete accepted native state matches; typed fail-fast rejection payload must occur among native accumulated failures. Original signed bytes retained. Supplemental cases are native-only; original formal evaluator SIGSEGV/139 remains explicit |
+| RATIFY | Four original full-state samples, five lawful non-delayed integrations and six original approval-property samples | Native/formal comparisons pass. New integrations exercise successful nonzero DRep/SPO thresholds, missing votes and opposite supplied action orders. Complete RatifyState and native approval booleans are compared |
 
 Fixtures and exact limitations:
 [governance](../../node/src/test/resources/upstream/conway-govcert/README.md),
 [epoch probes](../../node/src/test/resources/upstream/conway-epochs/README.md),
 [lawful native integration and supplemental rules](../../node/src/test/resources/upstream/conway-native-refund/README.md),
 [RATIFY](../../node/src/test/resources/upstream/conway-ratify/README.md).
-There are 49 unique native matching judgments across the fourteen families (CERT is
-its named substate), six independent approval cases and one retained unsupported
-NEWEPOCH judgment. Two repeated LEDGER records in the supplemental run are byte
+The initial adapter stage retained 49 unique native matching judgments across the
+fourteen families (CERT is its named substate), six independent approval cases and
+one unsupported NEWEPOCH judgment. Additional functional-stage cases below remain
+separate from that historical count. Two repeated LEDGER records in the supplemental run are byte
 identical to the integration records and do not add coverage.
 
 Disabled registration is not an applicability exclusion. The pinned NEWEPOCH label
@@ -47,6 +48,54 @@ UTXO's generated execution context is retained rather than replaced. Lawful nati
 integration traces supply the transactions and reward boundaries that unconstrained
 initial state generation cannot safely establish. All three integration reward
 updates are already Complete, not incomplete pulser prefixes.
+
+## Observable functional equivalence
+
+The comparison requires matching acceptance/rejection, meaningful typed failure
+payloads, resulting state, wire bytes/order and required completion/cleanup.
+Different internal queues, pulse partitions and thread schedules are allowed.
+Native Haskell and formal outcomes remain separate observations.
+
+The [governance functional corpus](../../node/src/test/resources/upstream/conway-governance-functional/README.md)
+adds nonempty GOV, successful DRep/SPO ratification, missing-vote and supplied-order
+controls. The generated GOV samples exercise named voters and proposals but contain
+no actual cast votes. A separate lawful integration submits a real vote and compares
+its full native GOV output with both formal evaluation and the resulting native ledger
+proposal state; Scarab must insert that vote and match the complete result. It exposed a production GOV mismatch: an authorized named committee voter
+with an empty inner vote map was incorrectly unknown when all flattened votes were
+empty. Authorization lookup now depends on the presence of named voters, matching
+`Conway/Rules/Gov.hs` at the pin. Five original generated environments whose `NonZero Word64`
+VRF-reference counts serialize as zero remain explicit unsupported inputs, consistent
+with the upstream reader's constraint; lawful replacement samples are separate.
+
+The [native batch corpus](../../node/src/test/resources/upstream/conway-native-ledgers/README.md)
+executes the real native LEDGERS rule over original signed transactions. Two accepted
+batches contain actual output dependencies; reversed order and a repeated spend are
+rejected. Accepted comparisons cover complete native state and every inline MemPack
+UTxO field, excluding only unavailable output-original bytes and Scala change-history
+bookkeeping. Haskell accumulates failures while Scarab fails fast; complete structured
+failure membership is checked without requiring identical error order/multiplicity.
+
+The [reward timing corpus](../../storage/src/test/resources/rewards-timing-1.19.0.1/README.md)
+uses the unchanged released `cardano-ledger-shelley 1.19.0.1` RUPD and `applyRUpd` APIs
+from the node-11.1.3 reference dependency set, a separate source pin from the newer
+formal corpus. Fifty-five deterministic schedules retain 341 slot observations and
+174 complete/credited-state observations. Tests check completed monetary accounting,
+required availability, sparse slots and forced epoch-boundary delivery. Eight genuine
+pending prefixes are checkpointed/restored through current native V5 storage before
+completion. This is storage continuation, not a reference-process restart. Different
+within-window pulse partitions are allowed. The pre-existing J3.6 exclusion of newly
+generated non-myopic likelihood vectors remains explicit; all monetary fields stay
+compared. No formal RUPD verdict or exact internal pulse-prefix parity is claimed.
+
+The [Mux lifecycle corpus](../../network/src/test/resources/upstream/mux-lifecycle/README.md)
+retains 24 close and 24 trailing-byte experiments, each passing original IO and IOSim
+properties (96 native observations). Scarab replays the observed response prefixes and
+trailing bytes through production Mux. Controlled local checks additionally verify
+blocked send/flush/receive release, first typed cause, resource finalizers and cancelled
+partial-receive continuation. Native start/stop/restart and pure-exception properties
+are also executed, but remain native-only evidence. Scarab's resource/fiber lifecycle
+does not need Haskell's internal mini-protocol activation API or identical scheduling.
 
 ## Shared production rules and protocols
 
@@ -105,13 +154,13 @@ does not establish pipeline scheduling equivalence.
 The [network inventory](../../fixtures/reference/ouroboros-network-protocol-codecs/COVERAGE.md)
 retains exact registered names and family dispositions. It distinguishes the bounded
 generic Handshake and ordinary-codec adapters from remaining BlockFetch pipeline,
-runtime/interpreter, mux lifecycle and portable timer work, broader seeds, typed
+runtime/interpreter, broader mux transport/starvation and portable timer work, broader seeds, typed
 mock-domain gaps and unsupported Peras ObjectDiffusion.
 Peras remains unadvertised; it is not silently treated as a passing protocol.
 
 The existing [Plutus evidence](../plutus-conformance.md) remains 996/1009 passing,
 with thirteen documented harness exceptions. No new all-pass claim is introduced.
-Further applicable adapter coverage, broader seeded campaigns, invalid/rejection paths,
-incomplete reward prefixes, upstream failure investigation and final issue completion
+Further applicable adapter coverage, broader seeded campaigns and rejection branches,
+portable timer laws, upstream failure investigation and final issue completion
 remain tracked by #49. No persisted native format is changed; maintained native
 snapshots remain V5. Raw upstream trace CBOR is not a native snapshot version.

@@ -58,8 +58,15 @@ one/two-protocol Queue/Pipe/Socket, buffering, starvation, demux, start/stop/res
 close, trailing bytes, pure exceptions, SDU codecs and generator laws.
 The current upstream SDU adapter matches 34/40 rows and retains six explicit
 zero-length encoder-policy differences. Local MuxSuite/MuxDeadlinesSuite cover
-many runtime invariants, but are not claimed as adapters of those other generated
-properties. Their reference observation/adapter work remains in #49.
+many runtime invariants. The separate
+[Mux lifecycle corpus](../../../network/src/test/resources/upstream/mux-lifecycle/README.md)
+now retains 24 close and 24 trailing-byte cases with 96 original IO/IOSim verdicts.
+Its production-Mux adapter compares complete observed response prefixes and buffered
+byte order. Local controlled cancellation/cleanup checks stay distinct from those
+native invocations. Original start/stop/restart and pure-exception properties were
+also executed as native evidence; Scarab does not expose the same internal activation
+API. Exact scheduling is outside functional equivalence. Broader transport/backend,
+starvation and other applicable properties remain in #49.
 
 `network-mux/test/Test/Mux/Timeout.hs:33–68,122–175,283–325,339–403` registers
 single and sequential timer laws. A portable Scala counterpart must retain elapsed
