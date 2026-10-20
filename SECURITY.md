@@ -9,6 +9,15 @@ operational-certificate files; do not point it at keys that protect real value. 
 reviewed for side channels, denial of service or consensus safety against adversaries (see the
 "not checked" list in [docs/compatibility.md](docs/compatibility.md)).
 
+## Review planning
+
+The [threat model](docs/security/threat-model.md) maps implemented boundaries and intended invariants
+to source and regression controls. The [external review brief](docs/security/external-review.md)
+proposes professional review priorities and deliverables, including the independent crypto review in
+[#230](https://github.com/KD5UJC-XYZ/scarab/issues/230). These are review planning documents, not
+completed independent assurance. The reviewer evidence bundle is deferred until an audit candidate
+is selected. Reporting instructions below apply before, during and after any engagement.
+
 ## Supported versions
 
 Only the `main` branch (and the latest tagged research preview) receives fixes.
