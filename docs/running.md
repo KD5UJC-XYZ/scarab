@@ -836,10 +836,15 @@ behind them (see [architecture.md](architecture.md#node-to-client---local-socket
 state, in every Shelley-based era, without the UTxO, which the reference leaves out too (`map(0)`).
 The `ntc` gate requires the complete answer bytes to match at the same acquired point. It does not
 mask historical state gaps: any remaining difference fails the comparison and must be resolved.
-Earlier qualified measurements are retained in [compatibility.md](compatibility.md). Not answered yet
-(the connection ends, the log line `inbound ... closed` names the query): `GetRewardInfoPools`, `GetNonMyopicMemberRewards`,
-`GetRewardProvenance`, `GetLedgerPeerSnapshot`, `DebugLedgerConfig`, and every query but `ledger-state` in an era other than
-Conway (roadmap F1). A transaction refused over the socket carries the ledger's predicate failure, so `cardano-cli
+Earlier qualified measurements are retained in [compatibility.md](compatibility.md). Conway also
+answers `GetRewardInfoPools`, `GetNonMyopicMemberRewards` and `GetLedgerPeerSnapshot`, including
+negotiated legacy and `GetCBOR` forms. The
+[native query fixtures](../fixtures/reference/ntc-wallet-peers-11.1.3/README.md) cover nonzero reward
+history and IPv4, IPv6, DNS and version-dependent SRV relays. These answers do not reconstruct
+missing historical likelihoods ([#129](https://github.com/KD5UJC-XYZ/scarab/issues/129)). Not answered yet
+(the connection ends, the log line `inbound ... closed` names the query): `GetRewardProvenance`,
+`DebugLedgerConfig`, and every query but `ledger-state` in an era other than Conway (roadmap F1).
+A transaction refused over the socket carries the ledger's predicate failure, so `cardano-cli
 transaction submit` prints the same error as against the Haskell node.
 
 Fresh native genesis retains injected pool records with an empty VRF registry, matching the

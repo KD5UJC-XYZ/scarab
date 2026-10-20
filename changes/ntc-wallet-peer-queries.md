@@ -1,0 +1,1 @@
+Conway LocalStateQuery now answers reward pool information, non-myopic member rewards and ledger peer snapshots, including GetCBOR and negotiated legacy peer formats. Native fixtures retain 69 original complete replies across three synthetic states and NTC 19/22/23. Older incomplete likelihood histories remain incomplete; pre-Conway query support is unchanged.
