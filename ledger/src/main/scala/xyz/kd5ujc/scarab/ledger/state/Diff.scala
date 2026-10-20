@@ -286,6 +286,9 @@ object Diff extends LowPriorityDiff:
 
   private inline def sum[A](using m: Mirror.SumOf[A]): Diff[A] =
     val names = labels[m.MirroredElemLabels].toArray
+    // the case instances are made once per derivation (on the first same-case comparison), not on
+    // every comparison
+    val cases = caseSteps[m.MirroredElemTypes, A].toArray
     from[A]((a, b) =>
       if same(a, b) then None
       else if m.ordinal(a) != m.ordinal(b) then
@@ -296,23 +299,38 @@ object Diff extends LowPriorityDiff:
             Difference.clipped(s"${names(m.ordinal(b))}: ${b.toString}")
           )
         )
-      else sumDiff[m.MirroredElemTypes, A](a, b)
+      else
+        // walk the cases by index: no iterator per comparison
+        var found: Option[Difference] = None
+        var i = 0
+        while found.isEmpty && i < cases.length do
+          found = cases(i)(a, b)
+          i += 1
+        found
     )
 
-  /** `a` and `b` inhabit the same case of `A`: walk the case types until the one they inhabit, and
-    * compare with its instance. The walk is inline recursion, so each type test is elaborated
-    * against a concrete case type — no cast is written or needed.
+  /** One step per case, in declaration order: the case's instance (made on first use and kept) and
+    * the `ClassTag` check that narrows the values to the case type. A step that does not recognise
+    * the values answers none; the first that does is the case both inhabit.
     */
-  private inline def sumDiff[Ts <: Tuple, A](a: A, b: A): Option[Difference] =
+  private inline def caseSteps[Ts <: Tuple, A]: List[(A, A) => Option[Difference]] =
     inline erasedValue[Ts] match
-      case _: EmptyTuple => None
-      case _: (t *: ts)  =>
-        // the ClassTag extractor narrows the values to the case type; the check and the cast
-        // live in the stdlib's unapply. The walk recurses until the case `a` and `b` inhabit.
+      case _: EmptyTuple => Nil
+      case _: (t *: ts) =>
         val ct = summonInline[ClassTag[t]]
-        (a, b) match
-          case (ct(x), ct(y)) => caseInstance[t].diff(x, y)
-          case _              => sumDiff[ts, A](a, b)
+        val held = new Memo(() => caseInstance[t])
+        val step: (A, A) => Option[Difference] = (a, b) =>
+          (ct.unapply(a), ct.unapply(b)) match
+            case (Some(x), Some(y)) => held.value.diff(x, y)
+            case _                  => None
+        step :: caseSteps[ts, A]
+
+  /** A value made on first use and kept: the instance of a case must not be built on every
+    * comparison, and must not be built while the enum's own instance is being made (a case may hold
+    * the enum).
+    */
+  private[scarab] final class Memo[A](init: () => A):
+    lazy val value: A = init()
 
 extension [A](a: A)
   /** The first difference from `b`, by the instance of the type. */
