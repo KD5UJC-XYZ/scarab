@@ -1,72 +1,86 @@
-# Reproducible node artifacts
+# Reproducible node fat JARs
 
-**Status: Current** — deterministic runtime packaging and a two-clean-build check. This is the
-artifact portion of [O2 / #75](https://github.com/KD5UJC-XYZ/scarab/issues/75); it does not complete
-signed releases, an SBOM, provenance attestations, published images or a fat jar.
+**Status: Current** — `node/assembly` packaging and a two-clean-build verification task. This is
+the artifact portion of [O2 / #75](https://github.com/KD5UJC-XYZ/scarab/issues/75); signed releases,
+SBOMs, provenance attestations and published-image reproducibility remain separate work.
 
 ## Artifact contract
 
-Inside the [JDK build container](../CONTRIBUTING.md#build-docker-only), run
-`bash scripts/sbtw node/releaseArchive`. It creates `node/target/release/scarab-node-<version>.zip`.
-Extract it and run `sh scarab <node arguments>` with Java 21 available. The launcher resolves its
-own directory; no checkout, dependency cache or build path is required at runtime. The ZIP does
-not set an executable bit on the launcher, so invoke it with `sh` as shown.
+Inside the [JDK build container](../CONTRIBUTING.md#build-docker-only), run:
 
-Direct `node/releaseArchive` invocation is developer packaging of the current working files:
-BuildInfo and the metadata identify HEAD without attesting that the checkout is clean. Use the
-immutable source wrapper below for verified release-candidate identity.
+```sh
+bash scripts/sbtw node/assembly
+java -jar node/target/scala-3.3.8/scarab-node-0.1.0-assembly.jar <node arguments>
+```
 
-The ZIP contains an explicit `classpath.txt`, local module jars, unchanged resolved dependency jars,
-`build-info.properties`, per-jar SHA-256 sums, `LICENSE` and `NOTICE`. Classpath order is preserved,
-including the portable blst resource before blst-java. Dependency jars retain their resources,
-service descriptors and signatures; packaging does not flatten or merge them.
+The versioned filename follows the build's project and Scala versions. The fat JAR contains the
+application, Scala libraries, runtime dependencies and native resources; it needs Java 21 but no
+checkout, dependency cache, launcher script or external classpath.
 
-Entries are sorted, stored without compression and use a fixed 1980 timestamp. Module jars use the
-same rules and retain explicit directory entries, preserving Java directory-resource lookup and
-classpath precedence as well as concrete file-resource lookup. The Scala compiler records source
-paths relative to the checkout, and generated source files are returned in stable order. BuildInfo retains the source commit, project version, Scala
-version and sbt version; the artifact additionally records the full commit and JDK vendor/runtime.
-Identical builds require identical source, JDK runtime, sbt/compiler versions and resolved dependency
-bytes. The existing pinned versions and sha256-checked sbt launcher remain the build inputs.
-This is not a claim that dependency versions alone authenticate downloaded bytes.
+The pinned [sbt-assembly plugin](https://github.com/sbt/sbt-assembly#usage) supplies assembly and
+repeatable entry ordering. Fixed package timestamps, relative compiler source paths and stable
+generated-source ordering remove build-path and output-state differences. BuildInfo retains source
+identity; `META-INF/scarab/build-info.properties` records the full commit, project/Scala/sbt versions
+and JDK vendor/runtime. Direct `node/assembly` invocation packages current working files while
+identifying HEAD; use the immutable-source wrapper below for verified release-candidate identity.
 
-## Two clean builds
+## Resource merging
+
+The assembly uses the plugin's documented defaults unless an explicit rule is needed:
+
+- Service descriptors merge distinct lines; configuration resources use the standard concatenation
+  rule. Unexpected differing classes or other resources fail deduplication.
+- License and notice metadata are retained through the standard rename strategy. Scarab's own
+  `LICENSE` and `NOTICE` remain under `META-INF/scarab/`; dependency metadata is not an SBOM.
+- The committed portable Linux/amd64 blst resource wins over blst-java's alternate resource at the
+  same path. Other native resources retain their original bytes. Packaging does not rebuild them.
+- Dependency manifests, obsolete JAR indexes and invalidated dependency signature files are removed.
+  The resulting artifact is unsigned. Dependency module descriptors are omitted because the single
+  assembled application has no combined Java module descriptor.
+- Multi-release class entries are retained, and the new manifest enables multi-release lookup.
+
+There is no blanket first-wins rule, class shading or handwritten ZIP packager. Verification checks
+service-provider preservation, dependency legal metadata, native and multi-release resource bytes,
+the portable blst overlay, source identity and the absence of an external manifest classpath.
+
+## Two independent clean builds
 
 From the host, with Docker available and the JDK image built as CONTRIBUTING describes:
 
 ```sh
 python3 scripts/reproducible_build.py --revision <commit> \
-  --cache /path/to/dependency-cache --output /tmp/scarab-repro-check
+  --cache /path/to/dependency-cache --output /tmp/scarab-repro-check --check
 ```
 
-The output directory must be fresh. The default image is `scarab-jdk:local`; `--image` selects a
-locally available image. The script resolves it to its immutable local image ID before execution,
-exports the requested commit with `git archive`, and hashes every exported input. Uncommitted and
-untracked files are excluded. Commit the candidate before checking it.
+Commit the candidate first; the output directory must be fresh. `--check` includes the repository's
+full gate in the first build. The default image is `scarab-jdk:local`; `--image` selects a locally
+available image, resolved to its immutable local image ID before execution. The wrapper fixes UTC
+and a UTF-8 locale.
 
-The wrapper starts the first-class sbt task `reproducibleCheck` in that JDK image. The task creates
-two fresh source trees at different absolute paths, verifies their inputs against the frozen export,
-and runs a separate sbt JVM in each. Neither receives compiled classes, managed sources, Zinc state,
-project outputs or packaged artifacts from the checkout or the other build. Each has its own sbt
-global directory. Only downloaded launcher, boot, Ivy and Coursier dependencies share a cache.
-Both builds compile and package the node before comparing the complete distributable bytes.
-Each extracted artifact must also pass actual JVM directory-resource lookups, run the CLI launcher,
-and pass the portable BLS native-library and Plutus-builtin startup checks. The native smoke profile
-currently targets Linux/amd64, where the maintained portable blst overlay is shipped. Add `--check`
-to run the full repository gate in the first build.
+The wrapper exports the requested commit with `git archive`, hashes every exported input and starts
+the first-class sbt task `reproducibleCheck`. That task creates two fresh source trees at different
+absolute paths, verifies the frozen inputs and runs a separate sbt JVM in each. Neither receives
+compiled classes, managed sources, Zinc state, project outputs or assembled artifacts from the
+checkout or the other build. Each has a private sbt global directory. Only downloaded launcher,
+boot, Ivy and Coursier dependencies share a cache.
 
-The output contains both ZIPs, separate complete build logs and `build-environment.json` with the
-source commit and image ID. A mismatch fails and names differing archive entries, or reports ZIP
-metadata/ordering when entry contents match. A source change after export also fails. These local
-outputs are verification diagnostics, not a signed auditor evidence bundle or provenance attestation.
+Both builds execute `node/assembly` and compare the complete fat-JAR bytes. Each artifact runs from
+an empty temporary directory using only that one JAR: `java -jar ... --help`, actual JVM directory,
+service-provider and multi-release lookups, BuildInfo identity, BouncyCastle cipher and RocksDB
+native loading, and the existing `BlstCheckMain`
+through `java -cp <same-fat-jar>`. The latter verifies portable BLS startup and Plutus builtins;
+this native smoke profile targets Linux/amd64. No dependency jars enter either runtime classpath.
 
-The two builds use one image and one resolved dependency cache. This catches output-state, source
-path, timestamp and packaging nondeterminism; it does not establish independent dependency supply
-chains, cross-JDK or cross-platform reproducibility. Rebuilding the committed native libblst from
-its source recipe remains [#229](https://github.com/KD5UJC-XYZ/scarab/issues/229). The packaged native
-resource is preserved byte-for-byte, which is a different guarantee.
+The output contains both JARs, separate build logs and `build-environment.json` with the source
+commit and image ID. A mismatch names differing JAR entries, or reports metadata/ordering when
+contents match. Changed frozen source also fails. These local diagnostics are not a signed auditor
+evidence bundle or provenance attestation.
 
-The current release workflow is not implemented. Publishing a fat jar needs explicit resource and
-native-library merge policy, and image publication, dependency verification, signed SBOM/provenance
-and user signature verification remain under #75. Do not describe this packaging task as a signed
-release or as having rebuilt the native libraries.
+The contract is identical committed source, JDK image/runtime, sbt/compiler/plugin versions and
+resolved dependency bytes. The existing pinned dependencies and SHA-256-checked sbt launcher are
+build inputs; dependency versions alone do not authenticate downloaded bytes. The two builds use
+one image and one trusted download cache, so this does not establish independent dependency supply
+chains, cross-JDK or cross-platform reproducibility. Rebuilding the committed libblst from its
+source recipe remains [#229](https://github.com/KD5UJC-XYZ/scarab/issues/229), distinct from preserving
+the packaged native bytes. Signed releases, dependency verification, SBOM/provenance and published
+image verification remain under #75.

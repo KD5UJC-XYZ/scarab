@@ -32,7 +32,7 @@ checkout, found as the parent of `git rev-parse --git-common-dir`. Mount the sam
 
 ### Reproducible runtime artifacts
 
-`node/releaseArchive` packages a runnable runtime ZIP with a preserved, ordered classpath.
+`node/assembly` packages a standalone node fat JAR runnable with `java -jar`.
 The first-class sbt task `reproducibleCheck`, invoked through the host wrapper, builds an immutable
 source export twice in isolated output trees inside one JDK image and compares complete bytes.
 See [the artifact contract and verification commands](docs/reproducible-builds.md).

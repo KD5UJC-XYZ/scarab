@@ -207,7 +207,6 @@ def gitCommit(root: File): String =
   GitHead.commit(root.toPath).map(_.take(8)).getOrElse("unknown")
 
 lazy val runtimeClasspathFile = taskKey[File]("Write the resolved application runtime classpath")
-lazy val releaseArchive = taskKey[File]("Package the ordered runtime classpath deterministically")
 lazy val reproducibleCheck = taskKey[Unit]("Compare two clean builds of a frozen source export")
 
 // Tagless-final node: wiring, mempool, forger, relay, node-to-client, the query server, the CLI.
@@ -247,21 +246,46 @@ lazy val node = scarab("node")
       IO.write(output, (Runtime / fullClasspath).value.files.mkString(java.io.File.pathSeparator))
       output
     },
-    releaseArchive := {
+    Compile / mainClass := Some("xyz.kd5ujc.scarab.node.Main"),
+    assembly / mainClass := (Compile / mainClass).value,
+    assembly / assemblyJarName := s"scarab-node-${version.value}-assembly.jar",
+    assemblyRepeatableBuild := true,
+    assembly / packageOptions += Package.ManifestAttributes("Multi-Release" -> "true"),
+    assemblyMergeStrategy := {
+      // The portable resource in blst-native must retain precedence.
+      case "supranational/blst/Linux/amd64/libblst.so" => MergeStrategy.preferProject
+      case path if path == "module-info.class" || path.endsWith("/module-info.class") =>
+        MergeStrategy.discard
+      case PathList("META-INF", name)
+          if Vector(".SF", ".DSA", ".RSA", ".EC").exists(name.toUpperCase.endsWith) ||
+            name.toUpperCase.startsWith("SIG-") =>
+        MergeStrategy.discard
+      case path if path.startsWith("META-INF/scarab/") => MergeStrategy.deduplicate
+      case "META-INF/DEPENDENCIES"                     => MergeStrategy.rename
+      case path =>
+        val fallback = (ThisBuild / assemblyMergeStrategy).value
+        fallback(path)
+    },
+    Compile / resourceGenerators += Def.task {
       val root = (ThisBuild / baseDirectory).value
-      val commit =
-        GitHead.commit(root.toPath).getOrElse(sys.error("releaseArchive requires source identity"))
+      val output = (Compile / resourceManaged).value / "META-INF" / "scarab"
       val identity = Seq(
-        "gitCommit" -> commit,
+        "gitCommit" -> GitHead.commit(root.toPath).getOrElse("unknown"),
         "version" -> version.value,
         "scalaVersion" -> scalaVersion.value,
         "sbtVersion" -> sbtVersion.value,
         "javaVendor" -> sys.props("java.vendor"),
         "javaRuntimeVersion" -> sys.props("java.runtime.version")
       )
-      val output = target.value / "release" / s"scarab-node-${version.value}.zip"
-      ReproducibleArtifacts.runtime(root, output, (Runtime / fullClasspath).value.files, identity)
-    },
+      val metadata = output / "build-info.properties"
+      IO.write(metadata, identity.sortBy(_._1).map { case (k, v) => s"$k=$v\n" }.mkString)
+      val notices = Seq("LICENSE", "NOTICE").map { name =>
+        val target = output / name
+        IO.copyFile(root / name, target, preserveLastModified = false)
+        target
+      }
+      metadata +: notices
+    }.taskValue,
     Compile / run / fork := true
   )
 

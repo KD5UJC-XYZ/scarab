@@ -62,3 +62,50 @@ class ReproducibleBuildTests(unittest.TestCase):
                     archive.writestr(info, b"same")
             with self.assertRaisesRegex(ValueError, "metadata or entry ordering"):
                 repro.compare(first, second)
+
+    def test_fat_jar_resource_contract_rejects_lost_providers_and_overlay(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            source = root / "source"
+            portable = "supranational/blst/Linux/amd64/libblst.so"
+            native = source / "blst-native/src/main/resources" / portable
+            native.parent.mkdir(parents=True)
+            native.write_bytes(b"committed portable")
+            (source / "LICENSE").write_bytes(b"project license")
+            (source / "NOTICE").write_bytes(b"project notice")
+            dependency = root / "dependency.jar"
+            services = "META-INF/services/example.Provider"
+            with zipfile.ZipFile(dependency, "w") as jar:
+                jar.writestr(services, b"example.One\nexample.Two\n")
+                jar.writestr("LICENSE", b"dependency terms")
+                jar.writestr(portable, b"alternate native build")
+            entries = {
+                "META-INF/MANIFEST.MF": (
+                    b"Manifest-Version: 1.0\r\nMain-Class: xyz.kd5ujc.scarab.node.Main\r\n"
+                    b"Multi-Release: true\r\n\r\n"),
+                "META-INF/scarab/build-info.properties": b"gitCommit=" + b"a" * 40 + b"\n",
+                "META-INF/scarab/LICENSE": b"project license",
+                "META-INF/scarab/NOTICE": b"project notice",
+                portable: native.read_bytes(),
+                services: b"example.One\nexample.Two\n",
+                "LICENSE_dependency": b"dependency terms"
+            }
+            artifact = root / "node.jar"
+
+            def write(candidate):
+                with zipfile.ZipFile(artifact, "w") as jar:
+                    for name, content in candidate.items():
+                        jar.writestr(name, content)
+
+            write(entries)
+            repro.verify_resources(artifact, source, [dependency], "a" * 40)
+            for changed, expected in [
+                    ({services: b"example.One\n"}, "service providers"),
+                    ({"META-INF/scarab/NOTICE": b"changed notice"}, "project legal metadata"),
+                    ({portable: b"alternate native build"}, "portable blst overlay"),
+                    ({"LICENSE_dependency": b"changed legal terms"}, "legal metadata"),
+                    ({"META-INF/STALE.SF": b"old signature"}, "invalid dependency signatures")]:
+                with self.subTest(expected=expected):
+                    write(dict(entries, **changed))
+                    with self.assertRaisesRegex(ValueError, expected):
+                        repro.verify_resources(artifact, source, [dependency], "a" * 40)
