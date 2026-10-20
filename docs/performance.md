@@ -2185,3 +2185,11 @@ The fixed-key synthetic workload hashes the complete rendered ledger state outsi
 replace the Preview result above. No unrelated codec implementation or unmeasured batch-wide
 performance claim is incorporated into #248. #205/#204 retain their own representative snapshot
 and restart requirements; their results cannot be inferred from this interpreter comparison.
+
+
+**Integration after #260 (2026-10-20).** Rebased onto dev
+`6988858f937a42eb34762cb5a61d3c622c49b124`. RuleT production and the shared class-freeze driver are byte-identical to the measured/reviewed candidate; the driver patch is now upstream through #260. The new Diff diagnostics do not execute in the timed BBODY/Tick comparison.
+The original benchmark/gate source identities above remain historical evidence. Refreshed
+checks on the rebased head are recorded in the [PR #248 checklist](https://github.com/KD5UJC-XYZ/scarab/pull/248);
+pre-rebase gates are not relabelled as gates of the integrated head. Main and dev still diverge;
+this prepares the dev target and does not claim completion after main landing.
