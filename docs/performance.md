@@ -2357,55 +2357,73 @@ this prepares the dev target and does not claim completion after main landing.
 The batch's claim is that removing the erased value channels changed no verdict and no byte, and
 that the typed implementations stay inside the cost bar the tickets set (10% on a primary
 workload). One harness — `ledger/src/test/scala/xyz/kd5ujc/scarab/bench/CastErasureBench.scala`
-(`ledger/Test/runMain xyz.kd5ujc.scarab.bench.CastErasureBench <workload|all>`) — runs each
-ticket's workload against both builds. **Old** is `dev` at `57608c6e`, the merge base before the
-batch; **new** is the branch (or the merged `dev`, they build the same bytes).
+(`ledger/Test/runMain xyz.kd5ujc.scarab.bench.CastErasureBench <workload|all> [n]`) — runs each
+ticket's workload against both builds. The same file is added by #248 for #202 and by this chapter;
+the two copies are identical, so the repository has one authoritative harness. The codec workload
+is `storage/src/test/scala/xyz/kd5ujc/scarab/storage/BenchCodecMain.scala`
+(`storage/Test/runMain xyz.kd5ujc.scarab.storage.BenchCodecMain [iterations]`).
+
+**Inputs are deterministic and asserted so outside the timed region.** The credential workload
+builds 100,000 credentials whose 28 bytes carry the index in the last four bytes, asserts
+`distinct.size == n` before timing anything, and shuffles with `Random(42)`; the block workload
+signs with one fixed Ed25519 key generated from a fixed `SHA1PRNG` seed. Two builds therefore
+receive identical inputs, and the comparison measures the implementation, not the inputs.
+
+**Every digest covers the complete output, computed outside the timed region.** Each workload
+renders its whole answer canonically and prints its SHA-256: the sorted credentials, the map
+entries with their values, both decoded trees (nested and wide), and the full applied ledger state.
+Equal digests between the old and the new build mean equal outputs on the measured workload. They
+do not establish chain-level state parity — that is the ledger area scenario's question.
 
 **Protocol.** rutherford (12-core WSL2/Docker Desktop host, shared with the mainnet follower),
 image `scarab-jdk-check:local` built from `docker/jdk.Dockerfile`, `--cpuset-cpus 0-7` and no CFS
 quota, one JVM at a time; 3 warm-up runs and 5 measured runs per case; `System.nanoTime` per run,
-`ThreadMXBean.getCurrentThreadAllocatedBytes` per thread; medians reported with min/max. Each
-workload prints a `DIGEST` line — a hash of its output (the applied block's state count, the
-decoded value, the differences) — and the digests of the old and the new build **matched on every
-workload**: the answers did not change.
+`ThreadMXBean.getCurrentThreadAllocatedBytes` per thread; medians reported with min/max. The
+sequence is interleaved — dev, branch, dev, branch — so drift over the session cannot be mistaken
+for a difference between builds. Measured 2026-10-19/20 (CDT), OpenJDK 21.0.12.1, `-Xmx5g`.
 
-**The host drifts, and the drift is the honest error bar.** Two runs of the *same* old build, an
-hour apart, differ by up to ~28% on the short credential workloads (`mapUpdate` 41.2 vs 57.1 ms),
-~20% on `mapBuild`, and 3–5% on the 10k-transaction block. A difference smaller than that range is
-reported below as "within drift", not as a win.
+**The host drifts, and the drift is the honest error bar.** Two runs of the *same* old build in one
+session span 129.1–161.8 ms on `credentials.mapUpdate`, 119.1–140.0 ms on `mapBuild`, 3.16–3.18 s
+on the 10,000-transaction block; the new build spans 5.45–8.67 ms on `diff.map.late`. A difference
+smaller than the side's own span is reported as "within drift", not as a win.
 
-| Workload (#, what it drives) | old | new | allocation old → new | reading |
+**An earlier revision of this table was wrong, and this one replaces it.** The first harness
+generated credentials that repeated every 256 inputs, so the map workloads held 256 keys, and its
+digests covered counts rather than outputs. The review of #250 caught both. The numbers below are
+from the corrected harness: 100,000 distinct credentials, real map copies and updates, complete
+output digests.
+
+| Workload (#, what it drives) | old (dev, span of 2 runs) | new (branch, span of 2 runs) | allocation old → new | reading |
 |---|---|---|---|---|
-| rules.bbody — 10,000 transactions through `Sts(Bbody)` (#202) | 4186.4–4306.0 ms (min 4157.4) | 4368.7 ms (min 4353.6) | 5.219 GB → 5.222 GB | +1.5%…+4.4% against the old range; under the 10% bar, allocation unchanged |
-| credentials.sort — 100,000 credentials (#207) | 39.1–42.1 ms | 40.6 ms | 1.327 MB → 1.327 MB | within drift |
-| credentials.mapBuild (#207) | 32.8–35.6 ms | 35.0 ms | 2.938 MB → 2.938 MB | within drift |
-| credentials.mapUpdate (#207) | 41.2–57.1 ms | 36.5–42.4 ms | 27.03 MB → 27.03 MB | within drift (the old build alone spans 41–57) |
-| credentials.iterate (#207) | 0.177–0.285 ms | 0.209–0.285 ms | 9,376 B → 9,376 B | within drift |
-| decode.nested — 2,000-deep array (#203) | 3.505–3.573 ms | 3.302–3.317 ms | 435,504 B → 435,504 B | −5%, at the edge of drift |
-| decode.wide — 50,000-entry map (#203) | 14.3–16.4 ms | 11.9–17.1 ms | 10,696,688 B → 10,696,688–744 B | within drift; allocations identical |
-| diff.row.equal / early / late (#206) | 0.001 / 0.050 / 0.051 ms | 0.002 / 0.052 / 0.086 ms | 0/1832/1904 B → 24/1952/2352 B | early +4% (within drift), late +69%: ~+35 µs per comparison; addressed by the case-memo follow-up |
-| diff.sum.sameCase / otherCase (#206) | 0.045 / 0.049 ms | 0.081 / 0.045 ms | 1760/2184 B → 2008/2184 B | same-case +80%: a case's instance was derived per comparison; fixed by the follow-up |
-| diff.map.equal / early / late — 20,000 entries (#206) | 11.688 / 0.091 / 8.208 ms | 12.601 / 0.103–0.154 / 8.116–9.017 ms | 1.760 MB → 1.760 MB | within drift |
-| codec.encode / decode — 20,000 iterations (#205) | 208 / 281 / 213 ms encode; 336 / 385 / 345 ms decode (three dev runs) | 380 ms encode; 2664 ms decode (median; min 437 ms, some reps 2.8 s) | 1.337–1.338 GB → 1.352 GB encode; 1.687–1.711 GB → 1.644 GB decode | **over the bar**: encode +35…+79%, decode pathological (GC-scale spikes); #205 needs optimization before merge |
+| rules.bbody — 10,000 transactions through `Sts(Bbody)` (#202) | 3159.9 / 3175.7 ms | 3073.9 / 3256.9 ms | 5.224–5.230 GB → 5.217–5.227 GB | within drift; digest `159017f5…` identical on all four runs |
+| credentials.sort — 100,000 distinct credentials (#207) | 16.647 / 15.939 ms | 12.961 / 15.687 ms | 1.327 MB → 1.327 MB | within drift; digest `2e82ce87…` identical |
+| credentials.mapBuild (#207) | 139.952 / 119.059 ms | 128.674 / 114.461 ms | 60.912 MB → 60.912 MB | within drift; digest `0452736d…` identical |
+| credentials.mapCopy — 100,000 entries (#207) | 64.367 / 60.248 ms | 87.578 / 65.396 ms | 82.352 MB → 82.352 MB | within drift |
+| credentials.mapUpdate — 100,000 updates (#207) | 129.080 / 161.836 ms | 136.701 / 138.009 ms | 54.592 MB → 54.592 MB | within drift (the old build alone spans 129–162); digest `237a18d9…` identical |
+| credentials.iterate (#207) | 1.215 / 1.302 ms | 2.121 / 1.354 ms | 2.422 MB → 2.422 MB | within drift |
+| decode.nested — 2,000-deep array (#203) | 3.395 / 2.977 ms | 5.187 / 2.758 ms | 435,504 B → 435,504 B | within drift |
+| decode.wide — 50,000-entry map (#203) | 21.874 / 15.752 ms | 15.911 / 16.263 ms | 10.697 MB → 10.697 MB | within drift; both digests identical |
+| diff.row.equal / early / late (#206, **product** path) | 0.001 / 0.027–0.050 / 0.030–0.071 ms | 0.001 / 0.037 / 0.048 ms | 0/1832/1904 B → 24/1928/2328 B | equal is free; early +~30 µs, late +~20 µs per comparison — the product path's `ClassTag` extractor, **not** addressed by #249 |
+| diff.sum.sameCase / otherCase (#206, **sum** path) | 0.030–0.055 / 0.030–0.039 ms | 0.047 / 0.030 ms | 1760/2184 B → 1952/2184 B | inside the microsecond noise; #249's claim is structural (one instance per derivation), not a percentage |
+| diff.map.equal / early / late — 20,000 entries (#206) | 11.471–12.215 / 0.044–0.072 / 7.143–8.670 ms | 10.034 / 0.072 / 5.447 ms | 1.005–1.229 MB → 1.005 MB; 1.763 MB → 1.763 MB | within drift; digest `d582731d…` identical |
+| codec.encode / decode — 20,000 iterations, nested synthetic record (#205) | 188.6 / 194.7 ms encode; 273.3 / 284.2 ms decode | 220.5 / 321.9 ms encode; 250.4 / 263.6 ms decode | 1.337 GB → 1.348 GB encode; 1.668–1.684 GB → 1.494–1.509 GB decode | encode **over the bar** (+13…+71%); decode 7% faster; bytes identical (`c19600a83b7ba784`, 333 B) |
+| codec.record.encode / decode — `FutureGenDeleg` through `Record.auto` (#205) | 4.058 / 4.783 ms encode; 17.905 / 20.439 ms decode | 5.546 / 6.383 ms encode; 22.366 / 32.222 ms decode | 10.24 MB → 10.88 MB encode; 113.8 MB → 116.1 MB decode | encode +16…+57%; decode +5…+58% by median, +5% by minimum; bytes identical (`9b5615ce2d835aac`, 34 B) |
 
-**The codec derivation does not clear the bar (yet).** The typed `Fields`/`Variants` chains cost the
-snapshot codec more than the erased list did: encode is 35–79% slower than three runs of the old
-build around it (380 ms against 208/281/213 ms per 20,000 iterations), and decode is pathological —
-2664 ms median with some repetitions at 2.8 s against 336–385 ms for the old build — while the bytes
-are identical (`c19600a83b7ba784`, 333 B). The likely costs are the per-field `ClassTag.unapply`
-(a `Some` per field), `Tuple.fromProductTyped` per encode, and the per-field tuple cons chain on
-decode; #205's PR carries the numbers and a hold for optimization. This is why the batch's 10% bar
-exists.
+**What the batch cost, and what it did not.** The block and the decoder — the two primary workloads
+(#202, #203) — sit inside the host's own drift with identical digests; #207's maps allocate the same
+bytes as before; #206's large-map differences are inside drift. Two costs remain measurable and are
+not hidden here. First, single-record differences pay tens of microseconds per comparison on
+#206's product path (`ClassTag` test plus a `Some` per field, +96…+424 B per call) — a path that runs
+once per divergence, never inside a block; #249 removes a per-comparison derivation from the enum
+path but not that per-field cost. Second, #205's typed derivation makes **encoding** 13–71% slower
+on both derivations measured, while decoding is neutral (7% faster on the synthetic record,
++5…+58% on the real one by median, +5% by minimum). #205 therefore stays open for an owner decision:
+accept the encode cost for cast-freedom, or hold it.
 
-**The micro regression, and the follow-up.** `Diff` derived an enum case's instance on every
-same-case comparison (`caseInstance` → `derived`), building its label list and closures per call.
-A follow-up (`perf(ledger): keep the derived Diff of enum cases, made once per derivation`) captures
-one instance per case in a `Memo` forced on first use, and walks an array of per-case steps by index:
-the per-comparison work is the `ClassTag` test it always was. The effect is inside the host's
-microsecond noise (single-record differences move by tens of microseconds between runs of one build),
-so the claim is structural — no per-comparison derivation — not a measured percentage; the large-map
-and block workloads never reach this path, which is why they never moved.
-
-**Not measured here.** Continuous preprod/mainnet comparisons, and the devnet area scenarios
-(`e2e` for the ledger, `restart` for storage) — those are separate evidence, recorded with the
-PRs and the compatibility matrix.
+**What this chapter does not show.** The issue's pinned Preview block/epoch workload for #202 is
+not measured here — the 10,000-transaction BBODY is synthetic and is additional evidence, not a
+substitute; no Preview capture is in-tree. #205's representative current/legacy snapshot is not
+measured either: the codec workload encodes a synthetic nested record and one real two-field
+snapshot record, not a full state snapshot. The devnet area scenarios (`e2e` for the ledger,
+`restart` for storage) are separate evidence recorded on the PRs and in the compatibility matrix,
+and neither is green for this batch yet.
