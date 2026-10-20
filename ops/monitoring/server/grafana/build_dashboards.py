@@ -10,7 +10,9 @@ every build, before and after the node's /metrics endpoint. Host and container p
 Prometheus (node exporter and cAdvisor, pushed by the agent on each worker).
 The pool dashboard (`scarab-pool`) reads Prometheus only: the node's /metrics and the rotation driver's textfile.
 """
+import importlib.util
 import json
+import sys
 import pathlib
 
 LOKI = {"type": "loki", "uid": "loki"}
@@ -69,6 +71,7 @@ def stat(title, ds, expr, unit="none", decimals=None, desc="", thresholds=None):
                        "thresholds": {"mode": "absolute",
                                       "steps": thresholds or [{"color": "green", "value": None}]}},
           "overrides": []}
+    fc["defaults"]["noValue"] = "No samples"
     if decimals is not None:
         fc["defaults"]["decimals"] = decimals
     return {"type": "stat", "title": title, "description": desc, "datasource": ds,
@@ -83,10 +86,22 @@ def series(title, ds, exprs, unit="none", desc="", stack=False):
     return {"type": "timeseries", "title": title, "description": desc, "datasource": ds,
             "targets": targets,
             "fieldConfig": {"defaults": {"unit": unit, "custom": {
-                "lineWidth": 1, "fillOpacity": 10, "showPoints": "never", "spanNulls": True,
+                "lineWidth": 1, "fillOpacity": 10, "showPoints": "never", "spanNulls": False,
                 "stacking": {"mode": "normal" if stack else "none"}}}, "overrides": []},
             "options": {"legend": {"displayMode": "list", "placement": "bottom"},
                         "tooltip": {"mode": "multi", "sort": "desc"}}}
+
+
+def text(title, content):
+    """A guide or an explicit telemetry limitation, without a synthetic data query."""
+    return {"type": "text", "title": title, "options": {"mode": "markdown", "content": content}}
+
+
+def suite_links(single_node=False):
+    return [{"type": "link", "title": title, "url": f"/d/{uid}", "includeVars": single_node or uid not in {"scarab-network", "scarab-chain-tip"},
+             "keepTime": True, "targetBlank": False} for uid, title in (
+        ("scarab-overview", "Overview"), ("scarab-network", "Network"),
+        ("scarab-chain-tip", "Chain tip"), ("scarab-pool", "Pool"), ("scarab-runs", "Runs"))]
 
 
 def logs(title, expr, desc=""):
@@ -106,33 +121,30 @@ def variable(name, label, query_label, stream):
 
 def runs_dashboard():
     p = Layout()
-    p.row("Sync")
+    p.row("Live sync · metrics")
     p.line(
-        (5, stat("Block", LOKI, f'{per_run(unwrap("b", "block.blockNo"))} or {per_run(replayed())}',
-                 decimals=0,
-                 desc="Block number of the newest sampled `extended` line (one per 1000 blocks); while a "
-                      "start replays its stored blocks, the newest replayed block.")),
-        (5, stat("Synced", LOKI,
-                 f'{per_run(unwrap("s", "block.slot"))} / {per_run(unwrap("p", "peerTip.slot"))} * 100',
-                 unit="percent", decimals=2,
-                 desc="Slot of our tip over the slot of the peer's tip.",
-                 thresholds=[{"color": "orange", "value": None}, {"color": "green", "value": 99.99}])),
-        (4, stat("Epoch", LOKI, per_run(unwrap("e", "epoch")), decimals=0)),
-        (5, stat("Validation errors (range)", LOKI,
-                 'sum by (host, container) (count_over_time({' + SEL + ', event="error"} [$__range]))',
-                 decimals=0, desc="`error` events in the selected time range.",
-                 thresholds=[{"color": "green", "value": None}, {"color": "red", "value": 1}])),
-        (5, stat("Exits (range)", LOKI,
-                 'sum by (host, container) (count_over_time({' + SEL + ', event="exited"} [$__range]))',
-                 decimals=0, desc="The JVM stopped (a stop, a crash or a restart).",
-                 thresholds=[{"color": "green", "value": None}, {"color": "orange", "value": 1}])),
+        (5, stat("Current block", PROM,
+                 'max by (host, container) (cardano_node_metrics_blockNum_int{' + SEL + '})',
+                 decimals=0, desc="Current selected tip from /metrics; use sampled history below for older runs.")),
+        (5, stat("Peer slot difference", PROM,
+                 'max by (host, container) (scarab_peer_tip_slot{' + SEL + '}) - '
+                 'max by (host, container) (cardano_node_metrics_slotNum_int{' + SEL + '})',
+                 decimals=0, desc="Last peer tip recorded on follower extension minus our selected tip. Not an independent network clock.")),
+        (4, stat("Current epoch", PROM,
+                 'max by (host, container) (cardano_node_metrics_epoch_int{' + SEL + '})', decimals=0)),
+        (5, stat("Validation errors (range)", PROM,
+                 'sum by (host, container) (increase(scarab_validation_errors_total{' + SEL + '}[$__range]))',
+                 decimals=0, thresholds=GOOD_ZERO)),
+        (5, stat("Process restarts (range)", PROM,
+                 'max by (host, container) (changes(process_start_time_seconds{' + SEL + '}[$__range]))',
+                 decimals=0, desc="Changes in observed process start time. Requires scrapes on both sides of a restart.")),
         h=5)
     p.line(
-        (12, series("Block number", LOKI, [
+        (12, series("Sampled historical block number", LOKI, [
             (per_run(unwrap("b", "block.blockNo")), "{{host}} {{container}}"),
             (per_run(replayed()), "replaying {{host}} {{container}}")],
             desc="Followed blocks, and the blocks a start replays from its own store.")),
-        (12, series("Blocks per second", LOKI, [(
+        (12, series("Sampled historical blocks per second", LOKI, [(
             per_run(f'rate_counter({EXT} | json b="block.blockNo" | unwrap b [10m])'),
             "{{host}} {{container}}")], unit="none",
             desc="From the sampled block numbers over 10 minutes.")))
@@ -215,8 +227,8 @@ def runs_dashboard():
         "refresh": "30s",
         "timepicker": {"refresh_intervals": ["10s", "30s", "1m", "5m", "15m"]},
         "templating": {"list": [
-            variable("host", "Host", "host", '{job="scarab"}'),
-            variable("container", "Run", "container", '{job="scarab", host=~"$host"}')]},
+            prom_variable("host", "Host", 'label_values(up{job="scarab"}, host)'),
+            prom_variable("container", "Run", 'label_values(up{job="scarab", host=~"$host"}, container)')]},
         "panels": p.panels, "schemaVersion": 39, "version": 1,
     }
 
@@ -265,25 +277,42 @@ def pool_dashboard():
     START = "cardano_node_metrics_operationalCertificateStartKESPeriod_int"
     OURS, PEERS = "cardano_node_metrics_slotNum_int", "scarab_peer_tip_slot"
     LAG = f"{per(PEERS)} - {per(OURS)}"
-    HOT, WARM, COLD = (f"cardano_node_metrics_peerSelection_{k}_int" for k in ("Hot", "Warm", "Cold"))
+    def temperature_total(kind):
+        return f'{per("cardano_node_metrics_peerSelection_" + kind + "_int")} + {per("cardano_node_metrics_peerSelection_" + kind + "BigLedgerPeers_int")}'
+
+    HOT_TOTAL, WARM_TOTAL, COLD_TOTAL = (temperature_total(k) for k in ("Hot", "Warm", "Cold"))
     DRV = "scarab_kes_rotation_"
 
     p.row("Alerts and state")
     p.line(
-        (4, stat("Pool alerts firing", PROM, 'count(ALERTS{alertstate="firing", alertname=~"Pool.*"}) or vector(0)',
-                 decimals=0, desc="Alerts of prometheus/rules/pool.yml that are firing now.", thresholds=GOOD_ZERO)),
+        (4, stat("Node alerts firing", PROM, f'count by (host, container) (ALERTS{{alertstate="firing", alertname=~"Pool.*", {M}}}) or on (host, container) (0 * min by (host, container) (up{{job="scarab", {M}}}))',
+                 decimals=0, desc="Firing pool alerts carrying the selected node labels. Host-only rotation and global missing-metrics alerts are shown separately below.", thresholds=GOOD_ZERO)),
         (4, stat("Node up", PROM, f'min by (host, container) (up{{job="scarab", {M}}})', decimals=0,
                  desc="1 when the node's /metrics answers the scrape.", thresholds=GOOD_ONE)),
         (4, stat("Forging enabled", PROM, per("cardano_node_metrics_forging_enabled_int"), decimals=0,
                  thresholds=GOOD_ONE)),
         (4, stat("Phase", PROM, f'max by (host, container, phase) (scarab_node_phase{{{M}}}) == 1',
                  desc="Restoring, Replaying or Following; a producer forges only while Following.")),
-        (4, stat("Stalled", PROM, per("scarab_follower_stalled"), decimals=0,
-                 desc="1 while the node has not extended its chain for --stall-minutes with a peer ahead.",
+        (4, stat("Stalls begun (range)", PROM, inc("scarab_follower_stalls_total"), decimals=0,
+                 desc="Watchdog stalls begun in the interval. A current stalled-state gauge is unavailable on some deployed builds.",
                  thresholds=GOOD_ZERO)),
         (4, stat("Uptime", PROM, f'time() - {per("process_start_time_seconds")}', unit="s",
                  desc="Since the process started; a drop to near zero is a restart.")),
         h=5)
+    p.row("Rotation and monitoring alerts")
+    p.line(
+        (8, stat("Host rotation alerts firing", PROM,
+                 f'count by (host) (ALERTS{{alertstate="firing", alertname=~"PoolKesRotation.*", {H}}}) '
+                 f'or on (host) (0 * {drv(DRV + "last_run_timestamp_seconds")})',
+                 decimals=0, thresholds=GOOD_ZERO,
+                 desc="KES driver alerts carry host only, so node/container filtering must not hide them. Missing driver telemetry remains missing.")),
+        (8, stat("Global rotation-metrics alert", PROM,
+                 'count(ALERTS{alertstate="firing", alertname="PoolKesRotationMetricsMissing", host=""}) or vector(0)',
+                 decimals=0, thresholds=GOOD_ZERO,
+                 desc="Fleet-wide alert from absent(driver metrics), which has no host or container labels. Intentionally unfiltered: 0 means this specific global alert is not firing.")),
+        (8, stat("Driver sample age", PROM,
+                 f'time() - max by (host) (timestamp(scarab_kes_rotation_last_run_timestamp_seconds{{{H}}}))',
+                 unit="s", desc="Age of the ingested textfile metric, not the time since rotation ran. Compare Last run below.")), h=5)
     p.row("Forging")
     p.line(
         (4, stat("Blocks forged (range)", PROM, inc(FORGED), decimals=0)),
@@ -293,8 +322,8 @@ def pool_dashboard():
                  desc="Forged blocks that did not stay on our chain (a lost slot battle, or replaced).",
                  thresholds=[{"color": "green", "value": None}, {"color": "orange", "value": 1}])),
         (4, stat("Forge failures (range)", PROM,
-                 f'sum by (host, container) (delta({CANNOT}{{{M}}}[$__range]))',
-                 decimals=0, desc="Slots the pool led but could not forge in (`forgeFailed`).", thresholds=GOOD_ZERO)),
+                 f'sum by (host, container) (increase({CANNOT}{{{M}}}[$__range]))',
+                 decimals=0, desc="Increase in the cumulative cannot-forge gauge (treated as a monotonic total with reset correction). Slots our pool led but could not forge in (`forgeFailed`).", thresholds=GOOD_ZERO)),
         (4, stat("Leader slots won (range)", PROM, inc(LEADER), decimals=0)),
         (4, stat("Expected per epoch", PROM, 'vector($expected)', decimals=1,
                  desc="The expected blocks per epoch for the pool's stake share (the `expected` box above).")),
@@ -364,27 +393,31 @@ def pool_dashboard():
     p.row("Sync and peers")
     p.line(
         (6, stat("Slot lag behind the peers' tip", PROM, LAG, decimals=0,
-                 desc="Slots between the highest tip a peer announced and ours. Alert: above 120 for 10 minutes.",
+                 desc="Last peer tip reported at follower extension minus our selected tip; not wall-clock lag or an independent network-tip measurement. Alert: above 120 for 10 minutes.",
                  thresholds=[{"color": "green", "value": None}, {"color": "orange", "value": 60},
                              {"color": "red", "value": 120}])),
-        (6, stat("Peers hot", PROM, per(HOT), decimals=0, thresholds=GOOD_ONE)),
-        (6, stat("Peers warm", PROM, per(WARM), decimals=0)),
-        (6, stat("Peers cold", PROM, per(COLD), decimals=0)),
+        (6, stat("Peers hot", PROM, HOT_TOTAL, decimals=0, thresholds=GOOD_ONE, desc="Ordinary + big-ledger active peers; local roots are subsets, not additional peers.")),
+        (6, stat("Peers warm", PROM, WARM_TOTAL, decimals=0)),
+        (6, stat("Peers cold", PROM, COLD_TOTAL, decimals=0)),
         h=5)
     p.line(
         (8, series("Our tip and the peers' tip (slot)", PROM, [
             (per(OURS), "ours {{container}}"), (per(PEERS), "peers {{container}}")])),
         (8, series("Slot lag", PROM, [(LAG, "{{container}}")])),
         (8, series("Peers hot, warm and cold", PROM, [
-            (per(HOT), "hot {{container}}"), (per(WARM), "warm {{container}}"), (per(COLD), "cold {{container}}")])))
+            (HOT_TOTAL, "hot {{container}}"), (WARM_TOTAL, "warm {{container}}"), (COLD_TOTAL, "cold {{container}}")])))
     p.line(
         (12, series("Node phase and stall watchdog", PROM, [
             (f'max by (host, container, phase) (scarab_node_phase{{{M}}})', "phase {{phase}} {{container}}"),
-            (per("scarab_follower_stalled"), "stalled {{container}}"),
             (inc("scarab_follower_stalls_total", "1h"), "stalls/h {{container}}")])),
         (12, series("Restarts (process start time)", PROM, [(
             per("process_start_time_seconds"), "started {{container}}")], unit="s",
             desc="A step is a restart (seconds since 1970).")))
+    for panel in p.panels:
+        if panel.get("title") == "Phase":
+            panel["targets"][0]["legendFormat"] = "{{phase}}"
+            panel["options"]["textMode"] = "name"
+            panel["options"]["text"] = {"valueSize": 28}
     return {
         "uid": "scarab-pool", "title": "Scarab pool", "tags": ["scarab", "pool"],
         "description": "A block producer: forging, KES and the certificate, the rotation driver, sync and peers.",
@@ -401,9 +434,34 @@ def pool_dashboard():
     }
 
 
+def dashboards():
+    """Build every provisioned dashboard from source, also when imported by tests."""
+    result = {"scarab-runs": runs_dashboard(), "scarab-pool": pool_dashboard()}
+    ui = sys.modules.get(__name__)
+    if ui is None:
+        # importlib callers need not register the module in sys.modules.
+        from types import SimpleNamespace
+        ui = SimpleNamespace(**globals())
+    for module_name, function in (("overview_dashboard", "overview_dashboard"),
+                                  ("network_dashboard", "network_dashboard"),
+                                  ("chain_dashboard", "chain_dashboard")):
+        spec = importlib.util.spec_from_file_location(module_name, pathlib.Path(__file__).with_name(module_name + ".py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        dashboard = getattr(module, function)(ui)
+        result[dashboard["uid"]] = dashboard
+    spec = importlib.util.spec_from_file_location("pool_details", pathlib.Path(__file__).with_name("pool_details.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    result["scarab-pool"] = module.extend_pool_dashboard(ui, result["scarab-pool"])
+    for dashboard in result.values():
+        dashboard["links"] = suite_links(dashboard["uid"] in {"scarab-network", "scarab-chain-tip"})
+    return result
+
+
 if __name__ == "__main__":
     out = pathlib.Path(__file__).parent / "dashboards"
     out.mkdir(exist_ok=True)
-    for name, dashboard in (("scarab-runs", runs_dashboard()), ("scarab-pool", pool_dashboard())):
+    for name, dashboard in dashboards().items():
         (out / f"{name}.json").write_text(json.dumps(dashboard, indent=2) + "\n")
         print("wrote", out / f"{name}.json")

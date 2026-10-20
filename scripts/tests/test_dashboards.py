@@ -34,12 +34,21 @@ def known_metrics():
     return names | {n + s for n in names for s in ("_bucket", "_sum", "_count")}
 
 
+def panels(dashboard):
+    """Collapsed rows hold real panels too; validate those queries and IDs."""
+    def walk(items):
+        for panel in items:
+            yield panel
+            yield from walk(panel.get("panels", []))
+    return list(walk(dashboard["panels"]))
+
+
 def exprs(dashboard):
-    return [(p["title"], t["expr"]) for p in dashboard["panels"] for t in p.get("targets", [])]
+    return [(p["title"], t["expr"]) for p in panels(dashboard) for t in p.get("targets", [])]
 
 
 class DashboardTest(unittest.TestCase):
-    dashboards = {"scarab-runs": bd.runs_dashboard(), "scarab-pool": bd.pool_dashboard()}
+    dashboards = bd.dashboards()
 
     def test_the_committed_json_is_what_the_generator_writes(self):
         for name, dashboard in self.dashboards.items():
@@ -48,33 +57,85 @@ class DashboardTest(unittest.TestCase):
 
     def test_ids_are_unique_and_the_grid_fits(self):
         for name, d in self.dashboards.items():
-            ids = [p["id"] for p in d["panels"]]
+            ids = [p["id"] for p in panels(d)]
             self.assertEqual(len(ids), len(set(ids)), name)
-            for p in d["panels"]:
+            for p in panels(d):
                 g = p["gridPos"]
                 self.assertLessEqual(g["x"] + g["w"], 24, f"{name}: {p['title']}")
 
     def test_every_data_panel_has_a_query_and_a_datasource(self):
         for name, d in self.dashboards.items():
-            for p in d["panels"]:
-                if p["type"] != "row":
+            for p in panels(d):
+                if p["type"] not in ("row", "text"):
                     self.assertTrue(p["targets"] and all(t["expr"] for t in p["targets"]), f"{name}: {p['title']}")
                     self.assertIn("uid", p["datasource"])
 
-    def test_pool_dashboard_reads_only_known_metrics(self):
+    def test_dashboards_read_only_known_node_metrics(self):
         known = known_metrics()
-        for title, expr in exprs(self.dashboards["scarab-pool"]):
-            for metric in NODE_METRIC.findall(expr):
-                self.assertIn(metric, known, f"{title}: {metric}")
+        for name, dashboard in self.dashboards.items():
+            for title, expr in exprs(dashboard):
+                for metric in NODE_METRIC.findall(expr):
+                    self.assertIn(metric, known, f"{name} / {title}: {metric}")
 
     def test_pool_dashboard_has_the_panels_the_issue_asks_for(self):
         titles = {p["title"] for p in self.dashboards["scarab-pool"]["panels"]}
         for wanted in ("Blocks forged (range)", "Blocks adopted (range)", "Blocks lost (range)", "Forge failures (range)",
                        "Leader slots checked and won (per hour)", "KES periods remaining", "Certificate counter",
                        "Certificate start period", "Certificate expiry period", "Last success", "Last exit status",
-                       "Slot lag behind the peers' tip", "Peers hot", "Phase", "Stalled"):
+                       "Slot lag behind the peers' tip", "Peers hot", "Phase", "Stalls begun (range)"):
             self.assertIn(wanted, titles)
 
+
+    def test_deep_views_select_one_node_and_preserve_it_in_navigation(self):
+        for name in ("scarab-network", "scarab-chain-tip"):
+            dashboard = self.dashboards[name]
+            variables = {v["name"]: v for v in dashboard["templating"]["list"]}
+            for name in ("host", "container"):
+                self.assertFalse(variables[name]["multi"])
+                self.assertFalse(variables[name]["includeAll"])
+                self.assertEqual(variables[name]["datasource"]["uid"], "prometheus")
+            links = {link["url"]: link for link in dashboard["links"]}
+            for uid in self.dashboards:
+                self.assertTrue(links["/d/" + uid]["includeVars"])
+                self.assertTrue(links["/d/" + uid]["keepTime"])
+
+    def test_forged_body_windows_do_not_group_by_block_identity(self):
+        # Extracting all JSON fields makes each hash/slot a separate series and prevents
+        # latest/mean windows from combining successive blocks from one node.
+        for title, query in exprs(self.dashboards["scarab-pool"]):
+            if "unwrap bodySize" in query:
+                self.assertIn('json bodySize="bodySize"', query, title)
+                self.assertNotIn("| json |", query, title)
+
+    def test_fleet_all_is_not_forwarded_to_single_node_selectors(self):
+        # Grafana accepts the literal $__all from links even when includeAll=False,
+        # leaving every panel empty. Fleet links must reset single-node selectors.
+        for name in ("scarab-overview", "scarab-runs", "scarab-pool"):
+            links = {link["url"]: link for link in self.dashboards[name]["links"]}
+            for destination in ("scarab-network", "scarab-chain-tip"):
+                self.assertFalse(links["/d/" + destination]["includeVars"])
+                self.assertTrue(links["/d/" + destination]["keepTime"])
+        for panel in panels(self.dashboards["scarab-overview"]):
+            if panel["type"] == "stat":
+                self.assertTrue(all("${__field.labels.host}" in link["url"] and
+                                    "${__field.labels.container}" in link["url"] for link in panel["fieldConfig"]["defaults"]["links"]))
+
+    def test_missing_samples_are_not_drawn_as_continuous_healthy_data(self):
+        for name, dashboard in self.dashboards.items():
+            for panel in panels(dashboard):
+                if panel["type"] == "timeseries":
+                    self.assertFalse(panel["fieldConfig"]["defaults"]["custom"]["spanNulls"], f"{name}: {panel['title']}")
+            if name in ("scarab-overview", "scarab-network", "scarab-chain-tip"):
+                for title, query in exprs(dashboard):
+                    self.assertNotIn("or vector(0)", query, f"{name}: {title}")
+
+    def test_new_views_explain_measurement_limits_without_placeholder_metrics(self):
+        text = "\n".join(panel.get("options", {}).get("content", "") for name in
+                         ("scarab-overview", "scarab-network", "scarab-chain-tip") for panel in panels(self.dashboards[name]))
+        for term in ("RTT", "big-ledger", "tines", "Missing"):
+            self.assertIn(term.lower(), text.lower())
+        for name in ("scarab-network", "scarab-chain-tip"):
+            self.assertTrue(any(p.get("collapsed") and p.get("panels") for p in self.dashboards[name]["panels"]), name)
 
 class RulesTest(unittest.TestCase):
     """promtool checks the rule file's syntax and behaviour (docs/running.md, "Pool monitoring"); here the names."""
