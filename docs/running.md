@@ -260,8 +260,8 @@ What the configuration does:
 | `PeerSharing` | used by both handshakes and the governor; absent means on for a relay and off with `--forge`, an explicit Boolean wins. Both peers must enable it. Eligible connected peers are asked below the known target; only advertised, previously connected peers with no failures are shared (G1.4) |
 | `ExperimentalProtocolsEnabled` (also `TestEnableDevelopmentNetworkProtocols`, which must agree) | the highest node-to-node version the node offers and accepts (G4): absent or `false`, **15**, the latest release of cardano-node 11.1.3 (14 and 15 are offered, as the reference does, `Cardano/Node.hs` 456 and `limitToLatestReleasedVersion`); `true`, **16**, which adds the Peras flag to the version data (always sent as false: the node has no Peras mini-protocols). A relay or pool of the reference needs the same key to agree on 16. The public Leios testnet sets it; its relay accepts 14 to 16. Node-to-client versions 16 to 23 are always accepted. The devnet `relay` scenario takes `--max-ntn-version 16` to turn the key on for the Scala node and the Haskell relay |
 | `SocketPath`, `DatabasePath`, `MempoolCapacityBytesOverride` (a byte count; `NoOverride` leaves the default) | the defaults of `--local-socket`, `--db` and `--mempool-bytes`, with `--config` only; a flag wins |
-| `MaxConcurrencyDeadline` | target active fetching peers in deadline mode (default 1); preferred-peer handover can temporarily exceed it |
-| `MaxConcurrencyBulkSync` | corresponding bulk-sync fetching-peer target (default 1) |
+| `MaxConcurrencyDeadline` | nonnegative target active fetching peers in deadline mode (default 1); preferred-peer handover can temporarily exceed it |
+| `MaxConcurrencyBulkSync` | corresponding nonnegative bulk-sync fetching-peer target (default 1) |
 | `TargetNumberOfRootPeers`, `TargetNumberOfKnownPeers`, `TargetNumberOfEstablishedPeers`, `TargetNumberOfActivePeers`, and the three `...BigLedgerPeers` | the targets of the peer governor (see "Peer selection"); absent keys leave the reference defaults |
 | everything else (`TraceOptions`, `LedgerDB`, ...) | ignored |
 

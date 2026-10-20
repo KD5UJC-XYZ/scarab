@@ -345,9 +345,9 @@ object NodeConfig:
         .flatMap(n =>
           n.traverse(c =>
             Either.cond(
-              c >= 1,
+              c >= 0,
               c,
-              ConfigError(ConfigProblem.NonPositive("MaxConcurrencyDeadline", BigDecimal(c)))
+              ConfigError(ConfigProblem.Negative("MaxConcurrencyDeadline", BigDecimal(c)))
             )
           )
         )
@@ -356,9 +356,9 @@ object NodeConfig:
         .flatMap(n =>
           n.traverse(c =>
             Either.cond(
-              c >= 1,
+              c >= 0,
               c,
-              ConfigError(ConfigProblem.NonPositive("MaxConcurrencyBulkSync", BigDecimal(c)))
+              ConfigError(ConfigProblem.Negative("MaxConcurrencyBulkSync", BigDecimal(c)))
             )
           )
         )

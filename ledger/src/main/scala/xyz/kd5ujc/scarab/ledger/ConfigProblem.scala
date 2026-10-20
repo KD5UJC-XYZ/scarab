@@ -31,6 +31,7 @@ enum ConfigProblem:
   case DuplicateInjection(name: String)
   case CostModelLanguage(value: String)
   case NonPositive(context: String, value: BigDecimal)
+  case Negative(context: String, value: BigDecimal)
   case ActiveSlotRange(value: BigDecimal)
   case EpochTooShort(epochLength: Long, randomnessWindow: BigInt)
 
