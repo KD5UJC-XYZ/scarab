@@ -1,0 +1,112 @@
+--- a/network-mux/test/Test/Mux.hs
++++ b/network-mux/test/Test/Mux.hs
+@@ -18,11 +18,11 @@
+ {-# OPTIONS_GHC -Wno-x-partial          #-}
+ #endif
+ 
+-module Test.Mux (tests) where
++module Test.Mux (tests, exportStarvationCases) where
+ 
+ import Codec.CBOR.Decoding as CBOR
+ import Codec.CBOR.Encoding as CBOR
+-import Codec.Serialise (Serialise (..))
++import Codec.Serialise (Serialise (..), serialise)
+ import Control.Applicative
+ import Control.Arrow ((&&&))
+ import Control.Exception (ErrorCall (..))
+@@ -31,7 +31,7 @@
+ import Data.Bits
+ import Data.ByteString.Lazy qualified as BL
+ import Data.ByteString.Lazy.Char8 qualified as BL8 (pack)
+-import Data.List (dropWhileEnd, nub)
++import Data.List (dropWhileEnd, intercalate, nub)
+ import Data.List qualified as List
+ import Data.Map qualified as M
+ import Data.Maybe (fromMaybe, isNothing)
+@@ -70,6 +70,10 @@
+ import System.Process (createPipe)
+ #endif
+ import System.IOManager
++import System.IO (withFile, IOMode (WriteMode), hPutStrLn)
++import Numeric (showHex)
++import Test.QuickCheck.Gen (unGen)
++import Test.QuickCheck.Random (mkQCGen)
+ 
+ import Test.Mux.ReqResp
+ 
+@@ -1001,7 +1005,10 @@
+ --
+ prop_mux_starvation :: Uneven
+                     -> Property
+-prop_mux_starvation (Uneven response0 response1) =
++prop_mux_starvation = prop_mux_starvationObserved (\_ -> pure ())
++
++prop_mux_starvationObserved :: ([Mx.MiniProtocolNum] -> IO ()) -> Uneven -> Property
++prop_mux_starvationObserved observe (Uneven response0 response1) =
+     let sduLen = Mx.SDUSize 1280 in
+     (BL.length (unDummyPayload response0) > 2 * fromIntegral (Mx.getSDUSize sduLen)) &&
+     (BL.length (unDummyPayload response1) > 2 * fromIntegral (Mx.getSDUSize sduLen)) ==>
+@@ -1110,6 +1117,7 @@
+     let es = map Mx.mhNum (take 100 (reverse trace))
+         ls = dropWhile (\e -> e == head es) es
+         fair = verifyStarvation ls
++    observe es
+     return $ res_short .&&. res_long .&&. fair
+   where
+    -- We can't make 100% sure that both servers start responding at the same
+@@ -2727,3 +2735,36 @@
+ compareErrors Mx.SDUWriteTimeout {}     Mx.SDUWriteTimeout {}     = True
+ compareErrors Mx.Shutdown {}            Mx.Shutdown {}            = True
+ compareErrors _ _                                                 = False
++
++-- SPDX-License-Identifier: Apache-2.0
++-- Appended only to the pinned Test.Mux in the disposable offline source tree.
++-- Keep the original Uneven generator, implication and response1/response1 wiring unchanged.
++exportStarvationCases :: FilePath -> Int -> Int -> IO ()
++exportStarvationCases path count seed = withFile path WriteMode $ \outputHandle ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        size = 30 + ordinal `mod` 11
++        sample@(Uneven response0 response1) = unGen arbitrary (mkQCGen caseSeed) size
++        request = DummyPayload $ BL.replicate 4 0xa
++        settings = stdArgs { chatty = False, maxSuccess = 1, maxDiscardRatio = 1,
++                             maxShrinks = 0, replay = Just (mkQCGen caseSeed, size) }
++    observed <- newTVarIO []
++    verdict <- quickCheckWithResult settings $ once $
++      prop_mux_starvationObserved (\es -> atomically $ writeTVar observed es) sample
++    trace <- readTVarIO observed
++    let outcome = case verdict of
++          Test.QuickCheck.Success {} -> "pass"
++          Test.QuickCheck.GaveUp {}  -> "precondition-discard"
++          _          -> "upstream-failure"
++    hPutStrLn outputHandle $ intercalate "\t"
++      [ "mux-starvation-raw-v1", show caseSeed, show ordinal, show size
++      , hex (unDummyPayload response0), hex (unDummyPayload response1)
++      , wire (MsgReq request), wire (MsgResp response0), wire (MsgResp response1)
++      , intercalate "," [show n | Mx.MiniProtocolNum n <- trace]
++      , outcome ]
++  where
++    hex = concatMap (pad . (`showHex` "")) . BL.unpack
++    pad [digit] = ['0', digit]
++    pad digits = digits
++    wire :: MsgReqResp DummyPayload DummyPayload -> String
++    wire = hex . serialise
+--- a/network-mux/test/Main.hs
++++ b/network-mux/test/Main.hs
+@@ -2,11 +2,14 @@
+ 
+ import Test.Tasty
+ 
+-import Test.Mux qualified (tests)
++import Test.Mux qualified (tests, exportStarvationCases)
++import System.Environment (getArgs)
+ import Test.Mux.Timeout qualified (tests)
+ 
+ main :: IO ()
+-main = defaultMain tests
++main = getArgs >>= \args -> case args of
++  ["--export-starvation", path, count, seed] -> Test.Mux.exportStarvationCases path (read count) (read seed)
++  _ -> defaultMain tests
+ 
+ tests :: TestTree
+ tests =

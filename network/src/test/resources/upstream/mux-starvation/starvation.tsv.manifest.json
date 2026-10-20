@@ -1,0 +1,177 @@
+{
+  "schema": "scarab-upstream-mux-starvation-v1",
+  "sourceCommit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+  "sourcePath": "network-mux/test/Test/Mux.hs",
+  "sourceFileSha256": "4db2e8967fa712334341d70f6f465655db337d54c471ccba1bcc8a9d743191a2",
+  "seed": 512001,
+  "count": 32,
+  "sizeRule": "30 + ordinal mod 11",
+  "generator": "unchanged Arbitrary Uneven; no seed filtering or resizing",
+  "nativeProperty": "prop_mux_starvation; unchanged implication, wiring and ordering assertion",
+  "nativeWiring": "response1 on both protocols; response0 used in original precondition",
+  "storage": "lossless <=1024-byte repeated-chunk recipe validated against complete native hex",
+  "sha256": "c91279076b33eb513dc899d516faf8324369e656db454e002e8a01b9b97f7557",
+  "rawExportSha256": "cc37706d6bc1b3932bd490490d5d0f91a06f87fd34bed2cf3b8a40aab33eb902",
+  "observerPatchSha256": "76cf25dafd1fd8a8a064d1b61e1a9fab7ae441f9a6d8a19d0633ddfcd68e04d1",
+  "observerSourceSha256": "86432afa996f8da15a2ecb59bb9a0ac99040acead59fa7d788bbf53417c4a779",
+  "patchedSourceSha256": "7c14544cee4aac308b7cc6f0c76030f7e25f70d044168d261aa2d873177db68c",
+  "patchedMainSha256": "bf21393a6908a31dcdcb5d3d19c0291c2a9b12bab3adb6b2f6455aea7d406228",
+  "executableSha256": "374c5bd1e9231688dc28fa96818e16e6ad316a7ad547bf2b0dbaf099e69bfba0",
+  "planSha256": "b90adc9cc498b0d6789d6eeef6a6baa0811c2516a706cab0802ea58f0536477d",
+  "projectSha256": "cda870e513a36143e46c45357455498096e5273077165f40787d576022270f3d",
+  "image": "scarab-v02-49-protocols-cache:peer-acceptance-20261019",
+  "imageDigest": "sha256:b9e81590371f7d1784b0e4a62eac7560e0da3498d8b1a6b791e50f6420ae15fb",
+  "network": "none",
+  "commands": [
+    {
+      "argv": [
+        "git",
+        "-C",
+        "/home/euler/repos/cardano-scala-lab/.workspace/data/2026-10-14-upstream/ouroboros-network",
+        "rev-parse",
+        "HEAD"
+      ],
+      "returncode": 0,
+      "logSha256": "eb25c6f4bf3fd482a8cb50d48ba29c9a608293c45a272ebba3d3853a27053f38"
+    },
+    {
+      "argv": [
+        "git",
+        "-C",
+        "/home/euler/repos/cardano-scala-lab/.workspace/data/2026-10-14-upstream/ouroboros-network",
+        "archive",
+        "--format=tar",
+        "-o",
+        "/tmp/scarab/262-starvation-native-2/source.tar",
+        "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776"
+      ],
+      "returncode": 0,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "tar",
+        "-xf",
+        "/tmp/scarab/262-starvation-native-2/source.tar",
+        "-C",
+        "/tmp/scarab/262-starvation-native-2/source"
+      ],
+      "returncode": 0,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "docker",
+        "create",
+        "--network=none",
+        "--name",
+        "scarab-262-starvation-native-2",
+        "--entrypoint",
+        "tail",
+        "-v",
+        "/tmp/scarab/262-starvation-native-2/source:/source",
+        "-v",
+        "/tmp/scarab/262-starvation-native-2:/probe",
+        "-w",
+        "/source",
+        "scarab-v02-49-protocols-cache:peer-acceptance-20261019",
+        "-f",
+        "/dev/null"
+      ],
+      "returncode": 0,
+      "logSha256": "d6de725db74e6eb668efad55ae3dc74813ae591127486643ce3b92f0b1d92faa"
+    },
+    {
+      "argv": [
+        "docker",
+        "start",
+        "scarab-262-starvation-native-2"
+      ],
+      "returncode": 0,
+      "logSha256": "f24269c75efd8c1e9d003622b27f5b75f284eb43448ba5ac51b5d6bce73ef652"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "scarab-262-starvation-native-2",
+        "--format",
+        "{{.Image}}"
+      ],
+      "returncode": 0,
+      "logSha256": "e4a1aeb45bd1678400388c8821cf1d5e6a213ab58f21781f9f5faea4a3771687"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-262-starvation-native-2",
+        "cabal",
+        "build",
+        "--offline",
+        "network-mux:test:test",
+        "--builddir=/probe/builddir",
+        "--jobs=1"
+      ],
+      "returncode": 0,
+      "logSha256": "a1daecbc6ae13a493b57d4eabab11939365593e10497a037bfcba0f24c01e7ce"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-262-starvation-native-2",
+        "cabal",
+        "list-bin",
+        "network-mux:test:test",
+        "--builddir=/probe/builddir"
+      ],
+      "returncode": 0,
+      "logSha256": "f0402a17c3d92a3c9a05a186b3eff3da28ab5be1b21422678b3df7d6af47b9f1"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-262-starvation-native-2",
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/network-mux-0.12.0.0/t/test/build/test/test",
+        "--export-starvation",
+        "/probe/raw.tsv",
+        "32",
+        "512001"
+      ],
+      "returncode": 0,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-262-starvation-native-2",
+        "sha256sum",
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/network-mux-0.12.0.0/t/test/build/test/test"
+      ],
+      "returncode": 0,
+      "logSha256": "2375004da6743384cf86fc26c57c3533e297b41b32db69d3fba30a7693cbcfeb"
+    }
+  ],
+  "nativeOutcomes": {
+    "pass": 22,
+    "precondition-discard": 10,
+    "upstream-failure": 0
+  },
+  "localDomains": {
+    "applicable": 18,
+    "precondition-discard": 10,
+    "unsupported-message-limit": 4
+  },
+  "nativeTraceBothProtocols": 22
+}
