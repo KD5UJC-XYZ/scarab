@@ -204,6 +204,12 @@ class ProjectionTest(unittest.TestCase):
         self.assertEqual(compare.diff({"a": 1, "b": {"c": 2}, "x": 1}, {"a": 1, "b": {"c": 3}, "y": 1}),
                          [("/b/c", 2, 3), ("/x", 1, "<absent>"), ("/y", "<absent>", 1)])
 
+    def test_cli_gate_requires_all_observed_comparisons_and_nonempty_coverage(self):
+        rows = {"tip": {"total": 2, "matched": 2},
+                "ledger-state": {"total": 2, "matched": 1},
+                "protocol-state": {"total": 0, "matched": 0}}
+        self.assertEqual(ntc.incomplete_cli_comparisons(rows), ["ledger-state", "protocol-state"])
+
     def test_reward_update_absence_is_not_a_computed_update(self):
         computed = {"rs": {"stake": 5}}
         self.assertEqual(compare.diff({"rewardUpdate": None}, {"rewardUpdate": computed}),

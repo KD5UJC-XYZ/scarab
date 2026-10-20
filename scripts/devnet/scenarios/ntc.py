@@ -78,6 +78,12 @@ CLI_QUERIES = [
 # participates whenever its reference-before/after bracket establishes comparable state.
 
 
+def incomplete_cli_comparisons(results):
+    """A command needs at least one bracketed observation, and every observation must match."""
+    return [name for name, row in results.items()
+            if not row["total"] or row["matched"] != row["total"]]
+
+
 def mempool_bytes(args):
     """The Scala mempool capacity that LocalTxMonitor reports as the reference does by default: two
     block units (`2 * (maxBlockBodySize - 1024)`), the capacity `cardano-node` computes without an override."""
@@ -593,7 +599,7 @@ def ntc(args):
             row = ledger_states.get(label)
             if row is None or row.get("matched") != row.get("answers") or row.get("problems"):
                 failures.append(f"{label} does not exactly match the reference: {row}")
-        badcli = [k for k, v in cli_results.items() if not v["total"] or v["matched"] != v["total"]]
+        badcli = incomplete_cli_comparisons(cli_results)
         if badcli:
             failures.append(f"cardano-cli outputs that differ: {badcli}")
         if any(r["case"] and not r["referenceNamesRule"] for r in sub_results):
