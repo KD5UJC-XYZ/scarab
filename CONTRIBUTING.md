@@ -30,6 +30,13 @@ there itself: `SCARAB_CACHE_DIR` if set, else the checkout's own `.cache` if it 
 checkout, found as the parent of `git rev-parse --git-common-dir`. Mount the same directory at
 `/work/.cache` when you run sbt in a worktree, and never copy jars into the worktree.
 
+### Reproducible runtime artifacts
+
+`node/assembly` packages a standalone node fat JAR runnable with `java -jar`.
+The first-class sbt task `reproducibleCheck`, invoked through the host wrapper, builds an immutable
+source export twice in isolated output trees inside one JDK image and compares complete bytes.
+See [the artifact contract and verification commands](docs/reproducible-builds.md).
+
 ### Fast iteration: a persistent sbt server (optional)
 
 Starting sbt costs 40 to 60 seconds of JVM start and compile. For many small edits keep one

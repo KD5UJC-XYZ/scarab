@@ -11,14 +11,15 @@ import ChainSync.{DecodeResult, Point}
 object BlockFetch:
   val MiniProtocolId: Int = 3
 
+  // Explicit enum exports keep generated forwarders in a fixed order for reproducible artifacts.
   type State = BlockFetchEngine.State
   object State:
-    export BlockFetchEngine.State.*
+    export BlockFetchEngine.State.{Idle, Busy, Streaming, Done}
     val values: Array[State] = BlockFetchEngine.State.values
 
   type Role = BlockFetchEngine.Role
   object Role:
-    export BlockFetchEngine.Role.*
+    export BlockFetchEngine.Role.{Client, Server}
     val values: Array[Role] = BlockFetchEngine.Role.values
 
   type Message[+P] = BlockFetchEngine.Message[Point, P]

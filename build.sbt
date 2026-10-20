@@ -21,6 +21,9 @@ ThisBuild / scalacOptions ++= Seq(
 )
 // scalafix needs the semantic database of the compiler.
 ThisBuild / semanticdbEnabled := true
+// Record source paths relative to the checkout in TASTy/debug metadata.
+ThisBuild / scalacOptions += "-sourceroot:" + (ThisBuild / baseDirectory).value.getAbsolutePath
+ThisBuild / packageTimestamp := Some(315532800000L)
 ThisBuild / publish / skip := true
 ThisBuild / Test / parallelExecution := false
 Global / concurrentRestrictions += Tags.limit(Tags.Test, 1)
@@ -204,6 +207,7 @@ def gitCommit(root: File): String =
   GitHead.commit(root.toPath).map(_.take(8)).getOrElse("unknown")
 
 lazy val runtimeClasspathFile = taskKey[File]("Write the resolved application runtime classpath")
+lazy val reproducibleCheck = taskKey[Unit]("Compare two clean builds of a frozen source export")
 
 // Tagless-final node: wiring, mempool, forger, relay, node-to-client, the query server, the CLI.
 // BuildInfo records the build identity reported by the `started` log event.
@@ -242,6 +246,46 @@ lazy val node = scarab("node")
       IO.write(output, (Runtime / fullClasspath).value.files.mkString(java.io.File.pathSeparator))
       output
     },
+    Compile / mainClass := Some("xyz.kd5ujc.scarab.node.Main"),
+    assembly / mainClass := (Compile / mainClass).value,
+    assembly / assemblyJarName := s"scarab-node-${version.value}-assembly.jar",
+    assemblyRepeatableBuild := true,
+    assembly / packageOptions += Package.ManifestAttributes("Multi-Release" -> "true"),
+    assemblyMergeStrategy := {
+      // The portable resource in blst-native must retain precedence.
+      case "supranational/blst/Linux/amd64/libblst.so" => MergeStrategy.preferProject
+      case path if path == "module-info.class" || path.endsWith("/module-info.class") =>
+        MergeStrategy.discard
+      case PathList("META-INF", name)
+          if Vector(".SF", ".DSA", ".RSA", ".EC").exists(name.toUpperCase.endsWith) ||
+            name.toUpperCase.startsWith("SIG-") =>
+        MergeStrategy.discard
+      case path if path.startsWith("META-INF/scarab/") => MergeStrategy.deduplicate
+      case "META-INF/DEPENDENCIES"                     => MergeStrategy.rename
+      case path =>
+        val fallback = (ThisBuild / assemblyMergeStrategy).value
+        fallback(path)
+    },
+    Compile / resourceGenerators += Def.task {
+      val root = (ThisBuild / baseDirectory).value
+      val output = (Compile / resourceManaged).value / "META-INF" / "scarab"
+      val identity = Seq(
+        "gitCommit" -> GitHead.commit(root.toPath).getOrElse("unknown"),
+        "version" -> version.value,
+        "scalaVersion" -> scalaVersion.value,
+        "sbtVersion" -> sbtVersion.value,
+        "javaVendor" -> sys.props("java.vendor"),
+        "javaRuntimeVersion" -> sys.props("java.runtime.version")
+      )
+      val metadata = output / "build-info.properties"
+      IO.write(metadata, identity.sortBy(_._1).map { case (k, v) => s"$k=$v\n" }.mkString)
+      val notices = Seq("LICENSE", "NOTICE").map { name =>
+        val target = output / name
+        IO.copyFile(root / name, target, preserveLastModified = false)
+        target
+      }
+      metadata +: notices
+    }.taskValue,
     Compile / run / fork := true
   )
 
@@ -287,7 +331,7 @@ lazy val models = scarab("models")
           code.failed.foreach(e => sys.error(s"models generator failed: ${e.getMessage}"))
           (out ** "*.scala").get.toSet
         }
-      cached(inputs).toSeq
+      cached(inputs).toSeq.sortBy(_.getAbsolutePath)
     }.taskValue
   )
 
@@ -335,6 +379,20 @@ lazy val root = project
     fuzz
   )
   .settings(
+    reproducibleCheck := {
+      val root = baseDirectory.value
+      val status = scala.sys.process
+        .Process(
+          Seq(
+            "python3",
+            (root / "scripts" / "reproducible_build.py").getAbsolutePath,
+            "--inside-jdk"
+          ),
+          root
+        )
+        .!
+      if (status != 0) sys.error("clean artifact reproducibility check failed")
+    },
     commands += Command.args("fuzz", "[cases] [first-seed] [seeds] [target-text]") {
       (state, args) =>
         // Run a larger fuzz sample than `check`; these settings apply only to this invocation.
