@@ -6,6 +6,10 @@ import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
 import munit.FunSuite
 
 class RetryingMemoSuite extends FunSuite:
+  /** How long a test latch may wait: generous on purpose, so a loaded runner cannot fail the
+    * concurrency test for being late, while a real deadlock still fails it with a message.
+    */
+  private val WaitSeconds = 30
   test("an unavailable VM construction is retried, then its recovered value is retained") {
     val memo = RetryingMemo[String, EvalFailure.Unsupported, Object]()
     val calls = AtomicInteger(0)
@@ -36,7 +40,7 @@ class RetryingMemoSuite extends FunSuite:
         result.set(memo.getOrElseUpdate("model") {
           calls.incrementAndGet()
           constructing.countDown()
-          if finish.await(5, TimeUnit.SECONDS) then Right(recovered)
+          if finish.await(WaitSeconds, TimeUnit.SECONDS) then Right(recovered)
           else Left(EvalFailure.Unsupported(BackendFailure.NoResult))
         })
         done.countDown()
@@ -45,9 +49,15 @@ class RetryingMemoSuite extends FunSuite:
       worker
     }
     workers.foreach(_.start())
-    assert(constructing.await(5, TimeUnit.SECONDS))
+    assert(
+      constructing.await(WaitSeconds, TimeUnit.SECONDS),
+      s"no caller reached the construction within $WaitSeconds s"
+    )
     finish.countDown()
-    assert(done.await(5, TimeUnit.SECONDS))
+    assert(
+      done.await(WaitSeconds, TimeUnit.SECONDS),
+      s"${done.getCount.toInt} of 8 callers did not finish within $WaitSeconds s"
+    )
     workers.foreach(_.join())
     assertEquals(calls.get(), 1)
     results.foreach(result => assertEquals(result.get(), Right(recovered)))

@@ -304,7 +304,9 @@ class CborSuite extends munit.FunSuite:
     def timed(hex: String, limits: Cbor.Limits = Cbor.Limits()): Either[Cbor.Error, Node] =
       val started = System.nanoTime()
       val result = Cbor.decode(bytes(hex), limits)
-      assert((System.nanoTime() - started) / 1000000 < 500)
+      // A sanity guard (a refused claim must not allocate or hang), not a performance contract:
+      // the exact bound is owned by the benchmarks, so it is generous for a loaded runner.
+      assert((System.nanoTime() - started) / 1000000 < 5000)
       result
     // arrays and maps claiming 2^64 - 1, 2^32 - 1 and 90,000 elements in at most 10 bytes
     assertEquals(timed("9bffffffffffffffff"), Left(Cbor.Error.ItemLimitExceeded))

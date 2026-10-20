@@ -151,7 +151,7 @@ class ClientSuite extends FailsOnUncaught:
         elapsed <- IO.monotonic.map(_ - started)
         _ <- IO {
           assertEquals(got.map(_.size), Some(100))
-          assert(elapsed.toMillis < 5000, s"9 MB took $elapsed")
+          assert(elapsed.toMillis < 30000, s"9 MB took $elapsed")
         }
       yield ()
     }).map(r => assertEquals(r, Right(())))

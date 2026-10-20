@@ -13,6 +13,14 @@ import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.plutus.ScriptEvaluator
 
 class ParallelPlutusSuite extends FailsOnUncaught:
+  /** How long a test latch may wait. Generous on purpose: the suite failed once on CI with the old
+    * 10 s budget, where both the waiter and a worker timed out in a row (20.1 s of lateness with no
+    * scheduling defect to point at). A real stall still fails the suite — with a message that says
+    * which side timed out — while a loaded runner cannot fail it for being late.
+    */
+  private val WaitSeconds = 60
+
+  override def munitIOTimeout: Duration = 2.minutes
   private def workers(n: Int) = ParallelPlutus.Workers.from(n).fold(e => fail(e.toString), identity)
 
   test("independent machines overlap within one node-wide bound across block callers") {
@@ -24,15 +32,23 @@ class ParallelPlutusSuite extends FailsOnUncaught:
       val count = active.incrementAndGet()
       maximum.accumulateAndGet(count, math.max)
       entered.countDown()
-      assert(release.await(10, TimeUnit.SECONDS))
+      assert(
+        release.await(WaitSeconds, TimeUnit.SECONDS),
+        "the release latch was not counted down: the test's own waiter timed out first"
+      )
       try TestLedger.scripted(true).evaluate(request)
       finally { val _ = active.decrementAndGet() }
     val body = PreparedBlockFixture.body(evaluator)
     for
       service <- ParallelPlutus.create[IO](workers(2))
       result <- (service(body), service(body), service(body)).parTupled.start
-      _ <- IO.blocking(assert(entered.await(10, TimeUnit.SECONDS)))
-      _ <- IO.sleep(100.millis)
+      _ <- IO.blocking(
+        assert(
+          entered.await(WaitSeconds, TimeUnit.SECONDS),
+          s"${entered.getCount.toInt} of 2 workers did not enter the evaluator within $WaitSeconds s"
+        )
+      )
+      // the entered latch already implies both workers incremented `active` before counting down
       _ <- IO(assertEquals(active.get(), 2))
       _ <- IO(release.countDown())
       values <- result.joinWithNever
@@ -55,15 +71,23 @@ class ParallelPlutusSuite extends FailsOnUncaught:
       val count = active.incrementAndGet()
       maximum.accumulateAndGet(count, math.max)
       entered.countDown()
-      assert(release.await(10, TimeUnit.SECONDS))
+      assert(
+        release.await(WaitSeconds, TimeUnit.SECONDS),
+        "the release latch was not counted down: the test's own waiter timed out first"
+      )
       try TestLedger.scripted(true).evaluate(request)
       finally { val _ = active.decrementAndGet() }
     val body = PreparedBlockFixture.body(evaluator, PreparedBlockFixture.txs.take(1))
     for
       service <- ParallelPlutus.create[IO](workers(2))
       result <- (service(body), service(body), service(body)).parTupled.start
-      _ <- IO.blocking(assert(entered.await(10, TimeUnit.SECONDS)))
-      _ <- IO.sleep(100.millis)
+      _ <- IO.blocking(
+        assert(
+          entered.await(WaitSeconds, TimeUnit.SECONDS),
+          s"${entered.getCount.toInt} of 2 workers did not enter the evaluator within $WaitSeconds s"
+        )
+      )
+      // the entered latch already implies both workers incremented `active` before counting down
       _ <- IO(assertEquals(active.get(), 2))
       _ <- IO(release.countDown())
       values <- result.joinWithNever
@@ -92,16 +116,24 @@ class ParallelPlutusSuite extends FailsOnUncaught:
       maximum.accumulateAndGet(count, math.max)
       entered.countDown()
       try
-        assert(release.await(10, TimeUnit.SECONDS))
+        assert(
+          release.await(WaitSeconds, TimeUnit.SECONDS),
+          "the release latch was not counted down: the test's own waiter timed out first"
+        )
         TestLedger.scripted(true).evaluate(request)
       finally { val _ = active.decrementAndGet() }
     for
       service <- ParallelPlutus.create[IO](workers(2))
       first <- service(PreparedBlockFixture.body(evaluator)).start
-      _ <- IO.blocking(assert(entered.await(10, TimeUnit.SECONDS)))
+      _ <- IO.blocking(
+        assert(
+          entered.await(WaitSeconds, TimeUnit.SECONDS),
+          s"${entered.getCount.toInt} of 2 workers did not enter the evaluator within $WaitSeconds s"
+        )
+      )
       cancelled <- first.cancel.start
       second <- service(PreparedBlockFixture.body(evaluator)).start
-      _ <- IO.sleep(100.millis)
+      // both permits are held and both workers incremented `active`, as the entered latch proves
       _ <- IO { assertEquals(active.get(), 2); assertEquals(maximum.get(), 2) }
       _ <- IO(release.countDown())
       _ <- cancelled.joinWithNever

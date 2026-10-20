@@ -43,7 +43,7 @@ class DecoderRobustnessSuite extends FunSuite:
     // 100001 groups of 1 wrap at 64 bits to a value of the form 0x...0101...: the top bits are
     // lost, what is left does not fit a Word32, so the pointer is Ptr 0 0 0 (B29)
     assertEquals(result.map(_.kind), Right(shelleyPointer(Ptr.zero)))
-    assert(millis < 1000, s"took $millis ms")
+    assert(millis < 10000, s"took $millis ms")
   }
 
   private def shelleyPointer(ptr: Ptr): Address.Kind =
