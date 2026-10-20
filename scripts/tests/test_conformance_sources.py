@@ -58,6 +58,36 @@ class ConformanceSourcesTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "no files"):
             MODULE.inspect(self.source, self.fetcher({"runtime/file": "a"}, {}))
 
+    def test_a_valid_root_cannot_hide_a_misspelled_root(self):
+        source = MODULE.Source("sample", "example/repo", self.pin, ("tests/", "test-typo/"))
+        with self.assertRaisesRegex(ValueError, "test-typo/"):
+            MODULE.inspect(source, self.fetcher({"tests/same": "a"}, {"tests/same": "a"}))
+
+    def test_removed_and_new_roots_retain_their_source_events(self):
+        source = MODULE.Source("sample", "example/repo", self.pin, ("old/", "new/"))
+        result = MODULE.inspect(source, self.fetcher({"old/file": "a"}, {"new/file": "b"}))
+        self.assertEqual(result["removed"], ["old/file"])
+        self.assertEqual(result["added"], ["new/file"])
+        self.assertEqual(result["watchedRoots"], [
+            {"prefix": "old/", "pinnedFiles": 1, "observedFiles": 0},
+            {"prefix": "new/", "pinnedFiles": 0, "observedFiles": 1}])
+
+    def test_network_watch_includes_governor_and_cardano_codec_generators(self):
+        rows = MODULE.sources(SCRIPT.parent.parent)
+        network = next(row for row in rows if row.name == "network")
+        paths = ["ouroboros-network/tests/lib/Test/Ouroboros/Network/PeerSelection/RootPeersDNS.hs",
+                 "cardano-diffusion/tests/lib/Test/Cardano/Network/PeerSelection/LocalRootPeers.hs",
+                 "cardano-diffusion/protocols/tests-lib/Cardano/Network/Protocol/Handshake/Test.hs",
+                 "cardano-diffusion/protocols/cddl/specs/handshake-node-to-client.cddl"]
+        before = {path: "a" for path in paths}
+        # Other declared roots are present, so a typo in one cannot hide behind this example.
+        before.update({prefix + "file": "a" for prefix in network.prefixes})
+        after = dict(before)
+        after.update({path: "b" for path in paths})
+        source = MODULE.Source(network.name, network.repository, self.pin, network.prefixes)
+        result = MODULE.inspect(source, self.fetcher(before, after))
+        self.assertEqual(result["changed"], sorted(paths))
+
     def test_upstream_failure_is_not_unchanged(self):
         def failed(_):
             raise OSError("upstream unavailable")
@@ -109,6 +139,19 @@ class ConformanceSourcesTest(unittest.TestCase):
             self.assertEqual(report["sources"][0]["status"], "error")
             self.assertEqual(report["sources"][0]["trackedRef"], "HEAD")
             self.assertIn("error", summary.read_text())
+
+    def test_missing_root_artifact_names_the_coverage_gap(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "report.json"
+            summary = Path(directory) / "summary.md"
+            argv = [str(SCRIPT), "--output", str(output), "--summary", str(summary)]
+            with patch.object(sys, "argv", argv), \
+                    patch.object(MODULE, "sources", return_value=[self.source]), \
+                    patch.object(MODULE, "inspect", side_effect=MODULE.MissingWatchedRoots(["test-typo/"])), \
+                    patch("builtins.print"):
+                self.assertEqual(MODULE.main(), 1)
+            report = MODULE.json.loads(output.read_text())
+            self.assertEqual(report["sources"][0]["missingWatchedPrefixes"], ["test-typo/"])
 
 
 if __name__ == "__main__":

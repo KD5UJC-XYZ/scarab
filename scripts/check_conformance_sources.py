@@ -24,6 +24,12 @@ class Source:
     tracked_ref: str = "HEAD"
 
 
+class MissingWatchedRoots(ValueError):
+    def __init__(self, prefixes: list[str]):
+        self.prefixes = prefixes
+        super().__init__(f"watched upstream prefixes matched no files: {', '.join(prefixes)}")
+
+
 def sources(root: Path) -> list[Source]:
     ledger = json.loads((root / "node/src/test/resources/upstream/conway-govcert/manifest.json").read_text())
     network = json.loads((root / "fixtures/reference/ouroboros-network-protocol-codecs/keepalive.tsv.manifest.json").read_text())
@@ -39,11 +45,13 @@ def sources(root: Path) -> list[Source]:
     return [
         Source("ledger", "IntersectMBO/cardano-ledger", ledger["upstream"]["commit"],
                ("cabal.project", "libs/cardano-ledger-conformance/", "libs/cardano-ledger-test/",
-                "libs/cardano-ledger-test-api/")),
+                "libs/cardano-ledger-api/test/", "libs/cardano-ledger-api/testlib/",
+                "libs/cardano-ledger-api/golden/")),
         Source("network", "IntersectMBO/ouroboros-network", network["sourceCommit"],
                ("cabal.project", "ouroboros-network/protocols/tests/", "ouroboros-network/protocols/tests-lib/",
-                "ouroboros-network/protocols/tests-cddl/", "network-mux/test/",
-                "cardano-diffusion/test/")),
+                "ouroboros-network/tests/", "network-mux/test/", "cardano-diffusion/tests/",
+                "cardano-diffusion/protocols/tests/", "cardano-diffusion/protocols/tests-lib/",
+                "cardano-diffusion/protocols/cddl/")),
         Source("rewards", "IntersectMBO/cardano-ledger", reward_pin[1],
                ("eras/shelley/impl/src/Cardano/Ledger/Shelley/PoolRank.hs",
                 "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rewards.hs",
@@ -74,8 +82,6 @@ def selected_tree(repository: str, commit: str, prefixes: tuple[str, ...], fetch
         raise ValueError("incomplete upstream tree; no freshness result can be claimed")
     selected = {row["path"]: row["sha"] for row in tree["tree"]
                 if row["type"] == "blob" and row["path"].startswith(prefixes)}
-    if not selected:
-        raise ValueError("watched upstream paths matched no files")
     return selected
 
 
@@ -88,11 +94,19 @@ def inspect(source: Source, fetch=github) -> dict:
         raise ValueError("invalid upstream head SHA")
     before = selected_tree(source.repository, source.commit, source.prefixes, fetch)
     after = before if latest == source.commit else selected_tree(source.repository, latest, source.prefixes, fetch)
+    roots = [{"prefix": prefix,
+              "pinnedFiles": sum(path.startswith(prefix) for path in before),
+              "observedFiles": sum(path.startswith(prefix) for path in after)}
+             for prefix in source.prefixes]
+    missing = [root["prefix"] for root in roots if root["pinnedFiles"] + root["observedFiles"] == 0]
+    if missing:
+        raise MissingWatchedRoots(missing)
     added = sorted(after.keys() - before.keys())
     removed = sorted(before.keys() - after.keys())
     changed = sorted(path for path in before.keys() & after.keys() if before[path] != after[path])
     return {"name": source.name, "repository": source.repository, "pin": source.commit,
             "head": latest, "trackedRef": source.tracked_ref, "watchedPrefixes": source.prefixes,
+            "watchedRoots": roots,
             "status": "changed" if added or removed or changed else "unchanged",
             "added": added, "removed": removed, "changed": changed}
 
@@ -125,10 +139,13 @@ def main() -> int:
         try:
             results.append(inspect(source))
         except (OSError, ValueError, KeyError, TypeError) as error:
-            results.append({"name": source.name, "repository": source.repository,
-                            "pin": source.commit, "trackedRef": source.tracked_ref,
-                            "watchedPrefixes": source.prefixes,
-                            "status": "error", "errorType": type(error).__name__})
+            failure = {"name": source.name, "repository": source.repository,
+                       "pin": source.commit, "trackedRef": source.tracked_ref,
+                       "watchedPrefixes": source.prefixes,
+                       "status": "error", "errorType": type(error).__name__}
+            if isinstance(error, MissingWatchedRoots):
+                failure["missingWatchedPrefixes"] = error.prefixes
+            results.append(failure)
     args.output.write_text(json.dumps({"schema": "scarab-conformance-source-freshness-v1",
                                       "observedAt": datetime.now(timezone.utc).isoformat(),
                                       "sources": results}, indent=2) + "\n")
