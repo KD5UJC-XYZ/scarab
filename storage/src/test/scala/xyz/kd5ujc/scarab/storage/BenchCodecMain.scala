@@ -59,7 +59,7 @@ object BenchCodecMain:
     md.update(text.getBytes(java.nio.charset.StandardCharsets.UTF_8))
     md.digest().take(8).map(b => f"$b%02x").mkString
 
-  private def measure(name: String, iterations: Int, warmup: Int = 3, reps: Int = 5)(
+  private def measure(name: String, iterations: Int, warmup: Int = 20, reps: Int = 9)(
       body: Int => Long
   ): Unit =
     var i = 0
@@ -89,7 +89,7 @@ object BenchCodecMain:
       var h = 0
       var i = 0
       while i < n do
-        h ^= java.util.Arrays.hashCode(Codec.encode(row))
+        h ^= Codec.encode(row).length
         i += 1
       h.toLong
     }
@@ -97,7 +97,7 @@ object BenchCodecMain:
       var h = 0
       var i = 0
       while i < n do
-        h ^= Codec.decode[Row](encoded).fold(e => sys.error(e.toString), _.hashCode())
+        h ^= Codec.decode[Row](encoded).fold(e => sys.error(e.toString), _.i.toInt)
         i += 1
       h.toLong
     }
@@ -111,7 +111,7 @@ object BenchCodecMain:
       var h = 0
       var i = 0
       while i < n do
-        h ^= java.util.Arrays.hashCode(recordCodec.encodeUnchecked(futureGenDeleg).toArray)
+        h ^= recordCodec.encodeUnchecked(futureGenDeleg).size
         i += 1
       h.toLong
     }
@@ -119,7 +119,9 @@ object BenchCodecMain:
       var h = 0
       var i = 0
       while i < n do
-        h ^= recordCodec.decodeBytes(encodedRecord).fold(e => sys.error(e.toString), _.hashCode())
+        h ^= recordCodec
+          .decodeBytes(encodedRecord)
+          .fold(e => sys.error(e.toString), _.slot.word.bits.toInt)
         i += 1
       h.toLong
     }
