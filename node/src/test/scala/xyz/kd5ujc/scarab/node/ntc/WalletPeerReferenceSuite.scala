@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import cats.data.NonEmptyVector
 import io.circe.Json
 import io.circe.parser.parse
 import java.nio.file.{Files, Path}
@@ -9,9 +10,9 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.consensus.{BlockRef, ConsensusExtras}
 import xyz.kd5ujc.scarab.consensus.state.{MirrorProvenance, ProtocolState}
-import xyz.kd5ujc.scarab.ledger.{PlutusStats, Utxo}
+import xyz.kd5ujc.scarab.ledger.{PlutusStats, PoolRelayError, Utxo}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, ConwayLedgerState, NewEpochState, ShelleyBasedEra}
-import xyz.kd5ujc.scarab.node.NodeSetup
+import xyz.kd5ujc.scarab.node.{NodeSetup, SkippedPool}
 import xyz.kd5ujc.scarab.node.read.{ChainRead, InEra, MirrorEraRead, Read}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.{Era, NtcVersion}
@@ -177,17 +178,18 @@ class WalletPeerReferenceSuite extends FunSuite:
 
   test("malformed stored relay bytes refuse the complete snapshot rather than omitting a pool") {
     val fixture = fixtures.find(_.name == "peer-relays").getOrElse(fail("missing peer fixture"))
-    val changed = ConwayLedgerState.pools.modify { pools =>
-      val (id, pool) = pools.headOption.getOrElse(fail("native fixture has no pools"))
-      pools.updated(id, pool.copy(relays = hex("ff")))
-    }(fixture.state.nes.es.ls)
+    val (id, pool) = fixture.state.nes.es.ls.cert.pState.stakePools.headOption
+      .getOrElse(fail("native fixture has no pools"))
+    val changed = ConwayLedgerState.pools.modify(
+      _.updated(id, pool.copy(relays = hex("00")))
+    )(fixture.state.nes.es.ls)
     val nes = fixture.state.nes.copy(es = fixture.state.nes.es.copy(ls = changed))
     val view = fixture.view.copy(state = fixture.state.copy(nes = nes))
     val query =
       NtcQuery.IfCurrent(Era.Conway.index, LedgerQuery.GetLedgerPeerSnapshot(LedgerPeerKind.All))
     assertEquals(
       QueryAnswers.answerOrWhy(fixture.env, view, Map.empty, query),
-      Left(Unanswered.Unwritable)
+      Left(Unanswered.StoredRelays(NonEmptyVector.one(SkippedPool(id.bytes, PoolRelayError.NotASequence))))
     )
   }
 
