@@ -177,3 +177,9 @@ and storage/src/test/resources/rewards-timing-1.19.0.1 retain deterministic gene
 unchanged Haskell reference outcomes. Only public keys/signatures, synthetic state and protocol
 payloads are included; no signing keys. Original upstream pins, Apache-2.0 source/observer provenance
 and package notices are recorded in their READMEs/manifests and the existing fixture license files.
+
+fixtures/reference/context-matrix contains original public throwaway transaction inputs from the
+v1-context/context-errors corpora and explicitly marked API-only derivations, with unchanged
+released Haskell era-specific context/evaluation outputs. No signature revalidation or whole-ledger
+admission is claimed for derivations. Original Apache-2.0 observer/generation code; upstream package
+licenses and notices remain under fixtures/licenses and in fetched source distributions.
