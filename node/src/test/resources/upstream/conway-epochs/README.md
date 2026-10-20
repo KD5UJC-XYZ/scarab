@@ -11,12 +11,21 @@ generating an unrelated replacement. None of these observer changes modifies a l
 | Actual rule / seed | Native result | Agda result | Upstream comparison | Scarab |
 |---|---|---|---|---|
 | EPOCH / 497101 | Accepted | Accepted | Fails: distinct post-states | Full native post-state matches |
-| NEWEPOCH / 498101 | Accepted | Accepted | Passes | Unsupported: zero total active stake inside `NonZero Coin` |
+| NEWEPOCH / 498101 | Accepted | Accepted | Passes | Full native post-state matches through the shared production non-boundary branch; strict full-state decoding still refuses zero pool stake |
 
 The manifest retains runner arguments, source/dependency pins and every original file hash.
 `--qc-max-success=1 --qc-max-size=30` begins at generator size zero; it does not select size 30.
-The NEWEPOCH bytes are not repaired and the decoder's nonzero invariant is retained. A passing
-test that checks this explicit unsupported classification is not a successful Scarab rule replay.
+The NEWEPOCH bytes are not repaired and the decoder's nonzero invariant is retained.
+The original signal selects the non-boundary branch: its typed `EpochState` is decoded
+and passed to `NewEpoch.withinEpoch`, the same guarded function used by the complete
+production transition. All other original outer fields, including the zero pool
+stake, are retained byte for byte; the entire reconstructed result must equal the
+original native output bytes. The adapter neither constructs an invalid `NonZero`
+nor projects the output. A separate regression preserves the full-state decoder's
+exact typed refusal. Same/next/skipped signal controls require the boundary signal
+to be refused by this narrow entry point, and twelve lawful full-state cases compare
+the strict transition and shared branch where applicable. This fixture has a completed
+DRep pulser; it does not establish internal pulse-step equivalence.
 The EPOCH fixture's two accepted verdicts likewise do not mean that the upstream comparison passes.
 [#267's parameter-consistency controls](../conway-epoch-parameters/README.md) classify it:
 the generator constructs changed completed-pulser parameters without any enacted action, while
