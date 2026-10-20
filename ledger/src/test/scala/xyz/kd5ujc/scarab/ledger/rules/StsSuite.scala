@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.rules
 
 import cats.{Eq, Monad}
+import cats.laws.discipline.MonadTests
 import cats.mtl.{Ask, Handle, Local, Raise, Stateful}
 import cats.mtl.laws.discipline.{HandleTests, LocalTests, StatefulTests}
 import cats.syntax.all.*
@@ -56,6 +57,7 @@ class StsSuite extends DisciplineSuite:
     )
   )
 
+  checkAll("RuleT Monad", MonadTests[R].monad[Int, Int, Int])
   checkAll("RuleT Stateful", StatefulTests[R, Int].stateful)
   checkAll(
     "RuleT Stateful, focused through a lens",

@@ -80,7 +80,7 @@ are recorded in [performance.md](../performance.md#typed-rule-interpreter-202).
 
 ## Verification
 
-`StsSuite`, the law suites and `TickRulesSuite`/`BbodySuite` retain the original semantics, including
+`StsSuite` explicitly runs `MonadTests` alongside the MTL laws; it and `TickRulesSuite`/`BbodySuite` retain the original semantics, including
 rollback and scoped globals on success and failure. The production interpreter is unchanged
 since the reviewed implementation. No persisted format or rule change is part of this work.
 
