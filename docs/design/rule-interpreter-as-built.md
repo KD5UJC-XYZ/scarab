@@ -50,17 +50,34 @@ and scoped globals.
 ## Measurement
 
 Old (the cast-based machine) and new (this machine) are measured by one harness,
-`ledger/src/test/scala/xyz/kd5ujc/scarab/bench/CastErasureBench.scala`
-(`ledger/Test/runMain xyz.kd5ujc.scarab.bench.CastErasureBench rules 10000`): the same block of
-10,000 transactions applied through `Sts(Bbody)`, three warm-up runs and five measured runs,
-pinned CPUs (`--cpuset-cpus`, no CFS quota), one JVM, allocation counted per thread with
-`ThreadMXBean.getCurrentThreadAllocatedBytes`. The `DIGEST rules` line of both builds must be
-identical (the applied state's count); the table is filled from the rutherford run.
+`ledger/src/test/scala/xyz/kd5ujc/scarab/bench/CastErasureBench.scala` (the same file, byte for
+byte, as the one added by the performance chapter, `#250`):
+`ledger/Test/runMain xyz.kd5ujc.scarab.bench.CastErasureBench rules 10000`. It applies the same
+block of 10,000 transactions through `Sts(Bbody)` with one fixed Ed25519 signing key (so both builds
+receive identical inputs), three warm-up runs and five measured runs, pinned CPUs
+(`--cpuset-cpus`, no CFS quota), one JVM, allocation counted per thread with
+`ThreadMXBean.getCurrentThreadAllocatedBytes`. The sequence is interleaved — old, new, old, new —
+so session drift cannot be mistaken for a difference between builds.
 
-| build | median ms | min ms | max ms | allocated bytes (median) |
-|---|---|---|---|---|
-| old (dev) | _to fill_ | | | |
-| new (#202) | _to fill_ | | | |
+`DIGEST rules` is the SHA-256 of the complete applied ledger state (rendered outside the timed
+region), not a count: identical digests mean the two builds produced the same state, including
+balances, outputs and fees. It was `159017f549d74b4d4cb6a520` on all four runs.
+
+| build | median ms (two runs) | allocated bytes (each run) |
+|---|---|---|
+| old (`dev` `57608c6e`) | 3159.9 / 3175.7 | 5,223,889,104 / 5,230,049,136 |
+| new (`#202` `9d2fa735`) | 3073.9 / 3256.9 | 5,216,691,040 / 5,227,079,360 |
+
+The two builds are inside each other's span on this host: the new build is 2.7% faster on one
+paired run and 1.5% slower on the other, and the old build's own two runs differ by 0.5%. The
+result is "no measurable change", not a speed-up.
+
+**The issue's pinned Preview block/epoch workload is not measured here.** The 10,000-transaction
+block is synthetic; it is additional evidence for the same code path, not a substitute for #202's
+acceptance criterion. No Preview capture is in-tree and none was produced for this PR. The ledger
+`e2e` area scenario is likewise outstanding: it failed with `follower exited with 1` before any era
+comparison (the follower's `<run>/classes` directory was empty at teardown), and its checkbox below
+stays unchecked.
 
 ## Gates
 
@@ -72,4 +89,7 @@ identical (the applied state's count); the table is filled from the rutherford r
 - `check` on the exact head in CI: the `scalafmt, compile and test` job (the full-suite run on
   GitHub runners, where the two long storage suites fit their budgets).
 - The ledger area scenario (`python3 scripts/devnet.py --name <name> e2e`) on the reference image
-  `cardano-reference-11.1.3:local`.
+  `cardano-reference-11.1.3:local`: **not passing** — the reference cluster comes up, then
+  `follower exited with 1` before any era comparison (the follower's `<run>/classes` directory was
+  empty at teardown), so there is no per-era verdict. This is the one gate still open, and it is a
+  harness/host defect, not a verdict from either interpreter.
