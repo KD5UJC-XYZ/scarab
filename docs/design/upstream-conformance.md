@@ -1,6 +1,6 @@
 # Upstream conformance adapters
 
-Status: current implementation and bounded evidence; the owner-requested source-refresh closeout of [K2 / #49](https://github.com/KD5UJC-XYZ/scarab/issues/49) is being integrated in [PR #273](https://github.com/KD5UJC-XYZ/scarab/pull/273). This is not whole-suite or every-interpreter equivalence.
+Status: current implementation and bounded evidence; the agreed risk-based v0.2 scope of [K2 / #49](https://github.com/KD5UJC-XYZ/scarab/issues/49), including the source-refresh closeout in [PR #273](https://github.com/KD5UJC-XYZ/scarab/pull/273), is complete. This is not whole-suite or every-interpreter equivalence.
 
 The Haskell implementations and their formal adapters are independent observations.
 A native acceptance, a formal acceptance, equality of their translated outputs, and a
@@ -53,7 +53,7 @@ publication follow-up. It is a static review, not a new oracle or replay verdict
 Corrected watches subsequently expose **341** events: the historical 291 plus
 46 ledger-API and four network events. The
 [additional per-file review](../data/expanded-source-watch-review-20261020.json)
-retains endpoint hashes and dispositions. The implementation and replay below
+retains endpoint identities and dispositions. The implementation and replay below
 address applicable changes without replacing released reference semantics.
 
 ### Source-refresh implementation
@@ -79,7 +79,7 @@ typed rules. Full LEDGER contexts and deposit obligations are explicitly derived
 Generated instant-stake caches were unrelated to their UTxO: the first Scala run
 retains nine precise CompactCoin underflows. Separate lawful samples use native
 `smartUTxOState` over the unchanged UTxO and signed transactions, with independently
-checked cache consistency. No vocabulary bound is weakened or state field masked.
+checked cache consistency. No numeric bound is weakened or state field masked.
 
 The lawful corpus retains all fixed draws, including rejected LEDGERS attempts,
 bootstrap witness controls and native Plutus overlap controls. Its 41 observations
@@ -109,7 +109,7 @@ fresh full-STS Conway witness corpus adds no new attribute-boundary observation.
 Standalone UTXO validation now also enforces its own nonempty spending set and
 existence of all spending, collateral and reference inputs, even without redeemers.
 Previously only the earlier UTXOW guard guaranteed that premise. A separate
-released-native capture rejects an absent collateral input as `BadInputsUTxO`;
+[released-native capture](../../node/src/test/resources/upstream/conway-utxo-missing-collateral/README.md) rejects an absent collateral input as `BadInputsUTxO`;
 the old standalone production rule instead accepted the exact input. The corrected
 rule matches the native typed refusal. Local controls additionally cover both
 validity flags and relevant interval/nonempty/fee/existence precedence. This
