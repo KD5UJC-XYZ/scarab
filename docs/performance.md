@@ -2382,6 +2382,21 @@ quota, one JVM at a time; 3 warm-up runs and 5 measured runs per case; `System.n
 sequence is interleaved — dev, branch, dev, branch — so drift over the session cannot be mistaken
 for a difference between builds. Measured 2026-10-19/20 (CDT), OpenJDK 21.0.12.1, `-Xmx5g`.
 
+**Sources and harness identities.** Each row compares two exact commits; the harness that produced
+it is pinned by hash.
+
+| workload | old source | new source |
+|---|---|---|
+| rules.bbody (#202) | `dev` `57608c6e` | `9d2fa735` (the measured code; `f6d72013` adds only the harness) |
+| credentials (#207) | `dev` `57608c6e` | `b16b487f` |
+| decode (#203) | `dev` `57608c6e` | `4e515d49` |
+| diff (#206) | `dev` `57608c6e` | `a4d198d5` (the same source as `30af639a`; only tests were added after) |
+| codec (#205) | `dev` `57608c6e` | `9a158532` (the measured code; `d4f5d5b9` formats the bench only) |
+
+Harness identities: `CastErasureBench.scala` SHA-256 `d2409a39398b575e…`, `BenchCodecMain.scala` SHA-256
+`1590e05ee16a8289…`; each file is byte-identical in the branches that carry it (`#248`/`#250` and
+`#247`/`#250`).
+
 **The host drifts, and the drift is the honest error bar.** Two runs of the *same* old build in one
 session span 129.1–161.8 ms on `credentials.mapUpdate`, 119.1–140.0 ms on `mapBuild`, 3.16–3.18 s
 on the 10,000-transaction block; the new build spans 5.45–8.67 ms on `diff.map.late`. A difference
