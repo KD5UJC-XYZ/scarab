@@ -7,6 +7,46 @@ class CborSuite extends munit.FunSuite:
   def encoded(value: Value): String = Cbor.encode(value).fold(e => fail(e.toString), _.hex)
   def n(value: Value): Node = Node(value, Bytes.empty)
 
+  test("undefined and unassigned simple values require opt-in and agree with the tree decoder") {
+    val limits = Cbor.Limits(allowSimpleValues = true)
+    Vector("e0" -> 0, "f3" -> 19, "f7" -> 23, "f820" -> 32, "f8ff" -> 255).foreach {
+      (hex, simple) =>
+        val input = bytes(hex)
+        assert(Cbor.decode(input).isLeft)
+        val value = Cbor.decode(input, limits).fold(e => fail(e.toString), identity)
+        assertEquals(value.value, Value.Simple(simple))
+        assertEquals(OracleCbor.decode(input, limits), Right(value))
+        assertEquals(Cbor.encode(value.value), Right(input))
+        assertEquals(value.original, input)
+        assertNotEquals(value.value, Value.Null)
+    }
+    Vector("f800", "f817", "f818", "f81f", "fc", "fd", "fe", "ff").foreach { hex =>
+      assert(Cbor.decode(bytes(hex), limits).isLeft, hex)
+      assert(OracleCbor.decode(bytes(hex), limits).isLeft, hex)
+    }
+    Vector(-1, 20, 21, 22, 24, 31, 256).foreach { n =>
+      assertEquals(Cbor.encode(Value.Simple(n)), Left(Cbor.Error.InvalidSimpleValue(n)))
+    }
+  }
+
+  test("byte-string chunk bounds inspect the original chunks and safely refuse missing evidence") {
+    val payload = "ab" * 65
+    val definite = decoded("5841" + payload)
+    val oversized = decoded("5f5841" + payload + "ff")
+    val chunked = decoded("5f5840" + "ab" * 64 + "41abff")
+    assert(!ByteStringChunks.within(definite, 64))
+    assert(!ByteStringChunks.within(oversized, 64))
+    assert(ByteStringChunks.within(chunked, 64))
+    assert(ByteStringChunks.within(definite, 65))
+    assert(!ByteStringChunks.within(chunked, -1))
+    assert(!ByteStringChunks.within(n(Value.UInt(0)), 64))
+    assert(ByteStringChunks.within(n(Value.ByteString(bytes("ab"))), 64))
+    Vector("", "5f", "5fff", "5f5841", "5f7f00ff", "5f5bffffffffffffffffff").foreach { raw =>
+      val synthetic = Node(Value.ByteString(bytes(payload)), bytes(raw))
+      assert(!ByteStringChunks.within(synthetic, 64), raw)
+    }
+  }
+
   test("bytes validate strict hex and isolate mutable arrays") {
     assertEquals(bytes("aB00").hex, "ab00")
     assertEquals(Bytes.fromHex("0"), Left(Bytes.HexError.OddLength(1)))

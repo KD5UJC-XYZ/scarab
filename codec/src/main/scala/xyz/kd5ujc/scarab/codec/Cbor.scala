@@ -8,10 +8,9 @@ import scala.util.control.NonFatal
 import scala.util.boundary
 import scala.util.boundary.{Label, break}
 
-/** Small byte-preserving CBOR subset. Undefined and unassigned simple values are deliberately
-  * unsupported, and so are floats unless [[Limits.allowFloats]] says otherwise (Cardano's wire
-  * formats hold none; only the ledger state's pool-ranking likelihoods do). Duplicate map keys and
-  * map order are retained.
+/** Small byte-preserving CBOR subset. Simple values and floats require explicit opt-in through
+  * [[Limits]]; generated CDDL `any` uses both, while wire decoders keep the defaults. Duplicate map
+  * keys and map order are retained.
   *
   * Decoding and encoding keep their stack on the heap, so nesting is not limited by the thread's
   * stack. The reference has no nesting limit either; only the size of the block bounds it, and a
@@ -21,13 +20,16 @@ import scala.util.boundary.{Label, break}
 object Cbor:
   /** @param allowFloats
     *   Accept half, single and double floats (as [[Value.Float]]). Off: they are refused.
+    * @param allowSimpleValues
+    *   Accept undefined and unassigned simple values (as [[Value.Simple]]). Off: they are refused.
     */
   final case class Limits(
       maxInputBytes: Int = 1048576,
       maxDepth: Int = Int.MaxValue,
       maxItems: Int = 100000,
       maxStringBytes: Int = 1048576,
-      allowFloats: Boolean = false
+      allowFloats: Boolean = false,
+      allowSimpleValues: Boolean = false
   )
   private val MaxUInt = (BigInt(1) << 64) - 1
   enum Error extends DomainError:
@@ -42,6 +44,7 @@ object Cbor:
     case UnmatchedMapKey
     case DepthLimitExceeded
     case UnsupportedSimpleValue(value: Int)
+    case InvalidSimpleValue(value: Int)
     case TrailingBytes
     case OutputLimitExceeded
     case StringLimitExceeded
@@ -56,12 +59,13 @@ object Cbor:
       case UnexpectedEnd      => "unexpected end of input"
       case InvalidAdditionalInformation(_) =>
         "reserved additional information or invalid indefinite item"
-      case TruncatedString    => "truncated string payload"
-      case InvalidUtf8        => "invalid UTF-8 text"
-      case ItemLimitExceeded  => "item limit exceeded"
-      case InvalidStringChunk => "indefinite strings require definite chunks of the same type"
-      case UnmatchedMapKey    => "map has an unmatched key"
-      case DepthLimitExceeded => "depth limit exceeded"
+      case TruncatedString       => "truncated string payload"
+      case InvalidUtf8           => "invalid UTF-8 text"
+      case ItemLimitExceeded     => "item limit exceeded"
+      case InvalidStringChunk    => "indefinite strings require definite chunks of the same type"
+      case UnmatchedMapKey       => "map has an unmatched key"
+      case DepthLimitExceeded    => "depth limit exceeded"
+      case InvalidSimpleValue(n) => s"invalid CBOR simple value $n"
       case UnsupportedSimpleValue(_) => "unsupported simple value, float, or unexpected break"
       case TrailingBytes             => "trailing bytes after CBOR item"
       case OutputLimitExceeded       => "output byte limit exceeded"
@@ -272,7 +276,11 @@ object Cbor:
               push(item, 6, 1L)
             case _ =>
               ai match
-                case 20 | 21 | 22             => ()
+                case 20 | 21 | 22                                         => ()
+                case n if limits.allowSimpleValues && (n < 20 || n == 23) => ()
+                case 24 if limits.allowSimpleValues =>
+                  val simple = floatBits(1).toInt
+                  if simple < 32 then fail(Error.InvalidSimpleValue(simple))
                 case 25 if limits.allowFloats => floatBits(2)
                 case 26 if limits.allowFloats => floatBits(4)
                 case 27 if limits.allowFloats => floatBits(8)
@@ -368,6 +376,11 @@ object Cbor:
               stack.push(new Open(null, null, node))
             case Value.Bool(b) => write(if b then 245 else 244)
             case Value.Null    => write(246)
+            case Value.Simple(n) =>
+              if n < 0 || n > 255 || (n >= 20 && n != 23 && n < 32) then
+                fail(Error.InvalidSimpleValue(n))
+              else if n < 24 then write(0xe0 | n)
+              else { write(0xf8); write(n) }
             case Value.Float(x, FloatWidth.Half) =>
               val bits = Float16.fromFloat(x.toFloat)
               write(0xf9); write(bits >> 8); write(bits & 0xff)

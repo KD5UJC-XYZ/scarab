@@ -92,6 +92,9 @@ enum Value:
   case Bool(value: Boolean)
   case Null
 
+  /** Undefined (23) or an unassigned simple value (0..19, 32..255). Distinct from null. */
+  case Simple(value: Int)
+
   /** A floating-point number, with the width it was (or is to be) written in. Only produced by a
     * decoder whose [[Cbor.Limits]] allow floats; the value is held as a `Double`, which every width
     * converts to exactly.
@@ -124,6 +127,7 @@ object Value:
     case (ByteString(a), ByteString(b)) => a == b
     case (Text(a), Text(b))             => a == b
     case (Bool(a), Bool(b))             => a == b
+    case (Simple(a), Simple(b))         => a == b
     // the bits, so that a NaN equals itself and 0.0 differs from -0.0: the wire representation
     case (Float(a, wa), Float(b, wb)) =>
       wa == wb && java.lang.Double.doubleToLongBits(a) == java.lang.Double.doubleToLongBits(b)
@@ -140,6 +144,7 @@ object Value:
     case ByteString(a) => a.hashCode
     case Text(a)       => a.hashCode
     case Bool(a)       => a.hashCode
+    case Simple(a)     => 43 + a.hashCode
     case Float(a, _)   => 41 + java.lang.Double.hashCode(a)
     case Tag(a, _)     => 37 + a.hashCode
     case Arr(_)        => 1
@@ -152,6 +157,7 @@ object Value:
     case ByteString(a) => s"ByteString(${Tree.shown(a)})"
     case Text(a)       => s"Text(${Tree.shown(a)})"
     case Bool(a)       => s"Bool($a)"
+    case Simple(a)     => s"Simple($a)"
     case Float(a, w)   => s"Float($a, $w)"
     case Tag(a, _)     => s"Tag($a)"
     case Arr(_)        => "Arr"

@@ -260,9 +260,11 @@ private[codec] final class Document(val data: Array[Byte], val index: Index):
       case 6 => Tag(unsigned(argBits(s, ai)), node(i + 1))
       case _ =>
         ai match
-          case 20 => Bool(false)
-          case 21 => Bool(true)
-          case 22 => Null
+          case 20                     => Bool(false)
+          case 21                     => Bool(true)
+          case 22                     => Null
+          case n if n < 20 || n == 23 => Simple(n)
+          case 24                     => Simple(argBits(s, ai).toInt)
           case 25 => Float(Float16.toFloat(argBits(s, ai).toInt).toDouble, FloatWidth.Half)
           case 26 =>
             Float(java.lang.Float.intBitsToFloat(argBits(s, ai).toInt).toDouble, FloatWidth.Single)
