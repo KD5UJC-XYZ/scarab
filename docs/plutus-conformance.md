@@ -81,6 +81,28 @@ UPLC program version 1.1.0 (`constr`, `case`) is V3 from 9 and V1/V2 from 11.
    the applied term (`UntypedPlutusCore/Check/Scope.hs` 28-45). A failure there is a failed script.
 3. The machine runs under the cost model and the budget of the redeemer.
 
+### Auxiliary-data admission (#286)
+
+Auxiliary data is decoded structurally before ledger predicates. Its original bytes remain the
+input to the auxiliary-data hash; decoding never replaces them with a normalized encoding.
+Alonzo and later validate every contained Plutus script with the active language/protocol decoder,
+even if the transaction has no phase-2 script or advertises the invalid validity flag. Auxiliary
+scripts do not become witness scripts and are not evaluated. A deserializable script containing
+`error` therefore differs from malformed Flat bytes.
+
+The correspondence is `Shelley/Rules/Utxow.hs:427–443` (`validateMetadata`) and
+`Alonzo/TxAuxData.hs:220–306,369–373` (`decodeAlonzoTxAuxData`, `validateAlonzoTxAuxData`) at ledger
+`f649f975`. Structural auxiliary failures stay typed decoding failures. Once decoding succeeds,
+hash/presence checks precede script well-formedness; malformed contained Plutus produces the existing
+`InvalidMetadata` predicate. Backend unavailability supplies no script verdict and remains typed
+unavailability. The same phase-1 check precedes validity-tag/UTXOS checks on serial and prepared
+paths, so a refusal discards tentative state before any collateral effects can be published.
+
+The [independent auxiliary corpus](../fixtures/reference/auxiliary-scripts/README.md) separates
+structural decoding from the unchanged reference validity predicate. The normal era-load driver
+also retains signed-reference auxiliary transactions and observed input/output effects separately
+from the API corpus. Exact diagnostic prose is outside both comparisons.
+
 ## Independent costing and context matrix (2026-10-20)
 
 The remaining admission/context work is at Scarab's ledger integration and verification boundary;
