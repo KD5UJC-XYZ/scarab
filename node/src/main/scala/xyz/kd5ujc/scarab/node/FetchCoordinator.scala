@@ -193,6 +193,7 @@ final class FetchCoordinator[F[_]: Async] private (
       val flight = peer.active.values.toVector
       val remaining = flight.flatMap(_.remaining)
       val admitted = for
+        _ <- peer.pending.headOption
         local <- s.selected
         chain <- chainOf(peer)
       yield FetchCandidates.select(
