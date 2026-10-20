@@ -280,6 +280,46 @@ class UpstreamNativeLedgerConformanceSuite extends FunSuite:
     }
   }
 
+  test("the repaired formal LEDGERS observations retain identical original native inputs") {
+    val repaired = base.getParent.getParent.resolve("formal-ledgers-repair")
+    val manifest = parse(Files.readString(repaired.resolve("manifest.json")))
+      .fold(e => fail(e.message), identity)
+      .hcursor
+    assertEquals(manifest.downField("originalFailure").get[Int]("exitCode").toOption, Some(139))
+    assertEquals(manifest.downField("batchReplay").get[Int]("exitCode").toOption, Some(0))
+    def sha(path: Path): String =
+      MessageDigest
+        .getInstance("SHA-256")
+        .digest(Files.readAllBytes(path))
+        .map(b => f"${b & 0xff}%02x")
+        .mkString
+    val patch = manifest.downField("repair")
+    val patchPath = patch.get[String]("patch").fold(e => fail(e.message), Path.of(_))
+    assertEquals(patch.get[String]("patchSha256").toOption, Some(sha(patchPath)))
+    val cases = manifest.get[Vector[Json]]("cases").fold(e => fail(e.message), identity)
+    assertEquals(cases.size, 5)
+    cases.foreach { row =>
+      val c = row.hcursor
+      val id = c.get[String]("id").fold(e => fail(e.message), identity)
+      val result = c.get[String]("resultFile").fold(e => fail(e.message), repaired.resolve(_))
+      assertEquals(c.get[String]("resultSha256").toOption, Some(sha(result)))
+      val accepted = Set("singleton", "ordered-three", "dependent-two").contains(id)
+      assertEquals(
+        Files.readString(result),
+        if accepted then "implementation-accepted\nagda-accepted\noutputs-equal\n"
+        else "implementation-rejected\nagda-rejected\noutputs-differ\n"
+      )
+      c.get[Vector[Json]]("nativeFilesUnchanged")
+        .fold(e => fail(e.message), identity)
+        .foreach { descriptor =>
+          val file = descriptor.hcursor
+          val path = file.get[String]("path").fold(e => fail(e.message), Path.of(_))
+          assertEquals(file.get[String]("sha256").toOption, Some(sha(path)), id)
+          assertEquals(file.get[Long]("bytes").toOption, Some(Files.size(path)), id)
+        }
+    }
+  }
+
   (4 to 6).foreach { ordinal =>
     test(s"actual NEWEPOCH-$ordinal boundary matches complete native state") {
       val id = s"NEWEPOCH-$ordinal"

@@ -1,0 +1,18 @@
+--- a/hs/src/MAlonzo/Code/Ledger/Conway/Foreign/Ledger.hs
++++ b/hs/src/MAlonzo/Code/Ledger/Conway/Foreign/Ledger.hs
+@@ -4768,12 +4768,6 @@
+                (coe
+                   MAlonzo.Code.Ledger.Conway.Foreign.ExternalStructures.d_HSAbstractFunctions_3150
+                   (coe v0)))
+-            (coe
+-               MAlonzo.Code.Foreign.Haskell.Coerce.d_coerce_44 () erased () erased
+-               (coe MAlonzo.Code.Foreign.Haskell.Coerce.C_TrustMe_40) v1)
+-            (coe
+-               MAlonzo.Code.Foreign.Haskell.Coerce.d_coerce_44 () erased () erased
+-               (coe MAlonzo.Code.Foreign.Haskell.Coerce.C_TrustMe_40) v2)
+-            (coe
+-               MAlonzo.Code.Foreign.Haskell.Coerce.d_coerce_44 () erased () erased
+-               (coe MAlonzo.Code.Foreign.Haskell.Coerce.C_TrustMe_40) v3)))
++            (coe MAlonzo.Code.Class.Convertible.Core.d_from_22 d_Conv'45'LEnv_66 v1)
++            (coe MAlonzo.Code.Class.Convertible.Core.d_from_22 d_Conv'45'LState_70 v2)
++            (map (coe . MAlonzo.Code.Class.Convertible.Core.d_from_22 MAlonzo.Code.Ledger.Conway.Foreign.Transaction.d_Conv'45'Tx_34 . coe) v3)))
