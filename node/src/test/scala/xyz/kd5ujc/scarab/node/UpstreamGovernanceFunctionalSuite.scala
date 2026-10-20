@@ -35,7 +35,16 @@ import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError, Node}
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, Wire}
 import xyz.kd5ujc.scarab.storage.haskell.state.NodeOrders.given
 import xyz.kd5ujc.scarab.storage.haskell.state.Params
-import xyz.kd5ujc.scarab.ledger.rules.{Globals, Gov, GovEnv, GovSignal, Sts}
+import xyz.kd5ujc.scarab.ledger.rules.{
+  Globals,
+  Gov,
+  GovEnv,
+  GovSignal,
+  GovCertificateView,
+  GovViewEnv,
+  GovKernel,
+  Sts
+}
 
 import HaskellStateCodecs.given
 
@@ -115,6 +124,42 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
       read(fields(5), Wire.strictMaybe(summon[Codec[Committee]]))
     )
 
+  private def govViewEnvironment(id: String): GovViewEnv =
+    def fields(n: Node, size: Int): Vector[Node] = n.value match
+      case Value.Arr(xs) if xs.size == size => xs
+      case other => fail(s"expected $size original environment fields, got $other")
+    val env = fields(node(id, "environment"), 6)
+    val cert = fields(env(4), 3)
+    val voting = fields(cert(0), 3)
+    val pools = fields(cert(1), 4)
+    val delegation = fields(cert(2), 4)
+    // GOV observes only these memberships and authorisations, not registration counts,
+    // account balances or delegation state. Original environment bytes remain immutable.
+    val accounts = read(
+      delegation(0),
+      Wire.mapOf(summon[Codec[S.Credential[S.Staking]]], HaskellStateCodecs.rawItem)
+    )
+    val dreps = read(
+      voting(0),
+      Wire.mapOf(summon[Codec[S.Credential[S.DRepRole]]], HaskellStateCodecs.rawItem)
+    )
+    val registeredPools =
+      read(pools(1), Wire.mapOf(summon[Codec[S.KeyHash[S.StakePool]]], HaskellStateCodecs.rawItem))
+    val committee = read(voting(1), summon[Codec[S.CommitteeState]])
+    GovViewEnv(
+      read(env(0), Codec.bytesSized(32, 32)),
+      read(env(1), summon[Codec[S.EpochNo]]).toBigInt,
+      read(env(2), Params.conwayCodec),
+      read(env(3), Wire.strictMaybe(Codec.bytesSized(28, 28))),
+      GovCertificateView(
+        accounts.contains,
+        dreps.contains,
+        registeredPools.contains,
+        committee.creds
+      ),
+      read(env(5), Wire.strictMaybe(summon[Codec[Committee]]))
+    )
+
   private def govSignal(id: String): GovSignal = node(id, "signal").value match
     case Value.Arr(Vector(votes, proposals, certificates)) =>
       val voting = VotingProcedures.decode(votes).fold(e => fail(e.message), identity)
@@ -133,9 +178,9 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
       )
     case other => fail(s"expected complete three-field GOV signal, got $other")
 
-  private val unsupportedSeeds = Set(510102, 510103, 510109, 510113, 510114)
+  private val strictCertificateRefusals = Set(510102, 510103, 510109, 510113, 510114)
 
-  (510101 to 510115).filterNot(unsupportedSeeds).foreach { seed =>
+  (510101 to 510115).foreach { seed =>
     test(s"lawful nonempty GOV full outcome at seed $seed") {
       val id = s"gov-sized5-$seed"
       val inputs = govSignal(id)
@@ -147,8 +192,14 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
         "implementation-accepted\nagda-accepted\n"
       )
       val actual = Sts
-        .apply(Gov)(globals, govEnvironment(id), before, inputs)
+        .apply(GovKernel)(globals, govViewEnvironment(id), before, inputs)
         .fold(e => fail(s"Scarab refused upstream-accepted nonempty GOV: $e"), identity)
+      if !strictCertificateRefusals(seed) then
+        assertEquals(
+          Sts.apply(Gov)(globals, govEnvironment(id), before, inputs),
+          Right(actual),
+          "full validated certificate facade and minimal production kernel agree"
+        )
       assertEquals(
         actual,
         expected,
@@ -211,15 +262,43 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
         )
       case other => fail(s"expected the original actual DRep yes vote, got $other")
     assertEquals(read(node(id, "observed-ledger-proposals"), summon[Codec[Proposals]]), expected)
-    assertEquals(Sts.apply(Gov)(globals, govEnvironment(id), before, inputs), Right(expected))
+    assertEquals(
+      Sts.apply(GovKernel)(globals, govViewEnvironment(id), before, inputs),
+      Right(expected)
+    )
     assertEquals(
       Files.readString(base.resolve(s"cases/$id/result.txt")),
       "implementation-accepted\nagda-accepted\noutputs-equal\nledger-proposals-equal\n"
     )
   }
 
-  unsupportedSeeds.toVector.sorted.foreach { seed =>
-    test(s"retain generated GOV nonzero-domain violation at seed $seed") {
+  test("minimal GOV view retains registered DRep and committee voter refusals") {
+    Vector("gov-drep-cast-vote", "gov-sized5-510104").foreach { id =>
+      val env = govViewEnvironment(id)
+      val inputs = govSignal(id)
+      val before = read(node(id, "state"), summon[Codec[Proposals]])
+      val absent = env.copy(cert =
+        env.cert.copy(
+          drepRegistered = _ => false,
+          committee = env.cert.committee.empty
+        )
+      )
+      val unknown = inputs.votes.collect {
+        case (voter @ Voter.DRepVoter(_), _)    => voter
+        case (voter @ Voter.CommitteeHot(_), _) => voter
+      }
+      assert(unknown.nonEmpty, "negative control must name a removed registration")
+      assertEquals(
+        Sts.apply(GovKernel)(globals, absent, before, inputs),
+        Left(
+          LedgerFailure.Rejected(env.id, PredicateFailure.Gov(GovFailure.VotersDoNotExist(unknown)))
+        )
+      )
+    }
+  }
+
+  strictCertificateRefusals.toVector.sorted.foreach { seed =>
+    test(s"strict certificate decoding refuses original zero registration count at seed $seed") {
       val id = s"gov-sized5-$seed"
       assertEquals(
         Files.readString(base.resolve(s"cases/$id/result.txt")),
@@ -235,7 +314,7 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
             DecodeError.Kind.Domain(S.VocabError.Zero(S.VocabError.Kind.NonZero))
           )
           assertEquals(error.path.take(2), List("pState", "vrfKeyHashes"))
-        case Right(_) => fail("original invalid zero registration count must remain unsupported")
+        case Right(_) => fail("full certificate decoding must retain its NonZero invariant")
     }
   }
 
@@ -305,6 +384,15 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
     assertEquals(
       Files.readString(base.resolve(s"cases/$id/result.txt")),
       "implementation-rejected\nagda-rejected\n"
+    )
+    assertEquals(
+      Sts.apply(GovKernel)(
+        globals,
+        govViewEnvironment(id),
+        read(node(id, "state"), summon[Codec[Proposals]]),
+        inputs
+      ),
+      Sts.apply(Gov)(globals, env, read(node(id, "state"), summon[Codec[Proposals]]), inputs)
     )
     assertEquals(
       Sts.apply(Gov)(globals, env, read(node(id, "state"), summon[Codec[Proposals]]), inputs),

@@ -182,7 +182,7 @@ not a complete property campaign or evidence for every era.
 | CERT | One complete POOL substate from pool registration | Native/Agda accept and compare equal; not every CERT branch |
 | CERTS | One complete ConwayCertState, all five actual environment fields decoded | Native/Agda accept and compare equal |
 | ENACT | One full EnactState | Native/Agda accept and compare equal |
-| GOV | Original empty signal, ten lawful generated nonempty outcomes, a real cast-vote integration and a deposit-refusal control | Native/formal comparisons pass. The refusal retains the native structured deposit mismatch. Original generated environments with zero NonZero VRF counts remain unsupported; they are not normalized or counted as matches |
+| GOV | Original empty signal, all fifteen original generated nonempty outcomes, a real cast-vote integration and a deposit-refusal control | Native/formal comparisons pass. The refusal retains the native structured deposit mismatch. The shared production GOV kernel reads typed registration memberships and committee authorisations; unrelated zero VRF counts retain separate strict certificate-decoder refusals without excluding GOV judgments |
 | EPOCH | Original full native EpochState; separate parameter-consistent controls | Original generator inconsistency retained as exit 1; #267 adds minimal negative/positive controls and eight parameter-consistent PV9 samples |
 | NEWEPOCH | Three full native NewEpochState outcomes from unchanged integration hooks | All three native/formal comparisons pass. Separate generated size-zero case is unsupported: zero stake inside NonZero Coin; larger probes fail upstream proposal construction |
 | LEDGER | Three full native states and original signed transactions from integration hooks | Native/formal comparisons pass. Inline MemPack UTxO is compared independently, excluding only unavailable raw-output bytes and Scala change-history bookkeeping |
@@ -223,9 +223,14 @@ its full native GOV output with both formal evaluation and the resulting native 
 proposal state; Scarab must insert that vote and match the complete result. It exposed a production GOV mismatch: an authorized named committee voter
 with an empty inner vote map was incorrectly unknown when all flattened votes were
 empty. Authorization lookup now depends on the presence of named voters, matching
-`Conway/Rules/Gov.hs` at the pin. Five original generated environments whose `NonZero Word64`
-VRF-reference counts serialize as zero remain explicit unsupported inputs, consistent
-with the upstream reader's constraint; lawful replacement samples are separate.
+`Conway/Rules/Gov.hs` at the pin. All fifteen original generated GOV inputs now execute the same production kernel
+as the strict ledger facade. Five environments contain zero `NonZero Word64` VRF
+registration counts, which GOV never observes. The adapter supplies only typed
+registration memberships and committee authorisations from unchanged original bytes;
+it compares the complete proposal output. Strict full-certificate decoding still
+refuses those five inputs, with regression checks for its exact typed cause/path.
+The ten representable originals additionally compare the facade and kernel, while
+missing-registration and deposit-mismatch controls retain typed refusals.
 
 The [native batch corpus](../../node/src/test/resources/upstream/conway-native-ledgers/README.md)
 executes the real native LEDGERS rule over original signed transactions. Two accepted
