@@ -199,3 +199,14 @@ overshare, duplicates, body deadlines, blocking idle and original defect preserv
 worker and asserts the observed execution thread. These suites fail on uncaught fibers.
 Full check, extended decoder fuzz and private soak/relay results belong to the compatibility evidence
 log; no public-network run is claimed for this change.
+
+### Original upstream generator replay
+
+The [native starvation corpus](../../network/src/test/resources/upstream/mux-starvation/README.md)
+retains 32 original Uneven samples and their unchanged property outcomes (22 passes, 10 implication
+discards). Eighteen original conversations replay through Scarab with the upstream SDU-order
+assertion; four oversized native passes remain explicit mock-domain exclusions. Twelve applicable
+unequal generated pairs are supplemental local controls because the pinned native property uses
+response1 twice. Original CBOR bytes, hashes, header observations and provenance are retained.
+Controlled overlap separately rules out the original assertion's vacuous serial-trace case. These
+are bounded original-generator checks, not native/Scala thread-schedule identity or all-seed coverage.

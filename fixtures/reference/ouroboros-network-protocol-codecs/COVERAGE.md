@@ -66,7 +66,7 @@ byte order. Local controlled cancellation/cleanup checks stay distinct from thos
 native invocations. Original start/stop/restart and pure-exception properties were
 also executed as native evidence; Scarab does not expose the same internal activation
 API. Exact scheduling is outside functional equivalence. Broader transport/backend,
-starvation and other applicable properties remain in #49.
+broader starvation and other applicable properties remain in #49.
 
 `network-mux/test/Test/Mux/Timeout.hs:33–68,122–175,283–325,339–403` registers
 single and sequential timer laws. A portable Scala counterpart must retain elapsed
@@ -103,3 +103,14 @@ Its three over-sized generic replies and 94 negative generated function results
 are retained without Cardano policy coercion. KeepAlive and PeerSharing ceilings
 are compared with actual upstream state limits; this is not a new mux enforcement
 or generic-Int-to-Cardano-address claim.
+
+## Bounded original starvation-generator replay
+
+The [Mux starvation corpus](../../../network/src/test/resources/upstream/mux-starvation/README.md)
+retains 32 consecutive original Uneven inputs: 22 native property passes and 10 implication discards.
+Scarab replays 18 applicable original response1/response1 conversations with the unchanged
+first 100-header ordering assertion; four native passes above its 2.5 MB message ceiling remain explicit
+mock-domain exclusions. Twelve original unequal response pairs are separately labelled local
+controls. Complete native CBOR bytes/hashes are checked. A controlled nonvacuous-overlap observation
+supplements the original normalization, whose initial/final-run trimming can otherwise admit a serial
+trace. This closes the bounded generator-replay gap, not broad transport or exhaustive seed coverage.
