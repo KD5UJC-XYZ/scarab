@@ -2007,3 +2007,11 @@ settings above. For `memory`, keep stdin open; at each `READY BASE|LIVE|RELEASED
 `docker exec <own-container> jcmd 1 GC.class_histogram` and `GC.heap_info`, then send `continue`.
 The retained `run.py` records exact Docker vectors and drives these checkpoints without manual
 timing choices. No file encoding or previous-version admission behavior changes.
+
+
+**Integration after #260 (2026-10-20).** Rebased onto dev
+`6988858f937a42eb34762cb5a61d3c622c49b124`. Interns/Node.share/Wire.interned production sources are unchanged; the newly merged Diff diagnostics are outside the timed snapshot decoding operations.
+The original benchmark/gate source identities above remain historical evidence. Refreshed
+checks on the rebased head are recorded in the [PR #263 checklist](https://github.com/KD5UJC-XYZ/scarab/pull/263);
+pre-rebase gates are not relabelled as gates of the integrated head. Main and dev still diverge;
+this prepares the dev target and does not claim completion after main landing.
