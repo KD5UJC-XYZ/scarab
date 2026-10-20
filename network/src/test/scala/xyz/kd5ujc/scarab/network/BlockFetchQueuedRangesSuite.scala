@@ -23,7 +23,7 @@ class BlockFetchQueuedRangesSuite extends FailsOnUncaught:
   private def hex(value: String): Bytes =
     Bytes.fromHex(value).fold(e => fail(e.message), identity)
 
-  test("queued ranges preserve complete FIFO batches across NoBlocks and queued ClientDone"):
+  test("queued ranges preserve complete FIFO batches across NoBlocks before ClientDone"):
     // BlockFetch's request/response order is observable; the upstream client's scheduling is not.
     // ouroboros-network 2fb69829, ouroboros-network/protocols/tests-lib/
     // Ouroboros/Network/Protocol/BlockFetch/Test.hs:150-169.
@@ -85,11 +85,10 @@ class BlockFetchQueuedRangesSuite extends FailsOnUncaught:
                       )
                     )
                     _ <- streaming.get
-                    // The first stream is blocked while every remaining request reaches the bearer.
+                    // The first stream is blocked while every remaining range reaches the bearer.
                     _ <- Vector[Message](
                       BlockFetch.Message.RequestRange(absent._1, absent._2),
-                      BlockFetch.Message.RequestRange(last._1, last._2),
-                      BlockFetch.Message.ClientDone
+                      BlockFetch.Message.RequestRange(last._1, last._2)
                     ).traverse_(message =>
                       c.send(encoded(BlockFetch.State.Idle, BlockFetch.Role.Client, message))
                     )
@@ -106,6 +105,15 @@ class BlockFetchQueuedRangesSuite extends FailsOnUncaught:
                           case DecodeResult.Failed(error) => DecodeResult.Failed(error)
                       }
                     }
+                    // Client.hs:130–132 permits Done only after all pipelined replies are collected.
+                    _ <- c.send(
+                      encoded(
+                        BlockFetch.State.Idle,
+                        BlockFetch.Role.Client,
+                        BlockFetch.Message.ClientDone
+                      )
+                    )
+                    _ <- c.flush
                     ended <- serving.joinWithNever
                     order <- requests.get
                   yield (observed, ended, order)

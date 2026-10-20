@@ -171,10 +171,11 @@ retained; broader generator and transport coverage remains #49.
 Local wire regressions complement the exported observations. `ChainSyncBatchSuite`
 requires all three requests to arrive before any response, then collects forward,
 AwaitReply/rollback and forward instructions before checking the next request's
-alignment. `BlockFetchQueuedRangesSuite` queues available/unavailable ranges and
-ClientDone while the first batch is delayed, then checks complete ordered batches
-and responder termination. These exercise production client/server and Mux paths;
-they are local contract assertions, not additional native property invocations.
+alignment. `BlockFetchQueuedRangesSuite` queues available/unavailable ranges while
+the first batch is delayed, then checks complete ordered batches before sending
+ClientDone and checking responder termination. These exercise production client/server
+and Mux paths; they are local contract assertions, not additional native property
+invocations.
 
 ## Network, Plutus and remaining scope
 
