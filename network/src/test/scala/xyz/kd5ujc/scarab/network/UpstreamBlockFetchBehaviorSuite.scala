@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.effect.IO
+import cats.effect.{Deferred, IO, Resource}
 import cats.syntax.all.*
 import fs2.Stream
 import munit.CatsEffectSuite
@@ -179,43 +179,71 @@ class UpstreamBlockFetchBehaviorSuite extends FailsOnUncaught:
                     .start
                 )(_.cancel)
                 .use { serverFiber =>
-                  for
-                    client <- BlockFetchRuntime.client(
+                  BlockFetchRuntime
+                    .resource(
                       clientChannel,
                       pointCodec,
                       payloadCodec,
                       _.size,
+                      clientMux.abort,
                       clientSettings
                     )
-                    responses <- caseRanges.traverse { range =>
-                      client.requestRange(range.from, range.to).map(result => (range, result))
+                    .use { client =>
+                      for
+                        responses <- caseRanges
+                          .traverse { range =>
+                            for
+                              sent <- Resource.eval(Deferred[IO, Unit])
+                              reply <- Resource.make(
+                                Fibers
+                                  .scoped[IO, NetworkError, Option[Vector[Bytes]]](
+                                    NetworkError.Defect(_)
+                                  ) {
+                                    client.requestRangeObserved(range.from, range.to) {
+                                      case _: BlockFetchRuntime.Event.Sent => sent.complete(()).void
+                                      case _                               => IO.unit
+                                    }
+                                  }
+                                  .start
+                              )(_.cancel)
+                              // Keep the original upstream range order while overlapping responses.
+                              _ <- Resource.eval(IO.race(sent.get, reply.joinWithNever).flatMap {
+                                case Left(_) => IO.unit
+                                case Right(early) =>
+                                  Fibers.land[IO, NetworkError, Option[Vector[Bytes]]](early).void
+                              })
+                            yield range -> reply
+                          }
+                          .use(_.traverse { (range, reply) =>
+                            reply.joinWithNever.flatMap(Fibers.land(_)).map(range -> _)
+                          })
+                        _ <- client.done
+                        serverResult <- serverFiber.joinWithNever
+                        _ <- Fibers.land[IO, NetworkError, Unit](serverResult)
+                        _ <- IO {
+                          responses.foreach { case (range, actual) =>
+                            val expected = Option.when(range.bodies.nonEmpty)(range.bodies)
+                            assertEquals(
+                              actual,
+                              expected,
+                              s"seed ${testCase.seed}, range ${range.rangeOrdinal}"
+                            )
+                          }
+                          val inWireOrder = responses.flatMap(_._2.getOrElse(Vector.empty))
+                          val sourceResponseOrder = caseRanges.flatMap(_.bodies)
+                          assertEquals(
+                            inWireOrder,
+                            sourceResponseOrder,
+                            s"seed ${testCase.seed} upstream server response order"
+                          )
+                          assertEquals(
+                            inWireOrder.reverse,
+                            testCase.expectedNewestFirst,
+                            s"seed ${testCase.seed} original prop_connect/channel result order"
+                          )
+                        }
+                      yield ()
                     }
-                    _ <- client.done
-                    serverResult <- serverFiber.joinWithNever
-                    _ <- Fibers.land[IO, NetworkError, Unit](serverResult)
-                    _ <- IO {
-                      responses.foreach { case (range, actual) =>
-                        val expected = Option.when(range.bodies.nonEmpty)(range.bodies)
-                        assertEquals(
-                          actual,
-                          expected,
-                          s"seed ${testCase.seed}, range ${range.rangeOrdinal}"
-                        )
-                      }
-                      val inWireOrder = responses.flatMap(_._2.getOrElse(Vector.empty))
-                      val sourceResponseOrder = caseRanges.flatMap(_.bodies)
-                      assertEquals(
-                        inWireOrder,
-                        sourceResponseOrder,
-                        s"seed ${testCase.seed} upstream server response order"
-                      )
-                      assertEquals(
-                        inWireOrder.reverse,
-                        testCase.expectedNewestFirst,
-                        s"seed ${testCase.seed} original prop_connect/channel result order"
-                      )
-                    }
-                  yield ()
                 }
             yield ()
           }

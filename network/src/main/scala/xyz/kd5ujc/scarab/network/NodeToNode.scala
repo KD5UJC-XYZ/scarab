@@ -72,7 +72,7 @@ final class WarmConnection[F[_], P] private[network] (
       chainSyncChannel <- Resource.eval(mux.channel(Protocols.ChainSync, role))
       blockFetchChannel <- Resource.eval(mux.channel(Protocols.BlockFetch, role))
       chainSync <- Resource.eval(ChainSyncClient(chainSyncChannel, codec, settings.chainSync))
-      blockFetch <- Resource.eval(BlockFetchClient(blockFetchChannel, settings.blockFetch))
+      blockFetch <- BlockFetchClient.resource(blockFetchChannel, mux.abort, settings.blockFetch)
     yield NodeToNodeConnection(version, chainSync, blockFetch, mux, running, fetchPerformance)
 
 object NodeToNode:
