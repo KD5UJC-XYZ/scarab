@@ -1905,8 +1905,12 @@ frozen classes from the #247 baseline. That build has the visibility-only `priva
 production differences are `Interns` and the reference bounds on `Node.share`/`Wire.interned`.
 The compiled source/class inventories bind the experiment independently of Docker's unknown
 `BuildInfo.gitCommit`. The maintained helper is
-`node/src/test/scala/xyz/kd5ujc/scarab/storage/InternDecodeBench.scala`; its formatted source differs
-only in whitespace from the measured standalone file (stripped-source equality asserted).
+`node/src/test/scala/xyz/kd5ujc/scarab/storage/InternDecodeBench.scala`; at measured source
+`9ac7ea5e`, its formatted source differs only in whitespace from the standalone file
+(stripped-source equality asserted). The later tool-only cleanup puts sampler shutdown in
+`finally` if a decode refuses. A checksummed invalid-content control reproduces the old helper
+printing its refusal but remaining alive after 15 s; the corrected helper exits 1 promptly.
+Latency mode and successful memory sampling are unchanged; no timing is attributed to that fix.
 
 | Input | Identity | Bytes |
 |---|---|---:|
@@ -1990,8 +1994,10 @@ Owned containers are removed; restart manifest SHA-256
 `bc0a6bdc0ba5098852d2dd1e77c23b49099113d96de35b3c4a8e2d56badcec53` is retained under
 `/tmp/scarab-204-evidence`. Docker `check` at this runtime source passes 5,144 tests with 16 optional-data skips, zero
 failures/errors across 14 modules, formatting/-Werror/standard fuzz/scalafix. The
-[PR #263 checklist](https://github.com/KD5UJC-XYZ/scarab/pull/263) carries the extended
-`fuzz 100000 1 4` receipt and exact published-head CI identity. Source-changing prototypes'
+extended `fuzz 100000 1 4` gate passes 77 targets × 400,000 cases = 30.8 million, zero failures.
+Combined check/fuzz log SHA-256 `645fe3088804e9502742369e1ab6052e41eba03071062560efd4c08f0a259252`.
+The [PR #263 checklist](https://github.com/KD5UJC-XYZ/scarab/pull/263) carries the exact
+published-head CI identity. Source-changing prototypes'
 aborted checks are not counted as passing gates.
 
 Reproduction: build each source with its own Docker/private-sbt-socket worktree, emit

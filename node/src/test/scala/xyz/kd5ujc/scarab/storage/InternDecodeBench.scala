@@ -40,9 +40,11 @@ object InternDecodeBench extends Assertions:
       "heap-sampler"
     )
     sampler.start()
-    val state = checked(SnapshotV5.decode(env, content))
-    running.set(false)
-    sampler.join()
+    val state =
+      try checked(SnapshotV5.decode(env, content))
+      finally
+        running.set(false)
+        sampler.join()
     println(s"PEAK used=${peak.get()}")
     println(s"DIGEST state ${sha(state.toString.getBytes("UTF-8"))}")
     checkpoint("LIVE")
