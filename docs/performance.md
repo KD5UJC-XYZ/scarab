@@ -2048,3 +2048,37 @@ controls (three tests), formatting and scalafix; production source is unchanged 
 addition. The current area scenario and final published-head CI are reported in
 [PR #209](https://github.com/KD5UJC-XYZ/scarab/pull/209). These integration checks do not relabel
 any frozen full-data run as execution on the final main revision.
+
+
+## 34. Native non-myopic likelihood generation (#268)
+
+On 2026-10-20, `feature/268-reward-likelihood` runtime `e96cd373` computes the
+reference's 100 Float samples for every snapshot pool at reward start. A retained
+native V5 Preview epoch1449 snapshot supplies 727 pools, 79,851 active credentials
+and 71 producing pools. No network following or operational database change occurs.
+The [fixture provenance](../storage/src/test/resources/reward-likelihood-1.19.0.1/README.md)
+binds the original converted V5 source, full private API inputs/results and reduced
+public pool/sample corpus. The released Haskell reward API produces identical
+complete start/completion CBOR, including all 72,700 sample bits.
+
+Docker JDK21, two CPUs/four GiB on the shared host; ten warmups and 25 measured
+repetitions per condition, alternating order. The baseline is the unchanged-main
+reward implementation over the same decoded state. This measures the entire
+`Rewards.start` API, not a whole block, tick, throughput or hard latency bound.
+
+| Condition | Median wall | Maximum wall | Median CPU | Median allocated bytes |
+|---|---:|---:|---:|---:|
+| Previous start, no new likelihoods | 1.980 ms | 2.502 ms | 1.980 ms | 5,165,256 |
+| Native likelihood generation included | 3.823 ms | 38.083 ms | 3.813 ms | 8,208,128 |
+
+The larger wall-time tail remains explicit; these observations do not establish its
+cause or a worst-case bound. The code stays pure. Existing history decay and
+normalization are also compared with a second explicit native API observation;
+that experiment is not an assertion that the old snapshot contained historical
+likelihoods. The snapshot's missing history is retained, not invented.
+
+Private profile summary SHA-256:
+`a4f061e5227835cdcd4b11842ffabe5246bb25f9ae68de8783ec43fe2dfc5c0e`;
+probe source `b93ed1804e9432c0e79b398f2409f14237fb27e344f11607b5677e422489d49d`;
+baseline source `b2d7bf0edf4898bc8ab0deeb71fbb25648c7e8963c2d321f7ec9cf6a1f53b3c1`.
+Full states and run logs remain outside Git under `/tmp/scarab/268-likelihood`.

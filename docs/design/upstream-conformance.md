@@ -48,13 +48,13 @@ The supported Haskell release remains authoritative even when upstream HEAD move
 | Mux `Uneven` replies over the 2.5 MB production ceiling | Four original native passes are retained as size exclusions; eighteen applicable original passes are replayed unchanged |
 | Zero-length generated SDUs | Six original encoder-policy differences remain explicit in the SDU corpus |
 | Peras ObjectDiffusion | No adapter or advertised production support; not interchangeable with Leios or TxSubmission2 |
-| Generated NEWEPOCH states and proposal-constructor failures | Invalid/failed originals remain unchanged; lawful generator work is [#269](https://github.com/KD5UJC-XYZ/scarab/issues/269) |
+| Generated NEWEPOCH states and proposal-constructor failures | Invalid/failed originals remain unchanged; [#269](https://github.com/KD5UJC-XYZ/scarab/issues/269) adds twelve separately constructed PV10 no-action samples from the upstream parameter specification |
 | Other eras, broader seeds and Haskell-specific interpreters | The fixtures establish their named bounded domains, not an exhaustive generator or backend campaign |
 
-The EPOCH disagreement is tracked separately by
-[#267](https://github.com/KD5UJC-XYZ/scarab/issues/267), the formal LEDGERS evaluator
-crash by [#270](https://github.com/KD5UJC-XYZ/scarab/issues/270), and actual missing
-reward-likelihood generation by [#268](https://github.com/KD5UJC-XYZ/scarab/issues/268).
+The EPOCH generator classification is tracked separately by
+[#267](https://github.com/KD5UJC-XYZ/scarab/issues/267), the local formal LEDGERS
+conversion repair by [#270](https://github.com/KD5UJC-XYZ/scarab/issues/270), and
+implemented reward-likelihood generation by [#268](https://github.com/KD5UJC-XYZ/scarab/issues/268).
 The formal crash is not a crash of the running native Haskell node. The thirteen
 remaining Plutus exceptions are six constants without a Flat representation, five
 counting-versus-restricting budget observations, and two protocol-gated generic
@@ -77,11 +77,11 @@ not a complete property campaign or evidence for every era.
 | CERTS | One complete ConwayCertState, all five actual environment fields decoded | Native/Agda accept and compare equal |
 | ENACT | One full EnactState | Native/Agda accept and compare equal |
 | GOV | Original empty signal, ten lawful generated nonempty outcomes, a real cast-vote integration and a deposit-refusal control | Native/formal comparisons pass. The refusal retains the native structured deposit mismatch. Original generated environments with zero NonZero VRF counts remain unsupported; they are not normalized or counted as matches |
-| EPOCH | One full native EpochState | Both accept, but native/formal outputs differ and upstream exits 1 |
+| EPOCH | Original full native EpochState; separate parameter-consistent controls | Original generator inconsistency retained as exit 1; #267 adds minimal negative/positive controls and eight parameter-consistent PV9 samples |
 | NEWEPOCH | Three full native NewEpochState outcomes from unchanged integration hooks | All three native/formal comparisons pass. Separate generated size-zero case is unsupported: zero stake inside NonZero Coin; larger probes fail upstream proposal construction |
 | LEDGER | Three full native states and original signed transactions from integration hooks | Native/formal comparisons pass. Inline MemPack UTxO is compared independently, excluding only unavailable raw-output bytes and Scala change-history bookkeeping |
 | UTXO / UTXOW | One full native UTxOState each, genuine supplemental judgments of the integration's payment transaction | Both native/formal comparisons pass. Original contexts retained; payment has no certificate/proposal pretransitions |
-| LEDGERS | Original singleton plus two accepted dependent multi-transaction batches and two rejected batches | Complete accepted native state matches; typed fail-fast rejection payload must occur among native accumulated failures. Original signed bytes retained. Supplemental cases are native-only; original formal evaluator SIGSEGV/139 remains explicit |
+| LEDGERS | Original singleton plus two accepted dependent multi-transaction batches and two rejected batches | Complete accepted native state matches; typed fail-fast rejection payload must occur among native accumulated failures. Original signed bytes retained. Supplemental cases are native-only; original formal evaluator SIGSEGV/139 remains explicit; #270 separately repairs foreign input conversion and observes accepted-state equality |
 | RATIFY | Four original full-state samples, five lawful non-delayed integrations and six original approval-property samples | Native/formal comparisons pass. New integrations exercise successful nonzero DRep/SPO thresholds, missing votes and opposite supplied action orders. Complete RatifyState and native approval booleans are compared |
 
 Fixtures and exact limitations:
@@ -137,9 +137,12 @@ formal corpus. Fifty-five deterministic schedules retain 341 slot observations a
 required availability, sparse slots and forced epoch-boundary delivery. Eight genuine
 pending prefixes are checkpointed/restored through current native V5 storage before
 completion. This is storage continuation, not a reference-process restart. Different
-within-window pulse partitions are allowed. The pre-existing J3.6 exclusion of newly
-generated non-myopic likelihood vectors remains explicit; all monetary fields stay
-compared. No formal RUPD verdict or exact internal pulse-prefix parity is claimed.
+within-window pulse partitions are allowed. #268 removes the former newly generated
+likelihood mask: complete encoded API/timing results now compare those vectors too.
+The [likelihood corpus](../../storage/src/test/resources/reward-likelihood-1.19.0.1/README.md)
+adds eight full-state cases and 72,700 exact Float samples from 727 real Preview pools.
+This does not reconstruct historical missing observations; per-state gap provenance
+remains #129. No formal RUPD verdict or exact internal pulse-prefix parity is claimed.
 
 The [Mux lifecycle corpus](../../network/src/test/resources/upstream/mux-lifecycle/README.md)
 retains 24 close and 24 trailing-byte experiments, each passing original IO and IOSim
@@ -246,9 +249,31 @@ The existing [Plutus evidence](../plutus-conformance.md) remains 996/1009 passin
 with thirteen documented harness exceptions. No new all-pass claim is introduced.
 The [risk-based closeout audit](https://github.com/KD5UJC-XYZ/scarab/issues/49#issuecomment-6293250618)
 distinguishes the remaining reference limitations from optional broader seeded and
-rejection campaigns. The retained EPOCH case matches native output despite an
-unclassified native/formal disagreement; invalid NEWEPOCH generation is unsupported;
-the formal LEDGERS crash supplies no verdict. None is relabeled as a formal pass.
+rejection campaigns. The retained EPOCH failure is now classified by
+[#267](https://github.com/KD5UJC-XYZ/scarab/issues/267): its generated completed
+pulser has parameter values inconsistent with the current parameters despite no
+enacted actions. Native Haskell keeps current parameters; the formal rule trusts
+the inconsistent completed state. The [parameter controls](../../node/src/test/resources/upstream/conway-epoch-parameters/README.md)
+retain the original and minimal failures, a matched positive and eight separately
+constructed parameter-consistent no-action inputs. No native rule is changed.
+
+The [lawful NEWEPOCH corpus](../../node/src/test/resources/upstream/conway-lawful-newepoch/README.md)
+adds twelve fixed-size-10 original parameter draws from upstream `pparamsSpec`
+(PV10), wrapped in separately constructed native no-action states with correct
+nonzero sentinels and correlated enactment parameters. Same, next and skipped epoch
+signals use four recorded seeds each. All native/formal translated states compare
+equal; Scala compares complete applicable native states without a field mask.
+This is a narrow generator-domain correction, not a claim all unconstrained
+NEWEPOCH states or all proposal families are supported. Original invalid/sized
+constructor failures remain unchanged.
+
+The original formal LEDGERS observation still supplies no verdict. The local
+[#270](https://github.com/KD5UJC-XYZ/scarab/issues/270)
+[foreign-conversion repair](../../node/src/test/resources/upstream/formal-ledgers-repair/README.md)
+now executes the same formal computation successfully on the unchanged singleton
+and two dependent batches; accepted translated states compare equal. Two deliberate
+bad batches reject on both sides, with differing failure text retained explicitly.
+These repaired-executable observations do not relabel the original crash as a pass.
 Operational Mux fairness and timeout cleanup remain behavioral questions worth
 characterizing; reproducing exact Haskell schedules or timer internals is not the
 acceptance criterion. Final issue completion remains tracked by #49.

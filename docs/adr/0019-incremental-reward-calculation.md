@@ -33,8 +33,10 @@ calculation state is introduced.
 - The Haskell wire layout and native V5 sidecar fingerprint remain unchanged. A fixture actually
   rewritten by the pre-change opaque V5 writer is read and resumed without migration.
 - Unchanged Haskell API fixtures compare every monetary field and intermediate member prefix.
-  Imported likelihood histories also compare in full. New likelihood generation remains the
-  existing explicit J3.6 gap, so complete local reference-state byte equality is not claimed.
+  Imported likelihood histories also compare in full. At #135's landing, new likelihood generation
+  remained J3.6. The #268 implementation now computes those vectors and removes the narrow oracle
+  masks, with exact native encoded comparisons. Missing historical observations and live provenance
+  remain #129; neither a complete historical reconstruction nor universal state equality is claimed.
 - A sparse chain may provide fewer than the required pulse calls before `8k/f`. Forced completion
   must still finish the suffix synchronously; performance evidence reports this case separately
   and never promises a hard bound that changes reference semantics.

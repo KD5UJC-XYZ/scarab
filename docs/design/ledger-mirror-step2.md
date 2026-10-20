@@ -388,12 +388,17 @@ Goal: debug-query answers byte-equal to the reference with no mask, on a node sy
      writer fixture proves read/continuation compatibility; no new migration is required.
    - Fifteen unchanged Haskell API cases compare 180 intermediate states. Broader whole-state
      corpus byte equality remains J3.8; historical migrated attribution gaps remain #129.
-6. **J3.6 NonMyopic** (D9):
-   - Newly generated likelihood vectors remain open (`LogWeight` is a `Float` from `log :: Double`,
-     with 100 sample positions). #135 implements exact captured-history decay/normalization and
-     reward-pot completion, including imported nonempty and empty-new likelihood maps;
-   - oracle test against the 727×100 real floats of the Preview state, computed from Haskell state e plus the blocks of e;
-   - the fallback ladder if not bit-equal.
+6. **J3.6 NonMyopic** (D9, implemented under [#268](https://github.com/KD5UJC-XYZ/scarab/issues/268)):
+   - Reward start computes all 100 native likelihood samples for every snapshot pool, including
+     nonproducing pools. #135's captured-history decay/normalization and reward-pot completion remain.
+   - Complete original reward API/timing comparisons now include likelihoods. Eight additional
+     complete-state cases and all 72,700 original Float bits from 727 actual Preview pools match;
+     a second explicit API observation checks native-generated history continuation.
+   - The runtime uses the reference Double operation order and final Float rounding. No native
+     logarithm bridge or persisted-layout change was needed for the executed corpus.
+   - Missing historical observations are not reconstructed. Live per-state completeness/provenance
+     and the conservative snapshot flag remain [#129](https://github.com/KD5UJC-XYZ/scarab/issues/129);
+     investigate reuse of V5's existing gap field before choosing a new encoded layout/version.
 7. **J3.7 ShelleyTransition:** `afterVoting` counts the blocks at or after the voting deadline and resets at the new-epoch tick (`Ledger.hs:565-575,700-720`).
 8. **J3.8 Byte equality:**
    - devnet `ntc` compares the four ledger-state answers with **no mask** (gapmask kept only for states that report gaps);
@@ -441,7 +446,7 @@ Goal: debug-query answers byte-equal to the reference with no mask, on a node sy
   - *Historical open items at the J2.3 hand-off.* The non-myopic data was untouched (J3.6), the
     pre-11 VRF registry remained J3.3, and imported `Pulsing` updates were refused. #135 supersedes
     that refusal: imported pending rewards now resume through typed RUPD/NEWEPOCH, and captured
-    non-myopic history completes exactly. New likelihood generation remains J3.6; the historical
+    non-myopic history completes exactly. #268 subsequently implements new likelihood generation; the historical
     performance measurements above are superseded for rewards by [the measured pulser](reward-pulser.md).
 - **J2.5 (Shelley..Babbage LEDGER), from J2.4:**
   - *What to reuse.* The predicates of UTXO and UTXOW in `PreConwayRules` already take the parameters, the UTxO set and the counters (the pre-Conway `apply` is still on the flat state and calls the same functions through the old signatures), so a generic UTXOW/UTXO over the witness is the sequence of calls `Utxow.witnesses` and `Utxo.validate` make with the era's deposits and without the Conway-only checks (reference inputs, collateral from Alonzo, `ValidationTagMismatch`, the reference-script fee, `WdrlNotDelegatedToDRep`, treasury value). `StAnnTx`, `Counted`, `Refuse`, `CertLens` (Conway's; the Shelley certificate state needs its own), `InstantStakeOps` (the credential stake; Shelley's `ShelleyInstantStake` adds the pointer stake, `Shelley/State/Stake.hs`, which the delegation by pointer resolves through `ShelleyAccounts.ptrs`) and `Deposits` are the places to generalise.
