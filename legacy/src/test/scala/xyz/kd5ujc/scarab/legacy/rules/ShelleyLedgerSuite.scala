@@ -1000,24 +1000,25 @@ class ShelleyLedgerSuite extends FunSuite:
     val pool = key()
     val width = 1500
     val keys = Vector.fill(width)(key())
+    // Build the signed fixture once; each era validates it on its own small-stack thread.
+    val others = Vector.fill(width)(key())
+    val certificates =
+      others.map(k => Certificate.Register(k.credential, None)) ++
+        others.map(k => Certificate.Delegate(k.credential, Some(pool.hash), None, None))
+    val t = pay(
+      "wide",
+      alice,
+      extra = 2 * ada * width,
+      certificates = certificates,
+      withdrawals = keys.map(k => RewardAccount(0, k.credential) -> BigInt(1)),
+      signers = keys ++ others
+    )
     forEras { c =>
       val s = base(
         c,
         fundedBy(alice),
         pools = Map(pool.hash -> poolOf(pool)),
         accounts = keys.map(k => k.credential -> Account(1, 2 * ada, None, None)).toMap
-      )
-      val others = Vector.fill(width)(key())
-      val certificates =
-        others.map(k => Certificate.Register(k.credential, None)) ++
-          others.map(k => Certificate.Delegate(k.credential, Some(pool.hash), None, None))
-      val t = pay(
-        "wide",
-        alice,
-        extra = 2 * ada * width,
-        certificates = certificates,
-        withdrawals = keys.map(k => RewardAccount(0, k.credential) -> BigInt(1)),
-        signers = keys ++ others
       )
       onSmallStack(newSide(c, s, t, TestLedger.env)) match
         case Out.Accepted(b) =>
