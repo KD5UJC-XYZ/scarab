@@ -148,3 +148,10 @@ class BlockFetchPolicySuite extends FunSuite:
       )
     }
   }
+
+  test("zero request allowance returns the native request-limit refusal") {
+    assertEquals(
+      decide(Config(maxRequestsPerPeer = 0), FetchMode.BulkSync, Vector(candidate(1, header(1)))),
+      Vector(Decision.Declined(1, Refusal.RequestsInFlight(0)))
+    )
+  }

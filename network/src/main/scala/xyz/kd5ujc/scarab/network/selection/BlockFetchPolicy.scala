@@ -195,7 +195,7 @@ object BlockFetchPolicy:
     val flight = candidate.inFlight
     val refusal =
       if candidate.refusal.isDefined then candidate.refusal
-      else if config.bulkConcurrency < 0 || config.deadlineConcurrency < 0 || config.maxRequestsPerPeer <= 0
+      else if config.bulkConcurrency < 0 || config.deadlineConcurrency < 0 || config.maxRequestsPerPeer < 0
       then Some(Refusal.InvalidConfiguration)
       else if flight.requests < 0 || flight.bytes < 0 ||
         candidate.fragments.exists(_.headers.exists(_.bytes < 0))
