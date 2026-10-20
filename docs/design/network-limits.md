@@ -108,6 +108,68 @@ misbehaviour; setup/write retain their previous transient/backoff policy. This i
 migration, not a change to that policy; the rest of the error-channel migration remains [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82).
 The scoped fiber ownership and SDU timer rules above still apply; only presentation calls `message`.
 
+## Bulk/control scheduling characterization (#49)
+
+`MuxSeededTrafficSuite` adds eight recorded local seed/SDU profiles (1, 7, 256 and 65535-byte
+SDUs), 320 messages over two protocols, both roles and both directions. Bounded queues combine
+pairs of actual writes and repartition their bytes across headers and payloads. The checks compare
+complete per-channel FIFO bytes and observe all 160 paired transport groups. They are local
+production-Mux controls, not additional exported Haskell property verdicts or exhaustive seeds.
+
+`DeadlineCleanupSuite` observes cancellation before teardown can hide it: a blocked writer finalizer
+prevents publication of `mux.closed`, and a timed-out partial receive releases its lock and retains
+exactly its buffered prefix for immediate reuse. These are portable observable cleanup laws;
+identical timer implementations and exact real-clock scheduling are not asserted.
+
+`BulkControlCharacterizationSuite` measures current FIFO behavior using production Mux,
+BlockFetch server/client and a direct KeepAlive ping through a paced, bounded transport under
+virtual time. The payloads are opaque transport bytes, not valid ledger blocks or a historical chain.
+Both profiles stay within existing message, range, ingress and request bounds. The bulk backlog
+and ping admission are observed before releasing the writer; no admission delay is hidden.
+
+| Bulk workload | Controlled rate | Bulk-only completion | Completion with ping | Ping arrival at responder |
+|---|---|---|---|---|
+| 40 × 60 KiB bodies | 32 KiB/s | 75.019 s | 75.019 s | 75.019 s |
+| 3 × 2000000-byte bodies | 64 KiB/s | 91.565 s | 91.565 s | 91.565 s |
+
+In both cases the admitted ping times out at its existing 60 s response deadline while bulk replies
+continue arriving; the complete ordered bulk payloads still match. These are simulated service-time
+observations, not host throughput benchmarks. The direct probe deliberately keeps the connection
+open to observe late arrival. `KeepAliveClient.pinger` aborts Mux after a failed ping by source
+inspection; the characterization does not execute that background disconnect. The assertions pin
+this undesired baseline and must become successful-ping assertions when fairness is implemented.
+The confirmed gap and acceptance criteria are tracked in
+[#258](https://github.com/KD5UJC-XYZ/scarab/issues/258), separately from retained-intersection #152.
+
+### Refactor scope
+
+The scheduler selects network traffic on one connection; it does not coordinate coding agents.
+The selection is internal, but peers and local clients can observe cross-protocol latency, wire SDU
+interleaving and connection endings. Node-to-node and node-to-client servers use the same Mux;
+ledger rules, persisted formats and mini-protocol message schemas need no change.
+
+The pinned reference `network-mux/src/Network/Mux/Egress.hs:35–59,149–213` defines fair service and
+rotates remaining SDUs between channels, assembling bounded write batches. Scarab currently queues
+whole messages (`Mux.scala` outbound setup/channel send), then writes all their SDUs together
+(`writeLoop`). A likely implementation changes that outbound admission/selection/writer plumbing,
+optionally extracting a private typed scheduler state. Ingress, framing codecs and protocol APIs
+can remain as built. The work is localized but medium–high difficulty because it must preserve:
+
+- FIFO per `(protocol, role)` and indivisible SDU framing, while giving other channels bounded turns.
+- Bounded pending work including staged messages; current queue capacity plus one writer-held
+  message is the admitted-work baseline. Draining the queue into an unbounded map defeats it.
+- Connection-global `flush` fences on a live connection: all earlier admitted messages must finish
+  before acknowledgement, and later traffic must not starve the fence. Abort must wake waiters.
+- Cancellation-safe admission credits, the first typed close reason and caller-scoped capabilities.
+- Explicit write-deadline policy: current whole-message writes get SDU-count × per-SDU budget.
+  Smaller write quanta must not silently change that contract or extend work indefinitely.
+
+Message-level priority alone cannot interrupt a large in-progress write. Fair SDU turns or bounded
+batches address that case without reproducing upstream thread schedules or activation APIs, in
+keeping with [ADR0008](../adr/0008-networking-as-implemented.md). #258 requires successful control
+traffic alongside full ordered bulk delivery, fence/backpressure/abort regressions, independent
+review and the ordinary network gate. This branch characterizes the gap; it does not fix the writer.
+
 ## Validation
 
 `MuxDeadlinesSuite` runs on `TestControl`: idle 90 s, partial header/payload, 5 s slow-loris progress,

@@ -149,6 +149,14 @@ lands the value in the caller's scope, following [ADR 0017](../adr/0017-fibers-e
 The tests use production Mux/runtime paths and FailsOnUncaught. A final ordered result
 does not establish pipeline scheduling equivalence.
 
+The practical local follow-up adds eight seeded duplex Mux transport profiles (320 complete messages)
+and explicit writer-finalizer/receive-lock cleanup checks. Controlled bulk/control workloads reproduce
+a direct KeepAlive timeout while full BlockFetch delivery progresses. These local results are distinct
+from exported upstream verdicts; virtual service times are not host benchmarks or observed background
+disconnects. [Network limits](network-limits.md#bulkcontrol-scheduling-characterization-49) records the
+measurements and localized writer-refactor assessment. The confirmed fairness gap is
+[#258](https://github.com/KD5UJC-XYZ/scarab/issues/258); exact scheduler parity is not required.
+
 ## Network, Plutus and remaining scope
 
 The [network inventory](../../fixtures/reference/ouroboros-network-protocol-codecs/COVERAGE.md)
