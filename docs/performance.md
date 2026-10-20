@@ -1459,7 +1459,8 @@ are under `/tmp/scarab/luna-158/gates/cost-*`.
 cross-transaction Plutus evaluation. Ledger application remains ordered; only immutable evaluator
 requests run concurrently. `--plutus-workers 1` retains the serial rules. The node default is
 `min(4, availableProcessors)`, with at least one worker, shared across validation calls including
-serial fast paths. This does not close the broader Preview acceptance in [#21](https://github.com/KD5UJC-XYZ/scarab/issues/21).
+serial fast paths. The subsequent Preview acceptance for [#21](https://github.com/KD5UJC-XYZ/scarab/issues/21)
+is complete and recorded in section 33.
 
 **Dataset and binding.** A read-only capture of eight sealed preprod immutable chunks (6318–6325,
 active chunk excluded) contains 7,674 blocks, 49,266 transactions and 32,324 redeemer-bearing
@@ -1790,7 +1791,7 @@ parity with the Haskell node.
 
 | Residual question | Where it remains | Evidence boundary |
 |---|---|---|
-| Safely parallelised ledger application and captured Preview verdict/digest acceptance | D2, #21 | Existing captured-block measurements do not establish uninterrupted live-sync throughput. |
+| Safely parallelised ledger application and captured Preview verdict/digest acceptance | D2, #21, complete in PR #209 | Existing captured-block measurements do not establish uninterrupted live-sync throughput; later characterization remains D6, #25. |
 | Timer fairness and long forger stages on one CPU | D8, #65 closed with an accepted v0.2 limitation; later characterization with D6, #25 | Existing isolation/instrumentation retained; no proved 50 ms step bound or zero-miss guarantee under one-CPU load. |
 | Reward-update spikes | D15, #135, completed in PR #197 | Section 30 records incremental completion and sparse-chain forced completion separately. |
 | Evaluator environment-copy cost and the evaluator choice | I2, #43 | The historical Scalus profile does not prove the same hotspot in every current workload. |
