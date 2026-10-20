@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger.{Ipv4, Ipv6, LedgerRelay}
 import xyz.kd5ujc.scarab.network.selection.{LedgerPeerStake, LedgerPool}
@@ -11,6 +12,27 @@ import xyz.kd5ujc.scarab.protocol.ChainSync.Point
   * decision before V22, after accumulating the big-pool quota.
   */
 private[ntc] object PeerSnapshotQueries:
+  /** A stored relay decoding failure invalidates the answer; omitting that pool would change stake
+    * weights and the native 90% cutoff. Unusable but well-formed relays remain filtered by the
+    * normal ledger-peer projection.
+    */
+  def answer(
+      env: QueryEnv,
+      facts: ConwayFacts,
+      at: Point,
+      kind: Option[LedgerPeerKind],
+      supportsSrv: Boolean
+  ): Either[Unanswered, Bytes] =
+    for
+      supply <- xyz.kd5ujc.scarab.node.LedgerPeersSource.of(facts.l).leftMap(Unanswered.Refused(_))
+      _ <- Either.cond(supply.skipped.isEmpty, (), Unanswered.Unwritable)
+      _ <- Either.cond(
+        kind.isEmpty || (env.networkMagic >= 0 && env.networkMagic <= 0xffffffffL),
+        (),
+        Unanswered.Unwritable
+      )
+    yield encode(supply.pools, at, env.networkMagic, kind, supportsSrv)
+
   private def fraction(w: CborOut, r: Rational): Unit =
     w.array(2).integer(r.numerator).integer(r.denominator)
 

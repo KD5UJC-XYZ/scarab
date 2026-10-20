@@ -139,3 +139,22 @@ class PeerSnapshotQuerySuite extends FunSuite:
       CborOut.build(_.array(1).tag(24).bytes(latest))
     )
   }
+
+  test("invalid modern network magic refuses before the native Word32 encoder") {
+    import xyz.kd5ujc.scarab.node.read.ChainRead.given
+    val base = WalletQueryCases.cases.headOption.fold(fail("no wallet state"))(_._2)
+    val view = QueryView(point, Some(BigInt(1)), WalletQueryCases.mirror(base))
+    Vector(-1L, 0x100000000L).foreach { magic =>
+      Vector(LedgerPeerKind.All, LedgerPeerKind.Big).foreach { kind =>
+        assertEquals(
+          QueryAnswers.answerOrWhy(
+            NtcGolden.queryEnv.copy(networkMagic = magic),
+            view,
+            Map.empty,
+            NtcQuery.IfCurrent(6, LedgerQuery.GetLedgerPeerSnapshot(kind))
+          ),
+          Left(Unanswered.Unwritable)
+        )
+      }
+    }
+  }

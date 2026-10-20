@@ -467,31 +467,9 @@ object QueryAnswers:
             )
           })
         }
-      case GetRewardInfoPools =>
-        conway { f =>
-          (f.currentStake, f.scalars, f.l.nes).tupled.leftMap(Unanswered.Refused(_)).map {
-            (current, scalars, nes) =>
-              RewardQueries.info(
-                f.l.params,
-                env.maxSupply - scalars.chainAccount.reserves.value,
-                current,
-                nes.es.nonMyopic
-              )
-          }
-        }
+      case GetRewardInfoPools => conway(f => RewardQueries.poolInfo(env, f))
       case GetNonMyopicMemberRewards(credentials) =>
-        conway { f =>
-          (f.currentStake, f.scalars, f.l.nes).tupled.leftMap(Unanswered.Refused(_)).map {
-            (current, scalars, nes) =>
-              RewardQueries.members(
-                f.l.params,
-                env.maxSupply - scalars.chainAccount.reserves.value,
-                current,
-                nes.es.nonMyopic,
-                credentials
-              )
-          }
-        }
+        conway(f => RewardQueries.queryMembers(env, f, credentials))
       case GetStakePools =>
         conway(f => Wire.definiteSetOf(poolId).answerRead(f.pools.map(_.keySet)))
       // a registered pool's reward account on the node's network, its future parameters' as they
@@ -635,31 +613,9 @@ object QueryAnswers:
           }
         }
       case GetLedgerPeerSnapshotLegacy =>
-        conway { f =>
-          xyz.kd5ujc.scarab.node.LedgerPeersSource.of(f.l).leftMap(Unanswered.Refused(_)).map {
-            supply =>
-              PeerSnapshotQueries.encode(
-                supply.pools,
-                view.point,
-                env.networkMagic,
-                None,
-                version.number >= 22
-              )
-          }
-        }
+        conway(f => PeerSnapshotQueries.answer(env, f, view.point, None, version.number >= 22))
       case GetLedgerPeerSnapshot(kind) =>
-        conway { f =>
-          xyz.kd5ujc.scarab.node.LedgerPeersSource.of(f.l).leftMap(Unanswered.Refused(_)).map {
-            supply =>
-              PeerSnapshotQueries.encode(
-                supply.pools,
-                view.point,
-                env.networkMagic,
-                Some(kind),
-                true
-              )
-          }
-        }
+        conway(f => PeerSnapshotQueries.answer(env, f, view.point, Some(kind), true))
       case GetMaxMajorProtocolVersion =>
         coin.answer(BigInt(env.forks.maxMajorProtVer))
       case GetDRepDelegations(dreps) =>
