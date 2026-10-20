@@ -164,7 +164,7 @@ implemented reward-likelihood generation by [#268](https://github.com/KD5UJC-XYZ
 The formal crash is not a crash of the running native Haskell node. The thirteen
 remaining Plutus exceptions are six constants without a Flat representation, five
 counting-versus-restricting budget observations, and two protocol-gated generic
-`case` expectations; their [classification](../plutus-conformance.md#3-the-22-cases)
+`case` expectations; their [classification](../plutus-conformance.md#3-historical-classification-of-the-original-22-cases)
 is distinct from the nine reachable cases already addressed.
 
 ## Ledger boundary
