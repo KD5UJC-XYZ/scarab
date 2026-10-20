@@ -339,13 +339,12 @@ object PeerNetwork:
       supervisor <- Supervisor[F](await = false)
       dns <- dnsResource
       dnsRng <- Resource.eval(Ref.of[F, Rng](Rng(settings.seed).split._2))
-      initialLocalDnsCache <- Resource.eval(
-        refreshLocalDnsCache(
-          settings.roots,
-          LocalRootDnsCache.empty[NodeRootProvider.LocalDnsKey, Addr],
-          dns,
-          dnsRng
-        )
+      // Static roots are usable before the owned refresh worker obtains DNS answers.
+      initialDnsTime <- Resource.eval(Clock[F].monotonic)
+      initialLocalDnsCache = LocalRootDnsCache.track(
+        LocalRootDnsCache.empty[NodeRootProvider.LocalDnsKey, Addr],
+        NodeRootProvider.localDnsEntries(settings.roots.local, settings.roots.localSrv).map(_.key),
+        initialDnsTime
       )
       initialLocal = NodeRootProvider.localGroupsFromCache(
         settings.roots.local,

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.effect.{Deferred, IO, Ref, Resource}
+import cats.Monad
+import cats.effect.{Deferred, IO, Outcome, Ref, Resource}
+import cats.effect.std.Queue
 import cats.effect.testkit.TestControl
 import cats.mtl.Handle
 import com.comcast.ip4s.{Host, SocketAddress, host, ipv4, port}
@@ -13,11 +15,35 @@ import xyz.kd5ujc.scarab.network.selection.*
 import xyz.kd5ujc.scarab.node.forge.ForgedChain
 import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 
-/** Observable reload ordering from ouroboros-network 6a49b6f6. DNS gates stay blocked until
-  * assertions release them: success cannot come from a lookup timeout or a wall-clock race.
+/** Observable startup and reload ordering from ouroboros-network 6a49b6f6. DNS gates stay blocked
+  * until assertions release them: success cannot come from a lookup timeout or a wall-clock race.
   */
 class PeerRootReloadSuite extends FailsOnUncaught:
   import PeerNetwork.given
+
+  /** A checkpoint resumes only after the simulated runtime has drained all runnable work. */
+  private def settled(body: IO[Unit] => IO[Unit]): IO[Unit] =
+    for
+      checkpoints <- Queue.unbounded[IO, Deferred[IO, Unit]]
+      stop <- Deferred[IO, Unit]
+      pause = Deferred[IO, Unit].flatMap(ack => checkpoints.offer(ack) *> ack.get)
+      clock <- TestControl.execute(IO.race(body(pause), stop.get).void)
+      _ <- Resource.make(IO.pure(clock))(_ => stop.complete(()).void *> clock.tickAll).use {
+        control =>
+          Monad[IO].tailRecM(()) { _ =>
+            control.tick *> checkpoints.tryTake.flatMap {
+              case Some(ack) => ack.complete(()).as(Left(()))
+              case None =>
+                control.results.flatMap {
+                  case Some(Outcome.Succeeded(()))  => IO.pure(Right(()))
+                  case Some(Outcome.Errored(cause)) => IO.raiseError(cause)
+                  case other =>
+                    IO(fail(s"controlled test did not reach its next checkpoint: $other"))
+                }
+            }
+          }
+      }
+    yield ()
 
   private val oldConfig = RootConfig(false, DiffusionMode.InitiatorOnly, Provenance.Outbound, false)
   private val nextConfig =
@@ -82,8 +108,72 @@ class PeerRootReloadSuite extends FailsOnUncaught:
       yield network
     }
 
+  test("initial static roots and governor progress do not wait for DNS lookup answers") {
+    settled { settle =>
+      for
+        entered <- Deferred[IO, Unit]
+        release <- Deferred[IO, Unit]
+        active <- Ref.of[IO, Int](0)
+        dns = new PeerDns[IO]:
+          def addresses(_query: DnsName) =
+            Resource.make(active.update(_ + 1))(_ => active.update(_ - 1)).use { _ =>
+              entered.complete(()).void *> release.get.as(
+                DnsAddressAnswer(
+                  Vector(DnsAddressRecord(ipv4"192.0.2.21", 900.seconds)),
+                  Vector.empty
+                )
+              )
+            }
+          def services(_query: DnsName) = IO.pure(Left(PeerDnsError.Lookup(Vector.empty)))
+        given Resource[IO, PeerDns[IO]] = Resource.pure[IO, PeerDns[IO]](dns)
+        _ <- running(roots(List(fixed -> nextConfig, cachedHost -> nextConfig)))
+          .use { network =>
+            for
+              beforeRun <- entered.tryGet
+              _ = assertEquals(beforeRun, None)
+              configured <- network.state.get
+              _ = assertEquals(configured.configuredRoots.keys.toSet, Set(fixed))
+              _ <- network.run.background.use { _ =>
+                for
+                  _ <- entered.get
+                  _ <- settle
+                  blocked <- network.state.get
+                  _ = assertEquals(blocked.localRoots.keys.toSet, Set(fixed))
+                  _ = assert(blocked.peers.contains(fixed))
+                  _ = assert(blocked.targets.known > 0)
+                  _ = assertEquals(GovernorState.invariant(blocked), Nil)
+                  pending <- active.get
+                  _ = assertEquals(pending, 1)
+                  _ <- release.complete(())
+                  _ <- settle
+                  resolved <- network.state.get
+                  _ = assertEquals(resolved.configuredRoots.keys.toSet, Set(fixed, cached))
+                  _ = assertEquals(resolved.localRoots.keys.toSet, Set(fixed, cached))
+                  _ = assertEquals(resolved.configuredRoots.config(cached), nextConfig)
+                  _ = assert(resolved.rootsGeneration > blocked.rootsGeneration)
+                  _ = assertEquals(GovernorState.invariant(resolved), Nil)
+                yield ()
+              }
+            yield ()
+          }
+          .timeout(1.second)
+        remaining <- active.get
+        _ = assertEquals(remaining, 0)
+      yield ()
+    }
+  }
+
+  test("resolver resource acquisition defects propagate unchanged") {
+    val cause = new IllegalStateException("resolver allocation defect")
+    given Resource[IO, PeerDns[IO]] = Resource.eval(IO.raiseError[PeerDns[IO]](cause))
+    running(roots(List(fixed -> oldConfig))).use(_ => IO.unit).attempt.map {
+      case Left(actual) => assert(actual eq cause)
+      case Right(())    => fail("resolver acquisition unexpectedly succeeded")
+    }
+  }
+
   test("reload installs static roots, kept DNS flags and valencies while new DNS is blocked") {
-    TestControl.executeEmbed {
+    settled { settle =>
       for
         entered <- Deferred[IO, Unit]
         active <- Ref.of[IO, Int](0)
@@ -116,7 +206,7 @@ class PeerRootReloadSuite extends FailsOnUncaught:
         _ <- running(initial).use { network =>
           network.run.background.use { _ =>
             for
-              _ <- IO.sleep(1.nanosecond)
+              _ <- settle
               _ <- network.reloadRoots(next).timeout(1.second)
               _ <- entered.get
               state <- network.state.get
@@ -144,7 +234,7 @@ class PeerRootReloadSuite extends FailsOnUncaught:
   }
 
   test("a DNS refresh completing after another reload cannot restore removed roots") {
-    TestControl.executeEmbed {
+    settled { settle =>
       for
         entered <- Deferred[IO, Unit]
         release <- Deferred[IO, Unit]
@@ -164,8 +254,7 @@ class PeerRootReloadSuite extends FailsOnUncaught:
         given Resource[IO, PeerDns[IO]] = Resource.pure[IO, PeerDns[IO]](dns)
         _ <- running(roots(List(fixed -> oldConfig))).use { network =>
           network.run.background.use { _ =>
-            for
-              _ <- IO.sleep(1.nanosecond)
+            (for
               _ <- network.reloadRoots(roots(List(pendingHost -> nextConfig))).timeout(1.second)
               _ <- entered.get
               _ <- network.reloadRoots(roots(List(moved -> nextConfig))).timeout(1.second)
@@ -173,13 +262,13 @@ class PeerRootReloadSuite extends FailsOnUncaught:
               _ = assertEquals(installed.configuredRoots.keys.toSet, Set(moved))
               _ <- release.complete(())
               _ <- returned.get
-              _ <- IO.sleep(1.nanosecond)
+              _ <- settle
               after <- network.state.get
               _ = assertEquals(after.rootsGeneration, installed.rootsGeneration)
               _ = assertEquals(after.configuredRoots.keys.toSet, Set(moved))
               _ = assert(!after.peers.contains(pending))
               _ = assertEquals(GovernorState.invariant(after), Nil)
-            yield ()
+            yield ()).guarantee(release.complete(()).void)
           }
         }
       yield ()
@@ -207,7 +296,6 @@ class PeerRootReloadSuite extends FailsOnUncaught:
         _ <- running(roots(List(fixed -> oldConfig))).use { network =>
           network.run.background.use { _ =>
             for
-              _ <- IO.sleep(1.nanosecond)
               _ <- network.reloadRoots(roots(List(pendingHost -> nextConfig))).timeout(1.second)
               _ <- oldEntered.get
               nextHost = SocketAddress[Host](host"replacement.example", port"3001")
@@ -231,7 +319,7 @@ class PeerRootReloadSuite extends FailsOnUncaught:
   }
 
   test("a reload caller can stop waiting without losing the owner's DNS refresh") {
-    TestControl.executeEmbed {
+    settled { settle =>
       for
         entered <- Deferred[IO, Unit]
         active <- Ref.of[IO, Int](0)
@@ -245,8 +333,8 @@ class PeerRootReloadSuite extends FailsOnUncaught:
         _ <- running(roots(List(fixed -> oldConfig))).use { network =>
           val next = roots(List(moved -> nextConfig, pendingHost -> nextConfig))
           for
-            // With the owner not running, virtual time drains the caller into its ack wait.
-            _ <- network.reloadRoots(next).background.use(_ => IO.sleep(1.nanosecond))
+            // With the owner not running, quiescence puts the caller in its ack wait.
+            _ <- network.reloadRoots(next).background.use(_ => settle)
             notLookedUp <- entered.tryGet
             _ = assertEquals(notLookedUp, None)
             _ <- network.run.background.use { _ =>
