@@ -1,0 +1,68 @@
+diff --git a/libs/cardano-ledger-conformance/cardano-ledger-conformance.cabal b/libs/cardano-ledger-conformance/cardano-ledger-conformance.cabal
+index 5a4d53a..5fccd14 100644
+--- a/libs/cardano-ledger-conformance/cardano-ledger-conformance.cabal
++++ b/libs/cardano-ledger-conformance/cardano-ledger-conformance.cabal
+@@ -168,6 +168,7 @@ test-suite tests
+     cardano-strict-containers,
+     constrained-generators,
+     containers,
++    data-default,
+     microlens,
+     microlens-mtl,
+     mtl,
+diff --git a/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway.hs b/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway.hs
+index c6f29c3..7a1c471 100644
+--- a/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway.hs
++++ b/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway.hs
+@@ -10,11 +10,22 @@
+ 
+ module Test.Cardano.Ledger.Conformance.Spec.Conway (spec) where
+ 
++import Data.Default (def)
++import Data.Word (Word64)
+ import Data.Map.Strict qualified as Map
++import Cardano.Ledger.BaseTypes (EpochNo (..), StrictMaybe (..))
++import Cardano.Ledger.Conway (ConwayEra)
++import Cardano.Ledger.Conway.Core (EraRule)
++import Cardano.Ledger.Conway.Governance
++import Cardano.Ledger.Shelley.LedgerState
++import Constrained.API (genFromSpec)
++import Control.State.Transition (TRC (..))
++import Lens.Micro ((&), (.~))
+ import Test.Cardano.Ledger.Conformance.ExecSpecRule.Conway (ConwayCertExecContext (..))
+ import Test.Cardano.Ledger.Conformance.Spec.Conway.Ratify qualified as Ratify
+ import Test.Cardano.Ledger.Conformance.Spec.Core
+ import Test.Cardano.Ledger.Constrained.Conway (genUtxoExecContext)
++import Test.Cardano.Ledger.Constrained.Conway.PParams (pparamsSpec)
+ import Test.Cardano.Ledger.Constrained.Conway.MiniTrace (
+   ConwayCertGenContext (..),
+   constrainedCert,
+@@ -37,6 +48,9 @@ spec = do
+         conformsToImplConstrained constrainedEnact $
+           \curEpoch _ _ _ -> pure curEpoch
+       Ratify.spec
++      prop "NEWEPOCH-lawful-same" $ conformsToImpl @"NEWEPOCH" @ConwayEra (genLawfulNewEpoch 0)
++      prop "NEWEPOCH-lawful-next" $ conformsToImpl @"NEWEPOCH" @ConwayEra (genLawfulNewEpoch 1)
++      prop "NEWEPOCH-lawful-skip" $ conformsToImpl @"NEWEPOCH" @ConwayEra (genLawfulNewEpoch 3)
+       xprop "EPOCH" $ conformsToImplConstrained_ constrainedEpoch
+       xprop "NEWEPOCH" $ conformsToImplConstrained_ constrainedEpoch
+     describe "Blocks transition graph" $ do
+@@ -60,3 +74,18 @@ spec = do
+       xprop "UTXOW" $ conformsToImplConstrained constrainedUtxo $ \_ _ _ _ -> genUtxoExecContext
+       xprop "LEDGER" $ conformsToImplConstrained constrainedUtxo $ \_ _ _ _ -> genUtxoExecContext
+       xprop "LEDGERS" $ conformsToImplConstrained constrainedUtxo $ \_ _ _ _ -> genUtxoExecContext
++
++-- Supplemental lawful no-action generator. Construct the native pending enactment
++-- from the same governance state; do not repair/filter the original trueSpec input.
++-- No reward update, no pools or proposals: snapshot/pool defaults use native
++-- nonzero sentinels. Same/next/skipped epoch signals cover all guard branches.
++genLawfulNewEpoch :: Word64 -> Gen ((), TRC (EraRule "NEWEPOCH" ConwayEra))
++genLawfulNewEpoch advance = do
++  params <- resize 10 (genFromSpec (pparamsSpec @ConwayEra))
++  epoch <- (`mod` 50001) <$> arbitrary
++  let gov0 = def & cgsCurPParamsL .~ params & cgsPrevPParamsL .~ params
++      ratify = def & rsEnactStateL .~ mkEnactState gov0
++      gov = gov0 & cgsDRepPulsingStateL .~ DRComplete def ratify
++      st = def & esLStateL . lsUTxOStateL . utxosGovStateL .~ gov
++      nes = def & nesELL .~ EpochNo epoch & nesEsL .~ st & nesRuL .~ SNothing
++  pure ((), TRC ((), nes, EpochNo (epoch + advance)))
