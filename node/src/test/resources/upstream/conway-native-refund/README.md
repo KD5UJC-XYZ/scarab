@@ -42,3 +42,11 @@ and its full native output is retained, but formal evaluation terminates the pro
 Scarab matches all three native outputs. This is a singleton payment batch, not multi-transaction
 LEDGERS coverage. The pinned formal UTXO adapter's fixed treasury and valid-script assumptions also
 remain limits; this payment uses no phase-2 scripts. No ledger rule or original generator is changed.
+
+## Later formal LEDGERS boundary repair (#270)
+
+The separate [repair corpus](../formal-ledgers-repair/README.md) retains a narrowly patched
+formal executable that converts foreign inputs using the existing conversion instances.
+It accepts this unchanged singleton and matches the native translated output. This does
+not alter the original SIGSEGV observation, manifests or CBOR above; the crashing process
+was the formal conformance adapter, not a running cardano-node.

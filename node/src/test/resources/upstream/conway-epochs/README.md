@@ -28,7 +28,8 @@ the original fixture and its failed comparison remain unchanged.
 Both remain bounded probes. EPOCH's constrained generator excludes incomplete DRep pulsers and
 limits enacted actions; NEWEPOCH's state specification is `trueSpec` and does not establish native
 state invariants. Larger explicitly sized probes fail in the upstream proposal constructor before
-producing a judgment. Lawful integration traces and broader coverage remain tracked by
-[K2 / #49](https://github.com/KD5UJC-XYZ/scarab/issues/49).
+producing a judgment. The separate [lawful NEWEPOCH corpus](../conway-lawful-newepoch/README.md)
+adds twelve native/formal full-state matches without modifying these original failed inputs.
+Broader generated-state campaigns are optional K2 roadmap follow-ups.
 
 Upstream sources are Apache-2.0; notices are retained under `fixtures/witness/licenses/`.

@@ -1,6 +1,6 @@
 # Upstream conformance adapters
 
-Status: current implementation and bounded evidence; [K2 / #49](https://github.com/KD5UJC-XYZ/scarab/issues/49) remains in progress.
+Status: current implementation and bounded evidence; the agreed risk-based v0.2 scope of [K2 / #49](https://github.com/KD5UJC-XYZ/scarab/issues/49) is complete. This is not whole-suite or every-interpreter equivalence.
 
 The Haskell implementations and their formal adapters are independent observations.
 A native acceptance, a formal acceptance, equality of their translated outputs, and a
@@ -222,7 +222,7 @@ exclusions. Native wiring uses response1 for both protocols; twelve unequal orig
 separately labelled local controls. A controlled overlap barrier and extra nonvacuity assertion ensure
 Scarab actually services both admitted lanes. Neither trace identity nor identical runtime scheduling
 is required. Original bytes, native verdicts, observed headers and executable/source provenance are
-retained; broader generator and transport coverage remains #49.
+retained; broader generator and transport campaigns are optional K2 follow-ups in the [roadmap](../roadmap.md).
 
 Local wire regressions complement the exported observations. `ChainSyncBatchSuite`
 requires all three requests to arrive before any response, then collects forward,
@@ -274,8 +274,9 @@ now executes the same formal computation successfully on the unchanged singleton
 and two dependent batches; accepted translated states compare equal. Two deliberate
 bad batches reject on both sides, with differing failure text retained explicitly.
 These repaired-executable observations do not relabel the original crash as a pass.
-Operational Mux fairness and timeout cleanup remain behavioral questions worth
-characterizing; reproducing exact Haskell schedules or timer internals is not the
-acceptance criterion. Final issue completion remains tracked by #49.
+The bounded operational fairness and timeout-cleanup checks above satisfy the
+agreed scope. Reproducing exact Haskell schedules or timer internals is not the
+acceptance criterion; broader seeds, action families and backend campaigns remain
+optional K2 roadmap follow-ups. Historical missing-state provenance is #129.
 No persisted native format is changed; maintained native
 snapshots remain V5. Raw upstream trace CBOR is not a native snapshot version.
