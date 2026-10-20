@@ -9,18 +9,20 @@ For every target (each `root` of models/src/main/cddl/models.conf, plus the gene
 tests exercise) it checks, against `cuddle gen` / `cuddle validate-cbor` / `cuddle format` of the vendored CDDL:
 
   a. terms cuddle generates (canonical, and "twiddled" with indefinite lengths and non-shortest integers) are
-     accepted by the generated decoder; canonical ones re-encode byte for byte
+     accepted by the generated decoder; declared-preserved rules re-encode byte for byte in both modes;
+     all normalized outputs independently validate against cuddle
   b. terms our CddlSampler generates are valid for the same rule according to cuddle
   c. cuddle's parse of every vendored file has the same rule names and generic arities as our parser
   d. every module (all rules, not only the roots) resolves in cuddle; our generator's unsupported rules are
-     exactly the allowlisted ones
+     absent for every non-generic pinned rule
 
-Known divergences live in models/cuddle-allowlist.tsv and are asserted: an unlisted divergence fails the run,
-and so does a listed one that no longer happens. The cuddle side runs in Docker (docker/cuddle.Dockerfile); the
+Scarab divergences fail the run. models/cuddle-allowlist.tsv is empty; known upstream CDDL/runtime
+correspondences are checked separately and do not waive a generated-codec failure. The cuddle side runs in Docker (docker/cuddle.Dockerfile); the
 generated codecs live on the JVM, so the Scala half is a Test main (CuddleCrossCheck) run through sbt. Everything
 here is standard library. Cuddle reads one self-contained CDDL file, so for each target this script writes the
 transitive closure of its rules from the vendored files, with module-qualified names (`;# import` pragmas resolved
-the way models.conf and the generator do); the text of every rule is upstream's, only identifiers are renamed.
+the way models.conf and the generator do). Validation uses the original rule text with renamed identifiers.
+Generation-only unsigned comparison adaptations are recorded explicitly, with original-schema boundary controls.
 """
 import argparse
 import collections
@@ -185,7 +187,7 @@ def file_name(target_id):
 
 
 def cuddle(args, timeout=120):
-    p = subprocess.run(["cuddle", *args], capture_output=True, text=True, timeout=timeout)
+    p = subprocess.run(["cuddle", *args], capture_output=True, text=True, timeout=timeout, env={**os.environ, "LC_ALL": "C.UTF-8"})
     return p.returncode, p.stdout, p.stderr
 
 
@@ -199,18 +201,33 @@ def do_job(job):
             rc, out, err = cuddle(["validate", job["file"]])
             return {**job, "rc": rc, "err": (out + err)[-600:]}
         if op == "gen":
-            terms, errors = [], []
-            for i in range(job["count"]):
-                args = ["gen", "-f", "hex", "--seed", str(job["seed"] + i), "--size", str(job["size"])]
+            terms, errors, non_results, seeds = [], [], [], []
+            attempts = 0
+            # This exact pinned-tool abort returns no term. Never resample a returned
+            # term or a decoder/validator failure; those remain conformance failures.
+            duplicate_abort = "cuddle: toCanonical: encountered a map with duplicate keys, which is not currently supported."
+            for i in range(job["count"] * 4):
+                if len(terms) == job["count"]:
+                    break
+                seed = job["seed"] + i
+                attempts += 1
+                args = ["gen", "-f", "hex", "--seed", str(seed), "--size", str(job["size"])]
                 if not job["twiddle"]:
                     args.append("--no-twiddle")
                 rc, out, err = cuddle([*args, job["rule"], job["file"]], timeout=job.get("timeout", 120))
                 line = out.strip().splitlines()[-1].strip() if out.strip() else ""
                 if rc == 0 and line:
                     terms.append(line)
+                    seeds.append(seed)
+                elif rc == 1 and err.startswith(duplicate_abort):
+                    non_results.append({"seed": seed, "attempt": attempts, "rc": rc, "error": err})
                 else:
-                    errors.append(f"seed {job['seed'] + i}: rc={rc} {err.strip()[-300:]}")
-            return {**job, "terms": terms, "errors": errors}
+                    errors.append(f"seed {seed}: rc={rc} {err.strip()[:1800]}")
+                    break
+            if len(terms) != job["count"]:
+                errors.append(f"generator produced {len(terms)}/{job['count']} terms in {attempts} attempts (budget {job['count'] * 4})")
+            return {**job, "terms": terms, "errors": errors, "attempts": attempts,
+                    "generated_seeds": seeds, "native_generator_non_results": non_results}
         if op == "validate":
             valid, invalid = 0, []
             for i, hx in enumerate(job["terms"]):
@@ -250,7 +267,76 @@ def sbt(args, command):
     sh([*shlex.split(args.sbt), f"models/Test/runMain {SBT_MAIN} {command}"])
 
 
-def build_inputs(work, modules, roots, targets):
+def generation_controls(text):
+    """Lower only unsigned .gt/.ne for Cuddle 1.8.1's generator, never its validator.
+
+    This tool version raises 'Controller not yet implemented' for these operators.
+    Each replacement intersects the named finite uint domain exactly. The original
+    schema remains the independent oracle, including boundary rejection controls.
+    Strings, bytes and comments are tokenized and cannot be rewritten as controls.
+    """
+    definitions = {name: re.sub(r";[^\n]*", "", body.split("=", 1)[1]).strip()
+                   for name, params, assign, body in chunk_rules(text) if not params and assign == "="}
+
+    def domain(name, seen=()):
+        if name == "uint":
+            return 0, (1 << 64) - 1
+        if name in seen or name not in definitions:
+            raise ValueError(f"cannot prove unsigned comparison domain of {name}")
+        body = definitions[name]
+        sized = re.fullmatch(r"uint\s+\.size\s+(\d+)", body)
+        if sized:
+            return 0, (1 << (8 * int(sized[1]))) - 1
+        less = re.fullmatch(r"uint\s+\.lt\s+(\d+)", body)
+        if less:
+            return 0, min((1 << 64) - 1, int(less[1]) - 1)
+        if re.fullmatch(r"[A-Za-z_][\w-]*", body):
+            return domain(body, (*seen, name))
+        raise ValueError(f"cannot prove unsigned comparison domain: {name} = {body}")
+
+    tokens = list(TOKEN.finditer(text))
+    replacements = []
+    for base, op, bound in zip(tokens, tokens[1:], tokens[2:]):
+        if base.lastgroup != "ident" or op.lastgroup != "ctrl" or op[0] not in (".gt", ".ne"):
+            continue
+        if bound.lastgroup != "num" or not bound[0].isdigit():
+            raise ValueError("generation adaptation requires an integer comparison bound")
+        if text[base.end():op.start()].strip() or text[op.end():bound.start()].strip():
+            continue
+        lo, hi = domain(base[0])
+        n = int(bound[0])
+        ranges = [(max(lo, n + 1), hi)] if op[0] == ".gt" else [(lo, min(hi, n - 1)), (max(lo, n + 1), hi)]
+        ranges = [(a, b) for a, b in ranges if a <= b]
+        if not ranges:
+            raise ValueError("cannot sample an empty comparison domain")
+        replacement = "(" + " / ".join(str(a) if a == b else f"{a}..{b}" for a, b in ranges) + ")"
+        replacements.append({"start": base.start(), "end": bound.end(), "expression": text[base.start():bound.end()],
+                             "replacement": replacement, "operator": op[0], "bound": n, "lower": lo, "upper": hi})
+    # Cuddle's generator emits a multi-term group for literal labelled enums.
+    # Expanding that enum into its exact integer choices affects generation only.
+    enum_pattern = re.compile(r'&\(\s*(?:"(?:\\.|[^"\\])*"\s*:\s*\d+\s*,?\s*)+\)')
+    protected = [(t.start(), t.end()) for t in tokens if t.lastgroup in ("comment", "string", "bytes")]
+    for match in enum_pattern.finditer(text):
+        if any(start <= match.start() < end for start, end in protected):
+            continue
+        choices = [int(value) for value in re.findall(r'"(?:\\.|[^"\\])*"\s*:\s*(\d+)', match[0])]
+        replacements.append({"start": match.start(), "end": match.end(), "expression": match[0],
+                             "replacement": "(" + " / ".join(map(str, choices)) + ")", "kind": "enum", "choices": choices})
+    replacements.sort(key=lambda r: r["start"])
+    normalized = text
+    for r in reversed(replacements):
+        normalized = normalized[:r["start"]] + r["replacement"] + normalized[r["end"]:]
+    return normalized, replacements
+
+
+def uint_hex(value):
+    if value < 24:
+        return bytes([value]).hex()
+    width = next(w for w in (1, 2, 4, 8) if value < 1 << (8 * w))
+    return bytes([24 + (1, 2, 4, 8).index(width)]).hex() + value.to_bytes(width, "big").hex()
+
+
+def build_inputs(work, modules, roots, targets, group_targets=()):
     """Write the closure files under work/cddl and return the jobs that need them."""
     read = lambda f: (CDDL_DIR / f).read_text()
     table = {m: module_rules(read, modules, m) for m in modules}
@@ -260,8 +346,13 @@ def build_inputs(work, modules, roots, targets):
     for tid in targets:
         mod, rule = tid.split(":", 1)
         path = cdir / (tid.replace(":", "__") + ".cddl")
-        path.write_text(closure(table, [(mod, rule)]))
-        files[tid] = (mangle(mod, rule), path)
+        content = closure(table, [(mod, rule)])
+        selected = mangle(mod, rule)
+        if tid in group_targets:
+            content = f"crosscheck__group_array = [{selected}]\n" + content
+            selected = "crosscheck__group_array"
+        path.write_text(content)
+        files[tid] = (selected, path)
     modfiles = {}
     for m, rules in table.items():
         path = cdir / f"module__{m}.cddl"
@@ -271,7 +362,11 @@ def build_inputs(work, modules, roots, targets):
 
 
 def probes(work, modules):
-    """Divergences that must keep happening: the bounded_bytes override (a 65-byte string is invalid upstream)."""
+    """Check the documented upstream total-size approximation and its bytes refinement.
+
+    Runtime chunk bounds are exercised separately by ConformanceRegressionSuite;
+    CDDL cannot express those bounds and is not used as a runtime oracle for them.
+    """
     out = []
     long_bytes = "58 41".replace(" ", "") + "ab" * 65  # a 65-byte string
     for m, files in modules.items():
@@ -285,6 +380,7 @@ def probes(work, modules):
             path = work / "cddl" / f"probe__{m}__{label}.cddl"
             path.write_text(closure({m: tbl}, [(m, "bounded_bytes")]))
             out.append({"module": m, "label": label, "file": path, "rule": mangle(m, "bounded_bytes"), "hex": long_bytes})
+            out.append({"module": m, "label": label + "-chunked", "file": path, "rule": mangle(m, "bounded_bytes"), "hex": "5f5840" + "ab" * 64 + "41abff"})
     return out
 
 
@@ -308,8 +404,11 @@ def run(args):
 
     sbt(args, f"export {args.work} {args.count} {args.seed}")
     targets = [l.split("\t")[0] for l in (work / "targets.tsv").read_text().splitlines() if l]
-    kinds = dict(l.split("\t")[:2] for l in (work / "targets.tsv").read_text().splitlines() if l)
-    table, files, modfiles = build_inputs(work, modules, roots, targets)
+    properties = {f[0]: (f[1], f[2] == "true") for l in (work / "targets.tsv").read_text().splitlines() if l for f in [l.split("\t")]}
+    group_targets = {f[0] for l in (work / "targets.tsv").read_text().splitlines() if l for f in [l.split("\t")] if f[3] == "group-array"}
+    kinds = {key: value[0] for key, value in properties.items()}
+    preserved = {key for key, value in properties.items() if value[1]}
+    table, files, modfiles = build_inputs(work, modules, roots, targets, group_targets)
     probe_list = probes(work, modules)
 
     jobs = []
@@ -319,13 +418,41 @@ def run(args):
     for m, p in modfiles.items():
         jobs.append({"op": "resolve", "file": to_container(p, work), "module": m})
     for tid, (rule, p) in files.items():
+        original = p.read_text()
+        adapted, controls = generation_controls(original)
+        generation_path = p
+        if controls:
+            generation_path = p.with_name(p.stem + "__generation.cddl")
+            generation_path.write_text(adapted)
+            for index, control in enumerate(controls):
+                control_path = p.with_name(p.stem + f"__control_{index}.cddl")
+                control_path.write_text(f"crosscheck__comparison = {control['expression']}\n" + original)
+                if control.get("kind") == "enum":
+                    witnesses = [(True, value) for value in control["choices"]] + [(False, max(control["choices"]) + 1)]
+                else:
+                    excluded = control["bound"]
+                    included = excluded + 1 if control["operator"] == ".gt" else (control["lower"] if excluded != control["lower"] else excluded + 1)
+                    if not control["lower"] <= excluded <= control["upper"] or not control["lower"] <= included <= control["upper"]:
+                        raise ValueError("comparison controls require in-domain positive and negative witnesses")
+                    witnesses = [(False, excluded), (True, included)]
+                for witness, (expected, value) in enumerate(witnesses):
+                    jobs.append({"op": "validate", "id": f"comparison:{tid}:{index}:{witness}:{expected}",
+                                 "rule": "crosscheck__comparison", "file": to_container(control_path, work),
+                                 "terms": [uint_hex(value)], "expected_valid": int(expected)})
         for mode, twiddle in (("exact", False), ("twiddle", True)):
-            jobs.append({"op": "gen", "id": tid, "mode": mode, "twiddle": twiddle, "rule": rule, "file": to_container(p, work),
+            jobs.append({"op": "gen", "id": tid, "mode": mode, "twiddle": twiddle, "rule": rule,
+                         "file": to_container(generation_path, work), "adapted_controls": controls,
                          "count": args.count, "seed": args.seed, "size": args.size, "timeout": args.timeout})
         terms = [l for l in (work / "ours" / file_name(tid)).read_text().splitlines() if l]
         jobs.append({"op": "validate", "id": tid, "rule": rule, "file": to_container(p, work), "terms": terms})
         # negative control: `false` is no valid item of any target, so a validator that accepts it checks nothing
         jobs.append({"op": "validate", "id": f"control:{tid}", "rule": rule, "file": to_container(p, work), "terms": ["f4"]})
+    greedy_path = work / "greedy.cddl"
+    for hex_term, expected in (("820102", 0), ("83010203", 1), ("8401020304", 0)):
+        jobs.append({"op": "validate", "id": f"greedy-control:{hex_term}", "rule": "r",
+                     "file": to_container(greedy_path, work), "terms": [hex_term], "expected_valid": expected})
+    jobs.append({"op": "validate", "id": "greedy-sampler", "rule": "r", "file": to_container(greedy_path, work),
+                 "terms": (work / "ours" / "greedy-control.hex").read_text().splitlines(), "expected_valid": args.count})
     for pr in probe_list:
         jobs.append({"op": "validate", "id": f"probe:{pr['module']}:{pr['label']}", "rule": pr["rule"],
                      "file": to_container(pr["file"], work), "terms": [pr["hex"]]})
@@ -346,11 +473,26 @@ def run(args):
             (d / file_name(r["id"])).write_text("".join(t + "\n" for t in r["terms"]))
     sbt(args, f"check {args.work}")
 
-    failures = judge(work, results, targets, kinds, args)
+    normalized_jobs = []
+    for tid, (rule, path) in files.items():
+        for mode in ("exact", "twiddle"):
+            terms = [line for line in (work / "normalized" / mode / file_name(tid)).read_text().splitlines() if line]
+            generated = next(r for r in results if r["op"] == "gen" and r["id"] == tid and r["mode"] == mode)
+            normalized_jobs.append({"op": "validate", "id": f"generated:{mode}:{tid}",
+                                    "rule": rule, "file": to_container(path, work), "terms": generated["terms"]})
+            normalized_jobs.append({"op": "validate", "id": f"normalized:{mode}:{tid}",
+                                    "rule": rule, "file": to_container(path, work), "terms": terms})
+    normalized_plan = {"jobs": normalized_jobs, "parallel": args.jobs, "results": "/work/normalized-results.json"}
+    (work / "normalized-plan.json").write_text(json.dumps(normalized_plan))
+    sh(["docker", "run", "--rm", "--user", uid, "--cpus", str(args.jobs), "-v", f"{work}:/work", "-v", f"{CDDL_DIR}:/cddl:ro",
+        "-v", f"{pathlib.Path(__file__).resolve()}:/crosscheck.py:ro", "--entrypoint", "python3", args.image,
+        "-I", "/crosscheck.py", "worker", "/work/normalized-plan.json"])
+    results.extend(json.loads((work / "normalized-results.json").read_text()))
+    failures = judge(work, results, targets, kinds, args, preserved)
     sys.exit(1 if failures else 0)
 
 
-def judge(work, results, targets, kinds, args):
+def judge(work, results, targets, kinds, args, preserved=()):
     """Compare everything with the allowlist. Returns the list of failures (empty: the cross-check passed)."""
     allow = read_allowlist(ALLOWLIST.read_text())
     listed = {(k, s): why for k, s, why in allow}
@@ -368,31 +510,45 @@ def judge(work, results, targets, kinds, args):
 
     decode = {}
     for line in (work / "decode.tsv").read_text().splitlines():
-        f = (line.split("\t") + [""] * 9)[:9]
-        decode[(f[0], f[1])] = tuple(int(x) for x in f[2:7]) + (f[7], f[8])
+        f = (line.split("\t") + [""] * 8)[:8]
+        decode[(f[0], f[1])] = tuple(int(x) for x in f[2:6]) + (f[6], f[7])
     gens = {(r["id"], r["mode"]): r for r in results if r["op"] == "gen"}
     vals = {r["id"]: r for r in results if r["op"] == "validate"}
 
-    report = {"targets": {}}
+    report = {"targets": {}, "generation_adaptations": {}, "native_generator_non_results": {}}
+    for r in results:
+        if "expected_valid" in r and (r["valid"] != r["expected_valid"] or r.get("timeout")):
+            failures.append(f"original-schema comparison control failed: {r}")
+        if r["op"] == "gen" and r.get("adapted_controls"):
+            report["generation_adaptations"][r["id"]] = r["adapted_controls"]
+        if r["op"] == "gen":
+            report["native_generator_non_results"][f"{r['id']}:{r['mode']}"] = {
+                "attempts": r.get("attempts", len(r["terms"])), "generated_seeds": r.get("generated_seeds", []),
+                "aborts": r.get("native_generator_non_results", [])}
     rows = []
     for tid in targets:
         row = {}
         for mode in ("exact", "twiddle"):
             g = gens[(tid, mode)]
             if g["errors"]:
-                diverge("cuddle-gen", tid, f"{mode}: {len(g['errors'])} of {g['count']} failed, e.g. {g['errors'][0]}")
-            total, accepted, exact, stable, floats, reject, inexact = decode.get((tid, mode), (0, 0, 0, 0, 0, "", ""))
+                diverge("cuddle-gen", tid, f"{mode}: generation failed: {g['errors'][0]}")
+            total, accepted, exact, stable, reject, inexact = decode.get((tid, mode), (0, 0, 0, 0, "", ""))
             if total == 0 or total != len(g["terms"]):
                 failures.append(f"{tid} {mode}: {total} terms checked, cuddle generated {len(g['terms'])}")
-            if floats:
-                diverge("decode-float", tid, f"{mode}: {floats} of {total} terms hold a float, which xyz.kd5ujc.scarab.codec cannot represent")
-            if accepted + floats < total:
-                diverge("decode-reject", tid, f"{mode}: {accepted + floats}/{total} accepted; first rejected {reject}")
+            if accepted < total:
+                diverge("decode-reject", tid, f"{mode}: {accepted}/{total} accepted; first rejected {reject}")
             if stable < accepted:
                 diverge("decode-unstable", tid, f"{mode}: {stable}/{accepted} re-encode to a stable value; first {reject}")
-            if mode == "exact" and exact < accepted:
+            if tid in preserved and exact < accepted:
                 diverge("not-byte-exact", tid, f"{exact}/{accepted} re-encode byte-exactly; first {inexact}")
-            row[mode] = {"terms": total, "accepted": accepted, "byte_exact": exact, "stable": stable, "floats": floats}
+            generated_valid = vals.get(f"generated:{mode}:{tid}", {"valid": 0, "invalid": []})
+            if generated_valid["valid"] != total or generated_valid["invalid"]:
+                failures.append(f"{tid} {mode}: generated terms failed original-schema independent validation: {generated_valid}")
+            normalized = vals.get(f"normalized:{mode}:{tid}", {"valid": 0, "invalid": []})
+            if normalized["valid"] != accepted or normalized["invalid"]:
+                failures.append(f"{tid} {mode}: normalized writer output failed independent validation: {normalized}")
+            row[mode] = {"terms": total, "accepted": accepted, "byte_exact": exact, "stable": stable,
+                         "preserved": tid in preserved, "normalized_valid": normalized["valid"]}
         if vals[f"control:{tid}"]["valid"]:
             failures.append(f"{tid}: cuddle validated `false` against the rule, so its verdicts mean nothing")
         v = vals[tid]
@@ -432,31 +588,31 @@ def judge(work, results, targets, kinds, args):
             diverge("cuddle-resolve", r["module"], r["err"].strip()[-300:])
     print(f"modules cuddle resolves completely: {sum(1 for r in resolved if r['rc'] == 0)} of {len(resolved)}")
 
-    # rules our generator cannot produce: exactly the allowlisted set
+    # Every non-generic pinned rule must generate; no historical exclusions remain.
     have = {tuple(l.split("\t")[:2]): l.split("\t")[2] for l in (work / "unsupported.tsv").read_text().splitlines() if l}
     for (m, n), why in sorted(have.items()):
         diverge("unsupported", f"{m}:{n}", why)
     print(f"rules our generator cannot produce on their own: {len(have)}")
     report["unsupported"] = len(have)
 
-    # the bounded_bytes override: upstream rejects a 65-byte string, the overridden rule must accept it
+    # Both definite and chunked 65-byte values expose the CDDL total-size approximation.
     for r in results:
         if r["op"] == "validate" and r["id"].startswith("probe:"):
             _, module, label = r["id"].split(":")
             accepted = r["valid"] == 1
-            if label == "upstream":
+            if label.startswith("upstream"):
                 if accepted:
-                    failures.append(f"override {module}:bounded_bytes: upstream now accepts a 65-byte string, drop the override")
+                    failures.append(f"override {module}:bounded_bytes: upstream now accepts a 65-byte value; re-evaluate the refinement")
                 else:
-                    diverge("override", f"{module}:bounded_bytes", "upstream rejects a 65-byte string (the chain uses chunked strings)")
+                    notes.append(f"checked upstream correspondence {module}:bounded_bytes: the schema's total-size bound differs from released chunk limits")
             elif not accepted:
-                failures.append(f"override {module}:bounded_bytes: the overridden rule does not accept a 65-byte string")
+                failures.append(f"override {module}:bounded_bytes: the refined rule does not accept a 65-byte value")
 
     for (k, s), why in listed.items():
         if (k, s) not in used:
             failures.append(f"stale allowlist entry `{k} {s}` ({why}): the divergence no longer happens")
 
-    print(f"\nallowlisted divergences seen ({len(notes)}):")
+    print(f"\nchecked upstream correspondences ({len(notes)}):")
     for n in notes:
         print("  ", n)
     (work / "report.json").write_text(json.dumps(report, indent=1))
@@ -466,7 +622,7 @@ def judge(work, results, targets, kinds, args):
         for f in failures:
             print("  FAIL", f)
     else:
-        print(f"cross-check passed: every divergence is allowlisted and asserted ({len(used)} entries)")
+        print(f"cross-check passed: no Scarab divergences; {len(used)} exemptions")
     return failures
 
 

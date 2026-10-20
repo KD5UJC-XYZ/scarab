@@ -232,7 +232,7 @@ private final class PreparedEmitter(cfg: Config, schema: Schema, reached: Emitte
   }
 
   private val reservedFieldNames =
-    Set("xs", "node", "out", "a", "parts", "w", "spec", "all", "from", "fresh")
+    Set("xs", "node", "out", "a", "parts", "w", "spec", "all", "from", "fresh", "next")
 
   private def fieldBase(t: RT): Option[String] =
     @scala.annotation.tailrec
@@ -272,50 +272,46 @@ private final class PreparedEmitter(cfg: Config, schema: Schema, reached: Emitte
       hint: String
   ): Build[Vector[ArrItem]] =
     es.zipWithIndex
-      .foldLeftM((Set.empty[String], false, Vector.empty[ArrItem])) {
-        case ((used, sawOptional, items), (e, idx)) =>
-          e.value match
-            case v if literalCode(v).isDefined && e.occ.isOnce =>
-              val (check, write) = literalCode(v).get
-              pure((used, sawOptional, items :+ ArrItem.Literal(check, write)))
-            case RT.GroupRef(g) =>
-              if !e.occ.isOnce then unsupported(ctx, UnsupportedFeature.RepeatedGroupReference)
-              else
-                val (name, names) =
-                  uniq(e.label.map(camel).orElse(fieldBase(e.value)).getOrElse("group"), used)
-                refName(g, o).map(gn =>
-                  (names, sawOptional, items :+ ArrItem.Group(FieldInfo(name, gn, gn, name), gn))
+      .foldLeftM((Set.empty[String], Vector.empty[ArrItem])) { case ((used, items), (e, idx)) =>
+        e.value match
+          case v if literalCode(v).isDefined && e.occ.isOnce =>
+            val (check, write) = literalCode(v).get
+            pure((used, items :+ ArrItem.Literal(check, write)))
+          case RT.GroupRef(g) =>
+            if !e.occ.isOnce then unsupported(ctx, UnsupportedFeature.RepeatedGroupReference)
+            else
+              val (name, names) =
+                uniq(e.label.map(camel).orElse(fieldBase(e.value)).getOrElse("group"), used)
+              refName(g, o)
+                .map(gn => (names, items :+ ArrItem.Group(FieldInfo(name, gn, gn, name), gn)))
+          case v =>
+            if !(e.occ.isOnce || e.occ.isOptional) then
+              unsupported(ctx, UnsupportedFeature.FixedArrayOccurrence(e.occ))
+            else
+              val configured = cfg.fields.get((q, idx.toString))
+              val (name, names) = uniq(
+                configured.orElse(e.label.map(camel)).orElse(fieldBase(v)).getOrElse("value"),
+                used
+              )
+              val path = e.label
+                .orElse(v match
+                  case RT.Ref(r) => Some(r.name)
+                  case _         => None)
+                .getOrElse(name)
+              tc(v, hint + pascal(name), o, ctx).map { t =>
+                val item = ArrItem.Field(
+                  FieldInfo(
+                    name,
+                    if e.occ.isOptional then s"Option[${t.tpe}]" else t.tpe,
+                    t.codec,
+                    path
+                  ),
+                  e.occ.isOptional
                 )
-            case v =>
-              if !(e.occ.isOnce || e.occ.isOptional) then
-                unsupported(ctx, UnsupportedFeature.FixedArrayOccurrence(e.occ))
-              else if !e.occ.isOptional && sawOptional then
-                unsupported(ctx, UnsupportedFeature.RequiredAfterOptional)
-              else
-                val configured = cfg.fields.get((q, idx.toString))
-                val (name, names) = uniq(
-                  configured.orElse(e.label.map(camel)).orElse(fieldBase(v)).getOrElse("value"),
-                  used
-                )
-                val path = e.label
-                  .orElse(v match
-                    case RT.Ref(r) => Some(r.name)
-                    case _         => None)
-                  .getOrElse(name)
-                tc(v, hint + pascal(name), o, ctx).map { t =>
-                  val item = ArrItem.Field(
-                    FieldInfo(
-                      name,
-                      if e.occ.isOptional then s"Option[${t.tpe}]" else t.tpe,
-                      t.codec,
-                      path
-                    ),
-                    e.occ.isOptional
-                  )
-                  (names, sawOptional || e.occ.isOptional, items :+ item)
-                }
+                (names, items :+ item)
+              }
       }
-      .map(_._3)
+      .map(_._2)
 
   private def mapItems(
       es: Vector[REntry],
@@ -403,9 +399,13 @@ private final class PreparedEmitter(cfg: Config, schema: Schema, reached: Emitte
         opaque("Int", s"rt.Codec.intIn(${intLits(alts).get.mkString(", ")})")
       case RT.Prim(PrimKind.Uint)                         => opaque("BigInt", "rt.Codec.uint")
       case RT.Prim(PrimKind.Int) | RT.Prim(PrimKind.Nint) => opaque("BigInt", "rt.Codec.int")
-      case RT.Prim(PrimKind.Bytes)                        => opaque("rt.Bytes", "rt.Codec.bytes")
-      case RT.Prim(PrimKind.Text)                         => opaque("String", "rt.Codec.text")
-      case RT.Prim(PrimKind.Bool)                         => opaque("Boolean", "rt.Codec.bool")
+      case RT.Prim(PrimKind.Bytes) =>
+        opaque(
+          "rt.Bytes",
+          cfg.chunks.get(q).fold("rt.Codec.bytes")(limit => s"rt.Codec.chunkedBytes($limit)")
+        )
+      case RT.Prim(PrimKind.Text)       => opaque("String", "rt.Codec.text")
+      case RT.Prim(PrimKind.Bool)       => opaque("Boolean", "rt.Codec.bool")
       case RT.IntRange(lo, hi)          => val (tpe, expr) = intRepr(lo, hi); opaque(tpe, expr)
       case RT.LitInt(n) if n.isValidInt => opaque("Int", s"rt.Codec.intIn($n)")
       case RT.SizedBytes(lo, hi)        => opaque("rt.Bytes", s"rt.Codec.bytesSized($lo, $hi)")
@@ -502,41 +502,49 @@ private final class PreparedEmitter(cfg: Config, schema: Schema, reached: Emitte
       build: String,
       node: String,
       ind: String,
-      withXs: Boolean = true
+      withXs: Boolean = true,
+      from: String = "0",
+      finish: Option[String] = None
   ): String =
-    val fixed = items.count {
-      case ArrItem.Literal(_, _) | ArrItem.Field(_, false) => true
-      case _                                               => false
-    }
-    val groups = items.collect { case ArrItem.Group(_, g) => s"$g.Arity" }
-    val optional = items.count { case ArrItem.Field(_, true) => true; case _ => false }
-    val minExpr = (if fixed > 0 || groups.isEmpty then fixed.toString else "") +
-      groups.map(g => (if fixed > 0 then " + " else "") + g).mkString
-    val start =
-      Vector("for") ++ (if !withXs then Vector.empty
-                        else
-                          Vector(
-                            if optional == 0 then s"  xs <- rt.Arr.exact($node, $minExpr)"
-                            else s"  xs <- rt.Arr.between($node, $minExpr, $minExpr + $optional)"
-                          ))
-    def next(p: String, by: String): String =
-      if isNumber(p) && isNumber(by) then (p.toInt + by.toInt).toString else s"$p + $by"
-    val (_, body) = items.foldLeft(("0", Vector.empty[String])) { case ((p, acc), item) =>
-      val (line, by) = item match
-        case ArrItem.Literal(check, _) =>
-          val at = if isNumber(p) then quote(s"[$p]") else s"""s"[$${$p}]""""
-          (s"  _ <- ${check.replace("@", p)}.at($at)", "1")
-        case ArrItem.Field(f, false) =>
-          (s"  ${f.name} <- ${f.codec}.decode(xs($p)).at(${quote(f.path)})", "1")
+    def sum(terms: Vector[String]): String = if terms.isEmpty then "0" else terms.mkString(" + ")
+    def bound(maximum: Boolean): String = sum(items.map {
+      case ArrItem.Group(_, g)    => s"$g.${if maximum then "MaxArity" else "MinArity"}"
+      case ArrItem.Field(_, true) => if maximum then "1" else "0"
+      case _                      => "1"
+    })
+    val fieldNames = fieldsOf(Shape.Arr(items)).map(_.name).toSet
+    def position(index: Int): String =
+      Iterator
+        .from(0)
+        .map(n => s"position$index" + (if n == 0 then "" else "_" + n))
+        .find(name => !fieldNames(name))
+        .getOrElse(s"position${index}_")
+    val (end, positioned) =
+      items.zipWithIndex.foldLeft((from, Vector.empty[(ArrItem, String, String)])) {
+        case ((p, acc), (item, index)) =>
+          val after = item match
+            case ArrItem.Field(_, true) | ArrItem.Group(_, _) => position(index)
+            case _ => if isNumber(p) then (p.toInt + 1).toString else s"$p + 1"
+          (after, acc :+ ((item, p, after)))
+      }
+    val completed = finish.fold(s"rt.Arr.end(xs, $end).map(_ => $build)")(f => s"$f($build, $end)")
+    val expression = positioned.foldRight(completed) { case ((item, p, after), tail) =>
+      val nested = tail.linesIterator.map("  " + _).mkString("\n")
+      item match
         case ArrItem.Field(f, true) =>
-          (
-            s"  ${f.name} <- (if xs.size > $p then ${f.codec}.decode(xs($p)).map(Some(_)).at(${quote(f.path)}) else rt.noValue)",
-            "1"
-          )
-        case ArrItem.Group(f, g) => (s"  ${f.name} <- $g.decodeFrom(xs, $p)", s"$g.Arity")
-      (next(p, by), acc :+ line)
+          s"rt.Arr.optional(xs, $p, ${f.codec}, ${quote(f.path)}) { (${f.name}, $after) =>\n$nested\n}"
+        case ArrItem.Field(f, false) =>
+          s"rt.Arr.at(xs, $p)(${f.codec}.decode).at(${quote(f.path)}).flatMap { ${f.name} =>\n$nested\n}"
+        case ArrItem.Literal(check, _) =>
+          val checked = check.replace("xs(@)", "value").replace("@", p)
+          s"rt.Arr.at(xs, $p)(value => $checked).flatMap { _ =>\n$nested\n}"
+        case ArrItem.Group(f, g) =>
+          s"$g.decodeWith(xs, $p) { (${f.name}, $after) =>\n$nested\n}"
     }
-    lines(start ++ body :+ s"yield $build", ind)
+    if withXs then
+      val prefix = s"rt.Arr.between($node, ${bound(false)}, ${bound(true)}).flatMap { xs =>"
+      lines(Vector(prefix) ++ expression.linesIterator.map("  " + _).toVector :+ "}", ind)
+    else lines(expression.linesIterator.toVector, ind)
 
   private def renderArrayEncode(
       items: Vector[ArrItem],
@@ -550,7 +558,7 @@ private final class PreparedEmitter(cfg: Config, schema: Schema, reached: Emitte
         val fixed = items.count {
           case ArrItem.Literal(_, _) | ArrItem.Field(_, false) => true; case _ => false
         }
-        val groups = items.collect { case ArrItem.Group(_, g) => s"$g.Arity" }
+        val groups = items.collect { case ArrItem.Group(f, g) => s"$g.arity(${acc(f)})" }
         val opts = items.collect { case ArrItem.Field(f, true) =>
           s"(if ${acc(f)}.isDefined then 1 else 0)"
         }
@@ -710,10 +718,17 @@ private final class PreparedEmitter(cfg: Config, schema: Schema, reached: Emitte
           )
       case Decl.GroupStruct(_, name, items, o) =>
         val fields = fieldsOf(Shape.Arr(items))
-        val arity = items
+        def arity(maximum: Boolean): String = items
           .map {
-            case ArrItem.Group(_, g)    => s"$g.Arity"
-            case ArrItem.Field(_, true) => "0"
+            case ArrItem.Group(_, g)    => s"$g.${if maximum then "MaxArity" else "MinArity"}"
+            case ArrItem.Field(_, true) => if maximum then "1" else "0"
+            case _                      => "1"
+          }
+          .mkString(" + ")
+        val actual = items
+          .map {
+            case ArrItem.Group(f, g)    => s"$g.arity(a.${f.name})"
+            case ArrItem.Field(f, true) => s"(if a.${f.name}.isDefined then 1 else 0)"
             case _                      => "1"
           }
           .mkString(" + ")
@@ -727,12 +742,21 @@ private final class PreparedEmitter(cfg: Config, schema: Schema, reached: Emitte
         ) + hoistLines(o, owners) +
           lines(
             Vector(
-              s"  val Arity: Int = $arity",
-              s"  def decodeFrom(all: Vector[rt.Node], from: Int): rt.Decoded[$name] =",
-              s"    val xs = all.slice(from, from + Arity)"
+              s"  val MinArity: Int = ${arity(false)}",
+              s"  val MaxArity: Int = ${arity(true)}",
+              s"  def arity(a: $name): Int = $actual",
+              s"  def decodeWith[A](xs: Vector[rt.Node], from: Int)(next: ($name, Int) => rt.Decoded[A]): rt.Decoded[A] ="
             )
           ) +
-          renderArrayDecode(items, s"$name(${args(fields)})", "node", "    ", withXs = false) +
+          renderArrayDecode(
+            items,
+            s"$name(${args(fields)})",
+            "node",
+            "    ",
+            withXs = false,
+            from = "from",
+            finish = Some("next")
+          ) +
           lines(Vector(s"  def encodeInto(a: $name, out: rt.Writer): Unit =")) +
           renderArrayEncode(items, f => s"a.${f.name}", "    ", head = false)
       case Decl.Enum(_, name, cases, o) =>
@@ -799,7 +823,7 @@ private final class PreparedEmitter(cfg: Config, schema: Schema, reached: Emitte
     loop(List(d), Vector.empty)
 
   def generate(): Either[GenError, Map[String, String]] =
-    val unreachable = (cfg.preserve ++ cfg.cases.keySet).find(q =>
+    val unreachable = (cfg.preserve ++ cfg.cases.keySet ++ cfg.chunks.keySet).find(q =>
       !reached.seen(q) && q.module.nonEmpty && schema.lookup(q).isDefined
     )
     val build = unreachable match

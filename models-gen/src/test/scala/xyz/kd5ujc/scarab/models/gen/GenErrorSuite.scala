@@ -66,6 +66,15 @@ class GenErrorSuite extends munit.FunSuite:
     Files.delete(dir)
   }
 
+  test("an empty integer domain is rejected by sampling as a typed failure") {
+    val s =
+      schema(Ast.Ty.Ctrl(Ast.Ty.Name("uint", Vector.empty), "lt", Ast.Ty.Literal(Ast.Lit.IntL(0))))
+    assertEquals(
+      new CddlSampler(s).sample(QName("t", "r"), new Random(1)),
+      Left(GenError.EmptyIntegerDomain(1, 0))
+    )
+  }
+
   test("unsupported controls retain syntax and are returned through every generator boundary") {
     val s = schema(
       Ast.Ty.Ctrl(Ast.Ty.Name("text", Vector.empty), "regexp", Ast.Ty.Literal(Ast.Lit.TextL("x+")))
@@ -227,7 +236,7 @@ class GenErrorSuite extends munit.FunSuite:
     }
   }
 
-  test("every pinned generated source is byte-for-byte equal to the pre-migration output") {
+  test("every configured generated source matches the reviewed conformance output snapshot") {
     val dir = Vector(Paths.get("models/src/main/cddl"), Paths.get("../models/src/main/cddl"))
       .find(Files.isDirectory(_))
       .getOrElse(fail("cddl directory not found"))

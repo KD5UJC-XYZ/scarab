@@ -7,8 +7,9 @@ import scala.util.control.NonFatal
 import DecodeError.Kind
 
 /** A CBOR codec for one model type. Decoding works on the byte-preserving `Node` tree of
-  * `xyz.kd5ujc.scarab.codec` and reports typed, located errors; encoding is canonical (shortest
-  * forms, definite lengths) except where a type declares that its original bytes are preserved.
+  * `xyz.kd5ujc.scarab.codec` and reports typed, located errors. Structured writers use shortest
+  * forms, definite containers and schema map order; CDDL maps do not require key order. Opaque
+  * nodes and declared-preserved values retain original bytes, and byte strings may require chunks.
   */
 trait Codec[A]:
   def decode(node: Node): Decoded[A]
@@ -45,7 +46,8 @@ trait Codec[A]:
     w.result
 
 object Codec:
-  val DefaultLimits: Cbor.Limits = Cbor.Limits()
+  // Generic CDDL `any` includes floating and simple values; wire decoders choose their own policy.
+  val DefaultLimits: Cbor.Limits = Cbor.Limits(allowFloats = true, allowSimpleValues = true)
 
   /** The violation of `constraint` by `actual`, when `violated`. */
   def refuse(
@@ -66,6 +68,7 @@ object Codec:
     case Value.Tag(t, _)     => s"tag $t"
     case Value.Bool(_)       => "boolean"
     case Value.Null          => "null"
+    case Value.Simple(n)     => s"simple value $n"
     case Value.Float(_, w)   => s"float ($w)"
 
   def mismatch(expected: String, n: Node): DecodeError =
@@ -180,6 +183,26 @@ object Codec:
       refuse(len < lo || len > hi, "text string", s"size $what", a)
 
   val bytes: Codec[Bytes] = bytesSized(0, Int.MaxValue)
+
+  /** A byte string whose definite chunks each fit `limit`, matching Plutus `decodeData`. The syntax
+    * decoder has already checked framing; this check uses the original chunk heads.
+    */
+  def chunkedBytes(limit: Int): Codec[Bytes] = new Codec[Bytes]:
+    def decode(n: Node): Decoded[Bytes] = n.value match
+      case Value.ByteString(value) if xyz.kd5ujc.scarab.codec.ByteStringChunks.within(n, limit) =>
+        Right(value)
+      case Value.ByteString(value) =>
+        Left(DecodeError.at(n, Kind.BadSize(s"chunks <= $limit", value.size.toLong)))
+      case _ => Left(mismatch("byte string", n))
+
+    def encode(value: Bytes, out: Writer): Unit =
+      if value.size <= limit then out.bytes(value)
+      else
+        out.raw(xyz.kd5ujc.scarab.codec.Bytes(Vector(0x5f.toByte)))
+        (0 until value.size by limit).foreach(at =>
+          out.bytes(value.slice(at, (at + limit).min(value.size)))
+        )
+        out.break()
 
   def bytesSized(lo: Int, hi: Int): Codec[Bytes] = new Codec[Bytes]:
     private val what = if lo == hi then lo.toString else s"$lo..$hi"
@@ -315,6 +338,36 @@ object Lit:
     case _          => Left(Codec.mismatch("null", n))
 
 object Arr:
+  def at[A](xs: Vector[Node], position: Int)(decode: Node => Decoded[A]): Decoded[A] =
+    xs.lift(position)
+      .toRight(
+        DecodeError(
+          Kind.BadArity(s"at least ${position + 1}", xs.size),
+          Nil,
+          xs.lastOption.fold(0)(_.offset)
+        )
+      )
+      .flatMap(decode)
+
+  def end(xs: Vector[Node], position: Int): Decoded[Unit] =
+    Either.cond(
+      position == xs.size,
+      (),
+      DecodeError(Kind.BadArity(position.toString, xs.size), Nil, xs.lastOption.fold(0)(_.offset))
+    )
+
+  /** CDDL occurrences are greedy (RFC 8610, Appendix A): a matching member is consumed even when
+    * the enclosing suffix subsequently fails.
+    */
+  def optional[A, B](xs: Vector[Node], position: Int, codec: Codec[A], path: String)(
+      next: (Option[A], Int) => Decoded[B]
+  ): Decoded[B] =
+    if position >= xs.size then next(None, position)
+    else
+      at(xs, position)(codec.decode).at(path) match
+        case Right(value) => next(Some(value), position + 1)
+        case Left(_)      => next(None, position)
+
   def exact(n: Node, size: Int): Decoded[Vector[Node]] = n.value match
     case Value.Arr(xs) if xs.size == size => Right(xs)
     case Value.Arr(xs) => Left(DecodeError.at(n, Kind.BadArity(size.toString, xs.size)))

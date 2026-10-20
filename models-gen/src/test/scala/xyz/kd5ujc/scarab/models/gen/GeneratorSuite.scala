@@ -61,6 +61,19 @@ class GeneratorSuite extends munit.FunSuite:
     assertEquals(resolved(QName("byron", "u16")).body, RuleBody.Type(RT.IntRange(0, 65535)))
   }
 
+  test("named unsigned comparison controls intersect the original finite domain") {
+    assertEquals(resolved(QName("features", "above_two")).body, RuleBody.Type(RT.IntRange(3, 255)))
+    assertEquals(
+      resolved(QName("features", "except_four")).body,
+      RuleBody.Type(RT.Choice(Vector(RT.IntRange(0, 3), RT.IntRange(5, 255))))
+    )
+    val out = generateFrom(
+      "small = uint .size 1\nr = [small .ge 2, small .lt 3, small .le 4]\n",
+      "root t:r\n"
+    )
+    assert(out.isRight, out.toString)
+  }
+
   test(
     "the RFC 8610 prelude names that cuddle's postlude defines resolve (found by the cross-check)"
   ) {
@@ -147,7 +160,8 @@ class GeneratorSuite extends munit.FunSuite:
           roots = Vector(q),
           preserve = Set.empty,
           external = Set.empty,
-          cases = Map.empty
+          cases = Map.empty,
+          chunks = Map.empty
         )
         val result = new Emitter(schema, single).generate().left.toOption
         result match
@@ -169,7 +183,7 @@ class GeneratorSuite extends munit.FunSuite:
         .mkString("unsupported features by frequency:\n", "\n", "")
     )
     println(s"total: $totalOk of $total non-generic rules")
-    assert(totalOk * 100 >= total * 50, s"only $totalOk of $total rules generate")
+    assertEquals(totalOk, total, s"every concrete pinned rule must generate; failures: $reasons")
   }
 
   test("name clashes between rules are reported") {

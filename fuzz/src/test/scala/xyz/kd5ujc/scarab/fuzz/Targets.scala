@@ -47,10 +47,14 @@ object Targets:
     Corpus.tricky ++ Corpus.blocks ++ Corpus.headerEnvelopes.take(10) ++ Corpus.networkFixtures ++
       Corpus.sampled("conway:block", 10) ++ Corpus.sampled("conway:plutus_data", 30)
 
-  private def cbor(name: String, limits: Cbor.Limits): Target =
+  private def cbor(
+      name: String,
+      limits: Cbor.Limits,
+      seeds: () => Vector[Array[Byte]] = cborSeeds
+  ): Target =
     Target(
       name,
-      cborSeeds,
+      seeds,
       probe(name) { b =>
         Cbor.decode(b, limits).foreach { node =>
           hit(name)
@@ -58,7 +62,7 @@ object Targets:
           Cbor.encode(node.value) match
             case Left(e) => throw new Violation(s"a decoded value does not re-encode: $e")
             case Right(encoded) =>
-              val again = Cbor.decode(encoded) match
+              val again = Cbor.decode(encoded, limits) match
                 case Right(n) => n
                 case Left(e)  => throw new Violation(s"the re-encoding does not decode: $e")
               req(again.original == encoded, "re-encoding is not decoded as itself")
@@ -456,6 +460,21 @@ object Targets:
 
   private val network: Vector[Target] = Vector(
     cbor("cbor", Cbor.Limits()),
+    cbor(
+      "cbor-generic",
+      Cbor.Limits(allowFloats = true, allowSimpleValues = true),
+      () =>
+        cborSeeds() ++ Vector(
+          "e0",
+          "f7",
+          "f820",
+          "f8ff",
+          "f93c00",
+          "fa80000000",
+          "fb3ff0000000000000"
+        )
+          .map(hex => Bytes.fromHex(hex).fold(e => throw new Violation(e.toString), _.toArray))
+    ),
     cbor(
       "cbor-tight-limits",
       Cbor.Limits(maxInputBytes = 300, maxDepth = 3, maxItems = 12, maxStringBytes = 20)

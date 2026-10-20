@@ -9,8 +9,9 @@ import scala.util.boundary.{Label, break}
 
 /** The tree builder of `Cbor.decode` as it was before the indexed `Node` (issue #94), kept as the
   * oracle of the differential tests: one `Node`, `Bytes` window and `Value` per item, built
-  * eagerly. The parser is unchanged apart from its name, entry point and typed error transport; do
-  * not "improve" it.
+  * eagerly. The default parser retains that behavior; explicit opt-in simple-value support mirrors
+  * the extended generic-CBOR contract. Keep the tree-building implementation independent of the
+  * index.
   */
 object OracleCbor:
   import Cbor.{Error, Limits}
@@ -192,9 +193,14 @@ object OracleCbor:
             case 6 => stack.push(new Frame(6, start, argument(ai), 1L))
             case _ =>
               val value = ai match
-                case 20 => Value.Bool(false)
-                case 21 => Value.Bool(true)
-                case 22 => Value.Null
+                case 20                                                   => Value.Bool(false)
+                case 21                                                   => Value.Bool(true)
+                case 22                                                   => Value.Null
+                case n if limits.allowSimpleValues && (n < 20 || n == 23) => Value.Simple(n)
+                case 24 if limits.allowSimpleValues =>
+                  val simple = floatBits(1).toInt
+                  if simple < 32 then fail(Error.InvalidSimpleValue(simple))
+                  Value.Simple(simple)
                 case 25 if limits.allowFloats =>
                   Value.Float(Float16.toFloat(floatBits(2).toInt).toDouble, FloatWidth.Half)
                 case 26 if limits.allowFloats =>

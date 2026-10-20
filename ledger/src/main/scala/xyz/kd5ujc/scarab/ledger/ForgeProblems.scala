@@ -45,6 +45,7 @@ enum ForgeProtocolProblem:
 /** Describe malformed key fields without retaining their contents. */
 enum KeyShape:
   case Unsigned, Negative, Text, Boolean, Float, Null
+  case Simple(value: Int)
   case Bytes(length: Int)
   case Array(length: Int)
   case Map(length: Int)
@@ -59,6 +60,7 @@ object KeyShape:
     case Value.Bool(_)           => KeyShape.Boolean
     case Value.Float(_, _)       => KeyShape.Float
     case Value.Null              => KeyShape.Null
+    case Value.Simple(n)         => KeyShape.Simple(n)
     case Value.Arr(items)        => KeyShape.Array(items.size)
     case Value.Map(items)        => KeyShape.Map(items.size)
     case Value.Tag(number, _)    => KeyShape.Tag(number)
