@@ -189,8 +189,10 @@ work; Haskell pipeline policies and ST/IO/pipe interpreters are not separate wir
 requirements under [ADR 0008](../adr/0008-networking-as-implemented.md).
 Peras remains unadvertised; it is not silently treated as a passing protocol.
 
-The existing [Plutus evidence](../plutus-conformance.md) remains 996/1009 passing,
-with thirteen documented harness exceptions. No new all-pass claim is introduced.
+The [Plutus evidence](../plutus-conformance.md) now passes all 1,009 original evaluation
+cases with exact results and budgets under the upstream term/counting profile. The former
+thirteen harness exceptions are removed; separate ledger tests retain Flat admission, protocol
+gates and restricting-budget behavior. Earlier 996/1009 measurements remain historical evidence.
 The [risk-based closeout audit](https://github.com/KD5UJC-XYZ/scarab/issues/49#issuecomment-6293250618)
 distinguishes the remaining reference limitations from optional broader seeded and
 rejection campaigns. The retained EPOCH case matches native output despite an

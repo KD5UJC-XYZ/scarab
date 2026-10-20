@@ -9,30 +9,24 @@ import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 import scalus.cardano.ledger.{CostModels, Language, MajorProtocolVersion}
 import scalus.uplc.{BuiltinSemanticsVariant, Constant, DeBruijnedProgram, Program, Term}
-import scalus.uplc.eval.{Log, MachineParams, PlutusVM, RestrictingBudgetSpender}
+import scalus.uplc.eval.{
+  CekMachine,
+  CountingBudgetSpender,
+  Log,
+  MachineParams,
+  RestrictingBudgetSpender
+}
+import scalus.uplc.DeBruijn
 
-/** The upstream Plutus conformance suite (`plutus-conformance/test-cases/uplc/evaluation` of plutus
-  * 1.70.0.0, vendored under `src/test/resources/plutus-conformance-1.70.0.0`, see the README there)
-  * run through [[ScalusEvaluator]].
+/** All original Plutus 1.70.0.0 evaluation cases, under the upstream executable's term profile:
+  * variant E, saturating counting and `caseBuiltin` including Data. Terms execute directly so BLS
+  * constants retain their meaning and cost rather than being rewritten as Flat `uncompress` calls.
+  * The builtin runtimes are the same corrected runtimes used by [[ScalusEvaluator]].
   *
-  * Each case is a textual UPLC program (with original Flat sidecars for malformed Value constants),
-  * the expected result (a program, `evaluation failure` or `parse/decode error`) and the expected
-  * budget. The reference runs them with the default cost model for testing, which is semantics
-  * variant E (`defaultCostModelParamsForTesting`), the latest: Plutus V3 at protocol 11 in this
-  * node. Here a case passes when
-  *   - the text parses (else the suite must expect a parse error),
-  *   - [[ScalusEvaluator]] evaluates the flat-encoded program through the same path as a ledger
-  *     script, with the variant E cost model as on-chain parameters, with the verdict the suite
-  *     expects (a decode failure counts as the suite's `parse/decode error`),
-  *   - the budget spent equals `.budget.expected` (also for a failing evaluation: the suite records
-  *     the budget spent up to the failure), and
-  *   - the result term is alpha-equivalent to the expected one. [[ScriptEvaluator]] reports no
-  *     term, so the term is taken from a second run of the same machine, built from the same
-  *     parameters; both runs must spend the same budget.
-  *
-  * Cases that fail for a known reason are listed with their classification in
-  * `plutus-conformance-1.70.0.0-known.txt`; the suite fails when the set of failing cases differs
-  * from that list in either direction, so a fixed deviation has to be removed from it.
+  * Original malformed-Value Flat sidecars retain decoder coverage where the dependency's text
+  * parser normalises their order. Ledger admission and restricting budgets are separate contracts,
+  * tested by [[PlutusReachabilitySuite]] and the focused profile regressions below. No case is
+  * excluded: successful terms and recorded budgets must equal the unchanged upstream expectations.
   */
 class PlutusConformanceSuite extends FunSuite:
   import PlutusConformanceSuite.*
@@ -46,7 +40,7 @@ class PlutusConformanceSuite extends FunSuite:
     Paths.get(getClass.getResource(s"/$Directory").toURI)
 
   /** The machine [[ScalusEvaluator]] builds for the request, to read the result term from. */
-  private val machine: PlutusVM =
+  private val machine: ScalusEvaluator.CorrectedVm =
     val scalusLanguage = Language.fromId(language.id)
     val major = MajorProtocolVersion(protocol)
     val variant = BuiltinSemanticsVariant.fromProtocolAndPlutusVersion(major, scalusLanguage)
@@ -104,21 +98,21 @@ class PlutusConformanceSuite extends FunSuite:
       )
     case None => checkParsed(c)
 
-  private def checkParsed(c: Case): Option[String] =
+  private def checkParsed(c: Case, evaluate: Program => Outcome = run): Option[String] =
     val parsed = Program.parseUplc(c.program)
     c.expected match
       case "parse/decode error" =>
         parsed match
           case Left(_) => None
           case Right(p) =>
-            run(p) match
+            evaluate(p) match
               case Outcome.Undecodable(_) => None
               case other                  => Some(s"expected a parse/decode error, got $other")
       case _ =>
         parsed match
           case Left(e) => Some(s"our parser rejects it: $e")
           case Right(p) =>
-            val outcome = run(p)
+            val outcome = evaluate(p)
             val budgetOk = (spent: ExUnits) =>
               c.budget match
                 case Some(b) =>
@@ -190,7 +184,7 @@ class PlutusConformanceSuite extends FunSuite:
   private def minus(a: ExUnits, steps: Int): ExUnits =
     ExUnits(a.mem - step.mem * steps, a.steps - step.steps * steps)
 
-  private def run(p: Program): Outcome =
+  private def runLedger(p: Program): Outcome =
     // A free variable cannot be flat-encoded: the reference reports it as a decode error too.
     scala.util.Try((p.cborEncoded, wrapped(p).cborEncoded)) match
       case scala.util.Failure(e) => Outcome.Undecodable(s"cannot encode: ${e.getMessage}")
@@ -222,19 +216,54 @@ class PlutusConformanceSuite extends FunSuite:
         assertEquals(minus(spent, 3), direct, "the term run and the evaluator run spend the same")
         Outcome.Succeeded(minus(spent, 3), term)
 
-  private def known: Map[String, String] =
-    val in = getClass.getResourceAsStream(s"/$Directory-known.txt")
-    if in == null then Map.empty
-    else
-      try
-        String(in.readAllBytes(), "UTF-8").linesIterator
-          .filter(l => l.nonEmpty && !l.startsWith("#"))
-          .map { l =>
-            val Array(path, rest*) = l.split('\t'): @unchecked
-            path -> rest.mkString("\t")
-          }
-          .toMap
-      finally in.close()
+  /** Plutus 507cab8c, PlutusConformance/CekEvaluator.hs:54-61 checks all free variables first. */
+  @scala.annotation.tailrec
+  private def closed(todo: List[(Term, Int)]): Boolean = todo match
+    case Nil => true
+    case (term, depth) :: rest =>
+      term match
+        case Term.Var(name, _)       => name.index > 0 && name.index <= depth && closed(rest)
+        case Term.LamAbs(_, body, _) => closed((body -> (depth + 1)) :: rest)
+        case Term.Apply(fun, arg, _) => closed((fun -> depth) :: (arg -> depth) :: rest)
+        case Term.Force(body, _)     => closed((body -> depth) :: rest)
+        case Term.Delay(body, _)     => closed((body -> depth) :: rest)
+        case Term.Constr(_, fields, _) =>
+          closed(fields.foldLeft(rest)((xs, t) => (t -> depth) :: xs))
+        case Term.Case(scrutinee, branches, _) =>
+          closed((scrutinee -> depth) :: branches.foldLeft(rest)((xs, t) => (t -> depth) :: xs))
+        case _: Term.Const | _: Term.Builtin | _: Term.Error => closed(rest)
+
+  /** The upstream executable evaluates terms directly, with no ledger result-unit restriction.
+    * CountingBudgetSpender saturates additions as Plutus SatInt does (Scalus 1.3.0 Cek.scala:809).
+    * The explicit Data flag mirrors caseBuiltin, rather than the ledger's caseBuiltinNoData at
+    * PV11.
+    */
+  private def run(p: Program): Outcome =
+    scala.util.Try(p.deBruijnedProgram.term) match
+      case scala.util.Failure(error) => Outcome.Unavailable(error.toString)
+      case scala.util.Success(term) if !closed(List(term -> 0)) =>
+        Outcome.Undecodable("free variable in upstream term")
+      case scala.util.Success(term) =>
+        val spender = CountingBudgetSpender()
+        val log = Log()
+        def spent = ExUnits(spender.getSpentBudget.memory, spender.getSpentBudget.steps)
+        val cek = CekMachine(
+          machine.machineParams,
+          spender,
+          log,
+          machine.runtime,
+          caseOnBuiltinsEnabled = true,
+          caseOnDataEnabled = true
+        )
+        scala.util
+          .Try(DeBruijn.fromDeBruijnTerm(cek.evaluateTerm(term)))
+          .fold(
+            error =>
+              if ScalusEvaluator.referenceFailure(error) then
+                Outcome.Failed(spent, error.getMessage)
+              else Outcome.Unavailable(error.toString),
+            result => Outcome.Succeeded(spent, result)
+          )
 
   test("upstream Plutus conformance, evaluation cases") {
     val started = System.nanoTime
@@ -242,7 +271,6 @@ class PlutusConformanceSuite extends FunSuite:
     val results = all.map(c => c -> check(c))
     val seconds = (System.nanoTime - started) / 1e9
     val categories = results.groupBy { case (c, _) => category(c.id) }.toVector.sortBy(_._1)
-    val knownMap = known
     val summary = categories.map { case (cat, rs) =>
       val failed = rs.count(_._2.isDefined)
       s"  $cat: ${rs.size - failed} passed, $failed failed of ${rs.size}"
@@ -251,17 +279,50 @@ class PlutusConformanceSuite extends FunSuite:
     println(
       s"plutus conformance 1.70.0.0, variant E, ${all.size} cases in ${"%.1f".format(seconds)} s\n" +
         summary.mkString("\n") +
-        s"\n  total: ${all.size - failures.size} passed, ${failures.size} failed " +
-        s"(${failures.count(f => knownMap.contains(f._1))} known)"
+        s"\n  total: ${all.size - failures.size} passed, ${failures.size} failed"
     )
-    val unexpected = failures.filterNot(f => knownMap.contains(f._1))
-    val fixed = knownMap.keySet -- failures.map(_._1).toSet
     assert(
-      unexpected.isEmpty,
-      s"${unexpected.size} unexpected failures:\n" +
-        unexpected.map((id, why) => s"$id: $why").mkString("\n")
+      failures.isEmpty,
+      s"${failures.size} failures:\n" +
+        failures.map((id, why) => s"$id: $why").mkString("\n")
     )
-    assert(fixed.isEmpty, s"known failures that now pass (remove them): ${fixed.toVector.sorted}")
+    assertEquals(all.size, 1009, "the complete original evaluation corpus must execute")
+  }
+
+  test("upstream scope checking includes delayed and unselected subterms") {
+    val texts = Vector(
+      "(program 1.0.0 x)",
+      "(program 1.0.0 (delay x))",
+      "(program 1.1.0 (constr 0 x))",
+      "(program 1.1.0 (case (constr 0) (con unit ()) x))"
+    )
+    texts.foreach { text =>
+      val program = Program.parseUplc(text).fold(e => fail(e), identity)
+      assert(run(program).isInstanceOf[Outcome.Undecodable], text)
+    }
+    val bound = Term.LamAbs("x", Term.Var(scalus.uplc.NamedDeBruijn("x", 1)))
+    val deep = (1 to 20000).foldLeft(bound: Term)((term, _) => Term.Delay(term))
+    assert(closed(List(deep -> 0)), "closedness walks deep terms without recursive JVM frames")
+  }
+
+  test("direct BLS constants, saturating counts and Data cases repair the original harness") {
+    val all = cases
+    val bls = all.filter(c => c.id.startsWith("builtin/parser/bls12-381/") && c.budget.nonEmpty)
+    val saturated = all.filter(c =>
+      c.id.startsWith("builtin/semantics/dropList/") &&
+        c.budget.exists(_.steps == BigInt(Long.MaxValue))
+    )
+    val data = all.filter(c => c.id.startsWith("term/constant-case/data/") && c.budget.nonEmpty)
+    assertEquals(bls.size, 6, "original parsed BLS constants")
+    assertEquals(saturated.size, 5, "original saturating dropList cases")
+    assertEquals(data.size, 2, "original Data caseBuiltin cases")
+    (bls ++ saturated ++ data).foreach { c =>
+      assert(
+        checkParsed(c, runLedger).nonEmpty,
+        s"${c.id}: the original ledger harness must diverge"
+      )
+      assertEquals(check(c), None, s"${c.id}: exact original result and budget")
+    }
   }
 
 object PlutusConformanceSuite:

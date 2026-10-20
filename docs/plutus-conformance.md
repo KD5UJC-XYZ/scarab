@@ -1,13 +1,30 @@
 # Plutus conformance: executed reference boundaries
 
-**Status: Current.** Pinned evaluator boundaries, local corrections and explicitly retained
-conformance exceptions; recorded experiments remain tied to their source revisions.
+**Status: Current.** All 1,009 pinned upstream evaluation cases pass with exact recorded results
+and budgets, without exclusions. Ledger admission remains a separate tested boundary; recorded
+experiments remain tied to their source revisions.
 
-Triage of [#155](https://github.com/KD5UJC-XYZ/scarab/issues/155) (AUD-03). The question for each
-case that [`PlutusConformanceSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/PlutusConformanceSuite.scala)
-lists as a known failure of Scalus 1.3.0 is whether a transaction on a network can reach it under the
-ledger's own checks, and what the difference would then change. Trigger details are not written here
-(see [SECURITY.md](../SECURITY.md)).
+The original [#155](https://github.com/KD5UJC-XYZ/scarab/issues/155) (AUD-03) triage established
+which dependency differences reached ledger validation. That historical classification is retained
+below; it no longer excuses an upstream test failure.
+[`PlutusConformanceSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/PlutusConformanceSuite.scala)
+now runs the complete original corpus with the reference executable's execution profile. Trigger
+details are not written here (see [SECURITY.md](../SECURITY.md)).
+
+The profile follows `PlutusConformance/CekEvaluator.hs:46-61` at Plutus commit
+`507cab8cf6192e5143f12be5b2d3005a2928dc6d`: check the whole term for free variables, then evaluate
+the original term with variant E and saturating counting. The reference's `caseBuiltin` includes
+Data. Scarab uses the same corrected builtin runtimes as its ledger evaluator, with explicit
+`caseOnDataEnabled` in this upstream profile. No Flat serialization or unit-return wrapper is
+inserted before term evaluation. Existing original-byte sidecars still test malformed Value
+constants before the dependency text parser can normalize their entries.
+
+All 1,009 upstream cases retain their original expectations; the former six BLS constants, five
+saturating `dropList` cases and two Data cases now execute and pass. A differential regression runs
+those same thirteen cases through the previous ledger/Flat harness, reproduces its mismatches,
+and requires the exact original term result and budget from the corrected profile. Separate
+`PlutusReachabilitySuite` tests retain the ledger's Flat admission, protocol gates and restricting
+budgets. A counting-profile success is not a claim that a transaction with that term is admissible.
 
 ## 1. The reference evaluator
 
@@ -64,9 +81,12 @@ UPLC program version 1.1.0 (`constr`, `case`) is V3 from 9 and V1/V2 from 11.
    the applied term (`UntypedPlutusCore/Check/Scope.hs` 28-45). A failure there is a failed script.
 3. The machine runs under the cost model and the budget of the redeemer.
 
-## 3. The 22 cases
+## 3. Historical classification of the original 22 cases
 
-Counts: **9 are reachable** by a transaction (6 `value` constants, 3 `hashToGroup`), **2 are not a
+The original class labels were (ii), a dependency deviation, and (iii), a harness-profile difference.
+They describe the earlier investigation, not exclusions from the current suite.
+
+Original triage counts: **9 are reachable** by a transaction (6 `value` constants, 3 `hashToGroup`), **2 are not a
 divergence** (`case` on `Data`), **11 are artefacts of the suite harness** (6 BLS12-381 constants,
 5 `dropList`). This agrees with the second audit's split. "Reachable" means that the ledger-level
 checks above admit a script that behaves differently from the reference; every reachable script fits
@@ -89,11 +109,11 @@ the original 477-row API matrix. Transaction-context evidence remains recorded s
 |---|---|---|---|---|---|---|
 | `parser/value/` `currencyIDs-unordered`, `duplicate-currencyIDs`, `duplicate-tokenIDs`, `empty-tokens`, `tokenIDs-unordered`, `zero-asset` (6) | (ii), now (iii) in the suite | Scalus rebuilds a `value` constant as a normalised map when it decodes, so the malformed constant is accepted (and changed); the reference fails decoding (`PlutusCore/Value.hs` 637-694) | every protocol and language where a script exists: type tag 13 has no protocol gate, only the header size is checked (`SerialisedScript.hs` 199-215, `Versions.hs` 394-399) | yes: any Plutus script in a witness set or an output, whether or not it runs | decode: the reference makes the transaction invalid in phase 1 (Babbage on) or fails phase 2 (Alonzo); we accepted it | fixed on the ledger path by `FlatScan`, which validates the original flat bytes (also a key over 32 bytes and a quantity beyond 127 bits); tests `PlutusReachabilitySuite`, `PreConwayRulesSuite`; the suite now uses original Flat sidecars and removes these six exceptions |
 | `semantics/bls12_381_G1_hashToGroup/hash-dst-len-255`, `..._G2_...`, `bls12_381-cardano-crypto-tests/signature/large-dst` (3) | (ii) | the domain separation tag reaches blst as a Latin-1 `String`; a tag with a byte of 0x80 or more (or 0) yields another point (the cases' tags are such bytes: the length 255 is not the cause) | batch 4 builtin: V3 from 9, V1 and V2 from 11 | yes, by a script that hashes with a tag it builds or is given; ASCII tags are right | result: a different point, so a different verdict if the script compares it | fixed on Linux/amd64 by the pinned upstream byte-array JNI backport into portable blst; the three exceptions are removed; other platforms retain explicit unavailable evaluation |
-| `term/constant-case/data/data-01`, `data-02` (2) | (ii), now (iii) | Scalus refuses `case` on `Data` below protocol 12 and applies the fields from 12, as the reference ledger does; the suite's executable uses `caseBuiltin` with `Data` | `Data` case from 12 only | no: the reference ledger uses `caseBuiltinNoData` at 11 and refuses too | none at protocols 5 to 11 | none; regression test of the protocol boundaries |
-| `parser/bls12-381/{G1,G2}/{zero,on-curve-bit3-clear,on-curve-bit3-set}` (6) | (iii) | the suite round-trips a BLS12-381 constant through flat; flat has no such constant, and Scalus's encoder writes an application of `uncompress`; a flat byte string that does carry the constant tag is refused by the reference (`Flat Element` instances) and by Scalus alike | batch 4 | no: the decode failure is the same | none | none; regression test |
-| `semantics/dropList/dropList-09`, `-10`, `-14`, `-15`, `-16` (5) | (iii) | the suite counts the budget with saturating arithmetic (the maximum); in restricting mode both run out of budget; only the units reported after the failure wrap negative in Scalus; the cost never wraps to a small value | batch 6: V3, V1, V2 at 11 | the script fails in both; phase 2 failure ignores the units spent | none on the verdict; the reported units on a failure | none; regression test over counts that would wrap in 64-bit arithmetic |
+| `term/constant-case/data/data-01`, `data-02` (2) | (ii), now (iii) | Scalus refuses `case` on `Data` below protocol 12 and applies the fields from 12, as the reference ledger does; the suite's executable uses `caseBuiltin` with `Data` | `Data` case from 12 only | no: the reference ledger uses `caseBuiltinNoData` at 11 and refuses too | none at protocols 5 to 11 | executes and passes under the upstream Data-case profile; separate regression tests retain the ledger protocol boundaries |
+| `parser/bls12-381/{G1,G2}/{zero,on-curve-bit3-clear,on-curve-bit3-set}` (6) | (iii) | the previous Scarab harness round-tripped a BLS12-381 constant through flat; flat has no such constant, and Scalus's encoder writes an application of `uncompress`; a flat byte string that does carry the constant tag is refused by the reference (`Flat Element` instances) and by Scalus alike | batch 4 | no: the decode failure is the same | none | direct parsed-constant evaluation passes the original result and budget; Flat admission remains separately tested |
+| `semantics/dropList/dropList-09`, `-10`, `-14`, `-15`, `-16` (5) | (iii) | the suite counts the budget with saturating arithmetic (the maximum); in restricting mode both run out of budget; only the units reported after the failure wrap negative in Scalus; the cost never wraps to a small value | batch 6: V3, V1, V2 at 11 | the script fails in both; phase 2 failure ignores the units spent | none on the verdict; the reported units on a failure | saturating counting now passes the original result and budget; separate restricting-budget tests retain ledger failure checks |
 
-## 4. Admission rules outside the allowlist
+## 4. Ledger admission rules
 
 [#166](https://github.com/KD5UJC-XYZ/scarab/issues/166) (protocol-11 decode limits) and
 [#167](https://github.com/KD5UJC-XYZ/scarab/issues/167) (closedness of the applied term, variable
@@ -120,7 +140,8 @@ Maven release checked on 2026-10-18, and this fix is unreleased. No unpublished 
 is adopted. The adapter delegates hashing and compression to the same pinned portable blst0.3.15,
 retains costing and the DST length check, and passes original upstream conformance assertions plus
 independently exported G1/G2 point vectors. Library startup checks both new JNI entries against
-reference known answers. The suite now passes996/1009 cases, with13 documented harness exceptions.
+reference known answers. The complete upstream suite now passes 1,009/1,009 cases with zero
+exceptions under its own term/counting profile; the obsolete known-failure resource is removed.
 
 An implementation limit is `Phase2.Outcome.Unavailable` and `LedgerFailure.Unavailable`, regardless
 of the transaction validity flag. It supplies no script verdict and no consensus predicate failure.
