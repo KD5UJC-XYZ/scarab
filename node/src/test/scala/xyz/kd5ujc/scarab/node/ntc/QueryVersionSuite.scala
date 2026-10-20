@@ -29,7 +29,7 @@ class QueryVersionSuite extends FunSuite:
       (GetPoolDistr2(None), 21, 23),
       (GetStakeDistribution2, 21, 23),
       (GetMaxMajorProtocolVersion, 21, 23),
-      (GetLedgerPeerSnapshot(0), 23, 23),
+      (GetLedgerPeerSnapshot(LedgerPeerKind.All), 23, 23),
       (GetDRepDelegations(Set.empty), 23, 23)
     )
     cases.foreach { (q, first, last) =>
@@ -50,7 +50,10 @@ class QueryVersionSuite extends FunSuite:
     assertEquals(NtcQuery.decode(legacyPeers, V19), Right(query(GetLedgerPeerSnapshotLegacy)))
     assertEquals(NtcQuery.decode(legacyPeers, V18), Left(NtcQuery.Error.UnsupportedVersion(V18)))
     val allPeers = hex("82008200820682182200")
-    assertEquals(NtcQuery.decode(allPeers, V23), Right(query(GetLedgerPeerSnapshot(0))))
+    assertEquals(
+      NtcQuery.decode(allPeers, V23),
+      Right(query(GetLedgerPeerSnapshot(LedgerPeerKind.All)))
+    )
     assertEquals(NtcQuery.decode(allPeers, V22), Left(NtcQuery.Error.UnsupportedVersion(V22)))
     assert(NtcQuery.decode(hex("82008200820682182202"), V23).isLeft)
   }

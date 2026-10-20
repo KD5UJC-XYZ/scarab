@@ -47,7 +47,8 @@ final case class QueryEnv(
     maxSupply: BigInt,
     shelleyGenesis: io.circe.Json,
     mirror: MirrorEnv,
-    observedEras: Map[Era, BigInt] = Map.empty
+    observedEras: Map[Era, BigInt] = Map.empty,
+    networkMagic: Long
 ):
   /** What the mirror of the ledger state (`DebugEpochState`, `DebugNewEpochState`) reads. */
   def consensusMirror: ConsensusMirrorEnv = ConsensusMirrorEnv(mirror, forks, byron, observedEras)
@@ -466,6 +467,31 @@ object QueryAnswers:
             )
           })
         }
+      case GetRewardInfoPools =>
+        conway { f =>
+          (f.currentStake, f.scalars, f.l.nes).tupled.leftMap(Unanswered.Refused(_)).map {
+            (current, scalars, nes) =>
+              RewardQueries.info(
+                f.l.params,
+                env.maxSupply - scalars.chainAccount.reserves.value,
+                current,
+                nes.es.nonMyopic
+              )
+          }
+        }
+      case GetNonMyopicMemberRewards(credentials) =>
+        conway { f =>
+          (f.currentStake, f.scalars, f.l.nes).tupled.leftMap(Unanswered.Refused(_)).map {
+            (current, scalars, nes) =>
+              RewardQueries.members(
+                f.l.params,
+                env.maxSupply - scalars.chainAccount.reserves.value,
+                current,
+                nes.es.nonMyopic,
+                credentials
+              )
+          }
+        }
       case GetStakePools =>
         conway(f => Wire.definiteSetOf(poolId).answerRead(f.pools.map(_.keySet)))
       // a registered pool's reward account on the node's network, its future parameters' as they
@@ -605,6 +631,32 @@ object QueryAnswers:
                   None,
                   Some(env.maxSupply - scalars.chainAccount.reserves.value)
                 )
+              )
+          }
+        }
+      case GetLedgerPeerSnapshotLegacy =>
+        conway { f =>
+          xyz.kd5ujc.scarab.node.LedgerPeersSource.of(f.l).leftMap(Unanswered.Refused(_)).map {
+            supply =>
+              PeerSnapshotQueries.encode(
+                supply.pools,
+                view.point,
+                env.networkMagic,
+                None,
+                version.number >= 22
+              )
+          }
+        }
+      case GetLedgerPeerSnapshot(kind) =>
+        conway { f =>
+          xyz.kd5ujc.scarab.node.LedgerPeersSource.of(f.l).leftMap(Unanswered.Refused(_)).map {
+            supply =>
+              PeerSnapshotQueries.encode(
+                supply.pools,
+                view.point,
+                env.networkMagic,
+                Some(kind),
+                true
               )
           }
         }

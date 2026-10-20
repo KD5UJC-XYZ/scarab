@@ -37,7 +37,8 @@ class QueryGoldenSuite extends FunSuite:
     ),
     setup.globals.maxSupply,
     setup.genesis.raw,
-    setup.mirrorEnv().ledger
+    setup.mirrorEnv().ledger,
+    networkMagic = setup.genesis.networkMagic.toLong
   )
 
   private val view = QueryView(point, Some(1), setup.mirrorStart)

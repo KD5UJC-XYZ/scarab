@@ -28,7 +28,8 @@ class EraHistoryNetworksSuite extends FunSuite:
     setup.mirrorEnv().byron,
     setup.globals.maxSupply,
     setup.genesis.raw,
-    setup.mirrorEnv().ledger
+    setup.mirrorEnv().ledger,
+    networkMagic = setup.genesis.networkMagic.toLong
   )
 
   /** The state of a chain in Conway whose Byron era ended at epoch 4, at slot 100,000,000. */

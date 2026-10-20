@@ -941,7 +941,8 @@ object Main extends IOApp:
                 setup.globals.maxSupply,
                 genesis.raw,
                 setup.mirrorEnv(observed).ledger,
-                observed
+                observed,
+                genesis.networkMagic.toLong
               )
             )
             local = options.localSocket.fold(Resource.unit[IO])(path =>

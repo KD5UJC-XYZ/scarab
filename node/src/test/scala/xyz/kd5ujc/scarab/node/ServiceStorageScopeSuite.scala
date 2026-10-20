@@ -156,7 +156,8 @@ class ServiceStorageScopeSuite extends FailsOnUncaught:
       setup.mirrorEnv().byron,
       setup.globals.maxSupply,
       setup.genesis.raw,
-      setup.mirrorEnv().ledger
+      setup.mirrorEnv().ledger,
+      networkMagic = setup.genesis.networkMagic.toLong
     )
     val era = QueryView(Point.Origin, None, setup.mirrorStart).era.index
     val query =
