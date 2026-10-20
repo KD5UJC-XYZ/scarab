@@ -106,6 +106,16 @@ and `PreConwayUtxoPredicatesSuite` controls for 64/65-byte payloads. Those nativ
 observations are Alonzo/Babbage; Conway uses the same shared output check. The
 fresh full-STS Conway witness corpus adds no new attribute-boundary observation.
 
+The other reviewed formal corrections already agree with production source and
+existing local checks; these are not additional native/formal HEAD executions:
+
+| Formal correction | Existing applicable checks |
+|---|---|
+| Collateral-input existence | UTXO checks spending, collateral and reference inputs together; `ConwayLedgerSuite` invokes current production rules and rejects missing collateral even without redeemers |
+| Exclusive upper validity bound | Conway uses `slot < ttl`; `ShelleyLedgerSuite` boundary controls distinguish original Shelley's inclusive bound from successors; `ScriptContextGoldenSuite` separately checks the Conway translated bound |
+| Componentwise execution units | Transaction and block rules call `ExUnits.fits`; `BlockExUnitsSuite` checks each independently exceeded component and equality, and `BbodySuite` checks block-prefix refusal |
+| Vote indexing | `Purpose` orders voters before indexing; `ScriptContextGoldenSuite` compares three V3 voting redeemer contexts against Scalus. This is a local/Scalus comparison, not a native-Haskell vote-index oracle |
+
 The [published Conway pool vectors](../../fixtures/reference/ledger-api-pool-goldens/README.md)
 add a complete 740-byte production `GetStakePoolParams` answer comparison against
 the corrected upstream golden. Independently constructed typed relay addresses
