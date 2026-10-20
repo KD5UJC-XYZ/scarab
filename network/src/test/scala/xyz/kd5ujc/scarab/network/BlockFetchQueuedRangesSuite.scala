@@ -52,68 +52,73 @@ class BlockFetchQueuedRangesSuite extends FailsOnUncaught:
       hex("8105")
     )
 
-    Peers.typed {
-      for
-        streaming <- Deferred[IO, Unit]
-        release <- Deferred[IO, Unit]
-        requests <- Ref.of[IO, Vector[(Point, Point)]](Vector.empty)
-        source = new BlockFetchServer.Blocks[IO]:
-          def range(from: Point, to: Point, _maxBlocks: Int): IO[Option[Stream[IO, Bytes]]] =
-            requests.update(_ :+ (from -> to)).as {
-              if (from -> to) == first then
-                Some(
-                  Stream.exec(streaming.complete(()).void *> release.get) ++
-                    Stream.emits(Vector(Peers.block(1), Peers.block(2)))
-                )
-              else if (from -> to) == last then Some(Stream.emit(Peers.block(5)))
-              else None
-            }
-        result <- Peers.linked(protocols = Set(Protocols.BlockFetch)).use { (client, server) =>
-          for
-            c <- client.channel(Protocols.BlockFetch)
-            s <- server.channel(Protocols.BlockFetch)
-            result <- Resource
-              .make(Peers.typed(BlockFetchServer.run(s, source)).start)(_.cancel)
-              .use { serving =>
-                for
-                  _ <- c.send(encoded(
-                    BlockFetch.State.Idle,
-                    BlockFetch.Role.Client,
-                    BlockFetch.Message.RequestRange(first._1, first._2)
-                  ))
-                  _ <- streaming.get
-                  // The first stream is blocked while every remaining request reaches the bearer.
-                  _ <- Vector[Message](
-                    BlockFetch.Message.RequestRange(absent._1, absent._2),
-                    BlockFetch.Message.RequestRange(last._1, last._2),
-                    BlockFetch.Message.ClientDone
-                  ).traverse_(message =>
-                    c.send(encoded(BlockFetch.State.Idle, BlockFetch.Role.Client, message))
+    Peers
+      .typed {
+        for
+          streaming <- Deferred[IO, Unit]
+          release <- Deferred[IO, Unit]
+          requests <- Ref.of[IO, Vector[(Point, Point)]](Vector.empty)
+          source = new BlockFetchServer.Blocks[IO]:
+            def range(from: Point, to: Point, _maxBlocks: Int): IO[Option[Stream[IO, Bytes]]] =
+              requests.update(_ :+ (from -> to)).as {
+                if (from -> to) == first then
+                  Some(
+                    Stream.exec(streaming.complete(()).void *> release.get) ++
+                      Stream.emits(Vector(Peers.block(1), Peers.block(2)))
                   )
-                  _ <- c.flush
-                  before <- requests.get
-                  _ <- IO(assertEquals(before, Vector(first)))
-                  _ <- release.complete(())
-                  observed <- expected.traverse { (state, _) =>
-                    c.recv(2500000) { bytes =>
-                      BlockFetch.decodePrefix(state, BlockFetch.Role.Server, bytes, codec) match
-                        case DecodeResult.Decoded(message, consumed) =>
-                          DecodeResult.Decoded((message, bytes.take(consumed)), consumed)
-                        case DecodeResult.NeedMore => DecodeResult.NeedMore
-                        case DecodeResult.Failed(error) => DecodeResult.Failed(error)
-                    }
-                  }
-                  ended <- serving.joinWithNever
-                  order <- requests.get
-                yield (observed, ended, order)
+                else if (from -> to) == last then Some(Stream.emit(Peers.block(5)))
+                else None
               }
-          yield result
-        }
-      yield result
-    }.timeout(5.seconds).map { outcome =>
-      val (observed, ended, order) = outcome.fold(e => fail(e.message), identity)
-      assertEquals(observed.map(_._1), expected.map(_._2))
-      assertEquals(observed.map(_._2), expectedBytes)
-      assertEquals(order, Vector(first, absent, last))
-      assertEquals(ended, Right(()))
-    }
+          result <- Peers.linked(protocols = Set(Protocols.BlockFetch)).use { (client, server) =>
+            for
+              c <- client.channel(Protocols.BlockFetch)
+              s <- server.channel(Protocols.BlockFetch)
+              result <- Resource
+                .make(Peers.typed(BlockFetchServer.run(s, source)).start)(_.cancel)
+                .use { serving =>
+                  for
+                    _ <- c.send(
+                      encoded(
+                        BlockFetch.State.Idle,
+                        BlockFetch.Role.Client,
+                        BlockFetch.Message.RequestRange(first._1, first._2)
+                      )
+                    )
+                    _ <- streaming.get
+                    // The first stream is blocked while every remaining request reaches the bearer.
+                    _ <- Vector[Message](
+                      BlockFetch.Message.RequestRange(absent._1, absent._2),
+                      BlockFetch.Message.RequestRange(last._1, last._2),
+                      BlockFetch.Message.ClientDone
+                    ).traverse_(message =>
+                      c.send(encoded(BlockFetch.State.Idle, BlockFetch.Role.Client, message))
+                    )
+                    _ <- c.flush
+                    before <- requests.get
+                    _ <- IO(assertEquals(before, Vector(first)))
+                    _ <- release.complete(())
+                    observed <- expected.traverse { (state, _) =>
+                      c.recv(2500000) { bytes =>
+                        BlockFetch.decodePrefix(state, BlockFetch.Role.Server, bytes, codec) match
+                          case DecodeResult.Decoded(message, consumed) =>
+                            DecodeResult.Decoded((message, bytes.take(consumed)), consumed)
+                          case DecodeResult.NeedMore      => DecodeResult.NeedMore
+                          case DecodeResult.Failed(error) => DecodeResult.Failed(error)
+                      }
+                    }
+                    ended <- serving.joinWithNever
+                    order <- requests.get
+                  yield (observed, ended, order)
+                }
+            yield result
+          }
+        yield result
+      }
+      .timeout(5.seconds)
+      .map { outcome =>
+        val (observed, ended, order) = outcome.fold(e => fail(e.message), identity)
+        assertEquals(observed.map(_._1), expected.map(_._2))
+        assertEquals(observed.map(_._2), expectedBytes)
+        assertEquals(order, Vector(first, absent, last))
+        assertEquals(ended, Right(()))
+      }

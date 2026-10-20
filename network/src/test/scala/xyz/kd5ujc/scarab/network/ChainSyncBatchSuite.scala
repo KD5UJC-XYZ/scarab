@@ -12,8 +12,8 @@ import xyz.kd5ujc.scarab.protocol.{ChainSync, ChainSyncFixtures}
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Message, Role, State}
 
 /** Wire transitions from ouroboros-network 2fb69829a19b5c04e4fb212bdd78fb63f9d2d776,
-  * ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/Type.hs:109–136.
-  * AwaitReply acknowledges a request; its eventual roll instruction completes that same request.
+  * ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/Type.hs:109–136. AwaitReply
+  * acknowledges a request; its eventual roll instruction completes that same request.
   */
 class ChainSyncBatchSuite extends FailsOnUncaught:
   private val protocol = Protocols.ChainSync
@@ -70,7 +70,8 @@ class ChainSyncBatchSuite extends FailsOnUncaught:
                   client <- ChainSyncClient(
                     clientChannel,
                     ChainSyncFixtures.rawItem,
-                    ChainSyncClient.Settings(canAwaitTimeout = 1.second, mustReplyTimeout = 1.second)
+                    ChainSyncClient
+                      .Settings(canAwaitTimeout = 1.second, mustReplyTimeout = 1.second)
                   )
                   result <- Resource
                     .make(Peers.typed(serve(serverChannel)).start)(_.cancel)

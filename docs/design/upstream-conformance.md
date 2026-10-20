@@ -168,18 +168,35 @@ Scarab actually services both admitted lanes. Neither trace identity nor identic
 is required. Original bytes, native verdicts, observed headers and executable/source provenance are
 retained; broader generator and transport coverage remains #49.
 
+Local wire regressions complement the exported observations. `ChainSyncBatchSuite`
+requires all three requests to arrive before any response, then collects forward,
+AwaitReply/rollback and forward instructions before checking the next request's
+alignment. `BlockFetchQueuedRangesSuite` queues available/unavailable ranges and
+ClientDone while the first batch is delayed, then checks complete ordered batches
+and responder termination. These exercise production client/server and Mux paths;
+they are local contract assertions, not additional native property invocations.
+
 ## Network, Plutus and remaining scope
 
 The [network inventory](../../fixtures/reference/ouroboros-network-protocol-codecs/COVERAGE.md)
-retains exact registered names and family dispositions. It distinguishes the bounded
-generic Handshake and ordinary-codec adapters from remaining BlockFetch pipeline,
-runtime/interpreter, broader mux transport/starvation and portable timer work, broader seeds, typed
-mock-domain gaps and unsupported Peras ObjectDiffusion.
+retains exact registered names and family dispositions. A missing exported upstream
+observation does not imply missing local behavior coverage. Existing local tests
+cover FIFO batches and backpressure, transaction credit, AwaitAcquire, backend
+failures, Mux fragmentation/duplex/bounds, deadlines and cancellation/cleanup.
+Scarab's BlockFetch client and transaction requester deliberately serialize their
+work; Haskell pipeline policies and ST/IO/pipe interpreters are not separate wire
+requirements under [ADR 0008](../adr/0008-networking-as-implemented.md).
 Peras remains unadvertised; it is not silently treated as a passing protocol.
 
 The existing [Plutus evidence](../plutus-conformance.md) remains 996/1009 passing,
 with thirteen documented harness exceptions. No new all-pass claim is introduced.
-Further applicable adapter coverage, broader seeded campaigns and rejection branches,
-portable timer laws, upstream failure investigation and final issue completion
-remain tracked by #49. No persisted native format is changed; maintained native
+The [risk-based closeout audit](https://github.com/KD5UJC-XYZ/scarab/issues/49#issuecomment-6293250618)
+distinguishes the remaining reference limitations from optional broader seeded and
+rejection campaigns. The retained EPOCH case matches native output despite an
+unclassified native/formal disagreement; invalid NEWEPOCH generation is unsupported;
+the formal LEDGERS crash supplies no verdict. None is relabeled as a formal pass.
+Operational Mux fairness and timeout cleanup remain behavioral questions worth
+characterizing; reproducing exact Haskell schedules or timer internals is not the
+acceptance criterion. Final issue completion remains tracked by #49.
+No persisted native format is changed; maintained native
 snapshots remain V5. Raw upstream trace CBOR is not a native snapshot version.
