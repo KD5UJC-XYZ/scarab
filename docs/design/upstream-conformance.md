@@ -150,12 +150,23 @@ The tests use production Mux/runtime paths and FailsOnUncaught. A final ordered 
 does not establish pipeline scheduling equivalence.
 
 The practical local follow-up adds eight seeded duplex Mux transport profiles (320 complete messages)
-and explicit writer-finalizer/receive-lock cleanup checks. Controlled bulk/control workloads reproduce
-a direct KeepAlive timeout while full BlockFetch delivery progresses. These local results are distinct
+and explicit writer-finalizer/receive-lock cleanup checks. Controlled bulk/control workloads first reproduced
+a direct KeepAlive timeout while full BlockFetch delivery progressed. The #258 fair writer now
+requires successful control responses under those same loads, preserving full bulk delivery. These local results are distinct
 from exported upstream verdicts; virtual service times are not host benchmarks or observed background
 disconnects. [Network limits](network-limits.md#bulkcontrol-scheduling-characterization-49) records the
-measurements and localized writer-refactor assessment. The confirmed fairness gap is
+measurements and the implemented writer contract under
 [#258](https://github.com/KD5UJC-XYZ/scarab/issues/258); exact scheduler parity is not required.
+
+The subsequent [original starvation-generator replay](../../network/src/test/resources/upstream/mux-starvation/README.md)
+adds 32 consecutive native samples: 22 actual property passes, ten implication discards and no native
+failures. Scarab replays the 18 size-applicable passing conversations with the original first-100-SDU
+ordering assertion. Four native passes exceed its unchanged message limit and remain explicit
+exclusions. Native wiring uses response1 for both protocols; twelve unequal original pairs are
+separately labelled local controls. A controlled overlap barrier and extra nonvacuity assertion ensure
+Scarab actually services both admitted lanes. Neither trace identity nor identical runtime scheduling
+is required. Original bytes, native verdicts, observed headers and executable/source provenance are
+retained; broader generator and transport coverage remains #49.
 
 ## Network, Plutus and remaining scope
 

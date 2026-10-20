@@ -66,7 +66,7 @@ byte order. Local controlled cancellation/cleanup checks stay distinct from thos
 native invocations. Original start/stop/restart and pure-exception properties were
 also executed as native evidence; Scarab does not expose the same internal activation
 API. Exact scheduling is outside functional equivalence. Broader transport/backend,
-starvation and other applicable properties remain in #49.
+broader starvation and other applicable properties remain in #49.
 
 `network-mux/test/Test/Mux/Timeout.hs:33–68,122–175,283–325,339–403` registers
 single and sequential timer laws. A portable Scala counterpart must retain elapsed
@@ -79,14 +79,17 @@ existing deterministic deadline tests are local controls, not new upstream adapt
 passes. No exact real-clock or scheduler-trace equivalence is claimed.
 
 The practical local follow-up adds `MuxSeededTrafficSuite` (eight seed/SDU profiles, 320 complete
-messages and 160 observed paired write groups across duplex channels) and `DeadlineCleanupSuite`
+messages and 256 observed paired SDU-write groups across duplex channels; the former message
+writer produced 160 groups) and `DeadlineCleanupSuite`
 (writer-finalizer publication order and partial-receive cancellation/lock reuse). These supplement
 observable transport and timer cleanup coverage without adding upstream invocation counts.
-`BulkControlCharacterizationSuite` reproduces a direct KeepAlive deadline miss behind bulk FIFO
-traffic using bounded paced transport and opaque bodies. It is a virtual-time baseline, not a native
+`BulkControlCharacterizationSuite` now requires timely successful KeepAlive responses alongside full
+bulk delivery using bounded paced transport and opaque bodies; #259 retained the former FIFO
+deadline miss. `MuxEgressSuite` checks SDU turns during a large message, duplex FIFO, global fences
+and staged-capacity/cancelled-admission behavior. These are local virtual-time controls, not a native
 starvation-property pass, host benchmark or observed background disconnect. The
 [measurements and refactor scope](../../../docs/design/network-limits.md#bulkcontrol-scheduling-characterization-49)
-track the confirmed writer-fairness gap as [#258](https://github.com/KD5UJC-XYZ/scarab/issues/258).
+record the implemented writer-fairness contract under [#258](https://github.com/KD5UJC-XYZ/scarab/issues/258).
 
 ObjectDiffusion scope is established by
 `ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ObjectDiffusion/Test.hs:82–101`
@@ -100,3 +103,14 @@ Its three over-sized generic replies and 94 negative generated function results
 are retained without Cardano policy coercion. KeepAlive and PeerSharing ceilings
 are compared with actual upstream state limits; this is not a new mux enforcement
 or generic-Int-to-Cardano-address claim.
+
+## Bounded original starvation-generator replay
+
+The [Mux starvation corpus](../../../network/src/test/resources/upstream/mux-starvation/README.md)
+retains 32 consecutive original Uneven inputs: 22 native property passes and 10 implication discards.
+Scarab replays 18 applicable original response1/response1 conversations with the unchanged
+first 100-header ordering assertion; four native passes above its 2.5 MB message ceiling remain explicit
+mock-domain exclusions. Twelve original unequal response pairs are separately labelled local
+controls. Complete native CBOR bytes/hashes are checked. A controlled nonvacuous-overlap observation
+supplements the original normalization, whose initial/final-run trimming can otherwise admit a serial
+trace. This closes the bounded generator-replay gap, not broad transport or exhaustive seed coverage.

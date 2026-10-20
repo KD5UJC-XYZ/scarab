@@ -60,8 +60,9 @@ class MuxSeededTrafficSuite extends FailsOnUncaught:
     }
 
   /** Each pair of Mux writes is coalesced, then repartitioned independently of its SDU/message
-    * boundaries. Every round submits four writes per direction, so no final half-pair is withheld.
-    * Keep writes as queue elements until pairing: a byte stream may merge their chunk boundaries.
+    * boundaries. Each round submits an even number of SDUs per direction; no final half-pair is
+    * withheld. Keep writes as queue elements until pairing: a byte stream may merge their chunk
+    * boundaries.
     */
   private def partitioned(
       incoming: Queue[IO, Option[Chunk[Byte]]],
@@ -165,7 +166,9 @@ class MuxSeededTrafficSuite extends FailsOnUncaught:
       }
       observed <- (leftGroups.get, rightGroups.get).tupled
       _ <- IO {
-        val expected = Vector.fill(lanes.size * rounds / 2)(2)
+        val framesPerLane =
+          messages(value, 0, lanes.head).map(b => (b.size + value.sdu - 1) / value.sdu).sum
+        val expected = Vector.fill(lanes.size * framesPerLane / 2)(2)
         assertEquals(observed, (expected, expected), "every transport group coalesced two writes")
       }
     yield ()
