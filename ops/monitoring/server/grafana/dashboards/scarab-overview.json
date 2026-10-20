@@ -1,0 +1,1418 @@
+{
+  "uid": "scarab-overview",
+  "title": "Scarab overview",
+  "tags": [
+    "scarab",
+    "network",
+    "tip"
+  ],
+  "description": "Start here: live per-node health, peer targets, chain activity and links to deeper network, chain and producer dashboards.",
+  "editable": false,
+  "graphTooltip": 1,
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "timepicker": {
+    "refresh_intervals": [
+      "30s",
+      "1m",
+      "5m",
+      "15m"
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "host",
+        "label": "Host",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(up{job=\"scarab\"}, host)",
+          "refId": "host-variable"
+        },
+        "definition": "label_values(up{job=\"scarab\"}, host)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".+",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "sort": 1
+      },
+      {
+        "name": "container",
+        "label": "Node",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(up{job=\"scarab\", host=~\"$host\"}, container)",
+          "refId": "container-variable"
+        },
+        "definition": "label_values(up{job=\"scarab\", host=~\"$host\"}, container)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".+",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "text",
+      "title": "Start here",
+      "options": {
+        "mode": "markdown",
+        "content": "Compare **each node with its own peers**. Pascal/preprod and Rutherford/mainnet have different chains: their block and slot numbers are not comparable.\n\nUse **Network** for peer states, discovery, failures and connection lifecycles; **Chain tip** for block activity, validation, rollbacks, ledger, mempool and storage; **Pool** for our producer and KES; **Runs** and **Node Exporter Full** for raw logs and machine resources.\n\n**Hot** means active; **warm** means established but inactive; **cold** means known but disconnected. Totals below include ordinary **and** big-ledger peers. Missing telemetry stays missing; it is not treated as a healthy zero."
+      },
+      "id": 1,
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "type": "row",
+      "title": "Live node state",
+      "id": 2,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 6
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Metrics scrape up",
+      "description": "1 means the endpoint answered. It does not prove every collector updated or that the node is at network tip.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "min by (host, container) (up{job=\"scarab\", host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "{{host}} {{container}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "noValue": "No samples",
+          "decimals": 0,
+          "links": [
+            {
+              "title": "Network for this node",
+              "url": "/d/scarab-network?var-host=${__field.labels.host}&var-container=${__field.labels.container}&${__url_time_range}",
+              "targetBlank": false
+            },
+            {
+              "title": "Chain tip for this node",
+              "url": "/d/scarab-chain-tip?var-host=${__field.labels.host}&var-container=${__field.labels.container}&${__url_time_range}",
+              "targetBlank": false
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal"
+      },
+      "id": 3,
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 7
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Current phase",
+      "description": "Active one-hot phase. Scrape availability is shown separately.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container, phase) (scarab_node_phase{host=~\"$host\", container=~\"$container\"}) == 1",
+          "legendFormat": "{{host}} {{container}} \u2014 {{phase}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "No samples",
+          "links": [
+            {
+              "title": "Network for this node",
+              "url": "/d/scarab-network?var-host=${__field.labels.host}&var-container=${__field.labels.container}&${__url_time_range}",
+              "targetBlank": false
+            },
+            {
+              "title": "Chain tip for this node",
+              "url": "/d/scarab-chain-tip?var-host=${__field.labels.host}&var-container=${__field.labels.container}&${__url_time_range}",
+              "targetBlank": false
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal"
+      },
+      "id": 4,
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 7
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Process uptime",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "time() - max by (host, container) (process_start_time_seconds{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "{{host}} {{container}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "No samples",
+          "links": [
+            {
+              "title": "Network for this node",
+              "url": "/d/scarab-network?var-host=${__field.labels.host}&var-container=${__field.labels.container}&${__url_time_range}",
+              "targetBlank": false
+            },
+            {
+              "title": "Chain tip for this node",
+              "url": "/d/scarab-chain-tip?var-host=${__field.labels.host}&var-container=${__field.labels.container}&${__url_time_range}",
+              "targetBlank": false
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal"
+      },
+      "id": 5,
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 7
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Metric sample age",
+      "description": "Age of the most recently ingested scrape sample. This measures the telemetry pipeline, not block freshness or individual event-driven gauge freshness.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "time() - max by (host, container) (timestamp(up{job=\"scarab\", host=~\"$host\", container=~\"$container\"}))",
+          "legendFormat": "{{host}} {{container}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "No samples",
+          "links": [
+            {
+              "title": "Network for this node",
+              "url": "/d/scarab-network?var-host=${__field.labels.host}&var-container=${__field.labels.container}&${__url_time_range}",
+              "targetBlank": false
+            },
+            {
+              "title": "Chain tip for this node",
+              "url": "/d/scarab-chain-tip?var-host=${__field.labels.host}&var-container=${__field.labels.container}&${__url_time_range}",
+              "targetBlank": false
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal"
+      },
+      "id": 6,
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 7
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Hot peers \u2014 total",
+      "description": "Ordinary hot + big-ledger hot. Local roots are already included; do not add them again.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_Hot_int{host=~\"$host\", container=~\"$container\"}) + max by (host, container) (cardano_node_metrics_peerSelection_HotBigLedgerPeers_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "{{host}} {{container}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "No samples",
+          "decimals": 0,
+          "links": [
+            {
+              "title": "Network for this node",
+              "url": "/d/scarab-network?var-host=${__field.labels.host}&var-container=${__field.labels.container}&${__url_time_range}",
+              "targetBlank": false
+            },
+            {
+              "title": "Chain tip for this node",
+              "url": "/d/scarab-chain-tip?var-host=${__field.labels.host}&var-container=${__field.labels.container}&${__url_time_range}",
+              "targetBlank": false
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal"
+      },
+      "id": 7,
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 12
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Warm peers \u2014 total",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_Warm_int{host=~\"$host\", container=~\"$container\"}) + max by (host, container) (cardano_node_metrics_peerSelection_WarmBigLedgerPeers_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "{{host}} {{container}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "No samples",
+          "decimals": 0,
+          "links": [
+            {
+              "title": "Network for this node",
+              "url": "/d/scarab-network?var-host=${__field.labels.host}&var-container=${__field.labels.container}&${__url_time_range}",
+              "targetBlank": false
+            },
+            {
+              "title": "Chain tip for this node",
+              "url": "/d/scarab-chain-tip?var-host=${__field.labels.host}&var-container=${__field.labels.container}&${__url_time_range}",
+              "targetBlank": false
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal"
+      },
+      "id": 8,
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 12
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Cold peers \u2014 total",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_Cold_int{host=~\"$host\", container=~\"$container\"}) + max by (host, container) (cardano_node_metrics_peerSelection_ColdBigLedgerPeers_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "{{host}} {{container}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "No samples",
+          "decimals": 0,
+          "links": [
+            {
+              "title": "Network for this node",
+              "url": "/d/scarab-network?var-host=${__field.labels.host}&var-container=${__field.labels.container}&${__url_time_range}",
+              "targetBlank": false
+            },
+            {
+              "title": "Chain tip for this node",
+              "url": "/d/scarab-chain-tip?var-host=${__field.labels.host}&var-container=${__field.labels.container}&${__url_time_range}",
+              "targetBlank": false
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal"
+      },
+      "id": 9,
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 12
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Peer slot difference",
+      "description": "Last peer tip reported by follower extension minus our selected tip. Positive means that observed peer was ahead; negative can occur. Not wall-clock lag or independent proof of global synchronization.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (scarab_peer_tip_slot{host=~\"$host\", container=~\"$container\"}) - max by (host, container) (cardano_node_metrics_slotNum_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "{{host}} {{container}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "No samples",
+          "decimals": 0,
+          "links": [
+            {
+              "title": "Network for this node",
+              "url": "/d/scarab-network?var-host=${__field.labels.host}&var-container=${__field.labels.container}&${__url_time_range}",
+              "targetBlank": false
+            },
+            {
+              "title": "Chain tip for this node",
+              "url": "/d/scarab-chain-tip?var-host=${__field.labels.host}&var-container=${__field.labels.container}&${__url_time_range}",
+              "targetBlank": false
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal"
+      },
+      "id": 10,
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 12
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Hot peers and active target",
+      "description": "Compare actual active peers with the sum of ordinary and big-ledger targets. Churn deliberately changes targets.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_Hot_int{host=~\"$host\", container=~\"$container\"}) + max by (host, container) (cardano_node_metrics_peerSelection_HotBigLedgerPeers_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "active {{host}} {{container}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (scarab_peer_selection_targets{host=~\"$host\", container=~\"$container\", target=\"Active\"}) + max by (host, container) (scarab_peer_selection_targets{host=~\"$host\", container=~\"$container\", target=\"ActiveBigLedger\"})",
+          "legendFormat": "target {{host}} {{container}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 11,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 17
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Blocks applied per minute",
+      "description": "Follower extensions, including replacement work after rollbacks; this is not a transaction rate or guaranteed unique canonical block count.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (host, container) (rate(scarab_blocks_applied_total{host=~\"$host\", container=~\"$container\"}[$__rate_interval])) * 60",
+          "legendFormat": "{{host}} {{container}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 12,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 17
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Difference from observed peer tip",
+      "description": "Each series compares one node with its own observed peer tip; do not compare absolute tips across networks.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (scarab_peer_tip_slot{host=~\"$host\", container=~\"$container\"}) - max by (host, container) (cardano_node_metrics_slotNum_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "{{host}} {{container}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 13,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 17
+      }
+    },
+    {
+      "type": "row",
+      "title": "Events in the selected interval",
+      "id": 14,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 25
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Validation errors",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (host, container) (increase(scarab_validation_errors_total{host=~\"$host\", container=~\"$container\"}[$__range]))",
+          "legendFormat": "{{host}} {{container}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "noValue": "No samples",
+          "decimals": 0,
+          "links": [
+            {
+              "title": "Network for this node",
+              "url": "/d/scarab-network?var-host=${__field.labels.host}&var-container=${__field.labels.container}&${__url_time_range}",
+              "targetBlank": false
+            },
+            {
+              "title": "Chain tip for this node",
+              "url": "/d/scarab-chain-tip?var-host=${__field.labels.host}&var-container=${__field.labels.container}&${__url_time_range}",
+              "targetBlank": false
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal"
+      },
+      "id": 15,
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 26
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Chain rollbacks",
+      "description": "Selected-chain rollback events, not every competing branch observed.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (host, container) (increase(scarab_rollbacks_total{host=~\"$host\", container=~\"$container\"}[$__range]))",
+          "legendFormat": "{{host}} {{container}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "No samples",
+          "decimals": 0,
+          "links": [
+            {
+              "title": "Network for this node",
+              "url": "/d/scarab-network?var-host=${__field.labels.host}&var-container=${__field.labels.container}&${__url_time_range}",
+              "targetBlank": false
+            },
+            {
+              "title": "Chain tip for this node",
+              "url": "/d/scarab-chain-tip?var-host=${__field.labels.host}&var-container=${__field.labels.container}&${__url_time_range}",
+              "targetBlank": false
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal"
+      },
+      "id": 16,
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 26
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Failed peer promotions",
+      "description": "Failed attempts to promote a peer. Use Network to inspect timing, failure logs and recovery; a failure is not automatically a node fault.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (host, container) (increase(scarab_peer_selection_transitions_total{host=~\"$host\", container=~\"$container\", transition=\"PromoteFailed\"}[$__range]))",
+          "legendFormat": "{{host}} {{container}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "No samples",
+          "decimals": 0,
+          "links": [
+            {
+              "title": "Network for this node",
+              "url": "/d/scarab-network?var-host=${__field.labels.host}&var-container=${__field.labels.container}&${__url_time_range}",
+              "targetBlank": false
+            },
+            {
+              "title": "Chain tip for this node",
+              "url": "/d/scarab-chain-tip?var-host=${__field.labels.host}&var-container=${__field.labels.container}&${__url_time_range}",
+              "targetBlank": false
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal"
+      },
+      "id": 17,
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 26
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Follower stalls begun",
+      "description": "Watchdog stall events. The current stalled-state gauge is not reliably present on all deployed builds.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (host, container) (increase(scarab_follower_stalls_total{host=~\"$host\", container=~\"$container\"}[$__range]))",
+          "legendFormat": "{{host}} {{container}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "No samples",
+          "decimals": 0,
+          "links": [
+            {
+              "title": "Network for this node",
+              "url": "/d/scarab-network?var-host=${__field.labels.host}&var-container=${__field.labels.container}&${__url_time_range}",
+              "targetBlank": false
+            },
+            {
+              "title": "Chain tip for this node",
+              "url": "/d/scarab-chain-tip?var-host=${__field.labels.host}&var-container=${__field.labels.container}&${__url_time_range}",
+              "targetBlank": false
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal"
+      },
+      "id": 18,
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 26
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Selected-chain density",
+      "description": "Blocks per slot across the volatile chain, from its anchor to selected tip. This is chain density, not block byte utilization.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_density_real{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "{{host}} {{container}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 19,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 31
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Peer promotions and losses per minute",
+      "description": "Failure and recovery alongside churn. Rates need at least two scrape samples.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (host, container, transition) (rate(scarab_peer_selection_transitions_total{host=~\"$host\", container=~\"$container\", transition=~\"PromoteFailed|Lost|PromotedHot\"}[$__rate_interval])) * 60",
+          "legendFormat": "{{host}} {{transition}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 20,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 31
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Running build",
+      "description": "Embedded source revision and application version from each running node.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container, git_commit, version) (scarab_build_info{host=~\"$host\", container=~\"$container\"}) == 1",
+          "legendFormat": "{{host}} {{container}} \u2014 {{git_commit}} ({{version}})",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "No samples",
+          "links": [
+            {
+              "title": "Network for this node",
+              "url": "/d/scarab-network?var-host=${__field.labels.host}&var-container=${__field.labels.container}&${__url_time_range}",
+              "targetBlank": false
+            },
+            {
+              "title": "Chain tip for this node",
+              "url": "/d/scarab-chain-tip?var-host=${__field.labels.host}&var-container=${__field.labels.container}&${__url_time_range}",
+              "targetBlank": false
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal"
+      },
+      "id": 21,
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 39
+      }
+    },
+    {
+      "type": "text",
+      "title": "What the existing telemetry can tell us",
+      "options": {
+        "mode": "markdown",
+        "content": "**Available:** governor temperatures/targets/origins, connection-manager states, lifecycle events, discovery/churn, selected-chain activity and density, rollbacks, validation timings, mempool, ledger population, snapshots, our own forging and KES.\n\n**Not exported by the current nodes:** adopted-block body size and transaction count, producing-pool identity for each received block, per-peer RTT/throughput, and a graph of all competing branches (tines). There are no placeholder charts for these. Network event logs offer a local view, not a network-wide topology.\n\nThe existing singleton block-fetch latency histogram can have **zero observations while the range-fetch path is active**. ChainSync round duration includes awaiting a peer reply and is not RTT. Event-driven gauges can remain unchanged between events; a fresh scrape timestamp does not prove fresh underlying observations."
+      },
+      "id": 22,
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 43
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "links": [
+    {
+      "type": "link",
+      "title": "Overview",
+      "url": "/d/scarab-overview",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "Network",
+      "url": "/d/scarab-network",
+      "includeVars": false,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "Chain tip",
+      "url": "/d/scarab-chain-tip",
+      "includeVars": false,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "Pool",
+      "url": "/d/scarab-pool",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "Runs",
+      "url": "/d/scarab-runs",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    }
+  ]
+}

@@ -28,15 +28,14 @@
         "label": "Host",
         "type": "query",
         "datasource": {
-          "type": "loki",
-          "uid": "loki"
+          "type": "prometheus",
+          "uid": "prometheus"
         },
         "query": {
-          "type": 1,
-          "label": "host",
-          "stream": "{job=\"scarab\"}",
-          "refId": "LokiVariableQueryEditor-VariableQuery"
+          "query": "label_values(up{job=\"scarab\"}, host)",
+          "refId": "host-variable"
         },
+        "definition": "label_values(up{job=\"scarab\"}, host)",
         "refresh": 2,
         "includeAll": true,
         "multi": true,
@@ -56,15 +55,14 @@
         "label": "Run",
         "type": "query",
         "datasource": {
-          "type": "loki",
-          "uid": "loki"
+          "type": "prometheus",
+          "uid": "prometheus"
         },
         "query": {
-          "type": 1,
-          "label": "container",
-          "stream": "{job=\"scarab\", host=~\"$host\"}",
-          "refId": "LokiVariableQueryEditor-VariableQuery"
+          "query": "label_values(up{job=\"scarab\", host=~\"$host\"}, container)",
+          "refId": "container-variable"
         },
+        "definition": "label_values(up{job=\"scarab\", host=~\"$host\"}, container)",
         "refresh": 2,
         "includeAll": true,
         "multi": true,
@@ -84,7 +82,7 @@
   "panels": [
     {
       "type": "row",
-      "title": "Sync",
+      "title": "Live sync \u00b7 metrics",
       "id": 1,
       "collapsed": false,
       "gridPos": {
@@ -96,22 +94,22 @@
     },
     {
       "type": "stat",
-      "title": "Block",
-      "description": "Block number of the newest sampled `extended` line (one per 1000 blocks); while a start replays its stored blocks, the newest replayed block.",
+      "title": "Current block",
+      "description": "Current selected tip from /metrics; use sampled history below for older runs.",
       "datasource": {
-        "type": "loki",
-        "uid": "loki"
+        "type": "prometheus",
+        "uid": "prometheus"
       },
       "targets": [
         {
           "datasource": {
-            "type": "loki",
-            "uid": "loki"
+            "type": "prometheus",
+            "uid": "prometheus"
           },
-          "expr": "max by (host, container) (max_over_time({host=~\"$host\", container=~\"$container\", event=\"extended\"} | json b=\"block.blockNo\" | unwrap b [$__auto])) or max by (host, container) (max_over_time({host=~\"$host\", container=~\"$container\", event=\"replayProgress\"} | json b=\"tip.blockNo\" | unwrap b [$__auto]))",
+          "expr": "max by (host, container) (cardano_node_metrics_blockNum_int{host=~\"$host\", container=~\"$container\"})",
           "legendFormat": "{{host}} {{container}}",
           "refId": "A",
-          "queryType": "instant"
+          "instant": true
         }
       ],
       "fieldConfig": {
@@ -129,6 +127,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -157,27 +156,27 @@
     },
     {
       "type": "stat",
-      "title": "Synced",
-      "description": "Slot of our tip over the slot of the peer's tip.",
+      "title": "Peer slot difference",
+      "description": "Last peer tip recorded on follower extension minus our selected tip. Not an independent network clock.",
       "datasource": {
-        "type": "loki",
-        "uid": "loki"
+        "type": "prometheus",
+        "uid": "prometheus"
       },
       "targets": [
         {
           "datasource": {
-            "type": "loki",
-            "uid": "loki"
+            "type": "prometheus",
+            "uid": "prometheus"
           },
-          "expr": "max by (host, container) (max_over_time({host=~\"$host\", container=~\"$container\", event=\"extended\"} | json s=\"block.slot\" | unwrap s [$__auto])) / max by (host, container) (max_over_time({host=~\"$host\", container=~\"$container\", event=\"extended\"} | json p=\"peerTip.slot\" | unwrap p [$__auto])) * 100",
+          "expr": "max by (host, container) (scarab_peer_tip_slot{host=~\"$host\", container=~\"$container\"}) - max by (host, container) (cardano_node_metrics_slotNum_int{host=~\"$host\", container=~\"$container\"})",
           "legendFormat": "{{host}} {{container}}",
           "refId": "A",
-          "queryType": "instant"
+          "instant": true
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "percent",
+          "unit": "none",
           "color": {
             "mode": "thresholds"
           },
@@ -185,16 +184,13 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "orange",
-                "value": null
-              },
-              {
                 "color": "green",
-                "value": 99.99
+                "value": null
               }
             ]
           },
-          "decimals": 2
+          "noValue": "No samples",
+          "decimals": 0
         },
         "overrides": []
       },
@@ -222,22 +218,22 @@
     },
     {
       "type": "stat",
-      "title": "Epoch",
+      "title": "Current epoch",
       "description": "",
       "datasource": {
-        "type": "loki",
-        "uid": "loki"
+        "type": "prometheus",
+        "uid": "prometheus"
       },
       "targets": [
         {
           "datasource": {
-            "type": "loki",
-            "uid": "loki"
+            "type": "prometheus",
+            "uid": "prometheus"
           },
-          "expr": "max by (host, container) (max_over_time({host=~\"$host\", container=~\"$container\", event=\"extended\"} | json e=\"epoch\" | unwrap e [$__auto]))",
+          "expr": "max by (host, container) (cardano_node_metrics_epoch_int{host=~\"$host\", container=~\"$container\"})",
           "legendFormat": "{{host}} {{container}}",
           "refId": "A",
-          "queryType": "instant"
+          "instant": true
         }
       ],
       "fieldConfig": {
@@ -255,6 +251,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -284,21 +281,21 @@
     {
       "type": "stat",
       "title": "Validation errors (range)",
-      "description": "`error` events in the selected time range.",
+      "description": "",
       "datasource": {
-        "type": "loki",
-        "uid": "loki"
+        "type": "prometheus",
+        "uid": "prometheus"
       },
       "targets": [
         {
           "datasource": {
-            "type": "loki",
-            "uid": "loki"
+            "type": "prometheus",
+            "uid": "prometheus"
           },
-          "expr": "sum by (host, container) (count_over_time({host=~\"$host\", container=~\"$container\", event=\"error\"} [$__range]))",
+          "expr": "sum by (host, container) (increase(scarab_validation_errors_total{host=~\"$host\", container=~\"$container\"}[$__range]))",
           "legendFormat": "{{host}} {{container}}",
           "refId": "A",
-          "queryType": "instant"
+          "instant": true
         }
       ],
       "fieldConfig": {
@@ -320,6 +317,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -348,22 +346,22 @@
     },
     {
       "type": "stat",
-      "title": "Exits (range)",
-      "description": "The JVM stopped (a stop, a crash or a restart).",
+      "title": "Process restarts (range)",
+      "description": "Changes in observed process start time. Requires scrapes on both sides of a restart.",
       "datasource": {
-        "type": "loki",
-        "uid": "loki"
+        "type": "prometheus",
+        "uid": "prometheus"
       },
       "targets": [
         {
           "datasource": {
-            "type": "loki",
-            "uid": "loki"
+            "type": "prometheus",
+            "uid": "prometheus"
           },
-          "expr": "sum by (host, container) (count_over_time({host=~\"$host\", container=~\"$container\", event=\"exited\"} [$__range]))",
+          "expr": "max by (host, container) (changes(process_start_time_seconds{host=~\"$host\", container=~\"$container\"}[$__range]))",
           "legendFormat": "{{host}} {{container}}",
           "refId": "A",
-          "queryType": "instant"
+          "instant": true
         }
       ],
       "fieldConfig": {
@@ -378,13 +376,10 @@
               {
                 "color": "green",
                 "value": null
-              },
-              {
-                "color": "orange",
-                "value": 1
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -413,7 +408,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Block number",
+      "title": "Sampled historical block number",
       "description": "Followed blocks, and the blocks a start replays from its own store.",
       "datasource": {
         "type": "loki",
@@ -446,7 +441,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -474,7 +469,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Blocks per second",
+      "title": "Sampled historical blocks per second",
       "description": "From the sampled block numbers over 10 minutes.",
       "datasource": {
         "type": "loki",
@@ -498,7 +493,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -559,7 +554,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -611,7 +606,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "normal"
             }
@@ -802,6 +797,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 2
         },
         "overrides": []
@@ -863,6 +859,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -928,6 +925,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -993,6 +991,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -1054,6 +1053,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -1106,7 +1106,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -1167,7 +1167,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -1228,7 +1228,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -1280,7 +1280,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -1332,7 +1332,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -1393,7 +1393,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -1457,7 +1457,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -1509,7 +1509,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -1561,7 +1561,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -1613,7 +1613,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -1665,7 +1665,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -1717,7 +1717,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -1745,5 +1745,47 @@
     }
   ],
   "schemaVersion": 39,
-  "version": 1
+  "version": 1,
+  "links": [
+    {
+      "type": "link",
+      "title": "Overview",
+      "url": "/d/scarab-overview",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "Network",
+      "url": "/d/scarab-network",
+      "includeVars": false,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "Chain tip",
+      "url": "/d/scarab-chain-tip",
+      "includeVars": false,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "Pool",
+      "url": "/d/scarab-pool",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "Runs",
+      "url": "/d/scarab-runs",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    }
+  ]
 }

@@ -1,0 +1,3003 @@
+{
+  "uid": "scarab-network",
+  "title": "Scarab network",
+  "tags": [
+    "scarab",
+    "network",
+    "peers"
+  ],
+  "description": "Peer governor populations, discovery, churn, transport states and peer-event investigations. Existing node telemetry only; mainnet/preprod kept separate by single-node selection.",
+  "editable": false,
+  "graphTooltip": 1,
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "timepicker": {
+    "refresh_intervals": [
+      "30s",
+      "1m",
+      "5m",
+      "15m"
+    ]
+  },
+  "links": [
+    {
+      "type": "link",
+      "title": "Overview",
+      "url": "/d/scarab-overview",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "Network",
+      "url": "/d/scarab-network",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "Chain tip",
+      "url": "/d/scarab-chain-tip",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "Pool",
+      "url": "/d/scarab-pool",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "Runs",
+      "url": "/d/scarab-runs",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "host",
+        "label": "Host",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(scarab_build_info, host)",
+          "refId": "host-variable"
+        },
+        "definition": "label_values(scarab_build_info, host)",
+        "refresh": 2,
+        "includeAll": false,
+        "multi": false,
+        "current": {
+          "text": "pascal",
+          "value": "pascal"
+        },
+        "sort": 1
+      },
+      {
+        "name": "container",
+        "label": "Node",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(scarab_build_info{host=~\"$host\"}, container)",
+          "refId": "container-variable"
+        },
+        "definition": "label_values(scarab_build_info{host=~\"$host\"}, container)",
+        "refresh": 2,
+        "includeAll": false,
+        "multi": false,
+        "current": {
+          "text": "scarab-preprod",
+          "value": "scarab-preprod"
+        },
+        "sort": 1
+      },
+      {
+        "name": "peer",
+        "label": "Peer log regex",
+        "type": "textbox",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": ".*",
+            "value": ".*"
+          }
+        ]
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "text",
+      "title": "Reading the network",
+      "options": {
+        "mode": "markdown",
+        "content": "**Hot = active**, **warm = established minus active**, **cold = known minus established**. Ordinary and big-ledger peers are disjoint governor populations; totals below include both. Established includes closing/lingering peers and active includes deactivation in progress. Connection-manager states are a separate layer. Differences from governor counts can persist and require investigation; these are not interchangeable socket counts. Select one host and node to keep mainnet and preprod separate. The peer regex filters log investigations only. Missing data stays missing; event counters may be absent until their first occurrence. No per-peer RTT, bandwidth or lifetime peer roster is exported by the current node."
+      },
+      "id": 1,
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "type": "row",
+      "title": "At a glance \u00b7 current scrape, not sampled block logs",
+      "id": 2,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Metrics reachable",
+      "description": "1 means Prometheus scraped this node. Missing is not a healthy zero.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "min by (host, container) (up{job=\"scarab\", host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "{{host}} {{container}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "noValue": "No samples",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal"
+      },
+      "id": 3,
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 0,
+        "y": 5
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Active / hot \u00b7 total",
+      "description": "Ordinary active peers plus active big-ledger peers.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(max by (host, container) (cardano_node_metrics_peerSelection_ActivePeers_int{host=~\"$host\", container=~\"$container\"}) + max by (host, container) (cardano_node_metrics_peerSelection_ActiveBigLedgerPeers_int{host=~\"$host\", container=~\"$container\"}))",
+          "legendFormat": "{{host}} {{container}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "No samples",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal"
+      },
+      "id": 4,
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 4,
+        "y": 5
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Established \u00b7 total",
+      "description": "Ordinary plus big-ledger established peers; includes hot and warm.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(max by (host, container) (cardano_node_metrics_peerSelection_EstablishedPeers_int{host=~\"$host\", container=~\"$container\"}) + max by (host, container) (cardano_node_metrics_peerSelection_EstablishedBigLedgerPeers_int{host=~\"$host\", container=~\"$container\"}))",
+          "legendFormat": "{{host}} {{container}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "No samples",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal"
+      },
+      "id": 5,
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 8,
+        "y": 5
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Known \u00b7 total",
+      "description": "All peers currently known to the governor, including cold peers.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(max by (host, container) (cardano_node_metrics_peerSelection_KnownPeers_int{host=~\"$host\", container=~\"$container\"}) + max by (host, container) (cardano_node_metrics_peerSelection_KnownBigLedgerPeers_int{host=~\"$host\", container=~\"$container\"}))",
+          "legendFormat": "{{host}} {{container}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "No samples",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal"
+      },
+      "id": 6,
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 12,
+        "y": 5
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Manager established",
+      "description": "Connection-manager established entries. This separate layer is not the hot peer count.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (scarab_connections{host=~\"$host\", container=~\"$container\", state=\"Established\"})",
+          "legendFormat": "{{host}} {{container}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "No samples",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal"
+      },
+      "id": 7,
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 16,
+        "y": 5
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Peer slot lag",
+      "description": "Peer tip last reported on follower extension minus local slot; may be slightly negative. Zero lag is not proof of network reachability.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (scarab_peer_tip_slot{host=~\"$host\", container=~\"$container\"}) - max by (host, container) (cardano_node_metrics_slotNum_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "{{host}} {{container}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "No samples",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal"
+      },
+      "id": 8,
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 20,
+        "y": 5
+      }
+    },
+    {
+      "type": "row",
+      "title": "Governor populations \u00b7 temperatures and targets",
+      "id": 9,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 10
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Ordinary temperatures",
+      "description": "Disjoint hot, warm and cold sets for this population. Ordinary excludes big-ledger peers.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_Hot_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "hot / active",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_Warm_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "warm",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_Cold_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "cold",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 10,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 11
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Ordinary population against targets",
+      "description": "Known contains established, which contains active: these series must not be stacked. Targets can change during scheduled churn.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_KnownPeers_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "known",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_EstablishedPeers_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "established",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_ActivePeers_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "active",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (scarab_peer_selection_targets{host=~\"$host\", container=~\"$container\", target=\"Known\"})",
+          "legendFormat": "known target",
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (scarab_peer_selection_targets{host=~\"$host\", container=~\"$container\", target=\"Established\"})",
+          "legendFormat": "established target",
+          "refId": "E"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (scarab_peer_selection_targets{host=~\"$host\", container=~\"$container\", target=\"Active\"})",
+          "legendFormat": "active target",
+          "refId": "F"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 11,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 11
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Big ledger temperatures",
+      "description": "Disjoint hot, warm and cold sets for this population. Ordinary excludes big-ledger peers.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_HotBigLedgerPeers_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "hot / active",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_WarmBigLedgerPeers_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "warm",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_ColdBigLedgerPeers_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "cold",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 12,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 19
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Big ledger population against targets",
+      "description": "Known contains established, which contains active: these series must not be stacked. Targets can change during scheduled churn.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_KnownBigLedgerPeers_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "known",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_EstablishedBigLedgerPeers_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "established",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_ActiveBigLedgerPeers_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "active",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (scarab_peer_selection_targets{host=~\"$host\", container=~\"$container\", target=\"KnownBigLedger\"})",
+          "legendFormat": "known target",
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (scarab_peer_selection_targets{host=~\"$host\", container=~\"$container\", target=\"EstablishedBigLedger\"})",
+          "legendFormat": "established target",
+          "refId": "E"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (scarab_peer_selection_targets{host=~\"$host\", container=~\"$container\", target=\"ActiveBigLedger\"})",
+          "legendFormat": "active target",
+          "refId": "F"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 13,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 19
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Total temperatures \u00b7 both populations",
+      "description": "Hot + warm + cold equals all known peers across both populations.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(max by (host, container) (cardano_node_metrics_peerSelection_Hot_int{host=~\"$host\", container=~\"$container\"}) + max by (host, container) (cardano_node_metrics_peerSelection_HotBigLedgerPeers_int{host=~\"$host\", container=~\"$container\"}))",
+          "legendFormat": "hot",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(max by (host, container) (cardano_node_metrics_peerSelection_Warm_int{host=~\"$host\", container=~\"$container\"}) + max by (host, container) (cardano_node_metrics_peerSelection_WarmBigLedgerPeers_int{host=~\"$host\", container=~\"$container\"}))",
+          "legendFormat": "warm",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(max by (host, container) (cardano_node_metrics_peerSelection_Cold_int{host=~\"$host\", container=~\"$container\"}) + max by (host, container) (cardano_node_metrics_peerSelection_ColdBigLedgerPeers_int{host=~\"$host\", container=~\"$container\"}))",
+          "legendFormat": "cold",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 14,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 27
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Active target shortfall",
+      "description": "Peers below each current active target. A transient shortfall is normal while promoting or churning.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "clamp_min(max by (host, container) (scarab_peer_selection_targets{host=~\"$host\", container=~\"$container\", target=\"Active\"}) - max by (host, container) (cardano_node_metrics_peerSelection_ActivePeers_int{host=~\"$host\", container=~\"$container\"}), 0)",
+          "legendFormat": "ordinary shortfall",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "clamp_min(max by (host, container) (scarab_peer_selection_targets{host=~\"$host\", container=~\"$container\", target=\"ActiveBigLedger\"}) - max by (host, container) (cardano_node_metrics_peerSelection_ActiveBigLedgerPeers_int{host=~\"$host\", container=~\"$container\"}), 0)",
+          "legendFormat": "big-ledger shortfall",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 15,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 27
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Established target shortfall",
+      "description": "Warm reserve depletion and disconnected peer recovery are visible here.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "clamp_min(max by (host, container) (scarab_peer_selection_targets{host=~\"$host\", container=~\"$container\", target=\"Established\"}) - max by (host, container) (cardano_node_metrics_peerSelection_EstablishedPeers_int{host=~\"$host\", container=~\"$container\"}), 0)",
+          "legendFormat": "ordinary shortfall",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "clamp_min(max by (host, container) (scarab_peer_selection_targets{host=~\"$host\", container=~\"$container\", target=\"EstablishedBigLedger\"}) - max by (host, container) (cardano_node_metrics_peerSelection_EstablishedBigLedgerPeers_int{host=~\"$host\", container=~\"$container\"}), 0)",
+          "legendFormat": "big-ledger shortfall",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 16,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 27
+      }
+    },
+    {
+      "type": "row",
+      "title": "Discovery \u00b7 origins, roots and ledger pool maps",
+      "id": 17,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 35
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Known peers by origin",
+      "description": "Origin is where a currently known address came from. Ledger and BigLedger prove discovery beyond configured roots; these are peers, not the number of stake pools.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container, origin) (scarab_peer_selection_peers{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "{{origin}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 18,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 36
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Ledger discovery pool maps",
+      "description": "Pools eligible in the ledger worker stake maps. Big is the leading 90% of stake; it overlaps the ordinary pool map. Do not add maps, and do not interpret pools as live connections.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container, map) (scarab_ledger_peers_pools{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "{{map}} pools",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 19,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 36
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Local roots \u00b7 explicit status",
+      "description": "Uses unambiguous LocalRootPeers gauges. Historical HotLocalRoots/WarmLocalRoots labels have reversed meanings and are deliberately not used.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_KnownLocalRootPeers_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "known",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_EstablishedLocalRootPeers_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "established",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_ActiveLocalRootPeers_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "active",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 20,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 44
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Bootstrap peers \u00b7 explicit status",
+      "description": "Zero is normal when bootstrap peers are not configured. These peers are part of the ordinary population.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_KnownBootstrapPeers_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "known",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_EstablishedBootstrapPeers_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "established",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_ActiveBootstrapPeers_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "active",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 21,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 44
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Root discovery population",
+      "description": "Root count includes public roots including big-ledger roots, as in the reference governor. It is not the configured local root count.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_RootPeers_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "known roots",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (scarab_peer_selection_targets{host=~\"$host\", container=~\"$container\", target=\"Root\"})",
+          "legendFormat": "root target",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 22,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 44
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Genesis state",
+      "description": "One-hot Genesis State Machine phase. CaughtUp is a consensus freshness judgement.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container, state) (scarab_gsm_state{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "{{state}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 23,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 52
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Trust, sensitivity and fetch mode",
+      "description": "Trust is the governor availability criterion, not a general network-health score. In Genesis mode it depends on sufficient active big-ledger peers. Sensitive means restricted peer selection due to an old ledger; Deadline is tip-oriented fetch mode.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (scarab_outbound_connections_trusted{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "trusted outbound state",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (scarab_peer_selection_sensitive{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "sensitive ledger state",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container, mode) (scarab_fetch_mode{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "fetch {{mode}}",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 24,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 52
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Root discovery and peer-sharing events",
+      "description": "Counts retained root-provider requests/results/failures, inbound picks and peer-share requests/results. Empty means no matching event in the interval. Requests and results are events, not unique discovered peers.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (action) (count_over_time({host=~\"$host\", container=~\"$container\", event=~\"peerSelectionRoots\"} | json | __error__=\"\" [$__auto]))",
+          "legendFormat": "{{action}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 25,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 60
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Root-provider retry delay \u00b7 recent decisions",
+      "description": "Largest retry delay decided in the trailing five minutes. Separate from individual peer promotion backoff. No recent root-provider decision yields no data; this is not a countdown.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "max by (host, container) (max_over_time({host=~\"$host\", container=~\"$container\", event=~\"peerSelectionRoots\"} | json | action=~\"results|failure\" | unwrap retryInSeconds | __error__=\"\" [5m]))",
+          "legendFormat": "retry delay",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 26,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 60
+      }
+    },
+    {
+      "type": "row",
+      "title": "Peer movement \u00b7 in-flight gauges, failures and churn",
+      "id": 27,
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 68
+      },
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "Ordinary promotions in flight",
+          "description": "Current concurrent governor jobs, not cumulative transition counters.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (host, container) (cardano_node_metrics_peerSelection_ColdPeersPromotions_int{host=~\"$host\", container=~\"$container\"})",
+              "legendFormat": "cold \u2192 warm / connecting",
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (host, container) (cardano_node_metrics_peerSelection_WarmPeersPromotions_int{host=~\"$host\", container=~\"$container\"})",
+              "legendFormat": "warm \u2192 hot / activating",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "mode": "none"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "id": 28,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 69
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Ordinary demotions in flight",
+          "description": "Current peers deactivating or closing. A plateau helps locate stuck transitions.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (host, container) (cardano_node_metrics_peerSelection_ActivePeersDemotions_int{host=~\"$host\", container=~\"$container\"})",
+              "legendFormat": "hot \u2192 warm / deactivating",
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (host, container) (cardano_node_metrics_peerSelection_WarmPeersDemotions_int{host=~\"$host\", container=~\"$container\"})",
+              "legendFormat": "warm \u2192 cold / closing",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "mode": "none"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "id": 29,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 69
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Big ledger promotions in flight",
+          "description": "Current concurrent governor jobs, not cumulative transition counters.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (host, container) (cardano_node_metrics_peerSelection_ColdBigLedgerPeersPromotions_int{host=~\"$host\", container=~\"$container\"})",
+              "legendFormat": "cold \u2192 warm / connecting",
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (host, container) (cardano_node_metrics_peerSelection_WarmBigLedgerPeersPromotions_int{host=~\"$host\", container=~\"$container\"})",
+              "legendFormat": "warm \u2192 hot / activating",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "mode": "none"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "id": 30,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 77
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Big ledger demotions in flight",
+          "description": "Current peers deactivating or closing. A plateau helps locate stuck transitions.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (host, container) (cardano_node_metrics_peerSelection_ActiveBigLedgerPeersDemotions_int{host=~\"$host\", container=~\"$container\"})",
+              "legendFormat": "hot \u2192 warm / deactivating",
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (host, container) (cardano_node_metrics_peerSelection_WarmBigLedgerPeersDemotions_int{host=~\"$host\", container=~\"$container\"})",
+              "legendFormat": "warm \u2192 cold / closing",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "mode": "none"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "id": 31,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 77
+          }
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Peer stability \u00b7 transition rates, failures and retry delays",
+      "id": 32,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 85
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Transitions completed or failed \u00b7 per minute",
+      "description": "Successful promotions, demotions, failed jobs, asynchronous peer loss and forgetting. Counters are created on first event; absent outcomes mean unobserved, not a verified zero.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "60 * sum by (host, container, transition) (rate(scarab_peer_selection_transitions_total{host=~\"$host\", container=~\"$container\"}[$__rate_interval]))",
+          "legendFormat": "{{transition}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 33,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 86
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Connection opens, closes and refusals \u00b7 per minute",
+      "description": "Connection events at the transport manager. A refused connection differs from a failed governor promotion.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "60 * sum by (host, container, event) (rate(scarab_connection_events_total{host=~\"$host\", container=~\"$container\", event!=\"Changed\"}[$__rate_interval]))",
+          "legendFormat": "{{event}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 34,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 86
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Failure retry backoff",
+      "description": "Scheduled retry delays observed after failed promotion; not elapsed connection latency. No samples yields no quantile.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.50, sum by (host, container, le) (rate(scarab_peer_selection_backoff_seconds_bucket{host=~\"$host\", container=~\"$container\"}[$__rate_interval])))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (host, container, le) (rate(scarab_peer_selection_backoff_seconds_bucket{host=~\"$host\", container=~\"$container\"}[$__rate_interval])))",
+          "legendFormat": "p95",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 35,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 94
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Backoff observations \u00b7 per minute",
+      "description": "Companion sample rate: zero observations makes backoff quantiles unavailable.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "60 * sum by (host, container) (rate(scarab_peer_selection_backoff_seconds_count{host=~\"$host\", container=~\"$container\"}[$__rate_interval]))",
+          "legendFormat": "retry delays",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 36,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 94
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Churn sleep chosen",
+      "description": "Most recently scheduled sleep before a churn round. This is not a live countdown.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (scarab_peer_selection_churn_wait_seconds{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "scheduled delay",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 37,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 94
+      }
+    },
+    {
+      "type": "row",
+      "title": "Scheduled churn and observation boards",
+      "id": 38,
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 102
+      },
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "Churn rounds \u00b7 per hour",
+          "description": "Scheduled rounds begun. A zero can be normal during the first scheduled wait.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum by (host, container) (increase(scarab_peer_selection_churn_rounds_total{host=~\"$host\", container=~\"$container\"}[1h]))",
+              "legendFormat": "rounds / rolling hour",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "mode": "none"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "id": 39,
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 103
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Churn steps \u00b7 selected range",
+          "description": "Reached versus TimedOut per bounded churn step. Absent until first event.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum by (host, container, step, result) (increase(scarab_peer_selection_churn_steps_total{host=~\"$host\", container=~\"$container\"}[$__range]))",
+              "legendFormat": "{{step}} {{result}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "mode": "none"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "id": 40,
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 103
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "First-arrival observation boards",
+          "description": "Slots with first-header / first-block observations, bounded at 180 each. This reports board occupancy, not winning peer identities, latency or pool winners.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (host, container, board) (scarab_peer_selection_peer_metrics_board_size{host=~\"$host\", container=~\"$container\"})",
+              "legendFormat": "{{board}} slots",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "mode": "none"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "id": 41,
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 103
+          }
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Connection manager \u00b7 transport states and direction",
+      "id": 42,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 111
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Connection state distribution",
+      "description": "Reserved \u2192 Unnegotiated \u2192 Established \u2192 Terminating \u2192 Terminated entries. Terminated entries may be removed promptly. This transport state is distinct from peer temperature.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container, state) (scarab_connections{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "{{state}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 43,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 112
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Inbound, outbound and duplex",
+      "description": "Inbound and outbound count nonterminated manager entries by who opened them, including reservations and negotiation in progress. Duplex describes bidirectional protocol capability and overlaps the direction counts. Do not add duplex to a connection total.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_connectionManager_inboundConns_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "inbound",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_connectionManager_outboundConns_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "outbound",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (host, container) (cardano_node_metrics_connectionManager_duplexConns_int{host=~\"$host\", container=~\"$container\"})",
+          "legendFormat": "duplex",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 44,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 112
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Inbound session outcomes \u00b7 per minute",
+      "description": "Accepted, negotiated capability, following, ended/dropped, refused/closed inbound events. An outbound-only node can legitimately have no inbound event series.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "60 * sum by (host, container, event) (rate(scarab_inbound_events_total{host=~\"$host\", container=~\"$container\"}[$__rate_interval]))",
+          "legendFormat": "{{event}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 45,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 120
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "ChainSync activity",
+      "description": "Headers includes rollback replies; aggregate across sessions, not unique blocks. Protocol waiting is part of round duration, so it is not network RTT.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (host, container) (rate(scarab_chainsync_headers_total{host=~\"$host\", container=~\"$container\"}[$__rate_interval]))",
+          "legendFormat": "headers / second",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (host, container) (rate(scarab_chainsync_rounds_total{host=~\"$host\", container=~\"$container\"}[$__rate_interval]))",
+          "legendFormat": "rounds / second",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 46,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 120
+      }
+    },
+    {
+      "type": "row",
+      "title": "Investigate peers \u00b7 retained JSON events, regex applies below",
+      "id": 47,
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 128
+      },
+      "panels": [
+        {
+          "type": "table",
+          "title": "Top failed peer promotions \u00b7 selected range",
+          "description": "Addresses and failure classes parsed at query time only, so they create no stored metric labels. Counts reflect retained logs; retries can dominate and are not unique peer counts.",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "topk(20, sum by (peer, failure) (count_over_time({host=~\"$host\", container=~\"$container\", event=~\"peerSelectionPromote\"} |~ \"${peer:raw}\" | json | action=\"failed\" | __error__=\"\" [$__range])))",
+              "legendFormat": "{{host}} {{container}}",
+              "refId": "A",
+              "queryType": "instant"
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "sortBy": [
+              {
+                "displayName": "Value",
+                "desc": true
+              }
+            ]
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "transformations": [
+            {
+              "id": "labelsToFields",
+              "options": {
+                "mode": "columns"
+              }
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                }
+              }
+            }
+          ],
+          "id": 48,
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 0,
+            "y": 129
+          }
+        },
+        {
+          "type": "table",
+          "title": "Promotion failures by cause and starting state",
+          "description": "Failure class from the typed governor event. cold failures connect/handshake; warm failures activate. An empty table means no matching retained events, not independently proven network health.",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "sum by (failure, from) (count_over_time({host=~\"$host\", container=~\"$container\", event=~\"peerSelectionPromote\"} |~ \"${peer:raw}\" | json | action=\"failed\" | __error__=\"\" [$__range]))",
+              "legendFormat": "{{host}} {{container}}",
+              "refId": "A",
+              "queryType": "instant"
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "sortBy": [
+              {
+                "displayName": "Value",
+                "desc": true
+              }
+            ]
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "transformations": [
+            {
+              "id": "labelsToFields",
+              "options": {
+                "mode": "columns"
+              }
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                }
+              }
+            }
+          ],
+          "id": 49,
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 12,
+            "y": 129
+          }
+        },
+        {
+          "type": "logs",
+          "title": "Failed promotions and asynchronous peer loss",
+          "description": "Expand an event for peer, typed failure, retryInSeconds, forgotten flag or loss reason. Use the peer regex above to focus on an address; use \".*\" for all.",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "{host=~\"$host\", container=~\"$container\", event=~\"peerSelectionPromote|peerSelectionDemote\"} |~ \"${peer:raw}\" | json | action=~\"failed|asynchronous|aborted\" | __error__=\"\"",
+              "refId": "A",
+              "maxLines": 200
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "wrapLogMessage": true,
+            "sortOrder": "Descending",
+            "enableLogDetails": true,
+            "prettifyLogMessage": false,
+            "dedupStrategy": "none"
+          },
+          "id": 50,
+          "gridPos": {
+            "h": 10,
+            "w": 24,
+            "x": 0,
+            "y": 139
+          }
+        },
+        {
+          "type": "logs",
+          "title": "Peer promotions, demotions and forgetting",
+          "description": "Decisions and their outcomes. Decided events may contain arrays of peers; raw regex matches those too.",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "{host=~\"$host\", container=~\"$container\", event=~\"peerSelectionPromote|peerSelectionDemote|peerSelectionForget\"} |~ \"${peer:raw}\"",
+              "refId": "A",
+              "maxLines": 200
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "wrapLogMessage": true,
+            "sortOrder": "Descending",
+            "enableLogDetails": true,
+            "prettifyLogMessage": false,
+            "dedupStrategy": "none"
+          },
+          "id": 51,
+          "gridPos": {
+            "h": 12,
+            "w": 12,
+            "x": 0,
+            "y": 149
+          }
+        },
+        {
+          "type": "logs",
+          "title": "Connection and inbound session lifecycle",
+          "description": "Open/close, handshake direction, duplex capability and session termination reasons. Does not claim a complete current peer roster: logs describe events over the selected interval.",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "{host=~\"$host\", container=~\"$container\", event=~\"connection|inbound\"} |~ \"${peer:raw}\"",
+              "refId": "A",
+              "maxLines": 200
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "wrapLogMessage": true,
+            "sortOrder": "Descending",
+            "enableLogDetails": true,
+            "prettifyLogMessage": false,
+            "dedupStrategy": "none"
+          },
+          "id": 52,
+          "gridPos": {
+            "h": 12,
+            "w": 12,
+            "x": 12,
+            "y": 149
+          }
+        },
+        {
+          "type": "logs",
+          "title": "Discovery, ledger maps and peer sharing",
+          "description": "Inspect source Ledger, stake-map refreshes, skipped pool relays, root retries, peer-share requests/results and changing targets. Peer regex deliberately does not filter this global context.",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "{host=~\"$host\", container=~\"$container\", event=~\"peerSelectionRoots|ledgerPeers|peerSelectionTargets\"}",
+              "refId": "A",
+              "maxLines": 200
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "wrapLogMessage": true,
+            "sortOrder": "Descending",
+            "enableLogDetails": true,
+            "prettifyLogMessage": false,
+            "dedupStrategy": "none"
+          },
+          "id": 53,
+          "gridPos": {
+            "h": 12,
+            "w": 12,
+            "x": 0,
+            "y": 161
+          }
+        },
+        {
+          "type": "logs",
+          "title": "Churn, trust, Genesis and fetch mode timeline",
+          "description": "Explains deliberate target changes, churn timeouts, ledger freshness, trust and fetch mode changes. Peer regex deliberately does not filter these global events.",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "{host=~\"$host\", container=~\"$container\", event=~\"peerSelectionChurn|peerSelectionSensitive|outboundConnections|gsmTransition|fetchModeChanged\"}",
+              "refId": "A",
+              "maxLines": 200
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "wrapLogMessage": true,
+            "sortOrder": "Descending",
+            "enableLogDetails": true,
+            "prettifyLogMessage": false,
+            "dedupStrategy": "none"
+          },
+          "id": 54,
+          "gridPos": {
+            "h": 12,
+            "w": 12,
+            "x": 12,
+            "y": 161
+          }
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1
+}

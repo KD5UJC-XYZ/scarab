@@ -128,8 +128,8 @@
     },
     {
       "type": "stat",
-      "title": "Pool alerts firing",
-      "description": "Alerts of prometheus/rules/pool.yml that are firing now.",
+      "title": "Node alerts firing",
+      "description": "Firing pool alerts carrying the selected node labels. Host-only rotation and global missing-metrics alerts are shown separately below.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -140,7 +140,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "count(ALERTS{alertstate=\"firing\", alertname=~\"Pool.*\"}) or vector(0)",
+          "expr": "count by (host, container) (ALERTS{alertstate=\"firing\", alertname=~\"Pool.*\", host=~\"$host\", container=~\"$container\"}) or on (host, container) (0 * min by (host, container) (up{job=\"scarab\", host=~\"$host\", container=~\"$container\"}))",
           "legendFormat": "{{host}} {{container}}",
           "refId": "A",
           "instant": true
@@ -165,6 +165,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -230,6 +231,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -295,6 +297,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -336,7 +339,7 @@
             "uid": "prometheus"
           },
           "expr": "max by (host, container, phase) (scarab_node_phase{host=~\"$host\", container=~\"$container\"}) == 1",
-          "legendFormat": "{{host}} {{container}}",
+          "legendFormat": "{{phase}}",
           "refId": "A",
           "instant": true
         }
@@ -355,7 +358,8 @@
                 "value": null
               }
             ]
-          }
+          },
+          "noValue": "No samples"
         },
         "overrides": []
       },
@@ -367,11 +371,14 @@
           "fields": "",
           "values": false
         },
-        "textMode": "value_and_name",
+        "textMode": "name",
         "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "auto",
-        "orientation": "horizontal"
+        "orientation": "horizontal",
+        "text": {
+          "valueSize": 28
+        }
       },
       "id": 5,
       "gridPos": {
@@ -383,8 +390,8 @@
     },
     {
       "type": "stat",
-      "title": "Stalled",
-      "description": "1 while the node has not extended its chain for --stall-minutes with a peer ahead.",
+      "title": "Stalls begun (range)",
+      "description": "Watchdog stalls begun in the interval. A current stalled-state gauge is unavailable on some deployed builds.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -395,7 +402,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (host, container) (scarab_follower_stalled{host=~\"$host\", container=~\"$container\"})",
+          "expr": "sum by (host, container) (increase(scarab_follower_stalls_total{host=~\"$host\", container=~\"$container\"}[$__range]))",
           "legendFormat": "{{host}} {{container}}",
           "refId": "A",
           "instant": true
@@ -420,6 +427,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -480,7 +488,8 @@
                 "value": null
               }
             ]
-          }
+          },
+          "noValue": "No samples"
         },
         "overrides": []
       },
@@ -508,7 +517,7 @@
     },
     {
       "type": "row",
-      "title": "Forging",
+      "title": "Rotation and monitoring alerts",
       "id": 8,
       "collapsed": false,
       "gridPos": {
@@ -516,6 +525,211 @@
         "w": 24,
         "x": 0,
         "y": 6
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Host rotation alerts firing",
+      "description": "KES driver alerts carry host only, so node/container filtering must not hide them. Missing driver telemetry remains missing.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count by (host) (ALERTS{alertstate=\"firing\", alertname=~\"PoolKesRotation.*\", host=~\"$host\"}) or on (host) (0 * max by (host) (scarab_kes_rotation_last_run_timestamp_seconds{host=~\"$host\"}))",
+          "legendFormat": "{{host}} {{container}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "noValue": "No samples",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal"
+      },
+      "id": 9,
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 0,
+        "y": 7
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Global rotation-metrics alert",
+      "description": "Fleet-wide alert from absent(driver metrics), which has no host or container labels. Intentionally unfiltered: 0 means this specific global alert is not firing.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(ALERTS{alertstate=\"firing\", alertname=\"PoolKesRotationMetricsMissing\", host=\"\"}) or vector(0)",
+          "legendFormat": "{{host}} {{container}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "noValue": "No samples",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal"
+      },
+      "id": 10,
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 8,
+        "y": 7
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Driver sample age",
+      "description": "Age of the ingested textfile metric, not the time since rotation ran. Compare Last run below.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "time() - max by (host) (timestamp(scarab_kes_rotation_last_run_timestamp_seconds{host=~\"$host\"}))",
+          "legendFormat": "{{host}} {{container}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "No samples"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal"
+      },
+      "id": 11,
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 16,
+        "y": 7
+      }
+    },
+    {
+      "type": "row",
+      "title": "Forging",
+      "id": 12,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 12
       }
     },
     {
@@ -553,6 +767,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -571,12 +786,12 @@
         "justifyMode": "auto",
         "orientation": "horizontal"
       },
-      "id": 9,
+      "id": 13,
       "gridPos": {
         "h": 5,
         "w": 4,
         "x": 0,
-        "y": 7
+        "y": 13
       }
     },
     {
@@ -614,6 +829,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -632,12 +848,12 @@
         "justifyMode": "auto",
         "orientation": "horizontal"
       },
-      "id": 10,
+      "id": 14,
       "gridPos": {
         "h": 5,
         "w": 4,
         "x": 4,
-        "y": 7
+        "y": 13
       }
     },
     {
@@ -679,6 +895,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -697,18 +914,18 @@
         "justifyMode": "auto",
         "orientation": "horizontal"
       },
-      "id": 11,
+      "id": 15,
       "gridPos": {
         "h": 5,
         "w": 4,
         "x": 8,
-        "y": 7
+        "y": 13
       }
     },
     {
       "type": "stat",
       "title": "Forge failures (range)",
-      "description": "Slots the pool led but could not forge in (`forgeFailed`).",
+      "description": "Increase in the cumulative cannot-forge gauge (treated as a monotonic total with reset correction). Slots our pool led but could not forge in (`forgeFailed`).",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -719,7 +936,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (host, container) (delta(cardano_node_metrics_nodeCannotForge_int{host=~\"$host\", container=~\"$container\"}[$__range]))",
+          "expr": "sum by (host, container) (increase(cardano_node_metrics_nodeCannotForge_int{host=~\"$host\", container=~\"$container\"}[$__range]))",
           "legendFormat": "{{host}} {{container}}",
           "refId": "A",
           "instant": true
@@ -744,6 +961,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -762,12 +980,12 @@
         "justifyMode": "auto",
         "orientation": "horizontal"
       },
-      "id": 12,
+      "id": 16,
       "gridPos": {
         "h": 5,
         "w": 4,
         "x": 12,
-        "y": 7
+        "y": 13
       }
     },
     {
@@ -805,6 +1023,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -823,12 +1042,12 @@
         "justifyMode": "auto",
         "orientation": "horizontal"
       },
-      "id": 13,
+      "id": 17,
       "gridPos": {
         "h": 5,
         "w": 4,
         "x": 16,
-        "y": 7
+        "y": 13
       }
     },
     {
@@ -866,6 +1085,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 1
         },
         "overrides": []
@@ -884,12 +1104,12 @@
         "justifyMode": "auto",
         "orientation": "horizontal"
       },
-      "id": 14,
+      "id": 18,
       "gridPos": {
         "h": 5,
         "w": 4,
         "x": 20,
-        "y": 7
+        "y": 13
       }
     },
     {
@@ -945,7 +1165,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -963,12 +1183,12 @@
           "sort": "desc"
         }
       },
-      "id": 15,
+      "id": 19,
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 12
+        "y": 18
       }
     },
     {
@@ -1015,7 +1235,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -1033,12 +1253,12 @@
           "sort": "desc"
         }
       },
-      "id": 16,
+      "id": 20,
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 12
+        "y": 18
       }
     },
     {
@@ -1076,7 +1296,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -1094,12 +1314,12 @@
           "sort": "desc"
         }
       },
-      "id": 17,
+      "id": 21,
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 20
+        "y": 26
       }
     },
     {
@@ -1146,7 +1366,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -1164,24 +1384,24 @@
           "sort": "desc"
         }
       },
-      "id": 18,
+      "id": 22,
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 20
+        "y": 26
       }
     },
     {
       "type": "row",
       "title": "KES key and operational certificate",
-      "id": 19,
+      "id": 23,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 28
+        "y": 34
       }
     },
     {
@@ -1227,6 +1447,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -1245,12 +1466,12 @@
         "justifyMode": "auto",
         "orientation": "horizontal"
       },
-      "id": 20,
+      "id": 24,
       "gridPos": {
         "h": 5,
         "w": 4,
         "x": 0,
-        "y": 29
+        "y": 35
       }
     },
     {
@@ -1288,6 +1509,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -1306,12 +1528,12 @@
         "justifyMode": "auto",
         "orientation": "horizontal"
       },
-      "id": 21,
+      "id": 25,
       "gridPos": {
         "h": 5,
         "w": 4,
         "x": 4,
-        "y": 29
+        "y": 35
       }
     },
     {
@@ -1349,6 +1571,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -1367,12 +1590,12 @@
         "justifyMode": "auto",
         "orientation": "horizontal"
       },
-      "id": 22,
+      "id": 26,
       "gridPos": {
         "h": 5,
         "w": 4,
         "x": 8,
-        "y": 29
+        "y": 35
       }
     },
     {
@@ -1410,6 +1633,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -1428,12 +1652,12 @@
         "justifyMode": "auto",
         "orientation": "horizontal"
       },
-      "id": 23,
+      "id": 27,
       "gridPos": {
         "h": 5,
         "w": 4,
         "x": 12,
-        "y": 29
+        "y": 35
       }
     },
     {
@@ -1471,6 +1695,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -1489,12 +1714,12 @@
         "justifyMode": "auto",
         "orientation": "horizontal"
       },
-      "id": 24,
+      "id": 28,
       "gridPos": {
         "h": 5,
         "w": 4,
         "x": 16,
-        "y": 29
+        "y": 35
       }
     },
     {
@@ -1536,6 +1761,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -1554,12 +1780,12 @@
         "justifyMode": "auto",
         "orientation": "horizontal"
       },
-      "id": 25,
+      "id": 29,
       "gridPos": {
         "h": 5,
         "w": 4,
         "x": 20,
-        "y": 29
+        "y": 35
       }
     },
     {
@@ -1606,7 +1832,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -1624,12 +1850,12 @@
           "sort": "desc"
         }
       },
-      "id": 26,
+      "id": 30,
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 34
+        "y": 40
       }
     },
     {
@@ -1676,7 +1902,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -1694,24 +1920,24 @@
           "sort": "desc"
         }
       },
-      "id": 27,
+      "id": 31,
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 34
+        "y": 40
       }
     },
     {
       "type": "row",
       "title": "Rotation driver (scripts/pool/rotate_kes.py, textfile metrics)",
-      "id": 28,
+      "id": 32,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 42
+        "y": 48
       }
     },
     {
@@ -1756,7 +1982,8 @@
                 "value": 10800
               }
             ]
-          }
+          },
+          "noValue": "No samples"
         },
         "overrides": []
       },
@@ -1774,12 +2001,12 @@
         "justifyMode": "auto",
         "orientation": "horizontal"
       },
-      "id": 29,
+      "id": 33,
       "gridPos": {
         "h": 5,
         "w": 6,
         "x": 0,
-        "y": 43
+        "y": 49
       }
     },
     {
@@ -1816,7 +2043,8 @@
                 "value": null
               }
             ]
-          }
+          },
+          "noValue": "No samples"
         },
         "overrides": []
       },
@@ -1834,12 +2062,12 @@
         "justifyMode": "auto",
         "orientation": "horizontal"
       },
-      "id": 30,
+      "id": 34,
       "gridPos": {
         "h": 5,
         "w": 6,
         "x": 6,
-        "y": 43
+        "y": 49
       }
     },
     {
@@ -1881,6 +2109,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -1899,12 +2128,12 @@
         "justifyMode": "auto",
         "orientation": "horizontal"
       },
-      "id": 31,
+      "id": 35,
       "gridPos": {
         "h": 5,
         "w": 6,
         "x": 12,
-        "y": 43
+        "y": 49
       }
     },
     {
@@ -1941,7 +2170,8 @@
                 "value": null
               }
             ]
-          }
+          },
+          "noValue": "No samples"
         },
         "overrides": []
       },
@@ -1959,12 +2189,12 @@
         "justifyMode": "auto",
         "orientation": "horizontal"
       },
-      "id": 32,
+      "id": 36,
       "gridPos": {
         "h": 5,
         "w": 6,
         "x": 18,
-        "y": 43
+        "y": 49
       }
     },
     {
@@ -1993,7 +2223,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -2011,12 +2241,12 @@
           "sort": "desc"
         }
       },
-      "id": 33,
+      "id": 37,
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 48
+        "y": 54
       }
     },
     {
@@ -2045,7 +2275,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -2063,30 +2293,30 @@
           "sort": "desc"
         }
       },
-      "id": 34,
+      "id": 38,
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 48
+        "y": 54
       }
     },
     {
       "type": "row",
       "title": "Sync and peers",
-      "id": 35,
+      "id": 39,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 56
+        "y": 62
       }
     },
     {
       "type": "stat",
       "title": "Slot lag behind the peers' tip",
-      "description": "Slots between the highest tip a peer announced and ours. Alert: above 120 for 10 minutes.",
+      "description": "Last peer tip reported at follower extension minus our selected tip; not wall-clock lag or an independent network-tip measurement. Alert: above 120 for 10 minutes.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -2126,6 +2356,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -2144,18 +2375,18 @@
         "justifyMode": "auto",
         "orientation": "horizontal"
       },
-      "id": 36,
+      "id": 40,
       "gridPos": {
         "h": 5,
         "w": 6,
         "x": 0,
-        "y": 57
+        "y": 63
       }
     },
     {
       "type": "stat",
       "title": "Peers hot",
-      "description": "",
+      "description": "Ordinary + big-ledger active peers; local roots are subsets, not additional peers.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -2166,7 +2397,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_Hot_int{host=~\"$host\", container=~\"$container\"})",
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_Hot_int{host=~\"$host\", container=~\"$container\"}) + max by (host, container) (cardano_node_metrics_peerSelection_HotBigLedgerPeers_int{host=~\"$host\", container=~\"$container\"})",
           "legendFormat": "{{host}} {{container}}",
           "refId": "A",
           "instant": true
@@ -2191,6 +2422,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -2209,12 +2441,12 @@
         "justifyMode": "auto",
         "orientation": "horizontal"
       },
-      "id": 37,
+      "id": 41,
       "gridPos": {
         "h": 5,
         "w": 6,
         "x": 6,
-        "y": 57
+        "y": 63
       }
     },
     {
@@ -2231,7 +2463,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_Warm_int{host=~\"$host\", container=~\"$container\"})",
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_Warm_int{host=~\"$host\", container=~\"$container\"}) + max by (host, container) (cardano_node_metrics_peerSelection_WarmBigLedgerPeers_int{host=~\"$host\", container=~\"$container\"})",
           "legendFormat": "{{host}} {{container}}",
           "refId": "A",
           "instant": true
@@ -2252,6 +2484,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -2270,12 +2503,12 @@
         "justifyMode": "auto",
         "orientation": "horizontal"
       },
-      "id": 38,
+      "id": 42,
       "gridPos": {
         "h": 5,
         "w": 6,
         "x": 12,
-        "y": 57
+        "y": 63
       }
     },
     {
@@ -2292,7 +2525,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_Cold_int{host=~\"$host\", container=~\"$container\"})",
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_Cold_int{host=~\"$host\", container=~\"$container\"}) + max by (host, container) (cardano_node_metrics_peerSelection_ColdBigLedgerPeers_int{host=~\"$host\", container=~\"$container\"})",
           "legendFormat": "{{host}} {{container}}",
           "refId": "A",
           "instant": true
@@ -2313,6 +2546,7 @@
               }
             ]
           },
+          "noValue": "No samples",
           "decimals": 0
         },
         "overrides": []
@@ -2331,12 +2565,12 @@
         "justifyMode": "auto",
         "orientation": "horizontal"
       },
-      "id": 39,
+      "id": 43,
       "gridPos": {
         "h": 5,
         "w": 6,
         "x": 18,
-        "y": 57
+        "y": 63
       }
     },
     {
@@ -2374,7 +2608,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -2392,12 +2626,12 @@
           "sort": "desc"
         }
       },
-      "id": 40,
+      "id": 44,
       "gridPos": {
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 62
+        "y": 68
       }
     },
     {
@@ -2426,7 +2660,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -2444,12 +2678,12 @@
           "sort": "desc"
         }
       },
-      "id": 41,
+      "id": 45,
       "gridPos": {
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 62
+        "y": 68
       }
     },
     {
@@ -2466,7 +2700,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_Hot_int{host=~\"$host\", container=~\"$container\"})",
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_Hot_int{host=~\"$host\", container=~\"$container\"}) + max by (host, container) (cardano_node_metrics_peerSelection_HotBigLedgerPeers_int{host=~\"$host\", container=~\"$container\"})",
           "legendFormat": "hot {{container}}",
           "refId": "A"
         },
@@ -2475,7 +2709,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_Warm_int{host=~\"$host\", container=~\"$container\"})",
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_Warm_int{host=~\"$host\", container=~\"$container\"}) + max by (host, container) (cardano_node_metrics_peerSelection_WarmBigLedgerPeers_int{host=~\"$host\", container=~\"$container\"})",
           "legendFormat": "warm {{container}}",
           "refId": "B"
         },
@@ -2484,7 +2718,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_Cold_int{host=~\"$host\", container=~\"$container\"})",
+          "expr": "max by (host, container) (cardano_node_metrics_peerSelection_Cold_int{host=~\"$host\", container=~\"$container\"}) + max by (host, container) (cardano_node_metrics_peerSelection_ColdBigLedgerPeers_int{host=~\"$host\", container=~\"$container\"})",
           "legendFormat": "cold {{container}}",
           "refId": "C"
         }
@@ -2496,7 +2730,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -2514,12 +2748,12 @@
           "sort": "desc"
         }
       },
-      "id": 42,
+      "id": 46,
       "gridPos": {
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 62
+        "y": 68
       }
     },
     {
@@ -2545,18 +2779,9 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (host, container) (scarab_follower_stalled{host=~\"$host\", container=~\"$container\"})",
-          "legendFormat": "stalled {{container}}",
-          "refId": "B"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
           "expr": "sum by (host, container) (increase(scarab_follower_stalls_total{host=~\"$host\", container=~\"$container\"}[1h]))",
           "legendFormat": "stalls/h {{container}}",
-          "refId": "C"
+          "refId": "B"
         }
       ],
       "fieldConfig": {
@@ -2566,7 +2791,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -2584,12 +2809,12 @@
           "sort": "desc"
         }
       },
-      "id": 43,
+      "id": 47,
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 70
+        "y": 76
       }
     },
     {
@@ -2618,7 +2843,7 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "mode": "none"
             }
@@ -2636,15 +2861,57 @@
           "sort": "desc"
         }
       },
-      "id": 44,
+      "id": 48,
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 70
+        "y": 76
       }
     }
   ],
   "schemaVersion": 39,
-  "version": 1
+  "version": 1,
+  "links": [
+    {
+      "type": "link",
+      "title": "Overview",
+      "url": "/d/scarab-overview",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "Network",
+      "url": "/d/scarab-network",
+      "includeVars": false,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "Chain tip",
+      "url": "/d/scarab-chain-tip",
+      "includeVars": false,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "Pool",
+      "url": "/d/scarab-pool",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "Runs",
+      "url": "/d/scarab-runs",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    }
+  ]
 }
