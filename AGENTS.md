@@ -80,6 +80,12 @@ scala code … I love the use of type parameters when I can use them"*.
   state, or an explicit stack machine; never recursion inside an `Either`/`Option` for-comprehension.
   Test it on a small-stack thread.
 - Comment density and naming like the surrounding code; SPDX header on new files.
+- Keep parameter lists free of comments, including constructor fields and call arguments. Put
+  parameter contracts in the declaration's Scaladoc (`@param` where useful), and explain a call
+  before the expression. Elsewhere, preserve comments that explain intent, invariants, reference
+  correspondence or a non-obvious tradeoff; check their reason before rewriting or removing them.
+  Refer to maintained symbols, ADRs and pinned upstream sources rather than private notes,
+  implementation-stage labels or unpinned line numbers.
 
 ## Before you hand back
 

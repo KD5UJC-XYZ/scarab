@@ -47,5 +47,10 @@ change persisted formats.
 
 Default concurrency is the smaller of four and available processors. Operators can select an exact
 serial comparison with `--plutus-workers 1`. The detailed invariant, measurements, reference links,
-limits and regression controls are in [the as-built design](../design/parallel-plutus.md). Broader D2
-Preview failure/digest reconciliation and nightly acceptance remain open in #21.
+limits and regression controls are in [the as-built design](../design/parallel-plutus.md).
+
+**Acceptance addendum (2026-10-20).** The captured Preview failure/digest reconciliation is
+complete under [#21](https://github.com/KD5UJC-XYZ/scarab/issues/21), closed after PR #209.
+The [recorded acceptance](../design/parallel-plutus.md#preview-reconciliation-gates)
+retains projection exclusions and responsiveness warnings; nightly CI remains the continuing
+safety net.

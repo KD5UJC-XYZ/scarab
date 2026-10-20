@@ -1,6 +1,6 @@
 # NNNN. Title
 
-- **Status**: Proposed | Accepted | Superseded by [NNNN](NNNN-....md)
+- **Status**: Proposed | Accepted | Superseded by NNNN (link to the replacement ADR)
 - **Date**: YYYY-MM-DD
 - **Issue**: #NN (if any)
 

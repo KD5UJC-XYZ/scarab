@@ -2126,7 +2126,7 @@ All six runs had identical input SHA-256
 SHA-256 `a45384a2914effec34e899b6eb41b2ae93a5d4f8bdfc263671f01ac5d5111491`, and enum-output SHA-256
 `e0e96fc5eee36517c9e0b40b18d4e44df9f872029cc259f57663c66bdf003c62`. These bind the measured model
 only; they do not assert public-chain state parity or cover codec derivation/interner performance.
-## 33. Typed per-kind decode interning (#204)
+## 34. Typed per-kind decode interning (#204)
 
 **2026-10-20, level 3.** `Interned[A]` owns a homogeneous weak scope index returning only
 `Table[A]`; the document retains that table strongly. Typed entries preserve the path
@@ -2440,7 +2440,7 @@ checks on the rebased head are recorded in the [PR #248 checklist](https://githu
 pre-rebase gates are not relabelled as gates of the integrated head. Main and dev still diverge;
 this prepares the dev target and does not claim completion after main landing.
 
-## 32. Typed snapshot codec derivation (#205)
+## 35. Typed snapshot codec derivation (#205)
 
 **2026-10-20, level 3.** The replacement uses generated, compiler-checked field accessors,
 typed result tuples and root-relative sum-case evidence. It preserves the measured bytes,

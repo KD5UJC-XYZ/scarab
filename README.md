@@ -32,8 +32,8 @@ Scarab is an independent implementation of a Cardano node, written so that it ca
 about: effects are abstract (`F[_]`), domain errors are closed types raised through cats-mtl, the rules
 are pure functions over values, and the algebras carry cats-laws and ScalaCheck properties. The
 [Haskell node](https://github.com/IntersectMBO/cardano-node) is the reference: its types are the model
-for ours, its formats are what we read and write, and every claim of compatibility below is a run
-against it.
+for ours, and its formats are what we read and write. Compatibility claims below are bounded by
+the linked source comparisons, fixtures and recorded runs.
 
 ## What it does
 
@@ -50,17 +50,19 @@ against it.
 
 | Check | Result |
 |---|---|
-| **Preview ledger state (K1)** | At the first block of every Preview epoch, our ledger state against the one `cardano-node` 11.1.3 stores: **1,451 of 1,451 epoch boundaries equal**, 0 differences, through Alonzo, Babbage and 806 epochs of Conway governance |
+| **Preview ledger state (K1)** | At the first block of each captured Preview epoch, **1,451 of 1,451 epoch-boundary projections equal**, through Alonzo, Babbage and 806 Conway epochs; projection exclusions are explicit in the [compatibility matrix](docs/compatibility.md) |
 | **Preprod, genesis to tip (C4)** | One build, one uninterrupted run: **5,295,553 blocks** through Byron and every Shelley-based era in 4 h 52 min, **0 errors**; tip equal to Koios |
 | **Preview, genesis to tip** | 4,748,226 blocks in 3 h 37 min on one build, 0 errors; 3.2M Plutus evaluations, each verdict equal to the chain's `is_valid` |
 | **Haskell ledger-state file** | The 40.6 MB Preview `state` file written by `cardano-node`, and a devnet `state` file of each era from Byron to Conway, decoded and **re-encoded byte for byte** |
 | **Devnet scenarios** | Against Haskell nodes on a local cluster: Byron→Conway follow with per-era ledger comparisons (`e2e`), governance and Plutus load (`soak`), a Haskell relay fed only by Scarab (`relay`), Scarab forging as a stake pool (`pool`), node-to-client answers byte-compared (`ntc`) |
-| **Plutus conformance** | The upstream `plutus-conformance` suite (plutus 1.70.0.0): 987 of 1,009 cases; the rest are classified ([issues filed upstream](docs/compatibility.md)) |
+| **Plutus conformance** | The pinned `plutus-conformance` suite (plutus 1.70.0.0): 996 of 1,009 cases pass, with thirteen classified harness exceptions ([scope and corrections](docs/plutus-conformance.md)) |
 | **Fuzzing** | Every decoder entry point under structured fuzzing, nightly |
 
 Real-data bugs found along the way are pinned by tests and listed in [docs/findings.md](docs/findings.md).
-The full matrix, with what is **not** yet checked (mainnet, ledger-state identity on preprod, the P2P
-governor, Mithril import, a security review), is [docs/compatibility.md](docs/compatibility.md).
+The full matrix distinguishes implemented features and bounded evidence from **remaining coverage**:
+mainnet ledger identity, continuous preprod comparisons, broader upstream conformance, long-running
+stability and independent security review ([docs/compatibility.md](docs/compatibility.md)). Governor,
+Mithril and snapshot-interoperability evidence each have their own scope and exclusions there.
 
 ## In progress
 
@@ -70,8 +72,9 @@ governor, Mithril import, a security review), is [docs/compatibility.md](docs/co
   file plus a Scarab sidecar (step 2 of the mirror, done). Still open: the gaps that keep some
   debug-query answers from being byte-equal to the reference, and the cost of the epoch boundary
   ([#82](https://github.com/KD5UJC-XYZ/scarab/issues/82), [#131](https://github.com/KD5UJC-XYZ/scarab/issues/131)).
-- **P2P governor**: hot, warm and cold peers managed by targets, as `cardano-node` does; the design
-  is [docs/design/peer-selection.md](docs/design/peer-selection.md) ([#31](https://github.com/KD5UJC-XYZ/scarab/issues/31)).
+- **Networking follow-ups**: the target-driven P2P governor is implemented; full Ouroboros Genesis
+  density and ledger-dependent fork choice remain [G3, #33](https://github.com/KD5UJC-XYZ/scarab/issues/33).
+  The [as-built governor design](docs/design/peer-selection.md) records the implemented scope.
 - **Mainnet**: a full validation of every mainnet block from genesis ([D6, #25](https://github.com/KD5UJC-XYZ/scarab/issues/25)).
 - **Ouroboros Leios** (CIP-164): design note and BLS12-381 voting primitives ([docs/leios.md](docs/leios.md)).
 
@@ -111,20 +114,24 @@ Docker and Python 3 are all the host needs; there is no host JDK or sbt.
 # 1. The JDK image used to build and run
 docker build -f docker/jdk.Dockerfile -t scarab-jdk:local .
 
-# 2. Build and test: formatting check, compile with -Werror, every module's tests (about 2,400)
+# 2. Build and test: formatting check, compile with -Werror, every module's tests and scalafix
 docker run --rm -v "$PWD":/work -w /work --user "$(id -u):$(id -g)" -e HOME=/work/.cache/home \
   scarab-jdk:local bash scripts/sbtw check node/runtimeClasspathFile
 
 # 3. Follow a network from genesis (flags and the Preview example in docs/running.md)
-java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main follow \
-  --genesis-dir <config dir> --peer <host>:<port> --db "${SCARAB_DATA_DIR:-/tmp/scarab}/db"
+mkdir -p "${SCARAB_DATA_DIR:-/tmp/scarab}"
+docker run --rm -v "$PWD":/work -w /work --user "$(id -u):$(id -g)" \
+  -v "<absolute config dir>:/config:ro" -v "${SCARAB_DATA_DIR:-/tmp/scarab}:/data" \
+  scarab-jdk:local bash -c 'exec java -cp "$(cat node/target/runtime-classpath.txt)" \
+    xyz.kd5ujc.scarab.node.Main follow --genesis-dir /config --peer "<host>:<port>" --db /data/db'
 ```
 
-Step 3 needs JDK 21, or run it inside the image. The scenarios against the Haskell node also need the
+Replace the configuration-directory and peer placeholders before running step 3. The scenarios against the Haskell node also need the
 reference image, built from the checksum-pinned official release ([docs/reference-image.md](docs/reference-image.md)):
 
 ```sh
-python3 scripts/devnet.py soak --seconds 480    # also e2e, relay, pool, ntc; then `down`
+python3 scripts/devnet.py --name my-scarab soak --seconds 480    # also e2e, relay, pool, ntc
+python3 scripts/devnet.py --name my-scarab down
 ```
 
 Run data goes to `${SCARAB_DATA_DIR:-/tmp/scarab}`, never into the checkout or your home directory.
@@ -135,10 +142,15 @@ What each scenario asserts is in [docs/running.md](docs/running.md).
 ```mermaid
 flowchart LR
   codec --> crypto --> protocol --> network
+  blstNative[blst-native] --> crypto
+  blstNative --> plutus
   codec --> plutus
   protocol --> ledger
   plutus --> ledger
   ledger --> consensus --> storage
+  consensus --> legacy --> node
+  codec --> models
+  crypto --> models
   models --> storage
   storage --> node
   network --> node
@@ -151,6 +163,7 @@ Each module may depend only on those before it; sbt enforces the direction.
 
 | Module | Contents |
 |---|---|
+| `blst-native` | Portable libblst resource and start-up verification (`blstNative` in sbt) |
 | `codec` | CBOR with original-bytes preservation, `Bytes`, exact `Rational` |
 | `crypto` | Blake2b, strict Ed25519, VRF (verify and prove), Sum6 KES, BLS12-381, operational certificates |
 | `protocol` | Pure Ouroboros mini-protocol codecs and state machines |
@@ -158,6 +171,7 @@ Each module may depend only on those before it; sbt enforces the direction.
 | `plutus` | The Plutus evaluator algebra and its Scalus adapter |
 | `ledger` | Blocks, headers, genesis, transactions, the Byron to Conway rules, and the era-indexed Haskell-shaped state (`ledger.state`) |
 | `consensus` | Praos, TPraos and PBFT, chain selection, the hard-fork combinator, header rules, the consensus side of the state (`consensus.state`) |
+| `legacy` | Flat genesis/domain types and one-way conversion into the era-indexed state |
 | `storage` | Immutable and volatile stores, ledger snapshots, the UTxO store, format migrations, the Haskell ImmutableDB reader and ledger-state codec |
 | `node` | Peers, follower, relay, mempool, forging, node-to-client, query server, `Main` |
 | `models-gen`, `models` | A CDDL parser and code generator; the models generated from the pinned upstream CDDL (a spike: used by tests, and its runtime by the ledger-state codec in `storage`) |

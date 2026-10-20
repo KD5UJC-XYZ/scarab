@@ -28,12 +28,15 @@ What a Haskell ledger snapshot is, in one paragraph: a directory `ledger/<slot>[
 the `ExtLedgerState` without the UTxO (CBOR, `[1, ...]`), which Scarab already reads and writes byte for byte (it is the
 "Haskell section" of snapshot V5). `tables` is the UTxO: `[ {txid ++ be16 index -> MemPack TxOut} ]` as CBOR byte strings,
 sorted, 1 GB for the preprod tip. `meta` is a three-field JSON whose `checksum` is the CRC32 of the decimal strings of the
-CRC32 of `state` and of `tables`. The MemPack `TxOut` is the missing piece (S1). Everything else is streaming and plumbing.
+CRC32 of `state` and of `tables`. Stage S1 supplied the MemPack `TxOut` codec; S2–S5 implemented
+streaming, authenticated conversion and the recorded acceptance below.
 A Mithril cardano-database download with `--include-ancillary` contains exactly one such directory, written by a node.
 
-Two facts found while writing this, which change earlier statements:
+Two findings from the original design investigation, retained with their evidence:
 
-* **The `meta` checksum is not the CRC32 of the two files together** (the fixture README says it is the checksum of `tables`, the comment of `SnapshotMeta` that it is of the two files together; the step 2 document has the rule right).
+* **The `meta` checksum is not the CRC32 of the two files together.** Earlier fixture and
+  `SnapshotMeta` descriptions were incorrect; `SnapshotMeta` and `SnapshotCrc` now describe the
+  implemented composition.
   It is `CRC32( decimal(CRC32(state)) ++ decimal(CRC32(tables)) )` (`OC/Util/CRC.hs:20-26`, used at
   `OC/Storage/LedgerDB/V2/InMemory.hs:223`). Checked on a Mithril preprod directory and a devnet fixture (section 2.3).
 * **The preprod `state` of a Mithril snapshot already round-trips through `HaskellLedgerFile`**: the 32,511,416-byte file of a

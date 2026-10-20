@@ -1,5 +1,8 @@
 # Reference image
 
+**Status: Current recipe for the pinned reference release.** Updating that release requires
+new checksum pins and evidence; the commands below do not select the latest release.
+
 The devnet scenarios in [running.md](running.md) compare the Scala node against the official Haskell
 `cardano-node`. `scripts/prepare_reference_image.py` builds the local image
 `cardano-reference-11.1.3:local` from the official release archive. It needs local Linux

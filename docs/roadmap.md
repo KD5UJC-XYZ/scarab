@@ -225,10 +225,20 @@ G4; N4 needs N3 and a buildable reference Leios node.
 
 ## O. Review readiness and operations (v0.3)
 
-- **O1** [#74](https://github.com/KD5UJC-XYZ/scarab/issues/74) (P1) Threat model and security-review scope.
-- **O2** [#75](https://github.com/KD5UJC-XYZ/scarab/issues/75) (P1) Reproducible, signed releases with an SBOM and published images.
+- **O1** [#74](https://github.com/KD5UJC-XYZ/scarab/issues/74) (P1) Threat model and security-review scope. Before external review, map peer, local-client, file-import, evaluator/JNI and signing boundaries to trusted assumptions, invariants, failure policy and regression controls. Separate acceptance/projection evidence from rejection, resource-bound and side-channel claims. Include the independent crypto review tracked by [#230](https://github.com/KD5UJC-XYZ/scarab/issues/230); timing probes are diagnostic evidence, not a constant-time proof. [NIST SSDF](https://csrc.nist.gov/pubs/sp/800/218/final) provides a review framework, not evidence of compliance.
+- **O2** [#75](https://github.com/KD5UJC-XYZ/scarab/issues/75) (P1) Reproducible, signed releases with an SBOM and published images. Bind the audit candidate's source, build inputs, native artifacts, dependency/licence inventory and test receipts to immutable identities; independently rebuild and verify the published artifact. Include the JNI libraries and their rebuild recipes. Use verifiable [build provenance](https://slsa.dev/spec/v1.2/provenance) rather than treating an image tag or build log as proof.
 - **O3** [#76](https://github.com/KD5UJC-XYZ/scarab/issues/76) (P2) Operator packaging: container image, compose and Kubernetes manifests.
 - **O4** [#80](https://github.com/KD5UJC-XYZ/scarab/issues/80) (owner-managed, closed outside development) Node-diversity participation, leaderboard submission and Cardano Blueprint contribution are handled by the owner outside the repository development queue. Existing reusable fixtures/scenarios remain available; upstream conformance implementation is K2 (#49).
+- **O5** (P1, audit preparation) Reproducible reviewer evidence bundle. Provide an immutable candidate revision, module/source map, exact test commands and image identities, fixture/provenance manifests, optional-data requirements and a secure way for reviewers to obtain large/private captures. Retain explicit masks, skips and measured-source identities from [compatibility.md](compatibility.md); do not relabel historical runs as tests of the candidate. The bundle must reproduce at least one representative check from each evidence family without a maintainer's local paths. Keep security-sensitive reproductions private under [SECURITY.md](../SECURITY.md).
+- **O6** (P2, audit preparation) Documentation drift checks. Automate relative-link/anchor validation, declaration/call argument comment placement and checks that documented commands, module names and public symbols exist. Keep historical records and generated/vendor sources explicitly scoped. Parser-aware checks should distinguish comments inside anonymous-function bodies from comments between arguments, and preserve rationale in declaration docs or before calls. The module audit corrected these classes of drift manually; continuous enforcement remains open.
+
+The O1/O5 evidence review must also revalidate the fixed `NonMyopic`, `SnapshotNumDelegators`,
+`VrfKeyHashes` and `RewardUpdate` masks in `scripts/devnet/gapmask.py` against native state and
+incremental reward processing. Their historical descriptions predate those changes. This audit
+does not change the masks or claim their continued necessity; justify each exclusion with a
+current reproducer and narrow it where possible under M11/J3.1
+([#129](https://github.com/KD5UJC-XYZ/scarab/issues/129)). Masked comparisons must remain distinct
+from complete state equality.
 
 ## Order of work (set 2026-10-19)
 
