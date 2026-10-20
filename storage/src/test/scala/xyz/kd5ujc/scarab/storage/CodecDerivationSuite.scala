@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.storage
 
 import munit.FunSuite
-import scala.compiletime.testing.typeCheckErrors
+import scala.compiletime.testing.{typeCheckErrors, typeChecks}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.state.{Genesis, KeyHash, StakePool}
 import xyz.kd5ujc.scarab.models.runtime.Codec as ModelCodec
@@ -50,10 +50,21 @@ class CodecDerivationSuite extends FunSuite:
     """)
     val role = typeCheckErrors("""
       import xyz.kd5ujc.scarab.storage.ProductFields
-      import xyz.kd5ujc.scarab.ledger.state.{KeyHash, StakePool, Genesis}
-      case class Holder[A](value: KeyHash[A])
+      import xyz.kd5ujc.scarab.ledger.state.{KeyHash, StakePool, Genesis, KeyRole}
+      case class Holder[A <: KeyRole](value: KeyHash[A])
       ProductFields.named[Holder[StakePool], KeyHash[Genesis]]("value")
     """)
+    assert(typeChecks("""
+      import xyz.kd5ujc.scarab.storage.ProductFields
+      case class Holder[A](value: Vector[A])
+      ProductFields.named[Holder[Int], Vector[Int]]("value")
+    """))
+    assert(typeChecks("""
+      import xyz.kd5ujc.scarab.storage.ProductFields
+      import xyz.kd5ujc.scarab.ledger.state.{KeyHash, StakePool, KeyRole}
+      case class Holder[A <: KeyRole](value: KeyHash[A])
+      ProductFields.named[Holder[StakePool], KeyHash[StakePool]]("value")
+    """))
     assert(generic.nonEmpty)
     assert(role.nonEmpty)
   }
@@ -66,4 +77,6 @@ class CodecDerivationSuite extends FunSuite:
     val failure = codec.decodeBytes(invalid)
     assert(failure.isLeft)
     assertEquals(failure.left.toOption.map(_.path), Some(List("value")))
+    val nested = Bytes.fromHex("82078163626164").fold(e => fail(e.toString), identity)
+    assertEquals(codec.decodeBytes(nested).left.toOption.map(_.path), Some(List("rest", "[0]")))
   }
