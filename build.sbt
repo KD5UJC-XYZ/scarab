@@ -4,20 +4,19 @@ ThisBuild / scalaVersion := "3.3.8"
 ThisBuild / version := "0.1.0"
 ThisBuild / organization := "xyz.kd5ujc"
 ThisBuild / licenses := Seq("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
+// Enable the unused-code warnings supported by the maintained source. At Scala 3.3.8, the excluded
+// -Wunused:implicits, -Wvalue-discard and -Wnonunit-statement produced 13, 243 and 308 warnings;
+// the latter two were mostly fluent CborOut calls in node/ntc. Generated models are warning-silent.
 ThisBuild / scalacOptions ++= Seq(
   "-deprecation",
   "-feature",
   "-unchecked",
   "-Werror",
-  // Dead code the compiler can see. Left off for now (warning counts on this tree, Scala 3.3.8):
-  // -Wunused:implicits 13, -Wvalue-discard 243 and -Wnonunit-statement 308; the last two are almost
-  // all fluent CborOut calls in node/ntc.
   "-Wunused:imports",
   "-Wunused:privates",
   "-Wunused:locals",
   "-Wunused:explicits",
   "-Wunused:patvars",
-  // The generated models are not ours to tidy.
   "-Wconf:src=.*/src_managed/.*:silent"
 )
 // scalafix needs the semantic database of the compiler.
@@ -47,15 +46,15 @@ val testDependencies = Seq(
 //   protocol, plutus <- ledger <- consensus <- legacy, storage
 //   models <- storage (the Haskell ledger-state codec reuses the models runtime)
 //   storage, legacy, network <- node
+// Initialisation safety applies to main sources (-Ysafe-init on Scala 3.3, -Wsafe-init later).
+// Test sources exclude it because munit registers tests in constructors; the initial sweep found
+// 19 warnings for that idiom and none in main sources.
 def scarab(id: String, dir: String = null): Project =
   Project(id, file(Option(dir).getOrElse(id)))
     // sbt-tpolecat would add its own option set; the options above are the whole set here.
     .disablePlugins(TpolecatPlugin)
     .settings(
       name := s"scarab-$id",
-      // Initialisation safety of objects (Scala 3.3 spells it -Ysafe-init; later versions -Wsafe-init).
-      // Main sources only: it raises 19 warnings in the test suites, all of them the munit idiom of
-      // registering the tests in the constructor, and none in main.
       Compile / scalacOptions += "-Ysafe-init",
       Test / scalacOptions -= "-Ysafe-init",
       libraryDependencies ++= testDependencies
@@ -123,13 +122,13 @@ lazy val plutus = scarab("plutus")
 
 // The pure ledger rules and types: blocks, headers, genesis, transactions, scripts, governance,
 // rewards, the pre-Conway and Byron rules.
+// The larger inline limit supports Mirror-derived snapshot codecs, including ProtocolParams.
 lazy val ledger = scarab("ledger")
   .dependsOn(
     protocol % "compile->compile;test->test",
     plutus % "compile->compile;test->test"
   )
   .settings(
-    // Snapshot codecs are derived by inline `Mirror` recursion; ProtocolParams has 33 fields.
     scalacOptions += "-Xmax-inlines:512",
     libraryDependencies ++= Seq(
       Libraries.cats,
@@ -186,9 +185,9 @@ lazy val storage = scarab("storage")
       Libraries.scodecCore,
       Libraries.rocksdb
     ),
-    // MemoryBoundSuite checks what a decode holds in the heap, so it runs alone in a JVM with a
-    // 256 MiB heap (issue #94); every other suite runs in the build's JVM as before.
     Test / testGrouping := {
+      // MemoryBoundSuite checks retained decode heap in a separate 256 MiB JVM (#94).
+      // Other suites run in the build JVM.
       val (bounded, others) =
         (Test / definedTests).value.partition(_.name.endsWith(".MemoryBoundSuite"))
       val fork = (Test / forkOptions).value.withRunJVMOptions(Vector("-Xmx256m"))
@@ -207,6 +206,7 @@ def gitCommit(root: File): String =
 lazy val runtimeClasspathFile = taskKey[File]("Write the resolved application runtime classpath")
 
 // Tagless-final node: wiring, mempool, forger, relay, node-to-client, the query server, the CLI.
+// BuildInfo records the build identity reported by the `started` log event.
 lazy val node = scarab("node")
   .enablePlugins(BuildInfoPlugin)
   .dependsOn(
@@ -215,7 +215,6 @@ lazy val node = scarab("node")
     network % "compile->compile;test->test"
   )
   .settings(
-    // `xyz.kd5ujc.scarab.node.BuildInfo`: what the `started` log line says about this build.
     buildInfoPackage := "xyz.kd5ujc.scarab.node",
     buildInfoKeys := {
       val root = (ThisBuild / baseDirectory).value
@@ -336,10 +335,9 @@ lazy val root = project
     fuzz
   )
   .settings(
-    // fuzz [cases] [first-seed] [seeds] [target-text]: the fuzz suite with more cases or other seeds than
-    // `check` uses; the settings change for this run only.
     commands += Command.args("fuzz", "[cases] [first-seed] [seeds] [target-text]") {
       (state, args) =>
+        // Run a larger fuzz sample than `check`; these settings apply only to this invocation.
         def number[A](i: Int, default: A)(parse: String => A): A = args.lift(i).fold(default)(parse)
         val extracted = Project.extract(state)
         val tuned = extracted.appendWithoutSession(
