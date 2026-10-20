@@ -247,11 +247,15 @@ object Utxo
         body.ttl.forall(ctx.slot < _) && body.validityStart.forall(_ <= ctx.slot),
         UtxoFailure.OutsideValidityInterval(body.validityStart, body.ttl, ctx.slot)
       )
+      // f649f975: Babbage/Rules/Utxo.hs:368–375, also used by Conway/Rules/Utxo.hs:238.
+      // UTXOW resolves early for its annotations; standalone UTXO still owns these predicates.
+      _ <- check(body.inputs.nonEmpty, UtxoFailure.InputSetEmpty)
       _ <- check(
         tx.size <= pp.maxTxSize,
         UtxoFailure.MaxTxSize(Mismatch(BigInt(tx.size), pp.maxTxSize))
       )
       _ <- check(body.fee >= minFee, UtxoFailure.FeeTooSmall(Mismatch(body.fee, minFee)))
+      _ <- resolvable(ann)
       _ <- check(
         body.networkId.forall(_ == ctx.network),
         UtxoFailure.WrongNetworkInTxBody(Mismatch(body.networkId.fold(0)(_.toInt), ctx.network))
