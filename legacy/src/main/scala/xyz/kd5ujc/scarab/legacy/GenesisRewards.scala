@@ -25,8 +25,8 @@ object Rewards:
     val blocks = state.blocksPrevious
     val blocksTotal = blocks.values.sum
     // `expectedBlocks` is floored (`PulsingReward.hs:127-129`); it was not, which differs from the
-    // reference when (1 - d) * f * epochLength is not an integer (found reading the new rules'
-    // port, J2.3; no network has such parameters)
+    // reference when (1 - d) * f * epochLength is not an integer. Keep the floor explicit so
+    // genesis configurations need not rely on that product being integral.
     val expected = Rational(
       ((Rational.one - d) * Rational(globals.epochLength) * globals.activeSlotsCoeff).floor
     )

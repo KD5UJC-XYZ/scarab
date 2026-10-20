@@ -51,7 +51,7 @@ object Dependencies {
     val monocleCore = "dev.optics" %% "monocle-core" % V.monocle
     val monocleMacro = "dev.optics" %% "monocle-macro" % V.monocle
     val kittens = "org.typelevel" %% "kittens" % V.kittens
-    // Fixed-layout binary formats (index files, record headers, the mux header); CBOR has its own codec.
+    // Read-once fixed layouts such as ImmutableDB indices; hot-path framing and CBOR use their own codecs.
     val scodecCore = "org.scodec" %% "scodec-core" % V.scodec
 
     // The UPLC machine and builtins; all Scalus artifacts move together.

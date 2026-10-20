@@ -8,9 +8,9 @@ import scala.concurrent.duration.FiniteDuration
 import xyz.kd5ujc.scarab.network.selection.*
 import xyz.kd5ujc.scarab.node.LedgerPeersTrace
 
-/** The lines of the peer governor (stage G1.1): what it decided and what became of it, in the words
-  * of the reference's `TracePeerSelection` (`Governor/Types.hs` 1646-1840), the counters it
-  * publishes, the outbound connections state, the Genesis State Machine and the fetch mode.
+/** The lines of the peer governor: what it decided and what became of it, in the words of the
+  * reference's `TracePeerSelection` (`Governor/Types.hs` 1646-1840), the counters it publishes, the
+  * outbound connections state, the Genesis State Machine and the fetch mode.
   */
 private[log] object PeerSelectionLines:
   type Addr = SocketAddress[Host]

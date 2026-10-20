@@ -121,74 +121,85 @@ object Main extends IOApp:
       case Right(end)  => IO.pure(InboundEnd.Local(end))
     }
 
+  /** @param metricsListen
+    *   `--metrics-listen host:port`: where the Prometheus endpoint (and nothing else) listens.
+    * @param snapshotEvery
+    *   `--snapshot-every`: none is the reference node's policy ([[SnapshotPolicy.reference]]).
+    * @param snapshotCheck
+    *   `--snapshot-check structure|full`: what a snapshot write proves before it is kept.
+    * @param mempoolBytes
+    *   `None`: the configuration's `MempoolCapacityBytesOverride`, else 1 MiB.
+    * @param configFile
+    *   `--config`: the Haskell node's configuration file.
+    * @param topologyFile
+    *   `--topology`: the Haskell node's P2P topology file.
+    * @param utxoStore
+    *   `memory` or `rocksdb`; the default is rocksdb with `--db` and memory without.
+    * @param memoryReportSeconds
+    *   Log a `memory` event (heap, buffers, process, container, RocksDB) every N seconds; 0: off.
+    * @param stallMinutes
+    *   Log a `stalled` event (and count it) when no block was extended for N minutes while a peer
+    *   announced a longer chain ([[StallWatchdog]]); 0: off.
+    * @param stallExitAfter
+    *   End the node (exit code [[StallExitCode]], after the shutdown snapshot) when a stall has
+    *   lasted this long; needs `--stall-minutes` and is longer than it. Off by default.
+    * @param readAhead
+    *   Most ChainSync requests pipelined (and blocks fetched in one range) while far behind.
+    * @param cpuThreads
+    *   Threads of the pool the CPU-bound rules run on (default: one per available CPU; 0: none).
+    * @param dumpState
+    *   `--dump-state <dir> [--dump-state-at epoch-boundaries|epoch-boundaries/N|<slot,slot,...>]`:
+    *   write a ledger-state digest ([[StateDump]]) at those points, for the db-analyser comparison.
+    * @param dumpStateFull
+    *   `--dump-state-full`: also write the whole projection (UTxO included) next to each digest.
+    * @param headerFirst
+    *   Validate the headers a peer announces before the blocks are fetched (G6).
+    * @param maxInbound
+    *   The most inbound connections accepted at once (G2).
+    * @param inboundSync
+    *   Run our own clients on inbound duplex connections, so that the peer is a source of blocks as
+    *   well (G2).
+    * @param log
+    *   `--log-*`: the log's sinks, thresholds and sampling ([[LogSettings]]).
+    * @param roots
+    *   The roots of the peer governor: `--peer` as one local root group and the topology's groups,
+    *   public roots and bootstrap peers; filled in by [[configured]].
+    * @param churnInterval
+    *   `--churn-interval <Ns|Nm>`, for tests: the churn governor's rounds follow each other this
+    *   often and no step waits longer than it (the reference's are 3300 s and 900 s with fuzz and
+    *   waits of up to 300 s). Off by default.
+    */
   final case class Options(
       genesisDir: Option[Path],
       peers: List[SocketAddress[Host]],
       seconds: Option[Long],
       queryPort: Int,
-      /** `--metrics-listen host:port`: where the Prometheus endpoint (and nothing else) listens. */
       metricsListen: Option[SocketAddress[Host]] = None,
       plutusCases: Option[Path] = None,
       db: Option[Path] = None,
-      /** `--snapshot-every`: none is the reference node's policy ([[SnapshotPolicy.reference]]). */
       snapshotEvery: Option[SnapshotInterval] = None,
       keepSnapshots: Int = SnapshotPolicy.ReferenceKeep,
-      /** `--snapshot-check structure|full`: what a snapshot write proves before it is kept. */
       snapshotCheck: SnapshotCheck = SnapshotCheck.Structure,
       listen: Option[SocketAddress[Host]] = None,
-      /** `None`: the configuration's `MempoolCapacityBytesOverride`, else 1 MiB. */
       mempoolBytes: Option[Long] = None,
-      /** `--config`: the Haskell node's configuration file. */
       configFile: Option[Path] = None,
-      /** `--topology`: the Haskell node's P2P topology file. */
       topologyFile: Option[Path] = None,
       localSocket: Option[Path] = None,
       forge: Option[ForgeFiles] = None,
-      /** `memory` or `rocksdb`; the default is rocksdb with `--db` and memory without. */
       utxoStore: Option[String] = None,
       utxoCacheMb: Int = 256,
-      /** Log a `memory` event (heap, buffers, process, container, RocksDB) every N seconds; 0: off.
-        */
       memoryReportSeconds: Int = 0,
-      /** Log a `stalled` event (and count it) when no block was extended for N minutes while a peer
-        * announced a longer chain ([[StallWatchdog]]); 0: off.
-        */
       stallMinutes: Int = 10,
-      /** End the node (exit code [[StallExitCode]], after the shutdown snapshot) when a stall has
-        * lasted this long; needs `--stall-minutes` and is longer than it. Off by default.
-        */
       stallExitAfter: Option[FiniteDuration] = None,
-      /** Most ChainSync requests pipelined (and blocks fetched in one range) while far behind. */
       readAhead: Int = 128,
-      /** Threads of the pool the CPU-bound rules run on (default: one per available CPU; 0: none).
-        */
       cpuThreads: Int = math.max(1, Runtime.getRuntime.availableProcessors()),
-      /** `--dump-state <dir> [--dump-state-at epoch-boundaries|epoch-boundaries/N|<slot,slot,...>]`:
-        * write a ledger-state digest ([[StateDump]]) at those points, for the db-analyser
-        * comparison.
-        */
       dumpState: Option[(Path, StateDump.Targets)] = None,
-      /** `--dump-state-full`: also write the whole projection (UTxO included) next to each digest.
-        */
       dumpStateFull: Boolean = false,
-      /** Validate the headers a peer announces before the blocks are fetched (G6). */
       headerFirst: Boolean = true,
-      /** The most inbound connections accepted at once (G2). */
       maxInbound: Int = 64,
-      /** Run our own clients on inbound duplex connections, so that the peer is a source of blocks
-        * as well (G2).
-        */
       inboundSync: Boolean = true,
-      /** `--log-*`: the log's sinks, thresholds and sampling ([[LogSettings]]). */
       log: LogSettings = LogSettings.default,
-      /** The roots of the peer governor: `--peer` as one local root group and the topology's
-        * groups, public roots and bootstrap peers; filled in by [[configured]].
-        */
       roots: Option[PeerNetwork.Roots] = None,
-      /** `--churn-interval <Ns|Nm>`, for tests: the churn governor's rounds follow each other this
-        * often and no step waits longer than it (the reference's are 3300 s and 900 s with fuzz and
-        * waits of up to 300 s). Off by default.
-        */
       churnInterval: Option[FiniteDuration] = None,
       adoptLegacyNetworkIdentity: Boolean = false,
       plutusWorkers: ParallelPlutus.Workers = ParallelPlutus.Workers.default
@@ -772,6 +783,7 @@ object Main extends IOApp:
               Some(loggedConnections.alongside(measured.connection))
             )
             _ <- collectors.add(Collectors.connections(manager))
+            // Inbound duplex sessions use the same follower and compute pool as outbound sessions.
             governor <- InboundGovernor.create[IO](
               manager,
               InboundGovernor.Config(
@@ -790,7 +802,6 @@ object Main extends IOApp:
                 runClients = options.inboundSync
               ),
               handlers,
-              // the session of a peer that connected to us runs like one on a connection we opened
               follow = peer => scheduling.compute.within(follower.session(peer)),
               prepare = warm,
               fatal = fatalSink,

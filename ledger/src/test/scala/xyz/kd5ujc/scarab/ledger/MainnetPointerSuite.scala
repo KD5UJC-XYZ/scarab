@@ -134,10 +134,11 @@ class MainnetPointerSuite extends FunSuite:
 
   test("a field that does not fit makes the whole pointer Ptr 0 0 0 before Conway") {
     val zero = Right((s"41${payment}000000", shelley(Ptr.zero)))
+    // Overflow each field in turn: slot 2^32, transaction index 2^16, certificate index 2^16.
     List(
-      "9080808000" + "0101", // slot 2^32
-      "01" + "848000" + "01", // transaction index 2^16
-      "01" + "01" + "848000" // certificate index 2^16
+      "9080808000" + "0101",
+      "01" + "848000" + "01",
+      "01" + "01" + "848000"
     ).foreach { groups =>
       assertEquals(read(groups, Address.Mode.Rigorous), zero, groups)
       assertEquals(read(groups, Address.Mode.Backwards), zero, groups)

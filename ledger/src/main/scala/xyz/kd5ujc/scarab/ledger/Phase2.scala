@@ -16,8 +16,8 @@ import xyz.kd5ujc.scarab.plutus.*
   * function of the ledger state, the transaction and the era-history clock.
   */
 object Phase2:
-  /** Everything one evaluation depended on, handed to an optional observer (tooling that records
-    * evaluation cases); observing never changes the result.
+  /** Inputs and collected outcome of one transaction's phase-2 processing, handed to optional
+    * tooling such as the case recorder. The observer supplies no evaluation verdict.
     */
   final case class Observation(
       tx: Tx,

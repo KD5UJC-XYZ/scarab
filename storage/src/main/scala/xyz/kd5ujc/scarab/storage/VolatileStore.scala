@@ -51,13 +51,16 @@ trait VolatileStore[F[_]]:
   def sync(using cats.mtl.Raise[F, StorageError]): F[Unit]
 
 object VolatileStore:
-  /** What opening found. */
+  /** What opening found.
+    *
+    * @param blocks
+    *   Blocks on the logged chain (after applying the rollbacks).
+    * @param truncatedBytes
+    *   Bytes of a torn or damaged tail that were cut off, and files after it that were removed.
+    */
   final case class OpenReport(
-      /** Blocks on the logged chain (after applying the rollbacks). */
       blocks: Int,
       files: Int,
-      /** Bytes of a torn or damaged tail that were cut off, and files after it that were removed.
-        */
       truncatedBytes: Long,
       removedFiles: Int
   )

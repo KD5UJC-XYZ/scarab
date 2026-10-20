@@ -37,19 +37,26 @@ object GsmRunner:
       def present = false.pure[F]
       def set(on: Boolean) = ().pure[F]
 
-  /** What the loop reads and does. */
+  /** What the loop reads and does.
+    *
+    * @param reading
+    *   The conditions now (peers, selection, the Honest Availability Assumption).
+    * @param publish
+    *   The judgement changed (also once at the start).
+    * @param initial
+    *   The state the machine starts in.
+    * @param emit
+    *   A transition of the machine, for the log.
+    * @param poll
+    *   How often the conditions are read.
+    */
   final case class Env[F[_]](
-      /** The conditions now (peers, selection, the Honest Availability Assumption). */
       reading: F[Gsm.Reading],
       marker: Marker[F],
-      /** The judgement changed (also once at the start). */
       publish: LedgerStateJudgement => F[Unit],
-      /** The state the machine starts in. */
       initial: Gsm.Phase => F[Unit],
-      /** A transition of the machine, for the log. */
       emit: (Gsm.Phase, Gsm.Event) => F[Unit],
       config: Gsm.Config = Gsm.Config(),
-      /** How often the conditions are read. */
       poll: FiniteDuration = 1.second,
       seed: Long
   )

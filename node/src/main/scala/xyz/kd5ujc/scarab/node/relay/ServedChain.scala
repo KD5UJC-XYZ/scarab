@@ -34,13 +34,13 @@ enum Read:
   * of them is told to roll back and then follows the new branch.
   *
   * Pure; [[ChainServer]] keeps it in a `Ref`.
+  *
+  * @param first
+  *   Sequence number of `blocks.head`; sequence numbers only grow, so positions are `seq - first`.
   */
 final case class ServedChain(
     anchor: Option[BlockRef],
     blocks: Vector[Served],
-    /** Sequence number of `blocks.head`; sequence numbers only grow, so positions are
-      * `seq - first`.
-      */
     first: Long,
     seqs: Map[Bytes, Long],
     followers: Map[Long, Cursor],

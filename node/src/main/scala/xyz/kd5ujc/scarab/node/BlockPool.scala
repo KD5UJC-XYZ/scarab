@@ -257,14 +257,16 @@ final class BlockPool[F[_]: Async] private (
   def size: F[Int] = slots.get.map(_.entries.size)
 
 object BlockPool:
-  /** What the fetch mode changes about who may fetch what. */
+  /** What the fetch mode changes about who may fetch what.
+    *
+    * @param deadlineConcurrency
+    *   How many sessions may hold a claim on the same block in deadline mode
+    *   (`bfcMaxConcurrencyDeadline`): the default of cardano-node is 1, which makes deadline mode
+    *   fetch each block from one peer, as bulk sync does (`Cardano/Network/Diffusion/
+    *   Configuration.hs` 89-100 of ouroboros-network main). The `MaxConcurrencyDeadline` key of the
+    *   configuration file sets it.
+    */
   final case class FetchPolicy(
-      /** How many sessions may hold a claim on the same block in deadline mode
-        * (`bfcMaxConcurrencyDeadline`): the default of cardano-node is 1, which makes deadline mode
-        * fetch each block from one peer, as bulk sync does (`Cardano/Network/Diffusion/
-        * Configuration.hs` 89-100 of ouroboros-network main). The `MaxConcurrencyDeadline` key of
-        * the configuration file sets it.
-        */
       deadlineConcurrency: Int = 1
   )
 
@@ -354,11 +356,13 @@ object BlockPool:
       expires: Option[FiniteDuration]
   )
 
+  /** @param origins
+    *   Where a session is told that a block it delivered was refused.
+    */
   private final case class Slots[F[_]](
       entries: Map[Bytes, Slot[F]],
       next: Long,
       owners: Long,
-      /** Where a session is told that a block it delivered was refused. */
       origins: Map[Long, Origin[F]],
       released: Int,
       reapAt: Option[FiniteDuration]

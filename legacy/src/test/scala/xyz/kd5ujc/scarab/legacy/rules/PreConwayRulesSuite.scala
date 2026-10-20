@@ -321,12 +321,12 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     )
     val units = ExUnits(1000, 1000000)
     val redeemer = Redeemer(0, 0, Bytes(Vector(0x01)), units)
+    // witness-set encodings: `[ [0, 0, 1, [1000, 1000000]] ]` and `[ 1 ]`
     val wits = Witnesses(
       Vector.empty,
       scripts = Vector(plutus),
       datums = Vector(datum),
       redeemers = Vector(redeemer),
-      // witness-set encodings: `[ [0, 0, 1, [1000, 1000000]] ]` and `[ 1 ]`
       redeemersRaw =
         Some(
           Bytes(
@@ -749,6 +749,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
 
   test("the serialised value size matches the CBOR encoding") {
     val names = (0 until 30).map(i => Bytes(Vector.fill(i % 33)(i.toByte))).distinct
+    // maps of 23, 24, 255 and 256 entries: exact head, then indefinite (2 bytes) whatever the count
     val shapes = List(
       Value.coin(0),
       Value.coin(23),
@@ -767,7 +768,6 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
           Bytes(Vector.fill(28)(0x33)) -> Map(assetName("z") -> BigInt("5000000000"))
         )
       ),
-      // maps of 23, 24, 255 and 256 entries: exact head, then indefinite (2 bytes) whatever the count
       Value(1, Map(policy -> bigNames(23))),
       Value(1, Map(policy -> bigNames(24))),
       Value(1, Map(policy -> bigNames(255))),

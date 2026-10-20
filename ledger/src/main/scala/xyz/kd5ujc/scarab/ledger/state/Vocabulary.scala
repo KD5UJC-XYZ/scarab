@@ -258,11 +258,16 @@ object Credential:
     case KeyHashObj(h)    => s"KeyHashObj(${h.show})"
   }
 
-  // one order for every role, so that the maps keyed by a credential share one ordering
+  // One stable order per role: `Sorted.orderingOf` hands out the `SortOrder`'s own `ordering`, so
+  // every map of one key type must see the same instance (the same object, not merely an equal
+  // comparator) — `TreeMap.from` copies a sorted source in linear time only then, and the epoch
+  // boundary tests pin the identity. The comparison is one implementation for every role; only
+  // the instance differs.
   private val scriptOrder: Order[ScriptHash] = Order[ScriptHash]
-  private val keyOrder: Order[KeyHash[KeyRole]] = Order[KeyHash[KeyRole]]
-  private val order: Order[Credential[KeyRole]] = new SortOrder[Credential[KeyRole]]:
-    def compare(x: Credential[KeyRole], y: Credential[KeyRole]): Int = x match
+
+  private final class CredentialOrder[R <: KeyRole] extends SortOrder[Credential[R]]:
+    private val keyOrder: Order[KeyHash[R]] = Order[KeyHash[R]]
+    def compare(x: Credential[R], y: Credential[R]): Int = x match
       case ScriptHashObj(a) =>
         y match
           case ScriptHashObj(b) => scriptOrder.compare(a, b)
@@ -272,7 +277,27 @@ object Credential:
           case KeyHashObj(b) => keyOrder.compare(a, b)
           case _             => 1
 
-  given [R <: KeyRole]: Order[Credential[R]] = order.asInstanceOf[Order[Credential[R]]]
+  private val stakePoolOrder: Order[Credential[StakePool]] = new CredentialOrder[StakePool]
+  private val stakingOrder: Order[Credential[Staking]] = new CredentialOrder[Staking]
+  private val genesisOrder: Order[Credential[Genesis]] = new CredentialOrder[Genesis]
+  private val genesisDelegateOrder: Order[Credential[GenesisDelegate]] =
+    new CredentialOrder[GenesisDelegate]
+  private val blockIssuerOrder: Order[Credential[BlockIssuer]] = new CredentialOrder[BlockIssuer]
+  private val drepOrder: Order[Credential[DRepRole]] = new CredentialOrder[DRepRole]
+  private val coldCommitteeOrder: Order[Credential[ColdCommittee]] =
+    new CredentialOrder[ColdCommittee]
+  private val hotCommitteeOrder: Order[Credential[HotCommittee]] =
+    new CredentialOrder[HotCommittee]
+
+  given stakePoolCredentialOrder: Order[Credential[StakePool]] = stakePoolOrder
+  given stakingCredentialOrder: Order[Credential[Staking]] = stakingOrder
+  given genesisCredentialOrder: Order[Credential[Genesis]] = genesisOrder
+  given genesisDelegateCredentialOrder: Order[Credential[GenesisDelegate]] =
+    genesisDelegateOrder
+  given blockIssuerCredentialOrder: Order[Credential[BlockIssuer]] = blockIssuerOrder
+  given drepCredentialOrder: Order[Credential[DRepRole]] = drepOrder
+  given coldCommitteeCredentialOrder: Order[Credential[ColdCommittee]] = coldCommitteeOrder
+  given hotCommitteeCredentialOrder: Order[Credential[HotCommittee]] = hotCommitteeOrder
 
 /** `DRep` (`DRep.hs:67-72`, `deriving Ord`): key hash, script hash, always-abstain,
   * always-no-confidence.
@@ -292,8 +317,7 @@ object DRep:
 
 /** `WithOrigin a` (cardano-slotting `Slot.hs:71-82`, `data WithOrigin t = Origin | At !t deriving
   * (Eq, Ord, ..)`): the genesis point, or a value. Derived `Ord` orders by constructor position, so
-  * `Origin` is the least; the sources are pinned in
-  * `2026-10-15-upstream-pinned/cardano-base-slotting-0.2.2.0`.
+  * `Origin` is the least. Source version: cardano-slotting 0.2.2.0.
   */
 enum WithOrigin[+A]:
   case Origin

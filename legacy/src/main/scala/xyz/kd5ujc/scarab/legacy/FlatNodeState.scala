@@ -12,9 +12,8 @@ import xyz.kd5ujc.scarab.ledger.EpochGeometry
   * The header state holds the chain-dependent state of the protocol the chain runs and nothing else
   * of Haskell's: its tip is the origin and its telescope is not placed on the era history
   * ([[HeaderState.live]]), because the node knows the tip as the anchor of its chain and the bounds
-  * as a function of the configuration. [[xyz.kd5ujc.scarab.consensus.state.StateMirror]] gives
-  * both. While the chain is in Byron it holds the state Shelley will start from, and the PBFT
-  * window is in [[ByronState.pbft]].
+  * as a function of the configuration. [[StateMirror]] gives both. While the chain is in Byron it
+  * holds the state Shelley will start from, and the PBFT window is in [[ByronState.pbft]].
   */
 final case class FlatNodeState(
     header: HeaderState,

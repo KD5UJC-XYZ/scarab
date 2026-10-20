@@ -105,7 +105,7 @@ final class Bytes private (
 
   /** Lexicographic unsigned comparison: negative, zero or positive. The prefixes settle most
     * comparisons; the rest is `Arrays.compareUnsigned`, a vectorised intrinsic. It matters to the
-    * sorted maps of the ledger, whose every lookup compares 28 or 32 bytes about seventeen times.
+    * sorted maps of the ledger, which repeatedly compare 28-byte or 32-byte keys during lookup.
     */
   def compareTo(other: Bytes): Int =
     val p = prefix

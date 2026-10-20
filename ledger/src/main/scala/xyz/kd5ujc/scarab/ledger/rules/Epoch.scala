@@ -75,8 +75,8 @@ object Epoch:
           es1 <- es.get
           _ <- within(Upec.sts[E], es1.ls, (), shelleyGov[E])
           es2 <- es.get
+          // the governance state of these eras holds no deposits
           deposited <- Sts.lift[F, TickFailure, Coin](
-            // the governance state of these eras holds no deposits
             Coin.fromBigInt(obligation(es2.ls)).leftMap(TickFailure.Vocab(_))
           )
           _ <- es.set(

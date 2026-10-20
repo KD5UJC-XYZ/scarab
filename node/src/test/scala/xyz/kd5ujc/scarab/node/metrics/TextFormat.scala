@@ -31,11 +31,13 @@ object TextFormat:
 
   final case class Sample(name: String, labels: List[(String, String)], value: Double)
 
+  /** @param order
+    *   The metric names in the order their `# TYPE` lines came.
+    */
   final case class Parsed(
       help: Map[String, String],
       kinds: Map[String, String],
       samples: Vector[Sample],
-      /** The metric names in the order their `# TYPE` lines came. */
       order: Vector[String]
   )
 

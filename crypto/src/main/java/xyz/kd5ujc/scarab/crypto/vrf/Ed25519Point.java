@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 AND MIT
 // Adapted from Bloxbean CCL 45906b783973b4c44ac6883253af26bdd07bc1b4 (MIT).
 // MIT notice: fixtures/vrf/licenses/CCL-LICENSE.
-// Research only: native draft03 negative-zero decoding semantics.
+// Public-input arithmetic for Draft03Math; preserves native draft03 negative-zero decoding.
 package xyz.kd5ujc.scarab.crypto.vrf;
 
 import org.bouncycastle.math.ec.rfc7748.X25519Field;

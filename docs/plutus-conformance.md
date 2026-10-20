@@ -1,5 +1,8 @@
 # Plutus conformance: executed reference boundaries
 
+**Status: Current.** Pinned evaluator boundaries, local corrections and explicitly retained
+conformance exceptions; recorded experiments remain tied to their source revisions.
+
 Triage of [#155](https://github.com/KD5UJC-XYZ/scarab/issues/155) (AUD-03). The question for each
 case that [`PlutusConformanceSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/PlutusConformanceSuite.scala)
 lists as a known failure of Scalus 1.3.0 is whether a transaction on a network can reach it under the

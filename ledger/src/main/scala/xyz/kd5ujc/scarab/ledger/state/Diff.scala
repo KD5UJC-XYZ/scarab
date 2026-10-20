@@ -5,6 +5,7 @@ import cats.{Eq, Show}
 import scala.collection.immutable.SortedMap
 import scala.compiletime.{constValue, erasedValue, summonFrom, summonInline}
 import scala.deriving.Mirror
+import scala.reflect.ClassTag
 
 /** One step of a [[Path]] into a state. */
 enum Step:
@@ -62,9 +63,8 @@ object Difference:
   * `ledger-mirror-step2.md` §2.5) names the path of a divergence in its repro bundle, and a failing
   * property test shows it instead of two states of a hundred thousand accounts.
   *
-  * The laws, and the property tests in `DiffSuite`: `diff(a, b)` is empty exactly when `a` and `b`
-  * are equal (by the `Eq` of the type), and a difference is found by the same path from either
-  * side.
+  * The laws, and the tests in `DiffSuite`: `diff(a, b)` is empty exactly when `a` and `b` are equal
+  * (by the `Eq` of the type), and a difference is found by the same path from either side.
   *
   * Records and enums derive it (`derives Diff`: the first field that differs, by name; for an enum
   * the case, then its fields); leaves take it from their `Eq` and `Show` ([[Diff.leaf]], the
@@ -102,9 +102,16 @@ object Diff extends LowPriorityDiff:
     */
   def record[A](steps: ((A, A) => Option[Difference])*): Diff[A] = new Diff[A]:
     def diff(a: A, b: A): Option[Difference] =
-      if a.asInstanceOf[AnyRef] eq b.asInstanceOf[AnyRef] then None
+      if same(a, b) then None
       else steps.iterator.flatMap(step => step(a, b)).nextOption()
     def show(a: A): String = Difference.clipped(a.toString)
+
+  /** Reference identity without a cast: a boxed value type is never `eq` to another box, so a value
+    * type falls through to the real comparison.
+    */
+  private def same(a: Any, b: Any): Boolean = (a, b) match
+    case (x: AnyRef, y: AnyRef) => x eq y
+    case _                      => false
 
   // ---- containers
 
@@ -208,71 +215,119 @@ object Diff extends LowPriorityDiff:
     */
   inline def derived[A](using m: Mirror.Of[A]): Diff[A] =
     inline m match
-      case p: Mirror.ProductOf[A] =>
-        product[A](labels[p.MirroredElemLabels], fields[p.MirroredElemTypes])
-      case s: Mirror.SumOf[A] =>
-        sum[A](s, names[s.MirroredElemLabels], cases[s.MirroredElemTypes])
+      case p: Mirror.ProductOf[A] => product[A](using p)
+      case s: Mirror.SumOf[A]     => sum[A](using s)
 
   private inline def labels[L <: Tuple]: List[String] = inline erasedValue[L] match
     case _: EmptyTuple => Nil
-    case _: (l *: ls)  => constValue[l].asInstanceOf[String] :: labels[ls]
-
-  private inline def names[L <: Tuple]: List[String] = labels[L]
-
-  /** The instances of the fields, each summoned inside a function so that a type that refers to
-    * itself finds its own instance at use, not while it is being made.
-    */
-  private inline def fields[T <: Tuple]: List[() => Diff[Any]] = inline erasedValue[T] match
-    case _: EmptyTuple => Nil
-    case _: (t *: ts) =>
-      (() => summonInline[Diff[t]].asInstanceOf[Diff[Any]]) :: fields[ts]
+    // the mirror's labels are string literals; `toString` is the identity on them and keeps the
+    // widening checked (no cast) for the general tuple case
+    case _: (l *: ls) => constValue[l].toString :: labels[ls]
 
   /** The instance of each case of an enum: its own `Diff` if it has one, else derived. */
-  private inline def cases[T <: Tuple]: List[() => Diff[Any]] = inline erasedValue[T] match
-    case _: EmptyTuple => Nil
-    case _: (t *: ts) =>
-      (() => caseInstance[t].asInstanceOf[Diff[Any]]) :: cases[ts]
-
   private inline def caseInstance[T]: Diff[T] = summonFrom {
     case d: Diff[T]      => d
     case m: Mirror.Of[T] => derived[T](using m)
   }
 
-  private def product[A](
-      labels: List[String],
-      fields: List[() => Diff[Any]]
-  ): Diff[A] = new Diff[A]:
-    private lazy val instances = fields.map(_()).toArray
-    private val names = labels.toArray
-    def diff(a: A, b: A): Option[Difference] =
-      if a.asInstanceOf[AnyRef] eq b.asInstanceOf[AnyRef] then None
-      else
-        val (x, y) = (a.asInstanceOf[Product], b.asInstanceOf[Product])
-        var i = 0
-        var found: Option[Difference] = None
-        while found.isEmpty && i < instances.length do
-          found = instances(i)
-            .diff(x.productElement(i), y.productElement(i))
-            .map(_.under(Step.Field(names(i))))
-          i += 1
-        found
+  /** Compare the fields of two products in declaration order: the first field that differs, by
+    * name. Each field's value is narrowed to its declared type by a checked type test elaborated
+    * per concrete field type at inline expansion, and compared by the instance of that same type —
+    * no cast, no `Diff[Any]`, no `@unchecked` projection.
+    */
+  private inline def productSteps[Ts <: Tuple](
+      names: List[String],
+      i: Int
+  ): List[(Product, Product) => Option[Difference]] =
+    inline erasedValue[Ts] match
+      case _: EmptyTuple => Nil
+      case _: (t *: ts)  =>
+        // the ClassTag extractor narrows each field value to its declared type; the check and
+        // the cast live in the stdlib's unapply, not in this source
+        val ct = summonInline[ClassTag[t]]
+        val held = new Memo(() => summonInline[Diff[t]])
+        val name = names.head
+        val step: (Product, Product) => Option[Difference] = (p, q) =>
+          (p.productElement(i), q.productElement(i)) match
+            case (ct(x), ct(y)) => held.value.diff(x, y).map(_.under(Step.Field(name)))
+            // unreachable for a well-formed mirror; reported loudly rather than silently skipped
+            case _ =>
+              Some(
+                Difference(
+                  Path(Vector(Step.Field(name))),
+                  "field value is not of the declared field type",
+                  "field value is not of the declared field type"
+                )
+              )
+        step :: productSteps[ts](names.tail, i + 1)
+
+  /** A [[Diff]] from a difference function: the function is built at the derivation site (inline,
+    * where the field and case types are concrete); the instance itself is a plain class, so
+    * inlining does not duplicate an anonymous class.
+    */
+  def from[A](diffFn: (A, A) => Option[Difference]): Diff[A] = new Diff[A]:
+    def diff(a: A, b: A): Option[Difference] = diffFn(a, b)
     def show(a: A): String = Difference.clipped(a.toString)
 
-  private def sum[A](
-      m: Mirror.SumOf[A],
-      names: List[String],
-      cases: List[() => Diff[Any]]
-  ): Diff[A] = new Diff[A]:
-    private lazy val instances = cases.map(_()).toArray
-    private val labels = names.toArray
-    def diff(a: A, b: A): Option[Difference] =
-      if a.asInstanceOf[AnyRef] eq b.asInstanceOf[AnyRef] then None
+  private inline def product[A](using m: Mirror.ProductOf[A]): Diff[A] =
+    val names = labels[m.MirroredElemLabels]
+    val fields = productSteps[m.MirroredElemTypes](names, 0).toArray
+    from[A]((a, b) =>
+      if same(a, b) then None
       else
-        val (i, j) = (m.ordinal(a), m.ordinal(b))
-        if i == j then instances(i).diff(a, b)
-        else Some(Difference(Path.root, labelled(i, a), labelled(j, b)))
-    private def labelled(i: Int, a: A) = Difference.clipped(s"${labels(i)}: ${a.toString}")
-    def show(a: A): String = Difference.clipped(a.toString)
+        // a type with a product mirror is a Product at runtime: the narrowing is a checked type
+        // test, and each field value is re-checked against its declared type in its field step
+        (a: Any, b: Any) match
+          case (p: Product, q: Product) =>
+            var found: Option[Difference] = None
+            var i = 0
+            while found.isEmpty && i < fields.length do
+              found = fields(i)(p, q)
+              i += 1
+            found
+          case _ => None // unreachable: the mirror proves the shape
+    )
+
+  private inline def sum[A](using m: Mirror.SumOf[A]): Diff[A] =
+    val names = labels[m.MirroredElemLabels].toArray
+    // the case instances are made once per derivation (on the first same-case comparison), not on
+    // every comparison
+    val cases = caseSteps[m.MirroredElemTypes, A].toArray
+    from[A]((a, b) =>
+      if same(a, b) then None
+      else if m.ordinal(a) != m.ordinal(b) then
+        Some(
+          Difference(
+            Path.root,
+            Difference.clipped(s"${names(m.ordinal(a))}: ${a.toString}"),
+            Difference.clipped(s"${names(m.ordinal(b))}: ${b.toString}")
+          )
+        )
+      else cases(m.ordinal(a))(a, b)
+    )
+
+  /** One step per case, in ordinal order: the case's instance (made on first use and kept) and the
+    * `ClassTag` check that narrows the values to the case type. The mirror selects the step for the
+    * known ordinal of both values.
+    */
+  private inline def caseSteps[Ts <: Tuple, A]: List[(A, A) => Option[Difference]] =
+    inline erasedValue[Ts] match
+      case _: EmptyTuple => Nil
+      case _: (t *: ts) =>
+        val ct = summonInline[ClassTag[t]]
+        val held = new Memo(() => caseInstance[t])
+        val step: (A, A) => Option[Difference] = (a, b) =>
+          (ct.unapply(a), ct.unapply(b)) match
+            case (Some(x), Some(y)) => held.value.diff(x, y)
+            case _                  => None
+        step :: caseSteps[ts, A]
+
+  /** A value made on first use and kept: field and case instances must not be built on every
+    * comparison, and must not be forced during derivation (a field or case may hold the type being
+    * derived).
+    */
+  private[scarab] final class Memo[A](init: () => A):
+    lazy val value: A = init()
 
 extension [A](a: A)
   /** The first difference from `b`, by the instance of the type. */

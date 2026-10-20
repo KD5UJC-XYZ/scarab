@@ -11,15 +11,16 @@ import scala.concurrent.duration.*
 
 /** What a node serves to its peers: its chain (ChainSync headers and BlockFetch blocks) and an
   * inbox for transactions. `chainSync` opens one cursor per connection.
+  *
+  * @param peerSharing
+  *   The peers we tell others about, when the connection agrees to peer sharing; none answers every
+  *   request with an empty list.
   */
 final class ServerHandlers[F[_], P](
     val codec: ChainSync.PayloadCodec[P],
     val chainSync: Resource[F, ChainSyncServer.Source[F, P]],
     val blocks: BlockFetchServer.Blocks[F],
     val transactions: TxSubmissionServer.Sink[F],
-    /** The peers we tell others about, when the connection agrees to peer sharing; none answers
-      * every request with an empty list.
-      */
     val peerSharing: Option[PeerSharingServer.Source[F]] = None
 )
 
@@ -28,22 +29,24 @@ final class ServerHandlers[F[_], P](
   * protocol error closes it.
   */
 object NodeToNodeServer:
+  /** @param duplex
+    *   Offer InitiatorAndResponder; the connection is duplex only if the peer agrees.
+    * @param offerPeerSharing
+    *   Take part in peer sharing: offered in the handshake; the connection does if the peer does
+    *   too.
+    * @param maxVersion
+    *   The highest node-to-node version accepted: the latest release unless the configuration
+    *   enables experimental protocols.
+    */
   final case class Settings(
       handshakeTimeout: FiniteDuration = Handshake.DefaultPhaseTimeout,
       mux: Mux.Config = Mux.Config(role = Mux.Role.Responder),
-      /** Offer InitiatorAndResponder; the connection is duplex only if the peer agrees. */
       duplex: Boolean = true,
       chainSync: ChainSyncServer.Settings = ChainSyncServer.Settings(),
       blockFetch: BlockFetchServer.Settings = BlockFetchServer.Settings(),
       keepAlive: KeepAliveServer.Settings = KeepAliveServer.Settings(),
       transactions: TxSubmissionServer.Settings = TxSubmissionServer.Settings(),
-      /** Take part in peer sharing: offered in the handshake; the connection does if the peer does
-        * too.
-        */
       offerPeerSharing: Boolean = false,
-      /** The highest node-to-node version accepted: the latest release unless the configuration
-        * enables experimental protocols.
-        */
       maxVersion: NtnVersion = NtnVersion.LatestReleased,
       peerSharing: PeerSharingServer.Settings = PeerSharingServer.Settings()
   )

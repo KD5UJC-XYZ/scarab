@@ -1,5 +1,8 @@
 # Implementer notes: reference behaviours and specification gaps
 
+**Status: Current reference notes for the pinned releases named below.** Individual entries
+distinguish source confirmation from recorded chain evidence.
+
 This page lists behaviours of the Haskell reference node that an alternative Cardano node
 implementation must replicate exactly, and places where the specification or the CDDL differs from
 the reference implementation. It is written for developers of other node implementations. It is not a
@@ -209,7 +212,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** Shelley to Allegra.
 - **Upstream reference:** cardano-ledger `Allegra/Translation.hs:58-71`; `Shelley/LedgerState/NewEpochState.hs:125-146`; `Address.hs:344` (`isBootstrapRedeemer`); `Shelley/API/ByronTranslation.hs:110-117` (`stashedAVVMAddresses`); ouroboros-consensus `Cardano/CanHardFork.hs:484-543`.
 - **Chain evidence:** Mainnet sync from genesis: reserves 318,200,635 ada short at epoch 236. Tx 48f567e5 (mainnet slot 17,020,941) withdraws the leader reward 351,635,274 of pool ffdf1b8f for epoch 235 (the node had 351,050,635). Roadmap B26.
-- **Pinned by:** [`MainnetAllegraReservesSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/MainnetAllegraReservesSuite.scala), `AllegraRedeemStoreSuite`
+- **Pinned by:** [`AllegraRedeemMirrorSuite`](../node/src/test/scala/xyz/kd5ujc/scarab/storage/AllegraRedeemMirrorSuite.scala), which exercises the era-indexed translation and store deletions with the mainnet genesis AVVM balance. Earlier flat-rule suites named in historical run records have been retired.
 - **Status:** confirmed in source
 
 #### IN-18 MIR rules by protocol version, and deregistration leaves MIR entries in place

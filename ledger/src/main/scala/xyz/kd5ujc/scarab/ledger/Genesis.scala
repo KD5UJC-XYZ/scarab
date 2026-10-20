@@ -97,6 +97,10 @@ final case class ByronDelegation(epoch: BigInt, issuer: Bytes, delegate: Bytes, 
   * `bootStakeholders`) in ascending order, which is also the PBFT round-robin order. `avvm` are the
   * redeemable balances (32-byte redeem keys), `nonAvvm` the balances at ordinary addresses (the
   * address encoding).
+  * @param startTime
+  *   `startTime` of the Byron genesis in whole seconds: the reference reports it as the system
+  *   start of the hard-fork combinator (it may differ from the Shelley genesis `systemStart` by the
+  *   sub-second part).
   */
 final case class ByronGenesis(
     hash: Bytes,
@@ -108,10 +112,6 @@ final case class ByronGenesis(
     params: ByronParams,
     avvm: Vector[(Bytes, BigInt)],
     nonAvvm: Vector[(Bytes, BigInt)],
-    /** `startTime` of the Byron genesis in whole seconds: the reference reports it as the system
-      * start of the hard-fork combinator (it may differ from the Shelley genesis `systemStart` by
-      * the sub-second part).
-      */
     startTime: Option[Long] = None
 ):
   /** A Byron epoch has 10k slots. */

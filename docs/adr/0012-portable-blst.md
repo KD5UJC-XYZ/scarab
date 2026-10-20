@@ -48,9 +48,10 @@ before blst-java on the class path.**
   `ubuntu:22.04` (digest pinned; gcc 11.4.0, SWIG 4.0.2, binutils 2.38, JDK headers of
   openjdk-17 17.0.20.1; the same toolchain as the upstream workflow, and no glibc symbol above
   2.14 is needed, as for the upstream library). The source is fetched by commit and the build stops if `git rev-parse HEAD` differs.
-  Output sha-256 of `libblst.so`:
+  Original output sha-256 of `libblst.so` (superseded by the raw-DST build recorded below):
   `8d158308ec8179a2e33eb1b26c3e09621307031715877867b46af11ebf884235` (a rebuild with `--no-cache`
-  gives the same bytes).
+  gave the same bytes). The maintained artifact's identity is `Blst.portableSha256`, also
+  recorded in this ADR's provenance table; the original hash is historical build evidence.
 - The sbt project `blstNative` (`blst-native/`) holds it at
   `supranational/blst/Linux/amd64/libblst.so`, the licence text of blst (`LICENSE-blst`, Apache-2.0)
   and `Blst`, the start-up check below. `crypto` and `plutus` depend on it, so it precedes

@@ -40,9 +40,8 @@ import xyz.kd5ujc.scarab.ledger.state.given
 // deposits and fees, the proposed updates, and the instant stake the tick reads, with the stake of
 // the pointer addresses.
 //
-// The checks themselves are the node's pure predicates, the ones the old rules use
-// (`TxChecks`), so the two sides refuse a transaction alike; what this file adds is the
-// state, and the order of the reference. The era of the rule is the evidence `PreConway[E]`:
+// The shared pure predicates live in `TxChecks`; these rules sequence them in the reference's
+// order and maintain the UTxO state. The era of the rule is the evidence `PreConway[E]`:
 // where the checks branch on the protocol version of the parameters in force, that is the
 // reference's own (`hardfork*`).
 

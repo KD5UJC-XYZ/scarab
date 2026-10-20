@@ -8,7 +8,7 @@ Desktop on Windows cannot publish one to the network without a firewall rule).
 worker (worker-a, worker-b, ...)                 server (monitor-host)
   scarab-* containers ── stdout ──┐                 Loki        :3100  log streams, 30 days
   host /proc, /sys, docker ───────┼── Alloy ──push──▶ Prometheus  :9090  metrics, 180 days
-  scarab-* /metrics (when built) ─┘                 Grafana     :3000  dashboards
+  scarab-* /metrics ─────────────┘                 Grafana     :3000  dashboards
 ```
 
 ## What is collected

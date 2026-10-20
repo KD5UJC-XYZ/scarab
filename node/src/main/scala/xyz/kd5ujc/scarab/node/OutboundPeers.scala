@@ -459,15 +459,17 @@ final class OutboundPeers[F[_]: Async, A] private (
     })
 
 object OutboundPeers:
+  /** @param deactivateTimeout
+    *   How long the hot protocols get to end on the wire (`deactivateTimeout`, `Policies.hs` 31).
+    * @param demotionTimeout
+    *   How long a closed connection may stay in the connection manager before the governor stops
+    *   waiting for it (`c_PEER_DEMOTION_TIMEOUT`).
+    * @param repromoteDelay
+    *   The exit policy's wait before a peer whose connection failed is tried again.
+    */
   final case class Config(
-      /** How long the hot protocols get to end on the wire (`deactivateTimeout`, `Policies.hs` 31).
-        */
       deactivateTimeout: FiniteDuration = 300.seconds,
-      /** How long a closed connection may stay in the connection manager before the governor stops
-        * waiting for it (`c_PEER_DEMOTION_TIMEOUT`).
-        */
       demotionTimeout: FiniteDuration = 10.minutes,
-      /** The exit policy's wait before a peer whose connection failed is tried again. */
       repromoteDelay: FiniteDuration = 10.seconds
   )
 
@@ -479,6 +481,17 @@ object OutboundPeers:
 
   /** What the hot part needs, besides the connection: the follower session, the pool, the header
     * check, the transactions, the settings and how a candidate compares with our selection.
+    *
+    * @param lost
+    *   A connection was lost (once per loss): the log's `reconnecting`.
+    * @param fatal
+    *   A session ended in a way no peer policy handles (storage, an internal failure, a defect):
+    *   the node stops ([[FailurePolicy.disposition]]).
+    * @param fetchMode
+    *   The fetch mode, which BlockFetch reads to decide whether a block another session has claimed
+    *   may be requested too.
+    * @param serve
+    *   Responder protocols served on outbound peers whose diffusion mode is duplex.
     */
   final case class Hot[F[_]](
       magic: Long,
@@ -491,26 +504,22 @@ object OutboundPeers:
       observe: Option[Peer.Observation => F[Unit]],
       pool: BlockPool[F],
       versus: ChainSelection.Candidate => F[Gsm.Candidate],
-      /** A connection was lost (once per loss): the log's `reconnecting`. */
       lost: PeerError => F[Unit],
-      /** A session ended in a way no peer policy handles (storage, an internal failure, a defect):
-        * the node stops ([[FailurePolicy.disposition]]).
-        */
       fatal: Fatal => F[Unit],
-      /** The fetch mode, which BlockFetch reads to decide whether a block another session has
-        * claimed may be requested too.
-        */
       fetchMode: Option[F[FetchMode]] = None,
-      /** Responder protocols served on outbound peers whose diffusion mode is duplex. */
       serve: Option[ServerHandlers[F, NtNHeader]] = None
   )
 
-  /** A connection of ours, and what its owner can do to it. */
+  /** A connection of ours, and what its owner can do to it.
+    *
+    * @param release
+    *   Completed to let go of the connection.
+    * @param gone
+    *   Completed once the connection has been released everywhere.
+    */
   private[node] final class Link[F[_]](
       val warm: WarmConnection[F, NtNHeader],
-      /** Completed to let go of the connection. */
       val release: Deferred[F, Unit],
-      /** Completed once the connection has been released everywhere. */
       val gone: Deferred[F, Unit],
       val phase: Ref[F, Phase[F]],
       val rootsGeneration: BigInt
@@ -523,9 +532,12 @@ object OutboundPeers:
     /** Closed by the governor or reported lost: nothing more is reported about it. */
     case Ending()
 
-  /** One hot period of a connection. */
+  /** One hot period of a connection.
+    *
+    * @param stop
+    *   Completed to ask the session to stop between two batches.
+    */
   private[node] final class Session[F[_]](
-      /** Completed to ask the session to stop between two batches. */
       val stop: Deferred[F, Unit],
       val asked: Ref[F, Boolean],
       val ended: Deferred[F, SessionEnd],

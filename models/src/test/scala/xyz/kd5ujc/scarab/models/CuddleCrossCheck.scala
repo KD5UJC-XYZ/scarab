@@ -27,7 +27,8 @@ import xyz.kd5ujc.scarab.models.runtime.Codec
   *   - `check <dir>`: decodes the terms cuddle generated (`<dir>/cuddle/<mode>/<target>.hex`, one
   *     hex term per line) with the generated codecs and writes `<dir>/decode.tsv`.
   *
-  * Run with `sbt "models/Test/runMain xyz.kd5ujc.scarab.models.CuddleCrossCheck export ..."`.
+  * Inside the JDK build container, run
+  * `sbt "models/Test/runMain xyz.kd5ujc.scarab.models.CuddleCrossCheck export ..."`.
   */
 object CuddleCrossCheck:
   private val cddlDir = Path.of("models/src/main/cddl")
@@ -35,6 +36,7 @@ object CuddleCrossCheck:
   /** What is cross-checked: every `root` of `models.conf`, plus the generated types the sampled
     * suite exercises (headers of every era, the hard-fork envelope, point and tip).
     */
+  // Includes generated non-root headers and envelopes as well as configured roots.
   val targets: Vector[(String, Codec[?])] = Vector(
     "handshake-node-to-node-v14:handshakeMessage" -> handshake.HandshakeMessage,
     "chain-sync:chainSyncMessage" -> chainsync.ChainSyncMessage,
@@ -53,7 +55,6 @@ object CuddleCrossCheck:
     "features:key_descriptor" -> features.KeyDescriptor,
     "features:person" -> features.Person,
     "features:prelude_use" -> features.PreludeUse,
-    // generated, but not roots
     "shelley:header" -> shelley.Header,
     "allegra:header" -> allegra.Header,
     "mary:header" -> mary.Header,

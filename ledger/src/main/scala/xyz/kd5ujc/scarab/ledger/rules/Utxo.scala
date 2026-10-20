@@ -32,9 +32,8 @@ import xyz.kd5ujc.scarab.ledger.state.*
 // UTXOW, UTXO and UTXOS for Conway (`Conway/Rules/Utxow.hs`, `Utxo.hs`, `Utxos.hs`, with the Alonzo
 // and Babbage rules they share). They run on the UTxO state (`UTxOState`): the UTxO set, the
 // deposits and fees and donations, and the instant stake the tick reads (SNAP and the DRep pulser
-// take it as the stake of the UTxO). The checks themselves are the node's pure predicates, the
-// ones the old rules use (`TxChecks`), so the two sides refuse a transaction with the same
-// failure; what this file adds is the state: the instant stake kept as the set changes.
+// take it as the stake of the UTxO). The shared pure predicates live in `TxChecks`; these rules
+// sequence them and maintain the UTxO state, including the instant stake as the set changes.
 
 /** `UtxoEnv` (`Shelley/Rules/Utxo.hs:107`): the block-level context (the slot), the parameters in
   * force, and the certificate state *before* the transaction's certificates (the refunds of

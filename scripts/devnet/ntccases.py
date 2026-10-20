@@ -86,10 +86,11 @@ def script_tx(b, w, collateral, script, account="testnet", invalid=False, fee=15
          f"--out-file /work/pp{n}.json")
     held, kept = 3000000, collateral["lovelace"] - 3000000
     base = f"/work/case{n}"
+    # cardano-cli expects mint execution units in (steps, memory) order.
     b.sh(f"{CLI} transaction build-raw --tx-in {w['txin']} "
          f"--tx-out '{w['addr']}+{held}+{token}' --tx-out {w['addr']}+{w['lovelace'] - fee - held} "
          f"--fee {fee} --mint '{token}' --mint-script-file /work/script{n}.plutus --mint-redeemer-value 0 "
-         f"--mint-execution-units '(1000000000,2000000)' --tx-in-collateral {collateral['txin']} "  # (steps, memory)
+         f"--mint-execution-units '(1000000000,2000000)' --tx-in-collateral {collateral['txin']} "
          f"--tx-total-collateral {held} --tx-out-return-collateral {collateral['addr']}+{kept} "
          f"--withdrawal {stake}+0 --protocol-params-file /work/pp{n}.json "
          f"{'--script-invalid' if invalid else ''} --out-file {base}.body")

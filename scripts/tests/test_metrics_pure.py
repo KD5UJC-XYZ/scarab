@@ -52,14 +52,16 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(metrics.total(samples, "a_total"), 4.5)
 
     def test_refuses_what_the_format_does_not_allow(self):
-        for bad in ("a 1\n",                                                    # no TYPE
-                    "# HELP a x\n# TYPE a counter\n# TYPE a counter\n",         # TYPE twice
-                    "# TYPE a counter\n",                                       # TYPE before HELP
-                    "# HELP a x\n# TYPE a counter\na{b=1} 1\n",                 # unquoted label value
-                    "# HELP a x\n# TYPE a counter\na 1 2 3\n",                  # a timestamp and more
-                    "# HELP a x\n# TYPE a counter\na 1\na 2\n",                 # the same sample twice
-                    "# HELP a x\n# TYPE a counter\na one\n",                    # not a number
-                    "# HELP a x\n# TYPE a counter\n\na 1\n",                    # a blank line
+        # Cases: missing TYPE, duplicate TYPE, TYPE before HELP, unquoted label, surplus timestamp
+        # fields, duplicate sample, nonnumeric value, blank line and unsupported EOF marker.
+        for bad in ("a 1\n",
+                    "# HELP a x\n# TYPE a counter\n# TYPE a counter\n",
+                    "# TYPE a counter\n",
+                    "# HELP a x\n# TYPE a counter\na{b=1} 1\n",
+                    "# HELP a x\n# TYPE a counter\na 1 2 3\n",
+                    "# HELP a x\n# TYPE a counter\na 1\na 2\n",
+                    "# HELP a x\n# TYPE a counter\na one\n",
+                    "# HELP a x\n# TYPE a counter\n\na 1\n",
                     "# EOF\n"):
             with self.assertRaises(ValueError, msg=bad):
                 metrics.parse(bad)

@@ -50,36 +50,45 @@ object Gsm:
     /** Whether the candidate is preferred to our selection. */
     case Better(preferred: Boolean)
 
-  /** What the effect loop reads. */
+  /** What the effect loop reads.
+    * @param honestAvailability
+    *   The Honest Availability Assumption (`isHaaSatisfied`): the governor's
+    *   [[OutboundConnectionsState]] is trusted.
+    * @param selection
+    *   An identity of the node's selection (its tip), to tell that it changed.
+    * @param untilTooOld
+    *   How long until that selection is too old; none when it can never be (no age limit).
+    */
   final case class Reading(
-      /** The Honest Availability Assumption (`isHaaSatisfied`): the governor's
-        * [[OutboundConnectionsState]] is trusted.
-        */
       honestAvailability: Boolean,
       peers: Vector[PeerReading],
-      /** An identity of the node's selection (its tip), to tell that it changed. */
       selection: Long,
-      /** How long until that selection is too old; none when it can never be (no age limit). */
       untilTooOld: Option[DurationFromNow]
   )
 
+  /** @param minCaughtUp
+    *   `minCaughtUpDuration`: how long the node stays caught up whatever the age of its tip; the
+    *   reference sets it to `maxCaughtUpAge` (`Node.hs` 953).
+    * @param maxBonus
+    *   The largest random bonus added to the age limit (`blockWhileCaughtUp`, GSM.hs 314-336).
+    */
   final case class Config(
-      /** `minCaughtUpDuration`: how long the node stays caught up whatever the age of its tip; the
-        * reference sets it to `maxCaughtUpAge` (`Node.hs` 953).
-        */
       minCaughtUp: FiniteDuration = 20.minutes,
-      /** The largest random bonus added to the age limit (`blockWhileCaughtUp`, GSM.hs 314-336). */
       maxBonus: FiniteDuration = 300.seconds
   )
 
-  /** The state of the machine between two readings. */
+  /** The state of the machine between two readings.
+    * @param lockedUntil
+    *   In `CaughtUp`: no leaving before this (`threadDelay minCaughtUpDuration`).
+    * @param watching
+    *   In `CaughtUp`: the selection the deadline was computed for, and the deadline.
+    * @param bonus
+    *   The random bonus of the current stay in `CaughtUp`.
+    */
   final case class State(
       phase: Phase,
-      /** In `CaughtUp`: no leaving before this (`threadDelay minCaughtUpDuration`). */
       lockedUntil: Time,
-      /** In `CaughtUp`: the selection the deadline was computed for, and the deadline. */
       watching: Option[(Long, Time)],
-      /** The random bonus of the current stay in `CaughtUp`. */
       bonus: FiniteDuration,
       rng: Rng
   )

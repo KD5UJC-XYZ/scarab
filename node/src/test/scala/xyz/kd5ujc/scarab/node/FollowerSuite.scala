@@ -178,12 +178,14 @@ class FollowerSuite extends CatsEffectSuite:
   /** One peer that serves `chain` as a node does: after the intersection it announces a roll back
     * to the intersection point (the protocol's first instruction), then rolls forward over the
     * headers it has beyond it, `pause` apart. It joins `startDelay` after the run began.
+    *
+    * @param honest
+    *   False: a scripted peer that ignores the intersection and replays its whole chain.
     */
   private final case class Serving(
       chain: Vector[Header],
       startDelay: FiniteDuration = Duration.Zero,
       pause: FiniteDuration = Duration.Zero,
-      /** False: a scripted peer that ignores the intersection and replays its whole chain. */
       honest: Boolean = true
   )
 

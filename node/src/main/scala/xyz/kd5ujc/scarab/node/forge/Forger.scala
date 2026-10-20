@@ -99,32 +99,37 @@ trait ForgeEvents[F[_]]:
   * The slot clock is the wall clock over the era history (`EpochGeometry`); `F` is any `Async` so
   * tests drive it with a test clock. At most one attempt is made per slot, and only the current
   * slot is attempted (a slot that has passed is not forged late).
+  *
+  * @param credentials
+  *   The pool's keys as they were at the start; the VRF key and the cold key never change, the KES
+  *   key and certificate are those of `hot`.
+  * @param maxTipAge
+  *   The ledger view of a slot is only taken from a tip at most this many slots older.
+  * @param ready
+  *   True once the node has a peer to learn the chain from: a node that has not yet intersected
+  *   with anyone would otherwise forge on its own empty chain.
+  * @param now
+  *   `now` for tests; the real clock by default.
+  * @param utxoStore
+  *   The backing store of the UTxO set: the read set of the candidates is fetched from it.
+  * @param stats
+  *   Per-epoch counters (H5): checked and led slots, blocks, skips by reason, forge latency.
   */
 final class Forger[F[_]: Async, S](
     config: PraosConfig,
     globals: LedgerGlobals,
-    /** The pool's keys as they were at the start; the VRF key and the cold key never change, the
-      * KES key and certificate are those of `hot`.
-      */
     credentials: PoolCredentials,
     val hot: HotKeys[F],
     follower: Follower[F, S],
     mempool: Mempool[F],
     events: ForgeEvents[F],
-    /** The ledger view of a slot is only taken from a tip at most this many slots older. */
     maxTipAge: BigInt,
-    /** True once the node has a peer to learn the chain from: a node that has not yet intersected
-      * with anyone would otherwise forge on its own empty chain.
-      */
     ready: F[Boolean],
-    /** `now` for tests; the real clock by default. */
     now: F[Instant],
     sleep: FiniteDuration => F[Unit],
     cache: Ref[F, Option[Forger.Crossed]],
     pending: Ref[F, Vector[Forger.Forged]],
-    /** The backing store of the UTxO set: the read set of the candidates is fetched from it. */
     utxoStore: Option[UtxoStore[F]],
-    /** Per-epoch counters (H5): checked and led slots, blocks, skips by reason, forge latency. */
     val stats: ForgeStats[F]
 )(using
     chain: Stateful[F, VolatileChain[S]],
@@ -575,6 +580,10 @@ object Forger:
   /** A block we forged and adopted, kept to notice if it is replaced later. */
   final case class Forged(ref: BlockRef, slot: BigInt)
 
+  /** @param source
+    *   Where the KES key is written back after evolving and read from again at a reload; none: the
+    *   key is kept in memory only, as the Haskell node does.
+    */
   def create[F[_]: Async, S](
       config: PraosConfig,
       globals: LedgerGlobals,
@@ -587,9 +596,6 @@ object Forger:
       now: Option[F[Instant]] = None,
       sleep: Option[FiniteDuration => F[Unit]] = None,
       utxoStore: Option[UtxoStore[F]] = None,
-      /** Where the KES key is written back after evolving and read from again at a reload; none:
-        * the key is kept in memory only, as the Haskell node does.
-        */
       source: Option[HotKeySource[F]] = None
   )(using
       Stateful[F, VolatileChain[S]],

@@ -168,8 +168,8 @@ object ScalusEvaluator:
         .decodeFailure(language, protocolMajor, decoded.builtins)
         .orElse(PlutusAvailability.scanFailure(protocolMajor, decoded.scan))
         .map(ScriptProblem.Availability.apply)
+        // `deserialiseScript` tolerates bytes after the script's CBOR item in V1 and V2 only
         .orElse(
-          // `deserialiseScript` tolerates bytes after the script's CBOR item in V1 and V2 only
           Option.when(decoded.remainder > 0 && language == PlutusLanguage.V3)(
             ScriptProblem.TrailingBytes(decoded.remainder)
           )

@@ -140,7 +140,7 @@ object TxChecks:
   /** The minimum ada of an output. Shelley and Allegra: the flat `minUTxOValue`
     * (`getMinCoinTxOut`); Mary: `scaledMinDeposit`, which is `minUTxOValue` for an ada-only value
     * and otherwise `max(minUTxOValue, (minUTxOValue / 27) * (27 + size v))` (`coinSize` is 0 there,
-    * unlike Alonzo where the ada-only entry counts 2 words); Alonzo and Babbage:
+    * unlike Alonzo where the ada-only entry counts 2 words); Alonzo:
     * `coinsPerUTxOWord * (27 + size v + datum hash)`; Babbage onward: `coinsPerUTxOByte` times the
     * serialised size plus 160.
     */

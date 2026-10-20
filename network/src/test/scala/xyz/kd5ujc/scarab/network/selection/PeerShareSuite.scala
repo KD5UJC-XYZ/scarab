@@ -26,13 +26,14 @@ class PeerShareSuite extends munit.ScalaCheckSuite:
     Candidate(addr(i), advertise, connected, fails)
 
   test("only advertised peers that connected and have not failed since are shareable") {
+    // Repeating candidate 5 must not duplicate it in the shareable peers.
     val known = Vector(
       candidate(1),
       candidate(2, advertise = false),
       candidate(3, connected = false),
       candidate(4, fails = 1),
       candidate(5),
-      candidate(5) // a duplicate collapses
+      candidate(5)
     )
     assertEquals(shareable(known), Vector(addr(1), addr(5)))
     assertEquals(shareable(Vector.empty[Candidate[Address]]), Vector.empty[Address])

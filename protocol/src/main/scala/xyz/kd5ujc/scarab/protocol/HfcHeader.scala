@@ -7,9 +7,8 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 /** What a node-to-node ChainSync header is when the era may be one this node does not implement:
   * the hard-fork-combinator envelope `[era_index, payload]` of consensus `header.cddl`, kept open
   * for the eras after Conway. [[NtNHeader]] is the closed form for the eras the node follows; a
-  * peer on a chain in a later era (the public Leios testnet is in Dijkstra from its first
-  * Shelley-based block) makes that decoder fail with a string, which says nothing about the era.
-  * This one names it.
+  * later-era peer would otherwise fail with [[ProtocolError.UnknownEraIndex]]. This envelope names
+  * Dijkstra explicitly and retains the index and payload for an unrecognised era.
   *
   * Upstream: `ouroboros-consensus-cardano/cddl/node-to-node/chainsync/header.cddl` (the pinned copy
   * in `models/src/main/cddl/upstream` has the `Dijkstra` case of `header` at index 7).
@@ -39,7 +38,9 @@ enum HfcHeaderError:
   /** A Dijkstra payload that is not `tag24(bytes)`. */
   case NotEmbeddedCbor
 
-  /** The envelope of a supported era fails [[NtNHeader]]'s decoder (`reason` is its diagnostic). */
+  /** The envelope of a supported era fails [[NtNHeader]]'s decoder; `cause` retains its typed
+    * error.
+    */
   case Supported(era: Era, cause: ProtocolError)
 
 object HfcHeader:
@@ -49,8 +50,8 @@ object HfcHeader:
   /** The BlockFetch block tag of a Dijkstra block (`[8, block]`), after Conway's 7. */
   val DijkstraBlockTag: Int = 8
 
-  /** The largest header accepted, as for [[NtNHeader]] (`maxHeaderSize` is 1,100 bytes on the Leios
-    * testnet; mainnet's is 1,100 as well).
+  /** Local envelope payload ceiling, shared with [[NtNHeader]]. Consensus header-size validation
+    * belongs to the ledger/header layer; this codec only bounds decoding work.
     */
   private val MaxHeader = 65535
   private val limits = Cbor.Limits(MaxHeader + 16, 8, 64, MaxHeader)
@@ -95,9 +96,10 @@ object HfcHeader:
         case _ => Left(HfcHeaderError.NotEmbeddedCbor)
     case _ => Left(HfcHeaderError.NotEmbeddedCbor)
 
-  /** The canonical envelope of a header, for tests and servers; an unrecognised era is written back
-    * with its payload as received. A decoded envelope that used longer-than-shortest heads (which
-    * the reference reads) is written in the shortest form: `decode(encode(h)) == h`.
+  /** Encode an envelope for tests and servers. Supported and Dijkstra headers retain their embedded
+    * header bytes; an unrecognised payload is decoded and re-encoded with [[Cbor.encode]], so its
+    * integer widths and container forms may change. Preserve received wire bytes separately when
+    * their exact representation matters.
     */
   def encode(header: HfcHeader): Either[ProtocolError, Bytes] = header match
     case Supported(h) => NtNHeader.codec.encode(h)
@@ -123,8 +125,8 @@ object HfcHeader:
         }
         .leftMap(ProtocolError.Codec(_))
 
-  /** As a ChainSync payload: a header of any era is accepted; only a malformed envelope is refused
-    * (the codec interface carries a diagnostic string, [[HfcHeaderError]] is its typed form).
+  /** As a ChainSync payload: any era index is admitted, subject to envelope and resource checks.
+    * [[ProtocolError.HfcHeader]] retains the structured [[HfcHeaderError]] cause.
     */
   val codec: ChainSync.PayloadCodec[HfcHeader] = new ChainSync.PayloadCodec[HfcHeader]:
     def encode(value: HfcHeader): Either[ProtocolError, Bytes] = HfcHeader.encode(value)

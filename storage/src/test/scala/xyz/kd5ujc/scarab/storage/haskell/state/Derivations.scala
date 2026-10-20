@@ -9,33 +9,47 @@ import xyz.kd5ujc.scarab.ledger.state.*
 /** What the fields Haskell derives (and the mirror derives with it) are in a real state, against
   * the rules the mirror derives them by (`LedgerMirror`: plan §8). Each field is a fact about one
   * decoded state, so that a real Preview state and a devnet state are held to the same questions.
+  *
+  * @param vrfRecorded
+  *   The size of `psVRFKeyHashes`.
+  * @param vrfDerived
+  *   The distinct VRF key hashes of the registered and of the pending pools.
+  * @param vrfMissing
+  *   VRF key hashes derived from registered or pending pools but absent from the recorded map.
+  * @param vrfExtra
+  *   Recorded VRF key hashes absent from the registered and pending pools.
+  * @param vrfCountAnomalies
+  *   The key hashes whose count is not 1: the recorded count, the registered pools with the key and
+  *   the pending re-registrations with it.
+  * @param pdIsSet
+  *   Whether `nesPd` equals the pool distribution derived from the `set` snapshot.
+  * @param pdIsMark
+  *   Whether `nesPd` equals the pool distribution derived from the `mark` snapshot.
+  * @param pdIsGo
+  *   Whether `nesPd` equals the pool distribution derived from the `go` snapshot.
+  * @param numDelegators
+  *   Per snapshot (mark, set, go): the pools, the pools whose `numDelegators` is the number of
+  *   stake entries delegated to them, above it, and below it, and the pools whose `numDelegators`
+  *   is the number of delegators the pool has now (`spsDelegators`).
+  * @param delegatorsMatching
+  *   Pools whose `spsDelegators` equals the set of accounts delegating to them.
+  * @param delegatorsDiffering
+  *   Pools whose `spsDelegators` differs from the set of accounts delegating to them.
+  * @param future
+  *   The case of the future parameters.
   */
 final case class Derivations(
-    /** The size of `psVRFKeyHashes`. */
     vrfRecorded: Int,
-    /** The distinct VRF key hashes of the registered and of the pending pools. */
     vrfDerived: Int,
-    /** The key hashes the rule has and the state does not, and the other way round. */
     vrfMissing: Int,
     vrfExtra: Int,
-    /** The key hashes whose count is not 1: the recorded count, the registered pools with the key
-      * and the pending re-registrations with it.
-      */
     vrfCountAnomalies: Vector[(Long, Int, Int)],
-    /** `nesPd` equals `calculatePoolDistr` of the `set` snapshot, and of the others. */
     pdIsSet: Boolean,
     pdIsMark: Boolean,
     pdIsGo: Boolean,
-    /** Per snapshot (mark, set, go): the pools, the pools whose `numDelegators` is the number of
-      * stake entries delegated to them, above it, and below it, and the pools whose `numDelegators`
-      * is the number of delegators the pool has now (`spsDelegators`).
-      */
     numDelegators: Vector[Derivations.DelegatorCounts],
-    /** The pools whose `spsDelegators` is the set of accounts delegating to them, and the others.
-      */
     delegatorsMatching: Int,
     delegatorsDiffering: Int,
-    /** The case of the future parameters. */
     future: String
 )
 

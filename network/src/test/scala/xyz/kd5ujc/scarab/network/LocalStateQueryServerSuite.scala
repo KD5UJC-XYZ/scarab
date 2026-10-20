@@ -244,8 +244,8 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
           _ <- receive(ch, State.Acquiring)
           cancel <- t.cancelServer.get.map(_.getOrElse(IO.unit))
           _ <- cancel
-          _ <- IO.sleep(20.millis)
-          released <- t.released.get
+          // the release is recorded by the cancelled fiber, so wait for the record, not for 20 ms
+          released <- Wait.until(t.released.get)(_ == 1)
         yield assertEquals(released, 1)
       }.map { case (_, ended) => assertEquals(ended, "server canceled") }
     }

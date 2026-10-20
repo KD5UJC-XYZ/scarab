@@ -1,14 +1,19 @@
 # Architecture
 
+**Status: Current.** Module boundaries and runtime responsibilities; historical measurements
+and removed implementations are recorded separately in [performance.md](performance.md).
+
 How the node is put together. For flags and scenarios see [running.md](running.md); for what is
 verified against what see [compatibility.md](compatibility.md); for facts learned from real data
 see [findings.md](findings.md).
 
 ## Modules
 
-Every module is a directory, an sbt project of the same id and the artifact `scarab-<id>`
-(organisation `xyz.kd5ujc`); its package is `xyz.kd5ujc.scarab.<id>`. The dependency direction is
-enforced by sbt: a cycle does not load.
+The module table names directories; `build.sbt` defines their project and artifact names
+(organisation `xyz.kd5ujc`). Most share their directory name; `blst-native` uses project
+`blstNative` and package `xyz.kd5ujc.scarab.blst`, while `models-gen` uses project `modelsGen`
+and package `xyz.kd5ujc.scarab.models.gen`. The dependency direction is enforced by sbt:
+a cycle does not load.
 
 | Module | Contents | Effect style |
 |---|---|---|
@@ -61,11 +66,11 @@ several modules).
 | Errors | `NodeError.scala` | Closed hierarchy, see "Error model" |
 | Peer | `Peer.scala` | `Peer[F]` algebra (intersect / next / fetch) with a node-to-node interpreter over `network`: `Peer.nodeToNode` for a connection we open, `Peer.over` for any negotiated connection (also an inbound duplex one) |
 | Header-first | `HeaderGate.scala`, `HeaderValidation.scala`, `consensus/HeaderRules.scala` | `HeaderCheck`/`HeaderGate` validate each ChainSync batch before its blocks are fetched; the pure `HeaderRules[S, H]` (`NodeHeaderRules`) forecasts the ledger view; `HeaderChain` is the candidate chain's header states (G6) |
-| Connections | `InboundGovernor.scala`, `network/ConnectionManager.scala`, `protocol/ConnectionState.scala` | Pure connection life cycle, the manager's table (one connection per peer address, limits, typed refusals), and the governor that runs our clients on inbound duplex connections (G2) |
+| Connections | `InboundGovernor.scala`, `network/ConnectionManager.scala`, `protocol/ConnectionState.scala` | Pure connection life cycle, the manager's table (one connection per address and direction, admission limits and typed refusals), and the governor that runs our clients on inbound duplex connections (G2) |
 | Peer selection | `network/selection/*.scala`, `PeerGovernor.scala`, `OutboundPeers.scala`, `PeerNetwork.scala`, `GsmRunner.scala`, `FailurePolicy.scala` | The pure peer governor (state, decision, events, targets, local roots, sensitive state, the Genesis State Machine), its loop and its interpreter over the connection manager, the follower and the block pool (G1.1) |
 | Decoding | `Header.scala`, `Block.scala` | Era-aware: `Header.Shelley` (TPraos or Praos `HeaderVrf`) and `Header.Byron`; blocks decoded per era with the body hash recomputed from the original bytes |
 | Chain | `VolatileChain.scala` | Pure last-k chain of `(block, state)`; rollback restores the exact retained state |
-| Follower | `Follower.scala`, `consensus/ChainSelection.scala` | Program over `Stateful[F, VolatileChain[S]]` and `BlockRules[F, S]`: one candidate chain per peer session, Praos chain selection, adoption on a copy of the chain; `supervise` reconnects on `PeerError` |
+| Follower | `Follower.scala`, `consensus/ChainSelection.scala` | Program over `Stateful[F, VolatileChain[S]]` and `BlockRules[F, S]`: one candidate chain per peer session, Praos chain selection, adoption on a copy of the chain; session owners classify typed outcomes through `FailurePolicy` |
 | Consensus | `consensus/Praos.scala`, `TPraos.scala`, `OCertRules.scala`, `ByronRules.scala` | VRF leader check, KES, opcert counters, nonce evolution; TPraos adds the overlay schedule, two VRF certificates and the 512-bit leader value |
 | Byron ledger | `ledger/byron/` | Pure: addresses and roots, transactions and witnesses, the UTxO rules and fee policy, delegation certificates, the update system, the body proofs and the Byron to Shelley transition epoch |
 | Ledger | `ledger/` | Pure functions: transaction decoding, UTXOW/UTXO/CERTS rules, deposits, withdrawals, EPOCH (rewards, SNAP, POOLREAP, dormant epochs), and from Conway GOV, RATIFY, ENACT and the DRep pulser |
@@ -90,7 +95,7 @@ Capabilities are traits over `F[_]`; interpreters are chosen in `Main`:
 |---|---|---|
 | `Peer[F]` | intersect, next header, fetch blocks | node-to-node over TCP or over any negotiated connection (pipelined), scripted peers in tests |
 | `HeaderRules[S, H]`, `HeaderCheck[F]` | forecast the ledger view and validate a header against it; per session, validate each batch before it is fetched | `NodeHeaderRules` (pure), `HeaderCheck.forChain` (the gate over the node's chain), `HeaderCheck.none` |
-| `ConnectionManager[F]` | one connection per peer address, limits, accounting | `ConnectionManager.create` (a `Ref` table over the pure `ConnectionState`) |
+| `ConnectionManager[F]` | one connection per peer address and direction, admission policy, limits and accounting | `ConnectionManager.create` (a `Ref` table over the pure `ConnectionState`) |
 | `BlockRules[F, S]` | validate and apply one block to a state | `MirrorRules` (the era-indexed rules on the mirror state) |
 | `UtxoStore[F]` | read, write, checkpoint, restore the UTxO set | `MemoryUtxoStore`, `RocksUtxoStore` |
 | `ImmutableStore[F]` | append-only raw blocks older than k | `FileImmutableStore` |
@@ -567,8 +572,10 @@ blocks:
 `--seconds`, or a fatal error) first waits for a snapshot in flight and then, unless the newest
 snapshot already is at the immutable tip, forces the immutable store and writes a snapshot with its
 UTxO checkpoint at the tip (`shutdownSnapshot`). The stores are released after that. Persisting one
-block (log, pending list, immutable append, backing store, tip bookkeeping) is uncancelable, so a stop
-never lands between two stores. The next start restores that snapshot, replays no stored block
+block (log, pending list, immutable append, backing store, tip bookkeeping) is uncancelable, so
+cooperative cancellation waits for that sequence. This is not a transaction across the stores;
+storage failure and abrupt process termination still require recovery. After a successful shutdown
+snapshot, the next start restores it, replays no immutable block
 (`replayFinished` with `replayed` 0) and resumes the volatile chain from the log. After `kill -9`
 nothing of this runs: the start restores the newest periodic snapshot, replays the stored blocks after
 it, and resumes the volatile chain from whatever the log holds.
@@ -593,8 +600,9 @@ know cannot be represented) and each kind of file is a `FileKind` with its histo
 On open, `Migrate` (storage) runs a `Migration[F]` over the files of a kind: it reads the version of
 every file first (so an unknown version raises `StorageError.UnknownVersion` and nothing has been
 rewritten), then steps each stale file to the next version until it is at the current version of its
-kind (or directly to the current version when one converter writes that format; snapshot V1–V4 go
-directly to V5). A kind that is unchanged at global V6 is not rewritten, so a V6 identity update
+kind (or directly to the current version when a registered converter supports that transition).
+Snapshot V1–V4 conversion is historical tooling recovered from pinned source, not a migration
+offered by the current runtime. A kind unchanged at global V6 is not rewritten, so a V6 identity update
 does not touch the 29,031 chunk indexes of a Preview database. A step is `AtomicFile.replace`: a
 temporary file in the same directory, fsync, rename
 over the original, fsync of the directory; so a crash leaves every file whole at one version, and the
@@ -811,21 +819,22 @@ producer and every supervised fiber are released with it. A session that ends be
 the protocol, announced an invalid header or sent a block our rules refuse aborts the connection; one that ends
 for any other reason of the peer (the peer does not serve ChainSync, say) leaves the serving side running. A
 session ends with a `SessionEnd` (a value: `SessionEnd.scoped` runs it in an error scope of its own and catches
-the node's scope, which the rules and the stores raise through), and `FailurePolicy.disposition` says what is
-done about it: forget the peer, try it again later, or stop the node (storage, an internal failure, a defect;
-exit codes 5, 6, 7, `running.md` "Failures that stop the node"). Each session counts the
+caller-scoped rule and store capabilities), and `FailurePolicy.disposition` says what is
+done about it: forget the peer, try it again later, or stop the node (storage, an internal failure,
+a defect or implementation unavailability; exit codes 5, 6, 7 and 8,
+`running.md` "Failures that stop the node"). Each session counts the
 headers and rollbacks it saw and the peer's tip (`GET /connections`, `inbound` log events
 `accepted`, `duplex`, `following`, `sessionEnded`, `sessionDropped`, `closed`).
 
-**Outbound.** `Outbound.connect` puts the connections we open through the same manager. If the
+**Outbound.** `OutboundPeers` puts the connections we open through the same manager. If the
 peer we are asked to dial already has a duplex connection to us on which our client runs, no second
 connection is opened: the dialler waits until that connection ends (the `reused` log event) and then
-dials; a manager refusal is a `PeerError.Unavailable`, which the supervisor retries. Connections we
-open still offer initiator-only: a peer we dial is not served over that connection, so the peer can
-read our chain only over a connection it opens, and an outbound connection of ours therefore never
-refuses the peer's inbound one. When both exist (the peer dialled while our dial was up) the peer is
-followed by two sessions, one per connection, until one of them ends; chain selection treats them
-like any two peers.
+dials; a manager refusal becomes a recoverable connection failure. Outbound peers configured with
+`InitiatorAndResponder` receive the node's responder handlers and can read our chain on that same
+bearer when duplex is negotiated. `InitiatorOnly` peers do not receive those handlers.
+Admission distinguishes address and direction, permits an inbound connection alongside an outbound
+one, and permits the reverse when inbound sync is disabled. When two sessions do follow one peer,
+chain selection treats their candidates independently.
 
 Tests: `ConnectionManagerSuite` (admission, one connection per address, limits per direction,
 release after failure and cancellation, illegal events, waiting for a connection to end, and a
@@ -1222,8 +1231,8 @@ selection, the pure rules, persisting.
 - `Compute[F]` (`Scheduling.scala`) has `within(fa)`, which runs an effect on a second cats-effect
   work-stealing pool (`IORuntime.createWorkStealingComputeThreadPool`, workers `scarab-cpu-N`, default one
   per CPU, `--cpu-threads`) allocated and shut down as a `Resource`, and `timed(label)(step)`, which
-  runs a pure step where it is and records its duration. `Follower.supervise` runs each peer session on
-  the pool (`connect.use(peer => compute.within(follower.session(peer)))`); the connection itself
+  runs a pure step where it is and records its duration. `Main` wires the outbound and inbound
+  session callbacks through `compute.within(follower.session(...))`; the connection itself
   (multiplexer, KeepAlive, the pipelined ChainSync and BlockFetch producer) is opened outside and stays
   on the compute pool, as do the relay servers, the forger loop and the timer monitor. The replay of
   stored blocks and the resume of the volatile chain run within the pool too, and so does the

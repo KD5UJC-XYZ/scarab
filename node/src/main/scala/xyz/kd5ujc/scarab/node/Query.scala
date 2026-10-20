@@ -468,18 +468,22 @@ object Projection:
   * others below.
   */
 object QueryServer:
+  /** @param scheduling
+    *   The whole-run scheduling measurements, served at `/scheduling`.
+    * @param connections
+    *   The connection manager's table and the inbound sessions, served at `/connections`.
+    * @param forging
+    *   The forger's counters per epoch, served at `/forging` (only on a node that forges).
+    * @param metrics
+    *   The metrics in the Prometheus text format, served at `/metrics` (see [[MetricsServer]]).
+    */
   def resource[F[_]: Async: Network, S](
       view: ChainView[F, S],
       port: Int,
       utxoStore: Option[xyz.kd5ujc.scarab.storage.UtxoStore[F]] = None,
-      /** The whole-run scheduling measurements, served at `/scheduling`. */
       scheduling: Option[F[Json]] = None,
-      /** The connection manager's table and the inbound sessions, served at `/connections`. */
       connections: Option[F[Json]] = None,
-      /** The forger's counters per epoch, served at `/forging` (only on a node that forges). */
       forging: Option[F[Json]] = None,
-      /** The metrics in the Prometheus text format, served at `/metrics` (see [[MetricsServer]]).
-        */
       metrics: Option[F[String]] = None
   )(fatal: Fatal => F[Unit])(using read: ChainRead[S]): Resource[F, Server] =
     EmberServerBuilder

@@ -4,8 +4,9 @@ package xyz.kd5ujc.scarab.crypto.bls
 import xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.*
 
 /** Micro-benchmark for a 900-seat committee. Not a test: run
-  * `core/Test/runMain xyz.kd5ujc.scarab.crypto.bls.BlsBenchmark` and record the output in
-  * docs/leios.md. Wall-clock, single thread, after a warm-up; numbers depend on the host.
+  * `crypto/Test/runMain xyz.kd5ujc.scarab.crypto.bls.BlsBenchmark` inside the build container.
+  * Record measurements in docs/performance.md. Wall-clock, single thread, after a warm-up; numbers
+  * depend on the host.
   */
 object BlsBenchmark:
   private def time[A](a: => A): (A, Double) =

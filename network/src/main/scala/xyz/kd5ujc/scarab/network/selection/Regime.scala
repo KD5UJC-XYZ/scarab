@@ -4,8 +4,8 @@ package xyz.kd5ujc.scarab.network.selection
 import scala.concurrent.duration.*
 
 /** The targets the churn governor asks for, before and between its rounds (`peerChurnGovernor`,
-  * `Cardano/Network/PeerSelection/Churn.hs` 167-214). The rounds themselves are stage G1.2; until
-  * then the governor works towards the targets of the regime the node is in.
+  * `Cardano/Network/PeerSelection/Churn.hs` 167-214). [[Churn]] computes the changes within each
+  * round from these regime-specific baseline targets.
   *
   * The regime follows the fetch mode and whether bootstrap peers are configured (`pickChurnRegime`,
   * 108-115):

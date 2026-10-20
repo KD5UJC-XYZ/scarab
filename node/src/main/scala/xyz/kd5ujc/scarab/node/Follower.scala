@@ -52,21 +52,29 @@ object SelectViews:
   * chain and, if all of them apply, adopted at once. A peer that rolls back or forks without being
   * preferred changes nothing. Any number of sessions may run concurrently: adoption is serialised.
   *
-  * Chain state lives in `Stateful`; rule failures are raised as typed errors and are fatal (the
-  * chain keeps the last valid block). Peer failures, including a peer whose chain does not connect,
-  * are handled by [[Follower.supervise]].
+  * Chain state lives in `Stateful`; failures retain their typed causes and leave the published
+  * chain at the last committed state. The session owner classifies the outcome through
+  * [[SessionEnd]] and [[FailurePolicy.disposition]], distinguishing an invalid peer block from a
+  * storage failure or an internal defect.
+  *
+  * @param observe
+  *   Extra events derived from a state transition (era changes, epoch summaries).
+  * @param persistence
+  *   Receives every applied block and rollback so the immutable part can be stored.
+  * @param onTip
+  *   Called with the chain after every change of the tip and the raw blocks that were added
+  *   (mempool revalidation, for one).
+  * @param cpu
+  *   Where a block forged by this node is applied (the CPU pool, see [[Compute]]).
+  * @param window
+  *   The window chain selection reads, kept in step with the chain by [[commit]].
   */
 final class Follower[F[_]: Async, S] private (
     rules: BlockRules[F, S],
     events: FollowerEvents[F],
     epochOf: (S, BigInt) => BigInt,
-    /** Extra events derived from a state transition (era changes, epoch summaries). */
     observe: (S, S, BlockRef) => List[FollowerEvent],
-    /** Receives every applied block and rollback so the immutable part can be stored. */
     persistence: Option[ChainPersistence[F, S]],
-    /** Called with the chain after every change of the tip and the raw blocks that were added
-      * (mempool revalidation, for one).
-      */
     onTip: Option[
       (VolatileChain[S], Vector[Bytes]) => Raise[F, xyz.kd5ujc.scarab.ledger.StorageError] ?=> F[
         Unit
@@ -75,9 +83,7 @@ final class Follower[F[_]: Async, S] private (
     tiebreaker: Era => ChainSelection.Tiebreaker,
     views: SelectViews[F],
     lock: Mutex[F],
-    /** Where a block forged by this node is applied (the CPU pool, see [[Compute]]). */
     cpu: Compute[F],
-    /** The window chain selection reads, kept in step with the chain by [[commit]]. */
     window: Ref[F, Option[ChainSelection.Local]]
 )(using
     chain: Stateful[F, VolatileChain[S]]
@@ -397,6 +403,15 @@ object Follower:
     case Lost(reason: Follower.AdoptionLoss)
     case Invalid(error: ValidationError)
 
+  /** @param epochOf
+    *   The epoch of a slot as the state sees it (a chain whose Byron span is derived learns it).
+    * @param initialViews
+    *   The select views of the blocks of a volatile chain restored from disk.
+    * @param compute
+    *   The CPU pool the blocks are applied on; without one, on the calling fiber's pool.
+    * @param chainGate
+    *   Shared with the LSQ point/store capture; held only while a view is selected.
+    */
   def create[F[_]: Async, S](
       rules: BlockRules[F, S],
       events: FollowerEvents[F],
@@ -409,14 +424,9 @@ object Follower:
         ]
       ] = None,
       tiebreaker: Era => ChainSelection.Tiebreaker = ChainSelection.tiebreakerFor,
-      /** The epoch of a slot as the state sees it (a chain whose Byron span is derived learns it).
-        */
       epochOf: Option[(S, BigInt) => BigInt] = None,
-      /** The select views of the blocks of a volatile chain restored from disk. */
       initialViews: Map[Bytes, SelectView] = Map.empty,
-      /** The CPU pool the blocks are applied on; without one, on the calling fiber's pool. */
       compute: Option[Compute[F]] = None,
-      /** Shared with the LSQ point/store capture; held only while a view is selected. */
       chainGate: Option[Mutex[F]] = None
   )(using
       Stateful[F, VolatileChain[S]]

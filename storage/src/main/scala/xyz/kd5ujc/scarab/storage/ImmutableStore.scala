@@ -64,16 +64,18 @@ trait ImmutableStore[F[_]]:
 object ImmutableStore:
   final case class Stored(ref: BlockRef, raw: Bytes)
 
-  /** What opening the store found and repaired. */
+  /** What opening the store found and repaired.
+    *
+    * @param migrated
+    *   The files rewritten from an older format version on this open (none from the second open
+    *   on).
+    */
   final case class OpenReport(
       tip: Option[BlockRef],
       blocks: Long,
       chunks: Int,
       truncatedEntries: Int,
       truncatedBytes: Long,
-      /** The files rewritten from an older format version on this open (none from the second open
-        * on).
-        */
       migrated: List[Migrated] = Nil
   )
 

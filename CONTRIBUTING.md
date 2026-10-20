@@ -118,6 +118,11 @@ with a pattern that matches your own shell command line.
   re-encoding. Keep the original bytes next to the decoded value.
 - Exact arithmetic (`Rational`) in ledger calculations; no floating point.
 - Format with scalafmt (`scalafmtAll`); SPDX header (`// SPDX-License-Identifier: Apache-2.0`) on new source files.
+- Keep comments outside parameter and argument lists. Document parameter contracts in the
+  declaration's Scaladoc, and explain a call before the expression. Comments in a definition's
+  body are useful when they explain an invariant, intent, reference behaviour or a tradeoff.
+  Evaluate that purpose before rewriting or removing a comment; prefer maintained symbols,
+  ADRs and pinned upstream references to private notes or implementation-stage labels.
 - No secrets in the repository: never commit `.skey`, `.key`, KES/VRF/cold keys or node sockets.
   Fixtures must be public chain data or throwaway keys, with provenance and licence recorded in
   the fixture directory's README and `NOTICE`.

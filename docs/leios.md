@@ -17,8 +17,8 @@ blocks) is not what is being built.
 
 ## 1. Sources and revisions
 
-Local clones live under `.workspace/data/2026-10-14-leios/` (shallow, read-only use); upstream
-Haskell clones under `.workspace/data/2026-10-14-upstream/`.
+The table pins the repositories and revisions used for the source review. Local clone locations
+are private working details; reproduce the review from these upstream identities.
 
 | Source | Revision read | Notes |
 |---|---|---|

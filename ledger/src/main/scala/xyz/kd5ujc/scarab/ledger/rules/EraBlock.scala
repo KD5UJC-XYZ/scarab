@@ -21,11 +21,11 @@ import xyz.kd5ujc.scarab.protocol.Era
 /** A block of any Shelley-based era applied to the ledger state, on the era-indexed rules: the
   * hard-fork combinator's tick of the state to the block's slot ([[Hfc]]), then BBODY on the ticked
   * state ([[Bbody]] of Conway, [[ShelleyBbody]] of the eras before, one instance over the witness).
-  * What the node does of a block in the ledger (`NodeRules.applyFull`) minus the header's own
-  * checks (the envelope, TPraos, Praos), which are not the ledger's.
+  * The node's `MirrorRules` performs the header checks (the envelope, TPraos, Praos) around these
+  * ledger transitions.
   *
   * The block is applied as a pure function of the state before it, the decoded block and what the
-  * rules read of the network, so the harness can run it beside the old rules and compare.
+  * rules read of the network, so serial and prepared execution can be compared directly.
   */
 object EraBlock:
   /** What the rules read beyond the state: the network's constants and era history, which era each

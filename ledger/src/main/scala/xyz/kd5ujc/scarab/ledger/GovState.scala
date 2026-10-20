@@ -337,8 +337,8 @@ object ConwayGenesis:
       scriptBytes <- script.traverse(h =>
         Bytes.fromHex(h).leftMap(e => ConfigError(ConfigProblem.Hex(e)))
       )
+    // The ledger always has a committee after the Conway translation, possibly with no members.
     yield (
-      // The ledger always has a committee after the Conway translation, possibly with no members.
       Some(Committee(parsed.toMap, threshold)),
       Constitution(
         Anchor(url.getOrElse(""), hashBytes.getOrElse(noAnchor.hash)),

@@ -41,10 +41,13 @@ private[network] object TxSubmission2Runtime:
     def offers(ids: Vector[I], requested: Int): Either[RuleError, Unit]
 
   final case class ClientSettings(idleTimeout: FiniteDuration = 3373.seconds)
+
+  /** @param initTimeout
+    *   The reference blocks indefinitely in StInit. A local deployment may opt into a bound.
+    */
   final case class ServerSettings(
       idsPerRequest: Int = 3,
       bodiesTimeout: FiniteDuration = TxSubmissionPolicy.ShortWait,
-      /** The reference blocks indefinitely in StInit. A local deployment may opt into a bound. */
       initTimeout: Option[FiniteDuration] = None,
       maxTxToRequest: Int = 8,
       maxUnacked: Int = TxSubmissionPolicy.MaxUnacknowledged

@@ -1,11 +1,16 @@
 # Dependency licences
 
+**Status: Historical dependency inventory.** The resolved versions and licence review below
+describe the recorded build, not a continuously generated SBOM; regenerate them for a release
+or external audit under [O2](roadmap.md#o-review-readiness-and-operations-v03).
+
 Research software, not legal advice. This is a record of what the build resolves, so that the list in
 [NOTICE](../NOTICE) can be checked against it.
 
 ## How this was produced
 
-The Runtime classpath of the `node` project (which includes every other module)
+The Runtime classpath of the `node` project (its transitive runtime dependencies, excluding
+test-only and generator modules)
 was written with `sbt node/runtimeClasspathFile` in the JDK image, at v0.1.0 plus this review. For every
 jar on it, the `<licenses>` element of its POM in the Coursier cache was read; where a POM declares
 none, the parent POM chain was followed. 59 third-party jars resolve, 15 of them direct dependencies.

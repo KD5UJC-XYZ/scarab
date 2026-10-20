@@ -141,8 +141,8 @@ class DeepNestingSuite extends FunSuite:
         case _                                  => more = false
     depth
 
+  // Each shape gives its name, one nesting level, innermost item and bytes per level.
   private val shapes: Vector[(String, Bytes, Bytes, Int)] = Vector(
-    // (name, one level, innermost, bytes a level)
     ("lists", raw(0x81), raw(0x00), 1),
     ("indefinite lists", raw(0x9f), raw(0x00), 1),
     ("maps", raw(0xa1, 0x00), raw(0x00), 2),

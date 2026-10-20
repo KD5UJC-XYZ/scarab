@@ -6,34 +6,38 @@ import scala.concurrent.duration.*
 
 /** The timing constants of the governor's policy (`simplePeerSelectionPolicy`,
   * `Ouroboros/Network/Diffusion/Policies.hs` 99-124, and the failure delays of
-  * `Governor/EstablishedPeers.hs` 450-466 and `Governor/Monitor.hs` 145-161). Only the constants of
-  * stage G1.1 are here; the peer sharing ones come with G1.4.
+  * `Governor/EstablishedPeers.hs` 450-466 and `Governor/Monitor.hs` 145-161), including
+  * peer-sharing request budgets and retry delays used by [[PeerShare]].
+  *
+  * @param maxConnectionRetries
+  *   Prior failures before another transient failure forgets the peer, unless
+  *   [[Origin.unforgettable]] protects it (`policyMaxConnectionRetries`).
+  * @param clearFailCountDelay
+  *   How long a peer stays hot before its fail count is reset (`policyClearFailCountDelay`).
+  * @param baseColdRetry
+  *   The base of the retry delay after a failed connect: `5 * 2^min(failCount - 1, 5)` seconds plus
+  *   a fuzz in (-2, 2) (`baseColdPeerRetryDiffTime`, `maxColdPeerRetryBackoff`).
+  * @param repromoteErrorDelay
+  *   The delay before a peer is promoted again after its activation failed (`repromoteErrorDelay`,
+  *   `Policies.hs` 82), plus a fuzz in (-2, 2).
+  * @param warmReconnectFuzz
+  *   The fuzz added to the delay of a connection that went back to warm, and to cold, without the
+  *   governor's doing (`Monitor.hs` 145-161): uniform in (0.1, 10) and (0.1, 4) seconds.
+  * @param maxPublicRootBackoff
+  *   The longest the request for public roots backs off (`2^min(n, 8)` seconds).
+  * @param demotionTimeout
+  *   The wait for a connection to be released after a demotion (`c_PEER_DEMOTION_TIMEOUT`,
+  *   `Types.hs` 268-274), which the effect loop enforces.
   */
 final case class Policy(
-    /** Failures after which a peer that is not a root is forgotten (`policyMaxConnectionRetries`).
-      */
     maxConnectionRetries: Int = 5,
-    /** How long a peer stays hot before its fail count is reset (`policyClearFailCountDelay`). */
     clearFailCountDelay: FiniteDuration = 120.seconds,
-    /** The base of the retry delay after a failed connect: `5 * 2^min(failCount - 1, 5)` seconds
-      * plus a fuzz in (-2, 2) (`baseColdPeerRetryDiffTime`, `maxColdPeerRetryBackoff`).
-      */
     baseColdRetry: FiniteDuration = 5.seconds,
     maxColdRetryBackoff: Int = 5,
-    /** The delay before a peer is promoted again after its activation failed
-      * (`repromoteErrorDelay`, `Policies.hs` 82), plus a fuzz in (-2, 2).
-      */
     repromoteErrorDelay: FiniteDuration = 10.seconds,
-    /** The fuzz added to the delay of a connection that went back to warm, and to cold, without the
-      * governor's doing (`Monitor.hs` 145-161): uniform in (0.1, 10) and (0.1, 4) seconds.
-      */
     warmReconnectFuzz: (FiniteDuration, FiniteDuration) = (100.millis, 10.seconds),
     coldReconnectFuzz: (FiniteDuration, FiniteDuration) = (100.millis, 4.seconds),
-    /** The longest the request for public roots backs off (`2^min(n, 8)` seconds). */
     maxPublicRootBackoff: Int = 8,
-    /** The wait for a connection to be released after a demotion (`c_PEER_DEMOTION_TIMEOUT`,
-      * `Types.hs` 268-274), which the effect loop enforces.
-      */
     demotionTimeout: FiniteDuration = 10.minutes,
     peerShareActivationDelay: FiniteDuration = 300.seconds,
     peerShareRetryTime: FiniteDuration = 900.seconds,

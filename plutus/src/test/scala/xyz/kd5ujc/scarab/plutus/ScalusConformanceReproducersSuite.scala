@@ -13,8 +13,8 @@ import scalus.uplc.eval.{Log, NoBudgetSpender, PlutusVM}
   * conformance suite ([[PlutusConformanceSuite]]) found. Like [[ScalusReproducersSuite]] they
   * assert the deviation as it is today: an upgrade that fixes one fails here, and says that the
   * case can leave the known-failure list of the conformance suite
-  * (`plutus-conformance-1.70.0.0-known.txt`). The upstream issue drafts are in
-  * `.workspace/notes/scalus-issues-conformance.md`.
+  * (`plutus-conformance-1.70.0.0-known.txt`). `docs/plutus-conformance.md` records the reference
+  * sources and the scope of the remaining deviations.
   */
 class ScalusConformanceReproducersSuite extends FunSuite:
   private lazy val vm = PlutusVM.makePlutusV3VM(MajorProtocolVersion(11))
@@ -152,7 +152,8 @@ class ScalusConformanceReproducersSuite extends FunSuite:
   // integer after tag 102 (`d866 82 1bffffffffffffffff 80` for 2^64 - 1; the datum of preprod
   // transaction 2edd684f carries one). Scalus 1.2.0 wrote the index through a Long (2^64 - 1 became
   // -1, 2^64 + 200 became 200); 1.3.0 is fixed, and so is the codec of `Data` constants in flat.
-  // The evaluator's own `serialiseData` replacement was removed with the upgrade.
+  // The evaluator still installs `DataSerialiser` for nesting beyond Scalus's encoder limit;
+  // `DataSerialiserSuite` covers that independent reason for retaining it.
   test("serialiseData and flat write a constructor index of 2^64 - 1 as the reference does") {
     def serialised(index: String) =
       bytes(

@@ -8,7 +8,7 @@ import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.selection.PeerMetrics
 
 /** The cost of the observation callbacks that feed the peer metrics (G1.2), on the per-header and
-  * per-block path of a hot session. Not part of `check`: run it with
+  * per-block path of a hot session. Not part of `check`: inside the JDK build container, run
   * `sbt "node/Test/runMain xyz.kd5ujc.scarab.node.PeerMetricsBench"`; it prints the median
   * nanoseconds per header, per block and per decision. The figures are in `docs/performance.md`
   * section 19.

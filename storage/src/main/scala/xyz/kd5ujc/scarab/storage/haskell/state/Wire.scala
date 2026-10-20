@@ -90,7 +90,7 @@ object Wire:
         def encode(a: A, out: Writer): Unit = c.encode(from(a), out)
         override def check(a: A): Option[ConstraintViolation] = c.check(from(a))
 
-  extension [A](c: Codec[A])
+  extension [A <: AnyRef](c: Codec[A])
     /** The codec of `A` whose decoded values are shared across one decode: equal values come out as
       * the one instance that was decoded first, of `kind` (see
       * [[xyz.kd5ujc.scarab.codec.Interned]]).

@@ -32,11 +32,12 @@ final case class ByronTip(hash: Bytes, epoch: BigInt, slot: BigInt, boundary: Bo
 
 /** What the Byron era needs besides the genesis: the node configuration's network magic requirement
   * and PBFT signature threshold and the configured Shelley epoch (a `Test` override).
+  * @param configuredShelleyEpoch
+  *   `TestShelleyHardForkAtEpoch`: when set, the transition epoch is not derived.
   */
 final case class ByronRulesConfig(
     ledger: ByronLedger.Config,
     signatureThreshold: Double,
-    /** `TestShelleyHardForkAtEpoch`: when set, the transition epoch is not derived. */
     configuredShelleyEpoch: Option[BigInt]
 )
 

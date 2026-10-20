@@ -21,21 +21,25 @@ package xyz.kd5ujc.scarab.ledger
   *
   * A value built by [[Utxo.fromMap]] holds everything in `diff`, so it is complete without a store
   * (rule tests, genesis).
+  * @param stake
+  *   Lovelace in base addresses, by the stake credential of the address.
+  * @param ptrStake
+  *   Lovelace in pointer addresses, by pointer.
+  * @param coin
+  *   Total lovelace in the set.
+  * @param stamp
+  *   Stamp given to the changes made now (the block number being applied).
+  * @param flushed
+  *   Changes with a stamp up to this one are in the backing store and were trimmed from `diff`.
   */
 final case class Utxo(
     diff: Map[TxIn, Utxo.Change],
     resident: Map[TxIn, TxOut],
-    /** Lovelace in base addresses, by the stake credential of the address. */
     stake: Map[Credential, BigInt],
-    /** Lovelace in pointer addresses, by pointer. */
     ptrStake: Map[Ptr, BigInt],
-    /** Total lovelace in the set. */
     coin: BigInt,
     count: Long,
-    /** Stamp given to the changes made now (the block number being applied). */
     stamp: Long,
-    /** Changes with a stamp up to this one are in the backing store and were trimmed from `diff`.
-      */
     flushed: Long
 ):
   import Utxo.*

@@ -42,11 +42,13 @@ final case class PublicRoots(
   * never) it also takes ledger peers and big ledger peers from the stake pool relays of its ledger
   * state, or of the `peerSnapshotFile` ([[xyz.kd5ujc.scarab.network.selection.UseLedgerPeers]]). It
   * has no peer sharing, so that field is read and recorded.
+  *
+  * @param bootstrapPeers
+  *   `None` when the file says `null` or leaves the key out (bootstrap peers off).
   */
 final case class Topology(
     localRoots: Vector[LocalRoots],
     publicRoots: Vector[PublicRoots],
-    /** `None` when the file says `null` or leaves the key out (bootstrap peers off). */
     bootstrapPeers: Option[Vector[AccessPoint]],
     useLedgerAfterSlot: UseLedgerPeers,
     peerSnapshotFile: Option[String],

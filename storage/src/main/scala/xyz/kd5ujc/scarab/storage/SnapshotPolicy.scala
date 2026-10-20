@@ -37,16 +37,20 @@ object SnapshotPolicy:
   /** `sfaRateLimit = secondsToDiffTime (10 * 60)` (line 672). */
   val ReferenceRateLimit: FiniteDuration = 10.minutes
 
-  /** The facts a decision needs, when the immutable tip moves from `previousSlot` to `slot`. */
+  /** The facts a decision needs, when the immutable tip moves from `previousSlot` to `slot`.
+    *
+    * @param previousSlot
+    *   The slot of the immutable tip before this block.
+    * @param lastSnapshotSlot
+    *   The slot of the newest snapshot (or of the state the node started from).
+    * @param sinceLast
+    *   Time since the previous snapshot was requested; none: none yet since this start (the
+    *   reference's `sscTimeSinceLast = Nothing`).
+    */
   final case class Facts(
-      /** The slot of the immutable tip before this block. */
       previousSlot: BigInt,
       slot: BigInt,
-      /** The slot of the newest snapshot (or of the state the node started from). */
       lastSnapshotSlot: BigInt,
-      /** Time since the previous snapshot was requested; none: none yet since this start (the
-        * reference's `sscTimeSinceLast = Nothing`).
-        */
       sinceLast: Option[FiniteDuration]
   )
 
