@@ -1835,6 +1835,13 @@ also belongs to the measured implementation:
 - Shared harness at `4f8cc484`, SHA-256
   `098a2201e8b7f771394729f987209145bb807f46995072531b2dbc13a89b690b`.
 
+The narrow dev-based replacement (#260, source `0d172b08`) contains the same candidate
+implementation and identical harness. Its `Diff.scala` SHA-256 is
+`e7dbf222c55d12bbf70331f7d234fdf51ca0ef6a8aa326ac64c08516fe18a424`; only comments
+changed after the measured revision. The standalone source comparison above does not depend on
+merging main into dev. Whole-tree and private-scenario evidence for the dev-based branch is
+recorded separately in [compatibility.md](compatibility.md#evidence-log).
+
 **Protocol.** Docker `scarab-jdk:local` image
 `sha256:c90140def52d2711644c85a81c9bf218ffbe5dc81003bfb866154c2da832af38`, OpenJDK21.0.11,
 Scala3.3.8, `--cpuset-cpus 8-11`, no CPU quota, `-Xms1g -Xmx1g`, one JVM at a time. Each case warms
