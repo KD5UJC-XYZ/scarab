@@ -100,6 +100,12 @@ an executable reference repair with the pinned ABI, not a regenerated Agda proof
 or a Scarab production-rule change. Original crashes and failed comparisons remain
 explicitly retained.
 
+Bootstrap attribute bounds retain the existing
+[native predicate corpus](../../fixtures/reference/pre-conway-utxo/predicates.json)
+and `PreConwayUtxoPredicatesSuite` controls for 64/65-byte payloads. Those native
+observations are Alonzo/Babbage; Conway uses the same shared output check. The
+fresh full-STS Conway witness corpus adds no new attribute-boundary observation.
+
 The [published Conway pool vectors](../../fixtures/reference/ledger-api-pool-goldens/README.md)
 add a complete 740-byte production `GetStakePoolParams` answer comparison against
 the corrected upstream golden. Independently constructed typed relay addresses
