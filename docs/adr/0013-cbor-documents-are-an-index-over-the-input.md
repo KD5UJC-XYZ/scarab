@@ -107,3 +107,30 @@ Consequences:
   the copies equal, which the file measured (equal by construction, section 12) does not tell.
 - `Credential`'s `Ordering` compares `(ordinal, hex)`, a string made per comparison: the sorted maps of credentials
   pay for it at every insertion. Not changed here.
+
+## Addendum: typed kind ownership (#204, 2026-10-20)
+
+A kind now owns a homogeneous weak index from decode scopes to `Table[A]`. A document's
+`Interns` strongly retains its tables through an existential owner (`Keep[A]` fixes the member
+`Value = A`); nothing retrieves a value or applies an operation through that ownership list.
+`Interned[A].table(scope)` returns `Table[A]`, whose `Array[A]` accepts and returns only `A`.
+There is no heterogeneous table retrieval, cast, erased value buffer, or runtime recovery of a
+generic argument/phantom role. `ClassTag[A]` allocates the empty array; it does not validate or
+narrow decoded values. Kinds and `Node.share` require reference types, as identity sharing does;
+the production kinds remain `Bytes` and `Credential`.
+
+The kind's index has weak scope keys **and weak table values**. A kind cannot retain a completed
+decode, its table, or decoded values, even if a decoded value refers back to the document. The
+strong owner is still the document. Only weak association metadata spans decodes; it is not a
+cross-decode value cache. Lookup/creation synchronizes on this per-kind index so concurrent
+documents cannot race its bookkeeping. A table remains private to its decode, whose existing
+single-threaded contract is unchanged.
+
+The compact mutable open-addressed table remains behind the sharing API for the measured
+large-state memory path described above. It retains Fibonacci hashing, linear probing, initial
+size1024 and the two-thirds growth threshold. No wrapper is allocated per slot. The additional
+weak lookup has a separate representative decode/allocation/retention measurement in
+[performance.md](../performance.md); it is not justified merely by moving a cast. Tests cover
+first-instance identity, distinct kinds/documents, concurrent documents,4096 deliberately
+colliding values through growth, collection of completed scopes/values, and positive/negative
+compiler probes for identical-runtime-class phantom arguments.
