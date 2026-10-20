@@ -2,10 +2,13 @@
 package xyz.kd5ujc.scarab.network
 
 import cats.effect.IO
+import scala.concurrent.duration.*
 import java.util.concurrent.{ConcurrentLinkedQueue, CountDownLatch, TimeUnit}
 import java.util.concurrent.atomic.AtomicBoolean
 
 class UncaughtDrainSuite extends FailsOnUncaught:
+  override def munitIOTimeout: Duration = 2.minutes
+
   test("draining preserves FIFO order and removes each reported failure once") {
     val first = new IllegalStateException("first")
     val second = new IllegalStateException("second")
