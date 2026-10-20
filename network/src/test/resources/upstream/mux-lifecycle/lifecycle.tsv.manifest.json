@@ -1,0 +1,229 @@
+{
+  "schema": "scarab-upstream-mux-lifecycle-v1",
+  "sourceCommit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+  "sourcePath": "network-mux/test/Test/Mux.hs",
+  "sourceFileSha256": "4db2e8967fa712334341d70f6f465655db337d54c471ccba1bcc8a9d743191a2",
+  "seed": 511001,
+  "pairs": 24,
+  "sizeRule": "8 + ordinal mod 9",
+  "function": "fn accumulator request = (accumulator + request, accumulator - request)",
+  "faultRule": "CleanShutdown, CloseOnWrite, CloseOnRead cyclically; original FaultInjection constructors",
+  "observations": "actual simulated client result, original request/response CBOR; original close/trailing IO and IOSim verdicts",
+  "sha256": "e6a5dbbcbf7e80abf10d071cb14215cf5ca02dfce0a27d05ffadcdd3e529beaf",
+  "observerPatchSha256": "615c818019e7b1a4bce69f75c22994466a6bad2d0ab115690aec6256a643e043",
+  "observerSourceSha256": "94f38068c2b923766d2b9c4ce1a7c319e53e9935f4d24ca1d66ee39301ff03dd",
+  "patchedSourceSha256": "4214dc5a6d5d12c26832a581268ee1f51c3c16535f633c025276fa25fabd1035",
+  "patchedMainSha256": "a6e9f6e465195f741826fde2fc056fa2a37c4dbe073729b22794a5809deb0b01",
+  "executableSha256": "113129b5d85e7b943065e67ea09236fe2d16bb9373be5f6fe59edb7ba0980893",
+  "planSha256": "b90adc9cc498b0d6789d6eeef6a6baa0811c2516a706cab0802ea58f0536477d",
+  "projectSha256": "cda870e513a36143e46c45357455498096e5273077165f40787d576022270f3d",
+  "image": "scarab-v02-49-protocols-cache:peer-acceptance-20261019",
+  "imageDigest": "sha256:b9e81590371f7d1784b0e4a62eac7560e0da3498d8b1a6b791e50f6420ae15fb",
+  "network": "none",
+  "commands": [
+    {
+      "argv": [
+        "git",
+        "-C",
+        "/home/euler/repos/cardano-scala-lab/.workspace/data/2026-10-14-upstream/ouroboros-network",
+        "rev-parse",
+        "HEAD"
+      ],
+      "returncode": 0,
+      "logSha256": "eb25c6f4bf3fd482a8cb50d48ba29c9a608293c45a272ebba3d3853a27053f38"
+    },
+    {
+      "argv": [
+        "git",
+        "-C",
+        "/home/euler/repos/cardano-scala-lab/.workspace/data/2026-10-14-upstream/ouroboros-network",
+        "archive",
+        "--format=tar",
+        "-o",
+        "/tmp/scarab/issue-49-functional/mux-native-3/source.tar",
+        "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776"
+      ],
+      "returncode": 0,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "tar",
+        "-xf",
+        "/tmp/scarab/issue-49-functional/mux-native-3/source.tar",
+        "-C",
+        "/tmp/scarab/issue-49-functional/mux-native-3/source"
+      ],
+      "returncode": 0,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "docker",
+        "create",
+        "--network=none",
+        "--name",
+        "scarab-49-mux-lifecycle",
+        "--entrypoint",
+        "tail",
+        "-v",
+        "/tmp/scarab/issue-49-functional/mux-native-3/source:/source",
+        "-v",
+        "/tmp/scarab/issue-49-functional/mux-native-3:/probe",
+        "-w",
+        "/source",
+        "scarab-v02-49-protocols-cache:peer-acceptance-20261019",
+        "-f",
+        "/dev/null"
+      ],
+      "returncode": 0,
+      "logSha256": "424abebb9276d8b32c34fd7d841f7901cf7b07d84576b0afe6ecbc030953d40e"
+    },
+    {
+      "argv": [
+        "docker",
+        "start",
+        "scarab-49-mux-lifecycle"
+      ],
+      "returncode": 0,
+      "logSha256": "812d6cb5835c43c545c3bb30a6bef008a3b2b3db7be90f2b4258a0bcea797df5"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "scarab-49-mux-lifecycle",
+        "--format",
+        "{{.Image}}"
+      ],
+      "returncode": 0,
+      "logSha256": "e4a1aeb45bd1678400388c8821cf1d5e6a213ab58f21781f9f5faea4a3771687"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-49-mux-lifecycle",
+        "cabal",
+        "build",
+        "--offline",
+        "network-mux:test:test",
+        "--builddir=/probe/builddir",
+        "--jobs=1"
+      ],
+      "returncode": 0,
+      "logSha256": "26b2eaf3257fcf3ad6480c1d379bbd6143d29bd4d5758a3892099f0f10f442a0"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-49-mux-lifecycle",
+        "cabal",
+        "list-bin",
+        "network-mux:test:test",
+        "--builddir=/probe/builddir"
+      ],
+      "returncode": 0,
+      "logSha256": "f0402a17c3d92a3c9a05a186b3eff3da28ab5be1b21422678b3df7d6af47b9f1"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-49-mux-lifecycle",
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/network-mux-0.12.0.0/t/test/build/test/test",
+        "--export-lifecycle",
+        "/probe/lifecycle.tsv",
+        "24",
+        "511001"
+      ],
+      "returncode": 0,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-49-mux-lifecycle",
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/network-mux-0.12.0.0/t/test/build/test/test",
+        "--pattern",
+        "mux start and stop",
+        "--quickcheck-tests",
+        "24",
+        "--quickcheck-max-size",
+        "12",
+        "--quickcheck-replay",
+        "511001"
+      ],
+      "returncode": 0,
+      "logSha256": "c91c2d28ea85c0bf040921af04d8dbc85f345f2222086f85b786f0f05d6a559e"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-49-mux-lifecycle",
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/network-mux-0.12.0.0/t/test/build/test/test",
+        "--pattern",
+        "mux restart",
+        "--quickcheck-tests",
+        "24",
+        "--quickcheck-max-size",
+        "12",
+        "--quickcheck-replay",
+        "511001"
+      ],
+      "returncode": 0,
+      "logSha256": "e765c612d1830c45ac8fd947630012a729a9fde4ba78fb1b4fa8d2ff780aa045"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-49-mux-lifecycle",
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/network-mux-0.12.0.0/t/test/build/test/test",
+        "--pattern",
+        "pure exception",
+        "--quickcheck-tests",
+        "24",
+        "--quickcheck-max-size",
+        "12",
+        "--quickcheck-replay",
+        "511001"
+      ],
+      "returncode": 0,
+      "logSha256": "f1ab982457fbcadfeb1a3c222462bf94f316d9cbbdfa5ef0d9d3e6f4d099d098"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-49-mux-lifecycle",
+        "sha256sum",
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/network-mux-0.12.0.0/t/test/build/test/test"
+      ],
+      "returncode": 0,
+      "logSha256": "8587ce072fa3af51b5e81e7080d5ba082aa5b320f331a4932c9265e9a18660cb"
+    }
+  ],
+  "limits": [
+    "Bounded native lifecycle cases, not all seeds or exact scheduler traces",
+    "No native Haskell restart/activation API equivalence claim for Scarab",
+    "Scarab cancellation/resource finalizers have additional local controlled tests"
+  ]
+}
