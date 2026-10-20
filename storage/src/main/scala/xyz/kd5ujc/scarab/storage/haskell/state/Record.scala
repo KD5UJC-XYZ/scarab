@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage.haskell.state
 
-import scala.compiletime.{constValueTuple, summonAll, summonInline}
+import scala.compiletime.{constValue, constValueTuple, summonAll, summonInline}
 import scala.deriving.Mirror
+import xyz.kd5ujc.scarab.storage.ProductFields
 import xyz.kd5ujc.scarab.models.runtime.{Arr, Codec, ConstraintViolation, Decoded, Node, Writer}
 
 /** The Haskell ledger writes a record as a definite array of its fields in declaration order (`Rec`
@@ -15,11 +16,9 @@ import xyz.kd5ujc.scarab.models.runtime.{Arr, Codec, ConstraintViolation, Decode
   * particular way (a unit interval, a nullable, a set) says so at the use site; `Record.auto[A]`
   * summons the codec of every field.
   *
-  * The codecs are a tuple indexed by the field types (`Tuple.Map[m.MirroredElemTypes, Codec]`), and
-  * so is the value of a record ([[Tuple.fromProductTyped]], the compiler's typed accessors);
-  * [[Record.Fields]] walks the two together, so each codec is applied at the type of the field it
-  * belongs to. No `Codec[Any]` is built and nothing is projected unchecked; the bytes, the arity
-  * and the error paths are those of the previous implementation.
+  * The codec tuple and field chain retain the field types. Each generated accessor selects the
+  * declared field from A at its original type, so encoding/checking needs neither a transient tuple
+  * nor runtime field recovery. Decoding builds the same typed tuple in declaration order.
   */
 object Record:
   /** The codec of `A` as a record, from the codec of each field. */
@@ -29,16 +28,16 @@ object Record:
       codecs: Tuple.Map[m.MirroredElemTypes, Codec]
   ): Codec[A] =
     val labels = constValueTuple[m.MirroredElemLabels].productIterator.map(_.toString).toVector
-    val fields = summonInline[Fields[m.MirroredElemTypes]]
+    val fields = summonInline[Fields[A, m.MirroredElemTypes, m.MirroredElemLabels]]
     val arity = fields.arity
     make[A](
       arity,
-      (a, out) => fields.encode(Tuple.fromProductTyped(a), codecs, out),
+      (a, out) => fields.encode(a, codecs, out),
       n =>
         Arr.exact(n, arity).flatMap { items =>
           fields.decode(codecs, items, 0, labels).map(m.fromProduct)
         },
-      a => fields.check(Tuple.fromProductTyped(a), codecs, 0, labels)
+      a => fields.check(a, codecs, 0, labels)
     )
 
   /** The codec of `A` as a record, with the implicit codec of every field. */
@@ -66,11 +65,11 @@ object Record:
     *
     * The instances are resolved when [[Record.of]] is inlined, where the field types are known.
     */
-  private[scarab] sealed trait Fields[Vs <: Tuple]:
+  private[scarab] sealed trait Fields[A, Vs <: Tuple, Ls <: Tuple]:
     def arity: Int
 
-    /** Encode the fields of `values` (the field types, in order) with `codecs`. */
-    def encode(values: Vs, codecs: Tuple.Map[Vs, Codec], out: Writer): Unit
+    /** Encode the fields of `value` with their codecs, in declaration order. */
+    def encode(value: A, codecs: Tuple.Map[Vs, Codec], out: Writer): Unit
 
     /** Decode the field at `index` and the fields after it, as a tuple in field order. */
     def decode(
@@ -82,16 +81,16 @@ object Record:
 
     /** The first field, at `index` or after it, that violates its codec's constraint. */
     def check(
-        values: Vs,
+        value: A,
         codecs: Tuple.Map[Vs, Codec],
         index: Int,
         labels: Vector[String]
     ): Option[ConstraintViolation]
 
-  private[scarab] object NoFields extends Fields[EmptyTuple.type]:
+  private[scarab] final class NoFields[A] extends Fields[A, EmptyTuple.type, EmptyTuple.type]:
     val arity: Int = 0
     def encode(
-        values: EmptyTuple.type,
+        value: A,
         codecs: Tuple.Map[EmptyTuple.type, Codec],
         out: Writer
     ): Unit = ()
@@ -102,18 +101,21 @@ object Record:
         labels: Vector[String]
     ): Decoded[EmptyTuple.type] = Right(EmptyTuple)
     def check(
-        values: EmptyTuple.type,
+        value: A,
         codecs: Tuple.Map[EmptyTuple.type, Codec],
         index: Int,
         labels: Vector[String]
     ): Option[ConstraintViolation] = None
 
-  private[scarab] final class OneField[T, Ts <: Tuple](tail: Fields[Ts]) extends Fields[T *: Ts]:
+  private[scarab] final class OneField[A, T, Ts <: Tuple, L <: String, Ls <: Tuple](
+      get: A => T,
+      tail: Fields[A, Ts, Ls]
+  ) extends Fields[A, T *: Ts, L *: Ls]:
     val arity: Int = 1 + tail.arity
 
-    def encode(values: T *: Ts, codecs: Tuple.Map[T *: Ts, Codec], out: Writer): Unit =
-      codecs.head.encode(values.head, out)
-      tail.encode(values.tail, codecs.tail, out)
+    def encode(value: A, codecs: Tuple.Map[T *: Ts, Codec], out: Writer): Unit =
+      codecs.head.encode(get(value), out)
+      tail.encode(value, codecs.tail, out)
 
     def decode(
         codecs: Tuple.Map[T *: Ts, Codec],
@@ -126,17 +128,77 @@ object Record:
         case Left(error)  => Left(error.at(labels(index)))
 
     def check(
-        values: T *: Ts,
+        value: A,
         codecs: Tuple.Map[T *: Ts, Codec],
         index: Int,
         labels: Vector[String]
     ): Option[ConstraintViolation] =
       codecs.head
-        .check(values.head)
+        .check(get(value))
         .map(_.at(labels(index)))
-        .orElse(tail.check(values.tail, codecs.tail, index + 1, labels))
+        .orElse(tail.check(value, codecs.tail, index + 1, labels))
+  private[scarab] final class TwoFields[A, T, U, L <: String, M <: String](
+      first: A => T,
+      second: A => U
+  ) extends Fields[A, T *: U *: EmptyTuple, L *: M *: EmptyTuple]:
+    val arity: Int = 2
+    def encode(value: A, codecs: Tuple.Map[T *: U *: EmptyTuple, Codec], out: Writer): Unit =
+      codecs.head.encode(first(value), out)
+      codecs.tail.head.encode(second(value), out)
+    def decode(
+        codecs: Tuple.Map[T *: U *: EmptyTuple, Codec],
+        nodes: Vector[Node],
+        index: Int,
+        labels: Vector[String]
+    ): Decoded[(T, U)] =
+      codecs.head.decode(nodes(index)).left.map(_.at(labels(index))).flatMap { one =>
+        codecs.tail.head
+          .decode(nodes(index + 1))
+          .left
+          .map(_.at(labels(index + 1)))
+          .map(two => (one, two))
+      }
+    def check(
+        value: A,
+        codecs: Tuple.Map[T *: U *: EmptyTuple, Codec],
+        index: Int,
+        labels: Vector[String]
+    ): Option[ConstraintViolation] =
+      codecs.head
+        .check(first(value))
+        .map(_.at(labels(index)))
+        .orElse(codecs.tail.head.check(second(value)).map(_.at(labels(index + 1))))
 
-  private[scarab] given noFields: Fields[EmptyTuple.type] = NoFields
+  private[scarab] given noFields[A]: Fields[A, EmptyTuple.type, EmptyTuple.type] = new NoFields[A]
 
-  private[scarab] given oneField[T, Ts <: Tuple](using tail: Fields[Ts]): Fields[T *: Ts] =
-    new OneField[T, Ts](tail)
+  private[scarab] inline given oneField[A <: Product, T, L <: String]
+      : Fields[A, T *: EmptyTuple, L *: EmptyTuple] =
+    new OneField[A, T, EmptyTuple, L, EmptyTuple](
+      ProductFields.named[A, T](constValue[L]),
+      noFields[A]
+    )
+
+  private[scarab] inline given twoFields[A <: Product, T, U, L <: String, M <: String]
+      : Fields[A, T *: U *: EmptyTuple, L *: M *: EmptyTuple] =
+    new TwoFields[A, T, U, L, M](
+      ProductFields.named[A, T](constValue[L]),
+      ProductFields.named[A, U](constValue[M])
+    )
+
+  private[scarab] inline given manyFields[
+      A <: Product,
+      T,
+      U,
+      V,
+      Ts <: Tuple,
+      L <: String,
+      M <: String,
+      N <: String,
+      Ls <: Tuple
+  ](using
+      tail: Fields[A, U *: V *: Ts, M *: N *: Ls]
+  ): Fields[A, T *: U *: V *: Ts, L *: M *: N *: Ls] =
+    new OneField[A, T, U *: V *: Ts, L, M *: N *: Ls](
+      ProductFields.named[A, T](constValue[L]),
+      tail
+    )
