@@ -263,15 +263,7 @@ def params_view(pp, index):
     out = {k: v for k, v in pp.items() if k != "costModels"}
     if index < ERA_INDEX["babbage"] and "utxoCostPerByte" in out:
         out["utxoCostPerWord"] = out.pop("utxoCostPerByte")
-    return {k: _float(v) for k, v in out.items()}
-
-
-def _float(v):
-    if isinstance(v, float):
-        return round(v, 10)
-    if isinstance(v, dict):
-        return {k: _float(x) for k, x in v.items()}
-    return v
+    return out
 
 
 def chain_dep_state(dep, index):

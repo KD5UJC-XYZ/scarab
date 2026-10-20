@@ -37,11 +37,6 @@ def diff(reference, scala, path=""):
     elif isinstance(reference, list) and isinstance(scala, list) and len(reference) == len(scala):
         for i, (a, b) in enumerate(zip(reference, scala)):
             out += diff(a, b, f"{path}[{i}]")
-    elif isinstance(reference, float) or isinstance(scala, float):
-        # parameters given as doubles: compared to 10 digits, as the devnet comparison does
-        if not (isinstance(reference, (int, float)) and isinstance(scala, (int, float))
-                and round(reference, 10) == round(scala, 10)):
-            out.append((path, reference, scala))
     elif reference != scala:
         out.append((path, reference, scala))
     return out

@@ -204,6 +204,11 @@ class ProjectionTest(unittest.TestCase):
         self.assertEqual(compare.diff({"a": 1, "b": {"c": 2}, "x": 1}, {"a": 1, "b": {"c": 3}, "y": 1}),
                          [("/b/c", 2, 3), ("/x", 1, "<absent>"), ("/y", "<absent>", 1)])
 
+    def test_reward_update_absence_is_not_a_computed_update(self):
+        computed = {"rs": {"stake": 5}}
+        self.assertEqual(compare.diff({"rewardUpdate": None}, {"rewardUpdate": computed}),
+                         [("/rewardUpdate", None, computed)])
+
     def test_conway_output(self):
         text = bech32_text("addr_test", bytes(range(29)))
         view = compare.conway_output({"address": text, "value": {"lovelace": 7, "ab": {"cd": 3}}})
@@ -217,7 +222,8 @@ class ProjectionTest(unittest.TestCase):
         self.assertEqual(eraview.cred([1, b"\x02"]), "scriptHash-02")
         self.assertEqual(eraview.nonce([1, b"\xab"]), "ab")
         self.assertIsNone(eraview.nonce([0]))
-        self.assertEqual(eraview._float({"a": 0.1 + 0.2}), {"a": 0.3})
+        self.assertEqual(eraview.params_view({"a": 0.1 + 0.2}, eraview.ERA_INDEX["conway"]),
+                         {"a": 0.1 + 0.2})
 
     def test_gov_view_helpers(self):
         self.assertEqual(govview.ratio(0.5), "1/2")
