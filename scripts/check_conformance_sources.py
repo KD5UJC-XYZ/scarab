@@ -34,18 +34,20 @@ def sources(root: Path) -> list[Source]:
         raise ValueError("missing reference Plutus commit in docs/plutus-conformance.md")
     return [
         Source("ledger", "IntersectMBO/cardano-ledger", ledger["upstream"]["commit"],
-               ("libs/cardano-ledger-conformance/", "libs/cardano-ledger-test/",
+               ("cabal.project", "libs/cardano-ledger-conformance/", "libs/cardano-ledger-test/",
                 "libs/cardano-ledger-test-api/")),
         Source("network", "IntersectMBO/ouroboros-network", network["sourceCommit"],
-               ("ouroboros-network/protocols/tests/", "ouroboros-network/protocols/tests-lib/",
+               ("cabal.project", "ouroboros-network/protocols/tests/", "ouroboros-network/protocols/tests-lib/",
                 "ouroboros-network/protocols/tests-cddl/", "network-mux/test/",
                 "cardano-diffusion/test/")),
         Source("formal", "IntersectMBO/formal-ledger-specifications",
                ledger["dependencies"]["formal-ledger-specifications"], ("hs/",), "master-artifacts"),
         Source("constrained", "input-output-hk/constrained-generators",
-               ledger["dependencies"]["constrained-generators"], ("src/", "test/", "examples/")),
+               ledger["dependencies"]["constrained-generators"],
+               ("cabal.project", "constrained-generators.cabal", "src/", "test/", "examples/")),
         Source("plutus", "IntersectMBO/plutus", match[1],
-               ("plutus-conformance/", "plutus-core/testlib/", "plutus-core/untyped-plutus-core/testlib/")),
+               ("cabal.project", "plutus-conformance/", "plutus-core/testlib/",
+                "plutus-core/untyped-plutus-core/testlib/")),
     ]
 
 

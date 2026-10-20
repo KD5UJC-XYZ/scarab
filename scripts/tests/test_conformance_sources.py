@@ -4,7 +4,9 @@
 import importlib.util
 from pathlib import Path
 import sys
+import tempfile
 import unittest
+from unittest.mock import patch
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "check_conformance_sources.py"
@@ -82,6 +84,21 @@ class ConformanceSourcesTest(unittest.TestCase):
         source = MODULE.Source("sample", "example/repo", "main", ("tests/",))
         with self.assertRaisesRegex(ValueError, "complete commit"):
             MODULE.inspect(source, self.fetcher({}, {}))
+
+    def test_failed_observation_writes_error_artifact_and_returns_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "report.json"
+            summary = Path(directory) / "summary.md"
+            argv = [str(SCRIPT), "--output", str(output), "--summary", str(summary)]
+            with patch.object(sys, "argv", argv), \
+                    patch.object(MODULE, "sources", return_value=[self.source]), \
+                    patch.object(MODULE, "inspect", side_effect=OSError("upstream unavailable")), \
+                    patch("builtins.print"):
+                self.assertEqual(MODULE.main(), 1)
+            report = MODULE.json.loads(output.read_text())
+            self.assertEqual(report["sources"][0]["status"], "error")
+            self.assertEqual(report["sources"][0]["trackedRef"], "HEAD")
+            self.assertIn("error", summary.read_text())
 
 
 if __name__ == "__main__":
