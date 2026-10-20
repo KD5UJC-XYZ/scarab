@@ -187,6 +187,33 @@ from passing its predecessors. This is not an unconditional latency bound under 
 full queues. It meets the useful scheduler contract while retaining Scarab's fs2 design under
 [ADR0008](../adr/0008-networking-as-implemented.md); broader upstream/property coverage remains #49.
 
+## Same-connection ChainSync recovery (#152)
+
+When another session advances the local retained window past a candidate's intersection, the
+follower searches for a new intersection through the same `Peer` and protocol clients. The tracked
+candidate reference remains the same. This follows `NoLongerIntersects` in pinned consensus
+`82ecba329d7d054340bf707d44fe6e9ac27cec40`,
+`Ouroboros/Consensus/MiniProtocol/ChainSync/Client.hs:1499–1511`.
+
+`Peer.intersect` stops new read-ahead requests, collects outstanding ChainSync replies and waits for
+their block-prefetch workers to publish. An ordered drain marker follows those batches. Consuming
+a batch returns its permit before a cancellation can interrupt the handoff; the marker returns the
+producer's final permit. Old buffered instructions are discarded before `FindIntersect`. A successful
+intersection starts a fresh header gate and resets progress before read-ahead resumes with the same
+bounded capacity. KeepAlive and TxSubmission are not restarted.
+
+Typed producer/prefetch failures and original defects are landed in the caller's error scope rather
+than hidden by recovery. Drain completion retains success, failure or cancellation, including for a
+later cleanup call. A peer that shares no offered point still returns `NoIntersection`; a header that
+does not extend the new intersection and a rollback outside the retained chain still fail under the
+existing policies. Recovery does not authorize a rollback past the immutable anchor.
+
+Draining may wait for an outstanding reply at the peer's tip or a pending block fetch. Existing
+protocol deadlines and session cancellation still apply; recovery promises no additional fixed
+wall-clock bound. Tests cover real duplex recovery with header validation and concurrent
+TxSubmission, repeated intersection/gate replacement, clean quiescence, failure/defect propagation,
+cancellation cleanup and a genuinely disjoint fork. The relay assertion remains unchanged.
+
 ## Validation
 
 `MuxDeadlinesSuite` runs on `TestControl`: idle 90 s, partial header/payload, 5 s slow-loris progress,

@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.node
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, Compute, VolatileChain}
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.ledger.{Block, Header, HeaderError, NodeError, PeerError, Points}
-import cats.effect.{IO, Ref, Resource}
+import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.mtl.{Handle, Stateful}
 import cats.syntax.all.*
 import com.comcast.ip4s.*
@@ -96,6 +96,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
       runClients: Boolean = true,
       retryDelay: FiniteDuration = 10.seconds,
       transactions: Option[TxSubmissionClient.Source[IO]] = None,
+      readAhead: Int = 16,
       clock: Option[SlotClock[IO]] = None,
       fatal: Fatal => IO[Unit] = _ => IO.unit
   ): IO[Local] =
@@ -144,7 +145,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
       settings = Peer.Settings(
         remote,
         magic,
-        readAhead = 16,
+        readAhead = readAhead,
         byronEpochSlots = ForgedChain.geometry.byron.epochSlots
       )
       governor <- InboundGovernor.create[IO](
@@ -422,6 +423,75 @@ class InboundGovernorSuite extends FailsOnUncaught:
     def after(ticket: Long, max: Int) = IO.pure(Vector.empty)
     def awaitAfter(ticket: Long) = IO.never
     def body(id: Bytes) = IO.pure(None)
+
+  test("an inbound lagging candidate re-intersects and resumes on the same duplex connection") {
+    for
+      remoteNode <- serving(forged.raws)
+      waiting <- Deferred[IO, Unit]
+      release <- Deferred[IO, Unit]
+      first <- Ref.of[IO, Boolean](true)
+      intersections <- Ref.of[IO, Vector[Point]](Vector.empty)
+      delayed = new Remote(
+        new ServerHandlers[IO, NtNHeader](
+          remoteNode.handlers.codec,
+          remoteNode.handlers.chainSync.map { inner =>
+            new ChainSyncServer.Source[IO, NtNHeader]:
+              def intersect(points: Vector[Point]) = inner.intersect(points).flatTap {
+                case Right((point, _)) => intersections.update(_ :+ point)
+                case Left(_)           => IO.unit
+              }
+              def poll = inner.poll.flatTap {
+                case Some(_: ChainSyncServer.Update.RollForward[?]) =>
+                  first.getAndSet(false).flatMap { hold =>
+                    (waiting.complete(()).void *> release.get).whenA(hold)
+                  }
+                case _ => IO.unit
+              }
+              def await = inner.await
+          },
+          remoteNode.handlers.blocks,
+          remoteNode.handlers.transactions
+        ),
+        remoteNode.ranges,
+        remoteNode.extend
+      )
+      us <- local(transactions = Some(nothingToOffer), readAhead = 2)
+      prefix = forged.headers.size / 2
+      advanced = forged.headers
+        .zip(forged.states)
+        .take(prefix)
+        .foldLeft(
+          VolatileChain.genesis(ForgedChain.geometry.securityParam, forged.genesis)
+        ) { case (chain, (header, state)) =>
+          chain.extend(header, state).fold(e => fail(e.message), _._1)
+        }
+      result <- connect(Some(delayed), us) { _ =>
+        for
+          _ <- waiting.get.timeout(10.seconds)
+          // Model the faster session's validated adoption while the inbound reply is delayed.
+          _ <- us.chain.set(advanced)
+          _ <- release.complete(())
+          _ <- eventually("the recovered follower reaches the remote tip")(us.chain.get.map(_.tip))(
+            _ == forged.headers.last.point
+          )
+          sessions <- us.governor.sessions
+          points <- intersections.get
+          fetched <- remoteNode.ranges.get
+          applied <- us.applied.get
+          connections <- us.manager.snapshot
+        yield (sessions, points, fetched, applied, connections)
+      }
+    yield
+      val ((sessions, points, fetched, applied, connections), _) = result
+      assertEquals(points, Vector(Point.Origin, advanced.tip))
+      assertEquals(sessions.size, 1)
+      assertEquals(sessions.head.number, 1L)
+      assertEquals(sessions.head.ended, None)
+      assertEquals(sessions.head.intersection, Some(Points.show(advanced.tip)))
+      assertEquals(connections.counters.inbound, 1)
+      assert(fetched.nonEmpty)
+      assertEquals(applied, forged.raws.drop(prefix))
+  }
 
   test("a peer that shares no point with our chain is tried again on the same connection") {
     for

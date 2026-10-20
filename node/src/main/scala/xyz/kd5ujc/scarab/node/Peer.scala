@@ -31,7 +31,10 @@ enum SyncEvent:
   * (issue 132).
   */
 trait Peer[F[_]]:
-  /** The newest point among `candidates` (ordered newest first) the peer also has, if any. */
+  /** The newest point among `candidates` (ordered newest first) the peer also has, if any. Any
+    * outstanding requests are drained first; buffered instructions from the old intersection are
+    * discarded. The next instruction belongs to the new intersection on the same connection.
+    */
   def intersect(candidates: Vector[ChainSync.Point])(using
       Raise[F, PeerError]
   ): F[Option[ChainSync.Point]]
@@ -43,6 +46,16 @@ trait Peer[F[_]]:
   def fetch(header: Header)(using Raise[F, PeerError]): F[Bytes]
 
 object Peer:
+  private enum PipelineEvent:
+    case Batch(events: Vector[SyncEvent])
+    case Failed(fault: Fault)
+    case Drained
+
+  private enum DrainOutcome:
+    case Complete
+    case Failed(fault: Fault)
+    case Cancelled
+
   /** A peer whose request pipeline can be brought to rest between two batches. */
   trait Controlled[F[_]] extends Peer[F]:
     /** Stop requesting headers and wait until the pipeline is idle: no request outstanding on
@@ -277,18 +290,17 @@ object Peer:
       // taken) and the faults of the fibers that did not finish theirs: one per permit still held,
       // and the producer's own.
       (
-        Queue.bounded[F, Either[Fault, Vector[SyncEvent]]](Depth + 1),
+        Queue.bounded[F, PipelineEvent](Depth + 1),
         Ref.of[F, Vector[SyncEvent]](Vector.empty),
         Ref.of[F, Option[(ChainSync.Tip, BigInt)]](None),
         Ref.of[F, Boolean](false),
         Semaphore[F](Depth.toLong),
         Mutex[F],
         Ref.of[F, HeaderGate[F]](HeaderGate.none[F]),
-        Ref.of[F, Boolean](false),
-        Deferred[F, Unit],
+        Ref.of[F, Option[Deferred[F, DrainOutcome]]](None),
         Ref.of[F, Option[(Bytes, BlockPool.Taken)]](None)
       ).mapN {
-        (queue, current, progress, started, permits, fetchLock, gate, stopping, ended, last) =>
+        (queue, current, progress, started, permits, fetchLock, gate, drainCompletion, last) =>
           def decode(update: ChainSyncClient.Update[NtNHeader])(using
               Raise[F, PeerError]
           ): F[SyncEvent] = update match
@@ -396,7 +408,7 @@ object Peer:
               }
             yield batch
 
-          def fail(fault: Fault): F[Unit] = queue.offer(Left(fault))
+          def fail(fault: Fault): F[Unit] = queue.offer(PipelineEvent.Failed(fault))
 
           /** A fiber of the pipeline: its body in an error scope of its own, and the fault it ends
             * with handed to the session through the queue.
@@ -410,17 +422,17 @@ object Peer:
           def produce(previous: Deferred[F, Unit])(using Raise[F, PeerError]): F[Unit] =
             for
               _ <- permits.acquire
-              halt <- stopping.get
-              _ <-
-                if halt then
+              halt <- drainCompletion.get
+              _ <- halt match
+                case Some(_) =>
                   // brought to rest: the batches requested so far are published, then it is idle
-                  previous.get *> ended.complete(()).void
-                else
+                  previous.get *> permits.release *> queue.offer(PipelineEvent.Drained)
+                case None =>
                   for
                     batch <- requestHeaders
                     published <- Deferred[F, Unit]
                     _ <- supervised(
-                      prefetch(batch) *> previous.get *> queue.offer(Right(batch)) *>
+                      prefetch(batch) *> previous.get *> queue.offer(PipelineEvent.Batch(batch)) *>
                         published.complete(()).void
                     )
                     _ <- produce(published)
@@ -434,19 +446,29 @@ object Peer:
                 supervised(Deferred[F, Unit].flatTap(_.complete(())).flatMap(produce))
             }
 
+          /** A governor may cancel `next` before asking us to drain. Return the permit in the
+            * queue-taking fiber itself, before a surrounding race can cancel its handoff.
+            */
+          def take: F[PipelineEvent] = F.uncancelable { poll =>
+            poll(queue.take).flatTap {
+              case PipelineEvent.Batch(_) => permits.release
+              case _                      => F.unit
+            }
+          }
+
           /** The next instruction, raising the fault of a fiber of the pipeline in the calling
             * fiber: its peer error through `Raise`, an exception that is not ours as it came.
             */
           def pull(using Raise[F, PeerError]): F[SyncEvent] =
             start *> current.modify(q => (q.drop(1), q.headOption)).flatMap {
               case Some(event) => F.pure(event)
-              case None        =>
-                // a block this session delivered was refused by the rules, wherever it was applied
-                F.race(claims.blamed, queue.take).flatMap {
+              case None =>
+                F.race(claims.blamed, take).flatMap {
                   case Left(refusal) => PeerError.InvalidBlock(refusal).raise[F, SyncEvent]
-                  case Right(Left(Fault.Failed(error))) => error.raise[F, SyncEvent]
-                  case Right(Left(Fault.Defect(cause))) => F.raiseError[SyncEvent](cause)
-                  case Right(Right(batch)) => permits.release *> current.set(batch) *> pull
+                  case Right(PipelineEvent.Failed(fault)) => Fault.land(Left(fault))
+                  case Right(PipelineEvent.Batch(batch))  => current.set(batch) *> pull
+                  case Right(PipelineEvent.Drained) =>
+                    PeerError.Unavailable(PeerError.Unavailability.SessionEnded).raise[F, SyncEvent]
                 }
             }
 
@@ -493,23 +515,62 @@ object Peer:
                       }
             }
 
+          /** Stop new requests, collect the in-flight replies and await every prefetch/publication.
+            * Draining also returns queued batch permits. Faults retain their typed cause; an old
+            * producer failure must not be hidden by a successful new FindIntersect.
+            */
+          def drain(using Raise[F, PeerError]): F[Unit] = F.uncancelable { poll =>
+            for
+              fresh <- Deferred[F, DrainOutcome]
+              waiting <- drainCompletion.modify {
+                case None                  => Some(fresh) -> None
+                case some @ Some(existing) => some -> Some(existing)
+              }
+              _ <- waiting match
+                case Some(ended) =>
+                  poll(ended.get).flatMap {
+                    case DrainOutcome.Complete      => F.unit
+                    case DrainOutcome.Failed(fault) => Fault.land(Left(fault))
+                    case DrainOutcome.Cancelled     => poll(F.canceled *> F.never[Unit])
+                  }
+                case None =>
+                  poll(
+                    Fault.fiber {
+                      started.getAndSet(true).flatMap { active =>
+                        // The marker follows every published batch and returns the producer's final
+                        // credit. No competing consumer is cancelled at the successful drain boundary.
+                        F.tailRecM(()) { _ =>
+                          F.race(claims.blamed, take).flatMap {
+                            case Left(refusal) =>
+                              PeerError.InvalidBlock(refusal).raise[F, Either[Unit, Unit]]
+                            case Right(PipelineEvent.Drained)  => F.pure(Right(()))
+                            case Right(PipelineEvent.Batch(_)) => F.pure(Left(()))
+                            case Right(PipelineEvent.Failed(fault)) =>
+                              Fault.land[F, Either[Unit, Unit]](Left(fault))
+                          }
+                        }.whenA(active) *> current.set(Vector.empty)
+                      }
+                    }
+                  ).onCancel(fresh.complete(DrainOutcome.Cancelled).void).flatMap { result =>
+                    fresh.complete(
+                      result.fold(DrainOutcome.Failed(_), _ => DrainOutcome.Complete)
+                    ) *>
+                      Fault.land(result)
+                  }
+            yield ()
+          }
+
           new Controlled[F]:
             def quiesce: F[Unit] =
-              stopping.set(true) *> started.getAndSet(true).flatMap {
-                // the producer never ran: it never will
-                case false => ended.complete(()).void
-                // it may wait for a permit that only a consumer returns: consume and drop; a fault
-                // met on the way is of no interest, the session is ending
-                case true =>
-                  F.race(ended.get, Fault.fiber(pull.foreverM[Unit])).void
-              }
+              // Quiescing ends this hot session; a pending fault is of no further interest.
+              Fault.fiber(drain).void
 
             def intersect(candidates: Vector[ChainSync.Point])(using Raise[F, PeerError]) =
-              current.set(Vector.empty) *> progress.set(None) *>
+              drain *> progress.set(None) *> last.set(None) *>
                 connection.chainSync.findIntersect(thin(candidates)).flatMap { found =>
                   found.traverse_ { case (point, _) =>
                     headers.traverse_(_.start(point).flatMap(gate.set))
-                  } *> F.pure(found.map(_._1))
+                  } *> drainCompletion.set(None) *> started.set(false).as(found.map(_._1))
                 }
 
             def next(using Raise[F, PeerError]): F[SyncEvent] = pull
