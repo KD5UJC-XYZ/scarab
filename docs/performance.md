@@ -1801,3 +1801,82 @@ public-network sync or operational restart. Stored CBOR and native V5 remain; Me
 Haskell snapshot import/export. Future optimization should use the same captured block window,
 record the exact source/runtime and resource limits, and compare complete verdict/state results
 before claiming an improvement.
+
+## Typed Diff instance retention (#206)
+
+**Status: measured on 2026-10-20; diagnostic comparisons, not block-application throughput.**
+The typed derivation in #244 removed the erased `Diff[Any]` instances but could construct an enum
+case's instance on every comparison, and its product walk could summon conditional field instances
+again for every value. #249 now retains both in lazy per-derivation `Memo`s. A product builds its
+field steps once and walks their array in field order; a sum selects its step by the mirror's known
+ordinal. The local indexed field loop avoids a new field iterator for each record comparison and
+stops at the first difference; its mutation remains inside the pure `Diff` implementation. The
+measurements below cover that path and its allocation cost.
+
+Ordinal selection also preserves correctness for mixed singleton/data enums. In the first typed
+implementation, `ClassTag[Empty.type]` can have the enum's runtime class, so a walk that tries the
+singleton first can accept two `Full(value)` instances there and return no difference. The focused
+`DiffSuite` control reproduces that on `2ef35836`; selecting the actual ordinal reports the `value`
+field instead. The original cast-based ordinal dispatch already behaved correctly. This is a
+diagnostic comparison fix; no changed ledger-admission verdict is demonstrated.
+
+**Inputs and sources.** `ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/state/DiffBenchMain.scala`
+builds two independent equal diagnostic states, each containing 20,000 sorted accounts with a
+nested enum balance, and persistent copies differing at the first or last account. Every workload
+asserts the expected complete first-difference path before timing. This is a deterministic model;
+the existing consensus properties and the separate `e2e` gate cover actual ledger-state comparison.
+The same benchmark source was compiled with each historical `Diff.scala`, so the inline derivation
+also belongs to the measured implementation:
+
+- Original cast-based implementation: `57608c6e`.
+- First typed implementation, before instance retention: `2ef35836`.
+- Field and case retention: `4f8cc484`, with `Diff.scala` SHA-256
+  `1bf891f956babbf5fe3b03a89eb89ef995f586777e227897c9a3bdbc710ded5e`.
+- Shared harness at `4f8cc484`, SHA-256
+  `098a2201e8b7f771394729f987209145bb807f46995072531b2dbc13a89b690b`.
+
+The narrow dev-based replacement (#260, source `0d172b08`) contains the same candidate
+implementation and identical harness. Its `Diff.scala` SHA-256 is
+`e7dbf222c55d12bbf70331f7d234fdf51ca0ef6a8aa326ac64c08516fe18a424`; only comments
+changed after the measured revision. The standalone source comparison above does not depend on
+merging main into dev. Whole-tree and private-scenario evidence for the dev-based branch is
+recorded separately in [compatibility.md](compatibility.md#evidence-log).
+
+**Protocol.** Docker `scarab-jdk:local` image
+`sha256:c90140def52d2711644c85a81c9bf218ffbe5dc81003bfb866154c2da832af38`, OpenJDK21.0.11,
+Scala3.3.8, `--cpuset-cpus 8-11`, no CPU quota, `-Xms1g -Xmx1g`, one JVM at a time. Each case warms
+for at least two seconds, then takes seven samples. A sample performs 20 equal/late comparisons or
+100,000 early/same-case comparisons; reported time and thread allocation are divided by that count.
+`ThreadMXBean.getCurrentThreadAllocatedBytes` brackets the timed body. Complete input and output
+fingerprints are outside timing. Run order is original/typed/candidate/candidate/typed/original.
+The host was shared with a private relay, without a simultaneous build on the benchmark CPU set.
+Short, count-based exploratory warmups gave unstable equal-state medians and are superseded by this
+protocol. This is a warmed comparison; it does not measure cold derivation latency or retained heap.
+
+For the maintained candidate, run in the documented Docker build:
+`ledger/Test/runMain xyz.kd5ujc.scarab.ledger.state.DiffBenchMain`. To reproduce a historical row,
+compile this identical harness with that revision's `Diff.scala`, rather than replacing runtime
+classes underneath types whose derivation has already been inlined.
+
+The two run medians are shown as ranges; parentheses contain the minimum/maximum sample across
+both runs. Allocation is bytes per comparison, also retaining its observed range.
+
+| Workload | Original | First typed | Field/case retention | Allocated bytes: original / typed / retention |
+|---|---|---|---|---|
+| Equal 20,000-account state, ms | 2.044–2.054 (2.022–2.160) | 1.954–2.013 (1.939–2.094) | 1.953–1.984 (1.913–2.079) | 4,468,139 / 6,695,947 / 4,615,907–5,255,907 |
+| First-account difference, ns | 99.6–104.7 (94.2–123.1) | 99.6–102.9 (92.6–121.5) | 94.9–95.3 (87.6–119.4) | 888 / 904 / 880 |
+| Last-account difference, ms | 0.704–0.705 (0.699–0.709) | 0.736–0.744 (0.733–0.753) | 0.734–0.752 (0.729–0.753) | 875 / 915 / 891 |
+| Same enum case, ns | 29.4–40.7 (28.0–51.3) | 36.8–41.4 (34.7–48.7) | 30.2–30.9 (29.2–32.0) | 288 / 360 / 304 |
+
+No primary elapsed-time median is more than 10% above either historical implementation on these
+workloads; the largest increase against the original is 6.8% for the last-account difference.
+Equal-state allocation falls 21.5–31.1% against the first typed implementation, but remains
+3.3–17.6% above the original; it is not allocation-neutral. Keep that range rather than describing
+all typed narrowing costs as removed. The original's 29.4–40.7 ns same-case spread also precludes a
+general microbenchmark speedup claim.
+
+All six runs had identical input SHA-256
+`e427593da102bf0a2ffc1ca24e74e3edc573157dffd235513bfecce451d2ea91`, complete state-difference output
+SHA-256 `a45384a2914effec34e899b6eb41b2ae93a5d4f8bdfc263671f01ac5d5111491`, and enum-output SHA-256
+`e0e96fc5eee36517c9e0b40b18d4e44df9f872029cc259f57663c66bdf003c62`. These bind the measured model
+only; they do not assert public-chain state parity or cover codec derivation/interner performance.
