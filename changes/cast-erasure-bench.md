@@ -1,3 +1,4 @@
 ### Added (performance, #202–#207)
 
-- The cast-erasure batch measurement: one harness for the four tickets and the old-against-new table in `docs/performance.md`, with the protocol, the host drift and the digests that show the verdicts and bytes did not change.
+- Record the cast-erasure batch's synthetic and microbenchmark sources, complete measured-output fingerprints, limitations and adverse results. Link the separate representative Preview and native snapshot measurements; preserve uncertainty where the historical data does not establish the 10% limit.
+- Share the corrected benchmark tools with their implementation PRs and track the remaining compiler-proof obligations independently of runtime class checks.
