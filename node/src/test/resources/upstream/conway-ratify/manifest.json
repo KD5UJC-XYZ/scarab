@@ -1,0 +1,462 @@
+{
+  "sourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "formalCommit": "b3a4fd47a1144ff1fb994f89b1045e78159e07ae",
+  "generatorCommit": "966f65f3c28cb22fc45220dbd1408baea93b53d8",
+  "observerPatchSha256": {
+    "scripts/oracle/ledger-govcert/exporter.patch": "7130e6e9c1b055f27a2f1a60984af5d58446e9441f088fea724b0dbcba165e31",
+    "scripts/oracle/ledger-govcert/native-hooks.patch": "764892d352c6780fa0121c03c2eb29eef08e33f5e4e3c383155a261cda5a951f",
+    "scripts/oracle/ledger-govcert/ratify.patch": "9611b79ab4543445cd68161d0810293fd7ed809daadcc0a99ca2ddad5cfcafde"
+  },
+  "cases": [
+    {
+      "id": "sts-sized5-500201",
+      "property": "STS-sized5",
+      "seed": 500201,
+      "generatorSize": 5,
+      "upstreamExitCode": 0,
+      "files": {
+        "state.cbor": {
+          "bytes": 2135,
+          "sha256": "db4faa5aa4442702e09dd74ad236f8e000b9edd59ba12113e1596773fa0b7e4b"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 1847,
+          "sha256": "10367bf61bf80b81e935c3d5469f6e8cf716e8d530a9b76b0aecdb001c1dcd17"
+        },
+        "environment.cbor": {
+          "bytes": 2489,
+          "sha256": "15c5d8f1b260acbc48954081e1ddcdad334f8ebfbe16460a88412398d1ce5ec1"
+        },
+        "implementation-state.cbor": {
+          "bytes": 2171,
+          "sha256": "8476e7405acce735b2f2c23deca79960e9bcdabf5d3f149d1d640a64d957400c"
+        },
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        }
+      },
+      "runnerArgs": [
+        "--match",
+        "Conformance/Conway/Constrained Generators/Ticks transition graph/RATIFY/STS-sized5/",
+        "--seed=500201",
+        "--qc-max-success=1",
+        "--qc-max-size=30"
+      ]
+    },
+    {
+      "id": "sts-sized5-500202",
+      "property": "STS-sized5",
+      "seed": 500202,
+      "generatorSize": 5,
+      "upstreamExitCode": 0,
+      "files": {
+        "state.cbor": {
+          "bytes": 1506,
+          "sha256": "edf3dfbc9404e5b1439aaa2a84f75a0140e9a24c49573b086f7cec1d141fce8f"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 1,
+          "sha256": "76be8b528d0075f7aae98d6fa57a6d3c83ae480a8469e668d7b0af968995ac71"
+        },
+        "environment.cbor": {
+          "bytes": 6607,
+          "sha256": "16c9d116ac07744700402971386f4ccef9872991d75ae58acc2a093b4501b795"
+        },
+        "implementation-state.cbor": {
+          "bytes": 1506,
+          "sha256": "57ed5ed93d35df4fe9c00b976d94a34867dcf9a7793d16d7b9365a6daa636e88"
+        },
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        }
+      },
+      "runnerArgs": [
+        "--match",
+        "Conformance/Conway/Constrained Generators/Ticks transition graph/RATIFY/STS-sized5/",
+        "--seed=500202",
+        "--qc-max-success=1",
+        "--qc-max-size=30"
+      ]
+    },
+    {
+      "id": "sts-sized5-500203",
+      "property": "STS-sized5",
+      "seed": 500203,
+      "generatorSize": 5,
+      "upstreamExitCode": 0,
+      "files": {
+        "state.cbor": {
+          "bytes": 2058,
+          "sha256": "cffc3fca257b819e055ec658bd45cdeb27bd229ec356078e85579ee3d7e3ec00"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 1030,
+          "sha256": "e9c4d9853c40f2fbc98fba3fb77402bfc03d96774938a2d4a6e50170a5a30fe5"
+        },
+        "environment.cbor": {
+          "bytes": 4162,
+          "sha256": "73efd6bd6c3a2341ddda058ccfe3f8003bc9460702cdf12c639df79ed9e402a8"
+        },
+        "implementation-state.cbor": {
+          "bytes": 2058,
+          "sha256": "7aadf128c7d53e10d425d63459b8dcdd3c09487e132c455aaf852ba8b00e0dfa"
+        },
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        }
+      },
+      "runnerArgs": [
+        "--match",
+        "Conformance/Conway/Constrained Generators/Ticks transition graph/RATIFY/STS-sized5/",
+        "--seed=500203",
+        "--qc-max-success=1",
+        "--qc-max-size=30"
+      ]
+    },
+    {
+      "id": "sts-sized5-500204",
+      "property": "STS-sized5",
+      "seed": 500204,
+      "generatorSize": 5,
+      "upstreamExitCode": 0,
+      "files": {
+        "state.cbor": {
+          "bytes": 1847,
+          "sha256": "4662582d94615dc1cbf81e0664ed947bb5431a94a5b8dac227e573eb94ec3b69"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 849,
+          "sha256": "5537a534fca0deeb97927c767e2d286872e5b9306e8f11e331f83f032d898d62"
+        },
+        "environment.cbor": {
+          "bytes": 6063,
+          "sha256": "e8606002057e492dcf4fcbad62babf8ada8533735b330cbaa8feb0cbc87777a7"
+        },
+        "implementation-state.cbor": {
+          "bytes": 1847,
+          "sha256": "55d617f183165563351d387eace5ab8f45f411514c9466ffb0c0f9d7d4534359"
+        },
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        }
+      },
+      "runnerArgs": [
+        "--match",
+        "Conformance/Conway/Constrained Generators/Ticks transition graph/RATIFY/STS-sized5/",
+        "--seed=500204",
+        "--qc-max-success=1",
+        "--qc-max-size=30"
+      ]
+    },
+    {
+      "id": "drep-500301",
+      "property": "DRep",
+      "seed": 500301,
+      "generatorSize": 5,
+      "upstreamExitCode": 0,
+      "files": {
+        "state.cbor": {
+          "bytes": 1206,
+          "sha256": "5de5d5f7c10d5ba7b98cf2e00889e070ef2a69c5617a5c9922fb92bdc26ac98d"
+        },
+        "implementation-booleans.cbor": {
+          "bytes": 6,
+          "sha256": "0f8b21d38e5dddddc6e91de0edfe75121cb2c74cceb0469dcd1c7f1de0a113ec"
+        },
+        "predicate.txt": {
+          "bytes": 4,
+          "sha256": "5fd00d0df65d3bd4581738d81fb62b5de5bdccba9639e1f3257a89eb0b43ddf1"
+        },
+        "signal.cbor": {
+          "bytes": 2431,
+          "sha256": "53673d2ac5b3f615f05af5bfa71758b4b98e56c2a5795c5e9b1b590fedba6a2a"
+        },
+        "environment.cbor": {
+          "bytes": 5254,
+          "sha256": "fcacbe62db7cf131c962ced91d3c8d6a95ef304a0d24360a3f0e67add7f6ef7f"
+        },
+        "agda-booleans.cbor": {
+          "bytes": 6,
+          "sha256": "0f8b21d38e5dddddc6e91de0edfe75121cb2c74cceb0469dcd1c7f1de0a113ec"
+        }
+      },
+      "runnerArgs": [
+        "--match",
+        "Conformance/Conway/Constrained Generators/Ticks transition graph/RATIFY/Accepted/DRep/",
+        "--seed=500301",
+        "--qc-max-success=1",
+        "--qc-max-size=30"
+      ]
+    },
+    {
+      "id": "drep-500302",
+      "property": "DRep",
+      "seed": 500302,
+      "generatorSize": 5,
+      "upstreamExitCode": 0,
+      "files": {
+        "state.cbor": {
+          "bytes": 1414,
+          "sha256": "cc59b92cbc28875e6b23dd983f52765b6c0c5b0e58c21679e758d3301f4df2bf"
+        },
+        "implementation-booleans.cbor": {
+          "bytes": 3,
+          "sha256": "b03ffbe085a63b5f24cc0fe72d258f465f0ae3fc95dd3a1eaec7f9733a9ac89e"
+        },
+        "predicate.txt": {
+          "bytes": 4,
+          "sha256": "5fd00d0df65d3bd4581738d81fb62b5de5bdccba9639e1f3257a89eb0b43ddf1"
+        },
+        "signal.cbor": {
+          "bytes": 1431,
+          "sha256": "43855e3384a6afc51ce30c85669e4f3ad24c0272f7b41f3d581d1b568b4b79d6"
+        },
+        "environment.cbor": {
+          "bytes": 10190,
+          "sha256": "a746260e683bcb0403db97deb1a05ed76d8d27e58f62105a44ad494b27d8e0e8"
+        },
+        "agda-booleans.cbor": {
+          "bytes": 3,
+          "sha256": "b03ffbe085a63b5f24cc0fe72d258f465f0ae3fc95dd3a1eaec7f9733a9ac89e"
+        }
+      },
+      "runnerArgs": [
+        "--match",
+        "Conformance/Conway/Constrained Generators/Ticks transition graph/RATIFY/Accepted/DRep/",
+        "--seed=500302",
+        "--qc-max-success=1",
+        "--qc-max-size=30"
+      ]
+    },
+    {
+      "id": "spo-500401",
+      "property": "SPO",
+      "seed": 500401,
+      "generatorSize": 5,
+      "upstreamExitCode": 0,
+      "files": {
+        "state.cbor": {
+          "bytes": 1510,
+          "sha256": "c30b4f990dc0f7c466db46daaff664855c3c0aa3d4dee7233de5f74d94219377"
+        },
+        "implementation-booleans.cbor": {
+          "bytes": 6,
+          "sha256": "0f8b21d38e5dddddc6e91de0edfe75121cb2c74cceb0469dcd1c7f1de0a113ec"
+        },
+        "predicate.txt": {
+          "bytes": 3,
+          "sha256": "e1e6b8c49d103eaf1c487731a1243b99f89684cbe880c2bc02236c66df2319f5"
+        },
+        "signal.cbor": {
+          "bytes": 2630,
+          "sha256": "e95a5bd1da9ecf494d9ed8fbf2289f292c147a816697e6654fda8298a3ecfe5c"
+        },
+        "environment.cbor": {
+          "bytes": 5543,
+          "sha256": "f5246792799c900ae480a715aea793087f362e8aba799440cedf954f7c4b774d"
+        },
+        "agda-booleans.cbor": {
+          "bytes": 6,
+          "sha256": "0f8b21d38e5dddddc6e91de0edfe75121cb2c74cceb0469dcd1c7f1de0a113ec"
+        }
+      },
+      "runnerArgs": [
+        "--match",
+        "Conformance/Conway/Constrained Generators/Ticks transition graph/RATIFY/Accepted/SPO/",
+        "--seed=500401",
+        "--qc-max-success=1",
+        "--qc-max-size=30"
+      ]
+    },
+    {
+      "id": "spo-500402",
+      "property": "SPO",
+      "seed": 500402,
+      "generatorSize": 5,
+      "upstreamExitCode": 0,
+      "files": {
+        "state.cbor": {
+          "bytes": 1451,
+          "sha256": "89e803c1c0f03175af6717a2116a7fd2cc2abcec3ee0a588a5ea59572d5b1856"
+        },
+        "implementation-booleans.cbor": {
+          "bytes": 2,
+          "sha256": "729b2a4e25b87556c002530dd3132821d83afb35d1ca0af8d858719e502616e2"
+        },
+        "predicate.txt": {
+          "bytes": 3,
+          "sha256": "e1e6b8c49d103eaf1c487731a1243b99f89684cbe880c2bc02236c66df2319f5"
+        },
+        "signal.cbor": {
+          "bytes": 835,
+          "sha256": "4de471a425e2b08acdb877a2d2b87f816da934cff7f4ee7e1587f213c4a0017f"
+        },
+        "environment.cbor": {
+          "bytes": 5270,
+          "sha256": "8b5cb8e6a6aa8ac06bee88c2161afb330131a5bed76be73fa888462f10d2cd8f"
+        },
+        "agda-booleans.cbor": {
+          "bytes": 2,
+          "sha256": "729b2a4e25b87556c002530dd3132821d83afb35d1ca0af8d858719e502616e2"
+        }
+      },
+      "runnerArgs": [
+        "--match",
+        "Conformance/Conway/Constrained Generators/Ticks transition graph/RATIFY/Accepted/SPO/",
+        "--seed=500402",
+        "--qc-max-success=1",
+        "--qc-max-size=30"
+      ]
+    },
+    {
+      "id": "cc-500501",
+      "property": "CC",
+      "seed": 500501,
+      "generatorSize": 5,
+      "upstreamExitCode": 0,
+      "files": {
+        "state.cbor": {
+          "bytes": 1431,
+          "sha256": "361be9b0daa75d7ec6f045f0ee314638702409952302bc0e76906dabc08e23c9"
+        },
+        "implementation-booleans.cbor": {
+          "bytes": 2,
+          "sha256": "8226e9c1e23220f9d0bd31808a0acd488995205a657445301e7e4b8e69c9c1b4"
+        },
+        "predicate.txt": {
+          "bytes": 2,
+          "sha256": "a56362a10c816abf206d72cb914e2d5ca454eb9c7e744f88b1a1422c379e9942"
+        },
+        "signal.cbor": {
+          "bytes": 479,
+          "sha256": "7eb646bfaf115c163431b479f81be6f5d2a0bde4d73e8f63b3bfbf23c7b11c3f"
+        },
+        "environment.cbor": {
+          "bytes": 5602,
+          "sha256": "f3c8a14039ae8fa76e39096a6251f54072519880956b0c875f0695008225a222"
+        },
+        "agda-booleans.cbor": {
+          "bytes": 2,
+          "sha256": "8226e9c1e23220f9d0bd31808a0acd488995205a657445301e7e4b8e69c9c1b4"
+        }
+      },
+      "runnerArgs": [
+        "--match",
+        "Conformance/Conway/Constrained Generators/Ticks transition graph/RATIFY/Accepted/CC/",
+        "--seed=500501",
+        "--qc-max-success=1",
+        "--qc-max-size=30"
+      ]
+    },
+    {
+      "id": "cc-500502",
+      "property": "CC",
+      "seed": 500502,
+      "generatorSize": 5,
+      "upstreamExitCode": 0,
+      "files": {
+        "state.cbor": {
+          "bytes": 1750,
+          "sha256": "1b417ff8066991ae900f32f716981aaec3bc73bab6996ce0ec23ecc3e4f9efd4"
+        },
+        "implementation-booleans.cbor": {
+          "bytes": 4,
+          "sha256": "6cfc8f7d9bdd8546f431d114900af21387e23c6217384c6245dffb6a811ad648"
+        },
+        "predicate.txt": {
+          "bytes": 2,
+          "sha256": "a56362a10c816abf206d72cb914e2d5ca454eb9c7e744f88b1a1422c379e9942"
+        },
+        "signal.cbor": {
+          "bytes": 1566,
+          "sha256": "aca65343bad67f5a3a4bd0a0a75ae42750b936672273f655d09986aab3c64d9e"
+        },
+        "environment.cbor": {
+          "bytes": 4827,
+          "sha256": "1492b744202eccb3dc518931e490f3d5973a26a29fc6c13c032fbc35ef1a0a70"
+        },
+        "agda-booleans.cbor": {
+          "bytes": 4,
+          "sha256": "6cfc8f7d9bdd8546f431d114900af21387e23c6217384c6245dffb6a811ad648"
+        }
+      },
+      "runnerArgs": [
+        "--match",
+        "Conformance/Conway/Constrained Generators/Ticks transition graph/RATIFY/Accepted/CC/",
+        "--seed=500502",
+        "--qc-max-success=1",
+        "--qc-max-size=30"
+      ]
+    }
+  ],
+  "limitations": [
+    "Original RATIFY generators and predicate functions retained; explicit generator size5 is recorded, not the size-zero default.",
+    "STS preserves initial delayed state and original input order; the ordinary node pulser priority policy is a separate caller concern.",
+    "Four native STS samples and six accepted-property samples; no complete family or all-positive-outcome claim.",
+    "All three nonempty STS signals begin delayed; these native samples cover state retention, expiry and the empty base case, not positive enactment or priority-order discrimination. Dedicated local regressions exercise those boundaries separately.",
+    "DRep and SPO samples are all false; committee samples include both true and false. No all-branches approval coverage is claimed."
+  ],
+  "referenceRunner": {
+    "image": "scarab-pre-conway178-oracle:local",
+    "compiler": "GHC 9.10.3",
+    "target": "cardano-ledger-conformance:test:tests",
+    "dependencyPlanSha256": "d5268a535a9e6c5a4158ddac6f9a1c310d05882c54f2c85b460de83e2e3453d6",
+    "executableSha256": "4e14dfbf4568c6ca6860fea8f98c3c36ed725ca276afab4e1f20e2c302bb5b77",
+    "sampling": "Exactly one QuickCheck input per invocation; STS uses resize 5 and approval properties use mapSize (const 5). No observer changes to native rule, formal rule, original constraints or equality.",
+    "orderedBuildPatchStack": [
+      {
+        "path": "scripts/oracle/ledger-govcert/exporter.patch",
+        "sha256": "7130e6e9c1b055f27a2f1a60984af5d58446e9441f088fea724b0dbcba165e31"
+      },
+      {
+        "path": "scripts/oracle/ledger-govcert/epoch-families.patch",
+        "sha256": "64ad562f84cfb1e52f7dddeb7dcf886803b2f9c30a5328f8f448a98f03608b3f"
+      },
+      {
+        "path": "scripts/oracle/ledger-govcert/epoch-sized-probe.patch",
+        "sha256": "c9f55d9465527cf555b5d96fa85a8061285182c84b6c6e969b3c8b0d8c1e39ae"
+      },
+      {
+        "path": "scripts/oracle/ledger-govcert/native-hooks.patch",
+        "sha256": "764892d352c6780fa0121c03c2eb29eef08e33f5e4e3c383155a261cda5a951f"
+      },
+      {
+        "path": "scripts/oracle/ledger-govcert/derived-payment.patch",
+        "sha256": "25d3c5f3fc62f5bb7c7bb5c69f23a372f2196e457b875e68eeace15e24a4954c"
+      },
+      {
+        "path": "scripts/oracle/ledger-govcert/ratify.patch",
+        "sha256": "9611b79ab4543445cd68161d0810293fd7ed809daadcc0a99ca2ddad5cfcafde"
+      }
+    ],
+    "patchedSourceSha256": {
+      "cabal.project": "13b3941a475b9c2362c6e994a0c160f09f6d22b8a0261a80bf75559a0883e5f1",
+      "libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/ExecSpecRule/Core.hs": "d58912388f5e904b96a9762ef92eda35e40756d399f1c2813e9dca9590f89cb3",
+      "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Conway.hs": "6dc5251cb30bc72d08c9a601721ff9b869a878ec44174d91ca9e5971c0dec0f2",
+      "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Core.hs": "8e52bf75a5848a3112760d8e0b1147c137312ac3f9941d08b2ff0034820a7bbf",
+      "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway.hs": "5f7d78806b0317023d1824cbb732b335d87ea5731beb37db6ceb4a21c7c766ef",
+      "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway/Ratify.hs": "4f0af483e82ff222e7d5d22de3a6c82bba61df11043168eab59e07c7c2a9a3fa"
+    },
+    "extraObservers": "Epoch/proposal-payment observer registrations were present in the same target build but are not selected by the RATIFY invocations. The complete patch stack reconstructs every modified source byte exactly."
+  }
+}

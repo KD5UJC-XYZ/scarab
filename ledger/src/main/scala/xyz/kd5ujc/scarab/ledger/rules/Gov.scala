@@ -118,7 +118,9 @@ object Gov extends Sts[GovEnv, Proposals, GovSignal, LedgerFailure]:
       }
       // the voters must exist, and so must the actions they vote on
       votes = signal.votes.flatMap { (voter, vs) => vs.map { (aid, v) => (voter, aid, v) } }
-      hot = if votes.isEmpty then Set.empty[Credential[HotCommittee]] else authorised(env.cert)
+      // GOV.hs:597-604 checks named voters even when their individual vote maps are empty.
+      hot =
+        if signal.votes.isEmpty then Set.empty[Credential[HotCommittee]] else authorised(env.cert)
       unknownVoters <- votesKnown[F](env, hot, signal.votes)
       _ <- Refuse.unless[F](
         unknownVoters.isEmpty,

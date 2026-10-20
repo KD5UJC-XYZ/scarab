@@ -1,6 +1,6 @@
 # Peer selection: the P2P governor (G1)
 
-**Status**: G1.1–G1.5 and the #142 topology/DNS/duplex implementation are present on the feature branch. The original parent acceptance
+**Status**: current implementation on main: G1.1–G1.5 and the #142 topology/DNS/duplex implementation, including atomic DNS-root refresh (#240). The original parent acceptance
 and private reference evidence are recorded below. Full Genesis chain-density and ledger-dependent fork choice
 remain G3. Tracked in
 [#31](https://github.com/KD5UJC-XYZ/scarab/issues/31) (roadmap G1). Written against `main` at 6ce5bb77 and the
@@ -1724,6 +1724,23 @@ also passed. Two private `relay --seconds 300` attempts passed sync, duplex, hea
 but failed the transaction-inclusion assertions: three transactions reached the Scala mempool, none were adopted, and
 the local submission was not included. Exact summaries are preserved under `/tmp/scarab/scarab-v02-139-142` and
 `/tmp/scarab/scarab-v02-139-142-repeat`. No public sync or DNSSEC claim is made.
+
+### Atomic local-root refresh (#240)
+
+A completed DNS refresh installs configured and effective local roots, known-peer origins,
+removed-hot-peer demotion jobs and bootstrap sensitivity in one pure governor decision. The
+event boundary must satisfy `GovernorState.invariant` before the next monitor pass. This follows
+`G/Monitor.hs:329–425` at the section 1.1 pin: insert newly resolved roots into known peers, retain
+removed peers as non-roots and demote removed active roots so their replacements can activate.
+Trustable-root filtering precedes the known-peer cap, as in
+`CD/PeerSelection/Governor/Monitor.hs:159–169`. Target-transition behavior and generation fencing
+for stale/in-flight completions are unchanged.
+
+`PeerSelectionSuite` retains four direct controls: replacing an active root, retaining an address
+in the new answer set, sensitive trustable filtering and resumption from zero targets. Three
+controls fail on the previous source; the zero-target sequence already passed. The private relay
+gate verifies normal operation, not forced DNS rotation; [compatibility evidence](../compatibility.md)
+records its scope and the integrated check.
 
 ## 8. Open questions for the owner
 

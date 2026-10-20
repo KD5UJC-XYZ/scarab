@@ -1,0 +1,179 @@
+--- a/ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/BlockFetch/Test.hs
++++ b/ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/BlockFetch/Test.hs
+@@ -10,9 +10,17 @@
+
+ {-# OPTIONS_GHC -Wno-orphans #-}
+
+-module Ouroboros.Network.Protocol.BlockFetch.Test (tests) where
++module Ouroboros.Network.Protocol.BlockFetch.Test (tests, exportOrdinaryCases) where
+
+ import Codec.Serialise qualified as S
++import Control.Monad (forM_)
++import qualified Data.ByteString as BS
++import qualified Data.ByteString.Lazy as BL
++import Data.List (intercalate)
++import Numeric (showHex)
++import System.IO (withFile, IOMode (WriteMode), hPutStrLn)
++import Test.QuickCheck.Gen (unGen)
++import Test.QuickCheck.Random (mkQCGen)
+ import Control.Monad.ST (runST)
+ import Data.ByteString.Lazy (ByteString)
+
+@@ -531,3 +539,45 @@
+       case Chain.selectBlockRange chain from to of
+         Nothing -> []
+         Just bs -> bs
++
++-- Observation only: same original generator, ordinary (inline payload) codec and
++-- unmodified properties. Separately serialised fields retain the original values.
++exportOrdinaryCases :: FilePath -> Int -> Int -> IO ()
++exportOrdinaryCases path count seed = withFile path WriteMode $ \out ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 8 + ordinal `mod` 9
++        input = unGen arbitrary (mkQCGen caseSeed) caseSize
++          :: AnyMessage (BlockFetch Block (Point Block))
++    verdicts <- sequence
++      [ quickCheckWithResult
++          stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + offset), caseSize) }
++          (once (originalProperty input))
++      | (offset, originalProperty) <- zip [1000003, 2000003, 3000003, 4000003, 5000003]
++          [prop_codec_BlockFetch, prop_codec_splits2_BlockFetch, prop_codec_splits3_BlockFetch, prop_codec_cbor_BlockFetch, prop_codec_valid_cbor_BlockFetch]
++      ]
++    case input of
++      AnyMessage (msg :: Message (BlockFetch Block (Point Block)) st st') -> do
++        let ordinary = codec :: Codec (BlockFetch Block (Point Block)) S.DeserialiseFailure IO ByteString
++            token = stateToken :: StateToken st
++            (state, sender) = case token of
++              SingBFIdle -> ("idle", "client")
++              SingBFBusy -> ("busy", "server")
++              SingBFStreaming -> ("streaming", "server")
++              SingBFDone -> ("done", "client")
++            (tag, fields) = case msg of
++              MsgRequestRange (ChainRange from to) -> ("request-range", [S.serialise from, S.serialise to])
++              MsgClientDone -> ("client-done", [])
++              MsgStartBatch -> ("start-batch", [])
++              MsgNoBlocks -> ("no-blocks", [])
++              MsgBlock block -> ("block", [S.serialise block])
++              MsgBatchDone -> ("batch-done", [])
++        hPutStrLn out $ intercalate "\t" $
++          [ "blockfetch-ordinary-codec-v1", show caseSeed, show ordinal, show caseSize
++          , state, sender, tag, hex (encode ordinary msg)
++          , intercalate "," (map hex fields), show msg
++          ] ++ map (\r -> if isSuccess r then "pass" else "upstream-failure") verdicts
++  where
++    hex = concatMap (pad . (`showHex` "")) . BS.unpack . BL.toStrict
++    pad [digit] = ['0', digit]
++    pad digits = digits
+--- a/ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/Test.hs
++++ b/ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/Test.hs
+@@ -8,9 +8,18 @@
+
+ {-# OPTIONS_GHC -Wno-orphans #-}
+
+-module Ouroboros.Network.Protocol.ChainSync.Test (tests) where
++module Ouroboros.Network.Protocol.ChainSync.Test (tests, exportOrdinaryCases) where
+
+ import Codec.Serialise qualified as S
++import Control.Monad (forM_)
++import qualified Data.ByteString as BS
++import qualified Data.ByteString.Lazy as BL
++import qualified Codec.CBOR.Write as Write
++import Data.List (intercalate)
++import Numeric (showHex)
++import System.IO (withFile, IOMode (WriteMode), hPutStrLn)
++import Test.QuickCheck.Gen (unGen)
++import Test.QuickCheck.Random (mkQCGen)
+ import Data.ByteString.Lazy (ByteString)
+
+ import Control.Concurrent.Class.MonadSTM.Strict
+@@ -823,3 +832,50 @@
+             MsgIntersectNotFound {} -> "MsgIntersectNotFound"
+             MsgDone {}              -> "MsgDone"
+           )
++
++-- Observation only: same original generator, ordinary (inline payload) codec and
++-- unmodified properties. Separately serialised fields retain the original values.
++exportOrdinaryCases :: FilePath -> Int -> Int -> IO ()
++exportOrdinaryCases path count seed = withFile path WriteMode $ \out ->
++  forM_ [0 .. count - 1] $ \ordinal -> do
++    let caseSeed = seed + ordinal
++        caseSize = 8 + ordinal `mod` 9
++        input = unGen arbitrary (mkQCGen caseSeed) caseSize
++          :: AnyMessage (ChainSync_BlockHeader)
++    verdicts <- sequence
++      [ quickCheckWithResult
++          stdArgs { chatty = False, replay = Just (mkQCGen (caseSeed + offset), caseSize) }
++          (once (originalProperty input))
++      | (offset, originalProperty) <- zip [1000003, 2000003, 3000003, 4000003, 5000003]
++          [prop_codec_ChainSync, prop_codec_splits2_ChainSync, prop_codec_splits3_ChainSync, prop_codec_cbor, prop_codec_valid_cbor]
++      ]
++    case input of
++      AnyMessage (msg :: Message (ChainSync_BlockHeader) st st') -> do
++        let ordinary = codec :: Codec (ChainSync_BlockHeader) S.DeserialiseFailure IO ByteString
++            token = stateToken :: StateToken st
++            (state, sender) = case token of
++              SingIdle -> ("idle", "client")
++              SingNext SingCanAwait -> ("next-can-await", "server")
++              SingNext SingMustReply -> ("next-must-reply", "server")
++              SingIntersect -> ("intersect", "server")
++              SingDone -> ("done", "client")
++            tipBytes :: Tip BlockHeader -> ByteString
++            tipBytes = Write.toLazyByteString . encodeTip S.encode
++            (tag, fields) = case msg of
++              MsgRequestNext -> ("request-next", [])
++              MsgAwaitReply -> ("await-reply", [])
++              MsgRollForward header tip -> ("roll-forward", [S.serialise header, tipBytes tip])
++              MsgRollBackward point tip -> ("roll-backward", [S.serialise point, tipBytes tip])
++              MsgFindIntersect points -> ("find-intersect", map S.serialise points)
++              MsgIntersectFound point tip -> ("intersect-found", [S.serialise point, tipBytes tip])
++              MsgIntersectNotFound tip -> ("intersect-not-found", [tipBytes tip])
++              MsgDone -> ("done", [])
++        hPutStrLn out $ intercalate "\t" $
++          [ "chainsync-ordinary-codec-v1", show caseSeed, show ordinal, show caseSize
++          , state, sender, tag, hex (encode ordinary msg)
++          , intercalate "," (map hex fields), show msg
++          ] ++ map (\r -> if isSuccess r then "pass" else "upstream-failure") verdicts
++  where
++    hex = concatMap (pad . (`showHex` "")) . BS.unpack . BL.toStrict
++    pad [digit] = ['0', digit]
++    pad digits = digits
+--- a/ouroboros-network/protocols/tests/Main.hs
++++ b/ouroboros-network/protocols/tests/Main.hs
+@@ -1,9 +1,10 @@
+ module Main (main) where
+
+ import Test.Tasty
++import System.Environment (getArgs)
+
+-import Ouroboros.Network.Protocol.BlockFetch.Test qualified (tests)
+-import Ouroboros.Network.Protocol.ChainSync.Test qualified (tests)
++import Ouroboros.Network.Protocol.BlockFetch.Test qualified as BlockFetch (tests, exportOrdinaryCases)
++import Ouroboros.Network.Protocol.ChainSync.Test qualified as ChainSync (tests, exportOrdinaryCases)
+ import Ouroboros.Network.Protocol.Handshake.Test qualified (tests)
+ import Ouroboros.Network.Protocol.KeepAlive.Test qualified (tests)
+ import Ouroboros.Network.Protocol.LocalStateQuery.Test qualified (tests)
+@@ -15,7 +16,11 @@
+ import Test.Data.CDDL qualified (tests)
+
+ main :: IO ()
+-main = defaultMain tests
++main = getArgs >>= \args -> case args of
++  ["--export-ordinary-codecs", dir, count, seed] -> do
++    BlockFetch.exportOrdinaryCases (dir <> "/blockfetch-ordinary.tsv") (read count) (read seed)
++    ChainSync.exportOrdinaryCases (dir <> "/chainsync-ordinary.tsv") (read count) (read seed + 1000)
++  _ -> defaultMain tests
+
+ tests :: TestTree
+ tests =
+@@ -25,8 +30,8 @@
+   [ Test.Data.CDDL.tests
+
+     -- protocols
+-  , Ouroboros.Network.Protocol.BlockFetch.Test.tests
+-  , Ouroboros.Network.Protocol.ChainSync.Test.tests
++  , BlockFetch.tests
++  , ChainSync.tests
+   , Ouroboros.Network.Protocol.Handshake.Test.tests
+   , Ouroboros.Network.Protocol.KeepAlive.Test.tests
+   , Ouroboros.Network.Protocol.LocalStateQuery.Test.tests

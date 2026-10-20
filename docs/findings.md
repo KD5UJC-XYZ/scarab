@@ -11,6 +11,12 @@ source, not authoritative statements. Roadmap IDs (B1, ...) point into [roadmap.
 |---|---|---|
 | Declared budgets were a poor predictor of elapsed parallelism. Most script transactions in the captured preprod window were independent, but full validation gained less than evaluator-only execution because ordinary rules and context collection remain ordered. | Eight sealed preprod chunks, slots 136468829–136641596; authenticated post-snapshot replay of 5,683 blocks | `PlutusReplaySuite`: 68,196 feature-versus-serial complete state comparisons; [measurements and sample limits](performance.md#bounded-parallel-plutus-after-ordered-preparation-d2-2026-10-18), [design](design/parallel-plutus.md), D2 #21. Multi-script reference aggregation is separately tracked in [#195](https://github.com/KD5UJC-XYZ/scarab/issues/195). |
 
+## Networking
+
+| Finding | Where found | Pinned by |
+|---|---|---|
+| A DNS answer-set change could install new configured roots while effective roots and local origins still described the previous set, violating the governor invariant before monitor reconciliation. The refresh now commits effective roots, peer origins, demotion jobs and sensitivity together, retaining the invariant checks. | Bounded preprod catch-up with no signing keys mounted; [#240](https://github.com/KD5UJC-XYZ/scarab/issues/240). Reference transition: `Governor/Monitor.hs:329–425`, at the [peer-selection design pin](design/peer-selection.md#11-what-was-read-and-the-pin). | Three direct regressions fail on the previous source; `PeerSelectionSuite` also retains zero-target, stale-generation and late-connect controls. Normal private relay operation passes; that run does not force DNS rotation. |
+
 ## Consensus
 
 | Finding | Where found | Pinned by |

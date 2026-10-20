@@ -4,9 +4,12 @@
 Run from the repository root:  python3 -m unittest discover -s scripts/tests -v
 """
 import pathlib
+import json
 import shutil
 import struct
 import sys
+import subprocess
+import tempfile
 import unittest
 import zlib
 from fractions import Fraction
@@ -219,6 +222,56 @@ class ScalaIndexMagicTest(unittest.TestCase):
 
 
 class CompareDirsTest(unittest.TestCase):
+    def corpus(self, epochs=(1, 2)):
+        root = pathlib.Path(self.enterContext(tempfile.TemporaryDirectory()))
+        ref, dump = root / "ref", root / "dump"
+        ref.mkdir()
+        dump.mkdir()
+        rows = []
+        for epoch in epochs:
+            h, slot = f"{epoch:064x}", epoch * 100
+            row = {"epoch": epoch, "slot": slot, "hash": h, "era": "babbage", "utxoSize": 1}
+            rows.append(row)
+            name = f"{slot:012d}-{h}.json"
+            content = json.dumps({"treasury": epoch})
+            (ref / name).write_text(content)
+            (dump / name).write_text(content)
+        (ref / "index.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+        return ref, dump, root / "results.json"
+
+    def test_complete_requires_nonempty_unique_reference_and_expected_count(self):
+        for epochs, expected, complete in (((1, 2), 2, True), ((), None, False),
+                                           ((1, 1), None, False), ((1, 2), 3, False)):
+            with self.subTest(epochs=epochs, expected=expected):
+                ref, dump, result = self.corpus(epochs)
+                summary = compare.compare_dirs(ref, dump, result, expected)
+                self.assertEqual(summary["complete"], complete)
+                self.assertEqual(summary["duplicateEpochs"], len(epochs) - len(set(epochs)))
+
+    def test_complete_rejects_missing_or_wrong_block_even_when_projection_matches(self):
+        for wrong_hash in (False, True):
+            with self.subTest(wrong_hash=wrong_hash):
+                ref, dump, result = self.corpus()
+                target = dump / f"{200:012d}-{2:064x}.json"
+                if wrong_hash:
+                    target.rename(dump / f"{200:012d}-{3:064x}.json")
+                else:
+                    target.unlink()
+                self.assertFalse(compare.compare_dirs(ref, dump, result)["complete"])
+
+    def test_cli_strict_mode_rejects_incomplete_capture_and_accepts_complete_capture(self):
+        ref, dump, result = self.corpus()
+        command = [sys.executable, str(pathlib.Path(__file__).resolve().parents[1] / "oracle_compare.py"),
+                   "diff", "--reference", str(ref), "--dump", str(dump), "--results", str(result)]
+        target = dump / f"{200:012d}-{2:064x}.json"
+        content = target.read_text()
+        target.unlink()
+        self.assertEqual(subprocess.run(command, capture_output=True).returncode, 0)
+        self.assertEqual(subprocess.run(command + ["--require-complete"], capture_output=True).returncode, 1)
+        target.write_text(content)
+        self.assertEqual(subprocess.run(command + ["--expected-epochs", "2"], capture_output=True).returncode, 0)
+        self.assertEqual(subprocess.run(command + ["--expected-epochs", "3"], capture_output=True).returncode, 1)
+
     def test_pairs_by_block_and_reports_waiting_and_mismatches(self):
         import json
         import tempfile
@@ -240,6 +293,7 @@ class CompareDirsTest(unittest.TestCase):
                               summary["waitingForScala"]), (2, 1, 1, 1))
             self.assertEqual(summary["firstMismatch"]["epoch"], 2)
             self.assertEqual(summary["firstMismatch"]["differences"][0]["path"], "/treasury")
+            self.assertFalse(summary["complete"])
 
 
 if __name__ == "__main__":

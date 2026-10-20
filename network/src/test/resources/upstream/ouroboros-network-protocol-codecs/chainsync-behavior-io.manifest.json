@@ -1,0 +1,51 @@
+{
+  "schema": "scarab-upstream-network-protocol-behavior-v2",
+  "source": "ouroboros-network",
+  "sourceCommit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+  "upstreamTests": [
+    "ouroboros-network:protocols-tests / ChainSync / propChainSyncDirectIO",
+    "ouroboros-network:protocols-tests / ChainSync / propChainSyncConnectIO",
+    "ouroboros-network:protocols-tests / ChainSync / propChainSyncDemoIO",
+    "ouroboros-network:protocols-tests / ChainSync / propChainSyncPipe"
+  ],
+  "generatorType": "ChainProducerStateForkTest",
+  "requestedCases": 24,
+  "exportedCases": 24,
+  "seed": 504001,
+  "upstreamPropertyOutcomesByProperty": {
+    "propChainSyncDirectIO": {
+      "pass": 24,
+      "upstream-failure": 0
+    },
+    "propChainSyncConnectIO": {
+      "pass": 24,
+      "upstream-failure": 0
+    },
+    "propChainSyncDemoIO": {
+      "pass": 24,
+      "upstream-failure": 0
+    },
+    "propChainSyncPipe": {
+      "pass": 24,
+      "upstream-failure": 0
+    }
+  },
+  "sourceFiles": {
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/Test.hs": "759c3e7ec58a89d34058773f43377cab759e8bbe875ee55c88dde52e561e43b9",
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/Examples.hs": "2c8f33412bfa79828dcd3ec42ee049fffee8de1e5bac89deaf73da05342a06a7",
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/ExamplesPipelined.hs": "810544a5b37d40ae71e04eb3becbb73eeb25575bef9024665cbbc8c74857417b"
+  },
+  "observerPatchSha256": "b88a90c1ae0d2b5750831af95ede6d3b61603edce78b31230cc8f413a1a0840c",
+  "caseTsvSha256": "b19554a9c49ea5bec484f0c6a082b1ba1870b9379cd9e5b559e5a80ddd08f121",
+  "generatorParameters": {
+    "forkCaseSeedPerOrdinal": "seed + ordinal",
+    "caseSizePerOrdinal": "30 + (ordinal mod 21)",
+    "caseInputRows": "same seed/size domain as chainsync-behavior v2; full generated blocks and points remain in that fixture"
+  },
+  "scarabRuntimeProfiles": 1,
+  "limitations": [
+    "Four unchanged upstream direct/connect/demo/pipe IO property outcomes are retained per original case; Scarab runs one linked production generic Mux runtime profile against the same generated rows.",
+    "The Mux runtime replay consumes the generated mock point/block items and compares final chain, as recorded in the ChainSync v2 behavior fixture.",
+    "This does not claim upstream direct/connect/pipe transport topology or IO scheduling trace equivalence."
+  ]
+}

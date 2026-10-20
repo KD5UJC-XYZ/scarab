@@ -1,0 +1,32 @@
+{
+  "schema": "scarab-upstream-network-protocol-behavior-v1",
+  "source": "ouroboros-network",
+  "sourceCommit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+  "upstreamTest": "ouroboros-network:ouroboros-network-io-tests / Socket / prop_socket_demo",
+  "generatorType": "TestBlockChainAndUpdates",
+  "requestedCases": 24,
+  "exportedCases": 24,
+  "seed": 505001,
+  "generatorSizePerOrdinal": "30 + (ordinal mod 21)",
+  "inputCasesTsvSha256": "3a9f3f099bdd6012b30ed8b9376481d3ee0745aca29ebb0e1c2a49470799b0f1",
+  "outcomesTsvSha256": "8c0ef4d4574e16c2663da6ff01d6bd09a016b91eca89fbef8a1cc6dbbb75537e",
+  "upstreamPropertyOutcomes": {
+    "pass": 24,
+    "upstream-failure": 0
+  },
+  "sourceFiles": {
+    "ouroboros-network/tests/io/Test/Ouroboros/Network/Socket.hs": "14d61fc3fb9d3026f7f13fb25f62bda3f56e16fceb4b8b92e79a40a5edb81029",
+    "ouroboros-network/tests/io/Main.hs": "e336aa6e778008c1fa5357903ea70a7bb6203952f3bc9384b521ab338f90e97d",
+    "ouroboros-network/api/tests-lib/Ouroboros/Network/Mock/ChainGenerators.hs": "4fb726bc6d6c1d5207a6372d2dfdb2e9c3617c85fa978cb9282b15f66fdb2587",
+    "ouroboros-network/api/tests-lib/Ouroboros/Network/Mock/ConcreteBlock.hs": "a8af2d74be6df4ce0067ca7adfbcf98bec9f8829d36e276261b2526d895e404f",
+    "ouroboros-network/api/tests-lib/Ouroboros/Network/Mock/Chain.hs": "afad321e38fe4398d2ca646675c9d9aeb247ec2e5f9bae7920cbe5446059efa1"
+  },
+  "observerPatchSha256": "0b86753053d76a22eed02cc57aa7595076645f22541917011898c177bf0a253f",
+  "dependencyPlanSha256": "42d695659261546c8c90946f82f38389c61cf6588c16a931aad92a9c42ea183c",
+  "targetDependencyClosureUnitCount": 168,
+  "scarabRuntimeProfiles": 1,
+  "limitations": [
+    "The unchanged registered Socket prop_socket_demo ran on the exact same TestBlockChainAndUpdates seed/size inputs as the Pipe fixture.",
+    "Scarab's adapter executes loopback TCP, the production Cardano Handshake, Mux, and generic ChainSync runtime; the upstream property uses a test-only TestVersion handshake. The adapter compares the original generated chain result and does not claim Handshake wire/version-data equivalence."
+  ]
+}

@@ -1,0 +1,68 @@
+# SPDX-License-Identifier: Apache-2.0
+rules:
+  - id: scarab-crypto-insecure-rng
+    languages: [scala, java]
+    severity: WARNING
+    message: "Insecure RNG (scala.util.Random / java.util.Random / Math.random) in crypto code. Secret material must come from a CSPRNG (SecureRandom/OS entropy)."
+    pattern-either:
+      - pattern: scala.util.Random
+      - pattern: new java.util.Random(...)
+      - pattern: Math.random()
+      - pattern: new Random(...)
+
+  - id: scarab-crypto-string-from-bytes
+    languages: [scala, java]
+    severity: WARNING
+    message: "new String(...) built from bytes in crypto code: encoding-dependent, charset-unsafe handling of key/point material."
+    patterns:
+      - pattern-either:
+          - pattern: new String($B)
+          - pattern: new String($B, $CS)
+      - metavariable-type:
+          metavariable: $B
+          type: byte[]
+
+  - id: scarab-crypto-weak-algo-literal
+    languages: [scala, java]
+    severity: WARNING
+    message: "Weak/legacy algorithm literal in crypto code (DES/ECB/MD5/SHA-1)."
+    pattern-regex: '"(DES|ECB|MD5|SHA-?1)"'
+
+  - id: scarab-crypto-setseed
+    languages: [scala, java]
+    severity: WARNING
+    message: "setSeed on a RNG: if used on SecureRandom this can weaken entropy; verify intent."
+    pattern: $R.setSeed($S)
+
+  # Informational rules (manual triage; not gated in CI — the job runs with --severity WARNING):
+  - id: scarab-crypto-asinstanceof
+    languages: [scala]
+    severity: INFO
+    message: "asInstanceOf in crypto code: unchecked cast; verify it cannot cross type boundaries of key/point/secret material."
+    pattern: $X.asInstanceOf[$T]
+
+  - id: scarab-crypto-clone
+    languages: [scala, java]
+    severity: INFO
+    message: ".clone() in crypto code: array clones of secret material are not zeroized; confirm lifetime intent."
+    pattern: $A.clone()
+
+  - id: scarab-crypto-modpow
+    languages: [scala, java]
+    severity: INFO
+    message: "modPow on secret scalars is variable-time in OpenJDK (exponent-dependent); check whether the exponent/base is secret."
+    pattern-either:
+      - pattern: $X.modPow($E, $M)
+      - pattern: BigInteger.modPow($E, $M)
+
+  - id: scarab-crypto-bigint
+    languages: [scala]
+    severity: INFO
+    message: "BigInt arithmetic in crypto code: exact but variable-time for large operands; confirm it never touches secret scalars."
+    pattern: BigInt($X)
+
+  - id: scarab-crypto-arrays-equals
+    languages: [java]
+    severity: INFO
+    message: "Arrays.equals is not constant-time; verify operands are not secret byte arrays."
+    pattern: Arrays.equals($A, $B)

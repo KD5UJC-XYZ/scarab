@@ -1,0 +1,268 @@
+{
+  "schema": "scarab-upstream-network-protocol-behavior-v1",
+  "source": "ouroboros-network",
+  "sourceCommit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+  "upstreamTest": "ouroboros-network:protocols-tests / TxSubmission2 / unchanged Arbitrary TxSubmissionTestParams + prop_direct + prop_connect1 + prop_connect2 + prop_channel_ST",
+  "caseFile": "txsubmission2-behavior.tsv",
+  "seed": 503001,
+  "requestedCases": 24,
+  "exportedCases": 24,
+  "generatorSizes": [
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12
+  ],
+  "upstreamPropertyOutcomesByProperty": {
+    "prop_direct": {
+      "pass": 24,
+      "upstream-failure": 0
+    },
+    "prop_connect1": {
+      "pass": 24,
+      "upstream-failure": 0
+    },
+    "prop_connect2": {
+      "pass": 24,
+      "upstream-failure": 0
+    },
+    "prop_channel_ST": {
+      "pass": 24,
+      "upstream-failure": 0
+    }
+  },
+  "upstreamPropertyOutcomes": {
+    "allFourPropertiesPass": 24,
+    "atLeastOnePropertyFailure": 0
+  },
+  "generatorParameters": {
+    "unchangedType": "TxSubmissionTestParams",
+    "propertyInput": "original Arbitrary instance, one deterministic seed/case size per row",
+    "codec2PipelineChoicesSeedOffset": 3000007,
+    "codec2PipelineChoicesColumn": 13,
+    "codec2PipelineChoicesEncoding": "one character per original NonEmptyList Bool element: 1=True, 0=False",
+    "transactionPairing": "original txId mapping; each TxId and Tx serialized independently with Serialise"
+  },
+  "adapterInputStatuses": {
+    "casesWithTransactions": 23,
+    "emptyTransactionCases": 1,
+    "transactionPairs": 94,
+    "maxUnackedValues": [
+      1,
+      2,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11
+    ],
+    "maxTxIdsToRequestValues": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      11
+    ],
+    "maxTxToRequestValues": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "connect2PipelineChoiceLengths": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "connect2PipelineChoiceTrueValues": 52,
+    "connect2PipelineChoiceFalseValues": 38,
+    "connect2PipelineChoicesBySeed": [
+      {
+        "seed": 503001,
+        "choices": "1110"
+      },
+      {
+        "seed": 503002,
+        "choices": "1"
+      },
+      {
+        "seed": 503003,
+        "choices": "11"
+      },
+      {
+        "seed": 503004,
+        "choices": "11101"
+      },
+      {
+        "seed": 503005,
+        "choices": "1111"
+      },
+      {
+        "seed": 503006,
+        "choices": "000000010"
+      },
+      {
+        "seed": 503007,
+        "choices": "1011"
+      },
+      {
+        "seed": 503008,
+        "choices": "1101100"
+      },
+      {
+        "seed": 503009,
+        "choices": "010110"
+      },
+      {
+        "seed": 503010,
+        "choices": "0"
+      },
+      {
+        "seed": 503011,
+        "choices": "01100"
+      },
+      {
+        "seed": 503012,
+        "choices": "01"
+      },
+      {
+        "seed": 503013,
+        "choices": "0"
+      },
+      {
+        "seed": 503014,
+        "choices": "011010"
+      },
+      {
+        "seed": 503015,
+        "choices": "111"
+      },
+      {
+        "seed": 503016,
+        "choices": "111101"
+      },
+      {
+        "seed": 503017,
+        "choices": "01"
+      },
+      {
+        "seed": 503018,
+        "choices": "111"
+      },
+      {
+        "seed": 503019,
+        "choices": "1010"
+      },
+      {
+        "seed": 503020,
+        "choices": "1"
+      },
+      {
+        "seed": 503021,
+        "choices": "1000"
+      },
+      {
+        "seed": 503022,
+        "choices": "1"
+      },
+      {
+        "seed": 503023,
+        "choices": "01010110"
+      },
+      {
+        "seed": 503024,
+        "choices": "0"
+      }
+    ]
+  },
+  "propertyReplaySeedOffsets": {
+    "prop_direct": 0,
+    "prop_connect1": 0,
+    "prop_connect2_choices": 3000007,
+    "prop_channel_ST": 0
+  },
+  "sourceFiles": {
+    "TxSubmission2/Test.hs": "c7e8237dbbef5af3f3bb827c08e626e97ee0fb4b04db3de37c48e5490326921d",
+    "TxSubmission2/Client.hs": "62cde9e54785f901026587062b646303f1f95cdffdcc866beeaeadfc4b6c60ba",
+    "TxSubmission2/Server.hs": "996a221453b8cbf891942fea62761a5078bed29fe039441072c4eea969b195d7"
+  },
+  "observerPatchSha256": "d749b3f517db890091afb399968e8de38298656f2528bbe1b71f6aeed99a28fe",
+  "dependencyPlanSha256": "42d695659261546c8c90946f82f38389c61cf6588c16a931aad92a9c42ea183c",
+  "targetDependencyClosureUnitCount": 167,
+  "caseTsvSha256": "2cdc3825d0a45a28962101177e1db29fa3769d9584ae897f386a4360d674e8b3",
+  "filteredUpstreamSuiteCommands": [
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-v02-49-protocols-luna",
+        "cabal",
+        "test",
+        "--project-file=/probe/protocols-tests.project",
+        "ouroboros-network:protocols-tests",
+        "--test-options=--pattern=TxSubmission2",
+        "--builddir=/probe/narrow-builddir",
+        "--jobs=2"
+      ],
+      "startedAt": "2026-10-19T16:02:04.970359+00:00",
+      "endedAt": "2026-10-19T16:02:07.736793+00:00",
+      "returncode": 0,
+      "status": "complete",
+      "log": "/tmp/scarab/v02-49-protocol-probe/3.log"
+    }
+  ],
+  "caseExportCommand": {
+    "argv": [
+      "docker",
+      "exec",
+      "-w",
+      "/source",
+      "scarab-v02-49-protocols-luna",
+      "/probe/narrow-builddir/build/x86_64-linux/ghc-9.10.3/ouroboros-network-1.3.0.0/t/protocols-tests/build/protocols-tests/protocols-tests",
+      "--export-txsubmission2-behavior",
+      "/probe/exports",
+      "24",
+      "503001"
+    ],
+    "startedAt": "2026-10-19T16:02:08.205744+00:00",
+    "endedAt": "2026-10-19T16:02:08.302206+00:00",
+    "returncode": 0,
+    "status": "complete",
+    "log": "/tmp/scarab/v02-49-protocol-probe/5.log"
+  },
+  "execution": {
+    "image": "scarab-pre-conway178-oracle:local",
+    "imageDigest": "sha256:aa7e2d96e9f15eb8556f9b6a2685b0aaf3a22608ed1299821f7a7edc4c491847",
+    "containerNetwork": "none",
+    "cabalOffline": false,
+    "projectFileSha256": "8af20fd6f6389ab41dfcf016201b4da34ee518714abf528bf1115e40c14a6aef",
+    "projectPlanSha256": "42d695659261546c8c90946f82f38389c61cf6588c16a931aad92a9c42ea183c",
+    "projectPlanUnitCount": 246
+  }
+}

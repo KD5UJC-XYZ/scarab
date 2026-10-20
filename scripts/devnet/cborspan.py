@@ -40,7 +40,11 @@ def children(b, pos):
     if major == 4 or major == 5:
         per = 2 if major == 5 else 1
         if value is None:
-            while b[at] != BREAK:
+            while True:
+                if at >= len(b):
+                    raise Malformed(f"truncated container at {at}")
+                if b[at] == BREAK:
+                    break
                 for _ in range(per):
                     end = item_end(b, at)
                     spans.append((at, end))
@@ -56,30 +60,43 @@ def children(b, pos):
 
 
 def item_end(b, pos):
-    """The position after the item at `pos`."""
-    major, info, value, at = _argument(b, pos)
-    if major in (0, 1):
-        return at
-    if major in (2, 3):
-        if value is None:  # chunks until break
-            while b[at] != BREAK:
-                at = item_end(b, at)
-            return at + 1
-        if at + value > len(b):
-            raise Malformed(f"truncated string at {pos}")
-        return at + value
-    if major == 4 or major == 5:
-        per = 2 if major == 5 else 1
-        if value is None:
-            while b[at] != BREAK:
-                at = item_end(b, at)
-            return at + 1
-        for _ in range(value * per):
-            at = item_end(b, at)
-        return at
-    if major == 6:
-        return item_end(b, at)
-    return at  # simple values and floats: the argument bytes are the whole item
+    """Position after an original item, using an explicit stack for untrusted nesting."""
+    # remaining=None denotes an indefinite container; seen checks indefinite map parity.
+    stack = [(1, None, 0)]
+    while stack:
+        remaining, container, seen = stack[-1]
+        if remaining == 0:
+            stack.pop()
+            continue
+        if pos >= len(b):
+            raise Malformed(f"truncated at {pos}")
+        if remaining is None and b[pos] == BREAK:
+            if container == 5 and seen % 2:
+                raise Malformed(f"odd map at {pos}")
+            pos += 1
+            stack.pop()
+            continue
+        if b[pos] == BREAK:
+            raise Malformed(f"unexpected break at {pos}")
+        stack[-1] = (None if remaining is None else remaining - 1, container, seen + 1)
+        major, _, value, at = _argument(b, pos)
+        if value is None and major not in (2, 3, 4, 5):
+            raise Malformed(f"indefinite scalar at {pos}")
+        if container in (2, 3) and (major != container or value is None):
+            raise Malformed(f"invalid string chunk at {pos}")
+        pos = at
+        if major in (2, 3):
+            if value is None:
+                stack.append((None, major, 0))
+            else:
+                pos += value
+                if pos > len(b):
+                    raise Malformed(f"truncated string at {at}")
+        elif major in (4, 5):
+            stack.append((None if value is None else value * (2 if major == 5 else 1), major, 0))
+        elif major == 6:
+            stack.append((1, None, 0))
+    return pos
 
 
 def resolve(b, path, span=None):

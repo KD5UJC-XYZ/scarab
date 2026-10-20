@@ -14,13 +14,14 @@ import xyz.kd5ujc.scarab.ledger.{
   DelegFailure,
   GovCertFailure,
   GovAction,
+  GovActionId,
+  GovActionState,
   LedgerFailure,
   Mismatch,
   PoolFailure,
   PoolParams,
   PredicateFailure,
   ProtocolParams,
-  Proposals,
   RewardAccount,
   Tx,
   TxDefect
@@ -35,15 +36,15 @@ import xyz.kd5ujc.scarab.ledger.state.*
 // key hashes, and the accounts.
 
 /** The environment of CERTS' sub-rules: `CertEnv` (`Cert.hs`) and `ConwayGovCertEnv` (`GovCert.hs`)
-  * in one: the parameters in force, the current epoch, the current committee and the proposals of
-  * the committee's lineage, and the transaction they are for (the failures name it).
+  * in one: the parameters in force, the current epoch, the current committee and exact committee
+  * proposal map, and the transaction they are for (the failures name it).
   */
 final case class CertEnv(
     id: Bytes,
     pp: ProtocolParams,
     epoch: BigInt,
     committee: Option[Committee],
-    proposals: Proposals
+    committeeProposals: Map[GovActionId, GovActionState]
 )
 
 /** `CertsEnv` (`Certs.hs:87`): the transaction too, for the withdrawals the rule drains. */
@@ -297,9 +298,18 @@ object Deleg extends Sts[CertEnv, ConwayCertState, DelegCert, LedgerFailure]:
       ask: Ask[F, Globals],
       st: Stateful[F, ConwayCertState],
       raise: Raise[F, LedgerFailure]
+  ): F[Unit] = transitionWithPools(env.id, env.pp, CertLens.pools.get(_), cert)
+
+  private def transitionWithPools[F[_]: Monad](
+      id: Bytes,
+      pp: ProtocolParams,
+      pools: ConwayCertState => SortedMap[KeyHash[StakePool], StakePoolState],
+      cert: DelegCert
+  )(using
+      ask: Ask[F, Globals],
+      st: Stateful[F, ConwayCertState],
+      raise: Raise[F, LedgerFailure]
   ): F[Unit] =
-    val pp = env.pp
-    val id = env.id
     val v10 = pp.protocolMajor > 10
     def credential(c: Credential[Staking]): node.Credential = Convert.back(c)
     // `checkDepositAgainstPParams` (`Deleg.hs:199`)
@@ -323,7 +333,7 @@ object Deleg extends Sts[CertEnv, ConwayCertState, DelegCert, LedgerFailure]:
     def delegateeRegistered(s: ConwayCertState, d: Delegatee): F[Unit] =
       def pool(p: KeyHash[StakePool]) =
         Refuse.unless[F](
-          CertLens.pools.get(s).contains(p),
+          pools(s).contains(p),
           id,
           PredicateFailure.deleg(DelegFailure.DelegateeStakePoolNotRegistered(p.bytes))
         )
@@ -400,6 +410,29 @@ object Deleg extends Sts[CertEnv, ConwayCertState, DelegCert, LedgerFailure]:
           yield ()
     }
 
+  /** The upstream DELEG judgment carries the complete pool-state map in its environment
+    * (`Conway/Rules/Deleg.hs:85-103`). Conformance uses that exact map while production DELEG reads
+    * the same map from the certificate state.
+    */
+  private[scarab] final case class RuleEnv(
+      caseId: Bytes,
+      pp: ProtocolParams,
+      pools: SortedMap[KeyHash[StakePool], StakePoolState]
+  )
+
+  private[scarab] object Adapter extends Sts[RuleEnv, ConwayCertState, DelegCert, LedgerFailure]:
+    def transition[F[_]: Monad](env: RuleEnv, cert: DelegCert)(using
+        ask: Ask[F, Globals],
+        st: Stateful[F, ConwayCertState],
+        raise: Raise[F, LedgerFailure]
+    ): F[Unit] =
+      transitionWithPools(
+        env.caseId,
+        env.pp,
+        _ => env.pools,
+        cert
+      )
+
 /** POOL (`Shelley/Rules/Pool.hs:209`, `poolTransition`, the rule of every era): registration and
   * retirement of stake pools, with the VRF key hashes kept from protocol version 11
   * (`hardforkConwayDisallowDuplicatedVRFKeys`, `Pool.hs:265-305`). The map of key hashes is
@@ -411,9 +444,18 @@ object Pool extends Sts[CertEnv, PState, PoolCert, LedgerFailure]:
       ask: Ask[F, Globals],
       st: Stateful[F, PState],
       raise: Raise[F, LedgerFailure]
+  ): F[Unit] = transitionAt(env.id, env.pp, env.epoch, cert)
+
+  private def transitionAt[F[_]: Monad](
+      id: Bytes,
+      pp: ProtocolParams,
+      currentEpoch: BigInt,
+      cert: PoolCert
+  )(using
+      ask: Ask[F, Globals],
+      st: Stateful[F, PState],
+      raise: Raise[F, LedgerFailure]
   ): F[Unit] =
-    val pp = env.pp
-    val id = env.id
     val unique = pp.protocolMajor >= 11
     cert match
       case PoolCert.RegPool(params) =>
@@ -500,13 +542,13 @@ object Pool extends Sts[CertEnv, PState, PoolCert, LedgerFailure]:
             id,
             PredicateFailure.pool(PoolFailure.StakePoolNotRegisteredOnKey(pool.bytes))
           )
-          limit = env.epoch + pp.eMax
+          limit = currentEpoch + pp.eMax
           _ <- Refuse.unless[F](
-            env.epoch < epoch && epoch <= limit,
+            currentEpoch < epoch && epoch <= limit,
             id,
             PredicateFailure.pool(
               PoolFailure.StakePoolRetirementWrongEpoch(
-                Mismatch(epoch, env.epoch),
+                Mismatch(epoch, currentEpoch),
                 Mismatch(epoch, limit)
               )
             )
@@ -514,6 +556,16 @@ object Pool extends Sts[CertEnv, PState, PoolCert, LedgerFailure]:
           e <- Refuse.vocab[F, EpochNo](EpochNo.fromBigInt(epoch))
           _ <- st.set(s.copy(retiring = s.retiring.updated(pool, e)))
         yield ()
+
+  /** Conway's upstream POOL environment is `[epoch, PParams]` (`Shelley/Rules/Pool.hs:74-81`). */
+  private[scarab] final case class RuleEnv(caseId: Bytes, pp: ProtocolParams, epoch: BigInt)
+
+  private[scarab] object Adapter extends Sts[RuleEnv, PState, PoolCert, LedgerFailure]:
+    def transition[F[_]: Monad](env: RuleEnv, cert: PoolCert)(using
+        ask: Ask[F, Globals],
+        st: Stateful[F, PState],
+        raise: Raise[F, LedgerFailure]
+    ): F[Unit] = transitionAt(env.caseId, env.pp, env.epoch, cert)
 
 /** GOVCERT (`Conway/Rules/GovCert.hs:170`, `conwayGovCertTransition`): the DRep and the committee
   * certificates.
@@ -536,99 +588,209 @@ object GovCert extends Sts[CertEnv, ConwayCertState, ConwayGovCert, LedgerFailur
     val pp = env.pp
     val id = env.id
     def govCert(f: GovCertFailure): PredicateFailure = PredicateFailure.govCert(f)
-    // `checkAndOverwriteCommitteeMemberState` (`GovCert.hs:190`)
     def committeeMember(
         s: ConwayCertState,
         cold: Credential[ColdCommittee],
         state: CommitteeAuthorization
-    ): F[ConwayCertState] =
-      val back = Convert.back(cold)
-      val resigned = CertLens.committee.get(s).get(cold).exists {
-        case CommitteeAuthorization.CommitteeMemberResigned(_) => true
-        case CommitteeAuthorization.CommitteeHotCredential(_)  => false
-      }
-      val current = env.committee.exists(_.members.contains(back))
-      val future = env.proposals.actions.exists { g =>
-        g.action match
-          case GovAction.UpdateCommittee(_, _, added, _) => added.contains(back)
-          case _                                         => false
-      }
+    ) =
+      committeeTransition(
+        CommitteeRuleEnv(id, env.committee, env.committeeProposals.toVector),
+        s,
+        cold,
+        state
+      )
+    cert match
+      case ConwayGovCert.RegDRep(c, deposit, anchor) =>
+        drepRegistration[F](DRepRuleEnv(id, pp, env.epoch), c, deposit, anchor)
+      case ConwayGovCert.UpdateDRep(c, anchor) =>
+        drepUpdate[F](DRepRuleEnv(id, pp, env.epoch), c, anchor)
+      case other =>
+        st.get.flatMap { s =>
+          val dreps = CertLens.dreps.get(s)
+          other match
+            case ConwayGovCert.RegDRep(c, deposit, anchor) =>
+              drepRegistration[F](DRepRuleEnv(id, pp, env.epoch), c, deposit, anchor)
+            case ConwayGovCert.UpdateDRep(c, anchor) =>
+              drepUpdate[F](DRepRuleEnv(id, pp, env.epoch), c, anchor)
+            case ConwayGovCert.UnRegDRep(c, refund) =>
+              dreps.get(c) match
+                case None =>
+                  Refuse[F, Unit](id, govCert(GovCertFailure.DRepNotRegistered(Convert.back(c))))
+                case Some(d) =>
+                  for
+                    _ <- Refuse.unless[F](
+                      refund == d.deposit.toBigInt,
+                      id,
+                      govCert(
+                        GovCertFailure.DRepIncorrectRefund(Mismatch(refund, d.deposit.toBigInt))
+                      )
+                    )
+                    // the reverse index decides who loses their delegation
+                    cleared = d.delegators.foldLeft(CertLens.dreps.modify(_ - c)(s))(
+                      (cs, delegator) =>
+                        CertLens.accounts.modify(
+                          _.updatedWith(delegator)(_.map(ConwayAccountState.drep.replace(None)))
+                        )(cs)
+                    )
+                    _ <- st.set(cleared)
+                  yield ()
+            case ConwayGovCert.AuthCommitteeHotKey(cold, hot) =>
+              committeeMember(s, cold, CommitteeAuthorization.CommitteeHotCredential(hot))
+                .flatMap(st.set)
+            case ConwayGovCert.ResignCommitteeColdKey(cold, anchor) =>
+              committeeMember(s, cold, CommitteeAuthorization.CommitteeMemberResigned(anchor))
+                .flatMap(st.set)
+        }
+
+  /** The state step shared by the ordinary GOVCERT rule and the conformance adapter. Its
+    * environment contains exactly the committee and committee-proposal map fields inspected by
+    * `checkAndOverwriteCommitteeMemberState` (`Conway/Rules/GovCert.hs:190`).
+    */
+  private[scarab] final case class CommitteeRuleEnv(
+      caseId: Bytes,
+      committee: Option[Committee],
+      committeeProposals: Vector[(xyz.kd5ujc.scarab.ledger.GovActionId, GovActionState)]
+  )
+
+  private[scarab] enum CommitteeRuleSignal:
+    case Authorize(cold: Credential[ColdCommittee], hot: Credential[HotCommittee])
+    case Resign(cold: Credential[ColdCommittee], anchor: Option[Anchor])
+
+  private[scarab] object CommitteeAdapter
+      extends Sts[CommitteeRuleEnv, ConwayCertState, CommitteeRuleSignal, LedgerFailure]:
+    def transition[F[_]: Monad](env: CommitteeRuleEnv, signal: CommitteeRuleSignal)(using
+        ask: Ask[F, Globals],
+        st: Stateful[F, ConwayCertState],
+        raise: Raise[F, LedgerFailure]
+    ): F[Unit] =
+      val s = st.get
+      signal match
+        case CommitteeRuleSignal.Authorize(cold, hot) =>
+          s.flatMap(
+            committeeTransition(env, _, cold, CommitteeAuthorization.CommitteeHotCredential(hot))
+          ).flatMap(st.set)
+        case CommitteeRuleSignal.Resign(cold, anchor) =>
+          s.flatMap(
+            committeeTransition(
+              env,
+              _,
+              cold,
+              CommitteeAuthorization.CommitteeMemberResigned(anchor)
+            )
+          ).flatMap(st.set)
+
+  private def committeeTransition[F[_]: Monad](
+      env: CommitteeRuleEnv,
+      s: ConwayCertState,
+      cold: Credential[ColdCommittee],
+      state: CommitteeAuthorization
+  )(using Raise[F, LedgerFailure]): F[ConwayCertState] =
+    val back = Convert.back(cold)
+    val resigned = CertLens.committee.get(s).get(cold).exists {
+      case CommitteeAuthorization.CommitteeMemberResigned(_) => true
+      case CommitteeAuthorization.CommitteeHotCredential(_)  => false
+    }
+    val current = env.committee.exists(_.members.contains(back))
+    val future = env.committeeProposals.exists { case (_, proposal) =>
+      proposal.action match
+        case GovAction.UpdateCommittee(_, _, added, _) => added.contains(back)
+        case _                                         => false
+    }
+    for
+      _ <- Refuse.unless[F](
+        !resigned,
+        env.caseId,
+        PredicateFailure.govCert(GovCertFailure.CommitteeHasPreviouslyResigned(back))
+      )
+      _ <- Refuse.unless[F](
+        current || future,
+        env.caseId,
+        PredicateFailure.govCert(GovCertFailure.CommitteeIsUnknown(back))
+      )
+    yield CertLens.committee.modify(_.updated(cold, state))(s)
+
+  private def drepRegistration[F[_]: Monad](
+      env: DRepRuleEnv,
+      c: Credential[DRepRole],
+      deposit: BigInt,
+      anchor: Option[Anchor]
+  )(using
+      ask: Ask[F, Globals],
+      st: Stateful[F, ConwayCertState],
+      raise: Raise[F, LedgerFailure]
+  ): F[Unit] =
+    val id = env.caseId
+    val pp = env.pp
+    st.get.flatMap { s =>
       for
         _ <- Refuse.unless[F](
-          !resigned,
+          !CertLens.dreps.get(s).contains(c),
           id,
-          govCert(GovCertFailure.CommitteeHasPreviouslyResigned(back))
+          PredicateFailure.govCert(GovCertFailure.DRepAlreadyRegistered(Convert.back(c)))
         )
         _ <- Refuse.unless[F](
-          current || future,
+          deposit == pp.drepDeposit,
           id,
-          govCert(GovCertFailure.CommitteeIsUnknown(back))
+          PredicateFailure.govCert(
+            GovCertFailure.DRepIncorrectDeposit(Mismatch(deposit, pp.drepDeposit))
+          )
         )
-      yield CertLens.committee.modify(_.updated(cold, state))(s)
-    st.get.flatMap { s =>
-      val dreps = CertLens.dreps.get(s)
-      val dormant = ConwayCertState.vState.andThen(VState.numDormantEpochs).get(s)
-      cert match
-        case ConwayGovCert.RegDRep(c, deposit, anchor) =>
-          for
-            _ <- Refuse.unless[F](
-              !dreps.contains(c),
-              id,
-              govCert(GovCertFailure.DRepAlreadyRegistered(Convert.back(c)))
-            )
-            _ <- Refuse.unless[F](
-              deposit == pp.drepDeposit,
-              id,
-              govCert(GovCertFailure.DRepIncorrectDeposit(Mismatch(deposit, pp.drepDeposit)))
-            )
-            // the bootstrap phase does not discount the dormant epochs (`computeDRepExpiryVersioned`)
-            e <- Refuse.vocab[F, EpochNo](expiry(pp, env.epoch, dormant, versioned = true))
-            held <- Refuse.vocab[F, CompactCoin](CompactCoin.fromBigInt(pp.drepDeposit))
-            _ <- st.set(
-              CertLens.dreps.modify(
-                _.updated(c, DRepState(e, anchor, held, Sorted.emptySet[Credential[Staking]]))
-              )(s)
-            )
-          yield ()
-        case ConwayGovCert.UnRegDRep(c, refund) =>
-          dreps.get(c) match
-            case None =>
-              Refuse[F, Unit](id, govCert(GovCertFailure.DRepNotRegistered(Convert.back(c))))
-            case Some(d) =>
-              for
-                _ <- Refuse.unless[F](
-                  refund == d.deposit.toBigInt,
-                  id,
-                  govCert(
-                    GovCertFailure.DRepIncorrectRefund(Mismatch(refund, d.deposit.toBigInt))
-                  )
-                )
-                // the reverse index decides who loses their delegation
-                cleared = d.delegators.foldLeft(CertLens.dreps.modify(_ - c)(s))((cs, delegator) =>
-                  CertLens.accounts.modify(
-                    _.updatedWith(delegator)(_.map(ConwayAccountState.drep.replace(None)))
-                  )(cs)
-                )
-                _ <- st.set(cleared)
-              yield ()
-        case ConwayGovCert.UpdateDRep(c, anchor) =>
-          dreps.get(c) match
-            case None =>
-              Refuse[F, Unit](id, govCert(GovCertFailure.DRepNotRegistered(Convert.back(c))))
-            case Some(d) =>
-              Refuse.vocab[F, EpochNo](expiry(pp, env.epoch, dormant, versioned = false)).flatMap {
-                e =>
-                  st.set(
-                    CertLens.dreps.modify(_.updated(c, d.copy(expiry = e, anchor = anchor)))(s)
-                  )
-              }
-        case ConwayGovCert.AuthCommitteeHotKey(cold, hot) =>
-          committeeMember(s, cold, CommitteeAuthorization.CommitteeHotCredential(hot))
-            .flatMap(st.set)
-        case ConwayGovCert.ResignCommitteeColdKey(cold, anchor) =>
-          committeeMember(s, cold, CommitteeAuthorization.CommitteeMemberResigned(anchor))
-            .flatMap(st.set)
+        dormant = ConwayCertState.vState.andThen(VState.numDormantEpochs).get(s)
+        e <- Refuse.vocab[F, EpochNo](expiry(pp, env.epoch, dormant, versioned = true))
+        held <- Refuse.vocab[F, CompactCoin](CompactCoin.fromBigInt(pp.drepDeposit))
+        _ <- st.set(
+          CertLens.dreps.modify(
+            _.updated(c, DRepState(e, anchor, held, Sorted.emptySet[Credential[Staking]]))
+          )(s)
+        )
+      yield ()
     }
+
+  private def drepUpdate[F[_]: Monad](
+      env: DRepRuleEnv,
+      c: Credential[DRepRole],
+      anchor: Option[Anchor]
+  )(using
+      ask: Ask[F, Globals],
+      st: Stateful[F, ConwayCertState],
+      raise: Raise[F, LedgerFailure]
+  ): F[Unit] =
+    val id = env.caseId
+    val pp = env.pp
+    st.get.flatMap { s =>
+      CertLens.dreps.get(s).get(c) match
+        case None =>
+          Refuse[F, Unit](
+            id,
+            PredicateFailure.govCert(GovCertFailure.DRepNotRegistered(Convert.back(c)))
+          )
+        case Some(d) =>
+          val dormant = ConwayCertState.vState.andThen(VState.numDormantEpochs).get(s)
+          Refuse.vocab[F, EpochNo](expiry(pp, env.epoch, dormant, versioned = false)).flatMap { e =>
+            st.set(CertLens.dreps.modify(_.updated(c, d.copy(expiry = e, anchor = anchor)))(s))
+          }
+    }
+
+  /** The only fields an upstream GOVCERT DRepReg/Update judgment reads. Its full context and
+    * untouched environment fields remain in the exported trace bytes and are checked by the adapter
+    * manifest; this boundary avoids fabricating unused committee/proposal values.
+    */
+  private[scarab] final case class DRepRuleEnv(caseId: Bytes, pp: ProtocolParams, epoch: BigInt)
+
+  private[scarab] enum DRepRuleSignal:
+    case Register(credential: Credential[DRepRole], deposit: BigInt, anchor: Option[Anchor])
+    case Update(credential: Credential[DRepRole], anchor: Option[Anchor])
+
+  private[scarab] object DRepAdapter
+      extends Sts[DRepRuleEnv, ConwayCertState, DRepRuleSignal, LedgerFailure]:
+    def transition[F[_]: Monad](env: DRepRuleEnv, signal: DRepRuleSignal)(using
+        ask: Ask[F, Globals],
+        st: Stateful[F, ConwayCertState],
+        raise: Raise[F, LedgerFailure]
+    ): F[Unit] = signal match
+      case DRepRuleSignal.Register(c, deposit, anchor) =>
+        drepRegistration[F](env, c, deposit, anchor)
+      case DRepRuleSignal.Update(c, anchor) => drepUpdate[F](env, c, anchor)
 
 /** CERT (`Conway/Rules/Cert.hs:192`, `certTransition`): one certificate goes to the rule of its
   * family; POOL sees the pool state only (`Embed`'s lens).

@@ -60,27 +60,28 @@ object PeerSharingServer:
       settings: Settings = Settings()
   )(using Raise[F, NetworkError]): F[Unit] =
     val id = Protocols.PeerSharing
-    def illegal[A](detail: NetworkError.Violation): F[A] =
+    def illegal[A](detail: NetworkError.Violation)(using Raise[F, NetworkError]): F[A] =
       NetworkError.IllegalTransition(id, detail).raise[F, A]
-    val step: F[Boolean] =
-      channel
-        .recv(settings.limits.maxMessageBytes)(
-          PeerSharing.decoder(PeerSharing.State.Idle, PeerSharing.Role.Client, settings.limits)
-        )
-        .flatMap {
-          case PeerSharing.Message.ShareRequest(amount) =>
-            source(amount).flatMap { peers =>
-              PeerSharing
-                .encode(
-                  PeerSharing.State.Busy,
-                  PeerSharing.Role.Server,
-                  fitting(peers, amount, settings),
-                  settings.limits
-                )
-                .fold(e => illegal[Unit](ProtocolError.PeerSharing(e)), channel.send)
-                .as(true)
-            }
-          case PeerSharing.Message.Done => Temporal[F].pure(false)
-          case other => illegal[Boolean](RuntimeViolation.PeerSharingUnexpected(other))
-        }
-    step.iterateWhile(identity).void
+    val wire = new PeerSharingRuntime.ServerWire[F, Address]:
+      def command(using Raise[F, NetworkError]): F[PeerSharingRuntime.Command] =
+        channel
+          .recv(settings.limits.maxMessageBytes)(
+            PeerSharing.decoder(PeerSharing.State.Idle, PeerSharing.Role.Client, settings.limits)
+          )
+          .flatMap {
+            case PeerSharing.Message.ShareRequest(amount) =>
+              Temporal[F].pure(PeerSharingRuntime.Command.Request(amount))
+            case PeerSharing.Message.Done => Temporal[F].pure(PeerSharingRuntime.Command.Done)
+            case other =>
+              illegal[PeerSharingRuntime.Command](RuntimeViolation.PeerSharingUnexpected(other))
+          }
+      def peers(amount: Amount, values: Vector[Address])(using Raise[F, NetworkError]): F[Unit] =
+        PeerSharing
+          .encode(
+            PeerSharing.State.Busy,
+            PeerSharing.Role.Server,
+            fitting(values, amount, settings),
+            settings.limits
+          )
+          .fold(e => illegal[Unit](ProtocolError.PeerSharing(e)), channel.send)
+    PeerSharingRuntime.server(wire, source)

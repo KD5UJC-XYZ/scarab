@@ -85,7 +85,7 @@ object RuleSet:
           mirror.to[x](at, s).run(env).fold(m => broken(s"to the mirror: ${m.show}"), _.value)
         Sts(Pool)(
           globals,
-          CertEnv(tx.body.id, s.params, ctx.epoch, None, Proposals.empty),
+          CertEnv(tx.body.id, s.params, ctx.epoch, None, Map.empty),
           xyz.kd5ujc.scarab.ledger.state.LedgerState.pState[x].get(image.nes.es.ls),
           PoolCert.RegPool(cert.params)
         ).void

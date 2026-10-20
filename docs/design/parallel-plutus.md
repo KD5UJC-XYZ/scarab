@@ -65,7 +65,8 @@ Pinned ledger source: `f649f9751074d2ab3de033fc3912f29c9862c1f5`,
 [Alonzo/Plutus/Evaluate.hs, lines 134–177](https://github.com/IntersectMBO/cardano-ledger/blob/f649f9751074d2ab3de033fc3912f29c9862c1f5/eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Evaluate.hs#L134)
 for request collection, and lines 187–207 for reference evaluation. The unchanged-reference
 aggregation oracle now pins all pass/fail patterns in three scripts for each language, and serial/prepared paths retain every result. Exact reconstruction payloads match; native
-diagnostic prose remains the presentation gap in [#195](https://github.com/KD5UJC-XYZ/scarab/issues/195).
+diagnostic prose remains the optional presentation follow-up in
+[#208](https://github.com/KD5UJC-XYZ/scarab/issues/208); result aggregation #195 is complete.
 The graph follows
 [CIP-31](https://cips.cardano.org/cip/CIP-0031) reference reads and
 [CIP-40](https://cips.cardano.org/cip/CIP-0040) collateral returns. Parallel evaluation is a local
@@ -97,6 +98,43 @@ The capture's integrity, baseline binding, sample limits and measured results ar
 [performance.md](../performance.md). These data establish serial/parallel equivalence on that
 preprod window, not the complete historical Preview 242-failure/K1 acceptance of #21.
 
+For a finished epoch comparison, use `scripts/oracle_compare.py diff --require-complete`;
+`--expected-epochs 1451` also pins the historical Preview reference coverage. These acceptance
+options reject empty references, duplicate epochs, missing points and wrong block hashes. The
+default mode continues to report points still waiting for a running follower.
+
+### Preview replay using the same runner
+
+`PlutusReplaySuite` and `PreviewReplaySuite` both delegate to `RecordedReplay`; there is one
+block-validation loop. The preprod entry point retains its pinned baseline, existing environment
+variables and rotated measurement schedule. Preview supplies explicit native V5 snapshots and
+separate UTxO checkpoints through the [failure-corpus exporter](../../fixtures/preview/phase2-failures/README.md).
+
+Set `SCARAB_PREVIEW_WINDOWS` to the exported `windows.jsonl`,
+`SCARAB_PREVIEW_GENESIS` to the absolute Preview genesis directory, and
+`SCARAB_PREVIEW_WORKERS=4`, then run `scripts/sbtw 'node/testOnly *PreviewReplaySuite'` in Docker.
+For a forked test JVM, set its heap explicitly (10 GiB for the largest captured states) and use
+absolute input paths; sbt normally starts it in the node module directory. Mount capture records,
+snapshots, checkpoints, genesis files and optional reference data read-only, with fresh writable
+output paths supplied in the batch manifest.
+
+The default `Comparison` schedule validates each block once serially and once at every requested
+worker bound. It checks decoded block metadata, raw-byte hashes, parent links and block-number
+continuity from the authenticated snapshot anchor. Complete mirror states and ordered typed
+requests/results, used and declared budgets, native diagnostics and logs must agree. Unavailability
+or collection failures refuse acceptance. Each window must reproduce its exact ordered invalid
+transaction identities. Windows intentionally overlap; historical coverage is the unique union of
+the pinned 242 identities, rather than the sum of window counters. `RotatedMeasurements` with
+`SCARAB_PREVIEW_ROUNDS=3` adds warmed, rotated timing controls for a selected window; ordinary
+comparison timings are not treated as that benchmark.
+
+With `SCARAB_PREVIEW_REFERENCE` naming the authentic reference directory, reached reference points
+also produce the follower's full-UTxO K1 projections. `K1OfflineMain` reuses the production
+`ChainStorage.open` stored-block replay for the contiguous genesis prefix; it constructs no follower
+or peer. The [staging recipe](../../fixtures/preview/phase2-failures/README.md) gives it private
+indexes, format metadata and a writable tail, with older bodies linked into a read-only mount.
+These are offline acceptance entry points, not additional transaction-application implementations.
+
 ## Accepted feature gates
 
 Level 3, source `7ba8c7f3` (2026-10-19 UTC): Docker `check` passed 4,819 tests with 16 skips,
@@ -118,4 +156,53 @@ inventory SHA-256 `322085ccb0b824c5a778b95f85a75bdb55546881c662c2622da6766acf66f
 Area scenarios ran sequentially because another session occupied the other shared devnet slot. The
 pre-hardening era run was superseded before completion; the accepted run above and final recorded
 comparison use the final source. Owned clusters and build containers are removed after the gates.
-The broader Preview acceptance and nightly reconciliation remain #21.
+The completed Preview reconciliation and owner-directed closeout for #21 are recorded in the
+following section.
+
+### Preview reconciliation gates
+
+Level 4 evidence reconciliation for #21, 2026-10-19 UTC: source `e3dbe2da`, based on
+`edf8a887`, passes Docker `check` (5,153 tests, 17 optional-data skips, all 14 modules, default fuzz and
+scalafix) and 241 Python tests. Source `3c27c84c` passes private `e2e` with 1,663 block applications
+and all 66 ledger comparisons equal through Conway epoch 17, with zero validation/fatal errors,
+reconnects or starvation warnings. The explicitly required `soak --seconds 480` passes 24/24
+comparisons, 258 block applications and both metrics endpoints' 230-series checks, with zero
+validation errors or reconnects. Both private clusters and the build container were removed.
+The [Preview measurement](../performance.md#33-preview-acceptance-evidence-reconciliation-21)
+records its source/runtime binding and limits separately from the historical runs.
+
+The preserved preprod `PlutusReplaySuite` entry point also passes on frozen source `2ffad2d8`:
+5,683 original blocks, 85,245 timing rows (17,049 for serial and each 1/2/4/8-worker mode), with
+complete current-rule state agreement. The original capture and native V5 snapshot match the
+PR #196 hashes; all 16,529 runtime files/jars remain unchanged. Its current script counter is
+104,392, versus 104,388 in the historical pre-aggregation run. This establishes entry-point
+compatibility and current serial/parallel agreement, not historical counter identity or another
+performance result. The independently rehashed ten-artifact validation manifest has SHA-256
+`f89e9eeaad84c9530773746fab063de7dfa2db6e23db39d37e90c792e9882f9d`.
+
+The complete 68-window Preview comparison passes 428,517 original blocks in both serial and
+four-worker modes (857,034 full validations). Ordered invalid transaction lists agree with the
+original bytes: 319 overlapping observations produce exactly the 242 pinned identities. Complete
+states and ordered typed requests/results, budgets, diagnostics and logs agree. All 68 selected
+Haskell boundary projections match with strict coverage, with zero unavailable/collection
+failures. The accepted execution manifest and scope are recorded in
+[performance section 33](../performance.md#33-preview-acceptance-evidence-reconciliation-21).
+The continuous genesis-to-K1-endpoint run also passes: 4,758,521 original blocks through slot
+125,366,428/hash `956541c0937e9cdc279514c10fec9706865bb6004ddcfb487bf53c7bbdc97ad1`, all
+1,451 authentic Haskell projections equal under the existing projection contract, and the exact
+ordered 242 invalid transaction identities. It evaluated 11,251,372 scripts; 244 scripts failed,
+with zero unavailable or collection failures. Six responsiveness warnings are retained, rather
+than inheriting the private e2e's zero-warning claim. The 6 h 12 m 05.190 s replay interval includes
+projection exports and persistence; performance section 33 records the separate timer scopes.
+
+The frozen runtime remains bound to production base `235cd12a`, tool `dc00416b`; subsequent
+integration builds are recorded separately. The accepted K1 manifest has SHA-256
+`489094c44e9e97793aba1371c65eb3643bb18c7bb8d3416d7ce5391fb5b9dcde`; independent integration
+verification rehashed all 1,467 artifacts and checked the endpoint, strict reference coverage and
+ordered invalid identities. Original archived inputs remain unchanged and the owned container is
+removed. D2 acceptance merged in [PR #209](https://github.com/KD5UJC-XYZ/scarab/pull/209),
+commit `2f1d18467527cd9ca0704a3ffcbc9d016a32fb1d`. The owner explicitly directed #21's closeout
+and took responsibility for following up if [post-merge CI](https://github.com/KD5UJC-XYZ/scarab/actions/runs/39345316583)
+fails. This records an owner-directed closeout without claiming that pending CI passed; the usual
+[definition of done](../process.md#definition-of-done) is unchanged. Nightly CI remains the
+continuing safety net, not an additional new run required before closing this item.

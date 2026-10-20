@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Security
+
+# Static security checks from the independent audit (AUD2-27/#219, AUD2-33/#234):
+# - semgrep with the repo's crypto rules, failing on any WARNING-level finding;
+# - the crypto guard: the variable-time Java math (Draft03Math, Ed25519Point) may only be
+#   referenced from inside xyz.kd5ujc.scarab.crypto.vrf, in the regular source tree, by files
+#   that declare that package (public inputs only). This is a containment rule, not a data-flow
+#   proof: that secret scalars never reach the classes also rests on the #219 review and the
+#   timing probe.
+# CVE coverage of the dependency graph comes from Dependabot alerts via the
+# dependency-graph job in ci.yml.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  semgrep:
+    name: semgrep (crypto rules, WARNING-gated)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install semgrep
+        run: pip install semgrep==1.181.0
+      - name: Scan with the crypto rules
+        run: |
+          semgrep scan --no-git-ignore \
+            --config .semgrep/scarab-crypto.yaml \
+            --exclude target --exclude fixtures \
+            --severity WARNING --error
+
+  crypto-guard:
+    name: crypto guard (variable-time math stays in the vrf package)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run the guard
+        run: python3 scripts/check_crypto_guard.py

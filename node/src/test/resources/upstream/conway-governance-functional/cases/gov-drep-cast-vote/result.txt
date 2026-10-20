@@ -1,0 +1,4 @@
+implementation-accepted
+agda-accepted
+outputs-equal
+ledger-proposals-equal

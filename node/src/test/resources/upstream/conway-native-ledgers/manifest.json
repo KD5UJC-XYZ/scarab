@@ -1,0 +1,181 @@
+{
+  "schema": "scarab-upstream-native-ledgers-v1",
+  "sourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "formalCommit": "b3a4fd47a1144ff1fb994f89b1045e78159e07ae",
+  "generatorCommit": "966f65f3c28cb22fc45220dbd1408baea93b53d8",
+  "runnerExitCode": 0,
+  "seed": 498301,
+  "upstreamProperty": "Conformance/Conway/Imp/EPOCH/Proposals/Expired proposal deposit refunded",
+  "arguments": [
+    "--match",
+    "Conformance/Conway/Imp/EPOCH/Proposals/Expired proposal deposit refunded",
+    "--seed=498301",
+    "--qc-max-success=1",
+    "--qc-max-size=30"
+  ],
+  "nativeRule": "Cardano.Ledger.Shelley.Rules.Ledgers.ledgersTransition at the source pin, used by Conway LEDGERS",
+  "derivation": "New native LEDGERS executions, reusing the original signed transactions and states of the lawful integration trace; ordered-three and dependent-two are checked natively against the original terminal native state. Reversed and duplicate-spend signals deliberately violate dependencies. No formal LEDGERS evaluation is invoked.",
+  "originalManifestSha256": "4d8035fb3c46e7a1dfb9bc96289a0337897312ccf508785f9444ebce1bfd3bd4",
+  "observerPatches": {
+    "scripts/oracle/ledger-govcert/exporter.patch": "7130e6e9c1b055f27a2f1a60984af5d58446e9441f088fea724b0dbcba165e31",
+    "scripts/oracle/ledger-govcert/multi-ledgers.patch": "2858eb81b6398f260fb69976a845d3bc1e41c619c7420aa65d43a7f4bd52d3ed"
+  },
+  "dependencyPlanSha256": "d5268a535a9e6c5a4158ddac6f9a1c310d05882c54f2c85b460de83e2e3453d6",
+  "nativeObservationLogSha256": "4d24426548069d5c8f525ff3da3520b7c81d8296e6409bfe0bf10962ebd69a3a",
+  "cases": [
+    {
+      "id": "dependent-two",
+      "nativeOutcome": "accepted",
+      "files": {
+        "environment.cbor": {
+          "bytes": 2250,
+          "sha256": "c3eaa24f5e40a3bbd4714c761805e5ceb77e9a940260bc775049415cd1323c6a"
+        },
+        "implementation-state.cbor": {
+          "bytes": 8795,
+          "sha256": "4bfd58ee83713a0b438bc78c5fd6fba895251c3646e91a756aec1a2adfbf931b"
+        },
+        "result.txt": {
+          "bytes": 43,
+          "sha256": "89748bb4b61b4e874536844e7d77d3f7228b19ef2da64abc829044b345cca207"
+        },
+        "signal.cbor": {
+          "bytes": 2971,
+          "sha256": "60b5edd902562d6d3f2bfe36cb9f1a2252e14fbe8c13d30f4ac8339b8652f46a"
+        },
+        "state.cbor": {
+          "bytes": 8403,
+          "sha256": "fa0439e45a56e41f51310894d65ca60182113daef1050f119588fbfccf1efa23"
+        }
+      }
+    },
+    {
+      "id": "double-spend",
+      "nativeOutcome": "rejected",
+      "files": {
+        "environment.cbor": {
+          "bytes": 2250,
+          "sha256": "c3eaa24f5e40a3bbd4714c761805e5ceb77e9a940260bc775049415cd1323c6a"
+        },
+        "implementation-failure.cbor": {
+          "bytes": 63,
+          "sha256": "764b26cbdd9fd2bfc850d0533297ce111d2b593e1fc9ba6e8ba350f3bd4cc272"
+        },
+        "implementation-failure.txt": {
+          "bytes": 437,
+          "sha256": "b11451e69c89697294a128b67649d41bdccb27a6c9c16c3c5127e763b3413d77"
+        },
+        "result.txt": {
+          "bytes": 43,
+          "sha256": "dc5e62a0134bdb8118600caa138abff94e5dce2b17e48432c8bc566e0c888cad"
+        },
+        "signal.cbor": {
+          "bytes": 533,
+          "sha256": "a366ef308e9792bb9abf333ad293034ade3ade0108f56f22ce414834c89c2099"
+        },
+        "state.cbor": {
+          "bytes": 8403,
+          "sha256": "fa0439e45a56e41f51310894d65ca60182113daef1050f119588fbfccf1efa23"
+        }
+      }
+    },
+    {
+      "id": "ordered-three",
+      "nativeOutcome": "accepted",
+      "files": {
+        "environment.cbor": {
+          "bytes": 2250,
+          "sha256": "c3eaa24f5e40a3bbd4714c761805e5ceb77e9a940260bc775049415cd1323c6a"
+        },
+        "implementation-state.cbor": {
+          "bytes": 8795,
+          "sha256": "4bfd58ee83713a0b438bc78c5fd6fba895251c3646e91a756aec1a2adfbf931b"
+        },
+        "result.txt": {
+          "bytes": 43,
+          "sha256": "89748bb4b61b4e874536844e7d77d3f7228b19ef2da64abc829044b345cca207"
+        },
+        "signal.cbor": {
+          "bytes": 3214,
+          "sha256": "ad0275edadc929438a5eec82d8cdca6bd58a9bc566b9bf3cca1002144edbb8bf"
+        },
+        "state.cbor": {
+          "bytes": 8351,
+          "sha256": "e94eacf0fdf13343ce332f6469c991fa3bd78d2635230fae53df8474e956a323"
+        }
+      }
+    },
+    {
+      "id": "reversed-dependency",
+      "nativeOutcome": "rejected",
+      "files": {
+        "environment.cbor": {
+          "bytes": 2250,
+          "sha256": "c3eaa24f5e40a3bbd4714c761805e5ceb77e9a940260bc775049415cd1323c6a"
+        },
+        "implementation-failure.cbor": {
+          "bytes": 168,
+          "sha256": "53b116480a44dfb57109073b0093c5f31675eb7698198728379cdf6c62977e6c"
+        },
+        "implementation-failure.txt": {
+          "bytes": 1025,
+          "sha256": "fc134ce7d68e5ba4663beab70bc2a0a5c6f9e4e9636aa16d8925c89639700dcc"
+        },
+        "result.txt": {
+          "bytes": 43,
+          "sha256": "dc5e62a0134bdb8118600caa138abff94e5dce2b17e48432c8bc566e0c888cad"
+        },
+        "signal.cbor": {
+          "bytes": 2971,
+          "sha256": "94359dd7a4b095b0612fb46c0598792970772dae27eea93b90233d078751846d"
+        },
+        "state.cbor": {
+          "bytes": 8403,
+          "sha256": "fa0439e45a56e41f51310894d65ca60182113daef1050f119588fbfccf1efa23"
+        }
+      }
+    }
+  ],
+  "limitations": [
+    "One bounded coherent input trace; no claim of complete LEDGERS coverage, all eras or arbitrary generated blocks.",
+    "The third original transaction has phase-2 scripts; these are unchanged signed bytes.",
+    "Haskell accumulates predicate failures; Scarab fails fast. A Scala rejection is compared with the native accumulated typed failure payloads, without requiring identical failure order or multiplicity.",
+    "The separate formal LEDGERS SIGSEGV remains uninvestigated and is not counted as a formal pass.",
+    "MemPack native output lacks original TxOut raw bytes and Scala UTxO change-history bookkeeping; all output fields and remaining typed state are compared."
+  ],
+  "image": "scarab-pre-conway178-oracle:local",
+  "imageId": "sha256:aa7e2d96e9f15eb8556f9b6a2685b0aaf3a22608ed1299821f7a7edc4c491847",
+  "network": "none",
+  "executableSha256": "8c068d79ffc5ca5e03c95361334eb2c9fbdf5340d122413c6ed83c49e2c8bbfc",
+  "patchedSourcesSha256": {
+    "cabal.project": "13b3941a475b9c2362c6e994a0c160f09f6d22b8a0261a80bf75559a0883e5f1",
+    "libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/ExecSpecRule/Core.hs": "87adcbc1abbba0356875be45c8deadcb039b3e2539b98bbe9c29610994f75180",
+    "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Conway.hs": "6a1de7d558fb9338c63e80e60ffdaa55187a30ded93049ecd03a19914cc3f599"
+  },
+  "buildCommand": [
+    "cabal",
+    "build",
+    "cardano-ledger-conformance:test:tests",
+    "--builddir=/probe/builddir",
+    "--offline",
+    "--jobs=2",
+    "--extra-lib-dirs=/usr/local/lib"
+  ],
+  "runCommand": [
+    "docker",
+    "exec",
+    "-e",
+    "SCARAB_BATCH_INPUT_DIR=/input",
+    "-e",
+    "SCARAB_BATCH_EXPORT_DIR=/probe/cases",
+    "scarab-49-ledgers-native",
+    "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+    "--match",
+    "Conformance/Conway/Imp/EPOCH/Proposals/Expired proposal deposit refunded",
+    "--seed=498301",
+    "--qc-max-success=1",
+    "--qc-max-size=30"
+  ],
+  "buildLogSha256": "7fb5397447483947e024227856753748a1d48abff28eafd404364d9095bcd378",
+  "sourceHead": "f649f9751074d2ab3de033fc3912f29c9862c1f5"
+}

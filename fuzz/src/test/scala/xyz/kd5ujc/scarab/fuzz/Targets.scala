@@ -3,6 +3,8 @@ package xyz.kd5ujc.scarab.fuzz
 
 import cats.syntax.all.*
 import fs2.Chunk
+import java.nio.file.Files
+import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.protocol.*
@@ -235,6 +237,125 @@ object Targets:
     def encode(value: Bytes): Either[ProtocolError, Bytes] = Right(value)
     def decode(bytes: Bytes): Either[ProtocolError, Bytes] = Right(bytes)
 
+  private val opaquePoint: ChainSyncEngine.PointCodec[Bytes] =
+    ChainSyncEngine.pointCodec[Bytes](Right(_), Right(_))
+  private val opaqueTip: ChainSyncEngine.TipCodec[Bytes] =
+    ChainSyncEngine.tipCodec[Bytes](Right(_), Right(_))
+  private val opaqueChainPayload: ChainSyncEngine.PayloadCodec[Bytes] =
+    ChainSyncEngine.payloadCodec[Bytes](Right(_), Right(_))
+  private val opaqueFetchPoint: BlockFetchEngine.PointCodec[Bytes] =
+    BlockFetchEngine.pointCodec[Bytes](Right(_), Right(_))
+  private val opaqueFetchPayload: BlockFetchEngine.PayloadCodec[Bytes] =
+    new BlockFetchEngine.PayloadCodec[Bytes]:
+      def encode(value: Bytes): Either[ProtocolError, Bytes] = Right(value)
+      def decode(item: Bytes): Either[ProtocolError, Bytes] = Right(item)
+
+  private def pinnedLines(path: String): Vector[String] =
+    Files.readAllLines(java.nio.file.Path.of(path)).asScala.toVector
+
+  private def encodedSeed(value: Either[ProtocolError, Bytes]): Vector[Array[Byte]] =
+    value.toOption.toVector.map(_.toArray)
+
+  /** Exact opaque-item messages seeded from the pinned Haskell-generated mock-chain fixtures. */
+  private val chainSyncEngineSeeds: () => Vector[Array[Byte]] = () =>
+    val fixture = "fixtures/reference/ouroboros-network-protocol-codecs"
+    val cases = pinnedLines(s"$fixture/chainsync-behavior-cases.tsv").map(_.split("\\t", -1))
+    val blocks = pinnedLines(s"$fixture/chainsync-behavior-blocks.tsv").map(_.split("\\t", -1))
+    val points = pinnedLines(s"$fixture/chainsync-behavior-points.tsv").map(_.split("\\t", -1))
+    cases.take(12).flatMap { row =>
+      val seed = row(1)
+      val ordinal = row(2)
+      val tip = Bytes.fromHex(row(8)).toOption
+      val genesis = Bytes.fromHex(row(12)).toOption
+      val candidates = points.collect {
+        case p if p(1) == seed && p(2) == ordinal => Bytes.fromHex(p(4)).toOption
+      }.flatten
+      val payloads = blocks.collect {
+        case b if b(1) == seed && b(2) == ordinal && b(3) == "producer" =>
+          Bytes.fromHex(b(6)).toOption
+      }.flatten
+      val seeds = for
+        serverTip <- tip
+        genesisPoint <- genesis
+        candidate <- candidates.headOption
+        firstBlock <- payloads.headOption
+      yield encodedSeed(
+        ChainSyncEngine.encode(
+          ChainSync.State.Idle,
+          ChainSync.Role.Client,
+          ChainSyncEngine.Message.FindIntersect(candidates.take(8)),
+          opaquePoint,
+          opaqueTip,
+          opaqueChainPayload
+        )
+      ) ++
+        encodedSeed(
+          ChainSyncEngine.encode(
+            ChainSync.State.Intersect,
+            ChainSync.Role.Server,
+            ChainSyncEngine.Message.IntersectFound(candidate, serverTip),
+            opaquePoint,
+            opaqueTip,
+            opaqueChainPayload
+          )
+        ) ++
+        encodedSeed(
+          ChainSyncEngine.encode(
+            ChainSync.State.NextCanAwait,
+            ChainSync.Role.Server,
+            ChainSyncEngine.Message.RollBackward(genesisPoint, serverTip),
+            opaquePoint,
+            opaqueTip,
+            opaqueChainPayload
+          )
+        ) ++
+        encodedSeed(
+          ChainSyncEngine.encode(
+            ChainSync.State.NextCanAwait,
+            ChainSync.Role.Server,
+            ChainSyncEngine.Message.RollForward(firstBlock, serverTip),
+            opaquePoint,
+            opaqueTip,
+            opaqueChainPayload
+          )
+        )
+      seeds.toVector.flatten
+    }
+
+  /** Exact upstream BlockFetch range endpoints and serialized block items seed the generic engine.
+    */
+  private val blockFetchEngineSeeds: () => Vector[Array[Byte]] = () =>
+    val fixture =
+      "network/src/test/resources/upstream/ouroboros-network-protocol-codecs/blockfetch-behavior-ranges.tsv"
+    pinnedLines(fixture).take(24).flatMap { line =>
+      val row = line.split("\\t", -1)
+      val from = Bytes.fromHex(row(4)).toOption
+      val to = Bytes.fromHex(row(5)).toOption
+      val bodies = row.drop(7).flatMap(hex => Bytes.fromHex(hex).toOption).take(3)
+      (from, to) match
+        case (Some(first), Some(last)) =>
+          encodedSeed(
+            BlockFetchEngine.encode(
+              BlockFetchEngine.State.Idle,
+              BlockFetchEngine.Role.Client,
+              BlockFetchEngine.Message.RequestRange(first, last),
+              opaqueFetchPoint,
+              opaqueFetchPayload
+            )
+          ) ++ bodies.toVector.flatMap { body =>
+            encodedSeed(
+              BlockFetchEngine.encode(
+                BlockFetchEngine.State.Streaming,
+                BlockFetchEngine.Role.Server,
+                BlockFetchEngine.Message.Block(body),
+                opaqueFetchPoint,
+                opaqueFetchPayload
+              )
+            )
+          }
+        case _ => Vector.empty
+    }
+
   private def handshake(name: String, suite: Handshake.Suite, rule: String): Target =
     Target(
       name,
@@ -261,6 +382,78 @@ object Targets:
       }
     )
 
+  private enum MockVersion(val number: Int):
+    case V0 extends MockVersion(0)
+    case V1 extends MockVersion(1)
+    case V2 extends MockVersion(2)
+  private object MockVersion:
+    given Ordering[MockVersion] = Ordering.by(_.number)
+    given Handshake.VersionCodec[MockVersion] with
+      def decode(wire: Int): Option[MockVersion] = MockVersion.values.find(_.number == wire)
+      def encode(version: MockVersion): Either[ProtocolError, Int] = Right(version.number)
+
+  private def genericHandshakeSeeds(file: String, column: Int): Vector[Array[Byte]] =
+    pinnedLines(s"protocol/src/test/resources/upstream/generic-handshake/$file.tsv")
+      .flatMap(row =>
+        Bytes.fromHex(row.split('\t')(column)).toOption.map(_.toArray)
+      ) ++ Corpus.tricky
+
+  private def knownReason(
+      reason: Handshake.WireReason[MockVersion]
+  ): Handshake.WireReason[MockVersion] = reason match
+    case mismatch: Handshake.WireReason.VersionMismatch[MockVersion] =>
+      mismatch.copy(unknown = Vector.empty)
+    case other => other
+
+  private val genericHandshake: Target = Target(
+    "handshake-generic",
+    () => genericHandshakeSeeds("codec", 3),
+    probe("handshake-generic") { b =>
+      for state <- Handshake.State.values do
+        Handshake.decodePrefix[MockVersion](state, b).foreach { case (message, rest) =>
+          hit("handshake-generic")
+          val used = b.size - rest.size
+          req(used > 0, "decoded nothing")
+          req(
+            Handshake.decode[MockVersion](state, b.take(used)) == Right(message),
+            "consumed prefix decodes differently"
+          )
+          req(
+            Handshake.decode[MockVersion](state, b.take(used - 1)).isLeft,
+            "a shorter prefix decodes too"
+          )
+          val kept = message match
+            case Handshake.WireMessage.Refuse(reason) =>
+              Handshake.WireMessage.Refuse(knownReason(reason))
+            case other => other
+          Handshake.encode(message) match
+            case Left(e) => throw new Violation(s"$state: decoded $message does not encode: $e")
+            case Right(encoded) =>
+              req(
+                Handshake.decode[MockVersion](state, encoded) == Right(kept),
+                s"$state: $message re-decodes differently"
+              )
+        }
+    }
+  )
+
+  private val handshakeReason: Target = Target(
+    "handshake-refusal",
+    () => genericHandshakeSeeds("refuse", 2),
+    probe("handshake-refusal") { b =>
+      Handshake.decodeReason[MockVersion](b).foreach { reason =>
+        hit("handshake-refusal")
+        Handshake.encodeReason(reason) match
+          case Left(e) => throw new Violation(s"decoded $reason does not encode: $e")
+          case Right(encoded) =>
+            req(
+              Handshake.decodeReason[MockVersion](encoded) == Right(knownReason(reason)),
+              s"$reason re-decodes differently"
+            )
+      }
+    }
+  )
+
   private val network: Vector[Target] = Vector(
     cbor("cbor", Cbor.Limits()),
     cbor(
@@ -277,6 +470,8 @@ object Targets:
       Handshake.Suite.NodeToClient,
       "handshake-node-to-client:handshakeMessage"
     ),
+    genericHandshake,
+    handshakeReason,
     Target(
       "mux-header-and-sdu",
       () => Corpus.networkFixtures ++ Corpus.tricky,
@@ -375,12 +570,29 @@ object Targets:
       (s, r, m) => ChainSync.encode(s, r, m, anyItem, ChainSync.Limits.NodeToClient)
     ),
     roundTrip(
+      "chainsync-engine-opaque",
+      ChainSync.State.values.toSeq,
+      ChainSync.Role.values.toSeq,
+      chainSyncEngineSeeds,
+      (s, r, b) =>
+        ChainSyncEngine.decodePrefix(s, r, b, opaquePoint, opaqueTip, opaqueChainPayload),
+      (s, r, m) => ChainSyncEngine.encode(s, r, m, opaquePoint, opaqueTip, opaqueChainPayload)
+    ),
+    roundTrip(
       "blockfetch",
       BlockFetch.State.values.toSeq,
       BlockFetch.Role.values.toSeq,
       blockFetchSeeds,
       (s, r, b) => BlockFetch.decodePrefix(s, r, b, CardanoBlockFetch.payloadCodec()),
       (s, r, m) => BlockFetch.encode(s, r, m, CardanoBlockFetch.payloadCodec())
+    ),
+    roundTrip(
+      "blockfetch-engine-opaque",
+      BlockFetchEngine.State.values.toSeq,
+      BlockFetchEngine.Role.values.toSeq,
+      blockFetchEngineSeeds,
+      (s, r, b) => BlockFetchEngine.decodePrefix(s, r, b, opaqueFetchPoint, opaqueFetchPayload),
+      (s, r, m) => BlockFetchEngine.encode(s, r, m, opaqueFetchPoint, opaqueFetchPayload)
     ),
     roundTrip(
       "txsubmission2",

@@ -1,0 +1,112 @@
+--- a/libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/ExecSpecRule/Core.hs
++++ b/libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/ExecSpecRule/Core.hs
+@@ -30,6 +30,10 @@
+   ForAllExecTypes,
+   diffConformance,
+   runFromAgdaFunction,
++  readCBORAnnotated,
++  readCBORNoShare,
++  writeCBOR,
++  runSTS,
+ ) where
+ 
+ import Cardano.Ledger.BaseTypes (Globals, ShelleyBase)
+@@ -52,7 +56,8 @@
+ import Prettyprinter
+ import Prettyprinter.Render.Terminal
+ import System.FilePath ((<.>))
+-import Test.Cardano.Ledger.Api.DebugTools (writeCBOR)
++import Test.Cardano.Ledger.Api.DebugTools (readCBORAnnotated, readCBORNoShare, writeCBOR)
++import Test.Cardano.Ledger.Shelley.Utils (runSTS)
+ import Test.Cardano.Ledger.Binary.TreeDiff (Pretty (..), ansiWlPretty, ediff, ppEditExpr)
+ import Test.Cardano.Ledger.Conformance.SpecTranslate.Base (
+   SpecNormalize (..),
+--- a/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Conway.hs
++++ b/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Conway.hs
+@@ -6,6 +6,18 @@
+ 
+ import Cardano.Ledger.BaseTypes
+ import Cardano.Ledger.Conway (ConwayEra)
++import Cardano.Ledger.Conway.Core
++import Cardano.Ledger.Shelley.LedgerState (LedgerState)
++import Cardano.Ledger.Shelley.Rules qualified as Shelley
++import Control.State.Transition (TRC (..), State, Event, PredicateFailure)
++import Data.List.NonEmpty (NonEmpty)
++import Data.List.NonEmpty qualified as NE
++import Data.Sequence qualified as Seq
++import Lens.Micro ((^.))
++import Test.Cardano.Ledger.Conformance.ExecSpecRule.Core (readCBORAnnotated, readCBORNoShare, writeCBOR, runSTS)
++import UnliftIO (liftIO)
++import UnliftIO.Directory (createDirectoryIfMissing)
++import UnliftIO.Environment (lookupEnv)
+ import Test.Cardano.Ledger.Conformance.Imp.Conway.Ratify qualified as RatifySpec
+ import Test.Cardano.Ledger.Conformance.Imp.Core
+ import Test.Cardano.Ledger.Conway.Imp.BbodySpec qualified as BBODY
+@@ -28,7 +40,7 @@
+   describe "Imp" $ do
+     withImpInit @(LedgerSpec ConwayEra) $
+       modifyImpInitProtVer @ConwayEra (natVersion @11) $
+-        modifyImpInitPostSubmitTxHook submitTxConformanceHook $ do
++        modifyImpInitPostSubmitTxHook scarabBatchHook $ do
+           modifyImpInitPostEpochBoundaryHook epochBoundaryConformanceHook $ do
+             BBODY.spec
+             CERTS.spec
+@@ -44,3 +56,58 @@
+             UTXOS.spec
+   describe "Imp (only spec)" $ do
+     RatifySpec.spec
++
++-- Native-only supplemental observations. Every signal is an unchanged, signed
++-- transaction from the pinned lawful integration trace. No formal verdict is
++-- inferred: the independent formal LEDGERS evaluator has a retained SIGSEGV.
++scarabBatchHook ::
++  Globals ->
++  TRC (EraRule "LEDGER" ConwayEra) ->
++  Either
++    (NonEmpty (PredicateFailure (EraRule "LEDGER" ConwayEra)))
++    (State (EraRule "LEDGER" ConwayEra), [Event (EraRule "LEDGER" ConwayEra)]) ->
++  ImpM t ()
++scarabBatchHook globals trc@(TRC (env, st, sig)) result = do
++  submitTxConformanceHook globals trc result
++  input <- liftIO $ lookupEnv "SCARAB_BATCH_INPUT_DIR"
++  exportRoot <- liftIO $ lookupEnv "SCARAB_BATCH_EXPORT_DIR"
++  case (input, exportRoot, Shelley.ledgerEpochNo env) of
++    (Just source, Just root, Just epoch) -> do
++      let version = eraProtVerLow @ConwayEra
++      first <- readCBORAnnotated version (source <> "/LEDGER-1/signal.cbor")
++      when (sig ^. txStAnnTxG == first) $ do
++        second <- readCBORAnnotated version (source <> "/LEDGER-2/signal.cbor")
++        third <- readCBORAnnotated version (source <> "/LEDGER-3/signal.cbor")
++        initial <- readCBORNoShare version (source <> "/LEDGER-1/state.cbor")
++        suffix <- readCBORNoShare version (source <> "/LEDGER-2/state.cbor")
++        expected <- readCBORNoShare version (source <> "/LEDGER-3/implementation-state.cbor")
++        initial `shouldBe` st
++        let batchEnv = Shelley.LedgersEnv
++              (Shelley.ledgerSlotNo env) epoch (Shelley.ledgerPp env) (Shelley.ledgerAccount env)
++            observe name preState txs = do
++              let dir = root <> "/" <> name
++                  signal = Seq.fromList txs
++                  native = runSTS @"LEDGERS" @ConwayEra globals batchEnv preState signal
++              liftIO $ createDirectoryIfMissing True dir
++              writeCBOR version (dir <> "/environment.cbor") batchEnv
++              writeCBOR version (dir <> "/state.cbor") preState
++              writeCBOR version (dir <> "/signal.cbor") signal
++              case native of
++                Right (postState, _) -> do
++                  writeCBOR version (dir <> "/implementation-state.cbor") postState
++                  liftIO $ writeFile (dir <> "/result.txt") "implementation-accepted\nformal-not-invoked\n"
++                  pure $ Just postState
++                Left failures -> do
++                  writeCBOR version (dir <> "/implementation-failure.cbor") (NE.toList failures)
++                  liftIO $ writeFile (dir <> "/implementation-failure.txt") (show failures <> "\n")
++                  liftIO $ writeFile (dir <> "/result.txt") "implementation-rejected\nformal-not-invoked\n"
++                  pure Nothing
++        full <- observe "ordered-three" initial [first, second, third]
++        full `shouldBe` Just (expected :: LedgerState ConwayEra)
++        suffixResult <- observe "dependent-two" suffix [second, third]
++        suffixResult `shouldBe` Just expected
++        reversed <- observe "reversed-dependency" suffix [third, second]
++        reversed `shouldBe` Nothing
++        duplicate <- observe "double-spend" suffix [second, second]
++        duplicate `shouldBe` Nothing
++    _ -> pure ()

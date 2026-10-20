@@ -1,0 +1,318 @@
+{
+  "schema": "scarab-upstream-ordinary-codecs-v1",
+  "sourceCommit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+  "family": "BlockFetch",
+  "originalDomain": "Block",
+  "codec": "codec (ordinary inline payload, not codecWrapped or codecSerialised)",
+  "seed": 509101,
+  "count": 64,
+  "sizeRule": "8 + ordinal mod 9",
+  "caseFile": "blockfetch-ordinary.tsv",
+  "sha256": "2e2ad018631d5845605b85a4e2c38c215e6fb10ab25002d0043c222c6331b942",
+  "columns": [
+    "schema",
+    "seed",
+    "ordinal",
+    "size",
+    "state",
+    "sender",
+    "constructor",
+    "originalWireHex",
+    "originalFieldCborHexCommaSeparated",
+    "originalMessageShow",
+    "prop_codec_BlockFetch",
+    "prop_codec_splits2_BlockFetch",
+    "prop_codec_splits3_BlockFetch",
+    "prop_codec_cbor_BlockFetch",
+    "prop_codec_valid_cbor_BlockFetch"
+  ],
+  "sourceFiles": {
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/BlockFetch/Test.hs": "97237113362bfc780c532586facc9227d2bdf29672c6687f5ae9c6107023fe0f",
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/Test.hs": "759c3e7ec58a89d34058773f43377cab759e8bbe875ee55c88dde52e561e43b9",
+    "ouroboros-network/protocols/tests/Main.hs": "32a3b5a431e0e00ce4f206ffe2c8d4b829f9135e82e0c2befdbe35b64adf58eb",
+    "ouroboros-network/api/lib/Ouroboros/Network/Block.hs": "83e93f9be5a5bf30600c4d5257f8527bd06adc22d5f92bcc83165a479982a822",
+    "ouroboros-network/api/tests-lib/Ouroboros/Network/Mock/ConcreteBlock.hs": "a8af2d74be6df4ce0067ca7adfbcf98bec9f8829d36e276261b2526d895e404f",
+    "ouroboros-network/protocols/tests-lib/Test/Ouroboros/Network/Protocol/Utils.hs": "f7b206d6915521aeb0a1db46cde3788237a8c5d216273f87cc2a575c820efa43",
+    "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/BlockFetch/Codec.hs": "812427f9cd4a8204b2f479c5aa5a1ff019f324d1a99a1709616d482a46f9d39c",
+    "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/Codec.hs": "ba2c582fa0e4ae02f26c0e9f412da8a6ce3384599a76f55c671f7a916a8c3fb1"
+  },
+  "observerPatchSha256": "9a4d6682a8ddb954e0507e4979e2ee139695981134c46e31828ce7578e7e82d4",
+  "patchedSourceFiles": {
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/BlockFetch/Test.hs": "fef92827e5f509b046e0b599aeca0f7830fd89c5134aeeb167a6359eede10d26",
+    "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ChainSync/Test.hs": "4371bc5cd167eb67008f5701d8db956ff2c2e091b60ce3b2bf0092d9390bd99a",
+    "ouroboros-network/protocols/tests/Main.hs": "53dd3b4d5967c180f2c4b5d27ba615b294652c195197d49fc44d165dc6d9638d",
+    "ouroboros-network/api/lib/Ouroboros/Network/Block.hs": "83e93f9be5a5bf30600c4d5257f8527bd06adc22d5f92bcc83165a479982a822",
+    "ouroboros-network/api/tests-lib/Ouroboros/Network/Mock/ConcreteBlock.hs": "a8af2d74be6df4ce0067ca7adfbcf98bec9f8829d36e276261b2526d895e404f",
+    "ouroboros-network/protocols/tests-lib/Test/Ouroboros/Network/Protocol/Utils.hs": "f7b206d6915521aeb0a1db46cde3788237a8c5d216273f87cc2a575c820efa43",
+    "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/BlockFetch/Codec.hs": "812427f9cd4a8204b2f479c5aa5a1ff019f324d1a99a1709616d482a46f9d39c",
+    "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/Codec.hs": "ba2c582fa0e4ae02f26c0e9f412da8a6ce3384599a76f55c671f7a916a8c3fb1"
+  },
+  "execution": {
+    "image": "scarab-v02-49-protocols-cache:peer-acceptance-20261019",
+    "imageDigest": "sha256:b9e81590371f7d1784b0e4a62eac7560e0da3498d8b1a6b791e50f6420ae15fb",
+    "network": "none",
+    "offline": true,
+    "jobs": 1,
+    "executableSha256": "b08e19d06022f891473ab92054257f60fab61c38c0c5a9ff56d98dde0a691f82",
+    "projectSha256": "8af20fd6f6389ab41dfcf016201b4da34ee518714abf528bf1115e40c14a6aef",
+    "planSha256": "42d695659261546c8c90946f82f38389c61cf6588c16a931aad92a9c42ea183c"
+  },
+  "targetPlanEquivalence": {
+    "target": "ouroboros-network:protocols-tests",
+    "referencePlan": "/tmp/scarab/v02-49-protocol-probe/builddir/cache/plan.json",
+    "referencePlanSha256": "fccb4e41df2a8857f1c16594b5229acb8648895bb595d0e019d93af228e2ae96",
+    "referenceUnitCount": 167,
+    "selectedPlan": "/tmp/scarab/issue-49-wrapped-codecs/reference-3/narrow-builddir/cache/plan.json",
+    "selectedPlanSha256": "42d695659261546c8c90946f82f38389c61cf6588c16a931aad92a9c42ea183c",
+    "selectedUnitCount": 167,
+    "sameTargetClosure": true,
+    "mismatchedKeys": [],
+    "mismatchedSignatures": []
+  },
+  "commands": [
+    {
+      "argv": [
+        "git",
+        "-C",
+        "/home/euler/repos/cardano-scala-lab/.workspace/data/2026-10-14-upstream/ouroboros-network",
+        "rev-parse",
+        "HEAD"
+      ],
+      "startedAt": "2026-10-19T21:49:52.016037+00:00",
+      "returncode": 0,
+      "log": "/tmp/scarab/issue-49-wrapped-codecs/reference-3/command-0.log",
+      "endedAt": "2026-10-19T21:49:52.017653+00:00",
+      "logSha256": "eb25c6f4bf3fd482a8cb50d48ba29c9a608293c45a272ebba3d3853a27053f38"
+    },
+    {
+      "argv": [
+        "git",
+        "-C",
+        "/home/euler/repos/cardano-scala-lab/.workspace/data/2026-10-14-upstream/ouroboros-network",
+        "archive",
+        "--format=tar",
+        "-o",
+        "/tmp/scarab/issue-49-wrapped-codecs/reference-3/upstream.tar",
+        "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776"
+      ],
+      "startedAt": "2026-10-19T21:49:52.017883+00:00",
+      "returncode": 0,
+      "log": "/tmp/scarab/issue-49-wrapped-codecs/reference-3/command-1.log",
+      "endedAt": "2026-10-19T21:49:52.038132+00:00",
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "tar",
+        "-xf",
+        "/tmp/scarab/issue-49-wrapped-codecs/reference-3/upstream.tar",
+        "-C",
+        "/tmp/scarab/issue-49-wrapped-codecs/reference-3/source"
+      ],
+      "startedAt": "2026-10-19T21:49:52.038659+00:00",
+      "returncode": 0,
+      "log": "/tmp/scarab/issue-49-wrapped-codecs/reference-3/command-2.log",
+      "endedAt": "2026-10-19T21:49:52.078553+00:00",
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "patch",
+        "--batch",
+        "-p1",
+        "-d",
+        "/tmp/scarab/issue-49-wrapped-codecs/reference-3/source",
+        "-i",
+        "/home/euler/repos/cardano-scala-lab/.workspace/worktrees/v02-49-wrapped-codecs/scripts/oracle/network-protocols/ordinary-codecs-observer.patch"
+      ],
+      "startedAt": "2026-10-19T21:49:52.079800+00:00",
+      "returncode": 0,
+      "log": "/tmp/scarab/issue-49-wrapped-codecs/reference-3/command-3.log",
+      "endedAt": "2026-10-19T21:49:52.081405+00:00",
+      "logSha256": "d38d9bfa2e5209628e7a08668e965b7dbb7fdb55823d913bc564418f7a252769"
+    },
+    {
+      "argv": [
+        "docker",
+        "create",
+        "--network=none",
+        "--name",
+        "scarab-49-ordinary-codecs",
+        "--entrypoint",
+        "tail",
+        "-v",
+        "/tmp/scarab/issue-49-wrapped-codecs/reference-3/source:/source",
+        "-v",
+        "/tmp/scarab/issue-49-wrapped-codecs/reference-3:/probe",
+        "-w",
+        "/source",
+        "scarab-v02-49-protocols-cache:peer-acceptance-20261019",
+        "-f",
+        "/dev/null"
+      ],
+      "startedAt": "2026-10-19T21:49:52.314452+00:00",
+      "returncode": 0,
+      "log": "/tmp/scarab/issue-49-wrapped-codecs/reference-3/command-4.log",
+      "endedAt": "2026-10-19T21:49:52.429525+00:00",
+      "logSha256": "c17983dd19fdacbc9c77d9409152918cbd4526f4d2f174afb859feef3fded6a1"
+    },
+    {
+      "argv": [
+        "docker",
+        "start",
+        "scarab-49-ordinary-codecs"
+      ],
+      "startedAt": "2026-10-19T21:49:52.429963+00:00",
+      "returncode": 0,
+      "log": "/tmp/scarab/issue-49-wrapped-codecs/reference-3/command-5.log",
+      "endedAt": "2026-10-19T21:49:52.583375+00:00",
+      "logSha256": "40eaed590ac926d562ee44281153f264e8a8aa22a379ebac68e5dabd2113ba46"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "scarab-49-ordinary-codecs",
+        "--format",
+        "{{.Image}}"
+      ],
+      "startedAt": "2026-10-19T21:49:52.583694+00:00",
+      "returncode": 0,
+      "log": "/tmp/scarab/issue-49-wrapped-codecs/reference-3/command-6.log",
+      "endedAt": "2026-10-19T21:49:52.599668+00:00",
+      "logSha256": "e4a1aeb45bd1678400388c8821cf1d5e6a213ab58f21781f9f5faea4a3771687"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-49-ordinary-codecs",
+        "cabal",
+        "build",
+        "--offline",
+        "--project-file=/probe/protocols-tests.project",
+        "ouroboros-network:protocols-tests",
+        "--builddir=/probe/narrow-builddir",
+        "--jobs=1"
+      ],
+      "startedAt": "2026-10-19T21:49:52.600029+00:00",
+      "returncode": 0,
+      "log": "/tmp/scarab/issue-49-wrapped-codecs/reference-3/command-7.log",
+      "endedAt": "2026-10-19T21:49:58.004860+00:00",
+      "logSha256": "9693a6dc80d1bc89beb31b098303cb6d1483adede5a8be6071e76bfd6690d624"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-49-ordinary-codecs",
+        "cabal",
+        "list-bin",
+        "--project-file=/probe/protocols-tests.project",
+        "ouroboros-network:protocols-tests",
+        "--builddir=/probe/narrow-builddir"
+      ],
+      "startedAt": "2026-10-19T21:49:58.005226+00:00",
+      "returncode": 0,
+      "log": "/tmp/scarab/issue-49-wrapped-codecs/reference-3/command-8.log",
+      "endedAt": "2026-10-19T21:49:58.355575+00:00",
+      "logSha256": "aa896721b7d11a79608df2a5d58e891dbcb5331a419bf2d780d0d9610cd40fb4"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-49-ordinary-codecs",
+        "/probe/narrow-builddir/build/x86_64-linux/ghc-9.10.3/ouroboros-network-1.3.0.0/t/protocols-tests/build/protocols-tests/protocols-tests",
+        "--export-ordinary-codecs",
+        "/probe/exports",
+        "64",
+        "509101"
+      ],
+      "startedAt": "2026-10-19T21:49:58.356048+00:00",
+      "returncode": 0,
+      "log": "/tmp/scarab/issue-49-wrapped-codecs/reference-3/command-9.log",
+      "endedAt": "2026-10-19T21:49:58.501411+00:00",
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "-w",
+        "/source",
+        "scarab-49-ordinary-codecs",
+        "sha256sum",
+        "/probe/narrow-builddir/build/x86_64-linux/ghc-9.10.3/ouroboros-network-1.3.0.0/t/protocols-tests/build/protocols-tests/protocols-tests"
+      ],
+      "startedAt": "2026-10-19T21:49:58.501764+00:00",
+      "returncode": 0,
+      "log": "/tmp/scarab/issue-49-wrapped-codecs/reference-3/command-10.log",
+      "endedAt": "2026-10-19T21:49:58.694786+00:00",
+      "logSha256": "1a31e340b82cdbb975bff1867a83e5aed7579150f505ce1dc24f088404270bae"
+    },
+    {
+      "argv": [
+        "python3",
+        "/home/euler/repos/cardano-scala-lab/.workspace/worktrees/v02-49-wrapped-codecs/scripts/oracle/network-protocols/compare_cabal_plans.py",
+        "/tmp/scarab/v02-49-protocol-probe/builddir/cache/plan.json",
+        "/tmp/scarab/issue-49-wrapped-codecs/reference-3/narrow-builddir/cache/plan.json",
+        "--output",
+        "/tmp/scarab/issue-49-wrapped-codecs/reference-3/target-plan-equivalence.json"
+      ],
+      "startedAt": "2026-10-19T21:49:58.695168+00:00",
+      "returncode": 0,
+      "log": "/tmp/scarab/issue-49-wrapped-codecs/reference-3/command-11.log",
+      "endedAt": "2026-10-19T21:49:58.740181+00:00",
+      "logSha256": "a987972c9de831a0e8951141f77e683ea37c75140547dea78496cac52896eb69"
+    }
+  ],
+  "limits": [
+    "Bounded seeded observations, not entire property families",
+    "Generic framing uses structural CBOR values, not Cardano payload semantics",
+    "Prefix replay accumulates retained fragments; no Haskell interpreter equivalence"
+  ],
+  "constructors": {
+    "batch-done": 13,
+    "block": 14,
+    "client-done": 12,
+    "no-blocks": 6,
+    "request-range": 7,
+    "start-batch": 12
+  },
+  "states": {
+    "busy": 18,
+    "idle": 19,
+    "streaming": 27
+  },
+  "upstreamPropertyOutcomesByProperty": {
+    "prop_codec_BlockFetch": {
+      "pass": 64,
+      "upstream-failure": 0
+    },
+    "prop_codec_splits2_BlockFetch": {
+      "pass": 64,
+      "upstream-failure": 0
+    },
+    "prop_codec_splits3_BlockFetch": {
+      "pass": 64,
+      "upstream-failure": 0
+    },
+    "prop_codec_cbor_BlockFetch": {
+      "pass": 64,
+      "upstream-failure": 0
+    },
+    "prop_codec_valid_cbor_BlockFetch": {
+      "pass": 64,
+      "upstream-failure": 0
+    }
+  },
+  "executedObserverPatchSha256": "2f7731958020060215ffbdec3c190cb6a52588d2f1579e2439d195aa8a951c67",
+  "observerPatchNormalization": "Retained patch blank-context whitespace normalized after reference execution. The original patch is reconstructed from pinned originals and executed sources; normalization yields exactly observerPatchSha256 and preserves every patchedSourceFiles hash."
+}

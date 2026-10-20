@@ -1,0 +1,172 @@
+{
+  "sourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "seed": 498301,
+  "derivation": "original payment-only LEDGER input; native UTXO/UTXOW and singleton LEDGERS use original contexts, environments and unmodified native rules",
+  "runnerExitCode": 139,
+  "upstreamFormalCrash": "LEDGERS: native poststate captured before formal evaluation; process exited SIGSEGV, formal verdict unobserved",
+  "originalHookDuplicates": 2,
+  "newNativeJudgments": 3,
+  "cases": [
+    {
+      "id": "LEDGER-1",
+      "rule": "LEDGER",
+      "files": {
+        "state.cbor": {
+          "bytes": 8351,
+          "sha256": "e94eacf0fdf13343ce332f6469c991fa3bd78d2635230fae53df8474e956a323"
+        },
+        "result.txt": {
+          "bytes": 52,
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f"
+        },
+        "signal.cbor": {
+          "bytes": 243,
+          "sha256": "29895230ead7a504a65099a6cfd8df39fae8fec60619ea9e88fce91036a063ed"
+        },
+        "environment.cbor": {
+          "bytes": 2252,
+          "sha256": "e6fef2a4abc41143a868ce83306db29e18407dfa50566be6bddb3894b174298d"
+        },
+        "implementation-state.cbor": {
+          "bytes": 8403,
+          "sha256": "fa0439e45a56e41f51310894d65ca60182113daef1050f119588fbfccf1efa23"
+        },
+        "context.cbor": {
+          "bytes": 6725,
+          "sha256": "3b1af1ff77203d8a18fce9dfe10c41b919c3b8113382d21b89a57ad908f7c381"
+        }
+      }
+    },
+    {
+      "id": "LEDGER-2",
+      "rule": "LEDGER",
+      "files": {
+        "state.cbor": {
+          "bytes": 8403,
+          "sha256": "fa0439e45a56e41f51310894d65ca60182113daef1050f119588fbfccf1efa23"
+        },
+        "result.txt": {
+          "bytes": 52,
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f"
+        },
+        "signal.cbor": {
+          "bytes": 266,
+          "sha256": "b0583a034105164ad73161282723537033f49680c61c39abb20aad01adf9fa6b"
+        },
+        "environment.cbor": {
+          "bytes": 2252,
+          "sha256": "e6fef2a4abc41143a868ce83306db29e18407dfa50566be6bddb3894b174298d"
+        },
+        "implementation-state.cbor": {
+          "bytes": 8542,
+          "sha256": "fb4fefd0f34377e668e2cdf06372e0bdad59dd714c554e2b56b96bea13e7ab15"
+        },
+        "context.cbor": {
+          "bytes": 6792,
+          "sha256": "fcb4a98caef7919f6a0420c9e068923ebca83bc46a4d9a47e8230cdf1aeae76f"
+        }
+      }
+    },
+    {
+      "id": "LEDGERS-5",
+      "rule": "LEDGERS",
+      "files": {
+        "state.cbor": {
+          "bytes": 8403,
+          "sha256": "fa0439e45a56e41f51310894d65ca60182113daef1050f119588fbfccf1efa23"
+        },
+        "result.txt": {
+          "bytes": 46,
+          "sha256": "0cbd58da08a8ed5ef3b97fd6574f964c4b3291c88ac202cec2489ecd45c4d094"
+        },
+        "signal.cbor": {
+          "bytes": 267,
+          "sha256": "39b39e5d4454287df1ab3529dd7ee22da47b674e2ce91133748978181bf5cb9f"
+        },
+        "environment.cbor": {
+          "bytes": 2250,
+          "sha256": "c3eaa24f5e40a3bbd4714c761805e5ceb77e9a940260bc775049415cd1323c6a"
+        },
+        "implementation-state.cbor": {
+          "bytes": 8542,
+          "sha256": "fb4fefd0f34377e668e2cdf06372e0bdad59dd714c554e2b56b96bea13e7ab15"
+        },
+        "context.cbor": {
+          "bytes": 4116,
+          "sha256": "092e9f54e4f0ca6aa22317016999e885a1caaceb5e04da2f9e8807d7945778d8"
+        }
+      }
+    },
+    {
+      "id": "UTXO-3",
+      "rule": "UTXO",
+      "files": {
+        "state.cbor": {
+          "bytes": 8342,
+          "sha256": "a5619ba535a1a9e8acac45ef99f72f972ce827ead4b5e562686cc58f326c3e23"
+        },
+        "result.txt": {
+          "bytes": 52,
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f"
+        },
+        "signal.cbor": {
+          "bytes": 266,
+          "sha256": "b0583a034105164ad73161282723537033f49680c61c39abb20aad01adf9fa6b"
+        },
+        "environment.cbor": {
+          "bytes": 2296,
+          "sha256": "67a98f607b3acd6e138a0be8c63aae33b5156c887836a96316d40129fe67fc43"
+        },
+        "implementation-state.cbor": {
+          "bytes": 8481,
+          "sha256": "a6ba3b1d95adcf128471ee8858d76d18344669bad6e4bf2962e049cd8d4be804"
+        },
+        "context.cbor": {
+          "bytes": 2644,
+          "sha256": "528d7ac926da602815fa9799d22c0677f934faae68a965550db031035c2bc495"
+        }
+      }
+    },
+    {
+      "id": "UTXOW-4",
+      "rule": "UTXOW",
+      "files": {
+        "state.cbor": {
+          "bytes": 8342,
+          "sha256": "a5619ba535a1a9e8acac45ef99f72f972ce827ead4b5e562686cc58f326c3e23"
+        },
+        "result.txt": {
+          "bytes": 52,
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f"
+        },
+        "signal.cbor": {
+          "bytes": 266,
+          "sha256": "b0583a034105164ad73161282723537033f49680c61c39abb20aad01adf9fa6b"
+        },
+        "environment.cbor": {
+          "bytes": 2296,
+          "sha256": "67a98f607b3acd6e138a0be8c63aae33b5156c887836a96316d40129fe67fc43"
+        },
+        "implementation-state.cbor": {
+          "bytes": 8481,
+          "sha256": "a6ba3b1d95adcf128471ee8858d76d18344669bad6e4bf2962e049cd8d4be804"
+        },
+        "context.cbor": {
+          "bytes": 2644,
+          "sha256": "528d7ac926da602815fa9799d22c0677f934faae68a965550db031035c2bc495"
+        }
+      }
+    }
+  ],
+  "observerPatches": {
+    "scripts/oracle/ledger-govcert/exporter.patch": "7130e6e9c1b055f27a2f1a60984af5d58446e9441f088fea724b0dbcba165e31",
+    "scripts/oracle/ledger-govcert/native-hooks.patch": "764892d352c6780fa0121c03c2eb29eef08e33f5e4e3c383155a261cda5a951f",
+    "scripts/oracle/ledger-govcert/derived-payment.patch": "25d3c5f3fc62f5bb7c7bb5c69f23a372f2196e457b875e68eeace15e24a4954c"
+  },
+  "limitations": [
+    "UTXO and UTXOW retain the pre-certificate state; only the clean payment is used, with no CERTS/GOV pretransition to omit.",
+    "LEDGERS contains one authentic payment, not a multi-transaction block or the mislabeled constrained UTXO property.",
+    "LEDGERS native accepted result is retained separately from the upstream formal process defect; no formal pass is claimed.",
+    "The formal UTXO adapter uses its pinned fixed treasury and external valid-script assumptions; this payment has no phase-2 scripts."
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "schema": "scarab-upstream-network-protocol-behavior-v1",
+  "source": "ouroboros-network",
+  "sourceCommit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+  "upstreamTest": "ouroboros-network:protocols-tests / LocalStateQuery / prop_direct + prop_connect + prop_channel_ST + prop_channel_IO + prop_pipe_IO",
+  "requestedCases": 32,
+  "exportedCases": 32,
+  "seed": 513801,
+  "generatorSizes": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "actionRows": 40,
+  "emptyMapCases": 10,
+  "upstreamPropertyOutcomesByProperty": {
+    "prop_direct": {
+      "pass": 32,
+      "upstream-failure": 0
+    },
+    "prop_connect": {
+      "pass": 32,
+      "upstream-failure": 0
+    },
+    "prop_channel_ST": {
+      "pass": 32,
+      "upstream-failure": 0
+    },
+    "prop_channel_IO": {
+      "pass": 32,
+      "upstream-failure": 0
+    },
+    "prop_pipe_IO": {
+      "pass": 32,
+      "upstream-failure": 0
+    }
+  },
+  "allPropertiesPassCases": 32,
+  "sourceFiles": {
+    "LocalStateQuery/Test.hs": "9a0f831a997b47e42b0c5bf472a28567ceb4dc8ecb477da3e1f6b7580e98013f",
+    "LocalStateQuery/Type.hs": "adc3f838a9f898bd8d0bc5108701f44fb2a142f6e7e02576c67ed9590c874d03"
+  },
+  "observerPatchSha256": "5c05bd88c5b2362ab3539a5ecde66a62082f041b6d7bb0525d9cd6a496553825",
+  "dependencyPlanSha256": "42d695659261546c8c90946f82f38389c61cf6588c16a931aad92a9c42ea183c",
+  "targetDependencyClosureUnitCount": 167,
+  "casesTsvSha256": "106efc8fc9785752cf31a622a7a50bd419c56bd1a0e2f2695f0422795db4c1a9",
+  "actionsTsvSha256": "95c47ee1e1b70fd29f514b02d63eaa71efa235978b5eabf8f9b0e627d63a0741",
+  "limitations": [
+    "Rows preserve the complete generated SetupData map, each exact stateful Acquire wire, query/result CBOR, and unchanged upstream verdicts.",
+    "Scarab consumer may replay only targets its typed production codec decodes losslessly; SpecificPoint mock HeaderHash Int rows remain unsupported.",
+    "Server-side replay exercises LocalStateQueryServer; it does not claim a production LocalStateQuery client or ledger interpreter."
+  ],
+  "scarabServerReplayCoverage": {
+    "totalOriginalSetupDataMaps": 32,
+    "wholeMapsAcceptedByTypedBoundary": 19,
+    "emptyMapsReplayedByDoneOnly": 10,
+    "nonemptyMapsReplayed": 9,
+    "serverActionsReplayed": 13,
+    "specificPointMockHeaderHashIntActionsUnsupported": 14,
+    "representableActionsNotPlayedBecauseTheirMapAlsoContainsUnsupportedTargets": 13,
+    "unsupportedMixedMaps": 13
+  }
+}

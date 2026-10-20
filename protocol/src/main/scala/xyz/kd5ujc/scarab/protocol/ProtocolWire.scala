@@ -146,22 +146,29 @@ private[protocol] object ProtocolWire:
       if arrayLength() != 2 then bad(ProtocolError.TipArity)
       Tip(point(), uint())
     def points(): Vector[Point] =
+      items(limits.maxCandidates)(_.point())
+
+    /** Read a definite or indefinite CBOR array with the candidate-list limits used by ChainSync.
+      * The element reader runs inline, so specialized domain codecs retain the protocol's
+      * validation order without first materializing opaque CBOR items.
+      */
+    def items[A](maxCandidates: Int)(readOne: Reader => A): Vector[A] =
       val h = read()
       if h / 32 != 4 then bad(ProtocolError.ExpectedCandidateArray)
-      val out = Vector.newBuilder[Point]
+      val out = Vector.newBuilder[A]
       if (h & 31) == 31 then
         var n = 0
         while peek != 255 do
-          if n >= limits.maxCandidates then bad(ProtocolError.CandidateLimitExceeded)
-          out += point()
+          if n >= maxCandidates then bad(ProtocolError.CandidateLimitExceeded)
+          out += readOne(this)
           n += 1
         read()
       else
         val n =
-          bounded(argument(h & 31), limits.maxCandidates, ProtocolError.CandidateLimitExceeded)
+          bounded(argument(h & 31), maxCandidates, ProtocolError.CandidateLimitExceeded)
         var i = 0
         while i < n do
-          out += point()
+          out += readOne(this)
           i += 1
       out.result()
     private def count(): Unit =

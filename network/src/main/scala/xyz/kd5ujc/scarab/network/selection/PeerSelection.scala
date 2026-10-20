@@ -109,6 +109,75 @@ object PeerSelection:
     case (x, None)          => x
     case (None, y)          => y
 
+  /** A former local root remains known as a non-root; a peer that became one is local, and local
+    * provenance wins over a public root.
+    */
+  private def reorigin[A](
+      peers: scala.collection.immutable.SortedMap[A, PeerRecord],
+      before: LocalRoots[A],
+      after: LocalRoots[A]
+  ): scala.collection.immutable.SortedMap[A, PeerRecord] =
+    val dropped = before.keys -- after.keys
+    val peers1 = dropped.foldLeft(peers) { (m, p) =>
+      m.get(p)
+        .filter(_.origin == Origin.Local)
+        .fold(m)(r => m.updated(p, r.copy(origin = Origin.Other)))
+    }
+    after.keys.foldLeft(peers1) { (m, p) =>
+      m.get(p)
+        .fold(m)(r =>
+          m.updated(
+            p,
+            r.copy(origin = Origin.Local, advertise = after.config.get(p).map(_.advertise))
+          )
+        )
+    }
+
+  /** Install the effective local-root set together with its peer origins. A root-provider update
+    * changes both values in one governor decision so the invariant is true at every commit
+    * boundary, including DNS TTL refreshes.
+    */
+  private def configureLocalRoots[A](
+      st: GovernorState[A],
+      wanted: LocalRoots[A],
+      now: Time
+  ): Decision[A] =
+    val removed = st.localRoots.keys -- wanted.keys
+    val added = wanted.keys -- st.localRoots.keys
+    val withNew = added.foldLeft(st.peers) { (m, p) =>
+      m.get(p) match
+        case Some(r) =>
+          m.updated(
+            p,
+            r.copy(origin = Origin.Local, advertise = wanted.config.get(p).map(_.advertise))
+          )
+        case None =>
+          m.updated(
+            p,
+            PeerRecord
+              .cold(Origin.Local)
+              .copy(advertise = wanted.config.get(p).map(_.advertise))
+          )
+    }
+    val peers = reorigin(withNew, st.localRoots, wanted)
+    val toDemote = removed.filter(p => st.peers.get(p).exists(_.status == Status.Hot))
+    val onlyTrusted = peers.keySet.subsetOf((st.view(now).bootstrap ++ wanted.keys).toSet)
+    val sensitivity =
+      if st.sensitivity.sensitive && !onlyTrusted then
+        st.sensitivity.copy(
+          judgement = LedgerStateJudgement.YoungEnough,
+          hasOnlyBootstrapPeers = false
+        )
+      else st.sensitivity.copy(hasOnlyBootstrapPeers = onlyTrusted)
+    val nextPeers = toDemote.foldLeft(peers) { (m, p) =>
+      m.updated(p, m(p).copy(status = Status.Deactivating))
+    }
+    Decision(
+      st.copy(localRoots = wanted, peers = nextPeers, sensitivity = sensitivity),
+      toDemote.toList.map(Job.Deactivate(_)),
+      List(Trace.LocalRootsChanged(st.localRoots.size, wanted.size))
+    )
+
   private[selection] enum Guard[A]:
     case Go(decision: Decision[A])
     case Skip(wakeAt: Option[Time])
@@ -296,69 +365,7 @@ object PeerSelection:
           else st.configuredRoots
         val wanted = base.clampToLimit(st.targets.known)
         if wanted == st.localRoots then Skip(None)
-        else
-          val removed = st.localRoots.keys -- wanted.keys
-          val added = wanted.keys -- st.localRoots.keys
-          val withNew = added.foldLeft(st.peers) { (m, p) =>
-            m.get(p) match
-              case Some(r) =>
-                m.updated(
-                  p,
-                  r.copy(origin = Origin.Local, advertise = wanted.config.get(p).map(_.advertise))
-                )
-              case None =>
-                m.updated(
-                  p,
-                  PeerRecord
-                    .cold(Origin.Local)
-                    .copy(advertise = wanted.config.get(p).map(_.advertise))
-                )
-          }
-          val moved = reorigin(withNew, st.localRoots, wanted)
-          val toDemote = removed.filter(p => st.peers.get(p).exists(_.status == Status.Hot))
-          val known = moved.keySet
-          val onlyTrusted = known.subsetOf((view.bootstrap ++ wanted.keys).toSet)
-          val sensitivity =
-            if st.sensitivity.sensitive && !onlyTrusted then
-              st.sensitivity.copy(
-                judgement = LedgerStateJudgement.YoungEnough,
-                hasOnlyBootstrapPeers = false
-              )
-            else st.sensitivity.copy(hasOnlyBootstrapPeers = onlyTrusted)
-          val next = withStatus(
-            toDemote,
-            Status.Deactivating,
-            st.copy(localRoots = wanted, peers = moved, sensitivity = sensitivity)
-          )
-          go(
-            next,
-            toDemote.toList.map(Job.Deactivate(_)),
-            List(Trace.LocalRootsChanged(st.localRoots.size, wanted.size))
-          )
-
-    /** A root that is no longer one keeps its record as a non-root; a peer that became one is a
-      * local root, and a local root wins over a public one.
-      */
-    private def reorigin(
-        peers: scala.collection.immutable.SortedMap[A, PeerRecord],
-        before: LocalRoots[A],
-        after: LocalRoots[A]
-    ): scala.collection.immutable.SortedMap[A, PeerRecord] =
-      val dropped = before.keys -- after.keys
-      val peers1 = dropped.foldLeft(peers) { (m, p) =>
-        m.get(p)
-          .filter(_.origin == Origin.Local)
-          .fold(m)(r => m.updated(p, r.copy(origin = Origin.Other)))
-      }
-      after.keys.foldLeft(peers1) { (m, p) =>
-        m.get(p)
-          .fold(m)(r =>
-            m.updated(
-              p,
-              r.copy(origin = Origin.Local, advertise = after.config.get(p).map(_.advertise))
-            )
-          )
-      }
+        else Go(configureLocalRoots(st, wanted, now))
 
     // ---------------------------------------------------------------- discovering peers
 
@@ -678,22 +685,24 @@ object PeerSelection:
               else statusCleared
             peer -> current
           }
-          Decision(
-            st.copy(
-              peers = peers,
-              configuredRoots = roots,
-              publicRootBackoffs = 0,
-              publicRootRetryAt = now,
-              bigLedgerBackoffs = 0,
-              bigLedgerRetryAt = now,
-              publicRootsInFlight = false,
-              bigLedgerInFlight = false,
-              rootsGeneration = generation,
-              sensitivity = st.sensitivity.copy(useBootstrapPeers = bootstrap)
-            ),
-            Nil,
-            Nil
+          val sensitivity = st.sensitivity.copy(useBootstrapPeers = bootstrap)
+          val effective =
+            (if sensitivity.sensitive then roots.clampToTrustable else roots)
+              .clampToLimit(st.targets.known)
+          val base = st.copy(
+            peers = peers,
+            configuredRoots = roots,
+            publicRootBackoffs = 0,
+            publicRootRetryAt = now,
+            bigLedgerBackoffs = 0,
+            bigLedgerRetryAt = now,
+            publicRootsInFlight = false,
+            bigLedgerInFlight = false,
+            rootsGeneration = generation,
+            sensitivity = sensitivity
           )
+          if effective == st.localRoots then Decision(base, Nil, Nil)
+          else configureLocalRoots(base, effective, now)
       case Event.SharingNegotiated(peer, enabled, generation)
           if generation.exists(_ != st.rootsGeneration) =>
         Decision(st, Nil, Nil)

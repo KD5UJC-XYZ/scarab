@@ -1,0 +1,88 @@
+{
+  "fixture": "cardano-peersharing-sockaddr.tsv",
+  "fixtureSha256": "d73da0b8a132ff46cfcea688775a8270ef360f77e9422b09a4f4483c041c6d4c",
+  "rowCount": 300,
+  "upstream": {
+    "repository": "IntersectMBO/ouroboros-network",
+    "commit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+    "source": "cardano-diffusion/protocols/cddl/Main.hs",
+    "sourceSha256": "30799c100112531d52a62efa9fa598fce97b36e3d300aac3b583a88d67886490",
+    "spec": "cardano-diffusion/protocols/cddl/specs/peer-sharing-v14.cddl",
+    "specSha256": "3f7f5c8224cbb436fbd13fb0b638cbf83e416d1380ce5e4325812c9f69b0a05e",
+    "tests": {
+      "encoding": "unit_encodePeerSharingV14ToLast, 100 generated SockAddr messages, all pass",
+      "decoding": "unit_decodePeerSharingV14ToLast, 100 generated messages each for NodeToNode v14, v15, and v16, all pass"
+    },
+    "observerPatch": "scripts/oracle/network-protocols/cardano-peersharing-cddl-observer.patch",
+    "observerPatchSha256": "80273abd74aec3b2c32712a871b3ea415e75478c505ef925084a40ec270d722f",
+    "randomness": "The upstream cddl gem generates these cases from its entropy-seeded Random; the source property exposes no seed. Rows therefore retain version and generator ordinal, with seed recorded as unavailable rather than fabricated."
+  },
+  "adapter": {
+    "scalaSuite": "xyz.kd5ujc.scarab.protocol.UpstreamProtocolCodecCoverageSuite",
+    "result": "300/300 original generated CBOR messages decode to Scarab typed PeerSharing values; every typed Scarab encoding decodes back to the same typed value",
+    "haskellCrossReplay": {
+      "result": "300/300 original and Scarab-produced encoded messages were decoded by the pinned version-specific Haskell codec; typed PeerSharing message renderings (including full SockAddr lists) compared equal",
+      "commandResult": "/tmp/scarab/v02-49-protocol-probe/cardano-peersharing-haskell-normalized-replay-result.json",
+      "replayInputSha256": "cc0cdc4702d5215d2a19abc87fcf78743b45976aa69ef3d9bb84e1650224361b"
+    },
+    "originalWire": "The fixture retains each original diagnostic term and exact encoded CBOR byte string. Scarab normalizes peer-list arrays: for example, upstream definite 82018183001a98c81904199db8 corresponds to Scarab indefinite 82019f83001a98c81904199db8ff. Exact encoded-byte identity is not claimed; the cross-replay confirms the pinned Haskell codec decodes both forms to equal typed messages.",
+    "limitations": "bounded CDDL-generated SockAddr codec cases over v14-v16, not full Ouroboros-network protocol property suite coverage"
+  },
+  "schema": "tab-separated cardano-peersharing-sockaddr-cddl-v1: version, ordinal, upstream status, diagnostic-term hex, original-CBOR hex",
+  "commands": {
+    "upstreamGenerateAndDecode": [
+      "docker",
+      "exec",
+      "-e",
+      "PATH=/probe/tool-bin:/opt/ghc/9.10.3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+      "-e",
+      "SCARAB_CDDL_EXPORT=/probe/peer-sharing-sockaddr-final.tsv",
+      "-w",
+      "/probe/cardano-handshake-overlay",
+      "scarab-v02-49-handshake-build",
+      "cabal",
+      "test",
+      "cardano-diffusion:protocols-cddl",
+      "--project-file=/probe/cardano-handshake-overlay.project",
+      "--builddir=/probe/handshake-target-build",
+      "--jobs=2",
+      "--test-options=--pattern=PeerSharing",
+      "--test-show-details=streaming"
+    ],
+    "upstreamGenerateAndDecodeReturncode": 0,
+    "upstreamGenerateAndDecodeResultJson": "/tmp/scarab/v02-49-protocol-probe/cardano-peersharing-cddl-final-result.json",
+    "typedScalaConsume": [
+      "docker",
+      "exec",
+      "-e",
+      "SCARAB_PEERSHARING_REPLAY_EXPORT=/work/protocol/target/peersharing-replay.tsv",
+      "scarab-v02-49-adapter-sbt",
+      "bash",
+      "scripts/sbtw",
+      "protocol/testOnly xyz.kd5ujc.scarab.protocol.UpstreamProtocolCodecCoverageSuite"
+    ],
+    "typedScalaConsumeReturncode": 0,
+    "typedScalaConsumeResultJson": "/tmp/scarab/v02-49-protocol-probe/scala-protocol-replay-export-result.json",
+    "crossReplayInPinnedHaskell": [
+      "docker",
+      "exec",
+      "-e",
+      "PATH=/probe/tool-bin:/opt/ghc/9.10.3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+      "-e",
+      "SCARAB_CDDL_REPLAY=/probe/peer-sharing-sockaddr-replay.tsv",
+      "-w",
+      "/probe/cardano-handshake-overlay",
+      "scarab-v02-49-handshake-build",
+      "cabal",
+      "test",
+      "cardano-diffusion:protocols-cddl",
+      "--project-file=/probe/cardano-handshake-overlay.project",
+      "--builddir=/probe/handshake-target-build",
+      "--jobs=2",
+      "--test-options=--pattern=PeerSharing",
+      "--test-show-details=streaming"
+    ],
+    "crossReplayReturncode": 0,
+    "crossReplayResultJson": "/tmp/scarab/v02-49-protocol-probe/cardano-peersharing-haskell-normalized-replay-result.json"
+  }
+}

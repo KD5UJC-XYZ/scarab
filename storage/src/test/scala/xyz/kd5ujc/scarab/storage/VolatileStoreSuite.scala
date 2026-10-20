@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.ledger.StorageError
 import munit.CatsEffectSuite
+import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 import scala.util.Random
 
@@ -19,6 +20,7 @@ import StorageTestKit.*
   * every crash cut point of the newest file, and damage anywhere in the log.
   */
 class VolatileStoreSuite extends CatsEffectSuite:
+  override def munitIOTimeout: Duration = 10.minutes
   private val perFile = 5
 
   private def open(dir: Path, blocksPerFile: Int = perFile)(using

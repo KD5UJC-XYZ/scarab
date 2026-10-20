@@ -70,6 +70,10 @@ class TxSubmission2Suite extends munit.FunSuite:
     assert(TxSubmission2.decode(State.Ids(false), Role.Client, hex("8104")).isLeft)
   }
   test("uint16 bounds before narrowing and noncanonical numeric forms") {
+    assertEquals(
+      TxSubmission2.decode(State.Idle, Role.Server, hex("8400f60001")),
+      Left(ProtocolError.ExpectedBlockingBoolean)
+    )
     assert(TxSubmission2.decode(State.Idle, Role.Server, hex("8400f51a0001000001")).isLeft)
     assertEquals(
       TxSubmission2.decode(State.Idle, Role.Server, hex("8400f518001801")),

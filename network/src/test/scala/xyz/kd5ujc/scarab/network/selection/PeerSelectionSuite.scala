@@ -615,6 +615,114 @@ class PeerSelectionSuite extends FunSuite:
     assertEquals(reloaded.peers.values.map(_.origin).toSet, Set(Origin.Other))
   }
 
+  test("a local DNS root rotation installs origins and demotions atomically") {
+    val oldRoots = LocalRoots.fromGroups(List(group(1, 1, 1)))
+    val newRoots = LocalRoots.fromGroups(List(group(1, 1, 2)))
+    val original = start(List(group(1, 1, 1)))
+    val initial = original.copy(
+      targets = Targets.relay,
+      configuredRoots = oldRoots,
+      localRoots = oldRoots,
+      peers = original.peers.updated(
+        1,
+        PeerRecord.cold(Origin.Local).copy(status = Status.Hot)
+      )
+    )
+
+    val rotated = PeerSelection.apply(
+      initial,
+      Event.RootsConfigured(newRoots, false, Set.empty, Some(BigInt(1))),
+      t0
+    )
+
+    assertEquals(rotated.state.configuredRoots, newRoots)
+    assertEquals(rotated.state.localRoots, newRoots)
+    assertEquals(rotated.state.peers(1).origin, Origin.Other)
+    assertEquals(statusOf(rotated.state, 1), Status.Deactivating)
+    assertEquals(rotated.state.peers(2).origin, Origin.Local)
+    assertEquals(rotated.jobs, List(Job.Deactivate(1)))
+    assertEquals(GovernorState.invariant(rotated.state), Nil)
+  }
+
+  test("a DNS rotation at zero targets becomes known when targets and local roots resume") {
+    val oldRoots = LocalRoots.fromGroups(List(group(1, 1, 1)))
+    val newRoots = LocalRoots.fromGroups(List(group(1, 1, 2)))
+    val initial = start(Nil).copy(
+      configuredRoots = oldRoots,
+      peers = scala.collection.immutable.SortedMap(1 -> PeerRecord.cold(Origin.Other))
+    )
+    val rotated = PeerSelection.apply(
+      initial,
+      Event.RootsConfigured(newRoots, false, Set.empty, Some(BigInt(1))),
+      t0
+    )
+    assertEquals(rotated.state.localRoots, LocalRoots.empty[Int])
+    assertEquals(GovernorState.invariant(rotated.state), Nil)
+
+    val targetDecision = PeerSelection.decide(rotated.state, t0) match
+      case Step.Act(decision) => decision
+      case Step.Idle(_, _)    => fail("the configured targets should become active")
+    assertEquals(GovernorState.invariant(targetDecision.state), Nil)
+
+    val rootsDecision = PeerSelection.decide(targetDecision.state, t0) match
+      case Step.Act(decision) => decision
+      case Step.Idle(_, _)    => fail("configured local roots should become effective")
+    assertEquals(rootsDecision.state.localRoots, newRoots)
+    assertEquals(rootsDecision.state.peers(2).origin, Origin.Local)
+    assertEquals(GovernorState.invariant(rootsDecision.state), Nil)
+  }
+
+  test("a sensitive DNS rotation installs only trustable local roots") {
+    val trustable = config.copy(trustable = true)
+    val roots = LocalRoots.fromGroups(
+      List(RootGroupSpec(1, 2, List(1 -> trustable, 2 -> config)))
+    )
+    val sensitive = Sensitivity
+      .initial(useBootstrapPeers = true)
+      .copy(
+        judgement = LedgerStateJudgement.TooOld
+      )
+    val initial = start(Nil).copy(targets = Targets.relay, sensitivity = sensitive)
+
+    val rotated = PeerSelection.apply(
+      initial,
+      Event.RootsConfigured(roots, true, Set.empty, Some(BigInt(1))),
+      t0
+    )
+
+    assertEquals(rotated.state.localRoots.keys.toSet, Set(1))
+    assertEquals(rotated.state.peers(1).origin, Origin.Local)
+    assert(!rotated.state.peers.contains(2))
+    assertEquals(GovernorState.invariant(rotated.state), Nil)
+  }
+
+  test("a DNS rotation retains addresses that remain in the answer set") {
+    val rootsA = LocalRoots.fromGroups(List(group(1, 1, 1)))
+    val rootsAB = LocalRoots.fromGroups(List(group(1, 2, 1, 2)))
+    val original = start(List(group(1, 1, 1)))
+    val initial = original.copy(
+      targets = Targets.relay,
+      configuredRoots = rootsA,
+      localRoots = rootsA,
+      peers = original.peers.updated(
+        1,
+        PeerRecord.cold(Origin.Local).copy(status = Status.Hot)
+      )
+    )
+
+    val rotated = PeerSelection.apply(
+      initial,
+      Event.RootsConfigured(rootsAB, false, Set.empty, Some(BigInt(1))),
+      t0
+    )
+
+    assertEquals(statusOf(rotated.state, 1), Status.Hot)
+    assertEquals(rotated.state.peers(1).origin, Origin.Local)
+    assertEquals(rotated.state.peers(2).origin, Origin.Local)
+    assertEquals(rotated.jobs, Nil)
+    assertEquals(GovernorState.invariant(rotated.state), Nil)
+  }
+
   test("a delayed older roots event cannot replace a newer installed generation") {
     val initial = start(Nil)
     val newerRoots = LocalRoots.fromGroups(List(group(1, 1, 22)))

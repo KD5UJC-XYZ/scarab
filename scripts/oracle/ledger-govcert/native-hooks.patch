@@ -1,0 +1,109 @@
+--- a/libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/ExecSpecRule/Core.hs
++++ b/libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/ExecSpecRule/Core.hs
+@@ -29,6 +29,7 @@
+   ForAllExecSpecRep,
+   ForAllExecTypes,
+   diffConformance,
++  dumpCbor,
+   runFromAgdaFunction,
+ ) where
+ 
+@@ -71,7 +72,7 @@
+   logDoc,
+   tryRunImpRule,
+  )
+-import UnliftIO (evaluateDeep, liftIO)
++import UnliftIO (MonadIO, evaluateDeep, liftIO)
+ import UnliftIO.Directory (makeAbsolute)
+ import UnliftIO.Environment (lookupEnv)
+ 
+@@ -196,14 +197,15 @@
+   mkRuleExecContext _ _ = ()
+ 
+ dumpCbor ::
+-  forall era a.
++  forall era a m.
+   ( EncCBOR a
+   , Era era
++  , MonadIO m
+   ) =>
+   FilePath ->
+   a ->
+   String ->
+-  ImpTestM era ()
++  m ()
+ dumpCbor path x name = do
+   fullPath <- makeAbsolute $ path <> "/" <> name <.> "cbor"
+   writeCBOR (eraProtVerLow @era) fullPath x
+@@ -277,10 +279,10 @@
+       mbyCborDumpPath <- lookupEnv envVarName
+       case mbyCborDumpPath of
+         Just path -> do
+-          dumpCbor path ctx "conformance_dump_ctx"
+-          dumpCbor path env "conformance_dump_env"
+-          dumpCbor path st "conformance_dump_st"
+-          dumpCbor path sig "conformance_dump_sig"
++          dumpCbor @era path ctx "conformance_dump_ctx"
++          dumpCbor @era path env "conformance_dump_env"
++          dumpCbor @era path st "conformance_dump_st"
++          dumpCbor @era path sig "conformance_dump_sig"
+           logDoc $ "Dumped the CBOR files to " <> ansiExpr path
+         Nothing ->
+           logDoc $
+--- a/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Core.hs
++++ b/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Core.hs
+@@ -13,6 +13,9 @@
+ 
+ import Cardano.Ledger.BaseTypes (Globals)
+ import Cardano.Ledger.Core (EraRule)
++import Data.Unique (newUnique, hashUnique)
++import UnliftIO.Directory (createDirectoryIfMissing)
++import UnliftIO.Environment (lookupEnv)
+ import Control.State.Transition
+ import Data.Bifunctor (Bifunctor (..))
+ import Data.Data (Proxy (..))
+@@ -24,6 +27,7 @@
+   ExecSpecTopLevelRule (..),
+   SpecTRC (..),
+   diffConformance,
++  dumpCbor,
+  )
+ import Test.Cardano.Ledger.Conformance.SpecTranslate.Base (
+   SpecNormalize (..),
+@@ -31,7 +35,7 @@
+  )
+ import Test.Cardano.Ledger.Conway.ImpTest
+ import Test.Cardano.Ledger.Imp.Common hiding (Args)
+-import UnliftIO (evaluateDeep)
++import UnliftIO (evaluateDeep, liftIO)
+ 
+ conformanceHook ::
+   forall rule era t.
+@@ -59,6 +63,27 @@
+       agdaDebug = either (const "") snd agdaResponse'
+       impRuleResult' = bimap (T.pack . show) fst impRuleResult
+       impResponse = first (T.pack . show) . runSpecTransM @era ctx . translateOutput trc =<< impRuleResult'
++
++    -- Export-only observer: preserve each real integration-hook judgment.
++    exportRoot <- liftIO $ lookupEnv "SCARAB_IMP_EXPORT_DIR"
++    case exportRoot of
++      Nothing -> pure ()
++      Just path -> do
++        ordinal <- liftIO $ hashUnique <$> newUnique
++        let dir = path <> "/" <> symbolVal (Proxy @rule) <> "-" <> show ordinal
++        liftIO $ createDirectoryIfMissing True dir
++        dumpCbor @era dir ctx "context"
++        dumpCbor @era dir env "environment"
++        dumpCbor @era dir state "state"
++        dumpCbor @era dir signal "signal"
++        implStatus <- case impRuleResult of
++          Right (out, _) -> do
++            dumpCbor @era dir out "implementation-state"
++            pure "implementation-accepted"
++          Left _ -> pure "implementation-rejected"
++        let agdaStatus = either (const "agda-rejected") (const "agda-accepted") agdaResponse
++        let verdict = if impResponse == agdaResponse then "outputs-equal" else "outputs-differ"
++        liftIO $ writeFile (dir <> "/result.txt") (unlines [implStatus, agdaStatus, verdict])
+ 
+     logString "implEnv"
+     logToExpr env

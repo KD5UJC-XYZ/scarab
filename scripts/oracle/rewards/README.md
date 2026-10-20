@@ -35,3 +35,16 @@ The local calculation still lacks new likelihood generation (J3.6): comparison m
 new likelihood vectors for locally started cases. Imported pending states compare all fields,
 including non-myopic history, empty/new likelihood maps, normalization and the reward pot.
 Ordinary CI needs neither a Haskell compiler nor Docker access inside its JVM.
+
+For #49's observable timing/accounting adapter, the same wrapper also imports the
+unchanged native RUPD STS and `applyRUpd`. Generate `RewardTimingCases` instead of
+`RewardOracleCases`, then run the same reference binary on its inputs. Optional
+`rewardWindow` and `rewardSlots` fields select the exact reader window and slot
+signals; original API-only inputs still work and their results are unchanged.
+`RewardTimingOracleSuite` compares absence/pending/completion availability, complete
+reward accounting and credited EpochState over dense, skipped-slot and forced
+schedules. Its [fixture inventory](../../../storage/src/test/resources/rewards-timing-1.19.0.1/README.md)
+records the independent source pin and exact execution hashes. `RewardSnapshotSuite`
+adds native V5 storage continuation against genuinely observed Haskell prefixes.
+These checks allow different internal pulse partitions and retain the existing J3.6
+likelihood-generation mask.

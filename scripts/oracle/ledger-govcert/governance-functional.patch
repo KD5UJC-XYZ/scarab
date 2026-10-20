@@ -1,0 +1,192 @@
+--- a/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway.hs
++++ b/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway.hs
+@@ -10,6 +10,18 @@
+
+ module Test.Cardano.Ledger.Conformance.Spec.Conway (spec) where
+
++import Cardano.Ledger.Conway (ConwayEra)
++import Cardano.Ledger.Coin (Coin (..))
++import Cardano.Ledger.Conway.Core (ppGovActionDepositL)
++import Cardano.Ledger.Conway.Rules (GovEnv (..))
++import Control.State.Transition (TRC (..))
++import Lens.Micro ((&), (%~))
++import Data.Foldable (toList)
++import Test.Cardano.Ledger.Conformance (ConformanceResult (..), runConformance, testConformance)
++import Test.Cardano.Ledger.Conformance.ExecSpecRule.Core (dumpCbor)
++import Test.Cardano.Ledger.Conway.ImpTest (ImpTestM)
++import UnliftIO (liftIO)
++import UnliftIO.Environment (lookupEnv)
+ import Data.Map.Strict qualified as Map
+ import Test.Cardano.Ledger.Conformance.ExecSpecRule.Conway (ConwayCertExecContext (..))
+ import Test.Cardano.Ledger.Conformance.Spec.Conway.Ratify qualified as Ratify
+@@ -57,6 +69,16 @@
+                 , ccecWithdrawals = ccccWithdrawals
+                 }
+       prop "GOV" $ conformsToImplConstrained_ constrainedGov
++      prop "GOV-invalid-deposit-sized5" $ property @(ImpTestM ConwayEra Property) $ do
++        (ctx, TRC (env, st, sig)) <- liftGen $ resize 5 (genFromBundle_ constrainedGov)
++        let trc = TRC (env {gePParams = gePParams env & ppGovActionDepositL %~ (+ Coin 1)}, st, sig)
++        native <- runConformance @"GOV" @ConwayEra ctx trc
++        exportDir <- liftIO $ lookupEnv "SCARAB_CONFORMANCE_EXPORT_DIR"
++        case (exportDir, crImplementationResult native) of
++          (Just path, Left failures) -> dumpCbor @ConwayEra path (toList failures) "native-failures"
++          _ -> pure ()
++        pure $ testConformance @"GOV" @ConwayEra ctx trc
++      prop "GOV-sized5" $ conformsToImpl @"GOV" @ConwayEra (resize 5 (genFromBundle_ constrainedGov))
+       -- UTXO is disabled due to: https://github.com/IntersectMBO/cardano-ledger/issues/4876
+       prop "UTXO" $ conformsToImplConstrained constrainedUtxo $ \ctx _ _ _ -> pure ctx
+       xprop "UTXOW" $ conformsToImplConstrained constrainedUtxo $ \_ _ _ _ -> genUtxoExecContext
+--- a/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Conway/Ratify.hs
++++ b/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Conway/Ratify.hs
+@@ -8,6 +8,10 @@
+ import Cardano.Ledger.BaseTypes (EpochInterval (..), StrictMaybe (..), addEpochInterval)
+ import Cardano.Ledger.Coin (Coin (..), CompactForm (..))
+ import Cardano.Ledger.Conway (ConwayEra)
++import qualified Cardano.Ledger.Conway.Rules as Conway
++import Test.Cardano.Ledger.Conformance.ExecSpecRule.Core (dumpCbor)
++import UnliftIO.Environment (lookupEnv)
++import UnliftIO (liftIO)
+ import Cardano.Ledger.Conway.Core
+ import Cardano.Ledger.Conway.Governance (
+   Committee (..),
+@@ -30,6 +34,7 @@
+  )
+ import Control.State.Transition (TRC (..))
+ import Data.Bifunctor (Bifunctor (..))
++import Data.Foldable (toList)
+ import qualified Data.List.NonEmpty as NE
+ import qualified Data.Map as Map
+ import qualified Data.Sequence.Strict as SSeq
+@@ -46,6 +51,28 @@
+ import Test.Cardano.Ledger.Core.Rational (IsRatio (..))
+ import Test.Cardano.Ledger.Imp.Common
+
++observeRatify :: TRC (EraRule "RATIFY" ConwayEra) -> ConformanceResult "RATIFY" ConwayEra -> ImpTestM ConwayEra ()
++observeRatify (TRC (ratEnv, ratSt, ratSig@(RatifySignal actions))) res = do
++  exportDir <- liftIO $ lookupEnv "SCARAB_GOVERNANCE_EXPORT_DIR"
++  case exportDir of
++    Nothing -> pure ()
++    Just path -> do
++      dumpCbor @ConwayEra path () "context"
++      dumpCbor @ConwayEra path ratEnv "environment"
++      dumpCbor @ConwayEra path ratSt "state"
++      dumpCbor @ConwayEra path (ratSig) "signal"
++      dumpCbor @ConwayEra path (concatMap (\gas -> [Conway.dRepAccepted ratEnv ratSt gas, Conway.spoAccepted ratEnv ratSt gas]) (toList actions)) "approvals"
++      case crImplementationResult res of
++        Right (out, _) -> dumpCbor @ConwayEra path out "implementation-state"
++        Left failure -> liftIO $ writeFile (path <> "/native-failure.txt") (show failure)
++      liftIO $ writeFile (path <> "/result.txt") $ unlines
++        [ either (const "implementation-rejected") (const "implementation-accepted") (crImplementationResult res)
++        , either (const "agda-rejected") (const "agda-accepted") (crSpecificationResult res)
++        , case (crTranslationResult res, crSpecificationResult res) of
++          (Right native, Right formal) | native == formal -> "outputs-equal"
++          _ -> "outputs-differ"
++        ]
++
+ spec :: Spec
+ spec = withImpInit @(LedgerSpec ConwayEra) $ describe "RATIFY" $ modifyImpInitProtVer (eraProtVerHigh @ConwayEra) $ do
+   it "NoConfidence accepted conforms" $ do
+@@ -65,6 +92,103 @@
+     getLastEnactedCommittee `shouldReturn` SJust (GovPurposeId noConfidence)
+     let trc = TRC (ratEnv, ratSt, RatifySignal (noConfidenceGAS SSeq.:<| SSeq.Empty))
+     res <- runConformance @"RATIFY" @ConwayEra () trc
++    observeRatify trc res
++    case res of
++      ConformanceResult Right {} Right {} Right {} -> pure ()
++      failure -> expectationFailure $ "Expected success, got:\n" <> showExpr failure
++  it "NoConfidence positive SPO and DRep conforms" $ do
++    modifyPParams $ \pp ->
++      pp
++        & ppDRepVotingThresholdsL . dvtMotionNoConfidenceL .~ 1 %! 2
++        & ppPoolVotingThresholdsL . pvtMotionNoConfidenceL .~ 1 %! 2
++    (dRep, _, _) <- electBasicCommittee
++    (pool, _, _) <- setupPoolWithStake $ Coin 1_000_000
++    passNEpochs 2
++    lastCommittee <- getLastEnactedCommittee
++    noConfidence <- submitGovAction $ NoConfidence lastCommittee
++    submitYesVote_ (DRepVoter dRep) noConfidence
++    submitYesVote_ (StakePoolVoter pool) noConfidence
++    ratEnv <- getRatifyEnv
++    govSt <- getsNES $ nesEsL . epochStateGovStateL
++    let ratSt = getRatifyState govSt
++    noConfidenceGAS <- getGovActionState noConfidence
++    passNEpochs 2
++    getLastEnactedCommittee `shouldReturn` SJust (GovPurposeId noConfidence)
++    let trc = TRC (ratEnv, ratSt, RatifySignal (noConfidenceGAS SSeq.:<| SSeq.Empty))
++    res <- runConformance @"RATIFY" @ConwayEra () trc
++    observeRatify trc res
++    case res of
++      ConformanceResult Right {} Right {} Right {} -> pure ()
++      failure -> expectationFailure $ "Expected success, got:\n" <> showExpr failure
++  it "NoConfidence competing forward conforms" $ do
++    modifyPParams $ \pp ->
++      pp
++        & ppDRepVotingThresholdsL . dvtMotionNoConfidenceL .~ 1 %! 2
++        & ppPoolVotingThresholdsL . pvtMotionNoConfidenceL .~ 1 %! 2
++    (dRep, _, _) <- electBasicCommittee
++    (pool, _, _) <- setupPoolWithStake $ Coin 1_000_000
++    passNEpochs 2
++    lastCommittee <- getLastEnactedCommittee
++    noConfidence <- submitGovAction $ NoConfidence lastCommittee
++    submitYesVote_ (DRepVoter dRep) noConfidence
++    submitYesVote_ (StakePoolVoter pool) noConfidence
++    secondId <- submitGovAction $ NoConfidence lastCommittee
++    submitYesVote_ (DRepVoter dRep) secondId
++    submitYesVote_ (StakePoolVoter pool) secondId
++    secondGAS <- getGovActionState secondId
++    ratEnv <- getRatifyEnv
++    govSt <- getsNES $ nesEsL . epochStateGovStateL
++    let ratSt = getRatifyState govSt
++    noConfidenceGAS <- getGovActionState noConfidence
++    let trc = TRC (ratEnv, ratSt, RatifySignal (SSeq.fromList [noConfidenceGAS, secondGAS]))
++    res <- runConformance @"RATIFY" @ConwayEra () trc
++    observeRatify trc res
++    case res of
++      ConformanceResult Right {} Right {} Right {} -> pure ()
++      failure -> expectationFailure $ "Expected success, got:\n" <> showExpr failure
++  it "NoConfidence competing reverse conforms" $ do
++    modifyPParams $ \pp ->
++      pp
++        & ppDRepVotingThresholdsL . dvtMotionNoConfidenceL .~ 1 %! 2
++        & ppPoolVotingThresholdsL . pvtMotionNoConfidenceL .~ 1 %! 2
++    (dRep, _, _) <- electBasicCommittee
++    (pool, _, _) <- setupPoolWithStake $ Coin 1_000_000
++    passNEpochs 2
++    lastCommittee <- getLastEnactedCommittee
++    noConfidence <- submitGovAction $ NoConfidence lastCommittee
++    submitYesVote_ (DRepVoter dRep) noConfidence
++    submitYesVote_ (StakePoolVoter pool) noConfidence
++    secondId <- submitGovAction $ NoConfidence lastCommittee
++    submitYesVote_ (DRepVoter dRep) secondId
++    submitYesVote_ (StakePoolVoter pool) secondId
++    secondGAS <- getGovActionState secondId
++    ratEnv <- getRatifyEnv
++    govSt <- getsNES $ nesEsL . epochStateGovStateL
++    let ratSt = getRatifyState govSt
++    noConfidenceGAS <- getGovActionState noConfidence
++    let trc = TRC (ratEnv, ratSt, RatifySignal (SSeq.fromList [secondGAS, noConfidenceGAS]))
++    res <- runConformance @"RATIFY" @ConwayEra () trc
++    observeRatify trc res
++    case res of
++      ConformanceResult Right {} Right {} Right {} -> pure ()
++      failure -> expectationFailure $ "Expected success, got:\n" <> showExpr failure
++  it "NoConfidence missing votes conforms" $ do
++    modifyPParams $ \pp ->
++      pp
++        & ppDRepVotingThresholdsL . dvtMotionNoConfidenceL .~ 1 %! 2
++        & ppPoolVotingThresholdsL . pvtMotionNoConfidenceL .~ 1 %! 2
++    _ <- electBasicCommittee
++    _ <- setupPoolWithStake $ Coin 1_000_000
++    passNEpochs 2
++    lastCommittee <- getLastEnactedCommittee
++    noConfidence <- submitGovAction $ NoConfidence lastCommittee
++    ratEnv <- getRatifyEnv
++    govSt <- getsNES $ nesEsL . epochStateGovStateL
++    let ratSt = getRatifyState govSt
++    noConfidenceGAS <- getGovActionState noConfidence
++    let trc = TRC (ratEnv, ratSt, RatifySignal (noConfidenceGAS SSeq.:<| SSeq.Empty))
++    res <- runConformance @"RATIFY" @ConwayEra () trc
++    observeRatify trc res
+     case res of
+       ConformanceResult Right {} Right {} Right {} -> pure ()
+       failure -> expectationFailure $ "Expected success, got:\n" <> showExpr failure

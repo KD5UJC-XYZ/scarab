@@ -1,0 +1,68 @@
+--- a/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway/Ratify.hs
++++ b/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway/Ratify.hs
+@@ -12,6 +12,10 @@
+ module Test.Cardano.Ledger.Conformance.Spec.Conway.Ratify (spec) where
+ 
+ import Cardano.Ledger.Conway (ConwayEra)
++import Test.Cardano.Ledger.Conformance.ExecSpecRule.Core (dumpCbor)
++import UnliftIO.Directory (createDirectoryIfMissing)
++import UnliftIO.Environment (lookupEnv)
++
+ import Cardano.Ledger.Conway.Governance (
+   EnactState,
+   GovActionState (..),
+@@ -36,6 +40,7 @@
+ import Test.Cardano.Ledger.Imp.Common
+ 
+ conformsToImplAccepted ::
++  String ->
+   (RatifyEnv ConwayEra -> RatifyState ConwayEra -> GovActionState ConwayEra -> Bool) ->
+   ( SpecRep ConwayEra (RatifyEnv ConwayEra) ->
+     SpecRep ConwayEra (EnactState ConwayEra) ->
+@@ -43,7 +48,7 @@
+     Bool
+   ) ->
+   Property
+-conformsToImplAccepted impl agda = property $ do
++conformsToImplAccepted predicateLabel impl agda = property $ do
+   let ConstrainedGeneratorBundle {..} = constrainedRatify
+       fromSpecTransM = fromRight $ error "conformsToImplAccepted: translation error"
+   govActions <- cgbContextGen
+@@ -55,8 +60,21 @@
+           runSpecTransM () $
+             toSpecRep @ConwayEra (ratifySt ^. rsEnactStateL)
+       specGovActions = fromSpecTransM $ runSpecTransM () $ toSpecRep @ConwayEra govActions
+-  return $
+-    conjoin $
++  let observedNative = map (impl ratifyEnv ratifySt) govActions
++      observedAgda = map (agda specEnv specSt) specGovActions
++  return $ ioProperty $ do
++    exportDir <- lookupEnv "SCARAB_RATIFY_ACCEPTED_EXPORT_DIR"
++    case exportDir of
++      Nothing -> pure ()
++      Just path -> do
++        createDirectoryIfMissing True path
++        dumpCbor @ConwayEra path ratifyEnv "environment"
++        dumpCbor @ConwayEra path ratifySt "state"
++        dumpCbor @ConwayEra path govActions "signal"
++        dumpCbor @ConwayEra path observedNative "implementation-booleans"
++        dumpCbor @ConwayEra path observedAgda "agda-booleans"
++        writeFile (path <> "/predicate.txt") predicateLabel
++    pure $ conjoin $
+       zipWith
+         ( \ga sga ->
+             let implRes = impl ratifyEnv ratifySt ga
+@@ -79,6 +97,7 @@
+ spec :: Spec
+ spec = describe "RATIFY" $ do
+   prop "STS" $ conformsToImplConstrained_ constrainedRatify
++  prop "STS-sized5" $ conformsToImpl @"RATIFY" @ConwayEra (resize 5 (genFromBundle_ constrainedRatify))
+   describe "Accepted" $ do
+     forM_
+       [ ("DRep", (Conway.dRepAccepted, Agda.acceptedByDRep))
+@@ -86,4 +105,4 @@
+       , ("CC", (Conway.committeeAccepted, Agda.acceptedByCC))
+       ]
+       $ \(l, (impl, agda)) ->
+-        prop l $ conformsToImplAccepted impl agda
++        prop l $ mapSize (const 5) $ conformsToImplAccepted l impl agda
