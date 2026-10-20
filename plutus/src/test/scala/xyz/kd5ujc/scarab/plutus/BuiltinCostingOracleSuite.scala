@@ -109,6 +109,7 @@ class BuiltinCostingOracleSuite extends FunSuite:
       val language =
         PlutusLanguage.values.find(_.id + 1 == languageId).getOrElse(fail(s"language $languageId"))
       val parameters = field[Vector[Long]](model, "costModel")
+      assertEquals(parameters.size, if languageId == 3 then 361 else 343)
       assertEquals(parameters, BuiltinCostingCorpus.parameters(languageId, protocol).map(_ * scale))
       scripts.zipWithIndex.foreach { (script, i) =>
         val id = field[String](script, "id")
