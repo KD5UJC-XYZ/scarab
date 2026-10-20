@@ -106,6 +106,17 @@ and `PreConwayUtxoPredicatesSuite` controls for 64/65-byte payloads. Those nativ
 observations are Alonzo/Babbage; Conway uses the same shared output check. The
 fresh full-STS Conway witness corpus adds no new attribute-boundary observation.
 
+Standalone UTXO validation now also enforces its own nonempty spending set and
+existence of all spending, collateral and reference inputs, even without redeemers.
+Previously only the earlier UTXOW guard guaranteed that premise. A separate
+released-native capture rejects an absent collateral input as `BadInputsUTxO`;
+the old standalone production rule instead accepted the exact input. The corrected
+rule matches the native typed refusal. Local controls additionally cover both
+validity flags and relevant interval/nonempty/fee/existence precedence. This
+native-only supplement adds no formal judgment to the 39-input count. Editing
+collateral invalidates the original signatures, which bare UTXO does not check;
+no UTXOW signature-validity claim is made for this control.
+
 The other reviewed formal corrections already agree with production source and
 existing local checks; these are not additional native/formal HEAD executions:
 
