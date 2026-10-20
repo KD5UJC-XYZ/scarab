@@ -24,8 +24,8 @@ without normalizing them or counting them as Scarab full-state matches.
 All ten representable generated signals name voters with empty inner vote maps;
 seven also submit proposals. These test nonempty signal/proposal handling and
 voter existence, including the corrected empty-map authorization fast path,
-rather than applying cast votes to actions. RATIFY integrations below contain
-real yes votes but do not separately establish GOV cast-vote conformance.
+rather than applying cast votes to actions. The separately named lawful
+cast-vote integration below covers actual vote insertion.
 Scarab decodes the original voting procedures and certificates and compares the
 complete resulting proposal roots, ordered action records, votes and expiry data
 through its production GOV rule.
@@ -38,6 +38,18 @@ native predicate-failure CBOR is retained and decoded as the exact typed mismatc
 Scarab must return the same failure and amounts. The ordinary native/formal
 comparison is preserved; the GOV-specific observer separately evaluates the same
 input to capture its native failure bytes.
+
+`gov-drep-cast-vote` registers a DRep through the lawful upstream integration
+setup, creates a no-confidence proposal and submits an actual yes-vote transaction.
+The observer retains that transaction's returned ID, the original pre-proposals,
+all six GOV environment fields, EnactState context and its exact voter/action/vote
+signal. Native and formal GOV outputs compare equal, and native GOV's full output
+also equals the actual integration ledger's post-proposals, separately retained as
+`observed-ledger-proposals.cbor`. Scarab must add the same DRep yes vote and match
+the complete proposal state. The observer does not mutate serialized fixtures.
+Apply [governance-cast-vote.patch](../../../../../../scripts/oracle/ledger-govcert/governance-cast-vote.patch)
+after the preceding stack and use `SCARAB_GOV_VOTE_EXPORT_DIR` for this case.
+All retained cases were re-executed against the final recorded executable.
 
 Five lawful integration RATIFY cases retain all eight environment fields,
 complete RatifyState, original ordered actions, native DRep/SPO approval booleans
@@ -60,7 +72,7 @@ native rule, formal rule or the ordinary conformance verdict. Native approval
 booleans are additional observations; formal approval-predicate vectors are not
 separately exported by these integration tests.
 
-This is bounded Conway/PV9 GOV and PV11 integration RATIFY coverage, not all
+This is bounded Conway/PV9 generated GOV and PV11 integration GOV/RATIFY coverage, not all
 seeds, action kinds or governance properties. It does not require the production
 pulser to adopt a particular internal scheduler. The raw CBOR is an upstream
 trace, not a Scarab persisted snapshot, and no native snapshot format changes.

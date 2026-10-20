@@ -1,0 +1,77 @@
+--- a/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Conway/Ratify.hs
++++ b/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Conway/Ratify.hs
+@@ -16,6 +16,12 @@
+ import Cardano.Ledger.Conway.Governance (
+   Committee (..),
+   GovAction (..),
++  VotingProcedures (..),
++  VotingProcedure (..),
++  Vote (..),
++  constitutionGovStateL,
++  constitutionGuardrailsScriptHashL,
++  mkEnactState,
+   GovPurposeId (..),
+   RatifySignal (..),
+   Voter (..),
+@@ -31,6 +37,8 @@
+   epochStateGovStateL,
+   nesELL,
+   nesEsL,
++  esLStateL,
++  lsCertStateL,
+  )
+ import Control.State.Transition (TRC (..))
+ import Data.Bifunctor (Bifunctor (..))
+@@ -39,7 +47,7 @@
+ import qualified Data.Map as Map
+ import qualified Data.Sequence.Strict as SSeq
+ import qualified Data.Text as T
+-import Lens.Micro ((&), (.~))
++import Lens.Micro ((&), (.~), (^.))
+ import Lens.Micro.Mtl (use)
+ import Test.Cardano.Ledger.Conformance (
+   ConformanceResult (..),
+@@ -75,6 +83,43 @@
+
+ spec :: Spec
+ spec = withImpInit @(LedgerSpec ConwayEra) $ describe "RATIFY" $ modifyImpInitProtVer (eraProtVerHigh @ConwayEra) $ do
++  it "GOV registered DRep yes vote conforms" $ do
++    (drep, _, _) <- electBasicCommittee
++    parent <- getLastEnactedCommittee
++    actionId <- submitGovAction $ NoConfidence parent
++    preProposals <- getProposals
++    govSt <- getsNES $ nesEsL . epochStateGovStateL
++    cert <- getsNES $ nesEsL . esLStateL . lsCertStateL
++    epoch <- getsNES nesELL
++    pp <- getsPParams id
++    let voter = DRepVoter drep
++        votes = VotingProcedures $ Map.singleton voter $ Map.singleton actionId $ VotingProcedure VoteYes SNothing
++    txId <- submitVote VoteYes voter actionId
++    postProposals <- getProposals
++    let env = Conway.GovEnv txId epoch pp (govSt ^. constitutionGovStateL . constitutionGuardrailsScriptHashL) cert (govSt ^. committeeGovStateL)
++        signal = Conway.GovSignal votes mempty mempty
++        ctx = mkEnactState govSt
++        trc = TRC (env, preProposals, signal)
++    res <- runConformance @"GOV" @ConwayEra ctx trc
++    case crImplementationResult res of
++      Right (out, _) -> out `shouldBeExpr` postProposals
++      Left failure -> expectationFailure $ show failure
++    case (crTranslationResult res, crSpecificationResult res) of
++      (Right native, Right formal) -> native `shouldBeExpr` formal
++      _ -> expectationFailure $ showExpr res
++    exportDir <- liftIO $ lookupEnv "SCARAB_GOV_VOTE_EXPORT_DIR"
++    case exportDir of
++      Nothing -> pure ()
++      Just path -> do
++        dumpCbor @ConwayEra path ctx "context"
++        dumpCbor @ConwayEra path env "environment"
++        dumpCbor @ConwayEra path preProposals "state"
++        dumpCbor @ConwayEra path signal "signal"
++        dumpCbor @ConwayEra path postProposals "observed-ledger-proposals"
++        case crImplementationResult res of
++          Right (out, _) -> dumpCbor @ConwayEra path out "implementation-state"
++          Left failure -> liftIO $ writeFile (path <> "/native-failure.txt") (show failure)
++        liftIO $ writeFile (path <> "/result.txt") "implementation-accepted\nagda-accepted\noutputs-equal\nledger-proposals-equal\n"
+   it "NoConfidence accepted conforms" $ do
+     modifyPParams $ \pp ->
+       pp

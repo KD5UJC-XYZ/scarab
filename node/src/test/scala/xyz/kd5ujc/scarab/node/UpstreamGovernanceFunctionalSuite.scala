@@ -22,6 +22,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Proposals,
   VotingProcedures,
   Voter,
+  Vote,
   Credential,
   DRep,
   DRepState,
@@ -194,6 +195,29 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
     )
   }
 
+  test("lawful GOV applies the actual registered DRep yes vote") {
+    val id = "gov-drep-cast-vote"
+    val before = read(node(id, "state"), summon[Codec[Proposals]])
+    val expected = read(node(id, "implementation-state"), summon[Codec[Proposals]])
+    val inputs = govSignal(id)
+    assert(inputs.proposals.isEmpty)
+    assert(inputs.certificates.isEmpty)
+    inputs.votes match
+      case Vector((Voter.DRepVoter(credential), Vector((actionId, Vote.Yes)))) =>
+        assertEquals(before.byId.get(actionId).flatMap(_.drepVotes.get(credential)), None)
+        assertEquals(
+          expected.byId.get(actionId).flatMap(_.drepVotes.get(credential)),
+          Some(Vote.Yes)
+        )
+      case other => fail(s"expected the original actual DRep yes vote, got $other")
+    assertEquals(read(node(id, "observed-ledger-proposals"), summon[Codec[Proposals]]), expected)
+    assertEquals(Sts.apply(Gov)(globals, govEnvironment(id), before, inputs), Right(expected))
+    assertEquals(
+      Files.readString(base.resolve(s"cases/$id/result.txt")),
+      "implementation-accepted\nagda-accepted\noutputs-equal\nledger-proposals-equal\n"
+    )
+  }
+
   unsupportedSeeds.toVector.sorted.foreach { seed =>
     test(s"retain generated GOV nonzero-domain violation at seed $seed") {
       val id = s"gov-sized5-$seed"
@@ -315,6 +339,7 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
     val rows = manifest.hcursor.get[Vector[Json]]("cases").fold(e => fail(e.message), identity)
     val expectedIds = (510101 to 510115).map(seed => s"gov-sized5-$seed").toSet ++ Set(
       "gov-invalid-deposit",
+      "gov-drep-cast-vote",
       "ratify-native-positive",
       "ratify-both-positive",
       "ratify-forward",
@@ -332,6 +357,8 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
         Set("context.cbor", "environment.cbor", "state.cbor", "signal.cbor", "result.txt")
       val expectedFiles =
         if id == "gov-invalid-deposit" then common + "native-failures.cbor"
+        else if id == "gov-drep-cast-vote" then
+          common ++ Set("implementation-state.cbor", "observed-ledger-proposals.cbor")
         else if id.startsWith("ratify-") then
           common ++ Set("implementation-state.cbor", "approvals.cbor")
         else common + "implementation-state.cbor"

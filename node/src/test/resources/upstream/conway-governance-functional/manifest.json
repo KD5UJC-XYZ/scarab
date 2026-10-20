@@ -7,8 +7,8 @@
     "compiler": "GHC 9.10.3",
     "target": "cardano-ledger-conformance:test:tests",
     "dependencyPlanSha256": "d5268a535a9e6c5a4158ddac6f9a1c310d05882c54f2c85b460de83e2e3453d6",
-    "executableSha256": "76c7c79b2593b5ba5403aa68ce6c458690c2d9b5a38859d0129c285035779cae",
-    "sampling": "Fifteen unchanged GOV generators resized to5; ten representable and five retained unsupported zero NonZero counts, one controlled deposit rejection with only required parameter increased by1; original successful NoConfidence integration and four lawful integration variants. Each ratification invocation uses identical seed510201. Full native and formal transitions retain their ordinary comparison.",
+    "executableSha256": "b6bc3c19f9a019f40df8ac75351ee247813c3202decbf952e850a80d7ce2f1af",
+    "sampling": "Fifteen unchanged GOV generators resized to5; ten representable and five retained unsupported zero NonZero counts, one controlled deposit rejection with only required parameter increased by1; original successful NoConfidence integration and four lawful integration variants. Each ratification invocation uses identical seed510201. Full native and formal transitions retain their ordinary comparison. One additional lawful integration case applies a real registered DRep yes vote; actual submitted transaction ID, input state and ledger postproposals are retained. All22case commands rerun against this final executable.",
     "orderedBuildPatchStack": [
       {
         "path": "scripts/oracle/ledger-govcert/exporter.patch",
@@ -37,6 +37,10 @@
       {
         "path": "scripts/oracle/ledger-govcert/governance-functional.patch",
         "sha256": "fc9df4c3c169ca2dbec3127234c83fad3abcad2363db62c1478d54189fd3bc96"
+      },
+      {
+        "path": "scripts/oracle/ledger-govcert/governance-cast-vote.patch",
+        "sha256": "30c933f5e2889e04a284650d446c2d6f9c0d3d7809a0cac0835b7a4356c6877c"
       }
     ],
     "patchedSourceSha256": {
@@ -46,7 +50,7 @@
       "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Core.hs": "8e52bf75a5848a3112760d8e0b1147c137312ac3f9941d08b2ff0034820a7bbf",
       "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway.hs": "431ec1a474d94a7482792f45d9b60d5dc42a3a470fc51638a0968002f6fd43d0",
       "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway/Ratify.hs": "4f0af483e82ff222e7d5d22de3a6c82bba61df11043168eab59e07c7c2a9a3fa",
-      "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Conway/Ratify.hs": "4a9d12613e7090e1f8421fba42eb8f7a6f7638261a64981d82eef17acd6b09d9"
+      "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Conway/Ratify.hs": "f742f1e9335f5c7963168b62d45db5e866b6aa113d2fe7feaca896bbc97f81b6"
     },
     "extraObservers": "Epoch/proposal-payment observer registrations were present in the same target build but are not selected by the RATIFY invocations. The complete patch stack reconstructs every modified source byte exactly.",
     "imageDigest": "sha256:aa7e2d96e9f15eb8556f9b6a2685b0aaf3a22608ed1299821f7a7edc4c491847"
@@ -62,7 +66,7 @@
         "--qc-max-success=1"
       ],
       "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
-      "logSha256": "a1f98a474fddaa6f46fe6c48b1e7c1534e540da05609f4a72b92b00858a5544e",
+      "logSha256": "2fe00f269508cfebeda6976b822c0a8d163a749f705e6ddebf1c8344c7675d82",
       "files": {
         "context.cbor": {
           "bytes": 1683,
@@ -101,7 +105,7 @@
         "--qc-max-success=1"
       ],
       "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
-      "logSha256": "2b69277e7f86cc6a9cec880a7c767715f4e86969a1520c83d4c7abd328b2c4c1",
+      "logSha256": "e25391f8d784f370763f919adb1f9a41acb44186ab853aebfd72b10390a2f16e",
       "files": {
         "context.cbor": {
           "bytes": 1794,
@@ -141,7 +145,7 @@
         "--qc-max-success=1"
       ],
       "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
-      "logSha256": "3ea95cfea526487b739a570ce0320ea79166c4da5409bd97554a932df80acf67",
+      "logSha256": "8f541b9cfa2906a9c01d0e6e518d1308f26552ffb6a7890a8e47b1dc3dce26bf",
       "files": {
         "context.cbor": {
           "bytes": 1290,
@@ -181,7 +185,7 @@
         "--qc-max-success=1"
       ],
       "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
-      "logSha256": "fad1f61ac6c3b1f9451c0b2ca0cfe9610a0c4ac4d94a3ffefdf28b7a6363c7fe",
+      "logSha256": "8ddd62a2ac5fdd70be66cdddb3211fb855489c798de160991fb1e0bc8474e803",
       "files": {
         "context.cbor": {
           "bytes": 1670,
@@ -220,7 +224,7 @@
         "--qc-max-success=1"
       ],
       "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
-      "logSha256": "68b577bf6c44d1f8bf25bb47018466a1ceab134717a1106d3e1cf5ef08d5c619",
+      "logSha256": "bd589ea8b80b8b5fb96f6a7dfb89d8ff1a086d2ffb893cb35f1346aa960019ae",
       "files": {
         "context.cbor": {
           "bytes": 1370,
@@ -259,7 +263,7 @@
         "--qc-max-success=1"
       ],
       "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
-      "logSha256": "a9778a023e9f8d1157ded62c33af129fd0fd9d4c0c4a9e15ce312ef8376b6078",
+      "logSha256": "feb3d1f6f8a488a75a7775c75956b3d5206d696fecdf680c03e819a6a9af3981",
       "files": {
         "context.cbor": {
           "bytes": 1919,
@@ -298,7 +302,7 @@
         "--qc-max-success=1"
       ],
       "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
-      "logSha256": "66fbd2331c5e1b46019f54c438dc6b0506476c32872333b2752216fcf918fa02",
+      "logSha256": "43c476477a587655f99eec65afa19807c935ebe7fa3fcb9727c8654d90179cf9",
       "files": {
         "context.cbor": {
           "bytes": 2512,
@@ -337,7 +341,7 @@
         "--qc-max-success=1"
       ],
       "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
-      "logSha256": "6c9e4cc27b4555beebaa43ca6a4aecb84bd8067ea99ae6c438cda7a40818215d",
+      "logSha256": "83f1c061ed56851e1810afa09ecf7a101df8878b7313d3ad5e6c2d15017c93d0",
       "files": {
         "context.cbor": {
           "bytes": 1836,
@@ -376,7 +380,7 @@
         "--qc-max-success=1"
       ],
       "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
-      "logSha256": "2b9179a739d272409b17fe44fb3f92eff2a8250850266bcf11e06e0dc3863164",
+      "logSha256": "fd07752f020c09b9bff7174275a2ff922e7f6b4efb2a57e3399db5f5f4aea005",
       "files": {
         "context.cbor": {
           "bytes": 1728,
@@ -416,7 +420,7 @@
         "--qc-max-success=1"
       ],
       "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
-      "logSha256": "c29a4d517d44a2972e25bd531db32b7f37f8805e7b0197b73aca0845685848c7",
+      "logSha256": "ab69696cc3777fc129ab07548f72ee86be935e626e2755e0514fdd854014b50f",
       "files": {
         "context.cbor": {
           "bytes": 2309,
@@ -455,7 +459,7 @@
         "--qc-max-success=1"
       ],
       "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
-      "logSha256": "ad9960d4ca5cdf78ac77482f0c221c264db308305646b3299e962f05684e0516",
+      "logSha256": "3d4504eb8651e6f85a21b739863f1c09434278f2982d68c77e035fb5031e3888",
       "files": {
         "context.cbor": {
           "bytes": 1303,
@@ -494,7 +498,7 @@
         "--qc-max-success=1"
       ],
       "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
-      "logSha256": "9222fdf55c025e422817fa7cc07ce096e90c2eea148fd4502e0260c139f1965e",
+      "logSha256": "d427fa9343579cf6a47fbd3bc4d36467d41b2a62121eb46d52b3e8c9f5449217",
       "files": {
         "context.cbor": {
           "bytes": 2028,
@@ -533,7 +537,7 @@
         "--qc-max-success=1"
       ],
       "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
-      "logSha256": "37455dd63d4c641de0a01c002a058b8713d0525631beb8acebcc9dc948821070",
+      "logSha256": "48697c18d2e6bdc34fe69e5c30604934bd438185349885da67c906cfdd87523c",
       "files": {
         "context.cbor": {
           "bytes": 1691,
@@ -573,7 +577,7 @@
         "--qc-max-success=1"
       ],
       "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
-      "logSha256": "44d5d9370a1b8ffd9c27aed3c148daed524142f470c52f8fe1132a8be3e6c0ee",
+      "logSha256": "d3cb281b8e299bd2945ffe0b770c707be6fbc74faec298286761a5a0f5ef2bdf",
       "files": {
         "context.cbor": {
           "bytes": 1446,
@@ -613,7 +617,7 @@
         "--qc-max-success=1"
       ],
       "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
-      "logSha256": "8c21849962165f9cecb25b2dad65e1bc7bac126518a7c0f7243eac09557b8da6",
+      "logSha256": "7b210c7fe71d330a6fa8946cfbfc5c4fdeaf15ef51bfd0b96a04c7584491f733",
       "files": {
         "context.cbor": {
           "bytes": 1970,
@@ -652,7 +656,7 @@
         "--qc-max-success=1"
       ],
       "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
-      "logSha256": "1899bdfbda5b9e93f1cceaa4a99148676d75369de91c4c0fbce00bdb38c98d91",
+      "logSha256": "395c1542bff078119fafb9cc802fdc17f17939c3f581ea6bebecdde58df01e09",
       "files": {
         "context.cbor": {
           "bytes": 1836,
@@ -691,7 +695,7 @@
         "--qc-max-success=1"
       ],
       "environmentVariable": "SCARAB_GOVERNANCE_EXPORT_DIR",
-      "logSha256": "750cb6c80aae997fcc4c77b7439d7f6f7fb7a851dc0ca8c933d297ab03924e6f",
+      "logSha256": "f16d9502edb26a9ed5771cb2f17b889a8b6862bcd836eaeb646d26a2b58f69f2",
       "files": {
         "approvals.cbor": {
           "bytes": 3,
@@ -734,7 +738,7 @@
         "--qc-max-success=1"
       ],
       "environmentVariable": "SCARAB_GOVERNANCE_EXPORT_DIR",
-      "logSha256": "1671271e88fa9b11e70fdc9cfe2e3d8384bcbfbbcc9c26e81bef2260f93a8161",
+      "logSha256": "ac668e5d041bd2b5c94b2bb92205fb2091ada9848cffc4862acb1e66d9eb97e6",
       "files": {
         "approvals.cbor": {
           "bytes": 3,
@@ -777,7 +781,7 @@
         "--qc-max-success=1"
       ],
       "environmentVariable": "SCARAB_GOVERNANCE_EXPORT_DIR",
-      "logSha256": "2ac6e11d0e6d86857f9c8d8cd8301595c3742664feed4f3465ad039696cfc9c2",
+      "logSha256": "c1af5b1c5cb24c0c989c6c920ab900f5be25bd5db286486e13fc463a1816340a",
       "files": {
         "approvals.cbor": {
           "bytes": 5,
@@ -820,7 +824,7 @@
         "--qc-max-success=1"
       ],
       "environmentVariable": "SCARAB_GOVERNANCE_EXPORT_DIR",
-      "logSha256": "e26e1d33412c33329eee570c2a6a7369ef90f9b305308ffaa318e4c5d3736403",
+      "logSha256": "fb5956969a0e9031e80d4d7156c271d15261fff153c8d1745325808abe26580f",
       "files": {
         "approvals.cbor": {
           "bytes": 5,
@@ -863,7 +867,7 @@
         "--qc-max-success=1"
       ],
       "environmentVariable": "SCARAB_GOVERNANCE_EXPORT_DIR",
-      "logSha256": "7fb7f57b8c14908b14396ec6bb11420b12f0da01f46a70e479a87fe9152864e9",
+      "logSha256": "bbbe05eaa6020a91e53cd301eb2276567459e99c968b3543cbd53db5e8b059b1",
       "files": {
         "approvals.cbor": {
           "bytes": 3,
@@ -895,6 +899,49 @@
         }
       },
       "disposition": "full-native-match"
+    },
+    {
+      "id": "gov-drep-cast-vote",
+      "upstreamExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "GOV registered DRep yes vote conforms",
+        "--seed=510301",
+        "--qc-max-success=1"
+      ],
+      "environmentVariable": "SCARAB_GOV_VOTE_EXPORT_DIR",
+      "logSha256": "5f0f1919f01081c76c6e02542eaedb8309c2895e8993a6ddd6b72b80344a9c29",
+      "disposition": "full-native-match",
+      "files": {
+        "context.cbor": {
+          "bytes": 4720,
+          "sha256": "366e4ea1d3ed88e7dd71e35992569c4d617c0cde427861e160d8df5083bfb832"
+        },
+        "environment.cbor": {
+          "bytes": 3077,
+          "sha256": "08ee025bdb89510bbeef8b18cdc73c289d8e329b5551fb7ce84561171704606a"
+        },
+        "implementation-state.cbor": {
+          "bytes": 279,
+          "sha256": "30aac15634953615c8a47f310c304f0caf9c341225c998f93cd3951b834d6e05"
+        },
+        "observed-ledger-proposals.cbor": {
+          "bytes": 279,
+          "sha256": "30aac15634953615c8a47f310c304f0caf9c341225c998f93cd3951b834d6e05"
+        },
+        "result.txt": {
+          "bytes": 75,
+          "sha256": "3e1817be2847909eaeac2267394ac60484fbb8fca3db724a4a9bdcd0eca337be"
+        },
+        "signal.cbor": {
+          "bytes": 79,
+          "sha256": "32267daad3de102dbd578cdd701a7a71bc4cb2b8335ca2408bce14c1d0bd34ea"
+        },
+        "state.cbor": {
+          "bytes": 246,
+          "sha256": "35ebbd133c0b1665a1455a2a6e8af5c16e960b8eac7b14e66a86b7af5b5412af"
+        }
+      }
     }
   ],
   "limitations": [
@@ -904,6 +951,6 @@
     "Missing-vote RATIFY is an accepted transition retaining unratified actions, distinct from GOV predicate rejection.",
     "GOV deposit refusal compares native/formal rejection statuses and the original native ProposalDepositIncorrect payload against Scarab structured error. Formal rejection text is not required to match.",
     "Native trace CBOR is not a persisted Scarab snapshot format. No persisted format changes.",
-    "All ten representable generated GOV samples name voters with empty inner vote maps; seven also submit proposals. These exercise nonempty signal/proposal handling and voter existence, not recording votes onto actions. RATIFY integration carries genuine yes votes but does not separately establish GOV cast-vote conformance."
+    "All ten representable generated GOV samples name voters with empty inner vote maps; seven also submit proposals. These exercise nonempty signal/proposal handling and voter existence. The separately named lawful GOV cast-vote integration covers one registered DRep yes vote and compares its full outcome with both native/formal GOV and actual ledger postproposals; other cast-vote branches remain unsampled."
   ]
 }
