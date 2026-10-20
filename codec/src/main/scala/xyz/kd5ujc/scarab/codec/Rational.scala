@@ -3,8 +3,9 @@ package xyz.kd5ujc.scarab.codec
 
 import cats.kernel.{Eq, Order}
 
-/** Exact non-normalised-on-input rational, always reduced with a positive denominator. Ledger
-  * arithmetic is exact; `floor` is the only rounding and is applied where the spec applies it.
+/** Exact rational, reduced on construction with a positive denominator. Arithmetic preserves exact
+  * fractions; callers choose [[floor]] or [[ceil]] where the ledger specification requires
+  * rounding.
   */
 final class Rational private (val numerator: BigInt, val denominator: BigInt):
   def +(o: Rational): Rational =

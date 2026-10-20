@@ -77,12 +77,13 @@ class KeepAliveSuite extends munit.FunSuite:
   }
 
   test("definite non-shortest numeric and list-length forms remain accepted") {
+    // The final Done fixture includes an unrelated suffix that the prefix decoder must preserve.
     val fixtures = Vector(
       "980218001800" -> Message.Request(cookie(0)),
       "990002190000190018" -> Message.Request(cookie(24)),
       "82001a0000ffff" -> Message.Request(cookie(65535)),
       "82001b000000000000ffff" -> Message.Request(cookie(65535)),
-      "810218" -> Message.Done // Prefix decoder must leave the unrelated suffix untouched.
+      "810218" -> Message.Done
     )
     fixtures.dropRight(1).foreach { case (hex, msg) =>
       assertEquals(right(decode(State.Client, Role.Client, b(hex))), msg)

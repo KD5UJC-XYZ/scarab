@@ -30,7 +30,7 @@ Other platforms retain explicit `EvalFailure.Unsupported` for tags that the old 
 represent. Ledger validation propagates that as unavailable, never as a script failure or a
 consensus predicate failure. The evaluator preserves the upstream 255-byte DST limit and costing.
 
-The final artifact passed the separate2026-10-18 offline no-ADX/BMI2 smoke: the CPU feature set
+The final artifact passed the separate 2026-10-18 offline no-ADX/BMI2 smoke: the CPU feature set
 was empty, portable library selected, all five startup known answers and the three public builtin
-scripts passed, exit0. The test used a network-disabled throwaway container with read-only public
+scripts passed, exit 0. The test used a network-disabled throwaway container with read-only public
 bundle and native overlay, without changing any operational node or configuration.

@@ -26,12 +26,16 @@ object TxSubmissionServer:
       */
     def submit(originals: Vector[Bytes]): F[Unit]
 
+  /** @param idsPerRequest
+    *   Ids asked for per request.
+    * @param bodiesTimeout
+    *   Time the client may take to send the transactions we asked for.
+    * @param initTimeout
+    *   Optional local bound for the client's first Init; the reference waits indefinitely.
+    */
   final case class Settings(
-      /** Ids asked for per request. */
       idsPerRequest: Int = 3,
-      /** Time the client may take to send the transactions we asked for. */
       bodiesTimeout: FiniteDuration = TxSubmissionPolicy.ShortWait,
-      /** Optional local bound for the client's first Init; the reference waits indefinitely. */
       initTimeout: Option[FiniteDuration] = None
   )
 
@@ -49,12 +53,12 @@ object TxSubmissionServer:
       def bodies(unacked: Vector[Bytes], ids: Vector[Bytes]) =
         TxSubmissionPolicy.bodies(unacked, ids)
       def offers(ids: Vector[Bytes], requested: Int) = TxSubmissionPolicy.offers(ids, requested)
+    // The configured UInt16 request count is independent of the reply-list batch ceiling.
     TxSubmission2Runtime.server(
       channel,
       typedSink,
       TxSubmission2.conwayCodec,
       rules,
-      // The configured UInt16 request count is independent of the reply-list batch ceiling.
       TxSubmission2Runtime
         .ServerSettings(
           settings.idsPerRequest,

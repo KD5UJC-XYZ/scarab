@@ -82,19 +82,21 @@ object Mux:
     * mini-protocol. With `duplex` both sides of every mini-protocol are available on the one
     * bearer: SDUs carry the mode bit of the sending side, so a client and a server instance of the
     * same protocol number never see each other's traffic.
+    *
+    * @param ingressLimit
+    *   The most unread bytes a mini-protocol may have queued, by protocol number (the node-to-node
+    *   limits of the reference by default, [[IngressLimits]]).
+    * @param sduTimeout
+    *   Reference ConnectionHandler.hs:94-102; idle between SDUs is indefinite.
     */
   final case class Config(
       role: Role = Role.Initiator,
       duplex: Boolean = false,
       maxSduPayload: Int = WireMux.WireMaxPayloadBytes,
       readChunkBytes: Int = 16384,
-      /** The most unread bytes a mini-protocol may have queued, by protocol number (the
-        * node-to-node limits of the reference by default, [[IngressLimits]]).
-        */
       ingressLimit: Int => Long = IngressLimits.nodeToNode(),
       egressQueueMessages: Int = 64,
       maxMessageBytes: Int = 2500000,
-      /** Reference ConnectionHandler.hs:94-102; idle between SDUs is indefinite. */
       sduTimeout: FiniteDuration = 30.seconds,
       handshakeSduTimeout: FiniteDuration = 10.seconds
   )

@@ -158,9 +158,9 @@ object Blst:
       Left(BlstProblem.LibraryNeedsMissingCpuFeatures(cpu.missing, build))
     case ok => Right(ok)
 
-  /** Known answers (the G1 and G2 generators of the BLS12-381 standard and the bilinearity of the
-    * pairing). Computing them is what dies with SIGILL on a library the processor cannot run, so
-    * this runs after [[admissible]]; it also shows that blstJNI and the native library match.
+  /** Known answers for G1/G2 decompression, pairing bilinearity and the raw-byte DST adapter.
+    * Computing them can cause SIGILL on a library the processor cannot run, so this runs after
+    * [[admissible]]; it also shows that blstJNI and the native library match.
     */
   def knownAnswers[F[_]: Sync]: F[Option[(KnownAnswer, String)]] = Sync[F].blocking {
     def attempt(answer: KnownAnswer)(check: => Boolean): Option[(KnownAnswer, String)] =

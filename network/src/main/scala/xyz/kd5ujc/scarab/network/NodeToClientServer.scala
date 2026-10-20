@@ -17,13 +17,15 @@ import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.RawNtNBlock
   * finished every served protocol or closes the socket.
   */
 object NodeToClientServer:
+  /** @param chainSync
+    *   One cursor over the chain per connection, serving whole blocks.
+    */
   def accept[F[_]: Async](
       bearer: Bearer[F],
       magic: Long,
       submit: Bytes => F[LocalTxSubmissionServer.Response],
       stateQuery: Option[LocalStateQueryServer.Source[F, Nothing]] = None,
       settings: LocalTxSubmissionServer.Settings = LocalTxSubmissionServer.Settings(),
-      /** One cursor over the chain per connection, serving whole blocks. */
       chainSync: Option[Resource[F, ChainSyncServer.Source[F, RawNtNBlock]]] = None,
       txMonitor: Option[LocalTxMonitorServer.Source[F]] = None
   )(using Raise[F, NetworkError]): F[LocalTxSubmissionServer.End] =

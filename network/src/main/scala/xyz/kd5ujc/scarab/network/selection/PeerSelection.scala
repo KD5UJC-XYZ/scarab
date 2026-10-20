@@ -14,17 +14,19 @@ import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
   *
   *   1. the sensitive state: the judgement of the ledger changed; the clean state was reached
   *   2. the targets and the local roots in force
-  *   3. the request for public roots below the root target
-  *   4. forgetting cold peers above the known target
-  *   5. cold to warm below the established target (local roots first), warm to cold above it
-  *   6. warm to hot below the active target (local roots first), hot to warm above it
+  *   3. big-ledger discovery and forgetting, then public-root requests and peer sharing
+  *   4. forgetting ordinary cold peers above the known target
+  *   5. cold to warm below the established target, warm to cold above it
+  *   6. warm to hot below the active target, hot to warm above it
+  *
+  * Temperature changes consider big-ledger peers before ordinary peers; ordinary promotions
+  * consider local roots first. [[BigLedgerGuards]] keeps the big-ledger population separate.
   *
   * What the reference's monitors wait for (a connection changed, a job ended, the targets or the
   * judgement changed) arrives as an [[Event]] given to [[apply]]; the effect loop applies the
   * events it has before it asks [[decide]] again, which is the reference's priority of
-  * `Monitor.connections` and `Monitor.jobs` over the rest. Big ledger peers, peer sharing and
-  * inbound peers are later stages; their targets and counters are in the types and they decide
-  * nothing yet.
+  * `Monitor.connections` and `Monitor.jobs` over the rest. [[PeerShare.belowTarget]] uses the
+  * available inbound peers and established peers to replenish the known set.
   */
 object PeerSelection:
 

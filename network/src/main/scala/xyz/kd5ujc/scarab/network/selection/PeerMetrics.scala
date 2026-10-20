@@ -11,7 +11,7 @@ import scala.collection.immutable.SortedMap
   *
   * A port of `Ouroboros.Network.PeerSelection.PeerMetric` (ouroboros-network 1.2.0.0,
   * `ouroboros-network/lib/Ouroboros/Network/PeerSelection/PeerMetric.hs`; the lines below are those
-  * of the file at that tag, which the copy of main in the workspace agrees with):
+  * of the file at that tag):
   *
   *   - two boards keyed by slot, each holding the earliest arrival of that slot (`SlotMetric`, 75;
   *     `metricsTracer`, 367-396): a later arrival never replaces an earlier one, a slot beyond
@@ -107,9 +107,9 @@ final class PeerMetrics[A] private (
   def joinedAt: Map[A, Long] = registry
 
   /** The hot-demotion score of every peer the metrics know (`deadlineHotScores`, `Policies.hs`
-    * 104-111 of main, `hotDemotionPolicy` 127-147 at the tag): `upstreamness + fetchynessBlocks`,
-    * and the slot the peer joined at as the tie-break. A peer that is not here ranks as
-    * [[HotScore.Unknown]], below every peer that is (`Map.findWithDefault (0, Nothing)`).
+    * `hotDemotionPolicy` 127-147 at the tag): `upstreamness + fetchynessBlocks`, and the slot the
+    * peer joined at as the tie-break. A peer that is not here ranks as [[HotScore.Unknown]], below
+    * every peer that is (`Map.findWithDefault (0, Nothing)`).
     */
   def hotScores: Map[A, HotScore] =
     val total = upstreamness.foldLeft(fetchynessBlocks) { case (m, (p, n)) =>

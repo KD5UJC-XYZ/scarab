@@ -11,17 +11,22 @@ import xyz.kd5ujc.scarab.protocol.Handshake
   * The limits are those of the reference, derived from what the protocol itself allows a well
   * behaved peer to have in flight (`Cardano.Network.NodeToNode`, `chainSyncProtocolLimits` and its
   * neighbours, ouroboros-network 1.2.0.0, the version cardano-node 11.1.3 pins, with network-mux
-  * 0.11.0.0; the same functions are in 1.3.0.0). Every queue holds `x + x / 10` (`addSafetyMargin`)
-  * of the worst case.
+  * 0.11.0.0; the same functions are in 1.3.0.0). Derived queue budgets hold `x + x / 10`
+  * (`addSafetyMargin`) of the worst case; handshake, discovery and local-interface budgets use
+  * their explicit bounds below.
   */
 object IngressLimits:
-  /** The parameters the limits are derived from (`defaultMiniProtocolParameters`). */
+  /** The parameters the limits are derived from (`defaultMiniProtocolParameters`).
+    * @param chainSyncPipeliningHighMark
+    *   `chainSyncPipeliningHighMark`: the most ChainSync requests the client keeps pipelined.
+    * @param blockFetchPipeliningMax
+    *   `blockFetchPipeliningMax`: the most blocks in one BlockFetch request.
+    * @param maxUnacknowledgedTxIds
+    *   `maxUnacknowledgedTxIds` of `defaultTxDecisionPolicy`.
+    */
   final case class Parameters(
-      /** `chainSyncPipeliningHighMark`: the most ChainSync requests the client keeps pipelined. */
       chainSyncPipeliningHighMark: Int = 300,
-      /** `blockFetchPipeliningMax`: the most blocks in one BlockFetch request. */
       blockFetchPipeliningMax: Int = 100,
-      /** `maxUnacknowledgedTxIds` of `defaultTxDecisionPolicy`. */
       maxUnacknowledgedTxIds: Int = 10
   )
 
@@ -53,9 +58,9 @@ object IngressLimits:
     */
   val LeiosBytes = 100000000L
 
-  /** The node-to-node limits for each mini-protocol, a function of its number. Protocols the
-    * reference has no queue for get none (a peer cannot send on them: the multiplexer ends the
-    * connection for data on an unexpected protocol).
+  /** Byte budgets by mini-protocol number, with a small fallback for protocols without a dedicated
+    * formula. This function does not register protocols: [[Mux]] separately rejects SDUs for
+    * channels that the connection has not opened.
     */
   def nodeToNode(parameters: Parameters = Parameters()): Int => Long = {
     case Protocols.Handshake => Handshake.MaxMessageBytes.toLong

@@ -259,16 +259,18 @@ class ChainSyncSuite extends munit.FunSuite:
     assertEquals(boundary.byron, Some(NtNHeader.ByronInfo(true, 0)))
   }
   test("NtN header codec rejects malformed envelopes") {
+    // Cases in order: unknown era, wrong tag, truncated payload, wrong arity, indefinite array,
+    // indefinite bytes, missing Byron wrapper, unknown Byron subtag and trailing bytes.
     Vector(
-      "8207d8184100", // unknown era
-      "8206d8174100", // wrong tag
-      "8206d81800", // truncated
-      "8306d818410000", // arity
-      "9f06d8184101ff", // indefinite
-      "8206d8185f4101ff", // indefinite bytes
-      "8200d8184100", // Byron without wrapper
-      "820082820200d8184100", // unknown subtag
-      "8206d818410000" // trailing
+      "8207d8184100",
+      "8206d8174100",
+      "8206d81800",
+      "8306d818410000",
+      "9f06d8184101ff",
+      "8206d8185f4101ff",
+      "8200d8184100",
+      "820082820200d8184100",
+      "8206d818410000"
     ).foreach(h => assert(NtNHeader.codec.decode(b(h)).isLeft, h))
     assert(NtNHeader.codec.encode(NtNHeader(Era.Byron, b("00"), None)).isLeft)
     assert(

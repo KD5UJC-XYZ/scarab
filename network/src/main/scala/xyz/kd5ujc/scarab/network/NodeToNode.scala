@@ -12,13 +12,15 @@ import scala.concurrent.duration.*
 /** The hot part of a node-to-node connection: ChainSync, BlockFetch and (with a source of
   * transactions) TxSubmission2, started by [[WarmConnection.activate]]. All clients share the one
   * multiplexed bearer of the connection.
+  *
+  * @param transactions
+  *   The TxSubmission2 client, when this activation runs one and can end it.
   */
 final class NodeToNodeConnection[F[_], P](
     val version: Int,
     val chainSync: ChainSyncClient[F, P],
     val blockFetch: BlockFetchClient[F],
     val mux: Mux[F],
-    /** The TxSubmission2 client, when this activation runs one and can end it. */
     val transactions: Option[TxSubmissionClient.Running[F]] = None
 ):
   /** End the hot protocols on the wire, so the connection can carry a new activation: ChainSync and
@@ -37,6 +39,12 @@ final class NodeToNodeConnection[F[_], P](
   * warm (`Ouroboros.Network.PeerSelection.PeerStateActions`: established protocols only). The hot
   * protocols start with [[activate]] and end when its resource is released; a connection can be
   * activated again after [[NodeToNodeConnection.finish]] ended them cleanly.
+  *
+  * @param peerSharing
+  *   The PeerSharing client, when both sides agreed to peer sharing (the established temperature,
+  *   like KeepAlive); the governor asks through it.
+  * @param duplex
+  *   The handshake agreed InitiatorAndResponder for this bearer.
   */
 final class WarmConnection[F[_], P] private[network] (
     val version: Int,
@@ -44,11 +52,7 @@ final class WarmConnection[F[_], P] private[network] (
     role: Mux.Role,
     codec: ChainSync.PayloadCodec[P],
     settings: NodeToNode.Settings,
-    /** The PeerSharing client, when both sides agreed to peer sharing (the established temperature,
-      * like KeepAlive); the governor asks through it.
-      */
     val peerSharing: Option[PeerSharingClient[F]] = None,
-    /** The handshake agreed InitiatorAndResponder for this bearer. */
     val duplex: Boolean = false
 ):
   /** Start the hot protocols as the initiator side of each. With `transactions` the node offers
@@ -69,6 +73,13 @@ final class WarmConnection[F[_], P] private[network] (
     yield NodeToNodeConnection(version, chainSync, blockFetch, mux, running)
 
 object NodeToNode:
+  /** @param offerPeerSharing
+    *   Take part in peer sharing: offered in the handshake; the connection does if the peer does
+    *   too.
+    * @param maxVersion
+    *   The highest version offered: the latest release (15, as cardano-node 11.1.3) unless the
+    *   configuration enables experimental protocols (then 16, which adds the Peras flag).
+    */
   final case class Settings(
       connectTimeout: FiniteDuration = 10.seconds,
       handshakeTimeout: FiniteDuration = Handshake.DefaultPhaseTimeout,
@@ -76,13 +87,7 @@ object NodeToNode:
       chainSync: ChainSyncClient.Settings = ChainSyncClient.Settings(),
       blockFetch: BlockFetchClient.Settings = BlockFetchClient.Settings(),
       keepAlive: KeepAliveClient.Settings = KeepAliveClient.Settings(),
-      /** Take part in peer sharing: offered in the handshake; the connection does if the peer does
-        * too.
-        */
       offerPeerSharing: Boolean = false,
-      /** The highest version offered: the latest release (15, as cardano-node 11.1.3) unless the
-        * configuration enables experimental protocols (then 16, which adds the Peras flag).
-        */
       maxVersion: NtnVersion = NtnVersion.LatestReleased,
       peerSharing: PeerSharingClient.Settings = PeerSharingClient.Settings()
   ):

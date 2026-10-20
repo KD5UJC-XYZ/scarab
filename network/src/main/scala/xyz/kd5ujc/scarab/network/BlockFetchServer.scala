@@ -22,9 +22,11 @@ object BlockFetchServer:
       */
     def range(from: Point, to: Point, maxBlocks: Int): F[Option[Stream[F, Bytes]]]
 
+  /** @param maxBlocks
+    *   Ranges longer than this are refused with `NoBlocks`.
+    */
   final case class Settings(
       limits: BlockFetch.Limits = BlockFetch.Limits(),
-      /** Ranges longer than this are refused with `NoBlocks`. */
       maxBlocks: Int = 2160,
       idleTimeout: FiniteDuration = 3373.seconds
   )

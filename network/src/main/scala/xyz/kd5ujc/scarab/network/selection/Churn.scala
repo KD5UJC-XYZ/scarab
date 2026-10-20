@@ -8,14 +8,14 @@ import scala.concurrent.duration.*
   * `ChurnLoop` in `node`.
   *
   * A port of `peerChurnGovernor` (`cardano-diffusion/lib/Cardano/Network/PeerSelection/Churn.hs`,
-  * ouroboros-network 1.2.0.0; the file of main in the workspace is identical at the lines cited).
-  * The churn governor does not move peers. It writes the *targets* the governor works towards, one
-  * set at a time, and waits (for the counters to meet them, or for a timeout) before the next:
-  * decrease the active peers so that the governor demotes the least useful ones (the metrics of
+  * ouroboros-network 1.2.0.0; source provenance is recorded in docs/design/peer-selection.md). The
+  * churn governor does not move peers. It writes the *targets* the governor works towards, one set
+  * at a time, and waits (for the counters to meet them, or for a timeout) before the next: decrease
+  * the active peers so that the governor demotes the least useful ones (the metrics of
   * [[PeerMetrics]]), increase them again so that it promotes others, then refresh the established
   * and known sets (`Churn.hs` 117-123, 561-654).
   *
-  * Differences from the reference, both small and both written in the design document (7b):
+  * Differences from the reference are recorded in docs/design/peer-selection.md section 7b:
   *   - a target that would be insane (the reference's Monitor silently ignores an insane update,
   *     `Monitor.hs` 68-69) is clamped instead, so the round is not wasted: the root target is kept
   *     within the known target, a negative active target is 0, the established target never below
@@ -23,8 +23,8 @@ import scala.concurrent.duration.*
   *     the active one in the bootstrap regime); with the clamps no step yields an insane set for
   *     any sane base (a property test), and at the defaults none is needed;
   *   - the six big-ledger steps are left out of a round while the node has no big ledger peers
-  *     ([[round]] with `bigLedger = false`, until G1.3): their counters are zero, so each increase
-  *     would only wait out its timeout (200 s) with nothing to wait for.
+  *     ([[round]] with `bigLedger = false`): their counters are zero, so each increase would only
+  *     wait out its timeout (200 s) with nothing to wait for.
   */
 object Churn:
 

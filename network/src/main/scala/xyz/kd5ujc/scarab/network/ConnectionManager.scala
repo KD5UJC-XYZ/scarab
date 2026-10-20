@@ -39,11 +39,11 @@ trait Connection[F[_]]:
   /** Completes once the connection has been released and removed. */
   def closed: F[Unit]
 
-/** The node's table of node-to-node connections: at most one live connection per peer address in
-  * either direction, with limits on the connections accepted and opened, and typed refusals. The
-  * connection life itself is owned by whoever holds the resource: releasing it (normally, by
-  * failure or by cancellation) always runs the connection through `Terminating` to removal, so the
-  * accounting cannot leak.
+/** The node's table of node-to-node connections: at most one live connection per peer address and
+  * direction. Admission policy controls whether opposite directions may coexist; accepted and
+  * opened connections have separate limits and typed refusals. The connection life itself is owned
+  * by whoever holds the resource: releasing it (normally, by failure or by cancellation) always
+  * runs the connection through `Terminating` to removal, so the accounting cannot leak.
   *
   * A peer's inbound connection is keyed by the address the transport reports; a peer that dials
   * from its listening port (as the reference node does) is thereby the same address we would dial.
