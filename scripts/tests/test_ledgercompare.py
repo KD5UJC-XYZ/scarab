@@ -95,7 +95,7 @@ class LedgerComparisonTest(unittest.TestCase):
 
     def test_identical_malformed_answers_do_not_pass(self):
         for malformed in (b"", b"\x01", b"\x82\x04\x81\x01", answer(nes()) + b"\x00",
-                          cbor.enc([5, [[]]]), cbor.enc([4, [[], []]]), cbor.enc([4, [[]], 0])):
+                          cbor.enc([4, [[]]]), cbor.enc([5, [[]]]), cbor.enc([4, [[], []]]), cbor.enc([4, [[]], 0])):
             with self.subTest(raw=malformed):
                 v = ledgercompare.compare("DebugNewEpochState", malformed, malformed)
                 self.assertFalse(v.equal)

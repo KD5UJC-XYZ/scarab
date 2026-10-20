@@ -22,7 +22,7 @@ def applies(label):
     return label in LABELS
 
 
-def _state(raw, wrapped):
+def _state(raw, wrapped, epoch_state):
     if C.item_end(raw, 0) != len(raw):
         raise C.Malformed("bytes after the answer")
     if C.head(raw, 0)[:2] != (4, 2):
@@ -41,8 +41,8 @@ def _state(raw, wrapped):
             raise C.Malformed("GetCBOR answer is not #6.24")
         content = C.resolve(raw, [1, 0, 0])[0]
         data = C.payload(raw, content)
-    if C.head(data, 0)[0] != 4 or C.item_end(data, 0) != len(data):
-        raise C.Malformed("ledger state is not one complete array")
+    if C.head(data, 0)[:2] != (4, 4 if epoch_state else 7) or C.item_end(data, 0) != len(data):
+        raise C.Malformed("ledger state is not one complete array of the expected arity")
     return data
 
 
@@ -54,7 +54,7 @@ def compare(label, reference, scala):
         return verdict
     for name, raw in (("reference", reference), ("scala", scala)):
         try:
-            _state(raw, label.startswith("GetCBOR/"))
+            _state(raw, label.startswith("GetCBOR/"), label.endswith("DebugEpochState"))
         except (C.Malformed, IndexError) as error:
             verdict.problems.append(f"{name}: not a ledger-state answer: {error}")
     if not verdict.raw_equal:
