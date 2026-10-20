@@ -27,10 +27,26 @@ upstream invocation and verdicts; the [fixture recipe](README.md) describes nati
 | Generic CDDL `serialise Any` | 1 | Cardano CDDL validation is separate | Haskell library/test-value roundtrip; no extra Scala mini-protocol to implement |
 | IO Pipe / Socket demos | 2 | Each retains 24 original property verdicts and complete final-chain results. Pipe uses linked Mux; Socket uses actual loopback TCP with production Cardano Handshake/Mux/ChainSync | No OS-pipe or scheduler-trace equivalence. Upstream Socket uses a test-only TestVersion handshake, so Cardano negotiation is not mock-handshake wire parity |
 
-Generic domain gaps remain visible: codec samples map 49/128 ChainSync rows,
-20/24 BlockFetch rows, 13/24 TxSubmission2 rows and 18/24 PeerSharing rows to strict
-Cardano values. The remaining original bytes and upstream verdicts are retained.
-A generic runtime replay does not turn those strict-codec exclusions into Cardano passes.
+The strict Cardano facade tests and original mock-domain replay assert different contracts.
+`UpstreamGenericCodecCoverageSuite` consumes all 224 base rows through production generic wire
+engines, including all 104 rows correctly refused by the Cardano value boundary. The same suite
+also executes every retained binary-direction, split and separately seeded annotated row: **752
+original rows in total**, without changing a fixture byte or native verdict.
+
+| Family | Original base rows executed generically | Strict Cardano accepted / refused | Additional original rows executed generically |
+|---|---:|---:|---:|
+| ChainSync | 128 | 49 / 79 | 256 binary directions + 128 splits |
+| BlockFetch | 24 | 20 / 4 | 48 binary directions + 24 splits |
+| LocalStateQuery | 24 | 20 / 4 | 24 splits |
+| TxSubmission2 | 24 | 13 / 11 | 24 annotated + 24 splits |
+| PeerSharing | 24 | 18 / 6 | 0 |
+
+Each row checks complete consumption, the original constructor and exact re-encoding. Split and
+annotated observations check every distinct byte prefix: the prefix API is stateless, so every
+accumulated prefix of any ordered two/three-way partition is covered without repeating identical
+decodes. Suffix and truncation controls remain explicit. Mock integer hashes, peers and transaction
+items retain their complete original CBOR representation; none is converted into a Cardano value.
+Correct strict-boundary refusals remain independently asserted in `UpstreamProtocolCodecCoverageSuite`.
 
 The [ordinary codec corpus](ORDINARY-CODECS.md) retains all 128 original mock-domain
 messages without Cardano coercion. It observes 640 original property invocations and

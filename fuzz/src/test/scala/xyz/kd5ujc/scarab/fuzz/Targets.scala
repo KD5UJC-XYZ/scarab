@@ -241,6 +241,8 @@ object Targets:
     def encode(value: Bytes): Either[ProtocolError, Bytes] = Right(value)
     def decode(bytes: Bytes): Either[ProtocolError, Bytes] = Right(bytes)
 
+  private val opaquePeer: PeerSharingEngine.PeerCodec[Bytes] =
+    PeerSharingEngine.peerCodec[Bytes](Right(_), Right(_))
   private val opaquePoint: ChainSyncEngine.PointCodec[Bytes] =
     ChainSyncEngine.pointCodec[Bytes](Right(_), Right(_))
   private val opaqueTip: ChainSyncEngine.TipCodec[Bytes] =
@@ -636,6 +638,30 @@ object Targets:
       peerSharingSeeds,
       (s, r, b) => PeerSharing.decoder(s, r)(b),
       (s, r, m) => PeerSharing.encode(s, r, m)
+    ),
+    roundTrip(
+      "peersharing-engine",
+      PeerSharing.State.values.toSeq,
+      PeerSharing.Role.values.toSeq,
+      () =>
+        Files
+          .readAllLines(
+            java.nio.file.Path.of(
+              "fixtures/reference/ouroboros-network-protocol-codecs/peersharing.tsv"
+            )
+          )
+          .asScala
+          .toVector
+          .map(row =>
+            Bytes
+              .fromHex(row.split("\t", -1)(9))
+              .fold(
+                error => throw new Violation(s"invalid retained PeerSharing wire: $error"),
+                _.toArray
+              )
+          ),
+      (s, r, b) => PeerSharingEngine.decodePrefix(s, r, b, opaquePeer),
+      (s, r, m) => PeerSharingEngine.encode(s, r, m, opaquePeer)
     ),
     roundTrip(
       "leios-fetch",

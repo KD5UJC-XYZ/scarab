@@ -7,8 +7,8 @@ import scala.concurrent.duration.*
 import ChainSync.DecodeResult
 
 /** The PeerSharing mini-protocol (node-to-node, number 10, from version 14): the pure codec, the
-  * agency and the limits. [[PeerSharingEngine]] owns the generic framing; this facade supplies
-  * the Cardano address domain. No transport and no timer is implemented here.
+  * agency and the limits. [[PeerSharingEngine]] owns the generic framing; this facade supplies the
+  * Cardano address domain. No transport and no timer is implemented here.
   *
   * Reference (ouroboros-network, `2fb69829`, the commit of the vendored CDDL, models/.../SOURCES;
   * the tag `ouroboros-network-1.2.0.0` of docs/design/peer-selection.md section 1.1 has the same

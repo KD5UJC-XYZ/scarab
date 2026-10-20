@@ -249,9 +249,8 @@ object PeerSharingEngine:
       case None    => indefinite(Vector.empty)
     }
 
-  /** One message from the front of `bytes`; surplus bytes are left to the caller. The caller bounds
-    * what it keeps: a message cannot be longer than `limits.maxMessageBytes`, which this checks as
-    * it reads, so a declared length that cannot fit fails at once.
+  /** One message from the front of `bytes`; surplus bytes are left to the caller. The ceiling is
+    * checked as fields are read; the caller bounds bytes retained while a message is incomplete.
     */
   private[protocol] def decodeTyped[P](
       state: State,
