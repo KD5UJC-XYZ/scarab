@@ -1,0 +1,4114 @@
+{
+  "schema": "scarab-pv11-native-formal-replay-v1",
+  "sourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "formalCommit": "b3a4fd47a1144ff1fb994f89b1045e78159e07ae",
+  "constrainedCommit": "966f65f3c28cb22fc45220dbd1408baea93b53d8",
+  "upstreamRepairs": [
+    "f11490a9d7a947c1a26b0c49700f9bb0ab380501",
+    "bbc1844c0602de558d5eeebbde2c5c3d44cce3e8",
+    "d7297028d3ffc910e49183070cb1b33259dc579c",
+    "f8636b4c84bb070da67431f51993930b6d162007"
+  ],
+  "nativeRuleBodies": "unchanged supported-release source; explicit native ledger context construction is supplemental to the original UTXO generator",
+  "formalChanges": [
+    "previous formal LEDGERS foreign-input conversion repair",
+    "published overlap-rule placement backported to generated runtime with pinned record ABI; no regenerated Agda proof claim"
+  ],
+  "patches": {
+    "scripts/oracle/ledger-govcert/pv11-generators-bootstrap.patch": {
+      "sha256": "e570439dfd611fbf992a0e6c0902811aa27017ad85df3db00c50c48cab3d95e1",
+      "bytes": 21508
+    },
+    "scripts/oracle/ledger-govcert/formal-overlap-runtime.patch": {
+      "sha256": "bf3e6490b1e3bd0ea8ddbc679f5dd30e512c3e2ebbb004c7deecbf434083462e",
+      "bytes": 6928
+    }
+  },
+  "ghcVersion": "9.10.3",
+  "optimization": "-O1",
+  "rtsArgs": [
+    "-N2"
+  ],
+  "formalArchive": {
+    "actualMountedPath": "/root/.local/state/cabal/store/ghc-9.10.3-1be3/cardano-ledger-executable-spec-0.1.0.0-31be6ee19fa6c531e2f5f5d4bc098fc5369e77f14db02a84661dc99c8e9aa61c/lib/libHScardano-ledger-executable-spec-0.1.0.0-31be6ee19fa6c531e2f5f5d4bc098fc5369e77f14db02a84661dc99c8e9aa61c.a",
+    "sha256": "02defec26b732f2867f71ed6d09851040154564050e53c3c86125fd6b57471cf",
+    "packageUnitIdReused": true,
+    "originalUnpatchedSha256": "0564ef67fcd126f792ad47287ae6124962fbd09f821684a6ca2e159860e4c848",
+    "ledgersConversionOnlySha256": "837980112ec93ed922e59aa51067d70f398918b97eb8ec827cf94a3be2e8772e",
+    "replacementObjects": [
+      "prior Foreign/Ledger conversion object",
+      "Conformance/Utxo.o occurrence2 replaced with Conformance_Utxo.o",
+      "Specification/Utxow.o occurrence2 replaced with Specification_Utxow.o"
+    ],
+    "unchangedDijkstraUtxowObjectSha256": "b56cfb9aa9f762c5a78efd95730ce8a8b3ff152c754efa7006da13844e4aee6c",
+    "independentReview": "Every original archive object compared by reviewer; exactly three changed modules (Foreign/Ledger and two overlap modules); Dijkstra objects retained byte-identical. Published source theorem generation is not claimed."
+  },
+  "initialRuns": [
+    {
+      "id": "utxo-274101",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-UTXO/",
+        "--seed=274101",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274101,
+      "exitCode": 0,
+      "elapsedSeconds": 0.7670955657958984,
+      "logSha256": "cff3dba4f0343ddb40d92ce03b40fbfeb5b891997f88aff815f0acf3545cfab0",
+      "logBytes": 311,
+      "disposition": "actual retained execution; independently observed native/formal outcomes or process failure, not a parity pass solely because setup later changed"
+    },
+    {
+      "id": "utxo-274102",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-UTXO/",
+        "--seed=274102",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274102,
+      "exitCode": 0,
+      "elapsedSeconds": 0.8676378726959229,
+      "logSha256": "7ed3f108a04a57a0d6dff273a1df9219abeed4063f1b324d0a5030fa7861b3b1",
+      "logBytes": 311,
+      "disposition": "actual retained execution; independently observed native/formal outcomes or process failure, not a parity pass solely because setup later changed"
+    },
+    {
+      "id": "utxo-274103",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-UTXO/",
+        "--seed=274103",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274103,
+      "exitCode": 0,
+      "elapsedSeconds": 0.7669601440429688,
+      "logSha256": "9e28a12589a3dba5484f3540e1514bef30f8729c6caf15d237744b00d829ef8d",
+      "logBytes": 311,
+      "disposition": "actual retained execution; independently observed native/formal outcomes or process failure, not a parity pass solely because setup later changed"
+    },
+    {
+      "id": "utxow-274101",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-UTXOW/",
+        "--seed=274101",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274101,
+      "exitCode": 0,
+      "elapsedSeconds": 0.7665591239929199,
+      "logSha256": "d457cad5c251cf8a3d77d70cd320b41452da4dcc2377a804176f372b0f3ca46d",
+      "logBytes": 314,
+      "disposition": "actual retained execution; independently observed native/formal outcomes or process failure, not a parity pass solely because setup later changed"
+    },
+    {
+      "id": "utxow-274102",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-UTXOW/",
+        "--seed=274102",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274102,
+      "exitCode": 0,
+      "elapsedSeconds": 0.8168504238128662,
+      "logSha256": "7f26910df54b8a82cc31aae0fd8669d62c5309aed22ba04666452fc39911d872",
+      "logBytes": 314,
+      "disposition": "actual retained execution; independently observed native/formal outcomes or process failure, not a parity pass solely because setup later changed"
+    },
+    {
+      "id": "utxow-274103",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-UTXOW/",
+        "--seed=274103",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274103,
+      "exitCode": 1,
+      "elapsedSeconds": 0.766855001449585,
+      "logSha256": "8cf9074e28b3100ad5210f384aca22916e16285d6a6dd551747a2d4e59051643",
+      "logBytes": 105083,
+      "disposition": "actual retained execution; independently observed native/formal outcomes or process failure, not a parity pass solely because setup later changed"
+    },
+    {
+      "id": "ledger-274101",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGER/",
+        "--seed=274101",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274101,
+      "exitCode": 0,
+      "elapsedSeconds": 0.7662901878356934,
+      "logSha256": "a48bd0426b0282061097fae6b3f03c0d0e4fd70e0d7f4b8c262a1cad1ec335f9",
+      "logBytes": 317,
+      "disposition": "actual retained execution; independently observed native/formal outcomes or process failure, not a parity pass solely because setup later changed"
+    },
+    {
+      "id": "ledger-274102",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGER/",
+        "--seed=274102",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274102,
+      "exitCode": 1,
+      "elapsedSeconds": 0.8674464225769043,
+      "logSha256": "fb379c834325488c2a3b8b4b12066b4818085be8971ea82877b5f4ca02fcd87e",
+      "logBytes": 163638,
+      "disposition": "actual retained execution; independently observed native/formal outcomes or process failure, not a parity pass solely because setup later changed"
+    },
+    {
+      "id": "ledger-274103",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGER/",
+        "--seed=274103",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274103,
+      "exitCode": 1,
+      "elapsedSeconds": 0.8166377544403076,
+      "logSha256": "f46111a8c2cc73fcced8ded08a296290faa6ba08ef3241c6b3ae6147049f5b49",
+      "logBytes": 117077,
+      "disposition": "actual retained execution; independently observed native/formal outcomes or process failure, not a parity pass solely because setup later changed"
+    },
+    {
+      "id": "ledgers-274101",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGERS/",
+        "--seed=274101",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274101,
+      "exitCode": 139,
+      "elapsedSeconds": 1.1200675964355469,
+      "logSha256": "329841ac222576c1b2c04c54f7fb62e5b388997591dea49aefbca84289faa20d",
+      "logBytes": 124,
+      "disposition": "actual retained execution; independently observed native/formal outcomes or process failure, not a parity pass solely because setup later changed"
+    },
+    {
+      "id": "ledgers-274102",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGERS/",
+        "--seed=274102",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274102,
+      "exitCode": 139,
+      "elapsedSeconds": 1.1188957691192627,
+      "logSha256": "329841ac222576c1b2c04c54f7fb62e5b388997591dea49aefbca84289faa20d",
+      "logBytes": 124,
+      "disposition": "actual retained execution; independently observed native/formal outcomes or process failure, not a parity pass solely because setup later changed"
+    },
+    {
+      "id": "ledgers-274103",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGERS/",
+        "--seed=274103",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274103,
+      "exitCode": 139,
+      "elapsedSeconds": 1.0695807933807373,
+      "logSha256": "329841ac222576c1b2c04c54f7fb62e5b388997591dea49aefbca84289faa20d",
+      "logBytes": 124,
+      "disposition": "actual retained execution; independently observed native/formal outcomes or process failure, not a parity pass solely because setup later changed"
+    },
+    {
+      "id": "bootstrap-valid",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/Bootstrap Witness/Valid Witnesses/",
+        "--seed=274201",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_IMP_EXPORT_DIR",
+      "seed": 274201,
+      "exitCode": 0,
+      "elapsedSeconds": 0.2657346725463867,
+      "logSha256": "0d16ba8afb6deab8c7efc47dfe534d65b35c8eb8a46971d016ea196b5d739145",
+      "logBytes": 276,
+      "disposition": "actual retained execution; independently observed native/formal outcomes or process failure, not a parity pass solely because setup later changed"
+    },
+    {
+      "id": "bootstrap-bad-signature",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/Bootstrap Witness/InvalidWitnessesUTXOW/",
+        "--seed=274201",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_IMP_EXPORT_DIR",
+      "seed": 274201,
+      "exitCode": 0,
+      "elapsedSeconds": 0.2655370235443115,
+      "logSha256": "b64b87c06eb247771529c0837f19712fa88ee1157c406e2fa692569719c58ba4",
+      "logBytes": 294,
+      "disposition": "actual retained execution; independently observed native/formal outcomes or process failure, not a parity pass solely because setup later changed"
+    },
+    {
+      "id": "bootstrap-missing-witness",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/Scarab bootstrap/Missing bootstrap witness/",
+        "--seed=274201",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_IMP_EXPORT_DIR",
+      "seed": 274201,
+      "exitCode": 0,
+      "elapsedSeconds": 0.26599860191345215,
+      "logSha256": "e4493bd867e2c79016d92d457af16ce6d28c08c855a0239e700bc81414fa5f74",
+      "logBytes": 285,
+      "disposition": "actual retained execution; independently observed native/formal outcomes or process failure, not a parity pass solely because setup later changed"
+    }
+  ],
+  "runs": [
+    {
+      "id": "utxo-274101",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-UTXO/",
+        "--seed=274101",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274101,
+      "exitCode": 0,
+      "elapsedSeconds": 0.6670336723327637
+    },
+    {
+      "id": "utxo-274102",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-UTXO/",
+        "--seed=274102",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274102,
+      "exitCode": 0,
+      "elapsedSeconds": 0.7175009250640869
+    },
+    {
+      "id": "utxo-274103",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-UTXO/",
+        "--seed=274103",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274103,
+      "exitCode": 0,
+      "elapsedSeconds": 0.666907787322998
+    },
+    {
+      "id": "utxow-274101",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-UTXOW/",
+        "--seed=274101",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274101,
+      "exitCode": 0,
+      "elapsedSeconds": 0.667292594909668
+    },
+    {
+      "id": "utxow-274102",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-UTXOW/",
+        "--seed=274102",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274102,
+      "exitCode": 0,
+      "elapsedSeconds": 0.6667637825012207
+    },
+    {
+      "id": "utxow-274103",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-UTXOW/",
+        "--seed=274103",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274103,
+      "exitCode": 0,
+      "elapsedSeconds": 0.6164271831512451
+    },
+    {
+      "id": "ledger-274101",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGER/",
+        "--seed=274101",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274101,
+      "exitCode": 0,
+      "elapsedSeconds": 0.6661193370819092
+    },
+    {
+      "id": "ledger-274102",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGER/",
+        "--seed=274102",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274102,
+      "exitCode": 0,
+      "elapsedSeconds": 0.7162094116210938
+    },
+    {
+      "id": "ledger-274103",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGER/",
+        "--seed=274103",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274103,
+      "exitCode": 0,
+      "elapsedSeconds": 0.6657752990722656
+    },
+    {
+      "id": "ledgers-274101",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGERS/",
+        "--seed=274101",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274101,
+      "exitCode": 0,
+      "elapsedSeconds": 0.6660339832305908
+    },
+    {
+      "id": "ledgers-274102",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGERS/",
+        "--seed=274102",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274102,
+      "exitCode": 0,
+      "elapsedSeconds": 0.6661674976348877
+    },
+    {
+      "id": "ledgers-274103",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGERS/",
+        "--seed=274103",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274103,
+      "exitCode": 0,
+      "elapsedSeconds": 0.6160440444946289
+    },
+    {
+      "id": "bootstrap-valid",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/Bootstrap Witness/Valid Witnesses/",
+        "--seed=274201",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_IMP_EXPORT_DIR",
+      "seed": 274201,
+      "exitCode": 0,
+      "elapsedSeconds": 0.21497011184692383
+    },
+    {
+      "id": "bootstrap-bad-signature",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/Bootstrap Witness/InvalidWitnessesUTXOW/",
+        "--seed=274201",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_IMP_EXPORT_DIR",
+      "seed": 274201,
+      "exitCode": 0,
+      "elapsedSeconds": 0.26500535011291504
+    },
+    {
+      "id": "bootstrap-missing-witness",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/Scarab bootstrap/Missing bootstrap witness/",
+        "--seed=274201",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_IMP_EXPORT_DIR",
+      "seed": 274201,
+      "exitCode": 0,
+      "elapsedSeconds": 0.21483421325683594
+    },
+    {
+      "id": "plutus-v2-overlap",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/Conformance/Conway/Imp/UTXOS/PlutusV2 with references/succeeds with same txIn in regular inputs and reference inputs/",
+        "--seed=274301",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_IMP_EXPORT_DIR",
+      "seed": 274301,
+      "exitCode": 0,
+      "elapsedSeconds": 0.21501660346984863
+    },
+    {
+      "id": "plutus-v3-overlap-refused",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/Conformance/Conway/Imp/UTXOS/PlutusV3/fails with same txIn in regular inputs and reference inputs/",
+        "--seed=274302",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_IMP_EXPORT_DIR",
+      "seed": 274302,
+      "exitCode": 0,
+      "elapsedSeconds": 0.2149524688720703
+    },
+    {
+      "id": "drep-delegation-unregistration",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/Scarab DRep/registered delegatees removed after unregistration/",
+        "--seed=274401",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_IMP_EXPORT_DIR",
+      "seed": 274401,
+      "exitCode": 0,
+      "elapsedSeconds": 0.21491551399230957
+    },
+    {
+      "id": "ledgers-274104",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGERS/",
+        "--seed=274104",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274104,
+      "exitCode": 0,
+      "elapsedSeconds": 0.6661126613616943
+    },
+    {
+      "id": "ledgers-274105",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGERS/",
+        "--seed=274105",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274105,
+      "exitCode": 0,
+      "elapsedSeconds": 0.6157805919647217
+    },
+    {
+      "id": "ledgers-274106",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGERS/",
+        "--seed=274106",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274106,
+      "exitCode": 0,
+      "elapsedSeconds": 0.6660013198852539
+    },
+    {
+      "id": "ledgers-274107",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGERS/",
+        "--seed=274107",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274107,
+      "exitCode": 0,
+      "elapsedSeconds": 0.6660416126251221
+    },
+    {
+      "id": "ledgers-274108",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGERS/",
+        "--seed=274108",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274108,
+      "exitCode": 0,
+      "elapsedSeconds": 0.6162309646606445
+    },
+    {
+      "id": "plutus-v3-disjoint",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/Conformance/Conway/Imp/UTXOS/PlutusV3/can use reference scripts/",
+        "--seed=274303",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_IMP_EXPORT_DIR",
+      "seed": 274303,
+      "exitCode": 0,
+      "elapsedSeconds": 0.21483516693115234
+    },
+    {
+      "id": "no-plutus-overlap",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/Scarab languages/no Plutus allows overlapping reference input/",
+        "--seed=274304",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_IMP_EXPORT_DIR",
+      "seed": 274304,
+      "exitCode": 0,
+      "elapsedSeconds": 0.21516704559326172
+    },
+    {
+      "id": "plutus-v1-no-references",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/Scarab languages/PlutusV1 succeeds without reference inputs/",
+        "--seed=274305",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_IMP_EXPORT_DIR",
+      "seed": 274305,
+      "exitCode": 0,
+      "elapsedSeconds": 0.21486806869506836
+    }
+  ],
+  "unchangedOverlapInputAndNativeOutput": {
+    "context.cbor": {
+      "sha256": "6fa1bdf97d3ff6e7de4bfc74e9c4999152b8d7a1cf78219db31e41735f2aafad",
+      "bytes": 2045
+    },
+    "environment.cbor": {
+      "sha256": "dec76684d72e0c561fd76aef3ababcaf537268077d7c9762662fa188fa2e47cf",
+      "bytes": 941
+    },
+    "state.cbor": {
+      "sha256": "211b7494644319a9b67c58f2c40eb2ad93d84976448d39b729026a0f43dc6964",
+      "bytes": 2646
+    },
+    "signal.cbor": {
+      "sha256": "3447f0922335373135c0e3c29ef311a39ea57a9d50bec9bff91519e2fcde1158",
+      "bytes": 872
+    },
+    "implementation-state.cbor": {
+      "sha256": "b08d13936195672d5766b248978814c858b9eadcd317d02a091d4b0a46ebe03d",
+      "bytes": 2959
+    }
+  },
+  "initialOverlapVerdict": "implementation-accepted\nagda-rejected\noutputs-differ\n",
+  "repairedOverlapVerdict": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+  "comparison": "all accepted native state fields; UTxO raw bytes absent from native MemPack and Scala change history are compared independently through complete decoded output parts; failures compare complete typed cause membership in native accumulated CBOR payloads, not diagnostic text",
+  "cases": [
+    {
+      "id": "bootstrap-bad-signature-ledger-1",
+      "rule": "LEDGER",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "7e51ed931a4981a01f8bac58dac4498ca6c1548b7f9501922388ae9442df34f9",
+      "files": {
+        "context.cbor": {
+          "sha256": "75cf7ab64ce517196323292f98d4327d86be2be84b6926f5b8e1e1555bf5a57d",
+          "bytes": 6767
+        },
+        "environment.cbor": {
+          "sha256": "ff2dd4af3c13dd42f6bd8be36550223ff1f888f873adaa456fc9ca7a53b23cb7",
+          "bytes": 2252
+        },
+        "implementation-state.cbor": {
+          "sha256": "9605e067a2a0327dda71f4d8fe3857ebf36eb21cfeb5d78ae5bd7935e07224ec",
+          "bytes": 8475
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "1c9ad4a720314229e85d7fe8aa44b2dc76b273a8b0e3565573e10fbf7812c3aa",
+          "bytes": 285
+        },
+        "state.cbor": {
+          "sha256": "a50d94de490f46c7b4be4a819610bc8601770a1f3978554b37203d09a288e825",
+          "bytes": 8351
+        }
+      },
+      "runId": "bootstrap-bad-signature"
+    },
+    {
+      "id": "bootstrap-bad-signature-ledger-2",
+      "rule": "LEDGER",
+      "native": "rejected",
+      "result": "implementation-rejected\nagda-rejected\noutputs-differ\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "2809e7a315deaee79ab41300ff755046ec136fd69d175e0ad9f847aca6d0144a",
+      "files": {
+        "context.cbor": {
+          "sha256": "22c708ae252a46d946cd6e35d1abe7290c6c92b814504a019374f62010a606ce",
+          "bytes": 7015
+        },
+        "environment.cbor": {
+          "sha256": "ff2dd4af3c13dd42f6bd8be36550223ff1f888f873adaa456fc9ca7a53b23cb7",
+          "bytes": 2252
+        },
+        "implementation-failures.cbor": {
+          "sha256": "a7180af01a7f9653cd976efa5eadab61f105d4b1ebb4a469c383f74c2ac2b7cd",
+          "bytes": 40
+        },
+        "result.txt": {
+          "sha256": "6c5a2451784494baac941ebf4dab97519a53c9c45417344028678b34d4d5316c",
+          "bytes": 53
+        },
+        "signal.cbor": {
+          "sha256": "c920320d052d4d611cbab2961bd13c1113bc25b10a2f799d2f705002a42f3dd5",
+          "bytes": 413
+        },
+        "state.cbor": {
+          "sha256": "9605e067a2a0327dda71f4d8fe3857ebf36eb21cfeb5d78ae5bd7935e07224ec",
+          "bytes": 8475
+        }
+      },
+      "runId": "bootstrap-bad-signature"
+    },
+    {
+      "id": "bootstrap-missing-witness-ledger-1",
+      "rule": "LEDGER",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "7e51ed931a4981a01f8bac58dac4498ca6c1548b7f9501922388ae9442df34f9",
+      "files": {
+        "context.cbor": {
+          "sha256": "75cf7ab64ce517196323292f98d4327d86be2be84b6926f5b8e1e1555bf5a57d",
+          "bytes": 6767
+        },
+        "environment.cbor": {
+          "sha256": "ff2dd4af3c13dd42f6bd8be36550223ff1f888f873adaa456fc9ca7a53b23cb7",
+          "bytes": 2252
+        },
+        "implementation-state.cbor": {
+          "sha256": "9605e067a2a0327dda71f4d8fe3857ebf36eb21cfeb5d78ae5bd7935e07224ec",
+          "bytes": 8475
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "1c9ad4a720314229e85d7fe8aa44b2dc76b273a8b0e3565573e10fbf7812c3aa",
+          "bytes": 285
+        },
+        "state.cbor": {
+          "sha256": "a50d94de490f46c7b4be4a819610bc8601770a1f3978554b37203d09a288e825",
+          "bytes": 8351
+        }
+      },
+      "runId": "bootstrap-missing-witness",
+      "duplicateOf": "bootstrap-bad-signature-ledger-1"
+    },
+    {
+      "id": "bootstrap-missing-witness-ledger-2",
+      "rule": "LEDGER",
+      "native": "rejected",
+      "result": "implementation-rejected\nagda-rejected\noutputs-differ\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "7071dd5823efe4e4f9a1f0187d351caef8b4ee6e6308519c4fd20db97a7947dc",
+      "files": {
+        "context.cbor": {
+          "sha256": "e93d701b34bc2b042376971adf9df269d0fc5770a891580072987362bd046cb8",
+          "bytes": 6839
+        },
+        "environment.cbor": {
+          "sha256": "ff2dd4af3c13dd42f6bd8be36550223ff1f888f873adaa456fc9ca7a53b23cb7",
+          "bytes": 2252
+        },
+        "implementation-failures.cbor": {
+          "sha256": "2ed661424b7c63cd1cd0b4008d2f98dcf73e939149aae9737ca22f1918ac8a7f",
+          "bytes": 39
+        },
+        "result.txt": {
+          "sha256": "6c5a2451784494baac941ebf4dab97519a53c9c45417344028678b34d4d5316c",
+          "bytes": 53
+        },
+        "signal.cbor": {
+          "sha256": "036b91979069fafd1c97e49fa06fec17049d1993a76a757b532835ebca56ea29",
+          "bytes": 237
+        },
+        "state.cbor": {
+          "sha256": "9605e067a2a0327dda71f4d8fe3857ebf36eb21cfeb5d78ae5bd7935e07224ec",
+          "bytes": 8475
+        }
+      },
+      "runId": "bootstrap-missing-witness"
+    },
+    {
+      "id": "bootstrap-valid-ledger-1",
+      "rule": "LEDGER",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "7e51ed931a4981a01f8bac58dac4498ca6c1548b7f9501922388ae9442df34f9",
+      "files": {
+        "context.cbor": {
+          "sha256": "75cf7ab64ce517196323292f98d4327d86be2be84b6926f5b8e1e1555bf5a57d",
+          "bytes": 6767
+        },
+        "environment.cbor": {
+          "sha256": "ff2dd4af3c13dd42f6bd8be36550223ff1f888f873adaa456fc9ca7a53b23cb7",
+          "bytes": 2252
+        },
+        "implementation-state.cbor": {
+          "sha256": "9605e067a2a0327dda71f4d8fe3857ebf36eb21cfeb5d78ae5bd7935e07224ec",
+          "bytes": 8475
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "1c9ad4a720314229e85d7fe8aa44b2dc76b273a8b0e3565573e10fbf7812c3aa",
+          "bytes": 285
+        },
+        "state.cbor": {
+          "sha256": "a50d94de490f46c7b4be4a819610bc8601770a1f3978554b37203d09a288e825",
+          "bytes": 8351
+        }
+      },
+      "runId": "bootstrap-valid",
+      "duplicateOf": "bootstrap-bad-signature-ledger-1"
+    },
+    {
+      "id": "bootstrap-valid-ledger-2",
+      "rule": "LEDGER",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "828cb065c175019ed960d22a9404c7272fc8b4d7229f8a596f24d954809d363a",
+      "files": {
+        "context.cbor": {
+          "sha256": "9ec1609d32f33bdd3906bb060e0919fa76f183f43ef5b543a230001b2e602d9d",
+          "bytes": 7015
+        },
+        "environment.cbor": {
+          "sha256": "ff2dd4af3c13dd42f6bd8be36550223ff1f888f873adaa456fc9ca7a53b23cb7",
+          "bytes": 2252
+        },
+        "implementation-state.cbor": {
+          "sha256": "0afbbd9d21bb1ecde9a73ba51f3e7c48b56eeb92a5b475388c8ad38d140a817b",
+          "bytes": 8355
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "4e9dc90f800b047ab3842097208b1ddf44fd76b2bd4e115e3a053f4c606f3d86",
+          "bytes": 413
+        },
+        "state.cbor": {
+          "sha256": "9605e067a2a0327dda71f4d8fe3857ebf36eb21cfeb5d78ae5bd7935e07224ec",
+          "bytes": 8475
+        }
+      },
+      "runId": "bootstrap-valid"
+    },
+    {
+      "id": "drep-delegation-unregistration-ledger-1",
+      "rule": "LEDGER",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "521449440305d2009af45f519babc91e02f09f0b26c3d0aaaf1f400f99c8d6ac",
+      "files": {
+        "context.cbor": {
+          "sha256": "fd3e8ba932731a06ce62d4b44ceaafe127c9384b16c38adcc7ebcf221280fb6c",
+          "bytes": 6832
+        },
+        "environment.cbor": {
+          "sha256": "ff2dd4af3c13dd42f6bd8be36550223ff1f888f873adaa456fc9ca7a53b23cb7",
+          "bytes": 2252
+        },
+        "implementation-state.cbor": {
+          "sha256": "9833b8706eece0723c9d1f2bc277abb0fed0e7e7ebd06b7cbe3441c07bc3a6f7",
+          "bytes": 8408
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "01309bb59e63ded9063b32473ba2198e79ce3416679a85b04dd46b1b0eb6c5f1",
+          "bytes": 350
+        },
+        "state.cbor": {
+          "sha256": "a50d94de490f46c7b4be4a819610bc8601770a1f3978554b37203d09a288e825",
+          "bytes": 8351
+        }
+      },
+      "runId": "drep-delegation-unregistration"
+    },
+    {
+      "id": "drep-delegation-unregistration-ledger-2",
+      "rule": "LEDGER",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "e695148f7898f805dd1dbb5eb495077bb52857b3fb5de9ff03698b0869d3b9fb",
+      "files": {
+        "context.cbor": {
+          "sha256": "9e92b765cc19b6c77569cfea71cc898869ab3c443f8af8cb8ee5819d90648b7e",
+          "bytes": 6877
+        },
+        "environment.cbor": {
+          "sha256": "ff2dd4af3c13dd42f6bd8be36550223ff1f888f873adaa456fc9ca7a53b23cb7",
+          "bytes": 2252
+        },
+        "implementation-state.cbor": {
+          "sha256": "19b7ae4f6940ae2aa37ceb107d33af263e58be3aa3ff3f9bba2814d0296b1743",
+          "bytes": 8446
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "f404c9f24f2b74c70751b61be107b2cd78fe676d9e9bca85c58998cbd76c1bdf",
+          "bytes": 346
+        },
+        "state.cbor": {
+          "sha256": "9833b8706eece0723c9d1f2bc277abb0fed0e7e7ebd06b7cbe3441c07bc3a6f7",
+          "bytes": 8408
+        }
+      },
+      "runId": "drep-delegation-unregistration"
+    },
+    {
+      "id": "drep-delegation-unregistration-ledger-3",
+      "rule": "LEDGER",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "610bb57dc864b08e1210a4013685d15d8cefef483e79cfe24b3acde13fd8c56e",
+      "files": {
+        "context.cbor": {
+          "sha256": "75c86af0b77bbae6b3b70e7d640111dfbe2bc32c2dd353078261a6c0de6a744b",
+          "bytes": 7010
+        },
+        "environment.cbor": {
+          "sha256": "ff2dd4af3c13dd42f6bd8be36550223ff1f888f873adaa456fc9ca7a53b23cb7",
+          "bytes": 2252
+        },
+        "implementation-state.cbor": {
+          "sha256": "d35e68dee54fd97a28daa2453c06576d736d34a7b4e2f819ed1777e6e3caa786",
+          "bytes": 8653
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "3a4c72c6ca1cf615b83c77c30656667a427ace802b213ea8cd9fe1614e802d19",
+          "bytes": 441
+        },
+        "state.cbor": {
+          "sha256": "19b7ae4f6940ae2aa37ceb107d33af263e58be3aa3ff3f9bba2814d0296b1743",
+          "bytes": 8446
+        }
+      },
+      "runId": "drep-delegation-unregistration"
+    },
+    {
+      "id": "drep-delegation-unregistration-ledger-4",
+      "rule": "LEDGER",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "5404e8e0e98c0001e0a2177d976a977abdbe2285df1d88c1d640b4dc83bc50d5",
+      "files": {
+        "context.cbor": {
+          "sha256": "39de4929c76e419c74fdac01804d0ebdfda1d374fff5d702ac00310094d5709e",
+          "bytes": 7082
+        },
+        "environment.cbor": {
+          "sha256": "ff2dd4af3c13dd42f6bd8be36550223ff1f888f873adaa456fc9ca7a53b23cb7",
+          "bytes": 2252
+        },
+        "implementation-state.cbor": {
+          "sha256": "55044bef8e89ccadf85752973a774af7fb8803a3007807b091666586f241fc85",
+          "bytes": 8541
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "654a7ab7b0319e0639ae925f492d2c863dde4eb4bbf94215923dc8be6b525c8e",
+          "bytes": 346
+        },
+        "state.cbor": {
+          "sha256": "d35e68dee54fd97a28daa2453c06576d736d34a7b4e2f819ed1777e6e3caa786",
+          "bytes": 8653
+        }
+      },
+      "runId": "drep-delegation-unregistration"
+    },
+    {
+      "id": "ledger-274101",
+      "rule": "LEDGER",
+      "native": "rejected",
+      "result": "implementation-rejected\nagda-rejected\noutputs-differ\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "06ece50bd8362c3f4d97e55132c79c39f8ae4fec9d4363f1fa2cb2fc4c0c84c5",
+      "files": {
+        "context.cbor": {
+          "sha256": "406bc103feffd1cabd256c273c138005adcaaccd9ba6bfdbbbb3dacff601e730",
+          "bytes": 3139
+        },
+        "environment.cbor": {
+          "sha256": "786e752099b7c755b94b863a91edd50c09f1edb8c8be269dd25835d3842f18d9",
+          "bytes": 776
+        },
+        "implementation-failures.cbor": {
+          "sha256": "37f294ea6947be854a370baf31d67a3057533e6e05a880d1176a6fa6cb6e23fa",
+          "bytes": 34
+        },
+        "result.txt": {
+          "sha256": "6c5a2451784494baac941ebf4dab97519a53c9c45417344028678b34d4d5316c",
+          "bytes": 53
+        },
+        "signal.cbor": {
+          "sha256": "98778b176145f283f7ede3460539918715b3f998c3dd7e46cb148747471a12b4",
+          "bytes": 686
+        },
+        "state.cbor": {
+          "sha256": "63ffdf0174dc9190c55d16151bd8d946694a20ae90ff6c987c01926299362715",
+          "bytes": 3162
+        }
+      },
+      "runId": "ledger-274101"
+    },
+    {
+      "id": "ledger-274102",
+      "rule": "LEDGER",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "f42b46b6f27b7a4bdb437f3659b62ae58cdc97f357ef57d1be9afafe72615715",
+      "files": {
+        "context.cbor": {
+          "sha256": "b6d72b2711d825b190eb9332d180894df1602db548407621ec0526bb6d3f7be4",
+          "bytes": 4228
+        },
+        "environment.cbor": {
+          "sha256": "cf3e0a99420100a204568c161e81fb163f0c229eba754e3be46d040513ca1aae",
+          "bytes": 776
+        },
+        "implementation-state.cbor": {
+          "sha256": "0432867d9647e3b2aaae99be110b783ca382128952e7f7985f802b996e8812ac",
+          "bytes": 4469
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "b8e444d12eb63a79135922eac25425974bc80d5729242945d0a87920c549c3c5",
+          "bytes": 735
+        },
+        "state.cbor": {
+          "sha256": "bcf8ed9765c31c69b1f0bfda7a0f7feabcb7e105f0fbd1a5be819c56d6b5aa6e",
+          "bytes": 4305
+        }
+      },
+      "runId": "ledger-274102"
+    },
+    {
+      "id": "ledger-274103",
+      "rule": "LEDGER",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "d22b50fa07a4a2a23a1058e0f56eced5741ed4b74602d7f5130faac704ff558d",
+      "files": {
+        "context.cbor": {
+          "sha256": "f7ba0e12ff13c8983844c7f7e0a20577a19108e2b3c0722bbc30d77ad64f1be2",
+          "bytes": 3459
+        },
+        "environment.cbor": {
+          "sha256": "92bc35e132a9cd5b92f3ef17242594104eb1f04a482bead9a658f24810bae47d",
+          "bytes": 776
+        },
+        "implementation-state.cbor": {
+          "sha256": "29048e9a26e37598b78c0308a4a6679282912bce3efa0058eb041ee1a99640ed",
+          "bytes": 3525
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "3447f0922335373135c0e3c29ef311a39ea57a9d50bec9bff91519e2fcde1158",
+          "bytes": 872
+        },
+        "state.cbor": {
+          "sha256": "67f1d05f6cc3f24a4e619d3d37c974c75bc22d367e5c3ce5f7632230a947444c",
+          "bytes": 3095
+        }
+      },
+      "runId": "ledger-274103"
+    },
+    {
+      "id": "ledgers-274101",
+      "rule": "LEDGERS",
+      "native": "rejected",
+      "result": "implementation-rejected\nagda-rejected\noutputs-differ\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "a5968426d009cb663f227449204fd41a1912ed9208d9d2a2b822a2f34928e051",
+      "files": {
+        "context.cbor": {
+          "sha256": "930bab62a8bb3f6e1f9843b6853bb19aed5c05eae62b7595b8c6749ea112088c",
+          "bytes": 1405
+        },
+        "environment.cbor": {
+          "sha256": "2159e74c69778175372e76a35151c3c33920570bfb442f0daf130cc23866c839",
+          "bytes": 774
+        },
+        "implementation-failures.cbor": {
+          "sha256": "18ff50cd698ed8edcba53370115d204c3826aaa2db815f72e10861ae826aeff6",
+          "bytes": 34
+        },
+        "result.txt": {
+          "sha256": "6c5a2451784494baac941ebf4dab97519a53c9c45417344028678b34d4d5316c",
+          "bytes": 53
+        },
+        "signal.cbor": {
+          "sha256": "89d5cc7a925c7405ec41bbe4c89e8b81d7bc4dfc65044e6391408ecd4cc2b86f",
+          "bytes": 1449
+        },
+        "state.cbor": {
+          "sha256": "448929faa419cff2db6d56a6fd779f49d70e97db79ce1ab67873a633932db095",
+          "bytes": 4257
+        }
+      },
+      "runId": "ledgers-274101"
+    },
+    {
+      "id": "ledgers-274102",
+      "rule": "LEDGERS",
+      "native": "rejected",
+      "result": "implementation-rejected\nagda-rejected\noutputs-differ\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "a33c4d485e69f2cdb42e959f55c6ac43bf609cfa8ca36de5c6eddd1348a02067",
+      "files": {
+        "context.cbor": {
+          "sha256": "3d0ba98ce8aeb70e60fba378116bfbaa4d30c7a54f64e1fc5b9e701548d504c7",
+          "bytes": 1438
+        },
+        "environment.cbor": {
+          "sha256": "35923b13902c38c993c4ef0c873e198f25c075bf3d13ebc17db32475c64ccb3c",
+          "bytes": 774
+        },
+        "implementation-failures.cbor": {
+          "sha256": "852691622c46dd7bf3ef535c601b9eb8a5310a4bf5999b5d0d540e853bff12a8",
+          "bytes": 34
+        },
+        "result.txt": {
+          "sha256": "6c5a2451784494baac941ebf4dab97519a53c9c45417344028678b34d4d5316c",
+          "bytes": 53
+        },
+        "signal.cbor": {
+          "sha256": "e87ae4d71bbcfcad4a78282666b63bbee4f0a9a84ba4475ba2bc9a08ba2ccd1a",
+          "bytes": 701
+        },
+        "state.cbor": {
+          "sha256": "8df0f75d0d91431445a8c847a2f49cfe55ed093c9a8c0749ae34fd14a5a5fe0e",
+          "bytes": 4261
+        }
+      },
+      "runId": "ledgers-274102"
+    },
+    {
+      "id": "ledgers-274103",
+      "rule": "LEDGERS",
+      "native": "rejected",
+      "result": "implementation-rejected\nagda-rejected\noutputs-differ\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "9c54740d7c2a92334fd9dcdf6b4b6eaf081728799723c688395e9dd59bac49c6",
+      "files": {
+        "context.cbor": {
+          "sha256": "01fa840c11dcdea9f53ebed1b07f00efe3ada51a676530b6de34157e05234d4b",
+          "bytes": 1330
+        },
+        "environment.cbor": {
+          "sha256": "741dde4fdaad57683b9b49a826be88e4cc3e864ac0a423ba72a60a79a7bb1b0d",
+          "bytes": 774
+        },
+        "implementation-failures.cbor": {
+          "sha256": "a11a9ea5113126c8ed7a4b0985c4e6c8be97cf886ddd41177231db74ecc7db2e",
+          "bytes": 34
+        },
+        "result.txt": {
+          "sha256": "6c5a2451784494baac941ebf4dab97519a53c9c45417344028678b34d4d5316c",
+          "bytes": 53
+        },
+        "signal.cbor": {
+          "sha256": "8c95715d939475841bdc70f49ed74480f13bfbf26164c353570d2019b5a69b05",
+          "bytes": 684
+        },
+        "state.cbor": {
+          "sha256": "ab8e37262cb760be7323b48f5e6a063769419fff0ca2a08304159bbfef9e6901",
+          "bytes": 3018
+        }
+      },
+      "runId": "ledgers-274103"
+    },
+    {
+      "id": "ledgers-274104",
+      "rule": "LEDGERS",
+      "native": "rejected",
+      "result": "implementation-rejected\nagda-rejected\noutputs-differ\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "151704b0def36add222fccae871c119159834e8fe63a89afaff50542f8c7bdf0",
+      "files": {
+        "context.cbor": {
+          "sha256": "418007d5d31f6914265a9bcfe274b3f55f702cc644723953717640014f5dbce0",
+          "bytes": 1355
+        },
+        "environment.cbor": {
+          "sha256": "a116fb5c376abdbe2d8e142aa2b3fc6d49dc3904a5fc94764eac1061fa5f6311",
+          "bytes": 774
+        },
+        "implementation-failures.cbor": {
+          "sha256": "0ba28e48f6d2f67240c4dd6bace8ae484ad5b05029ae2d9661180b05805bb1a4",
+          "bytes": 34
+        },
+        "result.txt": {
+          "sha256": "6c5a2451784494baac941ebf4dab97519a53c9c45417344028678b34d4d5316c",
+          "bytes": 53
+        },
+        "signal.cbor": {
+          "sha256": "d8d79f322efe49d4db6d08084ea64a720acd3692a981851efae51231bdda7347",
+          "bytes": 2392
+        },
+        "state.cbor": {
+          "sha256": "f7817bbad6ffcda10109f4c37a46ed3e95a8bd12566ad68a4429c4744d5b9ef5",
+          "bytes": 4687
+        }
+      },
+      "runId": "ledgers-274104"
+    },
+    {
+      "id": "ledgers-274105",
+      "rule": "LEDGERS",
+      "native": "rejected",
+      "result": "implementation-rejected\nagda-rejected\noutputs-differ\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "8cf40e87899b356c9a4b76a03578442283591f78afb46c3e2f58ea78e3da31c8",
+      "files": {
+        "context.cbor": {
+          "sha256": "929c8173d38978725b2e2e53f573b24a9df01899992fcca14765dbe964404948",
+          "bytes": 1513
+        },
+        "environment.cbor": {
+          "sha256": "0af12c920b880b2e53bf51cea38e919fbb491068f6cdc37a15113ae6d5b67b13",
+          "bytes": 774
+        },
+        "implementation-failures.cbor": {
+          "sha256": "1f7566c08aa52bfcd965a307a22cb1e6dc4625ea47cde7ace4927eba0b325b4e",
+          "bytes": 34
+        },
+        "result.txt": {
+          "sha256": "6c5a2451784494baac941ebf4dab97519a53c9c45417344028678b34d4d5316c",
+          "bytes": 53
+        },
+        "signal.cbor": {
+          "sha256": "9d4a4b0605b949a9f975c7118c816ba66968a896b3a4ca7d18d85d2899df3de3",
+          "bytes": 1093
+        },
+        "state.cbor": {
+          "sha256": "4b99afc6f67d8fdc9efca6722f7686531e8efdaaa1e77c44f0ef6e4938812fcf",
+          "bytes": 4337
+        }
+      },
+      "runId": "ledgers-274105"
+    },
+    {
+      "id": "ledgers-274106",
+      "rule": "LEDGERS",
+      "native": "rejected",
+      "result": "implementation-rejected\nagda-rejected\noutputs-differ\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "9e39a7aeb7fee57851cab748195cb79c599d50d8b9e147978b2752824097cde7",
+      "files": {
+        "context.cbor": {
+          "sha256": "10dd2536124ac2faca70ef16abd38175701fb0586bb4fe83ecd0995d71e22c04",
+          "bytes": 1324
+        },
+        "environment.cbor": {
+          "sha256": "69b25170bc9a547c3a205a2654811ac8f322853f21b58613c077529a2f40c61d",
+          "bytes": 774
+        },
+        "implementation-failures.cbor": {
+          "sha256": "f0aee41b6c49625a4ebb30dac95ab977f89df4bb9d52757c5fcd646be60c715a",
+          "bytes": 34
+        },
+        "result.txt": {
+          "sha256": "6c5a2451784494baac941ebf4dab97519a53c9c45417344028678b34d4d5316c",
+          "bytes": 53
+        },
+        "signal.cbor": {
+          "sha256": "bfbfde253767cd73fcca53d61a7b6abd63095730866ab7778cf0fff8fc126198",
+          "bytes": 940
+        },
+        "state.cbor": {
+          "sha256": "56220b4a9314cfca13ba40eeaa3a922c548c17ee10fa31c4722469e64429002f",
+          "bytes": 4262
+        }
+      },
+      "runId": "ledgers-274106"
+    },
+    {
+      "id": "ledgers-274107",
+      "rule": "LEDGERS",
+      "native": "rejected",
+      "result": "implementation-rejected\nagda-rejected\noutputs-differ\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "47e6feb2c10a52a8536fd5bf63652768c642ea6f10ab63788d6e93f8a4a1378a",
+      "files": {
+        "context.cbor": {
+          "sha256": "144406ac26194982c02e99156675e9c2cdcd754e1bdf34c97012ea874aeadc43",
+          "bytes": 1284
+        },
+        "environment.cbor": {
+          "sha256": "42ccee5fa917b25dfe4c71ea1b7436d4a2739d7f0e4fab03177a37937935d984",
+          "bytes": 774
+        },
+        "implementation-failures.cbor": {
+          "sha256": "611b1f50cf49f22f104a32210c72300302f06a8d1f7a92a5606997c20cf239bd",
+          "bytes": 64
+        },
+        "result.txt": {
+          "sha256": "6c5a2451784494baac941ebf4dab97519a53c9c45417344028678b34d4d5316c",
+          "bytes": 53
+        },
+        "signal.cbor": {
+          "sha256": "c3ff0196cb199275b8b1441018298a2d1c47df3335029bd9bc50ef4b9594a00a",
+          "bytes": 1538
+        },
+        "state.cbor": {
+          "sha256": "ba2c74e31ed4835e37b61f42eac7bec337073501ed9a2a43959d3a0f43e49b96",
+          "bytes": 5333
+        }
+      },
+      "runId": "ledgers-274107"
+    },
+    {
+      "id": "ledgers-274108",
+      "rule": "LEDGERS",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "61152af7105bb2732772496f95c01dfbbff5e22393f85285cf1003d344aeac52",
+      "files": {
+        "context.cbor": {
+          "sha256": "1a759127f7633adda4bc2b16dcf096bf57a2f2c6c8b5e9a1ae7ecfa9635c859d",
+          "bytes": 1344
+        },
+        "environment.cbor": {
+          "sha256": "6a70ed56a3f5e6259020e2222336601639a388070119c440140a005e47be8762",
+          "bytes": 774
+        },
+        "implementation-state.cbor": {
+          "sha256": "3e304b72bd82798e1e79f5b4476103b27d3bf2fb72218944f7ab78d564832b88",
+          "bytes": 4481
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "f0d12783ddd844e272b20a1903c802d9dc1870bdfb4248bb740409725c344c73",
+          "bytes": 765
+        },
+        "state.cbor": {
+          "sha256": "c8b239b700bf27499c76445dd5bb688275bfea6acb62880dce2ddf4f72ea4290",
+          "bytes": 4236
+        }
+      },
+      "runId": "ledgers-274108"
+    },
+    {
+      "id": "no-plutus-overlap-ledger-1",
+      "rule": "LEDGER",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "f44cafda469856bb15bfa6aa91b73fdec26de63a33cd319fe4588b3b227cc954",
+      "files": {
+        "context.cbor": {
+          "sha256": "05376658cc18450fd2e928d465ea073b444dfbd8b200e2b9c2feb7253a57420d",
+          "bytes": 6723
+        },
+        "environment.cbor": {
+          "sha256": "ff2dd4af3c13dd42f6bd8be36550223ff1f888f873adaa456fc9ca7a53b23cb7",
+          "bytes": 2252
+        },
+        "implementation-state.cbor": {
+          "sha256": "005d245da4b68b6add61de6d5da82835030dfde4f7652a7f935d077e9a16b022",
+          "bytes": 8431
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "1c15613ba8823a5fc49410dcb38568e2f275c44091c25895c050a9c839323ef7",
+          "bytes": 241
+        },
+        "state.cbor": {
+          "sha256": "a50d94de490f46c7b4be4a819610bc8601770a1f3978554b37203d09a288e825",
+          "bytes": 8351
+        }
+      },
+      "runId": "no-plutus-overlap"
+    },
+    {
+      "id": "no-plutus-overlap-ledger-2",
+      "rule": "LEDGER",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "1589449d3bae523efafd92bf6bbbf1b26afadfde32eb4b9240b6ed469b3a5461",
+      "files": {
+        "context.cbor": {
+          "sha256": "7b784726d2e1d73d39f84faf90efa2ae984ca58d3b76fc588f5c0b278dffc013",
+          "bytes": 6940
+        },
+        "environment.cbor": {
+          "sha256": "ff2dd4af3c13dd42f6bd8be36550223ff1f888f873adaa456fc9ca7a53b23cb7",
+          "bytes": 2252
+        },
+        "implementation-state.cbor": {
+          "sha256": "c6a0e5b45897ee1185c5246cd9ae3c7970e2c538f3bb84e68462c46545ed8e40",
+          "bytes": 8358
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "06f266c76edaa6a11500ddd312b4d78e7e3213b047653376c280eb62a48db581",
+          "bytes": 382
+        },
+        "state.cbor": {
+          "sha256": "005d245da4b68b6add61de6d5da82835030dfde4f7652a7f935d077e9a16b022",
+          "bytes": 8431
+        }
+      },
+      "runId": "no-plutus-overlap"
+    },
+    {
+      "id": "plutus-v1-no-references-ledger-1",
+      "rule": "LEDGER",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "dc473350d9e61d746f44547a5c9dd929a41400beab00e762e9f6ca2edcaadc87",
+      "files": {
+        "context.cbor": {
+          "sha256": "a577030eae84b22d8366e817d2f76b02e55cf90e70eae76992f083fb045c05e6",
+          "bytes": 6782
+        },
+        "environment.cbor": {
+          "sha256": "ff2dd4af3c13dd42f6bd8be36550223ff1f888f873adaa456fc9ca7a53b23cb7",
+          "bytes": 2252
+        },
+        "implementation-state.cbor": {
+          "sha256": "e8a85f0ebe72ab19f2de6553f93ee824124e59fde1fb827602d2e129e8692a53",
+          "bytes": 8532
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "7802b4225471fdd00888d6586b44abafee8ad069fdbddd59c760b8efc4b8504f",
+          "bytes": 300
+        },
+        "state.cbor": {
+          "sha256": "a50d94de490f46c7b4be4a819610bc8601770a1f3978554b37203d09a288e825",
+          "bytes": 8351
+        }
+      },
+      "runId": "plutus-v1-no-references"
+    },
+    {
+      "id": "plutus-v1-no-references-ledger-2",
+      "rule": "LEDGER",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "5222ba214db118dcaeadd69c37208226b58d10fac98b7292861cf60684490666",
+      "files": {
+        "context.cbor": {
+          "sha256": "085514daeb8da7124ad49aeb22cc05b299d552e579dcb2b3c410ef926e630c90",
+          "bytes": 6861
+        },
+        "environment.cbor": {
+          "sha256": "ff2dd4af3c13dd42f6bd8be36550223ff1f888f873adaa456fc9ca7a53b23cb7",
+          "bytes": 2252
+        },
+        "implementation-state.cbor": {
+          "sha256": "0b9b829f47307593318917aefbe72a51a7840bf7c684f2dae46f379f7eee5f1e",
+          "bytes": 8540
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "182979cb97d0953f030863078b70293cff1f99973aee87f891b8081b4c347aa6",
+          "bytes": 244
+        },
+        "state.cbor": {
+          "sha256": "e8a85f0ebe72ab19f2de6553f93ee824124e59fde1fb827602d2e129e8692a53",
+          "bytes": 8532
+        }
+      },
+      "runId": "plutus-v1-no-references"
+    },
+    {
+      "id": "plutus-v1-no-references-ledger-3",
+      "rule": "LEDGER",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "e8b99d7d72318118fd071aa6f57f626b8b38711ec19b324799013463cc47b504",
+      "files": {
+        "context.cbor": {
+          "sha256": "fe0dd83eacb3ce58e84bfd0020859e03df02c0a153ccbe803d932786e3061875",
+          "bytes": 7167
+        },
+        "environment.cbor": {
+          "sha256": "ff2dd4af3c13dd42f6bd8be36550223ff1f888f873adaa456fc9ca7a53b23cb7",
+          "bytes": 2252
+        },
+        "implementation-state.cbor": {
+          "sha256": "76af4586a9826c49bbb521e8d31e15ed17ee20e123e19219bbda51e319589c73",
+          "bytes": 8435
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "ce496042b58e44cbff45167a0373c65cd91da8c97d115d9caa3f6077081da37c",
+          "bytes": 499
+        },
+        "state.cbor": {
+          "sha256": "0b9b829f47307593318917aefbe72a51a7840bf7c684f2dae46f379f7eee5f1e",
+          "bytes": 8540
+        }
+      },
+      "runId": "plutus-v1-no-references"
+    },
+    {
+      "id": "plutus-v2-overlap-ledger-1",
+      "rule": "LEDGER",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "61305c24ab017a3aa3e6e5751eb0618bb7e1187816d5f0223ba4b374a9361ac3",
+      "files": {
+        "context.cbor": {
+          "sha256": "1015828b2dc4f1e75b6ed086244ab1cbe1880bb732a22417678d9f9cc3301b21",
+          "bytes": 6757
+        },
+        "environment.cbor": {
+          "sha256": "ff2dd4af3c13dd42f6bd8be36550223ff1f888f873adaa456fc9ca7a53b23cb7",
+          "bytes": 2252
+        },
+        "implementation-state.cbor": {
+          "sha256": "0cf5dc1ca9ad203372e6f5cf6a04a6b32e1dacda545bc865a78430bb5b4a97bb",
+          "bytes": 8502
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "0d2bd348d5181bcd86566aa6e18765d80d18d443e115ff064a421181e0d130b3",
+          "bytes": 275
+        },
+        "state.cbor": {
+          "sha256": "a50d94de490f46c7b4be4a819610bc8601770a1f3978554b37203d09a288e825",
+          "bytes": 8351
+        }
+      },
+      "runId": "plutus-v2-overlap"
+    },
+    {
+      "id": "plutus-v2-overlap-ledger-2",
+      "rule": "LEDGER",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "9a4472db1edf0ec9d7a79024abd178e99e5bd042233647f90642951c0dd511fc",
+      "files": {
+        "context.cbor": {
+          "sha256": "402521f6eb7405d9b84ef1a17300f742a8ee49256c8bfa8fcc5294d0e866f474",
+          "bytes": 6858
+        },
+        "environment.cbor": {
+          "sha256": "ff2dd4af3c13dd42f6bd8be36550223ff1f888f873adaa456fc9ca7a53b23cb7",
+          "bytes": 2252
+        },
+        "implementation-state.cbor": {
+          "sha256": "f5be2d6acb104a1feb0c8164a000df2394384eee3e101739c06945511b8b8735",
+          "bytes": 8572
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "72a5a0bc74e3aaa6afea925fd36f9be2e5e52fc8e23b637b38ccf5083e0803eb",
+          "bytes": 266
+        },
+        "state.cbor": {
+          "sha256": "0cf5dc1ca9ad203372e6f5cf6a04a6b32e1dacda545bc865a78430bb5b4a97bb",
+          "bytes": 8502
+        }
+      },
+      "runId": "plutus-v2-overlap"
+    },
+    {
+      "id": "plutus-v2-overlap-ledger-3",
+      "rule": "LEDGER",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "091e7f2ba24a7bfd2cdb6da2bddb2639b0ce70f47cd526eb4fb4df70a9f5fbce",
+      "files": {
+        "context.cbor": {
+          "sha256": "eb2a7350ffe3edffd674e9668ca85490ed76f80f473bfe1c3ddd8fa0d92c9f03",
+          "bytes": 7442
+        },
+        "environment.cbor": {
+          "sha256": "ff2dd4af3c13dd42f6bd8be36550223ff1f888f873adaa456fc9ca7a53b23cb7",
+          "bytes": 2252
+        },
+        "implementation-state.cbor": {
+          "sha256": "e0e85476dadeb8c4fd119e873e6a37d063941d1163767b4603cc25704509fd30",
+          "bytes": 8497
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "a02c30818299e4941367b50f66e08e53b529833db9f12b0e647a185abec1c367",
+          "bytes": 777
+        },
+        "state.cbor": {
+          "sha256": "f5be2d6acb104a1feb0c8164a000df2394384eee3e101739c06945511b8b8735",
+          "bytes": 8572
+        }
+      },
+      "runId": "plutus-v2-overlap"
+    },
+    {
+      "id": "plutus-v3-disjoint-ledger-1",
+      "rule": "LEDGER",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "cb971893eaaf6feb26a4b292321e9c6ee27ec2e12503cdd375fc2e3879d673a3",
+      "files": {
+        "context.cbor": {
+          "sha256": "ecb1902909eb338eb7232c8375731e2793223d664a1181e24de61e32413d3e63",
+          "bytes": 7066
+        },
+        "environment.cbor": {
+          "sha256": "ff2dd4af3c13dd42f6bd8be36550223ff1f888f873adaa456fc9ca7a53b23cb7",
+          "bytes": 2252
+        },
+        "implementation-state.cbor": {
+          "sha256": "f81d3c09a6580b671c3e983f27284c38602bbab3552697d1e1d62f997f508048",
+          "bytes": 8917
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "b796059067fe45aae1291652e1ffbd27d5fea672813b688aab7092c9280e1d6d",
+          "bytes": 584
+        },
+        "state.cbor": {
+          "sha256": "a50d94de490f46c7b4be4a819610bc8601770a1f3978554b37203d09a288e825",
+          "bytes": 8351
+        }
+      },
+      "runId": "plutus-v3-disjoint"
+    },
+    {
+      "id": "plutus-v3-disjoint-ledger-2",
+      "rule": "LEDGER",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "57768bd1f1b30740fa68c3f77429efb622165a6d27b0424118e7d0cfe5963f21",
+      "files": {
+        "context.cbor": {
+          "sha256": "92a717a80408db6b8b3394e61a05cbb60f9519fd6f83f3cc4c85aadfbc3a7d7e",
+          "bytes": 7211
+        },
+        "environment.cbor": {
+          "sha256": "ff2dd4af3c13dd42f6bd8be36550223ff1f888f873adaa456fc9ca7a53b23cb7",
+          "bytes": 2252
+        },
+        "implementation-state.cbor": {
+          "sha256": "581afe6437a08673ae73458b6e8106318cdf840832cc96fa9e36b6d3b9b8dfd1",
+          "bytes": 8919
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "6bac0b64438d1807cea1f79011e484a47a34793fba5d3ae7011e06999a761199",
+          "bytes": 238
+        },
+        "state.cbor": {
+          "sha256": "f81d3c09a6580b671c3e983f27284c38602bbab3552697d1e1d62f997f508048",
+          "bytes": 8917
+        }
+      },
+      "runId": "plutus-v3-disjoint"
+    },
+    {
+      "id": "plutus-v3-disjoint-ledger-3",
+      "rule": "LEDGER",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "bbaed85b59ab04179fe13502d8de9a79c92b6bfbcb26237b5e9f7f0c3959285b",
+      "files": {
+        "context.cbor": {
+          "sha256": "363045dba9abeaa101ae5a63349cc5cad64f8daf9fd616330cf81fce1a0ec97e",
+          "bytes": 7523
+        },
+        "environment.cbor": {
+          "sha256": "ff2dd4af3c13dd42f6bd8be36550223ff1f888f873adaa456fc9ca7a53b23cb7",
+          "bytes": 2252
+        },
+        "implementation-state.cbor": {
+          "sha256": "bb9ecaa9081894773780d90f4caf427908038da450d42e41c348125a25348f89",
+          "bytes": 8886
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "524096eae623a2086ab19d3597ba6a6453c3e17a81343d23bdd04a9a119cde0f",
+          "bytes": 505
+        },
+        "state.cbor": {
+          "sha256": "581afe6437a08673ae73458b6e8106318cdf840832cc96fa9e36b6d3b9b8dfd1",
+          "bytes": 8919
+        }
+      },
+      "runId": "plutus-v3-disjoint"
+    },
+    {
+      "id": "plutus-v3-overlap-refused-ledger-1",
+      "rule": "LEDGER",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "56f4386b9208eb78939f199efa140b2b772fb717760a7e505feffb371d113b66",
+      "files": {
+        "context.cbor": {
+          "sha256": "c7a04d2cc4f8d832db7dc5d4e6fa0fc3372e2ffd2b8533ed6449359191d6dd65",
+          "bytes": 7013
+        },
+        "environment.cbor": {
+          "sha256": "ff2dd4af3c13dd42f6bd8be36550223ff1f888f873adaa456fc9ca7a53b23cb7",
+          "bytes": 2252
+        },
+        "implementation-state.cbor": {
+          "sha256": "bccc6273d60d8ff99a8d27f84729cfdbf6e44a8945b4f3bee999f7c7f45d2675",
+          "bytes": 8783
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "b9675418afb7eedd3999b0a33525ba01def838ac6856f33090a8c2d05ad6c5ed",
+          "bytes": 531
+        },
+        "state.cbor": {
+          "sha256": "a50d94de490f46c7b4be4a819610bc8601770a1f3978554b37203d09a288e825",
+          "bytes": 8351
+        }
+      },
+      "runId": "plutus-v3-overlap-refused"
+    },
+    {
+      "id": "plutus-v3-overlap-refused-ledger-2",
+      "rule": "LEDGER",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "709b9d56ebdf9b11fa6348ab33843c354fd9e1d026cf2ee6296ac43c110604a7",
+      "files": {
+        "context.cbor": {
+          "sha256": "f536fa3e81d6b4febd066be7780522cc3774b3d147406eb23f3f042a73a97f88",
+          "bytes": 7214
+        },
+        "environment.cbor": {
+          "sha256": "ff2dd4af3c13dd42f6bd8be36550223ff1f888f873adaa456fc9ca7a53b23cb7",
+          "bytes": 2252
+        },
+        "implementation-state.cbor": {
+          "sha256": "8ae546bf842e9572992f953b5aef1b5f24751800ddcc83e92ae059168b7c2e3c",
+          "bytes": 8994
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "850f1d32e64b3ce2812101a917ae292ac4cbed567b079ccf3cf39d05d1af808e",
+          "bytes": 294
+        },
+        "state.cbor": {
+          "sha256": "bccc6273d60d8ff99a8d27f84729cfdbf6e44a8945b4f3bee999f7c7f45d2675",
+          "bytes": 8783
+        }
+      },
+      "runId": "plutus-v3-overlap-refused"
+    },
+    {
+      "id": "plutus-v3-overlap-refused-ledger-3",
+      "rule": "LEDGER",
+      "native": "rejected",
+      "result": "implementation-rejected\nagda-rejected\noutputs-differ\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "ee72add1361449744cd7bcc9e1ea2f98cbd0798a292316268fe4bb7566613f40",
+      "files": {
+        "context.cbor": {
+          "sha256": "e3868871a1f187e9d895473045bc32b9ee66e2b097c1fa629efee2251d31a53a",
+          "bytes": 7669
+        },
+        "environment.cbor": {
+          "sha256": "ff2dd4af3c13dd42f6bd8be36550223ff1f888f873adaa456fc9ca7a53b23cb7",
+          "bytes": 2252
+        },
+        "implementation-failures.cbor": {
+          "sha256": "f0ea28a312952d013705f6e64bc5f8c71764cb2809d235194d88eaf6de22af9b",
+          "bytes": 51
+        },
+        "result.txt": {
+          "sha256": "6c5a2451784494baac941ebf4dab97519a53c9c45417344028678b34d4d5316c",
+          "bytes": 53
+        },
+        "signal.cbor": {
+          "sha256": "4ee62ff621407e7026c6ea9be97c2ac83d81be956de0cd96ea7c8acb3888a82c",
+          "bytes": 623
+        },
+        "state.cbor": {
+          "sha256": "8ae546bf842e9572992f953b5aef1b5f24751800ddcc83e92ae059168b7c2e3c",
+          "bytes": 8994
+        }
+      },
+      "runId": "plutus-v3-overlap-refused"
+    },
+    {
+      "id": "utxo-274101",
+      "rule": "UTXO",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "5df5d21ba81c0de5785be6c29324e46f2e663de8f212d42577fbac7065326fa5",
+      "files": {
+        "context.cbor": {
+          "sha256": "34f48548f178cbf6f2b2adf3dc421e2ed1b6919b9499d6d1f1b277e78d6107df",
+          "bytes": 2598
+        },
+        "environment.cbor": {
+          "sha256": "51c64ce90393608349e65c5e01aae03a7001cdc3ec6e9bdeca8055c1cb6b9fef",
+          "bytes": 1215
+        },
+        "implementation-state.cbor": {
+          "sha256": "364b42258a3bbc1d3ed58ff3a07b0b8e45905a3b62092e007d0bbad84145300d",
+          "bytes": 4592
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "8c86d01b8806e752b682221efe41c7003b543946e87e79377e800b5c849b61ac",
+          "bytes": 1079
+        },
+        "state.cbor": {
+          "sha256": "0713a57493e418013eae3d05219dfa5c93fae74b5691f6fdbf6d76e038cab3ed",
+          "bytes": 4459
+        }
+      },
+      "runId": "utxo-274101"
+    },
+    {
+      "id": "utxo-274102",
+      "rule": "UTXO",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "a7eebfc1f77451e94dfdbdb282f9ee5a1a75f5a47579a14798471f8ba676184e",
+      "files": {
+        "context.cbor": {
+          "sha256": "524f87940ab9700af7b6da1ef7e4c40bb5b9cfc0c21fb3b91b7de10f676f74e7",
+          "bytes": 3702
+        },
+        "environment.cbor": {
+          "sha256": "2ba298b443564bce625f3d3b7e96eaa112770bca8f8e84ea7dc6cc53b43f3f1c",
+          "bytes": 1400
+        },
+        "implementation-state.cbor": {
+          "sha256": "6182d8eec10fba6f656ca5cb66653ae5ef246769fdaaebbadcb7c22a5c1b3eae",
+          "bytes": 4954
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "d318dd49e649b3bd110403ec985d98aa73ff33645d8925856bd18a9bc003e2e8",
+          "bytes": 1880
+        },
+        "state.cbor": {
+          "sha256": "f162f2ddc4835d768dfc22ec803f8246fecc88fc6fee4c530329b10b3f2c671f",
+          "bytes": 4692
+        }
+      },
+      "runId": "utxo-274102"
+    },
+    {
+      "id": "utxo-274103",
+      "rule": "UTXO",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "cd45cf7cfd0f108bdfbfaef3d238220b5e5e9caf2a238d1635af1f6522ebd5c1",
+      "files": {
+        "context.cbor": {
+          "sha256": "1ea97bc678437c4f0e4d0e738ae503f4a08f2e17b92a209a23a73ba641dd5b1c",
+          "bytes": 2616
+        },
+        "environment.cbor": {
+          "sha256": "aec5112bf4a9eb4076467b79a779770d876f66d0feb62258d731f8d7264110e8",
+          "bytes": 1132
+        },
+        "implementation-state.cbor": {
+          "sha256": "9b4a2a97a5381d2285e7a31fe44c5228910be82b7ae968efa5ed7ecc681e089d",
+          "bytes": 4623
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "42b2241ae6f0122e54449ae65085ab324ab6b732c476bf0f875a5424f9a31aa0",
+          "bytes": 1081
+        },
+        "state.cbor": {
+          "sha256": "0d9ebe49bd218fc0b8e514e404fd5c0d5ba4bda135ce36859c7469a2a1ad80a3",
+          "bytes": 4183
+        }
+      },
+      "runId": "utxo-274103"
+    },
+    {
+      "id": "utxow-274101",
+      "rule": "UTXOW",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "5ab54ae0b6b00dc59610962c4bf49ef93d157664e6103f4ffdbd6d9579a1b6df",
+      "files": {
+        "context.cbor": {
+          "sha256": "57bb74e0d1e9c351350bc8c2709d818e750d8cae812f8d21e6dc3e526e08d159",
+          "bytes": 1833
+        },
+        "environment.cbor": {
+          "sha256": "e12967f6e7252ff1c1769902c89ca2b68bf77d8945110781fcf985913ccf6966",
+          "bytes": 941
+        },
+        "implementation-state.cbor": {
+          "sha256": "10f32c37eec5f32a84a32acc3fbe08b4be4ec9626358369823b301a2e311154f",
+          "bytes": 3162
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "98778b176145f283f7ede3460539918715b3f998c3dd7e46cb148747471a12b4",
+          "bytes": 686
+        },
+        "state.cbor": {
+          "sha256": "3f0020c8ffd3c906d5b2bb1cae906ac6de27a6143e29acfe13bc4825495711c7",
+          "bytes": 2990
+        }
+      },
+      "runId": "utxow-274101"
+    },
+    {
+      "id": "utxow-274102",
+      "rule": "UTXOW",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "9277c9e2197a6a28b593264d5c9d8f9cc10542f13ed5c94cf9e80dbbf7994410",
+      "files": {
+        "context.cbor": {
+          "sha256": "e7f36f0fa92dd73b61e052a918d1be0616762026f8afdd191dbdeba7c822ccd9",
+          "bytes": 2236
+        },
+        "environment.cbor": {
+          "sha256": "9ff9e55c6b12ee4d93e064d6c26dbea6ec22192d4a5553969571b83c4f745a6b",
+          "bytes": 1294
+        },
+        "implementation-state.cbor": {
+          "sha256": "391243918805c08ebdb440bb21dc798cfbee02be4407fa20ca4c0c7ab31b7162",
+          "bytes": 3913
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "b8e444d12eb63a79135922eac25425974bc80d5729242945d0a87920c549c3c5",
+          "bytes": 735
+        },
+        "state.cbor": {
+          "sha256": "3b02687e0a1f4e76856096400866f4245ce957053fc1172ce968bec450258136",
+          "bytes": 3780
+        }
+      },
+      "runId": "utxow-274102"
+    },
+    {
+      "id": "utxow-274103",
+      "rule": "UTXOW",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "lawful-native",
+      "nativeStsTupleSha256": "ca9f50a185fde11b05ffbcb6b206d2bab3d7850f380ecb8549a6817d83296e6c",
+      "files": {
+        "context.cbor": {
+          "sha256": "6fa1bdf97d3ff6e7de4bfc74e9c4999152b8d7a1cf78219db31e41735f2aafad",
+          "bytes": 2045
+        },
+        "environment.cbor": {
+          "sha256": "dec76684d72e0c561fd76aef3ababcaf537268077d7c9762662fa188fa2e47cf",
+          "bytes": 941
+        },
+        "implementation-state.cbor": {
+          "sha256": "17f417b22efef33a2515cd0ab4a0809e88d9bda959c0841aac95e87735a85ebf",
+          "bytes": 3191
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "3447f0922335373135c0e3c29ef311a39ea57a9d50bec9bff91519e2fcde1158",
+          "bytes": 872
+        },
+        "state.cbor": {
+          "sha256": "e7a11619bc81640acef7e9349c431856ddfedfbedcd0e19e4ab1810ca495221d",
+          "bytes": 2923
+        }
+      },
+      "runId": "utxow-274103"
+    },
+    {
+      "id": "original-incoherent-ledger-274102",
+      "rule": "LEDGER",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "incoherent-cache",
+      "nativeStsTupleSha256": "de40643e70855dbf668f0b9e9288fedd1f7127e9574343ace1e052fc2b9bb19e",
+      "files": {
+        "context.cbor": {
+          "sha256": "b6d72b2711d825b190eb9332d180894df1602db548407621ec0526bb6d3f7be4",
+          "bytes": 4228
+        },
+        "environment.cbor": {
+          "sha256": "cf3e0a99420100a204568c161e81fb163f0c229eba754e3be46d040513ca1aae",
+          "bytes": 776
+        },
+        "implementation-state.cbor": {
+          "sha256": "e7d074d65ec039ec2a8b08cce657dc1686eabf53af241c15a4fcc5f565bf04f8",
+          "bytes": 4469
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "b8e444d12eb63a79135922eac25425974bc80d5729242945d0a87920c549c3c5",
+          "bytes": 735
+        },
+        "state.cbor": {
+          "sha256": "a70638bdb142f78899d1e0155c887b74c5af85884cf167f90d14aa9cd2fab1ea",
+          "bytes": 4231
+        }
+      },
+      "expectedUnderflow": -408953
+    },
+    {
+      "id": "original-incoherent-ledger-274103",
+      "rule": "LEDGER",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "incoherent-cache",
+      "nativeStsTupleSha256": "0c82948eed01e73c71da8f068a6c4eba713a5ea85cc12cec011ccdc38ac997a9",
+      "files": {
+        "context.cbor": {
+          "sha256": "f7ba0e12ff13c8983844c7f7e0a20577a19108e2b3c0722bbc30d77ad64f1be2",
+          "bytes": 3459
+        },
+        "environment.cbor": {
+          "sha256": "92bc35e132a9cd5b92f3ef17242594104eb1f04a482bead9a658f24810bae47d",
+          "bytes": 776
+        },
+        "implementation-state.cbor": {
+          "sha256": "7c812b92389963e8e3b90f28c9bc3798c788731043084bbc118a00d6ee58fb45",
+          "bytes": 3496
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "3447f0922335373135c0e3c29ef311a39ea57a9d50bec9bff91519e2fcde1158",
+          "bytes": 872
+        },
+        "state.cbor": {
+          "sha256": "949ddfe164613c69cff917c14baa25123bb4133601fcdf5bddc7679368d5878b",
+          "bytes": 3021
+        }
+      },
+      "expectedUnderflow": -527798
+    },
+    {
+      "id": "original-incoherent-ledgers-274108",
+      "rule": "LEDGERS",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "incoherent-cache",
+      "nativeStsTupleSha256": "77717b26331893c38052e3ac046274bbaf45998e87b541ed29b9ffb4278b972b",
+      "files": {
+        "context.cbor": {
+          "sha256": "1a759127f7633adda4bc2b16dcf096bf57a2f2c6c8b5e9a1ae7ecfa9635c859d",
+          "bytes": 1344
+        },
+        "environment.cbor": {
+          "sha256": "6a70ed56a3f5e6259020e2222336601639a388070119c440140a005e47be8762",
+          "bytes": 774
+        },
+        "implementation-state.cbor": {
+          "sha256": "5d6a6013e8025bf11915bbd2f1d718afc966f11594d9aa12407397a7a3d44d1f",
+          "bytes": 4481
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "f0d12783ddd844e272b20a1903c802d9dc1870bdfb4248bb740409725c344c73",
+          "bytes": 765
+        },
+        "state.cbor": {
+          "sha256": "719a40513dace64e5bc782331ff2ac6c98287566c6ad12b6cc3232366eff9f02",
+          "bytes": 4162
+        }
+      },
+      "expectedUnderflow": -768148
+    },
+    {
+      "id": "original-incoherent-utxo-274101",
+      "rule": "UTXO",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "incoherent-cache",
+      "nativeStsTupleSha256": "e834bb84736a4faad1a66d33e7cc2e1c40abb7bb81d058639037ed2c699694ea",
+      "files": {
+        "context.cbor": {
+          "sha256": "34f48548f178cbf6f2b2adf3dc421e2ed1b6919b9499d6d1f1b277e78d6107df",
+          "bytes": 2598
+        },
+        "environment.cbor": {
+          "sha256": "51c64ce90393608349e65c5e01aae03a7001cdc3ec6e9bdeca8055c1cb6b9fef",
+          "bytes": 1215
+        },
+        "implementation-state.cbor": {
+          "sha256": "f89618d9e57e4095d3f77f9321082a10d4b77c16c6916b67f4d0ba0a87d87523",
+          "bytes": 4116
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "8c86d01b8806e752b682221efe41c7003b543946e87e79377e800b5c849b61ac",
+          "bytes": 1079
+        },
+        "state.cbor": {
+          "sha256": "b679dfafa18fffbb46e4c6afdc3a97753711f7b238ef5f444dd0f62b78c7a45a",
+          "bytes": 3909
+        }
+      },
+      "expectedUnderflow": -206445
+    },
+    {
+      "id": "original-incoherent-utxo-274102",
+      "rule": "UTXO",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "incoherent-cache",
+      "nativeStsTupleSha256": "fcc3008aa6b81b764d4e157bf95213e26c33f1586aa4ca78cf5670c51bbaf544",
+      "files": {
+        "context.cbor": {
+          "sha256": "524f87940ab9700af7b6da1ef7e4c40bb5b9cfc0c21fb3b91b7de10f676f74e7",
+          "bytes": 3702
+        },
+        "environment.cbor": {
+          "sha256": "2ba298b443564bce625f3d3b7e96eaa112770bca8f8e84ea7dc6cc53b43f3f1c",
+          "bytes": 1400
+        },
+        "implementation-state.cbor": {
+          "sha256": "dedcec0efaafc6c69dae7b7efe69ed68c0f6b7b23203a140b6f1b8622e2438c8",
+          "bytes": 4584
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "d318dd49e649b3bd110403ec985d98aa73ff33645d8925856bd18a9bc003e2e8",
+          "bytes": 1880
+        },
+        "state.cbor": {
+          "sha256": "a9da16d581e0f6db23d8b279c6b745bb5bbe8b13a7f8352df375ad18487f6b29",
+          "bytes": 4141
+        }
+      },
+      "expectedUnderflow": -93962
+    },
+    {
+      "id": "original-incoherent-utxo-274103",
+      "rule": "UTXO",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "incoherent-cache",
+      "nativeStsTupleSha256": "24cb5d1d445619953854dc40edc7b8a50b70ace55a9870e130af6de82b5d04b3",
+      "files": {
+        "context.cbor": {
+          "sha256": "1ea97bc678437c4f0e4d0e738ae503f4a08f2e17b92a209a23a73ba641dd5b1c",
+          "bytes": 2616
+        },
+        "environment.cbor": {
+          "sha256": "aec5112bf4a9eb4076467b79a779770d876f66d0feb62258d731f8d7264110e8",
+          "bytes": 1132
+        },
+        "implementation-state.cbor": {
+          "sha256": "8e81de3955e72497dcd8e2dfbc78680364ee4f62fb3f666fd37de36a3f7217e0",
+          "bytes": 4379
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "42b2241ae6f0122e54449ae65085ab324ab6b732c476bf0f875a5424f9a31aa0",
+          "bytes": 1081
+        },
+        "state.cbor": {
+          "sha256": "e555db8cdc4dc145b05ea7d9e3ea55bf23d000136c5b40d6d10a90b868dd722e",
+          "bytes": 3783
+        }
+      },
+      "expectedUnderflow": -917328
+    },
+    {
+      "id": "original-incoherent-utxow-274101",
+      "rule": "UTXOW",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "incoherent-cache",
+      "nativeStsTupleSha256": "41fff1bcce28a7028bc9a9b182e694c59744242a10b2fbc14f123986ad31da06",
+      "files": {
+        "context.cbor": {
+          "sha256": "57bb74e0d1e9c351350bc8c2709d818e750d8cae812f8d21e6dc3e526e08d159",
+          "bytes": 1833
+        },
+        "environment.cbor": {
+          "sha256": "e12967f6e7252ff1c1769902c89ca2b68bf77d8945110781fcf985913ccf6966",
+          "bytes": 941
+        },
+        "implementation-state.cbor": {
+          "sha256": "67c1740cbca3d3788a9a58c8ab338e377ff5d202ccff5baccf6581c264ad0300",
+          "bytes": 2932
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "98778b176145f283f7ede3460539918715b3f998c3dd7e46cb148747471a12b4",
+          "bytes": 686
+        },
+        "state.cbor": {
+          "sha256": "abf8ba5a20a95f3dff2cbc0a96d010de4e7ebf08152ec236ae280d9d6013f8c0",
+          "bytes": 2686
+        }
+      },
+      "expectedUnderflow": -286678
+    },
+    {
+      "id": "original-incoherent-utxow-274102",
+      "rule": "UTXOW",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "incoherent-cache",
+      "nativeStsTupleSha256": "63b06060e8b01be1fa986ba26618aaaabb82217c832ece49ede2667661ff5eb8",
+      "files": {
+        "context.cbor": {
+          "sha256": "e7f36f0fa92dd73b61e052a918d1be0616762026f8afdd191dbdeba7c822ccd9",
+          "bytes": 2236
+        },
+        "environment.cbor": {
+          "sha256": "9ff9e55c6b12ee4d93e064d6c26dbea6ec22192d4a5553969571b83c4f745a6b",
+          "bytes": 1294
+        },
+        "implementation-state.cbor": {
+          "sha256": "052da07428bcebb39dd58548f125405781d8f3aa9d2c6e5107c5b8e39a68497d",
+          "bytes": 3895
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "b8e444d12eb63a79135922eac25425974bc80d5729242945d0a87920c549c3c5",
+          "bytes": 735
+        },
+        "state.cbor": {
+          "sha256": "4f82772877d9e815385a2152c970ccb72997e191316ad4485efab2fb09215c4d",
+          "bytes": 3688
+        }
+      },
+      "expectedUnderflow": -408953
+    },
+    {
+      "id": "original-incoherent-utxow-274103",
+      "rule": "UTXOW",
+      "native": "accepted",
+      "result": "implementation-accepted\nagda-accepted\noutputs-equal\n",
+      "replayScope": "incoherent-cache",
+      "nativeStsTupleSha256": "5709a3d181de3bae78ed1d1ee195be6f885b6547b3c211451cfa678aab01e4a6",
+      "files": {
+        "context.cbor": {
+          "sha256": "6fa1bdf97d3ff6e7de4bfc74e9c4999152b8d7a1cf78219db31e41735f2aafad",
+          "bytes": 2045
+        },
+        "environment.cbor": {
+          "sha256": "dec76684d72e0c561fd76aef3ababcaf537268077d7c9762662fa188fa2e47cf",
+          "bytes": 941
+        },
+        "implementation-state.cbor": {
+          "sha256": "b08d13936195672d5766b248978814c858b9eadcd317d02a091d4b0a46ebe03d",
+          "bytes": 2959
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "3447f0922335373135c0e3c29ef311a39ea57a9d50bec9bff91519e2fcde1158",
+          "bytes": 872
+        },
+        "state.cbor": {
+          "sha256": "211b7494644319a9b67c58f2c40eb2ad93d84976448d39b729026a0f43dc6964",
+          "bytes": 2646
+        }
+      },
+      "expectedUnderflow": -527798
+    }
+  ],
+  "sourceConstruction": "pure fmap of native smartUTxOState around the actual repaired upstream generator; no filtered/retried draws and no native rule changes",
+  "originalIncoherentScalaReplay": {
+    "passed": 28,
+    "failed": 9,
+    "total": 37,
+    "logSha256": "8f695edef98990de2a751c035b69a1eb9f01d8ea47ed2f19e3ea824ae26e38f4",
+    "classification": "nine original native/formal accepted random cache draws violate instant-stake consistency; typed CompactCoin underflow remains an explicit domain exclusion, not behavioral parity"
+  },
+  "originalCacheToLawfulBindings": [
+    {
+      "originalCase": "original-incoherent-ledger-274102",
+      "lawfulCase": "ledger-274102",
+      "unchanged": [
+        "context.cbor",
+        "environment.cbor",
+        "signal.cbor",
+        "complete decoded native MemPack UTxO map"
+      ],
+      "stateConstruction": "native smartUTxOState derives instant stake from exact original UTxO; deposits from totalObligation; matching current PParams",
+      "originalStateSha256": "a70638bdb142f78899d1e0155c887b74c5af85884cf167f90d14aa9cd2fab1ea",
+      "lawfulStateSha256": "bcf8ed9765c31c69b1f0bfda7a0f7feabcb7e105f0fbd1a5be819c56d6b5aa6e"
+    },
+    {
+      "originalCase": "original-incoherent-ledger-274103",
+      "lawfulCase": "ledger-274103",
+      "unchanged": [
+        "context.cbor",
+        "environment.cbor",
+        "signal.cbor",
+        "complete decoded native MemPack UTxO map"
+      ],
+      "stateConstruction": "native smartUTxOState derives instant stake from exact original UTxO; deposits from totalObligation; matching current PParams",
+      "originalStateSha256": "949ddfe164613c69cff917c14baa25123bb4133601fcdf5bddc7679368d5878b",
+      "lawfulStateSha256": "67f1d05f6cc3f24a4e619d3d37c974c75bc22d367e5c3ce5f7632230a947444c"
+    },
+    {
+      "originalCase": "original-incoherent-ledgers-274108",
+      "lawfulCase": "ledgers-274108",
+      "unchanged": [
+        "context.cbor",
+        "environment.cbor",
+        "signal.cbor",
+        "complete decoded native MemPack UTxO map"
+      ],
+      "stateConstruction": "native smartUTxOState derives instant stake from exact original UTxO; deposits from totalObligation; matching current PParams",
+      "originalStateSha256": "719a40513dace64e5bc782331ff2ac6c98287566c6ad12b6cc3232366eff9f02",
+      "lawfulStateSha256": "c8b239b700bf27499c76445dd5bb688275bfea6acb62880dce2ddf4f72ea4290"
+    },
+    {
+      "originalCase": "original-incoherent-utxo-274101",
+      "lawfulCase": "utxo-274101",
+      "unchanged": [
+        "context.cbor",
+        "environment.cbor",
+        "signal.cbor",
+        "complete decoded native MemPack UTxO map"
+      ],
+      "stateConstruction": "native smartUTxOState derives instant stake from exact original UTxO; deposits from totalObligation; matching current PParams",
+      "originalStateSha256": "b679dfafa18fffbb46e4c6afdc3a97753711f7b238ef5f444dd0f62b78c7a45a",
+      "lawfulStateSha256": "0713a57493e418013eae3d05219dfa5c93fae74b5691f6fdbf6d76e038cab3ed"
+    },
+    {
+      "originalCase": "original-incoherent-utxo-274102",
+      "lawfulCase": "utxo-274102",
+      "unchanged": [
+        "context.cbor",
+        "environment.cbor",
+        "signal.cbor",
+        "complete decoded native MemPack UTxO map"
+      ],
+      "stateConstruction": "native smartUTxOState derives instant stake from exact original UTxO; deposits from totalObligation; matching current PParams",
+      "originalStateSha256": "a9da16d581e0f6db23d8b279c6b745bb5bbe8b13a7f8352df375ad18487f6b29",
+      "lawfulStateSha256": "f162f2ddc4835d768dfc22ec803f8246fecc88fc6fee4c530329b10b3f2c671f"
+    },
+    {
+      "originalCase": "original-incoherent-utxo-274103",
+      "lawfulCase": "utxo-274103",
+      "unchanged": [
+        "context.cbor",
+        "environment.cbor",
+        "signal.cbor",
+        "complete decoded native MemPack UTxO map"
+      ],
+      "stateConstruction": "native smartUTxOState derives instant stake from exact original UTxO; deposits from totalObligation; matching current PParams",
+      "originalStateSha256": "e555db8cdc4dc145b05ea7d9e3ea55bf23d000136c5b40d6d10a90b868dd722e",
+      "lawfulStateSha256": "0d9ebe49bd218fc0b8e514e404fd5c0d5ba4bda135ce36859c7469a2a1ad80a3"
+    },
+    {
+      "originalCase": "original-incoherent-utxow-274101",
+      "lawfulCase": "utxow-274101",
+      "unchanged": [
+        "context.cbor",
+        "environment.cbor",
+        "signal.cbor",
+        "complete decoded native MemPack UTxO map"
+      ],
+      "stateConstruction": "native smartUTxOState derives instant stake from exact original UTxO; deposits from totalObligation; matching current PParams",
+      "originalStateSha256": "abf8ba5a20a95f3dff2cbc0a96d010de4e7ebf08152ec236ae280d9d6013f8c0",
+      "lawfulStateSha256": "3f0020c8ffd3c906d5b2bb1cae906ac6de27a6143e29acfe13bc4825495711c7"
+    },
+    {
+      "originalCase": "original-incoherent-utxow-274102",
+      "lawfulCase": "utxow-274102",
+      "unchanged": [
+        "context.cbor",
+        "environment.cbor",
+        "signal.cbor",
+        "complete decoded native MemPack UTxO map"
+      ],
+      "stateConstruction": "native smartUTxOState derives instant stake from exact original UTxO; deposits from totalObligation; matching current PParams",
+      "originalStateSha256": "4f82772877d9e815385a2152c970ccb72997e191316ad4485efab2fb09215c4d",
+      "lawfulStateSha256": "3b02687e0a1f4e76856096400866f4245ce957053fc1172ce968bec450258136"
+    },
+    {
+      "originalCase": "original-incoherent-utxow-274103",
+      "lawfulCase": "utxow-274103",
+      "unchanged": [
+        "context.cbor",
+        "environment.cbor",
+        "signal.cbor",
+        "complete decoded native MemPack UTxO map"
+      ],
+      "stateConstruction": "native smartUTxOState derives instant stake from exact original UTxO; deposits from totalObligation; matching current PParams",
+      "originalStateSha256": "211b7494644319a9b67c58f2c40eb2ad93d84976448d39b729026a0f43dc6964",
+      "lawfulStateSha256": "e7a11619bc81640acef7e9349c431856ddfedfbedcd0e19e4ab1810ca495221d"
+    }
+  ],
+  "priorRepairedGeneratorRuns": [
+    {
+      "id": "utxo-274101",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-UTXO/",
+        "--seed=274101",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274101,
+      "exitCode": 0,
+      "elapsedSeconds": 0.6660752296447754
+    },
+    {
+      "id": "utxo-274102",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-UTXO/",
+        "--seed=274102",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274102,
+      "exitCode": 0,
+      "elapsedSeconds": 0.7668259143829346
+    },
+    {
+      "id": "utxo-274103",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-UTXO/",
+        "--seed=274103",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274103,
+      "exitCode": 0,
+      "elapsedSeconds": 0.666013240814209
+    },
+    {
+      "id": "utxow-274101",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-UTXOW/",
+        "--seed=274101",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274101,
+      "exitCode": 0,
+      "elapsedSeconds": 0.7161693572998047
+    },
+    {
+      "id": "utxow-274102",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-UTXOW/",
+        "--seed=274102",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274102,
+      "exitCode": 0,
+      "elapsedSeconds": 0.6661467552185059
+    },
+    {
+      "id": "utxow-274103",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-UTXOW/",
+        "--seed=274103",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274103,
+      "exitCode": 0,
+      "elapsedSeconds": 0.615687370300293
+    },
+    {
+      "id": "ledger-274101",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGER/",
+        "--seed=274101",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274101,
+      "exitCode": 0,
+      "elapsedSeconds": 0.6660177707672119
+    },
+    {
+      "id": "ledger-274102",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGER/",
+        "--seed=274102",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274102,
+      "exitCode": 0,
+      "elapsedSeconds": 0.7162463665008545
+    },
+    {
+      "id": "ledger-274103",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGER/",
+        "--seed=274103",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274103,
+      "exitCode": 0,
+      "elapsedSeconds": 0.6157708168029785
+    },
+    {
+      "id": "ledgers-274101",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGERS/",
+        "--seed=274101",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274101,
+      "exitCode": 0,
+      "elapsedSeconds": 0.6658868789672852
+    },
+    {
+      "id": "ledgers-274102",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGERS/",
+        "--seed=274102",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274102,
+      "exitCode": 0,
+      "elapsedSeconds": 0.665856122970581
+    },
+    {
+      "id": "ledgers-274103",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGERS/",
+        "--seed=274103",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274103,
+      "exitCode": 0,
+      "elapsedSeconds": 0.6172420978546143
+    },
+    {
+      "id": "bootstrap-valid",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/Bootstrap Witness/Valid Witnesses/",
+        "--seed=274201",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_IMP_EXPORT_DIR",
+      "seed": 274201,
+      "exitCode": 0,
+      "elapsedSeconds": 0.21493959426879883
+    },
+    {
+      "id": "bootstrap-bad-signature",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/Bootstrap Witness/InvalidWitnessesUTXOW/",
+        "--seed=274201",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_IMP_EXPORT_DIR",
+      "seed": 274201,
+      "exitCode": 0,
+      "elapsedSeconds": 0.2149064540863037
+    },
+    {
+      "id": "bootstrap-missing-witness",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/Scarab bootstrap/Missing bootstrap witness/",
+        "--seed=274201",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_IMP_EXPORT_DIR",
+      "seed": 274201,
+      "exitCode": 0,
+      "elapsedSeconds": 0.21476173400878906
+    },
+    {
+      "id": "plutus-v2-overlap",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/Conformance/Conway/Imp/UTXOS/PlutusV2 with references/succeeds with same txIn in regular inputs and reference inputs/",
+        "--seed=274301",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_IMP_EXPORT_DIR",
+      "seed": 274301,
+      "exitCode": 0,
+      "elapsedSeconds": 0.21483945846557617
+    },
+    {
+      "id": "plutus-v3-overlap-refused",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/Conformance/Conway/Imp/UTXOS/PlutusV3/fails with same txIn in regular inputs and reference inputs/",
+        "--seed=274302",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_IMP_EXPORT_DIR",
+      "seed": 274302,
+      "exitCode": 0,
+      "elapsedSeconds": 0.21479153633117676
+    },
+    {
+      "id": "drep-delegation-unregistration",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/Scarab DRep/registered delegatees removed after unregistration/",
+        "--seed=274401",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_IMP_EXPORT_DIR",
+      "seed": 274401,
+      "exitCode": 0,
+      "elapsedSeconds": 0.21479463577270508
+    },
+    {
+      "id": "ledgers-274104",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGERS/",
+        "--seed=274104",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274104,
+      "exitCode": 0,
+      "elapsedSeconds": 0.6659655570983887
+    },
+    {
+      "id": "ledgers-274105",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGERS/",
+        "--seed=274105",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274105,
+      "exitCode": 0,
+      "elapsedSeconds": 0.6159272193908691
+    },
+    {
+      "id": "ledgers-274106",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGERS/",
+        "--seed=274106",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274106,
+      "exitCode": 0,
+      "elapsedSeconds": 0.666128396987915
+    },
+    {
+      "id": "ledgers-274107",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGERS/",
+        "--seed=274107",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274107,
+      "exitCode": 0,
+      "elapsedSeconds": 0.7170913219451904
+    },
+    {
+      "id": "ledgers-274108",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/PV11-real-LEDGERS/",
+        "--seed=274108",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "seed": 274108,
+      "exitCode": 0,
+      "elapsedSeconds": 0.6704635620117188
+    },
+    {
+      "id": "plutus-v3-disjoint",
+      "command": [
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conformance-9.9.9.9/t/tests/build/tests/tests",
+        "--match",
+        "/Conformance/Conway/Imp/UTXOS/PlutusV3/can use reference scripts/",
+        "--seed=274303",
+        "--qc-max-success=1",
+        "--qc-max-size=0",
+        "--qc-max-shrinks=0",
+        "--fail-on=empty",
+        "+RTS",
+        "-N2",
+        "-RTS"
+      ],
+      "exportVariable": "SCARAB_IMP_EXPORT_DIR",
+      "seed": 274303,
+      "exitCode": 0,
+      "elapsedSeconds": 0.2663543224334717
+    }
+  ],
+  "duplicates": [
+    {
+      "id": "bootstrap-missing-witness-ledger-1",
+      "duplicateOf": "bootstrap-bad-signature-ledger-1"
+    },
+    {
+      "id": "bootstrap-valid-ledger-1",
+      "duplicateOf": "bootstrap-bad-signature-ledger-1"
+    }
+  ],
+  "counts": {
+    "lawfulObservations": 41,
+    "uniqueLawfulStsTuples": 39,
+    "duplicateHooks": 2,
+    "originalIncoherentDomainControls": 9,
+    "acceptedLawful": 30,
+    "rejectedLawful": 11
+  },
+  "allOriginalGeneratedSourceToLawfulBindings": [
+    {
+      "id": "ledger-274101",
+      "sameOriginalInputs": {
+        "context.cbor": "406bc103feffd1cabd256c273c138005adcaaccd9ba6bfdbbbb3dacff601e730",
+        "environment.cbor": "786e752099b7c755b94b863a91edd50c09f1edb8c8be269dd25835d3842f18d9",
+        "signal.cbor": "98778b176145f283f7ede3460539918715b3f998c3dd7e46cb148747471a12b4"
+      },
+      "stateChanged": true,
+      "completeNativeUtxoMapEqual": true,
+      "feesEqual": true,
+      "donationEqual": true,
+      "instantStakeChanged": true
+    },
+    {
+      "id": "ledger-274102",
+      "sameOriginalInputs": {
+        "context.cbor": "b6d72b2711d825b190eb9332d180894df1602db548407621ec0526bb6d3f7be4",
+        "environment.cbor": "cf3e0a99420100a204568c161e81fb163f0c229eba754e3be46d040513ca1aae",
+        "signal.cbor": "b8e444d12eb63a79135922eac25425974bc80d5729242945d0a87920c549c3c5"
+      },
+      "stateChanged": true,
+      "completeNativeUtxoMapEqual": true,
+      "feesEqual": true,
+      "donationEqual": true,
+      "instantStakeChanged": true
+    },
+    {
+      "id": "ledger-274103",
+      "sameOriginalInputs": {
+        "context.cbor": "f7ba0e12ff13c8983844c7f7e0a20577a19108e2b3c0722bbc30d77ad64f1be2",
+        "environment.cbor": "92bc35e132a9cd5b92f3ef17242594104eb1f04a482bead9a658f24810bae47d",
+        "signal.cbor": "3447f0922335373135c0e3c29ef311a39ea57a9d50bec9bff91519e2fcde1158"
+      },
+      "stateChanged": true,
+      "completeNativeUtxoMapEqual": true,
+      "feesEqual": true,
+      "donationEqual": true,
+      "instantStakeChanged": true
+    },
+    {
+      "id": "ledgers-274101",
+      "sameOriginalInputs": {
+        "context.cbor": "930bab62a8bb3f6e1f9843b6853bb19aed5c05eae62b7595b8c6749ea112088c",
+        "environment.cbor": "2159e74c69778175372e76a35151c3c33920570bfb442f0daf130cc23866c839",
+        "signal.cbor": "89d5cc7a925c7405ec41bbe4c89e8b81d7bc4dfc65044e6391408ecd4cc2b86f"
+      },
+      "stateChanged": true,
+      "completeNativeUtxoMapEqual": true,
+      "feesEqual": true,
+      "donationEqual": true,
+      "instantStakeChanged": true
+    },
+    {
+      "id": "ledgers-274102",
+      "sameOriginalInputs": {
+        "context.cbor": "3d0ba98ce8aeb70e60fba378116bfbaa4d30c7a54f64e1fc5b9e701548d504c7",
+        "environment.cbor": "35923b13902c38c993c4ef0c873e198f25c075bf3d13ebc17db32475c64ccb3c",
+        "signal.cbor": "e87ae4d71bbcfcad4a78282666b63bbee4f0a9a84ba4475ba2bc9a08ba2ccd1a"
+      },
+      "stateChanged": true,
+      "completeNativeUtxoMapEqual": true,
+      "feesEqual": true,
+      "donationEqual": true,
+      "instantStakeChanged": true
+    },
+    {
+      "id": "ledgers-274103",
+      "sameOriginalInputs": {
+        "context.cbor": "01fa840c11dcdea9f53ebed1b07f00efe3ada51a676530b6de34157e05234d4b",
+        "environment.cbor": "741dde4fdaad57683b9b49a826be88e4cc3e864ac0a423ba72a60a79a7bb1b0d",
+        "signal.cbor": "8c95715d939475841bdc70f49ed74480f13bfbf26164c353570d2019b5a69b05"
+      },
+      "stateChanged": true,
+      "completeNativeUtxoMapEqual": true,
+      "feesEqual": true,
+      "donationEqual": true,
+      "instantStakeChanged": true
+    },
+    {
+      "id": "ledgers-274104",
+      "sameOriginalInputs": {
+        "context.cbor": "418007d5d31f6914265a9bcfe274b3f55f702cc644723953717640014f5dbce0",
+        "environment.cbor": "a116fb5c376abdbe2d8e142aa2b3fc6d49dc3904a5fc94764eac1061fa5f6311",
+        "signal.cbor": "d8d79f322efe49d4db6d08084ea64a720acd3692a981851efae51231bdda7347"
+      },
+      "stateChanged": true,
+      "completeNativeUtxoMapEqual": true,
+      "feesEqual": true,
+      "donationEqual": true,
+      "instantStakeChanged": true
+    },
+    {
+      "id": "ledgers-274105",
+      "sameOriginalInputs": {
+        "context.cbor": "929c8173d38978725b2e2e53f573b24a9df01899992fcca14765dbe964404948",
+        "environment.cbor": "0af12c920b880b2e53bf51cea38e919fbb491068f6cdc37a15113ae6d5b67b13",
+        "signal.cbor": "9d4a4b0605b949a9f975c7118c816ba66968a896b3a4ca7d18d85d2899df3de3"
+      },
+      "stateChanged": true,
+      "completeNativeUtxoMapEqual": true,
+      "feesEqual": true,
+      "donationEqual": true,
+      "instantStakeChanged": true
+    },
+    {
+      "id": "ledgers-274106",
+      "sameOriginalInputs": {
+        "context.cbor": "10dd2536124ac2faca70ef16abd38175701fb0586bb4fe83ecd0995d71e22c04",
+        "environment.cbor": "69b25170bc9a547c3a205a2654811ac8f322853f21b58613c077529a2f40c61d",
+        "signal.cbor": "bfbfde253767cd73fcca53d61a7b6abd63095730866ab7778cf0fff8fc126198"
+      },
+      "stateChanged": true,
+      "completeNativeUtxoMapEqual": true,
+      "feesEqual": true,
+      "donationEqual": true,
+      "instantStakeChanged": true
+    },
+    {
+      "id": "ledgers-274107",
+      "sameOriginalInputs": {
+        "context.cbor": "144406ac26194982c02e99156675e9c2cdcd754e1bdf34c97012ea874aeadc43",
+        "environment.cbor": "42ccee5fa917b25dfe4c71ea1b7436d4a2739d7f0e4fab03177a37937935d984",
+        "signal.cbor": "c3ff0196cb199275b8b1441018298a2d1c47df3335029bd9bc50ef4b9594a00a"
+      },
+      "stateChanged": true,
+      "completeNativeUtxoMapEqual": true,
+      "feesEqual": true,
+      "donationEqual": true,
+      "instantStakeChanged": true
+    },
+    {
+      "id": "ledgers-274108",
+      "sameOriginalInputs": {
+        "context.cbor": "1a759127f7633adda4bc2b16dcf096bf57a2f2c6c8b5e9a1ae7ecfa9635c859d",
+        "environment.cbor": "6a70ed56a3f5e6259020e2222336601639a388070119c440140a005e47be8762",
+        "signal.cbor": "f0d12783ddd844e272b20a1903c802d9dc1870bdfb4248bb740409725c344c73"
+      },
+      "stateChanged": true,
+      "completeNativeUtxoMapEqual": true,
+      "feesEqual": true,
+      "donationEqual": true,
+      "instantStakeChanged": true
+    },
+    {
+      "id": "utxo-274101",
+      "sameOriginalInputs": {
+        "context.cbor": "34f48548f178cbf6f2b2adf3dc421e2ed1b6919b9499d6d1f1b277e78d6107df",
+        "environment.cbor": "51c64ce90393608349e65c5e01aae03a7001cdc3ec6e9bdeca8055c1cb6b9fef",
+        "signal.cbor": "8c86d01b8806e752b682221efe41c7003b543946e87e79377e800b5c849b61ac"
+      },
+      "stateChanged": true,
+      "completeNativeUtxoMapEqual": true,
+      "feesEqual": true,
+      "donationEqual": true,
+      "instantStakeChanged": true
+    },
+    {
+      "id": "utxo-274102",
+      "sameOriginalInputs": {
+        "context.cbor": "524f87940ab9700af7b6da1ef7e4c40bb5b9cfc0c21fb3b91b7de10f676f74e7",
+        "environment.cbor": "2ba298b443564bce625f3d3b7e96eaa112770bca8f8e84ea7dc6cc53b43f3f1c",
+        "signal.cbor": "d318dd49e649b3bd110403ec985d98aa73ff33645d8925856bd18a9bc003e2e8"
+      },
+      "stateChanged": true,
+      "completeNativeUtxoMapEqual": true,
+      "feesEqual": true,
+      "donationEqual": true,
+      "instantStakeChanged": true
+    },
+    {
+      "id": "utxo-274103",
+      "sameOriginalInputs": {
+        "context.cbor": "1ea97bc678437c4f0e4d0e738ae503f4a08f2e17b92a209a23a73ba641dd5b1c",
+        "environment.cbor": "aec5112bf4a9eb4076467b79a779770d876f66d0feb62258d731f8d7264110e8",
+        "signal.cbor": "42b2241ae6f0122e54449ae65085ab324ab6b732c476bf0f875a5424f9a31aa0"
+      },
+      "stateChanged": true,
+      "completeNativeUtxoMapEqual": true,
+      "feesEqual": true,
+      "donationEqual": true,
+      "instantStakeChanged": true
+    },
+    {
+      "id": "utxow-274101",
+      "sameOriginalInputs": {
+        "context.cbor": "57bb74e0d1e9c351350bc8c2709d818e750d8cae812f8d21e6dc3e526e08d159",
+        "environment.cbor": "e12967f6e7252ff1c1769902c89ca2b68bf77d8945110781fcf985913ccf6966",
+        "signal.cbor": "98778b176145f283f7ede3460539918715b3f998c3dd7e46cb148747471a12b4"
+      },
+      "stateChanged": true,
+      "completeNativeUtxoMapEqual": true,
+      "feesEqual": true,
+      "donationEqual": true,
+      "instantStakeChanged": true
+    },
+    {
+      "id": "utxow-274102",
+      "sameOriginalInputs": {
+        "context.cbor": "e7f36f0fa92dd73b61e052a918d1be0616762026f8afdd191dbdeba7c822ccd9",
+        "environment.cbor": "9ff9e55c6b12ee4d93e064d6c26dbea6ec22192d4a5553969571b83c4f745a6b",
+        "signal.cbor": "b8e444d12eb63a79135922eac25425974bc80d5729242945d0a87920c549c3c5"
+      },
+      "stateChanged": true,
+      "completeNativeUtxoMapEqual": true,
+      "feesEqual": true,
+      "donationEqual": true,
+      "instantStakeChanged": true
+    },
+    {
+      "id": "utxow-274103",
+      "sameOriginalInputs": {
+        "context.cbor": "6fa1bdf97d3ff6e7de4bfc74e9c4999152b8d7a1cf78219db31e41735f2aafad",
+        "environment.cbor": "dec76684d72e0c561fd76aef3ababcaf537268077d7c9762662fa188fa2e47cf",
+        "signal.cbor": "3447f0922335373135c0e3c29ef311a39ea57a9d50bec9bff91519e2fcde1158"
+      },
+      "stateChanged": true,
+      "completeNativeUtxoMapEqual": true,
+      "feesEqual": true,
+      "donationEqual": true,
+      "instantStakeChanged": true
+    }
+  ],
+  "allOriginalGeneratedCacheDisposition": "All seventeen original generated states have instant stake unrelated to their exact UTxO. Nine accepted native/formal records reached a typed CompactCoin underflow in the original Scala replay; eight rejection records stopped before exposing that underflow. The nine failing records are preserved as explicit typed-domain controls; all seventeen source bindings are retained here.",
+  "lawfulRunner": {
+    "sha256": "4e54c2ff8bd46035cea213225abc8b0c40098a1fb1afa67070e7ebf72ba24e47",
+    "bytes": 213499312,
+    "scope": "Only the final runs list and lawful-native cases; historical runs are not retrospectively bound to this executable.",
+    "privateRetainedExecutable": "runner-lawful outside checkout; exact SHA256 above"
+  },
+  "initialRunsBinaryAvailability": "Initial complete executable was overwritten during iterative builds; original failed run logs, exact command lines and available captured inputs/native outputs are retained. Do not infer its binary hash from lawfulRunner. The separately retained private runner-before-formal-overlap-repair is an intermediate phase snapshot, not asserted to bind every earlier execution.",
+  "sourceTreeChangedFiles": [
+    "cabal.project",
+    "libs/cardano-ledger-conformance/cardano-ledger-conformance.cabal",
+    "libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/ExecSpecRule/Core.hs",
+    "libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/SpecTranslate/Conway/Base.hs",
+    "libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/SpecTranslate/Core.hs",
+    "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Conway.hs",
+    "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Core.hs",
+    "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway.hs",
+    "libs/cardano-ledger-test/src/Test/Cardano/Ledger/Constrained/Conway/Utxo.hs",
+    "libs/cardano-ledger-test/src/Test/Cardano/Ledger/Generic/GenState.hs"
+  ],
+  "formalObjects": {
+    "MAlonzo/Code/Ledger/Conway/Conformance/Utxo.hs": {
+      "sha256": "cce4947077ffc38cfecf9c5ed0f9cc609eda28caf03faf4c0048f724388d1706",
+      "bytes": 105114
+    },
+    "MAlonzo/Code/Ledger/Conway/Conformance/Utxo.o": {
+      "sha256": "e1076ee0732f79f0fc2e9440c61b6698cc014f216b6269add2b74212111168f1",
+      "bytes": 191808
+    },
+    "MAlonzo/Code/Ledger/Conway/Specification/Utxow.hs": {
+      "sha256": "c72a2d1969fafcb60b96e6da1c80cbebd5328b57047b09fed67b2534fbe9f16d",
+      "bytes": 167247
+    },
+    "MAlonzo/Code/Ledger/Conway/Specification/Utxow.o": {
+      "sha256": "0e3673017c85a77952d2d961fc03474b384978a6dca530ef751e9b2a3932ded2",
+      "bytes": 277984
+    }
+  },
+  "originalGeneratedArtifacts": [
+    {
+      "id": "ledger-274101",
+      "disposition": "incoherent cached instant stake; original native/formal outcomes retained, not counted as lawful parity",
+      "files": {
+        "context.cbor": {
+          "sha256": "406bc103feffd1cabd256c273c138005adcaaccd9ba6bfdbbbb3dacff601e730",
+          "bytes": 3139
+        },
+        "environment.cbor": {
+          "sha256": "786e752099b7c755b94b863a91edd50c09f1edb8c8be269dd25835d3842f18d9",
+          "bytes": 776
+        },
+        "implementation-failures.cbor": {
+          "sha256": "37f294ea6947be854a370baf31d67a3057533e6e05a880d1176a6fa6cb6e23fa",
+          "bytes": 34
+        },
+        "result.txt": {
+          "sha256": "6c5a2451784494baac941ebf4dab97519a53c9c45417344028678b34d4d5316c",
+          "bytes": 53
+        },
+        "signal.cbor": {
+          "sha256": "98778b176145f283f7ede3460539918715b3f998c3dd7e46cb148747471a12b4",
+          "bytes": 686
+        },
+        "state.cbor": {
+          "sha256": "9742fc44f640cbc3497af1b15e32f7cd0231d4048fe1ffd09a63f10830fef965",
+          "bytes": 3088
+        }
+      }
+    },
+    {
+      "id": "ledger-274102",
+      "disposition": "incoherent cached instant stake; original native/formal outcomes retained, not counted as lawful parity",
+      "files": {
+        "context.cbor": {
+          "sha256": "b6d72b2711d825b190eb9332d180894df1602db548407621ec0526bb6d3f7be4",
+          "bytes": 4228
+        },
+        "environment.cbor": {
+          "sha256": "cf3e0a99420100a204568c161e81fb163f0c229eba754e3be46d040513ca1aae",
+          "bytes": 776
+        },
+        "implementation-state.cbor": {
+          "sha256": "e7d074d65ec039ec2a8b08cce657dc1686eabf53af241c15a4fcc5f565bf04f8",
+          "bytes": 4469
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "b8e444d12eb63a79135922eac25425974bc80d5729242945d0a87920c549c3c5",
+          "bytes": 735
+        },
+        "state.cbor": {
+          "sha256": "a70638bdb142f78899d1e0155c887b74c5af85884cf167f90d14aa9cd2fab1ea",
+          "bytes": 4231
+        }
+      }
+    },
+    {
+      "id": "ledger-274103",
+      "disposition": "incoherent cached instant stake; original native/formal outcomes retained, not counted as lawful parity",
+      "files": {
+        "context.cbor": {
+          "sha256": "f7ba0e12ff13c8983844c7f7e0a20577a19108e2b3c0722bbc30d77ad64f1be2",
+          "bytes": 3459
+        },
+        "environment.cbor": {
+          "sha256": "92bc35e132a9cd5b92f3ef17242594104eb1f04a482bead9a658f24810bae47d",
+          "bytes": 776
+        },
+        "implementation-state.cbor": {
+          "sha256": "7c812b92389963e8e3b90f28c9bc3798c788731043084bbc118a00d6ee58fb45",
+          "bytes": 3496
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "3447f0922335373135c0e3c29ef311a39ea57a9d50bec9bff91519e2fcde1158",
+          "bytes": 872
+        },
+        "state.cbor": {
+          "sha256": "949ddfe164613c69cff917c14baa25123bb4133601fcdf5bddc7679368d5878b",
+          "bytes": 3021
+        }
+      }
+    },
+    {
+      "id": "ledgers-274101",
+      "disposition": "incoherent cached instant stake; original native/formal outcomes retained, not counted as lawful parity",
+      "files": {
+        "context.cbor": {
+          "sha256": "930bab62a8bb3f6e1f9843b6853bb19aed5c05eae62b7595b8c6749ea112088c",
+          "bytes": 1405
+        },
+        "environment.cbor": {
+          "sha256": "2159e74c69778175372e76a35151c3c33920570bfb442f0daf130cc23866c839",
+          "bytes": 774
+        },
+        "implementation-failures.cbor": {
+          "sha256": "18ff50cd698ed8edcba53370115d204c3826aaa2db815f72e10861ae826aeff6",
+          "bytes": 34
+        },
+        "result.txt": {
+          "sha256": "6c5a2451784494baac941ebf4dab97519a53c9c45417344028678b34d4d5316c",
+          "bytes": 53
+        },
+        "signal.cbor": {
+          "sha256": "89d5cc7a925c7405ec41bbe4c89e8b81d7bc4dfc65044e6391408ecd4cc2b86f",
+          "bytes": 1449
+        },
+        "state.cbor": {
+          "sha256": "5f6d9cfb5119ea6780e460d0f781c57740378aff34181513446e5e5a868b7b29",
+          "bytes": 4150
+        }
+      }
+    },
+    {
+      "id": "ledgers-274102",
+      "disposition": "incoherent cached instant stake; original native/formal outcomes retained, not counted as lawful parity",
+      "files": {
+        "context.cbor": {
+          "sha256": "3d0ba98ce8aeb70e60fba378116bfbaa4d30c7a54f64e1fc5b9e701548d504c7",
+          "bytes": 1438
+        },
+        "environment.cbor": {
+          "sha256": "35923b13902c38c993c4ef0c873e198f25c075bf3d13ebc17db32475c64ccb3c",
+          "bytes": 774
+        },
+        "implementation-failures.cbor": {
+          "sha256": "852691622c46dd7bf3ef535c601b9eb8a5310a4bf5999b5d0d540e853bff12a8",
+          "bytes": 34
+        },
+        "result.txt": {
+          "sha256": "6c5a2451784494baac941ebf4dab97519a53c9c45417344028678b34d4d5316c",
+          "bytes": 53
+        },
+        "signal.cbor": {
+          "sha256": "e87ae4d71bbcfcad4a78282666b63bbee4f0a9a84ba4475ba2bc9a08ba2ccd1a",
+          "bytes": 701
+        },
+        "state.cbor": {
+          "sha256": "d4233526bc7a365c2bc26c10a03d5a9867f94e9a2257bf0c6442eef85acbb062",
+          "bytes": 4187
+        }
+      }
+    },
+    {
+      "id": "ledgers-274103",
+      "disposition": "incoherent cached instant stake; original native/formal outcomes retained, not counted as lawful parity",
+      "files": {
+        "context.cbor": {
+          "sha256": "01fa840c11dcdea9f53ebed1b07f00efe3ada51a676530b6de34157e05234d4b",
+          "bytes": 1330
+        },
+        "environment.cbor": {
+          "sha256": "741dde4fdaad57683b9b49a826be88e4cc3e864ac0a423ba72a60a79a7bb1b0d",
+          "bytes": 774
+        },
+        "implementation-failures.cbor": {
+          "sha256": "a11a9ea5113126c8ed7a4b0985c4e6c8be97cf886ddd41177231db74ecc7db2e",
+          "bytes": 34
+        },
+        "result.txt": {
+          "sha256": "6c5a2451784494baac941ebf4dab97519a53c9c45417344028678b34d4d5316c",
+          "bytes": 53
+        },
+        "signal.cbor": {
+          "sha256": "8c95715d939475841bdc70f49ed74480f13bfbf26164c353570d2019b5a69b05",
+          "bytes": 684
+        },
+        "state.cbor": {
+          "sha256": "d3ff3b097a467a85bc5f184a75825e9dd11f4d7f21e97e1396e09fff75d75d1b",
+          "bytes": 2944
+        }
+      }
+    },
+    {
+      "id": "ledgers-274104",
+      "disposition": "incoherent cached instant stake; original native/formal outcomes retained, not counted as lawful parity",
+      "files": {
+        "context.cbor": {
+          "sha256": "418007d5d31f6914265a9bcfe274b3f55f702cc644723953717640014f5dbce0",
+          "bytes": 1355
+        },
+        "environment.cbor": {
+          "sha256": "a116fb5c376abdbe2d8e142aa2b3fc6d49dc3904a5fc94764eac1061fa5f6311",
+          "bytes": 774
+        },
+        "implementation-failures.cbor": {
+          "sha256": "0ba28e48f6d2f67240c4dd6bace8ae484ad5b05029ae2d9661180b05805bb1a4",
+          "bytes": 34
+        },
+        "result.txt": {
+          "sha256": "6c5a2451784494baac941ebf4dab97519a53c9c45417344028678b34d4d5316c",
+          "bytes": 53
+        },
+        "signal.cbor": {
+          "sha256": "d8d79f322efe49d4db6d08084ea64a720acd3692a981851efae51231bdda7347",
+          "bytes": 2392
+        },
+        "state.cbor": {
+          "sha256": "1a94304a2dcc6a5847d018ec5b6f3c40cac7ac4cca00b1618c6d0987d8ebdd69",
+          "bytes": 4580
+        }
+      }
+    },
+    {
+      "id": "ledgers-274105",
+      "disposition": "incoherent cached instant stake; original native/formal outcomes retained, not counted as lawful parity",
+      "files": {
+        "context.cbor": {
+          "sha256": "929c8173d38978725b2e2e53f573b24a9df01899992fcca14765dbe964404948",
+          "bytes": 1513
+        },
+        "environment.cbor": {
+          "sha256": "0af12c920b880b2e53bf51cea38e919fbb491068f6cdc37a15113ae6d5b67b13",
+          "bytes": 774
+        },
+        "implementation-failures.cbor": {
+          "sha256": "1f7566c08aa52bfcd965a307a22cb1e6dc4625ea47cde7ace4927eba0b325b4e",
+          "bytes": 34
+        },
+        "result.txt": {
+          "sha256": "6c5a2451784494baac941ebf4dab97519a53c9c45417344028678b34d4d5316c",
+          "bytes": 53
+        },
+        "signal.cbor": {
+          "sha256": "9d4a4b0605b949a9f975c7118c816ba66968a896b3a4ca7d18d85d2899df3de3",
+          "bytes": 1093
+        },
+        "state.cbor": {
+          "sha256": "3612370b5f7823b89aef0888b1d9f4c57484551f41384ce0a3d3ce952557f660",
+          "bytes": 4197
+        }
+      }
+    },
+    {
+      "id": "ledgers-274106",
+      "disposition": "incoherent cached instant stake; original native/formal outcomes retained, not counted as lawful parity",
+      "files": {
+        "context.cbor": {
+          "sha256": "10dd2536124ac2faca70ef16abd38175701fb0586bb4fe83ecd0995d71e22c04",
+          "bytes": 1324
+        },
+        "environment.cbor": {
+          "sha256": "69b25170bc9a547c3a205a2654811ac8f322853f21b58613c077529a2f40c61d",
+          "bytes": 774
+        },
+        "implementation-failures.cbor": {
+          "sha256": "f0aee41b6c49625a4ebb30dac95ab977f89df4bb9d52757c5fcd646be60c715a",
+          "bytes": 34
+        },
+        "result.txt": {
+          "sha256": "6c5a2451784494baac941ebf4dab97519a53c9c45417344028678b34d4d5316c",
+          "bytes": 53
+        },
+        "signal.cbor": {
+          "sha256": "bfbfde253767cd73fcca53d61a7b6abd63095730866ab7778cf0fff8fc126198",
+          "bytes": 940
+        },
+        "state.cbor": {
+          "sha256": "1f2fbf61b6ae5f1fdaba096e81c73e87f63bdb8e91b05c6661519fe3202566ab",
+          "bytes": 4155
+        }
+      }
+    },
+    {
+      "id": "ledgers-274107",
+      "disposition": "incoherent cached instant stake; original native/formal outcomes retained, not counted as lawful parity",
+      "files": {
+        "context.cbor": {
+          "sha256": "144406ac26194982c02e99156675e9c2cdcd754e1bdf34c97012ea874aeadc43",
+          "bytes": 1284
+        },
+        "environment.cbor": {
+          "sha256": "42ccee5fa917b25dfe4c71ea1b7436d4a2739d7f0e4fab03177a37937935d984",
+          "bytes": 774
+        },
+        "implementation-failures.cbor": {
+          "sha256": "611b1f50cf49f22f104a32210c72300302f06a8d1f7a92a5606997c20cf239bd",
+          "bytes": 64
+        },
+        "result.txt": {
+          "sha256": "6c5a2451784494baac941ebf4dab97519a53c9c45417344028678b34d4d5316c",
+          "bytes": 53
+        },
+        "signal.cbor": {
+          "sha256": "c3ff0196cb199275b8b1441018298a2d1c47df3335029bd9bc50ef4b9594a00a",
+          "bytes": 1538
+        },
+        "state.cbor": {
+          "sha256": "311f6c50f6e0b99b378854db367e8f672a7996b948c3d792c1e3c8dfc7003fc5",
+          "bytes": 5160
+        }
+      }
+    },
+    {
+      "id": "ledgers-274108",
+      "disposition": "incoherent cached instant stake; original native/formal outcomes retained, not counted as lawful parity",
+      "files": {
+        "context.cbor": {
+          "sha256": "1a759127f7633adda4bc2b16dcf096bf57a2f2c6c8b5e9a1ae7ecfa9635c859d",
+          "bytes": 1344
+        },
+        "environment.cbor": {
+          "sha256": "6a70ed56a3f5e6259020e2222336601639a388070119c440140a005e47be8762",
+          "bytes": 774
+        },
+        "implementation-state.cbor": {
+          "sha256": "5d6a6013e8025bf11915bbd2f1d718afc966f11594d9aa12407397a7a3d44d1f",
+          "bytes": 4481
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "f0d12783ddd844e272b20a1903c802d9dc1870bdfb4248bb740409725c344c73",
+          "bytes": 765
+        },
+        "state.cbor": {
+          "sha256": "719a40513dace64e5bc782331ff2ac6c98287566c6ad12b6cc3232366eff9f02",
+          "bytes": 4162
+        }
+      }
+    },
+    {
+      "id": "utxo-274101",
+      "disposition": "incoherent cached instant stake; original native/formal outcomes retained, not counted as lawful parity",
+      "files": {
+        "context.cbor": {
+          "sha256": "34f48548f178cbf6f2b2adf3dc421e2ed1b6919b9499d6d1f1b277e78d6107df",
+          "bytes": 2598
+        },
+        "environment.cbor": {
+          "sha256": "51c64ce90393608349e65c5e01aae03a7001cdc3ec6e9bdeca8055c1cb6b9fef",
+          "bytes": 1215
+        },
+        "implementation-state.cbor": {
+          "sha256": "f89618d9e57e4095d3f77f9321082a10d4b77c16c6916b67f4d0ba0a87d87523",
+          "bytes": 4116
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "8c86d01b8806e752b682221efe41c7003b543946e87e79377e800b5c849b61ac",
+          "bytes": 1079
+        },
+        "state.cbor": {
+          "sha256": "b679dfafa18fffbb46e4c6afdc3a97753711f7b238ef5f444dd0f62b78c7a45a",
+          "bytes": 3909
+        }
+      }
+    },
+    {
+      "id": "utxo-274102",
+      "disposition": "incoherent cached instant stake; original native/formal outcomes retained, not counted as lawful parity",
+      "files": {
+        "context.cbor": {
+          "sha256": "524f87940ab9700af7b6da1ef7e4c40bb5b9cfc0c21fb3b91b7de10f676f74e7",
+          "bytes": 3702
+        },
+        "environment.cbor": {
+          "sha256": "2ba298b443564bce625f3d3b7e96eaa112770bca8f8e84ea7dc6cc53b43f3f1c",
+          "bytes": 1400
+        },
+        "implementation-state.cbor": {
+          "sha256": "dedcec0efaafc6c69dae7b7efe69ed68c0f6b7b23203a140b6f1b8622e2438c8",
+          "bytes": 4584
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "d318dd49e649b3bd110403ec985d98aa73ff33645d8925856bd18a9bc003e2e8",
+          "bytes": 1880
+        },
+        "state.cbor": {
+          "sha256": "a9da16d581e0f6db23d8b279c6b745bb5bbe8b13a7f8352df375ad18487f6b29",
+          "bytes": 4141
+        }
+      }
+    },
+    {
+      "id": "utxo-274103",
+      "disposition": "incoherent cached instant stake; original native/formal outcomes retained, not counted as lawful parity",
+      "files": {
+        "context.cbor": {
+          "sha256": "1ea97bc678437c4f0e4d0e738ae503f4a08f2e17b92a209a23a73ba641dd5b1c",
+          "bytes": 2616
+        },
+        "environment.cbor": {
+          "sha256": "aec5112bf4a9eb4076467b79a779770d876f66d0feb62258d731f8d7264110e8",
+          "bytes": 1132
+        },
+        "implementation-state.cbor": {
+          "sha256": "8e81de3955e72497dcd8e2dfbc78680364ee4f62fb3f666fd37de36a3f7217e0",
+          "bytes": 4379
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "42b2241ae6f0122e54449ae65085ab324ab6b732c476bf0f875a5424f9a31aa0",
+          "bytes": 1081
+        },
+        "state.cbor": {
+          "sha256": "e555db8cdc4dc145b05ea7d9e3ea55bf23d000136c5b40d6d10a90b868dd722e",
+          "bytes": 3783
+        }
+      }
+    },
+    {
+      "id": "utxow-274101",
+      "disposition": "incoherent cached instant stake; original native/formal outcomes retained, not counted as lawful parity",
+      "files": {
+        "context.cbor": {
+          "sha256": "57bb74e0d1e9c351350bc8c2709d818e750d8cae812f8d21e6dc3e526e08d159",
+          "bytes": 1833
+        },
+        "environment.cbor": {
+          "sha256": "e12967f6e7252ff1c1769902c89ca2b68bf77d8945110781fcf985913ccf6966",
+          "bytes": 941
+        },
+        "implementation-state.cbor": {
+          "sha256": "67c1740cbca3d3788a9a58c8ab338e377ff5d202ccff5baccf6581c264ad0300",
+          "bytes": 2932
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "98778b176145f283f7ede3460539918715b3f998c3dd7e46cb148747471a12b4",
+          "bytes": 686
+        },
+        "state.cbor": {
+          "sha256": "abf8ba5a20a95f3dff2cbc0a96d010de4e7ebf08152ec236ae280d9d6013f8c0",
+          "bytes": 2686
+        }
+      }
+    },
+    {
+      "id": "utxow-274102",
+      "disposition": "incoherent cached instant stake; original native/formal outcomes retained, not counted as lawful parity",
+      "files": {
+        "context.cbor": {
+          "sha256": "e7f36f0fa92dd73b61e052a918d1be0616762026f8afdd191dbdeba7c822ccd9",
+          "bytes": 2236
+        },
+        "environment.cbor": {
+          "sha256": "9ff9e55c6b12ee4d93e064d6c26dbea6ec22192d4a5553969571b83c4f745a6b",
+          "bytes": 1294
+        },
+        "implementation-state.cbor": {
+          "sha256": "052da07428bcebb39dd58548f125405781d8f3aa9d2c6e5107c5b8e39a68497d",
+          "bytes": 3895
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "b8e444d12eb63a79135922eac25425974bc80d5729242945d0a87920c549c3c5",
+          "bytes": 735
+        },
+        "state.cbor": {
+          "sha256": "4f82772877d9e815385a2152c970ccb72997e191316ad4485efab2fb09215c4d",
+          "bytes": 3688
+        }
+      }
+    },
+    {
+      "id": "utxow-274103",
+      "disposition": "incoherent cached instant stake; original native/formal outcomes retained, not counted as lawful parity",
+      "files": {
+        "context.cbor": {
+          "sha256": "6fa1bdf97d3ff6e7de4bfc74e9c4999152b8d7a1cf78219db31e41735f2aafad",
+          "bytes": 2045
+        },
+        "environment.cbor": {
+          "sha256": "dec76684d72e0c561fd76aef3ababcaf537268077d7c9762662fa188fa2e47cf",
+          "bytes": 941
+        },
+        "implementation-state.cbor": {
+          "sha256": "b08d13936195672d5766b248978814c858b9eadcd317d02a091d4b0a46ebe03d",
+          "bytes": 2959
+        },
+        "result.txt": {
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+          "bytes": 52
+        },
+        "signal.cbor": {
+          "sha256": "3447f0922335373135c0e3c29ef311a39ea57a9d50bec9bff91519e2fcde1158",
+          "bytes": 872
+        },
+        "state.cbor": {
+          "sha256": "211b7494644319a9b67c58f2c40eb2ad93d84976448d39b729026a0f43dc6964",
+          "bytes": 2646
+        }
+      }
+    }
+  ],
+  "formalCompileCommandTemplate": [
+    "ghc",
+    "-c",
+    "/probe/formal-runtime/MAlonzo/Code/Ledger/Conway/${module}.hs",
+    "-O1",
+    "-dynamic-too",
+    "-this-unit-id",
+    "cardano-ledger-executable-spec-0.1.0.0-31be6ee19fa6c531e2f5f5d4bc098fc5369e77f14db02a84661dc99c8e9aa61c",
+    "-i${formalPackageLib}",
+    "-package-db",
+    "/root/.local/state/cabal/store/ghc-9.10.3-1be3/package.db",
+    "-hide-all-packages",
+    "-package-id",
+    "base-4.20.2.0-9cd7",
+    "-package-id",
+    "ieee-0.7-0fbd5728672cf8548089dab18525f52f7f37903837920a748cfc1dd396ee2dda",
+    "-package-id",
+    "text-2.1.3-3792"
+  ],
+  "formalArchiveReplacementCommandNotes": "Identify duplicate basenames by defined symbols. Remove ONLY original Conway Conformance/Utxo.o and Conway Specification/Utxow.o: ar dN 2 ${archive} Utxo.o; ar dN 2 ${archive} Utxow.o. Append separately named Conformance_Utxo.o and Specification_Utxow.o compiled above; retain previous Foreign/Ledger conversion repair and all other original objects."
+}

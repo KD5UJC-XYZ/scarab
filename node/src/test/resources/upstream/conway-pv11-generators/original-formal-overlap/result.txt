@@ -1,0 +1,3 @@
+implementation-accepted
+agda-rejected
+outputs-differ
