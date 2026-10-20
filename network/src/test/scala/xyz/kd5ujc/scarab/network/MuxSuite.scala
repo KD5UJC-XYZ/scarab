@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.effect.IO
+import cats.effect.{Deferred, IO}
 import cats.syntax.all.*
 import fs2.Chunk
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -378,18 +378,26 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
       val cause =
         if unexpected then new IllegalStateException("injected")
         else new java.io.IOException("closed")
-      val bearer = new Bearer[IO]:
-        def reads = if writing then fs2.Stream.never[IO] else fs2.Stream.raiseError[IO](cause)
-        def write(bytes: Chunk[Byte]) = IO.raiseError[Unit](cause)
-        def close = IO.unit
-      typed {
-        Mux.resource(bearer, Set(2)).use { mux =>
-          (if writing then mux.channel(2).flatMap(_.send(Bytes(Vector(0.toByte)))) else IO.unit) *>
-            mux.closed
+      Deferred[IO, Unit]
+        .flatMap { failWrite =>
+          val bearer = new Bearer[IO]:
+            def reads = if writing then fs2.Stream.never[IO] else fs2.Stream.raiseError[IO](cause)
+            def write(bytes: Chunk[Byte]) = failWrite.get *> IO.raiseError[Unit](cause)
+            def close = IO.unit
+          typed {
+            Mux.resource(bearer, Set(2)).use { mux =>
+              // Let send finish queue admission before the writer reports the injected failure.
+              (if writing then mux.channel(2).flatMap(_.send(Bytes(Vector(0.toByte))))
+               else IO.unit) *>
+                failWrite.complete(()).void *> mux.closed
+            }
+          }
         }
-      }.map {
-        case Right(NetworkError.Defect(found)) if unexpected    => assert(found eq cause)
-        case Right(_: NetworkError.BearerClosed) if !unexpected => ()
-        case other                                              => fail(s"unexpected $other")
-      }
+        .map {
+          case Right(NetworkError.Defect(found)) if unexpected => assert(found eq cause)
+          case Right(NetworkError.BearerClosed(NetworkError.Closure.Transport(_, found)))
+              if !unexpected =>
+            assert(found eq cause)
+          case other => fail(s"unexpected $other")
+        }
     }
