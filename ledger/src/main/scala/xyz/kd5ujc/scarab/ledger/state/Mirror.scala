@@ -7,10 +7,9 @@ import cats.derived.*
 import scala.reflect.ClassTag
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 
-// Vocabulary for the frozen flat-state conversion in `legacy.LedgerMirror`: what that conversion
-// cannot represent, why it refuses, and the environment it reads. The live era-indexed state keeps
-// native reward attribution and resumable reward updates; the flat conversion's gaps below do not
-// describe every live state.
+// Vocabulary for completeness metadata and the frozen flat-state conversion in
+// `legacy.LedgerMirror`. Native states carry their source gaps through transitions and snapshots;
+// freshly computed reward attribution and resumable updates do not reconstruct missing history.
 
 /** What a mirror built from the legacy flat state does not carry, or carries only in part. A mirror
   * is always accompanied by the set of gaps it has; the set is a function of the source state alone
@@ -20,7 +19,7 @@ enum Gap derives Eq, Show, Diff:
   /** `esNonMyopic` and the non-myopic part of the reward update (`PoolRank.hs:231-236`): the pool
     * ranking history is absent from the historical flat source, so its conversion holds
     * `NonMyopic.empty`. Current rules generate new likelihoods, but cannot reconstruct that lost
-    * history. Live provenance tracking remains J3.1 / #129.
+    * history. The live state retains this gap even after new likelihoods are generated.
     */
   case NonMyopic
 

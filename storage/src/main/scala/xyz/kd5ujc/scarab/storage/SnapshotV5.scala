@@ -14,6 +14,7 @@ import xyz.kd5ujc.scarab.consensus.state.{
   EraLedgerState,
   ExtLedgerState,
   MirrorExtras,
+  MirrorProvenance,
   MirrorState,
   MirrorStep,
   ShelleyLedgerState,
@@ -25,7 +26,6 @@ import xyz.kd5ujc.scarab.ledger.{FileKind, ProtocolParams, StorageError, Utxo}
 import xyz.kd5ujc.scarab.ledger.rules.EraLedger
 import xyz.kd5ujc.scarab.ledger.state.{
   EpochState,
-  Gap,
   LedgerState,
   NewEpochState,
   UTxOState,
@@ -83,26 +83,19 @@ object SnapshotV5:
       def decode(content: Array[Byte]): F[Either[StorageError, StateSnapshot[MirrorState]]] =
         env.ask[ConsensusMirrorEnv].flatMap(e => Sync[F].blocking(SnapshotV5.decode(e, content)))
 
-  /** Conservative provenance until J3.1 / #129 gives the live state a gap ledger. Current rules
-    * generate pool likelihoods, but an imported state may still lack earlier ranking history;
-    * clearing the flag for every state would invent that history. The consensus transition count
-    * remains uncomputed. Rewards are attributed, delegators exact and the pulser the rules' own.
-    */
-  private val MirrorGaps: Set[Gap] = Set(Gap.NonMyopic, Gap.ShelleyTransition)
-
   private def written(
       env: ConsensusMirrorEnv,
       snapshot: StateSnapshot[MirrorState],
       check: SnapshotCheck
   ): Either[SnapshotRefusal, Array[Byte]] =
-    encoded(env, snapshot).flatTap { content =>
+    encoded(snapshot).flatTap { content =>
       check match
         case SnapshotCheck.Structure =>
           wellFormed(content).leftMap(SnapshotRefusal.WouldNotRead(_))
         case SnapshotCheck.Full =>
           for
             back <- decode(env, content).leftMap(SnapshotRefusal.WouldNotRead(_))
-            again <- encoded(env, back)
+            again <- encoded(back)
             _ <- Either.cond(
               java.util.Arrays.equals(again, content) && back.anchor == snapshot.anchor,
               (),
@@ -128,15 +121,14 @@ object SnapshotV5:
     }
 
   private[storage] def encoded(
-      env: ConsensusMirrorEnv,
       snapshot: StateSnapshot[MirrorState]
   ): Either[SnapshotRefusal, Array[Byte]] =
     val m = snapshot.state
-    def sidecar(chain: SnapshotSidecar.Chain, gaps: Set[Gap]) =
+    def sidecar(chain: SnapshotSidecar.Chain) =
       SnapshotSidecar(
         snapshot.anchor,
-        env.observed,
-        gaps,
+        m.provenance.observed,
+        m.provenance.gaps,
         chain
       )
     (m.extras, m.ext.ledgerState.state) match
@@ -147,8 +139,7 @@ object SnapshotV5:
         Right(
           framed(
             sidecar(
-              SnapshotSidecar.Chain.InByron(pending, ConsensusExtras(boot, b, protocol)),
-              Set.empty
+              SnapshotSidecar.Chain.InByron(pending, ConsensusExtras(boot, b, protocol))
             ),
             Bytes.empty
           )
@@ -168,8 +159,7 @@ object SnapshotV5:
               EraLedger.curPParams(gov),
               Some(EraLedger.prevPParams(gov)),
               shelley
-            ),
-            MirrorGaps
+            )
           ),
           haskell
         )
@@ -207,7 +197,13 @@ object SnapshotV5:
             .flatMap { _ =>
               val seen = env.copy(observed = env.observed ++ sidecar.observed)
               ByronMirror
-                .of(seen, sidecar.anchor, pending, extras)
+                .of(
+                  seen,
+                  sidecar.anchor,
+                  pending,
+                  extras,
+                  MirrorProvenance.recorded(sidecar.gaps, sidecar.observed)
+                )
                 .leftMap(e => corrupt(e))
             }
         case shelley: SnapshotSidecar.Chain.InShelley =>
@@ -217,7 +213,8 @@ object SnapshotV5:
             shelley.utxo,
             shelley.params,
             shelley.prevParams,
-            shelley.extras
+            shelley.extras,
+            MirrorProvenance.recorded(sidecar.gaps, sidecar.observed)
           )
       state.map(StateSnapshot(sidecar.anchor, _))
     }
@@ -231,7 +228,8 @@ object SnapshotV5:
       utxo: Utxo,
       params: ProtocolParams,
       prevParams: Option[ProtocolParams],
-      extras: MirrorExtras.InShelley
+      extras: MirrorExtras.InShelley,
+      provenance: MirrorProvenance
   ): Either[StorageError, MirrorState] =
     for
       file <- HaskellLedgerFile.decode(haskell).leftMap(e => corrupt(e))
@@ -242,7 +240,7 @@ object SnapshotV5:
         (),
         corrupt(SnapshotReadError.AnchorMismatch)
       )
-    yield MirrorStep.withParams(MirrorState(ext, extras), params, prevParams)
+    yield MirrorStep.withParams(MirrorState(ext, extras, provenance), params, prevParams)
 
   /** The sidecar of the content of a V5 file. */
   def sidecarOf(content: Array[Byte]): Either[StorageError, SnapshotSidecar] =

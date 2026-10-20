@@ -26,7 +26,8 @@ object ByronMirror:
       env: ConsensusMirrorEnv,
       anchor: Option[BlockRef],
       pending: ChainDepState,
-      consensus: ConsensusExtras
+      consensus: ConsensusExtras,
+      provenance: MirrorProvenance
   ): Either[StateMirrorError, MirrorState] =
     val byron: ByronState = consensus.byron
     val geometry = byron.firstShelleyEpoch.fold(env.ledger.geometry)(env.ledger.geometry.resolved)
@@ -60,5 +61,6 @@ object ByronMirror:
       }
       MirrorState(
         ExtLedgerState(ledger, HeaderState(tip, dep)),
-        MirrorExtras.InByron(pending, consensus.boot, consensus.protocol)
+        MirrorExtras.InByron(pending, consensus.boot, consensus.protocol),
+        provenance
       )
