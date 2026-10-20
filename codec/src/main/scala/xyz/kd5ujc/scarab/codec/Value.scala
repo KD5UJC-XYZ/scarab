@@ -38,7 +38,7 @@ sealed abstract class Node:
   /** `a`, or the value equal to it that this item's decode has shared already (see [[Interns]]). A
     * node built by hand belongs to no decode and shares nothing.
     */
-  def share[A](kind: Interned[A])(a: A): A
+  def share[A <: AnyRef](kind: Interned[A])(a: A): A
 
   // Structural, and walked on the heap: the generated ones recurse once per level of nesting. The
   // string is truncated on purpose (see `Tree.render`) and leaves the original bytes out.
@@ -54,7 +54,7 @@ object Node:
 
   private final class Strict(val value: Value, val original: Bytes) extends Node:
     def offset: Int = original.unsafeOffset
-    def share[A](kind: Interned[A])(a: A): A = a
+    def share[A <: AnyRef](kind: Interned[A])(a: A): A = a
     def entries: Option[Iterator[(Node, Node)]] = value match
       case Value.Map(pairs) => Some(pairs.iterator)
       case _                => None
@@ -69,7 +69,7 @@ object Node:
     def offset: Int = doc.index.start(index)
     def entries: Option[Iterator[(Node, Node)]] = doc.entriesAt(index)
     def items: Option[Iterator[Node]] = doc.itemsAt(index)
-    def share[A](kind: Interned[A])(a: A): A = doc.interns.share(kind)(a)
+    def share[A <: AnyRef](kind: Interned[A])(a: A): A = doc.interns.share(kind)(a)
 
   /** A node's children are those of its value; its label adds the exact bytes it was read from. */
   given Tree[Node] with
