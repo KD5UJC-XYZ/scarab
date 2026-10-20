@@ -81,6 +81,65 @@ UPLC program version 1.1.0 (`constr`, `case`) is V3 from 9 and V1/V2 from 11.
    the applied term (`UntypedPlutusCore/Check/Scope.hs` 28-45). A failure there is a failed script.
 3. The machine runs under the cost model and the budget of the redeemer.
 
+## Independent costing and context matrix (2026-10-20)
+
+The remaining admission/context work is at Scarab's ledger integration and verification boundary;
+it is not a demonstrated missing Scalus language implementation. The VM dependency remains unchanged
+by the expanded costing and context campaigns. Counting-term conformance, script deserialization,
+context construction and signed transaction admission are distinct claims.
+
+[#287](https://github.com/KD5UJC-XYZ/scarab/issues/287) adds an unchanged-Haskell
+[costing corpus](../fixtures/reference/plutus-costing/README.md): 1,858 original-byte scripts across
+all fifteen legal V1/V2/V3 language/protocol profiles from 5 through 11, each under the default
+parameters and a second valid model with every parameter doubled. The 55,740 primary observations
+agree on decoding, evaluation stage and 37,184 exact successful CPU/memory budgets. Each successful
+case also agrees at its exact budget and with either CPU or memory reduced by one: 111,552 additional
+restricting observations. Inputs mention all 101 released builtins and sample arithmetic sizing and
+diagonal branches, byte-word boundaries, structured Data/list/array/Value sizes, and real crypto.
+The cost-shape inventory explicitly identifies unreleased names. These finite grids establish neither
+universal equality for all parameter vectors nor consumed-budget equality after failure; the reference
+restricting API does not expose failure consumption. Diagnostic prose remains outside the comparison.
+
+[#288](https://github.com/KD5UJC-XYZ/scarab/issues/288) adds an era-dispatched unchanged-Haskell
+[context corpus](../fixtures/reference/context-matrix/README.md): 309 cases, including 98 original
+signed transaction inputs and 211 clearly labelled API-only derivations. Every legal era/language/
+protocol cell is represented: Alonzo 5/6, Babbage 7/8 and Conway 9/10/11. The four historical purposes
+and Conway voting/proposing have accepted controls or explicit language refusals. All 214 complete
+ordered requests from 174 successful collections match, including full context arguments, clocks,
+cost models, scripts and declared budgets. The 135 collection refusals match their ordered typed
+categories; Conway also matches complete error CBOR. Evaluation matches 189 successful budgets and
+25 failures. Historical reference error bytes are retained without asserting historical wire parity.
+The observer calls the actual era's API; it does not translate every input as Conway or compare a
+Scalus-built context against another Scalus-built context.
+
+Neither API campaign establishes signature checking, complete UTXOW/BBODY admission or collateral
+effects for its derived probes. Original signed reference corpora retain those separate claims.
+Routine era load [#44](https://github.com/KD5UJC-XYZ/scarab/issues/44) now requires twenty V1/V2
+spending/minting controls across Alonzo, Babbage and Conway: successful execution, invalid-tag
+collateral consumption and both opposite-validity rejections, with observed normal/collateral inputs
+and complete resulting outputs/minted assets. This remains a bounded admission matrix rather than
+a Cartesian enumeration of every transaction shape and protocol parameter.
+
+The fixture manifests pin source, input, output, tool and image identities. Both campaigns use
+Plutus `507cab8cf6192e5143f12be5b2d3005a2928dc6d` / ledger
+`f649f9751074d2ab3de033fc3912f29c9862c1f5`, GHC 9.10.3 and complete Linux/amd64 crypto.
+They are correctness measurements, not latency or throughput benchmarks.
+
+### Platform boundary
+
+Platform support is separate from these semantic results. The JVM build already uses JNI;
+a native executable is not required to support another operating system or CPU. Each target needs
+the corrected portable blst library and raw-byte-DST JNI bridge built for its OS/architecture,
+packaged with deterministic selection, and exercised on that target with startup known answers,
+BLS/DST boundary cases and the reference corpus. An absent or incompatible library must retain the
+typed unavailable outcome. Current Linux/amd64 evidence does not certify another target.
+
+A future GraalVM Native Image experiment adds JNI reachability, library packaging/loading and
+initialization constraints; it does not remove the native crypto dependency. It is outside this
+correctness stage. See the official [JNI design](https://docs.oracle.com/en/java/javase/21/docs/specs/jni/design.html)
+and [Native Image JNI requirements](https://www.graalvm.org/latest/reference-manual/native-image/dynamic-features/JNI/).
+Exact diagnostic string parity remains optional [#208](https://github.com/KD5UJC-XYZ/scarab/issues/208).
+
 ## 3. Historical classification of the original 22 cases
 
 The original class labels were (ii), a dependency deviation, and (iii), a harness-profile difference.
