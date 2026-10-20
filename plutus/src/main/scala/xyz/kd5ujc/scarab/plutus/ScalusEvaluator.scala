@@ -510,7 +510,7 @@ object ScalusEvaluator:
     private val caseOnBuiltins =
       protocol >= MajorProtocolVersion.vanRossemPV || language == Language.PlutusV4
 
-    private def runtime(fun: DefaultFun): BuiltinRuntime =
+    private[plutus] def runtime(fun: DefaultFun): BuiltinRuntime =
       fun match
         case DefaultFun.SerialiseData                   => serialiseData
         case DefaultFun.VerifyEcdsaSecp256k1Signature   => verifyEcdsa

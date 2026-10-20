@@ -9,12 +9,10 @@ import scalus.cardano.ledger.MajorProtocolVersion
 import scalus.uplc.{Constant, DeBruijnedProgram, DefaultFun, Program, Term}
 import scalus.uplc.eval.{Log, NoBudgetSpender, PlutusVM}
 
-/** Minimal reproducers of the deviations of Scalus (1.3.0) from plutus 1.70.0.0 that the upstream
-  * conformance suite ([[PlutusConformanceSuite]]) found. Like [[ScalusReproducersSuite]] they
-  * assert the deviation as it is today: an upgrade that fixes one fails here, and says that the
-  * case can leave the known-failure list of the conformance suite
-  * (`plutus-conformance-1.70.0.0-known.txt`). `docs/plutus-conformance.md` records the reference
-  * sources and the scope of the remaining deviations.
+/** Dependency deviations retained as regressions for Scarab's decoder and builtin corrections.
+  * [[PlutusConformanceSuite]] evaluates every original case without exclusions using the upstream
+  * term/counting profile. An upgrade that fixes a dependency deviation fails here so its local
+  * correction can be reviewed; `docs/plutus-conformance.md` records the boundary evidence.
   */
 class ScalusConformanceReproducersSuite extends FunSuite:
   private lazy val vm = PlutusVM.makePlutusV3VM(MajorProtocolVersion(11))
@@ -90,9 +88,9 @@ class ScalusConformanceReproducersSuite extends FunSuite:
 
   // plutus 1.70.0.0 (`term/constant-case/data`): `case` on a `Data.Constr` selects the branch by
   // the constructor tag and applies it to the list of fields, one argument. Scalus 1.3.0 fixed the
-  // application (the fields only, 42) but enables it from protocol 12 (the Van Rossem hard fork);
-  // at protocol 11, where the conformance suite runs, the case is refused. The cases `data-01` and
-  // `data-02` stay in the known-failure list until the suite runs at protocol 12.
+  // application (the fields only, 42) but enables it from protocol 12 (Dijkstra);
+  // at protocol 11 the ledger refuses the case. The upstream conformance profile independently
+  // enables caseBuiltin, including Data, and verifies data-01/data-02 without excluding them.
   test("case on a Data.Constr is refused below protocol 12 and applies the fields from 12") {
     val text = "(program 1.1.0 (case (con data (Constr 0 [])) (lam fields (con integer 42))))"
     val program = Program.parseUplc(text).fold(e => sys.error(e.toString), identity)
