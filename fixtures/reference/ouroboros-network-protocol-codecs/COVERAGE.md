@@ -79,14 +79,17 @@ existing deterministic deadline tests are local controls, not new upstream adapt
 passes. No exact real-clock or scheduler-trace equivalence is claimed.
 
 The practical local follow-up adds `MuxSeededTrafficSuite` (eight seed/SDU profiles, 320 complete
-messages and 160 observed paired write groups across duplex channels) and `DeadlineCleanupSuite`
+messages and 256 observed paired SDU-write groups across duplex channels; the former message
+writer produced 160 groups) and `DeadlineCleanupSuite`
 (writer-finalizer publication order and partial-receive cancellation/lock reuse). These supplement
 observable transport and timer cleanup coverage without adding upstream invocation counts.
-`BulkControlCharacterizationSuite` reproduces a direct KeepAlive deadline miss behind bulk FIFO
-traffic using bounded paced transport and opaque bodies. It is a virtual-time baseline, not a native
+`BulkControlCharacterizationSuite` now requires timely successful KeepAlive responses alongside full
+bulk delivery using bounded paced transport and opaque bodies; #259 retained the former FIFO
+deadline miss. `MuxEgressSuite` checks SDU turns during a large message, duplex FIFO, global fences
+and staged-capacity/cancelled-admission behavior. These are local virtual-time controls, not a native
 starvation-property pass, host benchmark or observed background disconnect. The
 [measurements and refactor scope](../../../docs/design/network-limits.md#bulkcontrol-scheduling-characterization-49)
-track the confirmed writer-fairness gap as [#258](https://github.com/KD5UJC-XYZ/scarab/issues/258).
+record the implemented writer-fairness contract under [#258](https://github.com/KD5UJC-XYZ/scarab/issues/258).
 
 ObjectDiffusion scope is established by
 `ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/ObjectDiffusion/Test.hs:82–101`
