@@ -99,16 +99,19 @@ final class Follower[F[_]: Async, S] private (
       track: Ref[F, ChainSelection.Candidate] => F[Unit] = _ => Async[F].unit
   )(using Raise[F, NodeError]): F[Unit] =
     for
+      initial <- intersect(peer)
+      candidate <- Ref.of[F, ChainSelection.Candidate](initial)
+      _ <- track(candidate)
+      _ <- Monad[F].foreverM(peer.next.flatMap(step(peer, candidate, _)))
+    yield ()
+
+  private def intersect(peer: Peer[F])(using Raise[F, NodeError]): F[ChainSelection.Candidate] =
+    for
       current <- chain.get
       found <- peer.intersect(current.candidates)
       point <- found.fold(PeerError.NoIntersection.raise[F, ChainSync.Point])(_.pure[F])
       _ <- events.emit(FollowerEvent.Connected(point))
-      candidate <- Ref.of[F, ChainSelection.Candidate](
-        ChainSelection.Candidate(point, Vector.empty)
-      )
-      _ <- track(candidate)
-      _ <- Monad[F].foreverM(peer.next.flatMap(step(peer, candidate, _)))
-    yield ()
+    yield ChainSelection.Candidate(point, Vector.empty)
 
   /** How a peer's candidate chain compares with our selection (`CandidateVersusSelection`, GSM.hs
     * 88-98): whether chain selection would switch to it, or that it does not join ours. A candidate
@@ -150,7 +153,13 @@ final class Follower[F[_]: Async, S] private (
           case None =>
             protocol(PeerError.ProtocolProblem.HeaderDoesNotExtend(header.point, c.tip))
           case Some(grown) =>
-            candidate.set(grown) *> adopt(peer, grown, tip).flatMap(candidate.set)
+            candidate.set(grown) *> adopt(peer, grown, tip).flatMap {
+              case Some(kept) => candidate.set(kept)
+              // NoLongerIntersects: drain the pipeline and find a new intersection on this
+              // connection (consensus 82ecba329, ChainSync/Client.hs:1499–1511). Another session
+              // may have advanced the retained window while this candidate was catching up.
+              case None => intersect(peer).flatMap(candidate.set)
+            }
       }
 
   /** Our chain as chain selection sees it. The window is kept between calls and updated by
@@ -191,21 +200,20 @@ final class Follower[F[_]: Async, S] private (
       era: Era
   )
 
-  /** Switch to the candidate if chain selection prefers it; returns the candidate to keep. */
+  /** Switch if preferred; no candidate means its intersection left our retained window. */
   private def adopt(
       peer: Peer[F],
       candidate: ChainSelection.Candidate,
       peerTip: ChainSync.Tip
-  )(using Raise[F, NodeError]): F[ChainSelection.Candidate] =
+  )(using Raise[F, NodeError]): F[Option[ChainSelection.Candidate]] =
     lock.lock.surround {
       for
         l <- local
         result <- ChainSelection.decide(tiebreaker(candidate.headers.last.era), l, candidate) match
-          case ChainSelection.Decision.Keep => F.pure(candidate)
-          case ChainSelection.Decision.Detached =>
-            diverged(PeerError.Divergence.DetachedCandidate(candidate.base))
+          case ChainSelection.Decision.Keep     => F.pure(Some(candidate))
+          case ChainSelection.Decision.Detached => F.pure(None)
           case ChainSelection.Decision.Switch(to, depth, take) =>
-            switchTo(peer, to, depth, take, peerTip).as(candidate.rebase(take.last.point))
+            switchTo(peer, to, depth, take, peerTip).as(Some(candidate.rebase(take.last.point)))
       yield result
     }
 
