@@ -156,8 +156,8 @@ inventory SHA-256 `322085ccb0b824c5a778b95f85a75bdb55546881c662c2622da6766acf66f
 Area scenarios ran sequentially because another session occupied the other shared devnet slot. The
 pre-hardening era run was superseded before completion; the accepted run above and final recorded
 comparison use the final source. Owned clusters and build containers are removed after the gates.
-The completed Preview reconciliation for #21 and its remaining merge/main-CI gate are recorded
-in the following section.
+The completed Preview reconciliation and owner-directed closeout for #21 are recorded in the
+following section.
 
 ### Preview reconciliation gates
 
@@ -200,6 +200,9 @@ integration builds are recorded separately. The accepted K1 manifest has SHA-256
 `489094c44e9e97793aba1371c65eb3643bb18c7bb8d3416d7ce5391fb5b9dcde`; independent integration
 verification rehashed all 1,467 artifacts and checked the endpoint, strict reference coverage and
 ordered invalid identities. Original archived inputs remain unchanged and the owned container is
-removed. Local D2 data acceptance is complete; #21 stays open for merge and green main CI under
-[the definition of done](../process.md#definition-of-done). Nightly CI is the continuing safety net,
-not an additional new run required before closing this item.
+removed. D2 acceptance merged in [PR #209](https://github.com/KD5UJC-XYZ/scarab/pull/209),
+commit `2f1d18467527cd9ca0704a3ffcbc9d016a32fb1d`. The owner explicitly directed #21's closeout
+and took responsibility for following up if [post-merge CI](https://github.com/KD5UJC-XYZ/scarab/actions/runs/39345316583)
+fails. This records an owner-directed closeout without claiming that pending CI passed; the usual
+[definition of done](../process.md#definition-of-done) is unchanged. Nightly CI remains the
+continuing safety net, not an additional new run required before closing this item.
