@@ -15,6 +15,8 @@ class DiffSuite extends FunSuite:
     case Second(text: String)
 
   private final case class Record(a: Long, b: String, c: Long)
+  private final case class Wrapped(value: Long)
+  private final case class Pair(left: Wrapped, right: Wrapped)
 
   private enum Tree derives Diff:
     case Leaf(value: Long)
@@ -65,3 +67,22 @@ class DiffSuite extends FunSuite:
     assertEquals(d.diff(left, equal).map(_.path.render), None)
     assertEquals(d.diff(left, right).map(_.path.render), Some("right.left.value"))
     assertEquals(d.diff(right, left).map(_.path.render), Some("right.left.value"))
+
+  test("a product retains its field instances without forcing them during derivation"):
+    val built = new AtomicInteger(0)
+    given AtomicInteger = built
+    given wrapped(using counter: AtomicInteger): Diff[Wrapped] =
+      val _ = counter.incrementAndGet()
+      Diff.leaf(Eq.fromUniversalEquals, (a: Wrapped) => a.value.toString)
+    val d = Diff.derived[Pair]
+    val left = Pair(Wrapped(1), Wrapped(2))
+    val right = Pair(Wrapped(1), Wrapped(3))
+    assertEquals(built.get(), 0)
+    assertEquals(d.diff(left, left), None)
+    assertEquals(built.get(), 0, "the identity fast path does not force fields")
+    assertEquals(d.diff(left, Pair(Wrapped(3), Wrapped(4))).map(_.path.render), Some("left"))
+    assertEquals(built.get(), 1, "the first difference does not force later fields")
+    (0 until 100).foreach { _ =>
+      assertEquals(d.diff(left, right).map(_.path.render), Some("right"))
+    }
+    assertEquals(built.get(), 2, "each field instance is made once, then reused")
