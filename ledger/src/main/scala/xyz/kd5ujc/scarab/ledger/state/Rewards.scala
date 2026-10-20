@@ -56,8 +56,8 @@ object Likelihood:
 
 /** `NonMyopic` (`Shelley/PoolRank.hs:231-236`, encoding `245-250`: `array(2)[likelihoods, pot]`):
   * the data of the pool ranking (`getNonMyopicMemberRewards`), which is not part of the protocol.
-  * New likelihood generation remains a gap (J3.6). Reward completion updates the pot and combines
-  * captured likelihoods with the previous history, including imported pending updates.
+  * Reward start captures new pool likelihoods. Completion updates the pot and combines them with
+  * the previous history, including imported pending updates.
   */
 final case class NonMyopic(
     likelihoods: SortedMap[KeyHash[StakePool], Likelihood],

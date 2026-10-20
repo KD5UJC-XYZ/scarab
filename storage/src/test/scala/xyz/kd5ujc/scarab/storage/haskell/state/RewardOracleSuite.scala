@@ -8,16 +8,14 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.rules.{EraNes, RewardPulserFixture, Rewards}
 import xyz.kd5ujc.scarab.ledger.state.*
 
-/** Actual unchanged Haskell API results; only locally missing newly computed likelihoods are
-  * masked.
-  */
+/** Complete encoded results of the unchanged released Haskell API, including likelihoods. */
 class RewardOracleSuite extends FunSuite:
   import HaskellStateCodecs.pulsingRewUpdate
   import RewardOracleCases.Operation
   given ProtVer = Versions.eraLow(ShelleyBasedEra.SConway)
 
-  private def load(name: String): Vector[Json] =
-    val stream = Option(getClass.getClassLoader.getResourceAsStream(s"rewards-1.19.0.1/$name.gz"))
+  private def load(name: String, corpus: String = "rewards-1.19.0.1"): Vector[Json] =
+    val stream = Option(getClass.getClassLoader.getResourceAsStream(s"$corpus/$name.gz"))
       .getOrElse(fail(s"missing oracle resource $name"))
     val source = Source.fromInputStream(new java.util.zip.GZIPInputStream(stream))
     val text =
@@ -32,12 +30,6 @@ class RewardOracleSuite extends FunSuite:
     val bytes = Bytes.fromHex(field[String](json, name)).fold(e => fail(e.toString), identity)
     pulsingRewUpdate.decodeBytes(bytes, HaskellState.limits).fold(e => fail(e.render), identity)
 
-  private def accounting(state: PulsingRewUpdate): PulsingRewUpdate = state match
-    case PulsingRewUpdate.Pulsing(snapshot, p) =>
-      PulsingRewUpdate.Pulsing(snapshot.copy(likelihoods = Sorted.empty), p)
-    case PulsingRewUpdate.Complete(r) =>
-      PulsingRewUpdate.Complete(r.copy(nonMyopic = r.nonMyopic.copy(likelihoods = Sorted.empty)))
-
   test("oracle inputs remain bound to the exact shared deterministic fixtures") {
     assertEquals(
       Json.arr(RewardOracleCases.inputs.map(RewardOracleCases.json)*),
@@ -46,9 +38,21 @@ class RewardOracleSuite extends FunSuite:
   }
 
   test("start, every pulse and completion match the unchanged released Haskell API") {
-    val reference = load("results.json")
-    assertEquals(reference.size, RewardOracleCases.inputs.size)
-    RewardOracleCases.inputs.zip(reference).foreach { (input, expected) =>
+    compare(RewardOracleCases.inputs, load("results.json"))
+  }
+
+  test("new local likelihoods and decayed history match complete native Haskell states") {
+    val corpus = "reward-likelihood-1.19.0.1"
+    assertEquals(
+      Json.arr(RewardLikelihoodCases.inputs.map(RewardOracleCases.json)*),
+      Json.arr(load("inputs.json", corpus)*)
+    )
+    compare(RewardLikelihoodCases.inputs, load("results.json", corpus))
+  }
+
+  private def compare(inputs: Vector[RewardOracleCases.Input], reference: Vector[Json]): Unit =
+    assertEquals(reference.size, inputs.size)
+    inputs.zip(reference).foreach { (input, expected) =>
       assertEquals(field[String](expected, "name"), input.name)
       val initial = input.state match
         case None => input.pending.getOrElse(fail("missing imported state"))
@@ -57,11 +61,10 @@ class RewardOracleSuite extends FunSuite:
           Rewards
             .start(i.nes.es, i.nes.bprev, RewardPulserFixture.globals, i.nes.epoch.toBigInt)
             .fold(e => fail(e.toString), identity)
-      val mask = (s: PulsingRewUpdate) => if input.state.isDefined then accounting(s) else s
       def equal(got: PulsingRewUpdate, want: PulsingRewUpdate): Unit =
         assertEquals(
-          pulsingRewUpdate.write(mask(got)).fold(e => fail(e.toString), identity),
-          pulsingRewUpdate.write(mask(want)).fold(e => fail(e.toString), identity),
+          pulsingRewUpdate.write(got).fold(e => fail(e.toString), identity),
+          pulsingRewUpdate.write(want).fold(e => fail(e.toString), identity),
           input.name
         )
       equal(initial, readState(expected, "initial"))
@@ -85,7 +88,6 @@ class RewardOracleSuite extends FunSuite:
         got
       }
     }
-  }
 
   test("typed pending state round trips the Haskell layout and resumes the captured prefix") {
     val row = load("results.json")

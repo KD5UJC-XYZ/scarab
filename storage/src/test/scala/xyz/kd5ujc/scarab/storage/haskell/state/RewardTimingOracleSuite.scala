@@ -60,10 +60,10 @@ class RewardTimingOracleSuite extends FunSuite:
                 case (None, None) => ()
                 case (Some(got), Some(nativeUpdate)) =>
                   val completed = Rewards.complete(got).fold(e => fail(e.toString), identity)
-                  assertEquals(accounting(completed), accounting(wanted))
+                  assertEquals(completed, wanted)
                   nativeUpdate match
                     case PulsingRewUpdate.Complete(update) =>
-                      assertEquals(accounting(completed), accounting(update))
+                      assertEquals(completed, update)
                     case _: PulsingRewUpdate.Pulsing => ()
                   val force = RewardPulserFixture.globals.firstSlot(i.nes.epoch.toBigInt) +
                     2 * RewardPulserFixture.globals.randomnessStabilisationWindow
@@ -79,9 +79,7 @@ class RewardTimingOracleSuite extends FunSuite:
                   // this era does not have (for example Conway's old minUTxOValue).
                   val codec = HaskellStateCodecs.epochState[e](using i.era, oracleVersion)
                   def written(es: EpochState[e]): Bytes =
-                    val monetary =
-                      es.copy(nonMyopic = es.nonMyopic.copy(likelihoods = Sorted.empty))
-                    codec.write(monetary).fold(e => fail(e.toString), identity)
+                    codec.write(es).fold(e => fail(e.toString), identity)
                   assertEquals(written(applied), written(nativeApplied))
                   got match
                     case p: PulsingRewUpdate.Pulsing =>

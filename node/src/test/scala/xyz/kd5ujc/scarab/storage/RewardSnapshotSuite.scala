@@ -70,7 +70,7 @@ class RewardSnapshotSuite extends CatsEffectSuite:
   test(
     "native V5 restart completes independently observed Haskell prefixes with exact accounting"
   ) {
-    import RewardTimingCases.{accounting, complete, field, load, state}
+    import RewardTimingCases.{complete, field, load, state}
     val stream = Option(getClass.getClassLoader.getResourceAsStream("rewards-pending-v5.bin"))
       .getOrElse(fail("missing V5 fixture"))
     val bytes =
@@ -81,7 +81,7 @@ class RewardSnapshotSuite extends CatsEffectSuite:
     }
     assertEquals(rows.size, 1)
     val row = rows.head
-    val wanted = accounting(complete(row))
+    val wanted = complete(row)
     val prefixes = (Vector(state(field[String](row, "initial"))) ++
       field[Vector[io.circe.Json]](row, "timing")
         .flatMap(r => field[Option[String]](r, "state").map(state))).collect {
@@ -98,7 +98,7 @@ class RewardSnapshotSuite extends CatsEffectSuite:
           restarted <- format.decode(written).map(_.fold(e => fail(e.toString), identity))
         yield
           assertEquals(encoded(pending(restarted.state)), encoded(prefix))
-          assertEquals(Rewards.complete(pending(restarted.state)).map(accounting), Right(wanted)))
+          assertEquals(Rewards.complete(pending(restarted.state)), Right(wanted)))
       }
     yield ()
   }

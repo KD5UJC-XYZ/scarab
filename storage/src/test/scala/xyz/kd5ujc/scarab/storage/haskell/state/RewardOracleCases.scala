@@ -29,7 +29,7 @@ object RewardOracleCases extends Assertions:
   )
   private val steps = Vector.fill(10)(Operation.Pulse) :+ Operation.Complete
 
-  private def shelley(major: Int): NewEpochState[Shelley] =
+  private[state] def shelley(major: Int): NewEpochState[Shelley] =
     val b = babbage(rewarding(conway(5, 7, 2)))
     val params = TestLedger.params(major).copy(rho = EraLedgerParams.rho)
     val base = NewEpochState.empty[Shelley](b.epoch, params)
@@ -56,9 +56,11 @@ object RewardOracleCases extends Assertions:
   private val base = rewarding(conway(5, 7, 2))
   private val started =
     Rewards.start(base.es, base.bprev, globals, 5).fold(e => fail(s"start: $e"), identity)
+  // Preserve the original imported fixture, whose frozen new-likelihood map was empty.
   private val imported = started match
-    case p: PulsingRewUpdate.Pulsing => p
-    case other                       => fail(s"not a pulser: $other")
+    case PulsingRewUpdate.Pulsing(snapshot, pulser) =>
+      new PulsingRewUpdate.Pulsing(snapshot.copy(likelihoods = Sorted.empty), pulser)
+    case other => fail(s"not a pulser: $other")
 
   private val history = NonMyopic(
     Sorted.map(List(pool(0) -> Likelihood(Vector(LogWeight(2f), LogWeight(-1f))))),

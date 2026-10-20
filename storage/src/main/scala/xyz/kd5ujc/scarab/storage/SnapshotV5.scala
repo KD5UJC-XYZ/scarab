@@ -83,9 +83,10 @@ object SnapshotV5:
       def decode(content: Array[Byte]): F[Either[StorageError, StateSnapshot[MirrorState]]] =
         env.ask[ConsensusMirrorEnv].flatMap(e => Sync[F].blocking(SnapshotV5.decode(e, content)))
 
-  /** The gaps of a state the era-indexed rules made: the pool ranking (`esNonMyopic`) is not
-    * computed, nor the transition count of the consensus state. The rewards are attributed, the
-    * delegators exact, the pulser the rules' own.
+  /** Conservative provenance until J3.1 / #129 gives the live state a gap ledger. Current rules
+    * generate pool likelihoods, but an imported state may still lack earlier ranking history;
+    * clearing the flag for every state would invent that history. The consensus transition count
+    * remains uncomputed. Rewards are attributed, delegators exact and the pulser the rules' own.
     */
   private val MirrorGaps: Set[Gap] = Set(Gap.NonMyopic, Gap.ShelleyTransition)
 

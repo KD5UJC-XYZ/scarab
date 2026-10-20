@@ -16,8 +16,8 @@ import xyz.kd5ujc.scarab.ledger.state.*
   * credential's rewards are a set of [[Reward]] s that name the pool they came from and whether as
   * leader or as member. The native update retains this per-pool attribution through application.
   *
-  * New likelihood generation remains an explicit gap (`Gap.NonMyopic`, J3.6). Completion combines
-  * the captured likelihoods and previous history exactly, including imported updates.
+  * Pool-performance likelihoods use the reference Double computation rounded to Float; completion
+  * combines their captured values with previous history, including imported updates.
   */
 object Rewards:
 
@@ -26,6 +26,35 @@ object Rewards:
     if d.signum == 0 then Rational.zero else Rational(n, d)
 
   private val Eighty = Rational(4, 5)
+
+  // The reference converts each rational directly to Double, rather than rounding its numerator
+  // and denominator separately. Eighty decimal digits distinguish the Double rounding boundaries
+  // for the bounded ledger stake/parameter fractions (Word64 numerator and denominator).
+  private val doublePrecision = new java.math.MathContext(80)
+  private def asDouble(r: Rational): Double =
+    new java.math.BigDecimal(r.numerator.bigInteger)
+      .divide(new java.math.BigDecimal(r.denominator.bigInteger), doublePrecision)
+      .doubleValue
+
+  /** `leaderProbability` and `likelihood` (`PoolRank.hs:125-178`, shelley 1.19.0.1). Every snapshot
+    * pool contributes, including pools that produced no blocks. Keep the reference's operation
+    * order, Double logarithms and final Float rounding; this is ranking data, not monetary maths.
+    */
+  private def likelihood(
+      made: BigInt,
+      stake: Rational,
+      active: Double,
+      d: Double,
+      slots: BigInt
+  ): Likelihood =
+    val t = (1.0 - math.pow(1.0 - active, asDouble(stake))) * (1.0 - d)
+    val n = made.toDouble
+    // `unEpochSize` subtraction is Word64 subtraction in the reference.
+    val m = ((slots - made) & ((BigInt(1) << 64) - 1)).toDouble
+    Likelihood(Vector.tabulate(100) { i =>
+      val x = (i.toDouble + 0.5) / 100.0
+      LogWeight((n * math.log(x) + m * math.log(1.0 - t * x)).toFloat)
+    })
 
   /** `hardforkAllegraAggregatedRewards` (`HardForks.hs`): from protocol version 3 a credential gets
     * all its rewards.
@@ -127,6 +156,8 @@ object Rewards:
     val reserves = es.chainAccount.reserves.value
     val fee = es.snapshots.fee.value
     val d = decentralisation[E](pr)
+    val activeProbability = asDouble(globals.activeSlotCoeff)
+    val decentralisationProbability = asDouble(d)
     val slotsPerEpoch = globals.geometry.epochSlots(epoch)
     val expectedBlocks =
       ((Rational.one - d) * globals.activeSlotCoeff * Rational(slotsPerEpoch)).floor
@@ -200,7 +231,15 @@ object Rewards:
         deltaR,
         r,
         deltaT,
-        Sorted.empty,
+        go.pools.transform { (id, pool) =>
+          likelihood(
+            blocks.blocks.get(id).fold(BigInt(0))(_.toBigInt),
+            ratio(pool.stake.toBigInt, totalStake),
+            activeProbability,
+            decentralisationProbability,
+            slotsPerEpoch
+          )
+        },
         leaders
       ),
       RewardPulser(
@@ -283,7 +322,6 @@ object Rewards:
         }
         val deltaR2 = snapshot.r.value - total(snapshot.protocolVersion.major.toBigInt, rs)
         // `updateNonMyopic` maps the new keys only, including the empty-map case.
-        // Local start retains the explicit likelihood-computation gap; imported fields are complete.
         val nonMyopic = NonMyopic(
           snapshot.likelihoods.transform { (pool, current) =>
             val old = snapshot.nonMyopic.likelihoods.get(pool)
