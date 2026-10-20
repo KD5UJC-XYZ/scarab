@@ -32,8 +32,9 @@ class BackgroundFibersSuite extends FailsOnUncaught:
           NetworkError.BearerClosed(NetworkError.Closure.Aborted)
         )
         .start
-      _ <- IO.sleep(300.millis)
-      seen = takeUncaught()
+      // `takeUncaught` drains the record, so a poll that finds it empty has consumed nothing:
+      // wait until the runtime has reported the escaped Submarine instead of sleeping a guess.
+      seen <- Wait.until(IO(takeUncaught()))(_.nonEmpty)
     yield
       assertEquals(seen.size, 1)
       assertEquals(seen.head.getClass.getName, "cats.mtl.Handle$Submarine")
@@ -48,6 +49,9 @@ class BackgroundFibersSuite extends FailsOnUncaught:
           pinger <- KeepAliveClient
             .pinger(k, client, KeepAliveClient.Settings(responseTimeout = 30.seconds))
             .start
+          // There is no observable hook for "the pinger is inside recv": the peer never answers and
+          // the mux exposes no in-flight state, so this bounded wait is the only signal available.
+          // Residual of TEST-AUD-04 in issue #251.
           _ <- IO.sleep(200.millis)
           _ <- client.abort(NetworkError.BearerClosed(NetworkError.Closure.Aborted))
           outcome <- pinger.join
