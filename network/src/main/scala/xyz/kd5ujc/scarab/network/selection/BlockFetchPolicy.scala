@@ -41,7 +41,7 @@ object BlockFetchPolicy:
   final case class Config(
       bulkConcurrency: Int = 1,
       deadlineConcurrency: Int = 1,
-      maxRequestsPerPeer: Int = 10
+      maxRequestsPerPeer: Int = 100
   ):
     def concurrency(mode: FetchMode): Int = mode match
       case FetchMode.BulkSync => bulkConcurrency

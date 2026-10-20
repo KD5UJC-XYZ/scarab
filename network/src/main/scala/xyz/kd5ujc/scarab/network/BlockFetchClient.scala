@@ -31,7 +31,7 @@ object BlockFetchClient:
       limits: BlockFetch.Limits = BlockFetch.Limits(),
       timeLimits: BlockFetch.TimeLimits = BlockFetch.TimeLimits(),
       request: BlockFetch.RequestLimits = BlockFetch.RequestLimits(maxBlocks = 128),
-      maxInFlightRequests: Int = 10
+      maxInFlightRequests: Int = 100
   )
 
   def apply[F[_]: Temporal](

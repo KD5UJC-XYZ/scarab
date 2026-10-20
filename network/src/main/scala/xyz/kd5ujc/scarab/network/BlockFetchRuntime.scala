@@ -47,7 +47,7 @@ object BlockFetchRuntime:
       limits: BlockFetchEngine.Limits = BlockFetchEngine.Limits(),
       timeLimits: BlockFetchEngine.TimeLimits = BlockFetchEngine.TimeLimits(),
       request: BlockFetchEngine.RequestLimits = BlockFetchEngine.RequestLimits(maxBlocks = 128),
-      maxInFlightRequests: Int = 10
+      maxInFlightRequests: Int = 100
   )
 
   final case class ServerSettings(

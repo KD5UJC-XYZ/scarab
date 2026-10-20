@@ -47,7 +47,7 @@ released and offered again rather than exceeding reserved request credit.
 ## Pipeline and lifetime
 
 Production connections allocate `BlockFetchClient.resource`. Concurrent submissions
-are bounded (ten by default), go onto the wire in FIFO order and collect responses
+are bounded (100 by default, matching `Cardano/Network/NodeToNode.hs:212` at the pin), go onto the wire in FIFO order and collect responses
 in that order. Per-block observations return estimated byte credit immediately;
 BatchDone/NoBlocks returns request credit before signature preparation completes.
 The compatibility `apply` constructor remains serial for callers requiring it.

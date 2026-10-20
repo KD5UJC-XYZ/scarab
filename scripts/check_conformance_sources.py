@@ -52,6 +52,8 @@ def sources(root: Path) -> list[Source]:
                 "ouroboros-network/tests/", "network-mux/test/", "cardano-diffusion/tests/",
                 "cardano-diffusion/protocols/tests/", "cardano-diffusion/protocols/tests-lib/",
                 "cardano-diffusion/protocols/cddl/",
+                "cardano-diffusion/lib/Cardano/Network/Diffusion/Configuration.hs",
+                "cardano-diffusion/lib/Cardano/Network/NodeToNode.hs",
                 "ouroboros-network/lib/Ouroboros/Network/BlockFetch/Decision.hs",
                 "ouroboros-network/lib/Ouroboros/Network/BlockFetch/DeltaQ.hs",
                 "ouroboros-network/lib/Ouroboros/Network/DeltaQ.hs",

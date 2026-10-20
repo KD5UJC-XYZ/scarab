@@ -257,19 +257,15 @@ final class BlockPool[F[_]: Async] private (
   def size: F[Int] = slots.get.map(_.entries.size)
 
 object BlockPool:
-  /** What the fetch mode changes about who may fetch what.
-    *
-    * @param deadlineConcurrency
-    *   How many sessions may hold a claim on the same block in deadline mode
-    *   (`bfcMaxConcurrencyDeadline`): the default of cardano-node is 1, which makes deadline mode
-    *   fetch each block from one peer, as bulk sync does (`Cardano/Network/Diffusion/
-    *   Configuration.hs` 89-100 of ouroboros-network main). The `MaxConcurrencyDeadline` key of the
-    *   configuration file sets it.
+  /** Global fetching-peer targets and per-peer request credit, shared by both connection
+    * directions. Preferred-peer handover follows the pinned policy's target exception. Production
+    * defaults are from `Cardano/Network/Diffusion/Configuration.hs:89-100` and
+    * `Cardano/Network/NodeToNode.hs:209-212` at the pinned ouroboros-network revision.
     */
   final case class FetchPolicy(
       deadlineConcurrency: Int = 1,
       bulkConcurrency: Int = 1,
-      maxRequestsPerPeer: Int = 10,
+      maxRequestsPerPeer: Int = 100,
       peerSalt: Long = 0L
   )
 

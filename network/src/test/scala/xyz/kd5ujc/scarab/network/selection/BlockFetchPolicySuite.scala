@@ -14,6 +14,7 @@ class BlockFetchPolicySuite extends FunSuite:
     Candidate(peer, 0, hash(peer), Vector(Fragment(None, headers.toVector)), tieBreak = peer.toLong)
 
   test("default model and strict deadline follow degenerate upstream DeltaQ") {
+    assertEquals(Config().maxRequestsPerPeer, 100)
     assertEquals(default.geographic, PicosPerSecond)
     assertEquals(default.window, Window(510000, 1020000))
     assertEquals(default.duration(0, 100), PicosPerSecond + BigInt(400000000))
