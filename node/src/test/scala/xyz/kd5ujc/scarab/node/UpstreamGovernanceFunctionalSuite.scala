@@ -33,7 +33,6 @@ import xyz.kd5ujc.scarab.ledger.{
 import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError, Node}
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, Wire}
 import xyz.kd5ujc.scarab.storage.haskell.state.NodeOrders.given
-
 import xyz.kd5ujc.scarab.storage.haskell.state.Params
 import xyz.kd5ujc.scarab.ledger.rules.{Globals, Gov, GovEnv, GovSignal, Sts}
 

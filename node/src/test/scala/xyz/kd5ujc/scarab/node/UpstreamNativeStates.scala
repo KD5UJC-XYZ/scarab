@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
+import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.mempack.TxOutMemPack
 import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError, Decoded, Node, Writer}
@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.storage.scls.{SclsKey, SclsRecord}
 // upstream integration hook writes its actual map inline, using ordinary little-endian
 // MemPack keys and Conway MemPack values. Reuse those production codecs without dropping it.
 private[node] object UpstreamNativeStates extends EpochStateCodecs with munit.Assertions:
-  private enum TraceError extends DomainError:
+  private enum TraceError extends xyz.kd5ujc.scarab.codec.DomainError:
     case MemPack(cause: xyz.kd5ujc.scarab.ledger.mempack.MemPack.Failure)
 
   def inlineUtxoTables(using ProtVer): Codec[UtxoTables] = new Codec[UtxoTables]:

@@ -217,7 +217,7 @@ class UpstreamMuxLifecycleSuite extends FailsOnUncaught:
       cancelled <- Resource
         .make(Peers.typed {
           Mux.resource(bearer, Set(1)).use { mux =>
-          mux.channel(1).flatMap(_.send(hex("01"))) *> reading.get *> writing.get *>
+            mux.channel(1).flatMap(_.send(hex("01"))) *> reading.get *> writing.get *>
               ready.complete(()) *> IO.never[Unit]
           }
         }.start)(_.cancel)

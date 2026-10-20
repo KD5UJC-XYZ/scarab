@@ -29,7 +29,6 @@ import xyz.kd5ujc.scarab.ledger.mempack.TxOutMemPack
 import xyz.kd5ujc.scarab.models.runtime.{Codec, Node}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.haskell.state.{Params, UtxoCodecs, Wire}
-import xyz.kd5ujc.scarab.storage.haskell.state.NodeOrders.given
 
 /** Native integration-hook traces retain coherent context and original transaction bytes. */
 class UpstreamNativeLedgerConformanceSuite extends FunSuite:
