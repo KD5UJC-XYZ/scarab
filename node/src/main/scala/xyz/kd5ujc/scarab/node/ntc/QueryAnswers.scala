@@ -260,7 +260,7 @@ object QueryAnswers:
         geometry(env, view),
         env.byron,
         env.forks,
-        env.observedEras,
+        view.read.provenance(view.state).observed,
         view.era,
         tipSlot
       )
@@ -271,7 +271,7 @@ object QueryAnswers:
         geometry(env, view),
         env.byron,
         env.forks,
-        env.observedEras,
+        view.read.provenance(view.state).observed,
         era,
         BigInt(0)
       )
