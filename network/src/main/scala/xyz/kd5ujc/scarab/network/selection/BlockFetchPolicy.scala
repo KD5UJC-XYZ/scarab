@@ -126,7 +126,19 @@ object BlockFetchPolicy:
       .filter(c => c.status == Status.Ready || c.status == Status.Busy)
       .flatMap(_.inFlight.blocks)
       .toSet
-    val (_, _, results) = rank(mode, candidates).foldLeft(
+    val prepared = candidates.map { candidate =>
+      if candidate.refusal.isDefined then candidate
+      else
+        val fragments =
+          filterFragments(candidate.fragments, h => !candidate.inFlight.blocks(h.hash))
+        candidate.copy(
+          fragments = fragments,
+          refusal =
+            if fragments.isEmpty && candidate.fragments.nonEmpty then Some(Refusal.InFlightThisPeer)
+            else None
+        )
+    }
+    val (_, _, results) = rank(mode, prepared).foldLeft(
       (active.size, initiallyClaimed, Vector.empty[Decision[P]])
     ) { case ((concurrent, claimed, results), candidate) =>
       val available =

@@ -138,3 +138,13 @@ class BlockFetchPolicySuite extends FunSuite:
       )
     )
   }
+
+  test("own outstanding blocks are filtered before ranking with their own refusal") {
+    val owned = candidate(1, header(1)).copy(inFlight = InFlight(1, 100, Set(hash(1))))
+    FetchMode.values.foreach { mode =>
+      assertEquals(
+        decide(Config(), mode, Vector(owned)),
+        Vector(Decision.Declined(1, Refusal.InFlightThisPeer))
+      )
+    }
+  }
