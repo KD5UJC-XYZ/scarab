@@ -9,7 +9,12 @@ signed releases, an SBOM, provenance attestations, published images or a fat jar
 Inside the [JDK build container](../CONTRIBUTING.md#build-docker-only), run
 `bash scripts/sbtw node/releaseArchive`. It creates `node/target/release/scarab-node-<version>.zip`.
 Extract it and run `sh scarab <node arguments>` with Java 21 available. The launcher resolves its
-own directory; no checkout, dependency cache or build path is required at runtime.
+own directory; no checkout, dependency cache or build path is required at runtime. The ZIP does
+not set an executable bit on the launcher, so invoke it with `sh` as shown.
+
+Direct `node/releaseArchive` invocation is developer packaging of the current working files:
+BuildInfo and the metadata identify HEAD without attesting that the checkout is clean. Use the
+immutable source wrapper below for verified release-candidate identity.
 
 The ZIP contains an explicit `classpath.txt`, local module jars, unchanged resolved dependency jars,
 `build-info.properties`, per-jar SHA-256 sums, `LICENSE` and `NOTICE`. Classpath order is preserved,
@@ -17,8 +22,9 @@ including the portable blst resource before blst-java. Dependency jars retain th
 service descriptors and signatures; packaging does not flatten or merge them.
 
 Entries are sorted, stored without compression and use a fixed 1980 timestamp. Module jars use the
-same rules. The Scala compiler records source paths relative to the checkout, and generated source
-files are returned in stable order. BuildInfo retains the source commit, project version, Scala
+same rules and retain explicit directory entries, preserving Java directory-resource lookup and
+classpath precedence as well as concrete file-resource lookup. The Scala compiler records source
+paths relative to the checkout, and generated source files are returned in stable order. BuildInfo retains the source commit, project version, Scala
 version and sbt version; the artifact additionally records the full commit and JDK vendor/runtime.
 Identical builds require identical source, JDK runtime, sbt/compiler versions and resolved dependency
 bytes. The existing pinned versions and sha256-checked sbt launcher remain the build inputs.
@@ -44,8 +50,10 @@ and runs a separate sbt JVM in each. Neither receives compiled classes, managed 
 project outputs or packaged artifacts from the checkout or the other build. Each has its own sbt
 global directory. Only downloaded launcher, boot, Ivy and Coursier dependencies share a cache.
 Both builds compile and package the node before comparing the complete distributable bytes.
-Each extracted artifact must also run the CLI launcher and pass the portable BLS native-library
-and Plutus-builtin startup checks. Add `--check` to run the full repository gate in the first build.
+Each extracted artifact must also pass actual JVM directory-resource lookups, run the CLI launcher,
+and pass the portable BLS native-library and Plutus-builtin startup checks. The native smoke profile
+currently targets Linux/amd64, where the maintained portable blst overlay is shipped. Add `--check`
+to run the full repository gate in the first build.
 
 The output contains both ZIPs, separate complete build logs and `build-environment.json` with the
 source commit and image ID. A mismatch fails and names differing archive entries, or reports ZIP

@@ -47,6 +47,33 @@ def copy_source(source, destination, manifest):
     (metadata / "HEAD").write_text(manifest["gitCommit"] + "\n", encoding="utf-8")
 
 
+def resource_directories(runtime, classpath):
+    source = runtime / "ResourceDirectoryCheck.java"
+    source.write_text("""// SPDX-License-Identifier: Apache-2.0
+class ResourceDirectoryCheck {
+  public static void main(String[] args) {
+    final String[][] paths = {
+      {"xyz/kd5ujc/scarab/node/", "Main.class"},
+      {"supranational/blst/Linux/amd64/", "libblst.so"}
+    };
+    for (final String[] path : paths) {
+      final ClassLoader loader = ClassLoader.getSystemClassLoader();
+      final java.net.URL directory = loader.getResource(path[0]);
+      final java.net.URL member = loader.getResource(path[0] + path[1]);
+      if (directory == null || member == null ||
+          !member.toExternalForm().startsWith(directory.toExternalForm())) {
+        throw new IllegalStateException("directory resource disagrees with member: " + path[0]);
+      }
+    }
+  }
+}
+""", encoding="utf-8")
+    result = subprocess.run(["java", "-cp", classpath, source.name], cwd=runtime,
+                            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    if result.returncode:
+        raise ValueError(f"packaged directory-resource check failed: {result.stdout}")
+
+
 def inside_jdk():
     source = Path.cwd()
     manifest = json.loads((source / MANIFEST).read_text(encoding="utf-8"))
@@ -83,6 +110,7 @@ def inside_jdk():
             if any(Path(entry).is_absolute() or not (runtime / entry).is_file()
                    for entry in classpath.split(":")):
                 raise ValueError("runtime classpath contains an absolute or missing entry")
+            resource_directories(runtime, classpath)
             smoke = subprocess.run(["sh", "scarab", "--help"], cwd=runtime,
                                    text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             if smoke.returncode != 2 or "usage: follow" not in smoke.stdout:
@@ -95,7 +123,7 @@ def inside_jdk():
                     and json.loads(line).get("library") == "portable"
                     for line in native.stdout.splitlines()):
                 raise ValueError(f"packaged native-resource check failed: {native.stdout}")
-            print(f"Build {index}: launcher and portable native-resource smoke checks passed", flush=True)
+            print(f"Build {index}: directory, launcher and portable native-resource smoke checks passed", flush=True)
             artifacts.append(artifact)
             print(f"Build {index}: {sha256(artifact)}", flush=True)
         compare(*artifacts)

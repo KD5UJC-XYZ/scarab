@@ -31,26 +31,38 @@ object ReproducibleArtifacts {
   /** Stored entries avoid compression variability; timestamps, entry order and names are fixed. */
   private def archive(output: File, entries: Seq[(String, File)]): File = {
     require(entries.map(_._1).distinct.size == entries.size, "duplicate archive entry")
+    val files = entries.filter(_._2.isFile)
+    val explicitDirectories = entries.collect {
+      case (name, source) if source.isDirectory =>
+        name.stripSuffix("/") + "/"
+    }
+    val directories = (explicitDirectories ++ entries.flatMap { case (name, _) =>
+      name.split('/').dropRight(1).inits.filter(_.nonEmpty).map(_.mkString("/") + "/")
+    }).distinct.map(name => name -> Option.empty[File])
+    val contents = directories ++ files.map { case (name, source) => name -> Some(source) }
     IO.createDirectory(output.getParentFile)
     val zip = new ZipOutputStream(new BufferedOutputStream(new FileOutputStream(output)))
     try
-      entries.sortBy(_._1).foreach { case (name, source) =>
+      contents.sortBy(_._1).foreach { case (name, source) =>
         val crc = new CRC32()
-        read(source)(in => {
-          val buffer = new Array[Byte](65536)
-          Iterator
-            .continually(in.read(buffer))
-            .takeWhile(_ != -1)
-            .foreach(n => crc.update(buffer, 0, n))
-        })
+        source.foreach(file =>
+          read(file)(in => {
+            val buffer = new Array[Byte](65536)
+            Iterator
+              .continually(in.read(buffer))
+              .takeWhile(_ != -1)
+              .foreach(n => crc.update(buffer, 0, n))
+          })
+        )
         val entry = new ZipEntry(name)
         entry.setTimeLocal(timestamp)
         entry.setMethod(ZipEntry.STORED)
-        entry.setSize(source.length())
-        entry.setCompressedSize(source.length())
+        val size = source.fold(0L)(_.length())
+        entry.setSize(size)
+        entry.setCompressedSize(size)
         entry.setCrc(crc.getValue)
         zip.putNextEntry(entry)
-        read(source)(in => IO.transfer(in, zip))
+        source.foreach(file => read(file)(in => IO.transfer(in, zip)))
         zip.closeEntry()
       }
     finally zip.close()
@@ -75,7 +87,6 @@ object ReproducibleArtifacts {
       val file = staging / name
       if (entry.isDirectory) {
         val mappings = (entry ** "*").get
-          .filter(_.isFile)
           .map(f => IO.relativize(entry, f).getOrElse(sys.error(s"class path escaped: $f")) -> f)
         archive(file, mappings)
       } else IO.copyFile(entry, file, preserveLastModified = false)
