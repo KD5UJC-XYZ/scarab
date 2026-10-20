@@ -662,6 +662,32 @@ object Targets:
       LocalStateQuery.encode
     ),
     roundTrip(
+      "local-state-query-engine",
+      LocalStateQuery.State.values.toSeq,
+      ChainSync.Role.values.toSeq,
+      () =>
+        val original = Files
+          .readAllLines(
+            java.nio.file.Path.of(
+              "network/src/test/resources/upstream/ouroboros-network-protocol-codecs/localsq-behavior-actions.tsv"
+            )
+          )
+          .asScala
+          .toVector
+          .map(row =>
+            Bytes
+              .fromHex(row.split("\t", -1)(6))
+              .fold(
+                error => throw new Violation(s"invalid retained LSQ acquire: $error"),
+                _.toArray
+              )
+          )
+        original ++ netCorpus("local-state-query:localStateQueryMessage")()
+      ,
+      (s, r, b) => LocalStateQueryEngine.decodePrefix(s, r, b, opaquePoint),
+      (s, r, m) => LocalStateQueryEngine.encode(s, r, m, opaquePoint)
+    ),
+    roundTrip(
       "local-tx-submission",
       LocalTxSubmission.State.values.toSeq,
       ChainSync.Role.values.toSeq,

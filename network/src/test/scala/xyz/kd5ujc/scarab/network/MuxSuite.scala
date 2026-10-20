@@ -309,19 +309,37 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
       }
     }.map(r => assertEquals(r, Left(NetworkError.MuxSetup(WireMux.Error.InvalidPayloadLimit(0)))))
 
-  test("local encoding failures close with a typed write cause"):
-    typed {
-      Bearer.inMemory[IO]().flatMap { (ours, _) =>
-        Mux.resource(ours, Set(2), Mux.Config(maxMessageBytes = 2500001)).use { mux =>
-          mux.channel(2).flatMap(_.send(payload(3))) *> mux.closed
-        }
+  test("empty and oversized messages are refused before any egress bytes are written"):
+    val profiles = Vector(Mux.Config(), Mux.Config(maxMessageBytes = 3000000))
+    profiles.traverse_ { config =>
+      Vector(0, config.maxMessageBytes + 1).traverse_ { size =>
+        for
+          writes <- cats.effect.Ref.of[IO, Int](0)
+          result <- typed {
+            Bearer.inMemory[IO]().flatMap { (ours, _) =>
+              val observing = new Bearer[IO]:
+                def reads = ours.reads
+                def close = ours.close
+                def write(bytes: Chunk[Byte]) = writes.update(_ + 1) *> ours.write(bytes)
+              Mux.resource(observing, Set(2), config).use { mux =>
+                mux.channel(2).flatMap(_.send(payload(size)))
+              }
+            }
+          }
+          count <- writes.get
+        yield
+          assertEquals(
+            result,
+            Left(
+              NetworkError.IllegalTransition(
+                2,
+                NetworkError.RuntimeViolation.OutgoingMessageSize(size, config.maxMessageBytes)
+              )
+            )
+          )
+          assertEquals(count, 0, s"rejected $size-byte message must not reach the bearer")
       }
-    }.map(r =>
-      assertEquals(
-        r,
-        Right(NetworkError.MuxWrite(WireMux.Error.InvalidMessageLimit(2500001, 2500000)))
-      )
-    )
+    }
 
   test("a zero-length peer frame retains its rejected length and configured limit"):
     typed {

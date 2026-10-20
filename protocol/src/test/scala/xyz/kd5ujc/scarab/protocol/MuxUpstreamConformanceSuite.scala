@@ -53,21 +53,19 @@ class MuxUpstreamConformanceSuite extends munit.FunSuite:
       assertEquals(upstreamBytes, independentReferenceBytes, s"upstream wire bytes at row $ordinal")
       assertEquals(upstreamBytes.size, HeaderBytes + length, s"wire size at row $ordinal")
 
+      assertEquals(encode(sdu), Right(upstreamBytes), s"original wire bytes at row $ordinal")
       if length == 0 then
-        // The upstream property accepts encode/reference equality and expects its decoder to
-        // reject the zero-size SDU. Scarab's public encoder rejects zero before emitting bytes.
         assertEquals(
-          encode(sdu),
+          decode(upstreamBytes),
           Left(Error.PayloadLengthOutOfRange(0, WireMaxPayloadBytes)),
-          s"documented zero-length policy divergence at row $ordinal"
+          s"native decoder rejects the encoded empty SDU at row $ordinal"
         )
-        "divergence"
+        "empty"
       else
-        assertEquals(encode(sdu), Right(upstreamBytes), s"original wire bytes at row $ordinal")
         assertEquals(decode(upstreamBytes), Right(sdu), s"typed decode at row $ordinal")
-        "match"
+        "nonempty"
     }
 
     assertEquals(rows.size, 40)
-    assertEquals(rows.count(_ == "match"), 34)
-    assertEquals(rows.count(_ == "divergence"), 6)
+    assertEquals(rows.count(_ == "nonempty"), 34)
+    assertEquals(rows.count(_ == "empty"), 6)

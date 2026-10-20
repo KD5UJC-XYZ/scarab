@@ -18,10 +18,10 @@ Forty cases were generated from seed `490049`; each row seed is the base plus it
 QuickCheck size cycles from 30 through 50. All 40 upstream property checks passed. The Scala
 consumer is `MuxUpstreamConformanceSuite`. It compares Haskell's encoded bytes with the independent
 `Data.Binary` bytes retained in each row, then exercises Scarab's typed encode/decode boundary.
-Thirty-four nonempty cases match. Six upstream zero-length cases remain explicit divergences:
-upstream emits the eight-byte zero-length encoding and its property expects decode rejection,
-while Scarab's encoder refuses zero-length SDUs before emitting bytes. No divergence is hidden or
-reclassified as a match.
+All 40 encoded rows match the original native bytes, including six empty SDUs. As in the native
+property, those six encode successfully but are rejected by the decoder. Production message
+admission independently refuses empty messages before writing any bytes; allowing the pure wire
+encoder to represent them does not permit empty frames onto a live channel.
 
 This corpus is a bounded codec probe, not the full `network-mux:test` suite, protocol-codec suite,
 or an Ouroboros-network conformance claim. The ledger Agda trace adapter and broader protocol suite

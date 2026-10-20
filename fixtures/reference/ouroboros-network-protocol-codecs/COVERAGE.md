@@ -18,7 +18,7 @@ upstream invocation and verdicts; the [fixture recipe](README.md) describes nati
 | ChainSync | 34 | Bounded serialised codecs, partitions, binary compatibility; 24 exact generic fork cases through production engine/runtime; original direct/connect/demo/pipeline outcomes and parameters retained. The ordinary inline-payload corpus adds 64 original samples and all five codec-property observations, replayed through production framing. Local `ChainSyncBatchSuite` checks mixed AwaitReply/rollback batches and subsequent alignment; `PipelineBackpressureSuite` bounds session read-ahead | Exact Haskell request/collect policies and scheduler traces are not inferred from final-chain parity or local wire regressions. Structural mock-payload equality does not establish Cardano payload semantics |
 | Generic Handshake | 21 | Original versions 0/1/2, version-dependent data and asymmetric version-1-only server: 792 original observations across eighteen non-generator leaves, plus nine separately labelled cross-version judgments. Native adapters exercise shared production wire/selection contracts, refusal codecs and exhaustive partitions; Cardano properties remain separate | Bounded samples do not establish generic effectful client/server, ST/IO/pipe/SimNet interpreter, transport or scheduler equivalence. Three generator-consistency leaves concern upstream test generation/shrinking |
 | KeepAlive | 9 | 24 original finite server conversations; codec, split-2/3 and valid-CBOR samples | 24 original byte-limit observations match the per-state ceiling. Local `ClientSuite` checks matching, deadlines, periodic pings and connection abort; upstream cookie selection and IO-interpreter identity remain distinct |
-| LocalStateQuery | 10 | Bounded codecs/partitions and original acquisition/query conversations through production server | Specific-point mock integer hashes cause retained whole-map exclusions; backend/interpreter equivalence is not inferred from linked Mux |
+| LocalStateQuery | 10 | Bounded strict codecs/partitions and all 32 original maps (40 acquisitions) through the shared generic production engine/runtime | Mock integer points retain their original bytes; strict Cardano validation remains independently tested. Backend/interpreter equivalence is not inferred from linked Mux |
 | LocalTxMonitor | 11 | Codec, partitions, valid-CBOR, codec-ID and 24 original fixed-snapshot conversations | Upstream observed snapshot samples contain no AwaitAcquire requests; local `LocalTxMonitorServerSuite` independently checks waiting and snapshot isolation. No IO/pipe interpreter equivalence claim |
 | LocalTxSubmission | 13 | Codec, annotated codec, partitions and 24 original conversations: 147 submissions, 25 accepts, 122 refusals | Local state/codec tests and `LocalSubmissionSuite` cover rejection, service unavailability and session cleanup; no exhaustive branch or IO/pipe interpreter equivalence claim |
 | PeerSharing | 10 | Bounded generic codecs plus 300 genuine Cardano SockAddr cases; 24 exact generic conversations through the shared production runtime and real linked Mux, 217 requests / 985 Int items; 24 original byte-limit observations | Mock integer peers and unclamped generic replies retain their original domain; Cardano address and response-limit policies remain independently tested |
@@ -56,8 +56,8 @@ domain and does not infer interpreter or scheduler equivalence from pure selecti
 `network-mux/test/Test/Mux.hs:89–121` registers send/receive, bidirectional and compatibility,
 one/two-protocol Queue/Pipe/Socket, buffering, starvation, demux, start/stop/restart,
 close, trailing bytes, pure exceptions, SDU codecs and generator laws.
-The current upstream SDU adapter matches 34/40 rows and retains six explicit
-zero-length encoder-policy differences. Local MuxSuite/MuxDeadlinesSuite cover
+The upstream SDU adapter matches all 40 encoded rows, including six empty SDUs that the
+native decoder and Scarab both reject. Production egress independently refuses empty messages. Local MuxSuite/MuxDeadlinesSuite cover
 many runtime invariants. The separate
 [Mux lifecycle corpus](../../../network/src/test/resources/upstream/mux-lifecycle/README.md)
 now retains 24 close and 24 trailing-byte cases with 96 original IO/IOSim verdicts.
@@ -116,9 +116,10 @@ or generic-Int-to-Cardano-address claim.
 
 The [Mux starvation corpus](../../../network/src/test/resources/upstream/mux-starvation/README.md)
 retains 32 consecutive original Uneven inputs: 22 native property passes and 10 implication discards.
-Scarab replays 18 applicable original response1/response1 conversations with the unchanged
-first 100-header ordering assertion; four native passes above its 2.5 MB message ceiling remain explicit
-mock-domain exclusions. Twelve original unequal response pairs are separately labelled local
+Scarab replays all 22 passing original response1/response1 conversations with the unchanged
+first 100-header ordering assertion. The mock profile explicitly configures a 3 MB message bound and
+ingress allowance; the public default remains 2.5 MB. Four historical default-profile size
+classifications remain in the unchanged TSV, without excluding those rows from replay. Twelve original unequal response pairs are separately labelled local
 controls. Complete native CBOR bytes/hashes are checked. A controlled nonvacuous-overlap observation
 supplements the original normalization, whose initial/final-run trimming can otherwise admit a serial
 trace. This closes the bounded generator-replay gap, not broad transport or exhaustive seed coverage.
