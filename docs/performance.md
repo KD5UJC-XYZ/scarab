@@ -2343,3 +2343,11 @@ Binding SHA-256 `28d04bcc9b0e36de744cc38a8e8d159a1d78cd060b81ca2b13374db03b9b63b
 summary SHA-256 `75a705cd2dafab49ab5a8c6bdd9a0a75db6292464b79b10fe313424b468bfdfe`.
 No raw snapshot, key, run log or private archive is committed. The original V4 format remains
 retired; format bytes/fingerprints/version5 and its existing admission/migration policy are unchanged.
+
+
+**Integration after #260 (2026-10-20).** Rebased onto dev
+`6988858f937a42eb34762cb5a61d3c622c49b124`. The codec/accessor/Record production sources and measurement helper are unchanged; the newly merged Diff diagnostics are outside the timed snapshot encode/decode operations.
+The original benchmark/gate source identities above remain historical evidence. Refreshed
+checks on the rebased head are recorded in the [PR #247 checklist](https://github.com/KD5UJC-XYZ/scarab/pull/247);
+pre-rebase gates are not relabelled as gates of the integrated head. Main and dev still diverge;
+this prepares the dev target and does not claim completion after main landing.
