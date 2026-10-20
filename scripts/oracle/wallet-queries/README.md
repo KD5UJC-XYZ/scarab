@@ -34,3 +34,8 @@ The Scala input builder is `WalletQueryCases`; run it from the repository root, 
 `node/Test/runMain xyz.kd5ujc.scarab.node.ntc.WalletQueryCases /tmp/wallet-query-inputs.json`.
 It builds native typed state directly. Ordinary tests use the checked-in inputs and native answers;
 they do not regenerate expectations from Scala.
+
+The continuing `check_conformance_sources.py` report watches these ledger and released-network
+semantic sources at the pins and paths in the fixture manifest. Its separate query watches preserve
+the network-test corpus's own pin. Source changes are review leads; freshness does not demonstrate
+behavioral equivalence or update any expected answer automatically.

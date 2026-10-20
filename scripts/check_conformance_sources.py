@@ -33,6 +33,7 @@ class MissingWatchedRoots(ValueError):
 def sources(root: Path) -> list[Source]:
     ledger = json.loads((root / "node/src/test/resources/upstream/conway-govcert/manifest.json").read_text())
     network = json.loads((root / "fixtures/reference/ouroboros-network-protocol-codecs/keepalive.tsv.manifest.json").read_text())
+    wallet = json.loads((root / "fixtures/reference/wallet-queries/manifest.json").read_text())
     plutus = (root / "docs/plutus-conformance.md").read_text()
     # The reference executable's package pin, rather than a moving package index.
     match = re.search(r"IntersectMBO/plutus tag `[^`]+`, commit `([0-9a-f]{40})`", plutus)
@@ -62,6 +63,11 @@ def sources(root: Path) -> list[Source]:
                ("eras/shelley/impl/src/Cardano/Ledger/Shelley/PoolRank.hs",
                 "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rewards.hs",
                 "eras/shelley/impl/src/Cardano/Ledger/Shelley/LedgerState/PulsingReward.hs")),
+        Source("wallet-queries", "IntersectMBO/cardano-ledger", wallet["ledger"]["commit"],
+               tuple(wallet["ledger"]["sources"])),
+        # Released query encoders have a different pin from the moving network-test corpus.
+        Source("peer-snapshot-queries", "IntersectMBO/ouroboros-network", wallet["network"]["commit"],
+               tuple("ouroboros-network/api/lib/" + path for path in wallet["network"]["sources"])),
         Source("formal", "IntersectMBO/formal-ledger-specifications",
                ledger["dependencies"]["formal-ledger-specifications"], ("hs/",), "master-artifacts"),
         Source("constrained", "input-output-hk/constrained-generators",
