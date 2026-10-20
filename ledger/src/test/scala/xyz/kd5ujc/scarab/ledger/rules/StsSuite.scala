@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.rules
 
 import cats.{Eq, Monad}
-import cats.mtl.{Ask, Handle, Raise, Stateful}
+import cats.mtl.{Ask, Handle, Local, Raise, Stateful}
 import cats.mtl.laws.discipline.{HandleTests, LocalTests, StatefulTests}
 import cats.syntax.all.*
 import java.time.Instant
@@ -168,6 +168,24 @@ class StsSuite extends DisciplineSuite:
     assertEquals(program.run(otherGlobals, 0), Right((0, 1)))
     val local = Ask[R, Globals].ask[Globals]
     assertEquals(local.run(globals, 3).map(_._2), Right(globals))
+  }
+
+  test("nested scopes restore Globals and rollback before recovery with different result types") {
+    val read = Ask[R, Globals].ask[Globals].map(_.networkId)
+    def network(n: Int)(g: Globals): Globals = g.copy(ledger = g.ledger.copy(network = n))
+    val failed = Local[R, Globals].local(
+      Stateful[R, Int].set(99) *> Raise[R, Fail].raise[Fail, String](Fail.Big)
+    )(network(1))
+    val recovered = Handle[R, Fail].handleWith(failed)(_ => read.map(n => s"recovered-$n"))
+    val program = for
+      before <- read
+      text <- Local[R, Globals].local(recovered)(network(2))
+      after <- read
+      state <- Stateful[R, Int].get
+      success <- Local[R, Globals].local(read.map(_ == 3))(network(3))
+      restored <- read
+    yield (before, text, after, state, success, restored)
+    assertEquals(program.run(globals, 7), Right((7, (0, "recovered-2", 0, 7, true, 0))))
   }
 
 object StsSuite:
