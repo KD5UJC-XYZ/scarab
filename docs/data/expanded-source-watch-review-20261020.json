@@ -1,0 +1,737 @@
+{
+  "schema": "scarab-expanded-source-watch-review-v1",
+  "observationAt": "2026-10-20T20:04:25.269877+00:00",
+  "method": "Immutable endpoint contents and changed test/example definitions inspected after fixing actual source roots; original 291-event classification remains historical. API CBOR differences checked structurally; applicable pool vectors receive production replay.",
+  "additionalLedgerEvents": [
+    {
+      "source": "ledger",
+      "event": "added",
+      "path": "libs/cardano-ledger-api/golden/conway/cbor/queryLeiosCommittee.cbor",
+      "category": "new-query-result-example",
+      "action": "Do not advertise unsupported new query APIs; preserve declared supported-query contract.",
+      "endpointSha256": {
+        "head": "356846579f1a9b7bb0d3fc7483ac0f6a3c8bcb432f2d3205809ddac6779d81cf"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "added",
+      "path": "libs/cardano-ledger-api/golden/conway/cbor/queryStakePoolState.cbor",
+      "category": "new-query-result-example",
+      "action": "Do not advertise unsupported new query APIs; preserve declared supported-query contract.",
+      "endpointSha256": {
+        "head": "2a218f2927f25a7e2f939d7f959542f346b432fba5d636ec4471775d84d932cd"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "added",
+      "path": "libs/cardano-ledger-api/golden/conway/json/queryLeiosCommittee.json",
+      "category": "new-query-result-example",
+      "action": "Do not advertise unsupported new query APIs; preserve declared supported-query contract.",
+      "endpointSha256": {
+        "head": "dc18cbf64776f8b54adf24c322753f6d747ac5b5ed6cce0f519d372ed012c64d"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "added",
+      "path": "libs/cardano-ledger-api/golden/conway/json/queryStakePoolState.json",
+      "category": "new-query-result-example",
+      "action": "Do not advertise unsupported new query APIs; preserve declared supported-query contract.",
+      "endpointSha256": {
+        "head": "9d689ab1e05e1a8405256380be91e0e30f6fc7a14b1d0ea7f0bbebbd08fd33ff"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "added",
+      "path": "libs/cardano-ledger-api/golden/dijkstra/cbor/queryLeiosCommittee.cbor",
+      "category": "future-dijkstra-query-example",
+      "action": "Keep outside supported Conway/node11.1.3 behavior; no production or expected-result update.",
+      "endpointSha256": {
+        "head": "356846579f1a9b7bb0d3fc7483ac0f6a3c8bcb432f2d3205809ddac6779d81cf"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "added",
+      "path": "libs/cardano-ledger-api/golden/dijkstra/cbor/queryStakePoolState.cbor",
+      "category": "future-dijkstra-query-example",
+      "action": "Keep outside supported Conway/node11.1.3 behavior; no production or expected-result update.",
+      "endpointSha256": {
+        "head": "8ab328a70ed62c08f1353a39153feaa52a50398022254eb1ebdd7a766d9a054f"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "added",
+      "path": "libs/cardano-ledger-api/golden/dijkstra/json/queryLeiosCommittee.json",
+      "category": "future-dijkstra-query-example",
+      "action": "Keep outside supported Conway/node11.1.3 behavior; no production or expected-result update.",
+      "endpointSha256": {
+        "head": "dc18cbf64776f8b54adf24c322753f6d747ac5b5ed6cce0f519d372ed012c64d"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "added",
+      "path": "libs/cardano-ledger-api/golden/dijkstra/json/queryStakePoolState.json",
+      "category": "future-dijkstra-query-example",
+      "action": "Keep outside supported Conway/node11.1.3 behavior; no production or expected-result update.",
+      "endpointSha256": {
+        "head": "2a0971dc6e948700e6a0fba78a8456dfad9ac88721f02dbc12faef104ea6c794"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/conway/cbor/queryCurrentPParams.cbor",
+      "category": "sample-default-cost-model-refresh",
+      "action": "Keep on-chain explicit cost parameters and released fixture expectations; newer example values are not current-network parameter updates.",
+      "endpointSha256": {
+        "pin": "d760903d19300a16979a7694d8ae37dc1000ff345a4a980a92a9022af1ed269e",
+        "head": "22d7e06bab458d503aeb422fa22361f87bdf7ab0fb4a52bee18723950278fa5c"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/conway/cbor/queryFuturePParams.cbor",
+      "category": "sample-default-cost-model-refresh",
+      "action": "Keep on-chain explicit cost parameters and released fixture expectations; newer example values are not current-network parameter updates.",
+      "endpointSha256": {
+        "pin": "ec793bf455f51945e1ffe46ea90a5a01464155f5defdb84ed99d577432f7cfc3",
+        "head": "bc855406653bef9aa7e57aee05dc05b5f7de5cff48114e326c7a8c7ab7213a3a"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/conway/cbor/queryGovState.cbor",
+      "category": "sample-default-cost-model-refresh",
+      "action": "Keep on-chain explicit cost parameters and released fixture expectations; newer example values are not current-network parameter updates.",
+      "endpointSha256": {
+        "pin": "e273885a77df376c7d70f13c4e656c68d39808edae19c02a0a4ad1d49852f2f4",
+        "head": "7ccc239b0754ea93d9a9ddf9ec237482a93444a9f8c9e111b5379ef03d5da3ac"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/conway/cbor/queryPoolParameters.cbor",
+      "category": "pool-example-field-or-ipv4-refresh",
+      "action": "Replay applicable complete pool-parameter vector and relay codec semantics; retain old endian negative control and explicit arbitrary-result limitations.",
+      "endpointSha256": {
+        "pin": "5c31f3c6dfb88443dfb49a7e102e65951dd10d6c29406972e5d4809fb075f71b",
+        "head": "084c1b500360c4c89f263cd7b771fe5dc7314bc3735923d72c019279102a2b52"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/conway/cbor/queryPoolState.cbor",
+      "category": "pool-example-field-or-ipv4-refresh",
+      "action": "Replay applicable complete pool-parameter vector and relay codec semantics; retain old endian negative control and explicit arbitrary-result limitations.",
+      "endpointSha256": {
+        "pin": "41425f310a8497011a4b264b223f6a045d6f55f85a7f5ac02bb039adbebe32a9",
+        "head": "811719ba1e3e14ce6ba4b9b3b41ecfd5554c5a15e67c48a14bcf7473970329d4"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/conway/cbor/queryProposals.cbor",
+      "category": "sample-default-cost-model-refresh",
+      "action": "Keep on-chain explicit cost parameters and released fixture expectations; newer example values are not current-network parameter updates.",
+      "endpointSha256": {
+        "pin": "afa02264a398d0d802d316ab38825db3fbce0cfa0c7f500a283907decfe31e97",
+        "head": "3146ccf97df2a2d0fb21c9ca51960bba83076784254e87023def3ad616bac1e2"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/conway/cbor/queryRatifyState.cbor",
+      "category": "sample-default-cost-model-refresh",
+      "action": "Keep on-chain explicit cost parameters and released fixture expectations; newer example values are not current-network parameter updates.",
+      "endpointSha256": {
+        "pin": "d9274e0b40a0fbe5482711c63722861bbefa1f0cc1598c5e6a5fcf55c03ac976",
+        "head": "64fe941d5789e12710ab19a73875b478afdea4b63617145cf086f662c6f81e6c"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/conway/cbor/queryStakePoolRelays.cbor",
+      "category": "pool-example-field-or-ipv4-refresh",
+      "action": "Replay applicable complete pool-parameter vector and relay codec semantics; retain old endian negative control and explicit arbitrary-result limitations.",
+      "endpointSha256": {
+        "pin": "3ae735200d5dd0b27a2c87930b9e65edd5f34b970fdd0863dab742cd149a56c2",
+        "head": "6db2ce862aea14897cecac9b94c2da54493c4f0e4a36e70deb7480d4c4fcdf66"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/conway/json/queryCurrentPParams.json",
+      "category": "sample-default-cost-model-refresh",
+      "action": "Keep on-chain explicit cost parameters and released fixture expectations; newer example values are not current-network parameter updates.",
+      "endpointSha256": {
+        "pin": "4f70683bcbd958f769562de7d9acabaf0b0c1653f2952276ad3316c59fcf6af3",
+        "head": "38f26e0dd6897aed86a6eb68dcaa1b82a8a0cd768afcc223bbbde33039b6d541"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/conway/json/queryFuturePParams.json",
+      "category": "sample-default-cost-model-refresh",
+      "action": "Keep on-chain explicit cost parameters and released fixture expectations; newer example values are not current-network parameter updates.",
+      "endpointSha256": {
+        "pin": "c3e4c8398bb71dcd8ed2b401b92bfc036a3346b05f3a8418af6ed1aadd48b07a",
+        "head": "5a8fcf47561eeac2f6854571785650986f87360b2d299719ca49fbfb5f9f646a"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/conway/json/queryGovState.json",
+      "category": "sample-default-cost-model-refresh",
+      "action": "Keep on-chain explicit cost parameters and released fixture expectations; newer example values are not current-network parameter updates.",
+      "endpointSha256": {
+        "pin": "520b63b54d0108205966b4207811271eef1ab7ff93ec33eef2fb0a93b777db71",
+        "head": "49140b63154459e63d1225cffdb65ddcd43e050682c272892bb8db5c59d18d2d"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/conway/json/queryPoolParameters.json",
+      "category": "pool-example-field-or-ipv4-refresh",
+      "action": "Replay applicable complete pool-parameter vector and relay codec semantics; retain old endian negative control and explicit arbitrary-result limitations.",
+      "endpointSha256": {
+        "pin": "cb1b89735678a8e485c240d9657c6ed38b0fb6565ead1158330d1d5a9b6ed569",
+        "head": "8be561c2c6af36bf52661c107bc04d1ee5e4951337758e68702542b42d2658c0"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/conway/json/queryPoolState.json",
+      "category": "pool-example-field-or-ipv4-refresh",
+      "action": "Replay applicable complete pool-parameter vector and relay codec semantics; retain old endian negative control and explicit arbitrary-result limitations.",
+      "endpointSha256": {
+        "pin": "98c6509cbc6ce2e8d32b693093ca57c17e87528939109f5afcd10e825286c454",
+        "head": "8ba1284996d267b74d908427656bfaef2f6c0a4cb1a6d8bc8cad7cdca8714e3e"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/conway/json/queryProposals.json",
+      "category": "sample-default-cost-model-refresh",
+      "action": "Keep on-chain explicit cost parameters and released fixture expectations; newer example values are not current-network parameter updates.",
+      "endpointSha256": {
+        "pin": "d41929b975291c500d3bf9a3931f00012b4fe18f2ff904689d9e190d7d50f796",
+        "head": "f7133f5e166dbf7d91f12cf0269c97741915cfd988e33fad46b502b6e758e4d0"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/conway/json/queryRatifyState.json",
+      "category": "sample-default-cost-model-refresh",
+      "action": "Keep on-chain explicit cost parameters and released fixture expectations; newer example values are not current-network parameter updates.",
+      "endpointSha256": {
+        "pin": "b363fdcae762e8ea031ed8d6eb635283aacf5b6e792cfa32255f4b5d6f6b537d",
+        "head": "cfcc716e41e9f4b0e3d7ed47c672916f0687758f7e2c5b1544a900d8ec8e7316"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/dijkstra/cbor/queryCurrentPParams.cbor",
+      "category": "future-dijkstra-query-example",
+      "action": "Keep outside supported Conway/node11.1.3 behavior; no production or expected-result update.",
+      "endpointSha256": {
+        "pin": "85cf5797f40d7af34dd28274a3d3edfca82dbe99452dd173489ba0329b7efde9",
+        "head": "881b980f0b1c9bf7be3b885a3d75277253a89f6d2094494e8acbfb3f4bf4736a"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/dijkstra/cbor/queryFuturePParams.cbor",
+      "category": "future-dijkstra-query-example",
+      "action": "Keep outside supported Conway/node11.1.3 behavior; no production or expected-result update.",
+      "endpointSha256": {
+        "pin": "4c50341b660ed65002457d76dc8a7c1a760237a763280b644c1b4f8de5eb35d7",
+        "head": "6af475c3a8e0d9ae875c279d1ead0eeed8b8a956c9eeca5af3c68a3ff1652b47"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/dijkstra/cbor/queryGovState.cbor",
+      "category": "future-dijkstra-query-example",
+      "action": "Keep outside supported Conway/node11.1.3 behavior; no production or expected-result update.",
+      "endpointSha256": {
+        "pin": "290215d73e83a5939c7ec61e44b4e319cb8a48cb8b3d61a7793e567b7e0561a9",
+        "head": "c002993ac89078c6136c79767da51cc5784e058c2821de47e9f985511b547725"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/dijkstra/cbor/queryPoolParameters.cbor",
+      "category": "future-dijkstra-query-example",
+      "action": "Keep outside supported Conway/node11.1.3 behavior; no production or expected-result update.",
+      "endpointSha256": {
+        "pin": "5c31f3c6dfb88443dfb49a7e102e65951dd10d6c29406972e5d4809fb075f71b",
+        "head": "084c1b500360c4c89f263cd7b771fe5dc7314bc3735923d72c019279102a2b52"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/dijkstra/cbor/queryPoolState.cbor",
+      "category": "future-dijkstra-query-example",
+      "action": "Keep outside supported Conway/node11.1.3 behavior; no production or expected-result update.",
+      "endpointSha256": {
+        "pin": "41425f310a8497011a4b264b223f6a045d6f55f85a7f5ac02bb039adbebe32a9",
+        "head": "811719ba1e3e14ce6ba4b9b3b41ecfd5554c5a15e67c48a14bcf7473970329d4"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/dijkstra/cbor/queryProposals.cbor",
+      "category": "future-dijkstra-query-example",
+      "action": "Keep outside supported Conway/node11.1.3 behavior; no production or expected-result update.",
+      "endpointSha256": {
+        "pin": "afa02264a398d0d802d316ab38825db3fbce0cfa0c7f500a283907decfe31e97",
+        "head": "3146ccf97df2a2d0fb21c9ca51960bba83076784254e87023def3ad616bac1e2"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/dijkstra/cbor/queryRatifyState.cbor",
+      "category": "future-dijkstra-query-example",
+      "action": "Keep outside supported Conway/node11.1.3 behavior; no production or expected-result update.",
+      "endpointSha256": {
+        "pin": "867b5d808b1d0843bfd00dd6cfdcde383674433909d8bfe880b5df25043b8f0f",
+        "head": "4c28321bb9b141b064ede8778cf1a5d041d16fe6bcab3b2736f037fb77872624"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/dijkstra/cbor/querySetSnapshotStakePoolDistr.cbor",
+      "category": "future-dijkstra-query-example",
+      "action": "Keep outside supported Conway/node11.1.3 behavior; no production or expected-result update.",
+      "endpointSha256": {
+        "pin": "08c01856eaaa8a06cf6e1c3e030e4bb57d7a3c70313407dd637c1ba569bbdd7d",
+        "head": "6c4d85ad2ad46541322d8e888c4759016701b5bc381a8d0a69add287d250468d"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/dijkstra/cbor/queryStakePoolRelays.cbor",
+      "category": "future-dijkstra-query-example",
+      "action": "Keep outside supported Conway/node11.1.3 behavior; no production or expected-result update.",
+      "endpointSha256": {
+        "pin": "3ae735200d5dd0b27a2c87930b9e65edd5f34b970fdd0863dab742cd149a56c2",
+        "head": "6db2ce862aea14897cecac9b94c2da54493c4f0e4a36e70deb7480d4c4fcdf66"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/dijkstra/json/queryCurrentPParams.json",
+      "category": "future-dijkstra-query-example",
+      "action": "Keep outside supported Conway/node11.1.3 behavior; no production or expected-result update.",
+      "endpointSha256": {
+        "pin": "8abf9a469476f106d74cbf24853cd1137f6f6d00191a38753b9b7e7b0700b6e9",
+        "head": "9ea7f0f953424b931a8d6d8234f099b13770894e1d0e96c93fa0ab69c191c462"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/dijkstra/json/queryFuturePParams.json",
+      "category": "future-dijkstra-query-example",
+      "action": "Keep outside supported Conway/node11.1.3 behavior; no production or expected-result update.",
+      "endpointSha256": {
+        "pin": "e28ef163d7102099a9cb280eaaf6187ba5c2b902cd8f2197370d777cbd9cbba5",
+        "head": "4defa56e0328c8fd1b04c9ae91057da4b70be8750454f3614e1cf61fc0362c1d"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/dijkstra/json/queryGovState.json",
+      "category": "future-dijkstra-query-example",
+      "action": "Keep outside supported Conway/node11.1.3 behavior; no production or expected-result update.",
+      "endpointSha256": {
+        "pin": "15d5a5f324be16d58b8f91ddab4343ca248ec131fe83a70351176884c096fbb1",
+        "head": "bc5af5736b92a95d440377771cdf0305242a784bbee03b586f092f25c9f6a80b"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/dijkstra/json/queryPoolParameters.json",
+      "category": "future-dijkstra-query-example",
+      "action": "Keep outside supported Conway/node11.1.3 behavior; no production or expected-result update.",
+      "endpointSha256": {
+        "pin": "cb1b89735678a8e485c240d9657c6ed38b0fb6565ead1158330d1d5a9b6ed569",
+        "head": "8be561c2c6af36bf52661c107bc04d1ee5e4951337758e68702542b42d2658c0"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/dijkstra/json/queryPoolState.json",
+      "category": "future-dijkstra-query-example",
+      "action": "Keep outside supported Conway/node11.1.3 behavior; no production or expected-result update.",
+      "endpointSha256": {
+        "pin": "98c6509cbc6ce2e8d32b693093ca57c17e87528939109f5afcd10e825286c454",
+        "head": "8ba1284996d267b74d908427656bfaef2f6c0a4cb1a6d8bc8cad7cdca8714e3e"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/dijkstra/json/queryProposals.json",
+      "category": "future-dijkstra-query-example",
+      "action": "Keep outside supported Conway/node11.1.3 behavior; no production or expected-result update.",
+      "endpointSha256": {
+        "pin": "d41929b975291c500d3bf9a3931f00012b4fe18f2ff904689d9e190d7d50f796",
+        "head": "f7133f5e166dbf7d91f12cf0269c97741915cfd988e33fad46b502b6e758e4d0"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/dijkstra/json/queryRatifyState.json",
+      "category": "future-dijkstra-query-example",
+      "action": "Keep outside supported Conway/node11.1.3 behavior; no production or expected-result update.",
+      "endpointSha256": {
+        "pin": "4cc7c8492369352015bc779cb06f8f660f321163acaa622dd0871fc16828afa9",
+        "head": "d0bed7c292a5b2820e2fb29e9ea4befc1c99793851755e6c56804b251524a541"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/golden/dijkstra/json/querySetSnapshotStakePoolDistr.json",
+      "category": "future-dijkstra-query-example",
+      "action": "Keep outside supported Conway/node11.1.3 behavior; no production or expected-result update.",
+      "endpointSha256": {
+        "pin": "dcc62b512430db1d092ffb55b5c80126efecf19c242d87ebd17e496ad1f8b509",
+        "head": "e2d89317649b32918a0835589b7d362a960726d0551bfced75bb4e1698010680"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/test/Test/Cardano/Ledger/Api/State/Imp/QuerySpec.hs",
+      "category": "query-registration-and-future-state-api",
+      "action": "Current production golden replay covers supported fields; new Dijkstra lifecycle and Leios/BLS APIs remain future feature scope.",
+      "endpointSha256": {
+        "pin": "56e8b292b8ec4b7934a69926ca776eb9c85779ac1a7b6c0431109dc8d02964f9",
+        "head": "b91b2b578489c238966dd8cc245d29506f02c786858c5481697bf7fade0777cb"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/test/Test/Cardano/Ledger/Api/State/QuerySpec.hs",
+      "category": "query-registration-and-future-state-api",
+      "action": "Current production golden replay covers supported fields; new Dijkstra lifecycle and Leios/BLS APIs remain future feature scope.",
+      "endpointSha256": {
+        "pin": "4aeac394d7d09c79405fe4420a2f0bb46904966eccb314fad97fcd92633e5bbb",
+        "head": "afa88fdb346122e251d273f69ff268f40506f4908f02d43ecf9a4f0037e1a717"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/test/Test/Cardano/Ledger/Api/Tx/Body.hs",
+      "category": "equivalent-helper-type-refactor",
+      "action": "No behavior update: pool registration membership now uses a key set rather than a mapped pool-parameter map.",
+      "endpointSha256": {
+        "pin": "9268984589b8a9357e767598eba1bc398427946eff0a69b258e0bba80794268b",
+        "head": "53d738ba68433c653cc066255b76fb2bc6554a3d05f4bb56fe3a21265bba9ed6"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/test/Tests.hs",
+      "category": "query-registration-and-future-state-api",
+      "action": "Current production golden replay covers supported fields; new Dijkstra lifecycle and Leios/BLS APIs remain future feature scope.",
+      "endpointSha256": {
+        "pin": "7ca7efae3807f697dd124e3ac01b16beda89fef7d9b83569cdca765953e237e4",
+        "head": "2928458c724c1fb8cfabbf18cbfd063d5c565b4690fd7ed0d7aa74da8e50b489"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/testlib/Test/Cardano/Ledger/Api/Arbitrary.hs",
+      "category": "query-example-generator-type-update",
+      "action": "New result generators and era-indexed type; do not imply new query endpoint support.",
+      "endpointSha256": {
+        "pin": "829f46de8a87759042482c1cc555d7a502135372ce597802298d805f4d21a8dd",
+        "head": "c1843efe14f38e4ec2735a80806902c25c36001d28c3598bfe9c52305231d651"
+      }
+    },
+    {
+      "source": "ledger",
+      "event": "changed",
+      "path": "libs/cardano-ledger-api/testlib/Test/Cardano/Ledger/Api/State/Query/Examples.hs",
+      "category": "query-registration-and-future-state-api",
+      "action": "Current production golden replay covers supported fields; new Dijkstra lifecycle and Leios/BLS APIs remain future feature scope.",
+      "endpointSha256": {
+        "pin": "55df147bd859f2704a50952ffef655353bb25ff089e9c8889dff840704104360",
+        "head": "6fdeed77a31bcfc13ba94a02e22f69ac420239e29c909494a37a570a3778de14"
+      }
+    }
+  ],
+  "additionalNetworkEvents": [
+    {
+      "source": "network",
+      "event": "changed",
+      "path": "cardano-diffusion/tests/lib/Test/Cardano/Network/Diffusion/Testnet.hs",
+      "category": "domain-extraction-helper-refactor",
+      "action": "Shared domain helper has no behavior change; DNS publication now has real production baseline-failing tests, and retained-peer advertise flags already refresh. No claim of executing these newer Haskell generator programs.",
+      "headUrl": "https://github.com/IntersectMBO/ouroboros-network/blob/9793c8ea6fae972ebbb27d007e2398850de04b6d/cardano-diffusion/tests/lib/Test/Cardano/Network/Diffusion/Testnet.hs"
+    },
+    {
+      "source": "network",
+      "event": "changed",
+      "path": "cardano-diffusion/tests/lib/Test/Cardano/Network/PeerSelection/LocalRootPeers.hs",
+      "category": "local-root-reload-or-advertise-properties",
+      "action": "Shared domain helper has no behavior change; DNS publication now has real production baseline-failing tests, and retained-peer advertise flags already refresh. No claim of executing these newer Haskell generator programs.",
+      "headUrl": "https://github.com/IntersectMBO/ouroboros-network/blob/9793c8ea6fae972ebbb27d007e2398850de04b6d/cardano-diffusion/tests/lib/Test/Cardano/Network/PeerSelection/LocalRootPeers.hs"
+    },
+    {
+      "source": "network",
+      "event": "changed",
+      "path": "ouroboros-network/tests/lib/Test/Ouroboros/Network/PeerSelection/LocalRootPeers.hs",
+      "category": "local-root-reload-or-advertise-properties",
+      "action": "Shared domain helper has no behavior change; DNS publication now has real production baseline-failing tests, and retained-peer advertise flags already refresh. No claim of executing these newer Haskell generator programs.",
+      "headUrl": "https://github.com/IntersectMBO/ouroboros-network/blob/9793c8ea6fae972ebbb27d007e2398850de04b6d/ouroboros-network/tests/lib/Test/Ouroboros/Network/PeerSelection/LocalRootPeers.hs"
+    },
+    {
+      "source": "network",
+      "event": "changed",
+      "path": "ouroboros-network/tests/lib/Test/Ouroboros/Network/PeerSelection/RootPeersDNS.hs",
+      "category": "local-root-reload-or-advertise-properties",
+      "action": "Shared domain helper has no behavior change; DNS publication now has real production baseline-failing tests, and retained-peer advertise flags already refresh. No claim of executing these newer Haskell generator programs.",
+      "headUrl": "https://github.com/IntersectMBO/ouroboros-network/blob/9793c8ea6fae972ebbb27d007e2398850de04b6d/ouroboros-network/tests/lib/Test/Ouroboros/Network/PeerSelection/RootPeersDNS.hs"
+    }
+  ],
+  "networkDisposition": "Three changed files add local-root publication/advertise generators and laws; one diffusion test extracts domain names through a shared helper. Production DNS publication is fixed with baseline-failing controlled tests. Advertise handling already refreshes retained peers.",
+  "implementedCoverage": "Every declared root now has per-endpoint counts; an unmatched root fails even when another root matches. Legitimate root addition/removal remains visible as source events.",
+  "sources": [
+    {
+      "name": "ledger",
+      "repository": "IntersectMBO/cardano-ledger",
+      "pin": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+      "head": "7fa3963cce708eae06f2443820de7adfa5dd3ecf",
+      "trackedRef": "HEAD",
+      "watchedRoots": [
+        {
+          "prefix": "cabal.project",
+          "pinnedFiles": 1,
+          "observedFiles": 1
+        },
+        {
+          "prefix": "libs/cardano-ledger-conformance/",
+          "pinnedFiles": 59,
+          "observedFiles": 59
+        },
+        {
+          "prefix": "libs/cardano-ledger-test/",
+          "pinnedFiles": 64,
+          "observedFiles": 64
+        },
+        {
+          "prefix": "libs/cardano-ledger-api/test/",
+          "pinnedFiles": 6,
+          "observedFiles": 6
+        },
+        {
+          "prefix": "libs/cardano-ledger-api/testlib/",
+          "pinnedFiles": 4,
+          "observedFiles": 4
+        },
+        {
+          "prefix": "libs/cardano-ledger-api/golden/",
+          "pinnedFiles": 96,
+          "observedFiles": 104
+        }
+      ]
+    },
+    {
+      "name": "network",
+      "repository": "IntersectMBO/ouroboros-network",
+      "pin": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+      "head": "9793c8ea6fae972ebbb27d007e2398850de04b6d",
+      "trackedRef": "HEAD",
+      "watchedRoots": [
+        {
+          "prefix": "cabal.project",
+          "pinnedFiles": 1,
+          "observedFiles": 1
+        },
+        {
+          "prefix": "ouroboros-network/protocols/tests/",
+          "pinnedFiles": 1,
+          "observedFiles": 1
+        },
+        {
+          "prefix": "ouroboros-network/protocols/tests-lib/",
+          "pinnedFiles": 43,
+          "observedFiles": 43
+        },
+        {
+          "prefix": "ouroboros-network/tests/",
+          "pinnedFiles": 30,
+          "observedFiles": 30
+        },
+        {
+          "prefix": "network-mux/test/",
+          "pinnedFiles": 4,
+          "observedFiles": 4
+        },
+        {
+          "prefix": "cardano-diffusion/tests/",
+          "pinnedFiles": 14,
+          "observedFiles": 14
+        },
+        {
+          "prefix": "cardano-diffusion/protocols/tests/",
+          "pinnedFiles": 1,
+          "observedFiles": 1
+        },
+        {
+          "prefix": "cardano-diffusion/protocols/tests-lib/",
+          "pinnedFiles": 3,
+          "observedFiles": 3
+        },
+        {
+          "prefix": "cardano-diffusion/protocols/cddl/",
+          "pinnedFiles": 23,
+          "observedFiles": 23
+        }
+      ]
+    },
+    {
+      "name": "rewards",
+      "repository": "IntersectMBO/cardano-ledger",
+      "pin": "4c81e909df7555b6a58a000db8f8f4f89c7acdc4",
+      "head": "7fa3963cce708eae06f2443820de7adfa5dd3ecf",
+      "trackedRef": "HEAD",
+      "watchedRoots": [
+        {
+          "prefix": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PoolRank.hs",
+          "pinnedFiles": 1,
+          "observedFiles": 1
+        },
+        {
+          "prefix": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rewards.hs",
+          "pinnedFiles": 1,
+          "observedFiles": 1
+        },
+        {
+          "prefix": "eras/shelley/impl/src/Cardano/Ledger/Shelley/LedgerState/PulsingReward.hs",
+          "pinnedFiles": 1,
+          "observedFiles": 1
+        }
+      ]
+    },
+    {
+      "name": "formal",
+      "repository": "IntersectMBO/formal-ledger-specifications",
+      "pin": "b3a4fd47a1144ff1fb994f89b1045e78159e07ae",
+      "head": "d30664e17261caef252609e4dd6b035a890bc68c",
+      "trackedRef": "master-artifacts",
+      "watchedRoots": [
+        {
+          "prefix": "hs/",
+          "pinnedFiles": 785,
+          "observedFiles": 790
+        }
+      ]
+    },
+    {
+      "name": "constrained",
+      "repository": "input-output-hk/constrained-generators",
+      "pin": "966f65f3c28cb22fc45220dbd1408baea93b53d8",
+      "head": "3895396d4435cbc4a5b07784b15e1e19af0f032f",
+      "trackedRef": "HEAD",
+      "watchedRoots": [
+        {
+          "prefix": "cabal.project",
+          "pinnedFiles": 1,
+          "observedFiles": 1
+        },
+        {
+          "prefix": "constrained-generators.cabal",
+          "pinnedFiles": 1,
+          "observedFiles": 1
+        },
+        {
+          "prefix": "src/",
+          "pinnedFiles": 27,
+          "observedFiles": 27
+        },
+        {
+          "prefix": "test/",
+          "pinnedFiles": 3,
+          "observedFiles": 3
+        },
+        {
+          "prefix": "examples/",
+          "pinnedFiles": 12,
+          "observedFiles": 12
+        }
+      ]
+    },
+    {
+      "name": "plutus",
+      "repository": "IntersectMBO/plutus",
+      "pin": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+      "head": "8fd7b6f345d3265ea3a128b45576685c0538f083",
+      "trackedRef": "HEAD",
+      "watchedRoots": [
+        {
+          "prefix": "cabal.project",
+          "pinnedFiles": 1,
+          "observedFiles": 1
+        },
+        {
+          "prefix": "plutus-conformance/",
+          "pinnedFiles": 4857,
+          "observedFiles": 4867
+        },
+        {
+          "prefix": "plutus-core/testlib/",
+          "pinnedFiles": 39,
+          "observedFiles": 39
+        },
+        {
+          "prefix": "plutus-core/untyped-plutus-core/testlib/",
+          "pinnedFiles": 39,
+          "observedFiles": 39
+        }
+      ]
+    }
+  ]
+}

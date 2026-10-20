@@ -4,6 +4,12 @@ Status: historical source review of the fixed freshness observation at
 2026-10-20 19:22:52 UTC. This classifies source changes; it adds no generator runs,
 vector passes or observed Scarab discrepancies.
 
+The subsequent [implementation and replay](design/upstream-conformance.md#source-refresh-implementation)
+fix source watches and DNS publication and exercise applicable ledger, pool-query
+and Plutus changes. The corrected watches add 50 events with a separate
+[per-file review](data/expanded-source-watch-review-20261020.json). This historical
+291-event classification remains unchanged.
+
 ## Reference and scope
 
 The latest stable [cardano-node release](https://github.com/IntersectMBO/cardano-node/releases/tag/11.1.3)

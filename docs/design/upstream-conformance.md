@@ -1,6 +1,6 @@
 # Upstream conformance adapters
 
-Status: current implementation and bounded evidence; the agreed risk-based v0.2 scope of [K2 / #49](https://github.com/KD5UJC-XYZ/scarab/issues/49) is complete. This is not whole-suite or every-interpreter equivalence.
+Status: current implementation and bounded evidence; the owner-requested source-refresh closeout of [K2 / #49](https://github.com/KD5UJC-XYZ/scarab/issues/49) is being integrated in [PR #273](https://github.com/KD5UJC-XYZ/scarab/pull/273). This is not whole-suite or every-interpreter equivalence.
 
 The Haskell implementations and their formal adapters are independent observations.
 A native acceptance, a formal acceptance, equality of their translated outputs, and a
@@ -28,7 +28,11 @@ Formal generated Haskell is compared with `master-artifacts`, rather than the
 source-only default branch. The JSON artifact lists exact commits, watched paths
 and added/removed/changed files. API or incomplete-tree failures fail the check;
 source drift is reported without automatically changing pins or declaring a
-behavioral discrepancy. Changes outside watched paths remain unassessed.
+behavioral discrepancy. Every declared watch prefix must contain files at the pin
+or observed head: a typo cannot silently pass as unchanged alongside valid roots.
+The artifact records each prefix's endpoint file counts. API tests, test libraries
+and goldens and the actual network/Cardano diffusion test roots are included.
+Changes outside watched paths remain unassessed.
 
 Run the same read-only check locally:
 
@@ -46,6 +50,75 @@ watched path changes in the first observation. It confirms released ledger/rewar
 and Plutus source alignment, separates generator repairs and formal-rule changes
 from future-era work, and records missing network watch roots and a DNS reload
 publication follow-up. It is a static review, not a new oracle or replay verdict.
+Corrected watches subsequently expose **341** events: the historical 291 plus
+46 ledger-API and four network events. The
+[additional per-file review](../data/expanded-source-watch-review-20261020.json)
+retains endpoint hashes and dispositions. The implementation and replay below
+address applicable changes without replacing released reference semantics.
+
+### Source-refresh implementation
+
+Topology startup and reload publish literal local roots, retained DNS answers,
+flags and valencies before waiting for new DNS answers, following upstream
+`RootPeersDNS/LocalRootPeers.hs` at commit `6a49b6f6`. The existing owned refresh
+worker handles subsequent lookups. Reconfiguration preserves answers across
+source/group moves, cancels obsolete batches and fences late results by generation
+and token. Removed public/bootstrap source sets lose old attribution without a
+synchronous lookup. Resolver resources resolve through contextual givens;
+allocation defects propagate unchanged. Controlled production-runtime tests
+cover blocked startup/reload, canceled callers, obsolete lookups, late results
+and cleanup; restoring the old code fails the corresponding regressions.
+Completed due lookup results retain the existing atomic batch publication
+contract; identical upstream per-domain result timing is not claimed.
+
+The [PV11 ledger refresh](../../node/src/test/resources/upstream/conway-pv11-generators/README.md)
+executes distinct native UTXO, UTXOW, LEDGER and LEDGERS rules after backporting
+the upstream generator/context and bootstrap repairs. Upstream's four property
+labels previously all called the UTXO bundle; the exporter invokes the actual
+typed rules. Full LEDGER contexts and deposit obligations are explicitly derived.
+Generated instant-stake caches were unrelated to their UTxO: the first Scala run
+retains nine precise CompactCoin underflows. Separate lawful samples use native
+`smartUTxOState` over the unchanged UTxO and signed transactions, with independently
+checked cache consistency. No vocabulary bound is weakened or state field masked.
+
+The lawful corpus retains all fixed draws, including rejected LEDGERS attempts,
+bootstrap witness controls and native Plutus overlap controls. Its 41 observations
+contain **39 distinct rule inputs: 28 accept and 11 refuse**; two duplicate funding
+hooks do not increase that count. Accepted complete states and typed refusal
+membership compare through production transitions, retaining original signed
+bytes. Only unavailable MemPack output-original bytes and Scala change-history
+bookkeeping are excluded, as in the earlier adapter.
+
+One unchanged original generated UTXOW input is accepted natively but refused by
+the old formal overlap guard. Its pre/post context, environment, state, signal
+and native output remain byte-identical in the retained control. The published
+correction removes the unconditional UTXO overlap ban and excludes V3 in UTXOW's
+allowed languages when inputs overlap. A backport to the pinned generated Haskell
+runtime restores translated-state equality; native/formal V2-overlap acceptance,
+V3-overlap refusal and disjoint-V3 acceptance remain separate controls. This is
+an executable reference repair with the pinned ABI, not a regenerated Agda proof
+or a Scarab production-rule change. Original crashes and failed comparisons remain
+explicitly retained.
+
+The [published Conway pool vectors](../../fixtures/reference/ledger-api-pool-goldens/README.md)
+add a complete 740-byte production `GetStakePoolParams` answer comparison against
+the corrected upstream golden. Independently constructed typed relay addresses
+reproduce the complete old vector when only IPv4 words are reversed. Scarab and
+the released native encoder already use the corrected network order. Direct
+relay-query bytes additionally exercise production address decoding; the direct
+query remains unsupported. The arbitrary published PoolState example has
+inconsistent current-pool/deposit keys, so no fabricated native-state whole-answer
+match is claimed.
+
+The [Plutus boundary corpus](../../fixtures/reference/plutus-upstream-boundaries/README.md)
+adds 54 released-native requests over six original-byte probes, three languages
+and PV9/10/11. All production decoder admissions and failure stages match.
+The exact published historical-bounds patch is also compiled on the same full-crypto
+released source: 12 older-protocol admissions change in that separately labeled
+counterfactual. This is not a whole newer-release execution or a reason to change
+the supported historical policy. Published free-variable inputs reach the
+released API's scope/setup/evaluation stages, which differ from generic harness
+decode expectations. No Plutus production discrepancy is observed.
 
 | Input or generator boundary | Current disposition |
 |---|---|
