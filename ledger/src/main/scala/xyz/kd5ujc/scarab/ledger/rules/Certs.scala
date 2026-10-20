@@ -255,8 +255,8 @@ object CertOps:
       val moved = CertLens.accounts.modify(
         _.updatedWith(c)(_.map(ConwayAccountState.pool.replace(Some(pool))))
       )(s)
+      // With no current account, add only the new reverse delegation.
       current.fold(
-        // a fresh account: only the new reverse delegation
         ConwayCertState.pState.modify(
           PState.stakePools.modify(
             _.updatedWith(pool)(_.map(StakePoolState.delegators.modify(_ + c)))

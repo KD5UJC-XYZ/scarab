@@ -163,6 +163,10 @@ object NodeEvent:
 
   given Traced[NodeEvent] =
     case Started(build, peers, genesis, config, topology) =>
+      // systemStart uses the Byron startTime when present, otherwise the Shelley systemStart.
+      // byronEpochs stays null until a derived Byron/Shelley boundary is known.
+      // genesisHashes lists configured hashes checked at startup; optional Dijkstra and
+      // checkpoints inputs are compared only when present.
       EventKind.Started.line(
         "build" -> Json.obj(
           "version" -> build.version.asJson,
@@ -173,19 +177,14 @@ object NodeEvent:
         "peer" -> peers.headOption.map(_.toString).asJson,
         "peers" -> peers.map(_.toString).asJson,
         "networkMagic" -> genesis.networkMagic.asJson,
-        // where slot 0 starts: the Byron genesis' startTime when there is one (the reference's
-        // clock), else the Shelley genesis' systemStart
         "systemStart" -> genesis.geometry.systemStart.toString.asJson,
         "epochLength" -> genesis.geometry.epochLength.asJson,
         "securityParam" -> genesis.geometry.securityParam.asJson,
-        // null while the Byron ledger has still to decide when the chain enters Shelley
         "byronEpochs" -> Option
           .unless(genesis.geometry.byron.derived)(genesis.geometry.byron.epochs)
           .asJson,
         "byronEpochSlots" -> genesis.geometry.byron.epochSlots.asJson,
         "hardForkEpochs" -> config.hardForkEpochs.map((e, n) => e.toString -> n).asJson,
-        // the genesis hashes the configuration lists; start-up refused a mismatch (the Dijkstra and
-        // checkpoints files are compared only when they are there)
         "genesisHashes" -> List(
           "Byron" -> config.hashes.byron,
           "Shelley" -> config.hashes.shelley,

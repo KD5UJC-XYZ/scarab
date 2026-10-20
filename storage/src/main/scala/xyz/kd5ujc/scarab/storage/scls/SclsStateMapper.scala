@@ -47,7 +47,7 @@ import xyz.kd5ujc.scarab.models.runtime.DecodeError
 import xyz.kd5ujc.scarab.ledger.state.ProtVer
 import xyz.kd5ujc.scarab.ledger.state as S
 
-/** Projects and overlays the non-UTxO Conway namespace families implemented in this stage. The
+/** Projects and overlays the non-UTxO Conway namespace families of the pinned SCLS profile. The
   * supplied state is always a complete same-point base: this mapper preserves all state that these
   * namespaces do not represent.
   */

@@ -2048,9 +2048,676 @@ controls (three tests), formatting and scalafix; production source is unchanged 
 addition. The current area scenario and final published-head CI are reported in
 [PR #209](https://github.com/KD5UJC-XYZ/scarab/pull/209). These integration checks do not relabel
 any frozen full-data run as execution on the final main revision.
+## Typed Diff instance retention (#206)
+
+**Status: measured on 2026-10-20; diagnostic comparisons, not block-application throughput.**
+The typed derivation in #244 removed the erased `Diff[Any]` instances but could construct an enum
+case's instance on every comparison, and its product walk could summon conditional field instances
+again for every value. #249 now retains both in lazy per-derivation `Memo`s. A product builds its
+field steps once and walks their array in field order; a sum selects its step by the mirror's known
+ordinal. The local indexed field loop avoids a new field iterator for each record comparison and
+stops at the first difference; its mutation remains inside the pure `Diff` implementation. The
+measurements below cover that path and its allocation cost.
+
+Ordinal selection also preserves correctness for mixed singleton/data enums. In the first typed
+implementation, `ClassTag[Empty.type]` can have the enum's runtime class, so a walk that tries the
+singleton first can accept two `Full(value)` instances there and return no difference. The focused
+`DiffSuite` control reproduces that on `2ef35836`; selecting the actual ordinal reports the `value`
+field instead. The original cast-based ordinal dispatch already behaved correctly. This is a
+diagnostic comparison fix; no changed ledger-admission verdict is demonstrated.
+
+**Inputs and sources.** `ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/state/DiffBenchMain.scala`
+builds two independent equal diagnostic states, each containing 20,000 sorted accounts with a
+nested enum balance, and persistent copies differing at the first or last account. Every workload
+asserts the expected complete first-difference path before timing. This is a deterministic model;
+the existing consensus properties and the separate `e2e` gate cover actual ledger-state comparison.
+The same benchmark source was compiled with each historical `Diff.scala`, so the inline derivation
+also belongs to the measured implementation:
+
+- Original cast-based implementation: `57608c6e`.
+- First typed implementation, before instance retention: `2ef35836`.
+- Field and case retention: `4f8cc484`, with `Diff.scala` SHA-256
+  `1bf891f956babbf5fe3b03a89eb89ef995f586777e227897c9a3bdbc710ded5e`.
+- Shared harness at `4f8cc484`, SHA-256
+  `098a2201e8b7f771394729f987209145bb807f46995072531b2dbc13a89b690b`.
+
+The narrow dev-based replacement (#260, source `0d172b08`) contains the same candidate
+implementation and identical harness. Its `Diff.scala` SHA-256 is
+`e7dbf222c55d12bbf70331f7d234fdf51ca0ef6a8aa326ac64c08516fe18a424`; only comments
+changed after the measured revision. The standalone source comparison above does not depend on
+merging main into dev. Whole-tree and private-scenario evidence for the dev-based branch is
+recorded separately in [compatibility.md](compatibility.md#evidence-log).
+
+**Protocol.** Docker `scarab-jdk:local` image
+`sha256:c90140def52d2711644c85a81c9bf218ffbe5dc81003bfb866154c2da832af38`, OpenJDK21.0.11,
+Scala3.3.8, `--cpuset-cpus 8-11`, no CPU quota, `-Xms1g -Xmx1g`, one JVM at a time. Each case warms
+for at least two seconds, then takes seven samples. A sample performs 20 equal/late comparisons or
+100,000 early/same-case comparisons; reported time and thread allocation are divided by that count.
+`ThreadMXBean.getCurrentThreadAllocatedBytes` brackets the timed body. Complete input and output
+fingerprints are outside timing. Run order is original/typed/candidate/candidate/typed/original.
+The host was shared with a private relay, without a simultaneous build on the benchmark CPU set.
+Short, count-based exploratory warmups gave unstable equal-state medians and are superseded by this
+protocol. This is a warmed comparison; it does not measure cold derivation latency or retained heap.
+
+For the maintained candidate, run in the documented Docker build:
+`ledger/Test/runMain xyz.kd5ujc.scarab.ledger.state.DiffBenchMain`. To reproduce a historical row,
+compile this identical harness with that revision's `Diff.scala`, rather than replacing runtime
+classes underneath types whose derivation has already been inlined.
+
+The two run medians are shown as ranges; parentheses contain the minimum/maximum sample across
+both runs. Allocation is bytes per comparison, also retaining its observed range.
+
+| Workload | Original | First typed | Field/case retention | Allocated bytes: original / typed / retention |
+|---|---|---|---|---|
+| Equal 20,000-account state, ms | 2.044–2.054 (2.022–2.160) | 1.954–2.013 (1.939–2.094) | 1.953–1.984 (1.913–2.079) | 4,468,139 / 6,695,947 / 4,615,907–5,255,907 |
+| First-account difference, ns | 99.6–104.7 (94.2–123.1) | 99.6–102.9 (92.6–121.5) | 94.9–95.3 (87.6–119.4) | 888 / 904 / 880 |
+| Last-account difference, ms | 0.704–0.705 (0.699–0.709) | 0.736–0.744 (0.733–0.753) | 0.734–0.752 (0.729–0.753) | 875 / 915 / 891 |
+| Same enum case, ns | 29.4–40.7 (28.0–51.3) | 36.8–41.4 (34.7–48.7) | 30.2–30.9 (29.2–32.0) | 288 / 360 / 304 |
+
+No primary elapsed-time median is more than 10% above either historical implementation on these
+workloads; the largest increase against the original is 6.8% for the last-account difference.
+Equal-state allocation falls 21.5–31.1% against the first typed implementation, but remains
+3.3–17.6% above the original; it is not allocation-neutral. Keep that range rather than describing
+all typed narrowing costs as removed. The original's 29.4–40.7 ns same-case spread also precludes a
+general microbenchmark speedup claim.
+
+All six runs had identical input SHA-256
+`e427593da102bf0a2ffc1ca24e74e3edc573157dffd235513bfecce451d2ea91`, complete state-difference output
+SHA-256 `a45384a2914effec34e899b6eb41b2ae93a5d4f8bdfc263671f01ac5d5111491`, and enum-output SHA-256
+`e0e96fc5eee36517c9e0b40b18d4e44df9f872029cc259f57663c66bdf003c62`. These bind the measured model
+only; they do not assert public-chain state parity or cover codec derivation/interner performance.
+## 34. Typed per-kind decode interning (#204)
+
+**2026-10-20, level 3.** `Interned[A]` owns a homogeneous weak scope index returning only
+`Table[A]`; the document retains that table strongly. Typed entries preserve the path
+`Interned[A] → Table[A] → Entry[A] → A`. No heterogeneous value recovery, source cast or runtime
+generic/phantom-role test remains. The [ADR 0013 addendum](adr/0013-cbor-documents-are-an-index-over-the-input.md#addendum-typed-kind-ownership-204-2026-10-20)
+records ownership, synchronization and the measured mutable-table exception. `Node.share` and
+`Wire.interned` now require reference types; production `Bytes`/`Credential` kinds are unchanged.
+
+The first homogeneous-array prototype (`7e4e87f0`) preserved all measured outputs and retention;
+its legacy-derived decode aggregate was +7.69%, with a +22.17% extreme cross-JVM comparison.
+A typed weak recent-association fast path (`c46d0214`) still measured **+10.45%** on that primary
+input, failing the acceptance bar. Those complete experiments remain under
+`/tmp/scarab-204-bench-diagnostic` and `/tmp/scarab-204-bench-weak-fast`; they are not relabelled as
+passing or discarded. The final design `9ac7ea5e` uses typed entries carrying cached hashes.
+Unequal hashes skip deep equality, and growth reuses each entry's hash. It adds entry allocation;
+the full decode and memory measurements below include it. These experiments do not isolate a
+causal cost for weak references, array stores, JIT or GC.
+
+**Inputs and comparison.** Baseline is dev `2ef358366f3a50397645851f7db81b6a91c5c779`, with
+frozen classes from the #247 baseline. That build has the visibility-only `private[storage]`
+`SnapshotV5.encoded` seam, which is not invoked here; decode behavior is unchanged. Candidate
+production differences are `Interns` and the reference bounds on `Node.share`/`Wire.interned`.
+The compiled source/class inventories bind the experiment independently of Docker's unknown
+`BuildInfo.gitCommit`. The maintained helper is
+`node/src/test/scala/xyz/kd5ujc/scarab/storage/InternDecodeBench.scala`; at measured source
+`9ac7ea5e`, its formatted source differs only in whitespace from the standalone file
+(stripped-source equality asserted). The later tool-only cleanup puts sampler shutdown in
+`finally` if a decode refuses. A checksummed invalid-content control reproduces the old helper
+printing its refusal but remaining alive after 15 s; the corrected helper exits 1 promptly.
+Latency mode and successful memory sampling are unchanged; no timing is attributed to that fix.
+
+| Input | Identity | Bytes |
+|---|---|---:|
+| Current Preview native V5 | #27 authenticated bootstrap/replay, slot 125669042/block 4769869; `snapshot-00000000000125669042-4769869.bin`; SHA-256 `bbdc6fd7434564e0a289af5b596401d713dca75b26e70172b16803683e7be512` | 51,199,374 |
+| Legacy-derived preprod native V5 | Maintained `preprod-v4` corpus, `snapshot-00000000000136444301-5297790.bin`; SHA-256 `b77a119082acbda5d6c2fb43131b5cad856056790b13a0164a02f48299a2ebcf` | 51,777,723 |
+
+The second input is the authenticated V5 conversion at source
+`648aed117f826d06117f616b5c0a3716a50485a7`, manifest SHA-256
+`d81e326f85eb47d7a92d041a3309007599bcdaa8e70de0eaf4b38bb293ce0168`, of the archived V4
+51,584,590-byte capture `0b7c061b8e47560c665d3d22c7898ca53884c361002c2975bd5d925a433f94a8`.
+Original archives are unchanged; no retired V4 decoder is restored. The inputs remain outside Git
+under `/tmp/scarab/mithril27/download-bootstrap/snapshots` and
+`.workspace/data/2026-10-18-snapshot-v5-corpus/preprod-v4/snapshots`. They contain complete native
+snapshot payloads and UTxO handles/statistics, not the separately backed RocksDB UTxO entries.
+
+**Protocol.** Euler Linux x86-64/WSL2 shared host; Docker Temurin 21.0.11/Scala 3.3.8 image
+`sha256:c90140def52d2711644c85a81c9bf218ffbe5dc81003bfb866154c2da832af38`, CPUs 8–11, no
+CPU quota, container memory 12g, network none, `-Xms3g -Xmx9g -XX:ActiveProcessorCount=4
+-XX:+UseG1GC`. One timed JVM at a time, old/typed/typed/old order, fresh JVM per input. Ten full
+decode warmups and nine samples follow an initial control. `SnapshotV5.decode` runs on the measured
+thread; wall nanoseconds and current-thread allocated bytes exclude file I/O/checksum, config
+loading, full result equality and SHA-256. Every measured result is compared completely with its
+control outside timing. Separate fingerprints compare all old/new states and truncated-input
+refusals. The later documentation/check commits do not change the measured runtime.
+
+| Decode | Old per-JVM medians (ms) | Typed per-JVM medians (ms) | Median-of-medians change | Allocation old → typed (MB/decode) | Slowest typed / fastest old median |
+|---|---:|---:|---:|---:|---:|
+| Current | 500.121 / 601.654 | 513.600 / 509.894 | −7.11% | 1,241.477 → 1,241.858 (+0.03%) | +2.70% |
+| Legacy-derived | 754.154 / 751.726 | 815.894 / 733.997 | +2.92% | 1,596.298 → 1,601.184 (+0.31%) | +8.54% |
+
+Both primary inputs pass the 10% limit, including the adverse cross-JVM comparison. The shared
+host and the old current-input spread prevent a firm general speed-up claim. Per-sample rows,
+allocation ranges, full command vectors, source/class/config inventories and output hashes remain
+in `/tmp/scarab-204-bench`; all samples, not only fastest runs, contribute to these medians.
+
+**Memory.** Separate fresh JVMs use the same old/typed/input order. After input/config setup,
+`jcmd 1 GC.class_histogram` forces a full collection at BASE, LIVE (exactly one typed state held),
+and RELEASED (state dropped). `GC.heap_info` and `MemoryMXBean` record the same checkpoints.
+A 1 ms sampler observes heap during the single cold decode, stopping before output rendering;
+histograms and full collection are outside decode timing. Peak is sampled used heap, not RSS or
+an exact high-water bound. Net LIVE−BASE includes runtime initialization as well as the state.
+
+| Memory, median of two JVMs | Current old → typed (MB) | Legacy-derived old → typed (MB) |
+|---|---:|---:|
+| LIVE−BASE | 152.195 → 152.151 (−0.03%) | 229.779 → 230.503 (+0.32%) |
+| Sampled absolute peak | 528.591 → 533.744 (+0.97%) | 627.649 → 633.424 (+0.92%) |
+| Sampled peak−BASE | 397.903 → 403.009 (+1.28%) | 497.274 → 503.040 (+1.16%) |
+| RELEASED−BASE | 0.832 → 0.829 | 1.076 → 1.075 |
+
+Every old/new LIVE histogram has exactly the same relevant retained counts:
+
+| Objects | Current | Legacy-derived |
+|---|---:|---:|
+| `Bytes` | 604,950 | 1,170,833 |
+| `ledger.Credential.Key` / `.Script` | 292,119 / 3,477 | 573,337 / 7,826 |
+| Native `Credential.KeyHashObj` / `.ScriptHashObj` | 714,117 / 19,448 | 720,423 / 16,291 |
+
+No `Interns.Table`, `Entry` or `Keep` remains after the LIVE collection: these materialized states
+no longer retain their decoding document. At RELEASED the credentials/wrappers are gone and
+`Bytes` returns to 99/121 objects in both conditions (setup BASE 98/120). Tests separately retain a
+live document across GC and prove its first value survives; a stable kind retains neither an
+expired scope nor its values. Concurrent documents, distinct phantom kinds with the same runtime
+class, 4096 equal-hash collisions through growth, full-state sharing and the million-voter 256 MiB
+heap control all pass. There is no material retained-heap regression on these captures; this is
+not a long-running concurrent-node heap claim.
+
+Full state digests are `a3fd6ef08420f9aa5e5e658cd0ab20e9699ef6dc93eb0afb3795d622768657b7`
+and `4caa61c9366251e1da56fbcde62e467887ac8f4824c812438b01c53ab11597fc`; the complete truncated
+refusal digest is `8b8d7c5df5b02e8f1b3d313a192316ef8a61781b4732f14e9633769a5fe42987`.
+They match in every applicable run. Binding SHA-256
+`36e7bb1f5d40f7f0be324bb6c66b9620a429d65e18e3eba83a19c8fae22d6338`; summary SHA-256
+`636265625d56459b227e877581c20a58cfb2029a765f24c7130a2259d9c3a11d`; measured helper SHA-256
+`38fdc419b67bf9bc20a30c936c5edfb8c7aef48a2457233c948c74b8163d0d50`.
+
+**Scenario and gates.** On `9ac7ea5e`,
+`python3 scripts/devnet.py --name scarab-204-root-entries-restart restart` exits 0: 30 block
+applications, two 0.7 s graceful stops, two native V5 shutdown snapshots, one restoration, no
+errors/refusals. Reference node 11.1.3/CLI 11.2.3.0, image
+`sha256:74e849e1b68e2cf8ba3cdfe3fcda67114f22d9bebc6a34372657cd179e704c4b`.
+Owned containers are removed; restart manifest SHA-256
+`bc0a6bdc0ba5098852d2dd1e77c23b49099113d96de35b3c4a8e2d56badcec53` is retained under
+`/tmp/scarab-204-evidence`. Docker `check` at this runtime source passes 5,144 tests with 16 optional-data skips, zero
+failures/errors across 14 modules, formatting/-Werror/standard fuzz/scalafix. The
+extended `fuzz 100000 1 4` gate passes 77 targets × 400,000 cases = 30.8 million, zero failures.
+Combined check/fuzz log SHA-256 `645fe3088804e9502742369e1ab6052e41eba03071062560efd4c08f0a259252`.
+The [PR #263 checklist](https://github.com/KD5UJC-XYZ/scarab/pull/263) carries the exact
+published-head CI identity. Source-changing prototypes'
+aborted checks are not counted as passing gates.
+
+Reproduction: build each source with its own Docker/private-sbt-socket worktree, emit
+`node/runtimeClasspathFile`, freeze classes, and compile the same maintained helper against each
+classpath. Invoke `InternDecodeBench latency <label> <snapshot> <configs>` with the JVM/container
+settings above. For `memory`, keep stdin open; at each `READY BASE|LIVE|RELEASED`, run
+`docker exec <own-container> jcmd 1 GC.class_histogram` and `GC.heap_info`, then send `continue`.
+The retained `run.py` records exact Docker vectors and drives these checkpoints without manual
+timing choices. No file encoding or previous-version admission behavior changes.
 
 
-## 34. Native non-myopic likelihood generation (#268)
+**Integration after #260 (2026-10-20).** Rebased onto dev
+`6988858f937a42eb34762cb5a61d3c622c49b124`. Interns/Node.share/Wire.interned production sources are unchanged; the newly merged Diff diagnostics are outside the timed snapshot decoding operations.
+The original benchmark/gate source identities above remain historical evidence. Refreshed
+checks on the rebased head are recorded in the [PR #263 checklist](https://github.com/KD5UJC-XYZ/scarab/pull/263);
+pre-rebase gates are not relabelled as gates of the integrated head. Main and dev still diverge;
+this prepares the dev target and does not claim completion after main landing.
+
+## Typed rule interpreter (#202)
+
+**2026-10-20, level 3.** The indexed `Frames` implementation is retained. On the pinned
+Preview workloads below, the median of three JVM medians changes by **+1.21%** for the sum
+of sixteen block-application medians and **+5.82%** for the epoch tick. Every individual block
+is below the issue's +10% latency limit (largest increase +8.23%). There is no requested
+performance waiver. These are bounded offline ledger measurements, not sync throughput.
+
+### Sources and inputs
+
+This is an isolated interpreter comparison: all surrounding runtime classes are the same frozen
+candidate classes, compiled from reviewed head `44192a0251d8b9316db4dd88b1c702e8a3580fa1`
+(the production Scala sources are unchanged at `83c76b45`). The old condition prepends only the
+classes compiled from `RuleT.scala` at `dev` `2ef358366f3a50397645851f7db81b6a91c5c779`.
+The old/new interpreter source SHA-256 values are respectively
+`ede5bd8e999e459347a131ddf3576e82f9d284e9f2f919d2d751440dbde5433a` and
+`dae0210f9d3725861ac34765d903e54fdca98d75d24e9b7fe04fb3d42c020b95`.
+No codec, credential-order, Diff, rule, crypto or reward implementation changes between conditions.
+
+The maintained entry point is
+`node/src/test/scala/xyz/kd5ujc/scarab/node/PreviewRuleBench.scala`, added in `ea616449`.
+The measured standalone source SHA-256 is
+`04ee354d1b73e93f6f4acdb024997ecabf21d62fb98b641faf0b14d1767f2000`;
+the committed, scalafmt-formatted source is
+`929703727068b4859feac327191742eb7bd5eba1612dff1d673ee3209ab8d944`.
+Their executable source is identical; only whitespace and comment wrapping differ.
+
+Inputs reuse the authenticated Preview K1 provenance of section 30; the original archives remain
+unchanged outside Git. Native V5 snapshot `snapshot-00000000000125231955-4753556.bin`,
+55,232,414 bytes, SHA-256
+`1323741149d81ef700b671f34d4964082102b22d0df4f097418ec7597dd8f536`, is paired with its
+UTxO checkpoint at stamp 4,753,556. Its original legacy snapshot SHA-256 is
+`ca7833bb425ea47514c34cb739627fb880d0585d54b0f6594ca4b43627cf896c`;
+the prior conversion proof binds the complete canonical NES to
+`9488acde5daafe88bff31aecbb1a52ba1ffee4ff971eaf17df68b2bc41930049`, requiring only the
+documented normalization of empty pool-relay encodings for typed equality to the original.
+This comparison introduces no state masks or reward-completion normalization.
+
+The block window is the next sixteen consecutive blocks, 4,753,557–4,753,572, slots
+125,231,994–125,232,394, from immutable chunk `05797.chunk`, SHA-256
+`53cd2f49dadf57bc713808fcf23ff477edca6953587dc7d1b57a7bcbad685ebf`.
+Seven transactions occur in four of the blocks; the remaining twelve are empty. The authenticated
+record manifest (`records.json`, including offsets, lengths, header identities and each raw-block
+SHA-256) is `ea8b4a7abedab57028b5a6c8092bb479b11ffba634a2d2daaca25137df16796f`.
+The harness verifies each selected raw-block hash before decoding. Checkpoint and chunk hashes
+were rechecked against `issue-135-replay-native/input-authentication.json`; the final binding also
+pins every Preview genesis/config file. That source capture was authenticated by CRC32,
+original-header BLAKE2b, consecutive block numbers and previous-header links (section 30).
+
+The epoch workload ticks the same unmodified, snapshot-derived epoch-1450 NES to the first slot
+of epoch 1451 (125,366,400). It runs the actual `Hfc.tick`/TICK/NEWEPOCH/EPOCH rules, including
+pending reward completion as required by that state. It is a **snapshot-derived boundary workload**,
+not the state immediately before the historical epoch-1451 block: intervening blocks are not replayed
+for this tick. No broader Haskell equivalence is inferred from the benchmark.
+
+### Protocol and results
+
+Linux x86-64, Euler WSL2 shared host, Docker image
+`sha256:c90140def52d2711644c85a81c9bf218ffbe5dc81003bfb866154c2da832af38`
+(`scarab-jdk:local`, Eclipse Temurin 21.0.11), Scala/compiler 3.3.8; network disabled,
+`--cpuset-cpus 8-11 --memory 12g --user 1000:1000`, no CFS quota;
+`-Xms3g -Xmx9g -XX:ActiveProcessorCount=4 -XX:+UseG1GC`, `MALLOC_ARENA_MAX=2` from the image.
+An e2e scenario and the initial full check overlapped part of the measurements; results describe
+this shared host, with interleaved order old/typed/typed/old/old/typed, one benchmark JVM at a time.
+
+Each block/refusal case warms 256 calls then measures 31 batches of eight calls; each epoch case
+warms 64 calls then measures 31 single calls. Timings and current-thread allocations use
+`System.nanoTime` and `com.sun.management.ThreadMXBean.getCurrentThreadAllocatedBytes`, divided
+by batch size. The pure call runs synchronously in one IO thunk; no allocation on other threads
+is attributed to it. The timed sink keeps the typed result; equality checks, rendering, SHA-256,
+printing, block/transaction decoding, snapshot loading and checkpoint reads are all outside timing.
+Each historical block's input is prepared sequentially once, then reused immutably for all repetitions.
+This measures ledger Tick+BBODY, not network, header crypto, RocksDB, decoding or complete-node time.
+Local mutation is confined to the timing loop so the measurement avoids collection-building cost.
+
+| JVM condition | sum of 16 block medians (ms) | sum of block median allocations (B) | epoch median / min–max (ms) | epoch median allocation (B) |
+|---|---:|---:|---:|---:|
+| 1: old | 10.616 | 5,582,643 | 128.933 / 119.868–146.499 | 189,684,048 |
+| 2: typed | 10.201 | 5,584,775 | 136.438 / 126.009–181.238 | 194,147,472 |
+| 3: typed | 10.532 | 5,584,387 | 124.670 / 116.000–138.672 | 194,147,472 |
+| 4: old | 10.313 | 5,584,826 | 119.171 / 113.045–132.078 | 189,672,464 |
+| 5: old | 10.369 | 5,595,939 | 136.279 / 119.611–171.220 | 186,629,096 |
+| 6: typed | 10.494 | 5,582,846 | 141.159 / 130.718–161.803 | 191,121,528 |
+
+The block column sums separate workload medians; it is not a timer around a whole replay.
+Block allocations differ by less than 0.04% at the median of runs. Epoch median allocation
+increases from 189,672,464 to 194,147,472 B (+2.36%). The full per-case latency summary follows;
+old/typed values are medians across the three JVM medians, with the span of those JVM medians.
+Raw per-sample ranges and allocations for every case remain in the bound summary.
+
+| Case | old median [run-median span], ms | typed median [run-median span], ms | change |
+|---|---:|---:|---:|
+| block-0 | 0.05223 [0.04865–0.05484] | 0.04808 [0.04757–0.04863] | -7.95% |
+| block-1 | 0.03765 [0.03707–0.04187] | 0.03734 [0.03682–0.03797] | -0.83% |
+| block-2 | 4.82267 [4.79552–5.12170] | 4.88202 [4.63565–4.96951] | +1.23% |
+| missing-input-2 | 0.04691 [0.04584–0.04766] | 0.04831 [0.04729–0.05566] | +2.98% |
+| block-3 | 0.00511 [0.00507–0.00535] | 0.00497 [0.00495–0.00566] | -2.82% |
+| block-4 | 0.00509 [0.00483–0.00554] | 0.00507 [0.00498–0.00525] | -0.51% |
+| block-5 | 0.00488 [0.00481–0.00507] | 0.00488 [0.00481–0.00511] | +0.04% |
+| block-6 | 4.45610 [4.44501–4.49057] | 4.48092 [4.42190–4.52714] | +0.56% |
+| missing-input-6 | 0.02179 [0.02036–0.02429] | 0.02321 [0.02204–0.02384] | +6.50% |
+| block-7 | 0.00442 [0.00439–0.00448] | 0.00453 [0.00442–0.00587] | +2.42% |
+| block-8 | 0.00446 [0.00445–0.00446] | 0.00453 [0.00453–0.00489] | +1.57% |
+| block-9 | 0.00445 [0.00440–0.00473] | 0.00443 [0.00442–0.00447] | -0.54% |
+| block-10 | 0.22797 [0.22707–0.24667] | 0.22937 [0.22210–0.24541] | +0.62% |
+| missing-input-10 | 0.01227 [0.01187–0.01409] | 0.01173 [0.01146–0.01600] | -4.37% |
+| block-11 | 0.00433 [0.00365–0.00466] | 0.00415 [0.00390–0.00435] | -3.98% |
+| block-12 | 0.67015 [0.66346–0.72955] | 0.72533 [0.70662–0.79379] | +8.23% |
+| missing-input-12 | 0.01534 [0.01487–0.01949] | 0.01529 [0.01503–0.01549] | -0.37% |
+| block-13 | 0.00365 [0.00355–0.00366] | 0.00328 [0.00323–0.00344] | -10.29% |
+| block-14 | 0.00333 [0.00321–0.00342] | 0.00337 [0.00329–0.00337] | +1.17% |
+| block-15 | 0.00329 [0.00319–0.00332] | 0.00332 [0.00316–0.00344] | +0.85% |
+| epoch-boundary | 128.93288 [119.17081–136.27919] | 136.43762 [124.67009–141.15866] | +5.82% |
+
+**Semantic evidence.** All 21 complete-result SHA-256 values agree in all six JVM runs:
+sixteen `EraBlock.Outcome` results (entire NES and Plutus counters), four actual typed
+missing-input refusals, and the complete `Either[TickFailure, EraNes]` epoch result. No count-only
+fingerprint or field mask is used. Every warmup and measured batch's final result also equals
+its untimed expected result structurally. This establishes parity on these inputs; the laws,
+rollback/scoped-Globals tests, small-stack suites and reference-stack Tick/BBODY comparisons
+(including failure paths) are separate evidence. The epoch digest is
+`0b4fe05629565985bd4769d88143376fcca01c7b81b2faa3ce892d092d0b71fd`.
+
+**Warmup investigation.** The retained first protocol (7 warmup, 21 single-call samples) gave
+one block a +13.6% three-JVM median difference and one paired epoch run +14.9%. It was not
+accepted as a passing result. Empty-block medians of roughly 40–120 microseconds became roughly
+3–55 microseconds with the longer fixed warmup above; the two large transaction-bearing blocks
+fell from roughly 7–8 ms to roughly 4–5 ms. That sensitivity establishes that the earlier protocol
+was measuring a different warmup state. The longer, declared protocol was applied symmetrically
+and all six runs retained, including slow samples. It brings the earlier problematic block to
++0.56%, with all block and epoch workloads below +10%; this is a steady-state verdict, not a
+claim that startup latency is equal. No production optimization was made to obtain the result.
+A separate attempted launch failed before measurement because the standalone assertion classpath
+omitted JUnit; adding its pinned runtime dependency resolved that harness error.
+
+**Reproduction and binding.** Artifacts live outside Git in `/tmp/scarab-248-bench`: immutable
+runtime class inventories, old-only overlay, compiler classpath, standalone sources, exact Docker
+argument vectors (`r0-old.json` through `r5-typed.json`), raw samples, all result digests,
+`analyze.py`, `summary.json`, and the earlier protocol in `diagnostic/`.
+Final binding SHA-256: `7b85100a0b759c12d5b0eb2e2b94c2781a64f9246374274bf1bedc519a1d7445`;
+summary SHA-256: `af97400f710474aa9a040c53dda99e8c09769905aab14717b45d602d5ef1b854`.
+The binding includes each input/config hash, each frozen runtime/overlay class hash, source
+identities, and every command/log hash. Original private archives and run data are not committed.
+
+Generate `node/runtimeClasspathFile` and `node/Test/compile` from the correct checkout mounted
+at `/work`, with the shared cache mounted at `/work/.cache`. Freeze the runtime directories;
+compile only the old `RuleT.scala` with the pinned Scala 3.3.8 `dotty.tools.dotc.Main` against
+that runtime into a separate directory. Compile/run `xyz.kd5ujc.scarab.node.PreviewRuleBench`
+against the frozen runtime and test dependencies, prepending that old directory only for the old
+condition. The recorded driver is `python3 /tmp/scarab-248-bench/run.py` (SHA-256
+`b298c833ba8f6471085582781761fdb4c53a1e13d890691628ea615a1bd691a4`). Mount the K1 database
+read-only at `/input`, the converted native snapshot directory read-only at `/native`, the pinned
+Preview genesis directory read-only at `/configs`, the record manifest at `/bench/records.json`,
+and a fresh output directory at `/scratch`; all exact host/container paths are in the command JSON.
+
+### Supplementary synthetic result and #250 reconciliation
+
+The existing `CastErasureBench.scala` remains byte-identical to #250 at `7037eac6`:
+SHA-256 `d2409a39398b575e4027a71750f8c30e8f436153c6ff45e86cf53406389686dd`.
+The reported rutherford measurement (2026-10-19/20, Docker JDK 21.0.12.1, CPUs 0–7, `-Xmx5g`,
+three warmups/five samples, old/new/old/new) compared `57608c6e` with measured code `9d2fa735`:
+old 3,159.9/3,175.7 ms, typed 3,073.9/3,256.9 ms; allocation 5.224–5.230 GB versus
+5.217–5.227 GB. The paired changes are **−2.7% and +2.6%**, correcting the prior +1.5% wording.
+Those are reported historical medians, not fresh Euler measurements or a confidence interval.
+The fixed-key synthetic workload hashes the complete rendered ledger state outside timing;
+`159017f549d74b4d4cb6a520` matches all four reported runs. It remains supplementary and does not
+replace the Preview result above. No unrelated codec implementation or unmeasured batch-wide
+performance claim is incorporated into #248. #205/#204 retain their own representative snapshot
+and restart requirements; their results cannot be inferred from this interpreter comparison.
+
+
+**Integration after #260 (2026-10-20).** Rebased onto dev
+`6988858f937a42eb34762cb5a61d3c622c49b124`. RuleT production and the shared class-freeze driver are byte-identical to the measured/reviewed candidate; the driver patch is now upstream through #260. The new Diff diagnostics do not execute in the timed BBODY/Tick comparison.
+The original benchmark/gate source identities above remain historical evidence. Refreshed
+checks on the rebased head are recorded in the [PR #248 checklist](https://github.com/KD5UJC-XYZ/scarab/pull/248);
+pre-rebase gates are not relabelled as gates of the integrated head. Main and dev still diverge;
+this prepares the dev target and does not claim completion after main landing.
+
+## 35. Typed snapshot codec derivation (#205)
+
+**2026-10-20, level 3.** The replacement uses generated, compiler-checked field accessors,
+typed result tuples and root-relative sum-case evidence. It preserves the measured bytes,
+fingerprints, case order and error paths. The two representative snapshot workloads meet the
+issue's +10% primary-workload limit without an exception. This does not assert zero cost for
+every record shape: the tiny encode control below retains a cost tracked by
+[#257](https://github.com/KD5UJC-XYZ/scarab/issues/257).
+
+### Sources, inputs and scope
+
+Old source is `dev` `2ef358366f3a50397645851f7db81b6a91c5c779`. Candidate implementation is
+`4196bebb`, benchmark entry points and the measurement seam are `ab85c6a7`; `679ea7f8`
+strengthens test probes only. All other production Scala sources are held constant. Both
+conditions apply the **same visibility-only change** to `SnapshotV5.encoded`, so the benchmark
+calls the actual pure encoder on its current thread, without a disk write or an effect-thread
+allocation-counter mismatch. No encoding implementation change is hidden in this seam.
+
+The maintained helpers are `node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotCodecBench.scala`
+and `storage/src/test/scala/xyz/kd5ujc/scarab/storage/BenchCodecMain.scala`. The latter now actually
+uses cheap primitive sinks: byte length, decoded `Row.i`, and decoded `FutureGenDeleg.slot` bits.
+Its former decode sinks called `hashCode`, as review found. Earlier reports saying those hashes
+had been removed were incorrect. Output SHA-256 and structural comparisons are outside timing.
+
+| Input | Provenance and SHA-256 | Bytes |
+|---|---|---:|
+| current Preview V5 | #27's authenticated bootstrap/replay, endpoint slot125669042/block4769869; `snapshot-00000000000125669042-4769869.bin`, `bbdc6fd7434564e0a289af5b596401d713dca75b26e70172b16803683e7be512` | 51,199,374 |
+| legacy-derived preprod V5 | `snapshot-00000000000136444301-5297790.bin`, `b77a119082acbda5d6c2fb43131b5cad856056790b13a0164a02f48299a2ebcf`; authenticated conversion of the archived V4 input `0b7c061b8e47560c665d3d22c7898ca53884c361002c2975bd5d925a433f94a8`, source51,584,590 B | 51,777,723 |
+
+The first input is retained under `/tmp/scarab/mithril27/download-bootstrap/snapshots`; its
+chain/projection provenance is section27. The second is the maintained `preprod-v4` corpus
+under `.workspace/data/2026-10-18-snapshot-v5-corpus`, not a newly rewritten original. Its bridge
+source is `648aed117f826d06117f616b5c0a3716a50485a7`, conversion manifest SHA-256
+`d81e326f85eb47d7a92d041a3309007599bcdaa8e70de0eaf4b38bb293ce0168`; the record pins slot,
+block/hash,4,522,393-output handle/count, original/target hashes and successful verification.
+Original private archives remain unchanged. The current repository requires maintained native
+fixtures to use V5; no retired V4 reader is resurrected and no raw-V4 throughput is claimed.
+Existing retired-version admission and independent toy-format migration tests remain in place.
+
+These are complete **snapshot payload** operations, including the ledger state and UTxO handle,
+statistics and pending changes. RocksDB entries/checkpoints, filesystem I/O and the file checksum
+are not timed. Decode includes its ordinary structural checks; encode includes its normal codec
+constraints. This is not a database restore or full-node throughput measurement.
+
+### Protocol and full-snapshot results
+
+Euler Linux x86-64/WSL2, Docker JDK21.0.11/Scala3.3.8; image
+`sha256:c90140def52d2711644c85a81c9bf218ffbe5dc81003bfb866154c2da832af38`, network disabled,
+`--cpuset-cpus 8-11 --memory 12g --user 1000:1000`, no CFS quota,
+`-Xms3g -Xmx9g -XX:ActiveProcessorCount=4 -XX:+UseG1GC`, image `MALLOC_ARENA_MAX=2`.
+One benchmark JVM at a time; old/typed/typed/old, a fresh JVM per input. Every case warms10 calls
+then measures9 calls. `System.nanoTime` and current-thread `ThreadMXBean` allocation counters
+surround only the pure codec call. Loading, checksum verification, full equality assertions,
+rendering, SHA-256 and printing stay outside timing. Other independent sessions existed on the
+shared host; the full ranges and both old runs are retained rather than treated as confidence bounds.
+
+| Condition / input | Encode median [min–max], ms | Encode median allocation, B | Decode median [min–max], ms | Decode median allocation, B |
+|---|---:|---:|---:|---:|
+| 1: old, current | 176.225 [173.977–187.672] | 540,268,552 | 486.551 [463.377–630.440] | 1,242,286,792 |
+| 1: old, legacy-derived | 131.287 [126.253–134.316] | 472,993,928 | 708.148 [559.052–907.384] | 1,617,251,344 |
+| 2: typed, current | 129.776 [121.284–135.305] | 530,819,216 | 396.443 [388.347–529.078] | 1,125,802,416 |
+| 2: typed, legacy-derived | 119.197 [112.789–137.980] | 451,846,448 | 589.722 [454.986–874.278] | 1,406,177,480 |
+| 3: typed, current | 120.832 [117.066–126.050] | 530,819,216 | 402.118 [386.805–619.731] | 1,138,844,728 |
+| 3: typed, legacy-derived | 109.831 [108.365–114.138] | 437,972,760 | 587.505 [447.893–726.938] | 1,406,102,872 |
+| 4: old, current | 126.656 [124.361–133.406] | 525,166,496 | 466.313 [421.601–553.587] | 1,244,816,824 |
+| 4: old, legacy-derived | 116.140 [113.236–160.153] | 472,993,928 | 621.214 [516.662–821.163] | 1,617,213,912 |
+
+Median-of-JVM-medians changes: current encode **−17.26%**, decode **−16.19%**;
+legacy-derived encode **−7.44%**, decode **−11.44%**. Even comparing the slowest candidate run
+median with the fastest old run median gives at most **+2.63%** on any primary operation.
+Allocation medians change by −0.36%/−8.94% (current encode/decode) and −5.94%/−13.05%
+(legacy-derived). Old encode samples show substantial allocation/JIT variation; no single
+ClassTag/tuple/GC explanation is inferred from these combined changes.
+
+Complete encoded bytes, complete typed decoded-state fingerprints, and the typed refusal of a
+one-byte-truncated payload match in all four conditions for both inputs. Encoded SHA-256 values:
+current `44c8e379fa15fbce0a17944bf2233c77fed551e8295aff4f5bf8f5a27b1258cf` (51,199,342 B),
+legacy-derived `6a2a6081c1f6898b00e846d9afca551d4282699a9b5eff34933950d742d1b0e7`
+(51,777,689 B). Full decoded-state SHA-256 values are respectively
+`a3fd6ef08420f9aa5e5e658cd0ab20e9699ef6dc93eb0afb3795d622768657b7` and
+`4caa61c9366251e1da56fbcde62e467887ac8f4824c812438b01c53ab11597fc`.
+The complete failure digest is `8b8d7c5df5b02e8f1b3d313a192316ef8a61781b4732f14e9633769a5fe42987`.
+Each timed result also passes an untimed byte/structural comparison with its expected result.
+
+**Legacy rewrite detail.** The rewritten legacy-derived payload is two bytes shorter than its
+input payload. Inspection with the unchanged old codec proves that both writers already remove
+the obsolete `RewardAttribution`/`NumDelegatorsLowerBound` gap markers. The original and rewritten
+Haskell sections are byte-identical, and sidecars are equal after only that existing gap metadata
+normalization. This is an existing writer policy, not a codec-format change or a comparison mask.
+The current Preview payload rewrites byte for byte. The benchmark compares complete old/candidate
+outputs; it does not silently assert that every archival input rewrites unchanged.
+
+### Small controls and investigation
+
+Same pinned runtime,20,000 operations per sample,20 warmups/nine samples, same interleaved order.
+These are supplementary controls, not substitutes for full snapshots.
+
+| Case | old JVM medians, ms | typed JVM medians, ms | old → typed allocation per20k operations |
+|---|---:|---:|---:|
+| codec.encode | 95.979 / 97.291 | 95.813 / 96.704 | 1,338,080,000 / 1,337,120,000 → 1,337,120,000 / 1,337,120,000 B |
+| codec.decode | 139.994 / 141.267 | 120.252 / 120.547 | 1,673,280,000 / 1,673,280,000 → 1,493,760,000 / 1,493,760,000 B |
+| codec.record.encode | 0.684 / 0.687 | 0.820 / 0.794 | 9,120,000 / 9,120,000 → 8,640,000 / 8,640,000 B |
+| codec.record.decode | 9.421 / 9.491 | 8.120 / 8.134 | 113,280,000 / 113,280,000 → 112,960,000 / 112,960,000 B |
+
+The 333-byte general codec encode control is −0.39%, decode −14.39%. For the real34-byte
+`FutureGenDeleg` record, encode is **+17.72%**, about6.1 ns/call (34.3→40.4 ns), with5.26%
+less allocation; decode is **−14.05%**. Byte/value fingerprints remain
+`c19600a83b7ba784`/`62f843ecd191e6fe` and `9b5615ce2d835aac`/`e21908e63078f3cb`.
+The remaining tiny encode cost is tracked by #257; the passing snapshot result does not erase it.
+
+An earlier accessor prototype already passed full-snapshot parity but retained a slower tiny
+record decode. It remains under `diagnostic-accessors/`. A typed final-two-fields decoder now
+builds the pair directly, preserving error paths and avoiding that walk's intermediate one-element
+tuple. The final protocol also increases warmup symmetrically; these measurements establish the
+combined final implementation, not isolated causal percentages for either change. Compiler and
+formatter failures during the prototype were fixed before measurement. A positive compile probe
+caught that the first phantom-role negative probe omitted its `KeyRole` bound; both valid and invalid
+snippets had failed for that reason. The corrected probe now has passing positive controls and
+rejects only the mismatched generic/role projection. That test repair changes no timed code.
+
+Historical rutherford figures in #250 used different source/harness/runtime conditions and are
+superseded for #205 acceptance. In particular, the old explanation that hashing was removed from
+decode timing was false for the then-pinned source; reported spikes do not identify their cause.
+Record encode allocation10.24→10.88 MB was +6.25%, and decode17.905→22.366/20.439→32.222 ms was
++25…+58% on those paired medians, not “neutral”. Those historical figures are not mixed with
+this corrected Euler comparison or attributed to one implementation mechanism.
+
+### Gates and reproduction
+
+At `ab85c6a7`, `python3 scripts/devnet.py --name scarab-247-root-restart restart` passes:
+0.6/0.6 s graceful stops, two V5 shutdown snapshots, one successful restoration, zero errors.
+JDK image above; reference image
+`74e849e1b68e2cf8ba3cdfe3fcda67114f22d9bebc6a34372657cd179e704c4b`, node11.1.3/CLI11.2.3.0.
+Restart manifest SHA-256 `b63d8b3d93276c5ab491c9bd98222fa56af97b05ec7c8367994923af493a52e3`;
+artifacts outside Git in `/tmp/scarab-247-evidence`; own containers removed. Focused format,
+migration, Haskell-format, snapshot and generic/phantom tests pass46/46. The corrected compile
+controls/nested paths pass4/4. Extended `fuzz 100000 1 4` passes77 targets ×400,000 cases
+(30.8 million). Final-head full check/CI is reported on PR #247.
+
+The complete reproduction package is `/tmp/scarab-247-bench`: sources, exact per-run Docker
+argument vectors, classpaths, both frozen runtime inventories, raw samples and full summaries.
+`python3 /tmp/scarab-247-bench/run.py` compiles the same standalone helpers against both runtimes
+and runs the fixed sequence. It mounts the input/config/cache read-only, calls
+`xyz.kd5ujc.scarab.storage.SnapshotCodecBench <label> /input.bin /configs`, then runs the corrected
+`BenchCodecMain 20000` control. Source/input/config/class identities are pinned in the binding.
+Binding SHA-256 `28d04bcc9b0e36de744cc38a8e8d159a1d78cd060b81ca2b13374db03b9b63bc`;
+summary SHA-256 `75a705cd2dafab49ab5a8c6bdd9a0a75db6292464b79b10fe313424b468bfdfe`.
+No raw snapshot, key, run log or private archive is committed. The original V4 format remains
+retired; format bytes/fingerprints/version5 and its existing admission/migration policy are unchanged.
+
+
+**Integration after #260 (2026-10-20).** Rebased onto dev
+`6988858f937a42eb34762cb5a61d3c622c49b124`. The codec/accessor/Record production sources and measurement helper are unchanged; the newly merged Diff diagnostics are outside the timed snapshot encode/decode operations.
+The original benchmark/gate source identities above remain historical evidence. Refreshed
+checks on the rebased head are recorded in the [PR #247 checklist](https://github.com/KD5UJC-XYZ/scarab/pull/247);
+pre-rebase gates are not relabelled as gates of the integrated head. Main and dev still diverge;
+this prepares the dev target and does not claim completion after main landing.
+
+## The cast-erasure batch (#202–#207): the old code against the new, on one harness
+
+The batch's claim is that removing the erased value channels changed no verdict and no byte, and
+that the typed implementations stay inside the cost bar the tickets set (10% on a primary
+workload). One harness — `ledger/src/test/scala/xyz/kd5ujc/scarab/bench/CastErasureBench.scala`
+(`ledger/Test/runMain xyz.kd5ujc.scarab.bench.CastErasureBench <workload|all> [n]`) — runs each
+ticket's workload against both builds. The same file is added by #248 for #202 and by this chapter;
+the two copies are identical, so the repository has one authoritative harness. The codec workload
+is `storage/src/test/scala/xyz/kd5ujc/scarab/storage/BenchCodecMain.scala`
+(`storage/Test/runMain xyz.kd5ujc.scarab.storage.BenchCodecMain [iterations]`).
+
+**Inputs are deterministic and asserted so outside the timed region.** The credential workload
+builds 100,000 credentials whose 28 bytes carry the index in the last four bytes, asserts
+`distinct.size == n` before timing anything, and shuffles with `Random(42)`; the block workload
+signs with one fixed Ed25519 key generated from a fixed `SHA1PRNG` seed. Two builds therefore
+receive identical inputs, and the comparison measures the implementation, not the inputs.
+
+**Every digest covers the complete output, computed outside the timed region.** Each workload
+renders its whole answer canonically and prints its SHA-256: the sorted credentials, the map
+entries with their values, both decoded trees (nested and wide), and the full applied ledger state.
+Equal digests between the old and the new build mean equal outputs on the measured workload. They
+do not establish chain-level state parity — that is the ledger area scenario's question.
+
+**Protocol.** rutherford (12-core WSL2/Docker Desktop host, shared with the mainnet follower),
+image `scarab-jdk-check:local` built from `docker/jdk.Dockerfile`, `--cpuset-cpus 0-7` and no CFS
+quota, one JVM at a time; 3 warm-up runs and 5 measured runs per case; `System.nanoTime` per run,
+`ThreadMXBean.getCurrentThreadAllocatedBytes` per thread; each run records median/min/max. The
+historical table below displays the two run medians (or their span), not the per-run extrema. These
+are retained author-reported measurements, not timings rerun by the takeover session. The
+sequence is interleaved — dev, branch, dev, branch — so drift over the session cannot be mistaken
+for a difference between builds. Measured 2026-10-19/20 (CDT), OpenJDK 21.0.12.1, `-Xmx5g`.
+
+**Sources and harness identities.** Each row compares two exact commits; the harness that produced
+it is pinned by hash.
+
+| workload | old source | new source |
+|---|---|---|
+| rules.bbody (#202) | `dev` `57608c6e` | `9d2fa735` (the measured code; `f6d72013` adds only the harness) |
+| credentials (#207) | `dev` `57608c6e` | `b16b487f` |
+| decode (#203) | `dev` `57608c6e` | `4e515d49` |
+| diff (#206) | `dev` `57608c6e` | `a4d198d5` (the same source as `30af639a`; only tests were added after) |
+| codec (#205) | `dev` `57608c6e` | `9a158532` (the measured code; `d4f5d5b9` formats the bench only) |
+
+Harness identities: `CastErasureBench.scala` SHA-256 `d2409a39398b575e…`, `BenchCodecMain.scala` SHA-256
+`1590e05ee16a8289…` for the historical storage measurements. The current ledger harness remains byte-identical in #248/#250. The current storage harness matches #247 at `ab85c6a7` (SHA-256
+`9c33c50cb7e023e1a5e39500fee698cf109fe4018c793f39215228d6a11cd302`, primitive sinks,
+20 warmups/9 samples); it differs from the historical measured file and does not retroactively change those measurements.
+
+**The host drifts, and the drift is the honest error bar.** Two runs of the *same* old build in one
+session span 129.1–161.8 ms on `credentials.mapUpdate`, 119.1–140.0 ms on `mapBuild`, 3.16–3.18 s
+on the 10,000-transaction block; `diff.map.late` is 7.143–8.670 ms on old and 5.447 ms on new. These sparse shared-host observations do not establish an error distribution or a general 10% bound. Overlapping ranges are inconclusive, rather than proof of neutrality.
+
+**An earlier revision of this table was wrong, and this one replaces it.** The first harness
+generated credentials that repeated every 256 inputs, so the map workloads held 256 keys, and its
+digests covered counts rather than outputs. The review of #250 caught both. The numbers below are
+from the corrected harness: 100,000 distinct credentials, real map copies and updates, complete
+output digests.
+
+| Workload (#, what it drives) | old (dev, span of 2 runs) | new (branch, span of 2 runs) | allocation old → new | reading |
+|---|---|---|---|---|
+| rules.bbody — 10,000 transactions through `Sts(Bbody)` (#202) | 3159.9 / 3175.7 ms | 3073.9 / 3256.9 ms | 5.224–5.230 GB → 5.217–5.227 GB | within drift; digest `159017f5…` identical on all four runs |
+| credentials.sort — 100,000 distinct credentials (#207) | 16.647 / 15.939 ms | 12.961 / 15.687 ms | 1.327 MB → 1.327 MB | within drift; digest `2e82ce87…` identical |
+| credentials.mapBuild (#207) | 139.952 / 119.059 ms | 128.674 / 114.461 ms | 60.912 MB → 60.912 MB | within drift; digest `0452736d…` identical |
+| credentials.mapCopy — 100,000 entries (#207) | 64.367 / 60.248 ms | 87.578 / 65.396 ms | 82.352 MB → 82.352 MB | inconclusive; paired +36.1% / +8.5%, no established 10% bound |
+| credentials.mapUpdate — 100,000 updates (#207) | 129.080 / 161.836 ms | 136.701 / 138.009 ms | 54.592 MB → 54.592 MB | within drift (the old build alone spans 129–162); digest `237a18d9…` identical |
+| credentials.iterate (#207) | 1.215 / 1.302 ms | 2.121 / 1.354 ms | 2.422 MB → 2.422 MB | within drift |
+| decode.nested plus full-result hash — 2,000-deep array (#203) | 3.395 / 2.977 ms | 5.187 / 2.758 ms | 435,504 B → 435,504 B | within drift |
+| decode.wide plus full-result hash — 50,000-entry map (#203) | 21.874 / 15.752 ms | 15.911 / 16.263 ms | 10.697 MB → 10.697 MB | within drift; both digests identical |
+| diff.row.equal / early / late (#206, **product** path) | 0.001 / 0.027–0.050 / 0.030–0.071 ms | 0.001 / 0.037 / 0.048 ms | 0/1832/1904 B → 24/1928/2328 B | equal allocates 24 B; early/late micro-costs remain unresolved; **not** addressed by #249; no isolated ClassTag cost attribution |
+| diff.sum.sameCase / otherCase (#206, **sum** path) | 0.030–0.055 / 0.030–0.039 ms | 0.047 / 0.030 ms | 1760/2184 B → 1952/2184 B | inside the microsecond noise; #249's historical sum-only claim is structural; see the later #260 comparison below |
+| diff.map.equal / early / late — 20,000 entries (#206) | 11.471–12.215 / 0.044–0.072 / 7.143–8.670 ms | 10.034 / 0.072 / 5.447 ms | 1.005–1.229 MB → 1.005 MB; 1.763 MB → 1.763 MB | within drift; digest `d582731d…` identical |
+| codec.encode / decode — 20,000 iterations, nested synthetic record (#205) | 188.6 / 194.7 ms encode; 273.3 / 284.2 ms decode | 220.5 / 321.9 ms encode; 250.4 / 263.6 ms decode | 1.337 GB → 1.348 GB encode; 1.668–1.684 GB → 1.494–1.509 GB decode | encode **over the bar** (+13…+71%); decode 7% faster; bytes identical (`c19600a83b7ba784`, 333 B) |
+| codec.record.encode / decode — `FutureGenDeleg` through `Record.auto` (#205) | 4.058 / 4.783 ms encode; 17.905 / 20.439 ms decode | 5.546 / 6.383 ms encode; 22.366 / 32.222 ms decode | 10.24 MB → 10.88 MB encode; 113.8 MB → 116.1 MB decode | encode over the bar; paired decode medians +24.9% / +57.7%, not neutral; bytes identical (`9b5615ce2d835aac`, 34 B) |
+
+**Historical interpretation.** The synthetic BBODY pairs move −2.7% and +2.6%, with complete result parity. The decoder rows measure decode **plus `value.hashCode` inside timing**; their separate output fingerprints outside timing do not remove that work. Historical `BenchCodecMain` likewise hashes decoded Row/FutureGenDeleg inside timing. The earlier pathological spike is superseded as a measurement, without an established GC cause or demonstrated sink-based explanation. #247 now uses primitive sinks, with new source identities and new measurements below.
+
+The two credential map-copy pairs move +36.1% and +8.5%. Identical allocation and noisy run ranges do not establish the 10% criterion. The sort/map/decoder/diff timing comparisons remain descriptive and inconclusive where drift prevents attribution; no additional acceptance verdict is inferred from two ranges. The historical #206 product path's additional allocation and timing are not resolved by the original sum-only #249 patch. The later #260 candidate also retains field instances; that change has its own nested-model comparison, rather than a rerun of this historical Row table. A runtime `ClassTag` extraction also does not prove generic or phantom-role relationships; #206 retains that compiler-proof obligation.
+
+The original #205 record decode medians regress approximately 25% and 58%, and encode allocation 10.24→10.88 MB is **+6.25%**. They were not neutral or within 2%. Those historical encode/decode results justified holding the old candidate. The optimized candidate has since been measured independently below; historical numbers have not been relabelled as its results.
+
+**Updated implementation evidence, 2026-10-20.** This table links each result to the implementation PR's pinned source/input/runtime protocol. It does not combine different workloads or hosts into one percentage.
+
+| Work | Final evidence | Verdict and limits |
+|---|---|---|
+| #202 / PR #248, head `0798b5d5` | [Representative Preview block/epoch results](https://github.com/KD5UJC-XYZ/scarab/blob/0798b5d5c423cf4c6b657f514736e6160cca457e/docs/performance.md#typed-rule-interpreter-202); isolated old RuleT overlay, identical surrounding classes; 21 full success/refusal digests match | Block median-sum +1.21%, epoch +5.82%, worst individual block +8.23%; passes 10%. Snapshot-derived epoch input is explicitly not a captured immediate pre-boundary state. Synthetic BBODY remains supplementary. |
+| #205 / PR #247, head `bacac534` | [Current and legacy-derived maintained V5 snapshot results](https://github.com/KD5UJC-XYZ/scarab/blob/bacac5342d5d09d37e2a949e9f23a2312cce560a/docs/performance.md#32-typed-snapshot-codec-derivation-205); identical complete bytes/typed state/truncation refusals | Encode/decode improve 7.44–17.26%; worst candidate JVM median against fastest baseline ≤+2.63%. Primary limit passes. Tiny two-field encode +17.72%, about 6.1 ns/call, tracked in #257; no universal speed-up claim. |
+| #206 / merged PR #260 (supersedes #249) | Conditional-given regressions fail against the old dispatcher (100 constructions instead of 1) and enum-only retention (201 instead of 2); mixed singleton/data enum selection is corrected. Six old/typed/candidate model runs have identical full fingerprints; largest primary time median increase against original is 6.8%. | [Fresh dev-based evidence at `ca22fad2`](https://github.com/KD5UJC-XYZ/scarab/blob/ca22fad29b8b41f7d47a94b3968a060f1b0a13e5/docs/compatibility.md#evidence-log): check passes 5,146 tests; 1,699 applications and 64/64 ledger comparisons match, with 38 rollbacks/7 reconnects retained. Equal-state allocation remains 3.3–17.6% above original. Generic/phantom proof through `productElement`/`ClassTag` remains a bounded obligation in #206; no claim that runtime checks establish it. |
+| #204 / PR #263, head `2f7983d7` | [Typed interning source and independent representative decode/heap comparison](https://github.com/KD5UJC-XYZ/scarab/blob/2f7983d716919001f67a3ff0061998311200eaa2/docs/performance.md#33-typed-per-kind-decode-interning-204); complete state/refusal fingerprints and retained object counts match. | Current/legacy-derived decode aggregates −7.11%/+2.92%, adverse cross-JVM median comparisons +2.70%/+8.54%; allocation +0.03%/+0.31%; retained heap at most +0.32%. Both primary inputs pass 10%; snapshot restart and full check pass. Extended-fuzz/exact-head receipts are on #263. |
+
+PR #248's ledger scenario now passes 66 comparisons through Conway with zero errors; exact-head Docker check and GitHub CI pass. PR #247's snapshot restart and extended decoder fuzz pass, and its exact-head Docker check/GitHub CI pass. Source/input/image hashes, commands, failure semantics, sampling settings and qualifications are in those pinned reports and their compatibility evidence. Both PRs are ready for **dev**; neither has landed on main, so their acceptance issues remain open. The historical batch measurements alone do not establish current live-sync throughput, full-node memory, or correctness beyond the tested inputs.
+
+**Remaining erasure inventory.** A source sweep of production Scala on the #248 candidate
+`0caad5c8`, checked against each follow-up's actual source, distinguishes compiler proofs from
+runtime checks. Test-only casts and ordinary `equals(Any)` are outside the runtime recovery
+inventory; an `Any` spelling alone is not evidence of a lost relationship.
+
+| Channel | Invariant and disposition |
+|---|---|
+| `storage.Codec` (five casts), Haskell `Record` (four casts) | Each declared field/variant must use its own codec in original order. #247 replaces these with typed derivation and generated accessors; its bytes, errors and migrations are measured/tested. Cast-free source alone would not establish this. |
+| `Interns` (two casts) | A kind and decode must select only `Table[A]`, with first-instance identity and bounded lifetime. #204 is the typed implementation/measurement track; values cannot be recovered through an erased registry. |
+| `Diff` product/sum extraction | `productElement` returns erased values; `ClassTag` does not validate generic arguments or phantom roles. #260 repairs retention and enum selection, while #206 retains the bounded obligation to generate typed accessors/variant operations and add positive/negative generic-role probes. No `Diff[Any]` source is necessary for this gap to exist. |
+| `Sorted.orderingOf`, `SortOrder[K @unchecked]` | Cached comparator must belong to exactly `K`, preserving comparator identity and linear sorted-map copying. #255 tracks a typed recovery design; moving the check or replacing it with a runtime key class test is insufficient. |
+| `SyntaxSummary` diagnostic `Any` work list and `productIterator` | Bounded rendering only: 64 nodes/512 characters, complete typed error payload retained, no generic value returned to a typed operation. #261 bounds a typed AST diagnostic walker; no observed ledger/model defect is claimed. |
+| Covariant `UtxoEnv[Any]` | The certified parameter is neither recovered nor consumed on the UTXOS path; this is safe widening, with no corresponding erased-value retrieval operation to repair. |
+
+The RuleT frame family preserves the relationships of pending values and continuations at the
+compiler boundary. This inventory makes no blanket claim that the entire batch or repository now
+has that property. The open obligations remain attached to their issues after the narrower PRs
+land; readiness for dev does not close them or imply completion on main.
+
+
+**Integration after #260 (2026-10-20).** Rebased onto dev
+`6988858f937a42eb34762cb5a61d3c622c49b124`. Both shared benchmark files retain their measured/maintained hashes. Historical measurements remain bound to their actual source revisions; merging the new Diff update does not relabel them as new experiments.
+The original benchmark/gate source identities above remain historical evidence. Refreshed
+checks on the rebased head are recorded in the [PR #250 checklist](https://github.com/KD5UJC-XYZ/scarab/pull/250);
+pre-rebase gates are not relabelled as gates of the integrated head. Main and dev still diverge;
+this prepares the dev target and does not claim completion after main landing.
+
+
+## 36. Native non-myopic likelihood generation (#268)
 
 On 2026-10-20, `feature/268-reward-likelihood` runtime `e96cd373` computes the
 reference's 100 Float samples for every snapshot pool at reward start. A retained

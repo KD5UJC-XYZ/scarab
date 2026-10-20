@@ -19,12 +19,14 @@ import scala.util.boundary.{Label, break}
   * `maxInputBytes` and `maxItems` (every level is an item) bound the depth and the memory.
   */
 object Cbor:
+  /** @param allowFloats
+    *   Accept half, single and double floats (as [[Value.Float]]). Off: they are refused.
+    */
   final case class Limits(
       maxInputBytes: Int = 1048576,
       maxDepth: Int = Int.MaxValue,
       maxItems: Int = 100000,
       maxStringBytes: Int = 1048576,
-      /** Accept half, single and double floats (as [[Value.Float]]). Off: they are refused. */
       allowFloats: Boolean = false
   )
   private val MaxUInt = (BigInt(1) << 64) - 1

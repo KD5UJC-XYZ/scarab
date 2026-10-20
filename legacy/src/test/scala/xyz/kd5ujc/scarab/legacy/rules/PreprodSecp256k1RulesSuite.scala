@@ -43,13 +43,13 @@ class PreprodSecp256k1RulesSuite extends FunSuite:
     val base = state(c.protocolMajor, utxo.toVector).copy(params = params, epoch = 217)
     base.copy(reserves = Supply - (base.total - base.reserves))
 
+  // preprod: the Shelley era starts at slot 86400, 1 s slots, at POSIX time 1655769600
   private def env(evaluator: ScriptEvaluator[Id]) = TxEnv(
     slot = c.slot,
     epoch = 217,
     network = 0,
     firstSlotNextEpoch = c.slot + 100,
     stabilityWindow = 129600,
-    // preprod: the Shelley era starts at slot 86400, 1 s slots, at POSIX time 1655769600
     clock = Some(slot => (BigInt(1655769600) + slot - 86400) * 1000),
     evaluator = evaluator
   )

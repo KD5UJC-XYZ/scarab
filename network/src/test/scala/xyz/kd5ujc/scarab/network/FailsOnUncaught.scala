@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.network
 import cats.effect.unsafe.IORuntime
 import java.util.concurrent.ConcurrentLinkedQueue
 import munit.CatsEffectSuite
-import scala.jdk.CollectionConverters.*
+import scala.annotation.tailrec
 
 /** A suite whose tests run on a runtime that records every failure it is asked to report, and that
   * fails the test that caused it. A fiber that ends with an error nobody observed (a
@@ -28,9 +28,7 @@ trait FailsOnUncaught extends CatsEffectSuite:
 
   /** The failures reported since the last call (or the start of the test); empties the record. */
   protected def takeUncaught(): List[Throwable] =
-    val seen = reported.asScala.toList
-    reported.clear()
-    seen
+    FailsOnUncaught.drain(reported)
 
   override def afterEach(context: AfterEach): Unit =
     val uncaught = takeUncaught()
@@ -42,3 +40,12 @@ trait FailsOnUncaught extends CatsEffectSuite:
             .map(t => t.getClass.getName + Option(t.getMessage).fold("")(": " + _))
             .mkString("; ")
       )
+
+object FailsOnUncaught:
+  private[network] def drain(reported: ConcurrentLinkedQueue[Throwable]): List[Throwable] =
+    @tailrec
+    def loop(seen: List[Throwable]): List[Throwable] =
+      Option(reported.poll()) match
+        case Some(failure) => loop(failure :: seen)
+        case None          => seen.reverse
+    loop(Nil)

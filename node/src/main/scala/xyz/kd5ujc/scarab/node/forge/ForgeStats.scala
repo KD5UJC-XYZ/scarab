@@ -11,6 +11,10 @@ import scala.collection.immutable.SortedMap
   *
   * `lost` counts blocks that did not stay on the chain: lost slot battles at adoption and blocks
   * replaced by another one later (a block may be both `adopted` and later `lost`).
+  *
+  * @param skipped
+  *   Slots not checked, by reason: `busy` (the loop was still on an earlier slot), `tipTooOld`,
+  *   `slotOccupied` (a block already held the slot or a later one), `notConnected`.
   */
 final case class ForgeEpochStats(
     slotsChecked: Long = 0,
@@ -19,9 +23,6 @@ final case class ForgeEpochStats(
     adopted: Long = 0,
     lost: Long = 0,
     failed: Long = 0,
-    /** Slots not checked, by reason: `busy` (the loop was still on an earlier slot), `tipTooOld`,
-      * `slotOccupied` (a block already held the slot or a later one), `notConnected`.
-      */
     skipped: Map[ForgeSkip.Kind, Long] = Map.empty,
     latencyCount: Long = 0,
     latencyTotalMs: Long = 0,

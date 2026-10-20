@@ -77,11 +77,23 @@ final case class PeerTargetOverrides(
 /** The remaining configuration keys the node reads or records. What it does not act on is kept so
   * the log can say what was configured; `unsupported` lists the settings that ask for something the
   * node does not implement.
+  *
+  * @param lastKnownBlockVersion
+  *   `LastKnownBlockVersion-Major`, `-Minor`, `-Alt`: the Byron block version the node supports.
+  * @param mempoolCapacityBytes
+  *   `MempoolCapacityBytesOverride` as a number of bytes (`NoOverride` is `None`).
+  * @param hardForkVersions
+  *   `Test<Era>HardForkAtVersion`: hard forks triggered by a protocol version.
+  * @param peerTargets
+  *   `TargetNumberOf...Peers`: the governor's targets, when the file sets any.
+  * @param syncPeerTargets
+  *   `SyncTargetNumberOf...Peers`: Genesis-mode sync targets, when the file sets any.
+  * @param maxConcurrencyDeadline
+  *   `MaxConcurrencyDeadline` (`POM.hs` 345): how many peers may be asked for the same block in the
+  *   fetch mode deadline; absent is the library's default, 1.
   */
 final case class ConfigSettings(
     protocol: String = "Cardano",
-    /** `LastKnownBlockVersion-Major`, `-Minor`, `-Alt`: the Byron block version the node supports.
-      */
     lastKnownBlockVersion: Option[(Int, Int, Int)] = None,
     maxKnownMajorProtocolVersion: Option[BigInt] = None,
     experimentalHardForksEnabled: Boolean = false,
@@ -91,18 +103,11 @@ final case class ConfigSettings(
     diffusionMode: Option[String] = None,
     socketPath: Option[String] = None,
     databasePath: Option[String] = None,
-    /** `MempoolCapacityBytesOverride` as a number of bytes (`NoOverride` is `None`). */
     mempoolCapacityBytes: Option[Long] = None,
-    /** `Test<Era>HardForkAtVersion`: hard forks triggered by a protocol version. */
     hardForkVersions: Map[Era, BigInt] = Map.empty,
-    /** `TargetNumberOf...Peers`: the governor's targets, when the file sets any. */
     peerTargets: PeerTargetOverrides = PeerTargetOverrides(),
-    /** `SyncTargetNumberOf...Peers`: Genesis-mode sync targets, when the file sets any. */
     syncPeerTargets: PeerTargetOverrides = PeerTargetOverrides(),
     minBigLedgerPeersForTrustedState: Int = 5,
-    /** `MaxConcurrencyDeadline` (`POM.hs` 345): how many peers may be asked for the same block in
-      * the fetch mode deadline; absent is the library's default, 1.
-      */
     maxConcurrencyDeadline: Option[Int] = None
 ):
   /** The highest node-to-node version the node offers and accepts: 15 unless

@@ -127,7 +127,7 @@ object SnapshotV5:
       else Cbor.decode(haskell, HaskellState.limits).bimap(corrupt, _ => ())
     }
 
-  private def encoded(
+  private[storage] def encoded(
       env: ConsensusMirrorEnv,
       snapshot: StateSnapshot[MirrorState]
   ): Either[SnapshotRefusal, Array[Byte]] =

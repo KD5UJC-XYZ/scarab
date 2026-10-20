@@ -35,10 +35,9 @@ import xyz.kd5ujc.scarab.ledger.state.{
   *     place for, which a state the new rules carry would adopt as the next epoch's parameters
   *     ([[withoutDroppedFields]]).
   *
-  * It runs where an old file is read: in the conversion of the flat state ([[StateMirror]]) and in
-  * the migration of a snapshot of format 4 to format 5 (`storage`), before the old bookkeeping,
-  * which the new format does not keep, is dropped. Applying it to a state the new rules made
-  * changes nothing.
+  * [[StateMirror]] applies it when converting a flat value, including genesis initialization. It
+  * also defined the historical format-4-to-5 migration before those snapshot readers were retired.
+  * Applying it to a state the native rules made changes nothing.
   *
   * The delegator-derived fields of the snapshots of a state written by the old rules are the old
   * mirror's (the delegators of `mark` from the accounts at the time of the write, the counts of
@@ -84,6 +83,7 @@ object LegacySeed:
   ): NewEpochState[E] = era match
     case ShelleyBasedEra.SConway =>
       def clear(p: node.ProtocolParams) = p.copy(coinsPerUTxOWord = 0, minUTxOValue = 0)
+      // the prediction takes its parameters from the pulser's
       ConwayNewEpochState.gov.modify(g =>
         val ratify = g.drepPulsing.ratify
         g.copy(
@@ -96,7 +96,6 @@ object LegacySeed:
                 )
             )
           ),
-          // the prediction takes its parameters from the pulser's
           futurePParams = FuturePParams.map(g.futurePParams)(clear)
         )
       )(nes)

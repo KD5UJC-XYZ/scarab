@@ -6,7 +6,10 @@ remain G3. Tracked in
 [#31](https://github.com/KD5UJC-XYZ/scarab/issues/31) (roadmap G1). Written against `main` at 6ce5bb77 and the
 reference sources named in section 1.1, which were read in full for the governor, the churn governor, the peer
 metrics, ledger peers, PeerSharing and the Cardano configuration; every claim about the reference carries its
-file and line. The decisions in section 0 are the owner's to take before G1.1 starts.
+file and line. Sections 0–7 preserve the original decisions and staged plan; their future tense
+describes that planning baseline. The sections headed "as built" and "acceptance run", together
+with section 8a's owner decisions, record implementation and evidence. Read those alongside the
+current [compatibility matrix](../compatibility.md) when assessing remaining work.
 
 The owner's priority for this item: a peer controller with the feedback mechanism that manages hot, warm and
 cold peers per the ouroboros-network specification, as `cardano-node` does. "Feedback" is the pairing this

@@ -188,16 +188,19 @@ object PeerShare:
     */
   val MaxPeers: PeerSharing.Amount = PeerSharing.Amount.saturating(10)
 
-  /** What the server needs to know of a known peer to decide whether it is told to others. */
+  /** What the server needs to know of a known peer to decide whether it is told to others.
+    * @param advertise
+    *   The peer may be advertised (`DoAdvertisePeer`): the topology said so, or the governor
+    *   records it for a peer it learnt of.
+    * @param everConnected
+    *   A connection to it succeeded at some time (`knownSuccessfulConnection`).
+    * @param failCount
+    *   Failures since the last success.
+    */
   final case class Candidate[A](
       peer: A,
-      /** The peer may be advertised (`DoAdvertisePeer`): the topology said so, or the governor
-        * records it for a peer it learnt of.
-        */
       advertise: Boolean,
-      /** A connection to it succeeded at some time (`knownSuccessfulConnection`). */
       everConnected: Boolean,
-      /** Failures since the last success. */
       failCount: Int
   )
 

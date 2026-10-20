@@ -12,38 +12,41 @@ import scala.collection.immutable.{SortedMap, SortedSet}
   * Time is an argument of every function that reads it and a [[Time]] wherever the state keeps a
   * deadline, so the state is a plain value: two runs with the same seed and the same events give
   * the same states.
+  *
+  * @param configuredRoots
+  *   The local roots as the topology and the flags name them.
+  * @param localRoots
+  *   The local roots in force: configured, within the known target and, in the sensitive state,
+  *   only the trustable ones (`Monitor.localRoots`).
+  * @param requested
+  *   The targets the churn governor last asked for (the reference's `readPeerSelectionTargets`
+  *   variable): they become the targets when the node is able to make progress.
+  * @param publicRootBackoffs
+  *   Consecutive requests for public roots that found nothing new (`publicRootBackoffs`).
+  * @param reported
+  *   What the Genesis State Machine last said of the ledger; the sensitive state follows it
+  *   ([[PeerSelection]], `monitorLedgerStateJudgement`).
+  * @param bigLedgerBackoffs
+  *   The same three as the public roots' (`bigLedgerPeerBackoffs`, `bigLedgerPeerRetryTime`,
+  *   `inProgressBigLedgerPeersReq`), for the request for big ledger peers.
+  * @param rootsGeneration
+  *   Reload generation for root-provider jobs; old completions cannot repopulate replaced roots.
   */
 final case class GovernorState[A](
     targets: Targets,
     peers: SortedMap[A, PeerRecord],
-    /** The local roots as the topology and the flags name them. */
     configuredRoots: LocalRoots[A],
-    /** The local roots in force: configured, within the known target and, in the sensitive state,
-      * only the trustable ones (`Monitor.localRoots`).
-      */
     localRoots: LocalRoots[A],
-    /** The targets the churn governor last asked for (the reference's `readPeerSelectionTargets`
-      * variable): they become the targets when the node is able to make progress.
-      */
     requested: Targets,
-    /** Consecutive requests for public roots that found nothing new (`publicRootBackoffs`). */
     publicRootBackoffs: Int,
     publicRootRetryAt: Time,
     publicRootsInFlight: Boolean,
     rng: Rng,
     sensitivity: Sensitivity,
-    /** What the Genesis State Machine last said of the ledger; the sensitive state follows it
-      * ([[PeerSelection]], `monitorLedgerStateJudgement`).
-      */
     reported: LedgerStateJudgement,
-    /** The same three as the public roots' (`bigLedgerPeerBackoffs`, `bigLedgerPeerRetryTime`,
-      * `inProgressBigLedgerPeersReq`), for the request for big ledger peers.
-      */
     bigLedgerBackoffs: Int = 0,
     bigLedgerRetryAt: Time = Time.Zero,
     bigLedgerInFlight: Boolean = false,
-    /** Reload generation for root-provider jobs; old completions cannot repopulate replaced roots.
-      */
     rootsGeneration: BigInt = BigInt(0),
     sharing: PeerShare.Governor[A] = PeerShare.Governor[A]()
 ):
@@ -218,6 +221,10 @@ object GovernorState:
 
   /** The counters of the reference (`PeerSelectionCounters`, `Types.hs` 851-1060), derived from the
     * view. The ordinary ones leave the big ledger peers out; theirs are the `*BigLedger*` ones.
+    *
+    * @param byOrigin
+    *   The known peers by where they came from (not the reference's; the proof that a peer was
+    *   taken from the ledger and not only from the bootstrap list).
     */
   final case class Counters(
       root: Int,
@@ -258,9 +265,6 @@ object GovernorState:
       warmBigLedgerPromotions: Int,
       activeBigLedger: Int,
       activeBigLedgerDemotions: Int,
-      /** The known peers by where they came from (not the reference's; the proof that a peer was
-        * taken from the ledger and not only from the bootstrap list).
-        */
       byOrigin: Map[Origin, Int]
   ):
     /** `PeerSelectionCountersHWC`: cold, warm and hot are the known beyond the established, the

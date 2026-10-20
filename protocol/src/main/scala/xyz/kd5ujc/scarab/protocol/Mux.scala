@@ -3,9 +3,9 @@ package xyz.kd5ujc.scarab.protocol
 
 import xyz.kd5ujc.scarab.codec.Bytes
 
-/** Handshake-slice framing derived from Network.Mux.Codec at ouroboros-network
-  * c45735a56c567fa977969173d18943bac6bb3821 (Apache-2.0). This is an independent implementation,
-  * not a general-purpose multiplexer or a reference-runtime interoperability claim.
+/** Pure SDU framing derived from Network.Mux.Codec at ouroboros-network
+  * c45735a56c567fa977969173d18943bac6bb3821 (Apache-2.0). The network module uses this codec for
+  * its multiplexer; protocol scheduling, transport and interoperability evidence belong there.
   */
 object Mux:
   val HeaderBytes = 8

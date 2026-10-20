@@ -1,5 +1,8 @@
 # Running the node and the devnet scenarios
 
+**Status: Current usage reference.** Recorded network runs are historical evidence with their
+own build and environment identities.
+
 Everything runs in Docker; no host JDK or sbt is needed. See [CONTRIBUTING.md](../CONTRIBUTING.md)
 for the build workflow. This node is research software: do not run it with keys that hold real
 funds (see [SECURITY.md](../SECURITY.md)).
@@ -162,21 +165,20 @@ Caveats:
   and matching checkpoint backup. Live gap-provenance persistence is separate (#129).
 - **The UTxO checkpoints beside the snapshots** (`<db>/utxo/checkpoints/<snapshot stem>`) are RocksDB
   directories whose key is `txid ++ index` as a big-endian u16 (34 bytes, the Haskell node's) since K6
-  (2026-10-14). The snapshots of format 1 were written before it, with the key `txid ++ u32` (36 bytes):
-  the restore of such a checkpoint reads it and writes the live store (`<db>/utxo/live`) under the current
-  keys, a few seconds on a Preview-size set (the checkpoint is not changed, and each later checkpoint has the
-  current keys). Formats 2 to 4 need nothing. A checkpoint that holds both layouts, an output index above
-  65,535 or a key of another length is refused with `StorageError.UtxoCheckpoint` ("the UTxO checkpoint ...
-  cannot be restored ... replay from the immutable chunks"): stop the node, remove `<db>/snapshots` and
-  `<db>/utxo`, and start it again; it replays the immutable chunks from genesis. (Before this fix a format-1
-  database was restored over a store in which no output could be found, and the first block that spent a
-  stored output failed with `BadInputsUTxO`, #145. That build also wrote a shutdown snapshot and checkpoint
-  after the blocks it had applied, and that checkpoint holds both layouts: this build refuses it with the
-  error above. Removing that one snapshot file and its checkpoint directory, which are the newest, lets the
-  node restore the older ones; the snapshots before it are intact.)
+  (2026-10-14). Older checkpoints used `txid ++ u32` (36 bytes). The independent checkpoint-key
+  converter can restore that layout into `<db>/utxo/live` under current keys without modifying the
+  checkpoint; it does not make retired snapshot payloads readable. A usable current-format snapshot
+  and its matching checkpoint are still required. A mixed layout, an output index above 65,535 or a
+  key of another length is refused with `StorageError.UtxoCheckpoint`.
+  Preserve the database and its matching snapshot/checkpoint pairs before investigating a refusal;
+  follow [the storage migration procedure](storage-migrations.md) to convert or recover a separate
+  copy. Replaying from immutable chunks is an operator choice, not an upgrade step that requires
+  deleting the only recoverable state. Historical #145 involved a bad restore producing mixed key
+  layouts; current restoration rejects that condition rather than silently using it.
 - The volatile blocks (the last `k`) are kept in `<db>/volatile/` and applied again on start
   (`volatileResumed`), and a graceful stop (SIGTERM, SIGINT, `--seconds`) writes a snapshot at the
-  immutable tip (`shutdownSnapshot`): the next start replays no stored block and continues at the
+  immutable tip (`shutdownSnapshot`): the next start replays no immutable block when that snapshot
+  is usable, reapplies the retained volatile log through the rules, and continues at the
   previous tip. After `kill -9` the node resumes from the newest periodic snapshot, replays the stored
   blocks after it, and takes the volatile chain from the log as far as the log reached the disk.
   Run the node so that the signal reaches the JVM (`docker stop`, not a shell wrapper that eats it).

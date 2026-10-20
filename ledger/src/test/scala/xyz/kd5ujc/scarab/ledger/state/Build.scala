@@ -4,11 +4,9 @@ package xyz.kd5ujc.scarab.ledger.state
 import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.rules.{Convert, Counted, InstantStakeOps, ShelleyInstantStakeOps}
 
-/** Builders of the era-indexed state for a rule test that starts from it rather than from the
-  * node's flat state (J2.6): a state the flat state cannot say, because the reference holds more
-  * than the node's does (the VRF key hashes of the pools, an exact snapshot, a pulser). Most rule
-  * suites start from a flat state and go through the mirror ([[xyz.kd5ujc.scarab.ledger.RuleSet]]);
-  * these are for the ones that do not.
+/** Native era-indexed state builders for rule tests. They can express fields the legacy flat
+  * fixtures cannot retain, including independent VRF key counts, exact snapshots and a pulser. The
+  * flat-fixture adapter lives in `legacy.rules.RuleSet`; these builders avoid that conversion.
   *
   * Every builder takes the era by its witness, as the rules do, so one test body can be written for
   * a family of eras.
@@ -51,9 +49,9 @@ object Build:
       )
     )
 
-  /** `nes` with the pool registered, as the registration rule leaves it: its state, and, where the
-    * era keeps them (from protocol version 11), its VRF key hash in the map of key hashes in use.
-    * `future` is a re-registration that is waiting for the next epoch.
+  /** `nes` with the pool registered and its supplied VRF keys seeded in the key-count map,
+    * independently of the protocol version. `future` is a re-registration waiting for the next
+    * epoch. Tests of pre-version-11 key-map maintenance must set their starting map explicitly.
     */
   def pool[E <: EraTag](
       nes: NewEpochState[E],

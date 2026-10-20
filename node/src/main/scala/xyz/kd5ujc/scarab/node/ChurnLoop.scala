@@ -35,20 +35,26 @@ trait ChurnWorld[F[_]]:
   */
 object ChurnLoop:
 
+  /** @param base
+    *   The targets of the node when it is not syncing: the regime's `base`.
+    * @param regime
+    *   The regime for a fetch mode (bootstrap peers configured or not).
+    * @param bigLedger
+    *   Whether the node has big ledger peers: the six steps for them are skipped otherwise.
+    * @param poll
+    *   How often the counters and the regime are looked at while waiting.
+    * @param headStart
+    *   The head start for the local roots (`threadDelay 3`).
+    */
   final case class Config(
-      /** The targets of the node when it is not syncing: the regime's `base`. */
       base: Targets,
-      /** The regime for a fetch mode (bootstrap peers configured or not). */
       regime: FetchMode => Regime.Kind,
       consensusMode: ConsensusMode = ConsensusMode.PraosMode,
       syncTargets: Targets = Targets.sync,
       intervals: Churn.Intervals = Churn.Intervals(),
       timeouts: Churn.Timeouts = Churn.Timeouts(),
-      /** Whether the node has big ledger peers: the six steps for them are skipped otherwise. */
       bigLedger: Boolean = false,
-      /** How often the counters and the regime are looked at while waiting. */
       poll: FiniteDuration = 500.millis,
-      /** The head start for the local roots (`threadDelay 3`). */
       headStart: FiniteDuration = Regime.HeadStart,
       seed: Long = 0L
   )

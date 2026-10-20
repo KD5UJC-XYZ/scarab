@@ -24,14 +24,15 @@ enum ConsensusMode:
   * (`requiresBootstrapPeers`, `Cardano/Network/PeerSelection/Bootstrap.hs` 44-46): only trustable
   * peers may be used. It makes progress there only once it has dropped every other peer
   * (`hasOnlyBootstrapPeers`); until then its targets are zero.
+  *
+  * @param timeout
+  *   The time by which the clean state must be reached; the node stops when it passes
+  *   ([[GovernorError.BootstrapPeersCriticalTimeout]]).
   */
 final case class Sensitivity(
     judgement: LedgerStateJudgement,
     useBootstrapPeers: Boolean,
     hasOnlyBootstrapPeers: Boolean,
-    /** The time by which the clean state must be reached; the node stops when it passes
-      * ([[GovernorError.BootstrapPeersCriticalTimeout]]).
-      */
     timeout: Option[Time],
     consensusMode: ConsensusMode = ConsensusMode.PraosMode,
     syncTargets: Targets = Targets.sync,

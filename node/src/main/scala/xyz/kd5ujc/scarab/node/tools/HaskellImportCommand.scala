@@ -135,9 +135,9 @@ object HaskellImportCommand:
           options.genesisDir
             .toRight(ConfigError(ConfigProblem.MissingGenesis))
             .flatMap(NodeSetup.fromDirectory)
+      // Use 10 * k of the first era, including the Byron genesis when the chain starts there.
       chunkSlots <- ChunkSlots
         .fromSecurityParam(
-          // 10 * k of the first era: the Byron genesis when the chain starts in Byron.
           setup.byron.fold(setup.genesis.geometry.securityParam.toLong)(_.securityParam.toLong)
         )
         .toRight(ConfigError(ConfigProblem.MissingChunkSize))

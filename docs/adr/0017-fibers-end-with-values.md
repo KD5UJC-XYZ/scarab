@@ -102,11 +102,13 @@ rules refused, a storage failure and a bug in the node were all retried like a l
   preserves its cause as `NetworkError.Defect` until the node's `Fatal.Defect` boundary (exit 7).
   A fatal outcome marks and releases the connection before reporting the fatal event; it produces no
   `Lost` observation or `Transient` projection. Exits 5 (storage) and 6 (internal) are unchanged.
-- A candidate that no longer intersects the retained local window currently ends as transient
-  `Diverged`. The reference drains and restarts `findIntersectionTop` on the same connection
-  (`ouroboros-consensus` `MiniProtocol/ChainSync/Client.hs:1490–1515`, pinned source). Same-connection
-  reintersection is [#152](https://github.com/KD5UJC-XYZ/scarab/issues/152); it is distinct from error
-  ownership. The peercut gate asserts the closed asynchronous governor policy rather than a log prefix.
+- **Recovery addendum (#152).** `Follower` restarts intersection when its candidate leaves the
+  retained window. `Peer.intersect` drains outstanding replies and prefetch work before issuing
+  `FindIntersect` on the same connection; typed failures and original defects still land in the
+  caller's scope. This follows the reference's `findIntersectionTop` restart. The
+  [as-built recovery contract](../design/network-limits.md#same-connection-chainsync-recovery-152)
+  records the pinned upstream source, terminal cases and regression controls. This recovery is
+  distinct from error ownership; the peercut gate asserts the closed governor policy.
 
 - External local submissions use a closed `Response` and `End` value. An implementation limit has no
   `ApplyTxErr`/predicate-failure encoding: only that submission connection closes, and a fresh client

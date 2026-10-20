@@ -9,7 +9,7 @@
 #
 # then copy blst-native/out/libblst.so to
 # blst-native/src/main/resources/supranational/blst/Linux/amd64/libblst.so and put its sha256
-# (blst-native/out/libblst.so.sha256) in BlstNative.portableSha256. blst-native/out is untracked.
+# (blst-native/out/libblst.so.sha256) in Blst.portableSha256. blst-native/out is untracked.
 #
 # The base image is the one blst-java's own workflow builds on (ubuntu-22.04: gcc 11.4, SWIG 4.0.2,
 # glibc 2.35, so the library needs no newer glibc than the upstream one), pinned by digest. The

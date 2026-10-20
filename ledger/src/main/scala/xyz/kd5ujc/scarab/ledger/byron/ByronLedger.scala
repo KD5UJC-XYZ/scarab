@@ -99,6 +99,9 @@ object ByronBody:
 /** The Byron ledger: the `ChainValidationState` of cardano-ledger
   * (`Cardano.Chain.Block.Validation`) minus the previous-block hash, which the chain-follow state
   * tracks. Pure.
+  * @param candidateBlocks
+  *   Per candidate protocol version, the number of the block in which it became a candidate
+  *   (`ByronTransition` of ouroboros-consensus).
   */
 final case class ByronLedgerState(
     lastSlot: BigInt,
@@ -106,9 +109,6 @@ final case class ByronLedgerState(
     utxo: Map[TxIn, ByronOut],
     update: UpdateState,
     delegation: DelegationState,
-    /** Per candidate protocol version, the number of the block in which it became a candidate
-      * (`ByronTransition` of ouroboros-consensus).
-      */
     candidateBlocks: Map[ByronVersion, BigInt]
 )
 

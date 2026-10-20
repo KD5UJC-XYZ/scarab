@@ -42,6 +42,18 @@ import xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold
   * Directory layout: `shelley-genesis.json`, `alonzo-genesis.json`, `conway-genesis.json`,
   * `byron-genesis.json`, and optionally the node configuration (`configuration.yaml`,
   * `configuration.json` or `config.json`) for the Byron genesis hash and `Test*HardForkAtEpoch`.
+  *
+  * @param mirrorStart
+  *   The state the chain starts from, as the mirror.
+  * @param handOver
+  *   What the Shelley genesis gives the ledger state a chain that begins in Byron enters Shelley
+  *   with (`FromByronTranslationContext`, `Shelley/Translation.hs:46`): the genesis delegations,
+  *   the protocol parameters and the supply. None for a chain that starts in Shelley.
+  * @param byronParams
+  *   The Byron genesis parameters even when the chain has no Byron prefix (the era history of a
+  *   node-to-client client still lists the empty Byron era).
+  * @param identity
+  *   Which network this configuration describes (recorded in a database, see D5).
   */
 final case class NodeSetup(
     genesis: ShelleyGenesis,
@@ -49,19 +61,10 @@ final case class NodeSetup(
     byron: Option[ByronGenesis],
     globals: LedgerGlobals,
     praos: PraosConfig,
-    /** The state the chain starts from, as the mirror. */
     mirrorStart: MirrorState,
-    /** What the Shelley genesis gives the ledger state a chain that begins in Byron enters Shelley
-      * with (`FromByronTranslationContext`, `Shelley/Translation.hs:46`): the genesis delegations,
-      * the protocol parameters and the supply. None for a chain that starts in Shelley.
-      */
     handOver: Option[FromByron],
-    /** The Byron genesis parameters even when the chain has no Byron prefix (the era history of a
-      * node-to-client client still lists the empty Byron era).
-      */
     byronParams: Option[ByronGenesis] = None,
     byronConfig: Option[ByronRules.Config] = None,
-    /** Which network this configuration describes (recorded in a database, see D5). */
     identity: NetworkIdentity
 ):
   def geometry: EpochGeometry = genesis.geometry
@@ -293,8 +296,8 @@ object NodeSetup:
             )
           }
       }
+      // The initial protocol follows the starting era; Byron retains the initial Shelley state.
       start = legacy.FlatNodeState(
-        // the protocol of the era the chain starts in (a Byron start holds the state Shelley starts from)
         ProtocolState.initial(
           if byronRules.isDefined then Era.Byron
           else praos.forks.eraAt(initial.epoch, initial.params.protocolMajor),

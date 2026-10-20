@@ -80,7 +80,20 @@ enum LedgerFailure extends DomainError:
       s"tx ${id.hex.take(16)} evaluation unavailable at $where: ${why.message}"
     case Vocab(e) => s"transaction outside the state's vocabulary: $e"
 
-/** Block-level context of a transaction. */
+/** Block-level context of a transaction.
+  *
+  * @param clock
+  *   Slot to POSIX milliseconds through the era history (needed for the script context).
+  * @param evaluator
+  *   The Plutus evaluator; a pure function of the request (see `ScriptEvaluator`).
+  * @param decoder
+  *   Decides whether a Plutus script deserialises (phase 1 from Babbage on).
+  * @param observer
+  *   Tooling hook receiving the transaction's collected phase-2 outcome. Its return value does not
+  *   supply a verdict; callbacks must complete normally.
+  * @param verdicts
+  *   Signature verdicts (memoised ahead of time in the node, computed in place otherwise).
+  */
 final case class TxEnv(
     slot: BigInt,
     epoch: BigInt,
@@ -89,15 +102,10 @@ final case class TxEnv(
     stabilityWindow: BigInt = 0,
     txIndex: Int = 0,
     updateQuorum: Int = 5,
-    /** Slot to POSIX milliseconds through the era history (needed for the script context). */
     clock: Option[BigInt => BigInt] = None,
-    /** The Plutus evaluator; a pure function of the request (see `ScriptEvaluator`). */
     evaluator: ScriptEvaluator[Id] = ScalusEvaluator.default,
-    /** Decides whether a Plutus script deserialises (phase 1 from Babbage on). */
     decoder: ScriptDecoder[Id] = ScalusEvaluator.defaultDecoder,
-    /** Tooling hook called after each phase-2 evaluation; never affects the result. */
     observer: Option[Phase2.Observation => Unit] = None,
-    /** Signature verdicts (memoised ahead of time in the node, computed in place otherwise). */
     verdicts: xyz.kd5ujc.scarab.ledger.Verdicts = xyz.kd5ujc.scarab.ledger.Verdicts.Direct,
     private[ledger] val preparation: Option[Phase2.Preparation] = None
 )

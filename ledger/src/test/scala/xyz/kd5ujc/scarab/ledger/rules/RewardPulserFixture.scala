@@ -86,12 +86,12 @@ object RewardPulserFixture extends Assertions:
       )
     )
     val gov = Empty.govState[Conway](params)
+    // the fees collected so far, of which the snapshot fee is the part already counted
     val ls = LedgerState[Conway](
       cert,
       UTxOState[Conway](
         UtxoTables(xyz.kd5ujc.scarab.ledger.Utxo.empty),
         coin(BigInt(accounts) * 2000000 + BigInt(pools) * 500000000),
-        // the fees collected so far, of which the snapshot fee is the part already counted
         coin(3000000),
         gov,
         instant,

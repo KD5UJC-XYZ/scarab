@@ -18,13 +18,15 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{EpochGeometry, Header, HeaderVrf}
 import xyz.kd5ujc.scarab.crypto.vrf.{PraosLeaderThreshold as Leader, PraosVrfCertificate as Vrf}
 
+/** @param verdicts
+  *   Where the rules get signature verdicts from (see [[xyz.kd5ujc.scarab.ledger.Verdicts]]).
+  */
 final case class PraosConfig(
     geometry: EpochGeometry,
     slotsPerKesPeriod: BigInt,
     maxKesEvolutions: BigInt,
     activeSlotsCoeff: Leader.Fraction,
     forks: HardForkConfig = HardForkConfig.default,
-    /** Where the rules get signature verdicts from (see [[xyz.kd5ujc.scarab.ledger.Verdicts]]). */
     verdicts: xyz.kd5ujc.scarab.ledger.Verdicts = xyz.kd5ujc.scarab.ledger.Verdicts.Direct
 )
 
@@ -183,11 +185,12 @@ object Praos:
         .opCert(header, config.slotsPerKesPeriod, config.maxKesEvolutions)
         .leftMap(PraosError.OCert(_))
       _ <- OCertRules
+        // reaching here means the pool is in the stake view
         .checkCounter(
           state.ocertCounters.get(issuer).map(_.toBigInt),
           pool,
           header.opCert.sequence,
-          known = true, // reaching here means the pool is in the stake view
+          known = true,
           bounded = true
         )
         .leftMap(PraosError.OCert(_))

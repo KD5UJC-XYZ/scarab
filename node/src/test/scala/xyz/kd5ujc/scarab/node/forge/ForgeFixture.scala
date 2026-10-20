@@ -217,6 +217,7 @@ trait ForgeFixture:
         )
       )
       seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
+      // `live` drives the real loop on the test clock from slot 5000; otherwise steps are manual.
       forger <- Forger.create[IO, MirrorState](
         config,
         globals,
@@ -226,7 +227,6 @@ trait ForgeFixture:
         e => seen.update(_ :+ e),
         ready.getOrElse(IO.pure(connected)),
         maxTipAge = Some(maxTipAge),
-        // `live`: the real loop on the (test) clock, starting at slot 5000; else steps are driven by hand
         now = clock.orElse(
           Some(
             if live then IO.realTimeInstant.map(_.plusSeconds(5000).plusMillis(offsetMillis))

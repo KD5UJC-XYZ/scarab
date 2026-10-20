@@ -24,7 +24,8 @@ trait LedgerSnapshots[F[_], S]:
   ): F[Either[SnapshotRefusal, LedgerSnapshots.Written]]
 
   /** The newest snapshot that decodes, passes its checksum and whose anchor `usable` accepts.
-    * Snapshots that fail are reported and skipped, never raised.
+    * Corrupt or unusable snapshots are reported and skipped. Unknown or retired format versions
+    * raise a storage error, preventing fallback replay from bypassing format admission.
     */
   def restore(usable: Option[BlockRef] => F[Boolean])(using
       cats.mtl.Raise[F, StorageError]

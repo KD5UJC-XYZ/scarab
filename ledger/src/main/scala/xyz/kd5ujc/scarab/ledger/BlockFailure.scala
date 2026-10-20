@@ -24,8 +24,8 @@ object BlockRule:
   given Eq[BlockRule] = Eq.fromUniversalEquals
   given Show[BlockRule] = Show.show(_.name)
 
-/** Why `NodeRules.applyBlock` refused a block: a closed ADT shared by the bootstrap and era-indexed
-  * rules, so that the differential harness compares verdicts as values.
+/** Why the node's block validation refused a block: a closed ADT shared by the bootstrap and
+  * era-indexed rules, so that the differential harness compares verdicts as values.
   *
   * Every case carries what the rule found and renders its [[rule]] family and its [[reason]] text
   * (the two fields of the `rejected` log event, and of [[ValidationError]]); nothing branches on
@@ -76,7 +76,7 @@ enum BlockFailure:
   /** A Shelley block before the transition epoch, or inside the Byron span. */
   case ShelleyBeforeTransition(epoch: BigInt, first: BigInt, lastByronSlot: BigInt)
 
-  /** The Byron rules refused the block (`text` is their text). */
+  /** The Byron rules refused the block, retaining their typed cause. */
   case Byron(cause: ByronChainError)
 
   // ---- envelope, headers

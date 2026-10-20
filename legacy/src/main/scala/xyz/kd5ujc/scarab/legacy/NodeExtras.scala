@@ -41,8 +41,9 @@ object SnapshotsResidue:
 /** The fields of the node's ledger state that have no place in the state of the era the mirror is
   * of: a pre-Conway state holds no governance, DReps or committee, and a Conway state holds no
   * pointers and no parameter-update proposals. The node's state carries them in every era, empty on
-  * a real state, and `LedgerMirror.from` puts back what is here, so a mirror of a state that does
-  * have them is not lossy; the corpus tests assert that [[Residue.isEmpty]] on every real state.
+  * a real state. Test support in `LedgerMirrorBack.from` restores this residue, so conversion of a
+  * state that does have it is not lossy; the corpus tests assert [[Residue.isEmpty]] on real
+  * states.
   */
 final case class Residue(
     ppup: Ppup,
@@ -90,9 +91,9 @@ object DroppedParams:
   given Show[DroppedParams] = Show.fromToString
 
 /** The node-only bookkeeping that has no place in the Haskell state, kept beside a mirror so that
-  * the node's state is recovered from it (`LedgerMirror.from`) and never exported. The consensus
-  * side of the mirror adds its own (the Byron and bootstrap state, the previous epoch nonce of the
-  * TPraos eras).
+  * test support in `LedgerMirrorBack.from` recovers the flat state; it is never exported. The
+  * consensus side of the mirror adds its own (the Byron and bootstrap state, the previous epoch
+  * nonce of the TPraos eras).
   *
   * The UTxO's own counters (`Utxo.count`, `coin`, `stamp`, `flushed`, the diff) are not here: the
   * mirror holds the node's `Utxo` whole behind its `UtxoTables` handle.

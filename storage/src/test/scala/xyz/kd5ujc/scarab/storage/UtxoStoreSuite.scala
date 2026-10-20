@@ -81,10 +81,15 @@ class UtxoStoreSuite extends ScalaCheckSuite:
   // -------------------------------------------------------------------------------------------
   // The chain: the follower's window of states over a store
 
+  /** @param utxos
+    *   tip last; the window
+    * @param models
+    *   the expected set after each window state
+    */
   private final case class Chain(
-      utxos: Vector[Utxo], // tip last; the window
+      utxos: Vector[Utxo],
       anchor: Utxo,
-      models: Vector[Map[TxIn, TxOut]], // the expected set after each window state
+      models: Vector[Map[TxIn, TxOut]],
       anchorModel: Map[TxIn, TxOut],
       blockNo: Long,
       txCounter: Long

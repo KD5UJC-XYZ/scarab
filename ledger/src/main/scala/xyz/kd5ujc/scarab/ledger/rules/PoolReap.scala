@@ -31,8 +31,9 @@ object PoolreapState:
   *
   * Haskell also keeps the VRF key hashes of the pools (`psVRFKeyHashes`); the rule removes the hash
   * of a re-registered pool's old key and one occurrence of each retired pool's. Before protocol
-  * version 11 the map is not maintained (`HardFork.hs:75-78` populates it entering 11, and
-  * populating is J3.3), so on a state that has none these are no-ops, as Haskell's `Map.update` is.
+  * version 11 the map is not maintained ([[HardFork]] populates it entering 11,
+  * `HardFork.hs:75-78`), so on a state that has none these are no-ops, as Haskell's `Map.update`
+  * is.
   */
 object PoolReap:
   def sts[E <: EraTag](using

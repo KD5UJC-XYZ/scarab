@@ -21,9 +21,9 @@ import xyz.kd5ujc.scarab.plutus.PlutusData
 /** One decoder entry point under test: the seeds its inputs are mutated from, and the property. */
 final case class Target(name: String, corpus: () => Vector[Array[Byte]], check: Input => Unit)
 
-/** Every entry point that parses bytes from a peer, a client or a block. The property of each: no
-  * exception, bounded time and allocation (`Probe`), and `decode . encode` is the identity on what
-  * decodes.
+/** Registered decoder targets for peer, client, block and persisted inputs. Each probe checks
+  * bounded time and allocation without unexpected exceptions; targets with writers also check
+  * round-trip values or canonical encoding, according to their wire contract.
   */
 object Targets:
   private def raw(i: Input): Bytes = Bytes.fromArray(i.bytes)
@@ -968,10 +968,10 @@ object Targets:
       )
     )
 
-  /** The MemPack `TxOut` of a LedgerDB `tables` file (Step D, S1): read from a file the node does
-    * not write (a Mithril snapshot), in every era's grammar. The seeds are the real outputs of the
-    * preprod snapshot in `fixtures/mempack`; an output that decodes must pack and decode again to
-    * itself.
+  /** The MemPack `TxOut` of a LedgerDB `tables` file, in every era's grammar. The node imports and
+    * exports this format; these seeds exercise externally produced snapshot values. The seeds are
+    * the real outputs of the preprod snapshot in `fixtures/mempack`; an output that decodes must
+    * pack and decode again to itself.
     */
   private val mempackTxOut: Vector[Target] =
     import scala.jdk.CollectionConverters.*

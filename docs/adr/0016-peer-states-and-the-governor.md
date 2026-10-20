@@ -7,7 +7,7 @@
 ## Context
 
 The Haskell node chooses its outbound peers with the peer selection governor
-(`Ouroboros.Network.PeerSelection.Governor`, ouroboros-network 0.22.x at the pins in
+(`Ouroboros.Network.PeerSelection.Governor`, ouroboros-network 1.2.0.0 at the pins in
 [the design](../design/peer-selection.md)). It keeps three nested sets of peers (known, established,
 active) and, next to them, sets of peers whose promotion or demotion is in flight (`inProgressPromoteCold`,
 `inProgressPromoteWarm`, `inProgressDemoteWarm`, `inProgressDemoteHot`, `inProgressDemoteToCold`), each with
@@ -48,9 +48,15 @@ code that is tested without a network.
    marker file are in `node`, next to the follower and the connection manager they drive.
 7. **Faithful to the reference, with the differences written down**: the Genesis State Machine is ported from
    `Ouroboros.Consensus.Node.GSM` (ouroboros-consensus 4.2.1.0) and the fetch mode is derived from it; outbound
-   connections stay initiator-only; `OutboundConnectionsState` is published as a gauge and a log line only;
+   connections were initially initiator-only; `OutboundConnectionsState` is published as a gauge and a log line only;
    there is no switch to turn the governor off. The list of deviations is in the design document (G1.1 as
    built).
+
+**Implementation addendum (#142).** Outbound connections configured for
+`InitiatorAndResponder` now negotiate duplex and serve the peer on the same bearer.
+Big-ledger selection, churn and PeerSharing participate in `PeerSelection`'s ordered decision
+families. The [as-built design](../design/peer-selection.md) records these extensions and their
+acceptance scope; they retain the pure decision function and single status record per peer.
 
 ## Consequences
 

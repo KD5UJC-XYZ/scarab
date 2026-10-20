@@ -68,17 +68,24 @@ object PeerNetwork:
     case GovernorFault.LocalDnsRefreshDefect(cause)      => Some(Fatal.Defect(cause))
     case _                                               => None
 
-  /** The roots of the node, from `--peer` and the topology. */
+  /** The roots of the node, from `--peer` and the topology.
+    *
+    * @param local
+    *   The local root groups: `--peer` as one group first, then the topology's.
+    * @param public
+    *   The public roots of the topology, used when the node is not in the sensitive state.
+    * @param bootstrap
+    *   The bootstrap peers, the only source in the sensitive state; none when not configured.
+    * @param ledger
+    *   `useLedgerAfterSlot`: whether and after which slot the node takes ledger peers.
+    * @param snapshot
+    *   The peer snapshot file of the topology, as the node starts with it.
+    */
   final case class Roots(
-      /** The local root groups: `--peer` as one group first, then the topology's. */
       local: List[RootGroupSpec[Addr]],
-      /** The public roots of the topology, used when the node is not in the sensitive state. */
       public: Set[Addr],
-      /** The bootstrap peers, the only source in the sensitive state; none when not configured. */
       bootstrap: Option[Vector[Addr]],
-      /** `useLedgerAfterSlot`: whether and after which slot the node takes ledger peers. */
       ledger: UseLedgerPeers,
-      /** The peer snapshot file of the topology, as the node starts with it. */
       snapshot: SnapshotUse = SnapshotUse.Unused,
       advertise: Map[Addr, Boolean] = Map.empty,
       publicSrv: Vector[(DnsName, Boolean)] = Vector.empty,
@@ -88,21 +95,22 @@ object PeerNetwork:
     /** Whether the topology enables ledger peers (it matters for the association mode). */
     def ledgerPeers: Boolean = ledger.isEnabled
 
+  /** @param targets
+    *   The targets of the node when it is not syncing: the relay or producer defaults, as
+    *   configured.
+    * @param intervals
+    *   The sleep between churn rounds and the waits of their steps (3300 s with fuzz 600 s in the
+    *   fetch mode deadline, 900 s with 60 s in bulk sync, the reference's; shortened by the
+    *   test-only flag of the `governor` scenario).
+    */
   final case class Settings(
       roots: Roots,
-      /** The targets of the node when it is not syncing: the relay or producer defaults, as
-        * configured.
-        */
       targets: Targets,
       consensusMode: ConsensusMode = ConsensusMode.PraosMode,
       syncTargets: Targets = Targets.sync,
       minBigLedgerPeersForTrustedState: Int = 5,
       policy: Policy = Policy(),
       peerSharing: Boolean = false,
-      /** The sleep between churn rounds and the waits of their steps (3300 s with fuzz 600 s in the
-        * fetch mode deadline, 900 s with 60 s in bulk sync, the reference's; shortened by the
-        * test-only flag of the `governor` scenario).
-        */
       intervals: Churn.Intervals = Churn.Intervals(),
       timeouts: Churn.Timeouts = Churn.Timeouts(),
       seed: Long
@@ -129,18 +137,23 @@ object PeerNetwork:
       */
     def geometry: F[EpochGeometry]
 
-  /** The running network: what is shared with the rest of the node. */
+  /** The running network: what is shared with the rest of the node.
+    *
+    * @param metrics
+    *   The peer metrics the hot sessions report to and the governor ranks demotions by.
+    * @param reloadRoots
+    *   Replace a fully parsed topology and peer snapshot as one root-provider update.
+    * @param run
+    *   Never returns normally; raises through `fatal` when the governor stops the node.
+    */
   final class Running[F[_], A](
       val state: Ref[F, GovernorState[A]],
       val outbound: OutboundPeers[F, A],
       val connections: Ref[F, OutboundConnectionsState],
       val fetchMode: Ref[F, FetchMode],
       val judgement: Ref[F, LedgerStateJudgement],
-      /** The peer metrics the hot sessions report to and the governor ranks demotions by. */
       val metrics: Ref[F, PeerMetrics[A]],
-      /** Replace a fully parsed topology and peer snapshot as one root-provider update. */
       val reloadRoots: Roots => F[Unit],
-      /** Never returns normally; raises through `fatal` when the governor stops the node. */
       val run: F[Nothing],
       val fatal: Deferred[F, GovernorFault]
   )
@@ -269,6 +282,13 @@ object PeerNetwork:
   /** The local roots as the governor takes them: `--peer` and the topology, repaired. */
   def configuredRoots(roots: Roots): LocalRoots[Addr] = LocalRoots.fromGroups(roots.local)
 
+  /** @param fetchMode
+    *   The fetch mode, written here every second and read by BlockFetch ([[BlockPool]]) and by the
+    *   churn governor; the caller owns the cell so that it can hand it to both before the network
+    *   starts.
+    * @param ledgerSource
+    *   The ledger the ledger peers are taken from.
+    */
   def resource[F[_]: Async](
       settings: Settings,
       transport: Transport[F, Addr],
@@ -276,17 +296,12 @@ object PeerNetwork:
       config: OutboundPeers.Config,
       hot: OutboundPeers.Hot[F],
       chain: ChainView[F],
-      /** The fetch mode, written here every second and read by BlockFetch ([[BlockPool]]) and by
-        * the churn governor; the caller owns the cell so that it can hand it to both before the
-        * network starts.
-        */
       fetchMode: Ref[F, FetchMode],
       emit: Output[Addr] => F[Unit],
       gsm: (Gsm.Phase, Gsm.Event) => F[Unit],
       gsmInitial: Gsm.Phase => F[Unit],
       fetchModeChanged: FetchMode => F[Unit],
       marker: GsmRunner.Marker[F],
-      /** The ledger the ledger peers are taken from. */
       ledgerSource: LedgerPeersSource[F],
       sharing: Option[PeerSharingRuntime[F]] = None,
       immutable: Option[ImmutableStore[F]] = None

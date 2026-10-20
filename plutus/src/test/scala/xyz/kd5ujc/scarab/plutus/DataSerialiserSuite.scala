@@ -23,9 +23,9 @@ class DataSerialiserSuite extends ScalaCheckSuite:
   private def decode(b: Bytes): PlutusData =
     PlutusData.decode(b).fold(e => fail(e.toString), identity)
 
+  // outputs of preprod 2edd684f: constructor indices 2^64 - 1, 1313480702 and 2025506762 in
+  // tag 102, an empty list, a map of two entries
   private val chainDatums = Vector(
-    // outputs of preprod 2edd684f: constructor indices 2^64 - 1, 1313480702 and 2025506762 in
-    // tag 102, an empty list, a map of two entries
     "d866821a78bac7ca9fa2d866821bffffffffffffffff9fd87980ffa09fd866821a4e4a1ffe80ffa04429a5f68b401a0065edfbff",
     "9f417044b41915fba2d879801bffffffffffffffffa0401a6ca3c91cff"
   )

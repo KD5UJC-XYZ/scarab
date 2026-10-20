@@ -14,11 +14,10 @@ import xyz.kd5ujc.scarab.ledger.state.{GovState, LedgerState}
 import xyz.kd5ujc.scarab.legacy as flat
 
 /** TEST SUPPORT of the frozen flat conversion: the node's flat ledger state of a [[LedgerImage]],
-  * the direction `LedgerMirror.from` had until J2.9. The production code has only `to` (the older
-  * snapshots are brought to the mirror and nothing goes back); the suites that run the era-indexed
-  * rules on fixtures written in the flat state ([[RuleSet]]) read their results through this, so
-  * that their assertions are written once over the flat state. It goes with the module (design
-  * `ledger-mirror-step2.md` J2.9).
+  * the direction `LedgerMirror.from` had until J2.9. The production algebra exposes only `to`; the
+  * suites that run the era-indexed rules on flat fixtures ([[rules.RuleSet]]) read their results
+  * through this, so their assertions are written once over the flat state. It goes with the module
+  * (design `ledger-mirror-step2.md` J2.9).
   */
 object LedgerMirrorBack:
   private type Read[A] = Either[MirrorError, A]
@@ -50,8 +49,8 @@ object LedgerMirrorBack:
     * delegations are a map in Haskell, ordered by slot and key and with one entry of each, and a
     * vector with no order in the node; nothing reads their order. The reward account of a
     * registered pool, and of a pool in a stake snapshot, is on the node's network
-    * ([[node.PoolParams.registeredOn]]): Haskell keeps its credential only, as the rules read it.
-    * The future parameters of a pool keep theirs.
+    * ([[xyz.kd5ujc.scarab.ledger.PoolParams.registeredOn]]): Haskell keeps its credential only, as
+    * the rules read it. The future parameters of a pool keep theirs.
     */
   def normalised(network: Int, s: flat.LedgerState): flat.LedgerState =
     s.copy(
@@ -268,17 +267,16 @@ object LedgerMirrorBack:
           snapshotBack(net, set, x.snapshots.set)
         )
         val rewards: Option[flat.RewardUpdate] = nes.ru match
-          case None => None
+          case None                               => None
           case Some(PulsingRewUpdate.Complete(u)) =>
+            // Aggregate attributed rewards (`Rewards.hs:170-186`); before Allegra keep only
+            // the least reward under `Ord Reward`, which places a leader reward first.
             Some(
               flat.RewardUpdate(
                 u.deltaT.value,
                 u.deltaR.value,
                 if u.rs.isEmpty then x.rewardAmounts
                 else
-                  // what each credential is paid (`aggregateRewards`, `Rewards.hs:170-186`): before
-                  // Allegra one that earns from several sources keeps the least of them, the leader
-                  // reward
                   stakeMap(u.rs)(set =>
                     (if gov.prev.protocolMajor >= 3 then set.rewards else set.rewards.take(1))
                       .foldLeft(BigInt(0))(_ + _.rewardAmount.value)

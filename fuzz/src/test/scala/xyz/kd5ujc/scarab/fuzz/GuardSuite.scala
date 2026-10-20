@@ -4,13 +4,13 @@ package xyz.kd5ujc.scarab.fuzz
 import xyz.kd5ujc.scarab.codec.Bytes
 import munit.FunSuite
 
-/** Deterministic guards that do not depend on the seed: the seeds are valid, and no decoder
-  * allocates for a length that the input does not contain.
+/** Deterministic guards check seed acceptance and allocation bounds for representative malformed
+  * length heads, independently of the random mutation seed.
   */
 class GuardSuite extends FunSuite:
   /** Targets whose seeds are valid items of the decoder: at least one must be accepted. */
+  // Exclude targets for which the committed and sampled corpora supply no valid seed.
   private val mustAccept = Targets.all.map(_.name).toSet -- Set(
-    // no committed or sampled valid item reaches these
     "tx-whole-shelley",
     "tx-whole-allegra",
     "tx-whole-mary",

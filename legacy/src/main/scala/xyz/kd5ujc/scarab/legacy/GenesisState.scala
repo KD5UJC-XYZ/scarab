@@ -19,8 +19,8 @@ import xyz.kd5ujc.scarab.ledger.byron.{ByronLedger, ByronOut}
 /** The flat ledger state at the first Shelley-based slot of a chain: from the Shelley
   * `initialFunds` and staking injections, the Byron non-AVVM balances and the Conway genesis DReps
   * and vote delegations. FROZEN with the flat state: the node's start state is this, put through
-  * [[LedgerMirror.to]] once, at the start (the genesis start is the one use of the flat state that
-  * is not a reader of an old file; design `ledger-mirror-step2.md` J2.9, gaps).
+  * [[LedgerMirror.to]] once, at the start. This genesis conversion remains after retirement of the
+  * V1–V4 snapshot readers; the live ledger then evolves on native era-indexed state.
   */
 object GenesisState:
   /** The ledger state at the start of the first Shelley-based epoch. Its UTxO is the Shelley
@@ -148,11 +148,11 @@ object GenesisState:
       // from reserves); the first EPOCH rule recomputes `deposited` as the total obligation. Only
       // the mark snapshot is seeded: set/go start empty, so epoch 0 earns no rewards.
       val genesisStake = Stake.snapshot(base)
+      // Epochs 0 and 1 elect leaders from the genesis staking injection.
       val seeded0 = base.copy(
         deposited = 0,
         reserves = maxSupply - utxo.valuesIterator.map(_.value.coin).sum,
         snapshots = Snapshots(genesisStake, Snapshot.empty, Snapshot.empty, 0),
-        // Epochs 0 and 1 elect leaders from the genesis staking injection.
         poolDistribution = genesisStake
       )
       val seeded =

@@ -105,25 +105,32 @@ enum Origin:
 
 /** Everything the governor knows of one peer (`KnownPeerInfo`, `State/KnownPeers.hs` 100-145, and
   * the entry in the established set).
+  *
+  * @param failCount
+  *   Failures since the last success or clearing; [[Origin.unforgettable]] determines which peers
+  *   survive the retry limit.
+  * @param tepid
+  *   Was hot and was demoted: more likely to be picked for closing (`knownPeerTepid`).
+  * @param everConnected
+  *   A connection to it has been established at some time (`knownSuccessfulConnection`).
+  * @param clearFailAt
+  *   When the fail count is reset (a peer that stayed hot for `policyClearFailCountDelay`).
+  * @param advertise
+  *   Local willingness, retained across discovery/connection updates (`knownPeerAdvertise`).
+  * @param shareAt
+  *   Next request on this established connection; none when sharing was not negotiated.
+  * @param sharing
+  *   Last negotiated remote willingness, retained when the connection ends.
   */
 final case class PeerRecord(
     status: Status,
     origin: Origin,
-    /** Failures since the last success or the last clearing; at the retry limit the peer is
-      * forgotten unless it is a root.
-      */
     failCount: Int,
-    /** Was hot and was demoted: more likely to be picked for closing (`knownPeerTepid`). */
     tepid: Boolean,
-    /** A connection to it has been established at some time (`knownSuccessfulConnection`). */
     everConnected: Boolean,
-    /** When the fail count is reset (a peer that stayed hot for `policyClearFailCountDelay`). */
     clearFailAt: Option[Time],
-    /** Local willingness, retained across discovery/connection updates (`knownPeerAdvertise`). */
     advertise: Option[Boolean] = None,
-    /** Next request on this established connection; none when sharing was not negotiated. */
     shareAt: Option[Time] = None,
-    /** Last negotiated remote willingness, retained when the connection ends. */
     sharing: Option[Boolean] = None
 )
 

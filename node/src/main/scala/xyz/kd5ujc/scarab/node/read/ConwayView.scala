@@ -20,9 +20,7 @@ object ConwayView:
     /** The chain is in an earlier era than Conway. */
     case InEarlier(era: Era)
 
-    /** The state cannot be read (a state the mirror cannot hold, when the state is the node's flat
-      * one).
-      */
+    /** The supplied [[ChainRead]] or [[EraRead]] refused the ledger state. */
     case Refused(error: MirrorError)
 
   object Unavailable:

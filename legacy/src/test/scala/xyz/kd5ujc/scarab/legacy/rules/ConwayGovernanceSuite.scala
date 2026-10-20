@@ -35,6 +35,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     val fundCoin: BigInt = 10000 * ada
     val params: ProtocolParams = TestLedger
       .params(pv)
+      // no monetary expansion or treasury cut: the treasury moves only through governance
       .copy(
         drepDeposit = 500 * ada,
         drepActivity = 20,
@@ -42,7 +43,6 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
         govActionLifetime = 3,
         committeeMaxTermLength = 100,
         committeeMinSize = 0,
-        // no monetary expansion or treasury cut: the treasury moves only through governance
         rho = Rational.zero,
         tau = Rational.zero,
         poolDeposit = 500 * ada,

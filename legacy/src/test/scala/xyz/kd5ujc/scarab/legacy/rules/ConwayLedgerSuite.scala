@@ -183,6 +183,7 @@ class ConwayLedgerSuite extends FunSuite:
     val s = state(pp.protocolMajor.toInt, funds)
     val deposits = accounts.values.map(_.deposit).sum + pools.values.map(_.deposit).sum +
       dreps.values.map(_.deposit).sum + gov.proposals.totalDeposits
+    // an epoch's worth of the rest of the state the mirror needs
     s.copy(
       params = pp,
       accounts = accounts,
@@ -192,7 +193,6 @@ class ConwayLedgerSuite extends FunSuite:
       committeeState = committeeState,
       deposited = deposits,
       reserves = s.reserves - deposits,
-      // an epoch's worth of the rest of the state the mirror needs
       epoch = TestLedger.env.epoch
     )
 
@@ -864,20 +864,20 @@ class ConwayLedgerSuite extends FunSuite:
       .copy(datum = Datum.Hash(Blake2b.hash256.hash(datum)))
     val collateralIn = txIn(2)
     val lockedIn = txIn(3)
+    // more outputs of alice, for a transaction with several collateral inputs
     val state: flat.LedgerState = base(
       Vector(collateralIn -> out(alice.address(), 100 * ada), lockedIn -> locked) ++
-        // more outputs of alice, for a transaction with several collateral inputs
         (41 to 43).map(i => txIn(i) -> out(alice.address(), 10 * ada)),
       accounts = Map(alice.credential -> Account(0, 2 * ada, None, Some(NodeDRep.AlwaysAbstain))),
       pp = pp
     )
     val units = ExUnits(1000, 1000000)
+    // `{ [0, 0] : [1, [1000, 1000000]] }` and `[ 1 ]`
     val wits = Witnesses(
       Vector.empty,
       scripts = Vector(plutus),
       datums = Vector(datum),
       redeemers = Vector(Redeemer(0, 0, Bytes(Vector(0x01)), units)),
-      // `{ [0, 0] : [1, [1000, 1000000]] }` and `[ 1 ]`
       redeemersRaw = Some(
         Bytes(
           Vector(0xa1, 0x82, 0x00, 0x00, 0x82, 0x01, 0x82, 0x19, 0x03, 0xe8, 0x1a, 0x00, 0x0f, 0x42,

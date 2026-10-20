@@ -9,8 +9,8 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.node.read.LeaderPools.given
 
-/** A read of the ledger state that can be refused: only a state the mirror cannot hold (a value
-  * outside the range of a Haskell type) is, and only when the state is the node's flat one.
+/** A ledger read with a typed refusal. Direct native fields succeed; derived views such as
+  * [[MirrorEraRead.rewardsDue]] can reject values outside the ledger vocabulary.
   */
 type Read[A] = Either[MirrorError, A]
 
@@ -29,12 +29,9 @@ final case class RewardsDue(
   * the mirror (`NewEpochState`): the local state queries, the header rules' ledger-view forecast,
   * the leader schedule, the K1 projection and the follower's epoch line. [[MirrorEraRead]]
   * implements it: its members are the fields of a `NewEpochState[E]` and it converts nothing.
-  * (Until J2.9 the node's flat state implemented it too, converting the part asked for; the flat
-  * state went with the old rules, and the readers stayed written against this.)
   *
-  * The members that are cheap on both (the scalars, the parameters, what the forecast reads) do not
-  * convert the accounts, the pools or the snapshots; a reader that does not ask for those does not
-  * pay for them.
+  * Readers ask only for the fields they need. Derived views such as reward aggregation stay behind
+  * their own methods, so a header forecast does not compute an unrelated query result.
   */
 trait EraRead[E <: EraTag]:
   def era: ShelleyBasedEra[E]
@@ -128,8 +125,8 @@ object EraRead:
       .takeWhile((f, _) => f.slot.toBigInt <= slot)
       .foldLeft(base)((m, entry) => m.updated(entry._1.genKeyHash.bytes, entry._2))
 
-/** The read of the ledger state of an era that is a mirror: the fields of the `NewEpochState`.
-  * Nothing is converted and nothing fails.
+/** Reads native `NewEpochState` fields directly. Derived reward aggregation preserves vocabulary
+  * failures in [[Read]] rather than discarding them.
   */
 final class MirrorEraRead[E <: EraTag](val state: NewEpochState[E])(using
     val era: ShelleyBasedEra[E]

@@ -9,6 +9,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from fractions import Fraction
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -392,6 +393,58 @@ class RefusedFixtureTest(unittest.TestCase):
                 {"label": "xrefoverlap-v3-ef", "expected": ["ReferenceInputsNotDisjointFromInputs"], "tx": "03"})))
             lines = refused_fixture.build(run)
         self.assertEqual([l["scenario"] for l in lines], ["vrf", "vrf", "unelected", "refoverlap"])
+
+
+class FreezeClassesTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.repo = self.tmp / "checkout"
+        self.run = self.tmp / "run"
+        self.cp = self.repo / "node/target/runtime-classpath.txt"
+        self.cp.parent.mkdir(parents=True)
+        self.patch = patch.object(cluster, "REPO", self.repo)
+        self.patch.start()
+        self.addCleanup(self.patch.stop)
+
+    def compiled(self, path, content=b"compiled"):
+        path.mkdir(parents=True)
+        (path / "Main.class").write_bytes(content)
+        return path
+
+    def test_freezes_worktree_classes_and_keeps_dependency_paths(self):
+        classes = self.compiled(self.repo / "node/target/scala-3.3.8/classes")
+        jar = "/work/.cache/scarab/dependency.jar"
+        self.cp.write_text(f"/work/node/target/scala-3.3.8/classes:{jar}")
+        self.assertEqual(cluster.freeze_classes(self.run), f"/run/classes/node:{jar}")
+        (classes / "Main.class").write_bytes(b"rebuilt")
+        self.assertEqual((self.run / "classes/node/Main.class").read_bytes(), b"compiled")
+
+    def test_missing_module_fails_before_replacing_a_previous_freeze(self):
+        self.compiled(self.repo / "node/target/scala-3.3.8/classes")
+        old = self.compiled(self.run / "classes/node", b"previous")
+        self.cp.write_text("/work/node/target/scala-3.3.8/classes:/work/ledger/target/scala-3.3.8/classes")
+        with self.assertRaisesRegex(SystemExit, "missing compiled classes.*ledger"):
+            cluster.freeze_classes(self.run)
+        self.assertEqual((old / "Main.class").read_bytes(), b"previous")
+
+    def test_empty_classes_and_wrong_checkout_paths_are_refused(self):
+        (self.repo / "node/target/classes").mkdir()
+        for entry in ("/work/node/target/classes", "/other/checkout/node/target/classes", ""):
+            self.cp.write_text(entry)
+            with self.subTest(entry=entry), self.assertRaises(SystemExit):
+                cluster.freeze_classes(self.run)
+        self.assertFalse((self.run / "classes").exists())
+
+    def test_explicit_previous_build_must_have_every_module(self):
+        self.cp.write_text("/work/node/target/classes:/work/ledger/target/classes")
+        previous = self.tmp / "previous"
+        self.compiled(previous / "node")
+        with self.assertRaisesRegex(SystemExit, "missing compiled classes.*ledger"):
+            cluster.freeze_classes(self.run, previous)
+        self.compiled(previous / "ledger", b"old-ledger")
+        self.assertEqual(cluster.freeze_classes(self.run, previous), "/run/classes/node:/run/classes/ledger")
+        self.assertEqual((self.run / "classes/ledger/Main.class").read_bytes(), b"old-ledger")
 
 
 class CacheDirTest(unittest.TestCase):

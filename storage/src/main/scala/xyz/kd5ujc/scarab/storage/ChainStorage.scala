@@ -108,7 +108,8 @@ object ChainPersistence:
   * The volatile part (the last `k` blocks) lives in memory, with a log of its updates on disk:
   * after a restart [[resume]] applies the logged blocks on top of the immutable state, so the node
   * continues at its previous tip. A graceful stop (the resource is released) writes a snapshot at
-  * the immutable tip, so the next start replays no stored block.
+  * the immutable tip when the state is writable. The next start restores it and replays the
+  * retained volatile suffix; without a usable snapshot it also replays immutable blocks.
   *
   * Layout: `<dir>/network-identity`, `<dir>/immutable/`, `<dir>/snapshots/`, `<dir>/volatile/`.
   */
@@ -121,43 +122,51 @@ object ChainStorage:
     */
   private val AdvanceEvery = 128
 
+  /** @param snapshotPolicy
+    *   When a snapshot is taken (the immutable tip also gets one on a graceful stop).
+    * @param byronEpochSlots
+    *   10k of the Byron genesis, to place Byron blocks on the slot axis when blocks are decoded.
+    * @param progressEvery
+    *   Replay progress is reported every this many blocks.
+    * @param identity
+    *   The network the database must belong to; none: not recorded or checked (tests).
+    * @param adoptLegacyNetworkIdentity
+    *   Explicit operator acknowledgement for adopting incomplete or missing identity.
+    * @param volatileFileBlocks
+    *   Blocks per volatile log file.
+    * @param volatileCollectBlocks
+    *   Blocks that become immutable between two forced syncs of the immutable store, each followed
+    *   by a collection of the log files wholly below the immutable tip. The sync is what makes
+    *   collecting safe, and it is a disk flush on the apply path, so it is rare: the log keeps up
+    *   to this many blocks beyond the `k` it needs.
+    */
   final case class Config(
-      /** When a snapshot is taken (the immutable tip also gets one on a graceful stop). */
       snapshotPolicy: SnapshotPolicy,
       keepSnapshots: Int = SnapshotPolicy.ReferenceKeep,
       chunkSlots: Long = FileImmutableStore.DefaultChunkSlots,
-      /** 10k of the Byron genesis, to place Byron blocks on the slot axis when blocks are decoded.
-        */
       byronEpochSlots: BigInt,
-      /** Replay progress is reported every this many blocks. */
       progressEvery: Int = 20000,
-      /** The network the database must belong to; none: not recorded or checked (tests). */
       identity: Option[NetworkIdentity] = None,
-      /** Explicit operator acknowledgement for adopting incomplete or missing identity. */
       adoptLegacyNetworkIdentity: Boolean = false,
-      /** Blocks per volatile log file. */
       volatileFileBlocks: Int = 512,
-      /** Blocks that become immutable between two forced syncs of the immutable store, each
-        * followed by a collection of the log files wholly below the immutable tip. The sync is what
-        * makes collecting safe, and it is a disk flush on the apply path, so it is rare: the log
-        * keeps up to this many blocks beyond the `k` it needs.
-        */
       volatileCollectBlocks: Int = 4096
   )
 
   /** The node state recovered from disk, ready to anchor a
     * [[xyz.kd5ujc.scarab.consensus.VolatileChain]].
+    *
+    * @param volatile
+    *   The chain the volatile log describes, not yet validated (see [[resume]]).
+    * @param adopt
+    *   Make `blocks` (a prefix of the logged chain that was validated) the persistence's pending
+    *   blocks, and cut the log back to them.
     */
   final case class Recovered[F[_], S](
       anchor: Option[BlockRef],
       state: S,
       persistence: ChainPersistence[F, S],
       store: ImmutableStore[F],
-      /** The chain the volatile log describes, not yet validated (see [[resume]]). */
       volatile: Vector[(BlockRef, Bytes)],
-      /** Make `blocks` (a prefix of the logged chain that was validated) the persistence's pending
-        * blocks, and cut the log back to them.
-        */
       adopt: Vector[(BlockRef, Bytes)] => F[Unit]
   )
 
@@ -213,6 +222,15 @@ object ChainStorage:
       )
     yield admission
 
+  /** @param prepare
+    *   Called with each batch of stored blocks just before they are applied (verification that does
+    *   not depend on the state can run ahead, in parallel).
+    * @param compute
+    *   The CPU pool the replay runs on (D8); without one, on the calling fiber's pool.
+    * @param snapshotMigration
+    *   Brings the snapshot files of an older format to the current one, before they are opened
+    *   (once the identity of the database is checked): [[SnapshotMigration.toCurrent]].
+    */
   def open[F[_]: Async, S](
       dir: Path,
       config: Config,
@@ -220,15 +238,8 @@ object ChainStorage:
       initial: S,
       events: StorageEvents[F],
       backing: StateBacking[F, S],
-      /** Called with each batch of stored blocks just before they are applied (verification that
-        * does not depend on the state can run ahead, in parallel).
-        */
       prepare: Vector[Bytes] => F[Unit],
-      /** The CPU pool the replay runs on (D8); without one, on the calling fiber's pool. */
       compute: Option[Compute[F]] = None,
-      /** Brings the snapshot files of an older format to the current one, before they are opened
-        * (once the identity of the database is checked): [[SnapshotMigration.toCurrent]].
-        */
       snapshotMigration: Option[SnapshotMigration[F]] = None
   )(using
       SnapshotFormat[F, S],
@@ -476,6 +487,19 @@ object ChainStorage:
           .as((acc.anchor, acc.state))
       }
 
+  /** @param previousSlot
+    *   The slot of the immutable tip before the block being advanced to.
+    * @param lastTaken
+    *   When (monotonic) the previous snapshot was requested; none yet since the start.
+    * @param latest
+    *   The immutable tip and the state after it, as the backing store stands.
+    * @param written
+    *   The anchor of the newest snapshot on disk.
+    * @param sinceCollect
+    *   Blocks that became immutable since the volatile log was last collected.
+    * @param advancedAt
+    *   Block number of the immutable tip the backing store was last brought to.
+    */
   private final class Persistence[F[_]: Async, S](
       store: ImmutableStore[F],
       snapshots: LedgerSnapshots[F, S],
@@ -485,27 +509,21 @@ object ChainStorage:
       config: Config,
       pending: Ref[F, Vector[(BlockRef, Bytes)]],
       lastSlot: Ref[F, BigInt],
-      /** The slot of the immutable tip before the block being advanced to. */
       previousSlot: Ref[F, BigInt],
-      /** When (monotonic) the previous snapshot was requested; none yet since the start. */
       lastTaken: Ref[F, Option[FiniteDuration]],
       busy: Ref[F, Boolean],
-      /** The immutable tip and the state after it, as the backing store stands. */
       latest: Ref[F, Option[(BlockRef, S)]],
-      /** The anchor of the newest snapshot on disk. */
       written: Ref[F, Option[BlockRef]],
-      /** Blocks that became immutable since the volatile log was last collected. */
       sinceCollect: Ref[F, Int],
       snapshotLock: Mutex[F],
       backing: StateBacking[F, S],
-      /** Block number of the immutable tip the backing store was last brought to. */
       advancedAt: Ref[F, BigInt]
   ) extends ChainPersistence[F, S]:
     private val F = Async[F]
 
-    /** A block is logged, kept pending, and when blocks age past `k` appended to the immutable
-      * store and the backing store moved: all or nothing, so a stop (cancellation) never leaves the
-      * stores between two blocks.
+    /** Log the block, keep it pending, and move aged blocks into the immutable and backing stores.
+      * Cancellation is masked across this sequence so a graceful stop cannot interrupt a block's
+      * storage transition. Storage errors still propagate; this is not a multi-store transaction.
       */
     def extended(
         ref: BlockRef,

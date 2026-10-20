@@ -14,15 +14,15 @@ import scala.util.control.NonFatal
   * JVM timing is noisy: t-scores are meaningful only relative to a measured noise control (the
   * basepoint table multiply, whose cost does not depend on its scalar's value). A target is
   * reported as leaking when `t > 10 && t > 5 * noise`. A "no leak" verdict is "no leakage detected
-  * by this experiment" — it is evidence of absence within the experiment's power, not a proof of
-  * constant-time behaviour. The expected outcome on a quiet machine: curve25519's `point.multiply`
-  * shows no leakage above the floor, while `Ed25519Point.scalarMultiply` and the `uniform` control
-  * exceed it by an order of magnitude — the "variable-time, public inputs only" contract of
-  * `Draft03Math.java`, which the guard in `scripts/check_crypto_guard.py` enforces. A failed
-  * operation is reported and aborts the run: exception handling is not measured as successful
-  * crypto timing. A repetition whose measured noise floor exceeds the contamination bound (see
-  * below) is retried once and then discarded: on shared or virtualized hosts the floor occasionally
-  * explodes with environmental spikes, and a verdict computed against such a floor is meaningless.
+  * by this experiment" — a bounded negative observation, not a proof of constant-time behaviour.
+  * The expected outcome on a quiet machine: curve25519's `point.multiply` shows no leakage above
+  * the floor, while `Ed25519Point.scalarMultiply` and the `uniform` control exceed it by an order
+  * of magnitude — the "variable-time, public inputs only" contract of `Draft03Math.java`, which the
+  * guard in `scripts/check_crypto_guard.py` enforces. A failed operation is reported and aborts the
+  * run: exception handling is not measured as successful crypto timing. A repetition whose measured
+  * noise floor exceeds the contamination bound (see below) is retried once and then discarded: on
+  * shared or virtualized hosts the floor occasionally explodes with environmental spikes, and a
+  * verdict computed against such a floor is meaningless.
   *
   * Run: `sbt "crypto/runMain xyz.kd5ujc.scarab.crypto.vrf.TimingProbeMain [samples [buckets
   * [repetitions]]]"` on an idle machine, ideally with `-XX:+UseSerialGC -Xbatch`. Protocol and

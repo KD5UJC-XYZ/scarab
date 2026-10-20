@@ -53,8 +53,8 @@ enum SnapshotRefusal extends DomainError:
     */
   case WouldNotRead(error: StorageError)
 
-  /** What was written reads back as another state than the one written; `parts` name the fields (of
-    * the node state, two levels deep) that differ, or none when only the anchor does.
+  /** Full verification found different re-encoded bytes or a different anchor; `parts` identifies
+    * the failed checks through [[SnapshotDifference]].
     */
   case WouldDiffer(parts: List[SnapshotDifference])
 

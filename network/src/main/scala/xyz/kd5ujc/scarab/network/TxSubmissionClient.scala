@@ -30,8 +30,10 @@ object TxSubmissionClient:
     /** The original bytes of a transaction, if it is still held. */
     def body(id: Bytes): F[Option[Bytes]]
 
+  /** @param idleTimeout
+    *   Time to wait for the server's next request.
+    */
   final case class Settings(
-      /** Time to wait for the server's next request. */
       idleTimeout: FiniteDuration = 3373.seconds
   )
 
@@ -77,12 +79,14 @@ object TxSubmissionClient:
       */
     def finish(within: FiniteDuration): F[Boolean]
 
-  /** Offer `source` to the peer for the life of the resource. A failure ends the connection. */
+  /** Offer `source` to the peer for the life of the resource. A failure ends the connection.
+    * @param role
+    *   The side of the protocol to run: the multiplexer's own by default.
+    */
   def background[F[_]: cats.effect.Async](
       mux: Mux[F],
       source: Source[F],
       settings: Settings = Settings(),
-      /** The side of the protocol to run: the multiplexer's own by default. */
       role: Option[Mux.Role] = None
   ): cats.effect.Resource[F, Unit] =
     backgroundFinishing(mux, source, settings, role).void

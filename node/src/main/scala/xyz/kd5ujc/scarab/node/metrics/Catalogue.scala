@@ -467,9 +467,10 @@ object Catalogue:
     "What the inbound governor did on accepted connections.",
     Labels.one[InboundEventLabel](LabelName("event"))
   )
-  // the governor's counters, under the Haskell node's names (`peerSelection.*` of the trace
-  // dispatcher, `PeerSelectionCounters.hs`); big ledger peers come with G1.3 and read zero until
-  // then
+  // Governor counters use the Haskell trace dispatcher's `peerSelection.*` names
+  // (`PeerSelectionCounters.hs`); each gauge reads the corresponding GovernorState counter.
+  // Deprecated WarmLocalRoots reports active local roots; HotLocalRoots reports established
+  // local roots beyond the active set, preserving the reference's historical naming.
   /** Each gauge with the counter it reports. */
   val peerSelectionGauges: List[(GaugeDef[Unit], GovernorState.Counters => Int)] = List(
     (
@@ -505,8 +506,6 @@ object Catalogue:
       ),
       _.hotBigLedger
     ),
-    // the reference reports these two the other way round (warm as the active, hot as the
-    // established beyond the active); both are deprecated there
     (
       GaugeDef(
         MetricName("cardano_node_metrics_peerSelection_WarmLocalRoots_int"),
