@@ -160,9 +160,12 @@ Caveats:
   Do not delete snapshots to force replay as an upgrade procedure.
 - A format-5 sidecar holds the mirror state without the old rules' flat bookkeeping. Historical
   conversions preserve the source gaps and observed eras rather than claiming information the old
-  state lacked. The delegator counts of older stake snapshots can remain lower bounds until two
-  boundaries; an old Byron-start snapshot before Allegra can lack the redeem stash. Keep the source
-  and matching checkpoint backup. Live gap-provenance persistence is separate (#129).
+  state lacked. Live states retain these gaps and observed era starts through rollback and V5
+  restore/rewrite (#129). Missing likelihood history remains marked; arbitrary imported delegator
+  counts need three observed snapshot rotations, with the proof conservatively restarting after
+  restore. An old Byron-start snapshot before Allegra can lack the redeem stash. Keep the source
+  and matching checkpoint backup. Operational preprod/mainnet upgrades remain separate; see
+  [the provenance upgrade procedure](storage-migrations.md#per-state-provenance-upgrades-129).
 - **The UTxO checkpoints beside the snapshots** (`<db>/utxo/checkpoints/<snapshot stem>`) are RocksDB
   directories whose key is `txid ++ index` as a big-endian u16 (34 bytes, the Haskell node's) since K6
   (2026-10-14). Older checkpoints used `txid ++ u32` (36 bytes). The independent checkpoint-key

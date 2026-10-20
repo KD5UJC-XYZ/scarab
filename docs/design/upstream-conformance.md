@@ -34,6 +34,13 @@ The artifact records each prefix's endpoint file counts. API tests, test librari
 and goldens and the actual network/Cardano diffusion test roots are included.
 Changes outside watched paths remain unassessed.
 
+Wallet query support additionally watches `Wallet.hs` and `PoolRank.hs` at the native wallet
+fixture's ledger pin. Peer snapshot support watches the seven unchanged semantic encoder/helper
+files at its separate released network pin. Both watches derive their pins and paths from
+`fixtures/reference/wallet-queries/manifest.json`; they do not repin the moving network generator
+corpus. The workflow reports all eight source groups. Drift is a review lead, never evidence that
+a changed source has been executed or that a fixture may be regenerated automatically.
+
 Run the same read-only check locally:
 
 ```sh

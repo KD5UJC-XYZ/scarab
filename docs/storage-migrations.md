@@ -141,6 +141,43 @@ what was compared, and any limits in [compatibility.md](compatibility.md). Updat
 stage, roadmap item and changelog fragment with the substantive implementation commit. A started
 process, partial output or a timed-out assertion is not a passed gate.
 
+## Per-state provenance upgrades (#129)
+
+Native V5 already has `gaps` and `observed` sidecar fields. The live mirror now carries those
+fields explicitly, restores the saved values, and writes them back from the selected state instead
+of using a constant gap set or the writer's newer environment. This is a writer behavior correction;
+the sidecar schema and fingerprint remain V5. A fresh native genesis and a complete native Haskell
+import start complete. An existing snapshot keeps every saved gap, even when the historical writer
+used an overly conservative flag. Empty likelihood history alone cannot establish its provenance.
+
+Missing non-myopic history does not heal merely because a new reward update is computed. The old
+reward-attribution, pending-update and Shelley-transition gaps can clear at a successful epoch
+boundary that replaces their affected state. Delegator-count provenance requires three observed
+native snapshot rotations to replace arbitrary imported mark/set/go snapshots. Its rotation proof
+is transient: a restore retains the gap and restarts the proof, so repeated restarts can delay its
+clearance. It never infers that a missing rotation happened from elapsed epoch numbers alone.
+
+The preprod and mainnet writer upgrades remain separate operational work under
+[#129](https://github.com/KD5UJC-XYZ/scarab/issues/129). Before either upgrade:
+
+1. Inventory that network's actual writer revision, complete identity, file versions, saved gaps,
+   era observations, snapshot anchors and matching checkpoint handles. Do not assume V5 from the
+   format used by repository fixtures; the older preprod producer has a separate #37/#115 transition.
+2. Prepare a consistent complete backup and prove that its pinned old runtime can restore it.
+   Rehearse on separate copies under the procedure above; never open the operational original
+   with the candidate runtime or share writable backing/checkpoint inodes with it.
+3. With the exact proposed runtime, verify snapshot/checkpoint restoration, complete count/coin
+   including the diff overlay, fixed-range continuation and a second restart. Preserve source
+   gaps and era observations through rewriting; require unchanged V5 framing/fingerprint for
+   V5 input. Retired input needs its established pinned-source conversion first.
+4. Present the per-network manifests, results and rollback plan for owner approval before stopping
+   or switching its writer. Upgrade one network at a time. Do not infer downgrade safety from
+   unchanged framing: an older writer can read V5 yet drop provenance when it rewrites the state.
+
+Source validation and private devnet restarts do not establish that either operational network has
+been migrated. Record each network's completed rehearsal and approved cutover explicitly before
+closing its rollout acceptance.
+
 ## Inventory, backups and reader retirement
 
 Before opening a new build against existing data, inventory every active database, snapshot corpus,
