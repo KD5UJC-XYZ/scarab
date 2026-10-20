@@ -235,33 +235,31 @@ object Diff extends LowPriorityDiff:
     * per concrete field type at inline expansion, and compared by the instance of that same type —
     * no cast, no `Diff[Any]`, no `@unchecked` projection.
     */
-  private inline def productDiff[Ts <: Tuple](
-      p: Product,
-      q: Product,
+  private inline def productSteps[Ts <: Tuple](
       names: List[String],
       i: Int
-  ): Option[Difference] =
+  ): List[(Product, Product) => Option[Difference]] =
     inline erasedValue[Ts] match
-      case _: EmptyTuple => None
+      case _: EmptyTuple => Nil
       case _: (t *: ts)  =>
         // the ClassTag extractor narrows each field value to its declared type; the check and
         // the cast live in the stdlib's unapply, not in this source
         val ct = summonInline[ClassTag[t]]
-        (p.productElement(i), q.productElement(i)) match
-          case (ct(x), ct(y)) =>
-            summonInline[Diff[t]]
-              .diff(x, y)
-              .map(_.under(Step.Field(names.head)))
-              .orElse(productDiff[ts](p, q, names.tail, i + 1))
-          // unreachable for a well-formed mirror; reported loudly rather than silently skipped
-          case _ =>
-            Some(
-              Difference(
-                Path(Vector(Step.Field(names.head))),
-                "field value is not of the declared field type",
-                "field value is not of the declared field type"
+        val held = new Memo(() => summonInline[Diff[t]])
+        val name = names.head
+        val step: (Product, Product) => Option[Difference] = (p, q) =>
+          (p.productElement(i), q.productElement(i)) match
+            case (ct(x), ct(y)) => held.value.diff(x, y).map(_.under(Step.Field(name)))
+            // unreachable for a well-formed mirror; reported loudly rather than silently skipped
+            case _ =>
+              Some(
+                Difference(
+                  Path(Vector(Step.Field(name))),
+                  "field value is not of the declared field type",
+                  "field value is not of the declared field type"
+                )
               )
-            )
+        step :: productSteps[ts](names.tail, i + 1)
 
   /** A [[Diff]] from a difference function: the function is built at the derivation site (inline,
     * where the field and case types are concrete); the instance itself is a plain class, so
@@ -273,14 +271,21 @@ object Diff extends LowPriorityDiff:
 
   private inline def product[A](using m: Mirror.ProductOf[A]): Diff[A] =
     val names = labels[m.MirroredElemLabels]
+    val fields = productSteps[m.MirroredElemTypes](names, 0).toArray
     from[A]((a, b) =>
       if same(a, b) then None
       else
         // a type with a product mirror is a Product at runtime: the narrowing is a checked type
-        // test, and each field value is re-checked against its declared type in `productDiff`
+        // test, and each field value is re-checked against its declared type in its field step
         (a: Any, b: Any) match
-          case (p: Product, q: Product) => productDiff[m.MirroredElemTypes](p, q, names, 0)
-          case _                        => None // unreachable: the mirror proves the shape
+          case (p: Product, q: Product) =>
+            var found: Option[Difference] = None
+            var i = 0
+            while found.isEmpty && i < fields.length do
+              found = fields(i)(p, q)
+              i += 1
+            found
+          case _ => None // unreachable: the mirror proves the shape
     )
 
   private inline def sum[A](using m: Mirror.SumOf[A]): Diff[A] =
@@ -298,14 +303,7 @@ object Diff extends LowPriorityDiff:
             Difference.clipped(s"${names(m.ordinal(b))}: ${b.toString}")
           )
         )
-      else
-        // walk the cases by index: no iterator per comparison
-        var found: Option[Difference] = None
-        var i = 0
-        while found.isEmpty && i < cases.length do
-          found = cases(i)(a, b)
-          i += 1
-        found
+      else cases(m.ordinal(a))(a, b)
     )
 
   /** One step per case, in declaration order: the case's instance (made on first use and kept) and
@@ -324,9 +322,9 @@ object Diff extends LowPriorityDiff:
             case _                  => None
         step :: caseSteps[ts, A]
 
-  /** A value made on first use and kept: the instance of a case must not be built on every
-    * comparison, and must not be built while the enum's own instance is being made (a case may hold
-    * the enum).
+  /** A value made on first use and kept: field and case instances must not be built on every
+    * comparison, and must not be forced during derivation (a field or case may hold the type being
+    * derived).
     */
   private[scarab] final class Memo[A](init: () => A):
     lazy val value: A = init()

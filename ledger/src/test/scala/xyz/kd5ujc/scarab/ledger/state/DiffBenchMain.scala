@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.ledger.state
 import java.lang.management.ManagementFactory
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
+import scala.annotation.tailrec
 import scala.collection.immutable.SortedMap
 
 /** The #206 comparison workload: independent equal trees and first/last edits of a deterministic
@@ -42,7 +43,11 @@ object DiffBenchMain:
       val elapsed = System.nanoTime() - started
       val bytes = bean.getCurrentThreadAllocatedBytes - allocated
       (elapsed.toDouble / iterations, bytes.toDouble / iterations, result)
-    (0 until 3).foreach(_ => sample())
+    val warming = System.nanoTime()
+    @tailrec def warmup(): Unit =
+      val _ = sample()
+      if System.nanoTime() - warming < 2000000000L then warmup()
+    warmup()
     val samples = Vector.fill(7)(sample())
     val ns = samples.map(_._1).sorted
     val bytes = samples.map(_._2).sorted
@@ -51,7 +56,9 @@ object DiffBenchMain:
     )
 
   def main(args: Array[String]): Unit =
-    println(s"Diff benchmark entries=$entries java=${System.getProperty("java.version")} args=${args.toVector}")
+    println(
+      s"Diff benchmark entries=$entries java=${System.getProperty("java.version")} args=${args.toVector}"
+    )
     val left = state
     val equal = state
     val early = left.copy(accounts = left.accounts.updated(0, Account(Balance.Ada(-1), 0)))
