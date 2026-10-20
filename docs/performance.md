@@ -2015,3 +2015,181 @@ The original benchmark/gate source identities above remain historical evidence. 
 checks on the rebased head are recorded in the [PR #263 checklist](https://github.com/KD5UJC-XYZ/scarab/pull/263);
 pre-rebase gates are not relabelled as gates of the integrated head. Main and dev still diverge;
 this prepares the dev target and does not claim completion after main landing.
+
+## Typed rule interpreter (#202)
+
+**2026-10-20, level 3.** The indexed `Frames` implementation is retained. On the pinned
+Preview workloads below, the median of three JVM medians changes by **+1.21%** for the sum
+of sixteen block-application medians and **+5.82%** for the epoch tick. Every individual block
+is below the issue's +10% latency limit (largest increase +8.23%). There is no requested
+performance waiver. These are bounded offline ledger measurements, not sync throughput.
+
+### Sources and inputs
+
+This is an isolated interpreter comparison: all surrounding runtime classes are the same frozen
+candidate classes, compiled from reviewed head `44192a0251d8b9316db4dd88b1c702e8a3580fa1`
+(the production Scala sources are unchanged at `83c76b45`). The old condition prepends only the
+classes compiled from `RuleT.scala` at `dev` `2ef358366f3a50397645851f7db81b6a91c5c779`.
+The old/new interpreter source SHA-256 values are respectively
+`ede5bd8e999e459347a131ddf3576e82f9d284e9f2f919d2d751440dbde5433a` and
+`dae0210f9d3725861ac34765d903e54fdca98d75d24e9b7fe04fb3d42c020b95`.
+No codec, credential-order, Diff, rule, crypto or reward implementation changes between conditions.
+
+The maintained entry point is
+`node/src/test/scala/xyz/kd5ujc/scarab/node/PreviewRuleBench.scala`, added in `ea616449`.
+The measured standalone source SHA-256 is
+`04ee354d1b73e93f6f4acdb024997ecabf21d62fb98b641faf0b14d1767f2000`;
+the committed, scalafmt-formatted source is
+`929703727068b4859feac327191742eb7bd5eba1612dff1d673ee3209ab8d944`.
+Their executable source is identical; only whitespace and comment wrapping differ.
+
+Inputs reuse the authenticated Preview K1 provenance of section 30; the original archives remain
+unchanged outside Git. Native V5 snapshot `snapshot-00000000000125231955-4753556.bin`,
+55,232,414 bytes, SHA-256
+`1323741149d81ef700b671f34d4964082102b22d0df4f097418ec7597dd8f536`, is paired with its
+UTxO checkpoint at stamp 4,753,556. Its original legacy snapshot SHA-256 is
+`ca7833bb425ea47514c34cb739627fb880d0585d54b0f6594ca4b43627cf896c`;
+the prior conversion proof binds the complete canonical NES to
+`9488acde5daafe88bff31aecbb1a52ba1ffee4ff971eaf17df68b2bc41930049`, requiring only the
+documented normalization of empty pool-relay encodings for typed equality to the original.
+This comparison introduces no state masks or reward-completion normalization.
+
+The block window is the next sixteen consecutive blocks, 4,753,557–4,753,572, slots
+125,231,994–125,232,394, from immutable chunk `05797.chunk`, SHA-256
+`53cd2f49dadf57bc713808fcf23ff477edca6953587dc7d1b57a7bcbad685ebf`.
+Seven transactions occur in four of the blocks; the remaining twelve are empty. The authenticated
+record manifest (`records.json`, including offsets, lengths, header identities and each raw-block
+SHA-256) is `ea8b4a7abedab57028b5a6c8092bb479b11ffba634a2d2daaca25137df16796f`.
+The harness verifies each selected raw-block hash before decoding. Checkpoint and chunk hashes
+were rechecked against `issue-135-replay-native/input-authentication.json`; the final binding also
+pins every Preview genesis/config file. That source capture was authenticated by CRC32,
+original-header BLAKE2b, consecutive block numbers and previous-header links (section 30).
+
+The epoch workload ticks the same unmodified, snapshot-derived epoch-1450 NES to the first slot
+of epoch 1451 (125,366,400). It runs the actual `Hfc.tick`/TICK/NEWEPOCH/EPOCH rules, including
+pending reward completion as required by that state. It is a **snapshot-derived boundary workload**,
+not the state immediately before the historical epoch-1451 block: intervening blocks are not replayed
+for this tick. No broader Haskell equivalence is inferred from the benchmark.
+
+### Protocol and results
+
+Linux x86-64, Euler WSL2 shared host, Docker image
+`sha256:c90140def52d2711644c85a81c9bf218ffbe5dc81003bfb866154c2da832af38`
+(`scarab-jdk:local`, Eclipse Temurin 21.0.11), Scala/compiler 3.3.8; network disabled,
+`--cpuset-cpus 8-11 --memory 12g --user 1000:1000`, no CFS quota;
+`-Xms3g -Xmx9g -XX:ActiveProcessorCount=4 -XX:+UseG1GC`, `MALLOC_ARENA_MAX=2` from the image.
+An e2e scenario and the initial full check overlapped part of the measurements; results describe
+this shared host, with interleaved order old/typed/typed/old/old/typed, one benchmark JVM at a time.
+
+Each block/refusal case warms 256 calls then measures 31 batches of eight calls; each epoch case
+warms 64 calls then measures 31 single calls. Timings and current-thread allocations use
+`System.nanoTime` and `com.sun.management.ThreadMXBean.getCurrentThreadAllocatedBytes`, divided
+by batch size. The pure call runs synchronously in one IO thunk; no allocation on other threads
+is attributed to it. The timed sink keeps the typed result; equality checks, rendering, SHA-256,
+printing, block/transaction decoding, snapshot loading and checkpoint reads are all outside timing.
+Each historical block's input is prepared sequentially once, then reused immutably for all repetitions.
+This measures ledger Tick+BBODY, not network, header crypto, RocksDB, decoding or complete-node time.
+Local mutation is confined to the timing loop so the measurement avoids collection-building cost.
+
+| JVM condition | sum of 16 block medians (ms) | sum of block median allocations (B) | epoch median / min–max (ms) | epoch median allocation (B) |
+|---|---:|---:|---:|---:|
+| 1: old | 10.616 | 5,582,643 | 128.933 / 119.868–146.499 | 189,684,048 |
+| 2: typed | 10.201 | 5,584,775 | 136.438 / 126.009–181.238 | 194,147,472 |
+| 3: typed | 10.532 | 5,584,387 | 124.670 / 116.000–138.672 | 194,147,472 |
+| 4: old | 10.313 | 5,584,826 | 119.171 / 113.045–132.078 | 189,672,464 |
+| 5: old | 10.369 | 5,595,939 | 136.279 / 119.611–171.220 | 186,629,096 |
+| 6: typed | 10.494 | 5,582,846 | 141.159 / 130.718–161.803 | 191,121,528 |
+
+The block column sums separate workload medians; it is not a timer around a whole replay.
+Block allocations differ by less than 0.04% at the median of runs. Epoch median allocation
+increases from 189,672,464 to 194,147,472 B (+2.36%). The full per-case latency summary follows;
+old/typed values are medians across the three JVM medians, with the span of those JVM medians.
+Raw per-sample ranges and allocations for every case remain in the bound summary.
+
+| Case | old median [run-median span], ms | typed median [run-median span], ms | change |
+|---|---:|---:|---:|
+| block-0 | 0.05223 [0.04865–0.05484] | 0.04808 [0.04757–0.04863] | -7.95% |
+| block-1 | 0.03765 [0.03707–0.04187] | 0.03734 [0.03682–0.03797] | -0.83% |
+| block-2 | 4.82267 [4.79552–5.12170] | 4.88202 [4.63565–4.96951] | +1.23% |
+| missing-input-2 | 0.04691 [0.04584–0.04766] | 0.04831 [0.04729–0.05566] | +2.98% |
+| block-3 | 0.00511 [0.00507–0.00535] | 0.00497 [0.00495–0.00566] | -2.82% |
+| block-4 | 0.00509 [0.00483–0.00554] | 0.00507 [0.00498–0.00525] | -0.51% |
+| block-5 | 0.00488 [0.00481–0.00507] | 0.00488 [0.00481–0.00511] | +0.04% |
+| block-6 | 4.45610 [4.44501–4.49057] | 4.48092 [4.42190–4.52714] | +0.56% |
+| missing-input-6 | 0.02179 [0.02036–0.02429] | 0.02321 [0.02204–0.02384] | +6.50% |
+| block-7 | 0.00442 [0.00439–0.00448] | 0.00453 [0.00442–0.00587] | +2.42% |
+| block-8 | 0.00446 [0.00445–0.00446] | 0.00453 [0.00453–0.00489] | +1.57% |
+| block-9 | 0.00445 [0.00440–0.00473] | 0.00443 [0.00442–0.00447] | -0.54% |
+| block-10 | 0.22797 [0.22707–0.24667] | 0.22937 [0.22210–0.24541] | +0.62% |
+| missing-input-10 | 0.01227 [0.01187–0.01409] | 0.01173 [0.01146–0.01600] | -4.37% |
+| block-11 | 0.00433 [0.00365–0.00466] | 0.00415 [0.00390–0.00435] | -3.98% |
+| block-12 | 0.67015 [0.66346–0.72955] | 0.72533 [0.70662–0.79379] | +8.23% |
+| missing-input-12 | 0.01534 [0.01487–0.01949] | 0.01529 [0.01503–0.01549] | -0.37% |
+| block-13 | 0.00365 [0.00355–0.00366] | 0.00328 [0.00323–0.00344] | -10.29% |
+| block-14 | 0.00333 [0.00321–0.00342] | 0.00337 [0.00329–0.00337] | +1.17% |
+| block-15 | 0.00329 [0.00319–0.00332] | 0.00332 [0.00316–0.00344] | +0.85% |
+| epoch-boundary | 128.93288 [119.17081–136.27919] | 136.43762 [124.67009–141.15866] | +5.82% |
+
+**Semantic evidence.** All 21 complete-result SHA-256 values agree in all six JVM runs:
+sixteen `EraBlock.Outcome` results (entire NES and Plutus counters), four actual typed
+missing-input refusals, and the complete `Either[TickFailure, EraNes]` epoch result. No count-only
+fingerprint or field mask is used. Every warmup and measured batch's final result also equals
+its untimed expected result structurally. This establishes parity on these inputs; the laws,
+rollback/scoped-Globals tests, small-stack suites and reference-stack Tick/BBODY comparisons
+(including failure paths) are separate evidence. The epoch digest is
+`0b4fe05629565985bd4769d88143376fcca01c7b81b2faa3ce892d092d0b71fd`.
+
+**Warmup investigation.** The retained first protocol (7 warmup, 21 single-call samples) gave
+one block a +13.6% three-JVM median difference and one paired epoch run +14.9%. It was not
+accepted as a passing result. Empty-block medians of roughly 40–120 microseconds became roughly
+3–55 microseconds with the longer fixed warmup above; the two large transaction-bearing blocks
+fell from roughly 7–8 ms to roughly 4–5 ms. That sensitivity establishes that the earlier protocol
+was measuring a different warmup state. The longer, declared protocol was applied symmetrically
+and all six runs retained, including slow samples. It brings the earlier problematic block to
++0.56%, with all block and epoch workloads below +10%; this is a steady-state verdict, not a
+claim that startup latency is equal. No production optimization was made to obtain the result.
+A separate attempted launch failed before measurement because the standalone assertion classpath
+omitted JUnit; adding its pinned runtime dependency resolved that harness error.
+
+**Reproduction and binding.** Artifacts live outside Git in `/tmp/scarab-248-bench`: immutable
+runtime class inventories, old-only overlay, compiler classpath, standalone sources, exact Docker
+argument vectors (`r0-old.json` through `r5-typed.json`), raw samples, all result digests,
+`analyze.py`, `summary.json`, and the earlier protocol in `diagnostic/`.
+Final binding SHA-256: `7b85100a0b759c12d5b0eb2e2b94c2781a64f9246374274bf1bedc519a1d7445`;
+summary SHA-256: `af97400f710474aa9a040c53dda99e8c09769905aab14717b45d602d5ef1b854`.
+The binding includes each input/config hash, each frozen runtime/overlay class hash, source
+identities, and every command/log hash. Original private archives and run data are not committed.
+
+Generate `node/runtimeClasspathFile` and `node/Test/compile` from the correct checkout mounted
+at `/work`, with the shared cache mounted at `/work/.cache`. Freeze the runtime directories;
+compile only the old `RuleT.scala` with the pinned Scala 3.3.8 `dotty.tools.dotc.Main` against
+that runtime into a separate directory. Compile/run `xyz.kd5ujc.scarab.node.PreviewRuleBench`
+against the frozen runtime and test dependencies, prepending that old directory only for the old
+condition. The recorded driver is `python3 /tmp/scarab-248-bench/run.py` (SHA-256
+`b298c833ba8f6471085582781761fdb4c53a1e13d890691628ea615a1bd691a4`). Mount the K1 database
+read-only at `/input`, the converted native snapshot directory read-only at `/native`, the pinned
+Preview genesis directory read-only at `/configs`, the record manifest at `/bench/records.json`,
+and a fresh output directory at `/scratch`; all exact host/container paths are in the command JSON.
+
+### Supplementary synthetic result and #250 reconciliation
+
+The existing `CastErasureBench.scala` remains byte-identical to #250 at `7037eac6`:
+SHA-256 `d2409a39398b575e4027a71750f8c30e8f436153c6ff45e86cf53406389686dd`.
+The reported rutherford measurement (2026-10-19/20, Docker JDK 21.0.12.1, CPUs 0–7, `-Xmx5g`,
+three warmups/five samples, old/new/old/new) compared `57608c6e` with measured code `9d2fa735`:
+old 3,159.9/3,175.7 ms, typed 3,073.9/3,256.9 ms; allocation 5.224–5.230 GB versus
+5.217–5.227 GB. The paired changes are **−2.7% and +2.6%**, correcting the prior +1.5% wording.
+Those are reported historical medians, not fresh Euler measurements or a confidence interval.
+The fixed-key synthetic workload hashes the complete rendered ledger state outside timing;
+`159017f549d74b4d4cb6a520` matches all four reported runs. It remains supplementary and does not
+replace the Preview result above. No unrelated codec implementation or unmeasured batch-wide
+performance claim is incorporated into #248. #205/#204 retain their own representative snapshot
+and restart requirements; their results cannot be inferred from this interpreter comparison.
+
+
+**Integration after #260 (2026-10-20).** Rebased onto dev
+`6988858f937a42eb34762cb5a61d3c622c49b124`. RuleT production and the shared class-freeze driver are byte-identical to the measured/reviewed candidate; the driver patch is now upstream through #260. The new Diff diagnostics do not execute in the timed BBODY/Tick comparison.
+The original benchmark/gate source identities above remain historical evidence. Refreshed
+checks on the rebased head are recorded in the [PR #248 checklist](https://github.com/KD5UJC-XYZ/scarab/pull/248);
+pre-rebase gates are not relabelled as gates of the integrated head. Main and dev still diverge;
+this prepares the dev target and does not claim completion after main landing.

@@ -6,7 +6,7 @@ import cats.mtl.{Handle, Local, Stateful}
 import scala.annotation.tailrec
 
 /** The interpreter of the rule algebras ([[Sts]]): a pure program over the constants, a state and a
-  * failure, run by a loop with an explicit stack. It stands where the plan has
+  * failure, run by a loop with an explicit, type-aligned stack. It stands where the plan has
   * `Kleisli[StateT[Either[Fail, *], S, *], Globals, *]` (design §2.2); the plan allows a fused form
   * if the stack costs more than 10% of block-apply time, and J2.4 measures it on a Preview epoch,
   * the first time there is a rule to measure.
@@ -15,10 +15,15 @@ import scala.annotation.tailrec
   * certificates, an epoch's pools, and a function that calls the next step from its continuation
   * grows the JVM stack with the length of the sequence (the preprod restart that died in
   * `Phase2.loop` did exactly that). A [[Prog]] is data: `flatMap` and the handlers build nodes, and
-  * [[RuleT.run]] walks them with a typed stack of [[Frame]]s, in constant JVM stack for any
+  * [[RuleT.run]] walks them with a type-aligned stack of [[Frame]]s, in constant JVM stack for any
   * nesting, to the right (`go.flatMap(_ => go)`), to the left (`foldLeft(unit)(_.flatMap(...))`)
   * and under handlers. `tailRecM` is therefore the plain recursion, and `traverse_`, `traverse` and
   * `foldM` of cats are safe over it.
+  *
+  * The machine is typed end to end (AUD-14): the frames form a type-aligned sequence
+  * `Frames[Fail, S, From, To]`, so a continuation always receives exactly the result type of the
+  * program before it — across recovery and scoped globals — with no cast and no `Any` -typed value
+  * channel (GADT pattern matching is the compiler-enforced proof).
   *
   * The instances are the capabilities of D4: `Local` (so `Ask`) over [[Globals]], `Stateful` over
   * the state, and `Handle` over the failure (`Raise` and recovery with `Handle.allow`).
@@ -36,19 +41,29 @@ private[rules] enum Prog[Fail, S, A]:
   case Recover(program: Prog[Fail, S, A], handler: Fail => Prog[Fail, S, A])
   case Scoped(program: Prog[Fail, S, A], change: Globals => Globals)
 
-/** What is left to do when the program in hand has a value, or fails. */
-private[rules] enum Frame[Fail, S]:
+/** The rest of the computation with a hole of type `X` and a final result of type `A`: a
+  * type-aligned sequence of [[Frame]]s (`Done` closes the sequence, `Cons` extends it by one step
+  * whose input type is the previous hole). Every continuation in the machine is therefore applied
+  * to exactly the result type of the program before it.
+  */
+private[rules] enum Frames[Fail, S, X, A]:
+  case Done[Fail, S, A]() extends Frames[Fail, S, A, A]
+  case Cons[Fail, S, X, Y, A](head: Frame[Fail, S, X, Y], tail: Frames[Fail, S, Y, A])
+      extends Frames[Fail, S, X, A]
+
+/** What is left to do when the program in hand has a value of type `X`, or fails. */
+private[rules] enum Frame[Fail, S, X, Y]:
   /** Feed the value to the continuation. */
-  case Next(next: Any => Prog[Fail, S, Any])
+  case Next[Fail, S, X, Y](next: X => Prog[Fail, S, Y]) extends Frame[Fail, S, X, Y]
 
   /** A recovery: a failure resumes at `handler`, from the state `saved` the protected program
     * started from (the state of a failed program is lost, as in Haskell, where a failure aborts the
     * judgment); a value passes through.
     */
-  case Handler(handler: Fail => Prog[Fail, S, Any], saved: S)
+  case Handler[Fail, S, A](handler: Fail => Prog[Fail, S, A], saved: S) extends Frame[Fail, S, A, A]
 
   /** Leave a scope: the constants as they were outside it. */
-  case Restore(globals: Globals)
+  case Restore[Fail, S, A](globals: Globals) extends Frame[Fail, S, A, A]
 
 object RuleT:
   /** The monad of a failure and a state, for the rules to be instantiated at. */
@@ -61,48 +76,47 @@ object RuleT:
     def run(globals: Globals, state: S): Either[Fail, (S, A)] =
       // One loop, so that it is a tail call: the machine is either running a program or failing
       // (dropping the continuations up to the nearest handler, restoring the constants of the
-      // scopes it leaves, and resuming there; with no handler left the run ends).
+      // scopes it leaves, and resuming there; with no handler left the run ends). The frames are
+      // type-aligned: `go` is called with the exact type the hole was fed, so every transition is
+      // compiler-checked to connect the result of one step to the continuation of the next.
       @tailrec
-      def go(
-          current: Either[Fail, Prog[Fail, S, Any]],
+      def go[X](
+          current: Either[Fail, Prog[Fail, S, X]],
           g: Globals,
           s: S,
-          stack: List[Frame[Fail, S]]
-      ): Either[Fail, (S, Any)] =
+          frames: Frames[Fail, S, X, A]
+      ): Either[Fail, (S, A)] =
         current match
           case Left(e) =>
-            stack match
-              case Nil                          => Left(e)
-              case Frame.Next(_) :: rest        => go(current, g, s, rest)
-              case Frame.Restore(outer) :: rest => go(current, outer, s, rest)
-              case Frame.Handler(handler, saved) :: rest =>
-                go(Right(handler(e)), g, saved, rest)
+            frames match
+              case Frames.Done() => Left(e)
+              case Frames.Cons(head, tail) =>
+                head match
+                  case Frame.Next(_)                 => go(Left(e), g, s, tail)
+                  case Frame.Restore(outer)          => go(Left(e), outer, s, tail)
+                  case Frame.Handler(handler, saved) => go(Right(handler(e)), g, saved, tail)
           case Right(program) =>
             program match
               case Prog.Pure(a) =>
-                stack match
-                  case Nil                          => Right((s, a))
-                  case Frame.Next(next) :: rest     => go(Right(next(a)), g, s, rest)
-                  case Frame.Handler(_, _) :: rest  => go(current, g, s, rest)
-                  case Frame.Restore(outer) :: rest => go(current, outer, s, rest)
+                frames match
+                  case Frames.Done() => Right((s, a))
+                  case Frames.Cons(head, tail) =>
+                    head match
+                      case Frame.Next(next)     => go(Right(next(a)), g, s, tail)
+                      case Frame.Handler(_, _)  => go(Right(Prog.Pure(a)), g, s, tail)
+                      case Frame.Restore(outer) => go(Right(Prog.Pure(a)), outer, s, tail)
               case Prog.Step(step) =>
                 step(g, s) match
-                  case Right((s1, a)) => go(Right(Prog.Pure(a)), g, s1, stack)
-                  case Left(e)        => go(Left(e), g, s, stack)
-              case b: Prog.Bind[Fail, S, ?, Any] @unchecked =>
-                go(
-                  Right(b.from.asInstanceOf[Prog[Fail, S, Any]]),
-                  g,
-                  s,
-                  Frame.Next(b.next.asInstanceOf[Any => Prog[Fail, S, Any]]) :: stack
-                )
-              case r: Prog.Recover[Fail, S, Any] =>
-                go(Right(r.program), g, s, Frame.Handler(r.handler, s) :: stack)
-              case sc: Prog.Scoped[Fail, S, Any] =>
-                go(Right(sc.program), sc.change(g), s, Frame.Restore(g) :: stack)
+                  case Right((s1, a)) => go(Right(Prog.Pure(a)), g, s1, frames)
+                  case Left(e)        => go(Left(e), g, s, frames)
+              case Prog.Bind(from, next) =>
+                go(Right(from), g, s, Frames.Cons(Frame.Next(next), frames))
+              case Prog.Recover(program, handler) =>
+                go(Right(program), g, s, Frames.Cons(Frame.Handler(handler, s), frames))
+              case Prog.Scoped(program, change) =>
+                go(Right(program), change(g), s, Frames.Cons(Frame.Restore(g), frames))
 
-      go(Right(rule.asInstanceOf[Prog[Fail, S, Any]]), globals, state, Nil)
-        .asInstanceOf[Either[Fail, (S, A)]]
+      go(Right(rule), globals, state, Frames.Done[Fail, S, A]())
 
   private def step[Fail, S, A](f: (Globals, S) => Either[Fail, (S, A)]): RuleT[Fail, S, A] =
     Prog.Step(f)

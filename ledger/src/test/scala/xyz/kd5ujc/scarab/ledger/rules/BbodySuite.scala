@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.rules
 
+import cats.Monad
+import cats.data.{Kleisli, StateT}
+import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
 import java.time.Instant
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
@@ -91,6 +94,41 @@ class BbodySuite extends FunSuite:
       Left(BlockFailure.BlockExUnitsTooBig(half + half, pp.maxBlockExUnits))
     )
     assertEquals(Bbody.exUnitsExceeded(pp, txs.take(1)), None)
+  }
+
+  test("BBODY agrees with the reference stack on signed transactions and failures") {
+    type R[A] = Either[BlockFailure, A]
+    type S[A] = StateT[R, BbodyState, A]
+    type K[A] = Kleisli[S, Globals, A]
+    given Monad[K] = Kleisli.catsDataMonadForKleisli[S, Globals]
+    val alice = key()
+    val input = txIn(1)
+    val utxo = Utxo.empty.updated(input, out(alice.address(), 10000000))
+    val signed = tx(
+      body("differential", Vector(input), Vector(out(alice.address(), 9999800)), 200),
+      Vector(alice)
+    )
+    val from = state(pp, utxo)
+    val env = BbodyEnv(TestLedger.env, pp, ok(Coin.fromBigInt(0)))
+    val cases = Vector(
+      (Vector(signed), commitment),
+      (Vector(signed), commitment.copy(size = commitment.size + 1)),
+      (Vector(signed, signed), commitment)
+    )
+    val results = cases.map { (txs, declared) =>
+      val signal = BbodySignal(txs, issuer, declared, commitment)
+      val onRuleT = Sts(Bbody)(globals, env, from, signal)
+      val onStack = Bbody
+        .transition[K](env, signal)(using summon, summon, summon, summon)
+        .run(globals)
+        .run(from)
+        .map(_._1)
+      assertEquals(onRuleT, onStack)
+      onRuleT
+    }
+    assert(results.head.isRight)
+    assertEquals(results(1), Left(BlockFailure.BodyCommitment))
+    assert(results(2).isLeft, "the second transaction spends the first transaction's spent input")
   }
 
   /** The output of a transaction holding a reference script of `size` bytes (Plutus V3). */

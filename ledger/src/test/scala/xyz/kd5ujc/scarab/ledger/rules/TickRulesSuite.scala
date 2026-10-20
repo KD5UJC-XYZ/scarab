@@ -352,6 +352,27 @@ class TickRulesSuite extends FunSuite:
     }
   }
 
+  test("Tick and the reference stack agree when a reward update underflows a pot") {
+    type R[A] = Either[TickFailure, A]
+    type S[A] = StateT[R, NewEpochState[Conway], A]
+    type M[A] = Kleisli[S, Globals, A]
+    given Monad[M] = Kleisli.catsDataMonadForKleisli[S, Globals]
+    val before = conway(5, 30, 3)
+    val update =
+      RewardUpdate.empty.copy(deltaT = DeltaCoin(-before.es.chainAccount.treasury.value - 1))
+    val from = before.copy(ru = Some(PulsingRewUpdate.Complete(update)))
+    val slot = ok(SlotNo.fromBigInt(first(6)))
+    val rule = Tick.sts[Conway]
+    val onRuleT = Sts(rule)(globals, (), from, slot)
+    val onStack = rule
+      .transition[M]((), slot)(using summon, summon, summon, summon)
+      .run(globals)
+      .run(from)
+      .map(_._1)
+    assert(onRuleT.isLeft)
+    assertEquals(onRuleT, onStack)
+  }
+
   test(
     "MIR pays the registered accounts when both pots can pay, and clears the rewards either way"
   ) {
