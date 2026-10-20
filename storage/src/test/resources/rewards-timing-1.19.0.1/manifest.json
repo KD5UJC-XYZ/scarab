@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "generatedAt": "2026-10-20",
+  "issue": 49,
+  "kind": "deterministic constructed native API/STS observations; not formal conformance",
+  "seed": null,
+  "reference": {
+    "node": "11.1.3",
+    "shelley": "1.19.0.1",
+    "shelleySource": "4c81e909df7555b6a58a000db8f8f4f89c7acdc4",
+    "core": "1.21.0.0",
+    "binary": "1.9.1.0",
+    "contextManifest": "sha256:66c862cc374749f3631e91114358f3c063a7b0ec144163e501f3d22ca47821ef",
+    "executedImageId": "sha256:5c095f6581fe4fdc6b1da9b6d2c3dbcd7b835d9671a4450677e5472e72253a3e",
+    "executable": "/usr/local/bin/scarab-reward-oracle",
+    "executableSha256": "f3e27c91bb621eeb096213ca0f1ce9566ccf22f6ce7827c920e5ab718e800cc5"
+  },
+  "observer": {
+    "scripts/oracle/rewards/Main.hs": "d4660db70a792817146861ab429f391bd918f4993e43cdbe3facf989d861f9e6",
+    "scripts/oracle/rewards/Dockerfile": "822684f3de7c9b314c287f1175b1e69ccf842c35eb179fc0e506d40370a5bcbc"
+  },
+  "resources": {
+    "inputs.json.gz": {
+      "gzipSha256": "d2104dbd88bfb149cda5d3a117f0714e692625ed2b2629b9a8dc0a7ecaddd0fb",
+      "jsonSha256": "6a2a1c731a085f547e1d5164ca46988e9b0bb5cd5a3105546adb8d858f237cd6"
+    },
+    "results.json.gz": {
+      "gzipSha256": "2a9c7d68ee6f033a1a6087d4567a300bcd1cf76e2805c6b236fb181395a7e05f",
+      "jsonSha256": "899603a5a742144e5357e1edc7b59c8ce509b10d5d2e367c447733ef80741e65"
+    }
+  },
+  "observations": {
+    "cases": 55,
+    "slotStates": 341,
+    "completeAndCreditedEpochStates": 174,
+    "nativePendingSlotStates": 134,
+    "nativeV5ImportedPrefixes": 8
+  },
+  "comparison": {
+    "availability": [
+      "absent through start",
+      "present after start",
+      "complete strictly after force; earlier completion partition may differ"
+    ],
+    "completed": "all monetary fields and complete encoded credited EpochState; pending NEWEPOCH delivery compares accounts and pots",
+    "mask": [
+      "newly generated nonMyopic likelihood vectors (existing J3.6)"
+    ],
+    "intermediatePartitionEqualityRequired": false,
+    "referenceRestartClaimed": false
+  },
+  "commands": [
+    "storage/Test/runMain xyz.kd5ujc.scarab.storage.haskell.state.RewardTimingCases /evidence/inputs.json",
+    "docker run --rm --network none --read-only -v /tmp/scarab-49-rewards:/evidence:ro scarab-49-reward-timing-oracle:local /evidence/inputs.json"
+  ],
+  "inputProducer": {
+    "path": "storage/src/test/scala/xyz/kd5ujc/scarab/storage/haskell/state/RewardTimingCases.scala",
+    "sha256": "c1da3a7237412cec6acd5e595ba688fbf3eb4eabf2458277fcd7e32096a45128",
+    "sharedCases": "storage/src/test/scala/xyz/kd5ujc/scarab/storage/haskell/state/RewardOracleCases.scala",
+    "sharedCasesSha256": "8bf62568c89700f821bef0fdef1ca7690d8c7a8b1e47e0aedb37bd60b5684bec"
+  }
+}
