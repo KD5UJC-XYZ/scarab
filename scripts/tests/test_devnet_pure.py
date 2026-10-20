@@ -543,11 +543,9 @@ class NtcQueriesTest(unittest.TestCase):
         self.assertEqual(encoded[:3], bytes.fromhex("d90102"))
         self.assertLess(encoded.index(b"a"), encoded.index(b"b"))
 
-    def test_unimplemented_queries_are_marked(self):
+    def test_every_battery_query_is_required(self):
         marked = {label for label, _, implemented in ntcqueries.battery(self.universe()) if not implemented}
-        self.assertIn("GetRewardInfoPools", marked)
-        self.assertNotIn("DebugNewEpochState", marked)
-        self.assertNotIn("GetCurrentPParams", marked)
+        self.assertEqual(marked, set())
 
     def test_the_cli_queries_name_their_arguments(self):
         for label, text in ntc.CLI_QUERIES:

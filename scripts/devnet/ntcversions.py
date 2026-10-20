@@ -38,6 +38,11 @@ def compare_versions(name, ref_socket, scala_socket, dump_dir):
         ("GetFuturePParams", [33], 18, 23),
         ("QueryStakePoolDefaultVote", [35, bytes(28)], 20, 23),
         ("GetDRepDelegations", [39, sset([])], 23, 23),
+        ("GetRewardInfoPools", [18], 16, 23),
+        ("GetNonMyopicMemberRewards", [2, sset([[0, 1000000000]])], 16, 23),
+        ("GetLedgerPeerSnapshot/legacy", [34], 19, 23),
+        ("GetLedgerPeerSnapshot/all", [34, 0], 23, 23),
+        ("GetLedgerPeerSnapshot/big", [34, 1], 23, 23),
         ("GetCBOR/GetPoolDistr", [9, [21, []]], 16, 20),
         ("GetCBOR/GetPoolDistr2", [9, [36, []]], 21, 23),
     ]

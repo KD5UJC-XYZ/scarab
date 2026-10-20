@@ -130,10 +130,17 @@ def battery(u):
     add("DebugNewEpochState", [12])
     add("GetCBOR/DebugEpochState", [9, [8]])
     add("GetCBOR/DebugNewEpochState", [9, [12]])
-    # not answered yet
-    add("GetRewardInfoPools", [18], False)
-    add("GetNonMyopicMemberRewards", [2, sset([[0, 1000000000]])], False)
-    add("GetLedgerPeerSnapshot", [34, 0], False)
+    add("GetRewardInfoPools", [18])
+    add("GetNonMyopicMemberRewards", [2, sset([[0, 1000000000]])])
+    members = [[0, 0], [0, 1000000000]] + [[1, c] for c in some_creds]
+    members.append([1, [0, bytes(28)]])
+    add("GetNonMyopicMemberRewards/mixed", [2, sset(members)])
+    add("GetLedgerPeerSnapshot", [34, 0])
+    add("GetLedgerPeerSnapshot/big", [34, 1])
+    add("GetLedgerPeerSnapshot/legacy", [34])
+    add("GetCBOR/GetRewardInfoPools", [9, [18]])
+    add("GetCBOR/GetNonMyopicMemberRewards", [9, [2, sset(members)]])
+    add("GetCBOR/GetLedgerPeerSnapshot", [9, [34, 0]])
     return q
 
 
