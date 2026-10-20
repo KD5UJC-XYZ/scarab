@@ -32,8 +32,8 @@ class BackgroundFibersSuite extends FailsOnUncaught:
           NetworkError.BearerClosed(NetworkError.Closure.Aborted)
         )
         .start
-      // `takeUncaught` drains the record, so a poll that finds it empty has consumed nothing:
-      // wait until the runtime has reported the escaped Submarine instead of sleeping a guess.
+      // Atomic queue polls remove only reports actually returned by this observation.
+      // A report racing an empty poll remains available to the next poll or afterEach.
       seen <- Wait.until(IO(takeUncaught()))(_.nonEmpty)
     yield
       assertEquals(seen.size, 1)

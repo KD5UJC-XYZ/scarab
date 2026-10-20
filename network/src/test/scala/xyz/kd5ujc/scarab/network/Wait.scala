@@ -13,7 +13,10 @@ import scala.concurrent.duration.*
   */
 object Wait:
 
-  /** Polls `state` until `holds`, or fails with the last observed value after `timeout`. */
+  /** Polls `state` until `holds`, or fails with the last observed value after `timeout`. The
+    * deadline is checked between completed observations: it does not interrupt a stuck `state`.
+    * Callers here read short queue/Ref operations, not potentially unbounded effects.
+    */
   def until[A](
       state: IO[A],
       timeout: FiniteDuration = 10.seconds,
