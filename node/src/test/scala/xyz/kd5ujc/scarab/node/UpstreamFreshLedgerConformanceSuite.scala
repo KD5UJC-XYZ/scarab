@@ -236,6 +236,63 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
             case other => fail(s"unknown observation $other")
     }
   }
+  test("native-only standalone UTXO refuses missing collateral without redeemers") {
+    val supplement = Path.of("node/src/test/resources/upstream/conway-utxo-missing-collateral")
+    val provenance = parse(Files.readString(supplement.resolve("manifest.json")))
+      .fold(e => fail(e.message), identity)
+    val files = provenance.hcursor
+      .get[Map[String, Json]]("files")
+      .fold(e => fail(e.message), identity)
+    files.foreach { (name, binding) =>
+      val bytes = Files.readAllBytes(supplement.resolve(name))
+      assertEquals(
+        bytes.length.toLong,
+        binding.hcursor.get[Long]("bytes").fold(e => fail(e.message), identity)
+      )
+      val hash =
+        MessageDigest.getInstance("SHA-256").digest(bytes).map(b => f"${b & 0xff}%02x").mkString
+      assertEquals(hash, text(binding, "sha256"))
+    }
+    def observed(name: String): Node =
+      Cbor
+        .decode(Bytes.fromArray(Files.readAllBytes(supplement.resolve(s"$name.cbor"))))
+        .fold(e => fail(e.message), identity)
+    val fields = array(observed("environment"))
+    val slot = decode(fields(0), summon[Codec[SlotNo]]).toBigInt
+    val params = decode(fields(1), Params.conwayCodec)
+    val cert = decode(fields(2), summon[Codec[ConwayCertState]])
+    val before = decode(observed("state"), UpstreamNativeStates.nativeUtxoState)
+    cacheInvariant(before, incoherent = false)
+    val original = tx(observed("original-signal"))
+    val transaction = tx(observed("signal"))
+    assertEquals(
+      transaction.body.copy(raw = original.body.raw, collateral = original.body.collateral),
+      original.body
+    )
+    assertEquals(transaction.witnesses, original.witnesses)
+    assertEquals(original.witnesses.redeemers, Vector.empty)
+    assertEquals(transaction.witnesses.redeemers, Vector.empty)
+    assertEquals(transaction.body.collateral.size, 1)
+    assert(transaction.body.collateral.forall(i => !before.utxo.utxo.contains(i)))
+    assertEquals(observed("environment").original, node("utxo-274101", "environment").original)
+    assertEquals(observed("state").original, node("utxo-274101", "state").original)
+    assertEquals(observed("original-signal").original, node("utxo-274101", "signal").original)
+    val signal = StAnnTx(transaction, before.utxo.utxo)
+    val actual = Sts.apply(Utxo)(
+      globals,
+      UtxoEnv(env(slot, geometry.epochOf(slot)), params, cert),
+      Counted(before, PlutusStats.zero),
+      signal
+    )
+    val cause = PredicateFailure.utxo(UtxoFailure.BadInputs(transaction.body.collateral.toSet))
+    assertEquals(actual.swap.toOption, Some(LedgerFailure.Rejected(signal.id, cause)))
+    val encoded = Cbor
+      .decode(PredicateFailureCbor.applyTxError(Vector(cause)))
+      .fold(e => fail(e.message), identity)
+    val ledgerFailure = array(array(array(encoded).head)(1)).head
+    val utxoFailure = array(array(ledgerFailure)(1))(1)
+    assertEquals(array(observed("native-failures")).map(_.value), Vector(utxoFailure.value))
+  }
   test("every original input, native output and independent formal verdict is pinned") {
     cases.foreach { row =>
       val id = text(row, "id")
