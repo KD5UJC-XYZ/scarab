@@ -1,0 +1,909 @@
+{
+  "sourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "formalCommit": "b3a4fd47a1144ff1fb994f89b1045e78159e07ae",
+  "generatorCommit": "966f65f3c28cb22fc45220dbd1408baea93b53d8",
+  "referenceRunner": {
+    "image": "scarab-pre-conway178-oracle:local",
+    "compiler": "GHC 9.10.3",
+    "target": "cardano-ledger-conformance:test:tests",
+    "dependencyPlanSha256": "d5268a535a9e6c5a4158ddac6f9a1c310d05882c54f2c85b460de83e2e3453d6",
+    "executableSha256": "76c7c79b2593b5ba5403aa68ce6c458690c2d9b5a38859d0129c285035779cae",
+    "sampling": "Fifteen unchanged GOV generators resized to5; ten representable and five retained unsupported zero NonZero counts, one controlled deposit rejection with only required parameter increased by1; original successful NoConfidence integration and four lawful integration variants. Each ratification invocation uses identical seed510201. Full native and formal transitions retain their ordinary comparison.",
+    "orderedBuildPatchStack": [
+      {
+        "path": "scripts/oracle/ledger-govcert/exporter.patch",
+        "sha256": "7130e6e9c1b055f27a2f1a60984af5d58446e9441f088fea724b0dbcba165e31"
+      },
+      {
+        "path": "scripts/oracle/ledger-govcert/epoch-families.patch",
+        "sha256": "64ad562f84cfb1e52f7dddeb7dcf886803b2f9c30a5328f8f448a98f03608b3f"
+      },
+      {
+        "path": "scripts/oracle/ledger-govcert/epoch-sized-probe.patch",
+        "sha256": "c9f55d9465527cf555b5d96fa85a8061285182c84b6c6e969b3c8b0d8c1e39ae"
+      },
+      {
+        "path": "scripts/oracle/ledger-govcert/native-hooks.patch",
+        "sha256": "764892d352c6780fa0121c03c2eb29eef08e33f5e4e3c383155a261cda5a951f"
+      },
+      {
+        "path": "scripts/oracle/ledger-govcert/derived-payment.patch",
+        "sha256": "25d3c5f3fc62f5bb7c7bb5c69f23a372f2196e457b875e68eeace15e24a4954c"
+      },
+      {
+        "path": "scripts/oracle/ledger-govcert/ratify.patch",
+        "sha256": "9611b79ab4543445cd68161d0810293fd7ed809daadcc0a99ca2ddad5cfcafde"
+      },
+      {
+        "path": "scripts/oracle/ledger-govcert/governance-functional.patch",
+        "sha256": "fc9df4c3c169ca2dbec3127234c83fad3abcad2363db62c1478d54189fd3bc96"
+      }
+    ],
+    "patchedSourceSha256": {
+      "cabal.project": "13b3941a475b9c2362c6e994a0c160f09f6d22b8a0261a80bf75559a0883e5f1",
+      "libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/ExecSpecRule/Core.hs": "d58912388f5e904b96a9762ef92eda35e40756d399f1c2813e9dca9590f89cb3",
+      "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Conway.hs": "6dc5251cb30bc72d08c9a601721ff9b869a878ec44174d91ca9e5971c0dec0f2",
+      "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Core.hs": "8e52bf75a5848a3112760d8e0b1147c137312ac3f9941d08b2ff0034820a7bbf",
+      "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway.hs": "431ec1a474d94a7482792f45d9b60d5dc42a3a470fc51638a0968002f6fd43d0",
+      "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway/Ratify.hs": "4f0af483e82ff222e7d5d22de3a6c82bba61df11043168eab59e07c7c2a9a3fa",
+      "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Conway/Ratify.hs": "4a9d12613e7090e1f8421fba42eb8f7a6f7638261a64981d82eef17acd6b09d9"
+    },
+    "extraObservers": "Epoch/proposal-payment observer registrations were present in the same target build but are not selected by the RATIFY invocations. The complete patch stack reconstructs every modified source byte exactly.",
+    "imageDigest": "sha256:aa7e2d96e9f15eb8556f9b6a2685b0aaf3a22608ed1299821f7a7edc4c491847"
+  },
+  "cases": [
+    {
+      "id": "gov-sized5-510101",
+      "upstreamExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "Blocks transition graph/GOV-sized5/",
+        "--seed=510101",
+        "--qc-max-success=1"
+      ],
+      "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "logSha256": "a1f98a474fddaa6f46fe6c48b1e7c1534e540da05609f4a72b92b00858a5544e",
+      "files": {
+        "context.cbor": {
+          "bytes": 1683,
+          "sha256": "0137e1ebe11f7a9c46dcce761142e0c9c2b08c06e7f90b25b8f1565f8bd8876e"
+        },
+        "environment.cbor": {
+          "bytes": 8402,
+          "sha256": "a8bcf98e382d6b3be104562264f9ed93ba8297f9892801ba5aff52ef127d88cd"
+        },
+        "implementation-state.cbor": {
+          "bytes": 22056,
+          "sha256": "27c0448bc9a21124d46f0bcfba12d6416e8b7b2263eb6ffd4180f681c5823995"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 814,
+          "sha256": "ee015c7f2dc2ead94bd05f1b1e7bf9cfe938f4570521e98ee8bdedcf0f78c47d"
+        },
+        "state.cbor": {
+          "bytes": 21493,
+          "sha256": "68a103acff48c0c60abae90d85eea6d209be48467d2ec71c4aa2c56efae1900e"
+        }
+      },
+      "disposition": "full-native-match"
+    },
+    {
+      "id": "gov-sized5-510102",
+      "upstreamExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "Blocks transition graph/GOV-sized5/",
+        "--seed=510102",
+        "--qc-max-success=1"
+      ],
+      "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "logSha256": "2b69277e7f86cc6a9cec880a7c767715f4e86969a1520c83d4c7abd328b2c4c1",
+      "files": {
+        "context.cbor": {
+          "bytes": 1794,
+          "sha256": "a160975ad6095c5ede80d8f64654ce32d4dd3f7da2b1a11ffb9c9e83155f84d9"
+        },
+        "environment.cbor": {
+          "bytes": 6779,
+          "sha256": "c21d11a75ee36a7b501d3087130f37e1424b122922682a8ae25c30fda8f1078e"
+        },
+        "implementation-state.cbor": {
+          "bytes": 16049,
+          "sha256": "c7e91a22a6c58eb221beb55e21e1e118bdccd78bf33643ab3582b298f7e6f236"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 849,
+          "sha256": "57ee9a74324405756ba27ad55cd9fae7ef77e30767803ca2f7d13ebc12b6a2a2"
+        },
+        "state.cbor": {
+          "bytes": 15072,
+          "sha256": "1a8c8c60dafddd2f7b9518ef9e612067aa06c9293dec4250f3dd168444e98443"
+        }
+      },
+      "disposition": "unsupported-native-generator-domain",
+      "reason": "ConwayCertState.PState.vrfKeyHashes contains zero encoded as NonZero Word64; native nonZeroM also rejects zero."
+    },
+    {
+      "id": "gov-sized5-510103",
+      "upstreamExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "Blocks transition graph/GOV-sized5/",
+        "--seed=510103",
+        "--qc-max-success=1"
+      ],
+      "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "logSha256": "3ea95cfea526487b739a570ce0320ea79166c4da5409bd97554a932df80acf67",
+      "files": {
+        "context.cbor": {
+          "bytes": 1290,
+          "sha256": "5382605ee36add0257eb7db68dd88a61a8658f0e2528fd64cf5d2d7b46abd3d5"
+        },
+        "environment.cbor": {
+          "bytes": 5464,
+          "sha256": "4651b5214c838001bfa36f540939ab553ad1aa166b60d64f9c080a48d2394479"
+        },
+        "implementation-state.cbor": {
+          "bytes": 24038,
+          "sha256": "d91f30ec3e7b4763facd0ee25565088ef14a0eadaa9f949fe4da343544f3b629"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 999,
+          "sha256": "0903bb8019de67ef409d6ee64ffd06ac061c05e87f55ca05f37b5dd6b04d2c05"
+        },
+        "state.cbor": {
+          "bytes": 23149,
+          "sha256": "f3b353422960d970b73c3ee79e664812b22cf9a95dd1db51367b8daf53e2ab6b"
+        }
+      },
+      "disposition": "unsupported-native-generator-domain",
+      "reason": "ConwayCertState.PState.vrfKeyHashes contains zero encoded as NonZero Word64; native nonZeroM also rejects zero."
+    },
+    {
+      "id": "gov-sized5-510104",
+      "upstreamExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "Blocks transition graph/GOV-sized5/",
+        "--seed=510104",
+        "--qc-max-success=1"
+      ],
+      "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "logSha256": "fad1f61ac6c3b1f9451c0b2ca0cfe9610a0c4ac4d94a3ffefdf28b7a6363c7fe",
+      "files": {
+        "context.cbor": {
+          "bytes": 1670,
+          "sha256": "b965ec2da1b316076c41f48107fe1f9601454aa824e38c6f8b3962ae79c331b6"
+        },
+        "environment.cbor": {
+          "bytes": 10227,
+          "sha256": "4e7b389d2af3e1e4d961f0b397e05de2a45e57a1495d958df13b6c865bf75870"
+        },
+        "implementation-state.cbor": {
+          "bytes": 27756,
+          "sha256": "ef0353685a204bb7107e0938957f2cac07ce807e7325503063f3c98a399de542"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 1538,
+          "sha256": "37cfec487b224c7276284ebd2edf9ba158be6cd9da368e4c42a980eecaa4892a"
+        },
+        "state.cbor": {
+          "bytes": 26716,
+          "sha256": "0d68c0d1a19d5c76b9bd77c5fad425c7d81e547c8f03f9d11143b39b51c89ed2"
+        }
+      },
+      "disposition": "full-native-match"
+    },
+    {
+      "id": "gov-sized5-510105",
+      "upstreamExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "Blocks transition graph/GOV-sized5/",
+        "--seed=510105",
+        "--qc-max-success=1"
+      ],
+      "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "logSha256": "68b577bf6c44d1f8bf25bb47018466a1ceab134717a1106d3e1cf5ef08d5c619",
+      "files": {
+        "context.cbor": {
+          "bytes": 1370,
+          "sha256": "2e7230833f21cf0f252ac7806cb790af8ea6494ceae773492b1d2214547ebfb3"
+        },
+        "environment.cbor": {
+          "bytes": 9640,
+          "sha256": "ad6829862b59d1714f872b3ccaac13e1453da9adf277eef31bd446558044a947"
+        },
+        "implementation-state.cbor": {
+          "bytes": 38660,
+          "sha256": "9ba32ab26499eef7090108b73434ae17665a145890fdb1479c8cf94958ffb004"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 468,
+          "sha256": "2a930e35cb4ff106aaed0a7a79299ef740e67e9b36b5901dda57dac952142a48"
+        },
+        "state.cbor": {
+          "bytes": 38660,
+          "sha256": "9ba32ab26499eef7090108b73434ae17665a145890fdb1479c8cf94958ffb004"
+        }
+      },
+      "disposition": "full-native-match"
+    },
+    {
+      "id": "gov-sized5-510106",
+      "upstreamExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "Blocks transition graph/GOV-sized5/",
+        "--seed=510106",
+        "--qc-max-success=1"
+      ],
+      "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "logSha256": "a9778a023e9f8d1157ded62c33af129fd0fd9d4c0c4a9e15ce312ef8376b6078",
+      "files": {
+        "context.cbor": {
+          "bytes": 1919,
+          "sha256": "f188c9e1b779ae875fe703edf5ef439ece1fbc596efac017c387347b1692116e"
+        },
+        "environment.cbor": {
+          "bytes": 9575,
+          "sha256": "1056237d8437c33b863dc6d53ad381ee97d936465cc8469d9c0f47889ee7cd1a"
+        },
+        "implementation-state.cbor": {
+          "bytes": 13400,
+          "sha256": "085f3d8404ebadc15e1ee4c8c430716e4ec94ddcb0d0098d50c1eccb475a0489"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 634,
+          "sha256": "18858745b8372185894803e0f303f1d5c8394d60045b0ec5f2da2f0709fa0808"
+        },
+        "state.cbor": {
+          "bytes": 13233,
+          "sha256": "ebdbb4a82696d99b96ee37ecfa2eaaa0f9146e6888bb0ae19cb6d5d18407fa60"
+        }
+      },
+      "disposition": "full-native-match"
+    },
+    {
+      "id": "gov-sized5-510107",
+      "upstreamExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "Blocks transition graph/GOV-sized5/",
+        "--seed=510107",
+        "--qc-max-success=1"
+      ],
+      "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "logSha256": "66fbd2331c5e1b46019f54c438dc6b0506476c32872333b2752216fcf918fa02",
+      "files": {
+        "context.cbor": {
+          "bytes": 2512,
+          "sha256": "9cbfbdb45cbf242399a2100e537b98d283a53dc74f9a46376c26888be4fe91d5"
+        },
+        "environment.cbor": {
+          "bytes": 5768,
+          "sha256": "f9a8e2478e57d82cd9e3477ddbff9f70746bb6dd2c57b4578c84b2718664e52c"
+        },
+        "implementation-state.cbor": {
+          "bytes": 43326,
+          "sha256": "7086011b0ea2b9cd82eebd1b2b15fba99b8a9f81fb5862e4422765a24a04fbb5"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 694,
+          "sha256": "253e42781d97bcc07d3bdaa3213d800333c28937398e482d2642a2576571b0cf"
+        },
+        "state.cbor": {
+          "bytes": 42954,
+          "sha256": "691a9045e3bbb7287c08bd3e2d0a4239659f4c6162f344f9e3aee4cb04412b9a"
+        }
+      },
+      "disposition": "full-native-match"
+    },
+    {
+      "id": "gov-sized5-510108",
+      "upstreamExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "Blocks transition graph/GOV-sized5/",
+        "--seed=510108",
+        "--qc-max-success=1"
+      ],
+      "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "logSha256": "6c9e4cc27b4555beebaa43ca6a4aecb84bd8067ea99ae6c438cda7a40818215d",
+      "files": {
+        "context.cbor": {
+          "bytes": 1836,
+          "sha256": "9d513f64aaeb22a050ac48ab12075014ce4c7191ca12ead42317f5b95c2db998"
+        },
+        "environment.cbor": {
+          "bytes": 9428,
+          "sha256": "11bdaf72794e7c509fa26ea834f33d2cf20cb54c56741599e7e014447ccd6748"
+        },
+        "implementation-state.cbor": {
+          "bytes": 22556,
+          "sha256": "ca437d551fff73c8892dbf4ffaede318727b5e13eee92f4b9604bb00cb0fad4e"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 418,
+          "sha256": "2bb9ca8fa989cdb334cdbd2b2a792a683d66334f282042741efb06e267c4073c"
+        },
+        "state.cbor": {
+          "bytes": 22301,
+          "sha256": "60f07872b682a3479824b517be07da0fd1d59c11a3a673c3887d2f61ccd27ba3"
+        }
+      },
+      "disposition": "full-native-match"
+    },
+    {
+      "id": "gov-sized5-510109",
+      "upstreamExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "Blocks transition graph/GOV-sized5/",
+        "--seed=510109",
+        "--qc-max-success=1"
+      ],
+      "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "logSha256": "2b9179a739d272409b17fe44fb3f92eff2a8250850266bcf11e06e0dc3863164",
+      "files": {
+        "context.cbor": {
+          "bytes": 1728,
+          "sha256": "23c0b6f78a2f1e5a4540a7225b7b12a201defb3ffd96d90d1b40100cff746add"
+        },
+        "environment.cbor": {
+          "bytes": 6105,
+          "sha256": "38060312d4da9b2f2cca01da0015b842d6d635d13273dd959b1cddc2b573a0f9"
+        },
+        "implementation-state.cbor": {
+          "bytes": 34012,
+          "sha256": "c12128093da0057a6a43235603a4bf1a5b0747fb13b94cdc2fee937647cca296"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 429,
+          "sha256": "20a41da5aec2338df470c70b1f4ac1b3c004a746cf9a9941a3df3707d471f917"
+        },
+        "state.cbor": {
+          "bytes": 34012,
+          "sha256": "c12128093da0057a6a43235603a4bf1a5b0747fb13b94cdc2fee937647cca296"
+        }
+      },
+      "disposition": "unsupported-native-generator-domain",
+      "reason": "ConwayCertState.PState.vrfKeyHashes contains zero encoded as NonZero Word64; native nonZeroM also rejects zero."
+    },
+    {
+      "id": "gov-sized5-510110",
+      "upstreamExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "Blocks transition graph/GOV-sized5/",
+        "--seed=510110",
+        "--qc-max-success=1"
+      ],
+      "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "logSha256": "c29a4d517d44a2972e25bd531db32b7f37f8805e7b0197b73aca0845685848c7",
+      "files": {
+        "context.cbor": {
+          "bytes": 2309,
+          "sha256": "4912bf2b8236ed7374ce5902e3cf59e93d7b40646922c6760ba89dd0295cbdff"
+        },
+        "environment.cbor": {
+          "bytes": 5624,
+          "sha256": "f2cc26d1ca66f42da0a9fc37c3500e08a083647c2a4e83733c8653e721ce47d1"
+        },
+        "implementation-state.cbor": {
+          "bytes": 27085,
+          "sha256": "86b83a423442df35407f49d08626aa31e78e53a7640d30ad9482ee874236d7fa"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 202,
+          "sha256": "9f7f80131b1f0cabfcca706ae036db4447f72c964507cd1d501ef29eaa7a700d"
+        },
+        "state.cbor": {
+          "bytes": 27085,
+          "sha256": "86b83a423442df35407f49d08626aa31e78e53a7640d30ad9482ee874236d7fa"
+        }
+      },
+      "disposition": "full-native-match"
+    },
+    {
+      "id": "gov-sized5-510111",
+      "upstreamExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "Blocks transition graph/GOV-sized5/",
+        "--seed=510111",
+        "--qc-max-success=1"
+      ],
+      "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "logSha256": "ad9960d4ca5cdf78ac77482f0c221c264db308305646b3299e962f05684e0516",
+      "files": {
+        "context.cbor": {
+          "bytes": 1303,
+          "sha256": "17f942113fa0fe187794c84430a6fafca806bb342747ddd6fd31d113fb5a7a7b"
+        },
+        "environment.cbor": {
+          "bytes": 9469,
+          "sha256": "baef1be561c14e1f6116b50955b4d6a88fe63e674d9cbc020ee923192811d10a"
+        },
+        "implementation-state.cbor": {
+          "bytes": 20803,
+          "sha256": "37836165e85e92cd1d44d4b97f7e69808672be7590e60be50f0a96773d69106b"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 663,
+          "sha256": "e06043e6441ddc22f34660c5535c5570b951a5a77b211b4950045e6ad7c250d4"
+        },
+        "state.cbor": {
+          "bytes": 20373,
+          "sha256": "6a4747362286ab792db74ce55acd8658abc5b1e8d8a9402b11412b2385d662bb"
+        }
+      },
+      "disposition": "full-native-match"
+    },
+    {
+      "id": "gov-sized5-510112",
+      "upstreamExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "Blocks transition graph/GOV-sized5/",
+        "--seed=510112",
+        "--qc-max-success=1"
+      ],
+      "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "logSha256": "9222fdf55c025e422817fa7cc07ce096e90c2eea148fd4502e0260c139f1965e",
+      "files": {
+        "context.cbor": {
+          "bytes": 2028,
+          "sha256": "94cc8f0eec3e1da365f19812be1a0345eb422b3fe9741ffc8ca99fb56937b930"
+        },
+        "environment.cbor": {
+          "bytes": 8931,
+          "sha256": "579061e6e808ea5aa3f164f45a1122899a38949b4b2b578ceb330353a8202dbf"
+        },
+        "implementation-state.cbor": {
+          "bytes": 18796,
+          "sha256": "c515d680f4fe37860408136d1e782bc92843ddf650873472d954775aef594582"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 497,
+          "sha256": "e8e4feb8ae2b971e2a0f3f31d0afea55bd8d64796921009bca893e5dc8af0106"
+        },
+        "state.cbor": {
+          "bytes": 18599,
+          "sha256": "fbf906e7d274e5f00fe14a6751db49a1f45b1837bd556afbd0e7e82e54b55df4"
+        }
+      },
+      "disposition": "full-native-match"
+    },
+    {
+      "id": "gov-sized5-510113",
+      "upstreamExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "Blocks transition graph/GOV-sized5/",
+        "--seed=510113",
+        "--qc-max-success=1"
+      ],
+      "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "logSha256": "37455dd63d4c641de0a01c002a058b8713d0525631beb8acebcc9dc948821070",
+      "files": {
+        "context.cbor": {
+          "bytes": 1691,
+          "sha256": "6c1d103ad40455506831075391e448f5862a208f6c6cfc310f3c31116f7b602d"
+        },
+        "environment.cbor": {
+          "bytes": 12335,
+          "sha256": "afa53ab5cd0e7d8196293ea307c0bb56c1222a5a2a4351760a4335d9f9acb567"
+        },
+        "implementation-state.cbor": {
+          "bytes": 19718,
+          "sha256": "ed78b62e1e3c6acaccf05cf96efa429842b3dd6a4fa537909c41a55a52106b3d"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 1095,
+          "sha256": "02cbf47c9cb7395a2f81fd0fe448a4bec48f5137bca77efec90624e36f707db9"
+        },
+        "state.cbor": {
+          "bytes": 19117,
+          "sha256": "500f96c179dc1e6ff1399c51576e077ca1a0585ed36a55f21df58dac2913815b"
+        }
+      },
+      "disposition": "unsupported-native-generator-domain",
+      "reason": "ConwayCertState.PState.vrfKeyHashes contains zero encoded as NonZero Word64; native nonZeroM also rejects zero."
+    },
+    {
+      "id": "gov-sized5-510114",
+      "upstreamExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "Blocks transition graph/GOV-sized5/",
+        "--seed=510114",
+        "--qc-max-success=1"
+      ],
+      "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "logSha256": "44d5d9370a1b8ffd9c27aed3c148daed524142f470c52f8fe1132a8be3e6c0ee",
+      "files": {
+        "context.cbor": {
+          "bytes": 1446,
+          "sha256": "b9c27d1ccd8f75739dd738f5a755f1ee92f3b31664bbea6130d07edc252ca6c2"
+        },
+        "environment.cbor": {
+          "bytes": 10303,
+          "sha256": "e63e8663c432e0cb899346a95034a2c4cfe73871d31d019d55536c823b23c578"
+        },
+        "implementation-state.cbor": {
+          "bytes": 31504,
+          "sha256": "693bb2d3e08fe979ed6ef1c08d8b26a9e68688eb67bcdf6da582f53578b9e67e"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 839,
+          "sha256": "87c97bb597d012c52294e516ad57ccb3ac2ef0ed7c8a5dad4735f3a975d9bfd2"
+        },
+        "state.cbor": {
+          "bytes": 30782,
+          "sha256": "722a9e1e1866b6d49ae86d40afc85c176b6fa5698959196a074f24ac90343661"
+        }
+      },
+      "disposition": "unsupported-native-generator-domain",
+      "reason": "ConwayCertState.PState.vrfKeyHashes contains zero encoded as NonZero Word64; native nonZeroM also rejects zero."
+    },
+    {
+      "id": "gov-sized5-510115",
+      "upstreamExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "Blocks transition graph/GOV-sized5/",
+        "--seed=510115",
+        "--qc-max-success=1"
+      ],
+      "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "logSha256": "8c21849962165f9cecb25b2dad65e1bc7bac126518a7c0f7243eac09557b8da6",
+      "files": {
+        "context.cbor": {
+          "bytes": 1970,
+          "sha256": "0f3f6a37ae532819c9b48005180c9ecc7f5f88c0614c0016f6dd2cae35532d33"
+        },
+        "environment.cbor": {
+          "bytes": 3760,
+          "sha256": "fa7747aff61483ea960ef1033bccb0a5cf069fe3386cc40567b1ba48b73a5eaa"
+        },
+        "implementation-state.cbor": {
+          "bytes": 13571,
+          "sha256": "f1e3f29c11cc33fe0230d26f9385a19f5b41b15dba0a904516fabccce869832f"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 40,
+          "sha256": "4425e1b9b670e10195080d56cacea7b2523b9e31fda089d36872b4618b510be8"
+        },
+        "state.cbor": {
+          "bytes": 13571,
+          "sha256": "f1e3f29c11cc33fe0230d26f9385a19f5b41b15dba0a904516fabccce869832f"
+        }
+      },
+      "disposition": "full-native-match"
+    },
+    {
+      "id": "gov-invalid-deposit",
+      "upstreamExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "Blocks transition graph/GOV-invalid-deposit-sized5/",
+        "--seed=510108",
+        "--qc-max-success=1"
+      ],
+      "environmentVariable": "SCARAB_CONFORMANCE_EXPORT_DIR",
+      "logSha256": "1899bdfbda5b9e93f1cceaa4a99148676d75369de91c4c0fbce00bdb38c98d91",
+      "files": {
+        "context.cbor": {
+          "bytes": 1836,
+          "sha256": "9d513f64aaeb22a050ac48ab12075014ce4c7191ca12ead42317f5b95c2db998"
+        },
+        "environment.cbor": {
+          "bytes": 9428,
+          "sha256": "4e0417ec4fb6ef699602265b76bf29d06eae4b6272157a2a4bd4dd8372784727"
+        },
+        "native-failures.cbor": {
+          "bytes": 5,
+          "sha256": "816e5826e10004779d3ed7fdaffe29d413ee2c2dfb4bac244f56fa164b56bfc7"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "e1b6d62249cad8165dbda835c0489dcbfab1e263f202d8a0f7828719d9f5b32f"
+        },
+        "signal.cbor": {
+          "bytes": 418,
+          "sha256": "2bb9ca8fa989cdb334cdbd2b2a792a683d66334f282042741efb06e267c4073c"
+        },
+        "state.cbor": {
+          "bytes": 22301,
+          "sha256": "60f07872b682a3479824b517be07da0fd1d59c11a3a673c3887d2f61ccd27ba3"
+        }
+      },
+      "disposition": "typed-native-rejection-match"
+    },
+    {
+      "id": "ratify-native-positive",
+      "upstreamExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "NoConfidence accepted conforms",
+        "--seed=510201",
+        "--qc-max-success=1"
+      ],
+      "environmentVariable": "SCARAB_GOVERNANCE_EXPORT_DIR",
+      "logSha256": "750cb6c80aae997fcc4c77b7439d7f6f7fb7a851dc0ca8c933d297ab03924e6f",
+      "files": {
+        "approvals.cbor": {
+          "bytes": 3,
+          "sha256": "e325b6f937378a2f37e690c02a5c1a5da0bb95227fbc7926c3774e3f987f68a1"
+        },
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        },
+        "environment.cbor": {
+          "bytes": 814,
+          "sha256": "04d1f9c5c6ed993e05cd73f1994a0c4e1c750c2fcfb6a5b0b46841921e3af1ec"
+        },
+        "implementation-state.cbor": {
+          "bytes": 4845,
+          "sha256": "ace9943e9c6b6e61315b62f0e65c76204d9f779f75ac3856a6e607869e94949f"
+        },
+        "result.txt": {
+          "bytes": 52,
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f"
+        },
+        "signal.cbor": {
+          "bytes": 239,
+          "sha256": "b71b1c3d57e01f0d9c2d21fb2344c6c21f7cbe889b40887aa66f8b6d62360916"
+        },
+        "state.cbor": {
+          "bytes": 4719,
+          "sha256": "4d18aeeb577813d981a3ba4b8b386f1b44684b13ebc48fda95a8fa64b668fb1d"
+        }
+      },
+      "disposition": "full-native-match"
+    },
+    {
+      "id": "ratify-both-positive",
+      "upstreamExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "NoConfidence positive SPO and DRep conforms",
+        "--seed=510201",
+        "--qc-max-success=1"
+      ],
+      "environmentVariable": "SCARAB_GOVERNANCE_EXPORT_DIR",
+      "logSha256": "1671271e88fa9b11e70fdc9cfe2e3d8384bcbfbbcc9c26e81bef2260f93a8161",
+      "files": {
+        "approvals.cbor": {
+          "bytes": 3,
+          "sha256": "e325b6f937378a2f37e690c02a5c1a5da0bb95227fbc7926c3774e3f987f68a1"
+        },
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        },
+        "environment.cbor": {
+          "bytes": 1237,
+          "sha256": "b6e60cd82e1de9e2f5311471f5cc8da235f80bc473a900ad4f82bc85c89cc749"
+        },
+        "implementation-state.cbor": {
+          "bytes": 4841,
+          "sha256": "afdfc8e45bd379882d4ef27c00c875e06f20ffec7e0330b365e43882df47b18b"
+        },
+        "result.txt": {
+          "bytes": 52,
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f"
+        },
+        "signal.cbor": {
+          "bytes": 235,
+          "sha256": "1c5a8dfae6ae3b2c8347194a88687561990769a9ab3770ffbaa224313a2fee83"
+        },
+        "state.cbor": {
+          "bytes": 4719,
+          "sha256": "bbf52504acd4c7187996e342bf66d233495dc0929fc908e45d316cf33e8e0082"
+        }
+      },
+      "disposition": "full-native-match"
+    },
+    {
+      "id": "ratify-forward",
+      "upstreamExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "NoConfidence competing forward conforms",
+        "--seed=510201",
+        "--qc-max-success=1"
+      ],
+      "environmentVariable": "SCARAB_GOVERNANCE_EXPORT_DIR",
+      "logSha256": "2ac6e11d0e6d86857f9c8d8cd8301595c3742664feed4f3465ad039696cfc9c2",
+      "files": {
+        "approvals.cbor": {
+          "bytes": 5,
+          "sha256": "2df739147c92ac3ec68d536370a905048f5baa84ba0252a5edfe8ad43c1993db"
+        },
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        },
+        "environment.cbor": {
+          "bytes": 1278,
+          "sha256": "c173344758a9130a0ce58aaac2143111c789c89bc9bd35e6de3b7479fdd0ab2f"
+        },
+        "implementation-state.cbor": {
+          "bytes": 4841,
+          "sha256": "afdfc8e45bd379882d4ef27c00c875e06f20ffec7e0330b365e43882df47b18b"
+        },
+        "result.txt": {
+          "bytes": 52,
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f"
+        },
+        "signal.cbor": {
+          "bytes": 502,
+          "sha256": "49993489bc2dfda9a99adf8c0409212ef628dd4e0dd0e93bfae25541a09c7271"
+        },
+        "state.cbor": {
+          "bytes": 4719,
+          "sha256": "bbf52504acd4c7187996e342bf66d233495dc0929fc908e45d316cf33e8e0082"
+        }
+      },
+      "disposition": "full-native-match"
+    },
+    {
+      "id": "ratify-reverse",
+      "upstreamExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "NoConfidence competing reverse conforms",
+        "--seed=510201",
+        "--qc-max-success=1"
+      ],
+      "environmentVariable": "SCARAB_GOVERNANCE_EXPORT_DIR",
+      "logSha256": "e26e1d33412c33329eee570c2a6a7369ef90f9b305308ffaa318e4c5d3736403",
+      "files": {
+        "approvals.cbor": {
+          "bytes": 5,
+          "sha256": "2df739147c92ac3ec68d536370a905048f5baa84ba0252a5edfe8ad43c1993db"
+        },
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        },
+        "environment.cbor": {
+          "bytes": 1278,
+          "sha256": "c173344758a9130a0ce58aaac2143111c789c89bc9bd35e6de3b7479fdd0ab2f"
+        },
+        "implementation-state.cbor": {
+          "bytes": 4874,
+          "sha256": "f8ce8afed1825081afadc3114110e3321f477cc70400e9f08d1a647388d248a8"
+        },
+        "result.txt": {
+          "bytes": 52,
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f"
+        },
+        "signal.cbor": {
+          "bytes": 502,
+          "sha256": "9040acfa129b1b473e2a6467e4811ac9dd7b483d1013e685760395b8bdaf64c9"
+        },
+        "state.cbor": {
+          "bytes": 4719,
+          "sha256": "bbf52504acd4c7187996e342bf66d233495dc0929fc908e45d316cf33e8e0082"
+        }
+      },
+      "disposition": "full-native-match"
+    },
+    {
+      "id": "ratify-missing-votes",
+      "upstreamExitCode": 0,
+      "runnerArgs": [
+        "--match",
+        "NoConfidence missing votes conforms",
+        "--seed=510201",
+        "--qc-max-success=1"
+      ],
+      "environmentVariable": "SCARAB_GOVERNANCE_EXPORT_DIR",
+      "logSha256": "7fb7f57b8c14908b14396ec6bb11420b12f0da01f46a70e479a87fe9152864e9",
+      "files": {
+        "approvals.cbor": {
+          "bytes": 3,
+          "sha256": "b03ffbe085a63b5f24cc0fe72d258f465f0ae3fc95dd3a1eaec7f9733a9ac89e"
+        },
+        "context.cbor": {
+          "bytes": 1,
+          "sha256": "b0b2988b6bbe724bacda5e9e524736de0bc7dae41c46b4213c50e1d35d4e5f13"
+        },
+        "environment.cbor": {
+          "bytes": 1237,
+          "sha256": "9a5f6a277787c6f9d6cb83be7f3db4352930e80d23cded64cfa671acbed12080"
+        },
+        "implementation-state.cbor": {
+          "bytes": 4719,
+          "sha256": "bbf52504acd4c7187996e342bf66d233495dc0929fc908e45d316cf33e8e0082"
+        },
+        "result.txt": {
+          "bytes": 52,
+          "sha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f"
+        },
+        "signal.cbor": {
+          "bytes": 171,
+          "sha256": "429c24551e32271bf19af70820cfe235337dada49b1ced1d14ee5aaba6a27da9"
+        },
+        "state.cbor": {
+          "bytes": 4719,
+          "sha256": "bbf52504acd4c7187996e342bf66d233495dc0929fc908e45d316cf33e8e0082"
+        }
+      },
+      "disposition": "full-native-match"
+    }
+  ],
+  "limitations": [
+    "Bounded Conway/PV9 GOV and PV11 lawful RATIFY integration observations; not a full generator campaign or all governance action families.",
+    "Five retained GOV environments encode zero registration counts as NonZero Word64. Native constrained generation and in-memory execution accept these, but they violate the native CBOR reader and Scarab typed domain. These are explicit unsupported cases, not full-state matches.",
+    "The original RATIFY integration is unmodified apart from observation. Other RATIFY cases use the same native lawful setup with positive 1/2 DRep and SPO thresholds; competing proposals differ only in supplied order.",
+    "Missing-vote RATIFY is an accepted transition retaining unratified actions, distinct from GOV predicate rejection.",
+    "GOV deposit refusal compares native/formal rejection statuses and the original native ProposalDepositIncorrect payload against Scarab structured error. Formal rejection text is not required to match.",
+    "Native trace CBOR is not a persisted Scarab snapshot format. No persisted format changes.",
+    "All ten representable generated GOV samples name voters with empty inner vote maps; seven also submit proposals. These exercise nonempty signal/proposal handling and voter existence, not recording votes onto actions. RATIFY integration carries genuine yes votes but does not separately establish GOV cast-vote conformance."
+  ]
+}

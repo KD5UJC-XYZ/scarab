@@ -1,0 +1,66 @@
+# Lawful nonempty Conway governance judgments
+
+These are native Haskell inputs and independently observed outcomes from
+`cardano-ledger` `f649f9751074d2ab3de033fc3912f29c9862c1f5`, with the formal
+and generator pins, exact runner arguments, file hashes, executable hash and
+ordered build patch stack in [manifest.json](manifest.json). Apply that stack
+in order, including [governance-functional.patch](../../../../../../scripts/oracle/ledger-govcert/governance-functional.patch),
+then build `cardano-ledger-conformance:test:tests` in the pinned offline oracle
+image. The preceding observer patches are shared with the existing
+[RATIFY corpus](../conway-ratify/README.md).
+
+Fifteen `GOV-sized5` invocations retain the original constrained generator's lawful
+nonempty votes, proposals and certificates, full six-field environment,
+EnactState context, complete input proposal state and native output. Only the
+explicit generator size changes. Each ordinary native/formal comparison passes. Ten environments decode into
+Scarab’s typed state and match full production GOV outcomes. Five environments
+(seed 510102, 510103, 510109, 510113 and 510114) encode a zero VRF registration
+count inside `PState.vrfKeyHashes`, whose declared native type is `NonZero Word64`
+(`Cardano/Ledger/State/CertState.hs:233`). The native CBOR reader also refuses zero
+(`BaseTypes/NonZero.hs:102–107, 129–131`), although these generated in-memory states
+reach an accepted native/formal judgment. Their original records remain as
+explicit unsupported-domain cases; tests assert the typed decoder cause and path,
+without normalizing them or counting them as Scarab full-state matches.
+All ten representable generated signals name voters with empty inner vote maps;
+seven also submit proposals. These test nonempty signal/proposal handling and
+voter existence, including the corrected empty-map authorization fast path,
+rather than applying cast votes to actions. RATIFY integrations below contain
+real yes votes but do not separately establish GOV cast-vote conformance.
+Scarab decodes the original voting procedures and certificates and compares the
+complete resulting proposal roots, ordered action records, votes and expiry data
+through its production GOV rule.
+
+`GOV-invalid-deposit-sized5` uses the same seed as one accepted sample and
+increases only the required protocol-parameter deposit by one lovelace. Both
+native and formal rules reject it. Scarab must retain the structured
+`ProposalDepositIncorrect` cause with the supplied and required amounts. The
+native predicate-failure CBOR is retained and decoded as the exact typed mismatch;
+Scarab must return the same failure and amounts. The ordinary native/formal
+comparison is preserved; the GOV-specific observer separately evaluates the same
+input to capture its native failure bytes.
+
+Five lawful integration RATIFY cases retain all eight environment fields,
+complete RatifyState, original ordered actions, native DRep/SPO approval booleans
+and full native post-state. Native and formal complete outcomes compare equal:
+
+- The original upstream `NoConfidence accepted conforms` test, with its original
+  DRep threshold of 9/10 and SPO threshold of zero, is unchanged apart from observation.
+- A second case registers and matures a stake pool, uses nonzero 1/2 thresholds
+  for both DReps and SPOs, and submits both yes votes before ratification.
+- Two cases submit competing, individually approved no-confidence actions sharing
+  the same parent. Identical seed and setup preserve the same actions and initial
+  state; reversing the supplied order changes which action is enacted.
+- A matching setup omits both votes. RATIFY accepts the transition but does not
+  enact the action, preserving the distinction from a rejected GOV signal.
+
+Use `SCARAB_CONFORMANCE_EXPORT_DIR` for GOV and
+`SCARAB_GOVERNANCE_EXPORT_DIR` for RATIFY, pointing at an existing private output
+directory, with each case's recorded `runnerArgs`. Observers do not replace the
+native rule, formal rule or the ordinary conformance verdict. Native approval
+booleans are additional observations; formal approval-predicate vectors are not
+separately exported by these integration tests.
+
+This is bounded Conway/PV9 GOV and PV11 integration RATIFY coverage, not all
+seeds, action kinds or governance properties. It does not require the production
+pulser to adopt a particular internal scheduler. The raw CBOR is an upstream
+trace, not a Scarab persisted snapshot, and no native snapshot format changes.
