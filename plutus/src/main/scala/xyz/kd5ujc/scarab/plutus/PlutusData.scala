@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.plutus
 
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Tree, TreeFold, Value}
+import xyz.kd5ujc.scarab.codec.{ByteStringChunks, Bytes, Cbor, Node, Tree, TreeFold, Value}
 import xyz.kd5ujc.scarab.codec.Tree.{treeEquals, treeHash, treeString}
 
 /** Plutus `Data`: the one universal value passed to scripts. This is the node's own type; the
@@ -29,6 +29,7 @@ object PlutusData:
     case Syntax(cause: Cbor.Error)
     case ConstructorFields(actual: Value)
     case BigNumberBytes(actual: Value)
+    case ByteStringChunkLimit
     case ConstructorIndex(actual: Value)
     case ConstructorEnvelope(actual: Value)
     case UnexpectedTag(tag: BigInt)
@@ -88,8 +89,9 @@ object PlutusData:
 
   /** `plutus_data` of the Conway CDDL: constructors in tags 121 to 127, 1280 to 1400 and 102,
     * integers (with tag 2 and 3 big numbers), byte strings, lists and maps. Nesting is unlimited,
-    * as in the reference (`PlutusCore.Data.decodeData` has only the 64-byte limit on leaves), and
-    * walked on the heap.
+    * as in the reference, and walked on the heap. Each original definite byte-string chunk is at
+    * most 64 bytes, including big-number payloads; joined indefinite strings can be longer
+    * (`PlutusCore/Data.hs:232-265`, Plutus 507cab8c).
     */
   def fromNode(n: Node): Either[DecodeError, PlutusData] =
     TreeFold.foldE[Node, PlutusData, DecodeError](n)(open)
@@ -98,6 +100,10 @@ object PlutusData:
 
   private def leaf(d: PlutusData): Opened = Right(TreeFold.Step.Leaf(d))
 
+  private def boundedBytes(n: Node)(data: => PlutusData): Opened =
+    if ByteStringChunks.within(n, 64) then leaf(data)
+    else Left(DecodeError.ByteStringChunkLimit)
+
   private def constrOf(index: BigInt, fs: Node): Opened = fs.value match
     case Value.Arr(xs) => Right(TreeFold.Step.Branch(xs, ds => Right(Constr(index, ds))))
     case actual        => Left(DecodeError.ConstructorFields(actual))
@@ -105,7 +111,7 @@ object PlutusData:
   private def open(n: Node): Opened = n.value match
     case Value.UInt(v)       => leaf(I(v))
     case Value.NInt(v)       => leaf(I(v))
-    case Value.ByteString(b) => leaf(B(b))
+    case Value.ByteString(b) => boundedBytes(n)(B(b))
     case Value.Arr(xs)       => Right(TreeFold.Step.Branch(xs, ds => Right(List(ds))))
     case Value.Map(kvs) =>
       Right(
@@ -117,8 +123,10 @@ object PlutusData:
     case Value.Tag(t, inner) if t == 2 || t == 3 =>
       inner.value match
         case Value.ByteString(b) =>
-          val magnitude = BigInt(1, b.toArray)
-          leaf(I(if t == 2 then magnitude else -1 - magnitude))
+          boundedBytes(inner) {
+            val magnitude = BigInt(1, b.toArray)
+            I(if t == 2 then magnitude else -1 - magnitude)
+          }
         case actual => Left(DecodeError.BigNumberBytes(actual))
     case Value.Tag(t, inner) if t >= 121 && t <= 127   => constrOf(t - 121, inner)
     case Value.Tag(t, inner) if t >= 1280 && t <= 1400 => constrOf(t - 1280 + 7, inner)

@@ -21,6 +21,9 @@ serialized by the Apache-2.0 reference CLI 11.2.3.0 bundled in node release 11.1
 synthetic and witness sets are empty; no signing keys or ledger-admission claim are included.
 The generated inputs are distributed under this project's Apache-2.0 license.
 
+fixtures/reference/plutus-data-chunks contains synthetic CBOR inputs and original parser/hash
+verdicts from the same reference CLI, under the project's Apache-2.0 license. No node was contacted.
+
 This source distribution includes test fixtures derived from Cardano Ledger,
 Cardano Base, Ouroboros Network, Ouroboros Consensus, Amaru and Scalus-node.
 Original upstream licenses and notices are retained under fixtures/licenses and

@@ -290,7 +290,17 @@ object Corpus extends munit.Assertions:
       .take(50)
 
   lazy val plutusData: Vector[Array[Byte]] =
-    lines("fixtures/preview/deeply-nested-datum.hex") ++ sampled("conway:plutus_data", 60)
+    val chunks = Files
+      .readAllLines(Path.of("fixtures/reference/plutus-data-chunks/cases.tsv"))
+      .asScala
+      .toVector
+      .filterNot(_.startsWith("#"))
+      .map { line =>
+        line.split("\t").toVector match
+          case Vector(_, hex, _, _, _) => Bytes.fromHex(hex).fold(e => fail(e.toString), _.toArray)
+          case other                   => fail(s"malformed native chunk fixture: $other")
+      }
+    lines("fixtures/preview/deeply-nested-datum.hex") ++ sampled("conway:plutus_data", 60) ++ chunks
 
   lazy val plutusFlat: Vector[Array[Byte]] =
     Files

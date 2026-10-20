@@ -1553,9 +1553,9 @@ these are decoder results, not ledger-admission verdicts:
 | Conway | 400,000 | 49,362 |
 
 The same four-seed campaign passes the block/preparation agreement target with 44,634 decoded
-inputs out of 400,000. The block selector also runs the existing Leios block target (15,378 decoded
-inputs). No target is exempted from the default suite; targeted command filters select the
-extended campaign's scope.
+inputs and the Plutus Data target with 50,814, each out of 400,000. The block selector also runs
+the existing Leios block target (15,378 decoded inputs). No target is exempted from the default
+suite; targeted command filters select the extended campaign's scope.
 
 **Reproducing a failure.** A failing target prints the seed, the shrunk input in hex and the command, for example
 
