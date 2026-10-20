@@ -60,7 +60,8 @@ Reproduce using the [reward wrapper](../../../../../scripts/oracle/rewards/READM
 and `storage/Test/runMain xyz.kd5ujc.scarab.storage.haskell.state.RewardTimingCases /evidence/inputs.json`.
 Run the wrapper on those inputs, then compare the decoded JSON and the hashes above.
 The native observer image ID for this execution is
-`sha256:5c095f6581fe4fdc6b1da9b6d2c3dbcd7b835d9671a4450677e5472e72253a3e`.
+`sha256:80a347549c20cec9203fc3144d93b329d70bc21b78ef4fbf9537acc479eb81b4`.
+Its OCI image config digest is `sha256:5c095f6581fe4fdc6b1da9b6d2c3dbcd7b835d9671a4450677e5472e72253a3e`.
 The parent context manifest is
 `sha256:66c862cc374749f3631e91114358f3c063a7b0ec144163e501f3d22ca47821ef`.
 Inputs and outputs contain no keys or private chain data. Upstream licenses remain

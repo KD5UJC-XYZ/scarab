@@ -11,9 +11,10 @@
     "core": "1.21.0.0",
     "binary": "1.9.1.0",
     "contextManifest": "sha256:66c862cc374749f3631e91114358f3c063a7b0ec144163e501f3d22ca47821ef",
-    "executedImageId": "sha256:5c095f6581fe4fdc6b1da9b6d2c3dbcd7b835d9671a4450677e5472e72253a3e",
+    "executedImageId": "sha256:80a347549c20cec9203fc3144d93b329d70bc21b78ef4fbf9537acc479eb81b4",
     "executable": "/usr/local/bin/scarab-reward-oracle",
-    "executableSha256": "f3e27c91bb621eeb096213ca0f1ce9566ccf22f6ce7827c920e5ab718e800cc5"
+    "executableSha256": "f3e27c91bb621eeb096213ca0f1ce9566ccf22f6ce7827c920e5ab718e800cc5",
+    "ociConfigDigest": "sha256:5c095f6581fe4fdc6b1da9b6d2c3dbcd7b835d9671a4450677e5472e72253a3e"
   },
   "observer": {
     "scripts/oracle/rewards/Main.hs": "d4660db70a792817146861ab429f391bd918f4993e43cdbe3facf989d861f9e6",
