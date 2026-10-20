@@ -122,7 +122,9 @@ the production kinds remain `Bytes` and `Credential`.
 The kind's index has weak scope keys **and weak table values**. A kind cannot retain a completed
 decode, its table, or decoded values, even if a decoded value refers back to the document. The
 strong owner is still the document. Only weak association metadata spans decodes; it is not a
-cross-decode value cache. Lookup/creation synchronizes on this per-kind index so concurrent
+cross-decode value cache. A volatile most-recent association has the same weak links and the same `A`, avoiding index lookup
+for a repeated decode; a scope identity match permits access only to its already-typed table.
+Lookup/creation on a miss synchronizes on this per-kind index so concurrent
 documents cannot race its bookkeeping. A table remains private to its decode, whose existing
 single-threaded contract is unchanged.
 

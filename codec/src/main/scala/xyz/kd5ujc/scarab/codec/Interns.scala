@@ -16,15 +16,31 @@ final class Interned[A <: AnyRef: ClassTag]:
   // to recover a type from a heterogeneous registry.
   private val scopes = new WeakHashMap[Interns, WeakReference[Interns.Table[A]]]
 
-  private[codec] def table(scope: Interns): Interns.Table[A] = scopes.synchronized {
+  private final class Recent(
+      val scope: WeakReference[Interns],
+      val table: WeakReference[Interns.Table[A]]
+  )
+  @volatile private var recent: Recent = null
+
+  private[codec] def table(scope: Interns): Interns.Table[A] =
+    val last = recent
+    if last != null && last.scope.refersTo(scope) then
+      val table = last.table.get()
+      if table != null then table else lookup(scope)
+    else lookup(scope)
+
+  private def lookup(scope: Interns): Interns.Table[A] = scopes.synchronized {
     val reference = scopes.get(scope)
     val existing = if reference == null then null else reference.get()
-    if existing != null then existing
-    else
-      val created = new Interns.Table[A]
-      scope.retain(created)
-      scopes.put(scope, new WeakReference(created))
-      created
+    val table =
+      if existing != null then existing
+      else
+        val created = new Interns.Table[A]
+        scope.retain(created)
+        scopes.put(scope, new WeakReference(created))
+        created
+    recent = new Recent(new WeakReference(scope), new WeakReference(table))
+    table
   }
 
 /** The values of one decode that are equal, shared: the first instance decoded stands for all the
