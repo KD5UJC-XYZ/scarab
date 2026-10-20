@@ -84,11 +84,13 @@ the Byron UTxO is compared through Shelley entry.
 comparisons under the existing ledger-state masks, all 20 refusal controls equal as raw bytes and
 CLI text, 76 ChainSync block comparisons, and 205 comparable monitor snapshots (67 nonempty).
 Valid submission reached a block; the correctly invalid-tagged submission took collateral while
-retaining its spending input. The 23 ordinary CLI command comparisons matched. The existing #77
-limits remain explicit: raw debug-ledger bytes differ under the declared `NonMyopic`,
+retaining its spending input. The 23 ordinary CLI command comparisons matched. At the time of this run, #77
+limits were explicit: raw debug-ledger bytes differed under the declared `NonMyopic`,
 `SnapshotNumDelegators`, `VrfKeyHashes` and `RewardUpdate` masks; CLI `ledger-state` was 0/1;
-`GetLedgerPeerSnapshot`, `GetNonMyopicMemberRewards` and `GetRewardInfoPools` are unimplemented.
+`GetLedgerPeerSnapshot`, `GetNonMyopicMemberRewards` and `GetRewardInfoPools` were unimplemented.
 These masks and exclusions were unchanged; the count is not a claim of 932 raw-byte-equal answers.
+The subsequent unmasked gate and query implementations are recorded in the
+[current compatibility evidence](../compatibility.md#evidence-log); they do not change this historical receipt.
 
 Both scenarios used reference 11.1.3 image `74e849e1b68e` and JDK 21.0.11 image `c90140def52d`.
 Their 10,782-file frozen runtime inventories exactly matched the checked compilation:
