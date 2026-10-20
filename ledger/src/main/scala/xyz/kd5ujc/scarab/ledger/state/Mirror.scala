@@ -18,8 +18,9 @@ import xyz.kd5ujc.scarab.ledger.EpochGeometry
   */
 enum Gap derives Eq, Show, Diff:
   /** `esNonMyopic` and the non-myopic part of the reward update (`PoolRank.hs:231-236`): the pool
-    * ranking is not part of the protocol and the node does not compute it, so the mirror holds
-    * `NonMyopic.empty`. Present in every mirror.
+    * ranking history is absent from the historical flat source, so its conversion holds
+    * `NonMyopic.empty`. Current rules generate new likelihoods, but cannot reconstruct that lost
+    * history. Live provenance tracking remains J3.1 / #129.
     */
   case NonMyopic
 

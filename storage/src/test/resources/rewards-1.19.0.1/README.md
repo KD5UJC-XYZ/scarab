@@ -19,11 +19,12 @@ records the initial state and eleven operations, including the empty-source comp
 completion of an already completed update. `RewardOracleSuite` compares encoded states and
 normal pulse events; invalid codec writes fail the comparison.
 
-Only newly generated likelihood vectors are masked for locally started states, because their
-calculation remains the existing `Gap.NonMyopic` / J3.6 work. The reference-derived snapshot's
-other fields, including captured registration/pool inputs and final pots, compare. Imported cases
-are compared without this mask, including empty-new/nonempty-old likelihood maps, a 101-entry
-new vector with the reference's 100-zero identity, and a pool count above 2^64.
+All encoded fields now compare without a likelihood mask, including locally generated 100-point
+vectors, captured history and final pots. The original input and result files remain unchanged.
+Imported cases include empty-new/nonempty-old likelihood maps, a 101-entry new vector with the
+reference's 100-zero identity, and a pool count above 2^64. Additional local zero-production,
+nonempty-history and decentralisation controls are in
+[the likelihood corpus](../reward-likelihood-1.19.0.1/README.md).
 
 These are generated API inputs and outputs, not transactions, signatures, chain admission or a
 security proof. No keys or chain data are included. The fixture producer and wrapper are original

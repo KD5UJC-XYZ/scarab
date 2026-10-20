@@ -67,6 +67,31 @@ object LocalRootDnsCache:
     }
     new State(entries, nextToken)
 
+  /** A topology reload keeps answers by DNS input even when that input moves between groups. Every
+    * resulting entry has a fresh token, so a request from before the reload cannot complete against
+    * the new configuration. Unchanged positions keep their own answer when a source occurs more
+    * than once; a moved source takes the first previous occurrence deterministically. Lookups
+    * become due immediately, as when the reference restarts its domain monitors.
+    */
+  def reconfigure[K, A, S](
+      state: State[K, A],
+      activeKeys: Vector[K],
+      source: K => S,
+      now: FiniteDuration
+  ): State[K, A] =
+    val byKey = state.entries.iterator.map(entry => entry.key -> entry).toMap
+    val bySource = state.entries.groupBy(entry => source(entry.key))
+    val (entries, nextToken) =
+      activeKeys.distinct.foldLeft((Vector.empty[Entry[K, A]], state.nextToken)) {
+        case ((accumulated, token), key) =>
+          val previous = byKey.get(key).orElse(bySource.get(source(key)).flatMap(_.headOption))
+          val entry = previous.fold(Entry(key, token, Vector.empty[A], Duration.Zero, now))(
+            _.copy(key = key, token = token, refreshAt = now)
+          )
+          (accumulated :+ entry, token + 1)
+      }
+    new State(entries, nextToken)
+
   /** Due requests retain caller key order. A caller should dispatch each request once and pass its
     * token back to `complete`; stale results cannot mutate a pruned or re-added source.
     */

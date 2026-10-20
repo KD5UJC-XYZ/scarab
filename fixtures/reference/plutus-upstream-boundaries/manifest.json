@@ -1,0 +1,94 @@
+{
+  "schema": "scarab-plutus-upstream-boundaries-v1",
+  "observedDate": "2026-10-20",
+  "reference": {
+    "nodeVersion": "11.1.3",
+    "plutusVersion": "1.70.0.0",
+    "sourceCommit": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+    "image": "sha256:e061568cd4971962854e85f26910eb5094ff1c416567a547feb3ba6eff59c5da",
+    "executableSha256": "4df4818591db6d0569d24115b84e5a398b8fa6c0dc00f5ac550bc186b09a7b6f",
+    "apiObservations": 54,
+    "crypto": "complete"
+  },
+  "boundsBackport": {
+    "baseSourceCommit": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+    "upstreamChange": "bf6917633a7c697b816e19f5b0491966c1f771ce",
+    "patch": "../../../scripts/oracle/plutus/historical-bounds.patch",
+    "patchSha256": "373765d58ec992174afa59fba43267190e7fb66d210cd4e8efd8a2e69387d618",
+    "scope": "Only the two native decoder-bound implementation files; no PV12, new builtin, evaluator, cost-model or generated-expectation update. This is not a full 1.72 oracle.",
+    "executableSha256": "339052db0b62245dfabe3f036e0fd7520007935d6673190f9ee04905cae53848",
+    "apiObservations": 54,
+    "build": "GHC9.10.3, cabal build scarab-plutus-oracle --offline --jobs=2; inherited pinned source/build configuration and complete crypto."
+  },
+  "nativeSourceSha256": {
+    "plutus-ledger-api/src/PlutusLedgerApi/Common/SerialisedScript.hs": {
+      "released": "3ebeee02a9899938c61a236d5a9b207518fc0ce7dce53ed6d13e4a93c142d82d",
+      "backport": "4405a526a7d6e62ae26f2a9a7d7685a0533ddc1b2df426d3e9706048fa0109d1"
+    },
+    "plutus-ledger-api/src/PlutusLedgerApi/Common/Versions.hs": {
+      "released": "1cc5900d10f6dbb8ea341a2334e547e1addc6d04d33009d45ab4b26a31f0da7c",
+      "backport": "1f9fab11bf56b5a60e6e86080e3e9c09b343af4c84173f409a14a4c9dd241649"
+    }
+  },
+  "newInputs": {
+    "sourceCommit": "8fd7b6f345d3265ea3a128b45576685c0538f083",
+    "sourcePrefix": "plutus-conformance/test-cases/uplc/evaluation/term/free-vars",
+    "cases": [
+      "constr-free-var",
+      "unused-free-var"
+    ],
+    "transformation": "Unchanged original Flat bytes wrapped once in a definite CBOR bytestring; original textual inputs and generic expected outcomes retained for provenance, not substituted for ledger API stages."
+  },
+  "existingInputs": {
+    "source": "../plutus-boundaries/scripts.jsonl",
+    "ids": [
+      "header-31",
+      "header-33",
+      "constr-1024",
+      "constr-1025"
+    ],
+    "transformation": "None; reuse exact original script bytes."
+  },
+  "matrix": {
+    "languages": [
+      1,
+      2,
+      3
+    ],
+    "protocols": [
+      9,
+      10,
+      11
+    ],
+    "probes": 6,
+    "observationsPerOracle": 54,
+    "expectedBoundsAdmissionChanges": 12,
+    "costModels": "Unchanged pinned 1.70 B/C for PV9\u201310, D/E for PV11; ordered exact parameter lists and script bytes are SHA256-bound in every verdict.",
+    "budget": {
+      "memory": 14000000,
+      "steps": 10000000000
+    }
+  },
+  "privateEvidenceSha256": {
+    "requests.jsonl": "8280d993ad697140ef887370723470da8cea1816f8ac37591fd5271f02f0bfb8",
+    "released-native.jsonl": "3dff8338304cf115ea864fd58a852c049131274c4dc6f3b2743d301c31ecc411",
+    "bounds-native.jsonl": "30da8601708c3c4ae1b13e5c1c2524070e1ef8fe88e6fbed0e7ef849703854de",
+    "patched-build.log": "ea128048a2c4cdd34558af8e0b271415199a681e2b9a29c2cf6c8f54842db9f2"
+  },
+  "fixtureSha256": {
+    "scripts.jsonl": "b325fc1273202f195a11877bc9f4b9f7eec45971d5a0f4a7286a82cb26fe81d8",
+    "upstream/constr-free-var/constr-free-var.budget.expected": "4471b20bf6f1b75d18ebdd7ffa1f7a345ffc3c48cf42b52bd766e24552f862e3",
+    "upstream/constr-free-var/constr-free-var.flat": "f1ba88df6a8688ca961dcc109e561fc7d73bcdca60294c9fd8dfabbc0d699f0b",
+    "upstream/constr-free-var/constr-free-var.flat.expected": "4471b20bf6f1b75d18ebdd7ffa1f7a345ffc3c48cf42b52bd766e24552f862e3",
+    "upstream/constr-free-var/constr-free-var.uplc": "89e676276172ec41fa99010e45e030598611c8c6394472ae34252f2b88169609",
+    "upstream/constr-free-var/constr-free-var.uplc.expected": "4471b20bf6f1b75d18ebdd7ffa1f7a345ffc3c48cf42b52bd766e24552f862e3",
+    "upstream/unused-free-var/unused-free-var.budget.expected": "4471b20bf6f1b75d18ebdd7ffa1f7a345ffc3c48cf42b52bd766e24552f862e3",
+    "upstream/unused-free-var/unused-free-var.flat": "42743e5f454142a331dc4a5a8c72b81ce8b2f0f3493651ae30913c01a36e05df",
+    "upstream/unused-free-var/unused-free-var.flat.expected": "4471b20bf6f1b75d18ebdd7ffa1f7a345ffc3c48cf42b52bd766e24552f862e3",
+    "upstream/unused-free-var/unused-free-var.uplc": "d6d0799cebcf1e6ecf9d334f888072ab75024cf8d117098826b9009eddd0f07c",
+    "upstream/unused-free-var/unused-free-var.uplc.expected": "4471b20bf6f1b75d18ebdd7ffa1f7a345ffc3c48cf42b52bd766e24552f862e3",
+    "verdicts.jsonl": "f985eee675c6c2c4a17d7f08cae98a362c2427e47a87604a2a44c79490b87fce"
+  },
+  "oracleMainSha256": "10a45235d46a8327644a649bcf588da563d454da4252b33926fb9207be3e23ad",
+  "requestExporterSha256": "ee12b2bc9455345155bcb785cf2f9e03c047f9bb40d72bcc19781dbc4c9ae61e"
+}

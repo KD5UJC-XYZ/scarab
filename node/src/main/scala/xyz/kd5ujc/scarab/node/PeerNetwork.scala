@@ -305,7 +305,10 @@ object PeerNetwork:
       ledgerSource: LedgerPeersSource[F],
       sharing: Option[PeerSharingRuntime[F]] = None,
       immutable: Option[ImmutableStore[F]] = None
-  )(using Handle[F, NodeError]): Resource[F, Running[F, Addr]] =
+  )(using
+      node: Handle[F, NodeError],
+      dnsResource: Resource[F, PeerDns[F]]
+  ): Resource[F, Running[F, Addr]] =
     val F = Async[F]
     def baseFor(current: Roots): Targets =
       if current.ledgerPeers then settings.targets
@@ -349,15 +352,14 @@ object PeerNetwork:
         )
     for
       supervisor <- Supervisor[F](await = false)
-      dns <- PeerDns.dnsJava[F]
+      dns <- dnsResource
       dnsRng <- Resource.eval(Ref.of[F, Rng](Rng(settings.seed).split._2))
-      initialLocalDnsCache <- Resource.eval(
-        refreshLocalDnsCache(
-          settings.roots,
-          LocalRootDnsCache.empty[NodeRootProvider.LocalDnsKey, Addr],
-          dns,
-          dnsRng
-        )
+      // Static roots are usable before the owned refresh worker obtains DNS answers.
+      initialDnsTime <- Resource.eval(Clock[F].monotonic)
+      initialLocalDnsCache = LocalRootDnsCache.track(
+        LocalRootDnsCache.empty[NodeRootProvider.LocalDnsKey, Addr],
+        NodeRootProvider.localDnsEntries(settings.roots.local, settings.roots.localSrv).map(_.key),
+        initialDnsTime
       )
       initialLocal = NodeRootProvider.localGroupsFromCache(
         settings.roots.local,
@@ -472,18 +474,6 @@ object PeerNetwork:
           ) *> emit(l)
 
       val rootProvider: RootProvider[F, Addr] = NodeRootProvider.dynamic(runtime, dns, dnsRng)
-
-      def configuredPublicPeers(current: Roots): F[Set[Addr]] =
-        for
-          public <- NodeRootProvider
-            .resolveRoots(current.public, current.publicSrv, dns, dnsRng)
-          bootstrap <- NodeRootProvider.resolveRoots(
-            current.bootstrap.getOrElse(Vector.empty).toSet,
-            current.bootstrapSrv.map(_ -> false),
-            dns,
-            dnsRng
-          )
-        yield public._1 ++ bootstrap._1
 
       def publishRootUpdate(
           staged: Runtime[F],
@@ -643,7 +633,9 @@ object PeerNetwork:
                         pending.partition(_._1 <= current.rootsGeneration)
                       (remaining, installed.values.map(_._2).toList)
                     }
-                    .flatMap(_.traverse_(_.complete(()).void))
+                    .flatMap(_.traverse_(_.complete(()).void)) *>
+                    // The owner wakes DNS even if a reload caller stopped waiting for its ack.
+                    rootRefreshWake.tryOffer(()).void
               }
             case _ => F.unit
           }
@@ -653,13 +645,20 @@ object PeerNetwork:
         for
           previous <- runtime.get
           nextWorker <- createWorker(next)
-          nextLocalDnsCache <- refreshLocalDnsCache(next, previous.localDnsCache, dns, dnsRng)
+          now <- Clock[F].monotonic
+          nextLocalDnsCache = LocalRootDnsCache.reconfigure(
+            previous.localDnsCache,
+            NodeRootProvider.localDnsEntries(next.local, next.localSrv).map(_.key),
+            _.input,
+            now
+          )
           resolvedLocal = NodeRootProvider.localGroupsFromCache(
             next.local,
             next.localSrv,
             nextLocalDnsCache
           )
-          resolvedPublic <- configuredPublicPeers(next)
+          known <- state.get
+          resolvedPublic = retainedPublicRoots(previous.roots, next, known)
           nextAssociation = AssociationMode.of(
             useLedgerPeers = next.ledgerPeers,
             peerSharing = settings.peerSharing,
@@ -684,54 +683,63 @@ object PeerNetwork:
             snapshotCheckCanceled = snapshotCheckCanceled
           )
           _ <- publishRootUpdate(staged, resolvedLocal, resolvedPublic)
-          _ <- rootRefreshWake.tryOffer(()).void
         yield ()
 
       val refreshLocalRoots: F[Nothing] =
         F.tailRecM[Unit, Nothing](()) { _ =>
-          for
-            captured <- runtime.get
-            cache <- refreshLocalDnsCache(captured.roots, captured.localDnsCache, dns, dnsRng)
-            resolved = NodeRootProvider.localGroupsFromCache(
-              captured.roots.local,
-              captured.roots.localSrv,
-              cache
-            )
-            latest <- runtime.get
-            current <-
-              if latest.generation != captured.generation then F.pure(latest)
-              else if resolved != captured.resolvedLocalRoots then
+          runtime.get.flatMap { captured =>
+            F.race(
+              refreshLocalDnsCache(captured.roots, captured.localDnsCache, dns, dnsRng),
+              rootRefreshWake.take
+            ).flatMap {
+              case Right(()) => F.pure(Left(()))
+              case Left(cache) =>
+                val resolved = NodeRootProvider.localGroupsFromCache(
+                  captured.roots.local,
+                  captured.roots.localSrv,
+                  cache
+                )
                 for
-                  public <- configuredPublicPeers(captured.roots)
-                  generation <- nextRootGeneration.modify { value =>
-                    if value == captured.generation then (value + 1, Some(value + 1))
-                    else (value, None)
-                  }
-                  _ <- generation.traverse_ { installedGeneration =>
-                    for
-                      snapshotCheckCanceled <- Deferred[F, Unit]
-                      staged = captured.copy(
-                        generation = installedGeneration,
-                        resolvedLocalRoots = resolved,
-                        localDnsCache = cache,
-                        snapshotCheckStarted = false,
-                        snapshotCheckCanceled = snapshotCheckCanceled
-                      )
-                      _ <- publishRootUpdate(staged, resolved, public)
-                    yield ()
-                  }
-                  installed <- runtime.get
-                yield installed
-              else
-                runtime.modify { current =>
-                  if current.generation == captured.generation then
-                    (current.copy(localDnsCache = cache), current.copy(localDnsCache = cache))
-                  else (current, current)
-                }
-            now <- Clock[F].monotonic
-            delay = LocalRootDnsCache.nextDelay(current.localDnsCache, now).getOrElse(900.seconds)
-            _ <- F.race(F.sleep(delay), rootRefreshWake.take).void
-          yield Left(())
+                  latest <- runtime.get
+                  current <-
+                    if latest.generation != captured.generation then F.pure(latest)
+                    else if resolved != captured.resolvedLocalRoots then
+                      for
+                        known <- state.get
+                        public = retainedPublicRoots(captured.roots, captured.roots, known)
+                        generation <- nextRootGeneration.modify { value =>
+                          if value == captured.generation then (value + 1, Some(value + 1))
+                          else (value, None)
+                        }
+                        _ <- generation.traverse_ { installedGeneration =>
+                          for
+                            snapshotCheckCanceled <- Deferred[F, Unit]
+                            staged = captured.copy(
+                              generation = installedGeneration,
+                              resolvedLocalRoots = resolved,
+                              localDnsCache = cache,
+                              snapshotCheckStarted = false,
+                              snapshotCheckCanceled = snapshotCheckCanceled
+                            )
+                            _ <- publishRootUpdate(staged, resolved, public)
+                          yield ()
+                        }
+                        installed <- runtime.get
+                      yield installed
+                    else
+                      runtime.modify { current =>
+                        if current.generation == captured.generation then
+                          (current.copy(localDnsCache = cache), current.copy(localDnsCache = cache))
+                        else (current, current)
+                      }
+                  now <- Clock[F].monotonic
+                  delay = LocalRootDnsCache
+                    .nextDelay(current.localDnsCache, now)
+                    .getOrElse(900.seconds)
+                  _ <- F.race(F.sleep(delay), rootRefreshWake.take).void
+                yield Left(())
+            }
+          }
         }
 
       val loops: F[Nothing] =
@@ -756,6 +764,28 @@ object PeerNetwork:
           .void *> loops,
         fatal
       )
+
+  /** Reload must publish configured IP roots and kept DNS answers before new lookups, as in
+    * ouroboros-network 6a49b6f6, RootPeersDNS/LocalRootPeers.hs. Public DNS answers are requested
+    * separately by the governor. Keep their existing attribution only while their configured source
+    * set is unchanged; a removed name must not leave its old answer configured forever.
+    */
+  private[node] def retainedPublicRoots(
+      previous: Roots,
+      next: Roots,
+      known: GovernorState[Addr]
+  ): Set[Addr] =
+    val publicUnchanged = previous.public == next.public && previous.publicSrv == next.publicSrv
+    val bootstrapUnchanged =
+      previous.bootstrap == next.bootstrap && previous.bootstrapSrv == next.bootstrapSrv
+    val retained = known.peers.collect {
+      case (peer, record)
+          if (record.origin == Origin.Public && publicUnchanged) ||
+            (record.origin == Origin.Bootstrap && bootstrapUnchanged) =>
+        peer
+    }.toSet
+    retained ++ (next.public ++ next.bootstrap.toVector.flatten)
+      .filter(_.host.isInstanceOf[IpAddress])
 
   private[node] def installRuntimeGeneration[F[_]: Async](
       runtime: Ref[F, Runtime[F]],

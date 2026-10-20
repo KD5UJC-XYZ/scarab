@@ -1,0 +1,447 @@
+diff --git a/cabal.project b/cabal.project
+index 9e97308..59b102a 100644
+--- a/cabal.project
++++ b/cabal.project
+@@ -12,7 +12,7 @@ repository cardano-haskell-packages
+ 
+ source-repository-package
+   type: git
+-  location: https://github.com/IntersectMBO/formal-ledger-specifications.git
++  location: file:///formal
+   subdir: hs
+   -- !WARNING!:
+   -- MAKE SURE THIS POINTS TO A COMMIT IN `*-artifacts` BEFORE MERGE!
+@@ -20,7 +20,7 @@ source-repository-package
+ 
+ source-repository-package
+   type: git
+-  location: https://github.com/input-output-hk/constrained-generators.git
++  location: file:///constrained
+   --sha256: sha256-h0bJTwdfJG84XrERJJoBBi5ZzRHgeVoZWS2yW/z7LiU=
+   tag: 966f65f3c28cb22fc45220dbd1408baea93b53d8
+ 
+@@ -101,12 +101,13 @@ if impl(ghc >=9.12)
+     -- Unique: https://github.com/kapralVV/Unique/issues/11
+     , Unique:hashable
+ 
+-source-repository-package
+-  type: git
+-  location: https://github.com/tweag/cardano-cls.git
+-  subdir: merkle-tree-incremental mempack-scls scls-cbor scls-cardano scls-format scls-core
+-  --sha256: sha256-3rAc99T2/MZk7Rd2gb9zq7iUM9hMDOzNvehOq/8hpfs=
+-  tag: 8e2bba9442cb388089f53d708cc4aedcb47726ea
++packages:
++  /clssrc/merkle-tree-incremental
++  /clssrc/mempack-scls
++  /clssrc/scls-cbor
++  /clssrc/scls-cardano
++  /clssrc/scls-format
++  /clssrc/scls-core
+ 
+ constraints:
+   -- Happy version 2.2.1 fails to compile haskell-src-exts
+diff --git a/libs/cardano-ledger-conformance/cardano-ledger-conformance.cabal b/libs/cardano-ledger-conformance/cardano-ledger-conformance.cabal
+index 5a4d53a..95fc586 100644
+--- a/libs/cardano-ledger-conformance/cardano-ledger-conformance.cabal
++++ b/libs/cardano-ledger-conformance/cardano-ledger-conformance.cabal
+@@ -152,6 +152,7 @@ test-suite tests
+     -Wredundant-constraints
+     -Wpartial-fields
+     -Wunused-packages
++    -optl-L/usr/local/lib
+     -threaded
+     -rtsopts
+     -with-rtsopts=-N
+@@ -162,12 +163,14 @@ test-suite tests
+     cardano-ledger-conway:{cardano-ledger-conway, testlib},
+     cardano-ledger-core:{cardano-ledger-core, testlib},
+     cardano-ledger-dijkstra:{cardano-ledger-dijkstra, testlib},
++    cardano-ledger-babbage:testlib,
+     cardano-ledger-executable-spec,
+-    cardano-ledger-shelley,
++    cardano-ledger-shelley:{cardano-ledger-shelley, testlib},
+     cardano-ledger-test,
+     cardano-strict-containers,
+     constrained-generators,
+     containers,
++    data-default,
+     microlens,
+     microlens-mtl,
+     mtl,
+diff --git a/libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/ExecSpecRule/Core.hs b/libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/ExecSpecRule/Core.hs
+index 0ace12d..d532fa3 100644
+--- a/libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/ExecSpecRule/Core.hs
++++ b/libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/ExecSpecRule/Core.hs
+@@ -29,6 +29,7 @@ module Test.Cardano.Ledger.Conformance.ExecSpecRule.Core (
+   ForAllExecSpecRep,
+   ForAllExecTypes,
+   diffConformance,
++  dumpCbor,
+   runFromAgdaFunction,
+ ) where
+ 
+@@ -71,7 +72,7 @@ import Test.Cardano.Ledger.Shelley.ImpTest (
+   logDoc,
+   tryRunImpRule,
+  )
+-import UnliftIO (evaluateDeep)
++import UnliftIO (MonadIO, evaluateDeep, liftIO)
+ import UnliftIO.Directory (makeAbsolute)
+ import UnliftIO.Environment (lookupEnv)
+ 
+@@ -111,6 +112,7 @@ class
+   , ForAllExecTypes ToExpr rule era
+   , ForAllExecTypes EncCBOR rule era
+   , EncCBOR (ExecContext rule era)
++  , EncCBOR (PredicateFailure (EraRule rule era))
+   , Eq (SpecState rule era)
+   , SpecNormalize (SpecState rule era)
+   , NFData (ExecContext rule era)
+@@ -196,14 +198,15 @@ class ExecSpecRule rule era => ExecSpecTopLevelRule rule era where
+   mkRuleExecContext _ _ = ()
+ 
+ dumpCbor ::
+-  forall era a.
++  forall era a m.
+   ( EncCBOR a
+   , Era era
++  , MonadIO m
+   ) =>
+   FilePath ->
+   a ->
+   String ->
+-  ImpTestM era ()
++  m ()
+ dumpCbor path x name = do
+   fullPath <- makeAbsolute $ path <> "/" <> name <.> "cbor"
+   writeCBOR (eraProtVerLow @era) fullPath x
+@@ -277,10 +280,10 @@ checkConformance ctx (TRC (env, st, sig)) implResTest agdaResTest = do
+       mbyCborDumpPath <- lookupEnv envVarName
+       case mbyCborDumpPath of
+         Just path -> do
+-          dumpCbor path ctx "conformance_dump_ctx"
+-          dumpCbor path env "conformance_dump_env"
+-          dumpCbor path st "conformance_dump_st"
+-          dumpCbor path sig "conformance_dump_sig"
++          dumpCbor @era path ctx "conformance_dump_ctx"
++          dumpCbor @era path env "conformance_dump_env"
++          dumpCbor @era path st "conformance_dump_st"
++          dumpCbor @era path sig "conformance_dump_sig"
+           logDoc $ "Dumped the CBOR files to " <> ansiExpr path
+         Nothing ->
+           logDoc $
+@@ -299,6 +302,28 @@ testConformance ::
+   Property
+ testConformance ctx trc = property $ do
+   ConformanceResult implResTest agdaResTest implRes <- runConformance @rule @era ctx trc
++  -- Optional observer used by Scarab's disposable pinned-source adapter. It records the
++  -- generated upstream input and the implementation result after the ordinary conformance
++  -- computation; it does not change generation, translation, execution, or checking.
++  exportDir <- liftIO $ lookupEnv "SCARAB_CONFORMANCE_EXPORT_DIR"
++  case exportDir of
++    Nothing -> pure ()
++    Just path -> do
++      let TRC (env, st, sig) = trc
++      dumpCbor @era path ctx "context"
++      dumpCbor @era path env "environment"
++      dumpCbor @era path st "state"
++      dumpCbor @era path sig "signal"
++      implStatus <- case implRes of
++        Right (implState, _) -> do
++          dumpCbor @era path implState "implementation-state"
++          pure "implementation-accepted"
++        Left failures -> do
++          dumpCbor @era path failures "implementation-failures"
++          pure "implementation-rejected"
++      let agdaStatus = either (const "agda-rejected") (const "agda-accepted") agdaResTest
++      let verdict = if first (T.pack . show) implResTest == agdaResTest then "outputs-equal" else "outputs-differ"
++      liftIO $ writeFile (path <> "/result.txt") (unlines [implStatus, agdaStatus, verdict])
+   globals <- use impGlobalsL
+   logDoc $ extraInfo @rule @era globals ctx trc (first (T.pack . show) implRes)
+   checkConformance @rule @_ ctx trc (first (T.pack . show) implResTest) agdaResTest
+diff --git a/libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/SpecTranslate/Conway/Base.hs b/libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/SpecTranslate/Conway/Base.hs
+index b12185b..215b39a 100644
+--- a/libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/SpecTranslate/Conway/Base.hs
++++ b/libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/SpecTranslate/Conway/Base.hs
+@@ -330,7 +330,7 @@ instance SpecTranslate ConwayEra (AlonzoTxWits ConwayEra) where
+ 
+   toSpecRep x =
+     Agda.MkTxWitnesses
+-      <$> fmap Agda.MkHSMap (toSpecRep txWitsMap)
++      <$> (Agda.MkHSMap <$> ((++) <$> toSpecRep txWitsMap <*> toSpecRep (toList $ txwitsBoot x)))
+       <*> fmap Agda.MkHSSet (toSpecRep (Map.elems $ txscripts x))
+       <*> toSpecRep (txdats x)
+       <*> toSpecRep (txrdmrs x)
+diff --git a/libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/SpecTranslate/Core.hs b/libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/SpecTranslate/Core.hs
+index 2ad6071..b74908f 100644
+--- a/libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/SpecTranslate/Core.hs
++++ b/libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/SpecTranslate/Core.hs
+@@ -27,6 +27,7 @@ import Cardano.Ledger.Address (
+   AccountId (..),
+   Addr (..),
+   BootstrapAddress (..),
++  bootstrapAddressAttrsSize, bootstrapKeyHash, getNetwork,
+  )
+ import Cardano.Ledger.BaseTypes (
+   BlocksMade (..),
+@@ -52,11 +53,10 @@ import Cardano.Ledger.Conway.Core (
+  )
+ import Cardano.Ledger.Conway.State
+ import Cardano.Ledger.Credential (Credential (..), StakeReference (..))
+-import Cardano.Ledger.Keys (VKey (..))
++import Cardano.Ledger.Keys (VKey (..), BootstrapWitness (..), bootstrapWitKeyHash)
+ import Cardano.Ledger.Keys.WitVKey (WitVKey (..))
+ import Cardano.Ledger.Plutus.ExUnits (Prices)
+ import Control.Monad (forM)
+-import Control.Monad.Except (throwError)
+ import Data.Functor.Identity (Identity (..))
+ import qualified Data.Map as Map
+ import Data.Maybe.Strict (StrictMaybe (..))
+@@ -80,7 +80,10 @@ instance SpecTranslate era StakeReference where
+ instance SpecTranslate era BootstrapAddress where
+   type SpecRep era BootstrapAddress = Agda.BootstrapAddr
+ 
+-  toSpecRep _ = throwError "Cannot translate bootstrap addresses"
++  toSpecRep addr = Agda.BootstrapAddr
++    <$> toSpecRep (getNetwork $ AddrBootstrap addr)
++    <*> (Agda.KeyHashObj <$> toSpecRep (bootstrapKeyHash addr))
++    <*> pure (toInteger $ bootstrapAddressAttrsSize addr)
+ 
+ instance SpecTranslate era Addr where
+   type SpecRep era Addr = Agda.Addr
+@@ -187,6 +190,13 @@ instance SpecTranslate era (WitVKey k) where
+ 
+   toSpecRep (WitVKey vk sk) = toSpecRepTuple (vk, sk)
+ 
++instance SpecTranslate era BootstrapWitness where
++  type SpecRep era BootstrapWitness = (Agda.HSVKey, Integer)
++  toSpecRep bw@(BootstrapWitness {..}) = do
++    kh <- toSpecRep (bootstrapWitKeyHash bw)
++    sig <- toSpecRep bwSignature
++    pure (Agda.MkHSVKey (vkeyToInteger bwKey) kh, sig)
++
+ instance SpecTranslate era CommitteeAuthorization where
+   type
+     SpecRep era CommitteeAuthorization =
+diff --git a/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Conway.hs b/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Conway.hs
+index 28eb76b..227a7ff 100644
+--- a/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Conway.hs
++++ b/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Conway.hs
+@@ -6,6 +6,13 @@ module Test.Cardano.Ledger.Conformance.Imp.Conway (spec) where
+ 
+ import Cardano.Ledger.BaseTypes
+ import Cardano.Ledger.Conway (ConwayEra)
++import Cardano.Ledger.Plutus (hashPlutusScript, SLanguage (..))
++import Test.Cardano.Ledger.Plutus.Examples (alwaysSucceedsWithDatum)
++import Cardano.Ledger.Conway.Core
++import Data.Set qualified as Set
++import Lens.Micro
++import Test.Cardano.Ledger.Shelley.Imp.UtxowSpec qualified as ShelleyUTXOW
++import Test.Cardano.Ledger.Babbage.Imp.UtxosSpec qualified as BabbageUTXOS
+ import Test.Cardano.Ledger.Conformance.Imp.Conway.Ratify qualified as RatifySpec
+ import Test.Cardano.Ledger.Conformance.Imp.Core
+ import Test.Cardano.Ledger.Conway.Imp.BbodySpec qualified as BBODY
+@@ -41,6 +48,29 @@ spec = do
+             RATIFY.spec
+             UTXO.spec
+             UTXOW.spec
++            ShelleyUTXOW.spec
++            describe "Scarab bootstrap" $ do
++              it "Missing bootstrap witness" $ do
++                addr <- freshBootstapAddress
++                input <- sendCoinTo (AddrBootstrap addr) mempty
++                let tx = mkBasicTx $ mkBasicTxBody & inputsTxBodyL .~ Set.singleton input
++                withPostFixup (pure . (witsTxL . bootAddrTxWitsL .~ mempty)) $
++                  void $ expectLeft =<< trySubmitTx tx
++            BabbageUTXOS.spec
+             UTXOS.spec
++            describe "Scarab languages" $ do
++              it "no Plutus allows overlapping reference input" $ do
++                addr <- freshKeyAddr_
++                input <- sendCoinTo addr mempty
++                submitTx_ $ mkBasicTx $ mkBasicTxBody
++                  & inputsTxBodyL .~ Set.singleton input
++                  & referenceInputsTxBodyL .~ Set.singleton input
++              it "PlutusV1 succeeds without reference inputs" $ do
++                input <- produceScript $ hashPlutusScript $ alwaysSucceedsWithDatum SPlutusV1
++                submitTx_ $ mkBasicTx $ mkBasicTxBody & inputsTxBodyL .~ Set.singleton input
++            describe "Scarab DRep" $ do
++              it "registered delegatees removed after unregistration" $ do
++                (drep, _, _) <- setupSingleDRep 1000000
++                unRegisterDRep drep
+   describe "Imp (only spec)" $ do
+     RatifySpec.spec
+diff --git a/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Core.hs b/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Core.hs
+index 9f32513..0fc0424 100644
+--- a/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Core.hs
++++ b/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Core.hs
+@@ -13,6 +13,9 @@ module Test.Cardano.Ledger.Conformance.Imp.Core where
+ 
+ import Cardano.Ledger.BaseTypes (Globals)
+ import Cardano.Ledger.Core (EraRule)
++import Data.Unique (newUnique, hashUnique)
++import UnliftIO.Directory (createDirectoryIfMissing)
++import UnliftIO.Environment (lookupEnv)
+ import Control.State.Transition
+ import Data.Bifunctor (Bifunctor (..))
+ import Data.Data (Proxy (..))
+@@ -24,6 +27,7 @@ import Test.Cardano.Ledger.Conformance.ExecSpecRule.Core (
+   ExecSpecTopLevelRule (..),
+   SpecTRC (..),
+   diffConformance,
++  dumpCbor,
+  )
+ import Test.Cardano.Ledger.Conformance.SpecTranslate.Base (
+   SpecNormalize (..),
+@@ -31,7 +35,7 @@ import Test.Cardano.Ledger.Conformance.SpecTranslate.Base (
+  )
+ import Test.Cardano.Ledger.Conway.ImpTest
+ import Test.Cardano.Ledger.Imp.Common hiding (Args)
+-import UnliftIO (evaluateDeep)
++import UnliftIO (evaluateDeep, liftIO)
+ 
+ conformanceHook ::
+   forall rule era t.
+@@ -60,6 +64,29 @@ conformanceHook globals trc@(TRC (env, state, signal)) ctx impRuleResult =
+       impRuleResult' = bimap (T.pack . show) fst impRuleResult
+       impResponse = first (T.pack . show) . runSpecTransM @era ctx . translateOutput trc =<< impRuleResult'
+ 
++    -- Export-only observer: preserve each real integration-hook judgment.
++    exportRoot <- liftIO $ lookupEnv "SCARAB_IMP_EXPORT_DIR"
++    case exportRoot of
++      Nothing -> pure ()
++      Just path -> do
++        ordinal <- liftIO $ hashUnique <$> newUnique
++        let dir = path <> "/" <> symbolVal (Proxy @rule) <> "-" <> show ordinal
++        liftIO $ createDirectoryIfMissing True dir
++        dumpCbor @era dir ctx "context"
++        dumpCbor @era dir env "environment"
++        dumpCbor @era dir state "state"
++        dumpCbor @era dir signal "signal"
++        implStatus <- case impRuleResult of
++          Right (out, _) -> do
++            dumpCbor @era dir out "implementation-state"
++            pure "implementation-accepted"
++          Left failures -> do
++            dumpCbor @era dir failures "implementation-failures"
++            pure "implementation-rejected"
++        let agdaStatus = either (const "agda-rejected") (const "agda-accepted") agdaResponse
++        let verdict = if impResponse == agdaResponse then "outputs-equal" else "outputs-differ"
++        liftIO $ writeFile (dir <> "/result.txt") (unlines [implStatus, agdaStatus, verdict])
++
+     logString "implEnv"
+     logToExpr env
+     logString "implState"
+diff --git a/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway.hs b/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway.hs
+index c6f29c3..0221bae 100644
+--- a/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway.hs
++++ b/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway.hs
+@@ -14,7 +14,21 @@ import Data.Map.Strict qualified as Map
+ import Test.Cardano.Ledger.Conformance.ExecSpecRule.Conway (ConwayCertExecContext (..))
+ import Test.Cardano.Ledger.Conformance.Spec.Conway.Ratify qualified as Ratify
+ import Test.Cardano.Ledger.Conformance.Spec.Core
+-import Test.Cardano.Ledger.Constrained.Conway (genUtxoExecContext)
++import Cardano.Ledger.Conway (ConwayEra)
++import Cardano.Ledger.Conway.Core
++import Cardano.Ledger.Conway.Governance
++import Cardano.Ledger.Shelley.LedgerState
++import Cardano.Ledger.Shelley.Rules qualified as Shelley
++import Cardano.Ledger.Slot (epochFromSlot)
++import Control.Monad.Reader (runReader)
++import Control.State.Transition (TRC (..))
++import Data.Default (def)
++import Data.Sequence qualified as Seq
++import Lens.Micro
++import Test.Cardano.Ledger.Conformance (ExecSpecTopLevelRule (..))
++import Test.Cardano.Ledger.Conformance.ExecSpecRule.Conway (ConwayLedgerExecContext (..))
++import Test.Cardano.Ledger.Constrained.Conway (UtxoExecContext (..))
++import Test.Cardano.Ledger.Core.Utils (testGlobals)
+ import Test.Cardano.Ledger.Constrained.Conway.MiniTrace (
+   ConwayCertGenContext (..),
+   constrainedCert,
+@@ -55,8 +69,47 @@ spec = do
+                 , ccecWithdrawals = ccccWithdrawals
+                 }
+       prop "GOV" $ conformsToImplConstrained_ constrainedGov
+-      -- UTXO is disabled due to: https://github.com/IntersectMBO/cardano-ledger/issues/4876
+-      xprop "UTXO" $ conformsToImplConstrained constrainedUtxo $ \_ _ _ _ -> genUtxoExecContext
+-      xprop "UTXOW" $ conformsToImplConstrained constrainedUtxo $ \_ _ _ _ -> genUtxoExecContext
+-      xprop "LEDGER" $ conformsToImplConstrained constrainedUtxo $ \_ _ _ _ -> genUtxoExecContext
+-      xprop "LEDGERS" $ conformsToImplConstrained constrainedUtxo $ \_ _ _ _ -> genUtxoExecContext
++      prop "PV11-real-UTXO" $ conformsToImpl @"UTXO" @ConwayEra freshUtxo
++      prop "PV11-real-UTXOW" $ conformsToImpl @"UTXOW" @ConwayEra freshUtxow
++      prop "PV11-real-LEDGER" $ conformsToImpl @"LEDGER" @ConwayEra freshLedger
++      prop "PV11-real-LEDGERS" $ conformsToImpl @"LEDGERS" @ConwayEra freshLedgers
++
++freshUtxo :: Gen (UtxoExecContext ConwayEra, TRC (EraRule "UTXO" ConwayEra))
++freshUtxo = fmap coherentUtxo $ genFromBundle constrainedUtxo $ \ctx _ _ _ -> pure ctx
++
++-- Construct cached stake and the deposit pot from the same native UTxO/cert state.
++-- The original generator leaves these fields unrelated to the UTxO; keep its raw
++-- observations separately rather than treating invalid cache underflow as parity.
++coherentUtxo :: (UtxoExecContext ConwayEra, TRC (EraRule "UTXO" ConwayEra)) -> (UtxoExecContext ConwayEra, TRC (EraRule "UTXO" ConwayEra))
++coherentUtxo (ctx, TRC (env, state, sig)) =
++  let pp = Shelley.uePParams env
++      gov = utxosGovState state & cgsCurPParamsL .~ pp
++      lawful = smartUTxOState pp (utxosUtxo state)
++        (totalObligation (Shelley.ueCertState env) gov) (utxosFees state) gov (utxosDonation state)
++  in (ctx, TRC (env, lawful, sig))
++
++freshUtxow :: Gen (UtxoExecContext ConwayEra, TRC (EraRule "UTXOW" ConwayEra))
++freshUtxow = do
++  (ctx, TRC triple) <- freshUtxo
++  pure (ctx, TRC triple)
++
++freshLedger :: Gen (ConwayLedgerExecContext ConwayEra, TRC (EraRule "LEDGER" ConwayEra))
++freshLedger = do
++  (_, TRC (env, state, sig)) <- freshUtxo
++  let params = Shelley.uePParams env
++      epoch = runReader (epochFromSlot $ Shelley.ueSlot env) testGlobals
++      -- The original UTXO generator does not constrain governance parameters.
++      -- A LEDGER context must use the same parameters as the supplied environment.
++      state' = state & utxosGovStateL . cgsCurPParamsL .~ params
++        & utxosDepositedL .~ totalObligation (Shelley.ueCertState env) (utxosGovState state)
++      ledgerState = LedgerState state' (Shelley.ueCertState env)
++      ledgerEnv = Shelley.LedgerEnv (Shelley.ueSlot env) (Just epoch) minBound params def
++      trc = TRC (ledgerEnv, ledgerState, sig)
++  pure (mkRuleExecContext @"LEDGER" @ConwayEra testGlobals trc, trc)
++
++freshLedgers :: Gen (EnactState ConwayEra, TRC (EraRule "LEDGERS" ConwayEra))
++freshLedgers = do
++  (ctx, TRC (env, state, sig)) <- freshLedger
++  let batchEnv = Shelley.LedgersEnv (Shelley.ledgerSlotNo env)
++        (runReader (epochFromSlot $ Shelley.ledgerSlotNo env) testGlobals) (Shelley.ledgerPp env) (Shelley.ledgerAccount env)
++  pure (clecEnactState ctx, TRC (batchEnv, state, Seq.singleton (sig ^. txStAnnTxG)))
+diff --git a/libs/cardano-ledger-test/src/Test/Cardano/Ledger/Constrained/Conway/Utxo.hs b/libs/cardano-ledger-test/src/Test/Cardano/Ledger/Constrained/Conway/Utxo.hs
+index b291154..3b76e4a 100644
+--- a/libs/cardano-ledger-test/src/Test/Cardano/Ledger/Constrained/Conway/Utxo.hs
++++ b/libs/cardano-ledger-test/src/Test/Cardano/Ledger/Constrained/Conway/Utxo.hs
+@@ -250,6 +250,6 @@ genUtxoExecContext = do
+     uePParams =
+       gePParams (gsGenEnv gs)
+         & ppMaxTxSizeL .~ fromIntegral txSize
+-        & ppProtocolVersionL .~ ProtVer (natVersion @10) 0
++        & ppProtocolVersionL .~ ProtVer (natVersion @11) 0
+     uecUtxoEnv = UtxoEnv {..}
+   pure UtxoExecContext {..}
+diff --git a/libs/cardano-ledger-test/src/Test/Cardano/Ledger/Generic/GenState.hs b/libs/cardano-ledger-test/src/Test/Cardano/Ledger/Generic/GenState.hs
+index ab41f39..dc79614 100644
+--- a/libs/cardano-ledger-test/src/Test/Cardano/Ledger/Generic/GenState.hs
++++ b/libs/cardano-ledger-test/src/Test/Cardano/Ledger/Generic/GenState.hs
+@@ -101,7 +101,6 @@ import Cardano.Ledger.Shelley.LedgerState (
+   LedgerState (..),
+   smartUTxOState,
+   totalObligation,
+-  utxosGovStateL,
+  )
+ import Cardano.Ledger.Shelley.Scripts (
+   MultiSig,
+@@ -689,7 +688,7 @@ initialLedgerState gstate = LedgerState utxostate dpstate
+         Map.empty
+         Map.empty
+     -- In a wellformed LedgerState the deposited equals the obligation
+-    deposited = totalObligation dpstate (utxostate ^. utxosGovStateL)
++    deposited = totalObligation dpstate emptyGovState
+     pools = gsInitialStakePoolParams gstate
+     pp = mPParams (gsModel gstate)
+     poolDeposit = pp ^. ppPoolDepositCompactL

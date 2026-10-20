@@ -175,3 +175,43 @@ class LocalRootDnsCacheSuite extends FunSuite:
     assertEquals(LocalRootDnsCache.nextDelay(tracked, 15.seconds), Some(Duration.Zero))
     assertEquals(LocalRootDnsCache.due(tracked, Vector("a"), 15.seconds), Vector(Request("a", 0)))
   }
+
+  test("reconfiguration retains moved sources, prunes removed names and fences every old request") {
+    val oldKey = (0, "kept")
+    val removedKey = (1, "removed")
+    val movedKey = (2, "kept")
+    val newKey = (0, "new")
+    val tracked = LocalRootDnsCache.track(
+      LocalRootDnsCache.empty[(Int, String), String],
+      Vector(oldKey, removedKey),
+      0.seconds
+    )
+    val oldRequest = requestFor(tracked, oldKey, 0.seconds)
+    val cached = complete(
+      tracked,
+      oldRequest,
+      0.seconds,
+      LookupResult.Success(Vector("kept-ip"), Vector(300.seconds))
+    )
+    val reconfigured =
+      LocalRootDnsCache.reconfigure(cached, Vector(movedKey, newKey), _._2, 10.seconds)
+    assertEquals(LocalRootDnsCache.keys(reconfigured), Vector(movedKey, newKey))
+    assertEquals(
+      LocalRootDnsCache.snapshot(reconfigured, movedKey),
+      Some(Snapshot(Vector("kept-ip"), 300.seconds, 10.seconds))
+    )
+    assertEquals(
+      LocalRootDnsCache.snapshot(reconfigured, newKey),
+      Some(Snapshot(Vector.empty, Duration.Zero, 10.seconds))
+    )
+    val sameKey = LocalRootDnsCache.reconfigure(cached, Vector(oldKey), _._2, 10.seconds)
+    assertEquals(
+      LocalRootDnsCache.complete(
+        sameKey,
+        oldRequest,
+        11.seconds,
+        LookupResult.Success(Vector("stale-ip"), Vector(900.seconds))
+      ),
+      Left(CacheError.StaleRequest)
+    )
+  }

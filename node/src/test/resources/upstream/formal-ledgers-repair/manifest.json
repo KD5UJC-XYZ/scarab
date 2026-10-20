@@ -1,0 +1,218 @@
+{
+  "schema": "scarab-formal-ledgers-repair-v1",
+  "issue": 270,
+  "nativeSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "formalSourceCommit": "b3a4fd47a1144ff1fb994f89b1045e78159e07ae",
+  "originalFailure": {
+    "exitCode": 139,
+    "scope": "formal conformance evaluator, not running cardano-node",
+    "executableSha256": "99e162813ac4dce1099d14f80dd667d27aa6d8384ad1e0c8d462035cd68d9a14",
+    "backtraceSha256": "0fc225f6b00f82b9d07477421cfdd51bb0c6d99bdaad2f3808a985c263514c97",
+    "observationSha256": "0cbd58da08a8ed5ef3b97fd6574f964c4b3291c88ac202cec2489ecd45c4d094"
+  },
+  "repair": {
+    "patch": "scripts/oracle/ledger-govcert/formal-ledgers-conversion.patch",
+    "patchSha256": "e37d969425704dfcc7b3ead816b8ae509ebada3d6ef87561658167b35482374a",
+    "originalWrapperSha256": "d86efa3b6decd9a7aab2c020c4cd2c84df511c214dcdd5bd4dc76dc95a914d77",
+    "patchedWrapperSha256": "a0c22019b3967407104fae0676b680b67d9c9a5abf9add05f4af2a71a641884d",
+    "compiledObjectSha256": "a1ad63387cb4581f9b85571d5b4676f6527e3ca5219b2f4a431aa78b36a1e330",
+    "compiler": "GHC 9.10.3 -O1 -dynamic-too",
+    "compilerFlagsSha256": "914dd0057dcb3e9c57ad229eca61dcd3749df6a30880f75a930c5c83a9cf68fd",
+    "unitId": "cardano-ledger-executable-spec-0.1.0.0-31be6ee19fa6c531e2f5f5d4bc098fc5369e77f14db02a84661dc99c8e9aa61c",
+    "patchedArchiveSha256": "837980112ec93ed922e59aa51067d70f398918b97eb8ec827cf94a3be2e8772e",
+    "sourceRepair": "Convert foreign environment/state/each transaction using existing Convertible instances before the unchanged computational LEDGERS; output conversion unchanged.",
+    "localPatchNotUpstreamRelease": true,
+    "originalArchiveSha256": "0564ef67fcd126f792ad47287ae6124962fbd09f821684a6ca2e159860e4c848"
+  },
+  "singleReplay": {
+    "exitCode": 0,
+    "logSha256": "0d25d202401429f4cb28a8378cf3ddf66c0480a0b89dab1daafdf12898d97785"
+  },
+  "batchReplay": {
+    "exitCode": 0,
+    "logSha256": "55c3b6acace4626cc8d78ef212c9d456eced34a62cfe220dec0b2750d39ee354",
+    "executableSha256": "0312ce7ebf7a06dc33275292701eec7bea6f36426a9697cb37de9d68e05ad836",
+    "sourceBinding": {
+      "libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/ExecSpecRule/Core.hs": "3521603b8d5aacd13aeaa5b8a3db716f645a4dd2680dc49cf58185c51fc13e27",
+      "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Conway.hs": "63eab88d406b16c9b11cbad099afcd9e3d0dc845e497612ff55be805e3d9dfdf",
+      "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Core.hs": "8e52bf75a5848a3112760d8e0b1147c137312ac3f9941d08b2ff0034820a7bbf",
+      "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway.hs": "34b8f4c1d10d0ee127e28e0d56ed4c84a0e050aaff963d8d2c89b7cbeb8f93fe"
+    },
+    "batchPatch": "scripts/oracle/ledger-govcert/formal-ledgers-batches.patch",
+    "batchPatchSha256": "ddb6dbeb18a289dec6ec6b15e2f86da36c255c4c6091a1b0d63b8338f3b8750e",
+    "dependencyPlanSha256": "111d16fe78ded4be687fdc5adbf3bfc0a03b79952fdf843b84d7accc9a37fce6",
+    "seed": 498301,
+    "arguments": [
+      "--match",
+      "Conformance/Conway/Imp/EPOCH/Proposals/Expired proposal deposit refunded",
+      "--seed=498301",
+      "--qc-max-success=1",
+      "--qc-max-size=30"
+    ]
+  },
+  "cases": [
+    {
+      "id": "singleton",
+      "nativeFilesUnchanged": [
+        {
+          "path": "node/src/test/resources/upstream/conway-native-refund/cases/LEDGERS-5/context.cbor",
+          "sha256": "092e9f54e4f0ca6aa22317016999e885a1caaceb5e04da2f9e8807d7945778d8",
+          "bytes": 4116
+        },
+        {
+          "path": "node/src/test/resources/upstream/conway-native-refund/cases/LEDGERS-5/environment.cbor",
+          "sha256": "c3eaa24f5e40a3bbd4714c761805e5ceb77e9a940260bc775049415cd1323c6a",
+          "bytes": 2250
+        },
+        {
+          "path": "node/src/test/resources/upstream/conway-native-refund/cases/LEDGERS-5/implementation-state.cbor",
+          "sha256": "fb4fefd0f34377e668e2cdf06372e0bdad59dd714c554e2b56b96bea13e7ab15",
+          "bytes": 8542
+        },
+        {
+          "path": "node/src/test/resources/upstream/conway-native-refund/cases/LEDGERS-5/signal.cbor",
+          "sha256": "39b39e5d4454287df1ab3529dd7ee22da47b674e2ce91133748978181bf5cb9f",
+          "bytes": 267
+        },
+        {
+          "path": "node/src/test/resources/upstream/conway-native-refund/cases/LEDGERS-5/state.cbor",
+          "sha256": "fa0439e45a56e41f51310894d65ca60182113daef1050f119588fbfccf1efa23",
+          "bytes": 8403
+        }
+      ],
+      "resultFile": "singleton.txt",
+      "resultSha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+      "nativeOutcome": "implementation-accepted",
+      "formalOutcome": "agda-accepted",
+      "comparison": "outputs-equal"
+    },
+    {
+      "id": "ordered-three",
+      "nativeFilesUnchanged": [
+        {
+          "path": "node/src/test/resources/upstream/conway-native-ledgers/cases/ordered-three/environment.cbor",
+          "sha256": "c3eaa24f5e40a3bbd4714c761805e5ceb77e9a940260bc775049415cd1323c6a",
+          "bytes": 2250
+        },
+        {
+          "path": "node/src/test/resources/upstream/conway-native-ledgers/cases/ordered-three/implementation-state.cbor",
+          "sha256": "4bfd58ee83713a0b438bc78c5fd6fba895251c3646e91a756aec1a2adfbf931b",
+          "bytes": 8795
+        },
+        {
+          "path": "node/src/test/resources/upstream/conway-native-ledgers/cases/ordered-three/signal.cbor",
+          "sha256": "ad0275edadc929438a5eec82d8cdca6bd58a9bc566b9bf3cca1002144edbb8bf",
+          "bytes": 3214
+        },
+        {
+          "path": "node/src/test/resources/upstream/conway-native-ledgers/cases/ordered-three/state.cbor",
+          "sha256": "e94eacf0fdf13343ce332f6469c991fa3bd78d2635230fae53df8474e956a323",
+          "bytes": 8351
+        }
+      ],
+      "resultFile": "ordered-three.txt",
+      "resultSha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+      "nativeOutcome": "implementation-accepted",
+      "formalOutcome": "agda-accepted",
+      "comparison": "outputs-equal"
+    },
+    {
+      "id": "dependent-two",
+      "nativeFilesUnchanged": [
+        {
+          "path": "node/src/test/resources/upstream/conway-native-ledgers/cases/dependent-two/environment.cbor",
+          "sha256": "c3eaa24f5e40a3bbd4714c761805e5ceb77e9a940260bc775049415cd1323c6a",
+          "bytes": 2250
+        },
+        {
+          "path": "node/src/test/resources/upstream/conway-native-ledgers/cases/dependent-two/implementation-state.cbor",
+          "sha256": "4bfd58ee83713a0b438bc78c5fd6fba895251c3646e91a756aec1a2adfbf931b",
+          "bytes": 8795
+        },
+        {
+          "path": "node/src/test/resources/upstream/conway-native-ledgers/cases/dependent-two/signal.cbor",
+          "sha256": "60b5edd902562d6d3f2bfe36cb9f1a2252e14fbe8c13d30f4ac8339b8652f46a",
+          "bytes": 2971
+        },
+        {
+          "path": "node/src/test/resources/upstream/conway-native-ledgers/cases/dependent-two/state.cbor",
+          "sha256": "fa0439e45a56e41f51310894d65ca60182113daef1050f119588fbfccf1efa23",
+          "bytes": 8403
+        }
+      ],
+      "resultFile": "dependent-two.txt",
+      "resultSha256": "1cee42d1e6d1be0596e91ee6ed088365ab771cbd8dd561364be1f55b4ed2a41f",
+      "nativeOutcome": "implementation-accepted",
+      "formalOutcome": "agda-accepted",
+      "comparison": "outputs-equal"
+    },
+    {
+      "id": "reversed-dependency",
+      "nativeFilesUnchanged": [
+        {
+          "path": "node/src/test/resources/upstream/conway-native-ledgers/cases/reversed-dependency/environment.cbor",
+          "sha256": "c3eaa24f5e40a3bbd4714c761805e5ceb77e9a940260bc775049415cd1323c6a",
+          "bytes": 2250
+        },
+        {
+          "path": "node/src/test/resources/upstream/conway-native-ledgers/cases/reversed-dependency/implementation-failure.cbor",
+          "sha256": "53b116480a44dfb57109073b0093c5f31675eb7698198728379cdf6c62977e6c",
+          "bytes": 168
+        },
+        {
+          "path": "node/src/test/resources/upstream/conway-native-ledgers/cases/reversed-dependency/signal.cbor",
+          "sha256": "94359dd7a4b095b0612fb46c0598792970772dae27eea93b90233d078751846d",
+          "bytes": 2971
+        },
+        {
+          "path": "node/src/test/resources/upstream/conway-native-ledgers/cases/reversed-dependency/state.cbor",
+          "sha256": "fa0439e45a56e41f51310894d65ca60182113daef1050f119588fbfccf1efa23",
+          "bytes": 8403
+        }
+      ],
+      "resultFile": "reversed-dependency.txt",
+      "resultSha256": "6c5a2451784494baac941ebf4dab97519a53c9c45417344028678b34d4d5316c",
+      "nativeOutcome": "implementation-rejected",
+      "formalOutcome": "agda-rejected",
+      "comparison": "outputs-differ"
+    },
+    {
+      "id": "double-spend",
+      "nativeFilesUnchanged": [
+        {
+          "path": "node/src/test/resources/upstream/conway-native-ledgers/cases/double-spend/environment.cbor",
+          "sha256": "c3eaa24f5e40a3bbd4714c761805e5ceb77e9a940260bc775049415cd1323c6a",
+          "bytes": 2250
+        },
+        {
+          "path": "node/src/test/resources/upstream/conway-native-ledgers/cases/double-spend/implementation-failure.cbor",
+          "sha256": "764b26cbdd9fd2bfc850d0533297ce111d2b593e1fc9ba6e8ba350f3bd4cc272",
+          "bytes": 63
+        },
+        {
+          "path": "node/src/test/resources/upstream/conway-native-ledgers/cases/double-spend/signal.cbor",
+          "sha256": "a366ef308e9792bb9abf333ad293034ade3ade0108f56f22ce414834c89c2099",
+          "bytes": 533
+        },
+        {
+          "path": "node/src/test/resources/upstream/conway-native-ledgers/cases/double-spend/state.cbor",
+          "sha256": "fa0439e45a56e41f51310894d65ca60182113daef1050f119588fbfccf1efa23",
+          "bytes": 8403
+        }
+      ],
+      "resultFile": "double-spend.txt",
+      "resultSha256": "6c5a2451784494baac941ebf4dab97519a53c9c45417344028678b34d4d5316c",
+      "nativeOutcome": "implementation-rejected",
+      "formalOutcome": "agda-rejected",
+      "comparison": "outputs-differ"
+    }
+  ],
+  "limitations": [
+    "Original native inputs, signed transaction bytes and outputs are unchanged; historical exit139 remains failure.",
+    "Repaired native/formal accepted outputs compare equal after existing formal translation/normalization, not native CBOR equality to a formal encoding. Scala compares complete applicable native states independently.",
+    "The two rejection cases agree on rejection; their failure text differs. Upstream checkConformance deliberately accepts both Left outcomes; no formal predicate-failure-payload equivalence claimed.",
+    "The repair is a local pinned formal artifact patch, not a native cardano-node patch or a claim upstream has released a repair.",
+    "The cached package unit identifier is retained during targeted object rebuild; actual patched wrapper, object, archive and executable hashes above bind changed content.",
+    "An initial root replay attempt used the base image default entrypoint and exited1 before test execution; the explicit-entrypoint replay recorded above passes."
+  ]
+}

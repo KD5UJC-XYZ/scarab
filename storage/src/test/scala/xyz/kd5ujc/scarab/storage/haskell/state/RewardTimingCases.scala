@@ -61,10 +61,6 @@ object RewardTimingCases extends Assertions:
       .decodeBytes(bytes, HaskellState.limits)
       .fold(e => fail(e.render), identity)
 
-  /** New local likelihood generation remains J3.6; every monetary field stays observable. */
-  def accounting(update: RewardUpdate): RewardUpdate =
-    update.copy(nonMyopic = update.nonMyopic.copy(likelihoods = Sorted.empty))
-
   def complete(row: Json): RewardUpdate =
     val transitions = field[Vector[Json]](row, "transitions")
     assertEquals(transitions.size, 1)

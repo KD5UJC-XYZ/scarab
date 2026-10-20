@@ -1,0 +1,34 @@
+--- a/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Conway.hs
++++ b/libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Imp/Conway.hs
+@@ -14,7 +14,8 @@
+ import Data.List.NonEmpty qualified as NE
+ import Data.Sequence qualified as Seq
+ import Lens.Micro ((^.))
+-import Test.Cardano.Ledger.Conformance.ExecSpecRule.Core (readCBORAnnotated, readCBORNoShare, writeCBOR, runSTS)
++import Test.Cardano.Ledger.Conformance.ExecSpecRule.Core (ExecSpecTopLevelRule (..), readCBORAnnotated, readCBORNoShare, writeCBOR, runSTS)
++import Test.Cardano.Ledger.Conformance.ExecSpecRule.Conway (ConwayLedgerExecContext (..))
+ import UnliftIO (liftIO)
+ import UnliftIO.Directory (createDirectoryIfMissing)
+ import UnliftIO.Environment (lookupEnv)
+@@ -57,9 +58,8 @@
+   describe "Imp (only spec)" $ do
+     RatifySpec.spec
+ 
+--- Native-only supplemental observations. Every signal is an unchanged, signed
+--- transaction from the pinned lawful integration trace. No formal verdict is
+--- inferred: the independent formal LEDGERS evaluator has a retained SIGSEGV.
++-- Supplemental original signed batches. The separately patched formal FFI
++-- conversion invokes the unchanged formal computation on each original batch.
+ scarabBatchHook ::
+   Globals ->
+   TRC (EraRule "LEDGER" ConwayEra) ->
+@@ -88,6 +88,9 @@
+               let dir = root <> "/" <> name
+                   signal = Seq.fromList txs
+                   native = runSTS @"LEDGERS" @ConwayEra globals batchEnv preState signal
++              let ctx = mkRuleExecContext @"LEDGER" @ConwayEra globals trc
++              conformanceHook @"LEDGERS" @ConwayEra globals
++                (TRC (batchEnv, preState, signal)) (clecEnactState ctx) native
+               liftIO $ createDirectoryIfMissing True dir
+               writeCBOR version (dir <> "/environment.cbor") batchEnv
+               writeCBOR version (dir <> "/state.cbor") preState

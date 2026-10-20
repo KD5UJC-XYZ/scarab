@@ -38,9 +38,10 @@ NEWEPOCH forces its delivery: account balances, treasury, reserves and fees matc
 native applyRUpd. Epoch snapshot/parameter rotation is outside that delivery
 assertion. Intermediate accumulated/remaining member prefixes are retained for
 provenance, but the timing suite does not require identical internal partitions.
-The existing explicit J3.6 mask removes only newly generated non-myopic likelihood
-vectors; reward pot, all rewards, fees, reserves, treasury, accounts, state and
-parameters remain compared. No full non-myopic equivalence claim is introduced.
+All encoded completed fields now compare without a likelihood mask, including
+non-myopic weights and reward pot, all rewards, fees, reserves, treasury, accounts
+and parameters. This does not reconstruct missing histories in older snapshots;
+conservative live provenance remains tracked by #129.
 
 `RewardSnapshotSuite` checkpoints genuine Haskell Conway prefixes through the
 current native V5 format, restores their exact encoded pending state, and compares

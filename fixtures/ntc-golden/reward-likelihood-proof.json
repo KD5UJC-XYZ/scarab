@@ -1,0 +1,160 @@
+{
+  "schema": "scarab-ntc-reward-likelihood-inverse-v1",
+  "issue": 268,
+  "fixture": "conway-answers.tsv",
+  "baselineCommit": "61d87a799358595d9e9dd1565fd17b614daf2b86",
+  "featureCommit": "53ca7a38c964eeb6aeb5c57d7ee9e4fed16664fc",
+  "method": "Capture all 265 raw answers with current compiled classes and again with unchanged main Rewards.scala compiled into a private classpath overlay. Clear only EpochState.nonMyopic.likelihoods in current typed states and require every raw answer to match the baseline byte-for-byte. Independently replace only each changed answer's CBOR likelihood-map span and require the complete original bytes. Baseline and inverse TSV files must both equal the original golden file.",
+  "proof": {
+    "answerCount": 265,
+    "changedAnswers": 6,
+    "unchangedAnswers": 259,
+    "rawInverseEqualsBaseline": true,
+    "baselineTsvEqualsOldGolden": true,
+    "inverseTsvEqualsOldGolden": true,
+    "onlyChangedField": "EpochState.nonMyopic.likelihoods",
+    "rewardPotPreserved": 7712973560412,
+    "oldGoldenSha256": "daa6a1eb9c4f21770d73dd23009cf7ca9c8d951b6973bcda22447680c5edf22c",
+    "newGoldenSha256": "8378752a18995e0a13029cacbe8e2458689a2a81664ca41fc87a508f610a19f5",
+    "changedRows": [
+      {
+        "state": "conway-0",
+        "query": "DebugEpochState",
+        "oldAnswerSha256": "7501d7bea89fdf5046998962891d54b540f6e5c3266a23e102d41c227dca4739",
+        "newAnswerSha256": "aed404a9e1d3de95e7294a0af1e00038c5eab03f0ed81db06cfcee9d23c6fb07",
+        "onlyChangedCborPath": [
+          3,
+          0
+        ],
+        "poolCount": 3,
+        "samplesPerPool": 100,
+        "rewardPot": 7712973560412
+      },
+      {
+        "state": "conway-0",
+        "query": "DebugNewEpochState",
+        "oldAnswerSha256": "58a2dad79f6ef6d5c973db35f869555ce11c305576f89a4fc7d9efeefcc2a80c",
+        "newAnswerSha256": "797d749e4dea2fd1d7499270853956b2a02ef356b7cdd8f2107d62fc3ab5e5fe",
+        "onlyChangedCborPath": [
+          3,
+          3,
+          0
+        ],
+        "poolCount": 3,
+        "samplesPerPool": 100,
+        "rewardPot": 7712973560412
+      },
+      {
+        "state": "conway-1",
+        "query": "DebugEpochState",
+        "oldAnswerSha256": "7501d7bea89fdf5046998962891d54b540f6e5c3266a23e102d41c227dca4739",
+        "newAnswerSha256": "aed404a9e1d3de95e7294a0af1e00038c5eab03f0ed81db06cfcee9d23c6fb07",
+        "onlyChangedCborPath": [
+          3,
+          0
+        ],
+        "poolCount": 3,
+        "samplesPerPool": 100,
+        "rewardPot": 7712973560412
+      },
+      {
+        "state": "conway-1",
+        "query": "DebugNewEpochState",
+        "oldAnswerSha256": "b0ac1b0704ba6656be717cbd6e3359c372a7d15e762ebdd10f3eed0c953791c3",
+        "newAnswerSha256": "012f2df3f6f6b6d35244aef2e609d4eb277d23fece1426895e9dca7db5d34ad8",
+        "onlyChangedCborPath": [
+          3,
+          3,
+          0
+        ],
+        "poolCount": 3,
+        "samplesPerPool": 100,
+        "rewardPot": 7712973560412
+      },
+      {
+        "state": "conway-2",
+        "query": "DebugEpochState",
+        "oldAnswerSha256": "7501d7bea89fdf5046998962891d54b540f6e5c3266a23e102d41c227dca4739",
+        "newAnswerSha256": "aed404a9e1d3de95e7294a0af1e00038c5eab03f0ed81db06cfcee9d23c6fb07",
+        "onlyChangedCborPath": [
+          3,
+          0
+        ],
+        "poolCount": 3,
+        "samplesPerPool": 100,
+        "rewardPot": 7712973560412
+      },
+      {
+        "state": "conway-2",
+        "query": "DebugNewEpochState",
+        "oldAnswerSha256": "7e6510b0a2de73a84331adad454bf8d53fa7f5ecfc6fff544ebace4963bea822",
+        "newAnswerSha256": "36ba9dc2cdcf46b0ae7033698351cb22ef31d10621eb341c76bdbdfe4e6a2a77",
+        "onlyChangedCborPath": [
+          3,
+          3,
+          0
+        ],
+        "poolCount": 3,
+        "samplesPerPool": 100,
+        "rewardPot": 7712973560412
+      }
+    ]
+  },
+  "runtime": {
+    "jdkImage": "sha256:c90140def52d2711644c85a81c9bf218ffbe5dc81003bfb866154c2da832af38",
+    "containerCpus": 2,
+    "containerMemoryGiB": 4,
+    "currentRewardsSourceSha256": "9c83eeb71744200cd43c9a7c865c725cc68ff8e29bb45ced00047d9912015074",
+    "baselineRewardsSourceSha256": "df45535f024d8aaf37d78110724554eadb375519eb86123a3215ef77116e3062",
+    "fixtureBuilderSourceSha256": "00ead7b7cc94df8bbfb0891e48a4485dba465243b3e6c354beaa4dc13dc84c74",
+    "proofSourceSha256": "4fece503863d4cb71cfc0bbff167a20109c74bf6c5ede4ee9a0fe86bd487642f",
+    "proofVerifierSha256": "4e69466368cd32c38991f5f86e183972fbedeb1972372b914e4cf229f1e4e06f",
+    "baselineCommandsSha256": "ab12c4c280ec2dabc68fd50293bdb68b3a8d55e9e956b31aa6d27a9e3b9fd0ee",
+    "classpathSha256": "41326debec58e9573efe2c0a1beff8b7ae9abd16c0264cd2a341c33bad57adcf",
+    "classInventorySha256": "beeeb298c52dc7b979db79d354af8fdef8c62f78c96359f0a45ad11be01df400",
+    "classCount": 11973,
+    "currentCaptureSha256": "7af61e0cada09c1a05dc976b676240784f328f4c3444a465469345d5ef062aad",
+    "baselineCaptureSha256": "69a6723aad82a9697e59092d9a373cb896257c4ed6e62e26c629089cea6fe5e6",
+    "inverseCaptureSha256": "69a6723aad82a9697e59092d9a373cb896257c4ed6e62e26c629089cea6fe5e6",
+    "currentLogSha256": "ca0af9757d74c8da1142e1e4ef2e7ebaa352e11ea10a7d4e7adf7f5853d80651",
+    "baselineLogSha256": "eae3d5c5aa9c58b643ab4d4e82b116fb6cf9dc0acfcc08479c2f3f38124e4286",
+    "proof-classesInventorySha256": "dfb504fda2115fd947a385be78eb176194b577abf520f5a33aecb632b73ed9af",
+    "proof-classesFileCount": 3,
+    "original-rewards-classesInventorySha256": "de9e45252740a9cc2ab511143d82e670001e1594b37bb497d9f1c23ab964b02e",
+    "original-rewards-classesFileCount": 3,
+    "finalProofCommandsSha256": "a95b401f7a94eea5e68f24688f7463b0a61b1194896757ebc75681c6881db698",
+    "focusedNtcGoldenSuite": {
+      "passed": 6,
+      "failed": 0,
+      "errors": 0,
+      "logSha256": "4cd1d4e4abf20193724935c9140a4a8939cbd5b2c905ad5ce3fcf0ba52fb2307"
+    },
+    "finalProofLogSha256": {
+      "0": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "1": "65d88460c0688c0d1d627a6c97a172d325f8aa3961415c0074c9e456b1731b7d",
+      "2": "eae3d5c5aa9c58b643ab4d4e82b116fb6cf9dc0acfcc08479c2f3f38124e4286"
+    },
+    "finalVerificationLogSha256": "5c4dfa2c60c42d202ad04fe684df0552aaf69b5b460fde111d9f13336410d82a"
+  },
+  "reference": {
+    "sourceCommit": "4c81e909df7555b6a58a000db8f8f4f89c7acdc4",
+    "evidence": "../../storage/src/test/resources/reward-likelihood-1.19.0.1/README.md",
+    "contract": "100 likelihood samples using Double logarithms rounded to Float for every snapshot pool, with captured-history Float decay and normalization."
+  },
+  "initialFullCheck": {
+    "outcome": "failed",
+    "failedSuites": [
+      "NtcGoldenSuite/conway-0",
+      "NtcGoldenSuite/conway-1",
+      "NtcGoldenSuite/conway-2"
+    ],
+    "logSha256": "2bd1e76d7600ed4dfabec4e0f6edb5f644be3d1f5e40ebdbf9ed79019e22e37b",
+    "disposition": "Expected new likelihood vectors; update the goldens only after the inverse proof. A new full check is required; this focused proof does not relabel the failed run."
+  },
+  "limitations": [
+    "The three captured Conway states have no pending reward update; no ru fields are rewritten by the inverse proof.",
+    "Rich states use the existing historical enrichment adapter and remain unchanged.",
+    "Only the feature-owned focused suite was rerun here; the coordinated branch owns a fresh full check and scenario gates."
+  ],
+  "privateArtifactDirectory": "/tmp/scarab/268-likelihood/golden"
+}

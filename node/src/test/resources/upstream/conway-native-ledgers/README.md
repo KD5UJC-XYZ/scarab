@@ -31,8 +31,10 @@ among the native observations. It does not branch on rendered diagnostic message
 
 `manifest.json` pins all retained bytes, observer patches, source/dependency revisions,
 runner arguments and source trace manifest. This is bounded native coverage, not a formal
-LEDGERS pass or a broad generated-block campaign. The separate formal evaluator SIGSEGV
-and broader coverage remain tracked by [#49](https://github.com/KD5UJC-XYZ/scarab/issues/49).
+LEDGERS pass or a broad generated-block campaign. The later separate
+[formal repair corpus](../formal-ledgers-repair/README.md) replays these unchanged batches:
+both accepted translated states match; both bad batches reject with differing failure text
+retained. The original native-only observations and formal SIGSEGV remain unchanged.
 Raw upstream trace CBOR is not a native snapshot format; no persisted format changes.
 Upstream license notices remain in `fixtures/witness/licenses/`.
 

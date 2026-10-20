@@ -65,6 +65,9 @@ trait PeerDns[F[_]]:
   def services(name: DnsName): F[Either[PeerDnsError, Vector[DnsServiceRecord]]]
 
 object PeerDns:
+  /** The assembly scope may provide a resolver resource, for example a controlled DNS service. */
+  given resolver[F[_]: Async]: Resource[F, PeerDns[F]] = dnsJava[F]
+
   private val MinTtl: FiniteDuration = 60.seconds
   private val MaxTtl: FiniteDuration = 900.seconds
   private val LookupTimeout: FiniteDuration = 5.seconds

@@ -1,0 +1,104 @@
+{
+  "schema": 1,
+  "nativeLedgerPin": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "rule": "UTXO",
+  "protocolVersion": "11.0",
+  "scope": "Standalone native-only direct STS negative control; not part of the frozen 39-unique corpus and no formal interpretation claimed.",
+  "construction": "Read lawful generated UTXO274101 environment/state/transaction; replace collateral input set with singleton TxIn(current original transaction id,65535), verified absent from native state from captured native helper output (the helper prints the check). All other transaction fields/witnesses retained. There are no redeemers. Body edit invalidates original signatures, which bare UTXO does not validate; this observation is not a UTXOW valid-signature case.",
+  "baseline": "observations-lawful/utxo-274101, native/formal accepted and production Scala complete-state replay passes in the separately frozen corpus.",
+  "expectedNative": "singleton BadInputsUTxO of the constructed absent collateral input; actual native-run.log records same.",
+  "compileCommand": "docker exec -w /source -e LD_LIBRARY_PATH=/usr/local/lib scarab-closeout-ledger-haskell ghc -O0 -j1 /probe/standalone-utxo-missing-collateral/Main.hs -o /probe/standalone-utxo-missing-collateral/runner",
+  "runCommand": "docker exec -w /source -e LD_LIBRARY_PATH=/usr/local/lib scarab-closeout-ledger-haskell /probe/standalone-utxo-missing-collateral/runner",
+  "files": {
+    "environment.cbor": {
+      "sha256": "51c64ce90393608349e65c5e01aae03a7001cdc3ec6e9bdeca8055c1cb6b9fef",
+      "bytes": 1215
+    },
+    "native-failures.cbor": {
+      "sha256": "25bf598ba0be192dee4996256f3bda6e67cb41e2994d34c3fdd917c200926d50",
+      "bytes": 45
+    },
+    "original-signal.cbor": {
+      "sha256": "8c86d01b8806e752b682221efe41c7003b543946e87e79377e800b5c849b61ac",
+      "bytes": 1079
+    },
+    "signal.cbor": {
+      "sha256": "f9471422ac0134dc1bf14dd54bcf431eec0fedbf25ded36194ddf922621da54f",
+      "bytes": 1079
+    },
+    "state.cbor": {
+      "sha256": "0713a57493e418013eae3d05219dfa5c93fae74b5691f6fdbf6d76e038cab3ed",
+      "bytes": 4459
+    }
+  },
+  "sourceBindings": {
+    "environment.cbor": {
+      "originalSHA256": "51c64ce90393608349e65c5e01aae03a7001cdc3ec6e9bdeca8055c1cb6b9fef",
+      "observationSHA256": "51c64ce90393608349e65c5e01aae03a7001cdc3ec6e9bdeca8055c1cb6b9fef",
+      "byteIdentical": true
+    },
+    "state.cbor": {
+      "originalSHA256": "0713a57493e418013eae3d05219dfa5c93fae74b5691f6fdbf6d76e038cab3ed",
+      "observationSHA256": "0713a57493e418013eae3d05219dfa5c93fae74b5691f6fdbf6d76e038cab3ed",
+      "byteIdentical": true
+    },
+    "signal.cbor": {
+      "originalSHA256": "8c86d01b8806e752b682221efe41c7003b543946e87e79377e800b5c849b61ac",
+      "observationSHA256": "f9471422ac0134dc1bf14dd54bcf431eec0fedbf25ded36194ddf922621da54f",
+      "byteIdentical": false
+    }
+  },
+  "nativeSource": {
+    "conway": "https://github.com/IntersectMBO/cardano-ledger/blob/f649f9751074d2ab3de033fc3912f29c9862c1f5/eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxo.hs#L235-L245",
+    "babbage": "https://github.com/IntersectMBO/cardano-ledger/blob/f649f9751074d2ab3de033fc3912f29c9862c1f5/eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs#L342-L375"
+  },
+  "helper": {
+    "path": "scripts/oracle/ledger-govcert/standalone-utxo-missing-collateral.hs",
+    "sha256": "09340f86af30522bf38d339914398e7a7c9e8a3a496302880c620ae65ff7996f"
+  },
+  "binary": {
+    "sha256": "614027675b08286cc6abeaf7e9098b6666cec4c58141053b19afeac6fa34ae47",
+    "privatePath": "/tmp/scarab/conformance-closeout-ledger/standalone-utxo-missing-collateral/runner"
+  },
+  "observationLog": {
+    "sha256": "9d4f89aec52eb44854a2e068ea444a089e9f5d27d6831bbe0a889fde6d1d2ad0",
+    "privatePath": "/tmp/scarab/conformance-closeout-ledger/standalone-utxo-missing-collateral/native-run.log"
+  },
+  "nativeResult": "True\nMkRedeemers fromList [] (blake2b_256: SafeHash \"d36a2619a672494604e11bb447cbcf5231e9f2ba25c2169177edc941bd50ad6c\")\nBadInputsUTxO (NonEmptySet (fromList [TxIn (TxId {unTxId = SafeHash \"f43dcdc866c22724adad361003e17e18d6be94545b3ccd28f21d10ef2f6e9cc1\"}) (TxIx {unTxIx = 65535})])) :| []\n",
+  "runtime": {
+    "image": "scarab-pre-conway178-oracle:local",
+    "ghc": "9.10.3",
+    "libraryPath": "/usr/local/lib",
+    "environmentFile": "/source/.ghc.environment.x86_64-linux-9.10.3",
+    "environmentSHA256": "870e2f3a871ac224df9282283441613e57e25c10374edefbe48d5d19bc38e795",
+    "nativeLedgerLibrary": {
+      "mountedPath": "/probe/builddir/build/x86_64-linux/ghc-9.10.3/cardano-ledger-conway-1.23.0.0/build/libHScardano-ledger-conway-1.23.0.0-inplace.a",
+      "sha256": "27d5adca85d45a2d42f2d9878c9172fd38146acead80ecec5a0c285bd98f3211"
+    }
+  },
+  "productionBaseline": {
+    "commit": "bce857d92",
+    "command": "bash scripts/sbtw scalafmtAll \"node/testOnly *UpstreamFreshLedgerConformanceSuite -- --tests *missing*\"",
+    "result": "3 executed,2 passed,1 failed: direct production UTXO accepted the native-rejected no-redeemer missing-collateral transaction. Actual.swap.toOption=None instead of the exact singleton BadInputs rejection.",
+    "privateLog": "/tmp/scarab/conformance-closeout-ledger/standalone-utxo-missing-collateral/scala-before-fix.log",
+    "logSHA256": "29959b52e535b847723a95b8c22c651f0ab88bcf0746b46a5bb57dd488a7bf1c"
+  },
+  "nativeRuleSourceBindings": {
+    "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxo.hs": {
+      "sha256": "7993826e50d5c7ba8ba5df0180a94e745537630b8eb9718db257fb59c21342fc",
+      "byteIdenticalToReleasedPin": true
+    },
+    "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs": {
+      "sha256": "a184942394c2bbce9cf1a09771d70c02677927f5799a01e0927fca4fe33b183f",
+      "byteIdenticalToReleasedPin": true
+    }
+  },
+  "productionCorrection": {
+    "upstreamScarabCommit": "058b8700a7cc4dd39017a3e4cc145b1b55eb7bd6",
+    "verificationCherryPick": "b77fea675",
+    "command": "bash scripts/sbtw scalafmtAll \"node/testOnly *UpstreamFreshLedgerConformanceSuite\" \"node/Test/scalafix --check\"",
+    "result": "53/53 production replay tests pass, including exact native-only missing-collateral predicate; formatting and node/Test/scalafix --check pass.",
+    "privateLog": "/tmp/scarab/conformance-closeout-ledger/standalone-utxo-missing-collateral/scala-after-fix.log",
+    "logSHA256": "95f91c0c6b73bde7e48f0bd0080a884b05d636d69cc56c5da88c27e942dfdcc4"
+  }
+}

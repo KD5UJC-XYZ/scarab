@@ -1,0 +1,118 @@
+--- a/hs/src/MAlonzo/Code/Ledger/Conway/Conformance/Utxo.hs
++++ b/hs/src/MAlonzo/Code/Ledger/Conway/Conformance/Utxo.hs
+@@ -42,6 +42,7 @@
+ import qualified MAlonzo.Code.Ledger.Core.Specification.Crypto
+ import qualified MAlonzo.Code.Ledger.Core.Specification.Epoch
+ import qualified MAlonzo.Code.Ledger.Prelude
++import qualified MAlonzo.Code.Relation.Nullary.Decidable.Core
+ import qualified MAlonzo.Code.Prelude
+ import qualified MAlonzo.Code.QabstractZ45ZsetZ45Ztheory.FiniteSetTheory
+ import qualified MAlonzo.Code.QstdlibZ45Zclasses.Class.HasCast.Base
+@@ -950,50 +951,7 @@
+                         (coe v2)))))
+             (coe
+                MAlonzo.Code.Class.Decidable.Instances.du_Dec'45''215'_14
+-               (coe
+-                  MAlonzo.Code.Class.Decidable.Instances.du_DecEq'8658'Dec_6
+-                  (coe
+-                     MAlonzo.Code.QabstractZ45ZsetZ45Ztheory.FiniteSetTheory.du_DecEq'45'ℙ_1244
+-                     (coe
+-                        MAlonzo.Code.Prelude.d_DecEq'45''215''8242'_4 () erased () erased
+-                        (MAlonzo.Code.Ledger.Conway.Specification.Transaction.d_DecEq'45'TxId_1350
+-                           (coe v0))
+-                        (MAlonzo.Code.Ledger.Conway.Specification.Transaction.d_DecEq'45'Ix_1348
+-                           (coe v0))))
+-                  (coe
+-                     MAlonzo.Code.Axiom.Set.du__'8745'__732
+-                     (coe
+-                        MAlonzo.Code.Axiom.Set.d_th_1516
+-                        (coe
+-                           MAlonzo.Code.QabstractZ45ZsetZ45Ztheory.FiniteSetTheory.d_List'45'Model'7496'_8))
+-                     (coe
+-                        MAlonzo.Code.Axiom.Set.d_'8712''45'sp_1648
+-                        MAlonzo.Code.QabstractZ45ZsetZ45Ztheory.FiniteSetTheory.d_List'45'Model'7496'_8
+-                        erased
+-                        (coe
+-                           MAlonzo.Code.Prelude.d_DecEq'45''215''8242'_4
+-                           MAlonzo.Code.Agda.Primitive.d_lzero_20 erased
+-                           MAlonzo.Code.Agda.Primitive.d_lzero_20 erased
+-                           (MAlonzo.Code.Ledger.Conway.Specification.Transaction.d_DecEq'45'TxId_1350
+-                              (coe v0))
+-                           (MAlonzo.Code.Ledger.Conway.Specification.Transaction.d_DecEq'45'Ix_1348
+-                              (coe v0))))
+-                     (coe
+-                        MAlonzo.Code.Ledger.Conway.Specification.Transaction.d_txIns_3472
+-                        (coe
+-                           MAlonzo.Code.Ledger.Conway.Specification.Transaction.d_body_3646
+-                           (coe v2)))
+-                     (coe
+-                        MAlonzo.Code.Ledger.Conway.Specification.Transaction.d_refInputs_3474
+-                        (coe
+-                           MAlonzo.Code.Ledger.Conway.Specification.Transaction.d_body_3646
+-                           (coe v2))))
+-                  (coe
+-                     MAlonzo.Code.Axiom.Set.du_'8709'_470
+-                     (coe
+-                        MAlonzo.Code.Axiom.Set.d_th_1516
+-                        (coe
+-                           MAlonzo.Code.QabstractZ45ZsetZ45Ztheory.FiniteSetTheory.d_List'45'Model'7496'_8))))
++               (coe MAlonzo.Code.Relation.Nullary.Decidable.Core.d_T'63'_72 True)
+                (coe
+                   MAlonzo.Code.Class.Decidable.Instances.du_Dec'45''215'_14
+                   (coe
+--- a/hs/src/MAlonzo/Code/Ledger/Conway/Specification/Utxow.hs
++++ b/hs/src/MAlonzo/Code/Ledger/Conway/Specification/Utxow.hs
+@@ -53,6 +53,8 @@
+ import qualified MAlonzo.Code.Ledger.Core.Specification.Address
+ import qualified MAlonzo.Code.Ledger.Core.Specification.Crypto
+ import qualified MAlonzo.Code.Level
++import qualified MAlonzo.Code.Class.DecEq.Core
++import qualified MAlonzo.Code.Relation.Nullary.Decidable.Core
+ import qualified MAlonzo.Code.Prelude
+ import qualified MAlonzo.Code.Relation.Nullary.Decidable.Core
+ import qualified MAlonzo.Code.Relation.Nullary.Reflects
+@@ -1199,7 +1201,15 @@
+   MAlonzo.Code.Ledger.Conway.Specification.Transaction.T_TransactionStructure_24 ->
+   MAlonzo.Code.Ledger.Conway.Specification.Transaction.T_Tx_3634 ->
+   MAlonzo.Code.Agda.Builtin.Sigma.T_Σ_14 -> [AgdaAny]
+-du_allowedLanguages_2856 v0 v1 v2
++du_allowedLanguages_2856 v0 v1 v2 =
++  if scarabInputsDisjoint v0 v1 then scarabAllowedLanguages v0 v1 v2
++  else filter (not . scarabIsV3 v0) (scarabAllowedLanguages v0 v1 v2)
++
++scarabAllowedLanguages ::
++  MAlonzo.Code.Ledger.Conway.Specification.Transaction.T_TransactionStructure_24 ->
++  MAlonzo.Code.Ledger.Conway.Specification.Transaction.T_Tx_3634 ->
++  MAlonzo.Code.Agda.Builtin.Sigma.T_Σ_14 -> [AgdaAny]
++scarabAllowedLanguages v0 v1 v2
+   = coe
+       MAlonzo.Code.Class.ToBool.du_if_then_else__38
+       (coe MAlonzo.Code.Class.ToBool.du_ToBool'45''8263'_106) erased
+@@ -2936,3 +2946,27 @@
+                             MAlonzo.Code.Ledger.Conway.Specification.Utxo.T_UTxOState_2508
+                             MAlonzo.Code.Ledger.Conway.Specification.Utxo.T_UTxOEnv_2492
+                             MAlonzo.Code.Ledger.Conway.Specification.Utxo.T_UTxOState_2508
++
++-- Backport the published allowedLanguages V3 disjointness condition while
++-- retaining the pinned abstract-language/transaction record ABI.
++scarabIsV3 :: MAlonzo.Code.Ledger.Conway.Specification.Transaction.T_TransactionStructure_24 -> AgdaAny -> Bool
++scarabIsV3 structure lang =
++  MAlonzo.Code.Relation.Nullary.Decidable.Core.d_does_28 $
++    MAlonzo.Code.Class.DecEq.Core.d__'8799'__16
++      (MAlonzo.Code.Ledger.Conway.Specification.Script.Base.d_DecEq'45'Language_228 plutus)
++      lang (MAlonzo.Code.Ledger.Conway.Specification.Script.Base.d_PlutusV3_222 plutus)
++  where
++    plutus = MAlonzo.Code.Ledger.Conway.Specification.Script.Base.d_ps_328 $
++      MAlonzo.Code.Ledger.Conway.Specification.Transaction.d_scriptStructure_2048 structure
++
++scarabInputsDisjoint :: MAlonzo.Code.Ledger.Conway.Specification.Transaction.T_TransactionStructure_24 -> MAlonzo.Code.Ledger.Conway.Specification.Transaction.T_Tx_3634 -> Bool
++scarabInputsDisjoint structure tx = not $ any (\input -> any (same input) refs) inputs
++  where
++    body = MAlonzo.Code.Ledger.Conway.Specification.Transaction.d_body_3646 tx
++    inputs = coe (MAlonzo.Code.Ledger.Conway.Specification.Transaction.d_txIns_3472 body) :: [AgdaAny]
++    refs = coe (MAlonzo.Code.Ledger.Conway.Specification.Transaction.d_refInputs_3474 body) :: [AgdaAny]
++    eq = MAlonzo.Code.Prelude.d_DecEq'45''215''8242'_4 () erased () erased
++      (MAlonzo.Code.Ledger.Conway.Specification.Transaction.d_DecEq'45'TxId_1350 structure)
++      (MAlonzo.Code.Ledger.Conway.Specification.Transaction.d_DecEq'45'Ix_1348 structure)
++    same x y = MAlonzo.Code.Relation.Nullary.Decidable.Core.d_does_28 $
++      MAlonzo.Code.Class.DecEq.Core.d__'8799'__16 eq x y
