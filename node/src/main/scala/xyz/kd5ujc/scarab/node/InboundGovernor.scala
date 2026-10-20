@@ -62,6 +62,8 @@ final class InboundGovernor[F[_]: Async] private (
     events: Option[InboundEvents[F]],
     observe: Option[Peer.Observation => F[Unit]],
     sharing: Option[PeerSharingRuntime[F]],
+    pool: Option[BlockPool[F]],
+    fetchMode: Option[F[xyz.kd5ujc.scarab.network.selection.FetchMode]],
     sessionTable: Ref[F, Map[String, InboundGovernor.Session]]
 ):
   private val F = Async[F]
@@ -238,7 +240,7 @@ final class InboundGovernor[F[_]: Async] private (
     Handle
       .allow[NodeError] {
         Peer
-          .over(connection, config.peer, prepare, headers, observe)
+          .over(connection, config.peer, prepare, headers, observe, pool, fetchMode)
           .use(peer => follow(counted(remote, peer)))
           .as(Option.empty[NodeError])
       }
@@ -361,7 +363,9 @@ object InboundGovernor:
       transactions: Option[TxSubmissionClient.Source[F]] = None,
       events: Option[InboundEvents[F]] = None,
       observe: Option[Peer.Observation => F[Unit]] = None,
-      sharing: Option[PeerSharingRuntime[F]] = None
+      sharing: Option[PeerSharingRuntime[F]] = None,
+      pool: Option[BlockPool[F]] = None,
+      fetchMode: Option[F[xyz.kd5ujc.scarab.network.selection.FetchMode]] = None
   )(using node: Handle[F, NodeError]): F[InboundGovernor[F]] =
     Ref
       .of[F, Map[String, Session]](Map.empty)
@@ -379,6 +383,8 @@ object InboundGovernor:
           events,
           observe,
           sharing,
+          pool,
+          fetchMode,
           _
         )
       )

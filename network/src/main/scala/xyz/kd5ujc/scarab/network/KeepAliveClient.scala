@@ -64,9 +64,10 @@ object KeepAliveClient:
   def background[F[_]: Temporal: Defer](
       channel: MuxChannel[F],
       mux: Mux[F],
-      settings: Settings = Settings()
+      settings: Settings = Settings(),
+      sample: Option[FiniteDuration => F[Unit]] = None
   ): Resource[F, Unit] =
-    Temporal[F].background(pinger(channel, mux, settings)).void
+    Temporal[F].background(pinger(channel, mux, settings, sample)).void
 
   /** The pinger fiber. Whatever ends it ends the connection. It runs in an error scope of its own
     * ([[Fibers.scoped]]) and ends with the reason as a value, which it hands to the multiplexer:
@@ -76,11 +77,12 @@ object KeepAliveClient:
   private[network] def pinger[F[_]: Temporal: Defer](
       channel: MuxChannel[F],
       mux: Mux[F],
-      settings: Settings
+      settings: Settings,
+      sample: Option[FiniteDuration => F[Unit]] = None
   ): F[Unit] =
     Fibers
       .scoped[F, NetworkError, Unit](t => NetworkError.fromThrowable("keep-alive", t)) {
         apply[F](channel, settings)
-          .flatMap(client => (client.ping *> Temporal[F].sleep(settings.interval)).foreverM[Unit])
+          .flatMap(client => (client.ping.flatMap(duration => sample.traverse_(_(duration))) *> Temporal[F].sleep(settings.interval)).foreverM[Unit])
       }
       .flatMap(_.fold(mux.abort, _ => Temporal[F].unit))

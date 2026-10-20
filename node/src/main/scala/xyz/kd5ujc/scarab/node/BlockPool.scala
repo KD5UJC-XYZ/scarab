@@ -7,7 +7,7 @@ import cats.Functor
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.ValidationError
-import xyz.kd5ujc.scarab.network.selection.FetchMode
+import xyz.kd5ujc.scarab.network.selection.{BlockFetchPolicy, FetchMode}
 import scala.concurrent.duration.*
 
 /** The blocks that peer sessions fetched ahead of the rules, by header hash, shared by the sessions
@@ -35,7 +35,8 @@ import scala.concurrent.duration.*
 final class BlockPool[F[_]: Async] private (
     slots: Ref[F, BlockPool.Slots[F]],
     policy: BlockPool.FetchPolicy,
-    attribution: BlockPool.AttributionPolicy
+    attribution: BlockPool.AttributionPolicy,
+    private[node] val fetchCoordinator: FetchCoordinator[F]
 ):
   import BlockPool.*
   private val F = Async[F]
@@ -110,7 +111,7 @@ final class BlockPool[F[_]: Async] private (
                   )
                 case Some(Slot.Pending(waiting, seq, owners))
                     if mode == FetchMode.Deadline && !owners(owner) &&
-                      owners.size < policy.deadlineConcurrency =>
+                      policy.deadlineConcurrency > 0 =>
                   (
                     acc.copy(entries =
                       acc.entries.updated(hash, Slot.Pending(waiting, seq, owners + owner))
@@ -267,7 +268,9 @@ object BlockPool:
     *   configuration file sets it.
     */
   final case class FetchPolicy(
-      deadlineConcurrency: Int = 1
+      deadlineConcurrency: Int = 1,
+      bulkConcurrency: Int = 1,
+      maxRequestsPerPeer: Int = 10
   )
 
   /** A released source remains accountable for at most this window, including a block already taken
@@ -333,7 +336,11 @@ object BlockPool:
   ): F[BlockPool[F]] =
     Ref
       .of[F, Slots[F]](Slots(Map.empty, 0L, 0L, Map.empty, 0, None))
-      .map(new BlockPool(_, policy, attribution))
+      .flatMap(slots =>
+        FetchCoordinator.create[F](BlockFetchPolicy.Config(
+          policy.bulkConcurrency, policy.deadlineConcurrency, policy.maxRequestsPerPeer
+        )).map(new BlockPool(slots, policy, attribution, _))
+      )
 
   /** The node owns the expiry worker; release removes callbacks and wakes any remaining waiters. */
   def resource[F[_]: Async](policy: FetchPolicy): Resource[F, BlockPool[F]] =

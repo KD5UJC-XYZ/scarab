@@ -775,7 +775,10 @@ object Main extends IOApp:
                   IO.unit)
             // blocks fetched ahead, shared by the sessions of all peers: one peer fetches each block
             blockPool <- BlockPool.create[IO](
-              BlockPool.FetchPolicy(setup.config.settings.maxConcurrencyDeadline.getOrElse(1))
+              BlockPool.FetchPolicy(
+                deadlineConcurrency = setup.config.settings.maxConcurrencyDeadline.getOrElse(1),
+                bulkConcurrency = setup.config.settings.maxConcurrencyBulkSync.getOrElse(1)
+              )
             )
             // the connection manager (G2): one connection per peer address, limits, accounting
             manager <- ConnectionManager.create[IO](
@@ -783,6 +786,7 @@ object Main extends IOApp:
               Some(loggedConnections.alongside(measured.connection))
             )
             _ <- collectors.add(Collectors.connections(manager))
+            fetchModeRef <- Ref.of[IO, FetchMode](FetchMode.BulkSync)
             // Inbound duplex sessions use the same follower and compute pool as outbound sessions.
             governor <- InboundGovernor.create[IO](
               manager,
@@ -809,7 +813,9 @@ object Main extends IOApp:
               transactions = Some(mempool.source),
               events = Some(loggedInbound.alongside(measured.inbound)),
               observe = Some(observePeer),
-              sharing = Some(sharing)
+              sharing = Some(sharing),
+              pool = Some(blockPool),
+              fetchMode = Some(fetchModeRef.get)
             )
             // The outbound peer network (G1): the governor chooses the peers, moves them between
             // temperatures and replaces the ones that fail; the Genesis State Machine tells it
@@ -822,7 +828,6 @@ object Main extends IOApp:
               .syncTargets(Targets.sync)
               .fold(e => fail[Targets](e), IO.pure)
             losses <- Ref.of[IO, Int](0)
-            fetchModeRef <- Ref.of[IO, FetchMode](FetchMode.BulkSync)
             chainView = new PeerNetwork.ChainView[IO]:
               def tip = ref.get.map(c => c.tipRef.map(t => (t.slot, t.hash.hashCode.toLong)))
               def geometry = ref.get.map(_.state.geometry(genesis.geometry))

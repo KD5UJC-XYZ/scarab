@@ -295,7 +295,7 @@ class ConfigSuite extends FunSuite:
       Right(None)
     )
     assert(NodeConfig.parse(with_("MempoolCapacityBytesOverride", Json.fromString("lots"))).isLeft)
-    // MaxConcurrencyDeadline: how many peers may be asked for one block in deadline mode
+    // Global fetching-peer targets; preferred-peer handover follows the reference.
     assertEquals(
       NodeConfig
         .parse(with_("MaxConcurrencyDeadline", Json.fromInt(2)))
@@ -304,6 +304,9 @@ class ConfigSuite extends FunSuite:
     )
     assertEquals(parsed("preview").settings.maxConcurrencyDeadline, None)
     assert(NodeConfig.parse(with_("MaxConcurrencyDeadline", Json.fromInt(0))).isLeft)
+    assertEquals(NodeConfig.parse(with_("MaxConcurrencyBulkSync", Json.fromInt(3)))
+      .map(_.settings.maxConcurrencyBulkSync), Right(Some(3)))
+    assert(NodeConfig.parse(with_("MaxConcurrencyBulkSync", Json.fromInt(0))).isLeft)
     assert(NodeConfig.parse("[]").isLeft)
     assert(NodeConfig.parse("{").isLeft)
   }

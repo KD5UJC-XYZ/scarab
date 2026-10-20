@@ -5,7 +5,7 @@ import xyz.kd5ujc.scarab.codec.DomainError
 import xyz.kd5ujc.scarab.ledger.{Block, Header, PeerError, ValidationError}
 import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.effect.syntax.all.*
-import cats.effect.std.{Mutex, Queue, Semaphore, Supervisor}
+import cats.effect.std.{Queue, Semaphore, Supervisor}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -13,13 +13,14 @@ import com.comcast.ip4s.{Host, SocketAddress}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{CardanoBlockFetch, ChainSync, NtNHeader}
 import xyz.kd5ujc.scarab.network.{
+  BlockFetchRuntime,
   ChainSyncClient,
   NetworkError,
   NodeToNode,
   NodeToNodeConnection,
   TxSubmissionClient
 }
-import xyz.kd5ujc.scarab.network.selection.{FetchMode, Time}
+import xyz.kd5ujc.scarab.network.selection.{FetchGsv, FetchMode, Time}
 
 enum SyncEvent:
   case RollForward(header: Header, tip: ChainSync.Tip)
@@ -279,8 +280,9 @@ object Peer:
     (for
       shared <- Resource.eval(pool.fold(BlockPool.create[F])(F.pure))
       claims <- shared.session(invalidCachedBlock)
+      fetcher <- shared.fetchCoordinator.session(settings.address.hashCode.toLong)
       supervisor <- Supervisor[F](await = false)
-    yield (claims, supervisor)).evalMap { (claims, supervisor) =>
+    yield (claims, fetcher, supervisor)).evalMap { (claims, fetcher, supervisor) =>
       // Read-ahead: while the peer is far ahead, ChainSync requests are pipelined and the
       // blocks of the whole batch are fetched with one BlockFetch range. A producer fiber
       // keeps up to `Depth` batches in flight: it requests the headers of the next batch while
@@ -298,12 +300,12 @@ object Peer:
         Ref.of[F, Option[(ChainSync.Tip, BigInt)]](None),
         Ref.of[F, Boolean](false),
         Semaphore[F](Depth.toLong),
-        Mutex[F],
         Ref.of[F, HeaderGate[F]](HeaderGate.none[F]),
         Ref.of[F, Option[Deferred[F, DrainOutcome]]](None),
-        Ref.of[F, Option[(Bytes, BlockPool.Taken)]](None)
+        Ref.of[F, Option[(Bytes, BlockPool.Taken)]](None),
+        Ref.of[F, Vector[Header]](Vector.empty)
       ).mapN {
-        (queue, current, progress, started, permits, fetchLock, gate, drainCompletion, last) =>
+        (queue, current, progress, started, permits, gate, drainCompletion, last, candidateHeaders) =>
           def decode(update: ChainSyncClient.Update[NtNHeader])(using
               Raise[F, PeerError]
           ): F[SyncEvent] = update match
@@ -326,56 +328,50 @@ object Peer:
             }
             ranges(headers).traverse_(prefetchRange)
 
-          /** Fetch the blocks of one range that no other session has claimed. The claim is made
-            * when this connection is free to send the request, so with several peers the ranges of
-            * a batch go to whichever connection is idle (the reference's bulk-sync decision keeps a
-            * block in flight with one peer only).
+          /** Every request, including recovery, passes through the shared peer decision. Byte
+            * credit returns as individual blocks arrive, before signature preparation finishes.
             */
           def prefetchRange(headers: Vector[Header])(using Raise[F, PeerError]): F[Unit] =
-            fetchLock.lock
-              .surround(
-                currentMode.flatMap(claims.claim(headers.map(_.hash), _)).flatMap { owned =>
-                  val runs = ownedRuns(headers.zip(owned))
-                  val mine = runs.flatMap(_.map(_.hash))
-                  // a failure or a cancellation anywhere in the range gives up every claim of it, not
-                  // only the run in flight (issue 130); the session's own claims are the backstop
-                  runs
-                    .traverse(run => requestRun(run).map(run -> _))
-                    .onError(_ => claims.release(mine))
-                    .onCancel(claims.release(mine))
-                }
-              )
-              .flatMap(_.traverse_ { case (run, (fetched, arrivedAt)) =>
-                fetched.fold(claims.release(run.map(_.hash))) { raw =>
-                  // A range answers in chain order, one block per announced header; the rules
-                  // check each block against the header they were handed.
-                  val paired: Vector[(Bytes, Long, Bytes)] =
-                    if raw.size == run.size then
-                      run.zip(raw).map((h, b) => (h.hash, h.slot.toLong, b))
-                    else
-                      raw.flatMap(b =>
-                        Block
-                          .decode(b, settings.byronEpochSlots)
-                          .toOption
-                          .map(block => (block.header.hash, block.header.slot.toLong, b))
-                      )
-                  val byHash = paired.map((hash, _, b) => hash -> b)
-                  observe.traverse_(
-                    _(
-                      Peer.Observation
-                        .BlocksArrived(paired.map((_, slot, b) => slot -> b.size.toLong), arrivedAt)
-                    )
-                  ) *>
-                    (prepare(raw) *> claims.fill(byHash)).guarantee(claims.release(run.map(_.hash)))
-                }
+            F.tailRecM(headers) { pending =>
+              currentMode.flatMap(mode => fetcher.reserve(pending, mode).use { allocation =>
+                claims.claim(allocation.headers.map(_.hash), mode).flatMap { flags =>
+                  val owned = ownedRuns(allocation.headers.zip(flags))
+                  val runs = owned.take(allocation.requests)
+                  val deferred = owned.drop(allocation.requests).flatten
+                  val mine = owned.flatMap(_.map(_.hash))
+                  (claims.release(deferred.map(_.hash)) *> fetcher.reconcile(allocation, runs) *>
+                  runs.parTraverse_ { run =>
+                    requestRun(run, allocation).flatMap { (fetched, arrivedAt) =>
+                      fetched.fold(claims.release(run.map(_.hash))) { raw =>
+                        val paired: Vector[(Bytes, Long, Bytes)] =
+                          if raw.size == run.size then
+                            run.zip(raw).map((h, b) => (h.hash, h.slot.toLong, b))
+                          else
+                            raw.flatMap(b => Block.decode(b, settings.byronEpochSlots).toOption
+                              .map(block => (block.header.hash, block.header.slot.toLong, b)))
+                        observe.traverse_(_(Peer.Observation.BlocksArrived(
+                          paired.map((_, slot, b) => slot -> b.size.toLong), arrivedAt))) *>
+                          (prepare(raw) *> claims.fill(paired.map((hash, _, b) => hash -> b)))
+                            .guarantee(claims.release(run.map(_.hash)))
+                      }
+                    }
+                  }).onError(_ => claims.release(mine)).onCancel(claims.release(mine))
+                    .as(deferred ++ allocation.remaining)
+                }.map(next => if next.isEmpty then Right(()) else Left(next))
               })
+            }
 
-          /** One BlockFetch request for a run, with the time its blocks arrived. */
-          def requestRun(run: Vector[Header])(using
+          def requestRun(run: Vector[Header], allocation: FetchCoordinator.Allocation)(using
               Raise[F, PeerError]
           ): F[(Option[Vector[Bytes]], Time)] =
-            connection.blockFetch.requestRange(run.head.point, run.last.point).flatMap { fetched =>
-              F.monotonic.map(fetched -> _)
+            Ref.of[F, Vector[Header]](run).flatMap { remaining =>
+              connection.blockFetch.requestRangeObserved(run.head.point, run.last.point) {
+                case BlockFetchRuntime.Event.Block(_, _) =>
+                  remaining.modify(hs => (hs.drop(1), hs.headOption))
+                    .flatMap(_.traverse_(h => fetcher.received(allocation, h.hash)))
+                case BlockFetchRuntime.Event.Completed(_) => fetcher.completed(allocation)
+                case _ => F.unit
+              }.flatMap(fetched => F.monotonic.map(fetched -> _))
             }
 
           /** The next batch of ChainSync instructions. */
@@ -404,6 +400,18 @@ object Peer:
               }
               // header-first: nothing of this batch is fetched before its headers are valid
               _ <- gate.get.flatMap(_.accept(batch))
+              performance <- connection.fetchPerformance.getOrElse(F.pure(FetchGsv.default))
+              tip <- candidateHeaders.modify { before =>
+                val after = batch.foldLeft(before) {
+                  case (known, SyncEvent.RollForward(h, _)) => (known :+ h).takeRight(BlockPool.Retained)
+                  case (known, SyncEvent.RollBackward(point, _)) =>
+                    known.indexWhere(_.point == point) match
+                      case -1 => Vector.empty
+                      case i => known.take(i + 1)
+                }
+                (after, after.lastOption)
+              }
+              _ <- fetcher.announce(tip, performance)
               _ <- batch.lastOption.traverse_ {
                 case SyncEvent.RollForward(h, tip) => progress.set(Some(tip -> h.blockNo))
                 case SyncEvent.RollBackward(_, tip) =>
@@ -481,41 +489,18 @@ object Peer:
               case None =>
                 CardanoBlockFetch.SpecificPoint.from(header.point) match
                   case Left(reason) => protocol(reason)
-                  case Right(specific) =>
-                    fetchLock.lock
-                      .surround(
-                        for
-                          began <- F.monotonic
-                          fetched <- connection.blockFetch
-                            .requestRange(specific.point, specific.point)
-                          arrived <- F.monotonic
-                          took = arrived - began
-                          _ <- observe.traverse_(_(Peer.Observation.Fetched(took.toMillis)))
-                          _ <- observe.traverse_(report =>
-                            fetched.traverse_(
-                              _.traverse_(b =>
-                                report(
-                                  Peer.Observation.BlocksArrived(
-                                    Vector(header.slot.toLong -> b.size.toLong),
-                                    arrived
-                                  )
-                                )
-                              )
-                            )
-                          )
-                        yield fetched
-                      )
-                      .flatMap {
-                        case Some(Vector(block)) => F.pure(block)
-                        case Some(other) =>
-                          protocol(PeerError.ProtocolProblem.BlockCount(1, other.size))
-                        case None =>
-                          PeerError
-                            .Unavailable(
-                              PeerError.Unavailability.MissingAnnouncedBlock(header.point)
-                            )
-                            .raise
-                      }
+                  case Right(_) =>
+                    for
+                      began <- F.monotonic
+                      _ <- prefetchRange(Vector(header))
+                      arrived <- F.monotonic
+                      _ <- observe.traverse_(_(Peer.Observation.Fetched((arrived - began).toMillis)))
+                      taken <- claims.take(header.hash)
+                      block <- taken match
+                        case Some(value) => last.set(Some(header.hash -> value)).as(value.block)
+                        case None => PeerError.Unavailable(
+                          PeerError.Unavailability.MissingAnnouncedBlock(header.point)).raise[F, Bytes]
+                    yield block
             }
 
           /** Stop new requests, collect the in-flight replies and await every prefetch/publication.
@@ -569,7 +554,7 @@ object Peer:
               Fault.fiber(drain).void
 
             def intersect(candidates: Vector[ChainSync.Point])(using Raise[F, PeerError]) =
-              drain *> progress.set(None) *> last.set(None) *>
+              drain *> progress.set(None) *> last.set(None) *> candidateHeaders.set(Vector.empty) *>
                 connection.chainSync.findIntersect(thin(candidates)).flatMap { found =>
                   found.traverse_ { case (point, _) =>
                     headers.traverse_(_.start(point).flatMap(gate.set))
