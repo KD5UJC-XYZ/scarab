@@ -3,6 +3,8 @@
 import sys
 from pathlib import Path
 import unittest
+from unittest.mock import patch
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from devnet import eraplutus
@@ -48,3 +50,34 @@ class EraPlutusTest(unittest.TestCase):
     def test_snapshot_indexes_all_addresses_and_preserves_assets(self):
         self.assertEqual(eraplutus.index_utxo((1, 4, {b"address": [(self.normal[0], 10, {b"p": {b"n": 2}})]})),
                          {self.normal[0]: (10, {b"p": {b"n": 2}})})
+
+
+class BabbageModelBootstrapTest(unittest.TestCase):
+    def propose(self, major):
+        from devnet import cluster
+        driver = cluster.EraDriver.__new__(cluster.EraDriver)
+        driver.name = "isolated"
+        driver.address = {1: "funding-address"}
+        driver.utxo = lambda address: {"input#0": 100_000_000}
+        driver.submit = lambda era, build, label: SimpleNamespace(returncode=0)
+        driver.wait_spent = lambda *args: None
+        genesis = {"costModels": {"PlutusV1": [1, 2]},
+                   "extraConfig": {"costModels": {"PlutusV1": [9], "PlutusV2": [3, 4]}}}
+        with patch.object(cluster, "read_json", return_value=genesis) as read, \
+                patch.object(cluster, "put_file") as write, patch.object(cluster, "in_ref") as command:
+            driver.propose("alonzo", 6, major, False)
+        return read, write, command
+
+    def test_vasil_proposal_installs_generated_v2_and_retains_live_genesis_v1(self):
+        import json
+        read, write, command = self.propose(7)
+        read.assert_called_once()
+        self.assertEqual(json.loads(write.call_args.args[2]), {"PlutusV1": [1, 2], "PlutusV2": [3, 4]})
+        self.assertIn("--cost-model-file /work/tx/babbage-cost-models.json", command.call_args.args[1])
+
+    def test_other_protocol_proposals_do_not_change_models(self):
+        for major in (None, 3, 4, 5, 6, 8, 9):
+            read, write, command = self.propose(major)
+            read.assert_not_called()
+            write.assert_not_called()
+            self.assertNotIn("--cost-model-file", command.call_args.args[1])

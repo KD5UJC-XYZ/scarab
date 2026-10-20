@@ -240,6 +240,14 @@ class EraDriver:
         cli = f"cardano-cli compatible {era}"
         keys = " ".join(f"--genesis-verification-key-file {ENV}/genesis-keys/genesis{n}/key.vkey" for n in (1, 2, 3))
         extra = " --decentralization-parameter 0" if decentralise else ""
+        if major == 7:
+            # create-env starts in Conway and places V2 in extraConfig; real hard forks do not
+            # read that testnet-only field. Install V2 in the protocol-6 proposal so the first
+            # Babbage epoch can evaluate it. Retain the original V1 model in the same update.
+            genesis = read_json(self.name, f"{ENV}/alonzo-genesis.json")
+            models = {**genesis["costModels"], "PlutusV2": genesis["extraConfig"]["costModels"]["PlutusV2"]}
+            put_file(self.name, f"{TX}/babbage-cost-models.json", json.dumps(models))
+            extra += f" --cost-model-file {TX}/babbage-cost-models.json"
         # a step that stays at the same protocol version proposes only the parameter change
         version = f"--protocol-major-version {major} --protocol-minor-version 0" if major else ""
         in_ref(self.name, f"{cli} governance action create-protocol-parameters-update --epoch {epoch} {keys} "
