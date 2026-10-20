@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.codec.DomainError
 import xyz.kd5ujc.scarab.ledger.{Header, PeerError, ValidationError}
-import cats.effect.{Async, Deferred, Ref, Resource}
+import cats.effect.{Async, Deferred, Ref, Resource, Temporal}
 import cats.effect.implicits.*
 import cats.effect.std.{Queue, Semaphore, Supervisor}
 import cats.mtl.Raise
@@ -22,6 +22,7 @@ import xyz.kd5ujc.scarab.network.{
   TxSubmissionClient
 }
 import xyz.kd5ujc.scarab.network.selection.{FetchGsv, FetchMode, Time}
+import scala.concurrent.duration.*
 
 enum SyncEvent:
   case RollForward(header: Header, tip: ChainSync.Tip)
@@ -190,6 +191,24 @@ object Peer:
   /** Batches the peer keeps in flight: one being applied, the others being fetched. */
   private[node] val Depth = 3
 
+  /** Same interval as the pinned Praos decision loop. A stalled header producer must not
+    * prevent KeepAlive measurements from changing peer preference. Unchanged samples do not
+    * rebuild decisions; the resource's supervised fiber owns failures and cancellation.
+    */
+  private[node] val FetchPerformanceInterval: FiniteDuration = 10.millis
+
+  private[node] def refreshFetchPerformance[F[_]: Temporal](
+      read: F[FetchGsv.PeerGsv],
+      update: FetchGsv.PeerGsv => F[Unit]
+  ): F[Unit] =
+    val F = Temporal[F]
+    F.tailRecM(Option.empty[FetchGsv.PeerGsv]) { previous =>
+      read.flatMap { current =>
+        update(current).unlessA(previous.contains(current)) *>
+          F.sleep(FetchPerformanceInterval).as(Left(Some(current)))
+      }
+    }
+
   /** Called with each prefetched batch of raw blocks before they are handed to the rules. */
   type Prepare[F[_]] = Vector[Bytes] => F[Unit]
 
@@ -320,7 +339,8 @@ object Peer:
           ChainSelection.Candidate(ChainSync.Point.Origin, Vector.empty)
         ),
         Ref.of[F, Option[Fault]](None),
-        Ref.of[F, Vector[(Bytes, ChainSelection.Candidate)]](Vector.empty)
+        Ref.of[F, Vector[(Bytes, ChainSelection.Candidate)]](Vector.empty),
+        Ref.of[F, Boolean](false)
       ).mapN {
         (
             queue,
@@ -333,7 +353,8 @@ object Peer:
             last,
             candidateHeaders,
             pipelineFailure,
-            candidateVersions
+            candidateVersions,
+            performanceStarted
         ) =>
           def decode(update: ChainSyncClient.Update[NtNHeader])(using
               Raise[F, PeerError]
@@ -578,7 +599,11 @@ object Peer:
             started.getAndSet(true).flatMap {
               case true => F.unit
               case false =>
-                supervised(Deferred[F, Unit].flatTap(_.complete(())).flatMap(produce))
+                performanceStarted.getAndSet(true).flatMap { alreadyRunning =>
+                  connection.fetchPerformance.traverse_(read =>
+                    supervised(refreshFetchPerformance(read, fetcher.updatePerformance))
+                  ).unlessA(alreadyRunning)
+                } *> supervised(Deferred[F, Unit].flatTap(_.complete(())).flatMap(produce))
             }
 
           /** A governor may cancel `next` before asking us to drain. Return the permit in the
