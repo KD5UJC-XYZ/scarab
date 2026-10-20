@@ -30,7 +30,9 @@ object BenchCodecMain:
   import HaskellStateCodecs.given
 
   private val genesis =
-    KeyHash.fromBytes[Genesis](Bytes.fromArray(Array.fill[Byte](28)(5))).fold(e => sys.error(e.toString), identity)
+    KeyHash
+      .fromBytes[Genesis](Bytes.fromArray(Array.fill[Byte](28)(5)))
+      .fold(e => sys.error(e.toString), identity)
   private val futureGenDeleg = FutureGenDeleg(SlotNo.fromUnsigned(1234L), genesis)
   private val recordCodec: ModelCodec[FutureGenDeleg] = summon[ModelCodec[FutureGenDeleg]]
 
@@ -100,7 +102,9 @@ object BenchCodecMain:
       h.toLong
     }
     val rowDecoded = Codec.decode[Row](encoded).fold(e => sys.error(e.toString), identity)
-    println(s"DIGEST codec bytes=${digest(encoded)} length=${encoded.length} value=${sha256(rowDecoded.toString)}")
+    println(
+      s"DIGEST codec bytes=${digest(encoded)} length=${encoded.length} value=${sha256(rowDecoded.toString)}"
+    )
 
     val encodedRecord = recordCodec.encodeUnchecked(futureGenDeleg)
     measure("codec.record.encode", iterations) { n =>
@@ -119,7 +123,8 @@ object BenchCodecMain:
         i += 1
       h.toLong
     }
-    val recordDecoded = recordCodec.decodeBytes(encodedRecord).fold(e => sys.error(e.toString), identity)
+    val recordDecoded =
+      recordCodec.decodeBytes(encodedRecord).fold(e => sys.error(e.toString), identity)
     println(
       s"DIGEST codec.record bytes=${digest(encodedRecord)} length=${encodedRecord.size} value=${sha256(recordDecoded.toString)}"
     )
