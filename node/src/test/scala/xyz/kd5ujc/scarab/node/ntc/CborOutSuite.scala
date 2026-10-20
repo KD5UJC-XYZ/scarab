@@ -16,3 +16,10 @@ class CborOutSuite extends FunSuite:
     assertEquals(integer(BigInt(2).pow(64)), "c249010000000000000000")
     assertEquals(integer(BigInt("101952000000000000000")), "c2490586de43d5cca00000")
   }
+
+  test("signed Integer uses the negative argument through 64 bits, then tag 3") {
+    assertEquals(integer(-1), "20")
+    assertEquals(integer(-BigInt(2).pow(64)), "3bffffffffffffffff")
+    assertEquals(integer(-BigInt(2).pow(64) - 1), "c349010000000000000000")
+    assertEquals(integer(-BigInt(2).pow(80) - 1), "c34b0100000000000000000000")
+  }
