@@ -97,8 +97,8 @@ class MuxDeadlinesSuite extends FailsOnUncaught:
       assertEquals(elapsed, Duration.Zero)
     }
 
-  for (protocol, payload, expected) <- List((2, 1, 30), (0, 1, 10), (2, 2, 60)) do
-    test(s"stalled writer protocol$protocol/$payload SDUs has reference batch budget${expected}s"):
+  for (protocol, payload, expected) <- List((2, 1, 30), (0, 1, 10), (2, 2, 30)) do
+    test(s"stalled writer protocol$protocol/$payload SDUs has one-SDU write budget${expected}s"):
       TestControl
         .executeEmbed(typed {
           Mux
@@ -117,6 +117,37 @@ class MuxDeadlinesSuite extends FailsOnUncaught:
             }
         })
         .map(result => assertEquals(result, Right((writeTimeout, expected.seconds))))
+
+  test("a completed SDU does not donate its unused write budget to the next stalled SDU"):
+    TestControl
+      .executeEmbed(typed {
+        for
+          writes <- Ref.of[IO, Int](0)
+          result <- Mux
+            .resource(
+              bearer(
+                Stream.never[IO],
+                _ =>
+                  writes.getAndUpdate(_ + 1).flatMap {
+                    case 0 => IO.sleep(29.seconds)
+                    case _ => IO.never
+                  }
+              ),
+              Set(2),
+              Mux.Config(maxSduPayload = 1)
+            )
+            .use { mux =>
+              for
+                channel <- mux.channel(2)
+                _ <- channel.send(Bytes(Vector[Byte](1, 2)))
+                reason <- mux.closed
+                elapsed <- IO.monotonic
+                count <- writes.get
+              yield (reason, elapsed, count)
+            }
+        yield result
+      })
+      .map(result => assertEquals(result, Right((writeTimeout, 59.seconds, 2))))
 
   test("releasing a mux cancels an idle timed source without leaving its reader alive"):
     TestControl

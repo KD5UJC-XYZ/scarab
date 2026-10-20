@@ -41,7 +41,7 @@ trait MuxChannel[F[_]]:
   ): F[A]
 
 /** Multiplexer over one [[Bearer]]: a reader fiber routes SDUs into the ingress queue of their
-  * mini-protocol and a writer fiber drains one outbound queue.
+  * mini-protocol and a writer fiber rotates complete SDUs between admitted outbound channels.
   *
   * An ingress queue is counted in bytes, not in SDUs, with the limit of the reference for its
   * protocol ([[IngressLimits]]); the reader never waits for a slow protocol, and a peer that has
@@ -50,7 +50,7 @@ trait MuxChannel[F[_]]:
   * down is the protocol, not the queue: a peer may only send what the protocol's state gives it
   * agency for, and pipelines no more than the window, so a well behaved peer stays within the limit
   * however slowly we read. The writer's queue is bounded in messages and `send` waits for room in
-  * it.
+  * it, including staged work awaiting a later turn.
   *
   * Both fibers end by completing [[closed]] with the typed reason, which the channels raise.
   */
@@ -156,7 +156,7 @@ object Mux:
           .map(_.toMap)
       )
       outbound <- Resource.eval(
-        Queue.bounded[F, Either[Deferred[F, Unit], (Int, Role, Bytes)]](config.egressQueueMessages)
+        MuxEgress.create[F](config.egressQueueMessages, config.maxSduPayload)
       )
       decoder <- Resource.eval(
         WireMux.Decoder
@@ -237,42 +237,38 @@ object Mux:
           // a transport failure is the library's exception: it becomes a typed reason here
           .handleError(t => NetworkError.fromThrowable("bearer failed", t))
 
-      def writeLoop: F[NetworkError] =
-        outbound.take.flatMap {
-          case Left(flushed) => flushed.complete(()) *> writeLoop
-          case Right((protocol, role, message)) =>
+      val writer: F[NetworkError] =
+        outbound
+          .run { (lane, payload) =>
             Clock[F].monotonic.flatMap { now =>
               val frames = WireMux
                 .segmentProtocolMessage(
-                  message,
+                  payload,
                   now.toMicros & 0xffffffffL,
-                  sending(role),
+                  sending(lane.role),
                   config.maxSduPayload,
-                  protocol,
+                  lane.protocol,
                   config.maxMessageBytes
                 )
                 .flatMap(_.traverse(WireMux.encode))
               frames match
-                case Left(reason)   => F.pure(NetworkError.MuxWrite(reason))
+                case Left(reason)   => F.pure(Left(NetworkError.MuxWrite(reason)))
                 case Right(encoded) =>
-                  // Socket.hs:190-230 gives a batch one SDU budget per frame, not per byte or
-                  // per progress notification. Handshake flushes are bounded on the writer too.
+                  // Egress.hs:189–213 rotates after one SDU. Socket.hs:190–230 gives each
+                  // actual write one budget per SDU: a stalled first SDU gets no later SDU's time.
                   val perSdu =
-                    if protocol == Protocols.Handshake then config.handshakeSduTimeout
+                    if lane.protocol == Protocols.Handshake then config.handshakeSduTimeout
                     else config.sduTimeout
                   F.timeoutTo(
                     bearer
-                      .write(Chunk.array(concat(encoded)))
-                      .as(
-                        Right(()): Either[NetworkError, Unit]
-                      ),
+                      .write(Chunk.concat(encoded.map(b => Chunk.array(b.toArray))))
+                      .as(Right(()): Either[NetworkError, Unit]),
                     perSdu * encoded.size.toLong,
                     F.pure(Left(NetworkError.SduTimeout(NetworkError.SduOperation.Write)))
-                  ).flatMap(_.fold(F.pure, _ => writeLoop))
+                  )
             }
-        }
-      val writer: F[NetworkError] =
-        writeLoop.handleError(t => NetworkError.fromThrowable("bearer failed", t))
+          }
+          .handleError(t => NetworkError.fromThrowable("bearer failed", t))
 
       for
         _ <- F.background(reader.flatMap(done.complete))
@@ -303,21 +299,11 @@ object Mux:
         def abort(reason: NetworkError) = done.complete(reason).void
     }
 
-  /** The parts one after the other in one array. */
-  private def concat(parts: Vector[Bytes]): Array[Byte] =
-    val out = new Array[Byte](parts.map(_.size).sum)
-    var at = 0
-    parts.foreach { part =>
-      part.copyTo(out, at)
-      at += part.size
-    }
-    out
-
   private def channel[F[_]: Async](
       id: Int,
       role: Role,
       ingress: Ingress[F],
-      outbound: Queue[F, Either[Deferred[F, Unit], (Int, Role, Bytes)]],
+      outbound: MuxEgress.Outbox[F],
       closed: Deferred[F, NetworkError],
       buffer: Ref[F, Bytes],
       lock: Mutex[F],
@@ -338,16 +324,13 @@ object Mux:
         closed.tryGet.flatMap {
           case Some(reason) => reason.raise[F, Unit]
           case None =>
-            F.race(closed.get, outbound.offer(Right((id, role, message)))).flatMap {
+            F.race(closed.get, outbound.send(id, role, message)).flatMap {
               case Left(reason) => reason.raise[F, Unit]
               case Right(_)     => F.unit
             }
         }
 
-    def flush: F[Unit] =
-      Deferred[F, Unit].flatMap { flushed =>
-        F.race(closed.get, outbound.offer(Left(flushed)) *> flushed.get).void
-      }
+    def flush: F[Unit] = F.race(closed.get, outbound.flush).void
 
     // Queued SDUs are delivered before a close is reported; the reader closes only after enqueueing.
     private def nextPayload(using Raise[F, NetworkError]): F[Bytes] =

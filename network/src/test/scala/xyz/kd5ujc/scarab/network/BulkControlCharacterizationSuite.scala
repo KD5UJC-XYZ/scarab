@@ -13,7 +13,7 @@ import xyz.kd5ujc.scarab.protocol.{BlockFetch, ChainSync}
 
 /** Transport-only opaque block payloads: no claim that these are valid ledger blocks or a real
   * historical chain. The production range codec, server, client, Mux and KeepAlive are unchanged.
-  * These measurements deliberately retain the current FIFO outcome, including its refusal.
+  * Both control responsiveness and complete bulk delivery are checked under the same paced load.
   */
 class BulkControlCharacterizationSuite extends FailsOnUncaught:
   private final case class Load(name: String, blocks: Int, rawBytes: Int, bytesPerSecond: Int)
@@ -173,7 +173,7 @@ class BulkControlCharacterizationSuite extends FailsOnUncaught:
       Load("three 2000000-byte messages at 64KiB/s", 3, 2000000, 64 * 1024)
     )
   do
-    test(s"FIFO bulk/control characterization: ${load.name}"):
+    test(s"fair bulk/control service: ${load.name}"):
       for
         bulk <- TestControl.executeEmbed(run(load, control = false))
         mixed <- TestControl.executeEmbed(run(load, control = true))
@@ -189,15 +189,19 @@ class BulkControlCharacterizationSuite extends FailsOnUncaught:
         assert(mixed.finished > 60.seconds && mixed.finished < 120.seconds, summary(mixed))
         assertEquals(mixed.admitted, Some(Duration.Zero))
         val probe = mixed.probe.getOrElse(fail("control probe did not run"))
-        assertEquals(probe.result, Left(NetworkError.Timeout(Protocols.KeepAlive, "server")))
-        assertEquals(probe.finished, 60.seconds)
-        // The same transfer is completing real replies when the control deadline expires.
-        assert(probe.receivedReplies > 1 && probe.receivedReplies < load.blocks + 1, probe.toString)
+        assert(probe.result.isRight, probe.toString)
+        assert(probe.finished < 5.seconds, probe.toString)
+        assert(mixed.finished <= bulk.finished + 1.second, summary(mixed))
+        // Control service occurs while bulk traffic is still pending.
+        assert(
+          probe.receivedReplies >= 1 && probe.receivedReplies < load.blocks + 1,
+          probe.toString
+        )
         assert(
           probe.deliveredBytes > 0 && probe.deliveredBytes < mixed.deliveredBytes,
           probe.toString
         )
-        assert(mixed.arrived.exists(_ > probe.finished), summary(mixed))
+        assert(mixed.arrived.exists(_ <= probe.finished), summary(mixed))
         println(
           s"BULK_CONTROL ${load.name}: baseline=${bulk.finished} mixed=${mixed.finished} " +
             s"blocks=${mixed.result.map(_.map(_.size))} admitted=${mixed.admitted} " +
