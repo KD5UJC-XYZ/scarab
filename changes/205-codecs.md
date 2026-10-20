@@ -1,2 +1,4 @@
 ### Changed (snapshot codecs, #205)
-- **The snapshot codecs derive without erased field instances**: each field's and variant's codec is summoned and applied at its own type, the value narrowed by that type's `ClassTag` (or, for a record, read from the compiler's typed product accessors), so no `asInstanceOf` remains in `Codec.scala` or `Record.scala`, while field order, variant tags, `shape` fingerprints and the encoded bytes are unchanged.
+
+- Derive typed field accessors and result tuples, with subtype-checked sum cases: generic arguments and phantom roles stay connected to their codecs. Field order, variant tags, schema fingerprints and persisted bytes are unchanged.
+- Avoid intermediate product tuples on encoding and specialize the final record pair on decoding. Representative V5 snapshots and restart pass; the remaining tiny-record encode cost is tracked in #257.
