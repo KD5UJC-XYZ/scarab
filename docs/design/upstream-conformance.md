@@ -182,9 +182,9 @@ not a complete property campaign or evidence for every era.
 | CERT | One complete POOL substate from pool registration | Native/Agda accept and compare equal; not every CERT branch |
 | CERTS | One complete ConwayCertState, all five actual environment fields decoded | Native/Agda accept and compare equal |
 | ENACT | One full EnactState | Native/Agda accept and compare equal |
-| GOV | Original empty signal, ten lawful generated nonempty outcomes, a real cast-vote integration and a deposit-refusal control | Native/formal comparisons pass. The refusal retains the native structured deposit mismatch. Original generated environments with zero NonZero VRF counts remain unsupported; they are not normalized or counted as matches |
+| GOV | Original empty signal, all fifteen original generated nonempty outcomes, a real cast-vote integration and a deposit-refusal control | Native/formal comparisons pass. The refusal retains the native structured deposit mismatch. The shared production GOV kernel reads typed registration memberships and committee authorisations; unrelated zero VRF counts retain separate strict certificate-decoder refusals without excluding GOV judgments |
 | EPOCH | Original full native EpochState; separate parameter-consistent controls | Original generator inconsistency retained as exit 1; #267 adds minimal negative/positive controls and eight parameter-consistent PV9 samples |
-| NEWEPOCH | Three full native NewEpochState outcomes from unchanged integration hooks | All three native/formal comparisons pass. Separate generated size-zero case is unsupported: zero stake inside NonZero Coin; larger probes fail upstream proposal construction |
+| NEWEPOCH | Three integration states, twelve lawful full-state outcomes and the original size-zero complete native post-state | Native/formal comparisons pass. The original size-zero signal selects the shared production non-boundary prediction; all untouched outer bytes, including zero pool stake, remain unchanged. Strict full-state NonZero decoding is separately retained; larger probes fail upstream proposal construction |
 | LEDGER | Three full native states and original signed transactions from integration hooks | Native/formal comparisons pass. Inline MemPack UTxO is compared independently, excluding only unavailable raw-output bytes and Scala change-history bookkeeping |
 | UTXO / UTXOW | One full native UTxOState each, genuine supplemental judgments of the integration's payment transaction | Both native/formal comparisons pass. Original contexts retained; payment has no certificate/proposal pretransitions |
 | LEDGERS | Original singleton plus two accepted dependent multi-transaction batches and two rejected batches | Complete accepted native state matches; typed fail-fast rejection payload must occur among native accumulated failures. Original signed bytes retained. Supplemental cases are native-only; original formal evaluator SIGSEGV/139 remains explicit; #270 separately repairs foreign input conversion and observes accepted-state equality |
@@ -223,9 +223,14 @@ its full native GOV output with both formal evaluation and the resulting native 
 proposal state; Scarab must insert that vote and match the complete result. It exposed a production GOV mismatch: an authorized named committee voter
 with an empty inner vote map was incorrectly unknown when all flattened votes were
 empty. Authorization lookup now depends on the presence of named voters, matching
-`Conway/Rules/Gov.hs` at the pin. Five original generated environments whose `NonZero Word64`
-VRF-reference counts serialize as zero remain explicit unsupported inputs, consistent
-with the upstream reader's constraint; lawful replacement samples are separate.
+`Conway/Rules/Gov.hs` at the pin. All fifteen original generated GOV inputs now execute the same production kernel
+as the strict ledger facade. Five environments contain zero `NonZero Word64` VRF
+registration counts, which GOV never observes. The adapter supplies only typed
+registration memberships and committee authorisations from unchanged original bytes;
+it compares the complete proposal output. Strict full-certificate decoding still
+refuses those five inputs, with regression checks for its exact typed cause/path.
+The ten representable originals additionally compare the facade and kernel, while
+missing-registration and deposit-mismatch controls retain typed refusals.
 
 The [native batch corpus](../../node/src/test/resources/upstream/conway-native-ledgers/README.md)
 executes the real native LEDGERS rule over original signed transactions. Two accepted
@@ -371,7 +376,15 @@ adds twelve fixed-size-10 original parameter draws from upstream `pparamsSpec`
 nonzero sentinels and correlated enactment parameters. Same, next and skipped epoch
 signals use four recorded seeds each. All native/formal translated states compare
 equal; Scala compares complete applicable native states without a field mask.
-This is a narrow generator-domain correction, not a claim all unconstrained
+The original size-zero NEWEPOCH judgment also executes the same guarded production
+non-boundary function as the strict transition. The adapter decodes its typed
+`EpochState`, preserves every other original outer field byte for byte, and compares
+the complete native output bytes. No zero pool stake is normalized or inserted into
+a `NonZero` value; full-state decoding still refuses it independently. Next-epoch
+signals must use the boundary rule, and the twelve lawful cases additionally check
+strict/shared branch agreement. The original completed pulser does not establish
+internal pulse-step equivalence.
+This is bounded rule coverage, not a claim all unconstrained
 NEWEPOCH states or all proposal families are supported. Original invalid/sized
 constructor failures remain unchanged.
 

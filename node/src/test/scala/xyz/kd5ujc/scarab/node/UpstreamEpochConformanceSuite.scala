@@ -7,11 +7,11 @@ import java.time.Instant
 import io.circe.Json
 import io.circe.parser.parse
 import munit.FunSuite
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.{EpochGeometry, LedgerGlobals}
-import xyz.kd5ujc.scarab.ledger.rules.{ConwayEpoch, Globals, Sts}
+import xyz.kd5ujc.scarab.ledger.rules.{ConwayEpoch, Globals, NewEpoch, Sts}
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError}
+import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError, Node, Writer}
 import xyz.kd5ujc.scarab.storage.haskell.state.HaskellStateCodecs
 
 import HaskellStateCodecs.given
@@ -103,7 +103,43 @@ class UpstreamEpochConformanceSuite extends FunSuite:
     assertEquals(Diff[EpochState[Conway]].diff(actual, expected), None)
   }
 
-  test("the size-zero NEWEPOCH generator case retains its nonzero-stake domain gap") {
+  test("original size-zero NEWEPOCH matches its complete native non-boundary result") {
+    val seed = 498101L
+    def original(name: String): Node =
+      Cbor
+        .decode(Bytes.fromArray(Files.readAllBytes(base.resolve(s"$seed/$name.cbor"))))
+        .fold(e => fail(e.message), identity)
+    val before = original("state")
+    val expected = original("implementation-state")
+    val fields = before.value match
+      case Value.Arr(xs) if xs.size == 7 => xs
+      case other => fail(s"expected complete seven-field NEWEPOCH state, got $other")
+    val epochCodec = summon[Codec[EpochNo]]
+    val current = epochCodec.decode(fields(0)).fold(e => fail(e.render), identity)
+    val signal = decode(seed, "signal", epochCodec)
+    val esCodec = HaskellStateCodecs.epochState[Conway]
+    val es = esCodec.decode(fields(3)).fold(e => fail(e.render), identity)
+    val predicted = NewEpoch
+      .withinEpoch(current, signal, es)
+      .getOrElse(fail("original signal must select the production non-boundary rule"))
+    val out = new Writer
+    out.arrayHead(fields.size)
+    fields.zipWithIndex.foreach { (field, index) =>
+      if index == 3 then esCodec.encode(predicted, out) else out.raw(field.original)
+    }
+    assertEquals(
+      out.result,
+      expected.original,
+      "complete native state bytes, including original zero pool stake"
+    )
+    assertEquals(NewEpoch.withinEpoch(current, current, es), Some(predicted))
+    val next = current.next.getOrElse(fail("fixture epoch must have a successor"))
+    assertEquals(NewEpoch.withinEpoch(current, next, es), None, "boundary must use the full rule")
+    val skipped = next.next.getOrElse(fail("fixture epoch must have a second successor"))
+    assertEquals(NewEpoch.withinEpoch(current, skipped, es), Some(predicted))
+  }
+
+  test("strict full-state decoding retains the original NEWEPOCH nonzero-stake refusal") {
     val seed = 498101L
     val codec = summon[Codec[NewEpochState[Conway]]]
     val path = base.resolve(s"$seed/state.cbor")

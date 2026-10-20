@@ -32,17 +32,9 @@ object NewEpoch:
           failures: Raise[F, TickFailure]
       ): F[Unit] =
         nes.get.flatMap { current =>
-          if !current.epoch.next.contains(epoch) then
-            nes.set(
-              current.copy(es =
-                current.es.copy(ls =
-                  current.es.ls.copy[E](utxo =
-                    current.es.ls.utxo.copy(gov = EraLedger.predictFuture(current.es.ls.utxo.gov))
-                  )
-                )
-              )
-            )
-          else boundary(current, epoch)
+          withinEpoch(current.epoch, epoch, current.es).fold(boundary(current, epoch))(es =>
+            nes.set(current.copy(es = es))
+          )
         }
 
       private def boundary[F[_]: Monad](before: NewEpochState[E], epoch: EpochNo)(using
@@ -77,6 +69,21 @@ object NewEpoch:
             )
           )
         yield ()
+
+  /** The existing future-parameter prediction branch, corresponding to
+    * `Conway/Rules/NewEpoch.hs:160-166` at cardano-ledger
+    * `f649f9751074d2ab3de033fc3912f29c9862c1f5`. Internal DRep pulse scheduling is separate from
+    * this projection. Returning `None` delegates the next-epoch signal to the boundary rule;
+    * untouched outer fields, including pool distribution, are not required by this branch.
+    */
+  def withinEpoch[E <: EraTag](current: EpochNo, signal: EpochNo, es: EpochState[E])(using
+      ShelleyBasedEra[E]
+  ): Option[EpochState[E]] =
+    Option.unless(current.next.contains(signal))(
+      es.copy(ls =
+        es.ls.copy[E](utxo = es.ls.utxo.copy(gov = EraLedger.predictFuture(es.ls.utxo.gov)))
+      )
+    )
 
   /** The rewards of the accounts that are registered, and of those that are not, each in the order
     * of the credential. The rewards and the accounts are both in that order, so they are walked

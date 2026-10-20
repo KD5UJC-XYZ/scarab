@@ -12,20 +12,30 @@ image. The preceding observer patches are shared with the existing
 Fifteen `GOV-sized5` invocations retain the original constrained generator's lawful
 nonempty votes, proposals and certificates, full six-field environment,
 EnactState context, complete input proposal state and native output. Only the
-explicit generator size changes. Each ordinary native/formal comparison passes. Ten environments decode into
-Scarab’s typed state and match full production GOV outcomes. Five environments
-(seed 510102, 510103, 510109, 510113 and 510114) encode a zero VRF registration
-count inside `PState.vrfKeyHashes`, whose declared native type is `NonZero Word64`
-(`Cardano/Ledger/State/CertState.hs:233`). The native CBOR reader also refuses zero
-(`BaseTypes/NonZero.hs:102–107, 129–131`), although these generated in-memory states
-reach an accepted native/formal judgment. Their original records remain as
-explicit unsupported-domain cases; tests assert the typed decoder cause and path,
-without normalizing them or counting them as Scarab full-state matches.
-All ten representable generated signals name voters with empty inner vote maps;
-seven also submit proposals. These test nonempty signal/proposal handling and
-voter existence, including the corrected empty-map authorization fast path,
-rather than applying cast votes to actions. The separately named lawful
-cast-vote integration below covers actual vote insertion.
+explicit generator size changes. Each ordinary native/formal comparison passes. Scarab executes all fifteen original
+inputs through the shared production `GovKernel`, comparing the complete `Proposals`
+output: roots, ordered actions, votes and expiration data. The kernel requires only
+account, DRep and pool membership and committee authorisations; full ledger execution
+supplies these through `GovCertificateView.from` over validated certificate state,
+without copying registration maps. The fixture adapter decodes exactly those typed
+keys and authorisations from the original environment, without altering inputs or
+expected outputs.
+
+Five environments (seeds 510102, 510103, 510109, 510113 and 510114) encode a zero
+VRF registration count in `PState.vrfKeyHashes`, whose declared native type is
+`NonZero Word64` (`Cardano/Ledger/State/CertState.hs:233`). The native CBOR reader
+also refuses zero (`BaseTypes/NonZero.hs:102–107, 129–131`). GOV never reads these
+counts, so this unrelated certificate transport constraint no longer excludes
+its original judgments. Separate regressions retain the full typed certificate
+decoder's `NonZero` refusal and exact path. No invalid native certificate state is
+constructed, and the kernel's entire proposal output is compared, not projected.
+The ten environments representable as full certificate state additionally compare
+the strict production facade against the kernel. Missing DRep/committee registrations
+and the native deposit mismatch remain negative controls.
+
+The generated signals test nonempty voter/proposal handling and voter existence,
+including empty inner vote maps. The separately named lawful cast-vote integration
+below covers actual vote insertion.
 Scarab decodes the original voting procedures and certificates and compares the
 complete resulting proposal roots, ordered action records, votes and expiry data
 through its production GOV rule.

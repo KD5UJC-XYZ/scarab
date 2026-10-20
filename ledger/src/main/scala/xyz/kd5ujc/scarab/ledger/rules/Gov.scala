@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.ledger.rules
 import cats.Monad
 import cats.mtl.{Ask, Raise, Stateful}
 import cats.syntax.all.*
+import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.{
@@ -39,6 +40,53 @@ final case class GovEnv(
     committee: Option[Committee]
 )
 
+/** The certificate information read by GOV. Membership functions retain the existing maps;
+  * constructing this view does not copy registrations or their unrelated state. At cardano-ledger
+  * `f649f9751074d2ab3de033fc3912f29c9862c1f5`,
+  * `Conway/Rules/Gov.hs:468-474,505-518,590-604,652-666` reads account/pool/DRep membership and
+  * committee authorisations only. Registration counts, balances and delegations do not participate
+  * in this rule. This capability view keeps those unrelated certificate invariants outside the
+  * rule's required environment.
+  */
+final case class GovCertificateView(
+    accountRegistered: Credential[Staking] => Boolean,
+    drepRegistered: Credential[DRepRole] => Boolean,
+    poolRegistered: KeyHash[StakePool] => Boolean,
+    committee: SortedMap[Credential[ColdCommittee], CommitteeAuthorization]
+)
+
+object GovCertificateView:
+  def from(cert: ConwayCertState): GovCertificateView =
+    GovCertificateView(
+      CertLens.accounts.get(cert).contains,
+      CertLens.dreps.get(cert).contains,
+      CertLens.pools.get(cert).contains,
+      CertLens.committee.get(cert)
+    )
+
+/** GOV's read-only environment, independent of certificate fields the rule never observes. Full
+  * ledger execution enters through [[Gov]], which supplies the validated certificate view.
+  */
+final case class GovViewEnv(
+    id: Bytes,
+    epoch: BigInt,
+    pp: ProtocolParams,
+    guardrails: Option[Bytes],
+    cert: GovCertificateView,
+    committee: Option[Committee]
+)
+
+object GovViewEnv:
+  def from(env: GovEnv): GovViewEnv =
+    GovViewEnv(
+      env.id,
+      env.epoch,
+      env.pp,
+      env.guardrails,
+      GovCertificateView.from(env.cert),
+      env.committee
+    )
+
 /** `GovSignal` (`Gov.hs:312`): the votes and the proposals of the transaction, and its certificates
   * (the DReps it unregisters lose their votes).
   */
@@ -64,12 +112,27 @@ final case class GovSignal(
   * `removeCommitteeMembers`) while the votes stay, which is what those epochs of preprod show.
   */
 object Gov extends Sts[GovEnv, Proposals, GovSignal, LedgerFailure]:
+  def transition[F[_]: Monad](env: GovEnv, signal: GovSignal)(using
+      Ask[F, Globals],
+      Stateful[F, Proposals],
+      Raise[F, LedgerFailure]
+  ): F[Unit] = GovKernel.transition(GovViewEnv.from(env), signal)
+
+  def unelected(
+      committee: Option[Committee],
+      cert: ConwayCertState,
+      voters: Iterable[Voter]
+  ): Vector[node.Credential] =
+    GovKernel.unelected(committee, GovCertificateView.from(cert), voters)
+
+/** The production GOV rule over precisely the read-only certificate information it requires. */
+object GovKernel extends Sts[GovViewEnv, Proposals, GovSignal, LedgerFailure]:
   /** The committee hot credentials that the committee state has authorised
     * (`knownCommitteeMembers`, `authorizedHotCommitteeCredentials`).
     */
-  private def authorised(cert: ConwayCertState): Set[Credential[HotCommittee]] =
-    cert.vState.committeeState.creds.valuesIterator.collect {
-      case CommitteeAuthorization.CommitteeHotCredential(h) => h
+  private def authorised(cert: GovCertificateView): Set[Credential[HotCommittee]] =
+    cert.committee.valuesIterator.collect { case CommitteeAuthorization.CommitteeHotCredential(h) =>
+      h
     }.toSet
 
   /** `unelectedCommitteeVoters` (`Gov.hs:652`): the hot credentials among the voters that no member
@@ -77,11 +140,11 @@ object Gov extends Sts[GovEnv, Proposals, GovSignal, LedgerFailure]:
     */
   def unelected(
       committee: Option[Committee],
-      cert: ConwayCertState,
+      cert: GovCertificateView,
       voters: Iterable[Voter]
   ): Vector[node.Credential] =
     val elected: Set[Credential[HotCommittee]] =
-      cert.vState.committeeState.creds.iterator.collect {
+      cert.committee.iterator.collect {
         case (cold, CommitteeAuthorization.CommitteeHotCredential(h))
             if committee.exists(_.members.contains(Convert.back(cold))) =>
           h
@@ -90,7 +153,7 @@ object Gov extends Sts[GovEnv, Proposals, GovSignal, LedgerFailure]:
       case Voter.CommitteeHot(h) if Convert.credential[HotCommittee](h).forall(!elected(_)) => h
     }.toVector
 
-  def transition[F[_]: Monad](env: GovEnv, signal: GovSignal)(using
+  def transition[F[_]: Monad](env: GovViewEnv, signal: GovSignal)(using
       ask: Ask[F, Globals],
       st: Stateful[F, Proposals],
       raise: Raise[F, LedgerFailure]
@@ -102,7 +165,7 @@ object Gov extends Sts[GovEnv, Proposals, GovSignal, LedgerFailure]:
     def accountRegistered(a: node.RewardAccount): F[Boolean] =
       Refuse
         .vocab[F, Credential[Staking]](Convert.credential[Staking](a.credential))
-        .map(CertLens.accounts.get(env.cert).contains)
+        .map(env.cert.accountRegistered)
     for
       globals <- Sts.globals[F]
       network = globals.networkId
@@ -166,7 +229,7 @@ object Gov extends Sts[GovEnv, Proposals, GovSignal, LedgerFailure]:
     * committee key that no member has authorised.
     */
   private def votesKnown[F[_]: Monad](
-      env: GovEnv,
+      env: GovViewEnv,
       hot: Set[Credential[HotCommittee]],
       votes: Vector[(Voter, Vector[(GovActionId, Vote)])]
   )(using Raise[F, LedgerFailure]): F[Vector[Voter]] =
@@ -174,9 +237,9 @@ object Gov extends Sts[GovEnv, Proposals, GovSignal, LedgerFailure]:
       .traverse { (voter, _) =>
         val exists: Either[VocabError, Boolean] = voter match
           case Voter.DRepVoter(c) =>
-            Convert.credential[DRepRole](c).map(CertLens.dreps.get(env.cert).contains)
+            Convert.credential[DRepRole](c).map(env.cert.drepRegistered)
           case Voter.Pool(h) =>
-            Convert.keyHash[StakePool](h).map(CertLens.pools.get(env.cert).contains)
+            Convert.keyHash[StakePool](h).map(env.cert.poolRegistered)
           case Voter.CommitteeHot(h) => Convert.credential[HotCommittee](h).map(hot.contains)
         Refuse.vocab[F, Boolean](exists).map(known => Option.unless(known)(voter))
       }
@@ -206,7 +269,7 @@ object Gov extends Sts[GovEnv, Proposals, GovSignal, LedgerFailure]:
     * and added to the store.
     */
   private def addProposal[F[_]: Monad](
-      env: GovEnv,
+      env: GovViewEnv,
       network: Int,
       bootstrap: Boolean,
       registered: node.RewardAccount => F[Boolean],

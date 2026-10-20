@@ -85,6 +85,14 @@ class UpstreamLawfulNewEpochSuite extends FunSuite:
         val expected = decode(id, "implementation-state", codec)
         val epoch = decode(id, "signal", summon[Codec[EpochNo]])
         assertEquals(epoch.toBigInt, before.epoch.toBigInt + advance)
+        val branch = NewEpoch.withinEpoch(before.epoch, epoch, before.es)
+        if kind == "next" then assertEquals(branch, None, "next epoch requires the boundary rule")
+        else
+          assertEquals(
+            branch,
+            Some(expected.es),
+            "shared non-boundary prediction matches full native state"
+          )
         val actual = Sts
           .apply(NewEpoch.sts[Conway])(globals, (), before, epoch)
           .fold(e => fail(s"native-accepted $id refused: $e"), identity)
