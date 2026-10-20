@@ -34,14 +34,14 @@ object TestLedger:
   def key(): Key = Key(KeyPairGenerator.getInstance("Ed25519").generateKeyPair())
 
   def params(protocolMajor: Int): ProtocolParams =
+    // none before Babbage (the mirror holds none)
     ProtocolParams(
       minFeeA = 1,
       minFeeB = 100,
       maxTxSize = 16384,
       maxBlockBodySize = 65536,
       maxValueSize = 5000,
-      coinsPerUTxOByte =
-        if protocolMajor >= 7 then 4310 else 0, // none before Babbage (the mirror holds none)
+      coinsPerUTxOByte = if protocolMajor >= 7 then 4310 else 0,
       keyDeposit = 2000000,
       poolDeposit = 500000000,
       eMax = 18,

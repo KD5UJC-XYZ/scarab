@@ -12,6 +12,8 @@ import scala.jdk.CollectionConverters.*
 /** A recorded phase-2 evaluation (`follow --plutus-cases`): a Preview transaction with the outputs
   * it spends and references, the cost models in force and the slot clock, with the block's
   * `is_valid` flag.
+  * @param collateral
+  *   The collateral outputs, when the case file has them (cases built from an explorer do).
   */
 final case class PlutusCase(
     name: String,
@@ -23,7 +25,6 @@ final case class PlutusCase(
     references: Map[TxIn, TxOut],
     costModels: Map[Int, Vector[BigInt]],
     clock: Map[BigInt, BigInt],
-    /** The collateral outputs, when the case file has them (cases built from an explorer do). */
     collateral: Map[TxIn, TxOut] = Map.empty
 ):
   def params: ProtocolParams =

@@ -106,7 +106,8 @@ object StakePoolState:
     Focus[StakePoolState](_.delegators)
 
 /** `PState era` (`State/CertState.hs:232-246`): the pools. `vrfKeyHashes` counts the registrations
-  * of each VRF key hash (a derived field, checked on decode by the mirror).
+  * of each VRF key hash. The native rules maintain this map from protocol version 11; legacy
+  * conversion reconstructs it from the pool records.
   */
 final case class PState(
     vrfKeyHashes: SortedMap[VRFVerKeyHash, NonZero[Word64]],

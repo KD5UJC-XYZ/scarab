@@ -394,16 +394,18 @@ enum Datum:
   /** Inline datum: the bytes of the plutus data (the content of the `#6.24` wrapper). */
   case Inline(data: Bytes)
 
-/** A transaction output with its original encoding. */
+/** A transaction output with its original encoding.
+  *
+  * @param valueSize
+  *   Size in bytes of the value as it arrived (informational: the size rules use
+  *   [[Value.serializedSize]], the canonical re-serialisation).
+  */
 final case class TxOut(
     raw: Bytes,
     address: Address,
     value: Value,
     datum: Datum,
     scriptRef: Option[Script],
-    /** Size in bytes of the value as it arrived (informational: the size rules use
-      * [[Value.serializedSize]], the canonical re-serialisation).
-      */
     valueSize: Int
 ):
   def hasDatum: Boolean = datum != Datum.NoDatum

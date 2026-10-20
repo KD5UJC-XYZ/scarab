@@ -5,15 +5,16 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.*
 
 /** A stake distribution snapshot: delegated stake per credential and the pool parameters in force.
+  *
+  * @param idlePools
+  *   Pools with a registered delegator that has no stake. Such a credential is in neither `stake`
+  *   nor `delegations` (the ledger's active stake holds non-zero amounts only), but the pool still
+  *   counts it as a delegator and so appears, with no stake, in the pool distribution.
   */
 final case class Snapshot(
     stake: Map[Credential, BigInt],
     delegations: Map[Credential, Bytes],
     pools: Map[Bytes, PoolParams],
-    /** Pools with a registered delegator that has no stake. Such a credential is in neither `stake`
-      * nor `delegations` (the ledger's active stake holds non-zero amounts only), but the pool
-      * still counts it as a delegator and so appears, with no stake, in the pool distribution.
-      */
     idlePools: Set[Bytes] = Set.empty
 ):
   /** Total stake delegated to each registered pool. */
@@ -64,8 +65,28 @@ final case class InstantRewards(
 object InstantRewards:
   val empty: InstantRewards = InstantRewards(Map.empty, Map.empty, 0, 0)
 
-/** The ledger state the node maintains. Collections are persistent, so the per-block copies kept by
-  * the volatile chain share structure.
+/** Frozen flat ledger state used by legacy snapshot conversion and flat-fixture tests. Collections
+  * are persistent, so retained copies share structure. The live node uses
+  * `ledger.state.NewEpochState` in `consensus.state.MirrorState`.
+  * @param rewardUpdate
+  *   The reward update to apply at the next boundary. The ledger creates it with the first block
+  *   after `startRewards` slots into the epoch; an epoch without such a block pays no rewards.
+  * @param poolDistribution
+  *   Pool stake distribution for this epoch's leader schedule (`nesPd`).
+  * @param genDelegs
+  *   Pre-Conway state; empty on chains that start in Conway.
+  * @param prevParams
+  *   Parameters of the previous epoch (`esPrevPp`), used by the reward calculation.
+  * @param rewardRegistered
+  *   Registered credentials when the reward calculation started (pre-Babbage reward prefilter).
+  * @param gov
+  *   Conway governance state; empty before Conway.
+  * @param committeeState
+  *   Committee hot-key authorisations and resignations by cold credential.
+  * @param donation
+  *   Treasury donations of the epoch so far, moved to the treasury at the boundary.
+  * @param rewardDraft
+  *   The reward update computed at the epoch boundary, waiting for the block that creates it.
   */
 final case class LedgerState(
     epoch: BigInt,
@@ -84,31 +105,19 @@ final case class LedgerState(
     snapshots: Snapshots,
     blocksCurrent: Map[Bytes, BigInt],
     blocksPrevious: Map[Bytes, BigInt],
-    /** The reward update to apply at the next boundary. The ledger creates it with the first block
-      * after `startRewards` slots into the epoch; an epoch without such a block pays no rewards.
-      */
     rewardUpdate: Option[RewardUpdate],
-    /** Pool stake distribution for this epoch's leader schedule (`nesPd`). */
     poolDistribution: Snapshot,
-    // Pre-Conway state; empty on chains that start in Conway.
     genDelegs: Map[Bytes, GenDelegPair] = Map.empty,
     futureGenDelegs: Vector[FutureGenDeleg] = Vector.empty,
     ppup: Ppup = Ppup.empty,
     mir: InstantRewards = InstantRewards.empty,
     ptrs: PtrMap = PtrMap.empty,
-    /** Parameters of the previous epoch (`esPrevPp`), used by the reward calculation. */
     prevParams: Option[ProtocolParams] = None,
-    /** Registered credentials when the reward calculation started (pre-Babbage reward prefilter).
-      */
     rewardRegistered: Option[Set[Credential]] = None,
     plutus: PlutusStats = PlutusStats.zero,
-    // Conway governance state; empty before Conway.
     gov: GovState = GovState.empty,
-    /** Committee hot-key authorisations and resignations by cold credential. */
     committeeState: Map[Credential, CommitteeAuth] = Map.empty,
-    /** Treasury donations of the epoch so far, moved to the treasury at the boundary. */
     donation: BigInt = 0,
-    /** The reward update computed at the epoch boundary, waiting for the block that creates it. */
     rewardDraft: Option[RewardUpdate] = None
 ):
   /** Parameters in force during the previous epoch. */

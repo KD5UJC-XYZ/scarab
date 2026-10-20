@@ -201,12 +201,12 @@ class ConwayRulesSuite extends FunSuite:
       Vector(collateralIn -> out(alice.address(), 100 * ada), lockedIn -> locked)
     )
     val units = ExUnits(1000, 1000000)
+    // `{ [0, 0] : [1, [1000, 1000000]] }` and `[ 1 ]`
     val wits = Witnesses(
       Vector.empty,
       scripts = Vector(plutus),
       datums = Vector(datum),
       redeemers = Vector(Redeemer(0, 0, Bytes(Vector(0x01)), units)),
-      // `{ [0, 0] : [1, [1000, 1000000]] }` and `[ 1 ]`
       redeemersRaw = Some(
         Bytes(
           Vector(0xa1, 0x82, 0x00, 0x00, 0x82, 0x01, 0x82, 0x19, 0x03, 0xe8, 0x1a, 0x00, 0x0f, 0x42,
@@ -310,11 +310,11 @@ class ConwayRulesSuite extends FunSuite:
       Set(ScriptKind.PlutusV3)
     )
     def run(protocol: Int, refs: Vector[TxIn]) =
+      // the placeholder script is not well-formed UPLC; this test is about reference inputs
       rule(
         rs.tx(
           base.copy(params = base.params.copy(protocolMajor = protocol)),
           tx(bodyWith(hash, refs), Vector(alice), wits),
-          // the placeholder script is not well-formed UPLC; this test is about reference inputs
           env.copy(
             evaluator = scripted(true),
             decoder = xyz.kd5ujc.scarab.plutus.ScriptDecoder.lenient

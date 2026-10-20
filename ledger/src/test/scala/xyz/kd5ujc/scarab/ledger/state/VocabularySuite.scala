@@ -12,8 +12,8 @@ import xyz.kd5ujc.scarab.ledger.state.Credential.{KeyHashObj, ScriptHashObj}
 import xyz.kd5ujc.scarab.ledger.state.DRep.*
 import xyz.kd5ujc.scarab.ledger.state.VocabularyGen.{*, given}
 
-/** The orders of the vocabulary are the Haskell `Ord` instances (pinned sources:
-  * `.workspace/data/2026-10-15-upstream-pinned/cardano-ledger/libs/cardano-ledger-core/src/Cardano/Ledger/`).
+/** The vocabulary orders match the Haskell `Ord` instances. [[Credential]], [[DRep]] and
+  * [[WithOrigin]] document the upstream constructors and source locations that determine them.
   */
 class VocabularySuite extends DisciplineSuite:
   given Cogen[KeyHash[StakePool]] = cogenShow

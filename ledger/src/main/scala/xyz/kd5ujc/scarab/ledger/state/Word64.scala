@@ -5,7 +5,7 @@ import cats.{Order, Show}
 
 /** `Word64`: an unsigned 64-bit integer, the representation of Haskell's `EpochNo`, `SlotNo`,
   * `BlockNo` and `CompactForm Coin` (`Slot.hs:44,135`, `Block.hs:22`, `Coin.hs:148`; the first two
-  * pinned in `2026-10-15-upstream-pinned/cardano-base-slotting-0.2.2.0`).
+  * from cardano-slotting 0.2.2.0).
   *
   * Held in a `Long` as its two's-complement bits, so a value from 2^63 up reads as a negative
   * `Long`: nothing outside this object may look at the bits as a signed number. The order and the

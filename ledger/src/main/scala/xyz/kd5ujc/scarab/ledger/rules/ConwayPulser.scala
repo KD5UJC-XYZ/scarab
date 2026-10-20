@@ -14,8 +14,8 @@ import xyz.kd5ujc.scarab.ledger.state.*
   * `DRPulsing` until it is forced. The node's mirror holds the pulser only completed
   * ([[DRComplete]], `DRepPulser.hs:423-431`): ratification is a pure function of the snapshot taken
   * at the boundary, so the snapshot and the ratification it reaches are computed together here, by
-  * the ratification rules the node already has ([[node.Ratify]]) over the mirror's records, which
-  * are put in the node's plain form for them.
+  * [[xyz.kd5ujc.scarab.ledger.Ratify]] over the mirror's records, converted to the plain records
+  * that ratification reads.
   */
 object ConwayPulser:
 

@@ -6,16 +6,20 @@ import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf}
 
-/** What chain selection looks at in the tip block of a chain. */
+/** What chain selection looks at in the tip block of a chain.
+  *
+  * @param issuer
+  *   The block issuer's cold key; Byron blocks have none.
+  * @param issueNo
+  *   The operational certificate's issue number.
+  * @param tieBreak
+  *   The VRF output that breaks ties (TPraos: the leader certificate's, Praos: the single one).
+  */
 final case class SelectView(
     blockNo: BigInt,
     slot: BigInt,
-    /** The block issuer's cold key; Byron blocks have none. */
     issuer: Option[Bytes],
-    /** The operational certificate's issue number. */
     issueNo: BigInt,
-    /** The VRF output that breaks ties (TPraos: the leader certificate's, Praos: the single one).
-      */
     tieBreak: Option[Bytes]
 )
 

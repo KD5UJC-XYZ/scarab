@@ -202,6 +202,8 @@ object Certificate:
       metadata = xs(8).value match
         case xyz.kd5ujc.scarab.codec.Value.Null => None
         case _                                  => Some(xs(8).original)
+    // Match the ledger-state codec's typed representation: the empty relay sequence is the
+    // empty value (Bytes.empty), while non-empty relay sequences retain their original wire.
     yield PoolParams(
       operator,
       vrf,
@@ -210,8 +212,6 @@ object Certificate:
       margin,
       account,
       owners.toSet,
-      // Match the ledger-state codec's typed representation: the empty relay sequence is the
-      // empty value (Bytes.empty), while non-empty relay sequences retain their original wire.
       if xs(7).original == Bytes(Vector(0x80.toByte)) then Bytes.empty else xs(7).original,
       metadata
     )
@@ -381,7 +381,11 @@ final case class BootstrapWitness(
   */
 final case class Redeemer(tag: Int, index: BigInt, data: Bytes, exUnits: ExUnits)
 
-/** Witness set. Plutus scripts are only hashed: phase-2 evaluation is not performed. */
+/** Decoded witnesses and original encodings used by [[ScriptIntegrity]] and [[Phase2]].
+  *
+  * @param raw
+  *   The witness set's original encoding.
+  */
 final case class Witnesses(
     vkeys: Vector[(Bytes, Bytes)],
     bootstrap: Vector[BootstrapWitness] = Vector.empty,
@@ -390,7 +394,6 @@ final case class Witnesses(
     redeemers: Vector[Redeemer] = Vector.empty,
     redeemersRaw: Option[Bytes] = None,
     datumsRaw: Option[Bytes] = None,
-    /** The witness set's original encoding. */
     raw: Option[Bytes] = None
 ):
   lazy val scriptsByHash: Map[Bytes, Script] = scripts.map(s => s.hash -> s).toMap

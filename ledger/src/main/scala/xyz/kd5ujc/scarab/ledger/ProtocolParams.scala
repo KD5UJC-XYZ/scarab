@@ -82,6 +82,14 @@ object DRepVotingThresholds:
 
 /** The protocol parameters the implemented ledger rules consult, for every era. Fields an era does
   * not have keep their genesis or zero value and are not consulted.
+  * @param d
+  *   Decentralisation parameter; removed in Babbage, where it is effectively 0.
+  * @param minUTxOValue
+  *   Shelley..Mary minimum lovelace per output.
+  * @param coinsPerUTxOWord
+  *   Alonzo minimum lovelace per 8-byte word of output.
+  * @param costModels
+  *   Cost model values by language tag (0 = PlutusV1), in the canonical parameter order.
   */
 final case class ProtocolParams(
     minFeeA: BigInt,
@@ -106,12 +114,9 @@ final case class ProtocolParams(
     minFeeRefScriptCostPerByte: Rational,
     protocolMinor: BigInt = 0,
     maxBlockHeaderSize: BigInt = 1100,
-    /** Decentralisation parameter; removed in Babbage, where it is effectively 0. */
     d: Rational = Rational.zero,
     extraEntropy: Nonce = Nonce.Neutral,
-    /** Shelley..Mary minimum lovelace per output. */
     minUTxOValue: BigInt = 0,
-    /** Alonzo minimum lovelace per 8-byte word of output. */
     coinsPerUTxOWord: BigInt = 0,
     priceMem: Rational = Rational.zero,
     priceSteps: Rational = Rational.zero,
@@ -119,7 +124,6 @@ final case class ProtocolParams(
     maxBlockExUnits: ExUnits = ExUnits.zero,
     collateralPercentage: BigInt = 0,
     maxCollateralInputs: BigInt = 0,
-    /** Cost model values by language tag (0 = PlutusV1), in the canonical parameter order. */
     costModels: Map[Int, Vector[BigInt]] = Map.empty,
     poolVotingThresholds: PoolVotingThresholds = PoolVotingThresholds.zero,
     drepVotingThresholds: DRepVotingThresholds = DRepVotingThresholds.zero,
@@ -242,13 +246,13 @@ object ProtocolParams:
         _.fold(Rational.zero)(Rational.fromDecimal)
       )
       voting <- ConwayGenesis.votingParams(c)
+    // Babbage translation: coinsPerUTxOByte = lovelacePerUTxOWord / 8 (8-byte words), floored.
     yield ProtocolParams(
       minFeeA,
       minFeeB,
       maxTxSize,
       maxBlockBodySize,
       maxValueSize,
-      // Babbage translation: coinsPerUTxOByte = lovelacePerUTxOWord / 8 (8-byte words), floored.
       perWord / 8,
       keyDeposit,
       poolDeposit,

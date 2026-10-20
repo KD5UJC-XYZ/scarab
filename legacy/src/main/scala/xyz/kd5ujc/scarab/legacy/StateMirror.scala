@@ -22,7 +22,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
 }
 import xyz.kd5ujc.scarab.protocol.Era
 
-/** The conversion of the flat node state of the old rules ([[FlatFlatNodeState]]) to the
+/** The conversion of the flat node state of the old rules ([[FlatNodeState]]) to the
   * [[MirrorState]] (FROZEN, J2.9; the other direction went with the old rules). The position of the
   * node's tip is an argument (it is not a property of the configuration): the anchor, the last
   * block applied, or none before the first.

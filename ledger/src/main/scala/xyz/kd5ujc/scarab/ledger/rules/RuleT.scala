@@ -6,10 +6,10 @@ import cats.mtl.{Handle, Local, Stateful}
 import scala.annotation.tailrec
 
 /** The interpreter of the rule algebras ([[Sts]]): a pure program over the constants, a state and a
-  * failure, run by a loop with an explicit, type-aligned stack. It stands where the plan has
-  * `Kleisli[StateT[Either[Fail, *], S, *], Globals, *]` (design §2.2); the plan allows a fused form
-  * if the stack costs more than 10% of block-apply time, and J2.4 measures it on a Preview epoch,
-  * the first time there is a rule to measure.
+  * failure, run by a loop with an explicit, type-aligned stack. It implements the capabilities of
+  * `Kleisli[StateT[Either[Fail, *], S, *], Globals, *]` without nesting those interpreters. The
+  * design, reference-interpreter comparisons and measurements are recorded in
+  * `docs/design/rule-interpreter-as-built.md`.
   *
   * Stack safety is the point of the shape: a rule sequences a block's transactions, a transaction's
   * certificates, an epoch's pools, and a function that calls the next step from its continuation

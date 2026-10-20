@@ -133,18 +133,21 @@ class ScriptContextGoldenSuite extends FunSuite:
 
   private def certificates(conway: Boolean) =
     if conway then
+      // Tags 7/8 cover registration with a deposit and script deregistration with a refund;
+      // 2/9/10/11 cover pool, vote (including always-abstain), stake-and-vote and registration
+      // delegation. Tags 16/17/18 cover DRep registration, deregistration and update; 4 retires a pool.
       Vector(
-        arr(uint(7), arr(uint(0), bytes(hash28(70))), uint(2000000)), // reg with deposit
-        arr(uint(8), arr(uint(1), bytes(scriptHash)), uint(2000000)), // unreg script with refund
-        arr(uint(2), arr(uint(0), bytes(hash28(71))), bytes(poolId)), // delegate to pool
+        arr(uint(7), arr(uint(0), bytes(hash28(70))), uint(2000000)),
+        arr(uint(8), arr(uint(1), bytes(scriptHash)), uint(2000000)),
+        arr(uint(2), arr(uint(0), bytes(hash28(71))), bytes(poolId)),
         arr(
           uint(9),
           arr(uint(1), bytes(hash28(72))),
           arr(uint(0), bytes(hash28(73)))
-        ), // vote deleg
-        arr(uint(9), arr(uint(0), bytes(hash28(74))), arr(uint(2))), // always abstain
-        arr(uint(10), arr(uint(0), bytes(hash28(75))), bytes(poolId), arr(uint(3))), // stake+vote
-        arr(uint(11), arr(uint(0), bytes(hash28(76))), bytes(poolId), uint(1)), // reg+stake
+        ),
+        arr(uint(9), arr(uint(0), bytes(hash28(74))), arr(uint(2))),
+        arr(uint(10), arr(uint(0), bytes(hash28(75))), bytes(poolId), arr(uint(3))),
+        arr(uint(11), arr(uint(0), bytes(hash28(76))), bytes(poolId), uint(1)),
         arr(
           uint(13),
           arr(uint(0), bytes(hash28(77))),
@@ -152,12 +155,12 @@ class ScriptContextGoldenSuite extends FunSuite:
           arr(uint(1), bytes(scriptHash)),
           uint(5)
         ),
-        arr(uint(16), arr(uint(1), bytes(scriptHash)), uint(500), Null), // drep reg
-        arr(uint(17), arr(uint(0), bytes(hash28(78))), uint(500)), // drep unreg
-        arr(uint(18), arr(uint(0), bytes(hash28(79))), Null), // drep update
+        arr(uint(16), arr(uint(1), bytes(scriptHash)), uint(500), Null),
+        arr(uint(17), arr(uint(0), bytes(hash28(78))), uint(500)),
+        arr(uint(18), arr(uint(0), bytes(hash28(79))), Null),
         arr(uint(14), committeeCold, committeeHot),
         arr(uint(15), committeeCold, Null),
-        arr(uint(4), bytes(poolId), uint(77)) // pool retire
+        arr(uint(4), bytes(poolId), uint(77))
       )
     else
       Vector(

@@ -12,8 +12,8 @@ import xyz.kd5ujc.scarab.ledger.state.{GovState, LedgerState}
 import xyz.kd5ujc.scarab.ledger.state.given
 import xyz.kd5ujc.scarab.legacy as flat
 
-// The ledger side of the mirror: the node's flat ledger state to the Haskell-shaped
-// `NewEpochState` of an era and back. Plan sections 2 and 3 of the ledger-state mirror.
+// Frozen conversion from the flat ledger state to the Haskell-shaped `NewEpochState` of an era.
+// The inverse is test support in `LedgerMirrorBack`; genesis wiring uses the forward conversion.
 
 /** The mirror of the node's ledger state in era `E`: the Haskell-shaped state and the node-only
   * bookkeeping that has no place in it.
@@ -35,10 +35,9 @@ object LedgerImage:
   *
   * `to` derives what Haskell holds and the node does not (the VRF key hashes, the delegators of a
   * pool, the pointer of an account, `StakePoolSnapShot`, the pool distribution, the future
-  * parameters); `from` recomputes them from the rest of the mirror and refuses a mirror whose
-  * stored values disagree ([[MirrorError.DerivedMismatch]]), which Haskell, trusting what it
-  * decodes, does not. The state of the node is recovered whole: `from(to(s))` is
-  * [[LedgerMirror.normalised]]`(network, s)`.
+  * parameters). The inverse in test support, `LedgerMirrorBack.from`, recomputes those fields and
+  * refuses inconsistent stored values ([[MirrorError.DerivedMismatch]]). Its round-trip law is
+  * `from(to(s)) == LedgerMirrorBack.normalised(network, s)`; production exposes only `to`.
   *
   * The capabilities are the environment ([[MirrorEnv]]) and the error ([[MirrorError]]); the
   * position of the tip is an argument, because it is not a property of the configuration.
@@ -49,10 +48,9 @@ trait LedgerMirror[F[_]]:
       ShelleyBasedEra[E]
   ): F[Mirrored[LedgerImage[E]]]
 
-  // The parts of `to`, each on its own. A reader that needs the pool distribution does not pay for
-  // the accounts: `to` is the sum of these (and of what the node keeps beside the mirror), and the
-  // read paths of the node (`node.read`) take the ones they ask for, so that a flat state is read
-  // through the mirror's vocabulary without converting all of it.
+  // The parts of `to` remain available separately for legacy conversion and its tests. Converting
+  // only the pool distribution, for example, does not require converting every account. Live node
+  // reads use the native era-indexed state directly.
 
   /** The scalars of the new-epoch state: the epoch, the blocks made, the pots and the three amounts
     * of the UTxO state.
@@ -243,10 +241,10 @@ object LedgerMirror:
     // ---- the certificate state
 
     private def pState(s: flat.LedgerState): F[PState] =
-      // `psVRFKeyHashes` is kept from protocol version 10 (the hard fork populates it,
-      // `Conway/Rules/HardFork.hs:106-118`): the VRF key of every registered pool and of every
-      // pending re-registration, once (`Shelley/Rules/Pool.hs:262-306`).
-      // Haskell counts the registered pools that use a key: a key two pools share is 2.
+      // The frozen conversion derives `psVRFKeyHashes` from protocol version 10. Native rules
+      // populate it at version 11 instead (`HardFork.populateVRFKeyHashes`); keep the earlier
+      // conversion semantics for legacy values. Count each registered and pending pool key once,
+      // so a key shared by two pools has count 2.
       val vrfs: List[(Bytes, Int)] =
         if s.params.protocolMajor >= 10 then
           (s.pools.keySet ++ s.futurePools.keySet).iterator

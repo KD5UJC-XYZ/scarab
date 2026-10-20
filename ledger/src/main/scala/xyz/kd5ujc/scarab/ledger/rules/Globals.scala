@@ -12,7 +12,7 @@ import xyz.kd5ujc.scarab.ledger.{EpochGeometry, LedgerGlobals}
   * constants ([[LedgerGlobals]]: the supply, the network, the update quorum) and the era history
   * ([[EpochGeometry]]: `epochInfo`, the stability windows and the security parameter). The pairing
   * is by value, so a chain that learns its first Shelley epoch while it syncs ([[resolved]])
-  * changes both together, as `NodeRules.enterShelley` does for the old rules.
+  * changes both together through [[resolved]].
   */
 final case class Globals(ledger: LedgerGlobals, geometry: EpochGeometry):
   /** `networkId`. */

@@ -53,10 +53,10 @@ class V1ContextSuite extends FunSuite:
 
   private final case class Recorded(file: String, plutus: PlutusCase, verdict: Verdict)
 
+  // The same transaction/ledger/block harness also checks the executed binary-DST controls.
   private val directories = Vector(
     Path.of("fixtures/reference/v1-context"),
     Path.of("fixtures/reference/context-errors/submissions"),
-    // The same transaction/ledger/block harness also checks the executed binary-DST controls.
     Path.of("fixtures/reference/plutus-boundaries/transactions")
   )
 

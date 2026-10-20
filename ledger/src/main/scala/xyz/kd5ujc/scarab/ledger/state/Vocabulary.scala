@@ -317,8 +317,7 @@ object DRep:
 
 /** `WithOrigin a` (cardano-slotting `Slot.hs:71-82`, `data WithOrigin t = Origin | At !t deriving
   * (Eq, Ord, ..)`): the genesis point, or a value. Derived `Ord` orders by constructor position, so
-  * `Origin` is the least; the sources are pinned in
-  * `2026-10-15-upstream-pinned/cardano-base-slotting-0.2.2.0`.
+  * `Origin` is the least. Source version: cardano-slotting 0.2.2.0.
   */
 enum WithOrigin[+A]:
   case Origin

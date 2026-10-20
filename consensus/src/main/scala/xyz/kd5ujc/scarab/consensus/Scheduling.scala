@@ -10,15 +10,18 @@ import scala.concurrent.duration.*
 
 /** What the scheduling monitor and the CPU-bound steps have seen (D8): how late timers fired and
   * how long the longest CPU-bound step held a thread.
+  * @param samples
+  *   Number of timer samples.
+  * @param maxTimerLatenessMs
+  *   The latest a timer fired, beyond its due time.
+  * @param steps
+  *   CPU-bound steps run on the pool, by label: count, longest and total duration.
   */
 final case class SchedulingReport(
-    /** Number of timer samples. */
     samples: Long,
-    /** The latest a timer fired, beyond its due time. */
     maxTimerLatenessMs: Long,
     timersLateOver50: Long,
     timersLateOver100: Long,
-    /** CPU-bound steps run on the pool, by label: count, longest and total duration. */
     steps: Map[String, SchedulingReport.Step]
 ):
   def stepCount: Long = steps.valuesIterator.map(_.count).sum

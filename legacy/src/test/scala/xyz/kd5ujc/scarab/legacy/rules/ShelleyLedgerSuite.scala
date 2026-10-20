@@ -183,8 +183,8 @@ class ShelleyLedgerSuite extends FunSuite:
   ): flat.LedgerState =
     val s = state(c.pv, funds)
     val deposits = accounts.values.map(_.deposit).sum + pools.values.map(_.deposit).sum
+    // the parameters of the eras before Babbage have no cost per UTxO byte
     s.copy(
-      // the parameters of the eras before Babbage have no cost per UTxO byte
       params = s.params.copy(
         minPoolCost = 0,
         coinsPerUTxOByte = if c.pv >= 7 then s.params.coinsPerUTxOByte else 0

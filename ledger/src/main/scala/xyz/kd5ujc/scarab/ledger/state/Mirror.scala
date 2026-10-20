@@ -7,12 +7,13 @@ import cats.derived.*
 import scala.reflect.ClassTag
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 
-// The vocabulary of the conversion between the node's flat ledger state and the mirror of the
-// Haskell state (`LedgerMirror.scala`): what a mirror cannot say, why a conversion refuses, and the
-// environment it reads.
+// Vocabulary for the frozen flat-state conversion in `legacy.LedgerMirror`: what that conversion
+// cannot represent, why it refuses, and the environment it reads. The live era-indexed state keeps
+// native reward attribution and resumable reward updates; the flat conversion's gaps below do not
+// describe every live state.
 
-/** What a mirror built from the node's state does not carry, or carries only in part. A mirror is
-  * always accompanied by the set of gaps it has; the set is a function of the source state alone
+/** What a mirror built from the legacy flat state does not carry, or carries only in part. A mirror
+  * is always accompanied by the set of gaps it has; the set is a function of the source state alone
   * (`LedgerMirror.gaps`), so the laws can state it exactly.
   */
 enum Gap derives Eq, Show, Diff:
@@ -54,8 +55,8 @@ object Mirrored:
   given Functor[Mirrored] with
     def map[A, B](m: Mirrored[A])(f: A => B): Mirrored[B] = Mirrored(f(m.value), m.gaps)
 
-/** The pieces of a mirror that are derived from the others (`LedgerMirror.from` recomputes them and
-  * refuses a mirror that disagrees).
+/** The pieces of a mirror that are derived from the others (`legacy.LedgerMirrorBack.from`
+  * recomputes them and refuses a mirror that disagrees).
   */
 enum Derived derives Show:
   /** `psVRFKeyHashes`. */
