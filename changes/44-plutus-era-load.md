@@ -1,1 +1,3 @@
-Exercise Plutus V1 in Alonzo and V1/V2 in Babbage and Conway during normal era-load runs. Require both validity-flag rejection controls and included spending/minting transactions, checking successful outputs and failed-script collateral effects against the reference ledger.
+### Added (Plutus era load, #44)
+
+- Exercise Plutus V1 in Alonzo and V1/V2 in Babbage and Conway during normal era-load runs. Require both validity-flag rejection controls and included spending/minting transactions, checking successful outputs and failed-script collateral effects against the reference ledger.
