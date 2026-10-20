@@ -38,8 +38,8 @@ val testDependencies = Seq(
   Libraries.munitTest
 )
 
-// Every module is the sbt project `<id>`, the directory `<id>` and the artifact `scarab-<id>`. The
-// dependency direction below is enforced by sbt (a cycle does not load):
+// Modules use `<id>` for the project and directory, with explicit overrides for blst-native and
+// models-gen below. Artifact names start with `scarab-`; sbt enforces an acyclic dependency graph:
 //
 //   blstNative <- crypto, plutus
 //   codec <- crypto <- protocol <- network

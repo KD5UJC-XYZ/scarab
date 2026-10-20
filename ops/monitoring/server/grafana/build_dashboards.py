@@ -150,6 +150,8 @@ def runs_dashboard():
         (12, logs("Epochs", '{' + SEL + ', event=~"epoch|epochValidated|eraTransition"}')), h=10)
     p.row("Node metrics (/metrics; runs started with --metrics-listen)")
     M = 'host=~"$host", container=~"$container"'
+    # Snapshot refusal/write failure leaves the node running but can increase replay on restart;
+    # include the snapshot-problem counter so the overview exposes this degradation (B29).
     p.line(
         (5, stat("Synced (metrics)", PROM,
                  f'100 * max by (host, container) (cardano_node_metrics_slotNum_int{{{M}}}) '
@@ -161,8 +163,6 @@ def runs_dashboard():
         (5, stat("Validation errors", PROM,
                  f'sum by (host, container) (increase(scarab_validation_errors_total{{{M}}}[$__range]))',
                  decimals=0, thresholds=[{"color": "green", "value": None}, {"color": "red", "value": 1}])),
-        # a snapshot the node could not write or refused (B29): the node keeps running and replays more at the
-        # next start, so nothing else shows it
         (4, stat("Snapshots refused or failed", PROM,
                  f'sum by (host, container) (increase(scarab_snapshot_problems_total{{{M}, kind=~"Refused|Failed"}}[$__range]))',
                  decimals=0, thresholds=[{"color": "green", "value": None}, {"color": "red", "value": 1}])),
