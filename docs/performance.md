@@ -1880,3 +1880,124 @@ All six runs had identical input SHA-256
 SHA-256 `a45384a2914effec34e899b6eb41b2ae93a5d4f8bdfc263671f01ac5d5111491`, and enum-output SHA-256
 `e0e96fc5eee36517c9e0b40b18d4e44df9f872029cc259f57663c66bdf003c62`. These bind the measured model
 only; they do not assert public-chain state parity or cover codec derivation/interner performance.
+## 33. Typed per-kind decode interning (#204)
+
+**2026-10-20, level 3.** `Interned[A]` owns a homogeneous weak scope index returning only
+`Table[A]`; the document retains that table strongly. Typed entries preserve the path
+`Interned[A] → Table[A] → Entry[A] → A`. No heterogeneous value recovery, source cast or runtime
+generic/phantom-role test remains. The [ADR 0013 addendum](adr/0013-cbor-documents-are-an-index-over-the-input.md#addendum-typed-kind-ownership-204-2026-10-20)
+records ownership, synchronization and the measured mutable-table exception. `Node.share` and
+`Wire.interned` now require reference types; production `Bytes`/`Credential` kinds are unchanged.
+
+The first homogeneous-array prototype (`7e4e87f0`) preserved all measured outputs and retention;
+its legacy-derived decode aggregate was +7.69%, with a +22.17% extreme cross-JVM comparison.
+A typed weak recent-association fast path (`c46d0214`) still measured **+10.45%** on that primary
+input, failing the acceptance bar. Those complete experiments remain under
+`/tmp/scarab-204-bench-diagnostic` and `/tmp/scarab-204-bench-weak-fast`; they are not relabelled as
+passing or discarded. The final design `9ac7ea5e` uses typed entries carrying cached hashes.
+Unequal hashes skip deep equality, and growth reuses each entry's hash. It adds entry allocation;
+the full decode and memory measurements below include it. These experiments do not isolate a
+causal cost for weak references, array stores, JIT or GC.
+
+**Inputs and comparison.** Baseline is dev `2ef358366f3a50397645851f7db81b6a91c5c779`, with
+frozen classes from the #247 baseline. That build has the visibility-only `private[storage]`
+`SnapshotV5.encoded` seam, which is not invoked here; decode behavior is unchanged. Candidate
+production differences are `Interns` and the reference bounds on `Node.share`/`Wire.interned`.
+The compiled source/class inventories bind the experiment independently of Docker's unknown
+`BuildInfo.gitCommit`. The maintained helper is
+`node/src/test/scala/xyz/kd5ujc/scarab/storage/InternDecodeBench.scala`; its formatted source differs
+only in whitespace from the measured standalone file (stripped-source equality asserted).
+
+| Input | Identity | Bytes |
+|---|---|---:|
+| Current Preview native V5 | #27 authenticated bootstrap/replay, slot 125669042/block 4769869; `snapshot-00000000000125669042-4769869.bin`; SHA-256 `bbdc6fd7434564e0a289af5b596401d713dca75b26e70172b16803683e7be512` | 51,199,374 |
+| Legacy-derived preprod native V5 | Maintained `preprod-v4` corpus, `snapshot-00000000000136444301-5297790.bin`; SHA-256 `b77a119082acbda5d6c2fb43131b5cad856056790b13a0164a02f48299a2ebcf` | 51,777,723 |
+
+The second input is the authenticated V5 conversion at source
+`648aed117f826d06117f616b5c0a3716a50485a7`, manifest SHA-256
+`d81e326f85eb47d7a92d041a3309007599bcdaa8e70de0eaf4b38bb293ce0168`, of the archived V4
+51,584,590-byte capture `0b7c061b8e47560c665d3d22c7898ca53884c361002c2975bd5d925a433f94a8`.
+Original archives are unchanged; no retired V4 decoder is restored. The inputs remain outside Git
+under `/tmp/scarab/mithril27/download-bootstrap/snapshots` and
+`.workspace/data/2026-10-18-snapshot-v5-corpus/preprod-v4/snapshots`. They contain complete native
+snapshot payloads and UTxO handles/statistics, not the separately backed RocksDB UTxO entries.
+
+**Protocol.** Euler Linux x86-64/WSL2 shared host; Docker Temurin 21.0.11/Scala 3.3.8 image
+`sha256:c90140def52d2711644c85a81c9bf218ffbe5dc81003bfb866154c2da832af38`, CPUs 8–11, no
+CPU quota, container memory 12g, network none, `-Xms3g -Xmx9g -XX:ActiveProcessorCount=4
+-XX:+UseG1GC`. One timed JVM at a time, old/typed/typed/old order, fresh JVM per input. Ten full
+decode warmups and nine samples follow an initial control. `SnapshotV5.decode` runs on the measured
+thread; wall nanoseconds and current-thread allocated bytes exclude file I/O/checksum, config
+loading, full result equality and SHA-256. Every measured result is compared completely with its
+control outside timing. Separate fingerprints compare all old/new states and truncated-input
+refusals. The later documentation/check commits do not change the measured runtime.
+
+| Decode | Old per-JVM medians (ms) | Typed per-JVM medians (ms) | Median-of-medians change | Allocation old → typed (MB/decode) | Slowest typed / fastest old median |
+|---|---:|---:|---:|---:|---:|
+| Current | 500.121 / 601.654 | 513.600 / 509.894 | −7.11% | 1,241.477 → 1,241.858 (+0.03%) | +2.70% |
+| Legacy-derived | 754.154 / 751.726 | 815.894 / 733.997 | +2.92% | 1,596.298 → 1,601.184 (+0.31%) | +8.54% |
+
+Both primary inputs pass the 10% limit, including the adverse cross-JVM comparison. The shared
+host and the old current-input spread prevent a firm general speed-up claim. Per-sample rows,
+allocation ranges, full command vectors, source/class/config inventories and output hashes remain
+in `/tmp/scarab-204-bench`; all samples, not only fastest runs, contribute to these medians.
+
+**Memory.** Separate fresh JVMs use the same old/typed/input order. After input/config setup,
+`jcmd 1 GC.class_histogram` forces a full collection at BASE, LIVE (exactly one typed state held),
+and RELEASED (state dropped). `GC.heap_info` and `MemoryMXBean` record the same checkpoints.
+A 1 ms sampler observes heap during the single cold decode, stopping before output rendering;
+histograms and full collection are outside decode timing. Peak is sampled used heap, not RSS or
+an exact high-water bound. Net LIVE−BASE includes runtime initialization as well as the state.
+
+| Memory, median of two JVMs | Current old → typed (MB) | Legacy-derived old → typed (MB) |
+|---|---:|---:|
+| LIVE−BASE | 152.195 → 152.151 (−0.03%) | 229.779 → 230.503 (+0.32%) |
+| Sampled absolute peak | 528.591 → 533.744 (+0.97%) | 627.649 → 633.424 (+0.92%) |
+| Sampled peak−BASE | 397.903 → 403.009 (+1.28%) | 497.274 → 503.040 (+1.16%) |
+| RELEASED−BASE | 0.832 → 0.829 | 1.076 → 1.075 |
+
+Every old/new LIVE histogram has exactly the same relevant retained counts:
+
+| Objects | Current | Legacy-derived |
+|---|---:|---:|
+| `Bytes` | 604,950 | 1,170,833 |
+| `ledger.Credential.Key` / `.Script` | 292,119 / 3,477 | 573,337 / 7,826 |
+| Native `Credential.KeyHashObj` / `.ScriptHashObj` | 714,117 / 19,448 | 720,423 / 16,291 |
+
+No `Interns.Table`, `Entry` or `Keep` remains after the LIVE collection: these materialized states
+no longer retain their decoding document. At RELEASED the credentials/wrappers are gone and
+`Bytes` returns to 99/121 objects in both conditions (setup BASE 98/120). Tests separately retain a
+live document across GC and prove its first value survives; a stable kind retains neither an
+expired scope nor its values. Concurrent documents, distinct phantom kinds with the same runtime
+class, 4096 equal-hash collisions through growth, full-state sharing and the million-voter 256 MiB
+heap control all pass. There is no material retained-heap regression on these captures; this is
+not a long-running concurrent-node heap claim.
+
+Full state digests are `a3fd6ef08420f9aa5e5e658cd0ab20e9699ef6dc93eb0afb3795d622768657b7`
+and `4caa61c9366251e1da56fbcde62e467887ac8f4824c812438b01c53ab11597fc`; the complete truncated
+refusal digest is `8b8d7c5df5b02e8f1b3d313a192316ef8a61781b4732f14e9633769a5fe42987`.
+They match in every applicable run. Binding SHA-256
+`36e7bb1f5d40f7f0be324bb6c66b9620a429d65e18e3eba83a19c8fae22d6338`; summary SHA-256
+`636265625d56459b227e877581c20a58cfb2029a765f24c7130a2259d9c3a11d`; measured helper SHA-256
+`38fdc419b67bf9bc20a30c936c5edfb8c7aef48a2457233c948c74b8163d0d50`.
+
+**Scenario and gates.** On `9ac7ea5e`,
+`python3 scripts/devnet.py --name scarab-204-root-entries-restart restart` exits 0: 30 block
+applications, two 0.7 s graceful stops, two native V5 shutdown snapshots, one restoration, no
+errors/refusals. Reference node 11.1.3/CLI 11.2.3.0, image
+`sha256:74e849e1b68e2cf8ba3cdfe3fcda67114f22d9bebc6a34372657cd179e704c4b`.
+Owned containers are removed; restart manifest SHA-256
+`bc0a6bdc0ba5098852d2dd1e77c23b49099113d96de35b3c4a8e2d56badcec53` is retained under
+`/tmp/scarab-204-evidence`. Docker `check` at this runtime source passes 5,144 tests with 16 optional-data skips, zero
+failures/errors across 14 modules, formatting/-Werror/standard fuzz/scalafix. The
+[PR #263 checklist](https://github.com/KD5UJC-XYZ/scarab/pull/263) carries the extended
+`fuzz 100000 1 4` receipt and exact published-head CI identity. Source-changing prototypes'
+aborted checks are not counted as passing gates.
+
+Reproduction: build each source with its own Docker/private-sbt-socket worktree, emit
+`node/runtimeClasspathFile`, freeze classes, and compile the same maintained helper against each
+classpath. Invoke `InternDecodeBench latency <label> <snapshot> <configs>` with the JVM/container
+settings above. For `memory`, keep stdin open; at each `READY BASE|LIVE|RELEASED`, run
+`docker exec <own-container> jcmd 1 GC.class_histogram` and `GC.heap_info`, then send `continue`.
+The retained `run.py` records exact Docker vectors and drives these checkpoints without manual
+timing choices. No file encoding or previous-version admission behavior changes.
