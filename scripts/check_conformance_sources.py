@@ -29,7 +29,7 @@ def sources(root: Path) -> list[Source]:
     network = json.loads((root / "fixtures/reference/ouroboros-network-protocol-codecs/keepalive.tsv.manifest.json").read_text())
     plutus = (root / "docs/plutus-conformance.md").read_text()
     # The reference executable's package pin, rather than a moving package index.
-    match = re.search(r"commit `([0-9a-f]{40})`", plutus)
+    match = re.search(r"IntersectMBO/plutus tag `[^`]+`, commit `([0-9a-f]{40})`", plutus)
     if match is None:
         raise ValueError("missing reference Plutus commit in docs/plutus-conformance.md")
     rewards = (root / "scripts/oracle/rewards/README.md").read_text()

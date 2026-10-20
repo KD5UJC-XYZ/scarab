@@ -86,6 +86,15 @@ class ConformanceSourcesTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "complete commit"):
             MODULE.inspect(source, self.fetcher({}, {}))
 
+    def test_unrelated_document_commit_does_not_replace_plutus_release_pin(self):
+        original_read = Path.read_text
+        def read(path, *args, **kwargs):
+            text = original_read(path, *args, **kwargs)
+            return "Related commit `" + "f" * 40 + "`\n" + text if path.name == "plutus-conformance.md" else text
+        with patch.object(Path, "read_text", read):
+            plutus = next(row for row in MODULE.sources(SCRIPT.parent.parent) if row.name == "plutus")
+        self.assertEqual(plutus.commit, "507cab8cf6192e5143f12be5b2d3005a2928dc6d")
+
     def test_failed_observation_writes_error_artifact_and_returns_failure(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "report.json"
