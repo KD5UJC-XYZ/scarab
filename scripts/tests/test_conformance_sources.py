@@ -76,7 +76,8 @@ class ConformanceSourcesTest(unittest.TestCase):
 
     def test_pins_come_from_existing_reference_evidence(self):
         rows = MODULE.sources(SCRIPT.parent.parent)
-        self.assertEqual({row.name for row in rows}, {"ledger", "network", "formal", "constrained", "plutus"})
+        self.assertEqual({row.name for row in rows},
+                         {"ledger", "network", "rewards", "formal", "constrained", "plutus"})
         for row in rows:
             self.assertRegex(row.commit, r"^[0-9a-f]{40}$")
 

@@ -32,6 +32,10 @@ def sources(root: Path) -> list[Source]:
     match = re.search(r"commit `([0-9a-f]{40})`", plutus)
     if match is None:
         raise ValueError("missing reference Plutus commit in docs/plutus-conformance.md")
+    rewards = (root / "scripts/oracle/rewards/README.md").read_text()
+    reward_pin = re.search(r"source revision is\s+`([0-9a-f]{40})`", rewards)
+    if reward_pin is None:
+        raise ValueError("missing released reward API source commit")
     return [
         Source("ledger", "IntersectMBO/cardano-ledger", ledger["upstream"]["commit"],
                ("cabal.project", "libs/cardano-ledger-conformance/", "libs/cardano-ledger-test/",
@@ -40,6 +44,10 @@ def sources(root: Path) -> list[Source]:
                ("cabal.project", "ouroboros-network/protocols/tests/", "ouroboros-network/protocols/tests-lib/",
                 "ouroboros-network/protocols/tests-cddl/", "network-mux/test/",
                 "cardano-diffusion/test/")),
+        Source("rewards", "IntersectMBO/cardano-ledger", reward_pin[1],
+               ("eras/shelley/impl/src/Cardano/Ledger/Shelley/PoolRank.hs",
+                "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rewards.hs",
+                "eras/shelley/impl/src/Cardano/Ledger/Shelley/LedgerState/PulsingReward.hs")),
         Source("formal", "IntersectMBO/formal-ledger-specifications",
                ledger["dependencies"]["formal-ledger-specifications"], ("hs/",), "master-artifacts"),
         Source("constrained", "input-output-hk/constrained-generators",

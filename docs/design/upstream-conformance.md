@@ -22,6 +22,8 @@ The [source-freshness workflow](../../.github/workflows/conformance-sources.yml)
 tracked by [#272](https://github.com/KD5UJC-XYZ/scarab/issues/272), runs weekly and on
 manual dispatch. It downloads GitHub source-tree metadata and compares watched
 paths at the existing pins with immutable snapshots of upstream default branches.
+The released reward API has its own source pin and is reported separately from
+the newer ledger-conformance source pin.
 Formal generated Haskell is compared with `master-artifacts`, rather than the
 source-only default branch. The JSON artifact lists exact commits, watched paths
 and added/removed/changed files. API or incomplete-tree failures fail the check;
