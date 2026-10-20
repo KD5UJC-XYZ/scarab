@@ -55,7 +55,7 @@ class GenesisVrfRegistrySuite extends FunSuite:
           val pools = state.nes.es.ls.cert.pState
           assertEquals(pools.stakePools.size, 1, s"protocol $major injected pool")
           assertEquals(
-            pools.stakePools.head._2.vrf.bytes.toHex,
+            pools.stakePools.head._2.vrf.bytes.hex,
             vrf,
             s"protocol $major original VRF"
           )
