@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import cats.data.NonEmptyVector
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger.{Ipv4, Ipv6, LedgerRelay}
@@ -25,7 +26,9 @@ private[ntc] object PeerSnapshotQueries:
   ): Either[Unanswered, Bytes] =
     for
       supply <- xyz.kd5ujc.scarab.node.LedgerPeersSource.of(facts.l).leftMap(Unanswered.Refused(_))
-      _ <- Either.cond(supply.skipped.isEmpty, (), Unanswered.Unwritable)
+      _ <- NonEmptyVector.fromVector(supply.skipped) match
+        case None        => Right(())
+        case Some(pools) => Left(Unanswered.StoredRelays(pools))
       _ <- Either.cond(
         kind.isEmpty || (env.networkMagic >= 0 && env.networkMagic <= 0xffffffffL),
         (),

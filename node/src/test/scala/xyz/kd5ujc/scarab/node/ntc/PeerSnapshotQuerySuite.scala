@@ -158,3 +158,37 @@ class PeerSnapshotQuerySuite extends FunSuite:
       }
     }
   }
+
+  test("stored relay failures retain the nonempty pool id and decoder cause") {
+    import xyz.kd5ujc.scarab.ledger.PoolRelayError
+    import xyz.kd5ujc.scarab.ledger.state.*
+    import xyz.kd5ujc.scarab.node.SkippedPool
+    import xyz.kd5ujc.scarab.node.read.ChainRead.given
+    val base = WalletQueryCases.cases.headOption.fold(fail("no wallet state"))(_._2)
+    val (id, pool) = base.es.ls.cert.pState.stakePools.headOption.fold(fail("no pools"))(identity)
+    val corrupted = pool.copy(relays = Bytes(Vector(0.toByte)))
+    val pstate = base.es.ls.cert.pState
+      .copy(stakePools = base.es.ls.cert.pState.stakePools.updated(id, corrupted))
+    val distribution = Sorted.map(
+      Vector(id -> IndividualPoolStake(Rational.one, CompactCoin.fromUnsigned(1L), pool.vrf))
+    )
+    val nes = base.copy[Conway](
+      pd = PoolDistr.empty.copy(distribution = distribution),
+      es = base.es
+        .copy[Conway](ls = base.es.ls.copy[Conway](cert = base.es.ls.cert.copy(pState = pstate)))
+    )
+    val view = QueryView(point, Some(BigInt(1)), WalletQueryCases.mirror(nes))
+    val expected = Unanswered.StoredRelays(
+      NonEmptyVector.one(SkippedPool(id.bytes, PoolRelayError.NotASequence))
+    )
+    Vector(
+      LedgerQuery.GetLedgerPeerSnapshotLegacy,
+      LedgerQuery.GetLedgerPeerSnapshot(LedgerPeerKind.All),
+      LedgerQuery.GetLedgerPeerSnapshot(LedgerPeerKind.Big)
+    ).foreach { query =>
+      assertEquals(
+        QueryAnswers.answerOrWhy(NtcGolden.queryEnv, view, Map.empty, NtcQuery.IfCurrent(6, query)),
+        Left(expected)
+      )
+    }
+  }
