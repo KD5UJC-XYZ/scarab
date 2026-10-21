@@ -184,6 +184,31 @@ class ChainSelectionSuite extends ScalaCheckSuite:
     )
   }
 
+  test("cross-era eligibility uses the later era configuration in either direction") {
+    import xyz.kd5ujc.scarab.protocol.Era
+    val older = view(3, slot = 100, issuer = 1, vrf = 200).copy(era = Some(Era.Babbage))
+    val later = view(3, slot = 106, issuer = 2, vrf = 10).copy(era = Some(Era.Conway))
+    assert(prefers(Tiebreaker.Unrestricted, older, later))
+    assert(!prefersCandidate(Tiebreaker.Unrestricted, older, later))
+    val reverse = older.copy(tieBreak = Some(bytes(1)))
+    assert(!prefersCandidate(Tiebreaker.Unrestricted, later, reverse))
+    assert(prefersCandidate(Tiebreaker.Unrestricted, older, later.copy(slot = 105)))
+    assert(prefersCandidate(Tiebreaker.Unrestricted, later, reverse.copy(slot = 101)))
+    assert(prefersCandidate(Tiebreaker.Unrestricted, older, later.copy(blockNo = 4)))
+  }
+
+  test("Byron and Shelley have no equal-height cross-era tie-breaker in either ordering") {
+    import xyz.kd5ujc.scarab.protocol.Era
+    val byron = SelectView(3, 100, None, 0, None, boundary = true, era = Some(Era.Byron))
+    val shelley = view(3, vrf = 0).copy(era = Some(Era.Shelley))
+    for f <- Seq(Tiebreaker.Unrestricted, Tiebreaker.Restricted(5)) do
+      assert(!prefers(f, byron, shelley))
+      assert(!prefers(f, shelley, byron))
+      assert(!prefersCandidate(f, byron, shelley))
+      assert(!prefersCandidate(f, shelley, byron))
+      assert(prefersCandidate(f, byron, shelley.copy(blockNo = 4)))
+  }
+
   // ---- decisions over chains
 
   /** Headers with the given block numbers on top of `from`, issuer/vrf as chosen. */

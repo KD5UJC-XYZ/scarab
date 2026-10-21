@@ -342,7 +342,7 @@ object HeaderCheck:
               ) { candidate =>
                 F.pure(selected.flatMap { ours =>
                   Option.unless(
-                    ChainSelection.prefers(candidate.tiebreaker, ours.tipView, candidate.value)
+                    ChainSelection.prefersCandidate(candidate.tiebreaker, ours.tipView, candidate.value)
                   )(
                     PeerError.GenesisProblem.CandidateTooSparse(
                       hc.points.reverseIterator.find(ours.contains).getOrElse(hc.base),

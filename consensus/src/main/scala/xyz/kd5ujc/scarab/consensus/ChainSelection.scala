@@ -21,7 +21,8 @@ final case class SelectView(
     issuer: Option[Bytes],
     issueNo: BigInt,
     tieBreak: Option[Bytes],
-    boundary: Boolean = false
+    boundary: Boolean = false,
+    era: Option[Era] = None
 )
 
 object SelectView:
@@ -30,8 +31,8 @@ object SelectView:
       val vrf = h.vrf match
         case HeaderVrf.Praos(result)  => result.output
         case HeaderVrf.TPraos(_, ldr) => ldr.output
-      SelectView(h.blockNo, h.slot, Some(h.issuerVkey), h.opCert.sequence, Some(vrf))
-    case h: Header.Byron => SelectView(h.blockNo, h.slot, None, 0, None, h.boundary)
+      SelectView(h.blockNo, h.slot, Some(h.issuerVkey), h.opCert.sequence, Some(vrf), era = Some(h.era))
+    case h: Header.Byron => SelectView(h.blockNo, h.slot, None, 0, None, h.boundary, Some(h.era))
 
 /** The Praos chain selection rule (the `ChainOrder` of ouroboros-consensus for Praos and TPraos): a
   * candidate chain replaces ours only if it is strictly preferred, and only if the switch rolls
@@ -82,6 +83,7 @@ object ChainSelection:
   def prefers(tiebreaker: Tiebreaker, ours: SelectView, candidate: SelectView): Boolean =
     if candidate.blockNo != ours.blockNo then candidate.blockNo > ours.blockNo
     // PBFT.hs:137–170: an EBB repeats its predecessor's difficulty, but extends its chain.
+    else if noAcrossEraTiebreaker(ours, candidate) then false
     else if ours.issuer.isEmpty && candidate.issuer.isEmpty && ours.boundary != candidate.boundary
     then candidate.boundary
     else
@@ -96,6 +98,22 @@ object ChainSelection:
         (ours.tieBreak, candidate.tieBreak) match
           case (Some(o), Some(c)) if vrfArmed => lower(c, o)
           case _                              => false
+
+  private def noAcrossEraTiebreaker(ours: SelectView, candidate: SelectView): Boolean =
+    (ours.era, candidate.era) match
+      case (Some(a), Some(b)) => (a == Era.Byron) != (b == Era.Byron)
+      case _                  => false
+
+  /** HFC Protocol/ChainSel.hs:128–155 and Cardano/CanHardFork.hs:176–181 at
+    * consensus 82ecba329: shared cross-era tie-breakers use the later era's configuration;
+    * Byron/Shelley has no cross-era tie-breaker. Raw Ord remains unrestricted for ranking.
+    */
+  def prefersCandidate(config: Tiebreaker, ours: SelectView, candidate: SelectView): Boolean =
+    val effective = (ours.era, candidate.era) match
+      case (Some(a), Some(b)) if a != b =>
+        tiebreakerFor(if a.ordinal > b.ordinal then a else b)
+      case _ => config
+    prefers(effective, ours, candidate)
 
   /** A block of our volatile chain. */
   final case class LocalBlock(point: Point, view: SelectView)
@@ -206,7 +224,7 @@ object ChainSelection:
         val view = SelectView.of(take.last)
         // AnchoredFragment.hs:195–201 compares an empty selected fragment by point, not
         // its anchor's selection view. In particular a boundary block may repeat blockNo.
-        if local.blocks.isEmpty || prefers(tiebreaker, local.tipView, view) then
+        if local.blocks.isEmpty || prefersCandidate(tiebreaker, local.tipView, view) then
           val at = pointAt(common)
           Decision.Switch(at, local.depthTo(at), take)
         else Decision.Keep

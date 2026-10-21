@@ -542,13 +542,9 @@ object FetchCoordinator:
     )
 
   private def compareTips(a: Header, b: Header): Int =
-    val restriction =
-      ChainSelection.tiebreakerFor(if a.era.ordinal > b.era.ordinal then a.era else b.era)
-    val av = SelectView.of(a)
-    val bv = SelectView.of(b)
-    if ChainSelection.prefers(restriction, av, bv) then 1
-    else if ChainSelection.prefers(restriction, bv, av) then -1
-    else 0
+    // ClientInterface.hs:286–291 uses compareAnchoredFragments, hence raw Ord;
+    // configured (including cross-era) eligibility is checked by FetchCandidates.
+    CandidateSelection.compareTips(b, a)
 
   def create[F[_]: Async](
       config: BlockFetchPolicy.Config = BlockFetchPolicy.Config(),
