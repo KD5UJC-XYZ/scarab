@@ -85,6 +85,10 @@ class BackgroundFibersSuite extends FailsOnUncaught:
       for
         ended <- cats.effect.Deferred[IO, NetworkError]
         mux = new Mux[IO]:
+          def awaitResponderActivity(using
+              cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+          ) =
+            IO.never[Unit]
           def channel(protocol: Int)(using cats.mtl.Raise[IO, NetworkError]) = IO.pure(broken)
           def channel(protocol: Int, role: Mux.Role)(using cats.mtl.Raise[IO, NetworkError]) =
             IO.pure(broken)

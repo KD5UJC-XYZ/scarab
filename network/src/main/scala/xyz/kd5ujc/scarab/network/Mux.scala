@@ -55,6 +55,11 @@ trait MuxChannel[F[_]]:
   * Both fibers end by completing [[closed]] with the typed reason, which the channels raise.
   */
 trait Mux[F[_]]:
+  /** Native StartOnDemandAny: wait for the first nonempty remote-initiated mini-protocol SDU.
+    * Handshake traffic and responses to our own initiators do not activate responders.
+    */
+  def awaitResponderActivity(using Raise[F, NetworkError]): F[Unit]
+
   /** Captured transport identity; in-memory and Unix bearers have no TCP identity. */
   def connectionId
       : Option[Either[xyz.kd5ujc.scarab.protocol.ConnectionIdentityError, ConnectionId]] = None
@@ -153,6 +158,7 @@ object Mux:
     val setup = for
       connectionIdentity <- Resource.eval(bearer.connectionId.sequence)
       done <- Resource.eval(Deferred[F, NetworkError])
+      responderActivity <- Resource.eval(Deferred[F, Unit])
       inbound <- Resource.eval(
         (for p <- protocols.toList; r <- roles yield (p, r))
           .traverse { key =>
@@ -170,9 +176,9 @@ object Mux:
           .create(WireMux.Limits(maxPayloadBytes = config.maxSduPayload))
           .fold(e => NetworkError.MuxSetup(e).raise[F, WireMux.Decoder], F.pure)
       )
-    yield (done, inbound, outbound, decoder, connectionIdentity)
+    yield (done, inbound, outbound, decoder, connectionIdentity, responderActivity)
 
-    setup.flatMap { case (done, inbound, outbound, decoder, connectionIdentity) =>
+    setup.flatMap { case (done, inbound, outbound, decoder, transportId, active) =>
       // Route decoded SDUs in order; the first protocol violation ends the connection.
       def route(sdus: List[WireMux.Sdu]): F[Option[NetworkError]] = sdus match
         case Nil => F.pure(None)
@@ -201,7 +207,16 @@ object Mux:
                 ingress.offer(sdu.payload).flatMap {
                   case Some(bytes) =>
                     F.pure(Some(NetworkError.IngressLimit(sdu.protocol, bytes)))
-                  case None => route(rest)
+                  case None =>
+                    // network-mux Mux.hs:424–449,625–628: only queued responder bytes
+                    // activate StartOnDemandAny; the handshake is outside that mux application.
+                    active
+                      .complete(())
+                      .void
+                      .whenA(
+                        receiverOf(sdu.direction) == Role.Responder &&
+                          sdu.protocol != Protocols.Handshake && sdu.payload.size > 0
+                      ) *> route(rest)
                 }
 
       val closedByPeer = NetworkError.BearerClosed(NetworkError.Closure.PeerClosed)
@@ -291,7 +306,9 @@ object Mux:
             .map(_.toMap)
         )
       yield new Mux[F]:
-        override val connectionId = connectionIdentity
+        override val connectionId = transportId
+        def awaitResponderActivity(using Raise[F, NetworkError]): F[Unit] =
+          F.race(done.get, active.get).flatMap(_.fold(_.raise[F, Unit], F.pure))
         def channel(protocol: Int)(using Raise[F, NetworkError]) = channel(protocol, config.role)
         def channel(protocol: Int, role: Role)(using Raise[F, NetworkError]) =
           channels.get((protocol, role)) match

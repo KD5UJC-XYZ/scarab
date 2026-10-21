@@ -95,7 +95,10 @@ object NodeToNodeServer:
       _ <- guarded("tx-submission")(
         TxSubmissionServer.run(txs, handlers.transactions, settings.transactions).foreverM[Unit]
       ).background
-      _ <- guarded("keep-alive")(KeepAliveServer.run(keepAlive, settings.keepAlive)).background
+      // cardano-diffusion NodeToNode.hs:310: KeepAlive uses StartOnDemandAny.
+      _ <- guarded("keep-alive")(
+        mux.awaitResponderActivity *> KeepAliveServer.run(keepAlive, settings.keepAlive)
+      ).background
       _ <- Option
         .when(peerSharing)(handlers.peerSharing.getOrElse(PeerSharingServer.empty[F]))
         .traverse_ { source =>

@@ -59,6 +59,10 @@ class PeerCsjBoundarySuite extends FailsOnUncaught:
           def done(using Raise[IO, NetworkError]) = IO.unit
           def idle = IO.pure(true)
         mux = new Mux[IO]:
+          def awaitResponderActivity(using
+              cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+          ) =
+            IO.never[Unit]
           def channel(@scala.annotation.unused protocol: Int)(using
               Raise[IO, NetworkError]
           ): IO[MuxChannel[IO]] =
