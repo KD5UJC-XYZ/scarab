@@ -155,7 +155,9 @@ class ProtocolWalk:
         if self.failure is not None:
             return
         pv, epoch = pp["protocolVersion"]["major"], tip["epoch"]
-        self.reached.setdefault(pv, epoch)
+        if pv not in self.reached:
+            # the tip was read before the parameters: a boundary between the two reads makes it one epoch early
+            self.reached[pv] = max(epoch, self.ext.l.epoch_info()["epoch"])
         if self.plan is None and not self.determine_plan(pv, pp, epoch):
             return
         self.hops, done = settle(self.hops, pv)

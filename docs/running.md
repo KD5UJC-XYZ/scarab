@@ -1758,8 +1758,9 @@ Conway starts at 9). The Conway versions are governance: a HardFork action per v
   (`protocolwalk.walk_bound_epochs`); exceeding it fails the run (`WalkStalled`). Governance cannot start before Conway, so
   the pre-Conway epochs cannot overlap with it; the earliest hop is proposed in the first Conway epoch, as soon as the
   extended thread has funded its wallets and registered the pools' reward accounts. Each later hop is bound by the rules above
-  (committee election, one hop per epoch): with the pinned reference the chain is at 11 two epochs earlier than the scripted
-  forks had it.
+  (committee election, one hop per epoch): with the pinned reference, Conway starting in epoch 10, the hop to 10 is in force from epoch 12
+  and the hop to 11 (proposed in epoch 14) from epoch 15 or 16; the scripted hops had the chain at protocol 10, not 11, at the default target epoch 17
+  (so the VRF stage was not applicable).
 * **Checks by version.** `scripts/devnet/protocolversions.py` holds `VERSION_CHECKS`: each check names the extended stage
   it is, the versions it applies to (`since`..`until`, or open-ended) and the highest version it was verified through. A check
   runs when the chain is at an applicable version (`xrefoverlap-pre11` at 9 and 10, `xrefoverlap-11` and `xvrf` from 11;

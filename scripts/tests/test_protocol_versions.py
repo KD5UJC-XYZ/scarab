@@ -251,9 +251,13 @@ class FakeLoad:
         self.proposals, self.votes, self.roots = [], [], None
         self.dreps = [types.SimpleNamespace(hash=bytes([7]) * 28)]
         self.ok = True
+        self.epoch_now = 0
 
     def lsq_factory(self):
         return self.session
+
+    def epoch_info(self):
+        return {"epoch": self.epoch_now}
 
     def propose(self, label, wallet, actions):
         self.proposals.append((label, actions))
@@ -302,6 +306,7 @@ class WalkTest(unittest.TestCase):
 
     def step(self, pv, epoch, slot=10):
         self.ext.pv = pv
+        self.load.epoch_now = epoch
         self.walk.step({"epoch": epoch, "slotInEpoch": slot}, self.pp(pv))
 
     def test_the_whole_walk_from_9_to_11(self):
@@ -345,6 +350,12 @@ class WalkTest(unittest.TestCase):
         self.assertEqual([h["target"] for h in summary["hops"]], [10, 11])
         self.assertEqual(summary["firstEpochInForce"], {"9": 10, "10": 12, "11": 16})
         self.assertTrue(summary["complete"])
+
+    def test_a_boundary_between_the_tip_and_the_parameters_does_not_date_a_version_a_epoch_early(self):
+        self.ext.pv = 9
+        self.load.epoch_now = 11  # the tip said 10, the parameters are already those of epoch 11
+        self.walk.step({"epoch": 10, "slotInEpoch": 499}, self.pp(9))
+        self.assertEqual(self.walk.reached[9], 11)
 
     def test_a_late_slot_proposes_nothing(self):
         self.step(9, 10, slot=400)
