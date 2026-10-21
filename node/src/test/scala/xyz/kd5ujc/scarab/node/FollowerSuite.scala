@@ -472,11 +472,12 @@ class FollowerSuite extends FailsOnUncaught:
               .guarantee(reading.set(false))
           def fetch(@scala.annotation.unused header: Header)(using Raise[IO, PeerError]) =
             IO.pure(Bytes.empty)
-        events: FollowerEvents[IO] =
+        events: FollowerEvents[IO] = {
           case xyz.kd5ujc.scarab.consensus.FollowerEvent.Extended(block, _, _, _)
               if block.point == fresh.point =>
             applied.complete(()).void
           case _ => IO.unit
+        }
         follower <- Follower.create[IO, BigInt](rules(), events, geometry)
         governor <- GenesisGovernor.create[IO](follower.genesisView((_, _, _) => Some(30)))
         _ <- follower.installGenesis(governor)

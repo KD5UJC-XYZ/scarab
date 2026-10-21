@@ -20,6 +20,7 @@ import xyz.kd5ujc.scarab.network.genesis.PicosClock
 import xyz.kd5ujc.scarab.network.selection.{GenesisBlockFetch, Gsm}
 import xyz.kd5ujc.scarab.node.*
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era, NtNHeader}
+
 import UpstreamGenesisCases.{Component, End, PeerId, Scenario}
 
 /** Executes original generated schedules against shared production Genesis controls and the real

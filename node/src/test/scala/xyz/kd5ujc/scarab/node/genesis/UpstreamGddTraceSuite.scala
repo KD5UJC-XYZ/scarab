@@ -5,6 +5,7 @@ import cats.effect.IO
 import xyz.kd5ujc.scarab.consensus.genesis.GenesisDensity
 import xyz.kd5ujc.scarab.consensus.genesis.GenesisDensity.{LatestSlot, PeerState}
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
+
 import UpstreamGenesisCases.*
 
 class UpstreamGddTraceSuite extends FailsOnUncaught:

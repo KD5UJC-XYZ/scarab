@@ -8,6 +8,7 @@ import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, UInt64}
+
 import GenesisDensity.*
 
 /** Every native output field is compared, including ordered losses and every density bound. */

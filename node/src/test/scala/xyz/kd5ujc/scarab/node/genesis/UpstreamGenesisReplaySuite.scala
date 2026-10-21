@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.node.genesis
 import cats.effect.IO
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import scala.concurrent.duration.*
+
 import UpstreamGenesisCases.*
 
 class UpstreamGenesisReplaySuite extends FailsOnUncaught:

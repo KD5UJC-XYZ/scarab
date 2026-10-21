@@ -6,6 +6,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, DomainError, Node, Value}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{ChainError, Header}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era, NtNHeader}
+
 import UpstreamGenesisCases.Scenario
 
 /** A lossless point bijection from native TestBlock's variable-width reverse ancestry hash to real

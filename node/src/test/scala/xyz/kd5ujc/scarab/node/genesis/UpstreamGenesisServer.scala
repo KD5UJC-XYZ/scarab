@@ -7,6 +7,7 @@ import fs2.Stream
 import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.network.{BlockFetchServer, ChainSyncServer}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, NtNHeader}
+
 import UpstreamGenesisCases.NodeState
 import UpstreamGenesisBlocks.{Block, Problem, Universe}
 

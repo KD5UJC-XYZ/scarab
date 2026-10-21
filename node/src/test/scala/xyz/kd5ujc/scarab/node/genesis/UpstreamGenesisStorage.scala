@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.{ChainError, StorageError}
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.storage.{ChainPersistence, ReceivedBlocks, VolatileStore}
+
 import UpstreamGenesisReplay.Ledger
 
 /** Native MockFS restart semantics over the production versioned journals. Selected blocks and

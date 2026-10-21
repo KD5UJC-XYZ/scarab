@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.consensus.genesis
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, UInt64}
+
 import GenesisDensity.*
 
 class GenesisDensitySuite extends FunSuite:

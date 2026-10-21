@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.node.genesis
 
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
+
 import UpstreamGenesisCases.*
 import UpstreamGenesisReplay.{Downloaded, Result, Terminal}
 

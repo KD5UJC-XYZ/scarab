@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.node.genesis
 
 import cats.effect.IO
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
+
 import UpstreamGenesisCases.*
 import UpstreamGenesisLaws.*
 import UpstreamGenesisReplay.{Downloaded, Result, Terminal}
