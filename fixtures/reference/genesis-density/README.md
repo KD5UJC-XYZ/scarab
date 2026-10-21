@@ -1,0 +1,48 @@
+# Native Genesis observations
+
+**Status: Current** — differential evidence for #33 against ouroboros-consensus
+`82ecba329d7d054340bf707d44fe6e9ac27cec40`.
+
+`density.jsonl` contains 136 complete native observations: 128 unchanged `Arbitrary BlockTree`
+inputs (seeds 330001–330128, sizes 10 + seed mod 55), plus eight explicit boundary inputs.
+The observer calls the actual exported `sharedCandidatePrefix` and `densityDisconnect` functions.
+The Scala suite compares the complete shared fragment, every candidate suffix, the ordered losing
+peers, and every `DensityBounds` field. Unknown latest slots, known Origin, AwaitReply/idling,
+headers beyond the forecast horizon, equal completed densities and disconnected candidates are
+represented. No result fields are masked and no generated cases are discarded.
+
+`bucket.jsonl` retains all 40 event prefixes from 11 leaky-bucket scenarios. The observer calls
+`runAgainstBucket` in IOSim, retaining the complete rational bucket state, configuration generation,
+paused flag, timestamp, configuration and all on-empty observations. Cases cover both overflow
+policies, pause/resume, reconfiguration while paused, picosecond accounting, zero/negative rates,
+disabled configuration, depletion and a positive balance with less than one microsecond remaining.
+`FillResult` is opaque in the public native API; no constructors or production bodies are modified.
+
+Mock `TestHash` values are encoded losslessly as the concatenated 64-bit big-endian words of
+`unTestHash`, in their original stored order. Slot numbers and rational numerators/denominators
+remain exact integers. Header points are sufficient for these pure rules, which never inspect
+header signatures, payloads or block numbers. This representation does not replace signed Cardano
+headers in production or runtime admission tests.
+
+The native observers and fresh-build exporter are in
+[`scripts/oracle/genesis-density`](../../../scripts/oracle/genesis-density/).
+The exporter checks the source revision, archives unchanged sources, adds thin executable stanzas,
+and records source, observer, executable, dependency-plan and corpus hashes. The immutable native
+cache supplies the dependency solver configuration; the serial block-I/O flag only avoids requiring
+Linux io_uring for these tests. Observer linking explicitly includes the image's VRF-enabled sodium
+archive, because the system sodium library lacks the Cardano VRF ABI. Neither choice modifies any
+consensus function or generator. Builds and native execution run inside Docker.
+
+Ordinary Scala tests consume these immutable files without a Haskell toolchain. Regeneration:
+
+```sh
+python3 scripts/oracle/genesis-density/export.py \
+  --source /path/to/ouroboros-consensus \
+  --probe-dir /tmp/scarab/genesis-native-refresh \
+  --output-dir fixtures/reference/genesis-density \
+  --allow-download
+```
+
+The copied original generator inputs and observations retain the upstream
+[license](../../licenses/block-fetch-consensus-LICENSE) and
+[notice](../../licenses/block-fetch-consensus-NOTICE).

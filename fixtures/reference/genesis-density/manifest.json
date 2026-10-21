@@ -1,0 +1,32 @@
+{
+  "schema": "scarab-native-genesis-v1",
+  "sourceCommit": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+  "sourceFiles": {
+    "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Genesis/Governor.hs": "9a24d955535f4d977dbe010f8b8f8be5d8f6cc158bf0177f344c7ca2476cae23",
+    "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/ChainSel.hs": "63e377f2f5d75a8bb99b29337050e354f1b8f2a082adae38d26e102360f88973",
+    "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Util/LeakyBucket.hs": "c318f9a1aecbe37f712ad76b9534096c8390c54636f27227c38826c97f7c50d1",
+    "ouroboros-consensus/src/unstable-consensus-testlib/Test/Util/TestBlock.hs": "7133e69a65511d40a438e8bcb1005a2985795a98ffce541d6d129f8d7a4540af"
+  },
+  "observers": {
+    "Main.hs": "34d8c97314fb24e48abfb38c8e27d9541fd9723ca87b61acea23ea5da07236b4",
+    "MainBucket.hs": "ea25edbea21f89b75a02721c6cea4aed1effa3c9002a7083ed4e16f3664e05ae"
+  },
+  "buildProjectSha256": "f9c5f7e0ed14360dce074c170a48b630f2e247619ba05d30ddf855a545cbc7b3",
+  "planSha256": "dad1376f8b54095ec3e07bc9135f6d2fd70b07d308786ce2188695d952153bcd",
+  "image": "sha256:b9e81590371f7d1784b0e4a62eac7560e0da3498d8b1a6b791e50f6420ae15fb",
+  "executables": {
+    "density": "e84fc536c6cfbdfa7c73e00f95168f5aee8cd76a61fcf108df6e495e73dfe3a2",
+    "bucket": "ab8f71907e9e0e14f79de34ca4f76c478940d650889ab6ee421a84f6c9ded8b5"
+  },
+  "corpora": {
+    "density.jsonl": {
+      "sha256": "cd8d70768ee6eebd74871ecaeed893bb702c8e3768c0060d6e67436a40e61aca",
+      "cases": 136
+    },
+    "bucket.jsonl": {
+      "sha256": "da8c5485b4619726cc28d54b34dffb5f59fd1ba7f4c4bfc365c8ac3e0fb4e4f6",
+      "cases": 40
+    }
+  },
+  "preparation": "git archive exact pin; append thin executables as exporter; immutable reference image dependency project, optimization 0, blockio +serialblockio; explicit native VRF sodium static linking; cabal build --builddir=/probe/builddir --jobs=3; execute each native binary without input/output rewriting"
+}
