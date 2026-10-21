@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const {prepare, HistoryScm, git, blob, sha256, json, REPOSITORY, TARGET, PROPOSAL} = require('./coordinator.cjs');
-const {GitHubPrScm, commitUpdates, verifyGeneratedHead, pushWithLease, BRANCH} = require('./github-pr.cjs');
+const {GitHubPrScm, commitUpdates, verifyGeneratedHead, pushWithLease, requireLiveTagAbsent, BRANCH} = require('./github-pr.cjs');
 
 test('real Git lease rejects a concurrently changed PR head and refuses manual edits', async t => {
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'scarab-proposal-lease-'));
@@ -55,4 +55,17 @@ test('PR writer fails closed without App token and refuses publication capabilit
   assert.throws(() => new GitHubPrScm(request, '', {}), /installation token/);
   await assert.rejects(() => new HistoryScm(request).createRelease(), /forbidden/);
   await assert.rejects(() => new HistoryScm(request).createFileOnNewBranch(), /forbidden/);
+});
+
+
+test('live exact-tag lookup accepts only404 absence and preserves other failures', async () => {
+  const calls = [];
+  const api = outcome => ({rest: {git: {getRef: async query => {calls.push(query);return outcome();}}}});
+  await requireLiveTagAbsent(api(() => {throw Object.assign(new Error('missing'), {status: 404});}), '0.2.0-rc.1');
+  assert.deepEqual(calls[0], {owner: 'KD5UJC-XYZ', repo: 'scarab', ref: 'tags/v0.2.0-rc.1'});
+  await assert.rejects(() => requireLiveTagAbsent(api(() => ({data: {ref: 'refs/tags/v0.2.0'}})), '0.2.0'), /already reserved/);
+  for (const status of [403, 500, undefined]) {
+    const failure = Object.assign(new Error('do not treat this as absence'), {status});
+    await assert.rejects(() => requireLiveTagAbsent(api(() => {throw failure;}), '0.2.0'), error => error === failure);
+  }
 });

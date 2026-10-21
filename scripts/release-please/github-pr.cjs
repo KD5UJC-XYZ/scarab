@@ -64,6 +64,14 @@ function verifyGeneratedHead(repo, head) {
   }
   return receipt;
 }
+async function requireLiveTagAbsent(api, version) {
+  const absent = await api.rest.git.getRef({owner: 'KD5UJC-XYZ', repo: 'scarab', ref: `tags/v${version}`})
+    .then(() => false, error => {
+      if (error.status === 404) return true;
+      throw error;
+    });
+  requireThat(absent, 'exact live release version tag already reserved');
+}
 class GitHubPrScm extends HistoryScm {
   constructor(request, token, api) {
     super(request);
@@ -91,6 +99,10 @@ class GitHubPrScm extends HistoryScm {
     }
   }
   async write(pr, updates, number) {
+    const proposal = updates.filter(update => update.path === PROPOSAL);
+    requireThat(proposal.length === 1, 'require exact frozen proposal before PR write');
+    const version = JSON.parse(proposal[0].updater.updateContent(blob(this.request.repo, this.request.source, PROPOSAL))).version;
+    await requireLiveTagAbsent(this.api, version);
     const base = await this.api.rest.git.getRef({owner: 'KD5UJC-XYZ', repo: 'scarab', ref: `heads/${TARGET}`});
     requireThat(base.data.object.sha === this.request.source, 'target advanced; freeze and review a new source');
     const branch = pr.headRefName || pr.headBranchName;
@@ -114,4 +126,4 @@ class GitHubPrScm extends HistoryScm {
   async updatePullRequest(number, pr) {return this.write(pr, pr.updates, number);}
   async removeIssueLabels() {throw new Error('automatic snooze override forbidden');}
 }
-module.exports = {GitHubPrScm, commitUpdates, verifyGeneratedHead, pushWithLease, BRANCH};
+module.exports = {GitHubPrScm, commitUpdates, verifyGeneratedHead, pushWithLease, requireLiveTagAbsent, BRANCH};
