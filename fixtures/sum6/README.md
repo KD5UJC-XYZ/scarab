@@ -26,3 +26,27 @@ messages and signatures. Agreement is differential evidence, not proof of equiva
 the Amaru files are Apache-2.0 (`../praos/evidence/amaru-LICENSE` holds the same licence text). The `.tsv` tables are
 our own data derived from those public headers; the repository's Apache-2.0 applies. The headers are public chain
 data. See `../../NOTICE` and `../../docs/licenses.md`.
+
+## Comparison, integrity and regeneration limits
+
+`Sum6KesSuite` pins both TSV hashes before parsing and requires all 17,336 observation indices
+exactly once. It compares verification verdicts and hash/leaf-call counts for every original and
+mutation; no rejected mutation is omitted. This is source-model evidence with a native Ed25519
+leaf, not 17,336 independent Haskell full-KES executions.
+
+Verify the maintained `sha256.json` entries from the repository root:
+
+```sh
+python3 - <<'PYVERIFY'
+import hashlib, json, pathlib
+root = pathlib.Path("fixtures/sum6")
+for name, expected in json.loads((root / "sha256.json").read_text()).items():
+    assert hashlib.sha256((root / name).read_bytes()).hexdigest() == expected, name
+PYVERIFY
+```
+
+The original source-derived model runner is not maintained here; the public headers, exact source
+pins, mutation recipes and recorded observations are preserved. A new capture should reproduce the
+Sum6 tree from the pinned Haskell files, identify its Ed25519 backend, replay every original recipe
+and archive complete outcomes before comparison. Preserve these historical goldens. A full native
+KES oracle would add independent evidence rather than silently replace the model's provenance.

@@ -10,7 +10,7 @@ verdict of the Cardano fork of libsodium on every input, including the inputs th
 | `additional.tsv`, `additional-results.tsv` | 2,338 further direct calls: fresh re-runs of every fixed-size original (repeated on purpose: rows, not distinct proofs), 34 mixed-order, torsion and negative-zero mutations, 256 deterministic unstructured inputs and 21 scalar boundaries. |
 | `helpers.tsv`, `helper-results.tsv` | 3,426 comparisons of the intermediate steps: point decoding with the small-order test (612), the Elligator map (519), the double-scalar equation on mixed-order and prime-order points (240) and 2,055 full traces of the verification pipeline. |
 | `affine-inputs.tsv`, `affine-results.tsv` | 104 rows of the double-scalar equation in affine coordinates (checked by `evidence/affine_check.py`). |
-| `sha256.json` | SHA-256 of every file here. |
+| `sha256.json` | SHA-256 of the maintained data and evidence files listed in the manifest. |
 | `evidence/` | Machine-readable inputs and results (`vectors.json`, `additional.json`, `helpers.json`, `summary.json`), the helper C file used with the native library (`helper.c`) and the scripts (`prepare_helpers.py`, `affine_check.py`), the pinned inputs (`pinned-inputs.json`), the comparison of the published Bloxbean sources (`published-source-comparison.json`), and three write-ups: `pinned-crypto-oracle.md`, `strict-vrf-prototype.md` and `next-vrf-slice.md` (decision and limits). |
 | `licenses/` | `CCL-LICENSE` (MIT, Bloxbean cardano-client-lib), `sodium-LICENSE` (ISC) and `BC-LICENSE` (Bouncy Castle). |
 
@@ -34,3 +34,35 @@ file includes internals of the Cardano libsodium fork (ISC, `licenses/sodium-LIC
 binaries are not redistributed. The IETF draft-03 examples are public specification data. The tables and the
 JSON results are our own derived data; the repository's Apache-2.0 applies to them. See `../../NOTICE` and
 `../../docs/licenses.md`.
+
+## Comparison, integrity and regeneration limits
+
+`StrictDraft03Suite` requires exact row counts, unique IDs and exhaustive batch indices before
+comparing all 2,048 original and 2,338 additional outcomes and all 3,426 helper observations.
+Malformed envelopes remain distinct from invalid proofs; valid outcomes include the exact 64-byte
+output. The affine table is a separate arithmetic control, not 104 more accepted VRF proofs.
+`sha256.json` binds the maintained data and provenance files; `evidence/sha256.json` is historical
+research provenance and includes paths from the original research layout.
+
+To verify maintained files from the repository root:
+
+```sh
+python3 - <<'PYVERIFY'
+import hashlib, json, pathlib
+root = pathlib.Path("fixtures/vrf")
+for name, expected in json.loads((root / "sha256.json").read_text()).items():
+    assert hashlib.sha256((root / name).read_bytes()).hexdigest() == expected, name
+PYVERIFY
+```
+
+Regeneration requires the pinned sodium source build and helper interface documented in
+[`evidence/pinned-crypto-oracle.md`](evidence/pinned-crypto-oracle.md), with public inputs from the
+retained JSON/TSV tables. Historical research scripts reference a private directory layout, so no
+complete supported one-command regeneration is claimed. Keep original inputs/expectations intact,
+record a new source/compiler/configuration/library identity and compare all IDs, lengths, verdicts
+and valid outputs before adopting new evidence. No live-node contact is required for these fixtures.
+
+The two research write-up digests in `sha256.json` include their committed public-export disclaimer
+paragraphs. The original digests preceded those editorial paragraphs; both older values match the
+same files with only that paragraph removed. Updating these documentation digests changes no
+input, observation, algorithm source or expected result.

@@ -1,5 +1,7 @@
 # Preview testnet block fixtures
 
+Status: Current — original public-chain inputs for bounded decoder and state-independent rule tests.
+
 Raw node-to-node BlockFetch blocks (`[era_tag, block]`), one hex-encoded block per line, captured
 with `xyz.kd5ujc.scarab.node.tools.CaptureMain` from the public relay `preview-node.play.dev.cardano.org:3001`
 (network magic 2) on 2026-10-10. Every captured block was at least 10 blocks deep.
@@ -66,3 +68,33 @@ https://book.play.dev.cardano.org/environments/preview/ unchanged (`config.json`
 `byron-genesis.json`, `shelley-genesis.json`, `alonzo-genesis.json`, `conway-genesis.json`, downloaded
 2026-10-14); `ConfigSuite` reads them with `--config`/`--topology` and verifies every hash. No private data and no third-party code is included. The repository's
 Apache-2.0 applies to our own selection, re-encoding and packaging. See `../../NOTICE`.
+
+## Generated-model and generic-CBOR comparisons
+
+`BlockGoldenSuite` selects the nine named Alonzo/Babbage/Conway block files in its source. For
+all 114 selected blocks it requires each file's original block, transaction and auxiliary-entry counts,
+verifies the header's body-hash commitment, then compares the complete original header, transaction-body and witness bytes,
+transaction identifiers, invalid-transaction indices, and each auxiliary-data index **and complete
+payload bytes** with the independently written block decoder. A changed auxiliary payload at an
+unchanged index is a negative control. This does not establish a full ledger verdict without the
+state at that block, nor whole-block generated-model equivalence for earlier eras.
+
+`IndexedNodeSuite` consumes every `.hex` and `.cbor` file under the shared `fixtures/` tree,
+including this corpus. Nonblank hex lines must decode or fail with file/line diagnostics; malformed
+fixture text is never dropped. It compares complete trees, original bytes and offsets with the
+retained independent tree-building implementation. The bounded mutation campaign selects 400
+fixtures; it does not claim to mutate every item.
+
+Capture replacements with the named relay/tool into a separate candidate directory, retaining
+original bytes, points and precise reference/source identity. Preserve old fixtures and review
+full content differences before replacement. A current Scala re-encoding is not a native expected
+answer. Historical records above retain the version/date identities available when captured.
+
+The asserted inventory was independently counted from the original CBOR array/map spans, without
+decoding through the generated Scala models: 114 blocks, 89 transactions and 14 auxiliary payloads.
+The 30 `babbage-transition` blocks contain no transactions; that is an observed header-transition
+corpus, not a waived transaction case. The other per-file `(blocks, transactions, auxiliary)` counts
+are: `alonzo-first-20` (20,2,0), `alonzo-txs` (2,2,0), `babbage-mint` (1,1,1),
+`conway` (30,8,4), `conway-governance` (23,54,4), `deeply-nested-datum` (1,2,1),
+`duplicate-redeemer-conway` (1,3,1), `empty-redeemers` (6,17,3). The payload corruption control
+requires at least one real auxiliary entry, so an empty auxiliary corpus cannot pass vacuously.

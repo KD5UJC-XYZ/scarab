@@ -125,19 +125,19 @@ class StrictEd25519DifferentialSuite extends munit.FunSuite:
     assert(onCurve > 5000, s"only $onCurve encodings were points")
   }
 
-  test("every published vector gets the verdict it got before") {
+  test("all 2207 fixed-size published inputs preserve the prior Scala verifier's verdict") {
     val all = rows("vectors.tsv")
-    assert(all.size > 2000)
-    all.foreach { f =>
-      val key = hex(f(1)).toArray
-      val signature = hex(f(2)).toArray
-      val message = hex(f(3)).toArray
-      if key.length == 32 && signature.length == 64 then
-        assertEquals(
-          verdict(key, signature, message),
-          Reference.verify(key, signature, message),
-          f(0)
-        )
+    assertEquals(all.size, 2219)
+    val (fixed, malformed) = all.partition(f => hex(f(1)).size == 32 && hex(f(2)).size == 64)
+    assertEquals(fixed.size, 2207)
+    assertEquals(malformed.map(_(0)).toSet, (30 to 41).map(i => s"wycheproof-$i").toSet)
+    // The old verifier has only a fixed-size ABI; WitnessGoldenSuite replays all raw inputs.
+    fixed.foreach { f =>
+      assertEquals(
+        verdict(hex(f(1)).toArray, hex(f(2)).toArray, hex(f(3)).toArray),
+        Reference.verify(hex(f(1)).toArray, hex(f(2)).toArray, hex(f(3)).toArray),
+        f(0)
+      )
     }
   }
 

@@ -20,7 +20,7 @@ useDefault = true
 [[rules]]
 id = "generic-api-key"
 
-[rules.allowlist]
+[[rules.allowlists]]
 description = "public key hashes, verification keys, SHA-256 digests and exact CHaP trust root"
 # CHaP's public repository trust root, published in its README at pinned metadata b2f313b6.
 # Match only the complete extracted public value; other generic tokens in the same file still scan.
@@ -46,3 +46,14 @@ commits = [
   "3c0e74cb7ce8eeea25b3dc45cabbdc6a00417aac",
   "58172e52dc4054e627a18647477c6bd6953361d7",
 ]
+
+# Public payload SHA-256 entries, verified against original bytes by check_test_coverage.py.
+# v8.24.3 uses AND to require both this exact file and the complete JSON entry line.
+# Its line target includes the preceding newline (detect/location.go); no other prefix is allowed.
+# https://github.com/gitleaks/gitleaks/blob/v8.24.3/README.md#configuration
+[[rules.allowlists]]
+description = "fixture inventory payload path to lowercase SHA-256 entry"
+condition = "AND"
+regexTarget = "line"
+paths = ['''^docs/data/fixture-inventory\.json$''']
+regexes = ['''^\n?[ \t]*"(?:fixtures|[a-z][a-z0-9-]*/src/test/resources)/(?:[A-Za-z0-9_+.-]+/)*[A-Za-z0-9_+.-]+"[ \t]*:[ \t]*"[0-9a-f]{64}",?[ \t]*$''']
