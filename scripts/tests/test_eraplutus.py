@@ -81,3 +81,58 @@ class BabbageModelBootstrapTest(unittest.TestCase):
             read.assert_not_called()
             write.assert_not_called()
             self.assertNotIn("--cost-model-file", command.call_args.args[1])
+
+
+class ReferenceObservationTest(unittest.TestCase):
+    def load(self, era, actual=None, version=23):
+        from unittest.mock import Mock
+        indices = {"alonzo": 4, "babbage": 5, "conway": 6}
+        session = Mock()
+        session.agreed_version = version
+        params = [0] * 24
+        params[14 if era == "alonzo" else 12] = [7, 0]
+        session.ledger_query.side_effect = [(123, b"point hash"), params]
+        context = Mock()
+        context.__enter__ = Mock(return_value=session)
+        context.__exit__ = Mock(return_value=False)
+        load = SimpleNamespace(lsq_factory=lambda: context, ERA_INDEX=indices,
+                               current_era=lambda acquired: indices[era] if actual is None else actual)
+        return load, session
+
+    def test_actual_era_point_and_protocol_share_one_acquisition(self):
+        from unittest.mock import call
+        for era, index in (("alonzo", 4), ("babbage", 5), ("conway", 6)):
+            load, session = self.load(era)
+            self.assertEqual(eraplutus.reference_observation(load, era),
+                             {"era": era, "eraIndex": index, "slot": 123, "hash": b"point hash".hex(),
+                              "protocolVersion": {"major": 7, "minor": 0}})
+            session.acquire.assert_called_once_with()
+            self.assertEqual(session.ledger_query.call_args_list, [call(index, [0]), call(index, [3])])
+
+    def test_era_drift_cannot_be_reported_as_the_target_era(self):
+        load, session = self.load("alonzo", actual=5)
+        with self.assertRaisesRegex(RuntimeError, "reference era index 5"):
+            eraplutus.reference_observation(load, "alonzo")
+        session.ledger_query.assert_not_called()
+
+    def test_unknown_legacy_or_malformed_protocol_encoding_is_not_invented(self):
+        load, session = self.load("alonzo", version=20)
+        with self.assertRaisesRegex(RuntimeError, "NtC 21"):
+            eraplutus.reference_observation(load, "alonzo")
+        load, session = self.load("conway")
+        session.ledger_query.side_effect = [(123, b"hash"), [0] * 24]
+        with self.assertRaisesRegex(RuntimeError, "protocol-version encoding"):
+            eraplutus.reference_observation(load, "conway")
+
+    def test_pinned_reference_current_params_fixture_has_the_observed_protocol_pair(self):
+        import json
+        from devnet import ntcquery
+        fixture = json.loads((Path(__file__).resolve().parents[2] / 'fixtures/devnet/lsq/golden.json').read_text())
+        row = next(r for r in fixture['queries'] if r['label'] == 'GetCurrentPParams')
+        [params] = ntcquery.decode_all(bytes.fromhex(row['result']))
+        load, session = self.load('conway')
+        session.ledger_query.side_effect = [(fixture['slot'], bytes.fromhex(fixture['hash'])), params]
+        observed = eraplutus.reference_observation(load, 'conway')
+        self.assertEqual(observed['protocolVersion'], {'major': 10, 'minor': 0})
+        self.assertEqual(observed['slot'], fixture['slot'])
+        self.assertEqual(observed['hash'], fixture['hash'])

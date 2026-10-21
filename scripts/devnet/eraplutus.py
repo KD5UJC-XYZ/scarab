@@ -23,6 +23,29 @@ def index_utxo(snapshot):
     return {u[0]: (u[1], u[2]) for outs in snapshot[2].values() for u in outs}
 
 
+def reference_observation(load, era):
+    """Observe era, point and protocol together in one acquired reference ledger state.
+
+    NtC 21 removed legacy protocol-version flattening in pre-Conway PParams; the pinned
+    reference negotiates a newer version. Protocol pairs occupy field 14 in Alonzo and 12
+    in Babbage/Conway (cardano-ledger Params and ouroboros-consensus LegacyPParams).
+    """
+    with load.lsq_factory() as session:
+        session.acquire()
+        actual = load.current_era(session)
+        if actual != load.ERA_INDEX[era]:
+            raise RuntimeError(f"{era} admission case observed reference era index {actual}")
+        if session.agreed_version < 21:
+            raise RuntimeError("admission provenance requires NtC 21 or newer PParams encoding")
+        slot, hash_ = session.ledger_query(actual, [0])
+        params = session.ledger_query(actual, [3])
+        protocol = params[14 if era == "alonzo" else 12]
+        if not isinstance(protocol, list) or len(protocol) != 2 or not all(isinstance(n, int) for n in protocol):
+            raise RuntimeError(f"unexpected reference protocol-version encoding: {protocol!r}")
+        return {"era": era, "eraIndex": actual, "slot": slot, "hash": hash_.hex(),
+                "protocolVersion": {"major": protocol[0], "minor": protocol[1]}}
+
+
 def effect_errors(before, after, normal, collateral, txid, valid, expected_outputs):
     """Check both input roles and the complete set of this transaction's resulting outputs."""
     errors = []
@@ -75,6 +98,7 @@ def exercise(load, era):
                                              eratx.enc([DATUM]), {language: models[f"PlutusV{language}"]})
             before = index_utxo(load.snapshot())
             for accepted in (False, True):
+                reference_before = reference_observation(load, era)
                 valid = (script == OK) == accepted
                 case = ("success" if valid else "collateral") if accepted else (
                     "reject-failure-valid" if valid else "reject-success-invalid")
@@ -99,13 +123,15 @@ def exercise(load, era):
                             break
                         time.sleep(0.4)
                     passed = submitted and not errors
+                reference_after = reference_observation(load, era)
                 observed = {"normalInputsPresent": [i in after for i in normal],
                             "collateralPresent": collateral in after,
                             "outputs": {str(i): eratx.enc(value).hex() for (tid, i), value in after.items()
                                         if tid == txid}}
                 row = {"era": era, "language": language, "case": case, "passed": passed,
                        "operations": ["spend", "mint"], "observedEffects": observed,
-                       "isValid": valid, "txid": txid, "errors": errors}
+                       "isValid": valid, "txid": txid, "errors": errors,
+                       "referenceBefore": reference_before, "referenceAfter": reference_after}
                 load.plutus_evidence.append(row)
                 load.keep_tx("legacy-plutus.jsonl", {**row, "tx": tx.hex(),
                     "normalInputs": normal, "collateral": collateral})

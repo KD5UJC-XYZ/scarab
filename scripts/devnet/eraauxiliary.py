@@ -8,7 +8,7 @@ import time
 
 from . import eratx
 from .eraload import MAGIC, SOCKET
-from .eraplutus import index_utxo
+from .eraplutus import index_utxo, reference_observation
 
 LANGUAGES = {"alonzo": (1,), "babbage": (1, 2), "conway": (1, 2, 3)}
 CASES = ("valid", "runtime-error", "malformed-valid", "malformed-invalid")
@@ -72,9 +72,9 @@ def exercise(load, era):
     setup = load.act(era, f"auxiliary-plutus-setup-{era}", wallet, specs, record="auxiliary-plutus-setup.jsonl")
     if not setup:
         raise RuntimeError(f"{era}: auxiliary Plutus setup not included")
-    protocol = load.protocol_params().get("protocolVersion")
     for ordinal, language in enumerate(LANGUAGES[era]):
         for case in CASES:
+            reference_before = reference_observation(load, era)
             included = case in ("valid", "runtime-error")
             branch = CASES.index(case) if included else 2
             normal = (setup, ordinal * 6 + branch * 2)
@@ -96,10 +96,12 @@ def exercise(load, era):
                 time.sleep(0.4)
             if not submitted:
                 errors.insert(0, "reference receipt does not establish the required admission")
+            reference_after = reference_observation(load, era)
             passed = submitted and not errors
             row = {"era": era, "language": language, "case": case, "isValid": valid,
                    "txid": txid, "passed": passed, "errors": errors,
-                   "referenceReceipt": receipt, "protocolVersion": protocol,
+                   "referenceReceipt": receipt,
+                   "referenceBefore": reference_before, "referenceAfter": reference_after,
                    "observedEffects": {"normalInputPresent": normal in after,
                        "collateralPresent": collateral in after,
                        "normalBefore": None if normal not in before else eratx.enc(before[normal]).hex(),

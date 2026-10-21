@@ -136,11 +136,19 @@ class AuxiliaryWorkflowTest(unittest.TestCase):
                 del state[(txid.hex(), index)]
                 state[(eratx.blake2b(eratx.enc(body)).hex(), 0)] = (body[1][0][1], {})
             return True, {"returncode": 0 if included else 1, "rawRefusal": None if included else "01"}
-        with patch.object(eraauxiliary, "submit_reference", side_effect=submit) as submissions:
+        def observation(actual_load, era):
+            self.assertIs(actual_load, load)
+            return {"era": era, "eraIndex": 6, "slot": 1, "hash": "00",
+                    "protocolVersion": {"major": 9, "minor": 0}}
+        with patch.object(eraauxiliary, "submit_reference", side_effect=submit) as submissions, \
+                patch.object(eraauxiliary, "reference_observation", side_effect=observation):
             for era in eraauxiliary.LANGUAGES:
                 eraauxiliary.exercise(load, era)
         self.assertEqual(submissions.call_count, 24)
         self.assertEqual(eraauxiliary.coverage_failures(load.auxiliary_evidence), [])
         self.assertTrue(all(row["passed"] for row in load.auxiliary_evidence))
+        self.assertTrue(all(row["referenceBefore"]["era"] == row["era"] and
+                            row["referenceAfter"]["era"] == row["era"]
+                            for row in load.auxiliary_evidence))
         self.assertEqual(len(records), 24)
         self.assertTrue(all(row["tx"] and row["script"] for _, row in records))
