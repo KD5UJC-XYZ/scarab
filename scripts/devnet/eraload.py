@@ -71,6 +71,37 @@ def value_bytes(coin, assets):
     return 1 + head(coin) + head(len(assets)) + inner
 
 
+NO_VERDICT_ATTEMPTS = 3  # submissions of a transaction the reference must refuse, when none returns a verdict
+NO_VERDICT_PAUSE = 3  # seconds between them
+
+
+class Verdict:
+    """What the reference said about a submission that must be refused: `kind` is `refused` (a ledger
+    refusal naming every expected predicate failure), `wrongReason` (a ledger refusal that does not),
+    `accepted` (the reference took the transaction: a divergence from the rule under test) or `noVerdict`
+    (the CLI or the container failed before the ledger spoke: nothing is known about the rule)."""
+
+    def __init__(self, kind, text):
+        self.kind, self.text = kind, text
+
+    def __repr__(self):
+        return f"Verdict({self.kind!r}, {self.text[:80]!r})"
+
+
+def submission_verdict(returncode, stdout, stderr, expected):
+    """Classify the result of `cardano-cli transaction submit` for a transaction that must be refused with the
+    predicate failure names `expected`. Pure. A ledger refusal is recognised by the `TxValidationError`
+    the CLI prints for it (or by an expected name); a non-zero exit without one is no verdict."""
+    text = (stderr or stdout).strip().split("CallStack")[0].strip()
+    if returncode == 0:
+        return Verdict("accepted", text or "(the CLI printed nothing)")
+    if all(e in text for e in expected):
+        return Verdict("refused", text)
+    if "TxValidationError" in text:
+        return Verdict("wrongReason", text)
+    return Verdict("noVerdict", text or "(the CLI printed nothing)")
+
+
 class Wallet:
     def __init__(self, rng):
         self.pay = Key(json.dumps({"cborHex": "5820" + rng.randbytes(32).hex()}))
@@ -102,6 +133,7 @@ class EraLoad:
         self.plutus_evidence = []
         self.auxiliary_evidence = []
         self.refusal_evidence = []
+        self.last_verdict = None  # `Verdict` of the last `expect_rejected`
 
     # ------------------------------------------------------------ reference plumbing
     def sh(self, script, stdin=None, timeout=60):
@@ -283,25 +315,38 @@ class EraLoad:
         with (util.data_root(self.name) / file).open("a") as f:
             f.write(json.dumps(entry) + "\n")
 
-    def expect_rejected(self, era, tx, label, expected, record=None):
+    def expect_rejected(self, era, tx, label, expected, record=None, attempts=NO_VERDICT_ATTEMPTS):
         """Submit `tx` and require the reference to refuse it with every text of `expected` in its
         error (the predicate failure names). A matching refusal counts as `negativeOk`; the
         transaction is appended to `negative-txs.jsonl` of the run directory, so the Scala rules can
-        be replayed on the very bytes the reference refused. Returns True when it was refused as expected."""
+        be replayed on the very bytes the reference refused. Returns True when it was refused as expected.
+
+        The verdict is one of `submission_verdict`'s: a submission that ends without any ledger verdict
+        (the CLI or `docker exec` failed, empty output) is submitted again, up to `attempts` times, and logged
+        as `negativeNoVerdict` (not as a refusal that went wrong); only the last verdict is counted. An
+        acceptance is final and is kept in `last_verdict` for the scenario to treat as a divergence."""
         env = eratx.envelope(era, tx)
-        r = self.sh(f"mkdir -p /work/tx && cat > /work/tx/{label}.tx && cardano-cli conway transaction submit "
-                    f"--testnet-magic {MAGIC} --socket-path {SOCKET} --tx-file /work/tx/{label}.tx", stdin=env)
-        text = (r.stderr or r.stdout).strip().split("CallStack")[0].strip()
-        ok = r.returncode != 0 and all(e in text for e in expected)
+        for attempt in range(1, attempts + 1):
+            r = self.sh(f"mkdir -p /work/tx && cat > /work/tx/{label}.tx && cardano-cli conway transaction submit "
+                        f"--testnet-magic {MAGIC} --socket-path {SOCKET} --tx-file /work/tx/{label}.tx", stdin=env)
+            verdict = submission_verdict(r.returncode, r.stdout, r.stderr, expected)
+            if verdict.kind != "noVerdict" or attempt == attempts:
+                break
+            self.log({"negativeNoVerdict": label, "attempt": attempt, "returncode": r.returncode,
+                      "stdout": r.stdout[:300], "stderr": r.stderr[:300]})
+            time.sleep(NO_VERDICT_PAUSE)
+        self.last_verdict = verdict
+        ok = verdict.kind == "refused"
         self.stats["negativeOk" if ok else "negativeUnexpected"] = self.stats.get(
             "negativeOk" if ok else "negativeUnexpected", 0) + 1
-        self.log({"negative": label, "refusedAsExpected": ok, "expected": list(expected), "error": text[:700]})
-        entry = {"label": label, "era": era, "outcome": "refused", "expected": list(expected), "error": text[:2000],
-                 "tx": tx.hex()}
+        self.log({"negative": label, "refusedAsExpected": ok, "verdict": verdict.kind, "returncode": r.returncode,
+                  "expected": list(expected), "error": verdict.text[:700]})
+        entry = {"label": label, "era": era, "outcome": "refused", "expected": list(expected),
+                 "error": verdict.text[:2000], "tx": tx.hex()}
         if ok:
             self.keep_tx("negative-txs.jsonl", entry)
         if record:
-            self.keep_tx(record, entry if ok else {**entry, "outcome": "unexpected"})
+            self.keep_tx(record, entry if ok else {**entry, "outcome": "unexpected", "verdict": verdict.kind})
         return ok
 
     # ------------------------------------------------------------ scenarios
