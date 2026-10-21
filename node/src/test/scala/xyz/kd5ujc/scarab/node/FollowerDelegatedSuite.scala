@@ -24,11 +24,12 @@ class FollowerDelegatedSuite extends FailsOnUncaught:
         def now = calls.update(_ + 1).as(BigInt(0))
         def sleep(@scala.annotation.unused delayPicos: BigInt) = IO.unit
       work <- SelectionWork.create[IO](IO.unit, Some(clock))
-      _ <- work.session.use(session => runWithWork(authoritative, session, calls))
+      _ <- work.session.use(session => runWithWork(authoritative, work, session, calls))
     yield ()
 
   private def runWithWork(
       authoritative: Boolean,
+      owner: SelectionWork[IO],
       work: SelectionWork.Session[IO],
       calls: Ref[IO, Int]
   ): IO[Unit] =
@@ -73,6 +74,7 @@ class FollowerDelegatedSuite extends FailsOnUncaught:
         ForgedChain.geometry
       )
       _ <- follower.installInvalidBlocks(registry)
+      _ <- work.ready(Vector(headers.head.hash))
       outcome <- registry.selectionResource.use { _ =>
         Handle
           .allow[NodeError](
@@ -88,12 +90,21 @@ class FollowerDelegatedSuite extends FailsOnUncaught:
       processingCalls <- calls.get
       view <- tracked.get.flatMap(_.traverse(_.get))
       preference <- follower.versus(candidate)
+      starvation <- owner.snapshot
+      _ <- work.processing(headers.head.hash).use(_ =>
+        owner.snapshot.assertEquals(
+          xyz.kd5ujc.scarab.network.selection.GenesisBlockFetch.Starvation.EndedAt(0)
+        )
+      )
     yield
       assertEquals(outcome, Some(PeerError.NoIntersection: NodeError))
       assertEquals(count, events.size)
-      // No ready tokens are queued in this fixture: one clock observation per attempted RF
-      // consideration therefore exposes repeated traversal even when no token can be acquired.
-      assertEquals(processingCalls, headers.size + 1)
+      // Body publication must not consume the real node queue's token or change its clock.
+      assertEquals(processingCalls, 0)
+      assertEquals(
+        starvation,
+        xyz.kd5ujc.scarab.network.selection.GenesisBlockFetch.Starvation.Ongoing
+      )
       if authoritative then
         assertEquals(view, Some(candidate))
         assertEquals(preference, Gsm.Candidate.Better(true))

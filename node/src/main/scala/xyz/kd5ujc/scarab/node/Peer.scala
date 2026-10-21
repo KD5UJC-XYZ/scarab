@@ -952,6 +952,19 @@ object Peer:
           /** A fiber of the pipeline: its body in an error scope of its own, and the fault it ends
             * with handed to the session through the queue.
             */
+          // With a node-owned ChainDB queue, only its admission/dequeue establishes starvation.
+          // Body journal publication/draining is independent (consensus Types.hs:691–718).
+          def legacyReady(hashes: Vector[Bytes]): F[Unit] =
+            claims.usesSelectionWorker.flatMap {
+              case true  => F.unit
+              case false => workSession.traverse_(_.ready(hashes))
+            }
+
+          def legacyDiscard: F[Unit] = claims.usesSelectionWorker.flatMap {
+            case true  => F.unit
+            case false => workSession.traverse_(_.discardPending)
+          }
+
           def supervised(body: Raise[F, PeerError] ?=> F[Unit]): F[Unit] =
             supervisor.supervise(Fault.fiber(body).flatMap(_.fold(fail, _ => F.unit))).void
 
@@ -983,9 +996,9 @@ object Peer:
                         published <- Deferred[F, Unit]
                         _ <- supervised(
                           prefetch(batch) *> previous.get *>
-                            workSession.traverse_(_.ready(batch.collect {
+                            legacyReady(batch.collect {
                               case SyncEvent.RollForward(h, _) => h.hash
-                            })) *>
+                            }) *>
                             queue.offer(PipelineEvent.Batch(batch)) *>
                             published.complete(()).void
                         )
@@ -1264,7 +1277,7 @@ object Peer:
                                         .flatMap(used => permits.acquire.whenA(used)) *>
                                         (event match
                                           case SyncEvent.RollForward(h, _) if available(h.hash) =>
-                                            workSession.traverse_(_.ready(Vector(h.hash)))
+                                            legacyReady(Vector(h.hash))
                                           case _ => F.unit) *>
                                         queue.offer(PipelineEvent.Batch(Vector(event))) *>
                                         nextEvent.update(_ + 1).as(Left(()))
@@ -1351,7 +1364,7 @@ object Peer:
             case Some(
                   Fault.Failed(PeerError.NoIntersection | _: PeerError.RolledBackPastIntersection)
                 ) =>
-              current.set(Vector.empty) *> workSession.traverse_(_.discardPending)
+              current.set(Vector.empty) *> legacyDiscard
             case _ => drainPipeline
           }
 
@@ -1385,9 +1398,7 @@ object Peer:
                             case Right(PipelineEvent.Failed(fault)) =>
                               Fault.land[F, Either[Unit, Unit]](Left(fault))
                           }
-                        }.whenA(active) *> current.set(Vector.empty) *> workSession.traverse_(
-                          _.discardPending
-                        )
+                        }.whenA(active) *> current.set(Vector.empty) *> legacyDiscard
                       }
                     }
                   ).onCancel(fresh.complete(DrainOutcome.Cancelled).void).flatMap { result =>

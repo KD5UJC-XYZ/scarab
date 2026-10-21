@@ -330,13 +330,11 @@ final class Follower[F[_]: Async, S] private (
       // ChainSync validates and retains the header fragment; ChainDB independently selects actual
       // body admissions (consensus 82ecba329 BlockFetch/ClientInterface.hs:192–225).
       // The body journal may lag that fragment and must not validate an older rollback again.
-      case true =>
-        event match
-          case SyncEvent.RollForward(header, _) =>
-            candidate.set(ChainSelection.Candidate(header.point, Vector.empty)) *>
-              peer.selectionWork.traverse_(_.processing(header.hash).use(_ => F.unit))
-          case SyncEvent.RollBackward(point, _) =>
-            candidate.set(ChainSelection.Candidate(point, Vector.empty))
+      case true => event match
+        case SyncEvent.RollForward(header, _) =>
+          candidate.set(ChainSelection.Candidate(header.point, Vector.empty))
+        case SyncEvent.RollBackward(point, _) =>
+          candidate.set(ChainSelection.Candidate(point, Vector.empty))
       case false => directStep(peer, candidate, event, reintersect, registry)
     }
 
