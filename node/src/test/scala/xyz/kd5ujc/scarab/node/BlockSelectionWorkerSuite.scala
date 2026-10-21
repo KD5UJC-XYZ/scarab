@@ -362,12 +362,18 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
           flags <- n.pool.session.use(
             _.claim(Vector(checked.head.header.hash, checked.last.header.hash))
           )
+          retained <- n.pool.session.use(sender =>
+            Vector(checked.head, checked.last).traverse(body =>
+              sender.retained(BlockPool.Source.Recovered, body.header.hash)
+            )
+          )
           fatals <- n.fatals.get
           _ <- IO {
             assertEquals(processed.size, 2 * BlockPool.Retained + 1)
             assertNotEquals(selected.tip, Point.Origin)
             assertEquals(originals, Vector(Some(checked.head.block), Some(checked.last.block)))
             assertEquals(flags, Vector(false, false))
+            assertEquals(retained, Vector(true, true))
             assertEquals(fatals, Vector.empty)
           }
         yield ()

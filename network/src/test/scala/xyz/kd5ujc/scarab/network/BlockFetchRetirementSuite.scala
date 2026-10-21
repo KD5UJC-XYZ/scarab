@@ -7,6 +7,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSyncFixtures
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, Tip}
 import scala.concurrent.duration.*
+
 import Peers.*
 
 /** BF's sending thread has ended once MsgClientDone is sent, even while another hot protocol waits

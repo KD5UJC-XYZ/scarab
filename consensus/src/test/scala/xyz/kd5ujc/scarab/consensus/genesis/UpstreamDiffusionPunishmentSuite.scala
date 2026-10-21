@@ -10,9 +10,10 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
 import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash, ShelleyBasedEra, Word64, VocabError}
-import DiffusionPunishment.*
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, UInt64}
 import java.nio.charset.StandardCharsets.UTF_8
+
+import DiffusionPunishment.*
 
 class UpstreamDiffusionPunishmentSuite extends FunSuite:
   private def word(c: HCursor, key: String): Decoder.Result[Word64] =

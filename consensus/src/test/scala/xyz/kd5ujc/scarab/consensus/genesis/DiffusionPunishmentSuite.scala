@@ -5,6 +5,7 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash, ShelleyBasedEra, VocabError, Word64}
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, UInt64}
+
 import DiffusionPunishment.*
 
 class DiffusionPunishmentSuite extends FunSuite:

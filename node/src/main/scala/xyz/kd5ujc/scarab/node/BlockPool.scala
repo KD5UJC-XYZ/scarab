@@ -30,7 +30,8 @@ import scala.concurrent.duration.*
   * oldest ordinary bodies past [[BlockPool.Retained]] entries. Queued admissions and the processed
   * VolatileDB forest are separate: all processed originals, including invalid ones, remain readable
   * until immutable-slot GC. Their raw bytes and metadata remain in memory even with a durable
-  * received journal; pruning at the native strict slot cutoff releases that forest and invalid pins.
+  * received journal; pruning at the native strict slot cutoff releases that forest and invalid
+  * pins.
   *
   * Claims are made through a [[BlockPool.Claims]] that belongs to one session ([[session]]). It is
   * a resource: when the session ends, however it ends (a failure, a cancellation), every claim it
@@ -424,7 +425,9 @@ final class BlockPool[F[_]: Async] private (
       case Source.Session(origin) => slots.get.map(_.origins.contains(origin))
       case Source.Recovered =>
         (slots.get, recovered.traverse(_.hashes)).mapN { (current, durable) =>
-          current.entries.contains(hash) || durable.exists(_(hash))
+          current.entries.contains(hash) || current.processed.contains(hash) || durable.exists(
+            _(hash)
+          )
         })
 
   /** Seed actual original bytes with restart provenance, never a fabricated live-session owner. */
