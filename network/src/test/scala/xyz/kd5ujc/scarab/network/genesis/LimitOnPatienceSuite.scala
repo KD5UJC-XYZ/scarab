@@ -123,3 +123,33 @@ class LimitOnPatienceSuite extends FailsOnUncaught:
         }
       }
     }
+
+  test("injected picosecond clock retains rational-rate microsecond rounding before sleeping") {
+    TestControl.executeEmbed {
+      val clock = new PicosClock[IO]:
+        def now: IO[BigInt] = IO.monotonic.map(t => BigInt(t.toNanos))
+        def sleep(delayPicos: BigInt): IO[Unit] = IO.sleep(delayPicos.toLong.nanos)
+      // 47/4 tokens/s, capacity 47/4,000,000 => exactly one microsecond.
+      val exact = LeakyBucket.Config(Rational(47, 4000000), Rational(47, 4))
+      for
+        fired <- Ref.of[IO, Vector[BigInt]](Vector.empty)
+        _ <- LimitOnPatience
+          .resource[IO](exact, clock.now.flatMap(now => fired.update(_ :+ now)), Some(clock))
+          .use { patience =>
+            for
+              _ <- IO.sleep(499999.nanos)
+              before <- patience.snapshot
+              _ <- IO(
+                assertEquals(
+                  before.level,
+                  exact.capacity - exact.rate * Rational(499999, BigInt(10).pow(12))
+                )
+              )
+              _ <- IO.sleep(500002.nanos)
+              seen <- fired.get
+              _ <- IO(assertEquals(seen, Vector(BigInt(1000000))))
+            yield ()
+          }
+      yield ()
+    }
+  }

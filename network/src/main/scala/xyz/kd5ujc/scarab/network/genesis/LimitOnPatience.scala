@@ -5,7 +5,6 @@ import cats.effect.{Deferred, Ref, Resource, Temporal}
 import cats.effect.syntax.all.*
 import cats.effect.std.Mutex
 import cats.syntax.all.*
-import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Rational
 
 /** Per-connection LoP controls. Configuration changes refill the bucket but retain the highest
@@ -35,10 +34,12 @@ object LimitOnPatience:
 
   def resource[F[_]: Temporal](
       initial: LeakyBucket.Config,
-      onEmpty: F[Unit]
+      onEmpty: F[Unit],
+      clock: Option[PicosClock[F]] = None
   ): Resource[F, LimitOnPatience[F]] =
     val F = Temporal[F]
-    def now: F[BigInt] = F.monotonic.map(t => BigInt(t.toNanos) * 1000)
+    val thisTime = clock.getOrElse(PicosClock.system[F])
+    def now: F[BigInt] = thisTime.now
     Resource
       .eval((now, Deferred[F, Unit], Mutex[F]).flatMapN { (time, changed, lock) =>
         Ref
@@ -87,9 +88,8 @@ object LimitOnPatience:
             })
             .flatMap { (time, bucket, changed) =>
               def waitFor(timer: Timer): F[Either[Watch, Unit]] =
-                val remaining = ((timer.wakePicos - time).max(0) + 999) / 1000
-                val wait = remaining.min(BigInt(Long.MaxValue)).toLong.nanos
-                F.race(changed.get, F.sleep(wait)).as(Left(Watch(None, Some(timer))))
+                F.race(changed.get, thisTime.sleep((timer.wakePicos - time).max(0)))
+                  .as(Left(Watch(None, Some(timer))))
               watch.timer.filter(_.generation == bucket.generation) match
                 case Some(timer) if timer.wakePicos > time => waitFor(timer)
                 case _
