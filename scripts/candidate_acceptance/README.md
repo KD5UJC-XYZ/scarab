@@ -171,3 +171,11 @@ checks. `SCARAB_NATIVE_K1_DB` separately supplies the complete original Haskell 
 index parsing. Fixture trees may be materialized with hard links to immutable original files;
 never chmod those shared inodes or allow a writable container mount. Preserving the original
 Mithril bootstrap requires keeping its initial snapshot/checkpoint before any follower replay.
+
+The controller explicitly overrides `Test / testGrouping` with a subprocess group. Storage's
+ordinary build group uses `Tests.InProcess`, which ignores `Test / fork := true` and its heap
+options. Gate-only runtime observations in the native-index and boundary tests assert and record
+at least a 16 GiB maximum heap and exactly four configured processors. The final receipt requires
+both actual observations; merely mentioning JVM options in a command cannot establish the runtime.
+The ordinary small-heap storage regression remains part of normal `check`, outside these selected
+external suites. A reproduced old-policy run fails the heap assertion before parsing native files.

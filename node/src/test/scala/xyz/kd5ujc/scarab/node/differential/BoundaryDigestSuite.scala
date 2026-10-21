@@ -37,6 +37,12 @@ class BoundaryDigestSuite extends FunSuite:
 
   test("the ticked state at the boundary is the one recorded before the change") {
     assume(db.isDefined, "SCARAB_K1_DB is not set")
+    if sys.env.contains("SCARAB_CANDIDATE_RUNTIME") then
+      val heap = Runtime.getRuntime.maxMemory()
+      val processors = Runtime.getRuntime.availableProcessors()
+      println(s"candidate-runtime project=node maxHeapBytes=$heap processors=$processors")
+      assert(heap >= 16L * 1024 * 1024 * 1024, s"candidate fork heap is only $heap bytes")
+      assertEquals(processors, 4)
     val dir = db.get
     val setup =
       NodeSetup

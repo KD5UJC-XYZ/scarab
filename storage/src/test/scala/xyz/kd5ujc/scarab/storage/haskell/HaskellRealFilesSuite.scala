@@ -29,6 +29,12 @@ class HaskellRealFilesSuite extends FunSuite:
 
   test("every chunk's primary and secondary index parse as they did before") {
     assume(immutableDir.isDefined, "SCARAB_NATIVE_K1_DB is not set")
+    if sys.env.contains("SCARAB_CANDIDATE_RUNTIME") then
+      val heap = Runtime.getRuntime.maxMemory()
+      val processors = Runtime.getRuntime.availableProcessors()
+      println(s"candidate-runtime project=storage maxHeapBytes=$heap processors=$processors")
+      assert(heap >= 16L * 1024 * 1024 * 1024, s"candidate fork heap is only $heap bytes")
+      assertEquals(processors, 4)
     val dir = immutableDir.getOrElse(fail("required native ImmutableDB directory is absent"))
     val files = Using.resource(Files.list(dir)) { entries =>
       entries.iterator().asScala.filter(Files.isRegularFile(_)).map(_.getFileName.toString).toVector

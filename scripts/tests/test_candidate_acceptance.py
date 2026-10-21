@@ -352,8 +352,20 @@ class CandidateAcceptanceTests(unittest.TestCase):
         path.write_text(json.dumps({"blocks": 4, "referenceTargetsRequired": 4, "referenceBodyComparisons": 4}))
         self.assertEqual(candidate.replay_receipt(path)["referenceBodyComparisons"], 4)
 
+    def test_runtime_receipt_requires_observed_fork_configuration(self):
+        path = self.root / "sbt.log"
+        heap = 16 * 1024**3
+        good = f"candidate-runtime project=storage maxHeapBytes={heap} processors=4\ncandidate-runtime project=node maxHeapBytes={heap} processors=4\n"
+        path.write_text(good)
+        self.assertEqual(candidate.runtime_receipt(path)["storage"]["maxHeapBytes"], heap)
+        for value in ("", good + good, good.replace(str(heap), str(2 * 1024**3)), good.replace("processors=4", "processors=2")):
+            path.write_text(value)
+            with self.assertRaises(candidate.Rejected):
+                candidate.runtime_receipt(path)
+
     def test_commands_run_whole_suites_without_benchmark_or_filtered_skip_workaround(self):
         commands = candidate.sbt_commands(self.cases)
         self.assertFalse(any("--tests" in command or "Bench" in command for command in commands))
         self.assertTrue(any("-Xmx16g" in command for command in commands))
         self.assertEqual(sum("/testOnly " in command for command in commands), 2)
+        self.assertEqual(sum("Tests.SubProcess" in command for command in commands), 2)
