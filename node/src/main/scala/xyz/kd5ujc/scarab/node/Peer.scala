@@ -21,7 +21,7 @@ import xyz.kd5ujc.scarab.network.{
   NodeToNodeConnection,
   TxSubmissionClient
 }
-import xyz.kd5ujc.scarab.network.selection.{FetchGsv, FetchMode, Time}
+import xyz.kd5ujc.scarab.network.selection.{ChainSyncJumping, FetchGsv, FetchMode, Time}
 import xyz.kd5ujc.scarab.network.genesis.LimitOnPatience
 import scala.concurrent.duration.*
 import scala.collection.immutable.Queue as ImmutableQueue
@@ -495,7 +495,8 @@ object Peer:
         Ref.of[F, Option[ChainSync.Point]](None),
         Ref.of[F, Option[PeerError.RolledBackPastIntersection]](None),
         Ref.of[F, Boolean](false),
-        Ref.of[F, Option[ValidationError]](None)
+        Ref.of[F, Option[ValidationError]](None),
+        Ref.of[F, Option[ChainSyncJumping.Instruction[GenesisPeer.Checkpoint]]](None)
       ).mapN {
         (
             queue,
@@ -515,7 +516,8 @@ object Peer:
             pendingRestart,
             pendingEnd,
             chainSyncFinished,
-            handledSemantic
+            handledSemantic,
+            pendingJump
         ) =>
           def finishChainSync(using Raise[F, PeerError]): F[Unit] =
             connection.chainSync.done *> chainSyncFinished.set(true)
@@ -777,6 +779,23 @@ object Peer:
               _ <- finishPendingEnd
             yield batch
 
+          /** Client.hs:1255–1291 asks CSJ after every handled response. A jump consumes its
+            * instruction once, then discards already-submitted replies before FindIntersect.
+            */
+          def afterReply(using Raise[F, PeerError]): F[Unit] =
+            genesis.traverse_ { control =>
+              F.tailRecM(()) { _ =>
+                F.race(drainRequested.get.flatMap(_.get), control.next).flatMap {
+                  case Left(_)                                         => F.pure(Right(()))
+                  case Right(ChainSyncJumping.Instruction.RunNormally) => F.pure(Right(()))
+                  case Right(ChainSyncJumping.Instruction.Wait)        => F.cede.as(Left(()))
+                  case Right(ChainSyncJumping.Instruction.Failed(problem)) =>
+                    control.failed[Either[Unit, Unit]](problem)
+                  case Right(instruction) => pendingJump.set(Some(instruction)).as(Right(()))
+                }
+              }
+            }
+
           /** Genesis must make each validated prefix available while later replies wait for a
             * forecast. All requests remain pipelined; individual publication owns bounded credit.
             */
@@ -791,18 +810,26 @@ object Peer:
               n = requestDepth(ahead, settings.readAhead)
               began <- F.monotonic
               updates <- connection.chainSync.requestNextBatchObserved(n) { update =>
-                (drainCompletion.get, pendingRestart.get, pendingEnd.get).tupled.flatMap {
-                  // Once draining starts every remaining wire reply is discarded. Racing a
-                  // pre-completed drain signal would still start validation on a fragment whose
-                  // preceding validation was cancelled (native drainThePipe discard handlers).
-                  case (Some(_), _, _) | (_, Some(_), _) | (_, _, Some(_)) => F.unit
-                  case (None, None, None) =>
-                    F.race(drainRequested.get.flatMap(_.get), acceptUpdates(Vector(update)))
-                      .flatMap {
-                        case Left(_)      => F.unit
-                        case Right(batch) => publish(batch)
-                      }
-                }
+                (drainCompletion.get, pendingRestart.get, pendingEnd.get, pendingJump.get).tupled
+                  .flatMap {
+                    // Once draining starts every remaining wire reply is discarded. Racing a
+                    // pre-completed drain signal would still start validation on a fragment whose
+                    // preceding validation was cancelled (native drainThePipe discard handlers).
+                    case (Some(_), _, _, _) | (_, Some(_), _, _) | (_, _, Some(_), _) |
+                        (_, _, _, Some(_)) =>
+                      F.unit
+                    case (None, None, None, None) =>
+                      F.race(drainRequested.get.flatMap(_.get), acceptUpdates(Vector(update)))
+                        .flatMap {
+                          case Left(_) => F.unit
+                          case Right(batch) =>
+                            publish(batch) *>
+                              (pendingRestart.get, pendingEnd.get).tupled.flatMap {
+                                case (None, None) => afterReply
+                                case _            => F.unit
+                              }
+                        }
+                  }
               }
               _ <- finishPendingEnd
               arrived <- F.monotonic
@@ -1117,7 +1144,10 @@ object Peer:
                     pendingRestart.getAndSet(None).flatMap {
                       case Some(_) => restart(control)
                       case None =>
-                        F.race(drainRequested.get.flatMap(_.get), control.next).flatMap {
+                        F.race(
+                          drainRequested.get.flatMap(_.get),
+                          pendingJump.getAndSet(None).flatMap(_.fold(control.next)(F.pure))
+                        ).flatMap {
                           case Left(_) => F.unit
                           case Right(instruction) =>
                             instruction match {
@@ -1390,7 +1420,9 @@ object Peer:
                     Fault.land[F, Unit](Left(fault))
                   case _ => F.unit
                 }
-                _ <- pendingRestart.set(None) *> pendingEnd.set(None) *> progress.set(
+                _ <- pendingRestart.set(None) *> pendingEnd.set(None) *> pendingJump.set(
+                  None
+                ) *> progress.set(
                   None
                 ) *> last.set(None) *>
                   candidateVersions.set(Vector.empty) *> candidateHeaders.set(
