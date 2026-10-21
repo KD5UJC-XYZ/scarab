@@ -45,6 +45,19 @@ class FetchedBlockIntegritySuite extends FunSuite:
     }
   }
 
+  test("original mainnet Byron transaction and large-address bodies pass native transport checks") {
+    val rawBlocks = Vector(
+      "fixtures/mainnet/byron-tx-blocks.hex",
+      "fixtures/mainnet/byron-large-address-block.hex"
+    ).flatMap(path => Files.readString(Path.of(path)).linesIterator.filter(_.nonEmpty).toVector)
+    assertEquals(rawBlocks.size, 4)
+    rawBlocks.foreach { hex =>
+      val raw = Bytes.fromHex(hex).fold(e => fail(e.message), identity)
+      val block = Block.decode(raw, BigInt(21600)).fold(e => fail(e.message), identity)
+      assertEquals(BlockTransport.check(block.header, raw), Right(block))
+    }
+  }
+
   for era <- Era.values.filterNot(_ == Era.Byron) do
     test(s"$era declared-size-only failure remains semantic, not a transport body-hash failure") {
       val (block, raw) = originals.find(_._1.era == era).getOrElse(fail(s"missing $era"))
