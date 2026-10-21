@@ -401,6 +401,12 @@ def run(manifest_path, cases_path, checkout, output, local_inputs=None):
                    "-v", f"{scratch}:/candidate/results", "-w", "/work", "-e", "HOME=/work/.cache/home", "-e", "SBT_GLOBAL_BASE=/tmp/sbt-global"]
         actual_env = {key: "/candidate/inputs/" + manifest["environment"][key]["path"] for key in env}
         actual_env.update({key: "/candidate/results/" + value for key, value in OUTPUTS.items()})
+        # Export acquires its stable ownership lock beside the database. Keep the
+        # database read-only but place that sibling lock in owned writable scratch.
+        (scratch / "export-source").mkdir()
+        export_db = "/candidate/results/export-source/db"
+        command.extend(("-v", f'{env["SCARAB_EXPORT_DB"]}:{export_db}:ro'))
+        actual_env["SCARAB_EXPORT_DB"] = export_db
         actual_env.update({"SCARAB_CANDIDATE_RUNTIME": "1", "SCARAB_PREVIEW_WORKERS": "2,4", "SCARAB_PREVIEW_ROUNDS": "1", "SCARAB_PREVIEW_SCHEDULE": "Comparison"})
         common = Path(subprocess.check_output(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=checkout, text=True).strip())
         cache = common.parent / ".cache"
