@@ -34,19 +34,19 @@ enum NodeHeaderState:
     case Shelley(state, _, _, _) => Some(state)
     case _: Byron                => None
 
-/** Genesis never counts an unchecked header. Its Byron ledger forecast is the native exclusive
-  * NOW+1+2k bound (Byron/Ledger/Ledger.hs:268–320), and its first Shelley view uses the same exact
-  * initial forecast as the reference hard-fork combinator (CanHardFork.hs:421–470).
+/** Header validation never counts an unchecked header. Its Byron ledger forecast is the native
+  * exclusive NOW+1+2k bound (Byron/Ledger/Ledger.hs:268–320), and its first Shelley view uses the
+  * same exact initial forecast as the reference hard-fork combinator (CanHardFork.hs:421–470).
   */
-final class GenesisHeaderRules[S](
+final class NodeHeaderRules[S](
     config: PraosConfig,
     globals: LedgerGlobals,
-    byron: Option[ByronRules.Config],
-    handOver: Option[FromByron]
+    byron: Option[ByronRules.Config] = None,
+    handOver: Option[FromByron] = None
 )(using read: ChainRead[S], history: HeaderTimeRead[S])
     extends HeaderRules[S, NodeHeaderState]
     with HeaderRules.Timing[S, NodeHeaderState]:
-  private val shelleyRules = NodeHeaderRules[S](config, globals)
+  private val shelleyRules = ShelleyHeaderForecast[S](config, globals)
 
   def tiebreaker(anchor: S): ChainSelection.Tiebreaker = ChainSelection.tiebreakerFor(anchor.era)
 
@@ -96,7 +96,6 @@ final class GenesisHeaderRules[S](
               tip,
               old.state,
               h,
-              strictEnvelope = true,
               genericEnvelope = envelope(ledgerTip, h, previousBoundary = false)
             ),
             h,
@@ -111,14 +110,13 @@ final class GenesisHeaderRules[S](
               )
               val glob = old.firstEpoch.fold(globals)(first => globals.copy(firstEpoch = first))
               wrap(
-                NodeHeaderRules[S](cfg, glob)
+                ShelleyHeaderForecast[S](cfg, glob)
                   .prepareShelley(
                     anchor,
                     ledger,
                     tip,
                     old.state,
                     h,
-                    strictEnvelope = true,
                     forecastLimit = old.firstEpoch.map(first =>
                       cfg.geometry.firstSlot(first) + cfg.geometry.stabilityWindow
                     ),
@@ -290,14 +288,13 @@ final class GenesisHeaderRules[S](
             )
           case _ => previous.pendingShelley
         wrap(
-          NodeHeaderRules[S](cfg, glob)
+          ShelleyHeaderForecast[S](cfg, glob)
             .prepareShelley(
               anchor,
               view,
               tip,
               pending,
               header,
-              strictEnvelope = true,
               forecastLimit = Some(cfg.geometry.firstSlot(first) + cfg.geometry.stabilityWindow),
               genericEnvelope = envelope(parent, header, previous.previous.exists(_.boundary))
             ),

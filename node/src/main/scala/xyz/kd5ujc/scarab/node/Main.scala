@@ -44,7 +44,7 @@ import xyz.kd5ujc.scarab.storage.{
   UtxoStore
 }
 import cats.mtl.{Ask, Handle, Raise, Stateful, Tell}
-import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorState, ProtocolState}
+import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorState}
 import cats.syntax.all.*
 import java.nio.file.Path
 import com.comcast.ip4s.{Host, Port, SocketAddress}
@@ -925,13 +925,13 @@ object Main extends IOApp:
             headerCheck = Some(
               HeaderClock.clocked[IO](
                 SlotClock.system[IO](ref.get.map(_.state.geometry(genesis.geometry))),
-                if setup.config.settings.consensusMode ==
+                if options.headerFirst || setup.config.settings.consensusMode ==
                     xyz.kd5ujc.scarab.network.selection.ConsensusMode.GenesisMode
                 then
-                  HeaderCheck.forGenesisChain[IO, MirrorState](
+                  HeaderCheck.forNodeChain[IO, MirrorState](
                     {
                       given HeaderTimeRead[MirrorState] = HeaderTimeRead.mirror(setup.byronHistory)
-                      GenesisHeaderRules(
+                      NodeHeaderRules(
                         setup.praos.copy(verdicts = cache.forHeaders),
                         setup.globals,
                         setup.byronRules,
@@ -944,16 +944,6 @@ object Main extends IOApp:
                       state.protocol.traverse_(protocol =>
                         praosConfig.get.flatMap(cache.warmHeaders[IO](headers, protocol, _))
                       )
-                    ),
-                    added = Some(measured.headers),
-                    changes = Some(follower.headerChanges)
-                  )
-                else if options.headerFirst then
-                  HeaderCheck.forChain[IO, MirrorState, ProtocolState](
-                    NodeHeaderRules(setup.praos.copy(verdicts = cache.forHeaders), setup.globals),
-                    scheduling.compute,
-                    warm = Some((headers, state) =>
-                      praosConfig.get.flatMap(cache.warmHeaders[IO](headers, state, _))
                     ),
                     observe = Some(counts =>
                       headersLogged
@@ -968,7 +958,8 @@ object Main extends IOApp:
                           ).whenA(_)
                         )
                     ),
-                    added = Some(measured.headers)
+                    added = Some(measured.headers),
+                    changes = Some(follower.headerChanges)
                   )
                 else HeaderCheck.none[IO]
               )
