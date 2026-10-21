@@ -1772,7 +1772,8 @@ Conway starts at 9). The Conway versions are governance: a HardFork action per v
   still hold) or adds a check or a `NO_VERSION_CHECKS` entry. The failure is found when the maximum is read, logged at once, and
   reported at the end; the chain is driven only up to the highest version the registry knows. A new era (Dijkstra) is out of
   scope: it needs its own builders in `eratx.py`, and the guard fails there until the registry and the builders are extended.
-  The unit tests of the registry, the guard and the walk are `scripts/tests/test_protocol_versions.py` (no Docker).
+  The unit tests of the registry, the guard and the walk are `scripts/tests/test_protocol_versions.py` (no Docker); one of them keeps the
+  registry's highest verified version equal to the Scala node's own `HardForkConfig.MaxMajorProtVer`.
 
 Recorded results and the commits they were obtained on are in
 [compatibility.md](compatibility.md) (evidence log).
