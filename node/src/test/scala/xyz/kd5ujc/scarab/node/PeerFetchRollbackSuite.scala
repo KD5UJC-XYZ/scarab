@@ -85,6 +85,14 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
           val chainSync = new ChainSyncClient[IO, NtNHeader]:
             def findIntersect(points: Vector[ChainSync.Point])(using Raise[IO, NetworkError]) =
               IO.pure(Option.when(points.contains(base.point))(base.point -> leftTip))
+            def findIntersectResult(points: Vector[ChainSync.Point])(using
+                Raise[IO, NetworkError]
+            ) =
+              findIntersect(points).map(
+                _.fold[ChainSyncClient.Intersection](
+                  ChainSyncRuntime.Intersection.NotFound(leftTip)
+                ) { (point, remoteTip) => ChainSyncRuntime.Intersection.Found(point, remoteTip) }
+              )
             def requestNext(using Raise[IO, NetworkError]) =
               IO.raiseError[ChainSyncClient.Update[NtNHeader]](
                 new AssertionError("batch interface expected")

@@ -1474,27 +1474,39 @@ object Peer:
                               case Instruction.Wait            => F.cede
                               case Instruction.Failed(problem) => control.failed[Unit](problem)
                               case Instruction.Jump(info, goodPoint) =>
-                                connection.chainSync.findIntersect(Vector(info.tip)).flatMap {
-                                  found =>
-                                    gate.get.flatMap { currentGate =>
+                                connection.chainSync.findIntersectResult(Vector(info.tip)).flatMap {
+                                  result =>
+                                    candidateHeaders.get.flatMap(candidate =>
+                                      capturedHeight(candidate.tip).flatMap(height =>
+                                        progress
+                                          .set(Some(result.tip -> height.fold(BigInt(0))(_.value)))
+                                      )
+                                    ) *> gate.get.flatMap { currentGate =>
                                       control
                                         .processJump(
                                           info,
                                           goodPoint,
-                                          found.map(_._1),
+                                          result.toOption.map(_._1),
                                           currentGate
                                         )
                                         .flatMap {
                                           case GenesisPeer.Applied.Retained => F.unit
                                           case GenesisPeer.Applied.Restart  => restart(control)
                                           case GenesisPeer.Applied.Grafted(candidate) =>
-                                            remember(candidate) *> found.traverse_ { (_, tip) =>
-                                              progress.set(
-                                                candidate.headers.lastOption
-                                                  .map(h => tip -> h.blockNo)
+                                            remember(candidate) *>
+                                              capturedHeight(candidate.tip).flatMap(height =>
+                                                progress.set(
+                                                  Some(
+                                                    result.tip -> height.fold(BigInt(0))(_.value)
+                                                  )
+                                                )
                                               ) *>
-                                                updateJournal(candidate, Some(tip), false, true)
-                                            }
+                                              updateJournal(
+                                                candidate,
+                                                Some(result.tip),
+                                                false,
+                                                true
+                                              )
                                         }
                                     }
                                 }

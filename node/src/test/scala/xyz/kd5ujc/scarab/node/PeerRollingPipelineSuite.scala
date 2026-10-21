@@ -7,6 +7,7 @@ import cats.mtl.Raise
 import cats.syntax.all.*
 import com.comcast.ip4s.*
 import xyz.kd5ujc.scarab.ledger.{ChainSyncInternalProblem, PeerError}
+import xyz.kd5ujc.scarab.consensus.{ChainSelection, HeaderChain, SelectView}
 import xyz.kd5ujc.scarab.network.*
 import xyz.kd5ujc.scarab.network.selection.ChainSyncJumping
 import xyz.kd5ujc.scarab.node.forge.ForgedChain
@@ -26,7 +27,9 @@ class PeerRollingPipelineSuite extends FailsOnUncaught:
       abort: Boolean,
       blockedSend: Boolean = false,
       unknownRollback: Boolean = false,
-      offeredHeight: Option[BigInt] = None
+      offeredHeight: Option[BigInt] = None,
+      emptyGraft: Boolean = false,
+      rejectedJump: Boolean = false
   ): IO[Unit] =
     Supervisor[IO](await = false).use { supervisor =>
       for
@@ -52,6 +55,13 @@ class PeerRollingPipelineSuite extends FailsOnUncaught:
         captures <- Ref.of[IO, Int](0)
         awaited <- Ref.of[IO, Vector[Int]](Vector.empty)
         handled <- Ref.of[IO, Int](0)
+        nextCalls <- Ref.of[IO, Int](0)
+        checkpoint = GenesisPeer.Checkpoint(
+          HeaderChain.at[NodeHeaderState](ChainSync.Point.Origin, None),
+          ChainSelection
+            .Local(ChainSync.Point.Origin, SelectView(-1, 0, None, 0, None), Vector.empty),
+          ChainSync.Point.Origin
+        )
         reason = NetworkError.BearerClosed(NetworkError.Closure.Aborted)
         mux = new Mux[IO]:
           def installApplication(initiators: Set[Int], responders: Set[Int])(using
@@ -82,8 +92,19 @@ class PeerRollingPipelineSuite extends FailsOnUncaught:
         pipeline = new ChainSyncClient.Pipeline[IO, NtNHeader]:
           def findIntersect(points: Vector[ChainSync.Point])(using Raise[IO, NetworkError]) =
             IO.pure(
-              Some(offeredHeight.fold(ChainSync.Point.Origin)(_ => chain.headers.head.point) -> tip)
+              Some(
+                offeredHeight.fold(ChainSync.Point.Origin)(_ => chain.headers.head.point) ->
+                  (if rejectedJump then ChainSync.Tip.Origin else tip)
+              )
             )
+          def findIntersectResult(points: Vector[ChainSync.Point])(using Raise[IO, NetworkError]) =
+            if rejectedJump then IO.pure(ChainSyncRuntime.Intersection.NotFound(tip))
+            else
+              findIntersect(points).map(
+                _.fold[ChainSyncClient.Intersection](
+                  ChainSyncRuntime.Intersection.NotFound(tip)
+                ) { (point, remoteTip) => ChainSyncRuntime.Intersection.Found(point, remoteTip) }
+              )
           def submit(using Raise[IO, NetworkError]) =
             IO(fail("production must submit a captured receiver hook"))
           def submitObserved(hook: ChainSyncClient.ReceiverHook[IO])(using
@@ -172,7 +193,14 @@ class PeerRollingPipelineSuite extends FailsOnUncaught:
                   )
               else IO.unit)
         control = new GenesisPeer[IO]:
-          def next = IO.pure(ChainSyncJumping.Instruction.RunNormally)
+          def next = nextCalls.getAndUpdate(_ + 1).map { count =>
+            if (emptyGraft || rejectedJump) && count == 0 then
+              ChainSyncJumping.Instruction.Jump(
+                ChainSyncJumping.JumpInfo(ChainSync.Point.Origin, Vector.empty, checkpoint),
+                true
+              )
+            else ChainSyncJumping.Instruction.RunNormally
+          }
           override def nextAfterReply =
             handled
               .getAndUpdate(_ + 1)
@@ -191,7 +219,13 @@ class PeerRollingPipelineSuite extends FailsOnUncaught:
               goodPoint: Boolean,
               found: Option[ChainSync.Point],
               gate: HeaderGate[IO]
-          ) = IO.pure(GenesisPeer.Applied.Retained)
+          ) = IO.pure(
+            if emptyGraft then
+              GenesisPeer.Applied.Grafted(
+                ChainSelection.Candidate(ChainSync.Point.Origin, Vector.empty)
+              )
+            else GenesisPeer.Applied.Retained
+          )
         _ <- Peer
           .over(
             NodeToNodeConnection(15, pipeline, blockFetch, mux, chainSyncPipeline = Some(pipeline)),
@@ -206,7 +240,7 @@ class PeerRollingPipelineSuite extends FailsOnUncaught:
             heights,
             headers = Option.unless(unknownRollback || offeredHeight.nonEmpty)(check),
             chainSyncObserver = Some(observer),
-            genesis = Option.when(blocked == Blocked.Jumping)(control)
+            genesis = Option.when(blocked == Blocked.Jumping || emptyGraft || rejectedJump)(control)
           )
           .use { peer =>
             if offeredHeight.nonEmpty then
@@ -275,6 +309,14 @@ class PeerRollingPipelineSuite extends FailsOnUncaught:
     schedule(Blocked.Forecast, abort = false, blockedSend = true)
   }
 
+  test("an empty graft retains the remote tip and resumes rolling prefill") {
+    schedule(Blocked.Forecast, abort = false, emptyGraft = true)
+  }
+
+  test("a rejected jump retains its remote tip before a retained peer resumes rolling prefill") {
+    schedule(Blocked.Forecast, abort = false, rejectedJump = true)
+  }
+
   test(
     "an unknown rollback with header validation disabled is a peer failure, not a local defect"
   ) {
@@ -288,7 +330,6 @@ class PeerRollingPipelineSuite extends FailsOnUncaught:
   }
 
   test("publication capacity preserves the actual shared point even when block numbers repeat") {
-    import xyz.kd5ujc.scarab.consensus.ChainSelection
     val retained = chain.headers.size - 1
     assert(retained >= 2)
     val headers = chain.headers.take(retained).map(_.copy(blockNo = 1))
