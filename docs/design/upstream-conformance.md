@@ -84,14 +84,19 @@ the upstream generator/context and bootstrap repairs. Upstream's four property
 labels previously all called the UTXO bundle; the exporter invokes the actual
 typed rules. Full LEDGER contexts and deposit obligations are explicitly derived.
 Generated instant-stake caches were unrelated to their UTxO: the first Scala run
-retains nine precise CompactCoin underflows. Separate lawful samples use native
-`smartUTxOState` over the unchanged UTxO and signed transactions, with independently
-checked cache consistency. No numeric bound is weakened or state field masked.
+retains nine precise CompactCoin underflows. These exposed a production mismatch: native
+`Conway/State/Stake.hs:87–120` uses modular Word64 arithmetic and inserts missing entries
+for either addition or deletion. The current updater follows those operations and native
+input-map order; all nine unchanged original native accepted states now compare in full.
+No native cache-coherence precondition or invalid-input exclusion is claimed. The separate
+coherent samples use native `smartUTxOState` over the unchanged UTxO and signed transactions,
+with independently checked cache consistency. No numeric bound is weakened or state field masked.
 
 The lawful corpus retains all fixed draws, including rejected LEDGERS attempts,
 bootstrap witness controls and native Plutus overlap controls. Its 41 observations
 contain **39 distinct rule inputs: 28 accept and 11 refuse**; two duplicate funding
-hooks do not increase that count. Accepted complete states and typed refusal
+hooks do not increase that count. The nine original cache regressions are counted separately,
+giving 48 distinct native rule inputs overall (37 accepts and 11 refusals). Accepted complete states and typed refusal
 membership compare through production transitions, retaining original signed
 bytes. Only unavailable MemPack output-original bytes and Scala change-history
 bookkeeping are excluded, as in the earlier adapter.
