@@ -143,9 +143,12 @@ object ChainSyncRuntime:
         }
 
       def receiveAt(current: State)(using Raise[F, NetworkError]): F[Message[Q, T, P]] =
-        val limit = ChainSyncTimeouts.next(current, settings)(
-          random.nextLong.map(ChainSyncTimeouts.sampledSeconds)
-        )
+        val limit = current match
+          case State.Intersect | State.NextCanAwait | State.NextMustReply =>
+            ChainSyncTimeouts.next(current, settings)(
+              random.nextLong.map(ChainSyncTimeouts.sampledSeconds)
+            )
+          case other => illegal[ProtocolDeadline](RuntimeViolation.ReplyNotExpected(other))
         limit.flatMap { wait =>
           Timed.within(wait, id, current.toString)(
             channel.recv(settings.limits.maxMessageBytes)(
