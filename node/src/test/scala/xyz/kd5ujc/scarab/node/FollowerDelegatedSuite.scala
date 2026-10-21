@@ -7,6 +7,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.consensus.{BlockRules, ChainSelection, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.{Fixtures, Header, NodeError, PeerError}
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
+import xyz.kd5ujc.scarab.network.genesis.PicosClock
 import xyz.kd5ujc.scarab.network.selection.Gsm
 import xyz.kd5ujc.scarab.node.forge.ForgedChain
 import xyz.kd5ujc.scarab.protocol.ChainSync
@@ -17,6 +18,20 @@ class FollowerDelegatedSuite extends FailsOnUncaught:
   private val candidate = ChainSelection.Candidate(ChainSync.Point.Origin, headers)
 
   private def run(authoritative: Boolean): IO[Unit] =
+    for
+      calls <- Ref.of[IO, Int](0)
+      clock = new PicosClock[IO]:
+        def now = calls.update(_ + 1).as(BigInt(0))
+        def sleep(@scala.annotation.unused delayPicos: BigInt) = IO.unit
+      work <- SelectionWork.create[IO](IO.unit, Some(clock))
+      _ <- work.session.use(session => runWithWork(authoritative, session, calls))
+    yield ()
+
+  private def runWithWork(
+      authoritative: Boolean,
+      work: SelectionWork.Session[IO],
+      calls: Ref[IO, Int]
+  ): IO[Unit] =
     for
       state <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(5, -1))
       given Stateful[IO, VolatileChain[BigInt]] = RefStateful(state)
@@ -32,6 +47,7 @@ class FollowerDelegatedSuite extends FailsOnUncaught:
       )
       remaining <- Ref.of[IO, Vector[SyncEvent]](events)
       peer = new Peer[IO]:
+        override def selectionWork = Some(work)
         override def invalidBlocks = Some(registry)
         override def headerCandidate = Option.when(authoritative)(source)
         def intersect(points: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
@@ -69,11 +85,15 @@ class FollowerDelegatedSuite extends FailsOnUncaught:
           .rescue(error => IO.pure(Some(error)))
       }
       count <- seen.get
+      processingCalls <- calls.get
       view <- tracked.get.flatMap(_.traverse(_.get))
       preference <- follower.versus(candidate)
     yield
       assertEquals(outcome, Some(PeerError.NoIntersection: NodeError))
       assertEquals(count, events.size)
+      // No ready tokens are queued in this fixture: one clock observation per attempted RF
+      // consideration therefore exposes repeated traversal even when no token can be acquired.
+      assertEquals(processingCalls, headers.size + 1)
       if authoritative then
         assertEquals(view, Some(candidate))
         assertEquals(preference, Gsm.Candidate.Better(true))
