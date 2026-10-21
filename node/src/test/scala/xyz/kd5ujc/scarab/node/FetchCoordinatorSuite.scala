@@ -29,7 +29,7 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
       case h: Header.Shelley => h.copy(vrf = HeaderVrf.Praos(VrfCert(Bytes(Vector.fill(64)(100.toByte)), Bytes.empty)))
       case other => fail(s"expected Shelley fixture: $other")
     val preferred = first.copy(slot = 106, issuerVkey = Bytes(Vector.fill(32)(2.toByte)),
-      vrf = HeaderVrf.Praos(VrfCert(Bytes(Vector.fill(64)(1.toByte)), Bytes.empty))))
+      vrf = HeaderVrf.Praos(VrfCert(Bytes(Vector.fill(64)(1.toByte)), Bytes.empty)))
     assert(!ChainSelection.prefersCandidate(ChainSelection.Tiebreaker.Restricted(5),
       SelectView.of(first), SelectView.of(preferred)))
     assert(FetchCoordinator.compareTips(first, preferred) > 0)

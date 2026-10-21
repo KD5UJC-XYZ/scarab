@@ -5,7 +5,7 @@ import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.network.genesis.PicosClock
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
+import xyz.kd5ujc.scarab.consensus.ChainSelection
 import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.network.selection.{
   BlockFetchPolicy,
