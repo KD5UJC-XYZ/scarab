@@ -4,7 +4,6 @@ package xyz.kd5ujc.scarab.node.governor
 import cats.effect.{Deferred, IO, Ref}
 import cats.effect.std.{Queue, Supervisor}
 import cats.mtl.{Ask, Handle, Stateful, Tell}
-import cats.syntax.all.*
 import scala.collection.immutable.SortedMap
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
