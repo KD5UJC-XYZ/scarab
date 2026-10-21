@@ -188,6 +188,7 @@ fixtures/reference/auxiliary-scripts contains original synthetic auxiliary CBOR 
 script-validity observations from unchanged released Haskell ledger APIs. This API corpus makes no
 signed transaction-admission claim. Original Apache-2.0 observer/generation code; upstream package
 licenses/notices remain under fixtures/licenses and in fetched source distributions. No signing keys.
+
 fixtures/reference/ntc-wallet-peers-11.1.3 retains original cardano-node 11.1.3 query replies,
 public genesis/configuration and synthetic native ledger states from throwaway networks. No signing
 keys are included. The manifest and README pin runtime/source provenance; upstream Apache-2.0
