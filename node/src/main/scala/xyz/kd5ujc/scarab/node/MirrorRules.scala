@@ -258,30 +258,34 @@ object MirrorRules:
       phase2Observer: Option[Phase2.Observation => Unit],
       prepared: Option[Prepared]
   )(validate: EraBlock.Body => F[EraBlock.Outcome]): F[Either[BlockFailure, MirrorState]] =
-    header match
-      case h: Header.Byron =>
-        val chain = state.consensus
-        NodeRules
-          .byronStep(chain.byron, chain.boot, h, raw, byron)
-          .flatMap((next, boot) => MirrorStep.byronBlock(state, h, next, boot).leftMap(mirror))
-          .pure[F]
-      case h: Header.Shelley =>
-        val ready = for
-          entry <- NodeRules.entry(state.consensus.byron, h, config, globals, byron)
-          pre <- before(state, entry, handOver)
-          body <- shelley(
-            state,
-            pre,
-            h,
-            raw,
-            entry.configuration,
-            entry.constants,
-            byronParams,
-            phase2Observer,
-            prepared
-          )
-        yield body
-        ready.traverse { (body, finish) => validate(body).map(finish) }.map(_.flatten)
+    config.checkpoints.validate(header) match
+      case Left(error) =>
+        (Left(BlockFailure.Envelope(error)): Either[BlockFailure, MirrorState]).pure[F]
+      case Right(_) =>
+        header match
+          case h: Header.Byron =>
+            val chain = state.consensus
+            NodeRules
+              .byronStep(chain.byron, chain.boot, h, raw, byron)
+              .flatMap((next, boot) => MirrorStep.byronBlock(state, h, next, boot).leftMap(mirror))
+              .pure[F]
+          case h: Header.Shelley =>
+            val ready = for
+              entry <- NodeRules.entry(state.consensus.byron, h, config, globals, byron)
+              pre <- before(state, entry, handOver)
+              body <- shelley(
+                state,
+                pre,
+                h,
+                raw,
+                entry.configuration,
+                entry.constants,
+                byronParams,
+                phase2Observer,
+                prepared
+              )
+            yield body
+            ready.traverse { (body, finish) => validate(body).map(finish) }.map(_.flatten)
 
   private def shelley(
       state: MirrorState,

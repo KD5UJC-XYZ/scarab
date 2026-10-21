@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.consensus.{BootstrapState, ByronState}
+import xyz.kd5ujc.scarab.consensus.{BootstrapState, ByronState, HeaderCheckpoints}
 import xyz.kd5ujc.scarab.consensus.state.{
   ConsensusMirrorEnv,
   EraHistory,
@@ -244,7 +244,7 @@ object NodeSetup:
         check("Dijkstra", f, hashes.dijkstra, required = false, plain)
       )
       _ <- files.checkpoints.traverse_(f =>
-        check("Checkpoints", f, hashes.checkpoints, required = false, plain)
+        check("Checkpoints", f, hashes.checkpoints, required = true, plain)
       )
     yield ()
 
@@ -271,6 +271,12 @@ object NodeSetup:
       parser.parse(text(bytes)).leftMap(e => ConfigError(ConfigProblem.JsonSyntax(name, e)))
     for
       _ <- verifyHashes(config, read)
+      checkpoints <- names.checkpoints
+        .traverse(file =>
+          required("Checkpoints", file)
+            .flatMap(CheckpointsFile.parse(file, _, config.hashes.checkpoints))
+        )
+        .map(_.getOrElse(HeaderCheckpoints.empty))
       shelleyBytes <- required("Shelley", names.shelley)
       shelleyBase <- Genesis.shelley(text(shelleyBytes))
       firstShelley = config.firstShelleyEpoch
@@ -310,7 +316,8 @@ object NodeSetup:
         genesis.slotsPerKesPeriod,
         genesis.maxKesEvolutions,
         active,
-        HardForkConfig.fromEpochs(config.hardForkEpochs)
+        HardForkConfig.fromEpochs(config.hardForkEpochs),
+        checkpoints = checkpoints
       )
       lite <- LiteLedger.fromGenesis(files.shelley, firstShelley.getOrElse(BigInt(0)))
       byronRules <- byron.traverse { b =>

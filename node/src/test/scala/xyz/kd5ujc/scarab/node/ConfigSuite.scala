@@ -63,14 +63,8 @@ class ConfigSuite extends FunSuite:
   test("every hash of every public configuration equals the file it names") {
     networks.foreach { network =>
       val config = parsed(network)
-      // mainnet's 1 MB Byron genesis file is not kept; the other three are
       val result = NodeSetup.verifyHashes(config, read(network))
-      if network == "mainnet" then
-        assertEquals(
-          result.left.map(_.problem.getClass.getSimpleName).left.toOption,
-          Some("FileMissing")
-        )
-      else assertEquals(result, Right(()), network)
+      assertEquals(result, Right(()), network)
       List(
         config.files.shelley -> config.hashes.shelley,
         config.files.alonzo -> config.hashes.alonzo,
@@ -82,18 +76,8 @@ class ConfigSuite extends FunSuite:
     }
   }
 
-  test("the mainnet Byron hash is verified against the full file when it is at hand") {
-    val configured = sys.env.get("SCARAB_MAINNET_GENESIS_DIR").map(Path.of(_))
-    assume(
-      configured.exists(path => Files.isRegularFile(path.resolve("byron-genesis.json"))),
-      "SCARAB_MAINNET_GENESIS_DIR names the full mainnet genesis directory"
-    )
-    val full = configured.getOrElse(fail("mainnet genesis directory was not configured"))
-    val readFull: String => Option[Array[Byte]] = name =>
-      read("mainnet")(name).orElse(
-        Option.when(Files.exists(full.resolve(name)))(Files.readAllBytes(full.resolve(name)))
-      )
-    assertEquals(NodeSetup.verifyHashes(parsed("mainnet"), readFull), Right(()))
+  test("the mainnet Byron hash is verified against the complete pinned public file") {
+    assertEquals(NodeSetup.verifyHashes(parsed("mainnet"), read("mainnet")), Right(()))
   }
 
   test("a genesis file that differs from its listed hash is a typed GenesisHashMismatch") {
@@ -508,6 +492,7 @@ class ConfigSuite extends FunSuite:
     List("byron", "shelley", "alonzo", "conway").foreach { n =>
       Files.copy(dir("preview").resolve(s"$n-genesis.json"), praos.resolve(s"$n-genesis.json"))
     }
+    Files.copy(dir("preview").resolve("checkpoints.json"), praos.resolve("checkpoints.json"))
     val preview = parser
       .parse(text("preview", "config.json"))
       .fold(error => fail(error.toString), identity)
@@ -565,6 +550,7 @@ class ConfigSuite extends FunSuite:
     )
     // the file's defaults for the flags (here none are set), and a flag wins over the file
     val withSettings = Files.createTempDirectory("config-suite-settings")
+    Files.copy(dir("preview").resolve("checkpoints.json"), withSettings.resolve("checkpoints.json"))
     List("byron", "shelley", "alonzo", "conway").foreach { n =>
       Files.copy(
         dir("preview").resolve(s"$n-genesis.json"),

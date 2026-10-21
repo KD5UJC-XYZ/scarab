@@ -52,6 +52,19 @@ final class NodeHeaderRules[S](config: PraosConfig, globals: LedgerGlobals)(usin
       tip: Option[BlockRef],
       prev: ProtocolState,
       header: Header
+  ): Outcome[ProtocolState] =
+    config.checkpoints
+      .validate(header)
+      .fold(
+        error => Outcome.Invalid(HeaderError.Envelope(error)),
+        _ => validateUnchecked(anchor, tip, prev, header)
+      )
+
+  private def validateUnchecked(
+      anchor: S,
+      tip: Option[BlockRef],
+      prev: ProtocolState,
+      header: Header
   ): Outcome[ProtocolState] = header match
     case _: Header.Byron =>
       Outcome.Unchecked(HeaderRules.UncheckedReason.Byron, Some(prev))

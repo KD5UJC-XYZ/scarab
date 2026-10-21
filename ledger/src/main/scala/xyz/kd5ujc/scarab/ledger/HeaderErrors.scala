@@ -51,6 +51,8 @@ enum HeaderError:
   * rendering used in validation errors.
   */
 enum EnvelopeError:
+  case CheckpointMismatch(blockNo: BigInt, expected: Bytes, actual: Bytes)
+
   /** The ledger (Praos) or the header (TPraos) announces a major version above what this node
     * supports.
     */
@@ -65,6 +67,8 @@ enum EnvelopeError:
   case WrongEra(header: Era, expected: Era, epoch: BigInt, ledgerMajor: BigInt)
 
   def message: String = this match
+    case CheckpointMismatch(no, expected, actual) =>
+      s"checkpoint $no expects ${expected.hex}, got ${actual.hex}"
     case ObsoleteNode(v, max) =>
       s"obsolete node: protocol major version $v exceeds the maximum $max this node supports"
     case HeaderSizeTooLarge(s, max) => s"header size $s exceeds $max"
