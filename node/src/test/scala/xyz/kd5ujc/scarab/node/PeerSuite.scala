@@ -3,7 +3,8 @@ package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf, VrfCert, PeerError}
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.{Era, Mux as WireMux}
+import xyz.kd5ujc.scarab.protocol.{ChainSync, Era, Mux as WireMux}
+import xyz.kd5ujc.scarab.consensus.ChainSelection
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.*
@@ -196,4 +197,48 @@ class PeerSuite extends ScalaCheckSuite:
 
   test("peer address validation retains the rejected input") {
     assertEquals(Peer.parseAddress("invalid"), Left(Peer.AddressError.Invalid("invalid")))
+  }
+
+  test("candidate publication coalesces an unpublished fork into one rollback and new prefix") {
+    val first = header(1, 1)
+    val old = header(2, 1)
+    val replacement = header(3, 1)
+    val before = ChainSelection.Candidate(ChainSync.Point.Origin, Vector(first, old))
+    val latest = ChainSelection.Candidate(ChainSync.Point.Origin, Vector(first, replacement))
+    val tip = ChainSync.Tip(replacement.point, ChainSync.UInt64.saturating(3))
+    val result = Peer.publication(before, latest, tip, 128)
+    assertEquals(
+      result,
+      Right(
+        latest -> Vector(
+          SyncEvent.RollBackward(first.point, tip),
+          SyncEvent.RollForward(replacement, tip)
+        )
+      )
+    )
+  }
+
+  test("candidate publication splits body work without dropping validated headers") {
+    val headers = Vector.tabulate(10)(i => header(i + 1, 1))
+    val latest = ChainSelection.Candidate(ChainSync.Point.Origin, headers)
+    val tip = ChainSync.Tip(headers.last.point, ChainSync.UInt64.saturating(10))
+    val initial = ChainSelection.Candidate(ChainSync.Point.Origin, Vector.empty)
+    val (last, events) = (0 until 4).foldLeft(initial -> Vector.empty[SyncEvent]) {
+      case ((previous, seen), _) =>
+        val (after, next) =
+          Peer.publication(previous, latest, tip, 3).fold(e => fail(e.message), identity)
+        (after, seen ++ next)
+    }
+    assertEquals(last, latest)
+    assertEquals(events, headers.map(h => SyncEvent.RollForward(h, tip)))
+  }
+
+  test("detached publication requests a typed reintersection instead of inventing a rollback") {
+    val previous = ChainSelection.Candidate(header(1, 1).point, Vector(header(2, 1)))
+    val latest = ChainSelection.Candidate(header(3, 1).point, Vector(header(4, 1)))
+    val tip = ChainSync.Tip(latest.tip, ChainSync.UInt64.saturating(4))
+    assertEquals(
+      Peer.publication(previous, latest, tip, 128),
+      Left(PeerError.Divergence.DetachedCandidate(latest.base))
+    )
   }

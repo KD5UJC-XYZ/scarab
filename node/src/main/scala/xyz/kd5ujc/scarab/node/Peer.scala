@@ -22,6 +22,7 @@ import xyz.kd5ujc.scarab.network.{
   TxSubmissionClient
 }
 import xyz.kd5ujc.scarab.network.selection.{FetchGsv, FetchMode, Time}
+import xyz.kd5ujc.scarab.network.genesis.LimitOnPatience
 import scala.concurrent.duration.*
 
 enum SyncEvent:
@@ -49,6 +50,34 @@ trait Peer[F[_]]:
   def fetch(header: Header)(using Raise[F, PeerError]): F[Bytes]
 
 object Peer:
+  private final case class HeaderJournal[F[_]](
+      candidate: ChainSelection.Candidate,
+      tip: Option[ChainSync.Tip],
+      done: Boolean,
+      changed: Deferred[F, Unit]
+  )
+
+  /** A candidate TVar coalesces unpublished wire changes in the reference. Keep that behavior:
+    * downloading bodies must not block ChainSync or charge the peer for local queue capacity.
+    */
+  private[node] def publication(
+      previous: ChainSelection.Candidate,
+      latest: ChainSelection.Candidate,
+      tip: ChainSync.Tip,
+      limit: Int
+  ): Either[PeerError.Divergence, (ChainSelection.Candidate, Vector[SyncEvent])] =
+    val positions = (latest.base +: latest.headers.map(_.point)).zipWithIndex.toMap
+    val common =
+      (previous.base +: previous.headers.map(_.point)).reverseIterator.find(positions.contains)
+    common.toRight(PeerError.Divergence.DetachedCandidate(latest.base)).map { point =>
+      val start = positions.getOrElse(point, 0)
+      val forward = latest.headers.drop(start).take(limit.max(1))
+      val kept = latest.headers.take(start) ++ forward
+      val after = ChainSelection.Candidate(latest.base, kept)
+      val rollback = Option.when(previous.tip != point)(SyncEvent.RollBackward(point, tip)).toVector
+      (after, rollback ++ forward.map(h => SyncEvent.RollForward(h, tip)))
+    }
+
   private enum PipelineEvent:
     case Batch(events: Vector[SyncEvent])
     case Failed(fault: Fault)
@@ -298,7 +327,11 @@ object Peer:
       fetchMode: Option[F[FetchMode]] = None,
       invalidCachedBlock: Option[ValidationError => F[Unit]] = None,
       fetchIdentity: Option[Long] = None,
-      pipelineFailed: Option[Fault => F[Unit]] = None
+      pipelineFailed: Option[Fault => F[Unit]] = None,
+      patience: Option[LimitOnPatience[F]] = None,
+      received: Option[SyncEvent => F[Unit]] = None,
+      chainSyncObserver: Option[ChainSyncClient.Observer[F]] = None,
+      retainedHeaders: Int = BlockPool.Retained
   ): Resource[F, Controlled[F]] =
     val F = Async[F]
     val currentMode: F[FetchMode] = fetchMode.getOrElse(F.pure(FetchMode.BulkSync))
@@ -314,6 +347,16 @@ object Peer:
         fetchIdentity.getOrElse(settings.address.hashCode.toLong)
       )
       supervisor <- Supervisor[F](await = false)
+      _ <-
+        if patience.isEmpty && chainSyncObserver.isEmpty then Resource.unit[F]
+        else
+          connection.chainSync.observe(new ChainSyncClient.Observer[F]:
+            def awaitReply: F[Unit] =
+              patience.traverse_(_.setPaused(LimitOnPatience.PauseReason.AwaitReply, true)) *>
+                chainSyncObserver.traverse_(_.awaitReply)
+            def reply: F[Unit] =
+              patience.traverse_(_.setPaused(LimitOnPatience.PauseReason.AwaitReply, false)) *>
+                chainSyncObserver.traverse_(_.reply))
     yield (claims, fetcher, supervisor)).evalMap { (claims, fetcher, supervisor) =>
       // Read-ahead: while the peer is far ahead, ChainSync requests are pipelined and the
       // blocks of the whole batch are fetched with one BlockFetch range. A producer fiber
@@ -487,7 +530,39 @@ object Peer:
               arrived <- F.monotonic
               took = arrived - began
               _ <- observe.traverse_(_(Peer.Observation.Round(n, updates.size, took.toMillis)))
+              batch <- acceptUpdates(updates)
+            yield batch
+
+          /** Genesis must make each validated prefix available while later replies wait for a
+            * forecast. All requests remain pipelined; individual publication owns bounded credit.
+            */
+          def requestHeadersStreaming(publish: Vector[SyncEvent] => F[Unit])(using
+              Raise[F, PeerError]
+          ): F[Unit] =
+            for
+              seen <- progress.get
+              ahead = seen.fold(BigInt(0)) { (tip, blockNo) =>
+                (tip.blockNo.value - blockNo).max(0)
+              }
+              n = requestDepth(ahead, settings.readAhead)
+              began <- F.monotonic
+              updates <- connection.chainSync.requestNextBatchObserved(n) { update =>
+                acceptUpdates(Vector(update)).flatMap(publish)
+              }
+              arrived <- F.monotonic
+              _ <- observe.traverse_(
+                _(Peer.Observation.Round(n, updates.size, (arrived - began).toMillis))
+              )
+            yield ()
+
+          /** Validate and announce a complete batch, or one streaming Genesis reply. */
+          def acceptUpdates(updates: Vector[ChainSyncClient.Update[NtNHeader]])(using
+              Raise[F, PeerError]
+          ): F[Vector[SyncEvent]] =
+            for
+              arrived <- F.monotonic
               batch <- updates.traverse(decode)
+              _ <- batch.traverse_(event => received.traverse_(_(event)))
               _ <- observe.traverse_ { report =>
                 val slots = batch.collect { case SyncEvent.RollForward(h, _) => h.slot.toLong }
                 report(Peer.Observation.HeadersArrived(slots, arrived)).whenA(slots.nonEmpty)
@@ -506,10 +581,10 @@ object Peer:
                   batch.foldLeft((before, Vector.empty[(Bytes, ChainSelection.Candidate)])) {
                     case ((known, versions), SyncEvent.RollForward(h, _)) =>
                       val grown = known.headers :+ h
-                      val dropped = grown.dropRight(BlockPool.Retained)
+                      val dropped = grown.dropRight(retainedHeaders.max(1))
                       val candidate = ChainSelection.Candidate(
                         dropped.lastOption.fold(known.base)(_.point),
-                        grown.takeRight(BlockPool.Retained)
+                        grown.takeRight(retainedHeaders.max(1))
                       )
                       (candidate, versions :+ (h.hash -> candidate))
                     case ((known, versions), SyncEvent.RollBackward(point, _)) =>
@@ -524,7 +599,7 @@ object Peer:
               }
               (candidate, versions) = recorded
               _ <- candidateVersions.update(previous =>
-                (previous ++ versions).takeRight(BlockPool.Retained)
+                (previous ++ versions).takeRight(retainedHeaders.max(1))
               )
               hints = batch
                 .zip(updates)
@@ -595,6 +670,66 @@ object Peer:
                   yield ()
             yield ()
 
+          /** The journal stores one validated candidate, rather than every transient wire fork.
+            * HeaderGate's forecast bounds its slot span; the body dispatcher alone owns permits.
+            */
+          def streaming(using Raise[F, PeerError]): F[Unit] =
+            for
+              initial <- candidateHeaders.get
+              changed <- Deferred[F, Unit]
+              journal <- Ref.of[F, HeaderJournal[F]](HeaderJournal(initial, None, false, changed))
+              updateJournal = (
+                  candidate: ChainSelection.Candidate,
+                  tip: Option[ChainSync.Tip],
+                  done: Boolean
+              ) =>
+                F.uncancelable { _ =>
+                  Deferred[F, Unit].flatMap { fresh =>
+                    journal
+                      .getAndSet(HeaderJournal(candidate, tip, done, fresh))
+                      .flatMap(_.changed.complete(()).void)
+                  }
+                }
+              publish = (batch: Vector[SyncEvent]) =>
+                candidateHeaders.get.flatMap { candidate =>
+                  val tip = batch.lastOption.map {
+                    case SyncEvent.RollForward(_, tip)  => tip
+                    case SyncEvent.RollBackward(_, tip) => tip
+                  }
+                  updateJournal(candidate, tip, false)
+                }
+              _ <- supervised(F.tailRecM(()) { _ =>
+                drainCompletion.get.flatMap {
+                  case None => requestHeadersStreaming(publish).as(Left(()))
+                  case Some(_) =>
+                    journal.get.flatMap(s => updateJournal(s.candidate, s.tip, true)).as(Right(()))
+                }
+              })
+              _ <- F.tailRecM(initial) { published =>
+                permits.acquire *> journal.get.flatMap { latest =>
+                  val delta = latest.tip.fold(F.pure(published -> Vector.empty[SyncEvent])) { tip =>
+                    publication(published, latest.candidate, tip, settings.readAhead)
+                      .fold(
+                        e =>
+                          PeerError
+                            .Diverged(e)
+                            .raise[F, (ChainSelection.Candidate, Vector[SyncEvent])],
+                        F.pure
+                      )
+                  }
+                  delta.flatMap { (after, events) =>
+                    if events.isEmpty then
+                      permits.release *> (if latest.done then
+                                            queue.offer(PipelineEvent.Drained).as(Right(()))
+                                          else latest.changed.get.as(Left(after)))
+                    else
+                      prefetch(events.dropWhile(_.isInstanceOf[SyncEvent.RollBackward])) *>
+                        queue.offer(PipelineEvent.Batch(events)).as(Left(after))
+                  }
+                }
+              }
+            yield ()
+
           val start: F[Unit] =
             started.getAndSet(true).flatMap {
               case true => F.unit
@@ -605,7 +740,8 @@ object Peer:
                       supervised(refreshFetchPerformance(read, fetcher.updatePerformance))
                     )
                     .unlessA(alreadyRunning)
-                } *> supervised(Deferred[F, Unit].flatTap(_.complete(())).flatMap(produce))
+                } *> (if patience.nonEmpty then supervised(streaming)
+                      else supervised(Deferred[F, Unit].flatTap(_.complete(())).flatMap(produce)))
             }
 
           /** A governor may cancel `next` before asking us to drain. Return the permit in the
