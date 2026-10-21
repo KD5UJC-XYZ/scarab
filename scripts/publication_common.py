@@ -11,6 +11,9 @@ from pathlib import Path, PurePosixPath
 
 class PublicationError(ValueError):
     """An unmet publication invariant; callers must not continue to a later state."""
+    def __init__(self, message, status=None):
+        super().__init__(message)
+        self.status = status
 
 
 def require(condition, detail):
@@ -87,7 +90,7 @@ class GitHub:
                  and not token), "only GitHub HTTPS or unauthenticated loopback fixtures are permitted")
         self.repository, self.token, self.base = repository, token, base.rstrip("/")
 
-    def request(self, method, path, payload=None, raw=None, content_type="application/json"):
+    def request(self, method, path, payload=None, raw=None, content_type="application/json", upload_size=None):
         require(path.startswith("/") and not path.startswith("//"), "invalid GitHub API path")
         headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
         if self.token:
@@ -95,7 +98,10 @@ class GitHub:
         data = canonical(payload) if payload is not None else raw
         if data is not None:
             headers["Content-Type"] = content_type
-        request = urllib.request.Request(self.base + path, data=data, headers=headers, method=method)
+        if upload_size is not None:
+            headers["Content-Length"] = str(upload_size)
+        base = "https://uploads.github.com" if upload_size is not None and self.base == "https://api.github.com" else self.base
+        request = urllib.request.Request(base + path, data=data, headers=headers, method=method)
         try:
             with urllib.request.build_opener(NoRedirect).open(request, timeout=60) as response:
                 body = response.read(16 * 1024 * 1024 + 1)
@@ -104,13 +110,28 @@ class GitHub:
         except urllib.error.HTTPError as error:
             code = error.code
             error.close()
-            raise PublicationError(f"GitHub {method} refused with HTTP {code}") from None
+            raise PublicationError(f"GitHub {method} refused with HTTP {code}", status=code) from None
 
     def repo_path(self, suffix):
         return "/repos/" + self.repository + suffix
 
     def get(self, suffix):
         return self.request("GET", self.repo_path(suffix))
+
+    def optional(self, suffix):
+        try:
+            return self.get(suffix)
+        except PublicationError as error:
+            if error.status == 404:
+                return None
+            raise
+
+    def upload_asset(self, release_id, path, name):
+        require(type(release_id) is int and release_id > 0, "invalid release ID")
+        require(re.fullmatch(r"[A-Za-z0-9_.-]+", name), "invalid asset name")
+        with Path(path).open("rb") as stream:
+            return self.request("POST", self.repo_path(f"/releases/{release_id}/assets?name=" + name),
+                                raw=stream, content_type="application/octet-stream", upload_size=Path(path).stat().st_size)
 
     def pages(self, suffix, key=None):
         rows = []

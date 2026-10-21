@@ -33,7 +33,7 @@ def named_environment_snapshot(github, name, expected_ref, policy):
 
 
 def inspect_environment(github, expected, policy):
-    require(policy.get("schemaVersion") == 1 and policy.get("enabled") is True,
+    require(type(policy.get("schemaVersion")) is int and policy.get("schemaVersion") == 1 and policy.get("enabled") is True,
             "publication policy has not been explicitly enabled in reviewed source")
     require(policy.get("repository") == github.repository, "publication repository mismatch")
     name = urllib.parse.quote(expected["name"], safe="")

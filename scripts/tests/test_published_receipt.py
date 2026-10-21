@@ -58,6 +58,19 @@ class PublishedReceiptTests(unittest.TestCase):
                                  "--deny-self-hosted-runners", "--predicate-type", "https://slsa.dev/provenance/v1", "--format", "json"])
         self.assertNotIn("--bundle", actual, "online lookup must check the currently named repository")
 
+    def test_notes_transport_preserves_original_bytes_but_is_not_authentication(self):
+        import base64
+        from publication_common import digest
+        raw = b'{"public":"original bytes"}\n'
+        marker = receipt.RECEIPT_MARKER + digest(raw) + ':' + base64.b64encode(raw).decode() + ' -->'
+        self.assertEqual(receipt.extract_receipt('Release notes\n' + marker), raw)
+        with self.assertRaises(PublicationError):
+            receipt.extract_receipt(marker + marker)
+        with self.assertRaises(PublicationError):
+            receipt.extract_receipt(marker.replace(digest(raw), 'f' * 64))
+        with self.assertRaises(PublicationError):
+            receipt.AuthenticatedReceipt(raw, object())
+
 
 if __name__ == "__main__":
     unittest.main()
