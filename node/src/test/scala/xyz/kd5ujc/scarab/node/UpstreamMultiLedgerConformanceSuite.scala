@@ -18,7 +18,9 @@ import xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.haskell.state.Params
 
-/** Independent native LEDGERS observations of original signed, dependent transactions. */
+/** Independent native LEDGERS observations of original signed, dependent transactions. Refusals
+  * compare one complete typed cause with native list membership, not full failure-list equality.
+  */
 class UpstreamMultiLedgerConformanceSuite extends FunSuite:
   import UpstreamNativeStates.given
   private given ProtVer = ProtVer(Word64.fromUnsigned(9), Word64.zero)
@@ -86,7 +88,7 @@ class UpstreamMultiLedgerConformanceSuite extends FunSuite:
   private val cases =
     Vector("ordered-three", "dependent-two", "reversed-dependency", "double-spend")
   cases.foreach { id =>
-    test(s"native multi-transaction LEDGERS: $id") {
+    test(s"native multi-transaction LEDGERS state / typed-failure membership: $id") {
       val before = decode(item(id, "state"), UpstreamNativeStates.nativeLedgerState)
       val env = array(item(id, "environment"))
       assertEquals(env.size, 4)

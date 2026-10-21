@@ -17,3 +17,15 @@ checked block inventory; review both bytes and expectations. These bounded commi
 ordinary tests. The optional `SCARAB_K1_DB` whole-database differential compares against legacy Scala
 parsers on external native files, asserts nonempty input, and is a distinct regression proof rather
 than an independent Haskell parser oracle or proof that every native chunk was accepted.
+
+
+The external index comparison requires matching nonempty `.chunk`, `.primary` and `.secondary`
+stem inventories and successful parses on both Scala implementations, with positive decoded entry
+and offset totals. Closed chunks reject torn tails. Only the greatest numeric chunk tolerates
+partial index tails, as `HaskellImmutableReader` does; exact primary/secondary tail-byte counts are
+reported separately and never count as decoded coverage. Original files remain untouched and their
+identities belong to the approved external artifact. This compares persisted complete entries, not
+unpersisted tail contents or an independent native parser verdict. A newest wholly empty primary
+index is outside this successful-parser comparison; the reader's empty-index initialization has its
+own tests. `NativeIndexComparisonSuite` keeps malformed, orphaned, empty and bounded-tail controls
+separate from native acceptance.

@@ -32,7 +32,9 @@ import xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.haskell.state.{Params, Wire}
 
-/** Actual distinct STS judgments, generated with the repaired upstream context and signed bytes. */
+/** Actual distinct STS judgments with original signed bytes. Accepted cases compare native state;
+  * rejected cases establish typed failure membership, not accumulated-list or ordering equality.
+  */
 class UpstreamFreshLedgerConformanceSuite extends FunSuite:
   import UpstreamNativeStates.given
   private given ProtVer = ProtVer(Word64.fromUnsigned(9), Word64.zero)
@@ -154,10 +156,13 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
   cases.foreach { row =>
     val id = text(row, "id")
     val rule = text(row, "rule")
-    test(s"fresh native/formal $rule: $id") {
+    val incoherent = text(row, "replayScope") == "incoherent-cache"
+    val scope =
+      if incoherent then "typed incoherent-cache refusal control"
+      else "native accepted-state / typed-failure membership"
+    test(s"$rule $scope: $id") {
       val fields = array(node(id, "environment"))
       val result = text(row, "native")
-      val incoherent = text(row, "replayScope") == "incoherent-cache"
       assertEquals(Files.readString(base.resolve(s"cases/$id/result.txt")), text(row, "result"))
       if rule == "UTXO" || rule == "UTXOW" then
         assertEquals(fields.size, 3)

@@ -83,12 +83,12 @@ class ConfigSuite extends FunSuite:
   }
 
   test("the mainnet Byron hash is verified against the full file when it is at hand") {
-    val full =
-      Path.of(".workspace/data/2026-10-14-configs/mainnet")
+    val configured = sys.env.get("SCARAB_MAINNET_GENESIS_DIR").map(Path.of(_))
     assume(
-      Files.exists(full.resolve("byron-genesis.json")),
-      "the 1 MB mainnet Byron genesis is not kept"
+      configured.exists(path => Files.isRegularFile(path.resolve("byron-genesis.json"))),
+      "SCARAB_MAINNET_GENESIS_DIR names the full mainnet genesis directory"
     )
+    val full = configured.getOrElse(fail("mainnet genesis directory was not configured"))
     val readFull: String => Option[Array[Byte]] = name =>
       read("mainnet")(name).orElse(
         Option.when(Files.exists(full.resolve(name)))(Files.readAllBytes(full.resolve(name)))

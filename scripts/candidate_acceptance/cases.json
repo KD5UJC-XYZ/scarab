@@ -1,0 +1,331 @@
+{
+  "schemaVersion": 1,
+  "required": [
+    {
+      "project": "node",
+      "suite": "xyz.kd5ujc.scarab.node.ConfigSuite",
+      "name": "the mainnet Byron hash is verified against the full file when it is at hand"
+    },
+    {
+      "project": "node",
+      "suite": "xyz.kd5ujc.scarab.node.PlutusReplaySuite",
+      "name": "serial and bounded parallel full block validation agree on a captured window"
+    },
+    {
+      "project": "node",
+      "suite": "xyz.kd5ujc.scarab.node.differential.BoundaryDigestSuite",
+      "name": "the ticked state at the boundary is the one recorded before the change"
+    },
+    {
+      "project": "node",
+      "suite": "xyz.kd5ujc.scarab.node.preview.PreviewReplaySuite",
+      "name": "original Preview blocks match required native projection fields and Scala execution modes"
+    },
+    {
+      "project": "node",
+      "suite": "xyz.kd5ujc.scarab.storage.MithrilBootstrapAcceptanceSuite",
+      "name": "the actual certified Preview bootstrap restores its original checkpoint and projection"
+    },
+    {
+      "project": "node",
+      "suite": "xyz.kd5ujc.scarab.storage.PreprodSnapshotExportSuite",
+      "name": "the authenticated preprod checkpoint exports byte-identical canonical state and tables"
+    },
+    {
+      "project": "node",
+      "suite": "xyz.kd5ujc.scarab.storage.PreprodSnapshotImportSuite",
+      "name": "the authenticated original preprod snapshot imports all 4,526,058 outputs and restores V5"
+    },
+    {
+      "project": "storage",
+      "suite": "xyz.kd5ujc.scarab.storage.MemPackJoinSuite",
+      "name": "the pinned preprod tables decode and canonically pack back"
+    },
+    {
+      "project": "storage",
+      "suite": "xyz.kd5ujc.scarab.storage.MemPackJoinSuite",
+      "name": "the same-snapshot checkpoint and native table have identical keys and output semantics"
+    },
+    {
+      "project": "storage",
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.HaskellRealFilesSuite",
+      "name": "every chunk's primary and secondary index parse as they did before"
+    },
+    {
+      "project": "storage",
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "the real Preview state of a Haskell node is written again byte for byte (HASKELL_STATE_FILE)"
+    },
+    {
+      "project": "storage",
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.SnapshotTableStreamSuite",
+      "name": "a full preprod table streams through MemPack conversion and writes byte-identical bytes"
+    }
+  ],
+  "additionalPassing": [
+    {
+      "suite": "xyz.kd5ujc.scarab.node.ConfigSuite",
+      "name": "--genesis-dir is where the genesis files a configuration names are looked up"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.node.ConfigSuite",
+      "name": "Genesis sync targets and trusted-state threshold are typed settings"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.node.ConfigSuite",
+      "name": "a genesis file that differs from its listed hash is a typed GenesisHashMismatch"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.node.ConfigSuite",
+      "name": "a missing genesis file is a typed FileMissing, and a hash of the wrong shape is invalid"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.node.ConfigSuite",
+      "name": "a negative slot disables ledger peers; the legacy Producers format is unsupported"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.node.ConfigSuite",
+      "name": "an unreadable topology retains the path and original file-system cause"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.node.ConfigSuite",
+      "name": "every hash of every public configuration equals the file it names"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.node.ConfigSuite",
+      "name": "local roots come first, then the bootstrap peers, without repeats; both spellings of valency"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.node.ConfigSuite",
+      "name": "other protocols, unknown modes, a renamed key and experimental forks are handled"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.node.ConfigSuite",
+      "name": "public and bootstrap topology roots accept SRV access points"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.node.ConfigSuite",
+      "name": "strict reading insists on what cardano-node insists on"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.node.ConfigSuite",
+      "name": "the flags: --config replaces --genesis-dir, --topology replaces --peer, and one of each is needed"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.node.ConfigSuite",
+      "name": "the options are completed from the files: peers after the flags' ones, socket and database only with --config"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.node.ConfigSuite",
+      "name": "the preprod configuration starts a chain with a Byron prefix, and its hashes verify"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.node.ConfigSuite",
+      "name": "the public configurations offer the latest release, 15; experimental protocols add 16"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.node.ConfigSuite",
+      "name": "the public configurations parse as the reference parses them"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.node.ConfigSuite",
+      "name": "the public roots are the peers only when nothing else names one"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.node.ConfigSuite",
+      "name": "the public topologies: the peers are the bootstrap peers, the ledger peers start at a slot"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.node.ConfigSuite",
+      "name": "the setup from the preview configuration is the setup from its directory"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.node.ConfigSuite",
+      "name": "topology validates bad ports and addresses, missing fields, and no way to progress"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.node.ConfigSuite",
+      "name": "whitespace does not change the Byron hash, which is over the canonical JSON"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "AnnTip: [era index, [slot, hash, block number]], Byron's with the boundary flag"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "AnnTip: decode after encode is the identity, and encode after decode is on bytes"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "Bound: decode after encode is the identity, and encode after decode is on bytes"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "Bound: the time is an Integer, a bignum from 2^64 picoseconds (Summary.hs:526-550)"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "HaskellLedgerFile: decode after encode is the identity, on bytes, in every era"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "PBftState: [1, {key: [slots, newest first]}], the lists indefinite (State.hs:300-317)"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "PBftState: decode after encode is the identity, and encode after decode is on bytes"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "PraosState: [0, [last slot [1, n], counters, six nonces]] (Praos.hs:281-308)"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "PraosState: decode after encode is the identity, and encode after decode is on bytes"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "TPraosState: [1, [last slot, [[counters, evolving, candidate], [epoch, prev], lab]]]"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "TPraosState: decode after encode is the identity, and encode after decode is on bytes"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "a Bound with a Peras round, a snapshot of the older layout and a wrong version are refused"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "a PBftState whose counts are not those of its window is not writable"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "a telescope of no items or of more eras than the chain has is refused"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "a telescope whose eras do not abut is refused as a violation, naming the telescope"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "fixture allegra-1800: the Haskell node's state is written again byte for byte"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "fixture allegra-1800: the derived fields are the ones the mirror derives"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "fixture allegra-1800: the meta file is the reference's"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "fixture alonzo-3013: the Haskell node's state is written again byte for byte"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "fixture alonzo-3013: the derived fields are the ones the mirror derives"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "fixture alonzo-3013: the meta file is the reference's"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "fixture babbage-4000: the Haskell node's state is written again byte for byte"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "fixture babbage-4000: the derived fields are the ones the mirror derives"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "fixture babbage-4000: the meta file is the reference's"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "fixture byron-25: the Haskell node's state is written again byte for byte"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "fixture byron-25: the derived fields are the ones the mirror derives"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "fixture byron-25: the meta file is the reference's"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "fixture conway-4593: the Haskell node's state is written again byte for byte"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "fixture conway-4593: the derived fields are the ones the mirror derives"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "fixture conway-4593: the meta file is the reference's"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "fixture mary-2308: the Haskell node's state is written again byte for byte"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "fixture mary-2308: the derived fields are the ones the mirror derives"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "fixture mary-2308: the meta file is the reference's"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "fixture shelley-1000: the Haskell node's state is written again byte for byte"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "fixture shelley-1000: the derived fields are the ones the mirror derives"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "fixture shelley-1000: the meta file is the reference's"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "meta: the fields of a real file, and the refusals"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "the Byron state of the node has no Haskell form: it is not writable"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "the exact seven native snapshots retain all 21 pinned files"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+      "name": "the pulser of a mid-epoch reward update is written back as it was read"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.SnapshotTableStreamSuite",
+      "name": "memory and RocksDB exports stream in Haskell key order and convert only at the boundary"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.SnapshotTableStreamSuite",
+      "name": "semantic sink accepts unsorted unique maps and detects nonadjacent Conway duplicates"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.SnapshotTableStreamSuite",
+      "name": "streaming reader/writer preserves reference bytes and emits one final checksum"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.SnapshotTableStreamSuite",
+      "name": "truncated and trailing inputs never produce a completed table"
+    },
+    {
+      "suite": "xyz.kd5ujc.scarab.storage.haskell.state.SnapshotTableStreamSuite",
+      "name": "writer framing changes at 23 and rejects wrong counts and nonascending keys"
+    }
+  ]
+}
