@@ -106,6 +106,11 @@ metadata map keys retain their historical duplicate behavior. The metadata walk 
 also retains signed-reference auxiliary transactions and observed input/output effects separately
 from the API corpus. Exact diagnostic prose is outside both comparisons.
 
+The [historical corpus](../fixtures/reference/auxiliary-historical/README.md) (#290 stage A) records
+the same unchanged-reference observations for Shelley, Allegra and Mary at protocols 2-4 (504
+rows): the 64-byte metadatum bound starts at protocol 3, tag 259 and Plutus forms are refused,
+structure precedes the hash check and the hash covers original bytes. It does not change Scarab.
+
 ## Independent costing and context matrix (2026-10-20)
 
 The remaining admission/context work is at Scarab's ledger integration and verification boundary;
