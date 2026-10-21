@@ -103,11 +103,13 @@ object PeerError:
     NetworkError.TxSubmission
   enum ProtocolProblem:
     case HeaderDecode(cause: ChainError)
+    case FetchedBlockIntegrity(cause: BlockTransportError)
     case HeaderDoesNotExtend(point: ChainSync.Point, tip: ChainSync.Point)
     case HeaderValidationDidNotSettle
     case BlockCount(expected: Int, actual: Int)
     def message: String = this match
       case HeaderDecode(cause) => cause.message
+      case FetchedBlockIntegrity(cause) => cause.message
       case HeaderDoesNotExtend(point, _) =>
         s"header ${Points.show(point)} does not extend the peer's chain"
       case HeaderValidationDidNotSettle => "header validation did not settle"
@@ -144,6 +146,13 @@ object PeerError:
 
 /** Violated local Genesis invariants; reconnecting or blaming the remote peer cannot repair them.
   */
+enum BlockPoolProblem extends NodeError:
+  case MissingDeliveredHeader(point: ChainSync.Point)
+
+  def message: String = this match
+    case MissingDeliveredHeader(point) =>
+      s"received block ${Points.show(point)} has no original adding-header context"
+
 enum GenesisInternalProblem extends NodeError:
   case MissingSharedBlockPool, UnsupportedHeaderFamily, MissingConnectionIdentity
   case InvalidConnectionIdentity(cause: xyz.kd5ujc.scarab.protocol.ConnectionIdentityError)

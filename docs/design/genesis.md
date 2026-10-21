@@ -49,6 +49,9 @@ selection is retriggered, and how upstream work and disconnections are coordinat
   Retain the typed refusal after that run ends, without terminating a subsequent run on
   either the same bearer or a replacement connection. Register attribution before a run
   can publish bodies and retire its abort callback after its hot protocols have drained.
+  Retirement also follows successful BlockFetch `ClientDone`, before another hot protocol's
+  remaining drain can delay warm return. Receiving tentative invalid tips follows the pin's
+  diffusion-pipelining punishment criterion; FIFO request pipelining is a separate mechanism.
 
 ## Mechanisms and resource policy
 
@@ -95,6 +98,11 @@ to make scenarios pass.
    exported inputs and schedules, comparing their complete observable selections
    and termination outcomes. Run Docker `check`, private Genesis sync/restart,
    relay and the issue's soak gate. Record performance and cleanup receipts.
+5. Preserve the reference's invalid-block punishment boundary: reject transport/body-hash
+   mismatches immediately, retain semantic-invalidity attribution, apply the native
+   tentative-header criterion per BlockFetch run, and reject known-invalid prefixes without
+   disconnecting merely for a first forgiven tentative tip. Compare native policy state and
+   outcomes and test continued rollback/recovery through the actual client runtime.
 
 No expected-result masks, disabled assertions, excluded generated cases or compatibility
 waivers are permitted. A reference crash, input adapter problem or behavioral mismatch
