@@ -52,9 +52,12 @@ def docker(*arguments):
                           stderr=subprocess.PIPE, timeout=120).stdout
 
 
-def inspect_running(name):
+def inspect_running(name, mounts=False):
     require(re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}', name), 'explicit existing container name required')
-    row = decode_json(docker('inspect', '--format', '{{json .}}', name))
+    template = ('{"State":{"Running":{{json .State.Running}}},"Config":{"Image":{{json .Config.Image}}},'
+                '"Image":{{json .Image}},"Path":{{json .Path}},"Args":{{json .Args}}')
+    template += ',"Mounts":{{json .Mounts}}}' if mounts else '}'
+    row = decode_json(docker('inspect', '--format', template, name))
     require(row['State']['Running'] is True, 'observer requires an already-running process')
     return row
 
@@ -65,7 +68,8 @@ def observe(args):
     forger = inspect_running(args.forger)
     require(forger['Config']['Image'] == args.image_repository + '@' + manifest['image']['manifest']['digest'],
             'running forger was not started from the exact final OCI digest')
-    running_image = decode_json(docker('image', 'inspect', forger['Image']))[0]
+    running_image = decode_json(docker('image', 'inspect', '--format',
+                                      '{"Id":{{json .Id}},"RepoDigests":{{json .RepoDigests}}}', forger['Image']))
     require(running_image['Id'] == manifest['image']['configDigest']
             and args.image_repository + '@' + manifest['image']['manifest']['digest'] in running_image.get('RepoDigests', []),
             'running image content differs from final candidate')
@@ -78,7 +82,7 @@ def observe(args):
     point = header_identity(raw)
     logs = docker('logs', '--since', args.since, '--tail', '100000', args.forger).decode()
     public_events(logs, point)
-    native = inspect_running(args.native)
+    native = inspect_running(args.native, mounts=True)
     process = docker('exec', args.native, 'cat', '/proc/1/cmdline').decode().split('\0')
     require('--socket-path' in process and '--config' in process, 'independent native process/config/socket identity missing')
     native_socket = process[process.index('--socket-path') + 1]
