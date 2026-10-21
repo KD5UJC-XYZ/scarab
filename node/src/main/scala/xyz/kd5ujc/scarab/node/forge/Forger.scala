@@ -330,7 +330,10 @@ final class Forger[F[_]: Async, S](
       _ <- outcome match
         case Left(e: ForgeError.SelfRejected) if chosen.nonEmpty =>
           // never let a transaction we mis-judged cost the block: try again without any
+          // the reference removes the block's transactions from the pool, valid or not, so that the
+          // next leader slot does not repeat the failure (`NodeKernel.hs`, `removeTxsEvenIfValid`)
           failed(slot, e) *>
+            mempool.removeTxsEvenIfValid(chosen.map(_._1.id).toSet).void *>
             build(current, tip, slot, epoch, ticked, cert, Vector.empty, stake, pools.total)
               .flatMap(_.fold(e2 => failed(slot, e2), _ => F.unit))
         case Left(e)  => failed(slot, e)

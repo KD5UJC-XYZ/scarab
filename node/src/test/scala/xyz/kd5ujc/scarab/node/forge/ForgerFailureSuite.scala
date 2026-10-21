@@ -100,6 +100,22 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     }
   }
 
+  test("a self-rejected block's transactions leave the pool so the next slot does not repeat it") {
+    val p = pool(kesStart = 50)
+    val cause = xyz.kd5ujc.scarab.ledger.BlockFailure.HeaderDiffers
+    val (t1, _) = xyz.kd5ujc.scarab.node.mempool.TxKit.pay(1)
+    withHandle {
+      for
+        h <- harness(p, ledgerWith(p, 1), ruleFailure = Some(cause))
+        _ <- h.mempool.add(t1)
+        result <- h.forger.step(leaderSlot(p))
+        held <- h.mempool.snapshot
+      yield
+        assertEquals(result, Right(()))
+        assertEquals(held.entries, Vector.empty)
+    }
+  }
+
   test("a slot defect retains its cause without recording a recoverable forge failure") {
     val p = pool(kesStart = 50)
     val cause = new IllegalStateException("readiness bug")
