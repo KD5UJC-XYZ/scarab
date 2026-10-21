@@ -111,7 +111,8 @@ final case class ConfigSettings(
     syncPeerTargets: PeerTargetOverrides = PeerTargetOverrides(),
     minBigLedgerPeersForTrustedState: Int = 5,
     maxConcurrencyDeadline: Option[Int] = None,
-    maxConcurrencyBulkSync: Option[Int] = None
+    maxConcurrencyBulkSync: Option[Int] = None,
+    genesis: GenesisSettings = GenesisSettings()
 ):
   /** The highest node-to-node version the node offers and accepts: 15 unless
     * `ExperimentalProtocolsEnabled` is set, as the reference's `limitToLatestReleasedVersion`.
@@ -340,6 +341,7 @@ object NodeConfig:
         k.opt[Int]("SyncTargetNumberOfEstablishedBigLedgerPeers"),
         k.opt[Int]("SyncTargetNumberOfActiveBigLedgerPeers")
       ).mapN(PeerTargetOverrides.apply)
+      genesisOptions <- k.opt[Json]("LowLevelGenesisOptions").flatMap(GenesisSettings.parse)
       deadlineConcurrency <- k
         .opt[Int]("MaxConcurrencyDeadline")
         .flatMap(n =>
@@ -426,6 +428,7 @@ object NodeConfig:
           syncTargets,
           minBigLedgerPeers,
           deadlineConcurrency,
-          bulkConcurrency
+          bulkConcurrency,
+          genesisOptions
         )
       )

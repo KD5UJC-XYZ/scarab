@@ -35,6 +35,11 @@ final class GenesisGovernor[F[_]: Async] private (
       )
     )
 
+  private def headHash(limit: Option[Fragment]): Option[xyz.kd5ujc.scarab.codec.Bytes] =
+    limit.flatMap(_.tip match
+      case xyz.kd5ujc.scarab.protocol.ChainSync.Point.Origin         => None
+      case xyz.kd5ujc.scarab.protocol.ChainSync.Point.Block(_, hash) => Some(hash))
+
   private def change[A](f: State[F] => (State[F], A)): F[A] =
     F.uncancelable { _ =>
       (Deferred[F, Unit], Deferred[F, Unit]).tupled.flatMap { (inputSignal, selectionSignal) =>
@@ -43,7 +48,7 @@ final class GenesisGovernor[F[_]: Async] private (
             val (after, result) = f(before)
             val inputChanged = fingerprint(before) != fingerprint(after)
             val selectionChanged =
-              before.phase != after.phase || before.limit.map(_.tip) != after.limit.map(_.tip)
+              before.phase != after.phase || headHash(before.limit) != headHash(after.limit)
             val next = after.copy(
               version = before.version + 1,
               revision = before.revision + (if inputChanged then 1 else 0),
@@ -129,12 +134,14 @@ final class GenesisGovernor[F[_]: Async] private (
     * remains until the watcher establishes the next shared prefix.
     */
   def limit: F[Option[Fragment]] =
-    (state.get, view).mapN { (s, current) =>
-      if !config.enabled || s.phase == Gsm.Phase.CaughtUp then None
-      else if s.phase == Gsm.Phase.PreSyncing then
-        Some(Fragment(current.current.anchor, Vector.empty))
-      else Some(s.limit.getOrElse(Fragment(current.current.anchor, Vector.empty)))
-    }
+    view.flatMap(current => limitAt(current.current))
+
+  /** Selection already holds its lock and supplies that snapshot, avoiding a second lock read. */
+  def limitAt(current: Fragment): F[Option[Fragment]] = state.get.map { s =>
+    if !config.enabled || s.phase == Gsm.Phase.CaughtUp then None
+    else if s.phase == Gsm.Phase.PreSyncing then Some(Fragment(current.anchor, Vector.empty))
+    else Some(s.limit.getOrElse(Fragment(current.anchor, Vector.empty)))
+  }
 
   def revision: F[Long] = state.get.map(_.revision)
 

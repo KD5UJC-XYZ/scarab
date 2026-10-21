@@ -307,6 +307,7 @@ final class OutboundPeers[F[_]: Async, A] private (
     def follow(over: Peer[F]): F[SessionEnd] =
       SessionEnd.scoped(node) { (scope, _) ?=>
         val gated = new Peer[F]:
+          override def selectionWork = over.selectionWork
           def intersect(candidates: Vector[xyz.kd5ujc.scarab.protocol.ChainSync.Point])(using
               Raise[F, PeerError]
           ) = over.intersect(candidates)
@@ -325,51 +326,72 @@ final class OutboundPeers[F[_]: Async, A] private (
     val run: F[SessionEnd] =
       SessionEnd.scoped(node) { (_, _) ?=>
         link.warm.activate(hot.transactions).use { connection =>
-          Peer
-            .over(
-              connection,
-              hot.peer,
-              hot.prepare,
-              hot.headers,
-              Some(metered(peer)),
+          GenesisRuntime
+            .controls(
+              hot.genesis,
               Some(hot.pool),
-              hot.fetchMode,
-              Some(rejectedCachedBlock(peer, link.rootsGeneration, _)),
-              fetchIdentity = Some(peer.hashCode.toLong)
+              peer.hashCode.toLong,
+              error =>
+                connection.mux
+                  .abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error))),
+              problem => stop(link, Fatal.Internal(problem))
             )
-            .use { over =>
-              session.connection.complete(connection) *> started.complete(None) *>
-                follow(over)
-                  .flatMap {
-                    // the pool is shared: a block that another session delivered and the rules
-                    // refuse is no fault of this peer, which fetches it itself when it tries again
-                    case SessionEnd.Rejected(refusal) =>
-                      over
-                        .refused(refusal)
-                        .map(foreign =>
-                          if foreign then
-                            SessionEnd.Failed(
-                              PeerError
-                                .Diverged(PeerError.Divergence.ForeignBlock(refusal))
+            .use { (fetching, genesis) =>
+              Peer
+                .over(
+                  connection,
+                  hot.peer,
+                  hot.prepare,
+                  genesis
+                    .fold(hot.headers)(bound => hot.headers.map(_.withPatience(bound.patience))),
+                  Some(metered(peer)),
+                  Some(hot.pool),
+                  hot.fetchMode,
+                  Some(rejectedCachedBlock(peer, link.rootsGeneration, _)),
+                  fetchIdentity = Some(peer.hashCode.toLong),
+                  patience = genesis.map(_.patience),
+                  received = genesis.map(_.received),
+                  chainSyncObserver = genesis.map(_.observer),
+                  fetchSession = fetching,
+                  genesis = genesis.map(_.control),
+                  receivedBody = hot.receivedBody,
+                  retainedHeaders = genesis.fold(BlockPool.Retained)(_.retainedHeaders),
+                  selectionWork = genesis.map(_.work)
+                )
+                .use { over =>
+                  session.connection.complete(connection) *> started.complete(None) *>
+                    follow(over)
+                      .flatMap {
+                        // the pool is shared: a block that another session delivered and the rules
+                        // refuse is no fault of this peer, which fetches it itself when it tries again
+                        case SessionEnd.Rejected(refusal) =>
+                          over
+                            .refused(refusal)
+                            .map(foreign =>
+                              if foreign then
+                                SessionEnd.Failed(
+                                  PeerError
+                                    .Diverged(PeerError.Divergence.ForeignBlock(refusal))
+                                )
+                              else SessionEnd.Rejected(refusal)
                             )
-                          else SessionEnd.Rejected(refusal)
-                        )
-                    case other => F.pure(other)
-                  }
-                  .flatTap {
-                    // asked to stop: bring the pipeline to rest before the wire is ended
-                    case SessionEnd.Stopped(_) => asked.flatMap(a => over.quiesce.whenA(a))
-                    case end =>
-                      val saved = SessionEnd
-                        .networkFailure(end)
-                        .traverse_(_ => session.ended.complete(end).void)
-                      saved *> SessionEnd.networkFailure(end).traverse_(connection.mux.abort)
-                  }
-            }
-            .flatMap {
-              case SessionEnd.Stopped(_) =>
-                connection.finish(config.deactivateTimeout).map(SessionEnd.Stopped(_))
-              case other => F.pure(other)
+                        case other => F.pure(other)
+                      }
+                      .flatTap {
+                        // asked to stop: bring the pipeline to rest before the wire is ended
+                        case SessionEnd.Stopped(_) => asked.flatMap(a => over.quiesce.whenA(a))
+                        case end =>
+                          val saved = SessionEnd
+                            .networkFailure(end)
+                            .traverse_(_ => session.ended.complete(end).void)
+                          saved *> SessionEnd.networkFailure(end).traverse_(connection.mux.abort)
+                      }
+                }
+                .flatMap {
+                  case SessionEnd.Stopped(_) =>
+                    connection.finish(config.deactivateTimeout).map(SessionEnd.Stopped(_))
+                  case other => F.pure(other)
+                }
             }
         }
       }
@@ -528,7 +550,9 @@ object OutboundPeers:
       lost: PeerError => F[Unit],
       fatal: Fatal => F[Unit],
       fetchMode: Option[F[FetchMode]] = None,
-      serve: Option[ServerHandlers[F, NtNHeader]] = None
+      serve: Option[ServerHandlers[F, NtNHeader]] = None,
+      genesis: Option[GenesisRuntime[F]] = None,
+      receivedBody: Option[Peer.BodySink[F]] = None
   )
 
   /** A connection of ours, and what its owner can do to it.

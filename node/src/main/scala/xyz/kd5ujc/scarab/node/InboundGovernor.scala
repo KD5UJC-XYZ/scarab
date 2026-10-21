@@ -64,6 +64,8 @@ final class InboundGovernor[F[_]: Async] private (
     sharing: Option[PeerSharingRuntime[F]],
     pool: Option[BlockPool[F]],
     fetchMode: Option[F[xyz.kd5ujc.scarab.network.selection.FetchMode]],
+    genesis: Option[GenesisRuntime[F]],
+    receivedBody: Option[Peer.BodySink[F]],
     sessionTable: Ref[F, Map[String, InboundGovernor.Session]]
 ):
   private val F = Async[F]
@@ -263,58 +265,78 @@ final class InboundGovernor[F[_]: Async] private (
     Handle
       .allow[NodeError] {
         val caller = summon[Raise[F, NodeError]]
-        Peer
-          .over(
-            connection,
-            config.peer.copy(address = SocketAddress(remote.host, remote.port)),
-            prepare,
-            headers,
-            observe,
+        GenesisRuntime
+          .controls(
+            genesis,
             pool,
-            fetchMode,
-            pipelineFailed = Some {
-              case Fault.Failed(error) =>
-                update(remote)(s =>
-                  if s.ended.isDefined then s
-                  else s.copy(ended = Some(InboundGovernor.SessionFailure.Peer(error)))
-                )
-              case Fault.Defect(cause) =>
-                reportFatal(remote, Fatal.Defect(cause))
-            }
+            remote.hashCode.toLong,
+            error =>
+              connection.mux
+                .abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error))),
+            problem => reportFatal(remote, Fatal.Internal(problem))
           )
-          .use { peer =>
-            SessionEnd
-              .scoped(node) { (_, _) ?=>
-                follow(counted(remote, peer)).as(SessionEnd.Returned)
+          .use { (fetching, bound) =>
+            Peer
+              .over(
+                connection,
+                config.peer.copy(address = SocketAddress(remote.host, remote.port)),
+                prepare,
+                bound.fold(headers)(value => headers.map(_.withPatience(value.patience))),
+                observe,
+                pool,
+                fetchMode,
+                patience = bound.map(_.patience),
+                received = bound.map(_.received),
+                chainSyncObserver = bound.map(_.observer),
+                fetchSession = fetching,
+                genesis = bound.map(_.control),
+                receivedBody = receivedBody,
+                retainedHeaders = bound.fold(BlockPool.Retained)(_.retainedHeaders),
+                selectionWork = bound.map(_.work),
+                pipelineFailed = Some {
+                  case Fault.Failed(error) =>
+                    update(remote)(s =>
+                      if s.ended.isDefined then s
+                      else s.copy(ended = Some(InboundGovernor.SessionFailure.Peer(error)))
+                    )
+                  case Fault.Defect(cause) =>
+                    reportFatal(remote, Fatal.Defect(cause))
+                }
+              )
+              .use { peer =>
+                SessionEnd
+                  .scoped(node) { (_, _) ?=>
+                    follow(counted(remote, peer)).as(SessionEnd.Returned)
+                  }
+                  .flatMap { end =>
+                    val record = FailurePolicy.disposition(end) match
+                      case Disposition.StopNode(problem) =>
+                        reportFatal(remote, problem)
+                      case Disposition.Forget | Disposition.Backoff =>
+                        SessionEnd
+                          .peerError(end)
+                          .filterNot(_ == PeerError.NoIntersection)
+                          .traverse_(problem =>
+                            update(remote)(
+                              _.copy(ended = Some(InboundGovernor.SessionFailure.Peer(problem)))
+                            )
+                          )
+                      case Disposition.Settled => F.unit
+                    record *> SessionEnd
+                      .networkFailure(end)
+                      .traverse_(connection.mux.abort) *> (end match
+                      case SessionEnd.Failed(error)      => caller.raise[NodeError, Unit](error)
+                      case SessionEnd.Rejected(error)    => caller.raise[NodeError, Unit](error)
+                      case SessionEnd.Unavailable(error) => caller.raise[NodeError, Unit](error)
+                      case SessionEnd.Storage(error)     => caller.raise[NodeError, Unit](error)
+                      case SessionEnd.Internal(error)    => caller.raise[NodeError, Unit](error)
+                      case SessionEnd.Defect(error)      => F.raiseError[Unit](error)
+                      case SessionEnd.Cancelled          => F.canceled *> F.never[Unit]
+                      case SessionEnd.Returned | SessionEnd.Stopped(_) => F.unit)
+                  }
               }
-              .flatMap { end =>
-                val record = FailurePolicy.disposition(end) match
-                  case Disposition.StopNode(problem) =>
-                    reportFatal(remote, problem)
-                  case Disposition.Forget | Disposition.Backoff =>
-                    SessionEnd
-                      .peerError(end)
-                      .filterNot(_ == PeerError.NoIntersection)
-                      .traverse_(problem =>
-                        update(remote)(
-                          _.copy(ended = Some(InboundGovernor.SessionFailure.Peer(problem)))
-                        )
-                      )
-                  case Disposition.Settled => F.unit
-                record *> SessionEnd
-                  .networkFailure(end)
-                  .traverse_(connection.mux.abort) *> (end match
-                  case SessionEnd.Failed(error)      => caller.raise[NodeError, Unit](error)
-                  case SessionEnd.Rejected(error)    => caller.raise[NodeError, Unit](error)
-                  case SessionEnd.Unavailable(error) => caller.raise[NodeError, Unit](error)
-                  case SessionEnd.Storage(error)     => caller.raise[NodeError, Unit](error)
-                  case SessionEnd.Internal(error)    => caller.raise[NodeError, Unit](error)
-                  case SessionEnd.Defect(error)      => F.raiseError[Unit](error)
-                  case SessionEnd.Cancelled          => F.canceled *> F.never[Unit]
-                  case SessionEnd.Returned | SessionEnd.Stopped(_) => F.unit)
-              }
+              .as(Option.empty[NodeError])
           }
-          .as(Option.empty[NodeError])
       }
       .rescue(e => F.pure(Some(e)))
       .flatMap {
@@ -332,6 +354,7 @@ final class InboundGovernor[F[_]: Async] private (
 
   /** The peer, with what the session sees of it counted. */
   private def counted(remote: SocketAddress[IpAddress], peer: Peer[F]): Peer[F] = new Peer[F]:
+    override def selectionWork = peer.selectionWork
     def intersect(candidates: Vector[ChainSync.Point])(using Raise[F, PeerError]) =
       peer.intersect(candidates).flatTap { found =>
         found.traverse_ { point =>
@@ -437,7 +460,9 @@ object InboundGovernor:
       observe: Option[Peer.Observation => F[Unit]] = None,
       sharing: Option[PeerSharingRuntime[F]] = None,
       pool: Option[BlockPool[F]] = None,
-      fetchMode: Option[F[xyz.kd5ujc.scarab.network.selection.FetchMode]] = None
+      fetchMode: Option[F[xyz.kd5ujc.scarab.network.selection.FetchMode]] = None,
+      genesis: Option[GenesisRuntime[F]] = None,
+      receivedBody: Option[Peer.BodySink[F]] = None
   )(using node: Handle[F, NodeError]): F[InboundGovernor[F]] =
     Ref
       .of[F, Map[String, Session]](Map.empty)
@@ -457,6 +482,8 @@ object InboundGovernor:
           sharing,
           pool,
           fetchMode,
+          genesis,
+          receivedBody,
           _
         )
       )

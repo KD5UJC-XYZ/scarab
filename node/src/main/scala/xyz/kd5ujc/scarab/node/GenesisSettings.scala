@@ -18,12 +18,12 @@ final case class GenesisSettings(
     enableLoP: Boolean = true,
     blockFetchGracePicos: BigInt = 10 * GenesisSettings.PicosPerSecond,
     bucketCapacity: BigInt = 100000,
-    bucketRate: BigInt = 500,
+    bucketRate: Rational = Rational(500),
     jumpSlots: BigInt = 4320,
     gddIntervalPicos: BigInt = GenesisSettings.PicosPerSecond
 ):
   def bucket: LeakyBucket.Config =
-    if enableLoP then LeakyBucket.Config(Rational(bucketCapacity), Rational(bucketRate))
+    if enableLoP then LeakyBucket.Config(Rational(bucketCapacity), bucketRate)
     else LeakyBucket.Config.disabled
 
 object GenesisSettings:
@@ -68,7 +68,7 @@ object GenesisSettings:
           patience.getOrElse(true),
           grace,
           capacity.getOrElse(BigInt(100000)),
-          rate.getOrElse(BigInt(500)),
+          rate.fold(Rational(500))(Rational(_)),
           jump.getOrElse(BigInt(4320)),
           interval
         )
