@@ -15,6 +15,24 @@ class BlockPoolSuite extends CatsEffectSuite:
   private def hash(n: Int): Bytes = Bytes.wrap(Array.fill(32)(n.toByte))
   private def block(n: Int): Bytes = Bytes.wrap(Array.fill(10)((n + 100).toByte))
 
+  test("Genesis handover retries a stalled claim and retains the winning source") {
+    for
+      pool <- BlockPool.create[IO]
+      result <- (pool.session, pool.session).tupled.use { (slow, replacement) =>
+        for
+          first <- slow.claim(Vector(hash(1)))
+          duplicate <- replacement.claim(Vector(hash(1)), allowOverlap = true)
+          _ <- replacement.fill(Vector(hash(1) -> block(1)))
+          _ <- slow.fill(Vector(hash(1) -> block(2)))
+          taken <- replacement.take(hash(1))
+        yield (first, duplicate, taken)
+      }
+    yield
+      assertEquals(result._1, Vector(true))
+      assertEquals(result._2, Vector(true))
+      assertEquals(result._3.map(t => (t.block, t.own)), Some((block(1), true)))
+  }
+
   test("a second claim on the same hashes owns nothing, and the rest is split") {
     for
       pool <- BlockPool.create[IO]

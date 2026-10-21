@@ -8,6 +8,8 @@ import cats.effect.{Async, Ref}
 import cats.mtl.{Raise, Stateful}
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
+import cats.effect.syntax.all.*
+import xyz.kd5ujc.scarab.network.genesis.LimitOnPatience
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.consensus.{HeaderChain, HeaderRules}
 import xyz.kd5ujc.scarab.consensus.HeaderRules.Outcome
@@ -38,7 +40,15 @@ object HeaderGate:
 trait HeaderCheck[F[_]]:
   def start(intersection: ChainSync.Point): F[HeaderGate[F]]
 
+  def withPatience(patience: LimitOnPatience[F]): HeaderCheck[F] = this
+
+  def observed(observer: HeaderCheck.Event => F[Unit]): HeaderCheck[F] = this
+
 object HeaderCheck:
+  enum Event:
+    case Validated(header: Header)
+    case RolledBack(point: ChainSync.Point)
+
   /** No header-first validation: every block is checked when it is applied (tests, tools). */
   def none[F[_]: Applicative]: HeaderCheck[F] = new HeaderCheck[F]:
     def start(intersection: ChainSync.Point) = Applicative[F].pure(HeaderGate.none[F])
@@ -65,11 +75,20 @@ object HeaderCheck:
       poll: FiniteDuration = 20.millis,
       retained: Int = 4096,
       observe: Option[HeaderGate.Counts => F[Unit]] = None,
-      added: Option[HeaderGate.Counts => F[Unit]] = None
+      added: Option[HeaderGate.Counts => F[Unit]] = None,
+      patience: Option[LimitOnPatience[F]] = None,
+      publication: Option[Event => F[Unit]] = None
   )(using
       chain: Stateful[F, VolatileChain[S]]
   ): HeaderCheck[F] = new HeaderCheck[F]:
     private val F = Async[F]
+
+    override def withPatience(value: LimitOnPatience[F]): HeaderCheck[F] =
+      forChain(rules, compute, warm, stall, poll, retained, observe, added, Some(value), publication)
+
+    override def observed(observer: Event => F[Unit]): HeaderCheck[F] =
+      forChain(rules, compute, warm, stall, poll, retained, observe, added, patience,
+        Some(event => publication.traverse_(_(event)) *> observer(event)))
 
     def start(intersection: ChainSync.Point): F[HeaderGate[F]] =
       for
@@ -115,7 +134,8 @@ object HeaderCheck:
                   .flatMap(hc => hc.tipState.traverse_(h => warm.traverse_(_(leading, h))))
                   .whenA(leading.size > 1) *>
                 batch.traverse_ {
-                  case SyncEvent.RollBackward(point, _) => rollback(point)
+                  case SyncEvent.RollBackward(point, _) =>
+                    rollback(point) *> publication.traverse_(_(Event.RolledBack(point)))
                   case SyncEvent.RollForward(header, _) => forward(header)
                 }
             ) *> tally.get.flatMap(c =>
@@ -156,7 +176,8 @@ object HeaderCheck:
               case Outcome.Valid(next) =>
                 record(header, Some(next)) *> tally.update(c =>
                   c.copy(validated = c.validated + 1, waited = c.waited + (if waited then 1 else 0))
-                )
+                ) *> patience.traverse_(_.validated(header.blockNo)) *>
+                  publication.traverse_(_(Event.Validated(header)))
               case Outcome.Unchecked(_, next) =>
                 record(header, next) *> tally.update(c => c.copy(unchecked = c.unchecked + 1))
               case Outcome.Invalid(error) => invalid(header, error)
@@ -207,7 +228,7 @@ object HeaderCheck:
                       }
                   case (None, Some(_)) =>
                     released.get.flatMap { earlier =>
-                      if hc.entries.size > earlier then
+                      if hc.entries.size > earlier && patience.isEmpty then
                         F.pure(
                           (
                             Outcome.Unchecked(
@@ -273,7 +294,7 @@ object HeaderCheck:
                   .filter(_ > 0)
             nothingInFlight = applied.exists(_ >= earlier)
             result <-
-              if nothingInFlight || now - moved._2 > stall then
+              if patience.isEmpty && (nothingInFlight || now - moved._2 > stall) then
                 // Nothing is left to wait for (every block of the earlier batches is applied, or the
                 // chain stood still): the block validates the header, rather than dropping a peer
                 // whose chain the forecast cannot reach (an honest gap, a limit of the forecast).
@@ -285,5 +306,10 @@ object HeaderCheck:
                     ): Outcome[H]
                   ) -> true
                 )
-              else F.sleep(poll) *> resolve(header, waited = true, since = Some(moved))
+              else
+                val waiting = F.sleep(poll) *> resolve(header, waited = true, since = Some(moved))
+                patience.filter(_ => since.isEmpty).fold(waiting)(p =>
+                  (p.setPaused(LimitOnPatience.PauseReason.Forecast, true) *> waiting)
+                    .guarantee(p.setPaused(LimitOnPatience.PauseReason.Forecast, false))
+                )
           yield result

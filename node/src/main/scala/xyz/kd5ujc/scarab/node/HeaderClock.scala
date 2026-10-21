@@ -6,10 +6,12 @@ import cats.effect.{Clock, Temporal}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
+import cats.effect.syntax.all.*
 import java.time.Instant
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.ledger.{EpochGeometry, HeaderError, PeerError}
 import xyz.kd5ujc.scarab.protocol.ChainSync
+import xyz.kd5ujc.scarab.network.genesis.LimitOnPatience
 
 /** The node's clock over the era history: the wall time, and the history that places a slot on it.
   * The history is read at each use because a chain that starts in Byron learns where Byron ends
@@ -107,15 +109,23 @@ object HeaderClock:
   def clocked[F[_]: Temporal](
       clock: SlotClock[F],
       inner: HeaderCheck[F],
-      skew: FiniteDuration = HeaderEligibility.DefaultSkew
+      skew: FiniteDuration = HeaderEligibility.DefaultSkew,
+      patience: Option[LimitOnPatience[F]] = None
   ): HeaderCheck[F] = new HeaderCheck[F]:
+    override def withPatience(value: LimitOnPatience[F]): HeaderCheck[F] =
+      clocked(clock, inner.withPatience(value), skew, Some(value))
+
+    override def observed(observer: HeaderCheck.Event => F[Unit]): HeaderCheck[F] =
+      clocked(clock, inner.observed(observer), skew, patience)
+
     def start(intersection: ChainSync.Point): F[HeaderGate[F]] =
-      inner.start(intersection).map(gate => new Gated[F](clock, gate, skew))
+      inner.start(intersection).map(gate => new Gated[F](clock, gate, skew, patience))
 
   private final class Gated[F[_]: Temporal](
       clock: SlotClock[F],
       inner: HeaderGate[F],
-      skew: FiniteDuration
+      skew: FiniteDuration,
+      patience: Option[LimitOnPatience[F]]
   ) extends HeaderGate[F]:
     def counts = inner.counts
 
@@ -135,7 +145,13 @@ object HeaderClock:
           _ <- verdicts
             .collect { case (_, HeaderEligibility.WaitUntil(onset)) => onset }
             .maxOption
-            .traverse_(until(clock, _))
+            .traverse_(onset =>
+              val waiting = until(clock, onset)
+              patience.fold(waiting)(p =>
+                (p.setPaused(LimitOnPatience.PauseReason.HeaderTime, true) *> waiting)
+                  .guarantee(p.setPaused(LimitOnPatience.PauseReason.HeaderTime, false))
+              )
+            )
           _ <- inner.accept(batch)
         yield ()
 

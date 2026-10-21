@@ -92,7 +92,12 @@ final class BlockPool[F[_]: Async] private (
     * policy allows); the result says, per hash and in order, whether `owner` now holds it (and must
     * [[fill]] or [[release]] it).
     */
-  private def claim(owner: Long, hashes: Vector[Bytes], mode: FetchMode): F[Vector[Boolean]] =
+  private def claim(
+      owner: Long,
+      hashes: Vector[Bytes],
+      mode: FetchMode,
+      allowOverlap: Boolean
+  ): F[Vector[Boolean]] =
     reap *> hashes.traverse(_ => Deferred[F, Option[Filled]]).flatMap { fresh =>
       slots.modify { s =>
         val (grown, owned) = hashes.zip(fresh).foldLeft((s, Vector.empty[Boolean])) {
@@ -109,8 +114,8 @@ final class BlockPool[F[_]: Async] private (
                     flags :+ true
                   )
                 case Some(Slot.Pending(waiting, seq, owners))
-                    if mode == FetchMode.Deadline && !owners(owner) &&
-                      policy.deadlineConcurrency > 0 =>
+                    if !owners(owner) && (allowOverlap ||
+                      (mode == FetchMode.Deadline && policy.deadlineConcurrency > 0)) =>
                   (
                     acc.copy(entries =
                       acc.entries.updated(hash, Slot.Pending(waiting, seq, owners + owner))
@@ -289,8 +294,12 @@ object BlockPool:
     /** Claim `hashes` for this session under the fetch `mode` (bulk sync, the exclusive claim,
       * unless a caller says otherwise).
       */
-    def claim(hashes: Vector[Bytes], mode: FetchMode = FetchMode.BulkSync): F[Vector[Boolean]] =
-      pool.claim(owner, hashes, mode)
+    def claim(
+        hashes: Vector[Bytes],
+        mode: FetchMode = FetchMode.BulkSync,
+        allowOverlap: Boolean = false
+    ): F[Vector[Boolean]] =
+      pool.claim(owner, hashes, mode, allowOverlap)
     def fill(blocks: Vector[(Bytes, Bytes)]): F[Unit] = pool.fill(owner, blocks)
     def release(hashes: Vector[Bytes]): F[Unit] = pool.release(owner, hashes)
 
