@@ -165,7 +165,7 @@ class ConformanceSourcesTest(unittest.TestCase):
         root = SCRIPT.parent.parent
         rows = MODULE.sources(root)
         consensus = next(row for row in rows if row.name == "consensus")
-        for name in ("genesis-density", "genesis-historicity", "genesis-chain-sync"):
+        for name in ("genesis-density", "genesis-historicity", "genesis-chain-sync", "genesis-punishment"):
             manifest = json.loads((root / "fixtures/reference" / name / "manifest.json").read_text())
             self.assertEqual(consensus.commit, manifest["sourceCommit"])
             for path in manifest["sourceFiles"]:

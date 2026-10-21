@@ -370,6 +370,23 @@
         "node/src/test/scala/xyz/kd5ujc/scarab/node/GenesisHeaderRulesSuite.scala"
       ],
       "candidateRequired": true
+    },
+    {
+      "id": "genesis-invalid-block-punishment",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "All 72 native tentative-header traces (4,178 transitions), original signed Conway header projection, opaque punishment DSL and four actual ChainDB classifications.",
+      "assertion": "Compare complete typed state and every outcome without filtering; preserve invalid-prefix punishment, repeated-identity rejection and client reset.",
+      "rationale": "Native CardanoBlock instances and ChainDB callbacks provide independent observations; deterministic supplementary traces are not claimed as upstream-generated inputs or exhaustive coverage.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/33",
+      "resolution": "Retain original native observations, source and exporter identities, and strict comparisons across every currently supported era.",
+      "evidence": [
+        "fixtures/reference/genesis-punishment/README.md",
+        "fixtures/reference/genesis-punishment/manifest.json",
+        "consensus/src/test/scala/xyz/kd5ujc/scarab/consensus/genesis/UpstreamDiffusionPunishmentSuite.scala"
+      ],
+      "candidateRequired": true
     }
   ]
 }
