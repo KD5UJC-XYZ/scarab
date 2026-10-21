@@ -263,7 +263,7 @@
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/pull/285",
       "resolution": "Integrate the separately owned query/provenance work, remove the masks/tolerance, and retain unmasked exact native-comparison receipts.",
       "evidence": [
-        "scripts/devnet/gapmask.py",
+        "scripts/devnet/ntcqueries.py",
         "scripts/oracle/compare.py"
       ],
       "candidateRequired": true
