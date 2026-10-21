@@ -190,7 +190,9 @@ class AdversarialScheduleSuite extends FailsOnUncaught:
           val refs = current.anchor.block.toVector ++ current.blocks.map(_._1)
           Peer.HeightSnapshot.Captured(
             current.candidates,
-            refs.map(block => block.point -> Option(block.blockNo)).toMap
+            refs
+              .map(block => block.point -> Option(block.blockNo))
+              .toMap
               .updated(ChainSync.Point.Origin, None)
           )
         }
