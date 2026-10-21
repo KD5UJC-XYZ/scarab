@@ -18,3 +18,9 @@
   KeepAlive sessions, and apply the reference repromotion delays before a fresh
   activation. Preserve typed cached-block attribution through inbound validation
   failures instead of blaming the current requesting peer for recovered bytes.
+
+- Preserve native tentative-tip forgiveness by block number, issuer and operational
+  certificate, resetting its state for each BlockFetch activation. Reject malformed
+  transported bodies before this semantic-invalidity policy.
+- Match Byron's native arbitrary-natural parameter decoding, signed Nano rounding,
+  Word64 fee conversions and checked fee arithmetic; retain typed fee failures.

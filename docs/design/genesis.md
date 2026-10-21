@@ -82,6 +82,23 @@ explicit small-network parameters must retain their input configuration and comp
 the same configuration on both implementations; production defaults are not changed
 to make scenarios pass.
 
+## Body admission and selection ownership
+
+The block-selection worker belongs to the node, independently of the peer that delivers a body
+or the session that announced its headers. Mirror the native bounded add queue (capacity 10,
+`ChainDB/Args.hs:122`): BlockFetch waits for queue capacity, while written/processed promises belong
+to the worker (`BlockFetch/ClientInterface.hs:192–228`). Queued original bodies count as fetched
+(`ChainDB/Impl/Query.hs:225`), but the candidate forest contains only bodies the worker has actually
+processed (`ChainSel.hs:449`). A later queued body must not affect an earlier admission's selection.
+
+Each successful first admission carries its original bytes, checked header and immutable sending
+BlockFetch-run context. Duplicate deliveries do not create another admission or change its source.
+One serial worker processes that FIFO, records semantic invalidity and applies the native punishment
+criterion, then compares any valid prefix before committing it. Recovery and LoE reconsideration
+carry no new adding client. Peer cancellation cannot remove a queued admission or cancel ledger
+selection. Worker shutdown and infrastructure failure settle current and queued work, following
+`Background.hs:658–708` and `Types.hs:740–755`; they never masquerade as a peer refusal.
+
 ## Implementation sequence and acceptance
 
 1. Pure LoE/GDD, bucket, jumping and devoted-fetch decisions, with closed types and
