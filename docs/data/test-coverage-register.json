@@ -520,6 +520,25 @@
         "network/src/test/scala/xyz/kd5ujc/scarab/network/selection/BigLedgerSuite.scala"
       ],
       "candidateRequired": true
+    },
+    {
+      "id": "native-chainsync-timeouts",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "384 unchanged native active-state observations across eight seeds, both peer trust values and both idle settings, plus seven unsigned Word64 boundaries.",
+      "assertion": "Compare every captured deadline using the production client receive-state selector or effective server idle setting, exact binary timeout samples and picoseconds; verify complete retained RNG advancement and random scaling boundaries.",
+      "rationale": "Untrustable MustReply deadlines are freshly randomized601\u2013911seconds. Trustable local-root clients are unbounded, other states do not consume random input, and partial reads retain a single state budget.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/35",
+      "resolution": "Every native output is retained without masks or exceptions. Native and JVM PRNG seed streams are not equated; actual native Word64 samples drive identical production scaling. Runtime tests independently exercise hook ordering, trust, fresh state draws and fragmented reads.",
+      "evidence": [
+        "fixtures/chainsync-timeouts/manifest.json",
+        "fixtures/chainsync-timeouts/README.md",
+        "scripts/oracle/chainsync-timeouts/Main.hs",
+        "network/src/test/scala/xyz/kd5ujc/scarab/network/NativeChainSyncTimeoutsSuite.scala",
+        "network/src/test/scala/xyz/kd5ujc/scarab/network/ChainSyncTimeoutsSuite.scala"
+      ],
+      "candidateRequired": true
     }
   ]
 }
