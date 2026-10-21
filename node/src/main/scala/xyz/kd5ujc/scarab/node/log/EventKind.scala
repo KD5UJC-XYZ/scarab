@@ -111,6 +111,7 @@ enum EventKind(val area: Area, val severity: Severity):
   // the mempool
   case MempoolAdded extends EventKind(Area.Mempool, Severity.Info)
   case MempoolRejected extends EventKind(Area.Mempool, Severity.Info)
+  case MempoolWaiting extends EventKind(Area.Mempool, Severity.Info)
   case MempoolDropped extends EventKind(Area.Mempool, Severity.Info)
   case MempoolAdopted extends EventKind(Area.Mempool, Severity.Info)
   case MempoolRemoved extends EventKind(Area.Mempool, Severity.Info)

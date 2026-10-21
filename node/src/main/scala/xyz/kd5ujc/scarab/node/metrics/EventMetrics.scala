@@ -125,10 +125,11 @@ final class EventMetrics[F[_]: Sync] private (
       case MempoolEvent.Added(_, _, _, _) => metrics.inc(txsProcessed)
       case MempoolEvent.Rejected(_, reason) =>
         metrics.inc(mempoolRejected, RejectionLabel.of(reason))
-      case MempoolEvent.Dropped(_, _)   => metrics.inc(mempoolDropped)
-      case MempoolEvent.Adopted(_)      => metrics.inc(mempoolAdopted)
-      case MempoolEvent.Removed(_)      => metrics.inc(mempoolRemoved)
-      case MempoolEvent.Synced(_, _, _) => Sync[F].unit
+      case MempoolEvent.Waiting(_, _, _) => Sync[F].unit
+      case MempoolEvent.Dropped(_, _)    => metrics.inc(mempoolDropped)
+      case MempoolEvent.Adopted(_)       => metrics.inc(mempoolAdopted)
+      case MempoolEvent.Removed(_)       => metrics.inc(mempoolRemoved)
+      case MempoolEvent.Synced(_, _, _)  => Sync[F].unit
 
   /** The phase of the start, as the one-hot gauge [[nodePhase]]: the storage events move it from
     * restoring to replaying, the node itself says when it is following.

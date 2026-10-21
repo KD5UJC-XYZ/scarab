@@ -2,21 +2,30 @@
 package xyz.kd5ujc.scarab.node.mempool
 
 import cats.effect.{Async, Ref}
-import cats.effect.std.Mutex
+import cats.effect.std.{Mutex, Semaphore}
 import cats.mtl.{Ask, Raise}
 import xyz.kd5ujc.scarab.ledger.StorageError
 import cats.syntax.all.*
 import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.network.{TxSubmissionClient, TxSubmissionServer}
+import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.read.ConwayView
 import xyz.kd5ujc.scarab.node.{Fatal, StorageBoundary}
 import xyz.kd5ujc.scarab.storage.UtxoStore
+
+import Capacity.fits
 
 /** Observable mempool milestones, for the JSON log. */
 enum MempoolEvent:
   case Added(id: Bytes, size: Int, count: Int, bytes: Long)
   case Rejected(id: Option[Bytes], reason: Rejection)
+
+  /** A transaction that fits an empty pool found no room and waits for the pool to change (once per
+    * submission, however many times it retries): `needed` is what it counts for, `free` what the
+    * pool had left.
+    */
+  case Waiting(id: Option[Bytes], needed: TxMeasure, free: TxMeasure)
 
   /** Held transactions that the new tip no longer admits (adopted in a block, or invalidated). */
   case Dropped(id: Bytes, reason: Rejection)
@@ -50,8 +59,23 @@ object MempoolEvents:
 trait Mempool[F[_]]:
   /** The transaction id, or why the transaction was refused. `source` says whether a local client
     * or a peer submitted it ([[Source]]).
+    *
+    * A transaction that fits the capacity of an empty pool but not the room left waits instead of
+    * being refused, as `implAddTx` does in the reference
+    * (`ouroboros-consensus/.../Mempool/Update.hs` at `82ecba329d7d054340bf707d44fe6e9ac27cec40`):
+    * it retries from the first measure whenever the pool changes (a transaction added or removed, a
+    * new tip) until it is held or refused for another reason. The wait is cancelable and holds no
+    * state lock, so `sync`, `removeTxsEvenIfValid`, `awaitChange` and the readers run meanwhile.
+    * Waiters are served in order through two queues: a peer's transaction takes the remote queue
+    * and then the common one, a local client's only the common one, so a local client overtakes the
+    * peers that wait; only the head of the queue waits for room, so a small transaction does not
+    * pass a larger one. A transaction that cannot fit even an empty pool of the current capacity is
+    * refused at once with [[Rejection.Full]] (the reference would wait for ever).
     */
   def add(raw: Bytes, source: Source)(using Raise[F, StorageError]): F[Either[Rejection, Bytes]]
+
+  /** The submissions in line behind the ones being served (see [[add]]). */
+  def lines: F[Mempool.Lines]
 
   def snapshot: F[MempoolState]
 
@@ -91,6 +115,18 @@ trait Mempool[F[_]]:
   def sink(fatal: Fatal => F[Unit]): TxSubmissionServer.Sink[F]
 
 object Mempool:
+  /** How many submissions wait for their turn: `remote` behind the peer's transaction that holds
+    * the remote line, `common` behind the one that holds the common line.
+    */
+  final case class Lines(remote: Int, common: Int)
+
+  /** One validation step of an add: its answer, or the room to wait for. `seen` is the version of
+    * the pool that the step looked at.
+    */
+  private enum Attempt:
+    case Done(result: Either[Rejection, Bytes])
+    case Wait(seen: Long, id: Option[Bytes], full: Rejection.Full)
+
   /** @param capacityOverride
     *   The `MempoolCapacityBytesOverride` in bytes, rounded up to whole blocks; `None` is two
     *   blocks of the parameters in force ([[Capacity.of]]).
@@ -113,11 +149,47 @@ object Mempool:
       state <- Ref.of[F, MempoolState](MempoolState.empty(ledger, tipSlot, capacityOverride))
       version <- SignallingRef.of[F, Long](0L)
       lock <- Mutex[F]
+      remoteFifo <- Semaphore[F](1)
+      allFifo <- Semaphore[F](1)
     yield new Mempool[F]:
       private val F = Async[F]
       private val readEnv = environment.fold(F.pure(env))(_.ask[MempoolEnv])
 
-      def add(raw: Bytes, source: Source)(using Raise[F, StorageError]) = lock.lock.surround {
+      /** A submission's turn: `remoteFifo` then `allFifo` for a peer, `allFifo` alone for a local
+        * client (`implAddTx`'s two FIFOs). A one-permit `Semaphore` is a `Mutex` that also counts
+        * its waiters ([[lines]]); it queues in order and its `permit` releases on cancellation, so
+        * a disconnect or a closed client frees the place in line.
+        */
+      private def inLine[A](source: Source)(fa: F[A]): F[A] = source match
+        case Source.Remote => remoteFifo.permit.surround(allFifo.permit.surround(fa))
+        case Source.Local  => allFifo.permit.surround(fa)
+
+      def lines = (remoteFifo.count, allFifo.count).mapN((remote, common) =>
+        Mempool.Lines((-remote).max(0).toInt, (-common).max(0).toInt)
+      )
+
+      def add(raw: Bytes, source: Source)(using Raise[F, StorageError]) =
+        inLine(source) {
+          F.tailRecM(false) { announced =>
+            attempt(raw, source).flatMap {
+              case Attempt.Done(result) => F.pure(result.asRight[Boolean])
+              case Attempt.Wait(seen, id, full) =>
+                events
+                  .emit(MempoolEvent.Waiting(id, full.needed, full.free))
+                  .unlessA(announced) *>
+                  version.waitUntil(_ > seen).as(true.asLeft[Either[Rejection, Bytes]])
+            }
+          }
+        }
+
+      /** The state lock is held for this step only, never while waiting. Every change of the pool
+        * happens under it and bumps `version`, so the version read here is the one of the state
+        * that was measured and the wait cannot miss a change. The step starts from the first
+        * measure again each time: a new tip may have changed the parameters and the capacity.
+        */
+      private def attempt(raw: Bytes, source: Source)(using
+          Raise[F, StorageError]
+      ): F[Attempt] = lock.lock.surround {
         for
           held <- state.get
           current <- MempoolState.parse(raw) match
@@ -137,7 +209,11 @@ object Mempool:
               state.set(next) *> version.update(_ + 1) *>
                 events
                   .emit(MempoolEvent.Added(entry.id, entry.size, next.entries.size, next.bytes))
-                  .as(entry.id.asRight[Rejection])
+                  .as(Attempt.Done(entry.id.asRight[Rejection]))
+            case Left(full: Rejection.Full) if full.needed.fits(current.capacity) =>
+              version.get.map(
+                Attempt.Wait(_, MempoolState.parse(raw).toOption.map(_._1), full)
+              )
             case Left(reason) =>
               val id = reason match
                 case Rejection.AlreadyHeld(i) => Some(i)
@@ -147,7 +223,7 @@ object Mempool:
                   MempoolEvent
                     .Rejected(id.orElse(MempoolState.parse(raw).toOption.map(_._1)), reason)
                 )
-                .as(reason.asLeft[Bytes])
+                .as(Attempt.Done(reason.asLeft[Bytes]))
         yield out
       }
 
@@ -243,5 +319,10 @@ object Mempool:
             // NodeKernel's mempoolHasTx checks the current snapshot only. TxSubmission2 owns
             // its in-flight IDs; a previous rejection or adoption must not suppress a re-offer.
             state.get.map(_.contains(id))
+          // Runs in the peer's inbound TxSubmission2 fiber: a transaction that waits for room holds
+          // that peer's replies back, as `txSubmissionInbound` does in the reference. The wait is
+          // outside every protocol deadline (`TxSubmission2Runtime.server` times the read of a
+          // message, not the sink), the peer sits in StIdle where it may wait for ever, and its
+          // other mini-protocols and our outbound direction run in fibers of their own.
           def submit(originals: Vector[Bytes]) =
             StorageBoundary.run(fatal)(originals.traverse_(add(_, Source.Remote).void))

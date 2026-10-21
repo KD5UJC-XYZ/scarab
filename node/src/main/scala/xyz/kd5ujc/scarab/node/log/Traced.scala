@@ -8,7 +8,7 @@ import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent, SchedulingReport}
 import xyz.kd5ujc.scarab.network.ConnectionEvent
 import xyz.kd5ujc.scarab.node.Reports
 import xyz.kd5ujc.scarab.node.forge.ForgeEvent
-import xyz.kd5ujc.scarab.node.mempool.MempoolEvent
+import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, Rejection}
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.storage.StorageEvent
 
@@ -228,6 +228,11 @@ object Traced:
       EventKind.MempoolRejected.line(
         "tx" -> id.map(_.hex).asJson,
         "reason" -> reason.message.asJson
+      )
+    case MempoolEvent.Waiting(id, needed, free) =>
+      EventKind.MempoolWaiting.line(
+        "tx" -> id.map(_.hex).asJson,
+        "reason" -> Rejection.Full(needed, free).message.asJson
       )
     case MempoolEvent.Adopted(id) => EventKind.MempoolAdopted.line("tx" -> id.hex.asJson)
     case MempoolEvent.Removed(id) => EventKind.MempoolRemoved.line("tx" -> id.hex.asJson)

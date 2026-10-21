@@ -251,6 +251,7 @@ object LogSamples:
     MempoolEvent
       .Rejected(Some(hash), Rejection.Full(TxMeasure(300, 0, 0, 0), TxMeasure(100, 0, 0, 0))),
     MempoolEvent.Dropped(hash, Rejection.AlreadyHeld(hash)),
+    MempoolEvent.Waiting(Some(hash), TxMeasure(300, 0, 0, 0), TxMeasure(100, 0, 0, 0)),
     MempoolEvent.Adopted(hash),
     MempoolEvent.Removed(hash),
     MempoolEvent.Synced(3, 900L, 1),

@@ -83,6 +83,7 @@
 {"event":"mempoolRejected","at":"2026-10-16T12:00:00Z","tx":null,"reason":"malformed transaction: expected [body, witnesses, is_valid, auxiliary_data]"}
 {"event":"mempoolRejected","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab","reason":"mempool full: 300 bytes needed, 100 free"}
 {"event":"mempoolDropped","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab","reason":"tx abababababababab is already in the mempool"}
+{"event":"mempoolWaiting","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab","reason":"mempool full: 300 bytes needed, 100 free"}
 {"event":"mempoolAdopted","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab"}
 {"event":"mempoolRemoved","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab"}
 {"event":"mempoolSynced","at":"2026-10-16T12:00:00Z","count":3,"bytes":900,"dropped":1}

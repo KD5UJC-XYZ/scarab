@@ -57,7 +57,9 @@ enum Rejection:
 
   /** Holding it would exceed the mempool's capacity in a component of the measure vector: `needed`
     * is what the transaction counts for and `free` the capacity left, whose components are negative
-    * where the pool is over capacity (after a parameter change).
+    * where the pool is over capacity (after a parameter change). [[MempoolState.add]] returns it
+    * for any shortage; [[Mempool.add]] waits for room unless `needed` exceeds the whole capacity,
+    * and only that case reaches its caller.
     */
   case Full(needed: TxMeasure, free: TxMeasure)
 
