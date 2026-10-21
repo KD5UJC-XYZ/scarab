@@ -7,7 +7,7 @@ identities, reference acquisition points/protocols and queried normal/collateral
 `admissions.json` has twenty V1/V2 spending/minting/validity cases and twenty-four auxiliary-script
 cases. The reference is the official cardano-node 11.1.3 / CLI 11.2.3.0 Docker image; full immutable
 image identities, commands, source/runtime binding and gate outcomes are in `gates.json`.
-`manifest.json` hashes these three JSON documents.
+`manifest.json` hashes both source groups of JSON documents; each group retains its own measured source identity.
 
 The normal driver generates and signs these transactions with disposable private devnet keys.
 Those keys, private genesis, databases and logs are not fixtures. This is a measured admission/effect
@@ -40,3 +40,22 @@ changed before `5b290879b`, so the decoder/fuzz implementation is identical. Pri
 bound all 6,363 tracked files, 12,725 runtime files and 64 jars; their digests and successful
 before/after audits are retained in `gates.json`. These inventory digests identify the measured local
 artifacts; the public source commit and fixture/tool manifests supply reproducible source identities.
+
+## Rebased integration gate
+
+Main advanced with BlockFetch coordination (#289), requiring a fresh integration gate. Source
+`0c94e76a460bf5471c66857fba2111c903f97a2c` is rebased onto main
+`0a6693fb01ca4ddb4aca7ef2f21eacd98361ce9b`. The only rebase conflict was the compatibility evidence table's
+two independent run records; both were preserved. The `rebased-*.json` documents retain the second
+run's 44 signed transactions/effects, 66 matching ledger points and complete gate/source identities.
+Docker check passed 6,781 tests with 17 optional-data skips; Python331/331; source-head CI is green.
+The scenario passed through Conway epoch17 with 1,656 applications,36 handled rollbacks and seven
+reconnects. Zero comparison mismatches/errors/skips, validation/fatal errors or starvation warnings.
+All nine pending-cost-model observations match again, preserving both actual encodings.
+
+All 6,389 tracked source files,12,804 runtime files and64 jars were bound and audited. A separate
+source comparison binds the unchanged Plutus/context/auxiliary and existing fuzz implementation:
+5,494 scoped files agree before/after rebase, including4,810 code files identical to the extended-fuzz
+source. The historical 33.6-million-case fuzz run is not relabeled as an exact-head run of the new
+BlockFetch scheduling, lifecycle, configuration or RTT sampling; fresh check and e2e verify this
+combined integration. The earlier source group and failure diagnoses remain historical.

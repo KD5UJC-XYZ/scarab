@@ -186,6 +186,15 @@ not a newly proved transport root cause or a claim of continuous network health.
 structure remains [#290](https://github.com/KD5UJC-XYZ/scarab/issues/290). This stage is ready for review;
 issue completion still requires main landing and green main CI.
 
+After main advanced with BlockFetch coordination (#289), source `0c94e76a4` was rebased onto
+`0a6693fb0` and passed fresh Docker check (6,781 passed/17 optional skips), Python331/331, source-head
+CI and the complete e2e:1,656 applications,66 matched projections,44 signed cases,36 handled rollbacks
+and seven reconnects; zero comparison/validation/fatal errors. The [separate rebased receipts](../fixtures/reference/plutus-admission/README.md#rebased-integration-gate)
+retain new signed bytes/points rather than relabeling the earlier run. All12,804 actual runtime files
+and64 jars match the build. The unchanged auxiliary/transaction/fuzz decoder implementation retains
+its historical extended-fuzz evidence; new upstream fetch lifecycle/configuration/sampling is covered
+by the fresh integration gates, not by claiming an exact-head extended-fuzz rerun.
+
 ### Platform boundary
 
 Platform support is separate from these semantic results. The JVM build already uses JNI;
