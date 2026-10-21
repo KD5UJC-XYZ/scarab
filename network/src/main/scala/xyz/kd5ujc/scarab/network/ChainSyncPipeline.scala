@@ -98,6 +98,8 @@ private[network] object ChainSyncPipeline:
           F.tailRecM(State.NextCanAwait) { current =>
             receive(current).flatMap {
               case Message.AwaitReply =>
+                // The native pipelined ReceiverEffect runs independently of sender validation.
+                // An observed Await must not wait behind already queued RF/RB replies.
                 hook
                   .fold(
                     Deferred[F, Unit].flatMap(ack => replies.offer(Await(ack)) *> ack.get)

@@ -460,3 +460,28 @@ class ChainSyncPipelineSuite extends FailsOnUncaught:
         }.map(result => assertEquals(result, Right(())))
     }
   }
+
+  test("an observed receiver hook completes before the MustReply deadline starts") {
+    TestControl
+      .executeEmbed(typed {
+        script.flatMap { s =>
+          s.input.offer(encoded(State.NextCanAwait, Message.AwaitReply)) *>
+            s.input.offer(encoded(State.NextMustReply, Message.RollForward(header(1), tip(1)))) *>
+            ChainSyncClient
+              .resource(
+                s.channel,
+                ChainSyncFixtures.rawItem,
+                e => s.aborts.update(_ :+ e),
+                settings
+              )
+              .use { client =>
+                val hook = new ChainSyncClient.ReceiverHook[IO]:
+                  def awaitReply(using Raise[IO, NetworkError]): IO[Unit] = IO.sleep(2.seconds)
+                client.submitObserved(hook) *> client.collect(IO.unit).map { update =>
+                  assertEquals(update, ChainSyncClient.Update.RollForward(header(1), tip(1)))
+                }
+              }
+        }
+      })
+      .map(result => assertEquals(result, Right(())))
+  }
