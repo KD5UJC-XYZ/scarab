@@ -76,9 +76,8 @@ object GenesisBlockFetch:
             available.headOption match
               case None => Result(before, prior, demoted)
               case Some(peer) =>
-                val others = available.tail.map(c =>
-                  Decision.Declined(c.peer, Refusal.Concurrency(FetchMode.BulkSync, 1))
-                )
+                val others =
+                  available.tail.map(c => Decision.Declined(c.peer, Refusal.GenesisConcurrency(1)))
                 val ownRemoved =
                   BlockFetchPolicy.filterFragments(missing, h => !peer.inFlight.blocks(h.hash))
                 val trimmed = trim(ownRemoved, peer.fragments)

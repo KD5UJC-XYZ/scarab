@@ -6,7 +6,13 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
 import xyz.kd5ujc.scarab.ledger.Header
-import xyz.kd5ujc.scarab.network.selection.{BlockFetchPolicy, FetchGsv, FetchMode}
+import xyz.kd5ujc.scarab.network.selection.{
+  BlockFetchPolicy,
+  FetchGsv,
+  FetchMode,
+  GenesisBlockFetch,
+  Gsm
+}
 
 /** One decision/reservation transaction for every inbound and outbound fetching session. The
   * decision is pure; a reservation is committed before its owner is woken. In particular, the
@@ -17,12 +23,29 @@ final class FetchCoordinator[F[_]: Async] private (
     config: BlockFetchPolicy.Config,
     selection: Option[F[ChainSelection.Local]],
     fetched: Option[F[Set[Bytes]]],
-    salt: Long
+    salt: Long,
+    genesis: Ref[F, Option[FetchCoordinator.GenesisControl[F]]]
 ):
   import FetchCoordinator.*
   private val F = Async[F]
 
   def setMode(mode: FetchMode): F[Unit] = change(_.copy(mode = mode))
+
+  /** Installed once by the Genesis governor; phase and starvation are live observations. */
+  def installGenesis(control: GenesisControl[F]): F[Unit] =
+    genesis.set(Some(control)) *> refreshGenesis
+  def refreshGenesis: F[Unit] = change(identity)
+  private[node] def inFlight: F[Map[Long, BlockFetchPolicy.InFlight]] = state.get.map { s =>
+    s.peers.map { (id, p) =>
+      val active = p.active.values.toVector
+      val headers = active.flatMap(_.remaining)
+      id -> BlockFetchPolicy.InFlight(
+        active.map(_.requests).sum,
+        headers.map(h => sizeOf(h, s)).sum,
+        headers.map(_.hash).toSet
+      )
+    }
+  }
 
   def session(identity: Long): Resource[F, Session[F]] =
     Resource
@@ -43,31 +66,41 @@ final class FetchCoordinator[F[_]: Async] private (
 
   private def change(f: State[F] => State[F]): F[Unit] =
     F.uncancelable { _ =>
-      (Deferred[F, Unit], selection.sequence, fetched.sequence).tupled.flatMap {
-        (signal, local, cached) =>
-          state
-            .modify { before =>
-              val input = f(before).copy(
-                signal = signal,
-                selected = local,
-                fetched = cached.getOrElse(Set.empty)
-              )
-              val (after, grants) = dispatch(input)
-              (after, (before.signal, grants))
-            }
-            .flatMap { (previous, grants) =>
-              grants.traverse_((promise, allocation) => promise.complete(allocation).void) *>
-                previous.complete(()).void
-            }
+      (
+        Deferred[F, Unit],
+        selection.sequence,
+        fetched.sequence,
+        genesis.get.flatMap(_.traverse(c => c.context.map(c -> _)))
+      ).tupled.flatMap { (signal, local, cached, control) =>
+        state
+          .modify { before =>
+            val input = f(before).copy(
+              signal = signal,
+              selected = local,
+              fetched = cached.getOrElse(Set.empty),
+              genesisContext = control.map(_._2),
+              demotions = Vector.empty
+            )
+            val (after, grants) = dispatch(input)
+            (after, (before.signal, grants, after.demotions))
+          }
+          .flatMap { (previous, grants, demotions) =>
+            grants.traverse_((promise, allocation) => promise.complete(allocation).void) *>
+              previous.complete(()).void *>
+              control.traverse_((owner, _) => demotions.traverse_(owner.demoteDynamo))
+          }
       }
     }
 
   private def await(id: Long, hash: Bytes): F[Unit] =
     F.tailRecM(()) { _ =>
       state.get.flatMap { s =>
-        val claimed =
-          s.peers.exists((peer, p) => peer != id && p.active.values.exists(_.claimed(hash)))
-        if claimed then s.signal.get.as(Left(())) else F.pure(Right(()))
+        fetched.sequence.flatMap { cached =>
+          val claimed =
+            s.peers.exists((peer, p) => peer != id && p.active.values.exists(_.claimed(hash)))
+          if cached.exists(_(hash)) || !claimed then F.pure(Right(()))
+          else s.signal.get.as(Left(()))
+        }
       }
     }
 
@@ -206,11 +239,12 @@ final class FetchCoordinator[F[_]: Async] private (
     def preference(tip: Option[Header]): Int = tip.fold(0) { h =>
       ordered.indexWhere(other => compareTips(h, other) == 0).max(0)
     }
+    val useGenesis = s.genesisContext.exists(_.phase != Gsm.Phase.CaughtUp)
     val candidates = s.peers.toVector.sortBy(_._1).map { (id, peer) =>
       val flight = peer.active.values.toVector
       val remaining = flight.flatMap(_.remaining)
       val admitted = for
-        _ <- peer.pending.headOption
+        _ <- Option.when(useGenesis || peer.pending.nonEmpty)(())
         local <- s.selected
         chain <- chainOf(peer)
       yield FetchCandidates.select(
@@ -219,6 +253,17 @@ final class FetchCoordinator[F[_]: Async] private (
         chain,
         chain.headers.filter(h => s.fetched(h.hash)).map(_.point).toSet
       )
+      val fullSuffix = for
+        _ <- Option.when(useGenesis)(())
+        local <- s.selected
+        chain <- chainOf(peer)
+      yield
+        val restriction = ChainSelection.tiebreakerFor(
+          tipOf(peer).fold(xyz.kd5ujc.scarab.protocol.Era.Byron)(_.era)
+        )
+        if !FetchCandidates.plausible(restriction, local, chain) then
+          Left(BlockFetchPolicy.Refusal.ChainNotPlausible)
+        else FetchCandidates.suffix(local, chain).map(_._2)
       val eligible = admitted.map(_.toOption.toVector.flatMap(_.headers).map(_.hash).toSet)
       val fragments =
         peer.pending.headOption.toVector.flatMap(o =>
@@ -226,9 +271,12 @@ final class FetchCoordinator[F[_]: Async] private (
         )
       BlockFetchPolicy.Candidate(
         peer = id,
-        chainPreference = preference(tipOf(peer)),
+        chainPreference = if useGenesis then -preference(tipOf(peer)) else preference(tipOf(peer)),
         chainHead = tipOf(peer).fold(Bytes.empty)(_.hash),
-        fragments = fragments,
+        fragments =
+          if useGenesis then
+            fragmentsOf(fullSuffix.toVector.flatMap(_.toOption.toVector.flatten), h => sizeOf(h, s))
+          else fragments,
         performance = peer.performance,
         inFlight = BlockFetchPolicy.InFlight(
           flight.map(_.requests).sum,
@@ -241,70 +289,105 @@ final class FetchCoordinator[F[_]: Async] private (
           else BlockFetchPolicy.Status.Ready,
         tieBreak = peer.identity,
         chainHeadSlot = tipOf(peer).fold(BigInt(0))(_.slot),
-        refusal = admitted.flatMap(_.left.toOption)
+        refusal =
+          if useGenesis then fullSuffix.flatMap(_.left.toOption)
+          else admitted.flatMap(_.left.toOption)
       )
     }
-    val decisions = BlockFetchPolicy.decide(config, s.mode, candidates)
-    decisions.foldLeft((s, Vector.empty[(Deferred[F, Allocation], Allocation)])) {
-      case ((current, grants), decision) =>
-        val (id, chosen) = decision match
-          case BlockFetchPolicy.Decision.Request(peer, fragments) =>
-            (peer, Some(fragments))
-          case BlockFetchPolicy.Decision.Declined(peer, BlockFetchPolicy.Refusal.NoBlocks) =>
-            (peer, Some(Vector.empty))
-          case BlockFetchPolicy.Decision
-                .Declined(peer, BlockFetchPolicy.Refusal.InFlightOtherPeer) =>
-            (peer, Some(Vector.empty))
-          case BlockFetchPolicy.Decision.Declined(
-                peer,
-                BlockFetchPolicy.Refusal.ChainNotPlausible |
-                BlockFetchPolicy.Refusal.IntersectionTooDeep |
-                BlockFetchPolicy.Refusal.AlreadyFetched
-              ) =>
-            (peer, Some(Vector.empty))
-          case BlockFetchPolicy.Decision.Declined(peer, _) => (peer, None)
-        (current.peers.get(id), chosen) match
-          case (Some(peer), Some(selected)) if peer.pending.nonEmpty =>
-            val offer = peer.pending.head
-            val hashes = selected.flatMap(_.headers.map(_.hash)).toSet
-            val headers = offer.headers.filter(h => hashes(h.hash))
-            val inFlight = candidates.flatMap { c =>
-              if s.mode == FetchMode.Deadline && c.peer != id then Vector.empty
-              else c.inFlight.blocks.toVector
-            }.toSet
-            val admitted = candidates.find(_.peer == id)
-            val eligible =
-              admitted.toVector.flatMap(_.fragments.flatMap(_.headers.map(_.hash))).toSet
-            val remaining =
-              offer.headers.filter(h => eligible(h.hash) && !hashes(h.hash) && !inFlight(h.hash))
-            val refusal = decision match
-              case BlockFetchPolicy.Decision.Declined(_, reason) => Some(reason)
-              case _                                             => None
-            val allocation = Allocation(offer.token, headers, remaining, selected.size, refusal)
-            val active =
-              if headers.isEmpty then peer.active
-              else
-                peer.active.updated(
-                  offer.token,
-                  Active(headers, selected.size, headers.map(_.hash).toSet)
-                )
-            val bytes = active.valuesIterator.flatMap(_.remaining).map(h => sizeOf(h, s)).sum
-            val next = peer.copy(
-              pending = peer.pending.tail,
-              active = active,
-              busy = (peer.busy && candidates
-                .find(_.peer == id)
-                .exists(_.status == BlockFetchPolicy.Status.Busy)) ||
-                bytes >= peer.performance.window.highBytes
-            )
-            (
-              current.copy(peers = current.peers.updated(id, next)),
-              grants :+ (offer.result -> allocation)
-            )
-          case _ => (current, grants)
+    val genesisResult = s.genesisContext.filter(_ => useGenesis).map { context =>
+      GenesisBlockFetch.decide(
+        config,
+        s.genesisState,
+        context.nowPicos,
+        context.starvation,
+        candidates,
+        context.gracePicos,
+        s.fetched
+      )
     }
+    val decisions =
+      genesisResult.fold(BlockFetchPolicy.decide(config, s.mode, candidates))(_.decisions)
+    val dispatched = genesisResult.fold(s)(r =>
+      s.copy(genesisState = r.state, demotions = r.demoteDynamo.toVector)
+    )
+    val granted =
+      decisions.foldLeft((dispatched, Vector.empty[(Deferred[F, Allocation], Allocation)])) {
+        case ((current, grants), decision) =>
+          val (id, chosen) = decision match
+            case BlockFetchPolicy.Decision.Request(peer, fragments) =>
+              (peer, Some(fragments))
+            case BlockFetchPolicy.Decision.Declined(peer, BlockFetchPolicy.Refusal.NoBlocks) =>
+              (peer, Some(Vector.empty))
+            case BlockFetchPolicy.Decision
+                  .Declined(peer, BlockFetchPolicy.Refusal.InFlightOtherPeer) =>
+              (peer, Some(Vector.empty))
+            case BlockFetchPolicy.Decision.Declined(
+                  peer,
+                  BlockFetchPolicy.Refusal.ChainNotPlausible |
+                  BlockFetchPolicy.Refusal.IntersectionTooDeep |
+                  BlockFetchPolicy.Refusal.AlreadyFetched
+                ) =>
+              (peer, Some(Vector.empty))
+            case BlockFetchPolicy.Decision.Declined(peer, _) => (peer, None)
+          (current.peers.get(id), chosen) match
+            case (Some(peer), Some(selected)) if peer.pending.nonEmpty =>
+              val offer = peer.pending.head
+              val hashes = selected.flatMap(_.headers.map(_.hash)).toSet
+              val headers = offer.headers.filter(h => hashes(h.hash))
+              val inFlight = candidates.flatMap { c =>
+                if (useGenesis || s.mode == FetchMode.Deadline) && c.peer != id then Vector.empty
+                else c.inFlight.blocks.toVector
+              }.toSet
+              val admitted = candidates.find(_.peer == id)
+              val eligible =
+                admitted.toVector.flatMap(_.fragments.flatMap(_.headers.map(_.hash))).toSet
+              val remaining =
+                offer.headers.filter(h => eligible(h.hash) && !hashes(h.hash) && !inFlight(h.hash))
+              val refusal = decision match
+                case BlockFetchPolicy.Decision.Declined(_, reason) => Some(reason)
+                case _                                             => None
+              val allocation = Allocation(
+                offer.token,
+                headers,
+                remaining,
+                selected.size,
+                refusal,
+                allowOverlap = useGenesis
+              )
+              val active =
+                if headers.isEmpty then peer.active
+                else
+                  peer.active.updated(
+                    offer.token,
+                    Active(headers, selected.size, headers.map(_.hash).toSet)
+                  )
+              val bytes = active.valuesIterator.flatMap(_.remaining).map(h => sizeOf(h, s)).sum
+              val next = peer.copy(
+                pending = peer.pending.tail,
+                active = active,
+                busy = (peer.busy && candidates
+                  .find(_.peer == id)
+                  .exists(_.status == BlockFetchPolicy.Status.Busy)) ||
+                  bytes >= peer.performance.window.highBytes
+              )
+              (
+                current.copy(peers = current.peers.updated(id, next)),
+                grants :+ (offer.result -> allocation)
+              )
+            case _ => (current, grants)
+      }
+
+    if granted._2.exists(_._2.headers.nonEmpty) then granted
+    else (granted._1.copy(genesisState = s.genesisState), granted._2)
 
 object FetchCoordinator:
+  final case class GenesisContext(
+      phase: Gsm.Phase,
+      nowPicos: BigInt,
+      starvation: GenesisBlockFetch.Starvation,
+      gracePicos: BigInt = GenesisBlockFetch.DefaultGracePicos
+  )
+  final case class GenesisControl[F[_]](context: F[GenesisContext], demoteDynamo: Long => F[Unit])
   private final case class Offer[F[_]](
       token: Long,
       headers: Vector[Header],
@@ -328,14 +411,18 @@ object FetchCoordinator:
       mode: FetchMode = FetchMode.BulkSync,
       hints: Map[Bytes, (Long, Long)] = Map.empty,
       selected: Option[ChainSelection.Local] = None,
-      fetched: Set[Bytes] = Set.empty
+      fetched: Set[Bytes] = Set.empty,
+      genesisContext: Option[GenesisContext] = None,
+      genesisState: GenesisBlockFetch.State[Long] = GenesisBlockFetch.State[Long](),
+      demotions: Vector[Long] = Vector.empty
   )
   private[node] final case class Allocation(
       token: Long,
       headers: Vector[Header],
       remaining: Vector[Header],
       requests: Int,
-      refusal: Option[BlockFetchPolicy.Refusal] = None
+      refusal: Option[BlockFetchPolicy.Refusal] = None,
+      allowOverlap: Boolean = false
   )
   private object Allocation:
     val empty: Allocation = Allocation(-1, Vector.empty, Vector.empty, 0)
@@ -348,6 +435,7 @@ object FetchCoordinator:
         candidate: Option[ChainSelection.Candidate] = None
     ): F[Unit] =
       owner.announce(id, tip, performance, hints, candidate)
+    def identity: Long = id
     private[node] def updatePerformance(performance: FetchGsv.PeerGsv): F[Unit] =
       owner.updatePerformance(id, performance)
     private[node] def reserve(
@@ -404,6 +492,9 @@ object FetchCoordinator:
       fetched: Option[F[Set[Bytes]]] = None,
       salt: Long = 0L
   ): F[FetchCoordinator[F]] =
-    Deferred[F, Unit]
-      .flatMap(signal => Ref.of[F, State[F]](State[F](signal, 0, Map.empty)))
-      .map(new FetchCoordinator(_, config, selection, fetched, salt))
+    (
+      Deferred[F, Unit].flatMap(signal => Ref.of[F, State[F]](State[F](signal, 0, Map.empty))),
+      Ref.of[F, Option[GenesisControl[F]]](None)
+    ).mapN { (state, genesis) =>
+      new FetchCoordinator(state, config, selection, fetched, salt, genesis)
+    }

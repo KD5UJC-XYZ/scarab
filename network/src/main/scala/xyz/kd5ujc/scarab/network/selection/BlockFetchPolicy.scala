@@ -25,6 +25,7 @@ object BlockFetchPolicy:
     case BytesInFlight(bytes: Long, low: Long, high: Long)
     case PeerBusy(bytes: Long, low: Long, high: Long)
     case Concurrency(mode: FetchMode, limit: Int)
+    case GenesisConcurrency(limit: Int)
     case InvalidConfiguration, InvalidCandidate
   final case class Candidate[P](
       peer: P,

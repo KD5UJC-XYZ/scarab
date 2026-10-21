@@ -1,0 +1,25 @@
+{
+  "schema": "scarab-native-genesis-fetch-v1",
+  "sourceCommit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+  "sourceFiles": {
+    "ouroboros-network/lib/Ouroboros/Network/BlockFetch/Decision.hs": "1fb7a99478c86e72edbbd60f597dc6aa5288987d9e7f1ddc0e41742f90a848de",
+    "ouroboros-network/lib/Ouroboros/Network/BlockFetch/Decision/Genesis.hs": "db65817b06b23783d1a3f3755daa766007b074cf690f9d36a841eebf04afbc16",
+    "ouroboros-network/lib/Ouroboros/Network/BlockFetch/DeltaQ.hs": "c1ba7cd4e63d87ba4b9fb77ff028e9bf742ba9a457b95524e78663ad22dc773e",
+    "ouroboros-network/lib/Ouroboros/Network/DeltaQ.hs": "ba0a6d659c2f086a3706a178296cfc40ffcc3e5afe46fbe8c2d9d915e713f1a3",
+    "ouroboros-network/tests/lib/Test/Ouroboros/Network/BlockFetch.hs": "20523233b899fad047077d520816b3e0d95b6ba9018a35d524a10e8132834330",
+    "ouroboros-network/api/tests-lib/Ouroboros/Network/Mock/ChainGenerators.hs": "4fb726bc6d6c1d5207a6372d2dfdb2e9c3617c85fa978cb9282b15f66fdb2587"
+  },
+  "observerSha256": "c8579410d14cf7bedbca1138ce88c42fad1cb2eb2a2d9bb97a41793caa10bff6",
+  "exporterSha256": "c4c01e137298b0b03605706048309d3feb897d1dd6ddfdac929724d1ea834788",
+  "sha256": "afb17264316b21edd04a3da212acf2e0fe022df047416b4c14862ac36dc0ad17",
+  "cases": 135,
+  "generatedCases": 128,
+  "boundaryCases": 7,
+  "sharedSha256": "b1fbbe67aae98d7c77911680b300fd94898ba4f168cd2178d041d1d5b934da16",
+  "generator": "unchanged Arbitrary TestChainFork and PeerGSVT; seed 330001+ordinal, size20+ordinal mod20; Genesis mode",
+  "boundary": "native fetchDecisionsGenesisM and preprocessing inputs",
+  "hashRepresentation": "lossless signed Int XOR sign-bit, big-endian 8-byte hex; preserves native hash ordering",
+  "image": "sha256:1c7a67a73a5e2faa71f25a961e9e56f159696a15e6da574fe13432de983b8349",
+  "executableSha256": "b4a490732ec82941ced2c140488d398459e770f81d0ecb59f46e89a421159c71",
+  "planSha256": "3152cedc553f12d91693162e970e2f6a48ca9db5936518ef2a0e9e3f1fe777b9"
+}
