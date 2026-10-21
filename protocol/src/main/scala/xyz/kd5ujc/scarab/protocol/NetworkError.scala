@@ -103,6 +103,8 @@ object NetworkError:
     case OutgoingMessageSize(actual: Int, maximum: Int)
     case IntersectionNotOffered
     case PipelinedRequest(state: ChainSync.State)
+    case PipelineCapacity(maximum: Int)
+    case InvalidPipelineCapacity(value: Int)
     case PeerSharingUnexpected(message: xyz.kd5ujc.scarab.protocol.PeerSharing.Message)
     case PeerSharingPolicy(cause: xyz.kd5ujc.scarab.protocol.PeerSharing.Violation)
     case TransactionNotRequested

@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.network
 
 import cats.effect.syntax.all.*
-import cats.effect.{Ref, Resource, Temporal}
+import cats.effect.{Async, Ref, Resource, Temporal}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -33,6 +33,27 @@ object ChainSyncRuntime:
     def idle: F[Boolean]
     def idling: F[Boolean]
     def observe(observer: ChainSyncClient.Observer[F]): Resource[F, Unit]
+
+  trait Pipeline[F[_], Q, T, P] extends Client[F, Q, T, P]:
+    def submit(using Raise[F, NetworkError]): F[Unit]
+    def tryCollect(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Option[Update[Q, T, P]]]
+    def collect(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Update[Q, T, P]]
+    def serviceAwait(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Unit]
+    def outstanding: F[Int]
+    def drain(onAwait: F[Unit])(onUpdate: Update[Q, T, P] => F[Unit])(using
+        Raise[F, NetworkError]
+    ): F[Unit]
+
+  def resource[F[_]: Async, Q, T, P](
+      channel: MuxChannel[F],
+      point: ChainSyncEngine.PointCodec[Q],
+      tip: ChainSyncEngine.TipCodec[T],
+      payload: ChainSyncEngine.PayloadCodec[P],
+      abort: NetworkError => F[Unit],
+      settings: ClientSettings = ClientSettings(),
+      maxOutstanding: Int = 300
+  )(using Raise[F, NetworkError]): Resource[F, Pipeline[F, Q, T, P]] =
+    ChainSyncPipeline.resource(channel, point, tip, payload, abort, settings, maxOutstanding)
 
   trait Source[F[_], Q, T, P]:
     def intersect(points: Vector[Q]): F[Either[T, (Q, T)]]
