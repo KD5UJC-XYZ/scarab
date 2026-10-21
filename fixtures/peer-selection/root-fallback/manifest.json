@@ -1,0 +1,48 @@
+{
+  "schema": "scarab-native-root-fallback-v1",
+  "sourceCommit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+  "sourceFiles": {
+    "ouroboros-network/lib/Ouroboros/Network/PeerSelection/PeerSelectionActions.hs": "80258287da0119f81897dd7a70e64d575b25e4763573bee0e69c1adac078536d",
+    "ouroboros-network/lib/Ouroboros/Network/PeerSelection/RootPeersDNS/PublicRootPeers.hs": "89d8d0335930bfb1ab2ef05931b7a55aefbd0a0e86ababb1b3cf8375805306a7",
+    "ouroboros-network/lib/Ouroboros/Network/PeerSelection/PublicRootPeers.hs": "4a7edac4c95f70484b89eb25e8b65530becadaa96cca8af357d31f49298aa1ba"
+  },
+  "observerSha256": "fe6324a96ffe948654f959e13cda8616d4ade2ef0fb25a006146f2836752c058",
+  "exporterSha256": "2655b4efdbbc00560966be96b2a9ac069d856164c423ce6f695ce031449c2746",
+  "sha256": "3e44b29c1622b426d40282b11e4961675582f724242613aa94423f6510e85563",
+  "cases": 9,
+  "generatedCases": 0,
+  "boundaryCases": 9,
+  "inputs": "explicit Big ledger request; ledger unavailable/empty/populated; requested counts0/1/4; two literal-IP public roots with distinct advertise flags",
+  "boundary": "actual requestPublicRootPeersImpl with constant resolver and no DNS lookups; ledger/big-ledger/ordinary partitions and advertise flags compared through production BigLedgerRoots.fromLedger; native TTL retained for provider evidence",
+  "image": "sha256:1c7a67a73a5e2faa71f25a961e9e56f159696a15e6da574fe13432de983b8349",
+  "executableSha256": "868ac7a14a5ddea2b5bc450ea09a117e769240da4026674335dd6fcf996c1ddd",
+  "planSha256": "eb26a2792ee3f095c2586fa3da915d9a3fc4803cd2e24a6b85343f227b2c48b3",
+  "packageIds": [
+    "aeson-2.2.5.0-e1b275ce1b1bb82fc5b92edfc0b257272f0bab3f3562d042f5c7807be2bf93fe",
+    "contra-tracer-0.2.1.0-2bf491b9d4bab34147cbbe69bf5b0f426e60fa2bd09ddb675bf3bcc5097cc8ba",
+    "ouroboros-network-1.3.0.0-inplace",
+    "ouroboros-network-1.3.0.0-inplace-api",
+    "io-classes-1.8.0.1-81db6f9dc4fa77b4eca2c3d0a055628e2f895bdba382956ab58a9877640ca2d0",
+    "io-classes-1.8.0.1-l-si-timers-5e6d1bd5dca51400e474c18cd34c890c14330fb1007bfbbdcc06f7bb7760619e",
+    "io-classes-1.8.0.1-l-strict-stm-df137760a3eaf3e7e1983b3b8d55deca78a4a9cd1c1de4b61964654e219d232c",
+    "io-sim-1.8.0.1-a0a0aa3c1d5bb8336aad7ae1a5674c39757b3a9b88cfc561e8b8fa91c67d5f82"
+  ],
+  "command": [
+    "docker",
+    "run",
+    "--rm",
+    "--name",
+    "scarab-network-gap-root-fallback-nine",
+    "--network",
+    "none",
+    "--entrypoint",
+    "bash",
+    "-v",
+    "/tmp/scarab/148-fetch-oracle-final-2:/probe:ro",
+    "-v",
+    "/tmp/scarab/network-gap-root-fallback-nine:/observer",
+    "scarab-148-fetch-reference-cache:local",
+    "-c",
+    "ghc -package-db /root/.local/state/cabal/store/ghc-9.10.3-1be3/package.db -package-db /probe/builddir/packagedb/ghc-9.10.3 -hide-all-packages -package base -package iproute -package network -package-id aeson-2.2.5.0-e1b275ce1b1bb82fc5b92edfc0b257272f0bab3f3562d042f5c7807be2bf93fe -package bytestring -package containers -package random -package quiet -package nothunks -package-id contra-tracer-0.2.1.0-2bf491b9d4bab34147cbbe69bf5b0f426e60fa2bd09ddb675bf3bcc5097cc8ba -package monoidal-synchronisation -package-id ouroboros-network-1.3.0.0-inplace -package-id ouroboros-network-1.3.0.0-inplace-api -package-id io-classes-1.8.0.1-81db6f9dc4fa77b4eca2c3d0a055628e2f895bdba382956ab58a9877640ca2d0 -package-id io-classes-1.8.0.1-l-si-timers-5e6d1bd5dca51400e474c18cd34c890c14330fb1007bfbbdcc06f7bb7760619e -package-id io-classes-1.8.0.1-l-strict-stm-df137760a3eaf3e7e1983b3b8d55deca78a4a9cd1c1de4b61964654e219d232c -package-id io-sim-1.8.0.1-a0a0aa3c1d5bb8336aad7ae1a5674c39757b3a9b88cfc561e8b8fa91c67d5f82 -i/probe/source/cardano-diffusion/lib -i/probe/source/cardano-diffusion/api/lib -XImportQualifiedPost -odir /observer -hidir /observer /observer/Main.hs -o /observer/root-fallback-observer && /observer/root-fallback-observer > /observer/decisions.jsonl; code=$?; chown -R 1000:1000 /observer; exit $code"
+  ]
+}
