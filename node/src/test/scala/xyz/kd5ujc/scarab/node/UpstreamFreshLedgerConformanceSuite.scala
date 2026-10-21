@@ -150,7 +150,7 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
     val rule = text(row, "rule")
     val incoherent = text(row, "replayScope") == "incoherent-cache"
     val scope =
-      if incoherent then "typed incoherent-cache refusal control"
+      if incoherent then "original native cache acceptance"
       else "native accepted-state / typed-failure membership"
     test(s"$rule $scope: $id") {
       val fields = array(node(id, "environment"))

@@ -132,15 +132,18 @@
     },
     {
       "id": "incoherent-cache-generators",
-      "classification": "known-divergence",
-      "status": "open",
-      "scope": "Nine retained generated cases with incoherent cached instant stake.",
-      "assertion": "Require the exact typed compact-coin underflow; keep the original native/formal judgments and separate lawful counts.",
-      "rationale": "Historical native/formal acceptance of incoherent cached state does not establish a lawful replay input or justify claiming parity.",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "Nine original generated-cache native/formal accepts, separately counted from 39 coherent-state inputs.",
+      "assertion": "Production STS replay compares all nine unchanged complete native state fields and UTxO entries under the documented byte adapter, including instant stake; retain native judgments and historical Scala underflow records.",
+      "rationale": "The discrepancy was checked signed arithmetic versus native modular Word64 arithmetic and missing-entry insertion, not an evidenced native cache-coherence precondition.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
-      "resolution": "Establish the native precondition or repair generator construction independently, retaining all original judgments and a separately counted regression.",
+      "resolution": "Match modular arithmetic, absent-entry insertion, zero removal and native TxIn deletion order; retain checked CompactCoin construction, seven source-derived controls and all original fixture bytes.",
       "evidence": [
+        "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Utxo.scala",
+        "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Word64.scala",
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/rules/InstantStakeArithmeticSuite.scala",
         "node/src/test/scala/xyz/kd5ujc/scarab/node/UpstreamFreshLedgerConformanceSuite.scala",
         "node/src/test/resources/upstream/conway-pv11-generators/README.md"
       ],
@@ -149,16 +152,19 @@
     {
       "id": "cddl-optional-seeds",
       "classification": "sampling-limit",
-      "status": "open",
-      "scope": "Optional CDDL sampling and unsupported grammar paths in fuzz seed construction.",
-      "assertion": "Every registered decoder target has accepted seeds; an unsupported optional sample batch contributes no seeds.",
-      "rationale": "A populated target can still lack coverage of an optional constructor or grammar production.",
+      "status": "covered",
+      "scope": "Configured ChainSync header, LeiosFetch and LeiosNotify CDDL seed catalogs, including their declared imports and existing wire adapters.",
+      "assertion": "Every requested sample is required; missing modules/rules, unsupported grammar and sampling cycles fail. Require 120 samples per formerly empty catalog and all 8/5/8 constructor tags.",
+      "rationale": "Optional partial-module fallbacks previously converted unsupported or unresolved batches into empty vectors; restored imports supply the intended configured schemas.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
-      "resolution": "Add independently justified seeds for each missing production and remove unsupported-batch fallbacks when supported.",
+      "resolution": "Retain strict batch counts and negative controls; 360 actual samples passed independent Cuddle 1.8.1 validation against the composed schemas, including existing base.word16 and tx=any adapters. This is schema membership, not signed Cardano transaction admission.",
       "evidence": [
         "fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/Corpus.scala",
-        "fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/GuardSuite.scala"
+        "fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/GuardSuite.scala",
+        "models/src/main/cddl/models.conf",
+        "models/src/main/cddl/overrides/leios-fetch-tx.cddl",
+        "docs/models.md"
       ],
       "candidateRequired": false
     },
@@ -166,12 +172,12 @@
       "id": "cddl-constructor-optionals",
       "classification": "input-boundary",
       "status": "open",
-      "scope": "Non-trailing optional fields in the generic CDDL sampler and hand-built generated values.",
-      "assertion": "Sampler construction forces the supported optional layout; a hand-built None can produce an invalid shortened array.",
-      "rationale": "Generator-domain restrictions are not a decoder conformance exemption.",
+      "scope": "Public generated constructors, preserved field/raw consistency and optional array layouts.",
+      "assertion": "Generated case classes and canonical/unchecked writers do not establish valid or field-consistent construction; inline optional absence and spliced-group greediness require distinct decoder controls.",
+      "rationale": "A decoder-only round trip is insufficient: preserved raw can disagree with copied fields, while Cuddle accepts some inline omitted optionals that the current decoder rejects.",
       "owner": "Scarab maintainers",
-      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
-      "resolution": "Encode constructor validity in the generated types or validate the boundary; cover all valid optional layouts with independent examples.",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/86",
+      "resolution": "Implement a checked construction/field-consistency boundary and reconcile inline optional decoding with independently validated CDDL cases, preserving spliced-group controls. Keep this entry open until both writer and decoder contracts are tested; tracked by M13/#86.",
       "evidence": [
         "models-gen/src/main/scala/xyz/kd5ujc/scarab/models/gen/CddlSampler.scala",
         "docs/models.md"

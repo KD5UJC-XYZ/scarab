@@ -261,6 +261,16 @@ can still represent `None` for that overlapping field and write an invalid short
 such manually constructed states is an open [M13/M14 adoption obligation](roadmap.md); successful decoding and
 bounded corpus conformance do not discharge it.
 
+Independent Cuddle 1.8.1 controls also distinguish inline optionals from spliced groups:
+`r = [? before: uint, after: uint]` admits CBOR `8101` (`[1]`) in that validator, while
+`g = (? before: uint, after: uint); r = [g, tail: uint]` refuses `820102` (`[1, 2]`).
+The current generated inline decoder refuses the first input. Separately, a preserved model
+can retain its original raw bytes after its public fields are copied to different values;
+the checked writer does not currently detect that disagreement. These boundary discrepancies
+remain under [M13/#86](https://github.com/KD5UJC-XYZ/scarab/issues/86). A fix must reconcile the
+matching semantics and validate constructed fields, including preserved bytes; a successful
+byte-only round trip does not establish that field values or optional presence are preserved.
+
 ## 9. What stays hand-written
 
 | What | Why |

@@ -44,11 +44,11 @@ import xyz.kd5ujc.scarab.ledger.state.*
 final case class UtxoEnv[+C](ctx: TxEnv, pp: ProtocolParams, cert: C)
 
 /** What the instant stake of the UTxO becomes as outputs are created and spent
-  * (`addConwayInstantStake`, `deleteConwayInstantStake`, `Conway/State/Stake.hs:87-120` at f649f975): the
-  * lovelace uses native Word64 arithmetic, and an entry that reaches zero is removed. An absent
-  * credential receives the output amount for either operation, as native Map.alter specifies. An
-  * output of an address with no stake credential (an enterprise address, a pointer address, a Byron
-  * address) is not in it.
+  * (`addConwayInstantStake`, `deleteConwayInstantStake`, `Conway/State/Stake.hs:87-120` at
+  * f649f975): the lovelace uses native Word64 arithmetic, and an entry that reaches zero is
+  * removed. An absent credential receives the output amount for either operation, as native
+  * Map.alter specifies. An output of an address with no stake credential (an enterprise address, a
+  * pointer address, a Byron address) is not in it.
   */
 object InstantStakeOps:
   private def adjust(
