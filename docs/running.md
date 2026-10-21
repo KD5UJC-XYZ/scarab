@@ -1588,7 +1588,12 @@ Run that command to see it again (the shrinking removes chunks of the input, the
 the hex into a regression test next to the decoder (see `DecoderRobustnessSuite`), minimise it by hand if the
 shrunk input is still large, and record the finding in [findings.md](findings.md). The nightly workflow
 `.github/workflows/fuzz.yml` runs `fuzz 60000 <date-based seed> 8` and keeps the log of a failing run for 30 days;
-start it by hand with other values from the Actions tab (`cases`, `first-seed`, `seeds`).
+start it by hand with other values from the Actions tab (`cases`, `first-seed`, `seeds`). The nightly keeps its
+rotating seeds. A pull request that changes a decoder or a fuzz input also runs the fixed-seed gate
+`fuzz 100000 1 4` in `.github/workflows/fuzz-gate.yml` (changed paths under `fuzz`, `codec`, `crypto`, `protocol`,
+`ledger`, `plutus`, `models`, `models-gen`, `fixtures`, the node-to-client and mempool packages of `node`, `build.sbt`,
+`project`, `scripts/sbtw` and the workflow itself). The job always reports; when none of those paths changed it
+skips the fuzz steps and passes. It can be started by hand from the Actions tab, where it always fuzzes.
 
 ## `capture`: recording blocks
 

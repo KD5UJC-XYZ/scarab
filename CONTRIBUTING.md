@@ -182,7 +182,7 @@ reads the previous version ([ADR 0006](docs/adr/0006-versioned-formats-migrate-o
 | Forging, mempool | `pool` |
 | KES key, certificates, SIGHUP reload, `scripts/pool` | `kes-rotate` |
 | Node-to-client: queries, submission, rejections | `ntc` |
-| A decoder | none beyond `check`; a new entry point gets a fuzz target; a decoder change also runs `scripts/sbtw "fuzz 100000 1 4"` |
+| A decoder | none beyond `check`; a new entry point gets a fuzz target; a decoder change also runs `scripts/sbtw "fuzz 100000 1 4"`, which `fuzz-gate.yml` now runs in CI on a pull request that touches a decoder, the fuzz project, the CDDL schemas or the fixtures (running it locally first saves a round trip) |
 | `scripts/devnet/**` | `python3 -m unittest discover -s scripts/tests` and the scenario the change touches |
 
 Two areas, two scenarios: run them at the same time (distinct `--name`s), at most two devnets at
@@ -192,7 +192,7 @@ belong to nightly CI, not to a change.
 ### Nightly CI is the safety net
 
 `.github/workflows/e2e.yml` runs soak, e2e, relay, pool, kes-rotate, ntc and restart every night, each scenario in its own job (a matrix), and on demand and on
-version tags; `fuzz.yml` and `cuddle-crosscheck.yml` run the longer fuzzing and the CDDL cross-check. `.github/workflows/ci.yml` runs `check`, the script tests, actionlint, a gitleaks
+version tags; `fuzz.yml` and `cuddle-crosscheck.yml` run the longer fuzzing (rotating daily seeds) and the CDDL cross-check; `fuzz-gate.yml` runs the fixed-seed `fuzz 100000 1 4` gate on pull requests that change decoder or fuzz inputs and passes without fuzzing on any other. `.github/workflows/ci.yml` runs `check`, the script tests, actionlint, a gitleaks
 scan of the checked-out commit's full history, including merge parents (unrelated fetched branches
 are scanned in their own runs; `.gitleaks.toml`; a new false positive is allowlisted there by path or
 commit, scoped to its rule, with a reason) and, on pull requests, a dependency review. A red
