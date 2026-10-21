@@ -37,24 +37,28 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
         waiting <- Deferred[IO, Unit]
         validations <- cats.effect.Ref.of[IO, Int](0)
         collected <- cats.effect.Ref.of[IO, Int](0)
+        intersections <- cats.effect.Ref.of[IO, Int](0)
         timeout: NetworkError.Timeout = NetworkError.Timeout(2, "NextCanAwait")
         closeSignal <- Deferred[IO, NetworkError]
         chainSync = new ChainSyncClient[IO, NtNHeader]:
           def findIntersect(points: Vector[ChainSync.Point])(using Raise[IO, NetworkError]) =
-            if operation == Operation.RestartTimeout then
-              Raise[IO, NetworkError].raise[NetworkError, Option[(ChainSync.Point, ChainSync.Tip)]](
-                timeout
-              )
-            else if operation == Operation.NoIntersection then IO.pure(None)
-            else
-              IO.pure(
-                Option.when(points.contains(ChainSync.Point.Origin))(
-                  ChainSync.Point.Origin -> ChainSync.Tip(
-                    ChainSync.Point.Origin,
-                    ChainSync.UInt64.saturating(0)
+            intersections.update(_ + 1) *> {
+              if operation == Operation.RestartTimeout then
+                Raise[IO, NetworkError]
+                  .raise[NetworkError, Option[(ChainSync.Point, ChainSync.Tip)]](
+                    timeout
+                  )
+              else if operation == Operation.NoIntersection then IO.pure(None)
+              else
+                IO.pure(
+                  Option.when(points.contains(ChainSync.Point.Origin))(
+                    ChainSync.Point.Origin -> ChainSync.Tip(
+                      ChainSync.Point.Origin,
+                      ChainSync.UInt64.saturating(0)
+                    )
                   )
                 )
-              )
+            }
           def requestNext(using Raise[IO, NetworkError]) =
             IO.raiseError[ChainSyncClient.Update[NtNHeader]](new AssertionError("CSJ is waiting"))
           def requestNextBatch(@scala.annotation.unused n: Int)(using Raise[IO, NetworkError]) =
@@ -187,8 +191,19 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
                   )
                 ) *> (if operation == Operation.NoIntersection || (operation == Operation.RollbackEnd || operation == Operation.LegacyRollbackEnd || operation == Operation.DrainBatch)
                       then
-                        peer.quiesce.timeout(2.seconds) *> closeSignal.tryGet
-                          .map(reason => assertEquals(reason, None))
+                        for
+                          _ <- peer.quiesce.timeout(2.seconds)
+                          before <- intersections.get
+                          repeated <- Fault.fiber(peer.intersect(Vector(ChainSync.Point.Origin)))
+                          after <- intersections.get
+                          closed <- closeSignal.tryGet
+                        yield
+                          val expected =
+                            if operation == Operation.NoIntersection then PeerError.NoIntersection
+                            else PeerError.RolledBackPastIntersection(ChainSync.Point.Origin)
+                          assertEquals(repeated, Left(Fault.Failed(expected)))
+                          assertEquals(before, after)
+                          assertEquals(closed, None)
                       else IO.unit)
             else
               Handle

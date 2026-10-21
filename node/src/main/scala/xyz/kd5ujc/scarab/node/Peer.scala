@@ -1231,7 +1231,17 @@ object Peer:
 
             def intersect(candidates: Vector[ChainSync.Point])(using Raise[F, PeerError]) =
               for
-                _ <- drain *> pendingRestart.set(None) *> pendingEnd.set(None) *> progress.set(
+                _ <- drain
+                _ <- pipelineFailure.get.flatMap {
+                  case Some(
+                        fault @ Fault.Failed(
+                          PeerError.NoIntersection | _: PeerError.RolledBackPastIntersection
+                        )
+                      ) =>
+                    Fault.land[F, Unit](Left(fault))
+                  case _ => F.unit
+                }
+                _ <- pendingRestart.set(None) *> pendingEnd.set(None) *> progress.set(
                   None
                 ) *> last.set(None) *>
                   candidateVersions.set(Vector.empty) *> candidateHeaders.set(
