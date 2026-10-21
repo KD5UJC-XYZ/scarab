@@ -15,6 +15,9 @@ FILES = [
     'ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Protocol/PBFT.hs',
     'ouroboros-consensus-protocol/src/ouroboros-consensus-protocol/Ouroboros/Consensus/Protocol/Praos/Common.hs',
     'ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/ChainSel.hs',
+    'ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/Protocol/ChainSel.hs',
+    'ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/Protocol.hs',
+    'ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/CanHardFork.hs',
 ]
 
 
@@ -28,6 +31,7 @@ def main():
     parser.add_argument('--probe-dir', type=pathlib.Path, required=True)
     parser.add_argument('--output-dir', type=pathlib.Path, required=True)
     parser.add_argument('--image', default='scarab-33-genesis-reference-cache:local')
+    parser.add_argument('--allow-download', action='store_true')
     parser.add_argument('--container', default='scarab-33-candidate-order-native')
     args = parser.parse_args()
     probe = args.probe_dir.resolve()
@@ -56,6 +60,8 @@ def main():
     observer.mkdir()
     shutil.copyfile(HERE / 'Main.hs', observer / 'Main.hs')
     shutil.copyfile(HERE / 'inputs.jsonl', probe / 'inputs.jsonl')
+    shutil.copyfile(HERE / 'MainHfc.hs', observer / 'MainHfc.hs')
+    shutil.copyfile(HERE / 'hfc-inputs.jsonl', probe / 'hfc-inputs.jsonl')
     with (source / 'ouroboros-consensus.cabal').open('a') as out:
         out.write('''
 executable scarab-candidate-order
@@ -66,23 +72,40 @@ executable scarab-candidate-order
   build-depends:
     base, aeson, bytestring, cardano-base, cardano-crypto-class, cardano-ledger-core,
     cardano-protocol-tpraos, ouroboros-consensus:{ouroboros-consensus,protocol}
+
+executable scarab-candidate-order-hfc
+  import: common-test
+  hs-source-dirs: scarab-candidate-order
+  main-is: MainHfc.hs
+  ld-options: -Wl,--whole-archive /usr/local/lib/libsodium.a -Wl,--no-whole-archive
+  build-depends:
+    base, aeson, bytestring, cardano-base, cardano-crypto-class, cardano-ledger-core,
+    cardano-protocol-tpraos, sop-core, sop-extras, strict-sop-core,
+    ouroboros-consensus:{ouroboros-consensus,cardano,protocol}
 ''')
     created = False
     try:
-        run(['docker', 'create', '--network=none', '--name', args.container,
+        run(['docker', 'create', '--network=' + ('bridge' if args.allow_download else 'none'), '--name', args.container,
              '--entrypoint', 'tail', '-v', f'{probe}:/probe', '-w', '/probe/source',
              args.image, '-f', '/dev/null'])
         created = True
         run(['docker', 'start', args.container])
         base = ['docker', 'exec', args.container]
         run(base + ['sh', '-c', "sed 's/packages: harness/packages: ./' /oracle/project/cabal.project > cabal.project; printf '\\npackage blockio\\n  flags: +serialblockio\\n' >> cabal.project"])
-        run(base + ['cabal', 'build', '--offline', 'exe:scarab-candidate-order', '--builddir=/probe/builddir', '--jobs=2'])
+        run(base + ['cabal', 'build', *([] if args.allow_download else ['--offline']), 'exe:scarab-candidate-order', 'exe:scarab-candidate-order-hfc', '--builddir=/probe/builddir', '--jobs=2'])
         exe = run(base + ['cabal', 'list-bin', 'exe:scarab-candidate-order', '--builddir=/probe/builddir']).splitlines()[-1]
         run(base + [exe, '/probe/inputs.jsonl', '/probe/native.jsonl', '/probe/sort.jsonl'])
+        hfc_exe = run(base + ['cabal', 'list-bin', 'exe:scarab-candidate-order-hfc', '--builddir=/probe/builddir']).splitlines()[-1]
+        run(base + [hfc_exe, '/probe/hfc-inputs.jsonl', '/probe/hfc.jsonl'])
         args.output_dir.mkdir(parents=True, exist_ok=True)
         payload = args.output_dir / 'native.jsonl'
         shutil.copyfile(probe / 'native.jsonl', payload)
         shutil.copyfile(probe / 'sort.jsonl', args.output_dir / 'sort.jsonl')
+        shutil.copyfile(probe / 'hfc.jsonl', args.output_dir / 'hfc.jsonl')
+        hfc_rows = [json.loads(line) for line in (args.output_dir / 'hfc.jsonl').read_text().splitlines()]
+        hfc_inputs = [json.loads(line) for line in (HERE / 'hfc-inputs.jsonl').read_text().splitlines()]
+        if [row['input'] for row in hfc_rows] != hfc_inputs:
+            raise ValueError('native HFC export changed inputs')
         rows = [json.loads(line) for line in payload.read_text().splitlines()]
         original = [json.loads(line) for line in (HERE / 'inputs.jsonl').read_text().splitlines()]
         if [row['input'] for row in rows] != original:
@@ -102,6 +125,11 @@ executable scarab-candidate-order
             'buildPlanSha256': sha(probe / 'builddir/cache/plan.json'),
             'image': image,
             'caseCount': len(rows),
+            'hfcCaseCount': len(hfc_rows),
+            'hfcInputSha256': sha(HERE / 'hfc-inputs.jsonl'),
+            'hfcObserverSha256': sha(HERE / 'MainHfc.hs'),
+            'hfcPayloadSha256': sha(args.output_dir / 'hfc.jsonl'),
+            'hfcExecutableSha256': run(base + ['sha256sum', hfc_exe]).split()[0],
             'inputDomain': '24 constructed finite cases; no upstream generator claim; native unrestricted Ord and separately configured preferCandidate',
             'commands': commands,
         }

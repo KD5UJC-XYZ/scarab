@@ -5,18 +5,26 @@
     "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Protocol/Abstract.hs": "36f0eaa2f974822ac8b08a06ea436011d61671dc4627c90762967ad6093651f7",
     "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Protocol/PBFT.hs": "113e9e7234ba604d22b70b09c305389a609271c778eabf89a47c97526c3d9eb4",
     "ouroboros-consensus-protocol/src/ouroboros-consensus-protocol/Ouroboros/Consensus/Protocol/Praos/Common.hs": "c4186581210605bf078a21fed233455893b59ef1545687697af3055804d7381c",
-    "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/ChainSel.hs": "63e377f2f5d75a8bb99b29337050e354f1b8f2a082adae38d26e102360f88973"
+    "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/ChainSel.hs": "63e377f2f5d75a8bb99b29337050e354f1b8f2a082adae38d26e102360f88973",
+    "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/Protocol/ChainSel.hs": "6192305e42d446af9118c0bb26194c4a7ed6276c614cf920a1e4800d30aec10c",
+    "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/Protocol.hs": "67ecc33af99fb3e53a6bf79ac40a1c7aa4510208d5d4c7b771ffdfb91a603d06",
+    "ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/CanHardFork.hs": "36beccde70f3e92915563f3d927736c28f9368b18335a414da598486a6732580"
   },
   "inputSha256": "b5e946111fc764fdff1c44c593ca1f436c289651f3083b04a0fecfedca2b0c75",
   "observerSha256": "2813e11a3915c148300e2036463a1d1aa3f7e62b2e175e9851046ef3355cd0f2",
-  "exporterSha256": "88a2c73ad92404b0f0190b2cc73712cc4d0ff3aa88f008730dce45b944cda4f5",
+  "exporterSha256": "733d72dd8d9b919ff0b2083340adf148a7b8c25b8cfca5f3a86fc16ccc49922b",
   "payloadSha256": "8767caeb587c50b58c4d793168911a5392d71f85ee5f82d62140a5a7c97ade51",
   "sortPayloadSha256": "2fd2d058d9430e2ea0142b8ef076d5bfad8a7ce61a5533079915a271c6b921fc",
   "syntheticSortCaseCount": 7,
   "executableSha256": "29237875bf9eac1f0fb2e2f4ab8eb6cf47b3777c74e4254c6c93b585a7444565",
-  "buildPlanSha256": "697aa9ae9902fd9da07df91929b44556826570741291ba2a01ccddab3a548bc3",
+  "buildPlanSha256": "878642430ab95be80197beda9a0e95b57d46ce444b343741ac4dfb091cf19dd6",
   "image": "sha256:10d59164dce6b49fbeafdc520c1a29d3e4024a5859a3c41bb6181b2e627bebc7",
   "caseCount": 24,
+  "hfcCaseCount": 55,
+  "hfcInputSha256": "2171a0ab12c226e132f38d2339cbd4858d7d819161aeb033a9a6a9d007d35d0d",
+  "hfcObserverSha256": "7a7086e4da6baa7865bdd83897dc8d003860c275e84f5af9d759e517ff0f6c3d",
+  "hfcPayloadSha256": "7b5ce8d37deb3b22aae16c859e75db153af08b8df59e6cdd14489db92a18afd5",
+  "hfcExecutableSha256": "49f2086b065e25c794dcb4b4e733bccc458ef334520f800b72d73f00201a1c08",
   "inputDomain": "24 constructed finite cases; no upstream generator claim; native unrestricted Ord and separately configured preferCandidate",
   "commands": [
     {
@@ -38,7 +46,7 @@
         "archive",
         "--format=tar",
         "-o",
-        "/tmp/scarab/33-candidate-order-final/source.tar",
+        "/tmp/scarab/33-candidate-order-hfc-final/source.tar",
         "82ecba329d7d054340bf707d44fe6e9ac27cec40"
       ],
       "exitCode": 0,
@@ -48,9 +56,9 @@
       "argv": [
         "tar",
         "-xf",
-        "/tmp/scarab/33-candidate-order-final/source.tar",
+        "/tmp/scarab/33-candidate-order-hfc-final/source.tar",
         "-C",
-        "/tmp/scarab/33-candidate-order-final/source"
+        "/tmp/scarab/33-candidate-order-hfc-final/source"
       ],
       "exitCode": 0,
       "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
@@ -59,13 +67,13 @@
       "argv": [
         "docker",
         "create",
-        "--network=none",
+        "--network=bridge",
         "--name",
         "scarab-33-candidate-order-native",
         "--entrypoint",
         "tail",
         "-v",
-        "/tmp/scarab/33-candidate-order-final:/probe",
+        "/tmp/scarab/33-candidate-order-hfc-final:/probe",
         "-w",
         "/probe/source",
         "scarab-33-genesis-reference-cache:local",
@@ -73,7 +81,7 @@
         "/dev/null"
       ],
       "exitCode": 0,
-      "logSha256": "d23ac58abef517510a1c0d379a052bd93ad8f0c275693812394b5d5c454f98af"
+      "logSha256": "0edd73320211066a32386caa3c963e19a909943a510f28b17c827dccb6f92790"
     },
     {
       "argv": [
@@ -103,13 +111,13 @@
         "scarab-33-candidate-order-native",
         "cabal",
         "build",
-        "--offline",
         "exe:scarab-candidate-order",
+        "exe:scarab-candidate-order-hfc",
         "--builddir=/probe/builddir",
         "--jobs=2"
       ],
       "exitCode": 0,
-      "logSha256": "03b3857c02dadfa1754ea013eabcbc4cfaf66d062fd7704aaaff83674bb09ef9"
+      "logSha256": "bafae58269310d6e0ab2f0f053e4562b7cb8326faa27c1a10ac96decf017bb18"
     },
     {
       "argv": [
@@ -140,6 +148,31 @@
     {
       "argv": [
         "docker",
+        "exec",
+        "scarab-33-candidate-order-native",
+        "cabal",
+        "list-bin",
+        "exe:scarab-candidate-order-hfc",
+        "--builddir=/probe/builddir"
+      ],
+      "exitCode": 0,
+      "logSha256": "8233e0f2753c0fdaf8d0d7340e69d924c5f92495d1e9ce8c62e7c6a3c12ed010"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "scarab-33-candidate-order-native",
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/ouroboros-consensus-4.2.1.0/x/scarab-candidate-order-hfc/noopt/build/scarab-candidate-order-hfc/scarab-candidate-order-hfc",
+        "/probe/hfc-inputs.jsonl",
+        "/probe/hfc.jsonl"
+      ],
+      "exitCode": 0,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "docker",
         "image",
         "inspect",
         "scarab-33-genesis-reference-cache:local",
@@ -159,6 +192,17 @@
       ],
       "exitCode": 0,
       "logSha256": "340ff9474548510093567d3a6735e9ee9c6cb5786e1c641739f24cb0a0354863"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "scarab-33-candidate-order-native",
+        "sha256sum",
+        "/probe/builddir/build/x86_64-linux/ghc-9.10.3/ouroboros-consensus-4.2.1.0/x/scarab-candidate-order-hfc/noopt/build/scarab-candidate-order-hfc/scarab-candidate-order-hfc"
+      ],
+      "exitCode": 0,
+      "logSha256": "e1d79e0a4123a6d4e941286a5d0fb422d4464e7d102fce1ddae7926d769f4e37"
     }
   ]
 }

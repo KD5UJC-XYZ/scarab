@@ -32,3 +32,20 @@ python3 scripts/oracle/candidate-order/export.py \
 
 Generated build data and logs remain outside the checkout. The maintained Scala
 comparison tests consume every row and every listed ordering/eligibility field.
+
+`hfc.jsonl` adds 55 separate native hard-fork comparisons: all 42 ordered pairs of
+supported eras, seven same-era controls, and six Babbage/Conway distance, length and
+certificate controls. The observer uses actual Cardano `HardForkTiebreakerView`,
+its `Ord` instance, and `preferCandidate` with the actual per-era configuration
+wrapper. Pre-Conway configurations are unrestricted; Conway uses a five-slot
+restriction. Every result includes the forward/reverse preference decisions,
+raw ordering and stable sorted identifiers. This directly checks the absence of
+a Byron/Shelley tiebreaker and the later era's eligibility configuration across
+Shelley-era boundaries. No Dijkstra inputs or outputs are exported; the pinned
+Cardano type's complete configuration necessarily includes its future-era entry.
+These are constructed view comparisons, not claims of header signature validity
+or additional upstream-generated scenarios.
+
+The complete HFC observer needs two dependencies absent from the base reference
+cache image. Pass `--allow-download` to permit Cabal to fetch their exact versions
+from the pinned build plan. The source archive remains unchanged.
