@@ -1,0 +1,41 @@
+{
+  "schema": "scarab-native-peer-selection-policy-v1",
+  "sourceCommit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+  "sourceFiles": {
+    "ouroboros-network/lib/Ouroboros/Network/Diffusion/Policies.hs": "376faf7a081ea7d37f6d5c7b71f4838170182e92a96bdccb6b54715ce827a68f"
+  },
+  "observerSha256": "e593ee3d43547e29fb36c84a9470361ca84921079dca1b8a34034464aab774aa",
+  "exporterSha256": "97c3dc519b1ab04de2e40670422bf41ffbe2a2d65323be12371bee98d4603ccb",
+  "sha256": "ff29e99bdd92ffdfd715dbffc606bbe55893fbaa41f8c2c60e8f0695d0a13c6e",
+  "cases": 912,
+  "generatedCases": 0,
+  "boundaryCases": 912,
+  "inputs": "explicit seeds149001..149016, size0/1/2/5/12, tepid none/all/even, distinct n0/1/half/all/over",
+  "boundary": "actual simplePeerSelectionPolicy picks and mkHotDemotionPolicy; actual addRand words from identical reset native StdGen",
+  "image": "sha256:1c7a67a73a5e2faa71f25a961e9e56f159696a15e6da574fe13432de983b8349",
+  "executableSha256": "2e93547762fb305cf04e183ca830b085ad98d63240f487f7e4176b97d86d126e",
+  "planSha256": "eb26a2792ee3f095c2586fa3da915d9a3fc4803cd2e24a6b85343f227b2c48b3",
+  "packageIds": [
+    "io-classes-1.8.0.1-81db6f9dc4fa77b4eca2c3d0a055628e2f895bdba382956ab58a9877640ca2d0",
+    "io-classes-1.8.0.1-l-strict-stm-df137760a3eaf3e7e1983b3b8d55deca78a4a9cd1c1de4b61964654e219d232c",
+    "ouroboros-network-1.3.0.0-inplace"
+  ],
+  "command": [
+    "docker",
+    "run",
+    "--rm",
+    "--name",
+    "scarab-149-native-policy",
+    "--network",
+    "none",
+    "--entrypoint",
+    "bash",
+    "-v",
+    "/tmp/scarab/148-fetch-oracle-final-2:/probe:ro",
+    "-v",
+    "/tmp/scarab/149-native-policy-regeneration:/observer",
+    "scarab-148-fetch-reference-cache:local",
+    "-c",
+    "ghc -package-db /root/.local/state/cabal/store/ghc-9.10.3-1be3/package.db -package-db /probe/builddir/packagedb/ghc-9.10.3 -package aeson -package random -package-id io-classes-1.8.0.1-81db6f9dc4fa77b4eca2c3d0a055628e2f895bdba382956ab58a9877640ca2d0 -package-id io-classes-1.8.0.1-l-strict-stm-df137760a3eaf3e7e1983b3b8d55deca78a4a9cd1c1de4b61964654e219d232c -package-id ouroboros-network-1.3.0.0-inplace -XImportQualifiedPost -odir /observer -hidir /observer /observer/Main.hs -o /observer/policy-observer && /observer/policy-observer > /observer/decisions.jsonl"
+  ]
+}

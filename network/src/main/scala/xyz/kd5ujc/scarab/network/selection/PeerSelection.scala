@@ -192,12 +192,12 @@ object PeerSelection:
     import Guard.*
 
     /** The score of a hot peer for demotion, computed once and only if a demotion happens. */
-    private lazy val hotScore: A => HotScore =
-      val scores = metrics.hotScores
-      peer => scores.getOrElse(peer, HotScore.Unknown)
+    private lazy val hotScores: Map[A, HotScore] = metrics.hotScores
+
+    private def hotScore(peer: A): HotScore = hotScores.getOrElse(peer, HotScore.Unknown)
 
     /** The decisions about big ledger peers ([[BigLedgerGuards]]). */
-    lazy val big: BigLedgerGuards[A] = BigLedgerGuards(st, view, now, peer => hotScore(peer))
+    lazy val big: BigLedgerGuards[A] = BigLedgerGuards(st, view, now, peer => hotScores.get(peer))
 
     def nextClearFail: Option[Time] = st.peers.values.flatMap(_.clearFailAt).minOption
 
@@ -545,7 +545,7 @@ object PeerSelection:
         val n = group.hot.value - group.members.intersect(view.active).size -
           group.members.intersect(view.activating).size
         if n > 0 && available.nonEmpty then
-          val (chosen, g1) = Picks.promotion(available, n, g0)
+          val (chosen, g1) = Picks.warmPromotion(available, n, g0, p => st.peers(p).tepid)
           (acc ++ chosen, g1)
         else (acc, g0)
       }
@@ -576,7 +576,7 @@ object PeerSelection:
       val available = view.ready -- view.active -- view.activating -- view.closing --
         view.cooling -- view.localRoots
       if missing > 0 && available.nonEmpty then
-        val (picked, next) = Picks.promotion(available, missing, st.rng)
+        val (picked, next) = Picks.warmPromotion(available, missing, st.rng, p => st.peers(p).tepid)
         go(
           withStatus(picked, Status.Activating).copy(rng = next),
           picked.map(Job.Activate(_)),
@@ -646,7 +646,8 @@ object PeerSelection:
               picked,
               local = false,
               st.targets.active,
-              view.active.size
+              view.active.size,
+              Picks.hotDemotionScores(available, hotScores.get)
             )
           )
         )

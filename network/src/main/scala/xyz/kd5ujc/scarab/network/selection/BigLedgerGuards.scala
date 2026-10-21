@@ -34,7 +34,7 @@ private[selection] final class BigLedgerGuards[A](
     st: GovernorState[A],
     view: GovernorState.View[A],
     now: Time,
-    hotScore: A => HotScore
+    hotScore: A => Option[HotScore]
 )(using Ordering[A]):
   import PeerSelection.Guard
   import Guard.*
@@ -167,7 +167,7 @@ private[selection] final class BigLedgerGuards[A](
     val available: SortedSet[A] =
       big.ready -- big.active -- big.activating -- big.closing -- big.cooling
     if progress && missing > 0 && available.nonEmpty then
-      val (picked, next) = Picks.promotion(available, missing, st.rng)
+      val (picked, next) = Picks.warmPromotion(available, missing, st.rng, p => st.peers(p).tepid)
       Go(
         Decision(
           withStatus(picked, Status.Activating).copy(rng = next),
@@ -187,13 +187,20 @@ private[selection] final class BigLedgerGuards[A](
     val excess = big.active.size - st.targets.activeBig - big.deactivating.size
     val available = big.active -- big.deactivating -- big.cooling
     if excess > 0 && available.nonEmpty then
-      val (picked, next) = Picks.hotDemotion(available, excess, st.rng, hotScore)
+      val (picked, next) =
+        Picks.hotDemotion(available, excess, st.rng, p => hotScore(p).getOrElse(HotScore.Unknown))
       Go(
         Decision(
           withStatus(picked, Status.Deactivating).copy(rng = next),
           picked.map(Job.Deactivate(_)),
           List(
-            Trace.DemoteBigLedger(Temperature.Hot, picked, st.targets.activeBig, big.active.size)
+            Trace.DemoteBigLedger(
+              Temperature.Hot,
+              picked,
+              st.targets.activeBig,
+              big.active.size,
+              Picks.hotDemotionScores(available, hotScore)
+            )
           )
         )
       )

@@ -313,6 +313,25 @@
         "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/ShelleyUtxo.scala"
       ],
       "candidateRequired": true
+    },
+    {
+      "id": "peer-selection-policy-decisions",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "912 explicit input cases invoking all five unchanged pinned Haskell peer-selection policies.",
+      "assertion": "Compare complete selected peer sets and optional hot-demotion scores for every eligible peer using identical unsigned Word32 draws.",
+      "rationale": "Selected sets and score maps are observable native outputs; different PRNG implementations do not justify mapping or masking those outputs. These cases are explicit boundaries, not an original upstream generator corpus.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/149",
+      "resolution": "Production-used ranking functions replay every retained native case with no exclusions. Governor integration tests cover ordinary, local-root and big-ledger activation. No identical PRNG stream or thread schedule is claimed.",
+      "evidence": [
+        "fixtures/peer-selection/policies/manifest.json",
+        "fixtures/peer-selection/policies/README.md",
+        "scripts/oracle/peer-selection/Main.hs",
+        "network/src/test/scala/xyz/kd5ujc/scarab/network/selection/NativeSelectionPolicySuite.scala",
+        "network/src/test/scala/xyz/kd5ujc/scarab/network/selection/WarmPromotionSuite.scala"
+      ],
+      "candidateRequired": true
     }
   ]
 }

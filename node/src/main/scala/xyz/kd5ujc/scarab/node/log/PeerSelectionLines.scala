@@ -92,14 +92,17 @@ private[log] object PeerSelectionLines:
         "from" -> temperature(from),
         "peer" -> peer.toString.asJson
       )
-    case Trace.Demote(from, ps, local, target, current) =>
+    case Trace.Demote(from, ps, local, target, current, scores) =>
       EventKind.PeerSelectionDemote.line(
         "action" -> "decided".asJson,
         "from" -> temperature(from),
         "peers" -> peers(ps),
         "local" -> local.asJson,
         "target" -> target.asJson,
-        "current" -> current.asJson
+        "current" -> current.asJson,
+        "scores" -> Json.obj(
+          scores.toList.sortBy(_._1.toString).map((peer, score) => peer.toString -> score.asJson)*
+        )
       )
     case Trace.DemoteDone(from, peer, current) =>
       EventKind.PeerSelectionDemote.line(
@@ -185,14 +188,17 @@ private[log] object PeerSelectionLines:
         "target" -> target.asJson,
         "current" -> current.asJson
       )
-    case Trace.DemoteBigLedger(from, ps, target, current) =>
+    case Trace.DemoteBigLedger(from, ps, target, current, scores) =>
       EventKind.PeerSelectionDemote.line(
         "action" -> "decided".asJson,
         "bigLedger" -> true.asJson,
         "from" -> temperature(from),
         "peers" -> peers(ps),
         "target" -> target.asJson,
-        "current" -> current.asJson
+        "current" -> current.asJson,
+        "scores" -> Json.obj(
+          scores.toList.sortBy(_._1.toString).map((peer, score) => peer.toString -> score.asJson)*
+        )
       )
 
     case Trace.PickInbound(ps) =>

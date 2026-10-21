@@ -344,6 +344,24 @@ class UpstreamNativeLedgerConformanceSuite extends FunSuite:
     }
   }
 
+  (4 to 6).foreach { ordinal =>
+    test(
+      s"next-slot mempool view matches every field of native NEWEPOCH-$ordinal's transaction view"
+    ) {
+      val id = s"NEWEPOCH-$ordinal"
+      val codec = FullStates.nativeNewEpochState
+      val before = decode(id, "state", codec)
+      val expected = decode(id, "implementation-state", codec)
+      val epoch = decode(id, "signal", summon[Codec[EpochNo]])
+      assert(before.epoch.next.contains(epoch))
+      val lastSlot = geometry.firstSlot(epoch.toBigInt) - 1
+      val actual = mempool.MempoolLedger
+        .tick(before, Some(lastSlot), mempool.MempoolEnv(globals.ledger, geometry))
+        .fold(error => fail(s"native-accepted $id refused: $error"), identity)
+      assertEquals(actual, mempool.MempoolLedger.of(expected))
+    }
+  }
+
   (1 to 3).foreach { ordinal =>
     test(s"actual LEDGER-$ordinal transaction matches complete native state") {
       val id = s"LEDGER-$ordinal"

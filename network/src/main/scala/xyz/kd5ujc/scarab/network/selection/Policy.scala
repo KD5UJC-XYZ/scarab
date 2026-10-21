@@ -66,12 +66,11 @@ object HotScore:
   * the policies of `Policies.hs` 127-217).
   */
 object Picks:
-  /** Choose `n` of `candidates` by the smallest `(rank, scaled random number)`. */
-  private def choose[A, R](
+  private def choose[A](
       candidates: SortedSet[A],
       n: Int,
       rng: Rng
-  )(rank: (A, Long) => R)(using ordA: Ordering[A], ordR: Ordering[R]): (List[A], Rng) =
+  )(select: List[(A, Long)] => List[A]): (List[A], Rng) =
     if n <= 0 || candidates.isEmpty then (Nil, rng)
     else
       val (drawn, next) = candidates.toList.foldLeft((List.empty[(A, Long)], rng)) {
@@ -79,13 +78,67 @@ object Picks:
           val (r, g2) = g.nextWord32
           ((peer, r) :: acc, g2)
       }
-      val ordered =
-        drawn.reverse.sortBy((peer, r) => (rank(peer, r), peer))(using Ordering.Tuple2(ordR, ordA))
-      (ordered.take(n).map(_._1), next)
+      (select(drawn.reverse), next)
 
-  /** Cold to warm, warm to hot, peers to ask: uniformly at random. */
+  private def ranked[A, R](drawn: List[(A, Long)], n: Int)(rank: (A, Long) => R)(using
+      ordA: Ordering[A],
+      ordR: Ordering[R]
+  ): List[A] =
+    drawn
+      .sortBy((peer, r) => (rank(peer, r), peer))(using Ordering.Tuple2(ordR, ordA))
+      .take(n.max(0))
+      .map(_._1)
+
+  // Native policies can be compared with identical Word32 inputs independently of the generator.
+  // These selectors are also used by the governor's ordinary random-draw path.
+  private[selection] def promotionWords[A: Ordering](drawn: List[(A, Long)], n: Int): List[A] =
+    ranked(drawn, n)((_, r) => r)
+
+  private[selection] def warmPromotionWords[A: Ordering](
+      drawn: List[(A, Long)],
+      n: Int,
+      tepid: A => Boolean
+  ): List[A] = ranked(drawn, n)((peer, r) => if tepid(peer) then r else r / 4)
+
+  private[selection] def warmDemotionWords[A: Ordering](
+      drawn: List[(A, Long)],
+      n: Int,
+      tepid: A => Boolean
+  ): List[A] = ranked(drawn, n)((peer, r) => if tepid(peer) then r / 2 else r)
+
+  private[selection] def forgetWords[A: Ordering](
+      drawn: List[(A, Long)],
+      n: Int,
+      failCount: A => Int
+  ): List[A] = ranked(drawn, n)((peer, r) => r / (failCount(peer).max(0) + 1L))
+
+  private[selection] def hotDemotionWords[A: Ordering](
+      drawn: List[(A, Long)],
+      n: Int,
+      score: A => HotScore
+  ): List[A] = ranked(drawn, n)((peer, r) => (score(peer), r))
+
+  private[selection] def hotDemotionScores[A](
+      available: Iterable[A],
+      score: A => Option[HotScore]
+  ): Map[A, Option[Int]] = available.iterator.map(peer => peer -> score(peer).map(_.value)).toMap
+
+  /** Cold to warm and peers to ask: uniformly at random. */
   def promotion[A: Ordering](candidates: SortedSet[A], n: Int, rng: Rng): (List[A], Rng) =
-    choose(candidates, n, rng)((_, r) => r)
+    choose(candidates, n, rng)(promotionWords(_, n))
+
+  /** Warm to hot: favour peers which have not just been demoted. The native `warmPromotionPolicy` /
+    * `promoteWeight` at ouroboros-network `2fb69829a19b5c04e4fb212bdd78fb63f9d2d776`,
+    * `Diffusion/Policies.hs`, quarters non-tepid Word32 draws; tepid peers keep their original
+    * draw.
+    */
+  def warmPromotion[A: Ordering](
+      candidates: SortedSet[A],
+      n: Int,
+      rng: Rng,
+      tepid: A => Boolean
+  ): (List[A], Rng) =
+    choose(candidates, n, rng)(warmPromotionWords(_, n, tepid))
 
   /** Hot to warm: the lowest score first, the random number breaks ties. */
   def hotDemotion[A: Ordering](
@@ -94,7 +147,7 @@ object Picks:
       rng: Rng,
       score: A => HotScore = (_: A) => HotScore.Unknown
   ): (List[A], Rng) =
-    choose(candidates, n, rng)((peer, r) => (score(peer), r))
+    choose(candidates, n, rng)(hotDemotionWords(_, n, score))
 
   /** Warm to cold: at random, a peer that was hot is twice as likely (`tepidWeight`). */
   def warmDemotion[A: Ordering](
@@ -103,7 +156,7 @@ object Picks:
       rng: Rng,
       tepid: A => Boolean
   ): (List[A], Rng) =
-    choose(candidates, n, rng)((peer, r) => if tepid(peer) then r / 2 else r)
+    choose(candidates, n, rng)(warmDemotionWords(_, n, tepid))
 
   /** Forget a cold peer: at random, a peer with failures is more likely (`failWeight`). */
   def forget[A: Ordering](
@@ -112,4 +165,4 @@ object Picks:
       rng: Rng,
       failCount: A => Int
   ): (List[A], Rng) =
-    choose(candidates, n, rng)((peer, r) => r / (failCount(peer).max(0) + 1L))
+    choose(candidates, n, rng)(forgetWords(_, n, failCount))

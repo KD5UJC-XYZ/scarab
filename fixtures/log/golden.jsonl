@@ -38,7 +38,7 @@
 {"event":"peerSelectionPromote","at":"2026-10-16T12:00:00Z","action":"failed","from":"cold","peer":"relay.example.org:3001","failure":"Transient","retryInSeconds":5.0,"forgotten":false}
 {"event":"peerSelectionPromote","at":"2026-10-16T12:00:00Z","action":"failed","from":"warm","peer":"relay.example.org:3001","failure":"Misbehaved","retryInSeconds":null,"forgotten":true}
 {"event":"peerSelectionPromote","at":"2026-10-16T12:00:00Z","action":"aborted","from":"warm","peer":"10.0.0.1:3001"}
-{"event":"peerSelectionDemote","at":"2026-10-16T12:00:00Z","action":"decided","from":"hot","peers":["10.0.0.1:3001"],"local":false,"target":20,"current":21}
+{"event":"peerSelectionDemote","at":"2026-10-16T12:00:00Z","action":"decided","from":"hot","peers":["10.0.0.1:3001"],"local":false,"target":20,"current":21,"scores":{"10.0.0.1:3001":null,"relay.example.org:3001":0}}
 {"event":"peerSelectionDemote","at":"2026-10-16T12:00:00Z","action":"done","from":"warm","peer":"10.0.0.1:3001","current":29}
 {"event":"peerSelectionDemote","at":"2026-10-16T12:00:00Z","action":"failed","from":"hot","peer":"relay.example.org:3001","timedOut":true}
 {"event":"peerSelectionDemote","at":"2026-10-16T12:00:00Z","action":"asynchronous","to":"warm","peer":"10.0.0.1:3001","failure":null,"reason":null}
@@ -50,7 +50,7 @@
 {"event":"peerSelectionRoots","at":"2026-10-16T12:00:00Z","action":"failure","bigLedger":true,"backoffs":-1,"retryInSeconds":2.0}
 {"event":"peerSelectionForget","at":"2026-10-16T12:00:00Z","action":"cold","bigLedger":true,"target":15,"known":17,"peers":["10.0.0.1:3001"]}
 {"event":"peerSelectionPromote","at":"2026-10-16T12:00:00Z","action":"decided","bigLedger":true,"from":"cold","peers":["10.0.0.1:3001","relay.example.org:3001"],"target":10,"current":4}
-{"event":"peerSelectionDemote","at":"2026-10-16T12:00:00Z","action":"decided","bigLedger":true,"from":"hot","peers":["relay.example.org:3001"],"target":5,"current":6}
+{"event":"peerSelectionDemote","at":"2026-10-16T12:00:00Z","action":"decided","bigLedger":true,"from":"hot","peers":["relay.example.org:3001"],"target":5,"current":6,"scores":{"10.0.0.1:3001":3,"relay.example.org:3001":null}}
 {"event":"peerSelectionRoots","at":"2026-10-16T12:00:00Z","action":"pickInbound","peers":["10.0.0.1:3001"]}
 {"event":"peerSelectionRoots","at":"2026-10-16T12:00:00Z","action":"peerShareRequests","amount":8,"peers":["10.0.0.1:3001"]}
 {"event":"peerSelectionRoots","at":"2026-10-16T12:00:00Z","action":"peerShareResults","added":["relay.example.org:3001"],"results":[{"peer":"10.0.0.1:3001","result":"Peers(Vector(relay.example.org:3001))"}]}

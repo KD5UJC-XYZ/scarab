@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.node.forge
 import cats.effect.{IO, Ref}
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.mtl.syntax.all.*
+import cats.syntax.all.*
 import java.time.Instant
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -188,8 +189,17 @@ trait ForgeFixture:
           ruleFailure.fold(realRules(state, header, raw))(failure =>
             ValidationError(header.point, failure).raise[IO, MirrorState]
           )
+      mempoolBase <- cats.mtl
+        .Raise[IO, NodeError]
+        .fromEither(
+          xyz.kd5ujc.scarab.node.read
+            .ConwayView(start, None)
+            .traverse(MempoolLedger.tick(_, Some(BigInt(4999)), MempoolEnv(globals, geometry)))
+            .left
+            .map(ChainError.MempoolTick(BigInt(4999) + 1, _))
+        )
       mempool <- Mempool.create[IO](
-        MempoolLedger.at(start, None),
+        mempoolBase,
         4999,
         MempoolEnv(globals, geometry),
         1000000,
@@ -212,8 +222,19 @@ trait ForgeFixture:
               Raise[IO, StorageError],
               Raise[IO, ChainError]
           ) = IO.unit),
-        onTip = Some((c, _) =>
-          mempool.sync(MempoolLedger.at(c.state, c.tipRef), c.tipRef.get.slot, Set.empty).void
+        onTip = Some(
+          Follower.OnTip((c, _) =>
+            cats.mtl
+              .Raise[IO, NodeError]
+              .fromEither(
+                MempoolLedger
+                  .at(c.state, c.tipRef, MempoolEnv(globals, geometry))
+                  .left
+                  .map(ChainError.MempoolTick(c.tipRef.fold(BigInt(0))(_.slot + 1), _))
+              )
+              .flatMap(mempool.sync(_, c.tipRef.fold(BigInt(0))(_.slot), Set.empty))
+              .void
+          )
         )
       )
       seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)

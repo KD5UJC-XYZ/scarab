@@ -340,6 +340,13 @@ class PeerSelectionSuite extends FunSuite:
       case Step.Act(d) =>
         // two surplus hot peers: the two lowest scores
         assertEquals(d.jobs.collect { case Job.Deactivate(p) => p }.toSet, Set(4, 5))
+        val scores = d.traces.collect {
+          case Trace.Demote(Temperature.Hot, _, false, _, _, scores) => scores
+        }
+        assertEquals(
+          scores,
+          List(Map(1 -> Some(10), 2 -> Some(10), 3 -> Some(1), 4 -> None, 5 -> None))
+        )
       case other => fail(s"expected a demotion, got $other")
   }
 

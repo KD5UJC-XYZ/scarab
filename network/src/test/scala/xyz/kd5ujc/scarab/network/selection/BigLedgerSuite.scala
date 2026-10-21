@@ -208,7 +208,7 @@ class BigLedgerSuite extends FunSuite:
     val (_, jobs, traces) = settle(st, t0)
     assertEquals(count(jobs) { case Job.Close(_, _) => () }, 3)
     assert(traces.exists {
-      case Trace.DemoteBigLedger(Temperature.Warm, _, 1, 4) => true; case _ => false
+      case Trace.DemoteBigLedger(Temperature.Warm, _, 1, 4, _) => true; case _ => false
     })
   }
 

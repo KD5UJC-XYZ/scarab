@@ -271,7 +271,8 @@ node uses is `simplePeerSelectionPolicy` (`ON/Diffusion/Policies.hs:99-124`):
 
 | Pick | Rule |
 |---|---|
-| known peers for peer share, cold to promote, warm to promote, inbound | uniformly random: a random `Word32` per candidate, the smallest first (`simplePromotionPolicy`, 174-182, `addRand`, 202-217) |
+| known peers for peer share, cold to promote, inbound | uniformly random: a random `Word32` per candidate, the smallest first (`simplePromotionPolicy` and `addRand`) |
+| warm to promote | current-pin `warmPromotionPolicy`: quarter the unsigned draw for non-tepid peers; a recently demoted tepid peer retains the full draw and is less likely to return immediately (#149) |
 | hot to demote | the lowest score first, where the score is `upstreamyness + fetchynessBlocks`, ties broken by the slot at which the peer joined the metric board, then by the random number (`hotDemotionPolicy`, 127-147) |
 | warm to demote | random, with a peer that has the tepid flag *twice as likely* to be picked (its random number halved, 151-160, 192-199) |
 | cold to forget | random, a peer with failures more likely to be picked (its random number divided by `failCount + 1`, 164-172, 184-190) |
@@ -1493,7 +1494,16 @@ the head start, and the sleep (3300 s plus up to 600 s in deadline mode, 900 s p
 4. A change of regime during the sleep (the node left bulk sync) asks for the new regime's targets at once; the reference waits for the
    next round, up to an hour away.
 5. Peer metrics come from outbound hot sessions only ([#150](https://github.com/KD5UJC-XYZ/scarab/issues/150)).
-6. The pin's warm promotion is uniform; `main` weights it by the tepid flag ([#149](https://github.com/KD5UJC-XYZ/scarab/issues/149)).
+6. **Resolved by #149.** The current network pin `2fb69829a19b5c04e4fb212bdd78fb63f9d2d776`
+   weights warm promotion with `promoteWeight` (`Diffusion/Policies.hs:201–250`): non-tepid
+   peers receive one quarter of their unsigned Word32 draw. Ordinary, local-root and big-ledger
+   warm activation now use this policy. Ordinary and big-ledger hot-demotion traces retain the
+   native optional score for every eligible peer, distinguishing an absent metric from zero;
+   local-root traces follow the native discarded-score contract. The
+   [912 native observations](../../fixtures/peer-selection/policies/README.md) compare all five
+   production ranking functions and complete score maps using identical explicit draws. Native
+   and Scala PRNG streams are not equated; the selected sets and score fields are compared without
+   masks or changed outcomes.
 7. **BlockFetch (#144/#148).** A shared coordinator now applies the pinned peer rankings,
    global bulk/deadline targets with preferred-peer handover, GSV request/byte windows and
    FIFO outgoing pipelining. Inbound duplex and recovery use the same accounting. The
