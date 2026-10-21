@@ -15,3 +15,11 @@ encoded as hex; its message is the raw SHA-256 of sorted path/digest pairs, not 
 inputs and unsafe/duplicate paths. The optional `PreprodSnapshotImportSuite` uses all original archive
 files plus recorded immutable chunks for a complete authenticated offline import. Operators must get
 the appropriate key from a trusted source; this fixture is evidence for this captured snapshot.
+
+
+This directory is the signed-manifest corpus; its parent README covers the selected MemPack outputs
+and the uncommitted full native snapshot. Ordinary signature tests run without downloading payloads.
+Regenerate neither signature nor expected digests with Scarab: obtain a new original native manifest
+and public trust-root provenance, review them, and retain the previous evidence. A valid manifest
+signature alone does not demonstrate that the optional full import/export or matched-checkpoint
+comparison ran; those need the original payloads and their separate acceptance assertions.
