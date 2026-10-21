@@ -779,7 +779,7 @@ object Peer:
           def afterReply(using Raise[F, PeerError]): F[Unit] =
             genesis.traverse_ { control =>
               F.tailRecM(()) { _ =>
-                F.race(drainRequested.get.flatMap(_.get), control.next).flatMap {
+                F.race(drainRequested.get.flatMap(_.get), control.nextAfterReply).flatMap {
                   case Left(_)                                         => F.pure(Right(()))
                   case Right(ChainSyncJumping.Instruction.RunNormally) => F.pure(Right(()))
                   case Right(ChainSyncJumping.Instruction.Wait)        => F.cede.as(Left(()))

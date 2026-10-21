@@ -12,6 +12,7 @@ trait GenesisPeer[F[_]]:
   def restartCandidates: F[Vector[Point]]
   def failed[A](error: ChainSyncJumping.Error): F[A]
   def next: F[ChainSyncJumping.Instruction[GenesisPeer.Checkpoint]]
+  def nextAfterReply: F[ChainSyncJumping.Instruction[GenesisPeer.Checkpoint]] = next
   def observed(gate: HeaderGate[F], event: SyncEvent): F[Unit]
   def processJump(
       info: ChainSyncJumping.JumpInfo[GenesisPeer.Checkpoint],

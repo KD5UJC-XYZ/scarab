@@ -155,18 +155,18 @@ final class GenesisRuntime[F[_]: Async] private (
             GenesisInternalProblem.MissingDynamoJumpInfo
           case ChainSyncJumping.Error.UnexpectedFoundIntersectionJump =>
             GenesisInternalProblem.UnexpectedIntersection)
+        override def nextAfterReply: F[Instruction[GenesisPeer.Checkpoint]] =
+          if !settings.enableCSJ then F.pure(Instruction.RunNormally)
+          else
+            // Client.hs:1267-1291: pause while waiting AND while offering a jump.
+            patience.setPaused(LimitOnPatience.PauseReason.Jumping, true) *>
+              jumper.next.flatTap {
+                case Instruction.RunNormally | Instruction.Restart =>
+                  patience.setPaused(LimitOnPatience.PauseReason.Jumping, false)
+                case _ => F.unit
+              }
         def next: F[Instruction[GenesisPeer.Checkpoint]] =
-          val instruction: F[Instruction[GenesisPeer.Checkpoint]] =
-            if !settings.enableCSJ then F.pure(Instruction.RunNormally)
-            else
-              // Client.hs:1267-1291: pause while waiting AND while offering a jump.
-              patience.setPaused(LimitOnPatience.PauseReason.Jumping, true) *>
-                jumper.next.flatTap {
-                  case Instruction.RunNormally | Instruction.Restart =>
-                    patience.setPaused(LimitOnPatience.PauseReason.Jumping, false)
-                  case _ => F.unit
-                }
-          instruction.flatTap {
+          nextAfterReply.flatTap {
             // Client.hs:1397 captures kis at submission, rather than reading its later successor.
             case Instruction.RunNormally => snapshot.flatMap(requestHistory.set)
             case _                       => F.unit

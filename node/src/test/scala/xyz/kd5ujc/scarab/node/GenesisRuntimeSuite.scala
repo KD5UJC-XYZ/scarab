@@ -519,6 +519,7 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
                   gate(atTwo, selectedAtOne),
                   SyncEvent.RollForward(two, tip)
                 )
+                _ <- bound.control.nextAfterReply
                 _ <- bound.observer.awaitReply.background.use { _ =>
                   IO.sleep(1.millis) *> failures.get.flatMap { seen =>
                     IO(
