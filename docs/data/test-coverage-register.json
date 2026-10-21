@@ -484,7 +484,7 @@
     {
       "id": "native-churn-decisions",
       "classification": "native-parity",
-      "status": "pending-integration",
+      "status": "covered",
       "scope": "1,152 explicit native IOSim cases invoking the unchanged pinned peerChurnGovernor, including 13,824 first-cycle actions.",
       "assertion": "Compare complete initial and post-head-start targets, every raw target proposal, sanity flags, signed achieved changes, timeout outcomes and native picosecond wait values for every retained case.",
       "rationale": "Genesis and Praos choose different startup targets, regimes and intervals. Raw invalid targets remain observable churn inputs even when the peer governor ignores them. These are explicit boundary cases, not an upstream generator corpus.",
@@ -504,7 +504,7 @@
     {
       "id": "native-big-ledger-root-fallback",
       "classification": "native-parity",
-      "status": "pending-integration",
+      "status": "covered",
       "scope": "Nine explicit native BigLedgerPeers requests, with absent, empty or nonempty ledger answers and requested counts 0, 1 and 4.",
       "assertion": "Compare the production BigLedgerRoots.fromLedger adapter against complete native offered partitions, origins and configured advertisement flags for every captured case.",
       "rationale": "Configured fallback peers belong to ordinary public roots; only actual ledger answers belong to the big-ledger partition. Empty and absent ledger answers are different values.",

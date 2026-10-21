@@ -400,6 +400,40 @@ was deliberately interrupted when another task started a third global devnet; it
 acceptance claim. The complete subsequent relay above passes. Generated databases, devnets and
 build outputs are disposable; compact receipts and compressed evidence are retained by the task.
 
+## Inbound metrics, Genesis churn and canonical headers (#150 / #311 / #318)
+
+The shared metrics board credits accepted ChainSync headers and admitted BlockFetch blocks from
+both connection directions, using the remote socket address. Header acceptance retains its arrival
+timestamp; a rejected signature earns no usefulness credit. Controlled receiver/gate tests cover
+the timing boundary, competing arrivals and session shutdown. Serving traffic alone earns no
+client credit.
+
+At network pin `2fb69829a19b5c04e4fb212bdd78fb63f9d2d776`, 1,152 direct executions of the
+unchanged native churn governor supply 13,824 actions. Comparisons include raw proposals,
+intermediate invalid targets, committed counter changes, timeout outcomes and both exact
+picosecond waits. Nine direct native big-ledger requests independently cover absent, empty and
+nonempty ledger answers and ordinary public-root fallback. These are explicit native decision
+cases, not an imported upstream generator corpus. The [churn corpus](../fixtures/peer-selection/churn/README.md)
+and [fallback corpus](../fixtures/peer-selection/root-fallback/README.md) retain their complete contracts.
+
+Praos and Genesis now share the canonical all-era header rules. Original headers from all seven
+eras, complete header-state comparisons and zero-body-fetch refusals cover Byron signatures,
+the first Shelley header and epoch-boundary envelopes. Original pinned fixtures are preserved;
+no forecast failure is converted to unchecked acceptance.
+
+| Gate | Observed result |
+|---|---|
+| Docker `check`, source `9f63141c3` plus formatting-only test normalization | 8,456 passed, 16 existing optional external-input/benchmark skips, zero failures/errors across fourteen modules. Formatting, `-Werror`, default fuzz and scalafix pass; every new native comparison executes. |
+| Python and fixture guards | 451 Python tests pass. Normal coverage guard validates 93 corpora, 4,904 pinned payloads and 30 comparison contracts. All 4,900 original payloads are unchanged. The separate strict candidate guard still fails the unchanged pre-Conway instant-stake obligation [#299](https://github.com/KD5UJC-XYZ/scarab/issues/299); no waiver is added. |
+| Praos `e2e`, source `ca0fdda8e` | All seven eras, six transitions and 66 matching ledger comparisons across the Shelley-based eras through Conway epoch17, zero mismatches/errors/skips. The standard CLI gate checks Byron's UTxO at the first Shelley boundary, rather than claiming a direct Byron ledger query. This run precedes the independent final churn changes. |
+| Genesis `relay --seconds 300 --every 10 --seed 311150 --no-peer-sharing`, source `9f63141c3` | PASS: all 30 samples within one block; all final tips equal at block272, hash `00d148eda7bfb2758cacb1a0277a6902f3a89e341236dca3f994b51ee1b072f4`. Actual inbound duplex clients run; zero reconnects/node errors, one rollback. |
+| Original `governor`, source `9f63141c3` | FAIL, retained: only four complete churn rounds within the observation bound; a slow peer exhausted the 300-second deactivation deadline. The native twelve-step ordering, ranking and timeout assertions remain unchanged. Investigation identified cancellation between publishing the pipeline's started flag and registering its producer; the repair and a complete rerun are required before acceptance. |
+
+The relay and original governor use identical frozen runtime files, verified against the completed
+build. Compact input identities, compressed logs and the original failed governor summary are
+retained by the task. Their completed disposable devnets have been removed; no operational database
+was modified.
+
 ## Not checked at all
 
 Collected from the table, for quick scanning:

@@ -431,14 +431,15 @@ class PeerRootReloadSuite extends FailsOnUncaught:
       given Resource[IO, PeerDns[IO]] = Resource.pure[IO, PeerDns[IO]](dns)
       running(absent).use { network =>
         network.run.background.use { _ =>
-          List((srvOnly, true), (explicitEmpty, true), (absent, false)).traverse_ { (input, enabled) =>
-            for
-              _ <- network.reloadRoots(input).timeout(1.second)
-              _ <- settle
-              state <- network.state.get
-            yield
-              assertEquals(state.sensitivity.useBootstrapPeers, enabled)
-              assertEquals(GovernorState.invariant(state), Nil)
+          List((srvOnly, true), (explicitEmpty, true), (absent, false)).traverse_ {
+            (input, enabled) =>
+              for
+                _ <- network.reloadRoots(input).timeout(1.second)
+                _ <- settle
+                state <- network.state.get
+              yield
+                assertEquals(state.sensitivity.useBootstrapPeers, enabled)
+                assertEquals(GovernorState.invariant(state), Nil)
           }
         }
       }

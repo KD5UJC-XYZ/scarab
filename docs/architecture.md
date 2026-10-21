@@ -65,7 +65,7 @@ several modules).
 |---|---|---|
 | Errors | `NodeError.scala` | Closed hierarchy, see "Error model" |
 | Peer | `Peer.scala` | `Peer[F]` algebra (intersect / next / fetch) with a node-to-node interpreter over `network`: `Peer.nodeToNode` for a connection we open, `Peer.over` for any negotiated connection (also an inbound duplex one) |
-| Header-first | `HeaderGate.scala`, `HeaderValidation.scala`, `consensus/HeaderRules.scala` | `HeaderCheck`/`HeaderGate` validate each ChainSync batch before its blocks are fetched; the pure `HeaderRules[S, H]` (`NodeHeaderRules`) forecasts the ledger view; `HeaderChain` is the candidate chain's header states (G6) |
+| Header-first | `HeaderGate.scala`, `NodeHeaderRules.scala`, `HeaderValidation.scala`, `consensus/HeaderRules.scala` | `HeaderCheck`/`HeaderGate` validate each ChainSync batch before its blocks are fetched; the pure `HeaderRules[S, H]` (`NodeHeaderRules`) forecasts the ledger view; `HeaderChain` is the candidate chain's header states (G6) |
 | Connections | `InboundGovernor.scala`, `network/ConnectionManager.scala`, `protocol/ConnectionState.scala` | Pure connection life cycle, the manager's table (one connection per address and direction, admission limits and typed refusals), and the governor that runs our clients on inbound duplex connections (G2) |
 | Peer selection | `network/selection/*.scala`, `PeerGovernor.scala`, `OutboundPeers.scala`, `PeerNetwork.scala`, `GsmRunner.scala`, `FailurePolicy.scala` | The pure peer governor (state, decision, events, targets, local roots, sensitive state, the Genesis State Machine), its loop and its interpreter over the connection manager, the follower and the block pool (G1.1) |
 | Decoding | `Header.scala`, `Block.scala` | Era-aware: `Header.Shelley` (TPraos or Praos `HeaderVrf`) and `Header.Byron`; blocks decoded per era with the body hash recomputed from the original bytes |
@@ -94,7 +94,7 @@ Capabilities are traits over `F[_]`; interpreters are chosen in `Main`:
 | Algebra | Role | Interpreters |
 |---|---|---|
 | `Peer[F]` | intersect, next header, fetch blocks | node-to-node over TCP or over any negotiated connection (pipelined), scripted peers in tests |
-| `HeaderRules[S, H]`, `HeaderCheck[F]` | forecast the ledger view and validate a header against it; per session, validate each batch before it is fetched | `NodeHeaderRules` (pure), `HeaderCheck.forChain` (the gate over the node's chain), `HeaderCheck.none` |
+| `HeaderRules[S, H]`, `HeaderCheck[F]` | forecast the ledger view and validate a header against it; per session, validate each batch before it is fetched | `NodeHeaderRules` (pure), `HeaderCheck.forNodeChain` (the canonical gate over the node's chain), `HeaderCheck.none` |
 | `ConnectionManager[F]` | one connection per peer address and direction, admission policy, limits and accounting | `ConnectionManager.create` (a `Ref` table over the pure `ConnectionState`) |
 | `BlockRules[F, S]` | validate and apply one block to a state | `MirrorRules` (the era-indexed rules on the mirror state) |
 | `UtxoStore[F]` | read, write, checkpoint, restore the UTxO set | `MemoryUtxoStore`, `RocksUtxoStore` |
@@ -903,35 +903,33 @@ block of that batch is fetched. The candidate chain of a session is thereby a ch
 headers (`HeaderChain`: the join point, the header state there and the header state after every
 header announced since, with rollbacks and pruning).
 
-**What is checked** (`NodeHeaderRules`, pure; the same functions `MirrorRules` uses when it applies
-the block): the envelope (era for the epoch, protocol version, header and body size against the
-parameters), then for Praos the VRF key and proof, the leader threshold, the operational
-certificate and KES signature and the certificate counter, and for TPraos the overlay schedule, both
-VRF proofs, the threshold, the certificate and counter; the nonces evolve along the header chain
-(`ProtocolState` is the header state: the chain-dependent state of the protocol with the epoch of its last tick). The result is compared with the state the block rules reach in
-`HeaderRulesSuite`, for every header of a forged chain and from any anchor a few blocks behind.
+**What is checked** (`NodeHeaderRules`, pure; the same consensus functions used for the
+block): Byron PBFT and its delegation forecast; first-Shelley handover; and the Shelley-based
+envelope (era, protocol version, header and body limits), VRF proof and leader threshold,
+operational certificate, KES signature, certificate counter and nonce evolution. TPraos also
+checks its overlay schedule and both VRF proofs. `NodeHeaderState` distinguishes the Byron
+state with its pending Shelley state from an active Shelley-based protocol state. Header
+outcomes are compared with complete block-derived states in `HeaderRulesSuite` and the
+unchanged native all-era captures.
 
-**The ledger view is forecast** from the newest ledger state of ours on the peer's chain (the
-`anchor`), valid within the stability window of the anchor's tip (`3k/f` slots, upstream's
-`forecastFor` horizon): in the anchor's epoch the pool distribution, parameters and genesis
-delegations are the anchor's (a genesis delegation that becomes due on the way is adopted); in the
-next epoch the pool distribution is the anchor's newest stake snapshot (`mark`, which the boundary only
-rotates into place) and, for TPraos, `d` and the extra entropy come from the update proposals the
-boundary would adopt. A header beyond the horizon waits (`Outcome.Later`) for the blocks of earlier
-batches to be applied, which moves the horizon. A header can never wait for a block of its own batch (a
-batch is released only when all its headers have passed), so when every block of the earlier batches is
-applied, or the node's chain has stood still for two minutes, the header is left to its block's own
-validation (counted as `unchecked`) instead of dropping a peer whose chain the forecast cannot reach
-(an honest gap longer than the stability window, a limit of the forecast). The protocol-parameter
-envelope checks are left to the block's own validation for a header of a later epoch than the anchor's
-(the boundary, which can enact a version change, is not run for a forecast).
+**The ledger view is forecast** from the newest ledger state of ours on the peer's chain.
+Shelley-based forecasts use the native exclusive horizon: the stability window from Origin,
+otherwise the anchor slot plus one plus that window. Byron uses its native exclusive
+`NOW + 1 + 2k` bound; first-Shelley translation follows the hard-fork combinator. In the
+anchor's epoch the view uses its pool distribution, parameters and due genesis delegations.
+The next-epoch view uses the newest stake snapshot and parameters the boundary would adopt,
+including TPraos decentralisation and entropy. Envelope checks use those forecast parameters
+at epoch boundaries as well.
 
-**What is not checked header-first** (counted as `unchecked` in the `headersChecked` log line, the
-block is validated as before when it is applied): Byron headers (their PBFT checks need the Byron
-delegation state), the first Shelley header of a chain with a Byron prefix (the Shelley ledger does
-not exist before that block) and the rest of its batch (their header state follows from the block, so
-the next batch waits for it to be applied and is validated from the applied state), a header left to its
-block as above, and every header on a node run with `--header-first off`.
+Every production session with header-first validation enabled uses `HeaderCheck.forNodeChain`.
+A missing forecast waits for ledger progress; it never accepts an unchecked header because
+an earlier batch finished or a timer elapsed. A candidate that loses its ledger intersection
+restarts, and one that is no longer preferred beyond the forecast horizon is refused as the
+native ChainSync client does. Streaming publication lets already accepted headers' bodies
+advance the ledger while a later header waits. The shared canonical path applies in Praos
+and Genesis; GSM, GDD, LoE and ChainSync jumping remain Genesis policies. The explicit
+`--header-first off` setting retains block-only validation in Praos mode; Genesis requires
+the canonical header path.
 
 **Cost.** The signatures are verified once. The gate's view of the `VerificationCache`
 (`forHeaders`) computes a verdict if it is not there and keeps it; the block's own validation, later,
@@ -939,7 +937,8 @@ consumes the same verdict, and `warmBlock` no longer overwrites a verdict that i
 signatures of a batch's headers are verified in parallel before the rules fold over them
 (`VerificationCache.warmHeaders`). The measurement is in [performance.md](performance.md).
 
-Tests: `HeaderRulesSuite` (valid forged headers validate to the state the block gives, including across
+Tests: `PraosHeaderValidationSuite` (original headers from all seven eras and signature/envelope
+refusals before any body request), `HeaderRulesSuite` (valid forged headers validate to the state the block gives, including across
 an epoch boundary; a property over eight kinds of tampered header; envelope, counter, horizon and
 structure cases), `HeaderGateSuite` (model rules: counting, an invalid header, a header that does
 not extend the chain, rollbacks inside the candidate and below the join point, waiting for the chain
