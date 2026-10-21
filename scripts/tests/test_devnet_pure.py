@@ -6,8 +6,10 @@ Run from the repository root:  python3 -m unittest discover -s scripts/tests -v
 import json
 import pathlib
 import shutil
+import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from unittest.mock import patch
 from fractions import Fraction
@@ -420,6 +422,172 @@ class RefusedFixtureTest(unittest.TestCase):
                 {"label": "xrefoverlap-v3-ef", "expected": ["ReferenceInputsNotDisjointFromInputs"], "tx": "03"})))
             lines = refused_fixture.build(run)
         self.assertEqual([l["scenario"] for l in lines], ["vrf", "vrf", "unelected", "refoverlap"])
+
+
+class SubmissionVerdictTest(unittest.TestCase):
+    """What `expect_rejected` makes of the CLI's answer (the xvrf-dup-active observation: error "", not refused)."""
+    EXPECTED = ["VRFKeyHashAlreadyRegistered"]
+    LEDGER = ("Command failed: transaction submit\nError: Error while submitting tx: ShelleyTxValidationError "
+              "ShelleyBasedEraConway (ConwayApplyTxError (ConwayCertsFailure (CertFailure (PoolFailure "
+              "(VRFKeyHashAlreadyRegistered x y)))))\nCallStack (from HasCallStack):")
+
+    def kind(self, code, out="", err=""):
+        return eraload.submission_verdict(code, out, err, self.EXPECTED).kind
+
+    def test_a_ledger_refusal_naming_the_predicate_is_refused(self):
+        self.assertEqual(self.kind(1, err=self.LEDGER), "refused")
+
+    def test_a_ledger_refusal_for_another_reason_is_wrong_reason(self):
+        other = self.LEDGER.replace("VRFKeyHashAlreadyRegistered", "StakePoolCostTooLow")
+        self.assertEqual(self.kind(1, err=other), "wrongReason")
+
+    def test_a_zero_exit_is_an_acceptance_even_without_output(self):
+        v = eraload.submission_verdict(0, "", "", self.EXPECTED)
+        self.assertEqual(v.kind, "accepted")
+        self.assertNotEqual(v.text, "")
+        self.assertEqual(self.kind(0, out="Transaction successfully submitted."), "accepted")
+
+    def test_a_failure_without_a_ledger_text_is_no_verdict(self):
+        self.assertEqual(self.kind(1), "noVerdict")
+        self.assertEqual(self.kind(137), "noVerdict")
+        self.assertEqual(self.kind(126, err="OCI runtime exec failed: exec failed"), "noVerdict")
+        self.assertEqual(self.kind(1, err="Network.Socket.connect: does not exist (No such file or directory)"),
+                         "noVerdict")
+
+    def load(self, answers):
+        load = eraload.EraLoad("t", lambda: None, log=lambda m: None)
+        calls = []
+
+        def sh(script, stdin=None, timeout=60):
+            calls.append(script)
+            code, out, err = answers[min(len(calls), len(answers)) - 1]
+            return subprocess.CompletedProcess([], code, out, err)
+        load.sh = sh
+        return load, calls
+
+    def expect(self, load):
+        with patch.object(eraload.eratx, "envelope", return_value="{}"), patch.object(eraload.time, "sleep"), \
+                patch.object(load, "keep_tx"):
+            return load.expect_rejected("conway", b"\x00", "lbl", self.EXPECTED)
+
+    def test_no_verdict_is_submitted_again_and_the_last_verdict_counts(self):
+        load, calls = self.load([(1, "", ""), (1, "", ""), (1, "", self.LEDGER)])
+        self.assertTrue(self.expect(load))
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(load.stats, {"negativeOk": 1})
+
+    def test_an_acceptance_is_final_and_kept_for_the_scenario(self):
+        load, calls = self.load([(0, "", "")])
+        self.assertFalse(self.expect(load))
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(load.last_verdict.kind, "accepted")
+        self.assertEqual(load.stats, {"negativeUnexpected": 1})
+
+    def test_persistent_silence_is_reported_as_unexpected_after_the_attempts(self):
+        load, calls = self.load([(1, "", "")])
+        self.assertFalse(self.expect(load))
+        self.assertEqual(len(calls), eraload.NO_VERDICT_ATTEMPTS)
+        self.assertEqual(load.last_verdict.kind, "noVerdict")
+
+
+class ExtendedOutcomeTest(unittest.TestCase):
+    def outcome(self, results, done, protocol, unexpected=0):
+        return govextra.extended_outcome(results, set(done), protocol, unexpected)
+
+    OK = {"ok": True, "tries": 1}
+
+    def test_all_stages_done_passes(self):
+        results = {k: self.OK for k in ("xfund", "xrewards", "xscriptreg", "xvrf")}
+        self.assertEqual(self.outcome(results, results, 11), ([], {}))
+
+    def test_a_stage_that_reported_ok_false_fails_the_run(self):
+        results = {"xfund": self.OK, "xrewards": self.OK, "xscriptreg": self.OK,
+                   "xvrf": {"ok": False, "tries": 1, "error": ""}}
+        failures, na = self.outcome(results, ["xfund", "xrewards", "xscriptreg"], 11)
+        self.assertEqual(na, {})
+        self.assertEqual(len(failures), 1)
+        self.assertIn("xvrf reported ok:false", failures[0])
+
+    def test_a_stage_that_failed_then_succeeded_passes(self):
+        results = {k: self.OK for k in ("xfund", "xrewards", "xscriptreg", "xvrf")}
+        self.assertEqual(self.outcome(results, results, 11), ([], {}))
+        self.assertEqual(self.outcome({**results, "xscriptreg": {"ok": True, "tries": 2}}, results, 11), ([], {}))
+
+    def test_xvrf_before_protocol_11_is_not_applicable_with_its_reason(self):
+        results = {k: self.OK for k in ("xfund", "xrewards", "xscriptreg")}
+        failures, na = self.outcome(results, results, 10)
+        self.assertEqual(failures, [])
+        self.assertEqual(list(na), ["xvrf"])
+        self.assertIn("protocol version 11", na["xvrf"])
+
+    def test_an_applicable_stage_that_never_ran_fails(self):
+        results = {k: self.OK for k in ("xfund", "xrewards", "xscriptreg")}
+        failures, na = self.outcome(results, results, 11)
+        self.assertEqual(na, {})
+        self.assertIn("xvrf did not complete", failures[0])
+
+    def test_no_protocol_seen_makes_every_stage_not_applicable_never_a_pass_by_silence_of_applicable_ones(self):
+        failures, na = self.outcome({}, [], None)
+        self.assertEqual(failures, [])
+        self.assertEqual(set(na), set(govextra.LIGHT_STAGES))
+
+    def test_unexpected_negative_cases_fail(self):
+        results = {k: self.OK for k in ("xfund", "xrewards", "xscriptreg", "xvrf")}
+        failures, _ = self.outcome(results, results, 11, unexpected=1)
+        self.assertEqual(len(failures), 1)
+
+    def test_pending_stages_are_those_applicable_not_done_and_not_given_up(self):
+        ext = govextra.Extended(types.SimpleNamespace(), full=False)
+        self.assertEqual(govextra.extended_pending(ext), [])
+        ext.max_protocol = 11
+        self.assertEqual(sorted(govextra.extended_pending(ext)), ["xfund", "xrewards", "xscriptreg", "xvrf"])
+        ext.done.update(["xfund", "xrewards", "xscriptreg"])
+        ext.failed["xvrf"] = "diverged"
+        self.assertEqual(govextra.extended_pending(ext), [])
+
+
+class ExtendedStageTest(unittest.TestCase):
+    def ext(self):
+        logs = []
+        load = types.SimpleNamespace(log=logs.append, stats={})
+        return govextra.Extended(load, full=False), logs
+
+    def test_a_divergence_ends_the_stage_failed_for_good_and_is_recorded(self):
+        ext, logs = self.ext()
+
+        def run():
+            raise govextra.ReferenceDiverged("xvrf-dup-active: accepted")
+        ext.stage("xvrf", run)
+        self.assertEqual(ext.results["xvrf"], {"ok": False, "tries": 1, "error": "xvrf-dup-active: accepted"})
+        calls = []
+        ext.stage("xvrf", lambda: calls.append(1))
+        self.assertEqual(calls, [])  # never retried
+        self.assertIn({"extended": True, "stage": "xvrf", "ok": False, "tries": 1,
+                       "error": "xvrf-dup-active: accepted"}, logs)
+
+    def test_a_falsy_result_is_retried_up_to_the_tries(self):
+        ext, _ = self.ext()
+        calls = []
+        for _ in range(8):
+            ext.stage("xvrf", lambda: calls.append(1) and None)
+        self.assertEqual(len(calls), govextra.Extended.TRIES)
+        self.assertFalse(ext.results["xvrf"]["ok"])
+
+    def test_vrf_cases_stop_on_an_accepted_duplicate(self):
+        ext, _ = self.ext()
+        accepted = eraload.Verdict("accepted", "")
+
+        def sh(script):
+            return types.SimpleNamespace(stdout="aa" * 28)
+
+        def act(*a, **kw):
+            ext.l.last_verdict = accepted
+            return False
+        ext.l.sh, ext.l.act, ext.l.keep_tx = sh, act, lambda *a: None
+        ext.l.pool_cold = [types.SimpleNamespace(hash=bytes(28))] * 3
+        with self.assertRaises(govextra.ReferenceDiverged):
+            ext.vrf_cases({"stakePoolDeposit": 500_000_000, "protocolVersion": {"major": 11}})
+        self.assertEqual(ext.done, {"xvrf-context"})
 
 
 class FreezeClassesTest(unittest.TestCase):
