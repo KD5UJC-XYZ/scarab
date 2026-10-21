@@ -22,9 +22,12 @@ final class ChainSyncJumpingRuntime[F[_]: Async, P, J] private (
         state
           .modify { (before, previous) =>
             val (after, value) = f(before)
-            ((after, signal), (value, previous))
+            if after == before then ((before, previous), (value, Option.empty[Deferred[F, Unit]]))
+            else ((after, signal), (value, Some(previous)))
           }
-          .flatMap((value, previous) => previous.complete(()).void *> changed.as(value))
+          .flatMap((value, previous) =>
+            previous.traverse_(p => p.complete(()).void *> changed).as(value)
+          )
       }
     }
 
@@ -48,12 +51,14 @@ final class ChainSyncJumpingRuntime[F[_]: Async, P, J] private (
               val result = ChainSyncJumping.next(before, id)
               result.instruction match
                 case Instruction.Wait => ((before, previous), Left(previous))
-                case instruction      => ((result.state, signal), Right((previous, instruction)))
+                case instruction if result.state == before =>
+                  ((before, previous), Right((Option.empty[Deferred[F, Unit]], instruction)))
+                case instruction => ((result.state, signal), Right((Some(previous), instruction)))
             }
             .flatMap {
               case Left(wait) => wait.get.as(Left(()))
               case Right((previous, instruction)) =>
-                previous.complete(()).void *> changed.as(Right(instruction))
+                previous.traverse_(p => p.complete(()).void *> changed).as(Right(instruction))
             }
         }
       }

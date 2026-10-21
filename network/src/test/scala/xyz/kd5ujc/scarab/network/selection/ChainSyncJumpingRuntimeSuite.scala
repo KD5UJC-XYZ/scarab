@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network.selection
 
-import cats.effect.IO
+import cats.effect.{IO, Ref}
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, UInt64}
@@ -61,5 +61,27 @@ class ChainSyncJumpingRuntimeSuite extends FailsOnUncaught:
         }
         .guarantee(dynamo._2)
       _ <- IO(assertEquals(result, Instruction.RunNormally))
+    yield ()
+  }
+
+  test("no-op role operations and RunNormally do not publish feedback notifications") {
+    for
+      notifications <- Ref.of[IO, Int](0)
+      runtime <- ChainSyncJumpingRuntime.create[IO, Int, Unit](changed =
+        Some(notifications.update(_ + 1))
+      )
+      _ <- runtime.session(1, Point.Origin, false).use { dynamo =>
+        runtime.session(2, Point.Origin, false).use { _ =>
+          for
+            before <- notifications.get
+            _ <- runtime.rotate(2)
+            instruction <- dynamo.next
+            _ <- dynamo.onRollForward(info(1).tip)
+            after <- notifications.get
+            _ <- IO(assertEquals(instruction, Instruction.RunNormally))
+            _ <- IO(assertEquals(after, before))
+          yield ()
+        }
+      }
     yield ()
   }
