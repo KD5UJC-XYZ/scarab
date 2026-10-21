@@ -114,7 +114,8 @@ class InboundGovernorSuite extends FailsOnUncaught:
       fatal: Fatal => IO[Unit] = _ => IO.unit,
       pool: Option[BlockPool[IO]] = None,
       events: Option[InboundEvents[IO]] = None,
-      keepAliveInterval: FiniteDuration = 30.seconds
+      keepAliveInterval: FiniteDuration = 30.seconds,
+      followSession: Option[InboundGovernor.Follow[IO]] = None
   )(using RepromotionWait[IO]): IO[Local] =
     for
       ref <- Ref.of[IO, VolatileChain[MirrorState]](
@@ -187,7 +188,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
             def known(id: Bytes) = IO.pure(false)
             def submit(originals: Vector[Bytes]) = IO.unit
         ),
-        follow = peer => follower.session(peer),
+        follow = peer => followSession.fold(follower.session(peer))(_(peer)),
         prepare = _ => IO.unit,
         fatal = fatal,
         headers = headerCheck,
@@ -607,6 +608,124 @@ class InboundGovernorSuite extends FailsOnUncaught:
           InboundEvent.CachedBlockRejected(refusal, old.generation + 1, true)
         )
       )
+  }
+
+  test("a retained original from an old hot activation cannot punish its successor on the same bearer") {
+    import cats.mtl.Raise
+    import xyz.kd5ujc.scarab.ledger.{BlockFailure, ValidationError}
+    import xyz.kd5ujc.scarab.protocol.{Mux as WireMux, KeepAlive}
+    val header = forged.headers.head
+    val refusal = ValidationError(header.point, BlockFailure.HeaderDiffers)
+    val decoder = WireMux.Decoder.create().fold(e => fail(e.toString), identity)
+    for
+      delivered <- Deferred[IO, Unit]
+      finishFirst <- Deferred[IO, Unit]
+      enteredWarm <- Deferred[IO, FiniteDuration]
+      promote <- Deferred[IO, Unit]
+      secondHot <- Deferred[IO, Unit]
+      activations <- Ref.of[IO, Int](0)
+      seen <- Ref.of[IO, Vector[InboundEvent]](Vector.empty)
+      wire <- Ref.of[IO, (WireMux.Decoder, Vector[Int])]((decoder, Vector.empty))
+      given RepromotionWait[IO] = new RepromotionWait[IO]:
+        def delay(duration: FiniteDuration): IO[Unit] =
+          enteredWarm.complete(duration).void *> promote.get
+      pool <- BlockPool.create[IO]
+      follow: InboundGovernor.Follow[IO] = (peer: Peer[IO]) =>
+        (node: Raise[IO, NodeError]) ?=>
+          Handle.allow[PeerError] {
+            for
+              activation <- activations.getAndUpdate(_ + 1)
+              intersection <- peer.intersect(Vector(Point.Origin))
+              _ <- IO(assertEquals(intersection, Some(Point.Origin)))
+              _ <- if activation == 0 then
+                for
+                  update <- peer.next
+                  announced <- update match
+                    case SyncEvent.RollForward(value, _) => IO.pure(value)
+                    case other => IO(fail(s"expected the first actual header, got $other"))
+                  raw <- peer.fetch(announced)
+                  _ <- IO(assertEquals(raw, forged.raws.head))
+                  _ <- delivered.complete(()) *> finishFirst.get
+                  missing <- peer.intersect(Vector(forged.headers.last.point))
+                  _ <- IO(assertEquals(missing, None))
+                  // The real failed FindIntersect has sent MsgDone. This is the same normal
+                  // NoMoreIntersection result the native client returns after draining.
+                  _ <- summon[Raise[IO, PeerError]].raise[PeerError, Unit](PeerError.NoIntersection)
+                yield ()
+              else secondHot.complete(()).void *> IO.never[Unit]
+            yield ()
+          }.rescue(error => node.raise[NodeError, Unit](error))
+      us <- local(
+        pool = Some(pool),
+        followSession = Some(follow),
+        keepAliveInterval = 20.millis,
+        events = Some(new InboundEvents[IO]:
+          def emit(remote: String, event: InboundEvent) = seen.update(_ :+ event)
+        )
+      )
+      server <- serving(forged.raws.take(1))
+      observe = (bytes: fs2.Chunk[Byte]) => wire.update { (before, cookies) =>
+        val (after, sdus) =
+          before.feed(Bytes.fromArray(bytes.toArray)).fold(e => fail(e.toString), identity)
+        val requests = sdus.filter(s =>
+          s.protocol == Protocols.KeepAlive && s.direction == WireMux.Direction.Initiator
+        ).flatMap(s =>
+          KeepAlive.decode(KeepAlive.State.Client, KeepAlive.Role.Client, s.payload).fold(
+            e => fail(e.toString),
+            {
+              case KeepAlive.Message.Request(cookie) => Vector(cookie.value)
+              case other => fail(s"unexpected client message $other")
+            }
+          )
+        )
+        after -> (cookies ++ requests)
+      }
+      _ <- connect(Some(server), us, observe) { _ =>
+        for
+          _ <- delivered.get.timeout(5.seconds)
+          old <- us.governor.cachedSource(remote).flatMap(_.liftTo[IO](
+            new AssertionError("the delivering hot activation has no active source key")
+          ))
+          original <- pool.session.use(_.take(header.hash)).flatMap(_.liftTo[IO](
+            new AssertionError("the actual delivered original was not retained")
+          ))
+          _ <- finishFirst.complete(())
+          delay <- enteredWarm.get.timeout(5.seconds)
+          _ <- IO(assertEquals(delay, 120.seconds))
+          warmSource <- us.governor.cachedSource(remote)
+          _ <- IO(assertEquals(warmSource, None))
+          _ <- promote.complete(())
+          _ <- secondHot.get.timeout(5.seconds)
+          current <- us.governor.cachedSource(remote).flatMap(_.liftTo[IO](
+            new AssertionError("the successor hot activation has no active source key")
+          ))
+          before <- wire.get.map(_._2.size)
+          _ <- pool.session.use(_.distrust(original.origin, refusal))
+          _ <- eventually("the same bearer's KeepAlive survives old-hot punishment")(
+            wire.get.map(_._2.size)
+          )(_ > before)
+          active <- us.governor.cachedSource(remote)
+          table <- us.manager.snapshot
+          events <- seen.get
+          sessions <- us.governor.sessions
+          intersections <- server.intersections.get
+          fetched <- server.ranges.get
+          _ <- IO {
+            assert(current.generation > old.generation)
+            assertEquals(active, Some(current))
+            assertEquals(table.counters.inbound, 1)
+            assertEquals(intersections, 3)
+            assert(fetched.nonEmpty)
+            assertEquals(sessions.head.ended, None)
+            assertEquals(
+              events.collect { case event: InboundEvent.CachedBlockRejected => event },
+              Vector(InboundEvent.CachedBlockRejected(refusal, old.generation, false))
+            )
+          }
+        yield ()
+      }
+      cookies <- wire.get.map(_._2)
+    yield assertEquals(cookies, cookies.indices.toVector)
   }
 
   test("an inbound validation refusal invalidates recovered originals through the counted peer") {
