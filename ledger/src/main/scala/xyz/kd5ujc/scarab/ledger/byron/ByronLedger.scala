@@ -24,6 +24,7 @@ enum ByronError:
   case WrongSignature(input: TxIn)
   case WrongKey(input: TxIn)
   case FeeTooSmall(min: BigInt, actual: BigInt)
+  case FeeCalculation(cause: TxFeePolicy.Error)
   case LovelaceOutOfRange(what: ByronError.LovelaceContext)
   case NetworkMagicMismatch(expected: Option[Long], actual: Option[Long])
   case UnknownAttributes(what: ByronError.AttributeOwner)
@@ -43,6 +44,7 @@ enum ByronError:
     case WitnessCount(i, w)          => s"$i inputs but $w witnesses"
     case WrongSignature(i) => s"witness signature of ${i.id.hex.take(16)}#${i.index} rejected"
     case WrongKey(i) => s"witness key does not match the address of ${i.id.hex.take(16)}#${i.index}"
+    case FeeCalculation(cause)      => s"minimum fee calculation failed: ${cause.message}"
     case FeeTooSmall(m, a)          => s"fee $a is below the minimum $m"
     case LovelaceOutOfRange(w)      => s"lovelace out of range (${w.label})"
     case NetworkMagicMismatch(e, a) => s"output network magic $a, expected $e"
@@ -394,7 +396,9 @@ object ByronLedger:
         ByronError.LovelaceOutOfRange(ByronError.LovelaceContext.Fee)
       )
       allRedeem = spent.forall(o => ByronAddress.decode(o.address).exists(_.isRedeem))
-      minFee = if allRedeem then BigInt(0) else params.txFeePolicy.minimumFee(aux.raw.size)
+      minFee <-
+        if allRedeem then Right(BigInt(0))
+        else params.txFeePolicy.minimumFee(aux.raw.size).leftMap(ByronError.FeeCalculation(_))
       _ <- Either.cond(
         balanceIn - balanceOut >= minFee,
         (),

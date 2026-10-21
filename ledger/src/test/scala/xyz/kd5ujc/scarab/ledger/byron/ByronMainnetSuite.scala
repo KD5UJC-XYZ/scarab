@@ -139,7 +139,7 @@ class ByronMainnetSuite extends FunSuite:
     allTxs.tail.foreach { t =>
       val in = t.tx.inputs.distinct.map(utxo(_).value).sum
       val fee = in - t.tx.outputs.map(_.value).sum
-      assert(fee >= genesis.params.txFeePolicy.minimumFee(t.raw.size), s"${t.tx.id.hex}")
+      assert(genesis.params.txFeePolicy.minimumFee(t.raw.size).exists(fee >= _), s"${t.tx.id.hex}")
     }
   }
 

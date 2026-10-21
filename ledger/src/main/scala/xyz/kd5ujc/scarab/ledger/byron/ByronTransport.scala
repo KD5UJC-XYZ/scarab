@@ -176,7 +176,7 @@ object ByronTransport:
       _ <- fixedBytes(fields(3), 64, "vote signature")
     yield ()
 
-  private def parameters(node: Node): Result[Unit] =
+  private[byron] def parameters(node: Node): Result[Unit] =
     tuple(node, 14, "protocol parameters").flatMap(_.zipWithIndex.traverse_ { (value, index) =>
       maybe(value, "parameter update") { item =>
         index match
@@ -208,16 +208,8 @@ object ByronTransport:
       inner <- nested(fields(1), "linear fee")
       coefficients <- tuple(inner, 2, "linear fee")
       a <- integer(coefficients(0), "fee summand Nano")
-      _ <- integer(coefficients(1), "fee multiplier Nano")
-      // TxSizeLinear.hs:70–79 rounds signed Nano to Word64 (including modular conversion),
-      // then calls mkLovelace. This is a decoder check, not a fee-policy semantic restriction.
-      unit = BigInt(1000000000)
-      quotient = a / unit
-      remainder = (a % unit).abs * 2
-      rounded = quotient + (if remainder > unit || (remainder == unit && quotient % 2 != 0) then
-                              BigInt(a.signum)
-                            else BigInt(0))
-      _ <- lovelace(rounded.mod(BigInt(1) << 64))
+      b <- integer(coefficients(1), "fee multiplier Nano")
+      _ <- TxFeePolicy.fromNano(a, b)
     yield ()
 
   private def portion(node: Node): Result[Unit] =

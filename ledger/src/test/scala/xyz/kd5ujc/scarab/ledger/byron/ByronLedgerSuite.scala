@@ -78,7 +78,8 @@ class ByronLedgerSuite extends ScalaCheckSuite:
   private def apply(a: ByronTxAux, u: Map[TxIn, ByronOut] = utxo0) =
     ByronLedger.applyTx(config, params, u, a)
 
-  private def minFee(a: ByronTxAux): Long = params.txFeePolicy.minimumFee(a.raw.size).toLong
+  private def minFee(a: ByronTxAux): Long =
+    params.txFeePolicy.minimumFee(a.raw.size).fold(e => fail(e.message), _.toLong)
 
   /** A payment from Alice that pays exactly the minimum fee (the size depends on the fee, so the
     * amount is found by iterating once).
@@ -278,10 +279,24 @@ class ByronLedgerSuite extends ScalaCheckSuite:
   }
 
   test("minimum fee: 155381 + ceil(43.946 * size) lovelace") {
-    assertEquals(params.txFeePolicy.minimumFee(0), BigInt(155381))
-    assertEquals(params.txFeePolicy.minimumFee(1), BigInt(155381 + 44))
-    assertEquals(params.txFeePolicy.minimumFee(1000), BigInt(155381 + 43946))
-    assertEquals(params.txFeePolicy.minimumFee(1001), BigInt(155381 + 43946 + 44))
+    assertEquals(params.txFeePolicy.minimumFee(0), Right(BigInt(155381)))
+    assertEquals(params.txFeePolicy.minimumFee(1), Right(BigInt(155381 + 44)))
+    assertEquals(params.txFeePolicy.minimumFee(1000), Right(BigInt(155381 + 43946)))
+    assertEquals(params.txFeePolicy.minimumFee(1001), Right(BigInt(155381 + 43946 + 44)))
+  }
+
+  test("linear fee arithmetic failures retain their typed cause through transaction admission") {
+    val transaction = spendAlice(Seq(bobAddr -> 1000000, aliceAddr -> 50000000))
+    val impossible =
+      params.copy(txFeePolicy = TxFeePolicy(ByronLedger.MaxLovelace * 1000000000, 1000000000))
+    assertEquals(
+      ByronLedger.applyTx(config, impossible, utxo0, transaction),
+      Left(
+        ByronError.FeeCalculation(
+          TxFeePolicy.Error.Overflow(ByronLedger.MaxLovelace + transaction.raw.size)
+        )
+      )
+    )
   }
 
   property("value is conserved: inputs = outputs + fee, and the UTxO total falls by the fee") {
@@ -298,7 +313,7 @@ class ByronLedgerSuite extends ScalaCheckSuite:
           val before = utxo0.values.map(_.value).sum
           val after = next.values.map(_.value).sum
           val paid = BigInt(100000000L) - tx.tx.outputs.map(_.value).sum
-          after == before - paid && paid >= params.txFeePolicy.minimumFee(tx.raw.size)
+          after == before - paid && params.txFeePolicy.minimumFee(tx.raw.size).exists(paid >= _)
         case Left(ByronError.FeeTooSmall(min, actual)) => actual < min
         case Left(other)                               => fail(other.message)
     }
