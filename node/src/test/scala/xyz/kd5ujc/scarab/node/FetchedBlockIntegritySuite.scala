@@ -82,16 +82,20 @@ class FetchedBlockIntegritySuite extends FunSuite:
 
   test("Byron main delegation proof is a transport check over original payload bytes") {
     val (block, raw) = originals
-      .find { (block, raw) =>
-        block.era == Era.Byron && !block.header.isBoundary &&
-        array(array(parts(raw)(1))(2)).isEmpty
-      }
-      .getOrElse(fail("missing empty Byron delegation payload"))
-    val delegation = array(parts(raw)(1))(2)
-    val changed = replace(raw, delegation, alternateEmpty(delegation))
-    assertEquals(Block.decode(changed, epochSlots).map(_.header.raw), Right(block.header.raw))
+      .find { (block, _) => block.era == Era.Byron && !block.header.isBoundary }
+      .getOrElse(fail("missing Byron main block"))
+    val delegationProof = array(array(parts(raw)(0))(2))(2)
+    val changedHash = delegationProof.value match
+      case Value.ByteString(value) => Bytes(value.value.map(b => (b ^ 1).toByte))
+      case other                  => fail(s"expected delegation hash, got $other")
+    val changed = replace(raw, delegationProof, encoded(Value.ByteString(changedHash)))
+    val decoded = Block.decode(changed, epochSlots).fold(e => fail(e.message), identity)
+    assertEquals(parts(changed)(1).original, parts(raw)(1).original)
+    assertNotEquals(decoded.header.raw, block.header.raw)
+    // Changing the header proof leaves the body natively decodable. Like the size-only case,
+    // this checks the transport predicate and makes no signature/admission claim.
     assertEquals(
-      BlockTransport.check(block.header, changed),
+      BlockTransport.check(decoded.header, changed),
       Left(
         BlockTransportError.ByronBodyProof(ByronError.ProofMismatch(ByronError.Proof.Delegation))
       )
