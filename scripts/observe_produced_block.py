@@ -68,11 +68,8 @@ def observe(args):
     forger = inspect_running(args.forger)
     require(forger['Config']['Image'] == args.image_repository + '@' + manifest['image']['manifest']['digest'],
             'running forger was not started from the exact final OCI digest')
-    running_image = decode_json(docker('image', 'inspect', '--format',
-                                      '{"Id":{{json .Id}},"RepoDigests":{{json .RepoDigests}}}', forger['Image']))
-    require(running_image['Id'] == manifest['image']['configDigest']
-            and args.image_repository + '@' + manifest['image']['manifest']['digest'] in running_image.get('RepoDigests', []),
-            'running image content differs from final candidate')
+    from publication_image import bind_image, expected_image
+    bind_image(forger['Image'], expected_image(args.candidate, manifest))
     require('--forge' in forger.get('Args', []) and forger.get('Path') == 'java', 'existing Scarab forge process required')
     with tempfile.TemporaryDirectory(prefix='scarab-public-observation-') as temporary:
         copied = Path(temporary) / 'scarab.jar'

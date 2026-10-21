@@ -120,7 +120,7 @@ def jar_smoke(artifact, source):
                 "downloaded JAR portable native/Plutus checks failed")
 
 
-def docker_image_smoke(reference, expected_config, jar_hash, tools, output, anonymous, jdk_image, source):
+def docker_image_smoke(reference, expected_oci, jar_hash, tools, output, anonymous, jdk_image, source):
     require(re.fullmatch(r"ghcr\.io/[a-z0-9_.-]+/[a-z0-9_./-]+@sha256:[0-9a-f]{64}", reference), "immutable GHCR reference required")
     environment = dict(os.environ)
     if anonymous:
@@ -131,17 +131,16 @@ def docker_image_smoke(reference, expected_config, jar_hash, tools, output, anon
         environment.pop("DOCKER_AUTH_CONFIG", None)
     subprocess.run(["docker", "pull", "--platform", "linux/amd64", reference], check=True, env=environment,
                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=600)
-    return image_runtime_smoke(reference, expected_config, jar_hash, output, jdk_image, source, environment)
+    return image_runtime_smoke(reference, expected_oci, jar_hash, output, jdk_image, source, environment)
 
 
-def image_runtime_smoke(reference, expected_config, jar_hash, output, jdk_image, source, environment=None):
+def image_runtime_smoke(reference, expected_oci, jar_hash, output, jdk_image, source, environment=None):
     """Exercise immutable local content; publication calls this only after authenticated digest pull."""
     require(re.fullmatch(r'sha256:[0-9a-f]{64}|ghcr\.io/[a-z0-9_.-]+/[a-z0-9_./-]+@sha256:[0-9a-f]{64}', reference),
             'immutable image identity required for runtime verification')
     environment = dict(os.environ) if environment is None else environment
-    inspected = decode_json(subprocess.check_output(["docker", "image", "inspect", reference], env=environment, text=True))[0]
-    require(inspected["Id"] == expected_config and inspected["Architecture"] == "amd64" and inspected["Os"] == "linux",
-            "pulled image config/platform differs from candidate")
+    from publication_image import bind_image
+    bind_image(reference, expected_oci, output / "docker-runtime-binding.json", environment)
     identifier = subprocess.check_output(["docker", "create", "--name", "scarab-release-verify-" + uuid.uuid4().hex[:12],
                                           reference], env=environment, text=True).strip()
     try:
@@ -234,7 +233,8 @@ def verify(args):
                     "-v", f"{scripts}:/verifier:ro", "-v", f"{candidate_root}:/candidate:ro", "-w", "/verifier",
                     args.jdk_image, "python3", "verify_published_release.py", "--jar-smoke",
                     "/candidate/" + jar["file"]["path"], "--source", args.source], check=True)
-    docker_image_smoke(reference, manifest["image"]["configDigest"], jar["file"]["sha256"], args.tools, root, public, args.jdk_image, args.source)
+    from publication_image import expected_image
+    docker_image_smoke(reference, expected_image(candidate_root, manifest), jar["file"]["sha256"], args.tools, root, public, args.jdk_image, args.source)
     result = {"schemaVersion": 1, "status": "verified", "phase": args.phase, "repository": args.repository,
               "tag": args.tag, "sourceCommit": args.source, "version": identity["version"], "channel": args.channel,
               "candidateSha256": args.candidate_sha256,
