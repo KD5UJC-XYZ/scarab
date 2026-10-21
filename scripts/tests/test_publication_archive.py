@@ -53,6 +53,25 @@ class PublicationArchiveTest(unittest.TestCase):
         second = self.root / 'second.tar'
         self.assertEqual(transport.pack(self.candidate, second)['sha256'], descriptor['sha256'])
 
+    def test_original_libstdc_plus_plus_legal_package_path_survives_roundtrip(self):
+        relative = Path('evidence/legal/usr/share/doc/libstdc++6/copyright')
+        original = self.candidate / relative
+        original.parent.mkdir(parents=True)
+        original.write_bytes(b'Public package legal evidence mechanism control.\n')
+        transport.pack(self.candidate, self.archive)
+        restored = self.root / 'plus-restored'
+        transport.unpack(self.archive, restored)
+        self.assertEqual((restored / relative).read_bytes(), original.read_bytes())
+        self.assertEqual(candidate_manifest.validate(restored, require_release=True), self.manifest)
+
+    def test_plus_does_not_allow_traversal_absolute_backslash_or_empty_components(self):
+        for index, name in enumerate(['libstdc++6/../escape', '../libstdc++6/copyright', '/libstdc++6',
+                                      r'libstdc++6\copyright', 'libstdc++6//copyright', 'libstdc++6/./copyright']):
+            self.write_tar([(name, tarfile.REGTYPE, b'x')])
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                transport.unpack(self.archive, self.root / f'plus-invalid-{index}')
+        self.assertFalse((self.root / 'escape').exists())
+
     def test_missing_nested_independent_proof_files_fail_actual_validator(self):
         descriptor = transport.pack(self.candidate, self.archive)
         self.assertGreater(descriptor['size'], 0)

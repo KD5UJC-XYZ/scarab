@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 """Bounded whole-candidate transport; signature verification belongs before unpack()."""
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+import re
 import stat
 import tarfile
 
-from publication_common import file_digest, require, safe_path
+from publication_common import file_digest, require
 
 MAX_BYTES = 12 * 1024 ** 3
 MAX_FILE_BYTES = 8 * 1024 ** 3
@@ -15,7 +16,13 @@ FORBIDDEN = {'.git', '.cache', '__pycache__', 'node_modules'}
 
 
 def checked_name(root, name):
-    path = safe_path(root, name)
+    # Archive members preserve package paths such as libstdc++6; they are not URL asset names.
+    require(isinstance(name, str), 'artifact path must be text')
+    relative = PurePosixPath(name)
+    require(name and not relative.is_absolute() and all(part not in {'', '.', '..'} for part in name.split('/'))
+            and all(re.fullmatch(r'[A-Za-z0-9_.+-]+', part) for part in relative.parts), 'unsafe artifact path')
+    path = Path(root).joinpath(*relative.parts)
+    require(not any(parent.is_symlink() for parent in [path, *path.parents]), 'symlink artifact path')
     require(not FORBIDDEN.intersection(Path(name).parts), 'candidate transport contains Git or cache files')
     return path
 
