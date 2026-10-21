@@ -10,10 +10,18 @@ import subprocess
 
 IDENTITY_FILE = ".scarab-build-identity.properties"
 NUMBER = r"(?:0|[1-9][0-9]*)"
-VERSION = re.compile(rf"{NUMBER}\.{NUMBER}\.{NUMBER}(?:-beta\.({NUMBER}))?")
+VERSION = re.compile(rf"{NUMBER}\.{NUMBER}\.{NUMBER}(?:-(?P<prerelease>alpha|beta|rc)\.(?P<ordinal>{NUMBER}))?")
 COMMIT = re.compile(r"[0-9a-f]{40}")
 KEYS = {"schemaVersion", "mode", "version", "gitCommit", "gitTag", "gitTagObject",
         "channel", "sourceRef", "sourceRefCommit"}
+
+
+def channel_for_version(version: str) -> str:
+    """Map an exact, unprefixed release version to its distribution channel."""
+    match = VERSION.fullmatch(version)
+    if not match:
+        raise ValueError("release version requires canonical stable, alpha.N, beta.N or rc.N SemVer")
+    return {None: "prod", "alpha": "alpha", "beta": "beta", "rc": "preprod"}[match.group("prerelease")]
 
 
 def git(repo, *args):
@@ -32,10 +40,9 @@ def validate(identity):
             raise ValueError("development identity cannot claim a release")
     elif identity["mode"] == "release":
         version = identity["version"]
-        match = VERSION.fullmatch(version)
-        if not match or identity["gitTag"] != "v" + version:
+        channel = channel_for_version(version)
+        if identity["gitTag"] != "v" + version:
             raise ValueError("release version must equal the exact selected SemVer tag")
-        channel = "beta" if match.group(1) is not None else "prod"
         if identity["channel"] != channel:
             raise ValueError("release tag and channel disagree")
         if not COMMIT.fullmatch(identity["gitTagObject"]) or identity["sourceRefCommit"] != commit:
@@ -97,7 +104,7 @@ def main():
     parser.add_argument("--repo", type=Path, default=Path.cwd())
     parser.add_argument("--revision", default="HEAD")
     parser.add_argument("--release-tag")
-    parser.add_argument("--channel", choices=["beta", "prod"])
+    parser.add_argument("--channel", choices=["alpha", "beta", "preprod", "prod"])
     parser.add_argument("--expected-commit")
     parser.add_argument("--expected-tag-object")
     parser.add_argument("--source-ref")

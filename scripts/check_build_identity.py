@@ -34,10 +34,16 @@ def main():
                   channel="prod", sourceRef="refs/heads/release/prod", sourceRefCommit=full_commit)
     beta = dict(stable, version="1.2.3-beta.1", gitTag="v1.2.3-beta.1", channel="beta",
                 sourceRef="refs/heads/release/beta")
+    alpha = dict(stable, version="1.2.3-alpha.0", gitTag="v1.2.3-alpha.0", channel="alpha",
+                 sourceRef="refs/heads/release/alpha")
+    preprod = dict(stable, version="1.2.3-rc.0", gitTag="v1.2.3-rc.0", channel="preprod",
+                   sourceRef="refs/heads/release/preprod")
     cases = [
         ("development-export", common, full_commit, common["version"], None),
         ("stable-export", stable, full_commit, "1.2.3", None),
         ("beta-export", beta, full_commit, "1.2.3-beta.1", None),
+        ("alpha-export", alpha, full_commit, "1.2.3-alpha.0", None),
+        ("preprod-export", preprod, full_commit, "1.2.3-rc.0", None),
         ("workspace-without-git-executable", None, full_commit,
          "0.0.0-dev.g" + full_commit + ".workspace", None),
         ("archive-without-identity", None, None, None, "source has neither Git identity"),
@@ -51,6 +57,17 @@ def main():
         ("missing-field", {key: value for key, value in stable.items() if key != "gitTag"}, full_commit,
          None, "incomplete frozen build identity"),
     ]
+    for identity, wrong_channel in [(alpha, "beta"), (beta, "preprod"), (preprod, "prod"), (stable, "alpha")]:
+        channel = identity["channel"]
+        cases.extend([
+            (channel + "-cross-channel", dict(identity, channel=wrong_channel), full_commit, None,
+             "release tag, channel or approved source metadata disagree"),
+            (channel + "-cross-source", dict(identity, sourceRef="refs/heads/release/" + wrong_channel),
+             full_commit, None, "release tag, channel or approved source metadata disagree"),
+        ])
+    for invalid in ["1.2.3-alpha.01", "1.2.3-rc.01", "1.2.3-preprod.1"]:
+        cases.append(("invalid-" + invalid, dict(preprod, version=invalid, gitTag="v" + invalid),
+                      full_commit, None, "release identity requires exact SemVer"))
     if args.case:
         known = {case[0] for case in cases}
         if not set(args.case) <= known:

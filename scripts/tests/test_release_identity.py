@@ -28,8 +28,8 @@ class ReleaseIdentityTests(unittest.TestCase):
             target.write_bytes((actual / name).read_bytes())
         self.git("add", "project", "scripts", "build.sbt")
         self.commit = self.advance("first")
-        self.git("branch", "release/prod")
-        self.git("branch", "release/beta")
+        for channel in ["alpha", "beta", "preprod", "prod"]:
+            self.git("branch", "release/" + channel)
 
     def git(self, *args):
         return version.git(self.repo, *args)
@@ -41,9 +41,10 @@ class ReleaseIdentityTests(unittest.TestCase):
         return self.git("rev-parse", "HEAD")
 
     def release(self, tag="v1.2.3", **overrides):
-        inputs = dict(tag=tag, channel="beta" if "-beta." in tag else "prod",
+        channel = version.channel_for_version(tag[1:])
+        inputs = dict(tag=tag, channel=channel,
                       expected_commit=self.commit, expected_tag_object=self.git("rev-parse", "refs/tags/" + tag),
-                      source_ref="refs/heads/release/" + ("beta" if "-beta." in tag else "prod"))
+                      source_ref="refs/heads/release/" + channel)
         inputs.update(overrides)
         return version.resolve(self.repo, self.commit, **inputs)
 
@@ -56,7 +57,7 @@ class ReleaseIdentityTests(unittest.TestCase):
         self.assertNotEqual(first["version"], version.resolve(self.repo)["version"])
 
     def test_exact_lightweight_and_annotated_tags_derive_selected_versions(self):
-        for tag in ["v1.2.3", "v1.2.3-beta.1"]:
+        for tag in ["v1.2.3-alpha.0", "v1.2.3-beta.1", "v1.2.3-rc.2", "v1.2.3"]:
             with self.subTest(tag=tag):
                 self.git("tag", "-a", tag, "-m", "local control")
                 identity = self.release(tag)
@@ -66,6 +67,61 @@ class ReleaseIdentityTests(unittest.TestCase):
         self.assertNotEqual(self.release("v1.2.3")["version"], self.release("v1.2.3-beta.1")["version"])
         self.git("tag", "v2.0.0")
         self.assertEqual(self.release("v2.0.0")["gitTagObject"], self.commit)
+
+    def test_version_parser_maps_all_four_channels_without_loosening_legacy_versions(self):
+        expected = {"1.2.3-alpha.0": "alpha", "1.2.3-beta.0": "beta",
+                    "1.2.3-rc.0": "preprod", "1.2.3": "prod", "0.0.0": "prod",
+                    "10.20.30-beta.123": "beta"}
+        for value, channel in expected.items():
+            with self.subTest(version=value):
+                self.assertEqual(version.channel_for_version(value), channel)
+                self.assertIsNotNone(version.VERSION.fullmatch(value))
+        invalid = ["v1.2.3", "1.2", "01.2.3", "1.02.3", "1.2.03", "1.2.3-alpha",
+                   "1.2.3-alpha.01", "1.2.3-beta.01", "1.2.3-rc.01", "1.2.3-preprod.1",
+                   "1.2.3-prod.1", "1.2.3-dev.1", "1.2.3-RC.1", "1.2.3-rc.-1",
+                   "1.2.3-rc.1.2", "1.2.3+build", "1.2.3\n", " 1.2.3", ""]
+        for value in invalid:
+            with self.subTest(version=value), self.assertRaises(ValueError):
+                version.channel_for_version(value)
+            self.assertIsNone(version.VERSION.fullmatch(value))
+
+    def test_all_channels_reject_cross_channel_and_source_ref_claims(self):
+        cases = [("v1.2.3-alpha.0", "alpha"), ("v1.2.3-beta.1", "beta"),
+                 ("v1.2.3-rc.2", "preprod"), ("v1.2.3", "prod")]
+        for tag, channel in cases:
+            self.git("tag", tag)
+            self.git("update-ref", "refs/remotes/origin/release/" + channel, self.commit)
+            with self.subTest(tag=tag):
+                local = self.release(tag)
+                remote = self.release(tag, source_ref="refs/remotes/origin/release/" + channel)
+                self.assertEqual(local["channel"], channel)
+                self.assertEqual(remote["channel"], channel)
+                self.assertEqual(remote["version"], tag[1:])
+            for wrong in [value for _, value in cases if value != channel]:
+                with self.subTest(tag=tag, wrong_channel=wrong), self.assertRaisesRegex(ValueError, "channel disagree"):
+                    self.release(tag, channel=wrong)
+                for prefix in ["refs/heads/", "refs/remotes/origin/"]:
+                    with self.subTest(tag=tag, wrong_ref=prefix + wrong), self.assertRaisesRegex(ValueError, "source ref"):
+                        self.release(tag, source_ref=prefix + "release/" + wrong)
+
+    def test_all_four_export_identities_survive_both_immutable_copies(self):
+        cases = [("v1.2.3-alpha.0", "alpha"), ("v1.2.3-beta.1", "beta"),
+                 ("v1.2.3-rc.2", "preprod"), ("v1.2.3", "prod")]
+        for tag, channel in cases:
+            self.git("tag", tag)
+            with self.subTest(channel=channel):
+                export = self.repo.parent / (channel + "-export")
+                repro.export_source(self.repo, self.commit, export, tag=tag, channel=channel,
+                                    expected_commit=self.commit, expected_tag_object=self.commit,
+                                    source_ref="refs/heads/release/" + channel)
+                manifest = json.loads((export / repro.MANIFEST).read_text())
+                self.assertEqual(manifest["buildIdentity"]["version"], tag[1:])
+                self.assertEqual(manifest["buildIdentity"]["channel"], channel)
+                for child in ["first", "second"]:
+                    destination = self.repo.parent / (channel + "-" + child)
+                    repro.copy_source(export, destination, manifest)
+                    self.assertEqual((destination / version.IDENTITY_FILE).read_bytes(),
+                                     (export / version.IDENTITY_FILE).read_bytes())
 
     def test_release_rejects_unselected_or_incomplete_authority(self):
         self.git("tag", "v1.2.3")
@@ -128,7 +184,7 @@ class ReleaseIdentityTests(unittest.TestCase):
             self.release()
 
     def test_semver_is_exact_and_not_git_describe_or_nearby_beta(self):
-        for tag in ["v01.2.3", "v1.2", "1.2.3", "v1.2.3-rc.1", "v1.2.3-beta.01", "v1.2.3+build"]:
+        for tag in ["v01.2.3", "v1.2", "1.2.3", "v1.2.3-rc.01", "v1.2.3-beta.01", "v1.2.3+build"]:
             with self.subTest(tag=tag), self.assertRaises(ValueError):
                 version.resolve(self.repo, tag=tag, channel="prod", expected_commit=self.commit,
                                 expected_tag_object=self.commit, source_ref="refs/heads/release/prod")

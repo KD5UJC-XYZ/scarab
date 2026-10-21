@@ -11,7 +11,7 @@ object BuildIdentity {
   val fileName = ".scarab-build-identity.properties"
   private val number = "(?:0|[1-9][0-9]*)"
   private val releaseVersion =
-    (number + "\\." + number + "\\." + number + "(?:-beta\\.(" + number + "))?").r
+    (number + "\\." + number + "\\." + number + "(?:-(alpha|beta|rc)\\.(" + number + "))?").r
   private val commitPattern = "[0-9a-f]{40}".r
   private val keys = Set(
     "schemaVersion",
@@ -79,8 +79,12 @@ object BuildIdentity {
           )
         case "release" =>
           val channel = version match {
-            case releaseVersion(beta) => if (beta == null) "prod" else "beta"
-            case _                    => sys.error("release identity requires exact SemVer")
+            case releaseVersion(stage, _) =>
+              Option(stage).fold("prod") {
+                case "rc"  => "preprod"
+                case value => value
+              }
+            case _ => sys.error("release identity requires exact SemVer")
           }
           require(
             field("gitTag") == "v" + version && field("channel") == channel &&
