@@ -42,6 +42,13 @@ selection is retriggered, and how upstream work and disconnections are coordinat
   tip. Older databases populate this store from their known selected suffix without
   manufacturing missing fork history. Recovered bodies have their own source case, rather
   than borrowing a live session identity. Collection follows a durable immutable boundary.
+- **Source attribution:** an original body's punishment belongs to its adding BlockFetch run,
+  not a peer address or the lifetime of its TCP connection. The native client captures its
+  thread at `ClientInterface.hs:192–193`; BlockFetch is a hot protocol and each activation
+  starts a fresh run (`NodeToNode.hs:252–272`, `PeerStateActions.hs:979,1000–1016,1164–1195`).
+  Retain the typed refusal after that run ends, without terminating a subsequent run on
+  either the same bearer or a replacement connection. Register attribution before a run
+  can publish bodies and retire its abort callback after its hot protocols have drained.
 
 ## Mechanisms and resource policy
 
