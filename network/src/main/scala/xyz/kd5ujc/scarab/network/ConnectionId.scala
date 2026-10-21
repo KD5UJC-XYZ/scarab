@@ -57,7 +57,7 @@ object ConnectionId:
           .wire(address)
           .toRight(ConnectionIdentityError.UnsupportedAddressLength(address.host.toBytes.length))
           .map {
-            case PeerSharing.Address.V4(word, _) => Inet4(port, word)
+            case PeerSharing.Address.V4(word, _)       => Inet4(port, word)
             case PeerSharing.Address.V6(a, b, c, d, _) =>
               // Default TCP flowInfo is zero in both runtimes; the native real-socket corpus
               // verifies this. Explicit endpoints retain nonzero flowInfo for ordering tests.
