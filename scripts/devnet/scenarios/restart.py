@@ -73,7 +73,8 @@ def restart(args):
     up(args)
     failures, stops = [], []
     for round_ in (1, 2):
-        before = len(read_log(root / "follower.jsonl")[0])
+        prior_events, prior_other = read_log(root / "follower.jsonl")
+        before, other_before = len(prior_events), len(prior_other)
         process = _start(args)
         if not _wait_for(root, "extended", 120, before):
             failures.append(f"round {round_}: no block followed within 120 s")
@@ -82,7 +83,18 @@ def restart(args):
             break
         time.sleep(args.seconds)
         elapsed = _stop(args.name, process)
-        fresh = read_log(root / "follower.jsonl")[0][before:]
+        events, other = read_log(root / "follower.jsonl")
+        fresh = events[before:]
+        # Match follower_problem's diagnostic policy: read_log already excludes expected SLF4J
+        # startup output and CPU-starvation warnings. Keep the original transcript untouched.
+        failures.extend(
+            f"round {round_}: follower error: {event.get('message', event)}"
+            for event in fresh if event["event"] == "error"
+        )
+        failures.extend(
+            f"round {round_}: unexpected follower output: {line[:200]}"
+            for line in other[other_before:]
+        )
         stops.append(round(elapsed, 1))
         problem = stop_problem(elapsed, any(e["event"] == "shutdownSnapshot" for e in fresh))
         if problem:
