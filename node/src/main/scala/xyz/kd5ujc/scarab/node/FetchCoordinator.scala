@@ -276,7 +276,7 @@ final class FetchCoordinator[F[_]: Async] private (
     def tipOf(peer: PeerState[F]): Option[Header] =
       chainOf(peer).flatMap(_.headers.lastOption).orElse(peer.tip)
     val tips = s.peers.valuesIterator.flatMap(tipOf).toVector
-    val ordered = tips.sortWith((a, b) => compareTips(a, b) < 0)
+    val ordered = CandidateSelection.sort(tips)(compareTips)
     def preference(tip: Option[Header]): Int = tip.fold(0) { h =>
       ordered.indexWhere(other => compareTips(h, other) == 0).max(0)
     }
@@ -541,10 +541,10 @@ object FetchCoordinator:
       )
     )
 
-  private def compareTips(a: Header, b: Header): Int =
+  private[node] def compareTips(a: Header, b: Header): Int =
     // ClientInterface.hs:286–291 uses compareAnchoredFragments, hence raw Ord;
     // configured (including cross-era) eligibility is checked by FetchCandidates.
-    CandidateSelection.compareTips(b, a)
+    CandidateSelection.compareTips(a, b)
 
   def create[F[_]: Async](
       config: BlockFetchPolicy.Config = BlockFetchPolicy.Config(),

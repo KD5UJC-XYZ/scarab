@@ -22,6 +22,21 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
     Some(Bytes.wrap(Array((n - 1).toByte)))
   )
 
+  test("native fetch priority ranks equal-height Conway tips beyond the eligibility restriction") {
+    import xyz.kd5ujc.scarab.ledger.{Fixtures, HeaderVrf, VrfCert}
+    import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
+    val first = Fixtures.header(10, 100, None) match
+      case h: Header.Shelley => h.copy(vrf = HeaderVrf.Praos(VrfCert(Bytes(Vector.fill(64)(100.toByte)), Bytes.empty)))
+      case other => fail(s"expected Shelley fixture: $other")
+    val preferred = first.copy(slot = 106, issuerVkey = Bytes(Vector.fill(32)(2.toByte)),
+      vrf = HeaderVrf.Praos(VrfCert(Bytes(Vector.fill(64)(1.toByte)), Bytes.empty))))
+    assert(!ChainSelection.prefersCandidate(ChainSelection.Tiebreaker.Restricted(5),
+      SelectView.of(first), SelectView.of(preferred)))
+    assert(FetchCoordinator.compareTips(first, preferred) > 0)
+    assert(FetchCoordinator.compareTips(preferred, first) < 0)
+    assert(FetchCoordinator.compareTips(first, first) == 0)
+  }
+
   test("a nonpreferred peer waits for global bulk credit and wakes after release") {
     TestControl.executeEmbed {
       FetchCoordinator.create[IO]().flatMap { coordinator =>
