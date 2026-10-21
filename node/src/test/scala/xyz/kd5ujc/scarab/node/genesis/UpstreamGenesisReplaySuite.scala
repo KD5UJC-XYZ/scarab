@@ -71,6 +71,10 @@ class UpstreamGenesisReplaySuite extends FailsOnUncaught:
                 assertEquals(block.header.blockNo, BigInt(block.native.hash.size / 8))
                 assertEquals(block.header.slot, block.native.slot.value)
                 assertEquals(block.header.raw, block.wire.raw)
+                val decoded = xyz.kd5ujc.scarab.ledger.BlockTransport
+                  .check(block.header, block.body)
+                  .fold(e => fail(e.message), identity)
+                assertEquals(decoded.header, block.header)
               assertEquals(block.header.bodySize + block.header.raw.size + 10, BigInt(1000))
               assertEquals(block.body.size, 1000)
             }

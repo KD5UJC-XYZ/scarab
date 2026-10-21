@@ -49,6 +49,16 @@ interpreter writes received original bodies and selected-chain updates through t
 persisted bytes when reopening. It compares complete selected fragments and typed component
 outcomes, retaining failures for integration review.
 
+The runtime adapter maps every original mock point bijectively to a Babbage CBOR envelope. The
+native mock ledger has no transaction or signature predicates: its identity is committed through
+auxiliary metadata and the original segregated body hashes, while all forks retain identical VRF
+selection values. The envelope passes the production transport point/body-hash check. Both its
+actual encoded length and the header-based fetch estimate are exactly the native 1,000-byte cost;
+original slots, block numbers, parent links, schedules and acceptance laws remain unchanged. These
+mock envelopes exercise the original mock-ledger scenario, not Cardano transaction or signature
+admission. Separate tests check transport integrity against all 731 reference-adopted original
+blocks across Byron through Conway, and the private all-era gate exercises ledger admission.
+
 An initial observer-development probe incorrectly bypassed `ctAdjustMaxSize` and failed the mock
 `TestBlock` hash's 100-word encoding limit. The corrected wrapper uses the unchanged upstream test's
 size adjustment. That failed probe is retained in the private evidence receipt; it is not counted as
