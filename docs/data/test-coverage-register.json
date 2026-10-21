@@ -274,16 +274,19 @@
     {
       "id": "legacy-native-comparison-gaps",
       "classification": "known-divergence",
-      "status": "pending-integration",
-      "scope": "Legacy ledger-query byte masks and rounded numeric projection comparisons on the current base.",
-      "assertion": "Four ledger-query answer shapes compare bytes outside explicitly reported masked fields; legacy projection numeric comparisons round to ten decimal digits.",
-      "rationale": "Masked equality and rounded numeric equality do not establish complete native answer equality. Their removal is owned by the separate query/provenance workstream.",
+      "status": "covered",
+      "scope": "Removal of four legacy debug-ledger answer masks and rounded numeric projection comparisons, integrated by PR #285.",
+      "assertion": "Same-point query answers require complete wire-byte equality and valid debug-state framing; native projection comparisons use exact represented values without decimal rounding.",
+      "rationale": "This bounded contract does not establish universal ledger equivalence: projection comparison checks reference fields and digests, permits extra Scala fields and excludes era metadata. Historical masked receipts remain qualified.",
       "owner": "Scarab query/provenance workstream",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/pull/285",
-      "resolution": "Integrate the separately owned query/provenance work, remove the masks/tolerance, and retain unmasked exact native-comparison receipts.",
+      "resolution": "Retain the unmasked private-native receipt on runtime d9d089039 (330/330 query answers, including 20 debug-state pairs) separately from final f7795522 CI (6,915 passed, 17 skipped). Neither receipt establishes the twelve-case external candidate campaign.",
       "evidence": [
         "scripts/devnet/ntcqueries.py",
-        "scripts/oracle/compare.py"
+        "scripts/devnet/ledgercompare.py",
+        "scripts/devnet/scenarios/ntc.py",
+        "scripts/oracle/compare.py",
+        "docs/compatibility.md"
       ],
       "candidateRequired": true
     }
