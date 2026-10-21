@@ -21,12 +21,24 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
   override def munitIOTimeout: FiniteDuration = 60.seconds
 
   private val magic = 42L
+  private val journalCapacity = 8
+  private val pipelineWindow =
+    ChainSyncPipelineDecision.Window.checked(2, 4).fold(error => fail(error.toString), identity)
 
   private lazy val forged: ForgedChain =
-    ForgedChain.forge(5000 until 5060).unsafeRunSync()(using munitIORuntime)
+    ForgedChain.forge(5000 until 5180).unsafeRunSync()(using munitIORuntime)
 
   test("body publication stays bounded while a slow consumer holds a long rolling header stream") {
     IO(forged).flatMap { chain =>
+      val firstPulls = 5
+      val furtherPulls = 20
+      // Keep this resource/backpressure test away from a real finite-tip AwaitReply. The fixture
+      // must exceed consumption plus every header, wire and body-publication credit.
+      val possibleAhead = journalCapacity + pipelineWindow.high + Peer.Depth + 1
+      assert(
+        chain.headers.size > firstPulls + furtherPulls + possibleAhead,
+        s"${chain.headers.size} headers must exceed ${firstPulls + furtherPulls} consumed plus $possibleAhead in flight"
+      )
       TestControl.executeEmbed {
         for
           prepared <- Ref.of[IO, Int](0)
@@ -40,12 +52,12 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
             }
             for
               _ <- peer.intersect(Vector(ChainSync.Point.Origin))
-              _ <- (1 to 5).toList.traverse_(_ => pull)
+              _ <- (1 to firstPulls).toList.traverse_(_ => pull)
               // Virtual time advances after runnable publication work has exhausted its credits.
               _ <- IO.sleep(1.second)
               slow <- prepared.get
               slowTaken <- delivered.get.map(_.size)
-              _ <- (1 to 20).toList.traverse_(_ => pull)
+              _ <- (1 to furtherPulls).toList.traverse_(_ => pull)
               fast <- prepared.get
               received <- delivered.get
             yield (slow, slowTaken, fast, received)
@@ -102,7 +114,12 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
           Handle
             .allow[NetworkError] {
               NodeToNode
-                .over[IO, NtNHeader](ours, magic, NtNHeader.codec, NodeToNode.Settings())
+                .over[IO, NtNHeader](
+                  ours,
+                  magic,
+                  NtNHeader.codec,
+                  NodeToNode.Settings().pipelining(pipelineWindow.high)
+                )
                 .use { connection =>
                   Peer
                     .over[IO](
@@ -111,13 +128,14 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
                         SocketAddress(host"127.0.0.1", port"3001"),
                         magic,
                         readAhead = 2,
-                        byronEpochSlots = ForgedChain.geometry.byron.epochSlots
+                        byronEpochSlots = ForgedChain.geometry.byron.epochSlots,
+                        pipelineWindow = pipelineWindow
                       ),
                       prepare,
                       headers = check,
                       pipelineFailed = pipelineFailed,
                       heightSnapshot = heightSnapshot,
-                      retainedHeaders = 8
+                      retainedHeaders = journalCapacity
                     )
                     .use { peer =>
                       Handle
@@ -225,23 +243,22 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
           Some(held(entered, release, Some(fault))),
           finish = false,
           pipelineFailed = Some(problem => published.complete(problem).void)
-        ) {
-          (peer, intersections) =>
-            for
-              _ <- peer.intersect(Vector(ChainSync.Point.Origin))
-              _ <- Fault.fiber(peer.next).background.use(_ => entered.get)
-              _ <- release.complete(())
-              // Release makes the check runnable; it does not mean its fault is installed.
-              // Drain may cancel a check still in progress, so await the actual failure boundary.
-              pending <- published.get
-              first <- Fault.fiber(peer.intersect(Vector(ChainSync.Point.Origin)))
-              again <- Fault.fiber(peer.intersect(Vector(ChainSync.Point.Origin)))
-              count <- intersections.get
-            yield
-              assertEquals(pending, fault)
-              assertEquals(first, Left(fault))
-              assertEquals(again, Left(fault))
-              assertEquals(count, 1)
+        ) { (peer, intersections) =>
+          for
+            _ <- peer.intersect(Vector(ChainSync.Point.Origin))
+            _ <- Fault.fiber(peer.next).background.use(_ => entered.get)
+            _ <- release.complete(())
+            // Release makes the check runnable; it does not mean its fault is installed.
+            // Drain may cancel a check still in progress, so await the actual failure boundary.
+            pending <- published.get
+            first <- Fault.fiber(peer.intersect(Vector(ChainSync.Point.Origin)))
+            again <- Fault.fiber(peer.intersect(Vector(ChainSync.Point.Origin)))
+            count <- intersections.get
+          yield
+            assertEquals(pending, fault)
+            assertEquals(first, Left(fault))
+            assertEquals(again, Left(fault))
+            assertEquals(count, 1)
         }
       yield ()
     }
