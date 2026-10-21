@@ -69,6 +69,11 @@ body publication/fetch credits continue to control downstream work independently
 wire window. The read-ahead publication chunk and rolling low/high marks are separate settings.
 No signed bytes, wire codecs or persisted formats change.
 
+The existing ChainSync header counter increments once for each collected final reply, including
+discarded replies during drain. AwaitReply does not increment it. Round counters, histograms and
+`chainSyncRounds` log aggregates remain specific to the legacy batch facade; rolling replies are
+not reported as artificial rounds.
+
 ## Evidence required before acceptance
 
 - Replay all 798 explicit observations of the unchanged native low/high function, including its

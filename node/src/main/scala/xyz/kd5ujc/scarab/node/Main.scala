@@ -996,7 +996,8 @@ object Main extends IOApp:
                 case Peer.Observation.Round(requested, received, millis) =>
                   observeRounds(requested, received, millis)
                 case Peer.Observation.Announced(tip) => watchdog.announced(tip.blockNo.value)
-                case Peer.Observation.HeadersArrived(_, _) | Peer.Observation.BlocksArrived(_, _) =>
+                case Peer.Observation.HeaderReceived | Peer.Observation.HeadersArrived(_, _) |
+                    Peer.Observation.BlocksArrived(_, _) =>
                   IO.unit)
             // blocks fetched ahead, shared by the sessions of all peers: one peer fetches each block
             fetchSalt <- cats.effect.std.Random.scalaUtilRandom[IO].flatMap(_.nextLong)
