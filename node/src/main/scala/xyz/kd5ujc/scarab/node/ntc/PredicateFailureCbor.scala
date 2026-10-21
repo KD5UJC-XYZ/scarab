@@ -17,6 +17,7 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
   Versions,
   Wire
 }
+
 import ContextFailureCbor.ContextEra
 
 /** The ledger's predicate-failure CBOR (`EncCBOR` of `ConwayLedgerPredFailure` and the rules it
