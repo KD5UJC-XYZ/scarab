@@ -56,14 +56,6 @@ class PreprodSnapshotImportSuite extends CatsEffectSuite:
               }
             finally walk.close()
           }
-          // The pinned recorded database predates complete genesis bindings. Adopt
-          // only its disposable copy after checking every recorded identity field;
-          // the original legacy identity and native ancillary remain unchanged.
-          _ <- StorageTestKit.ok {
-            NetworkIdentityFile
-              .preflight[IO](db, setup.identity, populated = true, confirmLegacy = true)
-              .flatMap(NetworkIdentityFile.admit[IO](db, setup.identity, _))
-          }
           began <- IO.monotonic
           report <- Handle
             .allow[LedgerSnapshotImport.Error] {
