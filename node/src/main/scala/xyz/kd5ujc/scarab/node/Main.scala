@@ -19,6 +19,7 @@ import xyz.kd5ujc.scarab.ledger.{
   ConfigProblem,
   NativeLibraryError,
   NodeError,
+  ChainError,
   StorageError
 }
 import cats.effect.{Deferred, ExitCode, IO, IOApp, Ref, Resource}
@@ -658,16 +659,28 @@ object Main extends IOApp:
                 .persistence[MirrorState]
                 .extended(r.ref, r.raw, Vector.empty, Anchor(anchor, state))
             )
+            mempoolEnvironment = new cats.mtl.Ask[IO, MempoolEnv]:
+              val applicative = summon[cats.Applicative[IO]]
+              def ask[E >: MempoolEnv]: IO[E] =
+                ref.get.map(chain => MempoolEnv(globals, chain.state.geometry(genesis.geometry)): E)
+            mempoolLedger <- scheduling.compute
+              .within(IO.delay {
+                val tip = resumed.lastOption.map(_.ref).orElse(anchor)
+                val current = resumed.lastOption.fold(state)(_.state)
+                MempoolLedger
+                  .at(current, tip, MempoolEnv(globals, current.geometry(genesis.geometry)))
+                  .left
+                  .map(ChainError.MempoolTick(tip.fold(BigInt(0))(_.slot + 1), _))
+              })
+              .flatMap(_.fold(fail, IO.pure))
             mempool <- Mempool.create[IO](
-              MempoolLedger.at(
-                resumed.lastOption.fold(state)(_.state),
-                resumed.lastOption.map(_.ref).orElse(anchor)
-              ),
-              resumed.lastOption.map(_.ref).orElse(anchor).fold(BigInt(0))(_.slot),
+              mempoolLedger,
+              resumed.lastOption.map(_.ref).orElse(anchor).fold(BigInt(-1))(_.slot),
               MempoolEnv(globals, geometry),
               options.mempoolBytes.getOrElse(DefaultMempoolBytes),
               Log.mempool[IO].alongside(measured.mempool),
-              utxoStore = Some(store)
+              utxoStore = Some(store),
+              environment = Some(mempoolEnvironment)
             )
             _ <- collectors.add(Collectors.mempool(mempool))
             served = server.persistence[MirrorState]
@@ -678,29 +691,42 @@ object Main extends IOApp:
               genesis.geometry,
               NodeRules.observe(genesis.geometry),
               Some(persistence.fold(served)(Persistence.both(_, served))),
-              Some((chain, added) =>
-                // decoding the added blocks is CPU-bound: off the compute pool like the rules
-                scheduling.compute
-                  .within(IO.delay {
-                    added.flatMap { raw =>
-                      Block
-                        .decode(raw, genesis.geometry.byron.epochSlots)
-                        .toOption
-                        .toVector
-                        .flatMap {
-                          case b: Block.Shelley => b.transactions.map(_.id)
-                          case _                => Vector.empty
-                        }
-                    }.toSet
-                  })
-                  .flatMap(adopted =>
-                    chain.tipRef
-                      .traverse_(t =>
-                        mempool
-                          .sync(MempoolLedger.at(chain.state, chain.tipRef), t.slot, adopted)
-                          .void
-                      )
-                  )
+              Some(
+                Follower.OnTip((chain, added) =>
+                  // decoding the added blocks is CPU-bound: off the compute pool like the rules
+                  scheduling.compute
+                    .within(IO.delay {
+                      added.flatMap { raw =>
+                        Block
+                          .decode(raw, genesis.geometry.byron.epochSlots)
+                          .toOption
+                          .toVector
+                          .flatMap {
+                            case b: Block.Shelley => b.transactions.map(_.id)
+                            case _                => Vector.empty
+                          }
+                      }.toSet
+                    })
+                    .flatMap { adopted =>
+                      val slot = chain.tipRef.fold(BigInt(-1))(_.slot)
+                      scheduling.compute
+                        .within(IO.delay {
+                          MempoolLedger
+                            .at(
+                              chain.state,
+                              chain.tipRef,
+                              MempoolEnv(globals, chain.state.geometry(genesis.geometry))
+                            )
+                            .left
+                            .map(
+                              ChainError.MempoolTick(chain.tipRef.fold(BigInt(0))(_.slot + 1), _)
+                            )
+                        })
+                        .flatMap(cats.mtl.Raise[IO, NodeError].fromEither(_))
+                        .flatMap(mempool.sync(_, slot, adopted))
+                        .void
+                    }
+                )
               ),
               epochOf = Some((s, slot) => s.geometry(genesis.geometry).epochOf(slot)),
               initialViews = resumed.map(r => r.ref.hash -> r.view).toMap,

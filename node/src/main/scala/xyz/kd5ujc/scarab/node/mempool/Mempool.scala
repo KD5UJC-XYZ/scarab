@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.node.mempool
 import cats.effect.{Async, Ref}
 import cats.effect.std.Mutex
 import cats.mtl.{Ask, Raise}
-import xyz.kd5ujc.scarab.ledger.{LedgerFailure, StorageError}
+import xyz.kd5ujc.scarab.ledger.StorageError
 import cats.syntax.all.*
 import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -58,7 +58,8 @@ trait Mempool[F[_]]:
   /** The transactions a block of at most `maxBytes` of transaction bytes can take, in order. */
   def forBlock(maxBytes: Long): F[Vector[Entry]]
 
-  /** Revalidate against the ledger state `ledger` at the new tip (in `tipSlot`). `adopted` are the
+  /** Revalidate against `ledger`, ticked to the successor of the new tip (`tipSlot`, or -1 at
+    * Origin). `adopted` are the
     * ids of the transactions in the blocks that just joined our chain: held ones among them leave
     * the pool as adopted, the others that no longer apply are returned with the reason.
     */
@@ -75,17 +76,6 @@ trait Mempool[F[_]]:
   def sink(fatal: Fatal => F[Unit]): TxSubmissionServer.Sink[F]
 
 object Mempool:
-  /** Ids of recently refused or removed transactions, remembered so peers that offer them again are
-    * not asked for the bodies.
-    */
-  private final case class Seen(ids: Set[Bytes], order: Vector[Bytes]):
-    def add(id: Bytes, limit: Int): Seen =
-      if ids(id) then this
-      else
-        val grown = order :+ id
-        if grown.size > limit then Seen(ids + id - grown.head, grown.tail)
-        else Seen(ids + id, grown)
-
   /** @param utxoStore
     *   Where the UTxO entries outside the ledger state's diff live; the pool fetches the read set
     *   of each transaction from it, as the block path does.
@@ -98,13 +88,11 @@ object Mempool:
       env: MempoolEnv,
       capacityBytes: Long,
       events: MempoolEvents[F],
-      seenLimit: Int = 8192,
       utxoStore: Option[UtxoStore[F]] = None,
       environment: Option[Ask[F, MempoolEnv]] = None
   ): F[Mempool[F]] =
     for
       state <- Ref.of[F, MempoolState](MempoolState.empty(ledger, tipSlot, capacityBytes))
-      seen <- Ref.of[F, Seen](Seen(Set.empty, Vector.empty))
       version <- SignallingRef.of[F, Long](0L)
       lock <- Mutex[F]
     yield new Mempool[F]:
@@ -136,15 +124,12 @@ object Mempool:
               val id = reason match
                 case Rejection.AlreadyHeld(i) => Some(i)
                 case _                        => None
-              val remembered = reason match
-                case Rejection.Ledger(_: LedgerFailure.Unavailable) => None
-                case Rejection.Ledger(_) | Rejection.Full(_, _) =>
-                  MempoolState.parse(raw).toOption.map(_._1)
-                case _ => None
-              remembered.traverse_(i => seen.update(_.add(i, seenLimit))) *>
-                events
-                  .emit(MempoolEvent.Rejected(id.orElse(remembered), reason))
-                  .as(reason.asLeft[Bytes])
+              events
+                .emit(
+                  MempoolEvent
+                    .Rejected(id.orElse(MempoolState.parse(raw).toOption.map(_._1)), reason)
+                )
+                .as(reason.asLeft[Bytes])
         yield out
       }
 
@@ -181,14 +166,10 @@ object Mempool:
           _ <- version.update(_ + 1)
           (inBlock, invalid) = dropped.partition((entry, _) => adopted(entry.id))
           _ <- inBlock.traverse_ { (entry, _) =>
-            seen.update(_.add(entry.id, seenLimit)) *> events.emit(MempoolEvent.Adopted(entry.id))
+            events.emit(MempoolEvent.Adopted(entry.id))
           }
           _ <- invalid.traverse_ { (entry, reason) =>
-            val unavailable = reason match
-              case Rejection.Ledger(_: LedgerFailure.Unavailable) => true
-              case _                                              => false
-            seen.update(_.add(entry.id, seenLimit)).unlessA(unavailable) *>
-              events.emit(MempoolEvent.Dropped(entry.id, reason))
+            events.emit(MempoolEvent.Dropped(entry.id, reason))
           }
           _ <- events.emit(MempoolEvent.Synced(next.entries.size, next.bytes, invalid.size))
         yield invalid
@@ -211,6 +192,8 @@ object Mempool:
       def sink(fatal: Fatal => F[Unit]): TxSubmissionServer.Sink[F] =
         new TxSubmissionServer.Sink[F]:
           def known(id: Bytes) =
-            (state.get.map(_.contains(id)), seen.get.map(_.ids(id))).mapN(_ || _)
+            // NodeKernel's mempoolHasTx checks the current snapshot only. TxSubmission2 owns
+            // its in-flight IDs; a previous rejection or adoption must not suppress a re-offer.
+            state.get.map(_.contains(id))
           def submit(originals: Vector[Bytes]) =
             StorageBoundary.run(fatal)(originals.traverse_(add(_).void))

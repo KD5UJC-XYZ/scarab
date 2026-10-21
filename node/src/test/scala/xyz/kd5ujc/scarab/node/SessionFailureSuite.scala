@@ -122,14 +122,16 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           noEvents,
           geometry,
           persistence = Some(persistence),
-          onTip = Some((chain, _) =>
-            chain.tipRef.fold(IO.unit)(tipRef =>
-              published.update(_ :+ headers.find(_.hash == tipRef.hash).get) *>
-                node
-                  .raise[NodeError, Unit](ChainError.NoIntersection)
-                  .whenA(
-                    breakTip.contains(tipRef.blockNo.toInt)
-                  )
+          onTip = Some(
+            Follower.OnTip((chain, _) =>
+              chain.tipRef.fold(IO.unit)(tipRef =>
+                published.update(_ :+ headers.find(_.hash == tipRef.hash).get) *>
+                  summon[Raise[IO, NodeError]]
+                    .raise[NodeError, Unit](ChainError.NoIntersection)
+                    .whenA(
+                      breakTip.contains(tipRef.blockNo.toInt)
+                    )
+              )
             )
           )
         )

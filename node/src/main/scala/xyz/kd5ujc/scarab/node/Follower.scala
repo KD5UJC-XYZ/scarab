@@ -75,11 +75,7 @@ final class Follower[F[_]: Async, S] private (
     epochOf: (S, BigInt) => BigInt,
     observe: (S, S, BlockRef) => List[FollowerEvent],
     persistence: Option[ChainPersistence[F, S]],
-    onTip: Option[
-      (VolatileChain[S], Vector[Bytes]) => Raise[F, xyz.kd5ujc.scarab.ledger.StorageError] ?=> F[
-        Unit
-      ]
-    ],
+    onTip: Option[Follower.OnTip[F, S]],
     tiebreaker: Era => ChainSelection.Tiebreaker,
     views: SelectViews[F],
     lock: Mutex[F],
@@ -400,6 +396,18 @@ final class Follower[F[_]: Async, S] private (
     }
 
 object Follower:
+  trait OnTip[F[_], S]:
+    def apply(chain: VolatileChain[S], raws: Vector[Bytes])(using Raise[F, NodeError]): F[Unit]
+
+  object OnTip:
+    def apply[F[_], S](
+        run: (VolatileChain[S], Vector[Bytes]) => Raise[F, NodeError] ?=> F[Unit]
+    ): OnTip[F, S] =
+      new OnTip[F, S]:
+        def apply(chain: VolatileChain[S], raws: Vector[Bytes])(using
+            Raise[F, NodeError]
+        ): F[Unit] = run(chain, raws)
+
   /** What happened to a forged block offered to [[Follower.adoptForged]]. */
   enum AdoptionLoss:
     case DetachedPredecessor(tip: ChainSync.Point, predecessor: Option[Bytes])
@@ -430,11 +438,7 @@ object Follower:
       geometry: EpochGeometry,
       observe: (S, S, BlockRef) => List[FollowerEvent] = (_: S, _: S, _: BlockRef) => Nil,
       persistence: Option[ChainPersistence[F, S]] = None,
-      onTip: Option[
-        (VolatileChain[S], Vector[Bytes]) => Raise[F, xyz.kd5ujc.scarab.ledger.StorageError] ?=> F[
-          Unit
-        ]
-      ] = None,
+      onTip: Option[OnTip[F, S]] = None,
       tiebreaker: Era => ChainSelection.Tiebreaker = ChainSelection.tiebreakerFor,
       epochOf: Option[(S, BigInt) => BigInt] = None,
       initialViews: Map[Bytes, SelectView] = Map.empty,

@@ -113,11 +113,13 @@ enum ChainError extends NodeError:
   case NotConnected(point: ChainSync.Point, tip: ChainSync.Point)
   case RollbackBeyondAnchor(target: ChainSync.Point, anchor: ChainSync.Point)
   case NoIntersection
+  case MempoolTick(slot: BigInt, cause: rules.TickFailure)
 
   def message: String = this match
-    case StateAcquire(cause) => cause.message
-    case Decode(w, r)        => s"decode $w: $r"
-    case NotConnected(p, t)  => s"${Points.show(p)} does not extend tip ${Points.show(t)}"
+    case MempoolTick(slot, cause) => s"cannot tick mempool ledger to slot $slot: $cause"
+    case StateAcquire(cause)      => cause.message
+    case Decode(w, r)             => s"decode $w: $r"
+    case NotConnected(p, t)       => s"${Points.show(p)} does not extend tip ${Points.show(t)}"
     case RollbackBeyondAnchor(t, a) =>
       s"rollback to ${Points.show(t)} beyond anchor ${Points.show(a)}"
     case NoIntersection => "peer shares no point with the local chain"

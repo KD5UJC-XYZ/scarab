@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.ledger.ChainError
+
 import cats.effect.{IO, Ref}
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.syntax.all.*
@@ -232,8 +234,26 @@ object ForgedChain:
           )
           given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(ref)
           rules = MirrorRules[IO](config, globals, None, None, mirrorEnv.byron)
+          mempoolBase <- cats.mtl
+            .Raise[IO, NodeError]
+            .fromEither(
+              xyz.kd5ujc.scarab.node.read
+                .ConwayView(initial.state, initial.tipRef)
+                .traverse(
+                  MempoolLedger.tick(
+                    _,
+                    Some(initial.tipRef.fold(BigInt(slots.head.toLong - 1))(_.slot)),
+                    MempoolEnv(globals, geometry)
+                  )
+                )
+                .left
+                .map(
+                  ChainError
+                    .MempoolTick(initial.tipRef.fold(BigInt(slots.head.toLong - 1))(_.slot) + 1, _)
+                )
+            )
           mempool <- Mempool.create[IO](
-            MempoolLedger.at(initial.state, initial.tipRef),
+            mempoolBase,
             initial.tipRef.fold(slots.head.toLong - 1)(_.slot.toLong),
             MempoolEnv(globals, geometry),
             1000000,
@@ -258,9 +278,20 @@ object ForgedChain:
                   cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError],
                   cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.ChainError]
               ) = IO.unit),
-            onTip = Some((c, _) =>
-              c.tipRef.traverse_(tip =>
-                mempool.sync(MempoolLedger.at(c.state, Some(tip)), tip.slot, Set.empty).void
+            onTip = Some(
+              Follower.OnTip((c, _) =>
+                c.tipRef.traverse_(tip =>
+                  cats.mtl
+                    .Raise[IO, xyz.kd5ujc.scarab.ledger.NodeError]
+                    .fromEither(
+                      MempoolLedger
+                        .at(c.state, Some(tip), MempoolEnv(globals, geometry))
+                        .left
+                        .map(xyz.kd5ujc.scarab.ledger.ChainError.MempoolTick(tip.slot + 1, _))
+                    )
+                    .flatMap(mempool.sync(_, tip.slot, Set.empty))
+                    .void
+                )
               )
             )
           )

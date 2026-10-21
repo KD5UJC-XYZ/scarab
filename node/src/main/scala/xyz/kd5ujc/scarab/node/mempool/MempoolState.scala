@@ -21,8 +21,17 @@ import xyz.kd5ujc.scarab.ledger.{
   TxEnv,
   Utxo
 }
-import xyz.kd5ujc.scarab.ledger.rules.{Counted, Gov, Globals, Ledger, LedgerEnv, Sts}
-import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway, LedgerState, NewEpochState, UtxoTables}
+import xyz.kd5ujc.scarab.ledger.rules.{
+  Counted,
+  Gov,
+  Globals,
+  Ledger,
+  LedgerEnv,
+  Sts,
+  Tick,
+  TickFailure
+}
+import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway, LedgerState, NewEpochState, SlotNo, UtxoTables}
 
 /** Why a transaction is not (or no longer) in the mempool. */
 enum Rejection:
@@ -70,7 +79,7 @@ final case class MempoolEnv(
     decoder: ScriptDecoder[Id] = ScalusEvaluator.defaultDecoder
 ):
   /** The environment in which a transaction is validated for inclusion in the next block: the slot
-    * after the tip, in the ledger's current epoch.
+    * after the tip, in the epoch of the fully ticked ledger.
     */
   def txEnv(tipSlot: BigInt, ledger: MempoolLedger, index: Int): TxEnv =
     val slot = tipSlot + 1
@@ -115,16 +124,40 @@ object MempoolLedger:
   def of(nes: NewEpochState[Conway]): MempoolLedger =
     MempoolLedger(nes.es.ls, nes.es.chainAccount.treasury, nes.epoch.toBigInt)
 
-  /** The ledger of the chain whose state is `s`, at its tip `at`, or why it has no Conway ledger.
+  /** Tick the complete Conway state before projecting its transaction view. This is
+    * `tickLedgerState (ForgeInUnknownSlot _)` in consensus Mempool/Impl/Common.hs: the next
+    * available slot, including epoch transitions, rewards, certificate state and treasury. `None`
+    * denotes Origin, whose next available slot is zero. The selected state's epoch agrees with
+    * its tip, so its successor crosses at most one epoch boundary. Conway is the final era:
+    * no hard-fork translation precedes this tick. Reference: ouroboros-consensus
+    * `82ecba329d7d054340bf707d44fe6e9ac27cec40`, `Mempool/Impl/Common.hs`, `tickLedgerState`.
     */
-  def at[S: ChainRead](s: S, tip: Option[BlockRef]): Either[ConwayView.Unavailable, MempoolLedger] =
-    ConwayView(s, tip).map(of)
+  def tick(
+      nes: NewEpochState[Conway],
+      tipSlot: Option[BigInt],
+      env: MempoolEnv
+  ): Either[TickFailure, MempoolLedger] =
+    for
+      slot <- SlotNo.fromBigInt(tipSlot.fold(BigInt(0))(_ + 1)).leftMap(TickFailure.Vocab(_))
+      next <- Sts(Tick.sts[Conway])(env.rules, (), nes, slot)
+    yield of(next)
+
+  /** The next-slot transaction view of a selected chain. A tick failure is an internal ledger
+    * failure, distinct from the chain being in an unsupported era.
+    */
+  def at[S: ChainRead](
+      s: S,
+      tip: Option[BlockRef],
+      env: MempoolEnv
+  ): Either[TickFailure, Either[ConwayView.Unavailable, MempoolLedger]] =
+    ConwayView(s, tip).traverse(tick(_, tip.map(_.slot), env))
 
 /** The mempool as a value. The invariant, for every state reachable through this API:
   *
   * `entries` applied in order to `base` through the transaction rules succeed and give `current`.
   *
-  * `base` is the ledger state at the chain tip the pool was last synchronised with. Every operation
+  * `base` is the complete ledger ticked to the successor of the chain tip the pool was last
+  * synchronised with. `tipSlot` is -1 at Origin, making its successor slot zero. Every operation
   * is a pure function; [[Mempool]] serialises them.
   */
 final case class MempoolState(

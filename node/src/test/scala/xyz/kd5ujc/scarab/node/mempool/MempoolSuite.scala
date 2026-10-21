@@ -61,7 +61,8 @@ object TxKit:
       signers: Vector[Key],
       valid: Boolean = true,
       votes: Vector[Byte] = Vector.empty,
-      referenceScript: Option[(ScriptKind, Bytes)] = None
+      referenceScript: Option[(ScriptKind, Bytes)] = None,
+      expires: Option[BigInt] = None
   ): (Bytes, Bytes) =
     val ins =
       head(4, inputs.size) ++ inputs.flatMap(i => head(4, 2) ++ bstr(i.id) ++ head(0, i.index))
@@ -74,9 +75,12 @@ object TxKit:
         }
       }
     val body = Bytes(
-      head(5, if votes.isEmpty then 3 else 4) ++ Vector(0x00.toByte) ++ ins ++ Vector(
+      head(5, 3 + (if votes.isEmpty then 0 else 1) + expires.size) ++ Vector(
+        0x00.toByte
+      ) ++ ins ++ Vector(
         0x01.toByte
       ) ++ outs ++ Vector(0x02.toByte) ++ head(0, fee) ++
+        expires.fold(Vector.empty[Byte])(slot => Vector(0x03.toByte) ++ head(0, slot)) ++
         (if votes.isEmpty then Vector.empty else Vector(0x13.toByte) ++ votes)
     )
     val id = Blake2b.hash256.hash(body)
@@ -101,12 +105,14 @@ object TxKit:
   /** The Conway ledger of a flat test state: the flat state through the mirror, as the rule suites
     * of the ledger module do it (`RuleSet`), once the test has built it with the flat builders.
     */
-  def conway(flat: LedgerState): MempoolLedger =
+  def conway(flat: LedgerState): MempoolLedger = MempoolLedger.of(native(flat))
+
+  def native(flat: LedgerState): xyz.kd5ujc.scarab.ledger.state.NewEpochState[Conway] =
     val at = WithOrigin.At(SlotNo.fromUnsigned(50L))
     mirror
       .to[Conway](at, flat)
       .run(mirrorEnv)
-      .fold(e => sys.error(s"to the mirror: $e"), image => MempoolLedger.of(image.value.nes))
+      .fold(e => sys.error(s"to the mirror: $e"), image => image.value.nes)
 
   /** The Conway ledger of a new-epoch state. */
   def conway(nes: xyz.kd5ujc.scarab.ledger.state.NewEpochState[Conway]): MempoolLedger =
@@ -151,6 +157,134 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
 
   private def reasonItem(rejection: Rejection): Bytes =
     LocalSubmission.reasonItem(rejection).fold(error => fail(error.message), identity)
+
+  test("the next-slot view applies the full epoch transition before transaction validation") {
+    import xyz.kd5ujc.scarab.ledger.state.{DeltaCoin, FuturePParams, PulsingRewUpdate, RewardUpdate}
+    val before = native(flat(1))
+    val nextParams = before.es.ls.utxo.gov.curPParams.copy(maxTxSize = 1)
+    val pending = RewardUpdate.empty.copy(deltaT = DeltaCoin(123), deltaR = DeltaCoin(-123))
+    val scheduled = before.copy(
+      ru = Some(PulsingRewUpdate.Complete(pending)),
+      es = before.es.copy(ls =
+        before.es.ls.copy[Conway](utxo =
+          before.es.ls.utxo.copy(
+            gov = before.es.ls.utxo.gov
+              .copy(futurePParams = FuturePParams.DefinitePParamsUpdate(nextParams))
+          )
+        )
+      )
+    )
+    val (raw, _) = pay(1)
+    val old = MempoolLedger.of(scheduled)
+    assert(MempoolState.empty(Right(old), 5999, 100000).add(raw, env).isRight)
+    val ticked =
+      MempoolLedger.tick(scheduled, Some(5999), env).fold(e => fail(e.toString), identity)
+    assertEquals(ticked.epoch, BigInt(6))
+    assertEquals(ticked.params, nextParams)
+    assertEquals(ticked.treasury.value, BigInt(123))
+    MempoolState.empty(Right(ticked), 5999, 100000).add(raw, env) match
+      case Left(Rejection.Ledger(LedgerFailure.Rejected(_, failure))) =>
+        val parsed = MempoolState.parse(raw).fold(e => fail(e.message), _._2)
+        assertEquals(
+          failure,
+          PredicateFailure.utxo(UtxoFailure.MaxTxSize(Mismatch(BigInt(parsed.size), BigInt(1))))
+        )
+      case other => fail(s"expected the adopted maximum-size rejection, received $other")
+    val held = MempoolState
+      .empty(Right(old), 5999, 100000)
+      .add(raw, env)
+      .fold(e => fail(e.message), _._1)
+    val (synced, dropped) = held.sync(Right(ticked), 5999, env)
+    assertEquals(synced.entries, Vector.empty)
+    assertEquals(dropped.map(_._1.raw), Vector(raw))
+    assertEquals(scheduled.ru, Some(PulsingRewUpdate.Complete(pending)))
+  }
+
+  test("next-slot tick handles origin and preserves a typed overflow failure") {
+    val before =
+      native(flat(1)).copy(epoch = xyz.kd5ujc.scarab.ledger.state.EpochNo.fromUnsigned(0))
+    val origin = MempoolLedger.tick(before, None, env).fold(e => fail(e.toString), identity)
+    assertEquals(origin.epoch, BigInt(0))
+    val overflow = MempoolLedger.tick(before, Some((BigInt(1) << 64) - 1), env)
+    assert(overflow.left.exists(_.isInstanceOf[xyz.kd5ujc.scarab.ledger.rules.TickFailure.Vocab]))
+  }
+
+  test("rollback exposes adopted and invalidated IDs for ordered parent-child re-offers") {
+    val base = ledger(2)
+    val (parent, parentId) = pay(1)
+    val (child, childId) = tx(
+      Vector(TxIn(parentId, 0)),
+      Vector(alice.address() -> (98 * ada)),
+      ada,
+      Vector(bob)
+    )
+    val parentTx = MempoolState.parse(parent).fold(e => fail(e.message), _._2)
+    for
+      pool <- Mempool.create[IO](Right(base), 1000, env, 100000, MempoolEvents.none[IO])
+      sink = pool.sink(failure => IO(fail(s"unexpected fatal: $failure")))
+      _ <- pool.add(parent)
+      _ <- pool.add(child)
+      first <- pool.source.after(0, 10)
+      _ <- pool.sync(Right(base.applied(parentTx)), 1001, Set(parentId))
+      adoptedKnown <- sink.known(parentId)
+      retained <- pool.source.body(childId)
+      _ <- pool.sync(Right(base), 1000)
+      invalidKnown <- sink.known(childId)
+      rolledBack <- pool.snapshot
+      _ <- sink.submit(Vector(parent, child))
+      offered <- pool.source.after(first.last.ticket, 10)
+    yield
+      assert(!adoptedKnown)
+      assertEquals(retained, Some(child))
+      assert(!invalidKnown)
+      assertEquals(rolledBack.entries, Vector.empty)
+      assertEquals(offered.map(e => e.id), Vector(parentId, childId))
+      assertEquals(offered.map(_.ticket), Vector(3L, 4L))
+  }
+
+  test("expiry removes a held ID and a rollback permits the same original bytes again") {
+    val base = ledger(1)
+    val (raw, id) = tx(
+      Vector(txIn(1)),
+      Vector(bob.address() -> (99 * ada)),
+      ada,
+      Vector(alice),
+      expires = Some(1002)
+    )
+    for
+      pool <- Mempool.create[IO](Right(base), 1000, env, 100000, MempoolEvents.none[IO])
+      admitted <- pool.add(raw)
+      dropped <- pool.sync(Right(base), 1002)
+      known <- pool.sink(failure => IO(fail(s"unexpected fatal: $failure"))).known(id)
+      _ <- pool.sync(Right(base), 1000)
+      retried <- pool.add(raw)
+      body <- pool.source.body(id)
+    yield
+      assertEquals(admitted, Right(id))
+      assertEquals(dropped.map(_._1.raw), Vector(raw))
+      assert(!known)
+      assertEquals(retried, Right(id))
+      assertEquals(body, Some(raw))
+  }
+
+  test("a refused conflicting transaction remains requestable after a fork frees its input") {
+    val base = ledger(1)
+    val (accepted, _) = pay(1)
+    val (refused, refusedId) = pay(1, fee = 2 * ada)
+    for
+      pool <- Mempool.create[IO](Right(base), 1000, env, 100000, MempoolEvents.none[IO])
+      _ <- pool.add(accepted)
+      first <- pool.add(refused)
+      known <- pool.sink(failure => IO(fail(s"unexpected fatal: $failure"))).known(refusedId)
+      empty = base.withUtxo(Utxo.empty)
+      _ <- pool.sync(Right(empty), 1001)
+      _ <- pool.sync(Right(base), 1000)
+      retried <- pool.add(refused)
+    yield
+      assert(first.isLeft)
+      assert(!known)
+      assertEquals(retried, Right(refusedId))
+  }
 
   test(
     "a valid transaction is admitted; duplicates, double spends and bad bytes are typed rejections"
