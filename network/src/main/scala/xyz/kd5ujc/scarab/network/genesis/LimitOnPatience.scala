@@ -15,6 +15,7 @@ import xyz.kd5ujc.scarab.codec.Rational
 trait LimitOnPatience[F[_]]:
   def setPaused(reason: LimitOnPatience.PauseReason, paused: Boolean): F[Unit]
   def validated(blockNo: BigInt): F[Unit]
+  def jumpedTo(blockNo: BigInt): F[Unit]
   def configure(config: LeakyBucket.Config): F[Unit]
   def snapshot: F[LeakyBucket.State]
 
@@ -62,6 +63,9 @@ object LimitOnPatience:
             if blockNo > s.bestBlockNo then
               s.copy(bucket = s.bucket.fill(Rational.one, time)._1, bestBlockNo = blockNo)
             else s.copy(bucket = s.bucket.snapshot(time))
+          }
+          def jumpedTo(blockNo: BigInt): F[Unit] = update { (s, time) =>
+            s.copy(bucket = s.bucket.snapshot(time), bestBlockNo = s.bestBlockNo.max(blockNo))
           }
           def configure(config: LeakyBucket.Config): F[Unit] = update { (s, time) =>
             s.copy(bucket = s.bucket.reconfigure(config, config.capacity, time))

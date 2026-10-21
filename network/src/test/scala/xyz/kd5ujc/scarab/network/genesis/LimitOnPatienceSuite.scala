@@ -84,3 +84,19 @@ class LimitOnPatienceSuite extends FailsOnUncaught:
         yield assertEquals(state.level, Rational(8))
       }
     }
+
+  test("an accepted CSJ jump advances the record without granting a token"):
+    TestControl.executeEmbed {
+      LimitOnPatience.resource[IO](config, IO.unit).use { patience =>
+        for
+          _ <- IO.sleep(2.seconds)
+          _ <- patience.jumpedTo(10)
+          _ <- patience.validated(10)
+          replayed <- patience.snapshot
+          _ <- patience.validated(11)
+          progressed <- patience.snapshot
+        yield
+          assertEquals(replayed.level, Rational(8))
+          assertEquals(progressed.level, Rational(9))
+      }
+    }
