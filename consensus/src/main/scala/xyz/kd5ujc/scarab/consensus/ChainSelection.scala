@@ -31,7 +31,14 @@ object SelectView:
       val vrf = h.vrf match
         case HeaderVrf.Praos(result)  => result.output
         case HeaderVrf.TPraos(_, ldr) => ldr.output
-      SelectView(h.blockNo, h.slot, Some(h.issuerVkey), h.opCert.sequence, Some(vrf), era = Some(h.era))
+      SelectView(
+        h.blockNo,
+        h.slot,
+        Some(h.issuerVkey),
+        h.opCert.sequence,
+        Some(vrf),
+        era = Some(h.era)
+      )
     case h: Header.Byron => SelectView(h.blockNo, h.slot, None, 0, None, h.boundary, Some(h.era))
 
 /** The Praos chain selection rule (the `ChainOrder` of ouroboros-consensus for Praos and TPraos): a
@@ -104,9 +111,9 @@ object ChainSelection:
       case (Some(a), Some(b)) => (a == Era.Byron) != (b == Era.Byron)
       case _                  => false
 
-  /** HFC Protocol/ChainSel.hs:128–155 and Cardano/CanHardFork.hs:176–181 at
-    * consensus 82ecba329: shared cross-era tie-breakers use the later era's configuration;
-    * Byron/Shelley has no cross-era tie-breaker. Raw Ord remains unrestricted for ranking.
+  /** HFC Protocol/ChainSel.hs:128–155 and Cardano/CanHardFork.hs:176–181 at consensus 82ecba329:
+    * shared cross-era tie-breakers use the later era's configuration; Byron/Shelley has no
+    * cross-era tie-breaker. Raw Ord remains unrestricted for ranking.
     */
   def prefersCandidate(config: Tiebreaker, ours: SelectView, candidate: SelectView): Boolean =
     val effective = (ours.era, candidate.era) match

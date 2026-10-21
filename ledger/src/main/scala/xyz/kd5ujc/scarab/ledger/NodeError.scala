@@ -160,7 +160,8 @@ enum BlockPoolProblem extends NodeError:
       s"received block ${Points.show(point)} has no original adding-header context"
     case AvailableHashMismatch(key, actual) =>
       s"available block key ${key.hex} differs from header hash ${actual.hex}"
-    case SelectionProjectionChanged(point) => s"candidate projection changed under selection lock at $point"
+    case SelectionProjectionChanged(point) =>
+      s"candidate projection changed under selection lock at $point"
     case AvailableCycle(hash) => s"available block ancestry contains a cycle at ${hash.hex}"
     case DifferentInvalidRegistry =>
       "follower sessions do not share the same invalid-block registry"
