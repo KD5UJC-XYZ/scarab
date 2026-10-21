@@ -706,6 +706,8 @@ class InboundGovernorSuite extends FailsOnUncaught:
             new AssertionError("the successor hot activation has no active source key")
           ))
           before <- wire.get.map(_._2.size)
+          // Native ClientInterface.hs:193 captures the adding BlockFetch thread; the punishment
+          // DSL's mkPunishThisThread (InvalidBlockPunishment.hs:48–52) cannot target hot2's thread.
           _ <- pool.session.use(_.distrust(original.origin, refusal))
           _ <- eventually("the same bearer's KeepAlive survives old-hot punishment")(
             wire.get.map(_._2.size)
