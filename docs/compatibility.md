@@ -360,6 +360,39 @@ The Scala unit and property suites run in CI (`.github/workflows/ci.yml`) via `s
 on every pull request; the devnet scenarios (soak, e2e, relay, pool) run nightly, on demand and on tags in
 `.github/workflows/e2e.yml` (roadmap A3), and the fuzz and cuddle cross-check workflows nightly.
 
+
+## Peer policy and next-slot mempool follow-ups (#149 / #40, 2026-10-21)
+
+The current network pin `2fb69829a19b5c04e4fb212bdd78fb63f9d2d776` supplies weighted warm
+promotion across ordinary, local-root and big-ledger activation. All 912 explicit native cases
+compare complete selections for five policies and every eligible optional hot-demotion score with
+identical unsigned Word32 inputs. These are native function observations, not an original upstream
+generator corpus or a claim of identical PRNG streams. See the
+[corpus contract](../fixtures/peer-selection/policies/README.md).
+
+The mempool now ticks the complete Conway new-epoch state to the successor of the selected tip,
+using slot zero at Origin and current chain geometry. Original pinned native NEWEPOCH-4/5/6 outputs
+compare every field of the resulting `MempoolLedger` projection without masks. Ordered revalidation
+keeps current entries only, as native consensus does; adopted, invalidated or rejected transactions
+may return when re-offered. There is no invented automatic resurrection of rolled-back block
+transactions. Native consensus source semantics and local signed transaction regressions complement
+the projection comparisons; this is not labeled an executed whole native mempool-kernel oracle.
+
+| Gate | Observed result |
+|---|---|
+| Docker `check` | 7,548 passed; 17 existing missing external-input/benchmark cases reported separately as skipped. All new comparisons execute. Formatting, `-Werror` and scalafix pass. The final rebase adds only main's native-build/release tooling; source/build trees used by these tests are identical. |
+| Fixture/source guards | 23 Python checks pass; 84 documented corpora, 4,870 pinned payloads and 20 comparison contracts validate. |
+| `relay --seconds 300` | PASS: all final tips equal at block 183; 55/58 samples within one block, maximum lag five; 59 transactions reach the Scala mempool, 54 included; inbound header count 1→147; zero node errors. One typed `AllInputsSpent` refusal is retained. |
+| `pool` (480 seconds) | PASS: 16/16 bracketed ledger-query projections match; 76 scheduled forge opportunities produced/adopted, 74 on the final chain with two slot battles; 137 transactions in Scala-forged blocks; zero forge failures/node errors. |
+| `governor` | PASS: five churn rounds, the slow peer demoted on all three occasions it was hot, hot set changes, silent peer loss/recovery and continued block growth; zero stalls/node errors. |
+
+These runs precede pending Genesis/KeepAlive PR #309: pool/relay/governor retain 8/12/7 reconnects,
+including the known client KeepAlive timeout addressed by #292/#309. Relay also records an ordinary
+no-intersection reconnect. They are not described as zero-reconnect runs. An earlier relay attempt
+was deliberately interrupted when another task started a third global devnet; it supplies no
+acceptance claim. The complete subsequent relay above passes. Generated databases, devnets and
+build outputs are disposable; compact receipts and compressed evidence are retained by the task.
+
 ## Not checked at all
 
 Collected from the table, for quick scanning:
