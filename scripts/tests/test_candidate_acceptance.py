@@ -355,10 +355,10 @@ class CandidateAcceptanceTests(unittest.TestCase):
     def test_runtime_receipt_requires_observed_fork_configuration(self):
         path = self.root / "sbt.log"
         heap = 16 * 1024**3
-        good = f"candidate-runtime project=storage maxHeapBytes={heap} processors=4\ncandidate-runtime project=node maxHeapBytes={heap} processors=4\n"
+        good = f"candidate-runtime project=storage maxHeapBytes={heap} processors=4 workingDirectory=/work\ncandidate-runtime project=node maxHeapBytes={heap} processors=4 workingDirectory=/work\n"
         path.write_text(good)
         self.assertEqual(candidate.runtime_receipt(path)["storage"]["maxHeapBytes"], heap)
-        for value in ("", good + good, good.replace(str(heap), str(2 * 1024**3)), good.replace("processors=4", "processors=2")):
+        for value in ("", good + good, good.replace(str(heap), str(2 * 1024**3)), good.replace("processors=4", "processors=2"), good.replace("workingDirectory=/work", "workingDirectory=/work/storage")):
             path.write_text(value)
             with self.assertRaises(candidate.Rejected):
                 candidate.runtime_receipt(path)

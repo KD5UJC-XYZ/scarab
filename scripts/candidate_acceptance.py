@@ -334,12 +334,12 @@ def replay_receipt(path):
 
 
 def runtime_receipt(path):
-    observations = re.findall(r"candidate-runtime project=(storage|node) maxHeapBytes=(\d+) processors=(\d+)", Path(path).read_text())
+    observations = re.findall(r"candidate-runtime project=(storage|node) maxHeapBytes=(\d+) processors=(\d+) workingDirectory=(\S+)", Path(path).read_text())
     require(len(observations) == 2 and {row[0] for row in observations} == {"storage", "node"}, "missing/duplicate fork runtime observations")
     result = {}
-    for project, heap, processors in observations:
-        require(int(heap) >= 16 * 1024**3 and int(processors) == 4, "candidate fork ignored heap/CPU configuration")
-        result[project] = {"maxHeapBytes": int(heap), "processors": int(processors)}
+    for project, heap, processors, directory in observations:
+        require(int(heap) >= 16 * 1024**3 and int(processors) == 4 and directory == "/work", "candidate fork ignored heap/CPU/working-directory configuration")
+        result[project] = {"maxHeapBytes": int(heap), "processors": int(processors), "workingDirectory": directory}
     return result
 
 
@@ -350,7 +350,7 @@ def sbt_commands(cases):
         commands.extend((f"set {project} / Test / fork := true", f'set {project} / Test / javaOptions ++= Seq("-Xmx16g", "-XX:ActiveProcessorCount=4")'))
         # Storage's build definition explicitly selects InProcess for ordinary suites, so
         # setting Test/fork alone does not select the requested heap or process isolation.
-        commands.append(f'set {project} / Test / testGrouping := Seq(Tests.Group("candidate-{project}", ({project} / Test / definedTests).value, Tests.SubProcess(({project} / Test / forkOptions).value)))')
+        commands.append(f'set {project} / Test / testGrouping := Seq(Tests.Group("candidate-{project}", ({project} / Test / definedTests).value, Tests.SubProcess(({project} / Test / forkOptions).value.withWorkingDirectory(Some((LocalRootProject / baseDirectory).value)))))')
         suites = sorted({row["suite"] for row in cases["required"] if row["project"] == project})
         require(all(re.fullmatch(r"[A-Za-z0-9_.]+", suite) for suite in suites), "unsafe sbt suite")
         commands.append(f"{project}/testOnly " + " ".join(suites))
