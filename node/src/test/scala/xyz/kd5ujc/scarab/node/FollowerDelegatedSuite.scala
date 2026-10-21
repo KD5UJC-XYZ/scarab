@@ -91,11 +91,13 @@ class FollowerDelegatedSuite extends FailsOnUncaught:
       view <- tracked.get.flatMap(_.traverse(_.get))
       preference <- follower.versus(candidate)
       starvation <- owner.snapshot
-      _ <- work.processing(headers.head.hash).use(_ =>
-        owner.snapshot.assertEquals(
-          xyz.kd5ujc.scarab.network.selection.GenesisBlockFetch.Starvation.EndedAt(0)
+      _ <- work
+        .processing(headers.head.hash)
+        .use(_ =>
+          owner.snapshot.assertEquals(
+            xyz.kd5ujc.scarab.network.selection.GenesisBlockFetch.Starvation.EndedAt(0)
+          )
         )
-      )
     yield
       assertEquals(outcome, Some(PeerError.NoIntersection: NodeError))
       assertEquals(count, events.size)

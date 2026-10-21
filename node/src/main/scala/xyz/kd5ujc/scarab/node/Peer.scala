@@ -996,8 +996,8 @@ object Peer:
                         published <- Deferred[F, Unit]
                         _ <- supervised(
                           prefetch(batch) *> previous.get *>
-                            legacyReady(batch.collect {
-                              case SyncEvent.RollForward(h, _) => h.hash
+                            legacyReady(batch.collect { case SyncEvent.RollForward(h, _) =>
+                              h.hash
                             }) *>
                             queue.offer(PipelineEvent.Batch(batch)) *>
                             published.complete(()).void
