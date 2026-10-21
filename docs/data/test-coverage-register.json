@@ -4,29 +4,31 @@
     {
       "id": "mempack-join",
       "classification": "native-parity",
-      "status": "pending-integration",
+      "status": "open",
       "scope": "A paired native tables file and RocksDB checkpoint.",
       "assertion": "Require complete identical nonempty key streams, pinned table identity, exact entry count and same-snapshot checkpoint stamp; distinguish semantic equality and canonical encoding differences.",
       "rationale": "Zero semantic differences alone can pass without a comparison.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
-      "resolution": "Land the strengthened join contract and negative controls; run against the candidate paired inputs.",
+      "resolution": "The complete fail-closed contract and small native-vector negative controls are implemented; execute the full paired preprod inputs and retain the candidate receipt.",
       "evidence": [
-        "storage/src/test/scala/xyz/kd5ujc/scarab/storage/MemPackJoinCheck.scala"
+        "storage/src/test/scala/xyz/kd5ujc/scarab/storage/MemPackJoinCheck.scala",
+        "storage/src/test/scala/xyz/kd5ujc/scarab/storage/MemPackComparisonSuite.scala"
       ],
       "candidateRequired": true
     },
     {
       "id": "ed25519-native-archive",
       "classification": "native-parity",
-      "status": "pending-integration",
+      "status": "covered",
       "scope": "2,219 retained witness rows: 2,207 native calls and 12 malformed-length non-calls.",
       "assertion": "Replay 1,121 accepts and 1,086 rejects directly; require exact typed length rejection for each of the twelve non-calls.",
       "rationale": "Older Scala agreement is regression evidence, not an independent oracle; a native non-call is not a native rejection.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
-      "resolution": "Land direct archive replay and exact row inventory without changing retained outcomes.",
+      "resolution": "Retain direct archive replay, exact row counts and malformed-input negative controls without changing native outcomes.",
       "evidence": [
+        "crypto/src/test/scala/xyz/kd5ujc/scarab/crypto/witness/WitnessGoldenSuite.scala",
         "crypto/src/test/scala/xyz/kd5ujc/scarab/crypto/witness/StrictEd25519DifferentialSuite.scala",
         "fixtures/witness/README.md"
       ],
@@ -35,13 +37,13 @@
     {
       "id": "byron-projection",
       "classification": "regression",
-      "status": "pending-integration",
+      "status": "covered",
       "scope": "Fifty Byron projection rows and their original block headers.",
       "assertion": "Assert independently decoded chain points and explicit current projection fields; retain historical digest rows.",
       "rationale": "The existing top-level shape check does not prove field values; a local Praos-shaped projection is not native PBFT state equivalence.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
-      "resolution": "Land substantive local projection expectations and document the native consensus-state boundary.",
+      "resolution": "Retain original digest bytes and exact original-header/prepared-Shelley-view expectations; add independent PBFT-state coverage before claiming native PBFT equivalence.",
       "evidence": [
         "node/src/test/scala/xyz/kd5ujc/scarab/node/read/ProjectionSuite.scala"
       ],
@@ -50,13 +52,13 @@
     {
       "id": "block-auxiliary-data",
       "classification": "native-parity",
-      "status": "pending-integration",
+      "status": "covered",
       "scope": "Auxiliary-data entries in the committed block goldens.",
       "assertion": "Compare complete auxiliary-data CBOR payloads as well as transaction positions.",
       "rationale": "Position equality cannot detect altered payload bytes.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
-      "resolution": "Land full payload comparisons and a tampered-payload negative control.",
+      "resolution": "Retain exact corpus counts, full payload comparisons and the tampered-payload negative control.",
       "evidence": [
         "models/src/test/scala/xyz/kd5ujc/scarab/models/BlockGoldenSuite.scala"
       ],
@@ -160,13 +162,13 @@
     {
       "id": "ecdsa-der-boundary",
       "classification": "input-boundary",
-      "status": "pending-integration",
+      "status": "covered",
       "scope": "476 Wycheproof rows: 242 compact-signature builtin cases and 234 DER boundary cases.",
       "assertion": "Assert every row classification; DER cases compare structural/strict canonical decoding and are not passed as compact builtin signatures.",
       "rationale": "The builtin signature ABI is fixed-width compact form; DER bytes are a different input format.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
-      "resolution": "Land explicit DER assertions and exact eligible/ineligible counts; preserve original vectors.",
+      "resolution": "Retain explicit DER assertions, original vectors and exact 242 compact/234 DER-boundary counts.",
       "evidence": [
         "plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/WycheproofSecp256k1Suite.scala"
       ],
@@ -233,6 +235,38 @@
         "docs/adr/0006-versioned-formats-migrate-on-open.md"
       ],
       "candidateRequired": false
+    },
+    {
+      "id": "native-utxo-semantic-view",
+      "classification": "canonicalization",
+      "status": "covered",
+      "scope": "Native ledger UTxO result comparisons in fresh-ledger and multi-ledger suites.",
+      "assertion": "Compare every MemPack field, every non-raw TxOut field, aggregate UTxO accounting and remaining ledger state; signed transaction body/witness bytes have separate original-byte assertions.",
+      "rationale": "The native compact output does not retain historical original output CBOR. Clearing TxOut.raw in a semantic result comparison does not establish original output-byte identity.",
+      "owner": "Scarab ledger maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
+      "resolution": "Keep semantic and original signed-byte assertions separate; add an independent byte-preservation oracle before claiming historical output-byte equality.",
+      "evidence": [
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/UpstreamFreshLedgerConformanceSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/UpstreamMultiLedgerConformanceSuite.scala"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "legacy-native-comparison-gaps",
+      "classification": "known-divergence",
+      "status": "pending-integration",
+      "scope": "Legacy ledger-query byte masks and rounded numeric projection comparisons on the current base.",
+      "assertion": "Four ledger-query answer shapes compare bytes outside explicitly reported masked fields; legacy projection numeric comparisons round to ten decimal digits.",
+      "rationale": "Masked equality and rounded numeric equality do not establish complete native answer equality. Their removal is owned by the separate query/provenance workstream.",
+      "owner": "Scarab query/provenance workstream",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/pull/285",
+      "resolution": "Integrate the separately owned query/provenance work, remove the masks/tolerance, and retain unmasked exact native-comparison receipts.",
+      "evidence": [
+        "scripts/devnet/gapmask.py",
+        "scripts/oracle/compare.py"
+      ],
+      "candidateRequired": true
     }
   ]
 }
