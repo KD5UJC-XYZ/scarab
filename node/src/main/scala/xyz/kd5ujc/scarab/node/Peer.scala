@@ -661,9 +661,12 @@ object Peer:
               n = requestDepth(ahead, settings.readAhead)
               began <- F.monotonic
               updates <- connection.chainSync.requestNextBatchObserved(n) { update =>
-                (pendingRestart.get, pendingEnd.get).tupled.flatMap {
-                  case (Some(_), _) | (_, Some(_)) => F.unit
-                  case (None, None) =>
+                (drainCompletion.get, pendingRestart.get, pendingEnd.get).tupled.flatMap {
+                  // Once draining starts every remaining wire reply is discarded. Racing a
+                  // pre-completed drain signal would still start validation on a fragment whose
+                  // preceding validation was cancelled (native drainThePipe discard handlers).
+                  case (Some(_), _, _) | (_, Some(_), _) | (_, _, Some(_)) => F.unit
+                  case (None, None, None) =>
                     F.race(drainRequested.get.flatMap(_.get), acceptUpdates(Vector(update)))
                       .flatMap {
                         case Left(_)      => F.unit

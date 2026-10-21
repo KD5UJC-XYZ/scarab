@@ -14,7 +14,8 @@ import xyz.kd5ujc.scarab.protocol.{ChainSync, NtNHeader}
 
 class PeerGenesisLifecycleSuite extends FailsOnUncaught:
   private enum Operation:
-    case Waiting, RequestTimeout, RestartTimeout, NoIntersection, RollbackEnd, LegacyRollbackEnd
+    case Waiting, RequestTimeout, RestartTimeout, NoIntersection, RollbackEnd, LegacyRollbackEnd,
+      DrainBatch
 
   for operation <- Operation.values do
     test(operation match
@@ -29,9 +30,13 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
       case Operation.RollbackEnd =>
         "rollback before the intersection drains the batch and preserves the bearer"
       case Operation.LegacyRollbackEnd =>
-        "non-streaming rollback termination drains before returning its typed result") {
+        "non-streaming rollback termination drains before returning its typed result"
+      case Operation.DrainBatch =>
+        "draining discards every later ordered reply after cancelling one validation") {
       for
         waiting <- Deferred[IO, Unit]
+        validations <- cats.effect.Ref.of[IO, Int](0)
+        collected <- cats.effect.Ref.of[IO, Int](0)
         timeout: NetworkError.Timeout = NetworkError.Timeout(2, "NextCanAwait")
         closeSignal <- Deferred[IO, NetworkError]
         chainSync = new ChainSyncClient[IO, NtNHeader]:
@@ -56,7 +61,9 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
             if operation == Operation.RequestTimeout then
               Raise[IO, NetworkError]
                 .raise[NetworkError, Vector[ChainSyncClient.Update[NtNHeader]]](timeout)
-            else if (operation == Operation.RollbackEnd || operation == Operation.LegacyRollbackEnd)
+            else if (
+                operation == Operation.RollbackEnd || operation == Operation.LegacyRollbackEnd || operation == Operation.DrainBatch
+              )
             then
               IO.pure(
                 Vector.fill(2)(
@@ -67,6 +74,15 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
               IO.raiseError[Vector[ChainSyncClient.Update[NtNHeader]]](
                 new AssertionError("CSJ is waiting")
               )
+          override def requestNextBatchObserved(n: Int)(
+              onUpdate: ChainSyncClient.Update[NtNHeader] => IO[Unit]
+          )(using Raise[IO, NetworkError], cats.Monad[IO]) =
+            if operation == Operation.DrainBatch then
+              val updates = Vector.fill(2)(
+                ChainSyncClient.Update.RollBackward(ChainSync.Point.Origin, ChainSync.Tip.Origin)
+              )
+              updates.traverse_(u => collected.update(_ + 1) *> onUpdate(u)).as(updates)
+            else super.requestNextBatchObserved(n)(onUpdate)
           def done(using Raise[IO, NetworkError]) = IO.unit
           def idle = IO.pure(true)
           def idling = IO.pure(true)
@@ -96,7 +112,8 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
             case Operation.Waiting =>
               waiting.complete(()).void *> IO
                 .never[ChainSyncJumping.Instruction[GenesisPeer.Checkpoint]]
-            case Operation.RequestTimeout | Operation.RollbackEnd | Operation.LegacyRollbackEnd =>
+            case Operation.RequestTimeout | Operation.RollbackEnd | Operation.LegacyRollbackEnd |
+                Operation.DrainBatch =>
               IO.pure(ChainSyncJumping.Instruction.RunNormally)
             case Operation.RestartTimeout | Operation.NoIntersection =>
               IO.pure(ChainSyncJumping.Instruction.Restart)
@@ -122,7 +139,7 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
             _ => IO.unit,
             genesis = Option.when(operation != Operation.LegacyRollbackEnd)(control),
             headers = Option.when(
-              (operation == Operation.RollbackEnd || operation == Operation.LegacyRollbackEnd)
+              (operation == Operation.RollbackEnd || operation == Operation.LegacyRollbackEnd || operation == Operation.DrainBatch)
             )(
               new HeaderCheck[IO]:
                 def start(@scala.annotation.unused point: ChainSync.Point) =
@@ -133,19 +150,25 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
                     override def acceptOrRestart(
                         @scala.annotation.unused batch: Vector[SyncEvent]
                     )(using Raise[IO, PeerError], cats.Functor[IO]) =
-                      IO.pure(HeaderGate.Acceptance.End(ChainSync.Point.Origin))
+                      if operation == Operation.DrainBatch then
+                        validations.getAndUpdate(_ + 1).flatMap {
+                          case 0 => waiting.complete(()).void *> IO.never[HeaderGate.Acceptance]
+                          case _ =>
+                            IO.raiseError(new AssertionError("a drained reply was validated"))
+                        }
+                      else IO.pure(HeaderGate.Acceptance.End(ChainSync.Point.Origin))
                     def counts = IO.pure(HeaderGate.Counts(0, 0, 0)))
             )
           )
           .use { peer =>
-            if operation != Operation.Waiting then
+            if operation != Operation.Waiting && operation != Operation.DrainBatch then
               Handle
                 .allow[PeerError](
                   (peer
                     .intersect(Vector(ChainSync.Point.Origin))
                     .void
                     .whenA(
-                      (operation == Operation.RollbackEnd || operation == Operation.LegacyRollbackEnd)
+                      (operation == Operation.RollbackEnd || operation == Operation.LegacyRollbackEnd || operation == Operation.DrainBatch)
                     ) *> peer.next)
                     .as(Right(()): Either[PeerError, Unit])
                 )
@@ -156,24 +179,39 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
                     Left(
                       if operation == Operation.NoIntersection then PeerError.NoIntersection
                       else if (
-                          operation == Operation.RollbackEnd || operation == Operation.LegacyRollbackEnd
+                          operation == Operation.RollbackEnd || operation == Operation.LegacyRollbackEnd || operation == Operation.DrainBatch
                         )
                       then PeerError.RolledBackPastIntersection(ChainSync.Point.Origin)
                       else PeerError.Unavailable(PeerError.Unavailability.Network(timeout))
                     )
                   )
-                ) *> (if operation == Operation.NoIntersection || (operation == Operation.RollbackEnd || operation == Operation.LegacyRollbackEnd)
+                ) *> (if operation == Operation.NoIntersection || (operation == Operation.RollbackEnd || operation == Operation.LegacyRollbackEnd || operation == Operation.DrainBatch)
                       then
                         peer.quiesce.timeout(2.seconds) *> closeSignal.tryGet
                           .map(reason => assertEquals(reason, None))
                       else IO.unit)
             else
-              Resource
+              Handle
+                .allow[PeerError](
+                  peer
+                    .intersect(Vector(ChainSync.Point.Origin))
+                    .void
+                    .whenA(operation == Operation.DrainBatch)
+                )
+                .rescue(e => IO(fail(e.message))) *> Resource
                 .make(
                   Handle.allow[PeerError](peer.next).rescue(error => IO(fail(error.message))).start
                 )(_.cancel)
                 .use { running =>
-                  waiting.get *> running.cancel *> peer.quiesce.timeout(2.seconds)
+                  waiting.get *> running.cancel *> peer.quiesce.timeout(2.seconds) *>
+                    (if operation == Operation.DrainBatch then
+                       (validations.get, collected.get, closeSignal.tryGet).tupled.map {
+                         (validated, received, failure) =>
+                           assertEquals(validated, 1)
+                           assertEquals(received, 2)
+                           assertEquals(failure, None)
+                       }
+                     else IO.unit)
                 }
           }
       yield ()
