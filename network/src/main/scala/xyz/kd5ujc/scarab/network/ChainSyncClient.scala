@@ -30,6 +30,8 @@ trait ChainSyncClient[F[_], P]:
 
 object ChainSyncClient:
   trait Observer[F[_]]:
+    /** Freeze request-specific context before submission; callbacks still run in the collector. */
+    def capture(using F: Applicative[F]): F[Observer[F]] = F.pure(this)
     def awaitReply: F[Unit]
     def reply: F[Unit]
 

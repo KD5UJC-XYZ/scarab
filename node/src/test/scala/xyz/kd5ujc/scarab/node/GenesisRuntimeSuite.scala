@@ -514,13 +514,13 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
             .use { bound =>
               for
                 _ <- bound.control.restarted(one.point, gate(atOne, selectedAtOne))
-                _ <- bound.control.next
+                request <- bound.observer.capture
                 _ <- bound.control.observed(
                   gate(atTwo, selectedAtOne),
                   SyncEvent.RollForward(two, tip)
                 )
                 _ <- bound.control.nextAfterReply
-                _ <- bound.observer.awaitReply.background.use { _ =>
+                _ <- request.awaitReply.background.use { _ =>
                   IO.sleep(1.millis) *> failures.get.flatMap { seen =>
                     IO(
                       assertEquals(

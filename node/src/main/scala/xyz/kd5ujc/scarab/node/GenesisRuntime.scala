@@ -71,7 +71,6 @@ final class GenesisRuntime[F[_]: Async] private (
       historicity = NodeGenesisHistory.runtime[F](true, governor.phase, elapsed)
       ready <- work.session
       gateRef <- Resource.eval(Ref.of[F, Option[HeaderGate[F]]](None))
-      requestHistory <- Resource.eval(Ref.of[F, Option[HeaderChain[NodeHeaderState]]](None))
       raw <- Resource.eval(Ref.of[F, LatestSlot](LatestSlot.Unknown))
       idle <- Resource.eval(Ref.of[F, Boolean](false))
       patience <- LimitOnPatience.resource[F](
@@ -140,12 +139,16 @@ final class GenesisRuntime[F[_]: Async] private (
         Handle
           .allow[PeerError](historicity.at(message, headerTime(point, known)))
           .rescue(error => disconnect(error) *> F.never[Unit])
-      val observer = new ChainSyncClient.Observer[F]:
-        def awaitReply: F[Unit] =
-          requestHistory.get.flatMap(
-            _.traverse_(h => historical(NodeGenesisHistory.Message.AwaitReply, h.tipPoint, Some(h)))
-          ) *> idle.set(true) *> jumper.onAwaitReply *> publish
-        def reply: F[Unit] = idle.set(false) *> publish
+      def observeRequest(history: F[Option[HeaderChain[NodeHeaderState]]]): ChainSyncClient.Observer[F] =
+        new ChainSyncClient.Observer[F]:
+          override def capture(using cats.Applicative[F]): F[ChainSyncClient.Observer[F]] =
+            history.map(known => observeRequest(F.pure(known)))
+          def awaitReply: F[Unit] =
+            history.flatMap(
+              _.traverse_(h => historical(NodeGenesisHistory.Message.AwaitReply, h.tipPoint, Some(h)))
+            ) *> idle.set(true) *> jumper.onAwaitReply *> publish
+          def reply: F[Unit] = idle.set(false) *> publish
+      val observer = observeRequest(snapshot)
       val control = new GenesisPeer[F]:
         def failed[A](error: ChainSyncJumping.Error): F[A] = invariant(error match
           case ChainSyncJumping.Error.MissingDynamoJumpInfo =>
@@ -162,12 +165,7 @@ final class GenesisRuntime[F[_]: Async] private (
                   patience.setPaused(LimitOnPatience.PauseReason.Jumping, false)
                 case _ => F.unit
               }
-        def next: F[Instruction[GenesisPeer.Checkpoint]] =
-          nextAfterReply.flatTap {
-            // Client.hs:1397 captures kis at submission, rather than reading its later successor.
-            case Instruction.RunNormally => snapshot.flatMap(requestHistory.set)
-            case _                       => F.unit
-          }
+        def next: F[Instruction[GenesisPeer.Checkpoint]] = nextAfterReply
         def observed(gate: HeaderGate[F], event: SyncEvent): F[Unit] =
           gateRef.set(Some(gate)) *> snapshot.flatMap { history =>
             history.traverse_ { h =>
