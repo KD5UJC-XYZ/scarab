@@ -8,18 +8,7 @@ name: CDDL cross-check (cuddle)
 # the image is pinned, but the sampler seeds and the sbt dependencies move).
 on:
   pull_request:
-    paths:
-      - 'models/src/main/cddl/**'
-      - 'models/src/main/scala/**'
-      - 'models/src/test/scala/**/CuddleCrossCheck.scala'
-      - 'models/cuddle-allowlist.tsv'
-      - 'models-gen/**'
-      - 'codec/src/main/scala/**'
-      - 'scripts/cddl_crosscheck.py'
-      - 'docker/cuddle.Dockerfile'
-      - 'build.sbt'
-      - 'project/**'
-      - '.github/workflows/cuddle-crosscheck.yml'
+    branches: [main, dev, release/alpha, release/beta, release/preprod, release/prod]
   push:
     branches: [main]
     paths:
@@ -46,8 +35,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.detect.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Select CDDL changes without suppressing the required check
+        id: detect
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          paths=(
+            models/src/main/cddl models/src/main/scala
+            'models/src/test/scala/**/CuddleCrossCheck.scala' models/cuddle-allowlist.tsv
+            models-gen codec/src/main/scala scripts/cddl_crosscheck.py
+            docker/cuddle.Dockerfile build.sbt project .github/workflows/cuddle-crosscheck.yml
+          )
+          if git diff --quiet HEAD^1 HEAD -- "${paths[@]}"; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            comparison_status=$?
+            test "$comparison_status" = 1
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
   crosscheck:
     name: cuddle 1.8.1.0 against the generated codecs
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     defaults:
@@ -103,3 +125,24 @@ jobs:
             target/crosscheck/results.json
           if-no-files-found: ignore
           retention-days: 14
+
+  gate:
+    name: CDDL comparison gate
+    if: always()
+    needs: [changes, crosscheck]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      DETECTION_RESULT: ${{ needs.changes.result }}
+      COMPARISON_REQUIRED: ${{ needs.changes.outputs.run }}
+      COMPARISON_RESULT: ${{ needs.crosscheck.result }}
+    steps:
+      - name: Require successful selection and its requested comparison
+        run: |
+          test "$DETECTION_RESULT" = success
+          if [ "$COMPARISON_REQUIRED" = true ]; then
+            test "$COMPARISON_RESULT" = success
+          else
+            test "$COMPARISON_REQUIRED" = false
+            test "$COMPARISON_RESULT" = skipped
+          fi

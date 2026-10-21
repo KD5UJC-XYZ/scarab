@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "enabled": false,
+  "rulesetAudit": null,
+  "repository": "KD5UJC-XYZ/scarab",
+  "automationEnvironments": {
+    "promotion-main": {
+      "name": "promotion-main",
+      "reviewers": [],
+      "branches": [{"type": "branch", "name": "main"}]
+    }
+  }
+}

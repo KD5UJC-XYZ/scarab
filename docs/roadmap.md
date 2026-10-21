@@ -297,6 +297,9 @@ maintainer-managed; installing tooling does not enable protections, publish rele
 [Release PR preparation](release-pr-preparation.md) implements conventional proposals and fragment
 consolidation with consecutive-proposal and concurrent-arrival controls; its activation policy and
 first-use authority remain disabled pending owner review.
+The [promotion cutover guide](promotion-cutover.md) stages the main-only merge controller and
+separate tag-creation/immutability settings; required checks report on every planned protected
+PR target. Activation and actual platform acceptance remain owner work under #161.
 
 **v0.3, Leios and audit readiness**
 
