@@ -11,7 +11,9 @@ import xyz.kd5ujc.scarab.protocol.{ChainSyncEngine, NetworkError}
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Role, State}
 import xyz.kd5ujc.scarab.protocol.ChainSyncEngine.Message
 
-/** One owned receiver, ordered complete replies, and caller-scoped AwaitReply callbacks. */
+/** One owned receiver and ordered complete replies. Observed AwaitReply callbacks execute
+  * immediately in the receiver's error scope, independent of sender validation.
+  */
 private[network] object ChainSyncPipeline:
   def resource[F[_]: Async, Q, T, P](
       channel: MuxChannel[F],

@@ -1,1 +1,1 @@
-- ChainSync gains an owned rolling pipeline with the pinned reference's low/high-water decisions, ordered reply collection, caller-scoped AwaitReply callbacks, and connection termination when cancellation leaves replies outstanding.
+- ChainSync gains an owned rolling pipeline with the pinned reference's low/high-water decisions, ordered reply collection, per-request receiver-scoped AwaitReply callbacks, and connection termination when cancellation leaves replies outstanding.
