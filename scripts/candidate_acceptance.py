@@ -403,7 +403,7 @@ def run(manifest_path, cases_path, checkout, output, local_inputs=None):
         actual_env.update({key: "/candidate/results/" + value for key, value in OUTPUTS.items()})
         # Export acquires its stable ownership lock beside the database. Keep the
         # database read-only but place that sibling lock in owned writable scratch.
-        (scratch / "export-source").mkdir()
+        (scratch / "export-source" / "db").mkdir(parents=True)
         export_db = "/candidate/results/export-source/db"
         command.extend(("-v", f'{env["SCARAB_EXPORT_DB"]}:{export_db}:ro'))
         actual_env["SCARAB_EXPORT_DB"] = export_db

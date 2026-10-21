@@ -228,7 +228,7 @@ class CandidateAcceptanceTests(unittest.TestCase):
                     if command[:2] == ["docker", "run"]:
                         self.assertIn(f"{self.root}:/candidate/results/export-source/db:ro", command)
                         self.assertIn("SCARAB_EXPORT_DB=/candidate/results/export-source/db", command)
-                        self.assertTrue((output / "results/export-source").is_dir())
+                        self.assertTrue((output / "results/export-source/db").is_dir())
                         report.parent.mkdir(parents=True)
                         report.write_bytes(body)
                         if fails_sbt:
