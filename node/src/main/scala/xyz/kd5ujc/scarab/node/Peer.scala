@@ -259,6 +259,12 @@ object Peer:
       */
     def refused(refusal: ValidationError): F[Boolean]
 
+  /** Cancellation cannot interrupt the finite worker-registration transaction after publishing the
+    * started flag. Registration only supervises workers; their bodies remain cancelable.
+    */
+  private[node] def startOnce[F[_]: Async](started: Ref[F, Boolean])(register: F[Unit]): F[Unit] =
+    Async[F].uncancelable(_ => started.getAndSet(true).flatMap(register.unlessA))
+
   /** A `Raise` for `E2` over one for `E1`: what is raised is mapped by `f`. */
   private[node] def contramapped[F[_], E1, E2](scope: Raise[F, E1])(f: E2 => E1): Raise[F, E2] =
     new Raise[F, E2]:
@@ -1649,18 +1655,16 @@ object Peer:
             yield ()
 
           val start: F[Unit] =
-            started.getAndSet(true).flatMap {
-              case true => F.unit
-              case false =>
-                observersStarted.getAndSet(true).flatMap { alreadyRunning =>
-                  (supervised(invalidBlockRejector) *> connection.fetchPerformance
-                    .traverse_(read =>
-                      supervised(refreshFetchPerformance(read, fetcher.updatePerformance))
-                    ))
-                    .unlessA(alreadyRunning)
-                } *> (if connection.chainSyncPipeline.nonEmpty || patience.nonEmpty || genesis.nonEmpty || workSession.nonEmpty
-                      then supervised(streaming)
-                      else supervised(Deferred[F, Unit].flatTap(_.complete(())).flatMap(produce)))
+            startOnce(started) {
+              observersStarted.getAndSet(true).flatMap { alreadyRunning =>
+                (supervised(invalidBlockRejector) *> connection.fetchPerformance
+                  .traverse_(read =>
+                    supervised(refreshFetchPerformance(read, fetcher.updatePerformance))
+                  ))
+                  .unlessA(alreadyRunning)
+              } *> (if connection.chainSyncPipeline.nonEmpty || patience.nonEmpty || genesis.nonEmpty || workSession.nonEmpty
+                    then supervised(streaming)
+                    else supervised(Deferred[F, Unit].flatTap(_.complete(())).flatMap(produce)))
             }
 
           /** A governor may cancel `next` before asking us to drain. Return the permit in the
