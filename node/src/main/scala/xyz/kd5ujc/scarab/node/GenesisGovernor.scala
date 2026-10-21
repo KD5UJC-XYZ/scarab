@@ -20,18 +20,23 @@ final class GenesisGovernor[F[_]: Async] private (
     state: Ref[F, GenesisGovernor.State[F]],
     phaseLock: Mutex[F],
     view: F[GenesisGovernor.View],
-    config: GenesisGovernor.Config
+    config: GenesisGovernor.Config,
+    observe: Option[GenesisGovernor.Observation => F[Unit]]
 ):
   import GenesisGovernor.*
   private val F = Async[F]
 
   private def fingerprint(
       s: State[F]
-  ): (Gsm.Phase, Option[SortedMap[Long, (LatestSlot, Boolean)]]) =
+  ): InputFingerprint =
     (
       s.phase,
       Option.when(s.phase == Gsm.Phase.Syncing)(
-        s.peers.map((id, peer) => id -> (peer.latestSlot -> peer.idling))
+        // Each established TCP connection has one hot activation. Keep grouped registrations
+        // rather than silently overwriting metadata if a model deliberately violates that rule.
+        SortedMap.from(
+          s.peers.values.toVector.groupMap(_.orderKey)(peer => peer.latestSlot -> peer.idling)
+        )
       )
     )
 
@@ -72,6 +77,8 @@ final class GenesisGovernor[F[_]: Async] private (
       }
     }
 
+  private[node] def inputFingerprint: F[InputFingerprint] = state.get.map(fingerprint)
+
   def phase: F[Gsm.Phase] = state.get.map(_.phase)
 
   /** A phase transition configures every live bucket before subsequent registrations can see that
@@ -90,7 +97,8 @@ final class GenesisGovernor[F[_]: Async] private (
 
   def session(
       configure: Gsm.Phase => F[Unit],
-      disconnect: F[Unit]
+      disconnect: F[Unit],
+      orderKey: Option[OrderKey] = None
   ): Resource[F, Session[F]] =
     Resource
       .make(
@@ -98,7 +106,14 @@ final class GenesisGovernor[F[_]: Async] private (
           state.get.flatMap { before =>
             configure(before.phase) *> change { s =>
               val id = s.next
-              val peer = Peer[F](None, LatestSlot.Unknown, false, configure, disconnect)
+              val peer = Peer[F](
+                None,
+                LatestSlot.Unknown,
+                false,
+                configure,
+                disconnect,
+                orderKey.getOrElse(OrderKey(id))
+              )
               (s.copy(next = id + 1, peers = s.peers.updated(id, peer)), id)
             }
           }
@@ -185,42 +200,58 @@ final class GenesisGovernor[F[_]: Async] private (
           case None          => F.pure(Right(false))
           case Some(current) =>
             // A newly registered connection contributes an empty candidate until FindIntersect.
-            val peers = snapshot.peers.map { (id, peer) =>
+            val ordered = snapshot.peers.toVector.sortBy { case (id, peer) =>
+              (peer.orderKey, id)
+            }
+            val peers = ordered.map { (id, peer) =>
               id -> PeerState(
-                peer.candidate.getOrElse(Fragment(current.current.anchor, Vector.empty)),
+                peer.candidate.getOrElse(
+                  Fragment(xyz.kd5ujc.scarab.protocol.ChainSync.Point.Origin, Vector.empty)
+                ),
                 peer.latestSlot,
                 peer.idling
               )
-            }
+            }.toMap
             val shared = GenesisDensity.sharedCandidatePrefix(
               current.current,
-              peers.toVector.map((id, peer) => id -> peer.candidate)
+              ordered.map((id, _) => id -> peers(id).candidate)
             )
-            val result =
-              current.windowAt(GenesisDensity.firstSlotAfter(shared.prefix)).map { window =>
-                GenesisDensity.densityDisconnect(
-                  window,
-                  current.k,
-                  peers,
-                  shared.suffixes,
-                  shared.prefix
-                )
-              }
+            val window = current.windowAt(GenesisDensity.firstSlotAfter(shared.prefix))
+            val result = window.map { window =>
+              GenesisDensity.densityDisconnect(
+                window,
+                current.k,
+                peers,
+                shared.suffixes,
+                shared.prefix
+              )
+            }
             change { now =>
               if now.phase != Gsm.Phase.Syncing || now.version != snapshot.version then (now, None)
               else
                 (
                   now.copy(limit = Some(shared.prefix)),
                   Some(
-                    result.toVector
-                      .flatMap(_.losingPeers)
-                      .flatMap(snapshot.peers.get)
-                      .map(_.disconnect)
+                    (
+                      Observation(
+                        current.current,
+                        current.k,
+                        window,
+                        ordered.map((id, peer) => Entry(id, peer.orderKey, peers(id))),
+                        shared,
+                        result
+                      ),
+                      result.toVector
+                        .flatMap(_.losingPeers)
+                        .flatMap(snapshot.peers.get)
+                        .map(_.disconnect)
+                    )
                   )
                 )
             }.flatMap {
-              case None              => F.pure(Left(()))
-              case Some(disconnects) => disconnects.sequence_.as(Right(true))
+              case None => F.pure(Left(()))
+              case Some((observation, disconnects)) =>
+                observe.traverse_(_(observation)) *> disconnects.sequence_.as(Right(true))
             }
       }
     }
@@ -240,6 +271,31 @@ final class GenesisGovernor[F[_]: Async] private (
     }
 
 object GenesisGovernor:
+  /** Reference Map peer ordering is independent of CSJ's registration sequence. */
+  enum OrderKey:
+    case Model(value: Long)
+    case Tcp(connection: xyz.kd5ujc.scarab.network.ConnectionId)
+
+  object OrderKey:
+    def apply(value: Long): OrderKey = Model(value)
+    given Ordering[OrderKey] with
+      def compare(a: OrderKey, b: OrderKey): Int = (a, b) match
+        case (Model(x), Model(y)) => x.compare(y)
+        case (Tcp(x), Tcp(y)) =>
+          summon[Ordering[xyz.kd5ujc.scarab.network.ConnectionId]].compare(x, y)
+        case (_: Model, _: Tcp) => -1
+        case (_: Tcp, _: Model) => 1
+  private[node] type InputFingerprint =
+    (Gsm.Phase, Option[SortedMap[OrderKey, Vector[(LatestSlot, Boolean)]]])
+  final case class Entry(session: Long, orderKey: OrderKey, state: PeerState)
+  final case class Observation(
+      current: Fragment,
+      k: Int,
+      genesisWindow: Option[BigInt],
+      peers: Vector[Entry],
+      shared: GenesisDensity.Shared[Long],
+      result: Option[GenesisDensity.Result[Long]]
+  )
   final case class Config(enabled: Boolean = true, interval: FiniteDuration = 1.second)
 
   /** A coherent ChainDB selection and immutable-ledger history query. Unknown history leaves
@@ -252,7 +308,8 @@ object GenesisGovernor:
       latestSlot: LatestSlot,
       idling: Boolean,
       configure: Gsm.Phase => F[Unit],
-      disconnect: F[Unit]
+      disconnect: F[Unit],
+      orderKey: OrderKey
   )
 
   private final case class State[F[_]](
@@ -271,7 +328,11 @@ object GenesisGovernor:
     def publish(candidate: Option[Fragment], latest: LatestSlot, idling: Boolean): F[Unit] =
       owner.publish(id, candidate, latest, idling)
 
-  def create[F[_]: Async](view: F[View], config: Config = Config()): F[GenesisGovernor[F]] =
+  def create[F[_]: Async](
+      view: F[View],
+      config: Config = Config(),
+      observe: Option[Observation => F[Unit]] = None
+  ): F[GenesisGovernor[F]] =
     for
       signal <- Deferred[F, Unit]
       selection <- Deferred[F, Unit]
@@ -279,7 +340,7 @@ object GenesisGovernor:
         State(Gsm.Phase.PreSyncing, 0L, SortedMap.empty, None, 0L, 0L, signal, 0L, selection)
       )
       lock <- Mutex[F]
-    yield new GenesisGovernor(state, lock, view, config)
+    yield new GenesisGovernor(state, lock, view, config, observe)
 
   def resource[F[_]: Async](
       view: F[View],

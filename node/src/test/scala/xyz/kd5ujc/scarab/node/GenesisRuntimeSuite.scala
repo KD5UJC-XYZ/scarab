@@ -251,7 +251,14 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
         acquired <- Ref.of[IO, Boolean](false)
         runtime <- setup()
         _ <- GenesisRuntime
-          .controls(Some(runtime), None, 1, _ => IO.unit, problem => failures.update(_ :+ problem))
+          .controls(
+            Some(runtime),
+            None,
+            1,
+            None,
+            _ => IO.unit,
+            problem => failures.update(_ :+ problem)
+          )
           .use(_ => acquired.set(true))
           .background
           .use { _ =>
@@ -530,5 +537,45 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
               yield ()
             }
         yield ()
+      }
+    }
+
+  private val identityError =
+    xyz.kd5ujc.scarab.protocol.ConnectionIdentityError.NonNumericScope("fixture-interface")
+  for (metadata, expected) <- Vector[
+      (
+          Option[Either[
+            xyz.kd5ujc.scarab.protocol.ConnectionIdentityError,
+            xyz.kd5ujc.scarab.network.ConnectionId
+          ]],
+          xyz.kd5ujc.scarab.ledger.GenesisInternalProblem
+      )
+    ](
+      None -> xyz.kd5ujc.scarab.ledger.GenesisInternalProblem.MissingConnectionIdentity,
+      Some(Left(identityError)) -> xyz.kd5ujc.scarab.ledger.GenesisInternalProblem
+        .InvalidConnectionIdentity(identityError)
+    )
+  do
+    test(s"production Genesis controls reject missing or invalid TCP identity: $metadata") {
+      TestControl.executeEmbed {
+        for
+          problems <- Ref
+            .of[IO, Vector[xyz.kd5ujc.scarab.ledger.GenesisInternalProblem]](Vector.empty)
+          runtime <- setup()
+          pool <- BlockPool.create[IO]
+          _ <- GenesisRuntime
+            .controls(
+              Some(runtime),
+              Some(pool),
+              1,
+              metadata,
+              _ => IO.unit,
+              problem => problems.update(_ :+ problem)
+            )
+            .use(_ => IO.raiseError(new AssertionError("invalid identity was accepted")))
+            .background
+            .use(_ => IO.sleep(1.millis))
+          seen <- problems.get
+        yield assertEquals(seen, Vector(expected))
       }
     }

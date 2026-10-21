@@ -333,6 +333,7 @@ final class OutboundPeers[F[_]: Async, A] private (
               hot.genesis,
               Some(hot.pool),
               peer.hashCode.toLong,
+              connection.mux.connectionId,
               error =>
                 connection.mux
                   .abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error))),

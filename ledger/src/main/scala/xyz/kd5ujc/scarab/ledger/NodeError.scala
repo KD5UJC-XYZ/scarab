@@ -145,7 +145,8 @@ object PeerError:
 /** Violated local Genesis invariants; reconnecting or blaming the remote peer cannot repair them.
   */
 enum GenesisInternalProblem extends NodeError:
-  case MissingSharedBlockPool, UnsupportedHeaderFamily
+  case MissingSharedBlockPool, UnsupportedHeaderFamily, MissingConnectionIdentity
+  case InvalidConnectionIdentity(cause: xyz.kd5ujc.scarab.protocol.ConnectionIdentityError)
   case MissingDynamoJumpInfo, UnexpectedIntersection
   case GraftMissingPoint(point: ChainSync.Point)
   case HeaderTimeUnavailable(point: ChainSync.Point)
@@ -157,8 +158,10 @@ enum GenesisInternalProblem extends NodeError:
       "Genesis jumper with a settled intersection received another jump result"
     case UnsupportedHeaderFamily =>
       "Genesis requires a header gate supporting typed snapshot grafts"
-    case MissingSharedBlockPool   => "Genesis requires the shared block pool"
-    case GraftMissingPoint(point) => s"Genesis jump snapshot lacks ${Points.show(point)}"
+    case MissingSharedBlockPool    => "Genesis requires the shared block pool"
+    case MissingConnectionIdentity => "Genesis requires the established TCP connection identity"
+    case InvalidConnectionIdentity(cause) => s"Genesis TCP connection identity: ${cause.message}"
+    case GraftMissingPoint(point)         => s"Genesis jump snapshot lacks ${Points.show(point)}"
     case HeaderSelectionUnavailable(point) =>
       s"Genesis validated header lacks a selection view at ${Points.show(point)}"
     case HeaderStateUnavailable(point) =>

@@ -44,12 +44,12 @@ final class GenesisRuntime[F[_]: Async] private (
       identity: Long,
       disconnect: PeerError => F[Unit],
       fatal: GenesisInternalProblem => F[Unit],
-      densityOrder: Option[GenesisGovernor.OrderKey] = None
+      densityOrder: GenesisGovernor.OrderKey
   ): Resource[F, (FetchCoordinator.Session[F], GenesisRuntime.Bound[F])] =
     for
       fetching <- pool.fetchCoordinator.session(identity)
       current <- Resource.eval(selection)
-      bound <- session(fetching.identity, current.anchor, disconnect, fatal, densityOrder)
+      bound <- session(fetching.identity, current.anchor, disconnect, fatal, Some(densityOrder))
     yield fetching -> bound
 
   def session(
@@ -329,13 +329,30 @@ object GenesisRuntime:
       runtime: Option[GenesisRuntime[F]],
       pool: Option[BlockPool[F]],
       identity: Long,
+      connectionId: Option[Either[
+        xyz.kd5ujc.scarab.protocol.ConnectionIdentityError,
+        xyz.kd5ujc.scarab.network.ConnectionId
+      ]],
       disconnect: PeerError => F[Unit],
       fatal: GenesisInternalProblem => F[Unit]
   ): Resource[F, (Option[FetchCoordinator.Session[F]], Option[Bound[F]])] =
     (runtime, pool) match
       case (Some(genesis), Some(shared)) =>
-        genesis
-          .bind(shared, identity, disconnect, fatal)
+        val key = connectionId match
+          case Some(Right(connection)) =>
+            Resource.pure[F, GenesisGovernor.OrderKey](GenesisGovernor.OrderKey.Tcp(connection))
+          case Some(Left(cause)) =>
+            Resource.eval(
+              fatal(GenesisInternalProblem.InvalidConnectionIdentity(cause)) *> Async[F]
+                .never[GenesisGovernor.OrderKey]
+            )
+          case None =>
+            Resource.eval(
+              fatal(GenesisInternalProblem.MissingConnectionIdentity) *> Async[F]
+                .never[GenesisGovernor.OrderKey]
+            )
+        key
+          .flatMap(order => genesis.bind(shared, identity, disconnect, fatal, order))
           .map((fetching, bound) => Some(fetching) -> Some(bound))
       case (Some(_), None) =>
         Resource.eval(

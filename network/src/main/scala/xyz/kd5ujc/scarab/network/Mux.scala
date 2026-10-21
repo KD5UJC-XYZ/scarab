@@ -55,6 +55,10 @@ trait MuxChannel[F[_]]:
   * Both fibers end by completing [[closed]] with the typed reason, which the channels raise.
   */
 trait Mux[F[_]]:
+  /** Captured transport identity; in-memory and Unix bearers have no TCP identity. */
+  def connectionId
+      : Option[Either[xyz.kd5ujc.scarab.protocol.ConnectionIdentityError, ConnectionId]] = None
+
   /** The channel of `protocol` in the connection's own role ([[Mux.Config.role]]). */
   def channel(protocol: Int)(using Raise[F, NetworkError]): F[MuxChannel[F]]
 
@@ -147,6 +151,7 @@ object Mux:
       case WireMux.Direction.Responder => Role.Initiator
 
     val setup = for
+      connectionIdentity <- Resource.eval(bearer.connectionId.sequence)
       done <- Resource.eval(Deferred[F, NetworkError])
       inbound <- Resource.eval(
         (for p <- protocols.toList; r <- roles yield (p, r))
@@ -165,9 +170,9 @@ object Mux:
           .create(WireMux.Limits(maxPayloadBytes = config.maxSduPayload))
           .fold(e => NetworkError.MuxSetup(e).raise[F, WireMux.Decoder], F.pure)
       )
-    yield (done, inbound, outbound, decoder)
+    yield (done, inbound, outbound, decoder, connectionIdentity)
 
-    setup.flatMap { case (done, inbound, outbound, decoder) =>
+    setup.flatMap { case (done, inbound, outbound, decoder, connectionIdentity) =>
       // Route decoded SDUs in order; the first protocol violation ends the connection.
       def route(sdus: List[WireMux.Sdu]): F[Option[NetworkError]] = sdus match
         case Nil => F.pure(None)
@@ -286,6 +291,7 @@ object Mux:
             .map(_.toMap)
         )
       yield new Mux[F]:
+        override val connectionId = connectionIdentity
         def channel(protocol: Int)(using Raise[F, NetworkError]) = channel(protocol, config.role)
         def channel(protocol: Int, role: Role)(using Raise[F, NetworkError]) =
           channels.get((protocol, role)) match
