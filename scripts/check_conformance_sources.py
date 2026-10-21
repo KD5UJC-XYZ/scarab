@@ -34,6 +34,7 @@ def sources(root: Path) -> list[Source]:
     ledger = json.loads((root / "node/src/test/resources/upstream/conway-govcert/manifest.json").read_text())
     network = json.loads((root / "fixtures/reference/ouroboros-network-protocol-codecs/keepalive.tsv.manifest.json").read_text())
     wallet = json.loads((root / "fixtures/reference/wallet-queries/manifest.json").read_text())
+    consensus = json.loads((root / "fixtures/reference/genesis-density/manifest.json").read_text())
     plutus = (root / "docs/plutus-conformance.md").read_text()
     # The reference executable's package pin, rather than a moving package index.
     match = re.search(r"IntersectMBO/plutus tag `[^`]+`, commit `([0-9a-f]{40})`", plutus)
@@ -59,9 +60,24 @@ def sources(root: Path) -> list[Source]:
                 "ouroboros-network/lib/Ouroboros/Network/PeerSelection/Governor/Types.hs",
                 "ouroboros-network/lib/Ouroboros/Network/PeerSelection/PeerMetric.hs",
                 "ouroboros-network/lib/Ouroboros/Network/BlockFetch/Decision.hs",
+                "ouroboros-network/lib/Ouroboros/Network/BlockFetch/Decision/",
+                "ouroboros-network/framework/lib/Ouroboros/Network/ConnectionId.hs",
                 "ouroboros-network/lib/Ouroboros/Network/BlockFetch/DeltaQ.hs",
                 "ouroboros-network/lib/Ouroboros/Network/DeltaQ.hs",
                 "ouroboros-network/api/tests-lib/Ouroboros/Network/Mock/ChainGenerators.hs")),
+        Source("consensus", "IntersectMBO/ouroboros-consensus", consensus["sourceCommit"],
+               ("cabal.project",
+                "ouroboros-consensus-diffusion/test/consensus-test/Test/Consensus/Genesis/",
+                "ouroboros-consensus-diffusion/test/consensus-test/Test/Consensus/PointSchedule/",
+                "ouroboros-consensus-diffusion/test/consensus-test/Test/Consensus/PeerSimulator/",
+                "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Node/",
+                "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Genesis/",
+                "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/ChainSync/",
+                "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/",
+                "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Util/LeakyBucket.hs",
+                "ouroboros-consensus/src/unstable-consensus-testlib/Test/Util/TestBlock.hs",
+                "ouroboros-consensus/test/consensus-test/Test/Consensus/MiniProtocol/ChainSync/CSJ.hs",
+                "ouroboros-consensus/test/infra-test/Test/Ouroboros/Consensus/Util/LeakyBucket/")),
         Source("rewards", "IntersectMBO/cardano-ledger", reward_pin[1],
                ("eras/shelley/impl/src/Cardano/Ledger/Shelley/PoolRank.hs",
                 "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rewards.hs",

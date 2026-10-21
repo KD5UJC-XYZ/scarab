@@ -95,6 +95,12 @@ remains a failing acceptance result until resolved. A bounded seed count is an e
 sampling choice, never a claim of exhaustive coverage. Matching outputs on those inputs
 does not establish the paper's security theorem or identical thread scheduling.
 
+The existing conformance-source CI check watches the pinned consensus implementation,
+original Genesis scenarios, schedule generators, peer simulator, CSJ and bucket tests.
+The network watch includes devoted-fetch decisions and concrete connection identity.
+Its pin comes from the maintained native fixture manifest. Drift is a review signal;
+the check neither refreshes fixtures nor substitutes source freshness for execution.
+
 The private runtime gates explicitly select Genesis for Scarab; leaving the mode
 unspecified exercises the harness's existing configuration instead:
 

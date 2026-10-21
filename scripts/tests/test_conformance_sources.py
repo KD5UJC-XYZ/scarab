@@ -109,7 +109,7 @@ class ConformanceSourcesTest(unittest.TestCase):
         rows = MODULE.sources(SCRIPT.parent.parent)
         self.assertEqual({row.name for row in rows},
                          {"ledger", "network", "rewards", "wallet-queries", "peer-snapshot-queries",
-                          "formal", "constrained", "plutus"})
+                          "consensus", "formal", "constrained", "plutus"})
         for row in rows:
             self.assertRegex(row.commit, r"^[0-9a-f]{40}$")
 
@@ -160,6 +160,20 @@ class ConformanceSourcesTest(unittest.TestCase):
         self.assertEqual(rows["peer-snapshot-queries"].commit, "b" * 40)
         self.assertEqual(rows["peer-snapshot-queries"].prefixes,
                          ("ouroboros-network/api/lib/New/PeerType.hs",))
+    def test_consensus_watch_covers_every_recorded_genesis_source(self):
+        import json
+        root = SCRIPT.parent.parent
+        rows = MODULE.sources(root)
+        consensus = next(row for row in rows if row.name == "consensus")
+        for name in ("genesis-density", "genesis-historicity", "genesis-chain-sync"):
+            manifest = json.loads((root / "fixtures/reference" / name / "manifest.json").read_text())
+            self.assertEqual(consensus.commit, manifest["sourceCommit"])
+            for path in manifest["sourceFiles"]:
+                self.assertTrue(path.startswith(consensus.prefixes), path)
+        network = next(row for row in rows if row.name == "network")
+        manifest = json.loads((root / "fixtures/reference/genesis-block-fetch/manifest.json").read_text())
+        for path in manifest["sourceFiles"]:
+            self.assertTrue(path.startswith(network.prefixes), path)
 
     def test_branch_names_cannot_replace_pins(self):
         source = MODULE.Source("sample", "example/repo", "main", ("tests/",))
