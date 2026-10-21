@@ -153,10 +153,17 @@ unspecified exercises the harness's existing configuration instead:
 
 ```sh
 python3 scripts/devnet.py --name scarab-33-restart restart --consensus-mode GenesisMode
-python3 scripts/devnet.py --name scarab-33-relay relay --consensus-mode GenesisMode
+python3 scripts/devnet.py --name scarab-33-relay relay --consensus-mode GenesisMode --no-peer-sharing
 python3 scripts/devnet.py --name scarab-33-soak soak --consensus-mode GenesisMode
 python3 scripts/devnet.py --name scarab-33-e2e e2e --consensus-mode GenesisMode
 ```
+
+The private Genesis relay disables peer sharing so its explicit trusted local pools satisfy
+`LocalRootsOnly` honest availability. Unrestricted Genesis instead requires enough active
+big-ledger peers; this private topology supplies none. Peer-sharing coverage uses the
+separate relay scenario with its ordinary Praos configuration. The inbound observation
+uses the configured sync timeout: a normal missing-intersection return can require the
+reference's 120-second repromotion delay before the same bearer follows again.
 
 The option writes a separate Scala configuration next to the copied genesis files.
 It does not change the reference pools' configuration. Restart forwards the mode

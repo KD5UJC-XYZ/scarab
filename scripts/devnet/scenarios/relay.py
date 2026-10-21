@@ -112,10 +112,15 @@ def inbound_session(connections):
     return sessions[0] if sessions else None
 
 
-def wait_inbound_session(args, timeout):
+def wait_inbound_session(args):
     """Wait for the Scala node's own ChainSync client to follow the Haskell relay over the relay's
-    inbound duplex connection: an intersection found and headers received."""
-    deadline = time.monotonic() + timeout
+    inbound duplex connection: an intersection found and headers received.
+
+    A relay initially behind our immutable anchor can return NoMoreIntersection normally.
+    The pinned consensus Node/ExitPolicy.hs29-30 waits 120 seconds before repromotion;
+    reuse the configured sync budget rather than imposing a shorter duplex-only deadline.
+    """
+    deadline = time.monotonic() + args.sync_timeout
     seen = None
     while time.monotonic() < deadline:
         seen = scala_connections(args)
@@ -233,7 +238,7 @@ def relay(args):
         print(json.dumps({"relaySynced": tip_at(args.name, RELAY_SOCKET)}), flush=True)
         # G2: the Haskell relay connected to us; our own clients follow it over that same connection
         duplex = args.relay_mode == "InitiatorAndResponder"
-        at_sync = wait_inbound_session(args, 90) if duplex else scala_connections(args)
+        at_sync = wait_inbound_session(args) if duplex else scala_connections(args)
         print(json.dumps({"connectionsAtSync": at_sync}), flush=True)
         local = submit_through_local_socket(args, root)
         print(json.dumps({"localSubmit": local}), flush=True)
