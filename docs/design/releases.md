@@ -28,15 +28,23 @@ lease before the one-time forced update. This is not standing authorization for 
 The table below describes the policy after the owner activates the cutover, not an already
 required source check on current PRs.
 
-After cutover, normal development is `feat/*` -> `dev` -> `main`. `release/beta` and `release/prod` are distribution
-branches, also protected by pull requests. Beta/prod denote release channels, not a claim that
-Scarab is safe on a particular Cardano network.
+After cutover, normal development is `feat/*` -> `dev` -> `main`. The planned distribution
+branches are `release/alpha`, `release/beta`, `release/preprod` and `release/prod`, each protected
+by pull requests. These channel names describe release maturity; they do not select a Cardano
+network or establish safety on it. The `preprod` release channel is distinct from the Cardano
+preprod network and the adopted-block acceptance gate.
+
+The four-channel contract is planned now. Creating all branches, GitHub deployment environments,
+approval policies and publishing workflows is deferred under #161/#75; this update does not
+configure those resources or authorize deployment.
 
 | PR target | Permitted PR source | Intended use |
 |---|---|---|
 | `main` | Only `dev` from this same repository | Reviewed promotion of integrated work |
 | `dev` | Any branch | Normal feature integration and reconciliation |
+| `release/alpha` | Any branch; normally `dev` | Reviewed early testing release |
 | `release/beta` | Any branch; normally `dev` | Reviewed beta preparation |
+| `release/preprod` | Any branch; normally `main` | Reviewed release-candidate preparation |
 | `release/prod` | Any branch; normally `main` | Reviewed production preparation |
 | Other branches | Any branch | No additional source-branch restriction |
 
@@ -56,8 +64,20 @@ also reach `main` through `dev`; the other targets retain the source freedom sta
 
 [SemVer](https://semver.org/) defines version meaning. Conventional commits propose increments;
 a reviewed release PR selects the version; an immutable protected tag identifies the released
-source. These roles are different. Release tags are `vMAJOR.MINOR.PATCH` and beta tags are
-`vMAJOR.MINOR.PATCH-beta.N`, for example `v0.2.0` and `v0.2.0-beta.1`.
+source. These roles are different. The channel and exact selected tag must agree:
+
+| Channel / approved branch | Git tag | Embedded version |
+|---|---|---|
+| `alpha` / `release/alpha` | `v0.2.0-alpha.1` | `0.2.0-alpha.1` |
+| `beta` / `release/beta` | `v0.2.0-beta.1` | `0.2.0-beta.1` |
+| `preprod` / `release/preprod` | `v0.2.0-rc.1` | `0.2.0-rc.1` |
+| `prod` / `release/prod` | `v0.2.0` | `0.2.0` |
+
+These are examples of `MAJOR.MINOR.PATCH`; prerelease ordinals are canonical nonnegative
+integers without leading zeroes. `rc` denotes a release candidate, intended to become stable if
+acceptance succeeds. `preprod` is the channel name, not a version suffix: `-preprod.N` and
+`-prod.N` are refused. Ordinary `dev`/workspace builds remain explicitly unreleased and identify
+their commit; they are not automatically published alpha releases.
 
 Use Ottochain's release-please plus sbt-dynver arrangement as the reference. Release-please's
 manifest is planning state, not another published-version authority. Do not add a separately
@@ -70,9 +90,12 @@ be recognizably unreleased and record the commit; release jobs cannot use a fall
 The immutable-source reproducibility wrapper exports source without `.git`. Resolve and verify
 tag, commit and version before export, then freeze that metadata with the source inputs for both
 clean builds. Both JARs, BuildInfo, SBOMs, provenance and image labels must agree. Do not let dynver's
-missing-Git/date fallback change the exported version or mistake a nearby beta tag for a stable
-release. Beta and stable version strings differ: prove each build separately instead of asserting
-that a beta JAR is byte-identical to a stable JAR with a different embedded version.
+missing-Git/date fallback change the exported version or mistake a nearby prerelease tag for a stable
+release. Alpha, beta, RC and stable version strings differ: prove each selected build separately
+instead of asserting equality across versions. An RC JAR cannot become the stable JAR by renaming
+it or adding an image alias while its embedded version remains `-rc.N`. Build the unsuffixed
+production artifact from the approved source and fixed inputs, verify its own reproducibility,
+and exercise that exact artifact/digest in acceptance before production use.
 
 Conventional `feat`, `fix` and breaking-change markers feed the next-version proposal. The initial
 implementation should explicitly configure and test the reference's pre-1.0 policy: breaking
@@ -92,12 +115,11 @@ include it exactly once in the first applicable release, not just the directory'
 
 This is the established news-fragment pattern implemented by
 [Scriv](https://scriv.readthedocs.io/en/latest/commands.html) and
-[Towncrier](https://towncrier.readthedocs.io/en/stable/tutorial.html). Scriv is the first tool to
-trial because it collects Markdown fragments, supports keeping or removing consumed fragments,
-and can preserve uncategorized prose. Towncrier is an alternative with typed fragment filenames.
-Neither is assumed to accept Scarab's topic-bearing headings and mixed legacy fragments without
-verification. Stage 1 must prove lossless handling of the actual corpus before selecting/pinning
-a tool or adding a narrow adapter; do not rewrite the accumulated explanations wholesale.
+[Towncrier](https://towncrier.readthedocs.io/en/stable/tutorial.html). The selected Scriv adapter
+preserves complete fragment blocks through its public collection API; the preparation guide
+records the original corpus trial and pinned dependency hashes. Towncrier is an alternative
+with typed fragment filenames. Topic headings and legacy Unreleased prose must remain lossless;
+do not rewrite the accumulated explanations wholesale.
 
 The release PR is the consolidation review, with a reproducible algorithm:
 
@@ -121,20 +143,21 @@ The release PR is the consolidation review, with a reproducible algorithm:
    and receipt; a repeated application is a no-op or an explicit already-consumed result, never a
    duplicate version section. Parallel arrivals require an updated selection and renewed review.
 
-Beta notes are a versioned snapshot, initially cumulative since the last stable release; beta
-preparation retains the fragments. Stable consolidation consumes them in a reviewed preparation
-PR into `dev`, then `dev` promotes to `main`, then the selected source promotes to `release/prod`.
+Alpha, beta and preprod/RC notes are versioned snapshots, initially cumulative since the last
+stable release; all prerelease preparation retains the fragments. Stable consolidation consumes
+them in a reviewed preparation PR into `dev`, then `dev` promotes to `main`, then the selected
+source promotes to `release/prod`.
 This keeps the stable changelog and cleanup in the integration history without a forbidden
-release-branch PR to `main`. Preserve separately published beta note snapshots. If a release
+release-branch PR to `main`. Preserve separately published prerelease note snapshots. If a release
 branch receives additional user-visible fixes, reconcile their fragments through `dev` before
 stable consolidation, and require exact final candidate coverage before publication. A failed
 publication retries the same tagged release and notes; Git history retains the consumed inputs.
-Allow only one pending stable consolidation. Until it publishes successfully, beta collection
+Allow only one pending stable consolidation. Until it publishes successfully, prerelease collection
 must also recover its consumed-but-unpublished entries using the retained receipt's source
 revision and path/hash identities, unioned with new pending fragments by identity. Reading only
 the surviving `changes/` files would omit unreleased work. An abandoned stable attempt requires
 a reviewed rollback/restoration through `dev` before another stable consolidation; never reuse
-or move its reserved tag. Preserve published sections and previously published beta snapshots.
+or move its reserved tag. Preserve published sections and previously published prerelease snapshots.
 A receipt remains available after success to prove selection and prevent duplicate consumption.
 
 Release-please manages the version proposal and release PR lifecycle; fragment tooling owns
@@ -167,8 +190,11 @@ release/tag authority, rotation/revocation and least-privilege owner setup befor
 
 Publish the runnable fat JAR and checksums to GitHub Releases. Link the
 [GHCR](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
-image using its full digest and record architecture/platform support. Mutable `beta`/`latest`
-aliases are conveniences, never evidence identities; beta cannot update the production alias.
+image using its full digest and record architecture/platform support. Exact version labels match
+the selected tag's embedded version. Optional moving channel aliases (`alpha`, `beta`, `preprod`,
+`prod`) are conveniences, never evidence identities; prerelease jobs cannot update production
+aliases. Each prerelease version is marked as a prerelease in GitHub Releases. Alias and
+environment setup remain deferred; the final verifier uses versioned artifacts and immutable digests.
 Release notes include compatibility, migration/operator notes, downloads, image digest/pull command,
 SBOMs, provenance/verification instructions and the independent verification receipt.
 
@@ -201,7 +227,7 @@ without claiming a SLSA level merely because an attestation exists.
 1. **#161: promotion, version and fragments.** Reconcile integration branches; implement source-rule
    and conventional-title checks; trial and pin the fragment collector on the actual corpus;
    implement release-please integration, tag-derived sbt/export metadata and compatibility-row
-   validation. Prove concurrent fragment arrival, malformed input, repeat collection, beta retention,
+   validation. Prove concurrent fragment arrival, malformed input, repeat collection, prerelease retention,
    stable cleanup, stalled/abandoned publication, version mismatch and forbidden-main-source
    controls. Owner applies rules/settings.
 2. **#75 / #229: candidate artifacts.** Reuse the clean fat-JAR verifier; rebuild native inputs;
@@ -210,7 +236,7 @@ without claiming a SLSA level merely because an attestation exists.
 3. **#75: authorized publication.** Install approved minimal credentials/environment policies;
    implement signing/attestation, draft/staged publication, independent retrieval/verification and
    failure/retry controls, including rejection of public completion/production-alias advancement
-   before both artifact verifications pass. Dry-run orchestration before enabling beta publication;
+   before both artifact verifications pass. Dry-run orchestration before enabling prerelease publication;
    production still requires the v0.2 gate and appropriate release approval.
 4. **#76: operator delivery.** Document release downloads and GHCR use. Compose/Kubernetes,
    persistent volumes, metrics/health checks and role/key-mount conventions remain its separate

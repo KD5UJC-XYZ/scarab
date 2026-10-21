@@ -146,5 +146,5 @@ on what landed.
 Work targets `main` for now. The planned cutover follows
 [the release design](design/releases.md): normal integration targets `dev`, and only same-repository
 `dev` can then be a PR source for `main`. Other targets accept any source. #161 tracks branch/check enforcement; implementation completion still requires the
-main integration and evidence in the definition of done above. Preparing a beta or release plan
+main integration and evidence in the definition of done above. Preparing a prerelease or stable release plan
 does not close the adopted-preprod-block gate.

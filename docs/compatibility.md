@@ -19,8 +19,10 @@ The component matrix below describes source-level evidence, not blanket support 
 
 Each real row pins reference version/commit, supported node-to-node/node-to-client versions and
 network/era scope, artifact/platform identities, relevant tests and known exclusions. Persisted
-format and migration compatibility remain explicit. Beta/prod channel names alone imply none of
-these properties. Do not infer support for newer cardano-node versions from a matching major.
+format and migration compatibility remain explicit. Alpha/beta/preprod/prod channel names alone
+imply none of these properties and do not select a Cardano network. Preprod-channel tags use
+`-rc.N`; production tags have no suffix. No deployment environment is provisioned by this contract.
+Do not infer support for newer cardano-node versions from a matching major.
 
 ## Evidence kinds
 

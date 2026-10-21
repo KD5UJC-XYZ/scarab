@@ -220,7 +220,9 @@ devnet name and sbt server socket. Work branches from and targets `main` for now
 change-level gates and rebase onto the intended target before reporting. The owner will activate
 `feat/*` -> `dev` -> `main` promotion separately. After that cutover, only the same repository's
 `dev` branch may open a PR into `main`; all other PR targets accept any source branch.
-`release/beta` and `release/prod` also require reviewed PRs.
+`release/alpha`, `release/beta`, `release/preprod` and `release/prod` also require reviewed PRs
+after cutover. Their planned tag suffixes are `-alpha.N`, `-beta.N`, `-rc.N` and no suffix,
+respectively; environment creation and protection setup remain deferred.
 
 The owner-directed [release and hardening design](docs/design/releases.md) supersedes the research
 phase landing and `main` hotfix-line plans at cutover. #161 tracks enforcement: required checks, branch/tag
@@ -241,7 +243,7 @@ from a different source revision as if they tested the rebased code.
 Each change that needs a changelog entry adds a file `changes/<issue-or-branch>.md` with its entry
 (a `### Added|Changed|Fixed|Removed (...)` heading and the bullets). Nobody edits `CHANGELOG.md`
 between releases, so branches do not conflict there; a release folds the fragments into a version
-section and deletes only its selected inputs in the same reviewed PR. Beta notes retain pending
+section and deletes only its selected inputs in the same reviewed PR. Prerelease notes retain pending
 fragments. See [changes/README.md](changes/README.md) and the
 [consolidation contract](docs/design/releases.md#changelog-fragments-and-consolidation).
 

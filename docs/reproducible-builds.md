@@ -27,8 +27,20 @@ identifying HEAD; use the immutable-source wrapper below for verified release-ca
 
 ## Version identity
 
-Release versions come from the exact selected Git tag: `vMAJOR.MINOR.PATCH` for `prod`,
-or `vMAJOR.MINOR.PATCH-beta.N` for `beta`. The wrapper is the sole release-version entrypoint.
+Release versions come from the exact selected Git tag. The wrapper is the sole release-version
+entrypoint, with this channel contract:
+
+| Channel | Approved source branch | Tag example | Embedded version |
+|---|---|---|---|
+| `alpha` | `release/alpha` | `v0.2.0-alpha.1` | `0.2.0-alpha.1` |
+| `beta` | `release/beta` | `v0.2.0-beta.1` | `0.2.0-beta.1` |
+| `preprod` | `release/preprod` | `v0.2.0-rc.1` | `0.2.0-rc.1` |
+| `prod` | `release/prod` | `v0.2.0` | `0.2.0` |
+
+`preprod` denotes release-candidate maturity, separately from the Cardano preprod network.
+`-preprod.N` and `-prod.N` are not accepted version suffixes. Ordinals allow zero but no leading
+zeroes. These planned channel contracts do not create remote branches, deployment environments,
+approval settings or publishers; those remain staged under #161/#75.
 The pinned [sbt-dynver configuration](https://github.com/sbt/sbt-dynver/tree/v5.1.0) deliberately keeps ordinary workspace builds unreleased,
 including a clean checkout at a release tag. In the standard JDK image, which has no Git executable,
 that version is `0.0.0-dev.g<FULL_COMMIT>.workspace`; it identifies HEAD without attesting the
@@ -49,17 +61,19 @@ that coordinator rather than inferred from a possibly moved tag:
 
 ```sh
 python3 scripts/reproducible_build.py --revision "$APPROVED_COMMIT" \
-  --release-tag "$APPROVED_TAG" --channel beta \
+  --release-tag "$APPROVED_TAG" --channel preprod \
   --expected-commit "$APPROVED_COMMIT" --expected-tag-object "$APPROVED_TAG_OBJECT" \
-  --source-ref refs/remotes/origin/release/beta --expected-version "$PROPOSED_VERSION" \
-  --cache /path/to/dependency-cache --output /tmp/scarab-beta-repro --check
+  --source-ref refs/remotes/origin/release/preprod --expected-version "$PROPOSED_VERSION" \
+  --cache /path/to/dependency-cache --output /tmp/scarab-rc-repro --check
 ```
 
 Release mode refuses a dirty index/worktree or untracked inputs, shallow history, missing tag/ref,
 wrong channel/source, moved tag object or commit, and a proposal version that differs from the tag.
-It never auto-selects a tag: beta and stable tags may legitimately identify the same source, but
-both must be built explicitly with their own exact tag identity and different embedded versions.
-The approved `release/beta` or `release/prod` local/origin-tracking ref must retain the selected cut
+It never auto-selects a tag: prerelease and stable tags may legitimately identify the same source,
+but each must be built explicitly with its own exact tag identity and embedded version. An RC JAR
+and a stable JAR differ because their embedded versions differ; moving an image alias cannot turn
+one into the other. Verify the unsuffixed artifact separately before production use.
+The approved `release/<channel>` local/origin-tracking ref must retain the selected cut
 as an ancestor. Its later advancement does not alter the frozen version or prevent an immutable
 retry of that cut. Deleted or rewritten authority is not silently accepted.
 
@@ -91,7 +105,7 @@ verifiers lacking the output contract, changed artifacts and mismatched metadata
 The host controls use temporary local repositories:
 `python3 -m unittest scripts.tests.test_release_identity scripts.tests.test_reproducible_build`.
 Inside the JDK image, `python3 scripts/check_build_identity.py` exercises the actual sbt settings
-in isolated minimal projects, including beta/stable/development archives and refused metadata.
+in isolated minimal projects, including alpha/beta/preprod/prod/development archives and refused metadata.
 CI runs these sbt controls inside the JDK Docker image after its ordinary full check, including
 with Python optimization enabled so control failures cannot disappear with assertions.
 The full verifier additionally compiles and smokes the actual node artifacts. SBOMs, provenance and

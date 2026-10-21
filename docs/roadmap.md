@@ -286,8 +286,10 @@ The 2026-10-21 owner decision allows release/hardening preparation now while the
 block gate remains open (no earlier than October 23; not a promise of completion on that date).
 Work targets `main` for now; align `dev` to the same source before the eventual cutover.
 [#161](https://github.com/KD5UJC-XYZ/scarab/issues/161) tracks the planned protected PR promotion `feat/*` ->
-`dev` -> `main` (only same-repository `dev` may target `main`), with protected `release/beta` and
-`release/prod` branches. Other targets accept any source. Plain Scarab SemVer and protected Git
+`dev` -> `main` (only same-repository `dev` may target `main`), with planned protected
+`release/alpha`, `release/beta`, `release/preprod` and `release/prod` branches. Their tag suffixes
+are `-alpha.N`, `-beta.N`, `-rc.N` and no suffix respectively. Environment/protection setup is
+deferred; other targets accept any source. Plain Scarab SemVer and protected Git
 tags govern releases; the compatibility matrix states reference support separately. The
 [release design](design/releases.md) records fragment consolidation, Ottochain as reference,
 credentials, release-please/dynver integration, GHCR delivery and #75 evidence. Settings remain

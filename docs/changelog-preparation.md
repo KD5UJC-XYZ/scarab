@@ -49,18 +49,33 @@ published sections remain. Their historical claims still require human release r
 
 ## Preview, review and stable application
 
+The collector and build verifier share the same version parser. It infers the channel from the
+proposed version; no separate environment or channel configuration is created:
+
+| Channel | Proposed version example | Fragment handling |
+|---|---|---|
+| `alpha` | `0.2.0-alpha.1` | Preview only; retain fragments |
+| `beta` | `0.2.0-beta.1` | Preview only; retain fragments |
+| `preprod` | `0.2.0-rc.1` | Preview only; retain fragments |
+| `prod` | `0.2.0` | Reviewed stable application may consume selected fragments |
+
+Ordinals are canonical nonnegative integers without leading zeroes. The `preprod` channel uses
+`rc`, not `preprod`, as its version suffix; production has no suffix. Channel names do not select
+Cardano networks. See [the channel plan](design/releases.md#version-authority-and-proposal).
+
 Run these with approved actual commit identities, not the illustrative shell placeholders:
 
 ```sh
 /tmp/scarab-changelog/bin/python scripts/release_fragments.py preview \
   --source "$candidate_commit" --baseline "$verified_stable_commit" \
-  --version 0.2.0-beta.1 --date 2026-10-21 --output /tmp/scarab-beta-notes
+  --version 0.2.0-rc.1 --date 2026-10-21 --output /tmp/scarab-rc-notes
 ```
 
 The exclusive new output directory contains `plan.json`, `notes.md` and a proposed `CHANGELOG.md`.
-No tracked input changes. Beta previews retain fragments and cannot be applied. Keep each beta note
-snapshot separately; no stable changelog section is inserted by a beta preview. To prepare stable
-consolidation, regenerate with the approved stable version and a new output directory, review the
+No tracked input changes. Alpha, beta and preprod/RC previews retain fragments and cannot be applied.
+Keep each prerelease note snapshot separately; no stable changelog section is inserted by a
+prerelease preview. To prepare stable consolidation, regenerate with the approved stable version
+and a new output directory, review the
 selection and both rendered outputs, then apply that exact plan:
 
 ```sh
@@ -83,7 +98,7 @@ receipt. Repeating an identical application is a no-op; a different plan cannot 
 
 At most one stable preparation after the declared published baseline may remain pending. Until
 publication actually succeeds, keep using the old verified baseline: a new stable attempt is refused,
-while beta preview recovers consumed-but-unpublished fragments and legacy prose from their original
+while any prerelease preview recovers consumed-but-unpublished fragments and legacy prose from their original
 source/path/hash identities and includes new fragments. It does not read only surviving files.
 
 After independent publication verification, the coordinator may supply the newly verified stable
