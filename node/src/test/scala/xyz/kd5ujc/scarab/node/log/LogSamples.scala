@@ -250,6 +250,7 @@ object LogSamples:
     MempoolEvent.Rejected(Some(hash), Rejection.Full(300, 100L)),
     MempoolEvent.Dropped(hash, Rejection.AlreadyHeld(hash)),
     MempoolEvent.Adopted(hash),
+    MempoolEvent.Removed(hash),
     MempoolEvent.Synced(3, 900L, 1),
     MempoolEvent.Synced(3, 900L, 0)
   )

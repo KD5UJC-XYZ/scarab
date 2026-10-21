@@ -1008,6 +1008,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `mempoolRejected` | `Mempool.MempoolRejected` | Info | `tx`, `reason` |
 | `mempoolDropped` | `Mempool.MempoolDropped` | Info | `tx`, `reason` |
 | `mempoolAdopted` | `Mempool.MempoolAdopted` | Info | `tx` |
+| `mempoolRemoved` | `Mempool.MempoolRemoved` | Info | `tx` |
 | `mempoolSynced` | `Mempool.MempoolSynced` | Info | `count`, `bytes`, `dropped` |
 | `forgeStarted` | `Forge.ForgeStarted` | Notice | `pool`, `vrfKeyHash`, `kesStart`, `kesEvolutions`, `opCertCounter`, `kesPeriod`, `remainingKesPeriods` |
 | `forged` | `Forge.Forged` | Info | `slot`, `epoch`, `blockNo`, `hash`, `prev`, `txs`, `bodySize`, `kesPeriod`, `relativeKesPeriod`, `stake`, `totalStake`, `opCertCounter` |

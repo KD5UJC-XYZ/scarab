@@ -553,6 +553,56 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
       })
   }
 
+  test(
+    "removeTxsEvenIfValid drops a parent's dependant, keeps the rest in order and wakes awaiters"
+  ) {
+    val (t1, id1) = pay(1)
+    val (child, idChild) =
+      tx(Vector(TxIn(id1, 0)), Vector(alice.address() -> (98 * ada)), ada, Vector(bob))
+    val (t2, id2) = pay(2)
+    val (t3, id3) = pay(3)
+    for
+      ev <- events
+      mempool <- Mempool.create[IO](Right(ledger(4)), 1000, env, 100000, ev._1)
+      _ <- List(t1, child, t2, t3).foldLeft(IO.unit)((done, t) => done *> mempool.add(t).void)
+      before <- mempool.snapshot
+      waiting <- mempool.awaitChange(_.entries.size == 4).start
+      dependants <- mempool.removeTxsEvenIfValid(Set(id1))
+      woken <- waiting.joinWithNever
+      after <- mempool.snapshot
+      log <- ev._2.get
+      reoffered <- mempool.add(t1)
+    yield
+      assertEquals(dependants.map(_._1.id), Vector(idChild))
+      assertEquals(woken.entries.map(_.id), Vector(id2, id3))
+      assertEquals(after.entries.map(_.id), Vector(id2, id3))
+      assertEquals(
+        after.entries.map(_.ticket),
+        before.entries.filter(e => Set(id2, id3)(e.id)).map(_.ticket)
+      )
+      assertEquals(log.collect { case MempoolEvent.Removed(id) => id }, Vector(id1))
+      assertEquals(log.collect { case MempoolEvent.Dropped(id, _) => id }, Vector(idChild))
+      assertEquals(reoffered, Right(id1))
+  }
+
+  test("removeTxsEvenIfValid of ids that are not held changes nothing") {
+    val (t1, id1) = pay(1)
+    val (_, unknown) = pay(2)
+    for
+      ev <- events
+      mempool <- Mempool.create[IO](Right(ledger(2)), 1000, env, 100000, ev._1)
+      _ <- mempool.add(t1)
+      before <- mempool.snapshot
+      dependants <- mempool.removeTxsEvenIfValid(Set(unknown))
+      after <- mempool.snapshot
+      log <- ev._2.get
+    yield
+      assertEquals(dependants, Vector.empty)
+      assertEquals(after, before)
+      assertEquals(after.entries.map(_.id), Vector(id1))
+      assert(!log.exists(_.isInstanceOf[MempoolEvent.Removed]))
+  }
+
   test("real mempool validation retries unavailable add and revalidation after decoder recovery") {
     val fixture = xyz.kd5ujc.scarab.ledger.PlutusCase
       .load(java.nio.file.Path.of("fixtures/preprod/plutus/tx-2edd684f.json"))

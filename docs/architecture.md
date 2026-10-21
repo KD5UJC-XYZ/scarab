@@ -773,7 +773,7 @@ peers fetching at once with `maxConcurrencyBulkSync`; ours is limited by the num
 keeps failing is retried forever, with one it is fatal after 30 attempts), `--listen` starts the
 inbound server, `--local-socket` the local one, `--mempool-bytes` sets the capacity. The followed
 peers get our mempool through TxSubmission2. The JSON log gains `listening`, `inbound`,
-`mempoolAdded`, `mempoolRejected`, `mempoolAdopted`, `mempoolDropped` and `mempoolSynced`.
+`mempoolAdded`, `mempoolRejected`, `mempoolAdopted`, `mempoolRemoved`, `mempoolDropped` and `mempoolSynced`.
 
 ## Connections: the manager and the inbound governor (G2)
 

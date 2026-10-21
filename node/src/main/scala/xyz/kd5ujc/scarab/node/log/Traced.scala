@@ -230,6 +230,7 @@ object Traced:
         "reason" -> reason.message.asJson
       )
     case MempoolEvent.Adopted(id) => EventKind.MempoolAdopted.line("tx" -> id.hex.asJson)
+    case MempoolEvent.Removed(id) => EventKind.MempoolRemoved.line("tx" -> id.hex.asJson)
     case MempoolEvent.Dropped(id, reason) =>
       EventKind.MempoolDropped.line("tx" -> id.hex.asJson, "reason" -> reason.message.asJson)
     case MempoolEvent.Synced(count, bytes, dropped) =>

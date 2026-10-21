@@ -23,6 +23,11 @@ enum MempoolEvent:
 
   /** A held transaction is now in the chain: it was in a block that became part of our chain. */
   case Adopted(id: Bytes)
+
+  /** A held transaction was removed on request although it still applies (a block we forged with it
+    * was refused by our own chain). Transactions that depended on it are reported as `Dropped`.
+    */
+  case Removed(id: Bytes)
   case Synced(count: Int, bytes: Long, dropped: Int)
 
 trait MempoolEvents[F[_]]:
@@ -68,6 +73,14 @@ trait Mempool[F[_]]:
       tipSlot: BigInt,
       adopted: Set[Bytes] = Set.empty
   )(using Raise[F, StorageError]): F[Vector[(Entry, Rejection)]]
+
+  /** Remove the held transactions among `ids` even though they still apply, then revalidate the
+    * rest in order and return the ones that depended on them (`implRemoveTxsEvenIfValid`). Ids that
+    * are not held change nothing. Unlike `sync` it does not move the pool's tip.
+    */
+  def removeTxsEvenIfValid(ids: Set[Bytes])(using
+      Raise[F, StorageError]
+  ): F[Vector[(Entry, Rejection)]]
 
   /** Offer our transactions to a peer (we are the TxSubmission2 client). */
   def source: TxSubmissionClient.Source[F]
@@ -174,6 +187,36 @@ object Mempool:
           _ <- events.emit(MempoolEvent.Synced(next.entries.size, next.bytes, invalid.size))
         yield invalid
       }
+
+      def removeTxsEvenIfValid(ids: Set[Bytes])(using Raise[F, StorageError]) =
+        lock.lock.surround {
+          for
+            current <- state.get
+            (removed, kept) = current.entries.partition(e => ids(e.id))
+            out <-
+              if removed.isEmpty then F.pure(Vector.empty[(Entry, Rejection)])
+              else
+                for
+                  completed <- current.base.traverse(l =>
+                    UtxoStore
+                      .complete(utxoStore, l.utxo, UtxoStore.readSet(kept.map(_.tx)))
+                      .map(l.withUtxo)
+                  )
+                  activeEnv <- readEnv
+                  result <- F.blocking(current.copy(base = completed).remove(ids, activeEnv))
+                  (next, dependants) = result
+                  _ <- state.set(next)
+                  _ <- version.update(_ + 1)
+                  _ <- removed.traverse_(entry => events.emit(MempoolEvent.Removed(entry.id)))
+                  _ <- dependants.traverse_ { (entry, reason) =>
+                    events.emit(MempoolEvent.Dropped(entry.id, reason))
+                  }
+                  _ <- events.emit(
+                    MempoolEvent.Synced(next.entries.size, next.bytes, dependants.size)
+                  )
+                yield dependants
+          yield out
+        }
 
       val source: TxSubmissionClient.Source[F] = new TxSubmissionClient.Source[F]:
         def after(ticket: Long, max: Int) =
