@@ -83,13 +83,13 @@
     {
       "id": "ledger-refusal-membership",
       "classification": "sampling-limit",
-      "status": "open",
+      "status": "covered",
       "scope": "Fresh-ledger and multi-ledger refusal comparisons.",
       "assertion": "The one complete typed Scarab failure is present in the native accumulated failure list.",
       "rationale": "This proves failure membership, not native full-list cardinality, order or equality.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
-      "resolution": "Narrow published claims to membership; implement independent accumulated-list equality only with an explicit error-accumulation design.",
+      "resolution": "Retained native cases execute the single complete typed-cause membership assertion. Suite names and documentation explicitly exclude accumulated-list cardinality, ordering and equality; any accumulated-list contract requires a separate error-accumulation design.",
       "evidence": [
         "node/src/test/scala/xyz/kd5ujc/scarab/node/UpstreamFreshLedgerConformanceSuite.scala",
         "node/src/test/scala/xyz/kd5ujc/scarab/node/UpstreamMultiLedgerConformanceSuite.scala"
@@ -98,18 +98,37 @@
     },
     {
       "id": "recorded-replay-comparison",
-      "classification": "regression",
+      "classification": "native-parity",
       "status": "open",
-      "scope": "Captured-window serial and parallel Scala replay and projection exports.",
-      "assertion": "Scala execution modes agree; exported native-comparison inputs alone do not compare native projection contents.",
+      "scope": "Recorded Preview replay against required reduced native projection bodies, separately from Scala serial/parallel execution equivalence.",
+      "assertion": "Require nonempty original reference bodies for every indexed in-window point; compare every required native field exactly, including complete map digests/counts/buckets, and require referenceBodyComparisons == referenceTargetsRequired > 0.",
       "rationale": "An export is an input to a comparison and must not be reported as completed native parity.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
-      "resolution": "Require nonempty in-window native reference targets and actual projection-content comparison in candidate acceptance; label remaining mode equivalence precisely.",
+      "resolution": "Strict body loading/comparison and six synthetic comparison-mechanism controls are implemented. Actual external native replay remains unexecuted here: provision reviewed authentic window inputs and retain its successful content-comparison receipt before marking native coverage covered.",
       "evidence": [
-        "node/src/test/scala/xyz/kd5ujc/scarab/node/preview/RecordedReplay.scala"
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/preview/RecordedReplay.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/preview/ReplayReference.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/preview/ReplayReferenceSuite.scala",
+        "docs/design/parallel-plutus.md"
       ],
       "candidateRequired": true
+    },
+    {
+      "id": "mithril-projection-construction",
+      "classification": "regression",
+      "status": "covered",
+      "scope": "Pinned recorded Mithril artifact/checkpoint restoration and optional projection export.",
+      "assertion": "Check artifact provenance, restored anchor and UTxO count, then construct a projection; no independent native projection body is loaded or compared.",
+      "rationale": "Constructing or exporting a projection cannot establish native projection-content equivalence.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
+      "resolution": "Keep the restore/construction claim explicit and separate from historically recorded external comparisons. Native-body equivalence needs an independent comparison and its own retained receipt.",
+      "evidence": [
+        "node/src/test/scala/xyz/kd5ujc/scarab/storage/MithrilBootstrapAcceptanceSuite.scala",
+        "docs/design/mithril-bootstrap.md"
+      ],
+      "candidateRequired": false
     },
     {
       "id": "incoherent-cache-generators",
