@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.effect.{Async, Deferred, Ref}
+import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Header, ValidationError}
@@ -13,10 +13,16 @@ import xyz.kd5ujc.scarab.ledger.{Header, ValidationError}
   */
 final class InvalidBlocks[F[_]: Async] private (
     state: Ref[F, InvalidBlocks.State[F]],
-    collect: BigInt => F[Unit]
+    collect: BigInt => F[Unit],
+    selection: Ref[F, Boolean]
 ):
   import InvalidBlocks.*
   private val F = Async[F]
+
+  private[node] def selectionActive: F[Boolean] = selection.get
+
+  private[node] def selectionResource: Resource[F, Unit] =
+    Resource.make(selection.set(true))(_ => selection.set(false))
 
   def snapshot: F[Snapshot] = state.get.map(_.snapshot)
 
@@ -72,5 +78,6 @@ object InvalidBlocks:
 
   private[node] def create[F[_]: Async](collect: BigInt => F[Unit]): F[InvalidBlocks[F]] =
     Deferred[F, Unit].flatMap { signal =>
-      Ref.of[F, State[F]](State(0, Map.empty, signal)).map(new InvalidBlocks(_, collect))
+      (Ref.of[F, State[F]](State(0, Map.empty, signal)), Ref.of[F, Boolean](false))
+        .mapN(new InvalidBlocks(_, collect, _))
     }

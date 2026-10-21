@@ -83,6 +83,7 @@ object Peer:
 
   sealed trait Validation[F[_]]:
     def addedPoint: Option[ChainSync.Point]
+    def admissionOrder: Option[BigInt]
     def rejected(refusal: ValidationError, lastValid: ChainSync.Point)(using
         cats.Applicative[F]
     ): F[Either[BlockPoolProblem, Rejection]]
@@ -91,6 +92,7 @@ object Peer:
     private[node] def domain[F[_]](peer: Peer[F], header: Header): Validation[F] =
       new Validation[F]:
         def addedPoint = Some(header.point)
+        def admissionOrder = Some(BigInt(0))
         def rejected(refusal: ValidationError, lastValid: ChainSync.Point)(using
             F: cats.Applicative[F]
         ): F[Either[BlockPoolProblem, Rejection]] =
@@ -98,9 +100,28 @@ object Peer:
 
     private[node] def none[F[_]]: Validation[F] = new Validation[F]:
       def addedPoint = None
+      def admissionOrder = None
       def rejected(refusal: ValidationError, lastValid: ChainSync.Point)(using
           F: cats.Applicative[F]
       ): F[Either[BlockPoolProblem, Rejection]] = F.pure(Right(Rejection.NoAddingClient))
+
+    private[node] def admission[F[_]](
+        pool: BlockPool[F],
+        admission: BlockPool.Admission
+    ): Validation[F] =
+      new Validation[F]:
+        def addedPoint = Some(admission.delivered.header.point)
+        def admissionOrder = Some(admission.delivered.admission)
+        def rejected(error: ValidationError, lastValid: ChainSync.Point)(using
+            F: cats.Applicative[F]
+        ) =
+          pool
+            .reject(admission.taken, admission.delivered.header.point, error, lastValid)
+            .map(_.map {
+              case BlockPool.Rejection.Forgiven(_)      => Rejection.Forgiven
+              case BlockPool.Rejection.Punished(_)      => Rejection.PunishedForeign
+              case BlockPool.Rejection.NotImplicated(_) => Rejection.NotImplicated
+            })
 
     private[node] def added[F[_]](
         claims: BlockPool.Claims[F],
@@ -109,6 +130,7 @@ object Peer:
         handled: ValidationError => F[Unit]
     ): Validation[F] = new Validation[F]:
       def addedPoint = taken.metadata.map(_.header.point)
+      def admissionOrder = taken.metadata.map(_.admission)
       def rejected(refusal: ValidationError, lastValid: ChainSync.Point)(using
           F: cats.Applicative[F]
       ): F[Either[BlockPoolProblem, Rejection]] =
@@ -638,26 +660,7 @@ object Peer:
                                           )
                                         )
                                       ) *>
-                                        (if patience.nonEmpty || genesis.nonEmpty || workSession.nonEmpty
-                                         then F.unit
-                                         else
-                                           run
-                                             .zip(raw)
-                                             .traverse((h, b) =>
-                                               BlockPool.Delivered
-                                                 .checked(h, b)
-                                                 .fold(protocol[BlockPool.Delivered], F.pure)
-                                             )
-                                             .flatMap { delivered =>
-                                               run
-                                                 .zip(raw)
-                                                 .traverse_((h, b) =>
-                                                   receivedBody.traverse_(_(h, b))
-                                                 ) *>
-                                                 prepare(raw) *> claims.fillDelivered(delivered)
-                                             }
-                                        )
-                                          .guarantee(claims.release(run.map(_.hash)))
+                                        claims.release(run.map(_.hash))
                                     }
                                 }
                               }
@@ -693,12 +696,7 @@ object Peer:
               bodyReady: Header => F[Unit]
           )(using Raise[F, PeerError]): F[(Option[Vector[Bytes]], Time)] =
             Ref.of[F, Vector[Header]](run).flatMap { remaining =>
-              val streamingBody = patience.nonEmpty || genesis.nonEmpty || workSession.nonEmpty
               val observeEvent: BlockFetchRuntime.Event => F[Unit] = {
-                case BlockFetchRuntime.Event.Block(_, _) if !streamingBody =>
-                  remaining
-                    .modify(hs => (hs.drop(1), hs.headOption))
-                    .flatMap(_.traverse_(h => fetcher.received(allocation, h.hash)))
                 case BlockFetchRuntime.Event.Completed(_) =>
                   remaining
                     .getAndSet(Vector.empty)
@@ -718,8 +716,9 @@ object Peer:
                             .checked(header, raw)
                             .fold(protocol[BlockPool.Delivered], F.pure)
                           _ <- fetcher.received(allocation, header.hash)
-                          _ <- receivedBody.traverse_(_(header, raw)) *> prepare(Vector(raw))
-                          _ <- claims.fillDelivered(Vector(delivered))
+                          _ <- claims.fillDeliveredWith(Vector(delivered))(_ =>
+                            receivedBody.traverse_(_(header, raw)) *> prepare(Vector(raw))
+                          )
                           winner <- claims.take(header.hash)
                           _ <- winner.fold(
                             PeerError
@@ -738,15 +737,10 @@ object Peer:
                     case Fault.Defect(problem) => NetworkError.Defect(problem)
                   })
               val request =
-                if streamingBody then
-                  connection.blockFetch.requestRangeStreaming(run.head.point, run.last.point)(
-                    receive,
-                    observeEvent
-                  )
-                else
-                  connection.blockFetch.requestRangeObserved(run.head.point, run.last.point)(
-                    observeEvent
-                  )
+                connection.blockFetch.requestRangeStreaming(run.head.point, run.last.point)(
+                  receive,
+                  observeEvent
+                )
               request.flatMap {
                 case Some(raw) if raw.size != run.size =>
                   protocol(PeerError.ProtocolProblem.BlockCount(run.size, raw.size))

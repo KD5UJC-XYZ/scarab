@@ -43,7 +43,8 @@ final class BlockPool[F[_]: Async] private (
     attribution: BlockPool.AttributionPolicy,
     private[node] val fetchCoordinator: FetchCoordinator[F],
     recovered: Option[BlockPool.Recovered[F]],
-    private[node] val invalidBlocks: InvalidBlocks[F]
+    private[node] val invalidBlocks: InvalidBlocks[F],
+    private[node] val admissions: BlockAdmissions[F]
 ):
   import BlockPool.*
   private val F = Async[F]
@@ -148,7 +149,7 @@ final class BlockPool[F[_]: Async] private (
       owner: Long,
       blocks: Vector[(Bytes, Bytes)],
       metadata: Map[Bytes, DeliveredHeader] = Map.empty
-  ): F[Unit] =
+  ): F[Vector[Filled]] =
     reap *> slots
       .modify { s =>
         blocks.foldLeft((s, Vector.empty[(Deferred[F, Option[Filled]], Filled)])) {
@@ -156,25 +157,54 @@ final class BlockPool[F[_]: Async] private (
             acc.entries.get(hash) match
               case Some(Slot.Pending(done, seq, owners))
                   if owners(owner) && acc.origins.get(owner).exists(_.expires.isEmpty) =>
+                val admitted = metadata.get(hash).map(_.copy(admission = acc.admissions))
                 (
                   acc.copy(
                     entries =
                       acc.entries.updated(hash, Slot.Done(block, seq, Source.Session(owner))),
                     origins = acc.origins.updatedWith(owner)(_.map(_.copy(delivered = true))),
-                    headers = metadata
-                      .get(hash)
-                      .fold(acc.headers)(value => acc.headers.updated(hash, value)),
-                    fresh = if metadata.contains(hash) then acc.fresh + hash else acc.fresh
+                    headers = admitted.fold(acc.headers)(value => acc.headers.updated(hash, value)),
+                    fresh = if admitted.nonEmpty then acc.fresh + hash else acc.fresh,
+                    admissions = if admitted.nonEmpty then acc.admissions + 1 else acc.admissions
                   ),
-                  waiting :+ (done -> Filled(block, Source.Session(owner), metadata.get(hash)))
+                  waiting :+ (done -> Filled(block, Source.Session(owner), admitted))
                 )
               case _ => (acc, waiting)
         }
       }
       .flatMap { completed =>
         completed.traverse_((done, filled) => done.complete(Some(filled))) *>
-          fetchCoordinator.refreshGenesis.whenA(completed.nonEmpty)
+          fetchCoordinator.refreshGenesis.whenA(completed.nonEmpty).as(completed.map(_._2))
       }
+
+  /** First successful checked receipt: required metadata is constructed in the same transaction as
+    * its global cache winner, never recovered from a later announcing session.
+    */
+  private def fillChecked(owner: Long, value: Delivered): F[Option[Admission]] =
+    reap *> slots
+      .modify { current =>
+        val hash = value.header.hash
+        current.entries.get(hash) match
+          case Some(Slot.Pending(done, sequence, owners))
+              if owners(owner) && current.origins.get(owner).exists(_.expires.isEmpty) =>
+            val delivered = value.metadata.copy(admission = current.admissions)
+            val taken = Taken(value.block, false, Source.Session(owner), Some(delivered))
+            current.copy(
+              entries =
+                current.entries.updated(hash, Slot.Done(value.block, sequence, taken.origin)),
+              origins = current.origins.updatedWith(owner)(_.map(_.copy(delivered = true))),
+              headers = current.headers.updated(hash, delivered),
+              fresh = current.fresh + hash,
+              admissions = current.admissions + 1
+            ) -> Some(done -> Admission(taken, delivered))
+          case _ => current -> None
+      }
+      .flatMap(_.traverse { (done, admission) =>
+        done.complete(
+          Some(Filled(admission.taken.block, admission.taken.origin, Some(admission.delivered)))
+        ) *>
+          fetchCoordinator.refreshGenesis.as(admission)
+      })
 
   /** Give up the claims of `owner` that are still open (those already filled stay). A block that
     * another session also claimed stays pending for it; one nobody holds any more is released to
@@ -279,7 +309,7 @@ final class BlockPool[F[_]: Async] private (
     * invalid bodies readable until slot GC; merely retaining their hashes would falsely satisfy the
     * fetched predicate. Pinning never creates another first-admission context.
     */
-  private def invalidated(
+  private[node] def invalidated(
       taken: Taken,
       header: Header,
       error: ValidationError
@@ -334,7 +364,7 @@ final class BlockPool[F[_]: Async] private (
     * necessarily the invalid body in that candidate's prefix. Semantic rejection retains every
     * received original, just as the native VolatileDB does; the invalid map excludes it.
     */
-  private def reject(
+  private[node] def reject(
       taken: Taken,
       added: ChainSync.Point,
       error: ValidationError,
@@ -440,6 +470,44 @@ final class BlockPool[F[_]: Async] private (
   /** Entries held (tests). */
   def size: F[Int] = slots.get.map(_.entries.size)
 
+  private[node] def selectionSnapshot: F[Map[Bytes, Admission]] = slots.get.map { current =>
+    current.headers.flatMap { (hash, delivered) =>
+      current.entries.get(hash) match
+        case Some(Slot.Done(raw, _, source)) =>
+          Some(hash -> Admission(Taken(raw, false, source, Some(delivered)), delivered))
+        case _ => None
+    }
+  }
+
+  /** Recovered VolatileDB originals participate in selection without a dead adding thread. */
+  private[node] def seedRecoveredHeaders(blocks: Vector[Delivered]): F[Unit] =
+    seedRecovered(blocks.map(b => b.header.hash -> b.block)) *>
+      slots.update(current =>
+        current.copy(headers = current.headers ++ blocks.map(b => b.header.hash -> b.metadata))
+      )
+
+  private[node] def completeAdmission(hash: Bytes): F[Unit] =
+    slots.update(current => current.copy(fresh = current.fresh - hash))
+
+  private def deliver(
+      owner: Long,
+      blocks: Vector[Delivered],
+      before: Delivered => F[Unit]
+  ): F[Unit] =
+    blocks.traverse_ { value =>
+      val publish = fillChecked(owner, value)
+      admissions.active.flatMap {
+        case false => before(value) *> publish.void
+        case true =>
+          admissions.submit(
+            publish,
+            before(value)
+          )
+      }
+    }
+  private def fillOpaque(owner: Long, blocks: Vector[(Bytes, Bytes)]): F[Unit] =
+    fill(owner, blocks).void
+
 object BlockPool:
   /** Global fetching-peer targets and per-peer request credit, shared by both connection
     * directions. Preferred-peer handover follows the pinned policy's target exception. Production
@@ -479,7 +547,7 @@ object BlockPool:
         allowOverlap: Boolean = false
     ): F[Vector[Boolean]] =
       pool.claim(owner, hashes, mode, allowOverlap)
-    def fill(blocks: Vector[(Bytes, Bytes)]): F[Unit] = pool.fill(owner, blocks)
+    def fill(blocks: Vector[(Bytes, Bytes)]): F[Unit] = pool.fillOpaque(owner, blocks)
     private[node] def invalidBlocks: InvalidBlocks[F] = pool.invalidBlocks
     private[node] def invalidated(
         taken: Taken,
@@ -490,11 +558,9 @@ object BlockPool:
     private[node] def takeAddition(header: Header): F[Either[BlockPoolProblem, Option[Taken]]] =
       pool.takeAddition(owner, header)
     def fillDelivered(blocks: Vector[Delivered]): F[Unit] =
-      pool.fill(
-        owner,
-        blocks.map(value => value.header.hash -> value.block),
-        blocks.map(value => value.header.hash -> value.metadata).toMap
-      )
+      pool.deliver(owner, blocks, _ => pool.F.unit)
+    def fillDeliveredWith(blocks: Vector[Delivered])(before: Delivered => F[Unit]): F[Unit] =
+      pool.deliver(owner, blocks, before)
 
     /** Provenance of original bytes delivered by this connection, independently of which peer won a
       * duplicate pool claim. Genesis can validate that delivery before its range ends.
@@ -549,7 +615,15 @@ object BlockPool:
   enum Diffusion:
     case On, Off
 
-  final case class DeliveredHeader(header: Header, view: DiffusionPunishment.View)
+  final case class DeliveredHeader(
+      header: Header,
+      view: DiffusionPunishment.View,
+      admission: BigInt = 0
+  )
+  private[node] final case class Admission private[BlockPool] (
+      taken: Taken,
+      delivered: DeliveredHeader
+  )
   final class Delivered private (
       val header: Header,
       val block: Bytes,
@@ -644,8 +718,20 @@ object BlockPool:
                   )
                 }
               )
-              .map(invalid =>
-                new BlockPool(slots, policy, attribution, coordinator, recovered, invalid)
+              .flatMap(invalid =>
+                BlockAdmissions
+                  .create[F]
+                  .map(admissions =>
+                    new BlockPool(
+                      slots,
+                      policy,
+                      attribution,
+                      coordinator,
+                      recovered,
+                      invalid,
+                      admissions
+                    )
+                  )
               )
           )
       )
@@ -685,7 +771,8 @@ object BlockPool:
       reapAt: Option[FiniteDuration],
       headers: Map[Bytes, DeliveredHeader] = Map.empty,
       fresh: Set[Bytes] = Set.empty,
-      pinned: Set[Bytes] = Set.empty
+      pinned: Set[Bytes] = Set.empty,
+      admissions: BigInt = 0
   ):
     def pruned(now: FiniteDuration, policy: AttributionPolicy): Slots[F] =
       if released <= policy.retained && reapAt.forall(_ > now) then this
