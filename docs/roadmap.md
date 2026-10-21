@@ -230,7 +230,7 @@ G4; N4 needs N3 and a buildable reference Leios node.
 ## O. Review readiness and operations (v0.3)
 
 - **O1** [#74](https://github.com/KD5UJC-XYZ/scarab/issues/74) (P1) Threat model and security-review scope. The [boundary register](security/threat-model.md) maps assets, trusted assumptions, intended invariants and existing source/tests; the [external review brief](security/external-review.md) proposes priorities, staged deliverables and quote/budget questions. Independent crypto review remains [#230](https://github.com/KD5UJC-XYZ/scarab/issues/230): document constant-time posture, review hand-ported Java/JNI and decide whether independently reviewed library replacements can retain the required acceptance profile and differential suites. Review planning does not establish completed assurance. Scarab-side conformance ignores/exclusions must be removed unless a specific evidenced JVM constraint justifies a narrow documented exception; this policy is not yet discharged. [NIST SSDF](https://csrc.nist.gov/pubs/sp/800/218/final) provides a review framework, not evidence of compliance.
-- **O2** [#75](https://github.com/KD5UJC-XYZ/scarab/issues/75) (P1) Reproducible, signed releases with an SBOM and published images. Bind the audit candidate's source, build inputs, native artifacts, dependency/licence inventory and test receipts to immutable identities; independently rebuild and verify the published artifact. Include the JNI libraries and their rebuild recipes. Use verifiable [build provenance](https://slsa.dev/spec/v1.2/provenance) rather than treating an image tag or build log as proof.
+- **O2** [#75](https://github.com/KD5UJC-XYZ/scarab/issues/75) (P1) Reproducible, signed releases with an SBOM and published images. Bind the audit candidate's source, build inputs, native artifacts, dependency/licence inventory and test receipts to immutable identities; independently rebuild and verify the published artifact. Include the JNI libraries and their rebuild recipes. Use verifiable [build provenance](https://slsa.dev/spec/v1.2/provenance) rather than treating an image tag or build log as proof. GitHub binary/GHCR publication and staged #75 acceptance follow the [release design](design/releases.md); preparation proceeds while the preprod gate stays open.
 - **O3** [#76](https://github.com/KD5UJC-XYZ/scarab/issues/76) (P2) Operator packaging: container image, compose and Kubernetes manifests.
 - **O4** [#80](https://github.com/KD5UJC-XYZ/scarab/issues/80) (owner-managed, closed outside development) Node-diversity participation, leaderboard submission and Cardano Blueprint contribution are handled by the owner outside the repository development queue. Existing reusable fixtures/scenarios remain available; upstream conformance implementation is K2 (#49).
 - **O5** (P1, deferred until audit candidate selection) Reproducible reviewer evidence bundle. The [review brief](security/external-review.md#inputs-requested-when-an-audit-candidate-exists) lists requested inputs; no bundle is assembled by the threat-model/scoping work. Once the candidate is selected, provide an immutable candidate revision, module/source map, exact test commands and image identities, fixture/provenance manifests, optional-data requirements and a secure way for reviewers to obtain large/private captures. Retain historical mask qualifications, current skips and measured-source identities from [compatibility.md](compatibility.md); do not relabel historical runs as tests of the candidate. The bundle must reproduce at least one representative check from each evidence family without a maintainer's local paths. Keep security-sensitive reproductions private under [SECURITY.md](../SECURITY.md).
@@ -282,17 +282,22 @@ observation campaigns D6, K4, K5, K7 and D9 move to v0.3 with their acceptance c
 (owner decision, 2026-10-18); no new public synchronization or operational change is authorized by
 this release-scope decision.
 
-At v0.2 completion, the maintainer applies AUD-09's
-[merge-protection decision](https://github.com/KD5UJC-XYZ/scarab/issues/161): required CI checks,
-pull requests and independent review for consensus, cryptography, persistence and key handling.
-Repository settings remain the maintainer's responsibility. Until then development keeps the
-research-phase landing flow in [CONTRIBUTING.md](../CONTRIBUTING.md#landing-in-parallel).
+The 2026-10-21 owner decision allows release/hardening preparation now while the adopted preprod
+block gate remains open (no earlier than October 23; not a promise of completion on that date).
+Work targets `main` for now; align `dev` to the same source before the eventual cutover.
+[#161](https://github.com/KD5UJC-XYZ/scarab/issues/161) tracks the planned protected PR promotion `feat/*` ->
+`dev` -> `main` (only same-repository `dev` may target `main`), with protected `release/beta` and
+`release/prod` branches. Other targets accept any source. Plain Scarab SemVer and protected Git
+tags govern releases; the compatibility matrix states reference support separately. The
+[release design](design/releases.md) records fragment consolidation, Ottochain as reference,
+credentials, release-please/dynver integration, GHCR delivery and #75 evidence. Settings remain
+maintainer-managed; this plan does not enable protections, publish releases or close v0.2.
 
 **v0.3, Leios and audit readiness**
 
 1. *Review readiness first:* the threat model O1 (#74), reproducible signed releases and the SBOM O2 (#75),
-   packaging O3 (#76), and whatever v0.2 audit tickets are still open. The audit candidate is cut after
-   this.
+   packaging O3 (#76), and whatever v0.2 audit tickets are still open. Preparation may proceed before
+   v0.2 closes; the audit candidate is cut after the required readiness evidence exists.
 2. *Dedicated public-chain evidence:* mainnet genesis-to-tip throughput and memory D6 (#25),
    multi-day stability K4 (#51), exact tagged-build genesis sync K5 (#52), at least 30 consecutive live
    Preview epochs K7 (#68), and a mainnet Mithril start followed by at least a week at tip D9 (#69).
@@ -304,7 +309,7 @@ research-phase landing flow in [CONTRIBUTING.md](../CONTRIBUTING.md#landing-in-p
    2026-10-18): the plan is [leios.md](leios.md) 11.8 for N4 ([#73](https://github.com/KD5UJC-XYZ/scarab/issues/73)):
    get the Leios team's reference node (pinned), settle the mini-protocol gating on a loopback network with its
    trace, follow the Dijkstra chain (X1, X2), the committee and certificates (X5), mini-protocols 18 and 19
-   (X8, X7), then the devnet scenario against the reference. The rules for a moving target: Leios lands on `main`, not on a long-lived branch, behind the era selector and
+   (X8, X7), then the devnet scenario against the reference. The rules for a moving target: Leios integrates through `dev` and promotes to `main`, behind the era selector and
    the configuration (`ExperimentalHardForksEnabled` is the switch; a short-lived branch is for one disruptive
    change at a time, such as the eighth era in the telescope); every revision
    (testnet, CDDL, reference build) is pinned and recorded in leios.md; Leios code sits behind its own era and

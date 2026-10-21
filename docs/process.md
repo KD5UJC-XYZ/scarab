@@ -139,6 +139,12 @@ are the maintainer's, never an agent's.
 
 Large items are split into stages or jumps in a design document, each small enough for one session.
 Independent sessions work in separate git worktrees and separate build containers
-([AGENTS.md](../AGENTS.md)), and each lands on its own when its level's gates pass
+([AGENTS.md](../AGENTS.md)), and each opens its own PR when its level's gates pass
 ([CONTRIBUTING.md](../CONTRIBUTING.md#landing-in-parallel)); nightly CI runs the expensive scenarios
 on what landed.
+
+Work targets `main` for now. The planned cutover follows
+[the release design](design/releases.md): normal integration targets `dev`, and only same-repository
+`dev` can then be a PR source for `main`. Other targets accept any source. #161 tracks branch/check enforcement; implementation completion still requires the
+main integration and evidence in the definition of done above. Preparing a beta or release plan
+does not close the adopted-preprod-block gate.

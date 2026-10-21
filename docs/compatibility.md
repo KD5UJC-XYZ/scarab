@@ -6,7 +6,23 @@ checked. Unofficial, research software, not audited. "Verified" always means "ag
 evidence named in the row"; it is not a proof of equivalence. Roadmap IDs (A1, B3, ...) point into
 [roadmap.md](roadmap.md).
 
-Evidence kinds:
+## Release support
+
+Scarab uses its own SemVer; version numbers do not encode a cardano-node major or era. Each
+published tag must add an evidence-backed row here and link it from its release notes, following
+[the release design](design/releases.md). No released-version support claim is added by this plan.
+The component matrix below describes source-level evidence, not blanket support for every release.
+
+| Scarab tag / source | cardano-node reference | Eras / protocol versions | Platforms | Evidence and limitations |
+|---|---|---|---|---|
+| No release support row declared yet | — | — | — | Add only after the tagged candidate's evidence is reviewed. |
+
+Each real row pins reference version/commit, supported node-to-node/node-to-client versions and
+network/era scope, artifact/platform identities, relevant tests and known exclusions. Persisted
+format and migration compatibility remain explicit. Beta/prod channel names alone imply none of
+these properties. Do not infer support for newer cardano-node versions from a matching major.
+
+## Evidence kinds
 
 - **Unit/property**: munit, ScalaCheck and cats-laws suites under `*/src/test`.
 - **Golden/oracle**: fixtures under `fixtures/` (see their READMEs) and a Scalus oracle for script contexts.
