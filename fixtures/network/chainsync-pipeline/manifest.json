@@ -1,0 +1,42 @@
+{
+  "schema": "scarab-native-chainsync-pipeline-v1",
+  "sourceCommit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+  "sourceFiles": {
+    "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/PipelineDecision.hs": "d557b4aad0ed47fe291dea83cfdbd247d0efc0eb562d4b1799c1a8d674fba50d"
+  },
+  "observerSha256": "89f80d81119ae0f706e0c6427a2d0b3596a1c6f65ba8a675a127d812a27b6f1f",
+  "exporterSha256": "7479bb9672fd926ce08246285d1de2f4ee712b1ff0b108ae1ac9be0fbda84ba3",
+  "sha256": "8482ff9dc96217dbca6e828a557d29f42d98c0d3f3251e39fb4dc9f6cd8cc1bc",
+  "cases": 798,
+  "sequences": 7,
+  "generatedCases": 0,
+  "boundaryCases": 798,
+  "inputs": "explicit low/high pairs0/0,0/1,1/1,1/2,2/3,10/20,200/300; stateful grids plus origin, server-behind, hysteresis-reset and Word64 overflow controls",
+  "boundary": "actual pipelineDecisionLowHighMark/runPipelineDecision; opaque native continuation carried through every input sequence",
+  "image": "sha256:1c7a67a73a5e2faa71f25a961e9e56f159696a15e6da574fe13432de983b8349",
+  "executableSha256": "4f2d84d9340ed8fcd63022ba174466cbebe719a3e7b25fb3ddc94d817a663f33",
+  "planSha256": "eb26a2792ee3f095c2586fa3da915d9a3fc4803cd2e24a6b85343f227b2c48b3",
+  "packageIds": [
+    "typed-protocols-1.2.1.0-8de7fe320aa56825a6c63b14c2080cb872731101ee809c2e339f6536e1cc5fd5",
+    "ouroboros-network-1.3.0.0-inplace-api (Ouroboros.Network.Block as NativeBlock, Ouroboros.Network.Point as NativePoint)",
+    "ouroboros-network-1.3.0.0-inplace-protocols"
+  ],
+  "command": [
+    "docker",
+    "run",
+    "--rm",
+    "--name",
+    "scarab-chainsync-native-pipeline",
+    "--network",
+    "none",
+    "--entrypoint",
+    "bash",
+    "-v",
+    "/tmp/scarab/148-fetch-oracle-final-2:/probe:ro",
+    "-v",
+    "/tmp/scarab/chainsync-native-pipeline-regeneration:/observer",
+    "scarab-148-fetch-reference-cache:local",
+    "-c",
+    "ghc -package-env - -hide-all-packages -package base -package-db /root/.local/state/cabal/store/ghc-9.10.3-1be3/package.db -package-db /probe/builddir/packagedb/ghc-9.10.3 -package aeson -package bytestring -package-id typed-protocols-1.2.1.0-8de7fe320aa56825a6c63b14c2080cb872731101ee809c2e339f6536e1cc5fd5 -package-id 'ouroboros-network-1.3.0.0-inplace-api (Ouroboros.Network.Block as NativeBlock, Ouroboros.Network.Point as NativePoint)' -package-id ouroboros-network-1.3.0.0-inplace-protocols -XImportQualifiedPost -odir /observer -hidir /observer /observer/Main.hs -o /observer/pipeline-observer && /observer/pipeline-observer > /observer/decisions.jsonl"
+  ]
+}
