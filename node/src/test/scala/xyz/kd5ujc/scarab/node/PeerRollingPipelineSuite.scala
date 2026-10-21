@@ -281,6 +281,8 @@ class PeerRollingPipelineSuite extends FailsOnUncaught:
                 }
                 .flatMap { result =>
                   for
+                    // Body publication may precede the sender's subsequent CSJ wait.
+                    _ <- (entered.get *> released.get).whenA(!unknownRollback && !abort)
                     requests <- awaited.get
                     headersReceived <- completedHeaders.get
                     submittedRequests <- submitted.get
