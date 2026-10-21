@@ -73,6 +73,9 @@ def execute(args):
                 output_status(current)
                 return
         release = publication.ensure_draft(notes)
+        from publication_retry import reuse_bundles
+        reuse_bundles(github, release, args.candidate, manifest, args.candidate.parent / 'candidate-transport.tar',
+                      args.image_repository, args.tools / 'gh')
         oci = next(row for row in manifest['subjects'] if row['kind'] == 'oci-archive')
         registry_copy(args.tools / 'oras', str(args.candidate / oci['file']['path']) + '@' + publication.expected['imageDigest'],
                       args.image_repository, 'staging-' + args.source + '-' + args.candidate_sha256,

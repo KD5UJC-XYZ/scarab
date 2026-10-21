@@ -115,7 +115,11 @@ are not legal or advisory approval, even when no unresolved declaration is count
 
 Retries use the original canonical candidate run, artifact ID/digest and manifest
 hash through the explicit retained-candidate inputs. They do not rebuild and replace
-immutable evidence. A published incomplete attempt can resume public verification;
+immutable evidence. Previously uploaded signature bundles are reused only after
+fresh bounded download/hash checks and authentication against every expected
+provenance subject (including the whole archive) or exact JAR/image SBOM subject
+and predicate. Only local new bundle files are replaced; missing bundles use the
+new valid signatures. Ordinary asset bytes are never substituted or overwritten. A published incomplete attempt can resume public verification;
 a completed attempt does not republish assets. Keep the original run/artifact and
 receipt evidence until recovery completes. Do not delete/recreate an official tag
 or overwrite an asset to repair an incomplete attempt.
@@ -132,7 +136,11 @@ provides a bounded observer for an **already-running** owner-operated forger and
 native node. The owner must configure a protected `scarab-preprod-observer` runner
 and the policy's explicit forger/native container, host socket, original header
 path and bounded log-window start, plus independently reviewed preprod genesis
-SHA256 values. No such runner/process/configuration is supplied by this change.
+SHA256 values. No such runner/process/configuration is supplied by this change. The scheduling
+label is not an access-control boundary: a GitHub-enforced runner-group/workflow
+allowlist or isolated equivalent must restrict the host and Docker daemon to the
+reviewed canonical workflow/ref. Before activation, verify that an unauthorized
+PR/branch job cannot reach that host; no runner configuration is claimed here.
 
 The observer never starts/restarts a node, initiates forging, accesses keys, changes
 network state or archives process environments/mounts/logs. It verifies the running

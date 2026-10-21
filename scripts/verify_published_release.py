@@ -34,6 +34,13 @@ def verify_subject(subject, expected_digest, bundle, github_identity, source, ta
         require(certificate.get("sourceRepositoryIdentifier") == str(github_identity["id"])
                 and certificate.get("sourceRepositoryOwnerIdentifier") == str(github_identity["owner"]["id"]),
                 "attestation belongs to a renamed/reused repository or owner")
+        require(certificate.get("sourceRepositoryDigest") == source
+                and certificate.get("buildSignerDigest") == source
+                and certificate.get("sourceRepositoryRef") == "refs/tags/" + tag
+                and certificate.get("issuer") == "https://token.actions.githubusercontent.com"
+                and certificate.get("runnerEnvironment") == "github-hosted"
+                and certificate.get("buildSignerURI") == "https://github.com/" + github_identity["full_name"] + "/" + WORKFLOW + "@refs/tags/" + tag,
+                "verified certificate does not bind approved workflow/source/tag/issuer/runner")
         statement = proof["statement"]
         subject_matches = [row for row in statement["subject"] if row.get("digest", {}).get("sha256") == expected_digest
                            and (subject_name is None or row.get("name") == subject_name)]
