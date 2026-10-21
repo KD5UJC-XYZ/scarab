@@ -113,6 +113,7 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
       Diff[LedgerState[Conway]].diff(found.copy[Conway](utxo = wanted.utxo), wanted),
       None
     )
+
   /** One complete typed Scala cause must occur in the native failure list; this does not compare
     * the accumulated list or its order.
     */
