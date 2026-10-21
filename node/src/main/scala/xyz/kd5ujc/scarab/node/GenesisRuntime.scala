@@ -67,6 +67,7 @@ final class GenesisRuntime[F[_]: Async] private (
       history <- Resource.eval(geometry)
       ready <- work.session
       gateRef <- Resource.eval(Ref.of[F, Option[HeaderGate[F]]](None))
+      requestHistory <- Resource.eval(Ref.of[F, Option[HeaderChain[NodeHeaderState]]](None))
       raw <- Resource.eval(Ref.of[F, LatestSlot](LatestSlot.Unknown))
       idle <- Resource.eval(Ref.of[F, Boolean](false))
       patience <- LimitOnPatience.resource[F](
@@ -93,8 +94,8 @@ final class GenesisRuntime[F[_]: Async] private (
         gateRef.get.flatMap(_.traverse(_.snapshot).map(_.flatten))
       def fragment(history: HeaderChain[NodeHeaderState]): Fragment =
         Fragment(
-          history.base,
-          history.entries.map(_.header.point).collect { case point: Point.Block =>
+          history.points.head,
+          history.points.tail.collect { case point: Point.Block =>
             point
           }
         )
@@ -110,13 +111,15 @@ final class GenesisRuntime[F[_]: Async] private (
             )
           }
         }
-      def headerTime(point: Point): F[NodeGenesisHistory.HeaderTime] = point match
+      def headerTime(
+          point: Point,
+          known: Option[HeaderChain[NodeHeaderState]]
+      ): F[NodeGenesisHistory.HeaderTime] = point match
         case Point.Origin => F.pure(NodeGenesisHistory.HeaderTime(point, 0))
-        case Point.Block(slot, _) =>
-          (snapshot, geometry).tupled.flatMap { (known, history) =>
+        case Point.Block(slot, hash) =>
+          geometry.flatMap { history =>
             val state = known.flatMap { h =>
-              if point == h.base then h.baseState
-              else h.entries.find(_.header.point == point).flatMap(_.state)
+              h.stateAfter(hash).flatten
             }
             val offset = state.flatMap {
               case _: NodeHeaderState.Byron =>
@@ -129,22 +132,24 @@ final class GenesisRuntime[F[_]: Async] private (
               F.pure(NodeGenesisHistory.HeaderTime(point, time * 1000000000))
             )
           }
-      def historical(message: NodeGenesisHistory.Message, point: Point): F[Unit] =
-        if !settings.enableCSJ then F.unit
-        else
-          governor.phase.flatMap {
-            case Gsm.Phase.CaughtUp => F.unit
-            case current =>
-              (headerTime(point), elapsed).tupled.flatMap { (header, now) =>
-                NodeGenesisHistory
-                  .judge(message, header, current, now)
-                  .fold(problem => refused(problem).void, _ => F.unit)
-              }
-          }
+      def historical(
+          message: NodeGenesisHistory.Message,
+          point: Point,
+          known: Option[HeaderChain[NodeHeaderState]]
+      ): F[Unit] =
+        governor.phase.flatMap {
+          case Gsm.Phase.CaughtUp => F.unit
+          case current =>
+            (headerTime(point, known), elapsed).tupled.flatMap { (header, now) =>
+              NodeGenesisHistory
+                .judge(message, header, current, now)
+                .fold(problem => refused(problem).void, _ => F.unit)
+            }
+        }
       val observer = new ChainSyncClient.Observer[F]:
         def awaitReply: F[Unit] =
-          snapshot.flatMap(
-            _.traverse_(h => historical(NodeGenesisHistory.Message.AwaitReply, h.tipPoint))
+          requestHistory.get.flatMap(
+            _.traverse_(h => historical(NodeGenesisHistory.Message.AwaitReply, h.tipPoint, Some(h)))
           ) *> idle.set(true) *> jumper.onAwaitReply *> publish
         def reply: F[Unit] = idle.set(false) *> publish
       val control = new GenesisPeer[F]:
@@ -154,28 +159,33 @@ final class GenesisRuntime[F[_]: Async] private (
           case ChainSyncJumping.Error.UnexpectedFoundIntersectionJump =>
             GenesisInternalProblem.UnexpectedIntersection)
         def next: F[Instruction[GenesisPeer.Checkpoint]] =
-          if !settings.enableCSJ then F.pure(Instruction.RunNormally)
-          else
-            // Client.hs:1267-1291: pause while waiting AND while offering a jump.
-            patience.setPaused(LimitOnPatience.PauseReason.Jumping, true) *>
-              jumper.next.flatTap {
-                case Instruction.RunNormally | Instruction.Restart =>
-                  patience.setPaused(LimitOnPatience.PauseReason.Jumping, false)
-                case _ => F.unit
-              }
+          val instruction: F[Instruction[GenesisPeer.Checkpoint]] =
+            if !settings.enableCSJ then F.pure(Instruction.RunNormally)
+            else
+              // Client.hs:1267-1291: pause while waiting AND while offering a jump.
+              patience.setPaused(LimitOnPatience.PauseReason.Jumping, true) *>
+                jumper.next.flatTap {
+                  case Instruction.RunNormally | Instruction.Restart =>
+                    patience.setPaused(LimitOnPatience.PauseReason.Jumping, false)
+                  case _ => F.unit
+                }
+          instruction.flatTap {
+            // Client.hs:1397 captures kis at submission, rather than reading its later successor.
+            case Instruction.RunNormally => snapshot.flatMap(requestHistory.set)
+            case _                       => F.unit
+          }
         def observed(gate: HeaderGate[F], event: SyncEvent): F[Unit] =
           gateRef.set(Some(gate)) *> snapshot.flatMap { history =>
             history.traverse_ { h =>
               selection.flatMap { selected =>
                 jumper.update(
                   JumpInfo(
-                    h.base,
-                    h.entries.map(_.header.point),
+                    h.points.head,
+                    h.points.tail,
                     GenesisPeer.Checkpoint(
                       h,
                       selected,
-                      h.entries.reverseIterator
-                        .map(_.header.point)
+                      h.points.reverseIterator
                         .find(selected.contains)
                         .getOrElse(h.base)
                     )
@@ -198,8 +208,8 @@ final class GenesisRuntime[F[_]: Async] private (
               selection.flatMap { selected =>
                 jumper.update(
                   JumpInfo(
-                    h.base,
-                    h.entries.map(_.header.point),
+                    h.points.head,
+                    h.points.tail,
                     GenesisPeer.Checkpoint(h, selected, point)
                   )
                 )
@@ -265,14 +275,12 @@ final class GenesisRuntime[F[_]: Async] private (
         case SyncEvent.RollBackward(point, _) =>
           snapshot.flatMap { history =>
             val oldest = history.flatMap { h =>
-              val index =
-                if point == h.base then -1 else h.entries.indexWhere(_.header.point == point)
-              Option
-                .when(point == h.base || index >= 0)(h.entries.drop(index + 1).headOption)
-                .flatten
-                .map(_.header.point)
+              val index = h.points.indexOf(point)
+              Option.when(index >= 0)(h.points.drop(index + 1).headOption).flatten
             }
-            oldest.traverse_(historical(NodeGenesisHistory.Message.RollBackward, _))
+            oldest.traverse_(point =>
+              historical(NodeGenesisHistory.Message.RollBackward, point, history)
+            )
           } *> idle.set(false)
       }
       GenesisRuntime.Bound(

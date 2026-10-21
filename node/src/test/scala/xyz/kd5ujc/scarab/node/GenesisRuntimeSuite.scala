@@ -146,7 +146,20 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
           val history = HeaderChain[NodeHeaderState](
             ChainSync.Point.Origin,
             None,
-            Vector(HeaderChain.Entry(h, None))
+            Vector(
+              HeaderChain.Entry(
+                h,
+                Some(
+                  NodeHeaderState.Shelley(
+                    xyz.kd5ujc.scarab.consensus.state.ProtocolState
+                      .initial(Era.Babbage, Bytes.empty),
+                    None,
+                    None,
+                    None
+                  )
+                )
+              )
+            )
           )
           val rollback = SyncEvent.RollBackward(ChainSync.Point.Origin, tip)
           for
@@ -389,3 +402,116 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
       yield ()
     }
   }
+
+  test("captured immutable-to-intersection points remain in GDD and offered CSJ fragments") {
+    TestControl.executeEmbed {
+      val one = header(1)
+      val two = header(2)
+      val three = header(3)
+      val points = Vector(one.point, two.point, three.point)
+      val history = HeaderChain[NodeHeaderState](
+        two.point,
+        None,
+        Vector(HeaderChain.Entry(three, None)),
+        Vector(HeaderChain.Known(ChainSync.Point.Origin, None), HeaderChain.Known(one.point, None))
+      )
+      val tip = ChainSync.Tip(three.point, ChainSync.UInt64.saturating(3))
+      setup(GenesisSettings(jumpSlots = 0)).flatMap { runtime =>
+        (
+          runtime.session(1, ChainSync.Point.Origin, _ => IO.unit, _ => IO.unit),
+          runtime.session(2, ChainSync.Point.Origin, _ => IO.unit, _ => IO.unit)
+        ).tupled.use { (first, second) =>
+          for
+            _ <- first.control.observed(gate(history), SyncEvent.RollForward(three, tip))
+            _ <- second.control.observed(gate(history), SyncEvent.RollForward(three, tip))
+            _ <- first.received(SyncEvent.RollForward(header(4), tip))
+            instruction <- second.control.next
+            _ <- IO(instruction match
+              case ChainSyncJumping.Instruction.Jump(info, false) =>
+                assertEquals(info.anchor, ChainSync.Point.Origin)
+                assertEquals(info.headers, points)
+                assertEquals(info.payload.history, history)
+              case other => fail(s"expected captured-prefix jump, got $other"))
+            _ <- runtime.governor.setPhase(Gsm.Phase.Syncing)
+            _ <- runtime.governor.run.background.use { _ =>
+              IO.sleep(1.millis) *> runtime.governor.limit.flatMap(limit =>
+                IO(
+                  assertEquals(
+                    limit,
+                    Some(
+                      Fragment(
+                        ChainSync.Point.Origin,
+                        points.collect { case p: ChainSync.Point.Block => p }
+                      )
+                    )
+                  )
+                )
+              )
+            }
+          yield ()
+        }
+      }
+    }
+  }
+
+  for csjEnabled <- Vector(true, false) do
+    test(s"AwaitReply uses submission historicity independently of CSJ=$csjEnabled") {
+      TestControl.executeEmbed {
+        val one = header(1)
+        val two = header(2)
+        val state = NodeHeaderState.Shelley(
+          xyz.kd5ujc.scarab.consensus.state.ProtocolState.initial(Era.Babbage, Bytes.empty),
+          None,
+          None,
+          None
+        )
+        val atOne = HeaderChain[NodeHeaderState](
+          ChainSync.Point.Origin,
+          None,
+          Vector(HeaderChain.Entry(one, Some(state)))
+        )
+        val atTwo = atOne.copy(entries = atOne.entries :+ HeaderChain.Entry(two, Some(state)))
+        val cutoff = NodeGenesisHistory.DefaultCutoffPicos
+        val secondPicos = BigInt(10).pow(12)
+        val arrival = cutoff + secondPicos + 1
+        val tip = ChainSync.Tip(two.point, ChainSync.UInt64.saturating(2))
+        for
+          failures <- Ref.of[IO, Vector[PeerError]](Vector.empty)
+          governor <- GenesisGovernor.create[IO](
+            IO.pure(GenesisGovernor.View(empty, 2, _ => Some(8)))
+          )
+          runtime <- GenesisRuntime.create[IO](
+            governor,
+            GenesisSettings(enableCSJ = csjEnabled),
+            IO.pure(local),
+            IO.pure(geometry),
+            IO.pure(arrival),
+            IO.unit
+          )
+          _ <- runtime
+            .session(1, ChainSync.Point.Origin, e => failures.update(_ :+ e), _ => IO.unit)
+            .use { bound =>
+              for
+                _ <- bound.control.restarted(one.point, gate(atOne))
+                _ <- bound.control.next
+                _ <- bound.control.observed(gate(atTwo), SyncEvent.RollForward(two, tip))
+                _ <- bound.observer.awaitReply.background.use { _ =>
+                  IO.sleep(1.millis) *> failures.get.flatMap { seen =>
+                    IO(
+                      assertEquals(
+                        seen,
+                        Vector(
+                          PeerError.Genesis(
+                            PeerError.GenesisProblem
+                              .HistoricalAwait(one.point, secondPicos, arrival, cutoff)
+                          )
+                        )
+                      )
+                    )
+                  }
+                }
+              yield ()
+            }
+        yield ()
+      }
+    }
