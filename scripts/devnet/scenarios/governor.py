@@ -6,7 +6,7 @@ header), the targets of a three-peer network (3 known, 3 established, 2 active) 
 (`--churn-interval`, a test-only flag). It must
 
   * reach the targets: 3 established and 2 hot, from the `/metrics` gauges of the reference's names;
-  * run churn rounds: the six steps for ordinary peers in the reference's order, the active target lowered and restored
+  * run churn rounds: all twelve reference steps, including zero-target big-ledger steps, with the active target lowered and restored
     each time, one hot peer demoted by the governor and the hot count back at 2 at the end of the step;
   * demote by the peer metrics: whenever the slow peer is hot when a round demotes, it is the peer demoted; and the hot
     set is replaced by some round;
@@ -27,6 +27,9 @@ from .relay import tip_at
 SLOW = f"127.0.0.1:{PROXY_PORT}"
 ORDINARY_STEPS = ["DecreaseActive", "IncreaseActive", "DecreaseEstablished", "DecreaseKnown", "IncreaseKnown",
                   "IncreaseEstablished"]
+BIG_LEDGER_STEPS = ["DecreaseActiveBig", "IncreaseActiveBig", "DecreaseEstablishedBig", "DecreaseKnownBig",
+                    "IncreaseKnownBig", "IncreaseEstablishedBig"]
+STEPS = BIG_LEDGER_STEPS + ORDINARY_STEPS
 GAUGES = {"hot": "cardano_node_metrics_peerSelection_Hot_int", "warm": "cardano_node_metrics_peerSelection_Warm_int",
           "established": "cardano_node_metrics_peerSelection_EstablishedPeers_int",
           "known": "cardano_node_metrics_peerSelection_KnownPeers_int",
@@ -41,7 +44,10 @@ def write_files(args, root, ports):
     for key in ("SocketPath", "TraceOptions"):
         base.pop(key, None)
     base.update({"TargetNumberOfRootPeers": 3, "TargetNumberOfKnownPeers": 3, "TargetNumberOfEstablishedPeers": 3,
-                 "TargetNumberOfActivePeers": 2})
+                 "TargetNumberOfActivePeers": 2,
+                 "TargetNumberOfKnownBigLedgerPeers": 0,
+                 "TargetNumberOfEstablishedBigLedgerPeers": 0,
+                 "TargetNumberOfActiveBigLedgerPeers": 0})
     (cfg / "config.json").write_text(json.dumps(base, indent=2))
     access = [{"address": "127.0.0.1", "port": PROXY_PORT}] + [
         {"address": "127.0.0.1", "port": ports[str(n)]} for n in (2, 3)]
@@ -131,10 +137,12 @@ def churn_rounds(events):
 
 
 def check_rounds(rounds, failures, summary):
-    complete = [r for r in rounds if r["steps"][:6] == ORDINARY_STEPS or len(r["steps"]) >= 6]
-    bad_order = [r["steps"] for r in complete if r["steps"][:6] != ORDINARY_STEPS]
+    complete = [r for r in rounds if len(r["steps"]) >= len(STEPS)]
+    if not complete:
+        failures.append("no complete twelve-step churn round")
+    bad_order = [r["steps"] for r in complete if r["steps"] != STEPS]
     if bad_order:
-        failures.append(f"a churn round did not run the six steps in the reference's order: {bad_order[0]}")
+        failures.append(f"a churn round did not run all twelve steps in the reference's order: {bad_order[0]}")
     for r in complete:
         if "DecreaseActive" in r["timeouts"]:
             failures.append("a churn round lowered the active target and the governor did not demote (timeout)")
@@ -193,7 +201,7 @@ def governor(args):
         limit = args.rounds * (args.churn_interval * 6 + 30)
 
         def seen():
-            rounds = [r for r in churn_rounds(events()) if len(r["steps"]) >= 6]
+            rounds = [r for r in churn_rounds(events()) if len(r["steps"]) >= len(STEPS)]
             ranked = [d for r in rounds for d in r["demoted"] if SLOW in d["hotBefore"]]
             return rounds if len(rounds) >= args.rounds and len(ranked) >= 2 else None
         try:
@@ -245,7 +253,7 @@ def governor(args):
         if exported is None or not (rounds_logged - 1 <= exported <= rounds_logged + 1):
             failures.append(f"scarab_peer_selection_churn_rounds_total {exported} against {rounds_logged} rounds in the log")
         steps = sum(v for (n, _), v in samples.items() if n == "scarab_peer_selection_churn_steps_total")
-        if steps < 6:
+        if steps < len(STEPS):
             failures.append(f"scarab_peer_selection_churn_steps_total is {steps}")
         board = {dict(k[1]).get("board"): v for k, v in samples.items() if k[0] == "scarab_peer_selection_peer_metrics_board_size"}
         summary["metricsBoard"] = board

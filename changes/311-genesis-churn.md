@@ -1,1 +1,7 @@
-Genesis churn now follows the pinned network policy: complete selected startup targets, the default churn regime and long interval, and twelve actions even when ledger queries are disabled. Churn preserves native raw proposals, waits for published counter changes without polling, and leaves targets unchanged during sleeps. Superseded or invalid target proposals no longer replay stale queued updates.
+### Fixed
+
+- Align Genesis churn with the pinned network policy: complete selected startup targets,
+  the default churn regime, the long interval, and all twelve actions when ledger queries
+  are disabled. Preserve native raw proposals, wait for published counter changes, and
+  leave targets unchanged during sleeps. Superseded or invalid target proposals no longer
+  replay stale queued updates.
