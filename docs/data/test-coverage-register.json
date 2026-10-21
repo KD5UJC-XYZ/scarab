@@ -404,6 +404,42 @@
         "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/byron/ByronParamsNativeSuite.scala"
       ],
       "candidateRequired": true
+    },
+    {
+      "classification": "native-parity",
+      "status": "covered",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/33",
+      "candidateRequired": true,
+      "id": "candidate-protocol-view-order",
+      "scope": "All 24 constructed homogeneous PBFT or Praos view cases, including every input permutation, eligibility decision, complete sorted order and pairwise Ord result.",
+      "assertion": "Compare native configured preferCandidate independently of unrestricted global Ord; retain every candidate, stable tie, EBB distinction and certificate comparison.",
+      "rationale": "Actual pinned SelectView instances and Data.List.sortBy provide the oracle. These finite protocol-view examples are not upstream-generated schedules, signed-header validity cases or cross-era HFC coverage.",
+      "resolution": "Preserve all 24 original inputs and outputs, pinned observer provenance and strict complete-field comparisons; project every runtime path through LoE and eligibility before ranking.",
+      "evidence": [
+        "fixtures/reference/candidate-order/README.md",
+        "fixtures/reference/candidate-order/manifest.json",
+        "fixtures/reference/candidate-order/native.jsonl",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/CandidateSelectionSuite.scala"
+      ]
+    },
+    {
+      "classification": "native-parity",
+      "status": "covered",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/33",
+      "candidateRequired": true,
+      "id": "candidate-native-list-sort",
+      "scope": "All seven explicitly constructed synthetic comparator cases observed through the recorded native Data.List.sortBy executable.",
+      "assertion": "Compare every complete sorted vector and every pairwise comparison, including six input permutations and the mixed seven-element case; preserve stable ties and native run boundaries.",
+      "rationale": "This separately observes the native sorting mechanism under a synthetic nontransitive comparator. It does not claim Praos global Ord is restricted or nontransitive, lawful signed-header inputs, upstream-generated vectors or exhaustive sorting coverage.",
+      "resolution": "Retain all seven independent native observations and compiler/executable provenance, plus small-stack width regressions; keep protocol-view eligibility coverage in its separate contract.",
+      "evidence": [
+        "fixtures/reference/candidate-order/README.md",
+        "fixtures/reference/candidate-order/manifest.json",
+        "fixtures/reference/candidate-order/sort.jsonl",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/CandidateSelectionSuite.scala"
+      ]
     }
   ]
 }
