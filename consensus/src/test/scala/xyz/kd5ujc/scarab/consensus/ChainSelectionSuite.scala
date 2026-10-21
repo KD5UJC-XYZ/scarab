@@ -143,6 +143,47 @@ class ChainSelectionSuite extends ScalaCheckSuite:
     assert(!prefers(Tiebreaker.Unrestricted, view(3, vrf = 9), byron))
   }
 
+  test("Byron EBB projection and preference retain the native equal-difficulty tie-break") {
+    val regular = Header.Byron(Bytes.empty, bytes(1, 32), false, 0, 49, 50, 10, None)
+    val boundary = Header.Byron(Bytes.empty, bytes(2, 32), true, 1, 0, 50, 10, Some(regular.hash))
+    val regularView = SelectView.of(regular)
+    val boundaryView = SelectView.of(boundary)
+    assert(!regularView.boundary)
+    assert(boundaryView.boundary)
+    assert(prefers(Tiebreaker.Unrestricted, regularView, boundaryView))
+    assert(!prefers(Tiebreaker.Unrestricted, boundaryView, regularView))
+    val candidate = Candidate(regular.point, Vector(boundary))
+    val anchored = Local(regular.point, regularView, Vector.empty)
+    assertEquals(
+      decide(Tiebreaker.Unrestricted, anchored, candidate),
+      Decision.Switch(regular.point, 0, Vector(boundary))
+    )
+    val volatile = Local(
+      Point.Origin,
+      SelectView(-1, 0, None, 0, None),
+      Vector(LocalBlock(regular.point, regularView))
+    )
+    assertEquals(
+      decide(Tiebreaker.Unrestricted, volatile, candidate),
+      Decision.Switch(regular.point, 0, Vector(boundary))
+    )
+  }
+
+  test("an empty selected fragment uses the candidate point before comparing selection views") {
+    val anchor = Fixtures.header(10, 50, None, 1)
+    val next = Fixtures.header(10, 51, Some(anchor.hash), 2)
+    val anchored = Local(anchor.point, SelectView.of(anchor), Vector.empty)
+    assert(!prefers(Tiebreaker.Unrestricted, anchored.tipView, SelectView.of(next)))
+    assertEquals(
+      decide(Tiebreaker.Unrestricted, anchored, Candidate(anchor.point, Vector(next))),
+      Decision.Switch(anchor.point, 0, Vector(next))
+    )
+    assertEquals(
+      decide(Tiebreaker.Unrestricted, anchored, Candidate(anchor.point, Vector.empty)),
+      Decision.Keep
+    )
+  }
+
   // ---- decisions over chains
 
   /** Headers with the given block numbers on top of `from`, issuer/vrf as chosen. */

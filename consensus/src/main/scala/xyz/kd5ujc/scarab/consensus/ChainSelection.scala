@@ -20,7 +20,8 @@ final case class SelectView(
     slot: BigInt,
     issuer: Option[Bytes],
     issueNo: BigInt,
-    tieBreak: Option[Bytes]
+    tieBreak: Option[Bytes],
+    boundary: Boolean = false
 )
 
 object SelectView:
@@ -30,7 +31,7 @@ object SelectView:
         case HeaderVrf.Praos(result)  => result.output
         case HeaderVrf.TPraos(_, ldr) => ldr.output
       SelectView(h.blockNo, h.slot, Some(h.issuerVkey), h.opCert.sequence, Some(vrf))
-    case h: Header.Byron => SelectView(h.blockNo, h.slot, None, 0, None)
+    case h: Header.Byron => SelectView(h.blockNo, h.slot, None, 0, None, h.boundary)
 
 /** The Praos chain selection rule (the `ChainOrder` of ouroboros-consensus for Praos and TPraos): a
   * candidate chain replaces ours only if it is strictly preferred, and only if the switch rolls
@@ -80,6 +81,9 @@ object ChainSelection:
     */
   def prefers(tiebreaker: Tiebreaker, ours: SelectView, candidate: SelectView): Boolean =
     if candidate.blockNo != ours.blockNo then candidate.blockNo > ours.blockNo
+    // PBFT.hs:137–170: an EBB repeats its predecessor's difficulty, but extends its chain.
+    else if ours.issuer.isEmpty && candidate.issuer.isEmpty && ours.boundary != candidate.boundary
+    then candidate.boundary
     else
       val issueNoArmed =
         ours.slot == candidate.slot && ours.issuer.isDefined && ours.issuer == candidate.issuer
@@ -200,7 +204,9 @@ object ChainSelection:
       case Some(common) =>
         val take = headers.drop(common)
         val view = SelectView.of(take.last)
-        if prefers(tiebreaker, local.tipView, view) then
+        // AnchoredFragment.hs:195–201 compares an empty selected fragment by point, not
+        // its anchor's selection view. In particular a boundary block may repeat blockNo.
+        if local.blocks.isEmpty || prefers(tiebreaker, local.tipView, view) then
           val at = pointAt(common)
           Decision.Switch(at, local.depthTo(at), take)
         else Decision.Keep
