@@ -72,7 +72,8 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
       check: Option[HeaderCheck[IO]] = None,
       finish: Boolean = true,
       prepare: Peer.Prepare[IO] = _ => IO.unit,
-      heightSnapshot: Peer.HeightSnapshot[IO] = ChainSyncHeights.origin
+      heightSnapshot: Peer.HeightSnapshot[IO] = ChainSyncHeights.origin,
+      pipelineFailed: Option[Fault => IO[Unit]] = None
   )(
       body: (Peer.Controlled[IO], Ref[IO, Int]) => Raise[IO, PeerError] ?=> IO[A]
   ): IO[A] =
@@ -114,6 +115,7 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
                       ),
                       prepare,
                       headers = check,
+                      pipelineFailed = pipelineFailed,
                       heightSnapshot = heightSnapshot,
                       retainedHeaders = 8
                     )
@@ -218,16 +220,25 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
       for
         entered <- Deferred[IO, Unit]
         release <- Deferred[IO, Unit]
-        _ <- connected(Some(held(entered, release, Some(fault))), finish = false) {
+        published <- Deferred[IO, Fault]
+        _ <- connected(
+          Some(held(entered, release, Some(fault))),
+          finish = false,
+          pipelineFailed = Some(problem => published.complete(problem).void)
+        ) {
           (peer, intersections) =>
             for
               _ <- peer.intersect(Vector(ChainSync.Point.Origin))
               _ <- Fault.fiber(peer.next).background.use(_ => entered.get)
               _ <- release.complete(())
+              // Release makes the check runnable; it does not mean its fault is installed.
+              // Drain may cancel a check still in progress, so await the actual failure boundary.
+              pending <- published.get
               first <- Fault.fiber(peer.intersect(Vector(ChainSync.Point.Origin)))
               again <- Fault.fiber(peer.intersect(Vector(ChainSync.Point.Origin)))
               count <- intersections.get
             yield
+              assertEquals(pending, fault)
               assertEquals(first, Left(fault))
               assertEquals(again, Left(fault))
               assertEquals(count, 1)
