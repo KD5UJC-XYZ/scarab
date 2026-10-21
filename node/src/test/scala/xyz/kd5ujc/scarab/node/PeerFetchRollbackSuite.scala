@@ -121,12 +121,18 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
                   .collectFirst { case (hash, bytes) if bytes == raw => hash }
                   .getOrElse(fail("body absent from original forged chain"))
                 onBlock(raw).flatMap(_.fold(_.raise[IO, Unit], _ => IO.unit)) *>
-                  cats.Monad[IO].tailRecM(()) { _ =>
-                    applied.get.flatMap { hashes =>
-                      if hashes.contains(hash) then IO.pure(Right(()))
-                      else IO.sleep(5.millis).as(Left(()))
+                  // Only the streamed-prefix test delays the next wire body until this one
+                  // is applied. Legacy batches publish after prefetch completes; making their
+                  // transport wait for application would prevent that publication forever.
+                  cats
+                    .Monad[IO]
+                    .tailRecM(()) { _ =>
+                      applied.get.flatMap { hashes =>
+                        if hashes.contains(hash) then IO.pure(Right(()))
+                        else IO.sleep(5.millis).as(Left(()))
+                      }
                     }
-                  }
+                    .whenA(streaming)
               }))
             def done(using Raise[IO, NetworkError]) = IO.unit
             def idle = IO.pure(true)
