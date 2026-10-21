@@ -32,9 +32,13 @@ class HaskellRealFilesSuite extends FunSuite:
     if sys.env.contains("SCARAB_CANDIDATE_RUNTIME") then
       val heap = Runtime.getRuntime.maxMemory()
       val processors = Runtime.getRuntime.availableProcessors()
-      println(s"candidate-runtime project=storage maxHeapBytes=$heap processors=$processors")
+      val directory = Path.of("").toAbsolutePath.normalize()
+      println(
+        s"candidate-runtime project=storage maxHeapBytes=$heap processors=$processors workingDirectory=$directory"
+      )
       assert(heap >= 16L * 1024 * 1024 * 1024, s"candidate fork heap is only $heap bytes")
       assertEquals(processors, 4)
+      assertEquals(directory, Path.of("/work"))
     val dir = immutableDir.getOrElse(fail("required native ImmutableDB directory is absent"))
     val files = Using.resource(Files.list(dir)) { entries =>
       entries.iterator().asScala.filter(Files.isRegularFile(_)).map(_.getFileName.toString).toVector

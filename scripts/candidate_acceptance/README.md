@@ -179,3 +179,9 @@ at least a 16 GiB maximum heap and exactly four configured processors. The final
 both actual observations; merely mentioning JVM options in a command cannot establish the runtime.
 The ordinary small-heap storage regression remains part of normal `check`, outside these selected
 external suites. A reproduced old-policy run fails the heap assertion before parsing native files.
+
+Forks also pin their working directory to the build root. The native ledger-file and streaming
+suites load maintained fixtures relative to that root; module-default fork directories cannot
+supply them. Runtime guards record and assert `/work` alongside heap and processor observations,
+and receipt validation rejects a module-directory observation. This leaves all fixture reads and
+byte/state comparisons intact.
