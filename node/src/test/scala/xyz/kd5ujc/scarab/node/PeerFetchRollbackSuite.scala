@@ -221,7 +221,9 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
                                   else IO.sleep(5.millis).as(Left(()))
                                 }
                               })
-                  )
+                  ),
+                  heightSnapshot =
+                    ChainSyncHeights.selected(left.headers.take(common), Vector(base.point))
                 )
               }
               .use { peer =>

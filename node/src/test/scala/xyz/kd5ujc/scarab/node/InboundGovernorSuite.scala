@@ -194,7 +194,8 @@ class InboundGovernorSuite extends FailsOnUncaught:
         headers = headerCheck,
         transactions = transactions,
         events = events,
-        pool = pool
+        pool = pool,
+        heightSnapshot = xyz.kd5ujc.scarab.node.ChainSyncHeights.origin
       )
     yield new Local(ref, manager, governor, applied)
 

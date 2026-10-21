@@ -112,7 +112,8 @@ class PeerCsjBoundarySuite extends FailsOnUncaught:
             Peer
               .Settings(SocketAddress[Host](ip"10.5.0.1", port"3001"), 42, byronEpochSlots = 21600),
             _ => IO.unit,
-            genesis = Some(control)
+            genesis = Some(control),
+            heightSnapshot = xyz.kd5ujc.scarab.node.ChainSyncHeights.origin
           )
           .use { peer =>
             Resource

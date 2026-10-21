@@ -98,7 +98,8 @@ class PeerSelectionWorkSuite extends FailsOnUncaught:
                   ),
                   _ => IO(fail("active worker owns preparation")),
                   pool = Some(pool),
-                  selectionWork = Some(bodyWork)
+                  selectionWork = Some(bodyWork),
+                  heightSnapshot = xyz.kd5ujc.scarab.node.ChainSyncHeights.origin
                 )
               }
             }

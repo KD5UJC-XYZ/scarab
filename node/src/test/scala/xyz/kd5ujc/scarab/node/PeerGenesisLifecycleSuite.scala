@@ -169,7 +169,8 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
                         }
                       else IO.pure(HeaderGate.Acceptance.End(ChainSync.Point.Origin))
                     def counts = IO.pure(HeaderGate.Counts(0, 0, 0)))
-            )
+            ),
+            heightSnapshot = xyz.kd5ujc.scarab.node.ChainSyncHeights.origin
           )
           .use { peer =>
             if operation != Operation.Waiting && operation != Operation.DrainBatch then

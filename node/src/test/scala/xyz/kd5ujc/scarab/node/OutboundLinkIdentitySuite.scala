@@ -97,6 +97,7 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
               .Settings(SocketAddress(host"127.0.0.1", port"3001"), magic, byronEpochSlots = 21600),
             follow,
             _ => IO.unit,
+            ChainSyncHeights.origin,
             None,
             None,
             None,

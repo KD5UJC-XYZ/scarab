@@ -196,6 +196,7 @@ class AdversarialScheduleSuite extends FailsOnUncaught:
         ),
         follow = (peer, track) => follower.session(peer, track),
         prepare = _ => IO.unit,
+        heightSnapshot = xyz.kd5ujc.scarab.node.ChainSyncHeights.origin,
         headers = Some(headerCheck),
         transactions = None,
         observe = None,
