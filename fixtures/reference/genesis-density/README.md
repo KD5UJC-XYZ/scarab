@@ -68,3 +68,13 @@ python3 scripts/oracle/genesis-density/export.py \
 The copied original generator inputs and observations retain the upstream
 [license](../../licenses/block-fetch-consensus-LICENSE) and
 [notice](../../licenses/block-fetch-consensus-NOTICE).
+
+`history-window.jsonl` retains all 250 query outcomes from
+`MainHistoryWindow.hs`, which calls the production
+`State.Infra.reconstructSummary` and `runQuery (qryFromExpr
+(slotToGenesisWindow ...))` directly. It includes Origin, the successor-of-tip
+safe horizon on either side of epoch rounding, exact historical telescope
+bounds, a known next era, zero-length eras and rejected queries beyond the
+exclusive horizon. Both successful windows and complete native failure
+renderings are retained. `GenesisHistorySuite` compares every window/refusal;
+this is independent of the similarly named historicity policy corpus.
