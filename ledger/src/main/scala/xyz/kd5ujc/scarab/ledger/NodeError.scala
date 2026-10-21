@@ -150,10 +150,12 @@ object PeerError:
   */
 enum BlockPoolProblem extends NodeError:
   case MissingDeliveredHeader(point: ChainSync.Point)
+  case DifferentInvalidRegistry
 
   def message: String = this match
     case MissingDeliveredHeader(point) =>
       s"received block ${Points.show(point)} has no original adding-header context"
+    case DifferentInvalidRegistry => "follower sessions do not share the same invalid-block registry"
 
 enum GenesisInternalProblem extends NodeError:
   case MissingSharedBlockPool, UnsupportedHeaderFamily, MissingConnectionIdentity
