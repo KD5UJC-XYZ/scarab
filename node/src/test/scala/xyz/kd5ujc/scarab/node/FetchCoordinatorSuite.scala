@@ -187,3 +187,227 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
       yield ()
     }
   }
+
+  test("a cached Genesis offer is not returned as remaining work from the full candidate suffix") {
+    import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
+    import xyz.kd5ujc.scarab.ledger.Fixtures
+    import xyz.kd5ujc.scarab.network.selection.{GenesisBlockFetch, Gsm}
+    import xyz.kd5ujc.scarab.protocol.ChainSync.Point
+    val headers = Fixtures.chain(2)
+    val candidate = ChainSelection.Candidate(Point.Origin, headers)
+    val local = ChainSelection.Local(Point.Origin, SelectView(-1, 0, None, 0, None), Vector.empty)
+    for
+      coordinator <- FetchCoordinator.create[IO](
+        selection = Some(IO.pure(local)),
+        fetched = Some(IO.pure(Set(headers.head.hash)))
+      )
+      _ <- coordinator.installGenesis(
+        FetchCoordinator.GenesisControl(
+          IO.pure(
+            FetchCoordinator
+              .GenesisContext(Gsm.Phase.Syncing, 0, GenesisBlockFetch.Starvation.Ongoing)
+          ),
+          _ => IO.unit
+        )
+      )
+      _ <- coordinator.session(0).use { session =>
+        session.announce(headers.lastOption, FetchGsv.default, candidate = Some(candidate)) *>
+          session.reserve(Vector(headers.head), FetchMode.BulkSync, Some(candidate)).use {
+            allocation =>
+              IO {
+                assertEquals(allocation.headers, headers.tail)
+                assertEquals(allocation.remaining, Vector.empty)
+              }
+          }
+      }
+    yield ()
+  }
+
+  test(
+    "Genesis requests the selected full suffix even when publication offers only its last header"
+  ) {
+    import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
+    import xyz.kd5ujc.scarab.ledger.Fixtures
+    import xyz.kd5ujc.scarab.network.selection.{GenesisBlockFetch, Gsm}
+    import xyz.kd5ujc.scarab.protocol.ChainSync.Point
+    val headers = Fixtures.chain(2)
+    val candidate = ChainSelection.Candidate(Point.Origin, headers)
+    val local = ChainSelection.Local(Point.Origin, SelectView(-1, 0, None, 0, None), Vector.empty)
+    for
+      coordinator <- FetchCoordinator.create[IO](selection = Some(IO.pure(local)))
+      _ <- coordinator.installGenesis(
+        FetchCoordinator.GenesisControl(
+          IO.pure(
+            FetchCoordinator
+              .GenesisContext(Gsm.Phase.Syncing, 0, GenesisBlockFetch.Starvation.Ongoing)
+          ),
+          _ => IO.unit
+        )
+      )
+      _ <- coordinator.session(0).use { session =>
+        session.announce(headers.lastOption, FetchGsv.default, candidate = Some(candidate)) *>
+          session.reserve(Vector(headers.last), FetchMode.BulkSync, Some(candidate)).use {
+            allocation =>
+              IO {
+                assertEquals(allocation.headers, headers)
+                assertEquals(allocation.remaining, Vector.empty)
+              }
+          }
+      }
+    yield ()
+  }
+
+  test("GSV sampling is non-trigger state until a candidate, status or grace event") {
+    import xyz.kd5ujc.scarab.network.selection.{GenesisBlockFetch, Gsm}
+    for
+      observations <- Ref.of[IO, Int](0)
+      coordinator <- FetchCoordinator.create[IO]()
+      _ <- coordinator.installGenesis(
+        FetchCoordinator.GenesisControl(
+          observations
+            .update(_ + 1)
+            .as(
+              FetchCoordinator
+                .GenesisContext(Gsm.Phase.CaughtUp, 0, GenesisBlockFetch.Starvation.Ongoing)
+            ),
+          _ => IO.unit
+        )
+      )
+      _ <- coordinator.session(0).use { session =>
+        for
+          before <- observations.get
+          _ <- List
+            .fill(100)(())
+            .traverse_(_ => session.updatePerformance(FetchGsv.fromSample(1, 1000)))
+          after <- observations.get
+          _ <- IO(assertEquals(after, before))
+          _ <- coordinator.refreshGenesis
+          triggered <- observations.get
+          _ <- IO(assertEquals(triggered, before + 1))
+          _ <- session.announce(
+            Some(header(2)),
+            FetchGsv.default,
+            Map(header(1).hash -> 400000L, header(2).hash -> 400000L)
+          )
+          _ <- session.reserve(Vector(header(1), header(2)), FetchMode.BulkSync).use { allocation =>
+            // The new GSV gives a 393216-byte window; the old default admitted both bodies.
+            IO(assertEquals(allocation.headers, Vector(header(1))))
+          }
+        yield ()
+      }
+    yield ()
+  }
+
+  test("Genesis parks an uncached offer which cannot serve the preferred chain's oldest point") {
+    import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
+    import xyz.kd5ujc.scarab.ledger.Fixtures
+    import xyz.kd5ujc.scarab.network.selection.{GenesisBlockFetch, Gsm}
+    import xyz.kd5ujc.scarab.protocol.ChainSync.Point
+    TestControl.executeEmbed {
+      val short = Fixtures.chain(1, salt = 1)
+      val preferred = Fixtures.chain(2)
+      val origin =
+        ChainSelection.Local(Point.Origin, SelectView(-1, 0, None, 0, None), Vector.empty)
+      val shortCandidate = ChainSelection.Candidate(Point.Origin, short)
+      val preferredCandidate = ChainSelection.Candidate(Point.Origin, preferred)
+      for
+        selected <- Ref.of[IO, ChainSelection.Local](origin)
+        cached <- Ref.of[IO, Set[Bytes]](Set.empty)
+        result <- Ref.of[IO, Option[FetchCoordinator.Allocation]](None)
+        coordinator <- FetchCoordinator
+          .create[IO](selection = Some(selected.get), fetched = Some(cached.get))
+        _ <- coordinator.installGenesis(
+          FetchCoordinator.GenesisControl(
+            IO.pure(
+              FetchCoordinator
+                .GenesisContext(Gsm.Phase.Syncing, 0, GenesisBlockFetch.Starvation.Ongoing)
+            ),
+            _ => IO.unit
+          )
+        )
+        _ <- (coordinator.session(0), coordinator.session(1)).tupled.use { (older, better) =>
+          for
+            _ <- older.announce(
+              short.lastOption,
+              FetchGsv.default,
+              candidate = Some(shortCandidate)
+            )
+            _ <- better.announce(
+              preferred.lastOption,
+              FetchGsv.default,
+              candidate = Some(preferredCandidate)
+            )
+            waiting <- older
+              .reserve(short, FetchMode.BulkSync, Some(shortCandidate))
+              .use(a => result.set(Some(a)))
+              .start
+            _ <- IO.sleep(1.second)
+            _ <- result.get.assertEquals(None)
+            _ <- better.reserve(preferred, FetchMode.BulkSync, Some(preferredCandidate)).use {
+              allocation =>
+                IO(assertEquals(allocation.headers, preferred)) *>
+                  cached.set(preferred.map(_.hash).toSet) *> coordinator.refreshGenesis
+            }
+            _ <- IO.sleep(1.second)
+            _ <- result.get.assertEquals(None)
+            _ <- selected.set(
+              origin.copy(blocks =
+                preferred.map(h => ChainSelection.LocalBlock(h.point, SelectView.of(h)))
+              )
+            ) *> coordinator.refreshGenesis
+            _ <- waiting.joinWithNever
+            after <- result.get
+            _ <- IO(
+              assertEquals(
+                after.flatMap(_.refusal),
+                Some(BlockFetchPolicy.Refusal.ChainNotPlausible)
+              )
+            )
+            _ <- IO(assertEquals(after.map(_.remaining), Some(Vector.empty)))
+          yield ()
+        }
+      yield ()
+    }
+  }
+
+  for mode <- List(FetchMode.BulkSync, FetchMode.Deadline) do
+    test(s"$mode assigns released global credit to the preferred candidate chain") {
+      TestControl.executeEmbed {
+        for
+          coordinator <- FetchCoordinator.create[IO](
+            BlockFetchPolicy.Config(bulkConcurrency = 1, deadlineConcurrency = 1)
+          )
+          first <- Deferred[IO, Int]
+          release <- Deferred[IO, Unit]
+          order <- Ref.of[IO, Vector[Int]](Vector.empty)
+          _ <- (coordinator.session(0), coordinator.session(1), coordinator.session(2)).tupled.use {
+            (holder, shorter, longer) =>
+              for
+                held <- holder.reserve(Vector(header(0)), mode).allocated
+                _ <- shorter.announce(Some(header(1)), FetchGsv.default)
+                _ <- longer.announce(Some(header(2)), FetchGsv.default)
+                a <- shorter
+                  .reserve(Vector(header(1)), mode)
+                  .use(allocation =>
+                    order.update(_ :+ allocation.headers.head.slot.toInt) *>
+                      first.complete(1).void *> release.get
+                  )
+                  .start
+                b <- longer
+                  .reserve(Vector(header(2)), mode)
+                  .use(allocation =>
+                    order.update(_ :+ allocation.headers.head.slot.toInt) *>
+                      first.complete(2).void *> release.get
+                  )
+                  .start
+                _ <- IO.sleep(1.second) *> held._2
+                winner <- first.get
+                _ <- IO(assertEquals(winner, 2))
+                _ <- release.complete(()) *> a.joinWithNever *> b.joinWithNever
+                observed <- order.get
+                _ <- IO(assertEquals(observed, Vector(2, 1)))
+              yield ()
+          }
+        yield ()
+      }
+    }

@@ -136,8 +136,11 @@ final class FetchCoordinator[F[_]: Async] private (
       }
     }
 
+  /** GSV estimates are non-trigger state (native State.hs:419–425). Recording them must not
+    * retrigger a full decision or restart the grace wait; the next real trigger reads them.
+    */
   private def updatePerformance(id: Long, performance: FetchGsv.PeerGsv): F[Unit] =
-    change(s =>
+    state.update(s =>
       s.copy(peers = s.peers.updatedWith(id)(_.map { peer =>
         if performance.sampleTimePicos < peer.performance.sampleTimePicos then peer
         else peer.copy(performance = performance)
@@ -303,7 +306,9 @@ final class FetchCoordinator[F[_]: Async] private (
         )
       BlockFetchPolicy.Candidate(
         peer = id,
-        chainPreference = if useGenesis then -preference(tipOf(peer)) else preference(tipOf(peer)),
+        chainPreference =
+          if useGenesis || s.mode == FetchMode.Deadline then -preference(tipOf(peer))
+          else preference(tipOf(peer)),
         chainHead = tipOf(peer).fold(Bytes.empty)(_.hash),
         fragments =
           if useGenesis then
@@ -365,7 +370,12 @@ final class FetchCoordinator[F[_]: Async] private (
             case (Some(peer), Some(selected)) if peer.pending.nonEmpty =>
               val offer = peer.pending.head
               val hashes = selected.flatMap(_.headers.map(_.hash)).toSet
-              val headers = offer.headers.filter(h => hashes(h.hash))
+              // Genesis selects the oldest missing work from the complete candidate, not merely
+              // this caller's publication batch. Keeping only the offer's overlap can return an
+              // empty grant with unchanged remaining work and spin without any transport progress.
+              val available =
+                if useGenesis then chainOf(peer).toVector.flatMap(_.headers) else offer.headers
+              val headers = available.filter(h => hashes(h.hash))
               val inFlight = candidates.flatMap { c =>
                 if (useGenesis || s.mode == FetchMode.Deadline) && c.peer != id then Vector.empty
                 else c.inFlight.blocks.toVector
@@ -374,7 +384,9 @@ final class FetchCoordinator[F[_]: Async] private (
               val eligible =
                 admitted.toVector.flatMap(_.fragments.flatMap(_.headers.map(_.hash))).toSet
               val remaining =
-                offer.headers.filter(h => eligible(h.hash) && !hashes(h.hash) && !inFlight(h.hash))
+                offer.headers.filter(h =>
+                  eligible(h.hash) && !hashes(h.hash) && !inFlight(h.hash) && !s.fetched(h.hash)
+                )
               val refusal = decision match
                 case BlockFetchPolicy.Decision.Declined(_, reason) => Some(reason)
                 case _                                             => None
@@ -386,26 +398,35 @@ final class FetchCoordinator[F[_]: Async] private (
                 refusal,
                 allowOverlap = useGenesis
               )
-              val active =
-                if headers.isEmpty then peer.active
-                else
-                  peer.active.updated(
-                    offer.token,
-                    Active(headers, selected.size, headers.map(_.hash).toSet)
-                  )
-              val bytes = active.valuesIterator.flatMap(_.remaining).map(h => sizeOf(h, s)).sum
-              val next = peer.copy(
-                pending = peer.pending.tail,
-                active = active,
-                busy = (peer.busy && candidates
-                  .find(_.peer == id)
-                  .exists(_.status == BlockFetchPolicy.Status.Busy)) ||
-                  bytes >= peer.performance.window.highBytes
-              )
-              (
-                current.copy(peers = current.peers.updated(id, next)),
-                grants :+ (offer.result -> allocation)
-              )
+              // Native AlreadyFetched also labels a peer which cannot serve the oldest point of
+              // the preferred chain (Genesis.hs:74–75). Its own offer can still be uncached. Keep
+              // that offer pending until a real decision trigger; an empty grant with the same
+              // remaining headers would cause the caller to reserve forever without progress.
+              if headers.isEmpty && remaining.nonEmpty && refusal.contains(
+                  BlockFetchPolicy.Refusal.AlreadyFetched
+                )
+              then (current, grants)
+              else
+                val active =
+                  if headers.isEmpty then peer.active
+                  else
+                    peer.active.updated(
+                      offer.token,
+                      Active(headers, selected.size, headers.map(_.hash).toSet)
+                    )
+                val bytes = active.valuesIterator.flatMap(_.remaining).map(h => sizeOf(h, s)).sum
+                val next = peer.copy(
+                  pending = peer.pending.tail,
+                  active = active,
+                  busy = (peer.busy && candidates
+                    .find(_.peer == id)
+                    .exists(_.status == BlockFetchPolicy.Status.Busy)) ||
+                    bytes >= peer.performance.window.highBytes
+                )
+                (
+                  current.copy(peers = current.peers.updated(id, next)),
+                  grants :+ (offer.result -> allocation)
+                )
             case _ => (current, grants)
       }
 
@@ -514,8 +535,8 @@ object FetchCoordinator:
       ChainSelection.tiebreakerFor(if a.era.ordinal > b.era.ordinal then a.era else b.era)
     val av = SelectView.of(a)
     val bv = SelectView.of(b)
-    if ChainSelection.prefers(restriction, av, bv) then -1
-    else if ChainSelection.prefers(restriction, bv, av) then 1
+    if ChainSelection.prefers(restriction, av, bv) then 1
+    else if ChainSelection.prefers(restriction, bv, av) then -1
     else 0
 
   def create[F[_]: Async](
