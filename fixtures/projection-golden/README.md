@@ -1,9 +1,43 @@
 # Era-state projection digests
 
-`eras.tsv` records `index TAB era TAB block number TAB SHA-256` of the direct native JSON
-projection for all 731 states in the era-walking capture. The 50 historical Byron rows remain
-archived as originally recorded; `ProjectionSuite` checks all 681 Shelley-based rows, while the
-Byron consensus-only contract has its own assertion.
+Status: Current — project projection regression goldens, with historical Byron digests retained.
+
+`eras.tsv` records `index TAB era TAB block number TAB SHA-256` for 731 states in the
+[era-walking capture](../eras/README.md). `ProjectionSuite` requires the exact row inventory and
+metadata and compares all 681 Shelley-based digests. The 50 historical Byron digests included a
+placeholder ledger that no longer belongs in the current projection; they are preserved unchanged,
+not presented as current expected values or silently regenerated.
+
+For each Byron state, the test instead derives the entire expected current JSON independently
+of `Projection.node`: the point comes from the original header CBOR, its prefixed Blake2b-256
+hash, and the original genesis `10*k` epoch length. The header wrappers are pinned in
+[cardano-ledger f649f975, Header.hs](https://github.com/IntersectMBO/cardano-ledger/blob/f649f9751074d2ab3de033fc3912f29c9862c1f5/eras/byron/ledger/impl/src/Cardano/Chain/Block/Header.hs#L489).
+While still in Byron, Scarab's read path exposes the **prepared Shelley state**, not the current
+PBFT signer window ([`ChainRead.depState`](../../node/src/main/scala/xyz/kd5ujc/scarab/node/read/ChainRead.scala) selects `MirrorExtras.InByron.pending`). Its epoch/evolving/candidate nonce values are the Blake2b-256 of the exact
+Shelley genesis bytes; lab and last-epoch-block nonces are null, and operational-certificate
+counters empty. Pinned
+[consensus CanHardFork.hs:405–417](https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329d7d054340bf707d44fe6e9ac27cec40/ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/CanHardFork.hs#L405)
+establishes those initialization values, and
+[genesis nonce derivation:59–80](https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329d7d054340bf707d44fe6e9ac27cec40/ouroboros-consensus-cardano/src/unstable-cardano-tools/Cardano/Node/Protocol/Shelley.hs#L59)
+hashes the original file. The test independently derives and pins the nonce
+`87b08ba08e075a9cdf610b78cbaa03d7e6752b768c90403a1fd2179f7dc1ba78`.
+This is a source-backed **local projection contract**, not captured native PBFT state parity.
+It checks every projected value and excludes unexpected extra fields, but does not inspect the
+complete PBFT signer window or Byron ledger.
+
+Do not refresh these digests to make a test pass. Preserve the old file, establish an independent
+reference-backed reason and a field-level before/after comparison, then review a separate candidate.
+The recording entry point requires an explicit, nonexistent candidate path and refuses the
+tracked original path (including normalized aliases). It copies all historical Byron rows verbatim
+without invoking their current projector and writes with `CREATE_NEW` so an existing file cannot
+be overwritten. In the Docker JDK:
+
+```sh
+bash scripts/sbtw 'node/Test/runMain xyz.kd5ujc.scarab.node.read.ProjectionGolden /tmp/projection-candidate.tsv'
+```
+
+This produces project regression data, not an independent oracle. Compare the candidate with the
+original and retain the reference-backed reason before any reviewed fixture replacement.
 
 The J2.7/J2.9 history is described in
 [ProjectionGolden](../../node/src/test/scala/xyz/kd5ujc/scarab/node/read/ProjectionGolden.scala).

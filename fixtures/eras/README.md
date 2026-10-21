@@ -1,9 +1,11 @@
 # Era-walking chain fixtures (Byron to Conway)
 
-A capture of the `devnet.py up-eras` reference cluster, used by `EraTransitionSuite` (no Docker
-needed) to keep the node compatible with every era and every era transition.
+Status: Current — original native chain inputs for era-transition and projection regression tests.
 
-Captured 2026-10-10 from a live 3-pool `cardano-node` 11.1.3 cluster with
+A capture of the `devnet.py up-eras` reference cluster, used by `EraTransitionSuite` and
+`ErasStates`. No live reference cluster is needed to replay it; the Scala tests run in the Docker JDK.
+
+The capture manifest records 2026-10-11, from a live 3-pool `cardano-node` 11.1.3 cluster with
 
 ```sh
 python3 scripts/devnet.py up-eras          # blocks until the first Conway block
@@ -38,9 +40,21 @@ Protocol versions advance by update proposals signed by the three genesis delega
 | `genesis/*.json` | The exact genesis files the reference nodes read. `shelley-genesis.json` must stay byte-identical: the initial Praos nonce is its Blake2b-256 hash. |
 | `genesis/configuration.yaml` | The node configuration (JSON): `Test*HardForkAtEpoch` places the eras. It has no `ByronGenesisHash`, so the node derives it from the canonical JSON of `byron-genesis.json`. |
 
-Every captured block was at least 10 blocks deep, so none is rolled back. To regenerate, delete
-the files and rerun the commands above; the chain differs every run (keys and timing), so the
-suite derives all expectations from the files, not from constants.
+Every captured block was at least 10 blocks deep, so none is rolled back. A new recording has
+different public keys, blocks and timing. Capture it into a separate candidate directory with
+`capture-eras --out /tmp/scarab/eras-candidate`; preserve the original corpus and review provenance
+and semantic differences before replacing any expected data. Record the exact reference image
+and binary identity for a new capture; those identities were not archived for this historical one.
+
+`ProjectionSuite` requires all 731 original rows and checks each row's index, era and block number.
+Its 681 Shelley-based digests are project regression goldens, not independent Haskell answers.
+All 50 Byron points are derived directly from the original header CBOR and genesis `10*k` epoch
+length; the complete current prepared-Shelley JSON projection is checked separately. That projection
+contract is explained in [projection-golden](../projection-golden/README.md). The corpus is a
+single private chain; it does not establish all public-chain or adversarial branch coverage.
+
+Original `blocks.hex` SHA-256:
+`ce887fd208cefdd27bc6c987ba997d2a3c1feafb05ce908011882588293a0c0f`.
 
 ## Provenance and licence
 
