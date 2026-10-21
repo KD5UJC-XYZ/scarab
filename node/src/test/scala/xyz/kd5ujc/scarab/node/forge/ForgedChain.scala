@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.node.forge
 
 import xyz.kd5ujc.scarab.ledger.ChainError
-
 import cats.effect.{IO, Ref}
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.syntax.all.*

@@ -271,7 +271,8 @@ node uses is `simplePeerSelectionPolicy` (`ON/Diffusion/Policies.hs:99-124`):
 
 | Pick | Rule |
 |---|---|
-| known peers for peer share, cold to promote, warm to promote, inbound | uniformly random: a random `Word32` per candidate, the smallest first (`simplePromotionPolicy`, 174-182, `addRand`, 202-217) |
+| known peers for peer share, cold to promote, inbound | uniformly random: a random `Word32` per candidate, the smallest first (`simplePromotionPolicy` and `addRand`) |
+| warm to promote | current-pin `warmPromotionPolicy`: quarter the unsigned draw for non-tepid peers; a recently demoted tepid peer retains the full draw and is less likely to return immediately (#149) |
 | hot to demote | the lowest score first, where the score is `upstreamyness + fetchynessBlocks`, ties broken by the slot at which the peer joined the metric board, then by the random number (`hotDemotionPolicy`, 127-147) |
 | warm to demote | random, with a peer that has the tepid flag *twice as likely* to be picked (its random number halved, 151-160, 192-199) |
 | cold to forget | random, a peer with failures more likely to be picked (its random number divided by `failCount + 1`, 164-172, 184-190) |
