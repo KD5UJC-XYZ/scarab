@@ -22,7 +22,8 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
 
   for streaming <- List(false, true) do
     test(
-      if streaming then "a streamed prefix advances the ledger while a later header in the same batch waits"
+      if streaming then
+        "a streamed prefix advances the ledger while a later header in the same batch waits"
       else "retired read-ahead headers and a longer replacement fork both remain fetchable"
     ) {
       for

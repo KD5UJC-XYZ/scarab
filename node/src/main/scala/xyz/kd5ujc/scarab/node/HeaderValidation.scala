@@ -73,12 +73,15 @@ final class NodeHeaderRules[S](config: PraosConfig, globals: LedgerGlobals)(usin
             Outcome.Later(HeaderRules.ForecastReason.ShelleyLedgerNotReady)
           case Right(Some(InEra.Of(_, ledger))) => shelley(anchor, ledger, tip, prev, h)
 
-  private def shelley[E <: EraTag](
+  private[node] def shelley[E <: EraTag](
       anchor: S,
       ledger: EraRead[E],
       tip: Option[BlockRef],
       prev: ProtocolState,
-      h: Header.Shelley
+      h: Header.Shelley,
+      strictEnvelope: Boolean = false,
+      forecastLimit: Option[BigInt] = None,
+      genericEnvelope: Either[HeaderError, Unit] = Right(())
   ): Outcome[ProtocolState] =
     val firstShelley = anchor.consensus.byron.firstShelleyEpoch
     val cfg =
@@ -93,7 +96,9 @@ final class NodeHeaderRules[S](config: PraosConfig, globals: LedgerGlobals)(usin
       Outcome.Invalid(
         HeaderError.Structure(HeaderStructureProblem.EpochPrecedes(epoch, ledgerEpoch))
       )
-    else if (tip.isDefined && h.slot > tipSlot + geometry.stabilityWindow) ||
+    else if (strictEnvelope && h.slot >= forecastLimit.getOrElse(
+        tip.fold(geometry.stabilityWindow)(t => t.slot + 1 + geometry.stabilityWindow)
+      )) || (!strictEnvelope && tip.isDefined && h.slot > tipSlot + geometry.stabilityWindow) ||
       epoch > ledgerEpoch + 1
     then
       Outcome.Later(
@@ -102,11 +107,11 @@ final class NodeHeaderRules[S](config: PraosConfig, globals: LedgerGlobals)(usin
     else
       val sameEpoch = epoch == ledgerEpoch
       val params =
-        if sameEpoch || ledgerParams.protocolMajor >= 9 then ledgerParams
+        if sameEpoch || (!strictEnvelope && ledgerParams.protocolMajor >= 9) then ledgerParams
         else ledger.paramsNextEpoch(glob)
       val pools = ledger.leaderPools(nextEpoch = !sameEpoch)
       val envelope =
-        if sameEpoch then
+        if sameEpoch || strictEnvelope then
           cfg.forks
             .check(
               h.era,
@@ -125,7 +130,7 @@ final class NodeHeaderRules[S](config: PraosConfig, globals: LedgerGlobals)(usin
         if h.era.ordinal >= Era.Conway.ordinal then geometry.randomnessStabilisationWindow
         else geometry.stabilityWindow
       val checked: Either[HeaderError, ProtocolState] =
-        envelope.flatMap { _ =>
+        genericEnvelope.flatMap(_ => envelope).flatMap { _ =>
           if h.era.usesTPraos then
             val view = LedgerView(
               params.effectiveD,

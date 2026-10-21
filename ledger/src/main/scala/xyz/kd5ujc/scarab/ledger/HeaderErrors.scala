@@ -8,6 +8,8 @@ import xyz.kd5ujc.scarab.ledger.state.VocabError
 
 /** Why a header is refused before its block is fetched. Closed: every rule family has its case. */
 enum HeaderError:
+  case Byron(error: ByronChainError)
+
   /** The envelope rules (era, protocol version, header and body size). */
   case Envelope(error: EnvelopeError)
 
@@ -38,6 +40,7 @@ enum HeaderError:
   def message: String = this match
     case FarFuture(s, ahead, skew) =>
       s"slot $s begins $ahead ms after the header arrived, beyond the tolerable clock skew of $skew ms"
+    case Byron(e)     => s"byron: ${e.message}"
     case Envelope(e)  => s"envelope: ${e.message}"
     case Praos(e)     => s"praos: ${e.message}"
     case TPraos(e)    => s"tpraos: ${e.message}"
@@ -140,5 +143,11 @@ enum TPraosError:
 
 /** Structural header failures with their original ledger-read cause. */
 enum HeaderStructureProblem:
+  case BlockNumber(actual: BigInt, expected: BigInt)
+  case SlotNumber(actual: BigInt, minimum: BigInt)
+  case PreviousHash(actual: Option[Bytes], expected: Option[Bytes])
+  case UnexpectedBoundarySlot(slot: BigInt, epochSlots: BigInt)
+  case Transition(cause: BlockFailure)
+  case MissingByronLedger
   case LedgerRead(cause: xyz.kd5ujc.scarab.ledger.state.MirrorError)
   case EpochPrecedes(epoch: BigInt, ledgerEpoch: BigInt)
