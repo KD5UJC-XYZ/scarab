@@ -1,0 +1,1 @@
+Require native index comparisons to decode successfully on both implementations with matching chunk/index inventories and nonzero decoded coverage. Only the newest chunk tolerates partial index tails, whose exact byte counts are reported separately.
