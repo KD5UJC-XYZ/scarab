@@ -95,6 +95,9 @@ object PeerNetwork:
     /** Whether the topology enables ledger peers (it matters for the association mode). */
     def ledgerPeers: Boolean = ledger.isEnabled
 
+    /** An explicitly empty bootstrap list still enables the policy, as does an SRV-only source. */
+    def bootstrapConfigured: Boolean = bootstrap.isDefined || bootstrapSrv.nonEmpty
+
   /** @param targets
     *   The targets of the node when it is not syncing: the relay or producer defaults, as
     *   configured.
@@ -315,7 +318,7 @@ object PeerNetwork:
   ): Resource[F, Running[F, Addr]] =
     val F = Async[F]
     val base: Targets = settings.targets
-    val bootstrapOn = settings.roots.bootstrap.isDefined
+    val bootstrapOn = settings.roots.bootstrapConfigured
     val association = AssociationMode.of(
       useLedgerPeers = settings.roots.ledgerPeers,
       peerSharing = settings.peerSharing,
@@ -496,7 +499,7 @@ object PeerNetwork:
               _ <- events.offer(
                 Event.RootsConfigured(
                   LocalRoots.fromGroups(local),
-                  staged.roots.bootstrap.isDefined || staged.roots.bootstrapSrv.nonEmpty,
+                  staged.roots.bootstrapConfigured,
                   public,
                   Some(staged.generation)
                 )
@@ -676,7 +679,7 @@ object PeerNetwork:
           nextAssociation = AssociationMode.of(
             useLedgerPeers = next.ledgerPeers,
             peerSharing = settings.peerSharing,
-            useBootstrapPeers = next.bootstrap.isDefined,
+            useBootstrapPeers = next.bootstrapConfigured,
             bootstrapEmpty = next.bootstrap.exists(_.isEmpty) && next.bootstrapSrv.isEmpty
           )
           generation <- nextRootGeneration.modify(value => (value + 1, value + 1))
@@ -690,7 +693,7 @@ object PeerNetwork:
             nextAssociation,
             previous.churn.copy(
               base = settings.targets,
-              regime = Regime.kind(settings.consensusMode, _, next.bootstrap.isDefined)
+              regime = Regime.kind(settings.consensusMode, _, next.bootstrapConfigured)
             ),
             snapshotCheckStarted = false,
             snapshotCheckCanceled = snapshotCheckCanceled

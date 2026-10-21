@@ -6,6 +6,7 @@ import cats.effect.{Deferred, IO, Outcome, Ref, Resource}
 import cats.effect.std.Queue
 import cats.effect.testkit.TestControl
 import cats.mtl.Handle
+import cats.syntax.all.*
 import com.comcast.ip4s.{Host, SocketAddress, host, ipv4, port}
 import scala.collection.immutable.SortedMap
 import scala.concurrent.duration.*
@@ -392,4 +393,54 @@ class PeerRootReloadSuite extends FailsOnUncaught:
       .state
     assertEquals(applied.peers(public).origin, Origin.Other)
     assertEquals(applied.peers(bootstrap).origin, Origin.Other)
+  }
+
+  test("startup bootstrap policy includes SRV-only and explicitly empty configurations") {
+    val absent = roots(Nil, hot = 0, warm = 0)
+    val domain = DnsName.from("bootstrap.example").fold(e => fail(e.toString), identity)
+    val inputs = List(
+      (absent, false),
+      (absent.copy(bootstrap = Some(Vector.empty)), true),
+      (absent.copy(bootstrapSrv = Vector(domain)), true)
+    )
+    val dns = new PeerDns[IO]:
+      def addresses(name: DnsName) = IO.pure(DnsAddressAnswer(Vector.empty, Vector.empty))
+      def services(name: DnsName) = IO.pure(Left(PeerDnsError.Lookup(Vector.empty)))
+    given Resource[IO, PeerDns[IO]] = Resource.pure[IO, PeerDns[IO]](dns)
+    inputs.traverse_ { (input, enabled) =>
+      running(input).use { network =>
+        network.state.get.map { state =>
+          assertEquals(input.bootstrapConfigured, enabled)
+          assertEquals(state.sensitivity.useBootstrapPeers, enabled)
+          assertEquals(state.requested.active, if enabled then 2 else Targets.relay.active)
+          assertEquals(state.requested.root, if enabled then Targets.relay.root else 0)
+        }
+      }
+    }
+  }
+
+  test("topology reload uses the same bootstrap flag for SRV-only, empty and absent roots") {
+    settled { settle =>
+      val absent = roots(Nil, hot = 0, warm = 0)
+      val domain = DnsName.from("bootstrap.example").fold(e => fail(e.toString), identity)
+      val srvOnly = absent.copy(bootstrapSrv = Vector(domain))
+      val explicitEmpty = absent.copy(bootstrap = Some(Vector.empty))
+      val dns = new PeerDns[IO]:
+        def addresses(name: DnsName) = IO.pure(DnsAddressAnswer(Vector.empty, Vector.empty))
+        def services(name: DnsName) = IO.pure(Left(PeerDnsError.Lookup(Vector.empty)))
+      given Resource[IO, PeerDns[IO]] = Resource.pure[IO, PeerDns[IO]](dns)
+      running(absent).use { network =>
+        network.run.background.use { _ =>
+          List((srvOnly, true), (explicitEmpty, true), (absent, false)).traverse_ { (input, enabled) =>
+            for
+              _ <- network.reloadRoots(input).timeout(1.second)
+              _ <- settle
+              state <- network.state.get
+            yield
+              assertEquals(state.sensitivity.useBootstrapPeers, enabled)
+              assertEquals(GovernorState.invariant(state), Nil)
+          }
+        }
+      }
+    }
   }
