@@ -108,6 +108,7 @@ unspecified exercises the harness's existing configuration instead:
 python3 scripts/devnet.py --name scarab-33-restart restart --consensus-mode GenesisMode
 python3 scripts/devnet.py --name scarab-33-relay relay --consensus-mode GenesisMode
 python3 scripts/devnet.py --name scarab-33-soak soak --consensus-mode GenesisMode
+python3 scripts/devnet.py --name scarab-33-e2e e2e --consensus-mode GenesisMode
 ```
 
 The option writes a separate Scala configuration next to the copied genesis files.

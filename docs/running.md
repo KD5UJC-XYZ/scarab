@@ -256,10 +256,12 @@ What the configuration does:
 |---|---|
 | `ByronGenesisFile` (or `GenesisFile`), `ShelleyGenesisFile` (or `GenesisFile`), `AlonzoGenesisFile`, `ConwayGenesisFile` | the genesis files, looked up next to the configuration (or in `--genesis-dir`); required; `GenesisFile` next to the specific name is an error |
 | `ByronGenesisHash`, `ShelleyGenesisHash`, `AlonzoGenesisHash`, `ConwayGenesisHash` | verified against the files: the Byron hash is that of the canonical JSON of the file, the others the blake2b-256 of the file's bytes (`cardano-cli genesis hash`). A mismatch is a `ConfigError` of kind `GenesisHashMismatch` that names the file, the listed and the actual hash; a hash that is not 64 hexadecimal digits is refused. The check runs for `--genesis-dir` too |
-| `DijkstraGenesisFile`/`Hash`, `CheckpointsFile`/`Hash` | the hash is verified when the file is present; the Dijkstra era and checkpoints are not implemented |
+| `DijkstraGenesisFile`/`Hash` | the hash is verified when the file is present; the Dijkstra era is not implemented |
+| `CheckpointsFile`/`Hash` | a configured file is required; its byte hash is verified before parsing. Unique unsigned block numbers map to 32-byte header hashes, enforced during header and block validation across eras |
 | `TestShelleyHardForkAtEpoch` ... `TestConwayHardForkAtEpoch` | the first epoch of each era (`0` for all of them: the chain starts in that era, as Preview); absent for Shelley: the Byron ledger decides |
 | `RequiresNetworkMagic`, `PBftSignatureThreshold` | the Byron address magic and the PBFT signing threshold |
-| `LastKnownBlockVersion-Major/Minor/Alt`, `MaxKnownMajorProtocolVersion`, `Protocol` (must be `Cardano`), `ExperimentalHardForksEnabled`, `ConsensusMode`, `DiffusionMode` | read, validated and logged (`started`). In `GenesisMode`, the governor uses the Genesis judgement and sync targets while `TooOld`, refuses configured bootstrap peers, verifies the peer snapshot against the exact immutable slot and hash, and emits trusted-state output from active big-ledger peers. Genesis density, ledger-dependent fork choice and the consensus trusted-state consumer remain unimplemented; `configUnsupported` reports GenesisMode as partial. Praos remains the default. Experimental hard forks (the Dijkstra era) and `Test<Era>HardForkAtVersion` remain unsupported |
+| `LastKnownBlockVersion-Major/Minor/Alt`, `MaxKnownMajorProtocolVersion`, `Protocol` (must be `Cardano`), `ExperimentalHardForksEnabled`, `ConsensusMode`, `DiffusionMode` | read, validated and logged (`started`). `GenesisMode` integrates GSM, LoE/GDD, LoP, ChainSync jumping, historicity and devoted BlockFetch across outbound and inbound duplex clients; full canonical header validation applies even with header-first disabled. It refuses bootstrap peers and checks peer snapshots against the immutable point. Praos remains the default. Experimental hard forks (the Dijkstra era) and `Test<Era>HardForkAtVersion` remain unsupported |
+| `LowLevelGenesisOptions` | the reference's `EnableCSJ`, `EnableLoEAndGDD`, `EnableLoP`, `BlockFetchGracePeriod`, `BucketCapacity`, `BucketRate`, `CSJJumpSize` and `GDDRateLimit`; [defaults and resource policy](design/genesis.md#mechanisms-and-resource-policy) follow the pinned production configuration |
 | `PeerSharing` | used by both handshakes and the governor; absent means on for a relay and off with `--forge`, an explicit Boolean wins. Both peers must enable it. Eligible connected peers are asked below the known target; only advertised, previously connected peers with no failures are shared (G1.4) |
 | `ExperimentalProtocolsEnabled` (also `TestEnableDevelopmentNetworkProtocols`, which must agree) | the highest node-to-node version the node offers and accepts (G4): absent or `false`, **15**, the latest release of cardano-node 11.1.3 (14 and 15 are offered, as the reference does, `Cardano/Node.hs` 456 and `limitToLatestReleasedVersion`); `true`, **16**, which adds the Peras flag to the version data (always sent as false: the node has no Peras mini-protocols). A relay or pool of the reference needs the same key to agree on 16. The public Leios testnet sets it; its relay accepts 14 to 16. Node-to-client versions 16 to 23 are always accepted. The devnet `relay` scenario takes `--max-ntn-version 16` to turn the key on for the Scala node and the Haskell relay |
 | `SocketPath`, `DatabasePath`, `MempoolCapacityBytesOverride` (a byte count; `NoOverride` is the default of two blocks) | the defaults of `--local-socket`, `--db` and `--mempool-bytes`, with `--config` only; a flag wins |
@@ -373,7 +375,12 @@ The outbound peers are chosen by the peer governor (roadmap G1.1, [design](desig
   `gsmTransition` and `fetchModeChanged` (table in "Logging"); the gauges of "Peer selection (G1)" in "Metrics";
   `GET /connections` has a `peerSelection` object next to the connection table: `counters` (cold, warm, hot, known, root),
   `targets`, `judgement`, `sensitive` and each `peer` with its `temperature`, `origin`, `failCount`, `advertise`, `everConnected` and negotiated `peerSharing`.
-- **Follow-ups.** Full Genesis density and ledger-dependent fork choice remain in [#33](https://github.com/KD5UJC-XYZ/scarab/issues/33).
+- **Genesis.** In `GenesisMode`, LoE limits adoption while GDD compares validated candidates, LoP
+  bounds withholding, and CSJ shares header work. Devoted fetching uses actual selection starvation
+  and preserves outstanding request accounting during handover. Received original bodies,
+  including postponed forks, are retained in a separate `received/` journal across restart.
+  Normal ChainSync returns drain hot protocols and keep the bearer warm for the reference's
+  120- or 180-second repromotion delay. [Design and acceptance](design/genesis.md).
   Topology reload, SRV/TTL resolution and duplex outbound service are implemented in [#142](https://github.com/KD5UJC-XYZ/scarab/issues/142).
   The private relay scenario confirms sync and duplex following but currently fails transaction inclusion; see the compatibility evidence.
 
@@ -1655,7 +1662,7 @@ CPU-starvation warnings than that (otherwise they are only reported: `cpuStarvat
 the longest CPU-bound step the node measured). `pool --scala-cpus 1` is the check that the forger's slot
 clock holds with one CPU (roadmap D8).
 
-`--consensus-mode GenesisMode` on `follow`, `restart`, `relay` or `soak` selects Genesis
+`--consensus-mode GenesisMode` on `follow`, `restart`, `relay`, `e2e` or `soak` selects Genesis
 for Scarab using a separate run-local configuration and a topology naming only that
 run's controlled reference pools as trustable local roots. The reference pools keep
 their original configuration. Restart retains the explicit mode on both starts;
