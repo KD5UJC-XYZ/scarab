@@ -108,7 +108,7 @@ object PeerError:
     case HeaderValidationDidNotSettle
     case BlockCount(expected: Int, actual: Int)
     def message: String = this match
-      case HeaderDecode(cause) => cause.message
+      case HeaderDecode(cause)          => cause.message
       case FetchedBlockIntegrity(cause) => cause.message
       case HeaderDoesNotExtend(point, _) =>
         s"header ${Points.show(point)} does not extend the peer's chain"

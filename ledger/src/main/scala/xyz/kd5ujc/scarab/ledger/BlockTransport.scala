@@ -16,13 +16,13 @@ enum BlockTransportError extends DomainError:
   case ByronBodyProof(cause: ByronError)
 
   def message: String = this match
-    case Decode(cause) => cause.message
-    case WrongEra(expected, actual) => s"fetched $actual block for $expected header"
+    case Decode(cause)                 => cause.message
+    case WrongEra(expected, actual)    => s"fetched $actual block for $expected header"
     case WrongHeader(expected, actual) => s"fetched header $actual differs from announced $expected"
     case WrongBodyHash(expected, actual) =>
       s"fetched body hash ${actual.hex} differs from announced ${expected.hex}"
     case ByronBodyDecode(cause) => s"fetched Byron body does not decode: ${cause.message}"
-    case ByronBodyProof(cause) => cause.message
+    case ByronBodyProof(cause)  => cause.message
 
 /** The pinned BlockFetch client's point/body checks, before storage or ledger selection.
   * Shelley/Ledger/Block.hs:211 checks the body hash, not its declared size. Byron delegates to
@@ -57,6 +57,8 @@ object BlockTransport:
           ByronBody
             .decode(body.body)
             .leftMap(BlockTransportError.ByronBodyDecode(_))
-            .flatMap(ByronLedger.checkProofs(header, _).leftMap(BlockTransportError.ByronBodyProof(_)))
+            .flatMap(
+              ByronLedger.checkProofs(header, _).leftMap(BlockTransportError.ByronBodyProof(_))
+            )
         case _ => Right(())
     yield block

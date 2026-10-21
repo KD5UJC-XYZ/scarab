@@ -20,7 +20,7 @@ class FetchedBlockIntegritySuite extends FunSuite:
 
   private def array(node: Node): Vector[Node] = node.value match
     case Value.Arr(items) => items
-    case other           => fail(s"expected fixture array, got $other")
+    case other            => fail(s"expected fixture array, got $other")
 
   private def parts(raw: Bytes): Vector[Node] =
     array(array(Cbor.decode(raw).fold(e => fail(e.message), identity))(1))
@@ -50,14 +50,15 @@ class FetchedBlockIntegritySuite extends FunSuite:
       val (block, raw) = originals.find(_._1.era == era).getOrElse(fail(s"missing $era"))
       val header = block.header match
         case h: Header.Shelley => h
-        case _                => fail(s"expected Shelley-based header for $era")
+        case _                 => fail(s"expected Shelley-based header for $era")
       val signed = array(array(parts(raw)(0))(0))
       val size = signed(if era.usesTPraos then 7 else 6)
       val changed = replace(raw, size, encoded(Value.UInt(header.bodySize + 1)))
       val decoded = Block.decode(changed, epochSlots).fold(e => fail(e.message), identity)
-      assertEquals(decoded.header match
+      val declared = decoded.header match
         case h: Header.Shelley => h.bodySize
-        case _                => fail("changed fixture era"), header.bodySize + 1)
+        case _                 => fail("changed fixture era")
+      assertEquals(declared, header.bodySize + 1)
       assertEquals(BlockTransport.check(decoded.header, changed), Right(decoded))
       // The signed header was deliberately changed; this is a transport-boundary test, not
       // evidence that the altered signature or the declared size passes ledger admission.
@@ -65,9 +66,11 @@ class FetchedBlockIntegritySuite extends FunSuite:
     }
 
   test("different original witness-container bytes fail the hash before semantic forgiveness") {
-    val (block, raw) = originals.find { (block, raw) =>
-      block.era == Era.Shelley && array(parts(raw)(2)).isEmpty
-    }.getOrElse(fail("missing empty Shelley witness container"))
+    val (block, raw) = originals
+      .find { (block, raw) =>
+        block.era == Era.Shelley && array(parts(raw)(2)).isEmpty
+      }
+      .getOrElse(fail("missing empty Shelley witness container"))
     val witnesses = parts(raw)(2)
     val changed = replace(raw, witnesses, alternateEmpty(witnesses))
     val decoded = Block.decode(changed, epochSlots).fold(e => fail(e.message), identity)
@@ -78,16 +81,20 @@ class FetchedBlockIntegritySuite extends FunSuite:
   }
 
   test("Byron main delegation proof is a transport check over original payload bytes") {
-    val (block, raw) = originals.find { (block, raw) =>
-      block.era == Era.Byron && !block.header.isBoundary &&
-      array(array(parts(raw)(1))(2)).isEmpty
-    }.getOrElse(fail("missing empty Byron delegation payload"))
+    val (block, raw) = originals
+      .find { (block, raw) =>
+        block.era == Era.Byron && !block.header.isBoundary &&
+        array(array(parts(raw)(1))(2)).isEmpty
+      }
+      .getOrElse(fail("missing empty Byron delegation payload"))
     val delegation = array(parts(raw)(1))(2)
     val changed = replace(raw, delegation, alternateEmpty(delegation))
     assertEquals(Block.decode(changed, epochSlots).map(_.header.raw), Right(block.header.raw))
     assertEquals(
       BlockTransport.check(block.header, changed),
-      Left(BlockTransportError.ByronBodyProof(ByronError.ProofMismatch(ByronError.Proof.Delegation)))
+      Left(
+        BlockTransportError.ByronBodyProof(ByronError.ProofMismatch(ByronError.Proof.Delegation))
+      )
     )
   }
 
@@ -98,8 +105,10 @@ class FetchedBlockIntegritySuite extends FunSuite:
       BlockTransport.check(allegra.header, raw),
       Left(BlockTransportError.WrongEra(Era.Allegra, Era.Shelley))
     )
-    val next = originals.find(b => b._1.era == Era.Shelley && b._1.header.point != shelley.header.point)
-      .map(_._1).getOrElse(fail("no distinct Shelley header"))
+    val next = originals
+      .find(b => b._1.era == Era.Shelley && b._1.header.point != shelley.header.point)
+      .map(_._1)
+      .getOrElse(fail("no distinct Shelley header"))
     assertEquals(
       BlockTransport.check(next.header, raw),
       Left(BlockTransportError.WrongHeader(next.header.point, shelley.header.point))
