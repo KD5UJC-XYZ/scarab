@@ -17,7 +17,7 @@ import xyz.kd5ujc.scarab.consensus.state.ProtocolState
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.network.*
 import xyz.kd5ujc.scarab.network.genesis.PicosClock
-import xyz.kd5ujc.scarab.network.selection.Gsm
+import xyz.kd5ujc.scarab.network.selection.{GenesisBlockFetch, Gsm}
 import xyz.kd5ujc.scarab.node.*
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era, NtNHeader}
 import UpstreamGenesisCases.{Component, End, PeerId, Scenario}
@@ -89,6 +89,16 @@ object UpstreamGenesisReplay:
   def runtimeSeed(scenario: Scenario): String =
     val identity = scenario.label.hashCode.toString
     Base64.getEncoder.encodeToString(identity.getBytes(StandardCharsets.UTF_8))
+
+  // PeerSimulator/BlockFetch.hs134–146: the false outer branch uses Genesis's default config,
+  // whose grace is also 10s (Node/Genesis.hs168). Its nested million-second branch is unreachable.
+  private[genesis] def fetchContext(
+      settings: GenesisSettings,
+      phase: Gsm.Phase,
+      now: BigInt,
+      starvation: GenesisBlockFetch.Starvation
+  ): FetchCoordinator.GenesisContext =
+    FetchCoordinator.GenesisContext(phase, now, starvation, settings.blockFetchGracePicos)
 
   def run(scenario: Scenario): IO[Either[Problem, Result]] = TestControl.executeEmbed(
     {
@@ -253,13 +263,7 @@ object UpstreamGenesisReplay:
                               FetchCoordinator.GenesisControl(
                                 (governor.phase, clock.now, runtime.work.snapshot).mapN(
                                   (phase, now, starvation) =>
-                                    FetchCoordinator.GenesisContext(
-                                      phase,
-                                      now,
-                                      starvation,
-                                      if scenario.config.starvation then BigInt(10).pow(13)
-                                      else BigInt(10).pow(18)
-                                    )
+                                    fetchContext(settings, phase, now, starvation)
                                 ),
                                 runtime.demoteDynamo
                               )

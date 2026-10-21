@@ -160,3 +160,24 @@ class UpstreamGenesisLawsSuite extends FailsOnUncaught:
       )
     }
   }
+
+  test("native fetch-context and timer grace stay coherent for the original starvation switches") {
+    cases.map { scenarios =>
+      import xyz.kd5ujc.scarab.node.GenesisSettings
+      import xyz.kd5ujc.scarab.network.selection.{GenesisBlockFetch, Gsm}
+      val switches = scenarios.map(_.config.starvation).toSet
+      assertEquals(switches, Set(false, true))
+      assertEquals(scenarios.count(!_.config.starvation), 8)
+      // A nondefault configuration detects a separately hard-coded context grace, while the
+      // native-default case exercises the same source path as the unchanged 84-case runtime replay.
+      Vector(GenesisSettings(), GenesisSettings(blockFetchGracePicos = 37)).foreach { settings =>
+        val context = UpstreamGenesisReplay.fetchContext(
+          settings,
+          Gsm.Phase.Syncing,
+          17,
+          GenesisBlockFetch.Starvation.EndedAt(11)
+        )
+        assertEquals(context.gracePicos, settings.blockFetchGracePicos)
+      }
+    }
+  }
