@@ -1005,7 +1005,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `stalled` | `Chain.Stalled` | Warning | `idleSeconds`, `ourBlock`, `peerBlock` |
 | `stallExit` | `Chain.StallExit` | Error | `idleSeconds`, `ourBlock`, `peerBlock` |
 | `headersChecked` | `Chain.HeadersChecked` | Info | `validated`, `unchecked`, `waited` |
-| `chainSyncRounds` (legacy batch facade only) | `Chain.ChainSyncRounds` | Info | `rounds`, `headers`, `avgMs`, `maxMs`, `maxDepth`; production rolling sessions retain the per-reply header counter and do not emit round aggregates |
+| `chainSyncRounds` | `Chain.ChainSyncRounds` | Info | `rounds`, `headers`, `avgMs`, `maxMs`, `maxDepth`; legacy batch facade only; production rolling sessions retain the per-reply header counter and do not emit round aggregates |
 | `slowFetch` | `Chain.SlowFetch` | Info | `millis` |
 | `ledgerEpoch` | `Ledger.LedgerEpoch` | Info | `epoch`, `utxo`, `accounts`, `pools`, `treasury`, `reserves`, `protocolVersion`, `phase2`, `scriptIntegrityHashChecked`, `scheduling` |
 | `connection` | `Net.Connection` | Info (Warning when `what` is `refused`) | `remote`, `what`, `provenance`, `from`, `to`, `reason` |
