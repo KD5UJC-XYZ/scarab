@@ -19,10 +19,11 @@ object UpstreamGenesisBlocks:
     case MissingParent(point: ChainSync.Point)
     case MissingPoint(point: ChainSync.Point)
     case IdentityCollision
+    case BlockEstimate(actual: BigInt)
 
   final case class Block(native: ChainSync.Point.Block, header: Header.Shelley):
     def wire: NtNHeader = NtNHeader(header.era, header.raw, None)
-    def body: Bytes = native.hash
+    def body: Bytes = Bytes(Blake2b.hash256.hash(native.hash).value ++ Vector.fill(968)(0.toByte))
 
   final case class Universe(blocks: Vector[Block]):
     val native: Map[ChainSync.Point, Block] =
@@ -58,22 +59,42 @@ object UpstreamGenesisBlocks:
               .map(b => Some(b.header.hash))
               .toRight(Problem.MissingParent(point))
         previous.flatMap { prev =>
-          val body = arr(
-            Value.UInt(point.hash.size / 8),
-            Value.UInt(point.slot.value),
-            prev.fold[Value](Value.Null)(Value.ByteString(_)),
-            bytes(32),
-            bytes(32),
-            arr(bytes(64), bytes(80)),
-            Value.UInt(point.hash.size),
-            Value.ByteString(Blake2b.hash256.hash(point.hash)),
-            arr(bytes(32), Value.UInt(0), Value.UInt(0), bytes(64)),
-            arr(Value.UInt(8), Value.UInt(0))
-          )
-          for
-            raw <- Cbor.encode(arr(body, bytes(448))).leftMap(Problem.Encoding(_))
-            header <- Header.fromRaw(Era.Babbage, raw).leftMap(Problem.HeaderDecode(_))
-          yield done :+ Block(point, header)
+          def encoded(size: BigInt): Either[Problem, Header.Shelley] =
+            val body = arr(
+              Value.UInt(point.hash.size / 8),
+              Value.UInt(point.slot.value),
+              prev.fold[Value](Value.Null)(Value.ByteString(_)),
+              bytes(32),
+              bytes(32),
+              arr(bytes(64), bytes(80)),
+              Value.UInt(size),
+              Value.ByteString(Blake2b.hash256.hash(point.hash)),
+              arr(bytes(32), Value.UInt(0), Value.UInt(0), bytes(64)),
+              arr(Value.UInt(8), Value.UInt(0))
+            )
+            for
+              raw <- Cbor.encode(arr(body, bytes(448))).leftMap(Problem.Encoding(_))
+              header <- Header.fromRaw(Era.Babbage, raw).leftMap(Problem.HeaderDecode(_))
+            yield header
+          // The native simulator supplies estimateBlockSize(_)=1000. Find the matching
+          // declared payload size without changing its tree or selection inputs.
+          Vector
+            .fill(3)(())
+            .foldLeftM(BigInt(0)) { (size, _) =>
+              encoded(size).flatMap(h =>
+                val next = BigInt(1000 - h.raw.size - 10)
+                Either.cond(next >= 0, next, Problem.BlockEstimate(next))
+              )
+            }
+            .flatMap(encoded)
+            .flatMap { header =>
+              val estimate = header.bodySize + header.raw.size + 10
+              Either.cond(
+                estimate == 1000,
+                done :+ Block(point, header),
+                Problem.BlockEstimate(estimate)
+              )
+            }
         }
       }
       .flatMap { rows =>

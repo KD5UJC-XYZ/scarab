@@ -111,6 +111,11 @@ final class UpstreamGenesisServer private (
           .evalMap(b => waitBlock(b).as(b.body))
       }
 
+  def restart: IO[UpstreamGenesisServer] =
+    Ref
+      .of[IO, ChainSync.Point](ChainSync.Point.Origin)
+      .map(next => new UpstreamGenesisServer(universe, available, next, problem))
+
   def publish(state: NodeState): IO[Unit] = available.update((version, _) => (version + 1, state))
 
 object UpstreamGenesisServer:

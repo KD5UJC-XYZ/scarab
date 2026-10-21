@@ -2,10 +2,12 @@
 package xyz.kd5ujc.scarab.node.genesis
 
 import cats.effect.IO
-import munit.CatsEffectSuite
+import xyz.kd5ujc.scarab.network.FailsOnUncaught
+import scala.concurrent.duration.*
 import UpstreamGenesisCases.*
 
-class UpstreamGenesisReplaySuite extends CatsEffectSuite:
+class UpstreamGenesisReplaySuite extends FailsOnUncaught:
+  override def munitIOTimeout: FiniteDuration = 180.seconds
   test("all original Genesis cases retain complete typed inputs and native outcomes") {
     UpstreamGenesisCases.read.flatMap {
       case Left(error) => IO(fail(error.toString))
@@ -63,12 +65,79 @@ class UpstreamGenesisReplaySuite extends CatsEffectSuite:
               val encoded = universe.encode(point).fold(p => fail(p.toString), identity)
               assertEquals(universe.decode(encoded), Right(point), scenario.label)
             }
-            universe.blocks.foreach { block =>
-              assertEquals(block.header.blockNo, BigInt(block.native.hash.size / 8))
-              assertEquals(block.header.slot, block.native.slot.value)
-              assertEquals(block.header.raw, block.wire.raw)
+            universe.blocks.foreach {
+              block =>
+                assertEquals(block.header.blockNo, BigInt(block.native.hash.size / 8))
+                assertEquals(block.header.slot, block.native.slot.value)
+                assertEquals(block.header.raw, block.wire.raw)
+              assertEquals(block.header.bodySize + block.header.raw.size + 10, BigInt(1000))
+              assertEquals(block.body.size, 1000)
             }
           }
         }
+    }
+  }
+
+  test("original generated schedules select the native chain through production runtime") {
+    UpstreamGenesisCases.read.flatMap {
+      case Left(error) => IO(fail(error.toString))
+      case Right(cases) =>
+        import cats.syntax.all.*
+        cases
+          .traverse { scenario =>
+            IO.println(s"replaying ${scenario.label}") *> UpstreamGenesisReplay
+              .run(scenario)
+              .flatTap(result => IO.println(s"outcome ${scenario.label}: $result"))
+              .map(scenario.label -> _)
+          }
+          .flatMap { results =>
+            IO {
+              val expected = cases.map(s => s.label -> s.expected).toMap
+              val disagreements = results.flatMap {
+                case (label, Left(problem)) => Vector(s"$label failed: $problem")
+                case (label, Right(actual)) =>
+                  val native = expected(label)
+                  val actualEnds = actual.terminals.map(t => (t.peer, t.component, t.end))
+                  val nativeEnds = native.peers.map(t => (t.peer, t.component, t.end))
+                  val policy = Set(End.DensityTooLow, End.PatienceExpired, End.CandidateTooSparse)
+                  val actualPolicy = actualEnds.filter(t => policy(t._3))
+                  val nativePolicy = nativeEnds.filter(t => policy(t._3))
+                  val causal = actual.terminals.zipWithIndex.forall { (terminal, at) =>
+                    terminal.end != End.Cancelled || terminal.component == Component.ChainSyncClient || actual.terminals
+                      .exists(t =>
+                        t.peer == terminal.peer && t.component == Component.ChainSyncClient && t.end == End.Success
+                      ) || actual.terminals
+                      .take(at)
+                      .exists(t =>
+                        t.peer == terminal.peer && t.component == Component.ChainSyncClient
+                      )
+                  }
+                  Vector(
+                    Option.when(actual.selection != native.selection)(
+                      s"$label selection: actual=$actual expected=${native.selection}"
+                    ),
+                    Option.when(
+                      actualEnds.groupMapReduce(identity)(_ => 1)(_ + _) != nativeEnds
+                        .groupMapReduce(identity)(_ => 1)(_ + _)
+                    )(s"$label components: actual=${actual.terminals} expected=${native.peers}"),
+                    Option.when(actualPolicy != nativePolicy)(
+                      s"$label policy ordering: actual=$actualPolicy expected=$nativePolicy"
+                    ),
+                    Option.when(!causal)(s"$label cleanup preceded refusal: ${actual.terminals}"),
+                    Option.when(
+                      actual.closures.exists(c =>
+                        c.problem match
+                          case _: UpstreamGenesisReplay.Problem.Invariant |
+                              _: UpstreamGenesisReplay.Problem.Defect |
+                              _: UpstreamGenesisReplay.Problem.Blocks =>
+                            true
+                          case _ => false
+                      )
+                    )(s"$label invariant: ${actual.closures}")
+                  ).flatten
+              }
+              assertEquals(disagreements, Vector.empty)
+            }
+          }
     }
   }
