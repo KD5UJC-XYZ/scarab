@@ -43,6 +43,7 @@ import Test.Consensus.PeerSimulator.Run
 import Test.Consensus.PeerSimulator.StateView
 import Test.Consensus.PointSchedule
 import Test.Consensus.PointSchedule.Peers (Peer(..),peersList)
+import Test.Consensus.PointSchedule.NodeState (NodeState(..))
 import Test.Consensus.PointSchedule.SinglePeer
 import Test.QuickCheck (quickCheckWithResult,stdArgs,chatty,maxSuccess,isSuccess)
 import Test.QuickCheck.Gen (unGen)
@@ -61,6 +62,9 @@ schedulePointJSON point = case point of
  ScheduleTipPoint block -> object ["tag" .= ("tip"::String),"point" .= blockJSON block]
  ScheduleHeaderPoint block -> object ["tag" .= ("header"::String),"point" .= blockJSON block]
  ScheduleBlockPoint block -> object ["tag" .= ("block"::String),"point" .= blockJSON block]
+ where blockJSON Origin=Null;blockJSON (NotOrigin b)=pointJSON $ blockPoint b
+nodeStateJSON :: NodeState TestBlock -> Value
+nodeStateJSON NodeState{nsTip,nsHeader,nsBlock} = object ["tip" .= blockJSON nsTip,"header" .= blockJSON nsHeader,"block" .= blockJSON nsBlock]
  where blockJSON Origin=Null;blockJSON (NotOrigin b)=pointJSON $ blockPoint b
 rationalJSON :: Rational -> Value
 rationalJSON value = object ["numerator" .= numerator value,"denominator" .= denominator value]
@@ -118,6 +122,7 @@ observe family ordinal test seed = do
    "treeFragments" .= map (fragmentJSON . AF.mapAnchoredFragment getHeader) (allFragments gtBlockTree),
    "startOrder" .= map show psStartOrder,"minEndTimePicos" .= diffTimeToPicoseconds end,
    "schedules" .= [object ["peer" .= show name,"events" .= [object ["timePicos" .= diffTimeToPicoseconds t,"event" .= schedulePointJSON p] | (Time t,p)<-value]] | Peer{name,value}<-peersList psSchedule],
+   "stateTimeline" .= [object ["timePicos" .= diffTimeToPicoseconds absolute,"durationPicos" .= diffTimeToPicoseconds duration,"peer" .= show name,"state" .= nodeStateJSON value] | ((Time absolute,_),(duration,Peer{name,value})) <- zip (peersStates $ gtSchedule input) (peersStatesRelative $ gtSchedule input)],
    "selectedChain" .= fragmentJSON (svSelectedChain state),"tipBlock" .= maybe Null (pointJSON . blockPoint) (svTipBlock state),
    "peerResults" .= map condense (svPeerSimulatorResults state),"peerOutcomes" .= map peerOutcomeJSON (svPeerSimulatorResults state),
    "ctPropertyPassed" .= isSuccess propertyResult,"expectedExceptionsPassed" .= expectedExceptions,
