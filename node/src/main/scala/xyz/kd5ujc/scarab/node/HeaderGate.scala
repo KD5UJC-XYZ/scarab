@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.consensus.{BlockRef, Compute, VolatileChain}
-import xyz.kd5ujc.scarab.ledger.{Header, PeerError}
+import xyz.kd5ujc.scarab.consensus.{BlockRef, ChainSelection, Compute, SelectView, VolatileChain}
+import xyz.kd5ujc.scarab.ledger.{GenesisInternalProblem, Header, PeerError}
 import cats.Applicative
 import cats.effect.{Async, Ref}
-import cats.mtl.{Raise, Stateful}
+import cats.mtl.{Ask, Handle, Raise, Stateful, Tell}
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import cats.effect.syntax.all.*
@@ -23,16 +23,38 @@ trait HeaderGate[F[_]]:
   /** Validate the instructions of one ChainSync batch, in order. */
   def accept(batch: Vector[SyncEvent])(using Raise[F, PeerError]): F[Unit]
 
+  def acceptOrRestart(
+      batch: Vector[SyncEvent]
+  )(using Raise[F, PeerError], cats.Functor[F]): F[HeaderGate.Acceptance] =
+    accept(batch).as(HeaderGate.Acceptance.Accepted)
+
+  def forecastTime(@scala.annotation.unused header: Header)(using
+      F: Applicative[F]
+  ): F[Option[HeaderGate.TimeForecast]] = F.pure(None)
+
   /** How the headers so far were established. */
   def counts: F[HeaderGate.Counts]
 
   def snapshot(using F: Applicative[F]): F[Option[HeaderChain[NodeHeaderState]]] = F.pure(None)
 
-  def graft(snapshot: HeaderChain[NodeHeaderState], point: ChainSync.Point)(using
+  def graft(
+      @scala.annotation.unused snapshot: HeaderChain[NodeHeaderState],
+      @scala.annotation.unused point: ChainSync.Point
+  )(using
       F: Applicative[F]
   ): F[Either[HeaderCheck.GraftError, Unit]] = F.pure(Left(HeaderCheck.GraftError.Unsupported))
 
 object HeaderGate:
+  enum TimeForecast:
+    case Known(onsetPicos: BigInt)
+    case Invalid(error: xyz.kd5ujc.scarab.ledger.HeaderError)
+    case Refused(problem: PeerError.GenesisProblem)
+    case Restart(point: ChainSync.Point)
+
+  enum Acceptance:
+    case Accepted
+    case Restart(point: ChainSync.Point)
+
   /** `validated` headers passed every header rule; `unchecked` were left to their block's own
     * validation (Byron headers, the first Shelley header after a Byron prefix).
     */
@@ -51,9 +73,20 @@ trait HeaderCheck[F[_]]:
   def observed(observer: HeaderCheck.Event => F[Unit]): HeaderCheck[F] = this
 
 object HeaderCheck:
+  private[node] final case class Canonical[F[_], S, H](
+      timing: HeaderRules.Timing[S, H],
+      selection: F[ChainSelection.Local],
+      invariant: GenesisInternalProblem => F[Unit]
+  )
+
+  private enum Reintersection:
+    case Lost(point: ChainSync.Point)
+
   enum GraftError:
     case Unsupported
     case MissingPoint(point: ChainSync.Point)
+    case MissingSelection(point: ChainSync.Point)
+    case MissingState(point: ChainSync.Point)
 
   enum Event:
     case Validated(header: Header)
@@ -68,21 +101,36 @@ object HeaderCheck:
     * with an erased cast or installed as a different protocol's state.
     */
   def forGenesisChain[F[_]: Async, S](
-      rules: HeaderRules[S, NodeHeaderState],
+      rules: HeaderRules[S, NodeHeaderState] & HeaderRules.Timing[S, NodeHeaderState],
       compute: Compute[F],
       retained: Int,
+      stall: FiniteDuration = 120.seconds,
+      poll: FiniteDuration = 20.millis,
       warm: Option[(Vector[Header], NodeHeaderState) => F[Unit]] = None,
       observe: Option[HeaderGate.Counts => F[Unit]] = None,
       added: Option[HeaderGate.Counts => F[Unit]] = None
-  )(using Stateful[F, VolatileChain[S]]): HeaderCheck[F] =
+  )(using
+      Stateful[F, VolatileChain[S]],
+      Ask[F, ChainSelection.Local],
+      Tell[F, GenesisInternalProblem]
+  ): HeaderCheck[F] =
     forChain(
       rules,
       compute,
       warm = warm,
+      stall = stall,
+      poll = poll,
       retained = retained,
       observe = observe,
       added = added,
-      stateWitness = Some(summon[NodeHeaderState =:= NodeHeaderState])
+      stateWitness = Some(summon[NodeHeaderState =:= NodeHeaderState]),
+      canonical = Some(
+        Canonical(
+          rules,
+          Ask[F, ChainSelection.Local].ask,
+          problem => Tell[F, GenesisInternalProblem].tell(problem)
+        )
+      )
     )
 
   /** Header-first validation against the node's own chain.
@@ -110,11 +158,26 @@ object HeaderCheck:
       added: Option[HeaderGate.Counts => F[Unit]] = None,
       patience: Option[LimitOnPatience[F]] = None,
       publication: Option[Event => F[Unit]] = None,
-      stateWitness: Option[H =:= NodeHeaderState] = None
+      stateWitness: Option[H =:= NodeHeaderState] = None,
+      canonical: Option[Canonical[F, S, H]] = None
   )(using
       chain: Stateful[F, VolatileChain[S]]
   ): HeaderCheck[F] = new HeaderCheck[F]:
     private val F = Async[F]
+    private val timing = canonical.map(_.timing)
+
+    private def coherentCurrent: F[(VolatileChain[S], Option[ChainSelection.Local])] =
+      canonical.fold(chain.get.map(_ -> Option.empty[ChainSelection.Local])) { context =>
+        F.tailRecM(()) { _ =>
+          (chain.get, context.selection).tupled.map { (current, selected) =>
+            if selected.anchor != current.anchor.point || selected.blocks.map(
+                _.point
+              ) != current.blocks.map(_._1.point)
+            then Left(())
+            else Right(current -> Some(selected))
+          }
+        }
+      }
 
     override def withPatience(value: LimitOnPatience[F]): HeaderCheck[F] =
       forChain(
@@ -128,7 +191,8 @@ object HeaderCheck:
         added,
         Some(value),
         publication,
-        stateWitness
+        stateWitness,
+        canonical
       )
 
     override def observed(observer: Event => F[Unit]): HeaderCheck[F] =
@@ -143,14 +207,47 @@ object HeaderCheck:
         added,
         patience,
         Some(event => publication.traverse_(_(event)) *> observer(event)),
-        stateWitness
+        stateWitness,
+        canonical
       )
 
     def start(intersection: ChainSync.Point): F[HeaderGate[F]] =
       for
-        current <- chain.get
+        pair <- coherentCurrent
+        (current, selected) = pair
+        defView = (point: ChainSync.Point, state: S) =>
+          selected.flatMap { s =>
+            (if point == s.anchor then Some(s.anchorView)
+             else s.blocks.find(_.point == point).map(_.view))
+              .flatMap(view => timing.map(t => HeaderChain.TipView(view, t.tiebreaker(state))))
+          }
         based = current.rollback(intersection).toOption
-        initial = HeaderChain.at[H](intersection, based.map(c => rules.at(c.state)))
+        localPrefix =
+          if stateWitness.isEmpty then Vector.empty
+          else
+            based.toVector.flatMap { c =>
+              val known = HeaderChain.Known(
+                c.anchor.point,
+                Some(rules.at(c.anchor.state)),
+                defView(c.anchor.point, c.anchor.state)
+              ) +:
+                c.blocks.map((ref, state) =>
+                  HeaderChain.Known(ref.point, Some(rules.at(state)), defView(ref.point, state))
+                )
+              known.dropRight(1)
+            }
+        initial = HeaderChain
+          .at[H](intersection, based.map(c => rules.at(c.state)))
+          .copy(prefix = localPrefix, baseView = based.flatMap(c => defView(intersection, c.state)))
+        _ <- canonical.traverse_ { context =>
+          val missing = (initial.prefix
+            .collectFirst { case k if k.view.isEmpty => k.point })
+            .orElse(Option.when(initial.baseView.isEmpty)(initial.base))
+          missing.traverse_(point =>
+            context.invariant(GenesisInternalProblem.HeaderSelectionUnavailable(point)) *> F
+              .never[Unit]
+          )
+        }
         state <- Ref.of[F, HeaderChain[H]](initial)
         tally <- Ref.of[F, HeaderGate.Counts](HeaderGate.Counts(0, 0, 0))
         released <- Ref.of[F, Int](0)
@@ -177,6 +274,83 @@ object HeaderCheck:
       new HeaderGate[F]:
         def counts = tally.get
 
+        private def sparse(
+            hc: HeaderChain[H],
+            selected: Option[ChainSelection.Local]
+        ): F[Option[PeerError.GenesisProblem]] =
+          canonical
+            .traverse { context =>
+              val view = hc.entries.lastOption
+                .map(e =>
+                  HeaderChain
+                    .TipView(SelectView.of(e.header), ChainSelection.tiebreakerFor(e.header.era))
+                )
+                .orElse(hc.baseView)
+                .orElse(
+                  Option.when(hc.tipPoint == ChainSync.Point.Origin)(
+                    HeaderChain.TipView(
+                      SelectView(-1, 0, None, 0, None),
+                      ChainSelection.Tiebreaker.Unrestricted
+                    )
+                  )
+                )
+              view.fold(
+                context.invariant(GenesisInternalProblem.HeaderSelectionUnavailable(hc.tipPoint)) *>
+                  F.never[Option[PeerError.GenesisProblem]]
+              ) { candidate =>
+                F.pure(selected.flatMap { ours =>
+                  Option.unless(
+                    ChainSelection.prefers(candidate.tiebreaker, ours.tipView, candidate.value)
+                  )(
+                    PeerError.GenesisProblem.CandidateTooSparse(
+                      hc.points.reverseIterator.find(ours.contains).getOrElse(hc.base),
+                      ours.blocks.lastOption.fold(ours.anchor)(_.point),
+                      hc.tipPoint
+                    )
+                  )
+                })
+              }
+            }
+            .map(_.flatten)
+
+        override def forecastTime(header: Header)(using
+            Applicative[F]
+        ): F[Option[HeaderGate.TimeForecast]] =
+          timing.traverse { time =>
+            def sample: F[Either[Unit, HeaderGate.TimeForecast]] =
+              (state.get, coherentCurrent).tupled.flatMap { (hc, snapshot) =>
+                val (current, selected) = snapshot
+                val parent = hc.tipState.orElse(appliedState(current, hc))
+                if !hc.points.contains(current.anchor.point) then
+                  F.pure(Right(HeaderGate.TimeForecast.Restart(hc.tipPoint)))
+                else
+                  (parent, anchorOf(current, hc)) match
+                    case (_, None) => F.pure(Right(HeaderGate.TimeForecast.Restart(hc.tipPoint)))
+                    case (None, _) => F.pure(Left(()))
+                    case (Some(previous), Some((anchor, tip))) =>
+                      F.delay(time.forecastTime(anchor, tip, previous, header)).flatMap {
+                        case HeaderRules.TimeForecast.Known(onset) =>
+                          F.pure(Right(HeaderGate.TimeForecast.Known(onset)))
+                        case HeaderRules.TimeForecast.Invalid(error) =>
+                          F.pure(Right(HeaderGate.TimeForecast.Invalid(error)))
+                        case HeaderRules.TimeForecast.Unknown(_) =>
+                          sparse(hc, selected).map {
+                            case Some(problem) => Right(HeaderGate.TimeForecast.Refused(problem))
+                            case None          => Left(())
+                          }
+                      }
+              }
+            sample.flatMap {
+              case Right(known) => F.pure(known)
+              case Left(_) =>
+                val waiting = F.tailRecM(())(_ => F.sleep(poll) *> sample)
+                patience.fold(waiting)(p =>
+                  (p.setPaused(LimitOnPatience.PauseReason.Forecast, true) *> waiting)
+                    .guarantee(p.setPaused(LimitOnPatience.PauseReason.Forecast, false))
+                )
+            }
+          }
+
         override def snapshot(using Applicative[F]): F[Option[HeaderChain[NodeHeaderState]]] =
           state.get.map(history => stateWitness.map(equality => history.map(equality)))
 
@@ -188,11 +362,65 @@ object HeaderCheck:
             case Some(equality) =>
               snapshot.rollback(point) match
                 case None => F.pure(Left(GraftError.MissingPoint(point)))
+                case Some(prefix) if prefix.baseState.isEmpty =>
+                  F.pure(Left(GraftError.MissingState(prefix.base)))
+                case Some(prefix) if prefix.prefix.exists(_.state.isEmpty) =>
+                  F.pure(
+                    Left(
+                      GraftError.MissingState(
+                        prefix.prefix.find(_.state.isEmpty).fold(prefix.base)(_.point)
+                      )
+                    )
+                  )
+                case Some(prefix) if prefix.entries.exists(_.state.isEmpty) =>
+                  F.pure(
+                    Left(
+                      GraftError.MissingState(
+                        prefix.entries.find(_.state.isEmpty).fold(prefix.base)(_.header.point)
+                      )
+                    )
+                  )
+                case Some(prefix)
+                    if prefix.base != ChainSync.Point.Origin && prefix.baseView.isEmpty =>
+                  F.pure(Left(GraftError.MissingSelection(prefix.base)))
+                case Some(prefix)
+                    if prefix.prefix
+                      .exists(k => k.point != ChainSync.Point.Origin && k.view.isEmpty) =>
+                  F.pure(
+                    Left(
+                      GraftError.MissingSelection(
+                        prefix.prefix
+                          .find(k => k.point != ChainSync.Point.Origin && k.view.isEmpty)
+                          .fold(prefix.base)(_.point)
+                      )
+                    )
+                  )
                 case Some(prefix) =>
                   val restored = prefix.map(equality.flip)
                   state.set(restored) *> released.set(restored.entries.size).as(Right(()))
 
         def accept(batch: Vector[SyncEvent])(using Raise[F, PeerError]): F[Unit] =
+          Handle.allow[Reintersection](acceptChecked(batch)).rescue {
+            case Reintersection.Lost(point) =>
+              PeerError.Diverged(PeerError.Divergence.DetachedCandidate(point)).raise[F, Unit]
+          }
+
+        override def acceptOrRestart(batch: Vector[SyncEvent])(using
+            Raise[F, PeerError],
+            cats.Functor[F]
+        ): F[HeaderGate.Acceptance] =
+          Handle
+            .allow[Reintersection](
+              acceptChecked(batch).as[HeaderGate.Acceptance](HeaderGate.Acceptance.Accepted)
+            )
+            .rescue { case Reintersection.Lost(point) =>
+              F.pure(HeaderGate.Acceptance.Restart(point))
+            }
+
+        private def acceptChecked(batch: Vector[SyncEvent])(using
+            Raise[F, PeerError],
+            Raise[F, Reintersection]
+        ): F[Unit] =
           // The signatures of the leading headers are verified in parallel first; the rules below
           // then find the verdicts ready.
           val leading = batch.takeWhile(_.isInstanceOf[SyncEvent.RollForward]).collect {
@@ -241,7 +469,9 @@ object HeaderCheck:
                 }
           }
 
-        private def forward(header: Header)(using Raise[F, PeerError]): F[Unit] =
+        private def forward(
+            header: Header
+        )(using Raise[F, PeerError], Raise[F, Reintersection]): F[Unit] =
           resolve(header, waited = false, since = None).flatMap { case (outcome, waited) =>
             outcome match
               case Outcome.Valid(next) =>
@@ -278,10 +508,11 @@ object HeaderCheck:
             header: Header,
             waited: Boolean,
             since: Option[(Option[BlockRef], FiniteDuration)]
-        )(using Raise[F, PeerError]): F[(Outcome[H], Boolean)] =
+        )(using Raise[F, PeerError], Raise[F, Reintersection]): F[(Outcome[H], Boolean)] =
           for
             hc <- state.get
-            current <- chain.get
+            snapshot <- coherentCurrent
+            (current, selected) = snapshot
             result <-
               if !hc.canExtend(header) then
                 protocol[(Outcome[H], Boolean)](
@@ -294,12 +525,13 @@ object HeaderCheck:
                   case (Some(prev), Some((anchorState, tip))) =>
                     F.delay(rules.validate(anchorState, tip, prev, header))
                       .flatMap {
-                        case Outcome.Later(reason) => wait(header, reason, since, current, hc)
-                        case other                 => F.pure(other -> waited)
+                        case Outcome.Later(reason) =>
+                          wait(header, reason, since, current, hc, selected)
+                        case other => F.pure(other -> waited)
                       }
                   case (None, Some(_)) =>
                     released.get.flatMap { earlier =>
-                      if hc.entries.size > earlier && patience.isEmpty then
+                      if hc.entries.size > earlier && patience.isEmpty && canonical.isEmpty then
                         F.pure(
                           (
                             Outcome.Unchecked(
@@ -314,9 +546,12 @@ object HeaderCheck:
                           HeaderRules.ForecastReason.ParentStateUnknown,
                           since,
                           current,
-                          hc
+                          hc,
+                          selected
                         )
                     }
+                  case (_, None) if patience.nonEmpty || canonical.nonEmpty =>
+                    Raise[F, Reintersection].raise(Reintersection.Lost(hc.tipPoint))
                   case (_, None) =>
                     // no ledger state of ours lies on the peer's chain: the follower deals with it
                     F.pure(
@@ -338,19 +573,27 @@ object HeaderCheck:
             current: VolatileChain[S],
             hc: HeaderChain[H]
         ): Option[(S, Option[BlockRef])] =
-          val onChain = current.tipRef.map(_.hash).exists(hc.contains) ||
-            (current.tip == hc.base)
-          if onChain then Some((current.state, current.tipRef))
-          else current.rollback(hc.base).toOption.map(c => (c.state, c.tipRef))
+          val selected = current.blocks.reverseIterator.collectFirst {
+            case (ref, state) if hc.contains(ref.hash) || hc.base == ref.point => (state, Some(ref))
+          }
+          selected.orElse {
+            Option.when(
+              current.anchor.point == hc.base ||
+                current.anchor.block.exists(b => hc.contains(b.hash))
+            )(current.anchor.state -> current.anchor.block)
+          }
 
         private def wait(
             header: Header,
             reason: HeaderRules.ForecastReason,
             since: Option[(Option[BlockRef], FiniteDuration)],
             current: VolatileChain[S],
-            hc: HeaderChain[H]
-        )(using Raise[F, PeerError]): F[(Outcome[H], Boolean)] =
+            hc: HeaderChain[H],
+            selected: Option[ChainSelection.Local]
+        )(using Raise[F, PeerError], Raise[F, Reintersection]): F[(Outcome[H], Boolean)] =
           for
+            refusal <- sparse(hc, selected)
+            _ <- refusal.traverse_(p => PeerError.Genesis(p).raise[F, Unit])
             now <- F.monotonic
             earlier <- released.get
             progress = current.tipRef
@@ -365,7 +608,8 @@ object HeaderCheck:
                   .filter(_ > 0)
             nothingInFlight = applied.exists(_ >= earlier)
             result <-
-              if patience.isEmpty && (nothingInFlight || now - moved._2 > stall) then
+              if patience.isEmpty && canonical.isEmpty && (nothingInFlight || now - moved._2 > stall)
+              then
                 // Nothing is left to wait for (every block of the earlier batches is applied, or the
                 // chain stood still): the block validates the header, rather than dropping a peer
                 // whose chain the forecast cannot reach (an honest gap, a limit of the forecast).

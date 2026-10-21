@@ -43,9 +43,20 @@ final class GenesisHeaderRules[S](
     globals: LedgerGlobals,
     byron: Option[ByronRules.Config],
     handOver: Option[FromByron]
-)(using read: ChainRead[S])
-    extends HeaderRules[S, NodeHeaderState]:
+)(using read: ChainRead[S], history: HeaderTimeRead[S])
+    extends HeaderRules[S, NodeHeaderState]
+    with HeaderRules.Timing[S, NodeHeaderState]:
   private val shelleyRules = NodeHeaderRules[S](config, globals)
+
+  def tiebreaker(anchor: S): ChainSelection.Tiebreaker = ChainSelection.tiebreakerFor(anchor.era)
+
+  def forecastTime(
+      anchor: S,
+      tip: Option[BlockRef],
+      @scala.annotation.unused previous: NodeHeaderState,
+      header: Header
+  ): HeaderRules.TimeForecast =
+    history.forecast(anchor, tip, header.slot, config, byron)
 
   def at(state: S): NodeHeaderState =
     if state.era == Era.Byron then

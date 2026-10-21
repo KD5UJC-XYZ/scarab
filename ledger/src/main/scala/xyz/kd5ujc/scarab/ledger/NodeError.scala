@@ -76,12 +76,15 @@ object PeerError:
         cutoffPicos: BigInt
     )
     case LoPExpired, DensityTooLow
+    case CandidateTooSparse(intersection: ChainSync.Point, ourTip: ChainSync.Point, theirTip: ChainSync.Point)
     case InvalidJumpResponse(requested: ChainSync.Point, actual: Option[ChainSync.Point])
     def message: String = this match
       case HistoricalAwait(point, slot, arrival, cutoff) =>
         s"historical AwaitReply at ${Points.show(point)}: age ${arrival - slot} ps exceeds $cutoff ps"
       case HistoricalRollback(point, slot, arrival, cutoff) =>
         s"historical rollback rewinds ${Points.show(point)}: age ${arrival - slot} ps exceeds $cutoff ps"
+      case CandidateTooSparse(intersection, ourTip, theirTip) =>
+        s"candidate at ${Points.show(theirTip)} is not preferred to ${Points.show(ourTip)} beyond the forecast at ${Points.show(intersection)}"
       case LoPExpired    => "ChainSync patience bucket exhausted"
       case DensityTooLow => "candidate density cannot compete with another peer"
       case InvalidJumpResponse(requested, actual) =>
@@ -133,13 +136,25 @@ object PeerError:
 /** Violated local Genesis invariants; reconnecting or blaming the remote peer cannot repair them.
   */
 enum GenesisInternalProblem extends NodeError:
+  case MissingSharedBlockPool, UnsupportedHeaderFamily
   case MissingDynamoJumpInfo, UnexpectedIntersection
   case GraftMissingPoint(point: ChainSync.Point)
+  case HeaderTimeUnavailable(point: ChainSync.Point)
+  case HeaderSelectionUnavailable(point: ChainSync.Point)
+  case HeaderStateUnavailable(point: ChainSync.Point)
   def message: String = this match
     case MissingDynamoJumpInfo => "Genesis dynamo has no validated jump snapshot"
     case UnexpectedIntersection =>
       "Genesis jumper with a settled intersection received another jump result"
+    case UnsupportedHeaderFamily => "Genesis requires a header gate supporting typed snapshot grafts"
+    case MissingSharedBlockPool => "Genesis requires the shared block pool"
     case GraftMissingPoint(point) => s"Genesis jump snapshot lacks ${Points.show(point)}"
+    case HeaderSelectionUnavailable(point) =>
+      s"Genesis validated header lacks a selection view at ${Points.show(point)}"
+    case HeaderStateUnavailable(point) =>
+      s"Genesis validated header lacks state at ${Points.show(point)}"
+    case HeaderTimeUnavailable(point) =>
+      s"Genesis validated header lacks slot time at ${Points.show(point)}"
 
 /** Failures of the local chain model. These are not recoverable by reconnecting. */
 enum ChainError extends NodeError:

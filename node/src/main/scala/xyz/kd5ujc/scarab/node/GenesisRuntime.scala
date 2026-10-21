@@ -23,7 +23,7 @@ final class GenesisRuntime[F[_]: Async] private (
     geometry: F[EpochGeometry],
     elapsed: F[BigInt],
     clock: Option[PicosClock[F]],
-    readings: Ref[F, Map[Long, (Option[ChainSelection.Candidate], Boolean)]]
+    readings: Ref[F, Map[Long, (Option[HeaderChain[NodeHeaderState]], Boolean)]]
 ):
   private val F = Async[F]
   import ChainSyncJumping.{Instruction, JumpInfo}
@@ -31,7 +31,7 @@ final class GenesisRuntime[F[_]: Async] private (
   def demoteDynamo(id: Long): F[Unit] = jumping.rotate(id)
 
   def gsmReadings(
-      versus: ChainSelection.Candidate => F[Gsm.Candidate]
+      versus: HeaderChain[NodeHeaderState] => F[Gsm.Candidate]
   ): F[Vector[Gsm.PeerReading]] =
     readings.get.flatMap(_.toVector.sortBy(_._1).traverse { case (_, (candidate, idle)) =>
       candidate
@@ -102,13 +102,7 @@ final class GenesisRuntime[F[_]: Async] private (
       def publish: F[Unit] =
         (snapshot, raw.get, idle.get).tupled.flatMap { (history, latest, idling) =>
           peer.publish(history.map(fragment), latest, idling) *> readings.update { current =>
-            current.updatedWith(identity)(
-              _.map(_ =>
-                history.map(h =>
-                  ChainSelection.Candidate(h.base, h.entries.map(_.header))
-                ) -> idling
-              )
-            )
+            current.updatedWith(identity)(_.map(_ => history -> idling))
           }
         }
       def headerTime(
@@ -234,6 +228,10 @@ final class GenesisRuntime[F[_]: Async] private (
                   gate.graft(accepted.payload.history, accepted.tip).flatMap {
                     case Left(HeaderCheck.GraftError.MissingPoint(point)) =>
                       invariant(GenesisInternalProblem.GraftMissingPoint(point))
+                    case Left(HeaderCheck.GraftError.MissingSelection(point)) =>
+                      invariant(GenesisInternalProblem.HeaderSelectionUnavailable(point))
+                    case Left(HeaderCheck.GraftError.MissingState(point)) =>
+                      invariant(GenesisInternalProblem.HeaderStateUnavailable(point))
                     case Left(HeaderCheck.GraftError.Unsupported) =>
                       invariant(GenesisInternalProblem.UnsupportedHeaderFamily)
                     case Right(_) =>
@@ -341,7 +339,7 @@ object GenesisRuntime:
   ): F[GenesisRuntime[F]] =
     for
       work <- SelectionWork.create[F](changed, clock)
-      readings <- Ref.of[F, Map[Long, (Option[ChainSelection.Candidate], Boolean)]](Map.empty)
+      readings <- Ref.of[F, Map[Long, (Option[HeaderChain[NodeHeaderState]], Boolean)]](Map.empty)
       jumping <- ChainSyncJumpingRuntime.create[F, Long, GenesisPeer.Checkpoint](settings.jumpSlots)
     yield new GenesisRuntime(
       governor,

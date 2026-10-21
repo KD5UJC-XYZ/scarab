@@ -51,6 +51,22 @@ object HeaderEligibility:
   private val NanosPerMilli = BigInt(1000000)
   private val NanosPerSecond = BigInt(1000000000)
 
+  def forecast(
+      slot: BigInt,
+      onsetPicos: BigInt,
+      arrival: Instant,
+      skew: FiniteDuration
+  ): HeaderEligibility =
+    val arrived =
+      BigInt(arrival.getEpochSecond) * BigInt(10).pow(12) + BigInt(arrival.getNano) * 1000
+    val ahead = onsetPicos - arrived
+    if ahead <= 0 then Eligible
+    else if ahead > BigInt(skew.toNanos) * 1000 then
+      FarFuture(HeaderError.FarFuture(slot, (ahead + 999999999) / 1000000000, skew.toMillis))
+    else
+      val nanos = onsetPicos / 1000 + (if onsetPicos % 1000 > 0 then 1 else 0)
+      WaitUntil(Instant.ofEpochSecond((nanos / 1000000000).toLong, (nanos % 1000000000).toLong))
+
   /** Judge `slot` for a header that arrived at `arrival`. Exact integer arithmetic over the slot
     * number a peer chose; a header is far in the future only when its slot begins strictly more
     * than `skew` after its arrival (`tooEarly = skew < negate ageUponArrival`, line 156), so a slot
@@ -130,6 +146,10 @@ object HeaderClock:
   ) extends HeaderGate[F]:
     def counts = inner.counts
 
+    override def forecastTime(header: xyz.kd5ujc.scarab.ledger.Header)(using
+        cats.Applicative[F]
+    ): F[Option[HeaderGate.TimeForecast]] = inner.forecastTime(header)
+
     override def snapshot(using cats.Applicative[F]): F[Option[HeaderChain[NodeHeaderState]]] =
       inner.snapshot
 
@@ -138,8 +158,90 @@ object HeaderClock:
     ): F[Either[HeaderCheck.GraftError, Unit]] = inner.graft(snapshot, point)
 
     def accept(batch: Vector[SyncEvent])(using Raise[F, PeerError]): F[Unit] =
+      eligible(batch).flatMap {
+        case HeaderGate.Acceptance.Accepted => inner.accept(batch)
+        case HeaderGate.Acceptance.Restart(point) =>
+          PeerError.Diverged(PeerError.Divergence.DetachedCandidate(point)).raise[F, Unit]
+      }
+
+    override def acceptOrRestart(batch: Vector[SyncEvent])(using
+        Raise[F, PeerError],
+        cats.Functor[F]
+    ): F[HeaderGate.Acceptance] = eligible(batch).flatMap {
+      case HeaderGate.Acceptance.Accepted => inner.acceptOrRestart(batch)
+      case restart                        => Temporal[F].pure(restart)
+    }
+
+    private def eligible(batch: Vector[SyncEvent])(using
+        Raise[F, PeerError]
+    ): F[HeaderGate.Acceptance] =
       val headers = batch.collect { case SyncEvent.RollForward(h, _) => h }
-      if headers.isEmpty then inner.accept(batch)
+      headers.headOption.fold(Temporal[F].pure(HeaderGate.Acceptance.Accepted)) { first =>
+        clock.now.flatMap { arrival =>
+          inner.forecastTime(first).flatMap {
+            case None => legacyEligible(batch).as(HeaderGate.Acceptance.Accepted)
+            case Some(initial) =>
+              Temporal[F].tailRecM((0, Option(initial))) { (index, cached) =>
+                headers
+                  .lift(index)
+                  .fold(
+                    Temporal[F]
+                      .pure[Either[(Int, Option[HeaderGate.TimeForecast]), HeaderGate.Acceptance]](
+                        Right(HeaderGate.Acceptance.Accepted)
+                      )
+                  ) { header =>
+                    cached.fold(inner.forecastTime(header))(_.some.pure[F]).flatMap {
+                      case Some(HeaderGate.TimeForecast.Restart(point)) =>
+                        HeaderGate.Acceptance
+                          .Restart(point)
+                          .asRight[(Int, Option[HeaderGate.TimeForecast])]
+                          .pure[F]
+                      case Some(HeaderGate.TimeForecast.Refused(problem)) =>
+                        PeerError
+                          .Genesis(problem)
+                          .raise[F, Either[
+                            (Int, Option[HeaderGate.TimeForecast]),
+                            HeaderGate.Acceptance
+                          ]]
+                      case Some(HeaderGate.TimeForecast.Invalid(error)) =>
+                        PeerError
+                          .InvalidHeader(header.point, error)
+                          .raise[F, Either[
+                            (Int, Option[HeaderGate.TimeForecast]),
+                            HeaderGate.Acceptance
+                          ]]
+                      case Some(HeaderGate.TimeForecast.Known(onset)) =>
+                        val check =
+                          HeaderEligibility.forecast(header.slot, onset, arrival, skew) match
+                            case HeaderEligibility.Eligible => Temporal[F].unit
+                            case HeaderEligibility.FarFuture(error) =>
+                              PeerError.InvalidHeader(header.point, error).raise[F, Unit]
+                            case HeaderEligibility.WaitUntil(until) =>
+                              val wait = HeaderClock.until(clock, until)
+                              patience.fold(wait)(p =>
+                                (p.setPaused(LimitOnPatience.PauseReason.HeaderTime, true) *> wait)
+                                  .guarantee(
+                                    p.setPaused(LimitOnPatience.PauseReason.HeaderTime, false)
+                                  )
+                              )
+                        check.as(Left((index + 1, None)))
+                      case None =>
+                        PeerError
+                          .Protocol(PeerError.ProtocolProblem.HeaderValidationDidNotSettle)
+                          .raise[F, Either[
+                            (Int, Option[HeaderGate.TimeForecast]),
+                            HeaderGate.Acceptance
+                          ]]
+                    }
+                  }
+              }
+          }
+        }
+      }
+
+    private def legacyEligible(batch: Vector[SyncEvent])(using Raise[F, PeerError]): F[Unit] =
+      val headers = batch.collect { case SyncEvent.RollForward(h, _) => h }
+      if headers.isEmpty then Temporal[F].unit
       else
         for
           arrival <- clock.now
@@ -160,7 +262,6 @@ object HeaderClock:
                   .guarantee(p.setPaused(LimitOnPatience.PauseReason.HeaderTime, false))
               )
             )
-          _ <- inner.accept(batch)
         yield ()
 
   /** Sleep (on the monotonic clock) until the wall clock reaches `onset`. The wall clock is read
