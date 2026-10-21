@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Candidate acceptance (reviewed offline inputs)
+
+# This is deliberately manual: no datasets are currently provisioned. The committed input manifest
+# must identify reviewed artifacts before the controller downloads or runs anything.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: candidate-acceptance
+  cancel-in-progress: false
+
+jobs:
+  acceptance:
+    runs-on: [self-hosted, linux, x64, scarab-candidate]
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Check out candidate source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          clean: true
+      - name: Validate normal fixture inventory
+        run: python3 scripts/check_test_coverage.py
+      - name: Provision reviewed inputs and require every mandatory result
+        run: python3 scripts/candidate_acceptance.py --output "$RUNNER_TEMP/scarab-candidate-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+      - name: Retain actual evidence and failure diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: candidate-acceptance-${{ github.sha }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/scarab-candidate-${{ github.run_id }}-${{ github.run_attempt }}/receipt.json
+            ${{ runner.temp }}/scarab-candidate-${{ github.run_id }}-${{ github.run_attempt }}/failure.json
+            ${{ runner.temp }}/scarab-candidate-${{ github.run_id }}-${{ github.run_attempt }}/sbt.log
+            ${{ runner.temp }}/scarab-candidate-${{ github.run_id }}-${{ github.run_attempt }}/junit/**/*.xml
+            ${{ runner.temp }}/scarab-candidate-${{ github.run_id }}-${{ github.run_attempt }}/results/preview/summary.json
+      - name: Remove owned large inputs and replay working data
+        if: always()
+        run: |
+          output="$RUNNER_TEMP/scarab-candidate-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          if [ -f "$output/.candidate-owned.json" ]; then
+            python3 scripts/candidate_acceptance.py --cleanup --output "$output"
+          fi

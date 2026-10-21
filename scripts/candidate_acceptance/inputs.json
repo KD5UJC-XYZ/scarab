@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "status": "unavailable",
+  "provenance": null,
+  "artifact": {
+    "url": null,
+    "sha256": null,
+    "maxBytes": 107374182400,
+    "maxUnpackedBytes": 536870912000,
+    "maxEntries": 200000
+  },
+  "environment": {
+    "SCARAB_MAINNET_GENESIS_DIR": {
+      "path": "mainnet-genesis",
+      "kind": "directory"
+    },
+    "SCARAB_K1_DB": {
+      "path": "preview-k1",
+      "kind": "directory"
+    },
+    "HASKELL_STATE_FILE": {
+      "path": "preview-conway/state",
+      "kind": "file"
+    },
+    "SCARAB_MEMPACK_TABLES": {
+      "path": "preprod-snapshot/tables",
+      "kind": "file"
+    },
+    "SCARAB_MEMPACK_CHECKPOINT": {
+      "path": "preprod-checkpoint",
+      "kind": "directory"
+    },
+    "SCARAB_IMPORT_FIXTURE": {
+      "path": "preprod-import",
+      "kind": "directory"
+    },
+    "SCARAB_EXPORT_DB": {
+      "path": "preprod-export-db",
+      "kind": "directory"
+    },
+    "SCARAB_EXPORT_FIXTURE": {
+      "path": "preprod-import",
+      "kind": "directory"
+    },
+    "SCARAB_MITHRIL_DB": {
+      "path": "preview-mithril-db",
+      "kind": "directory"
+    },
+    "SCARAB_MITHRIL_GENESIS": {
+      "path": "preview-genesis",
+      "kind": "directory"
+    },
+    "SCARAB_PLUTUS_CAPTURE": {
+      "path": "preprod-capture",
+      "kind": "directory"
+    },
+    "SCARAB_PLUTUS_BASELINE": {
+      "path": "preprod-baseline",
+      "kind": "directory"
+    },
+    "SCARAB_PREVIEW_CAPTURE": {
+      "path": "preview-capture",
+      "kind": "directory"
+    },
+    "SCARAB_PREVIEW_SNAPSHOT": {
+      "path": "preview-replay-snapshot.bin",
+      "kind": "file"
+    },
+    "SCARAB_PREVIEW_CHECKPOINT": {
+      "path": "preview-replay-checkpoint",
+      "kind": "directory"
+    },
+    "SCARAB_PREVIEW_GENESIS": {
+      "path": "preview-genesis",
+      "kind": "directory"
+    },
+    "SCARAB_PREVIEW_REFERENCE": {
+      "path": "preview-reference",
+      "kind": "directory"
+    }
+  }
+}
