@@ -184,7 +184,7 @@ class GuardSuite extends FunSuite:
   test(
     "auxiliary fuzz seeds reach the public transaction decoder with accepted and refused envelopes"
   ) {
-    for era <- Vector(Era.Alonzo, Era.Babbage, Era.Conway) do
+    for era <- Vector(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway) do
       val seeds = Corpus.auxiliaryTransactions(era)
       assert(seeds.nonEmpty)
       val parts = seeds.map(bytes =>

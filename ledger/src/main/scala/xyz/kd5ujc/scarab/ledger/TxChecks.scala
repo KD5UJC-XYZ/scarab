@@ -505,7 +505,6 @@ object TxChecks:
   private[ledger] def auxiliaryChecks(pp: ProtocolParams, tx: Tx, env: Env): Result[Unit] =
     for
       decoded <- tx.auxiliary
-        .filter(_ => pp.protocolMajor >= 5)
         .traverse(bytes =>
           AuxiliaryScripts
             .read(bytes, pp.protocolMajor)

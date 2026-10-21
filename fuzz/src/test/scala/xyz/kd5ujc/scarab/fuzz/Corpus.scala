@@ -240,23 +240,38 @@ object Corpus extends munit.Assertions:
     * parser. The enclosing body/witnesses are committed era transaction inputs.
     */
   def auxiliaryTransactions(era: Era): Vector[Array[Byte]] =
-    if !era.hasInvalidTransactions then Vector.empty
+    if era.ordinal < Era.Shelley.ordinal then Vector.empty
     else
       val template = transactionsOf(era).headOption
         .flatMap(bytes => asTransaction(Bytes.fromArray(bytes), era))
         .getOrElse(fail(s"no transaction template for $era"))
       val rows = io.circe.parser
-        .parse(Files.readString(Path.of("fixtures/reference/auxiliary-scripts/auxiliary.json")))
+        .parse(
+          Files.readString(
+            Path.of(
+              if era.hasInvalidTransactions then
+                "fixtures/reference/auxiliary-scripts/auxiliary.json"
+              else "fixtures/reference/auxiliary-historical/auxiliary.json"
+            )
+          )
+        )
         .fold(error => fail(error.message), identity)
         .asArray
         .getOrElse(fail("not an array"))
-      rows.filter(_.hcursor.get[String]("era").toOption.contains(era.toString)).map { row =>
-        val auxiliary = row.hcursor
-          .get[String]("auxiliary")
-          .fold(error => fail(error.message), identity)
-        val raw = Bytes.fromHex(auxiliary).fold(error => fail(error.toString), identity)
-        wholeTx(template.copy(auxiliaryData = Some(raw)), era)
-      }
+      rows
+        .filter(_.hcursor.get[String]("era").toOption.contains(era.toString))
+        .filter(_.hcursor.get[String]("mode").forall(_ == "aux"))
+        .map { row =>
+          val auxiliary = row.hcursor
+            .get[String]("auxiliary")
+            .fold(error => fail(error.message), identity)
+          val raw = Bytes.fromHex(auxiliary).fold(error => fail(error.toString), identity)
+          wholeTx(template.copy(auxiliaryData = Some(raw)), era)
+        }
+        // Seeds that are no longer one envelope (empty or extra bytes, too deep) are `tricky`'s.
+        .filter(bytes =>
+          asTransaction(Bytes.fromArray(bytes), era).exists(_.auxiliaryData.nonEmpty)
+        )
 
   private def wholeTx(t: Block.Transaction, era: Era): Array[Byte] =
     val aux = t.auxiliaryData.fold(Array(0xf6.toByte))(_.toArray)
