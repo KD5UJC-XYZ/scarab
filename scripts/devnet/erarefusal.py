@@ -63,7 +63,7 @@ def exercise(load, era):
     deposit = pp["stakeAddressDeposit"]
     v1 = {1: pp["costModels"]["PlutusV1"]}
     pre_conway = era != "conway"
-    funder, rw = load.wallets[0], Wallet(random.Random(0x123))
+    funder, rw = load.wallets[0], Wallet(random.Random(0x123 + load.ERA_INDEX[era]))
     h = eratx.plutus_script_hash(OK, 1)
     cred = [1, h]
     pool = load.read_key(f"{ENV}/pools-keys/pool1/cold.skey").hash
@@ -74,10 +74,18 @@ def exercise(load, era):
     if era != "alonzo":
         outputs += [(rw.address, 4_000_000, None, {"inline_datum": [42, b"inline"]}),
                     (rw.address, 8_000_000, None, {"script_ref": eratx.all_script(eratx.sig_script(funder.pay.hash))})]
-    # registering the script credential needs no witness: it is the refused certificates that name its script
-    setup = load.act(era, f"refusal-setup-{era}", funder, outputs, certs=[[0, cred]], deposit=deposit)
+    # registering the script credential needs no witness: it is the refused certificates that name its script;
+    # it stays registered into the later eras
+    register = "refusal-script-registered" not in load.done
+    setup = None
+    for _ in range(3):
+        setup = load.act(era, f"refusal-setup-{era}", funder, outputs, certs=[[0, cred]] if register else None,
+                         deposit=deposit if register else 0)
+        if setup:
+            break
     if not setup:
         raise RuntimeError(f"{era}: refusal setup not included")
+    load.done.add("refusal-script-registered")
     spend = ((setup, 0), FUND, {})
     collateral = [(setup, 1)]
     avoid = [(setup, ix) for ix in range(1, len(outputs)) if ix != 3]
@@ -122,6 +130,10 @@ def exercise(load, era):
             redeemers=spend_redeemers, script_data=with_redeemers(v1), fee=FEE)
     attempt(f"{era}-no-witness-spend-plain", spend_extra=[spend], datums=[DATUM], collateral=collateral,
             redeemers=spend_redeemers, script_data=with_redeemers({}), fee=FEE)
+    # a script spent next to an input the UTxO does not have: the translation cannot resolve it
+    missing = (("ab" * 32, 0), 0, {})
+    attempt(f"{era}-bad-translation-missing-input", spend_extra=[spend, missing], plutus={1: [OK]}, datums=[DATUM],
+            collateral=collateral, script_data=with_redeemers(v1), redeemers=spend_redeemers, fee=FEE)
     # (3) a Plutus V1 script cannot see what Babbage added
     if era != "alonzo":
         translate = dict(plutus={1: [OK]}, datums=[DATUM], collateral=collateral, script_data=with_redeemers(v1),
