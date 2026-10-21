@@ -55,11 +55,12 @@ class ConsensusModeTests(unittest.TestCase):
                 self.assertIn("--db", command)
         self.assertEqual(arguments(SimpleNamespace()), [])
 
-    def test_era_walking_follower_keeps_mode_and_oracle(self):
+    def test_era_walking_follower_keeps_mode_oracle_and_cpu_bound(self):
         with patch.object(follower.subprocess, "Popen") as spawn:
             follower.start_follower("scarab-33-mode", pathlib.Path("unused"),
-                                    oracle=True, consensus_mode="GenesisMode")
+                                    oracle=True, scala_cpus=4, consensus_mode="GenesisMode")
             command = spawn.call_args.args[0]
             index = command.index("--consensus-mode")
             self.assertEqual(command[index + 1], "GenesisMode")
             self.assertIn("--dump-state", command)
+            self.assertEqual(command[command.index("--scala-cpus") + 1], "4")
