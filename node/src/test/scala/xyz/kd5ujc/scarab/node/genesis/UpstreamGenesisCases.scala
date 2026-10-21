@@ -76,6 +76,7 @@ object UpstreamGenesisCases:
   final case class Scenario(
       label: String,
       family: Family,
+      law: UpstreamGenesisLaws.Law,
       description: String,
       seed: Int,
       generatorBaseSize: Int,
@@ -316,6 +317,9 @@ object UpstreamGenesisCases:
       family <- c.get[Family]("family")
       description <- c.get[String]("description")
       seed <- c.get[Int]("seed")
+      law <- UpstreamGenesisLaws
+        .decode(label, family, seed)
+        .toRight(DecodingFailure("unknown original Genesis case identity", c.history))
       baseSize <- c.get[Int]("generatorBaseSize")
       size <- c.get[Int]("generatorSize")
       k <- c.get[Int]("k")
@@ -341,6 +345,7 @@ object UpstreamGenesisCases:
     yield Scenario(
       label,
       family,
+      law,
       description,
       seed,
       baseSize,

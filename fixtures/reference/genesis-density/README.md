@@ -92,3 +92,33 @@ bounds, a known next era, zero-length eras and rejected queries beyond the
 exclusive horizon. Both successful windows and complete native failure
 renderings are retained. `GenesisHistorySuite` compares every window/refusal;
 this is independent of the similarly named historicity policy corpus.
+
+The runtime acceptance laws are the original `ctProperty` branches, rather than equality of a
+single IOSim component-finalizer schedule. `UpstreamGenesisLaws` decodes all 21 original `SmallKey`
+ordinals into closed cases and checks these conditions for every unchanged generated input:
+
+| Original keys | Required outcome |
+|---|---|
+| LoE 0–1 | Trunk-tip equality iff timeouts are enabled; respectively zero or exactly one ChainSync timeout. |
+| DensityDisconnect 0 | Exact trunk tip and exactly one density or sparse-candidate refusal; no refusal is allowed only with no adversaries. |
+| LoP 0–4 | The original zero-or-one patience-expiry requirement for each waiting, horizon and serving case. |
+| LoP 5–6 | Trunk-tip equality iff LoP is enabled; respectively zero or exactly one patience expiry. |
+| CSJ 0–3 | Honest downloaded headers outside the final jump window total at most distinct headers plus one jump window. |
+| Uniform 0–3, 5 | When the honest trunk reaches a Genesis window: no honest peer terminates, the immutable anchor is honest, and its age is at most the Genesis window plus delay plus one slot. |
+| Uniform 4 | The immutable anchor remains honest during intentional LoE stalling. |
+| LongRangeAttack 0 | The selected tip is adversarial, the original explicit negative control with Genesis disabled. |
+
+Every key also applies `Setup.hs279–296`'s complete allowed-exception constraint to every component.
+There are no omitted cases or reclassified runtime failures. The original laws deliberately permit
+both density and sparse-candidate refusals, while requiring exact counts in the specific tests that
+assert them. All raw typed component outcomes remain available for diagnostic comparison. Complete
+selected fragments are additionally compared exactly, a stronger assertion that all 84 maintained
+inputs currently satisfy. Independent pure decisions, full bounds and ordered GDD callback batches
+remain exact comparisons against the native observations.
+
+The CSJ observation point is the normal received-header callback before validation, matching
+`ChainSync/Client.hs1452`; the drain handlers at lines 916–933 discard replies without emitting
+`TraceDownloadedHeader`. Header identities and honest/adversarial attribution are retained. Its
+boundary uses `headerSlot + jumpSize < succWithOrigin(trunkTipSlot)`, including the original Word64
+addition. Uniform accounting preserves Word64 subtraction and the original single honest peer with
+id 1 required by `Test/Util/PartialAccessors.hs36–42`.
