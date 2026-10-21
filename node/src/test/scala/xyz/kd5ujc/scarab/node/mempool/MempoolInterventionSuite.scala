@@ -29,7 +29,7 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
       MempoolLedger.of(Build.funded(Build.nes[Conway](5, plutus.params), funds))
     val tipSlot: BigInt = plutus.slot - 1
     def raw(flag: Boolean): Bytes = MempoolState.encode(parts.copy(isValid = flag))
-    def pool: MempoolState = MempoolState.empty(Right(ledger), tipSlot, 1000000)
+    def pool: MempoolState = MempoolState.empty(Right(ledger), tipSlot, None)
 
   private def hex(j: io.circe.Json, field: String): Option[Bytes] =
     j.hcursor
@@ -158,7 +158,7 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
         Right(failing.ledger),
         failing.tipSlot,
         mempoolEnv,
-        1000000,
+        None,
         MempoolEvents.none[IO]
       )
       sink = pool.sink(f => IO(fail(s"unexpected fatal: $f")))

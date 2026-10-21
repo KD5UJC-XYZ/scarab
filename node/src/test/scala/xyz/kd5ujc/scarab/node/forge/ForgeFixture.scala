@@ -202,7 +202,7 @@ trait ForgeFixture:
         mempoolBase,
         4999,
         MempoolEnv(globals, geometry),
-        1000000,
+        None,
         MempoolEvents.none[IO]
       )
       raws <- Ref.of[IO, Map[Bytes, Bytes]](Map.empty)

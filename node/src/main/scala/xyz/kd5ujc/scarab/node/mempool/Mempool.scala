@@ -91,7 +91,10 @@ trait Mempool[F[_]]:
   def sink(fatal: Fatal => F[Unit]): TxSubmissionServer.Sink[F]
 
 object Mempool:
-  /** @param utxoStore
+  /** @param capacityOverride
+    *   The `MempoolCapacityBytesOverride` in bytes, rounded up to whole blocks; `None` is two
+    *   blocks of the parameters in force ([[Capacity.of]]).
+    * @param utxoStore
     *   Where the UTxO entries outside the ledger state's diff live; the pool fetches the read set
     *   of each transaction from it, as the block path does.
     * @param environment
@@ -101,13 +104,13 @@ object Mempool:
       ledger: Either[ConwayView.Unavailable, MempoolLedger],
       tipSlot: BigInt,
       env: MempoolEnv,
-      capacityBytes: Long,
+      capacityOverride: Option[Long],
       events: MempoolEvents[F],
       utxoStore: Option[UtxoStore[F]] = None,
       environment: Option[Ask[F, MempoolEnv]] = None
   ): F[Mempool[F]] =
     for
-      state <- Ref.of[F, MempoolState](MempoolState.empty(ledger, tipSlot, capacityBytes))
+      state <- Ref.of[F, MempoolState](MempoolState.empty(ledger, tipSlot, capacityOverride))
       version <- SignallingRef.of[F, Long](0L)
       lock <- Mutex[F]
     yield new Mempool[F]:

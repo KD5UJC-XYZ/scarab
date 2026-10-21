@@ -129,7 +129,9 @@ object Main extends IOApp:
     * @param snapshotCheck
     *   `--snapshot-check structure|full`: what a snapshot write proves before it is kept.
     * @param mempoolBytes
-    *   `None`: the configuration's `MempoolCapacityBytesOverride`, else 1 MiB.
+    *   `--mempool-bytes`, else the configuration's `MempoolCapacityBytesOverride`: the override in
+    *   bytes, rounded up to whole blocks. `None`: no override, two blocks of the protocol
+    *   parameters in force.
     * @param configFile
     *   `--config`: the Haskell node's configuration file.
     * @param topologyFile
@@ -205,8 +207,6 @@ object Main extends IOApp:
       adoptLegacyNetworkIdentity: Boolean = false,
       plutusWorkers: ParallelPlutus.Workers = ParallelPlutus.Workers.default
   )
-
-  val DefaultMempoolBytes: Long = 1048576L
 
   /** What the chain database (or its absence) hands the node at start. */
   private final case class Storage[S](
@@ -677,7 +677,7 @@ object Main extends IOApp:
               mempoolLedger,
               resumed.lastOption.map(_.ref).orElse(anchor).fold(BigInt(-1))(_.slot),
               MempoolEnv(globals, geometry),
-              options.mempoolBytes.getOrElse(DefaultMempoolBytes),
+              options.mempoolBytes,
               Log.mempool[IO].alongside(measured.mempool),
               utxoStore = Some(store),
               environment = Some(mempoolEnvironment)

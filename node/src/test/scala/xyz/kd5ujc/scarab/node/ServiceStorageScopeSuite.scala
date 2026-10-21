@@ -96,7 +96,7 @@ class ServiceStorageScopeSuite extends FailsOnUncaught:
             Right(full.withUtxo(Utxo.empty)),
             1000,
             TxKit.env,
-            100000,
+            None,
             MempoolEvents.none[IO],
             utxoStore = Some(broken(store, enabled))
           )
@@ -120,7 +120,7 @@ class ServiceStorageScopeSuite extends FailsOnUncaught:
             Right(TxKit.ledger(2).withUtxo(Utxo.empty)),
             1000,
             TxKit.env,
-            100000,
+            None,
             MempoolEvents.none[IO],
             utxoStore = Some(broken(store, enabled))
           )

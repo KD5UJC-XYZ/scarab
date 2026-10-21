@@ -10,7 +10,6 @@ class MainArgsSuite extends munit.FunSuite:
     assertEquals(options.keepSnapshots, 2)
     assertEquals(options.snapshotEvery, None)
     assertEquals(options.mempoolBytes, None)
-    assertEquals(Main.DefaultMempoolBytes, 1048576L)
   }
 
   test("a repeated --peer is allowed") {

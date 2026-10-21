@@ -38,6 +38,7 @@ import xyz.kd5ujc.scarab.node.{
 import xyz.kd5ujc.scarab.ledger.state.{Derived, MirrorError}
 import xyz.kd5ujc.scarab.ledger.PoolRelayError
 import xyz.kd5ujc.scarab.node.forge.{ForgeSkip, ForgeEpochStats, ForgeEvent, ReloadRefusal}
+import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, Rejection}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ConnectionState, Era}
 import xyz.kd5ujc.scarab.storage.{
@@ -247,7 +248,8 @@ object LogSamples:
           .Envelope(xyz.kd5ujc.scarab.codec.Value.Null)
       )
     ),
-    MempoolEvent.Rejected(Some(hash), Rejection.Full(300, 100L)),
+    MempoolEvent
+      .Rejected(Some(hash), Rejection.Full(TxMeasure(300, 0, 0, 0), TxMeasure(100, 0, 0, 0))),
     MempoolEvent.Dropped(hash, Rejection.AlreadyHeld(hash)),
     MempoolEvent.Adopted(hash),
     MempoolEvent.Removed(hash),

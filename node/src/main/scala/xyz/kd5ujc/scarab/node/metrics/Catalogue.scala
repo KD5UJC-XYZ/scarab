@@ -93,6 +93,7 @@ object RejectionLabel:
     case Rejection.Malformed(_)   => Malformed
     case Rejection.AlreadyHeld(_) => AlreadyHeld
     case Rejection.Ledger(_)      => Ledger
+    case Rejection.Limits(_, _)   => Ledger
     case Rejection.Full(_, _)     => Full
     case Rejection.WrongEra(_)    => WrongEra
     case Rejection.NoLedger(_)    => NoLedger

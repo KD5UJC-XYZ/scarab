@@ -255,7 +255,7 @@ object ForgedChain:
             mempoolBase,
             initial.tipRef.fold(slots.head.toLong - 1)(_.slot.toLong),
             MempoolEnv(globals, geometry),
-            1000000,
+            None,
             MempoolEvents.none[IO]
           )
           raws <- Ref.of[IO, Vector[Bytes]](Vector.empty)
