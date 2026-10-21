@@ -74,7 +74,7 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
     }
   }
 
-  test("collection never drops received blocks beyond the durable immutable boundary") {
+  test("collection retains the native cutoff slot and every later received block") {
     tempDir.use { dir =>
       ok {
         val original = (1 to 7).toVector.map(block(_))
@@ -85,8 +85,33 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
           }
           _ <- ReceivedBlocks.open[IO](dir, 2).use { store =>
             store.collect(boundary) *> store.entries.map { recovered =>
-              assertEquals(recovered.toSet, original.filter(_._1.slot > boundary).toSet)
+              assertEquals(recovered.toSet, original.filter(_._1.slot >= boundary).toSet)
             }
+          }
+        yield ()
+      }
+    }
+  }
+
+  test("same-slot Byron boundary and regular originals survive collection and reopen") {
+    tempDir.use { dir =>
+      ok {
+        val before = block(1)
+        val boundary = block(2)
+        val ebb = boundary._1.copy(boundary = true) -> boundary._2
+        val regular =
+          boundary._1.copy(hash = hash(100), blockNo = boundary._1.blockNo + 1) -> block(100)._2
+        val later = block(3)
+        val expected = Vector(ebb, regular, later).toSet
+        for
+          _ <- ReceivedBlocks.open[IO](dir, 2).use { store =>
+            Vector(before, ebb, regular, later).traverse_((ref, raw) => store.put(ref, raw)) *>
+              store.collect(ebb._1.slot) *> store.entries
+                .map(found => assertEquals(found.toSet, expected))
+          }
+          _ <- ReceivedBlocks.open[IO](dir, 2).use { store =>
+            store.collect(ebb._1.slot) *> store.entries
+              .map(found => assertEquals(found.toSet, expected))
           }
         yield ()
       }

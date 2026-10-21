@@ -29,7 +29,9 @@ trait ReceivedBlocks[F[_]]:
     */
   def invalidate(hash: Bytes): F[Unit]
 
-  /** Only call after the immutable store has made this boundary durable. */
+  /** Only call after the immutable store has made this boundary durable. Keep the cutoff slot:
+    * Byron EBBs and regular blocks may share it (native VolatileDB/Impl/FileInfo.hs:94–97).
+    */
   def collect(durableSlot: BigInt)(using Raise[F, StorageError]): F[Unit]
 
 object ReceivedBlocks:
@@ -79,8 +81,8 @@ object ReceivedBlocks:
       def collect(durableSlot: BigInt)(using Raise[F, StorageError]): F[Unit] =
         lock.lock.surround {
           Async[F].uncancelable(_ =>
-            log.gc(durableSlot) *> blocks
-              .updateAndGet(_.filter(_._2._1.slot > durableSlot))
+            log.gc(durableSlot - 1) *> blocks
+              .updateAndGet(_.filter(_._2._1.slot >= durableSlot))
               .flatMap(remaining => invalid.update(_ intersect remaining.keySet))
           )
         }

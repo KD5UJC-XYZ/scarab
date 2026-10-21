@@ -83,6 +83,7 @@ def sources(root: Path) -> list[Source]:
                 "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/BlockFetch/",
                 "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/ChainSync/",
                 "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/",
+                "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/",
                 "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Util/LeakyBucket.hs",
                 "ouroboros-consensus/src/unstable-consensus-testlib/Test/Util/TestBlock.hs",
                 "ouroboros-consensus/test/consensus-test/Test/Consensus/MiniProtocol/ChainSync/CSJ.hs",
