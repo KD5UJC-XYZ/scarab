@@ -9,6 +9,7 @@ import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
 import xyz.kd5ujc.scarab.ledger.{ChainError, ForgeError, ForgeKeyProblem, NodeError, StorageError}
 import xyz.kd5ujc.scarab.node.Fatal
+import xyz.kd5ujc.scarab.node.mempool.Source
 
 class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFixture:
   private def unreadable =
@@ -107,7 +108,7 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     withHandle {
       for
         h <- harness(p, ledgerWith(p, 1), ruleFailure = Some(cause))
-        _ <- h.mempool.add(t1)
+        _ <- h.mempool.add(t1, Source.Local)
         result <- h.forger.step(leaderSlot(p))
         held <- h.mempool.snapshot
       yield

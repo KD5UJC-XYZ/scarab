@@ -564,14 +564,16 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
     for
       ev <- events
       mempool <- Mempool.create[IO](Right(ledger(4)), 1000, env, 100000, ev._1)
-      _ <- List(t1, child, t2, t3).foldLeft(IO.unit)((done, t) => done *> mempool.add(t).void)
+      _ <- List(t1, child, t2, t3).foldLeft(IO.unit)((done, t) =>
+        done *> mempool.add(t, Source.Local).void
+      )
       before <- mempool.snapshot
       waiting <- mempool.awaitChange(_.entries.size == 4).start
       dependants <- mempool.removeTxsEvenIfValid(Set(id1))
       woken <- waiting.joinWithNever
       after <- mempool.snapshot
       log <- ev._2.get
-      reoffered <- mempool.add(t1)
+      reoffered <- mempool.add(t1, Source.Local)
     yield
       assertEquals(dependants.map(_._1.id), Vector(idChild))
       assertEquals(woken.entries.map(_.id), Vector(id2, id3))
@@ -591,7 +593,7 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
     for
       ev <- events
       mempool <- Mempool.create[IO](Right(ledger(2)), 1000, env, 100000, ev._1)
-      _ <- mempool.add(t1)
+      _ <- mempool.add(t1, Source.Local)
       before <- mempool.snapshot
       dependants <- mempool.removeTxsEvenIfValid(Set(unknown))
       after <- mempool.snapshot
