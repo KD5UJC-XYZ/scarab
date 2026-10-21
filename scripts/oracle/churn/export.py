@@ -43,7 +43,7 @@ def main() -> None:
     with (probe / "build.log").open("w") as log:
         subprocess.run(argv, stdout=log, stderr=subprocess.STDOUT, check=True)
     rows = [json.loads(line) for line in (probe / "decisions.jsonl").read_text().splitlines()]
-    if len(rows) != 1152 or any(len(row["steps"]) != 12 for row in rows):
+    if len(rows) != 1152 or any(len(row["steps"]) != 12 or len(row["waits"]) != 2 or any(len(step["counters"]) != 2 or "timeout" not in step for step in row["steps"]) for row in rows):
         raise ValueError("incomplete native decision output")
     image = subprocess.check_output(["docker", "image", "inspect", args.image,
                                      "--format", "{{.Id}}"], text=True).strip()
@@ -54,7 +54,7 @@ def main() -> None:
         "sha256": sha(probe / "decisions.jsonl"), "cases": len(rows),
         "generatedCases": 0, "boundaryCases": len(rows),
         "inputs": "explicit lawful native mode pairs; both ledger judgements/bootstrap configurations; four local valencies/seeds; three lawful target bases; static or startup-transition inputs",
-        "boundary": "unchanged peerChurnGovernor under IOSim: initial/after-head targets, first-cycle raw proposals, signed achieved changes, sanity flags, timeout outcomes, native DiffTime waits and exact binary-rational fuzz",
+        "boundary": "unchanged peerChurnGovernor under IOSim: initial/after-head targets, all first-cycle raw proposals, injected counter inputs, signed achieved changes, sanity flags, required success/timeout outcomes, both exact native DiffTime waits and binary-rational fuzz",
         "image": image, "executableSha256": sha(probe / "churn-observer"),
         "planSha256": sha(reference / "builddir/cache/plan.json"),
         "packageIds": [command[i + 1] for i, arg in enumerate(command) if arg == "-package-id"], "command": argv,

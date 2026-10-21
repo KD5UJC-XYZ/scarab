@@ -22,6 +22,23 @@ class NativeChurnPolicySuite extends FunSuite:
   private def target(values: List[Int]): Targets =
     proposal(values).validated.fold(e => fail(e.toString), identity)
 
+  private val emptyCounters = GovernorState
+    .initial[Int](0L, LocalRoots.empty, Targets.zero, Sensitivity.initial(false))
+    .view(Duration.Zero)
+    .counters
+
+  private def counters(values: List[Int]): GovernorState.Counters =
+    val t = proposal(values)
+    emptyCounters.copy(
+      root = t.root,
+      known = t.known,
+      established = t.established,
+      active = t.active,
+      knownBigLedger = t.knownBig,
+      establishedBigLedger = t.establishedBig,
+      activeBigLedger = t.activeBig
+    )
+
   private def fetches(name: String): List[FetchMode] = name match
     case "PraosFetchMode FetchModeBulkSync" => List(FetchMode.BulkSync)
     case "PraosFetchMode FetchModeDeadline" => List(FetchMode.Deadline)
@@ -80,27 +97,15 @@ class NativeChurnPolicySuite extends FunSuite:
         val afterKind = Regime.kind(consensus, afterFetch, bootstrap(get[String]("afterBootstrap")))
         val after = Regime.afterHead(afterKind, afterBase, Churn.Proposal.from(initial))
         assertEquals(after, proposal(get[List[Int]]("afterHead")), s"case $index after head")
-        val wait = Churn.delayWithFuzz(
-          consensus,
-          afterFetch,
-          Churn.Intervals(),
-          BigInt(3) * BigInt(10).pow(12),
-          Rational(get[BigInt]("fuzzNumerator"), get[BigInt]("fuzzDenominator"))
-        )
-        assertEquals(
-          get[List[BigInt]]("waitPicos").headOption,
-          Some(wait),
-          s"case $index exact wait"
-        )
         val context = Churn.Context(afterKind, localHot, afterBase, consensus)
         val steps = get[List[io.circe.Json]]("steps")
         assertEquals(steps.size, Churn.Step.values.length)
-        val (_, _, invalid, timeouts) = steps
+        val (_, _, invalid, timeouts, elapsed) = steps
           .zip(Churn.Step.values.toList)
           .zip(actions)
           .foldLeft(
-            (after, Map.empty[Churn.Step, Int], 0, 0)
-          ) { case ((current, achieved, invalid, timeouts), ((entry, step), action)) =>
+            (after, Map.empty[Churn.Step, Int], 0, 0, BigInt(0))
+          ) { case ((current, achieved, invalid, timeouts, elapsed), ((entry, step), action)) =>
             val e = entry.hcursor
             def field[A: io.circe.Decoder](name: String): A =
               e.get[A](name).fold(err => fail(err.message), identity)
@@ -113,7 +118,13 @@ class NativeChurnPolicySuite extends FunSuite:
               field[Boolean]("sane"),
               s"case $index $step sanity"
             )
-            val timedOut = e.get[Boolean]("timeout").getOrElse(false)
+            val (beforeCounters, afterCounters) = field[List[List[Int]]]("counters") match
+              case List(before, after) => counters(before) -> counters(after)
+              case other => fail(s"case $index $step unexpected counter reads: $other")
+            val change = step.counter(afterCounters) - step.counter(beforeCounters)
+            assertEquals(change, field[Int]("change"), s"case $index $step signed change")
+            val timedOut = !step.reached(afterCounters, actual)
+            assertEquals(timedOut, field[Boolean]("timeout"), s"case $index $step timeout")
             val expectedDuration =
               if timedOut then
                 BigInt(step.timeout(Churn.Timeouts(peerRequest = 5.seconds)).toNanos) * 1000
@@ -125,11 +136,35 @@ class NativeChurnPolicySuite extends FunSuite:
             )
             (
               actual,
-              achieved.updated(step, field[Int]("change").abs),
+              achieved.updated(step, change.abs),
               invalid + (if field[Boolean]("sane") then 0 else 1),
-              timeouts + (if e.get[Boolean]("timeout").getOrElse(false) then 1 else 0)
+              timeouts + (if timedOut then 1 else 0),
+              elapsed + expectedDuration
             )
           }
+        val waits = get[List[io.circe.Json]]("waits")
+        assertEquals(waits.size, 2)
+        val actualWaits =
+          waits.zip(List(BigInt(3) * BigInt(10).pow(12), elapsed)).map { (entry, expectedElapsed) =>
+            val w = entry.hcursor
+            def field[A: io.circe.Decoder](name: String): A =
+              w.get[A](name).fold(err => fail(err.message), identity)
+            assertEquals(
+              field[BigInt]("elapsedPicos"),
+              expectedElapsed,
+              s"case $index wait elapsed"
+            )
+            Churn.delayWithFuzz(
+              consensus,
+              afterFetch,
+              Churn.Intervals(),
+              expectedElapsed,
+              Rational(field[BigInt]("fuzzNumerator"), field[BigInt]("fuzzDenominator"))
+            )
+          }
+        val nativeWaits =
+          waits.map(_.hcursor.get[BigInt]("delayPicos").fold(err => fail(err.message), identity))
+        assertEquals(actualWaits, nativeWaits, s"case $index complete waits")
         invalid -> timeouts
     }
     assert(coverage.exists(_._1 > 0))
