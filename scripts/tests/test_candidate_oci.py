@@ -103,3 +103,69 @@ class CandidateOciTest(unittest.TestCase):
         path.write_text('{"status":"failed","status":"verified"}')
         with self.assertRaisesRegex(ValueError, 'duplicate JSON'):
             candidate_manifest.read_json(path)
+
+
+    def binding(self, mode='index', ambiguous=False):
+        image = self.image(compressed=True)
+        expected = candidate_oci.verify(image, self.jar, self.identity)
+        archive = self.root / 'docker.tar'
+        with tarfile.open(archive) as source:
+            files = {member.name: source.extractfile(member).read() for member in source.getmembers()}
+        config = json.loads(files['config.json'])
+        live = dict(Id=expected['configDigest'], Architecture='amd64', Os='linux', Config=config['config'],
+                    RootFS=dict(Type='layers', Layers=expected['diffIds']))
+        if mode != 'legacy':
+            raw_config = files['config.json']
+            config_record = candidate_oci.descriptor(raw_config, candidate_oci.CONFIG_TYPE)
+            files['blobs/sha256/' + config_record['digest'][7:]] = raw_config
+            raw_manifest = candidate_oci.encoded(dict(schemaVersion=2, config=config_record, layers=expected['layers']))
+            manifest = candidate_oci.descriptor(raw_manifest, candidate_manifest.MEDIA_TYPE)
+            files['blobs/sha256/' + manifest['digest'][7:]] = raw_manifest
+            root = manifest
+            if mode == 'index':
+                child = dict(manifest, platform=dict(architecture='amd64', os='linux'))
+                raw_index = candidate_oci.encoded(dict(schemaVersion=2, manifests=[child, child] if ambiguous else [child]))
+                root = candidate_oci.descriptor(raw_index, 'application/vnd.oci.image.index.v1+json')
+                files['blobs/sha256/' + root['digest'][7:]] = raw_index
+            files['index.json'] = candidate_oci.encoded(dict(schemaVersion=2, manifests=[root]))
+            live['Id'] = root['digest']
+            live['Descriptor'] = root
+        archive.write_bytes(self.tar(files))
+        return archive, live, expected
+
+    def test_live_legacy_manifest_and_containerd_index_ids_bind_same_config(self):
+        for mode in ['legacy', 'manifest', 'index']:
+            with self.subTest(mode=mode):
+                archive, live, expected = self.binding(mode)
+                binding = candidate_oci.bind_docker_image(archive, live, expected)
+                candidate_oci.verify_docker_binding(binding, expected)
+                self.assertEqual(binding['inspect']['Id'], live['Id'])
+                self.assertNotIn('Env', binding['inspect']['Config'])
+
+    def test_live_index_rejects_ambiguous_platform_and_fake_image_id(self):
+        archive, live, expected = self.binding(ambiguous=True)
+        with self.assertRaisesRegex(ValueError, 'ambiguous'):
+            candidate_oci.bind_docker_image(archive, live, expected)
+        archive, live, expected = self.binding()
+        with self.assertRaisesRegex(ValueError, 'absent'):
+            candidate_oci.bind_docker_image(archive, dict(live, Id='sha256:' + 'f' * 64), expected)
+
+    def test_retained_graph_rejects_tampered_config_and_live_runtime(self):
+        import copy
+        archive, live, expected = self.binding()
+        original = candidate_oci.bind_docker_image(archive, live, expected)
+        for field in ['document', 'rootfs', 'runtime', 'descriptor', 'extra']:
+            with self.subTest(field=field):
+                binding = copy.deepcopy(original)
+                if field == 'document':
+                    binding['documents'][expected['configDigest']] += 'eA=='
+                elif field == 'rootfs':
+                    binding['inspect']['RootFS']['Layers'] = ['sha256:' + '0' * 64]
+                elif field == 'runtime':
+                    binding['inspect']['Config']['User'] = '0'
+                elif field == 'descriptor':
+                    binding['root']['size'] += 1
+                else:
+                    binding['documents']['sha256:' + 'f' * 64] = 'eA=='
+                with self.assertRaises((ValueError, KeyError)):
+                    candidate_oci.verify_docker_binding(binding, expected)

@@ -92,8 +92,11 @@ def make_candidate(root: Path, release=True) -> dict:
                                                 'config.json': json.dumps(config).encode(), 'layer.tar': layer}))
     oci = root / 'artifacts/image.oci.tar'
     candidate_oci.convert(docker_archive, oci)
-    docker_archive.unlink()
     inspected = candidate_oci.verify(oci, jar, identity)
+    live = dict(Id=inspected['configDigest'], Architecture='amd64', Os='linux', Config=config['config'],
+                RootFS=dict(Type='layers', Layers=inspected['diffIds']))
+    binding = candidate_oci.bind_docker_image(docker_archive, live, inspected)
+    docker_archive.unlink()
     portable = 'supranational/blst/Linux/amd64/libblst.so'
     with zipfile.ZipFile(jar) as archive:
         entries = [dict(input=name, outputs=[name], policy='deduplicate', contributors=[dict(component='project:0',
@@ -115,8 +118,8 @@ def make_candidate(root: Path, release=True) -> dict:
     java_release = 'JAVA_RUNTIME_VERSION="21.0.11+10-LTS"\n'
     write('evidence/image-scan.cdx.json', scanner)
     write('evidence/image-inventory.json', dict(oci=inspected, baseImage=image['baseImage'], archiveSha256=contract.sha256(oci),
-                                               imageId=inspected['configDigest'],
-                                               baseConfigDigest='sha256:' + '4' * 64, baseDiffIds=inspected['diffIds'],
+                                               imageId=inspected['configDigest'], dockerBinding=binding,
+                                               baseImageId='sha256:' + '4' * 64, baseDiffIds=inspected['diffIds'],
                                                scannerBom=record('evidence/image-scan.cdx.json'),
                                                os=dict(packages=packages, javaRelease=java_release,
                                                        retainedLegalFiles=[contract.file_record(root / 'evidence/legal', legal)])))

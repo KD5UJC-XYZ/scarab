@@ -184,15 +184,16 @@ def validate(directory: Path, require_release: bool = False) -> dict:
         raise ValueError('OCI configuration digest differs from manifest')
     image_inventory = read_json(records['image-inventory'])
     if (image_inventory.get('oci') != inspected or image_inventory.get('baseImage') != image['baseImage']
-            or image_inventory.get('imageId') != inspected['configDigest']
+            or image_inventory.get('imageId') != image_inventory.get('dockerBinding', {}).get('inspect', {}).get('Id')
             or image_inventory.get('archiveSha256') != oci_subject['file']['sha256']
             or not image_inventory.get('os', {}).get('packages')
             or not image_inventory.get('os', {}).get('retainedLegalFiles')):
         raise ValueError('actual image/OS/legal inventory differs from candidate subjects')
+    candidate_oci.verify_docker_binding(image_inventory['dockerBinding'], inspected)
     base_layers = image_inventory.get('baseDiffIds')
     if (not isinstance(base_layers, list) or not base_layers
             or inspected['diffIds'][:len(base_layers)] != base_layers
-            or not re.fullmatch(r'sha256:[0-9a-f]{64}', str(image_inventory.get('baseConfigDigest')))):
+            or not re.fullmatch(r'sha256:[0-9a-f]{64}', str(image_inventory.get('baseImageId')))):
         raise ValueError('pinned runtime base filesystem identity is absent or differs')
     for legal in image_inventory['os']['retainedLegalFiles']:
         checked_file(records['image-inventory'].parent / 'legal', legal)

@@ -100,7 +100,8 @@ def build(args):
             base_inspect = json.loads(subprocess.check_output(['docker', 'image', 'inspect', BASE]))[0]
             run(['docker', 'build', '--platform', 'linux/amd64', '--build-arg', f'SCARAB_VERSION={identity["version"]}',
                  '--build-arg', f'SCARAB_COMMIT={identity["gitCommit"]}', '-t', image_tag, str(context)], evidence / 'image-build.log')
-        image_id = subprocess.check_output(['docker', 'image', 'inspect', image_tag, '--format', '{{.Id}}'], text=True).strip()
+        image_inspect = json.loads(subprocess.check_output(['docker', 'image', 'inspect', image_tag]))[0]
+        image_id = image_inspect['Id']
         verifier = evidence / 'image-verifier'
         verifier.mkdir()
         reproducible_build.resource_check_source(verifier)
@@ -128,8 +129,7 @@ def build(args):
         oci = artifacts / f'scarab-node-{identity["version"]}-linux-amd64.oci.tar'
         candidate_oci.convert(docker_archive, oci)
         inspected = candidate_oci.verify(oci, artifact, identity)
-        if inspected['configDigest'] != image_id:
-            raise ValueError('exported OCI configuration differs from the actual smoked image')
+        docker_binding = candidate_oci.bind_docker_image(docker_archive, image_inspect, inspected)
         base_layers = base_inspect['RootFS']['Layers']
         if not base_layers or inspected['diffIds'][:len(base_layers)] != base_layers:
             raise ValueError('candidate image does not retain the exact pinned runtime base filesystem')
@@ -155,8 +155,8 @@ def build(args):
         candidate_sbom.write(evidence / 'licence-review.json', dict(status='review-required', unresolved=reviews,
                             scope='Inventory evidence only; legal and vulnerability/advisory approval are separate.'))
         candidate_sbom.write(evidence / 'image-inventory.json', dict(oci=inspected, os=os_inventory,
-                            imageId=image_id, baseImage=BASE, archiveSha256=candidate_manifest.sha256(oci),
-                            baseConfigDigest=base_inspect['Id'], baseDiffIds=base_layers,
+                            imageId=image_id, dockerBinding=docker_binding, baseImage=BASE, archiveSha256=candidate_manifest.sha256(oci),
+                            baseImageId=base_inspect['Id'], baseDiffIds=base_layers,
                             scannerBom=candidate_manifest.file_record(root, evidence / 'image-scan.cdx.json')))
         candidate_sbom.write(evidence / 'toolchain.json', dict(jdk=candidate_manifest.read_json(repro / 'build-environment.json'),
                             nativeRecipe=native_receipt['recipe'], syftImage=SYFT, cycloneDxImage=CYCLONEDX,
