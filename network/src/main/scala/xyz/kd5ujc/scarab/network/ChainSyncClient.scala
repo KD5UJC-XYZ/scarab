@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.network
 
 import cats.Applicative
-import cats.effect.{Resource, Temporal}
+import cats.effect.{Async, Resource, Temporal}
 import cats.mtl.Raise
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.protocol.ChainSync
@@ -29,6 +29,76 @@ trait ChainSyncClient[F[_], P]:
     Resource.pure[F, ChainSyncClient.Observer[F]](observer).void
 
 object ChainSyncClient:
+  trait Pipeline[F[_], P] extends ChainSyncClient[F, P]:
+    def submit(using Raise[F, NetworkError]): F[Unit]
+    def tryCollect(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Option[Update[P]]]
+    def collect(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Update[P]]
+    def serviceAwait(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Unit]
+    def outstanding: F[Int]
+    def drain(onAwait: F[Unit])(onUpdate: Update[P] => F[Unit])(using
+        Raise[F, NetworkError]
+    ): F[Unit]
+
+  def resource[F[_]: Async, P](
+      channel: MuxChannel[F],
+      codec: ChainSync.PayloadCodec[P],
+      abort: NetworkError => F[Unit],
+      settings: Settings = Settings(),
+      maxOutstanding: Int = 300
+  )(using Raise[F, NetworkError]): Resource[F, Pipeline[F, P]] =
+    ChainSyncRuntime
+      .resource(
+        channel,
+        ChainSync.enginePointCodec,
+        ChainSync.engineTipCodec,
+        ChainSync.enginePayloadCodec(codec),
+        abort,
+        ChainSyncRuntime.ClientSettings(
+          settings.limits,
+          settings.intersectTimeout,
+          settings.canAwaitTimeout,
+          settings.mustReplyTimeout,
+          settings.timeouts
+        ),
+        maxOutstanding
+      )
+      .map { runtime =>
+        def translated(update: ChainSyncRuntime.Update[Point, Tip, P]): Update[P] = update match
+          case ChainSyncRuntime.Update.RollForward(value, tip)  => Update.RollForward(value, tip)
+          case ChainSyncRuntime.Update.RollBackward(point, tip) => Update.RollBackward(point, tip)
+        new Pipeline[F, P]:
+          def submit(using Raise[F, NetworkError]): F[Unit] = runtime.submit
+          def outstanding: F[Int] = runtime.outstanding
+          def idle: F[Boolean] = runtime.idle
+          def idling: F[Boolean] = runtime.idling
+          def serviceAwait(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Unit] =
+            runtime.serviceAwait(onAwait)
+          def tryCollect(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Option[Update[P]]] =
+            runtime.tryCollect(onAwait).map(_.map(translated))
+          def collect(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Update[P]] =
+            runtime.collect(onAwait).map(translated)
+          def drain(onAwait: F[Unit])(onUpdate: Update[P] => F[Unit])(using
+              Raise[F, NetworkError]
+          ): F[Unit] =
+            runtime.drain(onAwait)(u => onUpdate(translated(u)))
+          def findIntersect(points: Vector[Point])(using
+              Raise[F, NetworkError]
+          ): F[Option[(Point, Tip)]] =
+            runtime.findIntersect(points)
+          def done(using Raise[F, NetworkError]): F[Unit] = runtime.done
+          def requestNext(using Raise[F, NetworkError]): F[Update[P]] =
+            runtime.requestNext.map(translated)
+          def requestNextBatch(n: Int)(using Raise[F, NetworkError]): F[Vector[Update[P]]] =
+            runtime.requestNextBatch(n).map(_.map(translated))
+          override def requestNextBatchObserved(n: Int)(onUpdate: Update[P] => F[Unit])(using
+              Raise[F, NetworkError],
+              cats.Monad[F]
+          ): F[Vector[Update[P]]] =
+            runtime.requestNextBatchObserved(n)(u => onUpdate(translated(u))).map(_.map(translated))
+          override def observe(observer: Observer[F])(using Applicative[F]): Resource[F, Unit] =
+            runtime.observe(observer)
+      }
+
   trait Observer[F[_]]:
     /** Freeze request-specific context before submission; callbacks still run in the collector. */
     def capture(using F: Applicative[F]): F[Observer[F]] = F.pure(this)

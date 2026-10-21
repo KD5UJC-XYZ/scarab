@@ -27,7 +27,8 @@ final class NodeToNodeConnection[F[_], P](
     val mux: Mux[F],
     val transactions: Option[TxSubmissionClient.Running[F]] = None,
     val fetchPerformance: Option[F[FetchGsv.PeerGsv]] = None,
-    blockFetchEnded: Option[F[Unit]] = None
+    blockFetchEnded: Option[F[Unit]] = None,
+    val chainSyncPipeline: Option[ChainSyncClient.Pipeline[F, P]] = None
 ):
   /** End the hot protocols on the wire, so the connection can carry a new activation: ChainSync and
     * BlockFetch say `MsgDone` where they are idle, TxSubmission2 at the peer's next blocking
@@ -95,7 +96,7 @@ final class WarmConnection[F[_], P] private[network] (
       )
       chainSyncChannel <- Resource.eval(mux.channel(Protocols.ChainSync, role))
       blockFetchChannel <- Resource.eval(mux.channel(Protocols.BlockFetch, role))
-      chainSync <- Resource.eval(ChainSyncClient(chainSyncChannel, codec, settings.chainSync))
+      chainSync <- ChainSyncClient.resource(chainSyncChannel, codec, mux.abort, settings.chainSync)
       blockFetch <- BlockFetchClient.resource(blockFetchChannel, mux.abort, settings.blockFetch)
     yield NodeToNodeConnection(
       version,
@@ -104,7 +105,8 @@ final class WarmConnection[F[_], P] private[network] (
       mux,
       running,
       fetchPerformance,
-      blockFetchEnded
+      blockFetchEnded,
+      Some(chainSync)
     )
 
 object NodeToNode:
