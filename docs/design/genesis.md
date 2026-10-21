@@ -38,8 +38,8 @@ selection is retriggered, and how upstream work and disconnections are coordinat
   byte/request credit, reassign ordered replies, or release another source's attribution.
 - **Restart retention:** persist received original bodies before exposing them to selection,
   including forks and LoE-postponed blocks. A separate `received/` log reuses the existing
-  volatile-record encoding; the adopted-chain log still determines the recovered selected
-  tip. Older databases populate this store from their known selected suffix without
+  volatile-record encoding; the adopted-chain log records the previously adopted suffix.
+  Startup reconstructs selection from the immutable anchor and the complete received forest. Older databases populate this store from their known selected suffix without
   manufacturing missing fork history. Recovered bodies have their own source case, rather
   than borrowing a live session identity. Collection follows a durable immutable boundary.
 - **Source attribution:** an original body's punishment belongs to its adding BlockFetch run,
@@ -127,8 +127,9 @@ Conway. These are independently observed boundary cases, not upstream-generated 
    CSJ and devoted-fetch work accounting into outbound and inbound clients. Test
    starvation and published-body handover races with controlled observations.
 4. Replay original upstream Genesis scenario families through Scarab using the
-   exported inputs and schedules, comparing their complete observable selections
-   and termination outcomes. Run Docker `check`, private Genesis sync/restart,
+   exported inputs and schedules, comparing complete selected fragments and every
+   original native termination predicate. The native properties allow several terminal
+   outcomes; they do not require identical chronological worker transcripts. Run Docker `check`, private Genesis sync/restart,
    relay and the issue's soak gate. Record performance and cleanup receipts.
 5. Preserve the reference's invalid-block punishment boundary: reject transport/body-hash
    mismatches immediately, retain semantic-invalidity attribution, apply the native

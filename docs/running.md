@@ -82,7 +82,7 @@ value except `--forge` and `--dump-state-full`. An unknown flag, a repeated flag
 | `--seconds N` | run until stopped | stop after N seconds |
 | `--query-port P` | `7071` | loopback port of the HTTP query server (`GET /tip`, `GET /state?slot=&hash=`, `GET /scheduling`, `GET /connections`: the connection table and the inbound sessions, `GET /metrics`: the Prometheus text format, see "Metrics") |
 | `--metrics-listen <host>:<port>` | off | a listener that serves `GET /metrics` and nothing else, for a scraper that is not on loopback (`0.0.0.0:12798` in a container); see "Metrics" |
-| `--db <dir>` | off (in-memory; replay from genesis on every start; `DatabasePath` with `--config`) | persistent chain: `network-identity`, `immutable/`, `volatile/`, `snapshots/`, `utxo/` |
+| `--db <dir>` | off (in-memory; replay from genesis on every start; `DatabasePath` with `--config`) | persistent chain: `network-identity`, `immutable/`, `volatile/`, `received/`, `snapshots/`, `utxo/` |
 | `--snapshot-every <N\|Nslots\|Nepochs>` | the reference node's policy (below) | snapshot once the immutable tip is this far past the previous snapshot; a bare number is slots. Given, it replaces the default policy |
 | `--keep-snapshots N` | `2` | snapshots (and UTxO checkpoints) to keep (the reference node keeps 2) |
 | `--snapshot-check structure\|full` | `structure` | what a snapshot write proves before the file is kept: `structure`, that it parses (cheap); `full`, that it reads back to the state written (a second ledger state in memory, 0.84 GB on preprod epoch 188). A file that parses but cannot be restored is skipped at the next start, which restores an older snapshot or replays |
