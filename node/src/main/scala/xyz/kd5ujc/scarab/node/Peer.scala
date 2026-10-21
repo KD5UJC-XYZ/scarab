@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.codec.DomainError
-import xyz.kd5ujc.scarab.ledger.{Header, PeerError, ValidationError}
+import xyz.kd5ujc.scarab.ledger.{BlockFailure, BlockPoolProblem, Header, PeerError, ValidationError}
 import cats.effect.{Async, Deferred, Ref, Resource, Temporal}
 import cats.effect.implicits.*
 import cats.effect.std.{Queue, Semaphore, Supervisor}
@@ -37,6 +37,24 @@ enum SyncEvent:
   */
 trait Peer[F[_]]:
   def selectionWork: Option[SelectionWork.Session[F]] = None
+  def invalidBlocks: Option[InvalidBlocks[F]] = None
+
+  def invalidated(
+      @scala.annotation.unused header: Header,
+      @scala.annotation.unused refusal: ValidationError
+  )(using
+      F: cats.Applicative[F]
+  ): F[Either[BlockPoolProblem, Unit]] = F.pure(Right(()))
+
+  /** Acquire the causal context of the first body admission, after the original is available.
+    * Reprocessing an existing body has no adding client to punish. Scripted domain peers keep their
+    * original refusal behavior through the default fixture interpreter.
+    */
+  def validation(header: Header)(using
+      F: cats.Applicative[F],
+      peer: Raise[F, PeerError]
+  ): F[Either[BlockPoolProblem, Peer.Validation[F]]] =
+    F.pure(Right(Peer.Validation.domain(this, header)))
 
   /** Invalidate retained original bodies at the shared validation boundary. The caller supplies its
     * effect capability; a scripted peer need not retain any shared cache.
@@ -60,6 +78,49 @@ trait Peer[F[_]]:
   def fetch(header: Header)(using Raise[F, PeerError]): F[Bytes]
 
 object Peer:
+  enum Rejection:
+    case Forgiven, PunishedCurrent, PunishedForeign, NotImplicated, NoAddingClient
+
+  sealed trait Validation[F[_]]:
+    def addedPoint: Option[ChainSync.Point]
+    def rejected(refusal: ValidationError, lastValid: ChainSync.Point)(using
+        cats.Applicative[F]
+    ): F[Either[BlockPoolProblem, Rejection]]
+
+  object Validation:
+    private[node] def domain[F[_]](peer: Peer[F], header: Header): Validation[F] =
+      new Validation[F]:
+        def addedPoint = Some(header.point)
+        def rejected(refusal: ValidationError, lastValid: ChainSync.Point)(using
+            F: cats.Applicative[F]
+        ): F[Either[BlockPoolProblem, Rejection]] =
+          peer.rejected(refusal).as(Right(Rejection.PunishedCurrent))
+
+    private[node] def none[F[_]]: Validation[F] = new Validation[F]:
+      def addedPoint = None
+      def rejected(refusal: ValidationError, lastValid: ChainSync.Point)(using
+          F: cats.Applicative[F]
+      ): F[Either[BlockPoolProblem, Rejection]] = F.pure(Right(Rejection.NoAddingClient))
+
+    private[node] def added[F[_]](
+        claims: BlockPool.Claims[F],
+        announced: Header,
+        taken: BlockPool.Taken,
+        handled: ValidationError => F[Unit]
+    ): Validation[F] = new Validation[F]:
+      def addedPoint = taken.metadata.map(_.header.point)
+      def rejected(refusal: ValidationError, lastValid: ChainSync.Point)(using
+          F: cats.Applicative[F]
+      ): F[Either[BlockPoolProblem, Rejection]] =
+        handled(refusal) *> claims
+          .reject(taken, announced.point, refusal, lastValid)
+          .map(_.map {
+            case BlockPool.Rejection.Forgiven(_) => Rejection.Forgiven
+            case BlockPool.Rejection.Punished(_) =>
+              if taken.own then Rejection.PunishedCurrent else Rejection.PunishedForeign
+            case BlockPool.Rejection.NotImplicated(_) => Rejection.NotImplicated
+          })
+
   private final case class Staged(
       values: Map[Bytes, (BlockPool.Taken, Long)] = Map.empty,
       order: ImmutableQueue[(Bytes, Long)] = ImmutableQueue.empty,
@@ -372,7 +433,8 @@ object Peer:
       fetchSession: Option[FetchCoordinator.Session[F]] = None,
       genesis: Option[GenesisPeer[F]] = None,
       selectionWork: Option[SelectionWork.Session[F]] = None,
-      receivedBody: Option[BodySink[F]] = None
+      receivedBody: Option[BodySink[F]] = None,
+      diffusion: BlockPool.Diffusion = BlockPool.Diffusion.On
   ): Resource[F, Controlled[F]] =
     val F = Async[F]
     val workSession = selectionWork
@@ -384,7 +446,7 @@ object Peer:
     // has cancelled and awaited the fibers that fetch, nothing the session claimed is left open.
     (for
       shared <- Resource.eval(pool.fold(BlockPool.create[F])(F.pure))
-      claims <- shared.session(invalidCachedBlock)
+      claims <- shared.session(invalidCachedBlock, diffusion)
       fetcher <- fetchSession.fold(
         shared.fetchCoordinator.session(
           fetchIdentity.getOrElse(settings.address.hashCode.toLong)
@@ -431,7 +493,9 @@ object Peer:
         Ref.of[F, Staged](Staged()),
         Deferred[F, Unit].flatMap(signal => Ref.of[F, Deferred[F, Unit]](signal)),
         Ref.of[F, Option[ChainSync.Point]](None),
-        Ref.of[F, Option[PeerError.RolledBackPastIntersection]](None)
+        Ref.of[F, Option[PeerError.RolledBackPastIntersection]](None),
+        Ref.of[F, Boolean](false),
+        Ref.of[F, Option[ValidationError]](None)
       ).mapN {
         (
             queue,
@@ -445,12 +509,57 @@ object Peer:
             candidateHeaders,
             pipelineFailure,
             candidateVersions,
-            performanceStarted,
+            observersStarted,
             stagedBlocks,
             drainRequested,
             pendingRestart,
-            pendingEnd
+            pendingEnd,
+            chainSyncFinished,
+            handledSemantic
         ) =>
+          def finishChainSync(using Raise[F, PeerError]): F[Unit] =
+            connection.chainSync.done *> chainSyncFinished.set(true)
+
+          /** Native checkKnownInvalid (Client.hs:1642–1694) excludes a tentative tip only when
+            * diffusion pipelining is on. Ordered RequestNext batching does not select this mode.
+            */
+          def checkKnownInvalid(header: Header)(using Raise[F, PeerError]): F[Unit] =
+            val scrutinized = diffusion match
+              case BlockPool.Diffusion.On  => header.prevHash
+              case BlockPool.Diffusion.Off => Some(header.hash)
+            scrutinized.traverse_(hash =>
+              claims.invalidBlocks
+                .lookup(hash)
+                .flatMap(
+                  _.traverse_(refusal => PeerError.InvalidBlock(refusal).raise[F, Unit])
+                )
+            )
+
+          /** The native watcher runs on invalidity fingerprints, not candidate changes, and scans
+            * newest first while skipping exactly one tentative tip (Client.hs:2082–2156). Its
+            * supervised child creates and lands its own error scope through Fault.fiber.
+            */
+          def invalidBlockRejector(using Raise[F, PeerError]): F[Unit] =
+            F.tailRecM[BigInt, Unit](-1) { revision =>
+              claims.invalidBlocks.awaitChange(revision).flatMap { invalid =>
+                chainSyncFinished.get.flatMap { done =>
+                  if done then F.never
+                  else
+                    candidateHeaders.get.flatMap { candidate =>
+                      val checked = diffusion match
+                        case BlockPool.Diffusion.On  => candidate.headers.dropRight(1)
+                        case BlockPool.Diffusion.Off => candidate.headers
+                      checked.reverseIterator
+                        .flatMap(h => invalid.entries.get(h.hash))
+                        .take(1)
+                        .toVector
+                        .traverse_(refusal => PeerError.InvalidBlock(refusal).raise[F, Unit])
+                        .as(Left(invalid.revision))
+                    }
+                }
+              }
+            }
+
           def decode(update: ChainSyncClient.Update[NtNHeader])(using
               Raise[F, PeerError]
           ): F[SyncEvent] = update match
@@ -532,12 +641,19 @@ object Peer:
                                          else
                                            run
                                              .zip(raw)
-                                             .traverse_((h, b) =>
-                                               receivedBody.traverse_(_(h, b))
-                                             ) *>
-                                             prepare(raw) *> claims.fill(
-                                               paired.map((hash, _, b) => hash -> b)
+                                             .traverse((h, b) =>
+                                               BlockPool.Delivered
+                                                 .checked(h, b)
+                                                 .fold(protocol[BlockPool.Delivered], F.pure)
                                              )
+                                             .flatMap { delivered =>
+                                               run
+                                                 .zip(raw)
+                                                 .traverse_((h, b) =>
+                                                   receivedBody.traverse_(_(h, b))
+                                                 ) *>
+                                                 prepare(raw) *> claims.fillDelivered(delivered)
+                                             }
                                         )
                                           .guarantee(claims.release(run.map(_.hash)))
                                     }
@@ -595,10 +711,23 @@ object Peer:
                       case None =>
                         protocol[Unit](PeerError.ProtocolProblem.BlockCount(run.size, run.size + 1))
                       case Some(header) =>
-                        fetcher.received(allocation, header.hash) *>
-                          receivedBody.traverse_(_(header, raw)) *> prepare(Vector(raw)) *>
-                          stagedBlocks.update(_.put(header.hash, claims.delivered(raw))) *>
-                          claims.fill(Vector(header.hash -> raw)) *> bodyReady(header)
+                        for
+                          delivered <- BlockPool.Delivered
+                            .checked(header, raw)
+                            .fold(protocol[BlockPool.Delivered], F.pure)
+                          _ <- fetcher.received(allocation, header.hash)
+                          _ <- receivedBody.traverse_(_(header, raw)) *> prepare(Vector(raw))
+                          _ <- claims.fillDelivered(Vector(delivered))
+                          winner <- claims.take(header.hash)
+                          _ <- winner.fold(
+                            PeerError
+                              .Unavailable(
+                                PeerError.Unavailability.MissingAnnouncedBlock(header.point)
+                              )
+                              .raise[F, Unit]
+                          )(taken => stagedBlocks.update(_.put(header.hash, taken)))
+                          _ <- bodyReady(header)
+                        yield ()
                     }
                   }
                   .map(_.leftMap {
@@ -629,7 +758,7 @@ object Peer:
           def finishPendingEnd(using Raise[F, PeerError]): F[Unit] =
             pendingEnd
               .getAndSet(None)
-              .flatMap(_.traverse_(error => connection.chainSync.done *> error.raise[F, Unit]))
+              .flatMap(_.traverse_(error => finishChainSync *> error.raise[F, Unit]))
 
           /** The next batch of ChainSync instructions. */
           def requestHeaders(using Raise[F, PeerError]): F[Vector[SyncEvent]] =
@@ -689,6 +818,10 @@ object Peer:
             for
               arrived <- F.monotonic
               batch <- updates.traverse(decode)
+              _ <- batch.traverse_ {
+                case SyncEvent.RollForward(header, _) => checkKnownInvalid(header)
+                case SyncEvent.RollBackward(_, _)     => F.unit
+              }
               _ <- batch.traverse_(event => received.traverse_(_(event)))
               _ <- observe.traverse_ { report =>
                 val slots = batch.collect { case SyncEvent.RollForward(h, _) => h.slot.toLong }
@@ -875,10 +1008,25 @@ object Peer:
                       }
               }
 
+          def checkedOriginal(header: Header, taken: BlockPool.Taken)(using
+              Raise[F, PeerError]
+          ): F[BlockPool.Taken] =
+            if taken.metadata.nonEmpty then F.pure(taken)
+            else
+              BlockPool.Delivered.checked(header, taken.block) match
+                case Right(checked) => F.pure(taken.copy(metadata = Some(checked.metadata)))
+                case Left(PeerError.ProtocolProblem.FetchedBlockIntegrity(cause)) =>
+                  val refusal = ValidationError(header.point, BlockFailure.Transport(cause))
+                  claims.distrust(taken.origin, refusal) *>
+                    (if taken.own then PeerError.InvalidBlock(refusal)
+                     else PeerError.Diverged(PeerError.Divergence.ForeignBlock(refusal)))
+                      .raise[F, BlockPool.Taken]
+                case Left(other) => protocol(other)
+
           def fetchBlock(header: Header)(using Raise[F, PeerError]): F[Bytes] =
-            obtainBlock(header).flatMap(taken =>
-              last.set(Some(header.hash -> taken)).as(taken.block)
-            )
+            obtainBlock(header)
+              .flatMap(checkedOriginal(header, _))
+              .flatMap(taken => last.set(Some(header.hash -> taken)).as(taken.block))
 
           /** The journal stores one validated candidate, rather than every transient wire fork.
             * HeaderGate's forecast bounds its slot span; the body dispatcher alone owns permits.
@@ -949,7 +1097,7 @@ object Peer:
                     found <- connection.chainSync.findIntersect(thin(points))
                     _ <- found match
                       case None =>
-                        connection.chainSync.done *> PeerError.NoIntersection.raise[F, Unit]
+                        finishChainSync *> PeerError.NoIntersection.raise[F, Unit]
                       case Some((point, tip)) =>
                         captured
                           .fold(headers.fold(F.pure(HeaderGate.none[F]))(_.start(point)))(
@@ -1129,11 +1277,11 @@ object Peer:
             started.getAndSet(true).flatMap {
               case true => F.unit
               case false =>
-                performanceStarted.getAndSet(true).flatMap { alreadyRunning =>
-                  connection.fetchPerformance
+                observersStarted.getAndSet(true).flatMap { alreadyRunning =>
+                  (supervised(invalidBlockRejector) *> connection.fetchPerformance
                     .traverse_(read =>
                       supervised(refreshFetchPerformance(read, fetcher.updatePerformance))
-                    )
+                    ))
                     .unlessA(alreadyRunning)
                 } *> (if patience.nonEmpty || genesis.nonEmpty || workSession.nonEmpty then
                         supervised(streaming)
@@ -1252,7 +1400,7 @@ object Peer:
                 found <- connection.chainSync.findIntersect(
                   thin(captured.fold(candidates)(_.points))
                 )
-                _ <- connection.chainSync.done.whenA(found.isEmpty)
+                _ <- finishChainSync.whenA(found.isEmpty)
                 _ <- found.traverse_ { (point, _) =>
                   candidateHeaders.set(ChainSelection.Candidate(point, Vector.empty)) *>
                     captured.fold(headers.traverse_(_.start(point).flatMap(gate.set)))(
@@ -1267,24 +1415,53 @@ object Peer:
 
             def next(using Raise[F, PeerError]): F[SyncEvent] = pull
 
+            override def invalidBlocks = Some(claims.invalidBlocks)
+            override def invalidated(header: Header, refusal: ValidationError)(using
+                cats.Applicative[F]
+            ): F[Either[BlockPoolProblem, Unit]] = last.get.flatMap {
+              case Some((hash, taken)) if hash == header.hash =>
+                claims.invalidated(taken, header, refusal)
+              case _ => F.pure(Left(BlockPoolProblem.MissingDeliveredHeader(header.point)))
+            }
+            override def validation(header: Header)(using
+                cats.Applicative[F],
+                Raise[F, PeerError]
+            ): F[Either[BlockPoolProblem, Validation[F]]] =
+              claims
+                .takeAddition(header)
+                .map(_.map {
+                  case Some(added) =>
+                    Validation
+                      .added(claims, header, added, refusal => handledSemantic.set(Some(refusal)))
+                  case None => Validation.none[F]
+                })
+
             override def rejected(refusal: ValidationError)(using cats.Applicative[F]): F[Unit] =
-              last.get.flatMap {
-                case Some((fetched, taken)) if (refusal.point match
-                      case ChainSync.Point.Block(_, hash) => hash == fetched
-                      case ChainSync.Point.Origin         => false
-                    ) =>
-                  claims.distrust(taken.origin, refusal)
-                case _ => F.unit
+              handledSemantic.get.flatMap { handled =>
+                if handled.contains(refusal) then F.unit
+                else
+                  last.get.flatMap {
+                    case Some((fetched, taken)) if (refusal.point match
+                          case ChainSync.Point.Block(_, hash) => hash == fetched
+                          case ChainSync.Point.Origin         => false
+                        ) =>
+                      claims.distrust(taken.origin, refusal)
+                    case _ => F.unit
+                  }
               }
 
             def refused(refusal: ValidationError): F[Boolean] =
-              rejected(refusal) *> last.get.map {
-                case Some((fetched, taken)) if (refusal.point match
-                      case ChainSync.Point.Block(_, hash) => hash == fetched
-                      case ChainSync.Point.Origin         => false
-                    ) =>
-                  !taken.own
-                case _ => false
+              handledSemantic.get.flatMap { handled =>
+                if handled.contains(refusal) then F.pure(false)
+                else
+                  rejected(refusal) *> last.get.map {
+                    case Some((fetched, taken)) if (refusal.point match
+                          case ChainSync.Point.Block(_, hash) => hash == fetched
+                          case ChainSync.Point.Origin         => false
+                        ) =>
+                      !taken.own
+                    case _ => false
+                  }
               }
 
             def fetch(header: Header)(using Raise[F, PeerError]): F[Bytes] = fetchBlock(header)

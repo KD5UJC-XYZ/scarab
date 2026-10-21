@@ -11,6 +11,7 @@ import xyz.kd5ujc.scarab.consensus.{
 }
 import xyz.kd5ujc.scarab.ledger.{
   EpochGeometry,
+  BlockPoolProblem,
   Header,
   NodeError,
   PeerError,
@@ -84,7 +85,8 @@ final class Follower[F[_]: Async, S] private (
     cpu: Compute[F],
     window: Ref[F, Follower.Committed[S]],
     genesis: Ref[F, Option[GenesisGovernor[F]]],
-    selectionChanged: Ref[F, F[Unit]]
+    selectionChanged: Ref[F, F[Unit]],
+    invalidBlocks: Ref[F, Option[InvalidBlocks[F]]]
 )(using
     chain: Stateful[F, VolatileChain[S]]
 ):
@@ -96,6 +98,22 @@ final class Follower[F[_]: Async, S] private (
 
   private[node] def installFetchCoordinator(coordinator: FetchCoordinator[F]): F[Unit] =
     selectionChanged.set(coordinator.refreshGenesis)
+
+  /** Installed before sessions start: every body producer and chain selector shares this map. */
+  private[node] def installInvalidBlocks(registry: InvalidBlocks[F]): F[Unit] =
+    invalidBlocks.set(Some(registry))
+
+  private def registryFor(peer: Peer[F])(using Raise[F, NodeError]): F[InvalidBlocks[F]] =
+    for
+      proposed <- peer.invalidBlocks.fold(InvalidBlocks.create[F])(F.pure)
+      selected <- invalidBlocks.modify {
+        case None                     => Some(proposed) -> proposed
+        case current @ Some(existing) => current -> existing
+      }
+      _ <- BlockPoolProblem.DifferentInvalidRegistry
+        .raise[F, Unit]
+        .whenA(peer.invalidBlocks.exists(_ ne selected))
+    yield selected
 
   private def protocol[A](reason: PeerError.ProtocolFailure)(using Raise[F, PeerError]): F[A] =
     PeerError.Protocol(reason).raise[F, A]
@@ -124,12 +142,15 @@ final class Follower[F[_]: Async, S] private (
       track: Ref[F, ChainSelection.Candidate] => F[Unit] = _ => Async[F].unit
   )(using Raise[F, NodeError]): F[Unit] =
     for
+      registry <- registryFor(peer)
       initial <- intersect(peer)
       candidate <- Ref.of[F, ChainSelection.Candidate](initial)
       _ <- track(candidate)
       control <- genesis.get
       _ <- control.fold(
-        Monad[F].foreverM(peer.next.flatMap(event => step(peer, candidate, event, intersect(peer))))
+        Monad[F].foreverM(
+          peer.next.flatMap(event => step(peer, candidate, event, intersect(peer), registry))
+        )
       ) { governor =>
         SessionInput.resource(peer).use { input =>
           for
@@ -147,7 +168,8 @@ final class Follower[F[_]: Async, S] private (
                       peer,
                       candidate,
                       read.event,
-                      input.reintersect(intersect(peer))
+                      input.reintersect(intersect(peer)),
+                      registry
                     )
                 }
               }
@@ -159,7 +181,7 @@ final class Follower[F[_]: Async, S] private (
                     (candidate.get, lastTip.get).tupled.flatMap { (known, tip) =>
                       if known.headers.isEmpty then F.unit
                       else
-                        adopt(peer, known, tip).flatMap {
+                        adopt(peer, known, tip, registry).flatMap {
                           case Some(kept) => candidate.set(kept)
                           case None => input.reintersect(intersect(peer)).flatMap(candidate.set)
                         }
@@ -224,7 +246,8 @@ final class Follower[F[_]: Async, S] private (
       peer: Peer[F],
       candidate: Ref[F, ChainSelection.Candidate],
       event: SyncEvent,
-      reintersect: F[ChainSelection.Candidate]
+      reintersect: F[ChainSelection.Candidate],
+      registry: InvalidBlocks[F]
   )(using Raise[F, NodeError]): F[Unit] = event match
     case SyncEvent.RollBackward(point, _) =>
       candidate.get.flatMap { c =>
@@ -247,13 +270,18 @@ final class Follower[F[_]: Async, S] private (
           case None =>
             protocol(PeerError.ProtocolProblem.HeaderDoesNotExtend(header.point, c.tip))
           case Some(grown) =>
-            candidate.set(grown) *> adopt(peer, grown, tip).flatMap {
-              case Some(kept) => candidate.set(kept)
-              // NoLongerIntersects: drain the pipeline and find a new intersection on this
-              // connection (consensus 82ecba329, ChainSync/Client.hs:1499–1511). Another session
-              // may have advanced the retained window while this candidate was catching up.
-              case None => reintersect.flatMap(candidate.set)
-            }
+            peer
+              .validation(header)
+              .flatMap(_.fold(_.raise[F, Peer.Validation[F]], F.pure))
+              .flatMap { validation =>
+                candidate.set(grown) *> adopt(peer, grown, tip, registry, validation).flatMap {
+                  case Some(kept) => candidate.set(kept)
+                  // NoLongerIntersects: drain the pipeline and find a new intersection on this
+                  // connection (consensus 82ecba329, ChainSync/Client.hs:1499–1511). Another session
+                  // may have advanced the retained window while this candidate was catching up.
+                  case None => reintersect.flatMap(candidate.set)
+                }
+              }
       }
 
   /** Our chain as chain selection sees it. The window is kept between calls and updated by
@@ -299,11 +327,20 @@ final class Follower[F[_]: Async, S] private (
       era: Era
   )
 
+  private final case class Refused(
+      header: Header,
+      error: ValidationError,
+      before: VolatileChain[S],
+      valid: Vector[Applied]
+  )
+
   /** Switch if preferred; no candidate means its intersection left our retained window. */
   private def adopt(
       peer: Peer[F],
       candidate: ChainSelection.Candidate,
-      peerTip: ChainSync.Tip
+      peerTip: ChainSync.Tip,
+      registry: InvalidBlocks[F],
+      validation: Peer.Validation[F] = Peer.Validation.none[F]
   )(using Raise[F, NodeError]): F[Option[ChainSelection.Candidate]] =
     lock.lock.surround {
       for
@@ -317,7 +354,11 @@ final class Follower[F[_]: Async, S] private (
         )
         limit <- control.traverse(_.limitAt(selected)).map(_.flatten)
         current <- chain.get
-        bounded = Follower.limitCandidate(current.k, l, candidate, limit)
+        invalid <- registry.snapshot
+        validPrefix = candidate.copy(headers =
+          candidate.headers.takeWhile(h => !invalid.entries.contains(h.hash))
+        )
+        bounded = Follower.limitCandidate(current.k, l, validPrefix, limit)
         result <- bounded match
           case None => considered(peer, candidate).as(Some(candidate))
           case Some(eligible) =>
@@ -330,8 +371,13 @@ final class Follower[F[_]: Async, S] private (
                 considered(peer, candidate).as(Some(candidate.rebase(eligible.base)))
               case ChainSelection.Decision.Detached => considered(peer, candidate).as(None)
               case ChainSelection.Decision.Switch(to, depth, take) =>
-                switchTo(peer, to, depth, take, peerTip) *> considered(peer, candidate)
-                  .as(Some(candidate.rebase(take.last.point)))
+                val causal =
+                  if validation.addedPoint.exists(point => take.exists(_.point == point)) then
+                    validation
+                  else Peer.Validation.none[F]
+                switchTo(peer, to, depth, take, peerTip, registry, causal).flatMap { committed =>
+                  considered(peer, candidate).as(Some(committed.fold(candidate)(candidate.rebase)))
+                }
       yield result
     }
 
@@ -345,43 +391,105 @@ final class Follower[F[_]: Async, S] private (
       to: ChainSync.Point,
       depth: Int,
       take: Vector[Header],
-      peerTip: ChainSync.Tip
-  )(using Raise[F, NodeError]): F[Unit] =
+      peerTip: ChainSync.Tip,
+      registry: InvalidBlocks[F],
+      validation: Peer.Validation[F]
+  )(using Raise[F, NodeError]): F[Option[ChainSync.Point]] =
     for
       original <- chain.get
       rolled <- original.rollback(to).fold(_.raise[F, VolatileChain[S]], _.pure[F])
-      steps <- take
-        .foldLeftM((rolled, Vector.empty[Applied])) { case ((before, done), header) =>
-          for
-            block <- peer.fetch(header)
-            checked = Handle.allow[NodeError](rules(before.state, header, block)).rescue {
-              case refused: ValidationError => peer.rejected(refused) *> refused.raise[F, S]
-              case other                    => other.raise[F, S]
-            }
-            next <- peer.selectionWork.fold(checked)(work =>
-              work.processing(header.hash).surround(checked)
-            )
-            extended <- before
-              .extend(header, next)
-              .fold(_.raise[F, (VolatileChain[S], Vector[BlockRef])], _.pure[F])
-            ref = BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary)
-          yield (
-            extended._1,
-            done :+ Applied(
-              ref,
-              block,
-              extended._2,
-              extended._1,
-              before,
-              next,
-              SelectView.of(header),
-              header.era
-            )
-          )
+      causal <- Ref.of[F, Peer.Validation[F]](validation)
+      outcome <- F
+        .tailRecM[(VolatileChain[S], Vector[Applied], Int), Either[Refused, Vector[Applied]]](
+          (rolled, Vector.empty, 0)
+        ) { (before, done, index) =>
+          take.lift(index) match
+            case None => F.pure(Right(Right(done)))
+            case Some(header) =>
+              for
+                block <- peer.fetch(header)
+                previous <- causal.get
+                _ <- peer
+                  .validation(header)
+                  .flatMap(_.fold(_.raise[F, Peer.Validation[F]], F.pure))
+                  .flatMap(next => causal.set(next).whenA(next.addedPoint.nonEmpty))
+                  .unlessA(previous.addedPoint.contains(header.point))
+                checked = Handle
+                  .allow[NodeError](
+                    rules(before.state, header, block)
+                      .map(state => Right(state): Either[ValidationError, S])
+                  )
+                  .rescue {
+                    case refused: ValidationError => F.pure(Left(refused))
+                    case other                    => other.raise[F, Either[ValidationError, S]]
+                  }
+                verdict <- peer.selectionWork.fold(checked)(work =>
+                  work.processing(header.hash).surround(checked)
+                )
+                result <- verdict match
+                  case Left(refused) => F.pure(Right(Left(Refused(header, refused, before, done))))
+                  case Right(next) =>
+                    before
+                      .extend(header, next)
+                      .fold(
+                        _.raise[F, Either[
+                          (VolatileChain[S], Vector[Applied], Int),
+                          Either[Refused, Vector[Applied]]
+                        ]],
+                        extended =>
+                          val ref =
+                            BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary)
+                          F.pure(
+                            Left(
+                              (
+                                extended._1,
+                                done :+ Applied(
+                                  ref,
+                                  block,
+                                  extended._2,
+                                  extended._1,
+                                  before,
+                                  next,
+                                  SelectView.of(header),
+                                  header.era
+                                ),
+                                index + 1
+                              )
+                            )
+                          )
+                      )
+              yield result
         }
-        .map(_._2)
-      _ <- commit(original, to, depth, steps, peerTip)
-    yield ()
+      committed <- outcome match
+        case Right(steps)  => commit(original, to, depth, steps, peerTip).as(Some(take.last.point))
+        case Left(refused) =>
+          // Native validation records invalidity and punishes first (ChainSel.hs:1315–1344),
+          // then reconsiders a preferred valid prefix (1147–1186). The ChainDB worker survives
+          // sender-thread cancellation, so this local commit boundary must survive it too.
+          F.uncancelable { _ =>
+            for
+              _ <- peer
+                .invalidated(refused.header, refused.error)
+                .flatMap(_.fold(_.raise[F, Unit], F.pure))
+              _ <- registry.record(refused.header, refused.error).whenA(peer.invalidBlocks.isEmpty)
+              adding <- causal.get
+              decision <- adding
+                .rejected(refused.error, refused.before.tip)
+                .flatMap(_.fold(_.raise[F, Peer.Rejection], F.pure))
+              localNow <- local
+              prefix = take.take(refused.valid.size)
+              preferred = prefix.lastOption.exists(h =>
+                ChainSelection.prefers(
+                  tiebreaker(h.era),
+                  localNow.tipView,
+                  SelectView.of(h)
+                )
+              )
+              _ <- commit(original, to, depth, refused.valid, peerTip).whenA(preferred)
+              _ <- refused.error.raise[F, Unit].whenA(decision == Peer.Rejection.PunishedCurrent)
+            yield Option.when(preferred)(refused.before.tip)
+          }
+    yield committed
 
   /** Everything applied: persist, replace the chain, announce and tell the mempool.
     *
@@ -421,6 +529,11 @@ final class Follower[F[_]: Async, S] private (
       )(F.pure)
       _ <- F.uncancelable(_ =>
         chain.set(finalChain) *> window.set(Follower.Committed(finalChain, selected))
+      )
+      _ <- invalidBlocks.get.flatMap(
+        _.traverse_(registry =>
+          finalChain.anchor.block.traverse_(anchor => registry.pruneBefore(anchor.slot))
+        )
       )
       _ <- selectionChanged.get.flatten
       _ <- events
@@ -631,8 +744,9 @@ object Follower:
         chainGate.fold(Mutex[F])(_.pure[F]),
         Ref.of[F, Committed[S]](Committed(initial, selected)),
         Ref.of[F, Option[GenesisGovernor[F]]](None),
-        Ref.of[F, F[Unit]](Async[F].unit)
-      ).mapN { (views, lock, window, genesis, selectionChanged) =>
+        Ref.of[F, F[Unit]](Async[F].unit),
+        Ref.of[F, Option[InvalidBlocks[F]]](None)
+      ).mapN { (views, lock, window, genesis, selectionChanged, invalidBlocks) =>
         new Follower[F, S](
           rules,
           events,
@@ -646,7 +760,8 @@ object Follower:
           compute.getOrElse(Compute.inline[F]),
           window,
           genesis,
-          selectionChanged
+          selectionChanged,
+          invalidBlocks
         )
       }
     }

@@ -6,7 +6,9 @@ import cats.effect.syntax.all.*
 import cats.Functor
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.ValidationError
+import xyz.kd5ujc.scarab.ledger.{BlockPoolProblem, Header, PeerError, ValidationError}
+import xyz.kd5ujc.scarab.protocol.ChainSync
+import xyz.kd5ujc.scarab.consensus.genesis.DiffusionPunishment
 import xyz.kd5ujc.scarab.consensus.ChainSelection
 import xyz.kd5ujc.scarab.network.selection.{BlockFetchPolicy, FetchMode}
 import scala.concurrent.duration.*
@@ -25,7 +27,10 @@ import scala.concurrent.duration.*
   * A claim that is not filled (the connection failed, the peer lacks the block) is released, and a
   * session waiting for it fetches the block itself. Received original bodies remain readable while
   * validation or LoE postpones selection, like upstream VolatileDB. The bounded cache drops the
-  * oldest bodies past [[BlockPool.Retained]] entries.
+  * oldest ordinary bodies past [[BlockPool.Retained]] entries. Checked first admissions awaiting
+  * selection, and known-invalid originals, are exempt: native VolatileDB retains the latter until
+  * immutable-slot GC. Their raw bytes and attribution remain in memory even with a durable received
+  * journal; pruning the shared invalid registry releases both at the same strict slot cutoff.
   *
   * Claims are made through a [[BlockPool.Claims]] that belongs to one session ([[session]]). It is
   * a resource: when the session ends, however it ends (a failure, a cancellation), every claim it
@@ -37,7 +42,8 @@ final class BlockPool[F[_]: Async] private (
     policy: BlockPool.FetchPolicy,
     attribution: BlockPool.AttributionPolicy,
     private[node] val fetchCoordinator: FetchCoordinator[F],
-    recovered: Option[BlockPool.Recovered[F]]
+    recovered: Option[BlockPool.Recovered[F]],
+    private[node] val invalidBlocks: InvalidBlocks[F]
 ):
   import BlockPool.*
   private val F = Async[F]
@@ -52,22 +58,29 @@ final class BlockPool[F[_]: Async] private (
     * (`InvalidBlockPunishment.hs` 48-56). Our shared cache instead retains a bounded peer reporter,
     * because the session validating a cached block can be a different client's session.
     */
-  private[node] def session(report: Option[ValidationError => F[Unit]]): Resource[F, Claims[F]] =
+  private[node] def session(
+      report: Option[ValidationError => F[Unit]],
+      diffusion: Diffusion = Diffusion.On
+  ): Resource[F, Claims[F]] =
     Resource
       .make(
-        Deferred[F, ValidationError].flatMap(blame =>
+        (
+          Deferred[F, ValidationError],
+          Ref.of[F, DiffusionPunishment.State](DiffusionPunishment.initial)
+        ).tupled.flatMap { (blame, punishment) =>
           slots
             .modify(s =>
               (
                 s.copy(
                   owners = s.owners + 1,
-                  origins = s.origins.updated(s.owners, Origin(blame, report, false, None))
+                  origins = s.origins
+                    .updated(s.owners, Origin(blame, report, false, None, punishment, diffusion))
                 ),
                 s.owners
               )
             )
             .map(_ -> blame)
-        )
+        }
       ) { (owner, _) =>
         releaseAll(owner) *> F.monotonic.flatMap { now =>
           slots.update { s =>
@@ -131,7 +144,11 @@ final class BlockPool[F[_]: Async] private (
     }
 
   /** The blocks `owner` claimed arrived: the first delivery of a block wins. */
-  private def fill(owner: Long, blocks: Vector[(Bytes, Bytes)]): F[Unit] =
+  private def fill(
+      owner: Long,
+      blocks: Vector[(Bytes, Bytes)],
+      metadata: Map[Bytes, DeliveredHeader] = Map.empty
+  ): F[Unit] =
     reap *> slots
       .modify { s =>
         blocks.foldLeft((s, Vector.empty[(Deferred[F, Option[Filled]], Filled)])) {
@@ -143,9 +160,13 @@ final class BlockPool[F[_]: Async] private (
                   acc.copy(
                     entries =
                       acc.entries.updated(hash, Slot.Done(block, seq, Source.Session(owner))),
-                    origins = acc.origins.updatedWith(owner)(_.map(_.copy(delivered = true)))
+                    origins = acc.origins.updatedWith(owner)(_.map(_.copy(delivered = true))),
+                    headers = metadata
+                      .get(hash)
+                      .fold(acc.headers)(value => acc.headers.updated(hash, value)),
+                    fresh = if metadata.contains(hash) then acc.fresh + hash else acc.fresh
                   ),
-                  waiting :+ (done -> Filled(block, Source.Session(owner)))
+                  waiting :+ (done -> Filled(block, Source.Session(owner), metadata.get(hash)))
                 )
               case _ => (acc, waiting)
         }
@@ -203,7 +224,7 @@ final class BlockPool[F[_]: Async] private (
     reap *> slots.modify { s =>
       s.entries.get(hash) match
         case Some(Slot.Done(block, _, origin)) =>
-          (s, F.pure(Option(Filled(block, origin))))
+          (s, F.pure(Option(Filled(block, origin, s.headers.get(hash)))))
         case Some(Slot.Pending(done, _, _)) =>
           (s, done.get)
         case None =>
@@ -222,7 +243,7 @@ final class BlockPool[F[_]: Async] private (
     (source match
       case Source.Session(origin) => distrustSession(origin, error)
       case Source.Recovered =>
-        slots.update(s => s.copy(entries = s.entries -- refusedHash(error)))
+        slots.update(s => s.copy(entries = s.entries -- refusedHash(error)).coherent)
     ) *> recovered.traverse_(store => refusedHash(error).traverse_(store.invalidate))
 
   private def distrustSession(origin: Long, error: ValidationError): F[Unit] =
@@ -234,15 +255,17 @@ final class BlockPool[F[_]: Async] private (
           }.toVector
           val (released, waits) = release1(s, origin, pending)
           (
-            released.copy(
-              entries = released.entries.filter {
-                case (_, Slot.Done(_, _, Source.Session(from))) => from != origin
-                case _                                          => true
-              },
-              origins = s.origins - origin,
-              released =
-                s.released - (if s.origins.get(origin).exists(_.expires.isDefined) then 1 else 0)
-            ),
+            released
+              .copy(
+                entries = released.entries.filter {
+                  case (_, Slot.Done(_, _, Source.Session(from))) => from != origin
+                  case _                                          => true
+                },
+                origins = s.origins - origin,
+                released =
+                  s.released - (if s.origins.get(origin).exists(_.expires.isDefined) then 1 else 0)
+              )
+              .coherent,
             (s.origins.get(origin), waits)
           )
         }
@@ -251,6 +274,112 @@ final class BlockPool[F[_]: Async] private (
             source.traverse_(o => o.report.fold(o.blame.complete(error).void)(_(error)))
         }
     }
+
+  /** Pin the actual checked original before publishing its invalidity. Native VolatileDB keeps
+    * invalid bodies readable until slot GC; merely retaining their hashes would falsely satisfy the
+    * fetched predicate. Pinning never creates another first-admission context.
+    */
+  private def invalidated(
+      taken: Taken,
+      header: Header,
+      error: ValidationError
+  ): F[Either[BlockPoolProblem, Unit]] = taken.metadata match
+    case None => F.pure(Left(BlockPoolProblem.MissingDeliveredHeader(header.point)))
+    case Some(metadata) if metadata.header.point != header.point =>
+      F.pure(Left(BlockPoolProblem.MissingDeliveredHeader(header.point)))
+    case Some(metadata) =>
+      F.uncancelable { _ =>
+        slots
+          .modify { before =>
+            val hash = header.hash
+            val (sequence, waiting) = before.entries.get(hash) match
+              case Some(Slot.Pending(done, seq, _)) => seq -> Some(done)
+              case Some(Slot.Done(_, seq, _))       => seq -> None
+              case None                             => before.next -> None
+            before.copy(
+              entries =
+                before.entries.updated(hash, Slot.Done(taken.block, sequence, taken.origin)),
+              headers = before.headers.updated(hash, metadata),
+              pinned = before.pinned + hash,
+              fresh = before.fresh - hash,
+              next = before.next.max(sequence + 1)
+            ) -> waiting
+          }
+          .flatMap(
+            _.traverse_(_.complete(Some(Filled(taken.block, taken.origin, Some(metadata)))))
+          ) *>
+          invalidBlocks.record(header, error) *> fetchCoordinator.refreshGenesis.as(Right(()))
+      }
+
+  /** A body starts chain selection once, with its first adding client's immutable context. Another
+    * peer may process its cached original first; ownership must not become that peer's.
+    */
+  private def takeAddition(
+      owner: Long,
+      announced: Header
+  ): F[Either[BlockPoolProblem, Option[Taken]]] =
+    slots.modify { before =>
+      val hash = announced.hash
+      if !before.fresh(hash) then before -> Right(None)
+      else
+        val context = (before.entries.get(hash), before.headers.get(hash)) match
+          case (Some(Slot.Done(block, _, origin)), Some(header)) =>
+            Right(Some(Taken(block, origin == Source.Session(owner), origin, Some(header))))
+          case _ =>
+            Left(BlockPoolProblem.MissingDeliveredHeader(announced.point))
+        before.copy(fresh = before.fresh - hash) -> context
+    }
+
+  /** ChainSel.hs:1326–1344 associates invalidity with the body which caused chain selection, not
+    * necessarily the invalid body in that candidate's prefix. Semantic rejection retains every
+    * received original, just as the native VolatileDB does; the invalid map excludes it.
+    */
+  private def reject(
+      taken: Taken,
+      added: ChainSync.Point,
+      error: ValidationError,
+      lastValid: ChainSync.Point
+  ): F[Either[BlockPoolProblem, Rejection]] =
+    taken.origin match
+      case Source.Recovered => F.pure(Right(Rejection.NotImplicated(taken.origin)))
+      case Source.Session(id) =>
+        taken.metadata match
+          case None => F.pure(Left(BlockPoolProblem.MissingDeliveredHeader(added)))
+          case Some(delivered) =>
+            val classification = for
+              addedPoint <- blockPoint(delivered.header.point)
+              invalidPoint <- blockPoint(error.point)
+            yield DiffusionPunishment.classify(addedPoint, invalidPoint, lastValid)
+            classification match
+              case Left(problem) => F.pure(Left(problem))
+              case Right(None)   => F.pure(Right(Rejection.NotImplicated(taken.origin)))
+              case Right(Some(invalidity)) =>
+                slots.get.flatMap(_.origins.get(id) match
+                  // A forgotten retained attribution has no live client thread to punish.
+                  case None => F.pure(Right(Rejection.NotImplicated(taken.origin)))
+                  case Some(origin) =>
+                    origin.punishment
+                      .modify { before =>
+                        val decision = origin.diffusion match
+                          case Diffusion.On =>
+                            DiffusionPunishment.judge(before, delivered.view, invalidity)
+                          case Diffusion.Off =>
+                            DiffusionPunishment.Decision(before, DiffusionPunishment.Outcome.Punish)
+                        decision.state -> decision.outcome
+                      }
+                      .flatMap {
+                        case DiffusionPunishment.Outcome.Forgive =>
+                          F.pure(Right(Rejection.Forgiven(taken.origin)))
+                        case DiffusionPunishment.Outcome.Punish =>
+                          origin.report
+                            .fold(origin.blame.complete(error).void)(_(error))
+                            .as(Right(Rejection.Punished(taken.origin)))
+                      })
+
+  private def blockPoint(point: ChainSync.Point): Either[BlockPoolProblem, ChainSync.Point.Block] =
+    point match
+      case block: ChainSync.Point.Block => Right(block)
+      case ChainSync.Point.Origin       => Left(BlockPoolProblem.MissingDeliveredHeader(point))
 
   private def retained(source: Source, hash: Bytes): F[Boolean] =
     reap *> (source match
@@ -283,7 +412,15 @@ final class BlockPool[F[_]: Async] private (
   private def clear: F[Unit] =
     slots
       .getAndUpdate(s =>
-        s.copy(entries = Map.empty, origins = Map.empty, released = 0, reapAt = None)
+        s.copy(
+          entries = Map.empty,
+          origins = Map.empty,
+          released = 0,
+          reapAt = None,
+          headers = Map.empty,
+          fresh = Set.empty,
+          pinned = Set.empty
+        )
       )
       .flatMap(_.entries.values.toVector.traverse_ {
         case Slot.Pending(done, _, _) => done.complete(None).void
@@ -343,12 +480,29 @@ object BlockPool:
     ): F[Vector[Boolean]] =
       pool.claim(owner, hashes, mode, allowOverlap)
     def fill(blocks: Vector[(Bytes, Bytes)]): F[Unit] = pool.fill(owner, blocks)
+    private[node] def invalidBlocks: InvalidBlocks[F] = pool.invalidBlocks
+    private[node] def invalidated(
+        taken: Taken,
+        header: Header,
+        error: ValidationError
+    ): F[Either[BlockPoolProblem, Unit]] =
+      pool.invalidated(taken, header, error)
+    private[node] def takeAddition(header: Header): F[Either[BlockPoolProblem, Option[Taken]]] =
+      pool.takeAddition(owner, header)
+    def fillDelivered(blocks: Vector[Delivered]): F[Unit] =
+      pool.fill(
+        owner,
+        blocks.map(value => value.header.hash -> value.block),
+        blocks.map(value => value.header.hash -> value.metadata).toMap
+      )
 
     /** Provenance of original bytes delivered by this connection, independently of which peer won a
       * duplicate pool claim. Genesis can validate that delivery before its range ends.
       */
     private[node] def delivered(block: Bytes): Taken =
       Taken(block, own = true, Source.Session(owner))
+    private[node] def delivered(block: Delivered): Taken =
+      Taken(block.block, own = true, Source.Session(owner), Some(block.metadata))
     def release(hashes: Vector[Bytes]): F[Unit] = pool.release(owner, hashes)
 
     /** The block, once some session has fetched it (see [[BlockPool.take]]), and whether this
@@ -357,12 +511,19 @@ object BlockPool:
     def take(hash: Bytes)(using Functor[F]): F[Option[Taken]] =
       pool
         .takeFilled(hash)
-        .map(_.map(f => Taken(f.block, f.origin == Source.Session(owner), f.origin)))
+        .map(_.map(f => Taken(f.block, f.origin == Source.Session(owner), f.origin, f.metadata)))
 
     /** The rules refused a block that session `origin` delivered: drop the others it delivered and
       * tell it ([[blamed]]).
       */
     def distrust(origin: Source, error: ValidationError): F[Unit] = pool.distrust(origin, error)
+
+    def reject(
+        taken: Taken,
+        added: ChainSync.Point,
+        error: ValidationError,
+        lastValid: ChainSync.Point
+    ): F[Either[BlockPoolProblem, Rejection]] = pool.reject(taken, added, error, lastValid)
 
     /** A staged body cannot outlive invalidation or the retained attribution of its source. */
     private[node] def retained(origin: Source, hash: Bytes): F[Boolean] =
@@ -385,12 +546,44 @@ object BlockPool:
       invalidate: Bytes => F[Unit]
   )
 
-  final case class Filled(block: Bytes, origin: Source)
+  enum Diffusion:
+    case On, Off
+
+  final case class DeliveredHeader(header: Header, view: DiffusionPunishment.View)
+  final class Delivered private (
+      val header: Header,
+      val block: Bytes,
+      val metadata: DeliveredHeader
+  )
+  object Delivered:
+    def checked(header: Header, block: Bytes): Either[PeerError.ProtocolProblem, Delivered] =
+      for
+        _ <- FetchedBlockIntegrity.check(header, block)
+        view <- DiffusionPunishment
+          .view(header)
+          .leftMap(PeerError.ProtocolProblem.InvalidPunishmentHeader(_))
+      yield new Delivered(header, block, DeliveredHeader(header, view))
+
+  enum Rejection:
+    case Forgiven(source: Source)
+    case Punished(source: Source)
+    case NotImplicated(source: Source)
+    def origin: Source = this match
+      case Forgiven(value)      => value
+      case Punished(value)      => value
+      case NotImplicated(value) => value
+
+  final case class Filled(block: Bytes, origin: Source, metadata: Option[DeliveredHeader] = None)
 
   /** A block taken from the pool: `own` when the session that takes it fetched it, else `origin`
     * delivered it.
     */
-  final case class Taken(block: Bytes, own: Boolean, origin: Source)
+  final case class Taken(
+      block: Bytes,
+      own: Boolean,
+      origin: Source,
+      metadata: Option[DeliveredHeader] = None
+  )
 
   /** Entries kept before the oldest finished ones are dropped. */
   val Retained = 8192
@@ -437,7 +630,24 @@ object BlockPool:
             ),
             policy.peerSalt
           )
-          .map(new BlockPool(slots, policy, attribution, _, recovered))
+          .flatMap(coordinator =>
+            InvalidBlocks
+              .create[F](cutoff =>
+                slots.update { current =>
+                  val expired = current.pinned
+                    .filter(hash => current.headers.get(hash).exists(_.header.slot < cutoff))
+                  current.copy(
+                    entries = current.entries -- expired,
+                    headers = current.headers -- expired,
+                    fresh = current.fresh -- expired,
+                    pinned = current.pinned -- expired
+                  )
+                }
+              )
+              .map(invalid =>
+                new BlockPool(slots, policy, attribution, coordinator, recovered, invalid)
+              )
+          )
       )
 
   /** The node owns the expiry worker; release removes callbacks and wakes any remaining waiters. */
@@ -458,7 +668,9 @@ object BlockPool:
       blame: Deferred[F, ValidationError],
       report: Option[ValidationError => F[Unit]],
       delivered: Boolean,
-      expires: Option[FiniteDuration]
+      expires: Option[FiniteDuration],
+      punishment: Ref[F, DiffusionPunishment.State],
+      diffusion: Diffusion
   )
 
   /** @param origins
@@ -470,7 +682,10 @@ object BlockPool:
       owners: Long,
       origins: Map[Long, Origin[F]],
       released: Int,
-      reapAt: Option[FiniteDuration]
+      reapAt: Option[FiniteDuration],
+      headers: Map[Bytes, DeliveredHeader] = Map.empty,
+      fresh: Set[Bytes] = Set.empty,
+      pinned: Set[Bytes] = Set.empty
   ):
     def pruned(now: FiniteDuration, policy: AttributionPolicy): Slots[F] =
       if released <= policy.retained && reapAt.forall(_ > now) then this
@@ -489,24 +704,37 @@ object BlockPool:
         .toSet
       val keep = origins.filter((id, o) => o.expires.isEmpty || retained(id))
       val dropped = origins.keySet -- keep.keySet
+      val retainedEntries = entries.filter {
+        case (hash, Slot.Done(_, _, Source.Session(origin))) => pinned(hash) || !dropped(origin)
+        case _                                               => true
+      }
       copy(
         origins = keep,
         released = retained.size,
         reapAt = keep.values.flatMap(_.expires).minOption,
-        entries = entries.filter {
-          case (_, Slot.Done(_, _, Source.Session(origin))) => !dropped(origin)
-          case _                                            => true
-        }
+        entries = retainedEntries,
+        headers = headers.filter((hash, _) => retainedEntries.contains(hash)),
+        fresh = fresh.filter(retainedEntries.contains)
       )
 
     /** Without the finished entries older than the newest `Retained` claims, once the pool holds
       * twice as many (a walk of the map, so not on every claim).
       */
+    private[BlockPool] def coherent: Slots[F] = copy(
+      headers = headers.filter((hash, _) => entries.contains(hash)),
+      fresh = fresh.filter(entries.contains),
+      pinned = pinned.filter(entries.contains)
+    )
+
     def trimmed: Slots[F] =
       if entries.size <= 2 * Retained then this
       else
         val floor = next - Retained
-        copy(entries = entries.filter {
-          case (_, Slot.Done(_, seq, _)) => seq >= floor
-          case _                         => true
-        })
+        val retainedEntries = entries.filter {
+          case (hash, Slot.Done(_, seq, _)) => seq >= floor || fresh(hash) || pinned(hash)
+          case _                            => true
+        }
+        copy(
+          entries = retainedEntries,
+          headers = headers.filter((hash, _) => retainedEntries.contains(hash))
+        )
