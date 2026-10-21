@@ -353,10 +353,12 @@ class InboundGovernorSuite extends FailsOnUncaught:
       chain <- us.chain.get
       sessions <- us.governor.sessions
       table <- us.manager.snapshot
+      metrics <- us.metrics.get
     yield
       val failure = peerFailure(outcome._2)
       assert(failure.isInstanceOf[PeerError.InvalidHeader])
       assertEquals(ranges, Vector.empty[(Point, Point)])
+      assertEquals(metrics.sizes, (0, 0))
       assertEquals(chain.tip, ChainSync.Point.Origin)
       sessions.head.ended match
         case Some(InboundGovernor.SessionFailure.Peer(error)) => assert(error eq failure)
