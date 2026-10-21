@@ -266,6 +266,7 @@ jobs:
           app-id: ${{ vars.SCARAB_RELEASE_APP_ID }}
           private-key: ${{ secrets.SCARAB_RELEASE_APP_PRIVATE_KEY }}
           permission-contents: write
+          permission-actions: read
       - name: Verify live App authority before any signing or staging mutation
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
@@ -450,6 +451,7 @@ jobs:
           app-id: ${{ vars.SCARAB_RELEASE_APP_ID }}
           private-key: ${{ secrets.SCARAB_RELEASE_APP_PRIVATE_KEY }}
           permission-contents: write
+          permission-actions: read
       - name: Retrieve original produced-block proof, when supplied
         if: inputs.production-proof-run != ''
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
@@ -590,6 +592,7 @@ jobs:
           app-id: ${{ vars.SCARAB_RELEASE_APP_ID }}
           private-key: ${{ secrets.SCARAB_RELEASE_APP_PRIVATE_KEY }}
           permission-contents: write
+          permission-actions: read
       - name: Advance only with authenticated independent receipt
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
