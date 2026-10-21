@@ -252,6 +252,8 @@
     "fixtures/network/block-fetch/sources/consensus-server.hs": "d8dc5172c88fc68ca8113f5a1857b4519a74088eaa9424f7182a30534ddeea36",
     "fixtures/network/block-fetch/start-batch.hex": "9b82f217858a941d6569abf4dce51e16fc9046bddee1ca26dad061efa6e62275",
     "fixtures/network/block-fetch/toy-block.hex": "c335730e6f6538cdeedec007827f89777eac5b1dd28146b52e75c670b03c0a44",
+    "fixtures/network/chainsync-pipeline/decisions.jsonl": "8482ff9dc96217dbca6e828a557d29f42d98c0d3f3251e39fb4dc9f6cd8cc1bc",
+    "fixtures/network/chainsync-pipeline/manifest.json": "7fd8522d50cb78945f5d6c9645855ffe0d61d51951654373a94a3f31c9717245",
     "fixtures/network/keepalive-direct-range/LICENSE-Apache-2.0": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
     "fixtures/network/keepalive-direct-range/SHA256SUMS": "a62dca9945b7900bb3c84085fde84846a8a4b7faed4030409da4e0eb1141ec97",
     "fixtures/network/keepalive-direct-range/manifest.json": "840858859c333d6815d55fae915d5948602a95f4663e95f0273e994007eae927",

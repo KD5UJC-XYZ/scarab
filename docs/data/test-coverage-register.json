@@ -460,6 +460,26 @@
         "consensus/src/test/scala/xyz/kd5ujc/scarab/consensus/genesis/UpstreamHfcSelectionSuite.scala"
       ],
       "candidateRequired": true
+    },
+    {
+      "id": "rolling-chainsync-reference-decisions",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "798 explicit native low/high decision outputs and 24 retained original upstream-generated low/high final-chain scenarios.",
+      "assertion": "Compare full native action and continuation state for identical policy inputs; replay original scenarios through receiver-observed rolling runtime with unchanged depth pairs, intersections and complete producer chains, bounded outstanding requests and zero before Done.",
+      "rationale": "Explicit native decision grids and original generated protocol scenarios provide distinct evidence. Complete-message readiness and immediate receiver callbacks must be exercised through the production API, rather than inferred from legacy fixed-batch final chains.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/310",
+      "resolution": "No original inputs or native outcomes are replaced, masked or excluded. Production defaults are 200/300; original scenarios retain their own generated marks. Exact thread schedules are not inferred from functional outcomes.",
+      "evidence": [
+        "fixtures/network/chainsync-pipeline/manifest.json",
+        "fixtures/network/chainsync-pipeline/README.md",
+        "network/src/test/scala/xyz/kd5ujc/scarab/network/ChainSyncPipelineDecisionSuite.scala",
+        "network/src/test/scala/xyz/kd5ujc/scarab/network/ChainSyncPipelineSuite.scala",
+        "network/src/test/scala/xyz/kd5ujc/scarab/network/UpstreamChainSyncBehaviorSuite.scala",
+        "docs/design/chainsync-pipeline.md"
+      ],
+      "candidateRequired": true
     }
   ]
 }

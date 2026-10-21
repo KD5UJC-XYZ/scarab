@@ -248,3 +248,18 @@ generator size. Its manifest pins the source, observer and dependency plan. The 
 Scarab's production Cardano Handshake (version 15); the upstream property uses its test-only
 `TestVersion` handshake. These results compare generated chain behavior over TCP. They do not claim
 handshake wire/version-data equality, OS-pipe scheduling equality or pipeline decision-trace parity.
+
+## Rolling low/high replay (#310)
+
+The 24 retained `chainsync-pipelined-low-high.tsv` cases now exercise Scarab's resource-owned
+rolling client with receiver-owned AwaitReply hooks. Both original depth inputs determine the
+low/high marks; original seeds, encoded chains, intersections and expected final producer chains
+remain unchanged. The replay checks actual outstanding work against the high mark and drains to
+zero before Done. Capture-time manifest text describing the former fixed-batch replay is historical
+and is superseded by this implementation. No native vector or observed outcome was regenerated.
+
+Separately, [798 explicit native policy decisions](../../network/chainsync-pipeline/README.md)
+compare complete action/continuation outcomes, including production 200/300 defaults and Word64
+boundaries. They are not described as original upstream-generated cases. The
+[rolling contract](../../../docs/design/chainsync-pipeline.md) records callback/cancellation laws
+and required combined acceptance; other retained pipeline profiles keep their stated test scope.
