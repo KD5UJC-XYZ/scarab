@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.protocol.{ChainSync, NtNHeader}
 
 class PeerGenesisLifecycleSuite extends FailsOnUncaught:
   private enum Operation:
-    case Waiting, RequestTimeout, RestartTimeout, NoIntersection, RollbackEnd
+    case Waiting, RequestTimeout, RestartTimeout, NoIntersection, RollbackEnd, LegacyRollbackEnd
 
   for operation <- Operation.values do
     test(operation match
@@ -27,7 +27,9 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
       case Operation.NoIntersection =>
         "a normal drained ChainSync exit sends Done and preserves the bearer"
       case Operation.RollbackEnd =>
-        "rollback before the intersection drains the batch and preserves the bearer") {
+        "rollback before the intersection drains the batch and preserves the bearer"
+      case Operation.LegacyRollbackEnd =>
+        "non-streaming rollback termination drains before returning its typed result") {
       for
         waiting <- Deferred[IO, Unit]
         timeout: NetworkError.Timeout = NetworkError.Timeout(2, "NextCanAwait")
@@ -54,7 +56,8 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
             if operation == Operation.RequestTimeout then
               Raise[IO, NetworkError]
                 .raise[NetworkError, Vector[ChainSyncClient.Update[NtNHeader]]](timeout)
-            else if operation == Operation.RollbackEnd then
+            else if (operation == Operation.RollbackEnd || operation == Operation.LegacyRollbackEnd)
+            then
               IO.pure(
                 Vector.fill(2)(
                   ChainSyncClient.Update.RollBackward(ChainSync.Point.Origin, ChainSync.Tip.Origin)
@@ -93,7 +96,7 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
             case Operation.Waiting =>
               waiting.complete(()).void *> IO
                 .never[ChainSyncJumping.Instruction[GenesisPeer.Checkpoint]]
-            case Operation.RequestTimeout | Operation.RollbackEnd =>
+            case Operation.RequestTimeout | Operation.RollbackEnd | Operation.LegacyRollbackEnd =>
               IO.pure(ChainSyncJumping.Instruction.RunNormally)
             case Operation.RestartTimeout | Operation.NoIntersection =>
               IO.pure(ChainSyncJumping.Instruction.Restart)
@@ -117,8 +120,10 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
             Peer
               .Settings(SocketAddress[Host](ip"10.5.0.1", port"3001"), 42, byronEpochSlots = 21600),
             _ => IO.unit,
-            genesis = Some(control),
-            headers = Option.when(operation == Operation.RollbackEnd)(
+            genesis = Option.when(operation != Operation.LegacyRollbackEnd)(control),
+            headers = Option.when(
+              (operation == Operation.RollbackEnd || operation == Operation.LegacyRollbackEnd)
+            )(
               new HeaderCheck[IO]:
                 def start(@scala.annotation.unused point: ChainSync.Point) =
                   IO.pure(new HeaderGate[IO]:
@@ -139,7 +144,9 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
                   (peer
                     .intersect(Vector(ChainSync.Point.Origin))
                     .void
-                    .whenA(operation == Operation.RollbackEnd) *> peer.next)
+                    .whenA(
+                      (operation == Operation.RollbackEnd || operation == Operation.LegacyRollbackEnd)
+                    ) *> peer.next)
                     .as(Right(()): Either[PeerError, Unit])
                 )
                 .rescue(e => IO.pure(Left(e)))
@@ -148,12 +155,14 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
                     result,
                     Left(
                       if operation == Operation.NoIntersection then PeerError.NoIntersection
-                      else if operation == Operation.RollbackEnd then
-                        PeerError.RolledBackPastIntersection(ChainSync.Point.Origin)
+                      else if (
+                          operation == Operation.RollbackEnd || operation == Operation.LegacyRollbackEnd
+                        )
+                      then PeerError.RolledBackPastIntersection(ChainSync.Point.Origin)
                       else PeerError.Unavailable(PeerError.Unavailability.Network(timeout))
                     )
                   )
-                ) *> (if operation == Operation.NoIntersection || operation == Operation.RollbackEnd
+                ) *> (if operation == Operation.NoIntersection || (operation == Operation.RollbackEnd || operation == Operation.LegacyRollbackEnd)
                       then
                         peer.quiesce.timeout(2.seconds) *> closeSignal.tryGet
                           .map(reason => assertEquals(reason, None))

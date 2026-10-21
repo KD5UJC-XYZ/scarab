@@ -622,6 +622,14 @@ object Peer:
               }
             }
 
+          /** A normal rollback exit is sent only after every response of the submitted batch was
+            * collected; raising inside the streaming callback would abort its collector.
+            */
+          def finishPendingEnd(using Raise[F, PeerError]): F[Unit] =
+            pendingEnd
+              .getAndSet(None)
+              .flatMap(_.traverse_(error => connection.chainSync.done *> error.raise[F, Unit]))
+
           /** The next batch of ChainSync instructions. */
           def requestHeaders(using Raise[F, PeerError]): F[Vector[SyncEvent]] =
             for
@@ -636,6 +644,7 @@ object Peer:
               took = arrived - began
               _ <- observe.traverse_(_(Peer.Observation.Round(n, updates.size, took.toMillis)))
               batch <- acceptUpdates(updates)
+              _ <- finishPendingEnd
             yield batch
 
           /** Genesis must make each validated prefix available while later replies wait for a
@@ -662,9 +671,7 @@ object Peer:
                       }
                 }
               }
-              _ <- pendingEnd
-                .getAndSet(None)
-                .flatMap(_.traverse_(error => connection.chainSync.done *> error.raise[F, Unit]))
+              _ <- finishPendingEnd
               arrived <- F.monotonic
               _ <- observe.traverse_(
                 _(Peer.Observation.Round(n, updates.size, (arrived - began).toMillis))
@@ -799,19 +806,31 @@ object Peer:
                   // brought to rest: the batches requested so far are published, then it is idle
                   previous.get *> permits.release *> queue.offer(PipelineEvent.Drained)
                 case None =>
-                  for
-                    batch <- requestHeaders
-                    published <- Deferred[F, Unit]
-                    _ <- supervised(
-                      prefetch(batch) *> previous.get *>
-                        workSession.traverse_(_.ready(batch.collect {
-                          case SyncEvent.RollForward(h, _) => h.hash
-                        })) *>
-                        queue.offer(PipelineEvent.Batch(batch)) *>
-                        published.complete(()).void
-                    )
-                    _ <- produce(published)
-                  yield ()
+                  Fault.fiber(requestHeaders).flatMap {
+                    case Left(
+                          Fault.Failed(
+                            error @ (PeerError.NoIntersection |
+                            _: PeerError.RolledBackPastIntersection)
+                          )
+                        ) =>
+                      val fault = Fault.Failed(error)
+                      previous.get *> permits.release *> pipelineFailure.set(Some(fault)) *>
+                        queue.offer(PipelineEvent.Failed(fault))
+                    case Left(fault) => Fault.land[F, Unit](Left(fault))
+                    case Right(batch) =>
+                      for
+                        published <- Deferred[F, Unit]
+                        _ <- supervised(
+                          prefetch(batch) *> previous.get *>
+                            workSession.traverse_(_.ready(batch.collect {
+                              case SyncEvent.RollForward(h, _) => h.hash
+                            })) *>
+                            queue.offer(PipelineEvent.Batch(batch)) *>
+                            published.complete(()).void
+                        )
+                        _ <- produce(published)
+                      yield ()
+                  }
             yield ()
 
           def obtainBlock(header: Header)(using Raise[F, PeerError]): F[BlockPool.Taken] =
