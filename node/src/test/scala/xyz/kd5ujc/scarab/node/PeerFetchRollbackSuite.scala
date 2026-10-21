@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.node
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.mtl.syntax.all.*
+import cats.syntax.all.*
 import com.comcast.ip4s.*
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -110,6 +111,22 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
                   val end = rows.indexWhere(_._1.point == to)
                   Option.when(start >= 0 && end >= start)(rows.slice(start, end + 1).map(_._2))
                 }.headOption)
+            override def requestRangeStreaming(from: ChainSync.Point, to: ChainSync.Point)(
+                onBlock: Bytes => IO[Either[NetworkError, Unit]],
+                @scala.annotation.unused observe: BlockFetchRuntime.Event => IO[Unit]
+            )(using Raise[IO, NetworkError], cats.Monad[IO]): IO[Option[Vector[Bytes]]] =
+              requestRange(from, to).flatTap(_.traverse_(_.traverse_ { raw =>
+                val hash = bodies
+                  .collectFirst { case (hash, bytes) if bytes == raw => hash }
+                  .getOrElse(fail("body absent from original forged chain"))
+                onBlock(raw).flatMap(_.fold(_.raise[IO, Unit], _ => IO.unit)) *>
+                  cats.Monad[IO].tailRecM(()) { _ =>
+                    applied.get.flatMap { hashes =>
+                      if hashes.contains(hash) then IO.pure(Right(()))
+                      else IO.sleep(5.millis).as(Left(()))
+                    }
+                  }
+              }))
             def done(using Raise[IO, NetworkError]) = IO.unit
             def idle = IO.pure(true)
           val mux = new Mux[IO]:
