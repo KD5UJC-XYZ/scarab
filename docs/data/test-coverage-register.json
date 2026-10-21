@@ -1,0 +1,237 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "mempack-join",
+      "classification": "native-parity",
+      "status": "pending-integration",
+      "scope": "A paired native tables file and RocksDB checkpoint.",
+      "assertion": "Nonempty decoded overlap, explicit key/count expectations, typed decode failures and separate semantic/byte accounting.",
+      "rationale": "Zero semantic differences alone can pass without a comparison.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
+      "resolution": "Land the strengthened join contract and negative controls; run against the candidate paired inputs.",
+      "evidence": [
+        "storage/src/test/scala/xyz/kd5ujc/scarab/storage/MemPackJoinCheck.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "ed25519-native-archive",
+      "classification": "native-parity",
+      "status": "pending-integration",
+      "scope": "2,219 retained witness rows: 2,207 native calls and 12 malformed-length non-calls.",
+      "assertion": "Replay 1,121 accepts and 1,086 rejects directly; require exact typed length rejection for each of the twelve non-calls.",
+      "rationale": "Older Scala agreement is regression evidence, not an independent oracle; a native non-call is not a native rejection.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
+      "resolution": "Land direct archive replay and exact row inventory without changing retained outcomes.",
+      "evidence": [
+        "crypto/src/test/scala/xyz/kd5ujc/scarab/crypto/witness/StrictEd25519DifferentialSuite.scala",
+        "fixtures/witness/README.md"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "byron-projection",
+      "classification": "regression",
+      "status": "pending-integration",
+      "scope": "Fifty Byron projection rows and their original block headers.",
+      "assertion": "Assert independently decoded chain points and explicit current projection fields; retain historical digest rows.",
+      "rationale": "The existing top-level shape check does not prove field values; a local Praos-shaped projection is not native PBFT state equivalence.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
+      "resolution": "Land substantive local projection expectations and document the native consensus-state boundary.",
+      "evidence": [
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/read/ProjectionSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "block-auxiliary-data",
+      "classification": "native-parity",
+      "status": "pending-integration",
+      "scope": "Auxiliary-data entries in the committed block goldens.",
+      "assertion": "Compare complete auxiliary-data CBOR payloads as well as transaction positions.",
+      "rationale": "Position equality cannot detect altered payload bytes.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
+      "resolution": "Land full payload comparisons and a tampered-payload negative control.",
+      "evidence": [
+        "models/src/test/scala/xyz/kd5ujc/scarab/models/BlockGoldenSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "external-candidate-inputs",
+      "classification": "external-input",
+      "status": "open",
+      "scope": "Twelve external-data tests; five optional benchmarks are a separate performance contract.",
+      "assertion": "Candidate acceptance must provision pinned input identities and reject missing, skipped or unreported required cases.",
+      "rationale": "Normal unit-test success does not establish acceptance for absent private or large offline inputs.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
+      "resolution": "Provide reviewed candidate datasets and retain a successful mandatory-case receipt; never synthesize an acceptance result.",
+      "evidence": [
+        ".github/workflows/ci.yml",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/PlutusReplaySuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "ledger-refusal-membership",
+      "classification": "sampling-limit",
+      "status": "open",
+      "scope": "Fresh-ledger and multi-ledger refusal comparisons.",
+      "assertion": "The one complete typed Scarab failure is present in the native accumulated failure list.",
+      "rationale": "This proves failure membership, not native full-list cardinality, order or equality.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
+      "resolution": "Narrow published claims to membership; implement independent accumulated-list equality only with an explicit error-accumulation design.",
+      "evidence": [
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/UpstreamFreshLedgerConformanceSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/UpstreamMultiLedgerConformanceSuite.scala"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "recorded-replay-comparison",
+      "classification": "regression",
+      "status": "open",
+      "scope": "Captured-window serial and parallel Scala replay and projection exports.",
+      "assertion": "Scala execution modes agree; exported native-comparison inputs alone do not compare native projection contents.",
+      "rationale": "An export is an input to a comparison and must not be reported as completed native parity.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
+      "resolution": "Require nonempty in-window native reference targets and actual projection-content comparison in candidate acceptance; label remaining mode equivalence precisely.",
+      "evidence": [
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/preview/RecordedReplay.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "incoherent-cache-generators",
+      "classification": "known-divergence",
+      "status": "open",
+      "scope": "Nine retained generated cases with incoherent cached instant stake.",
+      "assertion": "Require the exact typed compact-coin underflow; keep the original native/formal judgments and separate lawful counts.",
+      "rationale": "Historical native/formal acceptance of incoherent cached state does not establish a lawful replay input or justify claiming parity.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
+      "resolution": "Establish the native precondition or repair generator construction independently, retaining all original judgments and a separately counted regression.",
+      "evidence": [
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/UpstreamFreshLedgerConformanceSuite.scala",
+        "node/src/test/resources/upstream/conway-pv11-generators/README.md"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "cddl-optional-seeds",
+      "classification": "sampling-limit",
+      "status": "open",
+      "scope": "Optional CDDL sampling and unsupported grammar paths in fuzz seed construction.",
+      "assertion": "Every registered decoder target has accepted seeds; an unsupported optional sample batch contributes no seeds.",
+      "rationale": "A populated target can still lack coverage of an optional constructor or grammar production.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
+      "resolution": "Add independently justified seeds for each missing production and remove unsupported-batch fallbacks when supported.",
+      "evidence": [
+        "fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/Corpus.scala",
+        "fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/GuardSuite.scala"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "cddl-constructor-optionals",
+      "classification": "input-boundary",
+      "status": "open",
+      "scope": "Non-trailing optional fields in the generic CDDL sampler and hand-built generated values.",
+      "assertion": "Sampler construction forces the supported optional layout; a hand-built None can produce an invalid shortened array.",
+      "rationale": "Generator-domain restrictions are not a decoder conformance exemption.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
+      "resolution": "Encode constructor validity in the generated types or validate the boundary; cover all valid optional layouts with independent examples.",
+      "evidence": [
+        "models-gen/src/main/scala/xyz/kd5ujc/scarab/models/gen/CddlSampler.scala",
+        "docs/models.md"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "ecdsa-der-boundary",
+      "classification": "input-boundary",
+      "status": "pending-integration",
+      "scope": "476 Wycheproof rows: 242 compact-signature builtin cases and 234 DER boundary cases.",
+      "assertion": "Assert every row classification; DER cases compare structural/strict canonical decoding and are not passed as compact builtin signatures.",
+      "rationale": "The builtin signature ABI is fixed-width compact form; DER bytes are a different input format.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
+      "resolution": "Land explicit DER assertions and exact eligible/ineligible counts; preserve original vectors.",
+      "evidence": [
+        "plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/WycheproofSecp256k1Suite.scala"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "half-nan-canonicalization",
+      "classification": "canonicalization",
+      "status": "covered",
+      "scope": "All 65,536 half-float bit patterns, including 2,046 NaNs.",
+      "assertion": "Non-NaNs round-trip exactly; NaN conversion uses canonical 0x7e00, with one explicit canonical-NaN assertion.",
+      "rationale": "IEEE NaN payload preservation is not the conversion contract; the current identity loop excludes NaNs.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
+      "resolution": "Retain the canonicalization distinction; strengthen all NaN-pattern assertions without claiming bit identity.",
+      "evidence": [
+        "codec/src/test/scala/xyz/kd5ujc/scarab/codec/CborSuite.scala"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "mux-precondition-nonresults",
+      "classification": "reference-non-result",
+      "status": "covered",
+      "scope": "Pinned native mux corpus: 32 rows, 22 native-result rows and 10 precondition non-results.",
+      "assertion": "All eligible native results are checked; precondition failures remain retained and classified separately.",
+      "rationale": "An upstream precondition failure produces no codec verdict and must not be counted as agreement.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
+      "resolution": "Keep exact source-pinned eligibility and counts; expand coverage using independently valid inputs.",
+      "evidence": [
+        "protocol/src/test/resources/upstream/network-mux-sdu/README.md"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "ledger-peers-sampling",
+      "classification": "sampling-limit",
+      "status": "covered",
+      "scope": "Probabilistic ledger-peer selection tests.",
+      "assertion": "Bounded samples check statistical tolerance, not equality to a native random schedule.",
+      "rationale": "Independent random schedules do not have identical draws; statistical checks state their confidence and sample size.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
+      "resolution": "Keep assertions and published tolerances aligned; correct stale sigma descriptions when changing this suite.",
+      "evidence": [
+        "network/src/test/scala/xyz/kd5ujc/scarab/network/selection/LedgerPeersSuite.scala"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "native-format-boundary",
+      "classification": "input-boundary",
+      "status": "covered",
+      "scope": "Maintained native snapshot V5 fixtures versus retired V1-V4 layouts.",
+      "assertion": "Current native V5 fixtures are mandatory; version refusal and migration tests have their own explicit format contracts.",
+      "rationale": "Retired-format boundaries do not waive current native decoding.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
+      "resolution": "Retain pinned native provenance and previous-version migration tests whenever a persisted format changes.",
+      "evidence": [
+        "fixtures/haskell-state/README.md",
+        "docs/adr/0006-versioned-formats-migrate-on-open.md"
+      ],
+      "candidateRequired": false
+    }
+  ]
+}

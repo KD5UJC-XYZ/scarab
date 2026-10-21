@@ -20,6 +20,11 @@ Evidence kinds:
 
 Status values: **implemented**, **partial**, **not implemented**.
 
+The [comparison and coverage register](data/test-coverage-register.json) records bounded claims and
+remaining gaps with owners and resolution criteria. The [fixture contracts](../fixtures/README.md)
+describe exact committed identities and mandatory corpus documentation. These inventories supplement
+the executable assertions; they do not waive failed comparisons.
+
 ## Matrix
 
 | Component | Status | Evidence | Explicitly unchecked or unconfirmed |

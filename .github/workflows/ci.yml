@@ -67,6 +67,8 @@ jobs:
               compile(open(path, encoding="utf-8").read(), path, "exec")
               print("ok", path)
           '
+      - name: Fixture identities and comparison contracts
+        run: python3 scripts/check_test_coverage.py
       - name: Closed error channel guard
         run: python3 scripts/check_error_channels.py
       - name: Unit tests (no Docker)
