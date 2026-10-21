@@ -715,6 +715,8 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
       high: Int
   )(using Raise[IO, NetworkError]): IO[Unit] =
     val row = testCase.row
+    val receiver = new ChainSyncClient.ReceiverHook[IO]:
+      def awaitReply(using Raise[IO, NetworkError]): IO[Unit] = IO.unit
     def decoded(bytes: Bytes): Node = Cbor.decode(bytes).fold(e => fail(e.toString), identity)
     def array(node: Node): Vector[Node] = node.value match
       case Value.Arr(items) => items
@@ -764,17 +766,18 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
                   .fold(e => fail(e.toString), identity)
                 val step = action match
                   case ChainSyncPipelineDecision.Action.Request =>
-                    client.submit *> client
+                    client.submitObserved(receiver) *> client
                       .collect(IO.unit)
                       .flatMap(update => applyUpdate(update, handled))
                       .as(true)
-                  case ChainSyncPipelineDecision.Action.Pipeline => client.submit.as(false)
+                  case ChainSyncPipelineDecision.Action.Pipeline =>
+                    client.submitObserved(receiver).as(false)
                   case ChainSyncPipelineDecision.Action.Collect =>
                     client.collect(IO.unit).flatMap(update => applyUpdate(update, handled)).as(true)
                   case ChainSyncPipelineDecision.Action.CollectOrPipeline =>
                     client.tryCollect(IO.unit).flatMap {
                       case Some(update) => applyUpdate(update, handled).as(true)
-                      case None         => client.submit.as(false)
+                      case None         => client.submitObserved(receiver).as(false)
                     }
                 step.map(collected => Left((next, handled || collected)))
             )
