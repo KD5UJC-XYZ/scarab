@@ -402,6 +402,7 @@ final class OutboundPeers[F[_]: Async, A] private (
                     connection,
                     hot.peer,
                     hot.prepare,
+                    hot.heightSnapshot,
                     genesis
                       .fold(hot.headers)(bound => hot.headers.map(_.withPatience(bound.patience))),
                     Some(metered(peer)),
@@ -627,6 +628,7 @@ object OutboundPeers:
       peer: Peer.Settings,
       follow: Follow[F],
       prepare: Peer.Prepare[F],
+      heightSnapshot: Peer.HeightSnapshot[F],
       headers: Option[HeaderCheck[F]],
       transactions: Option[TxSubmissionClient.Source[F]],
       observe: Option[Peer.Observation => F[Unit]],

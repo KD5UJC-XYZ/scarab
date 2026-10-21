@@ -22,7 +22,7 @@ trait LimitOnPatience[F[_]]:
 
 object LimitOnPatience:
   enum PauseReason:
-    case AwaitReply, Forecast, HeaderTime, Jumping
+    case AwaitReply, Forecast, HeaderTime, Jumping, LocalCapacity
 
   private final case class Timer(generation: BigInt, wakePicos: BigInt)
   private final case class Watch(expiredGeneration: Option[BigInt], timer: Option[Timer])

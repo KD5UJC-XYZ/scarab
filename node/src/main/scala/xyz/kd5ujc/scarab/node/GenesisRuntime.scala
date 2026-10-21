@@ -145,7 +145,9 @@ final class GenesisRuntime[F[_]: Async] private (
             history.map(known => observeRequest(F.pure(known)))
           def awaitReply: F[Unit] =
             history.flatMap(
-              _.traverse_(h => historical(NodeGenesisHistory.Message.AwaitReply, h.tipPoint, Some(h)))
+              _.traverse_(h =>
+                historical(NodeGenesisHistory.Message.AwaitReply, h.tipPoint, Some(h))
+              )
             ) *> idle.set(true) *> jumper.onAwaitReply *> publish
           def reply: F[Unit] = idle.set(false) *> publish
       val observer = observeRequest(snapshot)
@@ -287,8 +289,7 @@ final class GenesisRuntime[F[_]: Async] private (
               }
       val received: SyncEvent => F[Unit] = {
         case SyncEvent.RollForward(header, _) =>
-          jumper.onRollForward(header.point) *> raw.set(LatestSlot.At(header.slot)) *>
-            idle.set(false) *> publish
+          jumper.onRollForward(header.point) *> raw.set(LatestSlot.At(header.slot)) *> publish
         case SyncEvent.RollBackward(point, _) =>
           snapshot.flatMap { history =>
             val oldest = history.flatMap { h =>
@@ -298,7 +299,7 @@ final class GenesisRuntime[F[_]: Async] private (
             oldest.traverse_(point =>
               historical(NodeGenesisHistory.Message.RollBackward, point, history)
             )
-          } *> idle.set(false)
+          }
       }
       GenesisRuntime.Bound(
         patience,

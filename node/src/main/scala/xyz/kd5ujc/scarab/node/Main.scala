@@ -48,6 +48,7 @@ import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorState, Proto
 import cats.syntax.all.*
 import java.nio.file.Path
 import com.comcast.ip4s.{Host, Port, SocketAddress}
+import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.protocol.NtNHeader
 import xyz.kd5ujc.scarab.network.{
   BearerServer,
@@ -91,10 +92,10 @@ import scala.concurrent.duration.*
   * [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every
   * <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N]
   * [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes
-  * N] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off]
-  * [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at
-  * <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket
-  * <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
+  * N] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off]
+  * [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--plutus-workers N] [--dump-state
+  * <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]]
+  * [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
   *
   * With `--config` the node reads the Haskell node's `config.json` as `cardano-node run` does (the
   * genesis files it names, relative to it, with every hash it lists verified, the hard-fork epochs,
@@ -300,7 +301,8 @@ object Main extends IOApp:
     *   End the node (exit code [[StallExitCode]], after the shutdown snapshot) when a stall has
     *   lasted this long; needs `--stall-minutes` and is longer than it. Off by default.
     * @param readAhead
-    *   Most ChainSync requests pipelined (and blocks fetched in one range) while far behind.
+    *   Maximum headers per ordered body-publication chunk; ChainSync request watermarks are
+    *   separate.
     * @param cpuThreads
     *   Threads of the pool the CPU-bound rules run on (default: one per available CPU; 0: none).
     * @param dumpState
@@ -358,7 +360,9 @@ object Main extends IOApp:
       roots: Option[PeerNetwork.Roots] = None,
       churnInterval: Option[FiniteDuration] = None,
       adoptLegacyNetworkIdentity: Boolean = false,
-      plutusWorkers: ParallelPlutus.Workers = ParallelPlutus.Workers.default
+      plutusWorkers: ParallelPlutus.Workers = ParallelPlutus.Workers.default,
+      chainSyncWindow: xyz.kd5ujc.scarab.network.ChainSyncPipelineDecision.Window =
+        xyz.kd5ujc.scarab.network.ChainSyncPipelineDecision.Window.Default
   )
 
   /** What the chain database (or its absence) hands the node at start. */
@@ -1038,6 +1042,19 @@ object Main extends IOApp:
             )
             _ <- collectors.add(Collectors.connections(manager))
             fetchModeRef <- Ref.of[IO, FetchMode](FetchMode.BulkSync)
+            chainSyncHeights = new Peer.HeightSnapshot[IO]:
+              def capture = ref.get.map { chain =>
+                val refs = chain.anchor.block.toVector ++ chain.blocks.map(_._1)
+                Peer.HeightSnapshot.Captured(
+                  chain.blocks.reverse.map(_._1.point) :+ chain.anchor.point,
+                  refs
+                    .map(block => block.point -> Option(block.blockNo))
+                    .toMap
+                    .updated(ChainSync.Point.Origin, None)
+                )
+              }
+              def unavailable[A](cause: xyz.kd5ujc.scarab.ledger.ChainSyncInternalProblem): IO[A] =
+                fatalSink(Fatal.Internal(cause)) *> IO.never[A]
             // Inbound duplex sessions use the same follower and compute pool as outbound sessions.
             governor <- InboundGovernor.create[IO](
               manager,
@@ -1051,8 +1068,9 @@ object Main extends IOApp:
                   SocketAddress(Host.fromString("0.0.0.0").get, Port.fromInt(0).get),
                   genesis.networkMagic,
                   readAhead = options.readAhead,
-                  network = NodeToNode.Settings().pipelining(options.readAhead),
-                  byronEpochSlots = genesis.geometry.byron.epochSlots
+                  network = NodeToNode.Settings().pipelining(options.chainSyncWindow.high),
+                  byronEpochSlots = genesis.geometry.byron.epochSlots,
+                  pipelineWindow = options.chainSyncWindow
                 ),
                 runClients = options.inboundSync
               ),
@@ -1060,6 +1078,7 @@ object Main extends IOApp:
               follow = peer => scheduling.compute.within(follower.session(peer)),
               prepare = warm,
               fatal = fatalSink,
+              heightSnapshot = chainSyncHeights,
               headers = headerCheck,
               transactions = Some(mempool.source),
               events = Some(loggedInbound.alongside(measured.inbound)),
@@ -1094,16 +1113,18 @@ object Main extends IOApp:
                   offerPeerSharing = peerSharing,
                   maxVersion = setup.config.settings.maxNtnVersion
                 )
-                .pipelining(options.readAhead),
+                .pipelining(options.chainSyncWindow.high),
               peer = Peer.Settings(
                 SocketAddress(Host.fromString("0.0.0.0").get, Port.fromInt(0).get),
                 genesis.networkMagic,
                 readAhead = options.readAhead,
-                network = NodeToNode.Settings().pipelining(options.readAhead),
-                byronEpochSlots = genesis.geometry.byron.epochSlots
+                network = NodeToNode.Settings().pipelining(options.chainSyncWindow.high),
+                byronEpochSlots = genesis.geometry.byron.epochSlots,
+                pipelineWindow = options.chainSyncWindow
               ),
               follow = (peer, track) => scheduling.compute.within(follower.session(peer, track)),
               prepare = warm,
+              heightSnapshot = chainSyncHeights,
               headers = headerCheck,
               transactions = Some(mempool.source),
               observe = Some(observePeer),
@@ -1432,7 +1453,7 @@ object Main extends IOApp:
       values.find(r => argument == s"--${r.flag}")
 
   private val Usage =
-    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>] " + LogSettings.Usage
+    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>] " + LogSettings.Usage
 
   /** Flags that take a value and may repeat. */
   private val RepeatedFlags = Set("peer") ++ LogSettings.RepeatedFlags
@@ -1459,6 +1480,8 @@ object Main extends IOApp:
     "stall-exit-after",
     "churn-interval",
     "read-ahead",
+    "chain-sync-low",
+    "chain-sync-high",
     "header-first",
     "max-inbound",
     "inbound-sync",
@@ -1611,6 +1634,15 @@ object Main extends IOApp:
           readAhead <- flags
             .get("read-ahead")
             .fold(Right(128))(_.toIntOption.filter(_ > 0).toRight(invalid("read-ahead")))
+          chainSyncLow <- flags
+            .get("chain-sync-low")
+            .fold(Right(200))(_.toIntOption.toRight(invalid("chain-sync-low")))
+          chainSyncHigh <- flags
+            .get("chain-sync-high")
+            .fold(Right(300))(_.toIntOption.filter(_ > 0).toRight(invalid("chain-sync-high")))
+          chainSyncWindow <- xyz.kd5ujc.scarab.network.ChainSyncPipelineDecision.Window
+            .checked(chainSyncLow, chainSyncHigh)
+            .leftMap(_ => invalid("chain-sync-low/chain-sync-high"))
           headerFirst <- flags
             .get("header-first")
             .fold(Right(true))(v =>
@@ -1685,6 +1717,7 @@ object Main extends IOApp:
         ).copy(
           churnInterval = churnInterval,
           plutusWorkers = plutusWorkers,
+          chainSyncWindow = chainSyncWindow,
           adoptLegacyNetworkIdentity = flags.contains("adopt-legacy-network-identity")
         )
       case _ => Left(usage)

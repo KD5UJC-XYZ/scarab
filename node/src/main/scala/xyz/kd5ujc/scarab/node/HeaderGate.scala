@@ -98,7 +98,8 @@ object HeaderCheck:
 
   final case class Captured[F[_]](
       points: Vector[ChainSync.Point],
-      start: ChainSync.Point => F[HeaderGate[F]]
+      start: ChainSync.Point => F[HeaderGate[F]],
+      heights: Map[ChainSync.Point, Option[BigInt]]
   )
 
   private[node] final case class Canonical[F[_], S, H](
@@ -266,7 +267,11 @@ object HeaderCheck:
           val current = pair._1
           Captured(
             current.blocks.reverse.map(_._1.point) :+ current.anchor.point,
-            point => startAt(pair, point)
+            point => startAt(pair, point),
+            (current.anchor.block.toVector ++ current.blocks.map(_._1))
+              .map(block => block.point -> Option(block.blockNo))
+              .toMap
+              .updated(ChainSync.Point.Origin, None)
           )
         }
       )

@@ -167,6 +167,21 @@ enum BlockPoolProblem extends NodeError:
     case DifferentInvalidRegistry =>
       "follower sessions do not share the same invalid-block registry"
 
+/** Missing local metadata in the rolling ChainSync interpreter; never a remote refusal. */
+enum ChainSyncInternalProblem extends NodeError:
+  case MissingHeight(point: ChainSync.Point)
+  case MissingRequestContext
+  case InvalidBlockNumber(value: BigInt)
+  case InvalidPipelineMarks(low: Int, high: Int)
+  case NegativeOutstanding(count: Int)
+  def message: String = this match
+    case MissingHeight(point) =>
+      s"ChainSync lacks the captured block number of ${Points.show(point)}"
+    case InvalidBlockNumber(value) => s"ChainSync local block number is outside Word64: $value"
+    case MissingRequestContext     => "ChainSync reply has no submitted request context"
+    case InvalidPipelineMarks(low, high) => s"invalid ChainSync pipeline marks $low/$high"
+    case NegativeOutstanding(count)      => s"negative ChainSync outstanding count $count"
+
 enum GenesisInternalProblem extends NodeError:
   case PatienceWatcherFailed(cause: NetworkError)
   case MissingSharedBlockPool, UnsupportedHeaderFamily, MissingConnectionIdentity
