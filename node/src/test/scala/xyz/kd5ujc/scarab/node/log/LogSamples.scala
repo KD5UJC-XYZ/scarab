@@ -106,7 +106,14 @@ object LogSamples:
     Trace.PromoteFailed(Temperature.Cold, peerB, FailureClass.Transient, Some(5.seconds), false),
     Trace.PromoteFailed(Temperature.Warm, peerB, FailureClass.Misbehaved, None, true),
     Trace.PromoteAborted(Temperature.Warm, peerA),
-    Trace.Demote(Temperature.Hot, List(peerA), local = false, 20, 21),
+    Trace.Demote(
+      Temperature.Hot,
+      List(peerA),
+      local = false,
+      20,
+      21,
+      Map(peerA -> None, peerB -> Some(0))
+    ),
     Trace.DemoteDone(Temperature.Warm, peerA, 29),
     Trace.DemoteFailed(Temperature.Hot, peerB, timedOut = true),
     Trace.DemoteAsynchronous(peerA, Temperature.Warm, None, None),
@@ -123,7 +130,7 @@ object LogSamples:
     Trace.BigLedgerFailure(-1, 2.seconds),
     Trace.ForgetBigLedger(15, 17, List(peerA)),
     Trace.PromoteBigLedger(Temperature.Cold, List(peerA, peerB), 10, 4),
-    Trace.DemoteBigLedger(Temperature.Hot, List(peerB), 5, 6),
+    Trace.DemoteBigLedger(Temperature.Hot, List(peerB), 5, 6, Map(peerA -> Some(3), peerB -> None)),
     Trace.PickInbound(List(peerA)),
     Trace.ShareRequests(8, List(peerA)),
     Trace.ShareResults(List(peerA -> PeerShare.Result.Peers(Vector(peerB))), List(peerB))

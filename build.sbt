@@ -108,7 +108,8 @@ lazy val network = scarab("network")
       Libraries.catsEffect,
       Libraries.catsMtl,
       Libraries.fs2Core,
-      Libraries.fs2Io
+      Libraries.fs2Io,
+      Libraries.circeParserTest
     )
   )
 

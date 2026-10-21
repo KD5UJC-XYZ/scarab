@@ -125,8 +125,18 @@ enum Trace[A]:
   )
   case PromoteAborted(from: Temperature, peer: A)
 
-  /** A decision to move peers down a temperature. */
-  case Demote(from: Temperature, peers: List[A], local: Boolean, target: Int, current: Int)
+  /** A decision to move peers down a temperature. Ordinary hot demotion retains scores for all
+    * available peers (`TraceDemoteHotPeers`); absence of a metric differs from a measured zero.
+    * Local and warm demotions have no native score payload.
+    */
+  case Demote(
+      from: Temperature,
+      peers: List[A],
+      local: Boolean,
+      target: Int,
+      current: Int,
+      scores: Map[A, Option[Int]] = Map.empty[A, Option[Int]]
+  )
   case DemoteDone(from: Temperature, peer: A, current: Int)
   case DemoteFailed(from: Temperature, peer: A, timedOut: Boolean)
 
@@ -147,7 +157,13 @@ enum Trace[A]:
   case BigLedgerFailure(backoffs: Int, retryIn: FiniteDuration)
   case ForgetBigLedger(target: Int, known: Int, peers: List[A])
   case PromoteBigLedger(from: Temperature, peers: List[A], target: Int, current: Int)
-  case DemoteBigLedger(from: Temperature, peers: List[A], target: Int, current: Int)
+  case DemoteBigLedger(
+      from: Temperature,
+      peers: List[A],
+      target: Int,
+      current: Int,
+      scores: Map[A, Option[Int]] = Map.empty[A, Option[Int]]
+  )
 
   case PickInbound(peers: List[A])
   case ShareRequests(amount: Int, peers: List[A])
