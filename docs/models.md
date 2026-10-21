@@ -310,6 +310,16 @@ re-encode to the identical bytes and decode to an equal value; 400 items each of
 whose canonical encoding is a fixed point. For every root, 1,200 mutated (bit flip, truncation, extension, deletion) and
 random-byte inputs produce a value or a typed error, and never `Kind.Internal`; offsets stay inside the input.
 
+The fuzz corpus loads the header schema's Byron dependency and the LeiosFetch/LeiosNotify modules,
+including their existing `base.word16`, transaction-item and header imports from `models.conf`.
+The LeiosFetch transaction adapter remains `tx = any` because the Blueprint leaves that type
+underspecified; samples are members of this configured, composed schema. Every requested sample
+must be generated; unresolved names, unsupported grammar and sampling cycles fail the seed gate
+instead of supplying an empty batch. A deterministic guard requires all eight header-envelope,
+five LeiosFetch and eight LeiosNotify constructors across 120 samples per rule. These are schema
+sampling controls, not signed admissions or proof that arbitrary generated constructors are writable;
+the optional-layout construction limitation in section 8 remains open.
+
 **Findings the exercise produced** (each would have been a latent bug in a hand-written model):
 
 1. The CDDL's own `bounded_bytes = bytes .size (0 .. 64)` rejects real Conway governance blocks: chain data uses
