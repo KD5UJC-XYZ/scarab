@@ -100,3 +100,26 @@ class LimitOnPatienceSuite extends FailsOnUncaught:
           assertEquals(progressed.level, Rational(9))
       }
     }
+
+  test("pauses retain the native timer and its positive sub-microsecond expiry"):
+    TestControl.executeEmbed {
+      Ref.of[IO, Vector[FiniteDuration]](Vector.empty).flatMap { expired =>
+        val tiny = LeakyBucket.Config(Rational(3, 2000000), Rational.one)
+        val refill = LeakyBucket.Config(Rational(10), Rational(1000000))
+        LimitOnPatience.resource[IO](tiny, IO.monotonic.flatMap(t => expired.update(_ :+ t))).use {
+          patience =>
+            for
+              _ <- IO.cede
+              // Initial wake is 1us. Pausing at 0.5us leaves 1us of tokens, resuming at
+              // 0.6us must retain that wake: its 0.6us remainder expires at 1us, not 1.6us.
+              _ <- IO.sleep(500.nanos)
+              _ <- patience.setPaused(LimitOnPatience.PauseReason.AwaitReply, true)
+              _ <- IO.sleep(100.nanos)
+              _ <- patience.setPaused(LimitOnPatience.PauseReason.AwaitReply, false)
+              _ <- IO.sleep(1.microsecond)
+              times <- expired.get
+              _ <- patience.configure(refill)
+            yield assertEquals(times, Vector(1.microsecond))
+        }
+      }
+    }

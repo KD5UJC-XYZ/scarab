@@ -23,6 +23,9 @@ object LimitOnPatience:
   enum PauseReason:
     case AwaitReply, Forecast, HeaderTime, Jumping
 
+  private final case class Timer(generation: BigInt, wakePicos: BigInt)
+  private final case class Watch(expiredGeneration: Option[BigInt], timer: Option[Timer])
+
   private final case class Live[F[_]](
       bucket: LeakyBucket.State,
       bestBlockNo: BigInt,
@@ -77,25 +80,32 @@ object LimitOnPatience:
             )
           })
 
-        def step(expiredGeneration: Option[BigInt]): F[Either[Option[BigInt], Unit]] =
+        def step(watch: Watch): F[Either[Watch, Unit]] =
           lock.lock
             .surround((now, live.get).mapN { (time, s) =>
-              (s.bucket.snapshot(time), s.changed)
+              (time, s.bucket.snapshot(time), s.changed)
             })
-            .flatMap { (bucket, changed) =>
-              if bucket.expired then
-                if expiredGeneration.contains(bucket.generation) then
-                  changed.get.as(Left(expiredGeneration))
-                else onEmpty.as(Left(Some(bucket.generation)))
-              else if bucket.paused || bucket.waitMicros.isEmpty then changed.get.as(Left(None))
-              else
-                bucket.waitMicros
-                  .fold(changed.get) { micros =>
-                    val wait = micros.min(BigInt(Long.MaxValue)).max(1).toLong.microseconds
-                    F.race(changed.get, F.sleep(wait)).void
+            .flatMap { (time, bucket, changed) =>
+              def waitFor(timer: Timer): F[Either[Watch, Unit]] =
+                val remaining = ((timer.wakePicos - time).max(0) + 999) / 1000
+                val wait = remaining.min(BigInt(Long.MaxValue)).toLong.nanos
+                F.race(changed.get, F.sleep(wait)).as(Left(Watch(None, Some(timer))))
+              watch.timer.filter(_.generation == bucket.generation) match
+                case Some(timer) if timer.wakePicos > time => waitFor(timer)
+                case _
+                    if watch.expiredGeneration.contains(
+                      bucket.generation
+                    ) || bucket.waitMicros.isEmpty =>
+                  changed.get.as(Left(Watch(watch.expiredGeneration, None)))
+                case _ if bucket.expired =>
+                  onEmpty.as(Left(Watch(Some(bucket.generation), None)))
+                case _ =>
+                  bucket.waitMicros.fold(
+                    changed.get.as[Either[Watch, Unit]](Left(Watch(None, None)))
+                  ) { micros =>
+                    waitFor(Timer(bucket.generation, time + micros * 1000000))
                   }
-                  .as(Left(None))
             }
 
-        F.tailRecM(Option.empty[BigInt])(step).background.as(controls)
+        F.tailRecM(Watch(None, None))(step).background.as(controls)
       }
