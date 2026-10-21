@@ -113,6 +113,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
       clock: Option[SlotClock[IO]] = None,
       fatal: Fatal => IO[Unit] = _ => IO.unit,
       pool: Option[BlockPool[IO]] = None,
+      events: Option[InboundEvents[IO]] = None,
       keepAliveInterval: FiniteDuration = 30.seconds
   )(using RepromotionWait[IO]): IO[Local] =
     for
@@ -191,6 +192,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
         fatal = fatal,
         headers = headerCheck,
         transactions = transactions,
+        events = events,
         pool = pool
       )
     yield new Local(ref, manager, governor, applied)
@@ -511,7 +513,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
       val ((sessions, points, fetched, applied, connections), _) = result
       assertEquals(points, Vector(Point.Origin, advanced.tip))
       assertEquals(sessions.size, 1)
-      assertEquals(sessions.head.number, 1L)
+      assertEquals(sessions.head.number, BigInt(1))
       assertEquals(sessions.head.ended, None)
       assertEquals(sessions.head.intersection, Some(Points.show(advanced.tip)))
       assertEquals(connections.counters.inbound, 1)
@@ -557,6 +559,54 @@ class InboundGovernorSuite extends FailsOnUncaught:
       assertEquals(table.counters.inbound, 1)
       assert(requested.nonEmpty)
       assert(requested.forall(_ == 120.seconds), requested.toString)
+  }
+
+  test("cached inbound originals punish only their exact adding connection generation") {
+    import xyz.kd5ujc.scarab.ledger.{BlockFailure, ValidationError}
+    val header = forged.headers.head
+    val refusal = ValidationError(header.point, BlockFailure.HeaderDiffers)
+    for
+      seen <- Ref.of[IO, Vector[InboundEvent]](Vector.empty)
+      aborted <- Ref.of[IO, Vector[(Int, PeerError)]](Vector.empty)
+      us <- local(events =
+        Some(
+          new InboundEvents[IO]:
+            def emit(remote: String, event: InboundEvent) = seen.update(_ :+ event)
+        )
+      )
+      pool <- BlockPool.create[IO]
+      source <- us.governor.source(remote, e => aborted.update(_ :+ (1 -> e))).allocated
+      (old, release) = source
+      _ <- pool.session(Some(us.governor.rejectedCachedBlock(old, _))).use { claims =>
+        claims.claim(Vector(header.hash)) *> claims.fill(Vector(header.hash -> forged.raws.head))
+      }
+      // The original survives the sending session. Closing that bearer must discard its abort
+      // callback, while the pool's bounded origin keeps immutable attribution metadata.
+      _ <- release
+      _ <- us.governor.source(remote, e => aborted.update(_ :+ (2 -> e))).use { current =>
+        pool.session.use { taker =>
+          taker.take(header.hash).flatMap {
+            case Some(taken) => taker.distrust(taken.origin, refusal)
+            case None        => IO(fail("delivered original disappeared before attribution"))
+          }
+        } *> us.governor.rejectedCachedBlock(current, refusal) *>
+          IO(assert(current.generation > old.generation))
+      }
+      generations <- Vector.fill(70)(()).traverse { _ =>
+        us.governor.source(remote, _ => IO.unit).use(key => IO.pure(key.generation))
+      }
+      punished <- aborted.get
+      emitted <- seen.get
+    yield
+      assertEquals(generations, (3 to 72).map(BigInt(_)).toVector)
+      assertEquals(punished, Vector(2 -> PeerError.InvalidBlock(refusal)))
+      assertEquals(
+        emitted,
+        Vector(
+          InboundEvent.CachedBlockRejected(refusal, old.generation, false),
+          InboundEvent.CachedBlockRejected(refusal, old.generation + 1, true)
+        )
+      )
   }
 
   test("an inbound validation refusal invalidates recovered originals through the counted peer") {

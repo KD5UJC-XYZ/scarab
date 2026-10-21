@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.ledger.{Header, NodeError, PeerError, Points}
+import xyz.kd5ujc.scarab.ledger.{Header, NodeError, PeerError, Points, ValidationError}
 import cats.effect.{Async, Ref, Resource}
 import cats.effect.syntax.all.*
+import cats.effect.std.Mutex
 import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
 import scala.concurrent.duration.*
@@ -30,6 +31,9 @@ enum InboundEvent:
 
   /** A normal ChainSync result leaves the established bearer warm before reactivation. */
   case SessionReturned(reason: InboundGovernor.ReturnReason, delay: FiniteDuration)
+
+  /** A cached original was rejected, including after its adding connection has closed. */
+  case CachedBlockRejected(refusal: ValidationError, generation: BigInt, sourceLive: Boolean)
 
   /** The connection ended. */
   case Closed(reason: InboundEnd)
@@ -71,7 +75,10 @@ final class InboundGovernor[F[_]: Async] private (
     genesis: Option[GenesisRuntime[F]],
     receivedBody: Option[Peer.BodySink[F]],
     repromotion: RepromotionWait[F],
-    sessionTable: Ref[F, Map[String, InboundGovernor.Session]]
+    sessionTable: Ref[F, Map[String, InboundGovernor.Session]],
+    sourceCounter: Ref[F, BigInt],
+    liveSources: Ref[F, Map[BigInt, PeerError => F[Unit]]],
+    sourceLock: Mutex[F]
 ):
   private val F = Async[F]
   import Peer.networkAsPeer
@@ -187,19 +194,44 @@ final class InboundGovernor[F[_]: Async] private (
       agreed: HandshakeClient.Agreed,
       mux: Mux[F]
   ): Resource[F, Unit] =
-    session(remote, agreed.version, agreed.data.peerSharing, mux).background.void
+    source(
+      remote,
+      error => mux.abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error)))
+    ).flatMap { key =>
+      (update(remote)(_ => InboundGovernor.Session(remote.toString, number = key.generation)) *>
+        attempt(remote, agreed.version, agreed.data.peerSharing, mux, key)).background.void
+    }
 
-  private def session(
+  /** The pool retains only this immutable key and the governor. Live transport callbacks are
+    * removed with their bearer; a later connection at the same address has a different key.
+    * ChainSel.hs:1051–1067 / InvalidBlockPunishment.hs:48–56 punish the adding client.
+    */
+  private[node] def source(
       remote: SocketAddress[IpAddress],
-      version: Int,
-      peerSharing: Boolean,
-      mux: Mux[F]
+      abort: PeerError => F[Unit]
+  ): Resource[F, InboundGovernor.SourceKey] =
+    Resource
+      .eval(sourceCounter.modify(n => (n + 1, InboundGovernor.SourceKey(n + 1, remote))))
+      .flatMap { key =>
+        Resource.make(
+          sourceLock.lock.surround(liveSources.update(_ + (key.generation -> abort))).as(key)
+        )(_ => sourceLock.lock.surround(liveSources.update(_ - key.generation)))
+      }
+
+  private[node] def rejectedCachedBlock(
+      key: InboundGovernor.SourceKey,
+      refusal: ValidationError
   ): F[Unit] =
-    for
-      n <- sessionTable.get.map(_.size.toLong)
-      _ <- update(remote)(_ => InboundGovernor.Session(remote.toString, number = n + 1))
-      _ <- attempt(remote, version, peerSharing, mux)
-    yield ()
+    F.uncancelable { _ =>
+      sourceLock.lock
+        .surround(liveSources.get.flatMap { live =>
+          val abort = live.get(key.generation)
+          abort.traverse_(_(PeerError.InvalidBlock(refusal))).as(abort.isDefined)
+        })
+        .flatMap(sourceLive =>
+          emit(key.remote, InboundEvent.CachedBlockRejected(refusal, key.generation, sourceLive))
+        )
+    }
 
   /** KeepAlive and PeerSharing survive clean hot-protocol returns. Reusing a terminal ChainSync
     * runtime would send a new FindIntersect after MsgDone.
@@ -208,7 +240,8 @@ final class InboundGovernor[F[_]: Async] private (
       remote: SocketAddress[IpAddress],
       version: Int,
       peerSharing: Boolean,
-      mux: Mux[F]
+      mux: Mux[F],
+      source: InboundGovernor.SourceKey
   ): F[Unit] =
     for
       end <- SessionEnd.scoped(node) { (_, _) ?=>
@@ -229,7 +262,7 @@ final class InboundGovernor[F[_]: Async] private (
                 .use { connection =>
                   SessionEnd
                     .scoped(node) { (_, _) ?=>
-                      following(remote, connection).as(SessionEnd.Returned)
+                      following(remote, connection, source).as(SessionEnd.Returned)
                     }
                     .flatMap { end =>
                       val cooling =
@@ -293,7 +326,8 @@ final class InboundGovernor[F[_]: Async] private (
   /** One hot activation, returning normal results only after its submitted replies are drained. */
   private def following(
       remote: SocketAddress[IpAddress],
-      connection: NodeToNodeConnection[F, NtNHeader]
+      connection: NodeToNodeConnection[F, NtNHeader],
+      source: InboundGovernor.SourceKey
   )(using outer: Raise[F, NodeError]): F[Unit] =
     Handle
       .allow[NodeError] {
@@ -319,6 +353,7 @@ final class InboundGovernor[F[_]: Async] private (
                 observe,
                 pool,
                 fetchMode,
+                invalidCachedBlock = Some(rejectedCachedBlock(source, _)),
                 patience = bound.map(_.patience),
                 received = bound.map(_.received),
                 chainSyncObserver = bound.map(_.observer),
@@ -478,7 +513,7 @@ object InboundGovernor:
     */
   final case class Session(
       remote: String,
-      number: Long = 0,
+      number: BigInt = 0,
       intersection: Option[String] = None,
       headers: Long = 0,
       rollbacks: Long = 0,
@@ -489,6 +524,8 @@ object InboundGovernor:
 
   /** The follower session over the peer, raising a [[PeerError]] when the peer fails. */
   type Follow[F[_]] = Peer[F] => Raise[F, NodeError] ?=> F[Unit]
+
+  private[node] final case class SourceKey(generation: BigInt, remote: SocketAddress[IpAddress])
 
   private val RetainedSessions = 64
 
@@ -518,27 +555,33 @@ object InboundGovernor:
       genesis: Option[GenesisRuntime[F]] = None,
       receivedBody: Option[Peer.BodySink[F]] = None
   )(using node: Handle[F, NodeError], repromotion: RepromotionWait[F]): F[InboundGovernor[F]] =
-    Ref
-      .of[F, Map[String, Session]](Map.empty)
-      .map(
-        new InboundGovernor[F](
-          node,
-          fatal,
-          manager,
-          config,
-          handlers,
-          follow,
-          prepare,
-          headers,
-          transactions,
-          events,
-          observe,
-          sharing,
-          pool,
-          fetchMode,
-          genesis,
-          receivedBody,
-          repromotion,
-          _
-        )
+    (
+      Ref.of[F, Map[String, Session]](Map.empty),
+      Ref.of[F, BigInt](0),
+      Ref.of[F, Map[BigInt, PeerError => F[Unit]]](Map.empty),
+      Mutex[F]
+    ).mapN { (sessions, counter, sources, lock) =>
+      new InboundGovernor[F](
+        node,
+        fatal,
+        manager,
+        config,
+        handlers,
+        follow,
+        prepare,
+        headers,
+        transactions,
+        events,
+        observe,
+        sharing,
+        pool,
+        fetchMode,
+        genesis,
+        receivedBody,
+        repromotion,
+        sessions,
+        counter,
+        sources,
+        lock
       )
+    }
