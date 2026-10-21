@@ -136,7 +136,7 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
       assertNotEquals(
         state.instantStake,
         computed,
-        "original upstream cache violates native derived-state invariant"
+        "original generated cache differs from the UTxO-derived cache"
       )
     else
       assertEquals(
@@ -144,14 +144,6 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
         computed,
         "native smartUTxOState cache matches the complete original UTxO"
       )
-
-  private def underflow[A](actual: Either[LedgerFailure, A], row: Json): Unit =
-    val amount = row.hcursor.get[BigInt]("expectedUnderflow").fold(e => fail(e.message), identity)
-    assert(amount < 0)
-    assertEquals(
-      actual.swap.toOption,
-      Some(LedgerFailure.Vocab(VocabError.Negative(VocabError.Kind.CompactCoin, amount)))
-    )
 
   cases.foreach { row =>
     val id = text(row, "id")
@@ -178,17 +170,15 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
           if rule == "UTXO" then
             Sts.apply(Utxo)(globals, execution, Counted(before, PlutusStats.zero), signal)
           else Sts.apply(Utxow)(globals, execution, Counted(before, PlutusStats.zero), signal)
-        if incoherent then underflow(actual, row)
-        else
-          result match
-            case "accepted" =>
-              sameUtxo(
-                actual.fold(e => fail(e.message), _.state),
-                decode(node(id, "implementation-state"), UpstreamNativeStates.nativeUtxoState)
-              )
-            case "rejected" =>
-              rejection(id, rule, actual.swap.toOption.getOrElse(fail("native rejection accepted")))
-            case other => fail(s"unknown observation $other")
+        result match
+          case "accepted" =>
+            sameUtxo(
+              actual.fold(e => fail(e.message), _.state),
+              decode(node(id, "implementation-state"), UpstreamNativeStates.nativeUtxoState)
+            )
+          case "rejected" =>
+            rejection(id, rule, actual.swap.toOption.getOrElse(fail("native rejection accepted")))
+          case other => fail(s"unknown observation $other")
       else
         val before = decode(node(id, "state"), UpstreamNativeStates.nativeLedgerState)
         cacheInvariant(before.utxo, incoherent)
@@ -228,17 +218,15 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
               Counted(before, PlutusStats.zero),
               tx(node(id, "signal"))
             )
-        if incoherent then underflow(actual, row)
-        else
-          result match
-            case "accepted" =>
-              sameLedger(
-                actual.fold(e => fail(e.message), _.state),
-                decode(node(id, "implementation-state"), UpstreamNativeStates.nativeLedgerState)
-              )
-            case "rejected" =>
-              rejection(id, rule, actual.swap.toOption.getOrElse(fail("native rejection accepted")))
-            case other => fail(s"unknown observation $other")
+        result match
+          case "accepted" =>
+            sameLedger(
+              actual.fold(e => fail(e.message), _.state),
+              decode(node(id, "implementation-state"), UpstreamNativeStates.nativeLedgerState)
+            )
+          case "rejected" =>
+            rejection(id, rule, actual.swap.toOption.getOrElse(fail("native rejection accepted")))
+          case other => fail(s"unknown observation $other")
     }
   }
   test("native-only standalone UTXO refuses missing collateral without redeemers") {
@@ -346,6 +334,21 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
         )
       }
     }
+  }
+
+  test("nine original cache regressions retain native accepts and historical underflow evidence") {
+    val originals = cases.filter(row => text(row, "replayScope") == "incoherent-cache")
+    assertEquals(originals.size, 9)
+    assertEquals(originals.map(row => text(row, "nativeStsTupleSha256")).distinct.size, 9)
+    assertEquals(originals.count(row => text(row, "native") == "accepted"), 9)
+    assertEquals(cases.map(row => text(row, "nativeStsTupleSha256")).distinct.size, 48)
+    originals.foreach { row =>
+      assert(row.hcursor.get[BigInt]("expectedUnderflow").exists(_ < 0))
+      assertEquals(text(row, "result"), "implementation-accepted\nagda-accepted\noutputs-equal\n")
+    }
+    val historical = manifest.hcursor.downField("originalIncoherentScalaReplay")
+    assertEquals(historical.get[Int]("failed"), Right(9))
+    assertEquals(historical.get[Int]("passed"), Right(28))
   }
 
   test("unique lawful coverage excludes repeated hooks and retains the original formal failure") {
