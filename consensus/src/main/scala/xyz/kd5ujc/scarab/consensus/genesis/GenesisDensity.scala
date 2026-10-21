@@ -47,7 +47,8 @@ object GenesisDensity:
     }
     val prefix = rooted.headOption.fold(empty) { case (_, first) =>
       val common = rooted.drop(1).foldLeft(first) { case (acc, (_, candidate)) =>
-        val index = acc.points.lastIndexWhere(candidate.points.contains)
+        val candidatePoints = candidate.points.toSet
+        val index = acc.points.lastIndexWhere(candidatePoints.contains)
         Fragment(acc.anchor, acc.headers.take(index.max(0)))
       }
       common
@@ -130,7 +131,8 @@ object GenesisDensity:
       case None => Right(candidate)
       case Some(raw) =>
         val loe = sanitize(current, raw)
-        val index = candidate.points.lastIndexWhere(loe.points.contains)
+        val limitPoints = loe.points.toSet
+        val index = candidate.points.lastIndexWhere(limitPoints.contains)
         if index < 0 then Left(LoEError.CandidateDoesNotIntersectLimit)
         else
           val intersection = candidate.points(index)

@@ -102,3 +102,22 @@ class GenesisDensitySuite extends FunSuite:
       Left(LoEError.CandidateDoesNotIntersectLimit)
     )
   }
+
+  test("wide candidate agreement and clipping run on a small stack") {
+    var outcome: Option[Either[Throwable, Int]] = None
+    val worker = new Thread(
+      null,
+      () =>
+        outcome = Some(try
+          val a = Fragment(Point.Origin, Vector.tabulate(40000)(i => point(i)))
+          val b = a.copy(headers = a.headers.take(39999) :+ point(39999, 1))
+          val shared = sharedCandidatePrefix(empty, Vector(0 -> a, 1 -> b))
+          Right(shared.prefix.headers.size)
+        catch case error: Throwable => Left(error)),
+      "genesis-small-stack",
+      256 * 1024
+    )
+    worker.start()
+    worker.join()
+    assertEquals(outcome.map(_.toOption), Some(Some(39999)))
+  }
