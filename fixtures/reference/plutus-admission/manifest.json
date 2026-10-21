@@ -1,0 +1,10 @@
+{
+  "dateUtc": "2026-10-21",
+  "files": {
+    "admissions.json": "17e1f133e6a93bc03bc85d36de2bab7f5801aba97998c5a855d1c3e88d8e534d",
+    "gates.json": "6da230d862bed27c892c67e1188804d8370243eec33914f02a217ebc377aa5ff",
+    "ledger-comparisons.json": "17a9770afafff29c3346d3019576b566e9291f5f94c249973fd8fd5edeb572e8"
+  },
+  "schema": "scarab-plutus-admission-fixture-v1",
+  "sourceCommit": "5b290879b8ca8fe12350696e8ad7cc102d4d61f8"
+}

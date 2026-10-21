@@ -133,7 +133,7 @@ and Conway voting/proposing have accepted controls or explicit language refusals
 ordered requests from 174 successful collections match, including full context arguments, clocks,
 cost models, scripts and declared budgets. The 135 collection refusals match their ordered typed
 categories; Conway also matches complete error CBOR. Evaluation matches 189 successful budgets and
-25 failures. Historical reference error bytes are retained without asserting historical wire parity.
+25 failures. Historical reference error bytes are retained without asserting historical wire parity; that separate contract remains [#123](https://github.com/KD5UJC-XYZ/scarab/issues/123).
 The observer calls the actual era's API; it does not translate every input as Conway or compare a
 Scalus-built context against another Scalus-built context.
 
@@ -149,6 +149,42 @@ The fixture manifests pin source, input, output, tool and image identities. Both
 Plutus `507cab8cf6192e5143f12be5b2d3005a2928dc6d` / ledger
 `f649f9751074d2ab3de033fc3912f29c9862c1f5`, GHC 9.10.3 and complete Linux/amd64 crypto.
 They are correctness measurements, not latency or throughput benchmarks.
+
+### Integrated admission gates (2026-10-21)
+
+Measured source `5b290879b8ca8fe12350696e8ad7cc102d4d61f8`, rebased onto main
+`2fcd309047c7935de653fd6fd0f22ec95364c2dd`, passes Docker `check` (6,449 passed,17 optional skips),
+331 Python tests and the complete private ledger e2e. All twenty legacy and twenty-four auxiliary
+signed controls pass at individually acquired reference era/protocol/points. All 66 Shelley-through-
+Conway ledger projections match across 1,691 block applications through epoch17, with zero comparison
+mismatches/errors/skips or validation/fatal errors. The [compact admission fixture](../fixtures/reference/plutus-admission/README.md)
+retains original signed bytes, effects, all comparison points, commands and full image identities.
+
+The first era-load attempt exposed a bootstrap defect: an extra V2 model in Alonzo genesis was not
+adopted at the hard fork. The PV6-to-7 update now installs V1 and V2 together, preserving V1; the pinned
+CLI encodes the expected 166/175 parameters and the final live Babbage V2 cases verify adoption.
+The first integrated scenario then passed all 44 transaction cases but failed three Alonzo comparisons:
+reference JSON normalized pending cost-model CBOR to definite arrays, whereas Scarab's JSON retained
+original indefinite arrays. Every one of the 341 parameters already agreed. The driver now strictly
+compares complete language-to-ordered-Int64-vector values for only PPUP field18, preserving both raw
+encodings as evidence. It refuses duplicate languages, malformed/trailing encodings and changed values,
+order or length; other fields remain unchanged. Counterfactual tests fail against the old comparator
+and pass the correction. Comparison errors now fail the scenario even when other points match.
+The successful run retains all nine affected proposer/point observations, rather than avoiding them.
+
+Extended fuzz passed 84 targets / 33,600,000 cases on `b991c9413`; the subsequent correction changed
+only Python comparison/tests and a changelog fragment, leaving all Scala decoders/fuzz sources
+identical. The frozen scenario runtime matched all 12,725 build files and 64 dependency jars before
+and after check. Fixture manifests' earlier preparation source revisions identify their capture
+bases; separately hashed observer/generator tools and this measured source identify the actual tests.
+These results add no latency, allocation or throughput claim.
+
+The scenario retained 45 handled rollbacks and seven KeepAlive reconnects. Source/timing evidence
+identifies the responder's 97-second idle deadline; an eager reverse-direction responder versus
+upstream demand-driven startup is a hypothesis tracked in [#292](https://github.com/KD5UJC-XYZ/scarab/issues/292),
+not a newly proved transport root cause or a claim of continuous network health. Pre-Alonzo auxiliary
+structure remains [#290](https://github.com/KD5UJC-XYZ/scarab/issues/290). This stage is ready for review;
+issue completion still requires main landing and green main CI.
 
 ### Platform boundary
 

@@ -1,0 +1,970 @@
+{
+  "pendingCostModelEncodings": [
+    {
+      "hex": "a20098a61a0003236119032c01011903e819023b00011903e8195e7104011903e818201a0001ca761928eb041959d818641959d818641959d818641959d818641959d818641959d81864186418641959d81864194c5118201a0002acfa182019b551041a000363151901ff00011a00015c3518201a000797751936f404021a0002ff941a0006ea7818dc0001011903e8196ff604021a0003bd081a00034ec5183e011a00102e0f19312a011a00032e801901a5011a0002da781903e819cf06011a00013a34182019a8f118201903e818201a00013aac0119e143041903e80a1a00030219189c011a00030219189c011a0003207c1901d9011a000330001901ff0119ccf3182019fd40182019ffd5182019581e18201940b318201a00012adf18201a0002ff941a0006ea7818dc0001011a00010f92192da7000119eabb18201a0002ff941a0006ea7818dc0001011a0002ff941a0006ea7818dc0001011a000c504e197712041a001d6af61a0001425b041a00040c660004001a00014fab18201a0003236119032c010119a0de18201a00033d7618201979f41820197fb8182019a95d1820197df718201995aa18201a0374f693194a1f0a0198af1a0003236119032c01011903e819023b00011903e8195e7104011903e818201a0001ca761928eb041959d818641959d818641959d818641959d818641959d818641959d81864186418641959d81864194c5118201a0002acfa182019b551041a000363151901ff00011a00015c3518201a000797751936f404021a0002ff941a0006ea7818dc0001011903e8196ff604021a0003bd081a00034ec5183e011a00102e0f19312a011a00032e801901a5011a0002da781903e819cf06011a00013a34182019a8f118201903e818201a00013aac0119e143041903e80a1a00030219189c011a00030219189c011a0003207c1901d9011a000330001901ff0119ccf3182019fd40182019ffd5182019581e18201940b318201a00012adf18201a0002ff941a0006ea7818dc0001011a00010f92192da7000119eabb18201a0002ff941a0006ea7818dc0001011a0002ff941a0006ea7818dc0001011a0011b22c1a0005fdde00021a000c504e197712041a001d6af61a0001425b041a00040c660004001a00014fab18201a0003236119032c010119a0de18201a00033d7618201979f41820197fb8182019a95d1820197df718201995aa18201a0223accc0a1a009063b91903fd0a1a02515e841980b30a",
+      "side": "reference"
+    },
+    {
+      "hex": "a2009f1a0003236119032c01011903e819023b00011903e8195e7104011903e818201a0001ca761928eb041959d818641959d818641959d818641959d818641959d818641959d81864186418641959d81864194c5118201a0002acfa182019b551041a000363151901ff00011a00015c3518201a000797751936f404021a0002ff941a0006ea7818dc0001011903e8196ff604021a0003bd081a00034ec5183e011a00102e0f19312a011a00032e801901a5011a0002da781903e819cf06011a00013a34182019a8f118201903e818201a00013aac0119e143041903e80a1a00030219189c011a00030219189c011a0003207c1901d9011a000330001901ff0119ccf3182019fd40182019ffd5182019581e18201940b318201a00012adf18201a0002ff941a0006ea7818dc0001011a00010f92192da7000119eabb18201a0002ff941a0006ea7818dc0001011a0002ff941a0006ea7818dc0001011a000c504e197712041a001d6af61a0001425b041a00040c660004001a00014fab18201a0003236119032c010119a0de18201a00033d7618201979f41820197fb8182019a95d1820197df718201995aa18201a0374f693194a1f0aff019f1a0003236119032c01011903e819023b00011903e8195e7104011903e818201a0001ca761928eb041959d818641959d818641959d818641959d818641959d818641959d81864186418641959d81864194c5118201a0002acfa182019b551041a000363151901ff00011a00015c3518201a000797751936f404021a0002ff941a0006ea7818dc0001011903e8196ff604021a0003bd081a00034ec5183e011a00102e0f19312a011a00032e801901a5011a0002da781903e819cf06011a00013a34182019a8f118201903e818201a00013aac0119e143041903e80a1a00030219189c011a00030219189c011a0003207c1901d9011a000330001901ff0119ccf3182019fd40182019ffd5182019581e18201940b318201a00012adf18201a0002ff941a0006ea7818dc0001011a00010f92192da7000119eabb18201a0002ff941a0006ea7818dc0001011a0002ff941a0006ea7818dc0001011a0011b22c1a0005fdde00021a000c504e197712041a001d6af61a0001425b041a00040c660004001a00014fab18201a0003236119032c010119a0de18201a00033d7618201979f41820197fb8182019a95d1820197df718201995aa18201a0223accc0a1a009063b91903fd0a1a02515e841980b30aff",
+      "side": "scala"
+    }
+  ],
+  "pendingCostModelObservations": [
+    {
+      "comparisonMatched": true,
+      "completeValuesEqual": true,
+      "era": "alonzo",
+      "label": "after-batch",
+      "languages": [
+        "0",
+        "1"
+      ],
+      "parameterCounts": {
+        "0": 166,
+        "1": 175
+      },
+      "phase": "current",
+      "point": {
+        "hash": "6ef9cb8978c81a5dd52e88cfd1f527bf28a7299219a555aa70e0117a12d11666",
+        "slot": 3096
+      },
+      "proposer": "05a27d69fa9a113f64d612c6cb7f9603c6047fe9daac68f8036de094",
+      "referenceRawSha256": "6ecd6264b249ebe9e2c71836b9da4dc15872b223f4d2ef61724c08972dfbe30e",
+      "scalaRawSha256": "bc78d3c49e5a054f56f9dbe49e8786e731004b70f9824d728e83300cbfab700f"
+    },
+    {
+      "comparisonMatched": true,
+      "completeValuesEqual": true,
+      "era": "alonzo",
+      "label": "after-batch",
+      "languages": [
+        "0",
+        "1"
+      ],
+      "parameterCounts": {
+        "0": 166,
+        "1": 175
+      },
+      "phase": "current",
+      "point": {
+        "hash": "6ef9cb8978c81a5dd52e88cfd1f527bf28a7299219a555aa70e0117a12d11666",
+        "slot": 3096
+      },
+      "proposer": "0934bf5eb97114e6a333f4981d07960d5c68f3b476fec4c04679aa4d",
+      "referenceRawSha256": "6ecd6264b249ebe9e2c71836b9da4dc15872b223f4d2ef61724c08972dfbe30e",
+      "scalaRawSha256": "bc78d3c49e5a054f56f9dbe49e8786e731004b70f9824d728e83300cbfab700f"
+    },
+    {
+      "comparisonMatched": true,
+      "completeValuesEqual": true,
+      "era": "alonzo",
+      "label": "after-batch",
+      "languages": [
+        "0",
+        "1"
+      ],
+      "parameterCounts": {
+        "0": 166,
+        "1": 175
+      },
+      "phase": "current",
+      "point": {
+        "hash": "6ef9cb8978c81a5dd52e88cfd1f527bf28a7299219a555aa70e0117a12d11666",
+        "slot": 3096
+      },
+      "proposer": "e15c8cb419e66f2945047742381f265ea61017b6710d334d28a5cd5c",
+      "referenceRawSha256": "6ecd6264b249ebe9e2c71836b9da4dc15872b223f4d2ef61724c08972dfbe30e",
+      "scalaRawSha256": "bc78d3c49e5a054f56f9dbe49e8786e731004b70f9824d728e83300cbfab700f"
+    },
+    {
+      "comparisonMatched": true,
+      "completeValuesEqual": true,
+      "era": "alonzo",
+      "label": "mid",
+      "languages": [
+        "0",
+        "1"
+      ],
+      "parameterCounts": {
+        "0": 166,
+        "1": 175
+      },
+      "phase": "current",
+      "point": {
+        "hash": "047b50b38f9bf939f27c9d9796e7ad3fd83f962d28c822230e9d1169463338d8",
+        "slot": 3282
+      },
+      "proposer": "05a27d69fa9a113f64d612c6cb7f9603c6047fe9daac68f8036de094",
+      "referenceRawSha256": "6ecd6264b249ebe9e2c71836b9da4dc15872b223f4d2ef61724c08972dfbe30e",
+      "scalaRawSha256": "bc78d3c49e5a054f56f9dbe49e8786e731004b70f9824d728e83300cbfab700f"
+    },
+    {
+      "comparisonMatched": true,
+      "completeValuesEqual": true,
+      "era": "alonzo",
+      "label": "mid",
+      "languages": [
+        "0",
+        "1"
+      ],
+      "parameterCounts": {
+        "0": 166,
+        "1": 175
+      },
+      "phase": "current",
+      "point": {
+        "hash": "047b50b38f9bf939f27c9d9796e7ad3fd83f962d28c822230e9d1169463338d8",
+        "slot": 3282
+      },
+      "proposer": "0934bf5eb97114e6a333f4981d07960d5c68f3b476fec4c04679aa4d",
+      "referenceRawSha256": "6ecd6264b249ebe9e2c71836b9da4dc15872b223f4d2ef61724c08972dfbe30e",
+      "scalaRawSha256": "bc78d3c49e5a054f56f9dbe49e8786e731004b70f9824d728e83300cbfab700f"
+    },
+    {
+      "comparisonMatched": true,
+      "completeValuesEqual": true,
+      "era": "alonzo",
+      "label": "mid",
+      "languages": [
+        "0",
+        "1"
+      ],
+      "parameterCounts": {
+        "0": 166,
+        "1": 175
+      },
+      "phase": "current",
+      "point": {
+        "hash": "047b50b38f9bf939f27c9d9796e7ad3fd83f962d28c822230e9d1169463338d8",
+        "slot": 3282
+      },
+      "proposer": "e15c8cb419e66f2945047742381f265ea61017b6710d334d28a5cd5c",
+      "referenceRawSha256": "6ecd6264b249ebe9e2c71836b9da4dc15872b223f4d2ef61724c08972dfbe30e",
+      "scalaRawSha256": "bc78d3c49e5a054f56f9dbe49e8786e731004b70f9824d728e83300cbfab700f"
+    },
+    {
+      "comparisonMatched": true,
+      "completeValuesEqual": true,
+      "era": "alonzo",
+      "label": "late",
+      "languages": [
+        "0",
+        "1"
+      ],
+      "parameterCounts": {
+        "0": 166,
+        "1": 175
+      },
+      "phase": "current",
+      "point": {
+        "hash": "92b0a2d35cbddd0a698f90ca168c514c8c09e9af7253ec1d05a653045291afe4",
+        "slot": 3503
+      },
+      "proposer": "05a27d69fa9a113f64d612c6cb7f9603c6047fe9daac68f8036de094",
+      "referenceRawSha256": "6ecd6264b249ebe9e2c71836b9da4dc15872b223f4d2ef61724c08972dfbe30e",
+      "scalaRawSha256": "bc78d3c49e5a054f56f9dbe49e8786e731004b70f9824d728e83300cbfab700f"
+    },
+    {
+      "comparisonMatched": true,
+      "completeValuesEqual": true,
+      "era": "alonzo",
+      "label": "late",
+      "languages": [
+        "0",
+        "1"
+      ],
+      "parameterCounts": {
+        "0": 166,
+        "1": 175
+      },
+      "phase": "current",
+      "point": {
+        "hash": "92b0a2d35cbddd0a698f90ca168c514c8c09e9af7253ec1d05a653045291afe4",
+        "slot": 3503
+      },
+      "proposer": "0934bf5eb97114e6a333f4981d07960d5c68f3b476fec4c04679aa4d",
+      "referenceRawSha256": "6ecd6264b249ebe9e2c71836b9da4dc15872b223f4d2ef61724c08972dfbe30e",
+      "scalaRawSha256": "bc78d3c49e5a054f56f9dbe49e8786e731004b70f9824d728e83300cbfab700f"
+    },
+    {
+      "comparisonMatched": true,
+      "completeValuesEqual": true,
+      "era": "alonzo",
+      "label": "late",
+      "languages": [
+        "0",
+        "1"
+      ],
+      "parameterCounts": {
+        "0": 166,
+        "1": 175
+      },
+      "phase": "current",
+      "point": {
+        "hash": "92b0a2d35cbddd0a698f90ca168c514c8c09e9af7253ec1d05a653045291afe4",
+        "slot": 3503
+      },
+      "proposer": "e15c8cb419e66f2945047742381f265ea61017b6710d334d28a5cd5c",
+      "referenceRawSha256": "6ecd6264b249ebe9e2c71836b9da4dc15872b223f4d2ef61724c08972dfbe30e",
+      "scalaRawSha256": "bc78d3c49e5a054f56f9dbe49e8786e731004b70f9824d728e83300cbfab700f"
+    }
+  ],
+  "points": [
+    {
+      "differenceCount": 0,
+      "epoch": 1,
+      "era": "shelley",
+      "label": "start",
+      "matched": true,
+      "tip": {
+        "hash": "c526281e92281f18a133c7e4c10a8909f229e9dfb97e1a57094d0ba9b716050a",
+        "slot": 70
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 1,
+      "era": "shelley",
+      "label": "after-batch",
+      "matched": true,
+      "tip": {
+        "hash": "d5d5d0b028f44fce209e16019c378ca7f5c0edceaccb8b767704d0aa80a11657",
+        "slot": 195
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 1,
+      "era": "shelley",
+      "label": "mid",
+      "matched": true,
+      "tip": {
+        "hash": "4db0a15290badaad5f1aba56c61274d19e9299668a586fb4004559c63417be41",
+        "slot": 285
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 1,
+      "era": "shelley",
+      "label": "late",
+      "matched": true,
+      "tip": {
+        "hash": "ec87d6e88c9c8ffec1eff11d677223a85e2b8852867689483e62eb7eea09f01a",
+        "slot": 490
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 2,
+      "era": "shelley",
+      "label": "start",
+      "matched": true,
+      "tip": {
+        "hash": "23ccd85ef883a7b36a7e258a91c0ef326d5b21d61a89a8f31e7a7e89de921a03",
+        "slot": 555
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 2,
+      "era": "shelley",
+      "label": "after-batch",
+      "matched": true,
+      "tip": {
+        "hash": "0aab9425cead4dba8618b8a2a03712e23d8b7ad47f1ff6a0b42a397deca09069",
+        "slot": 715
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 2,
+      "era": "shelley",
+      "label": "mid",
+      "matched": true,
+      "tip": {
+        "hash": "2e791e647b0a92c35b1429b9f8e6889539d80779e83957bd47b02cad3b57759a",
+        "slot": 795
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 2,
+      "era": "shelley",
+      "label": "late",
+      "matched": true,
+      "tip": {
+        "hash": "8b08db1520ccf7571b59b305fa04325169ecf922d32ddf764853d498e41c7493",
+        "slot": 995
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 3,
+      "era": "shelley",
+      "label": "start",
+      "matched": true,
+      "tip": {
+        "hash": "0a128fd406b4b9dfd8b71d4b1f44edb7bb063049c9f4690ad08c739c6782ee33",
+        "slot": 1064
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 3,
+      "era": "shelley",
+      "label": "after-batch",
+      "matched": true,
+      "tip": {
+        "hash": "40f08d404ef5b44455d4db24634abdec282f9f74473d655ab32c103ed7c67ed7",
+        "slot": 1090
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 3,
+      "era": "shelley",
+      "label": "mid",
+      "matched": true,
+      "tip": {
+        "hash": "0decd09fb246c307322f4fdfe49d6f2153fcc2378446d9de0e0205e0960ec903",
+        "slot": 1285
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 3,
+      "era": "shelley",
+      "label": "late",
+      "matched": true,
+      "tip": {
+        "hash": "3eb29f20fdd236bd10effd203786c213747ed4c248ba31bec29aa2e366c5261f",
+        "slot": 1498
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 4,
+      "era": "allegra",
+      "label": "start",
+      "matched": true,
+      "tip": {
+        "hash": "0a5d803a4075460b98fd84f51657fe7eb44ffb7d079f5ef82059f818147d7bd2",
+        "slot": 1574
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 4,
+      "era": "allegra",
+      "label": "after-batch",
+      "matched": true,
+      "tip": {
+        "hash": "9e2ecef0bd5b29bb6ac7e5c2a76ec694e8d64cc104425aa53d0d41d6bd4a5a62",
+        "slot": 1668
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 4,
+      "era": "allegra",
+      "label": "mid",
+      "matched": true,
+      "tip": {
+        "hash": "f0a9692e0b7f73836ef06c80cb99da551863ae532ca2f7b4fb042231a4bb0783",
+        "slot": 1789
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 4,
+      "era": "allegra",
+      "label": "late",
+      "matched": true,
+      "tip": {
+        "hash": "4bda37c4634a31c6c19f7851da1923c66468385fe0d229920a54b6764d1f3f55",
+        "slot": 1993
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 5,
+      "era": "mary",
+      "label": "start",
+      "matched": true,
+      "tip": {
+        "hash": "573f52f2c0088c620c43db34234679a11816899935d56a3c6878538b0290a33e",
+        "slot": 2059
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 5,
+      "era": "mary",
+      "label": "after-batch",
+      "matched": true,
+      "tip": {
+        "hash": "cdccf5bd46f114744f42b4254b7a31ebfbf6bfb15b10ffdfbee68c9bc8b35fa7",
+        "slot": 2221
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 5,
+      "era": "mary",
+      "label": "mid",
+      "matched": true,
+      "tip": {
+        "hash": "956135114f15766080a9f0b18a9c8e992cded91c660c71669474895ebf028019",
+        "slot": 2281
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 5,
+      "era": "mary",
+      "label": "late",
+      "matched": true,
+      "tip": {
+        "hash": "895181260f1e45ca5e1f6db9e6a2c420ff75b0792ec7d239237e63868e973253",
+        "slot": 2497
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 6,
+      "era": "alonzo",
+      "label": "start",
+      "matched": true,
+      "tip": {
+        "hash": "4d160ec84305fdda9b3e78abdc7e32a7be0b55c24315ecce9530859b6409c388",
+        "slot": 2567
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 6,
+      "era": "alonzo",
+      "label": "after-batch",
+      "matched": true,
+      "tip": {
+        "hash": "54e1afc3f8c51a12278c0bd6242f1956727f6c00c18b998f9b34e9e7d3e910a3",
+        "slot": 2711
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 6,
+      "era": "alonzo",
+      "label": "mid",
+      "matched": true,
+      "tip": {
+        "hash": "eb545ef71a3ce8e562663a94400db0ff38299d140c5b1bafe46006ffa95a2927",
+        "slot": 2874
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 6,
+      "era": "alonzo",
+      "label": "late",
+      "matched": true,
+      "tip": {
+        "hash": "d9f905d7bac8572cfd199ac4d4188d41ccb48f94e7a7e912001307848f908a49",
+        "slot": 2995
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 7,
+      "era": "alonzo",
+      "label": "start",
+      "matched": true,
+      "tip": {
+        "hash": "b8463ecbc4a14a5c62443d98ae2904d82a6815fb2b366d5b73f1d1f3ab33b8a0",
+        "slot": 3063
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 7,
+      "era": "alonzo",
+      "label": "after-batch",
+      "matched": true,
+      "tip": {
+        "hash": "6ef9cb8978c81a5dd52e88cfd1f527bf28a7299219a555aa70e0117a12d11666",
+        "slot": 3096
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 7,
+      "era": "alonzo",
+      "label": "mid",
+      "matched": true,
+      "tip": {
+        "hash": "047b50b38f9bf939f27c9d9796e7ad3fd83f962d28c822230e9d1169463338d8",
+        "slot": 3282
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 7,
+      "era": "alonzo",
+      "label": "late",
+      "matched": true,
+      "tip": {
+        "hash": "92b0a2d35cbddd0a698f90ca168c514c8c09e9af7253ec1d05a653045291afe4",
+        "slot": 3503
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 8,
+      "era": "babbage",
+      "label": "start",
+      "matched": true,
+      "tip": {
+        "hash": "a87fa41265993194e8708a64c2a1b181361b8c29461e5622b0dbdac7d481c3f4",
+        "slot": 3561
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 8,
+      "era": "babbage",
+      "label": "after-batch",
+      "matched": true,
+      "tip": {
+        "hash": "235aa37d20811b2754c9594e0fbe5c518cd4b63b037abb1b935bafee5901427a",
+        "slot": 3764
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 8,
+      "era": "babbage",
+      "label": "mid",
+      "matched": true,
+      "tip": {
+        "hash": "7df67f9ccfb0176eb6cea49e73008a053dc5505d3bb2bbf07103983b7ad15b57",
+        "slot": 3780
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 8,
+      "era": "babbage",
+      "label": "late",
+      "matched": true,
+      "tip": {
+        "hash": "271a1ca287854736d48c7aa66612885d0505f3605af1dd819886b8b3f0df8504",
+        "slot": 3995
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 9,
+      "era": "babbage",
+      "label": "start",
+      "matched": true,
+      "tip": {
+        "hash": "b96d2c83f47bc9ffb3afdea3b984982d6a4da15ac7d7e5845cc8adec87647d6d",
+        "slot": 4056
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 9,
+      "era": "babbage",
+      "label": "after-batch",
+      "matched": true,
+      "tip": {
+        "hash": "3e7ae55946442fdc7dfedb9b1ccb9e9dea368c1b91d1199036c61d98fd76a4ad",
+        "slot": 4094
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 9,
+      "era": "babbage",
+      "label": "mid",
+      "matched": true,
+      "tip": {
+        "hash": "be7f633c32f8c596514d40d69d41698ff052eea3bf8418a15adf87bfc26f68f6",
+        "slot": 4283
+      }
+    },
+    {
+      "differenceCount": 0,
+      "epoch": 9,
+      "era": "babbage",
+      "label": "late",
+      "matched": true,
+      "tip": {
+        "hash": "e5da059a04394c43f4b732a65506ffe7127e61bf94788d51d8b6179d72e179c3",
+        "slot": 4498
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "start",
+      "matched": true,
+      "tip": {
+        "block": 919,
+        "epoch": 10,
+        "hash": "d9f13b0086e7b9051d6bcf5b8f8e4e33c84c27ca39613c9565a5fd7418bdadfd",
+        "slot": 4601
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "after-batch",
+      "matched": true,
+      "tip": {
+        "block": 961,
+        "epoch": 10,
+        "hash": "1286db4660f6f28747c2c889b1f0fda0eb84ad767f73211e583be575c0d049c2",
+        "slot": 4840
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "mid",
+      "matched": true,
+      "tip": {
+        "block": 961,
+        "epoch": 10,
+        "hash": "1286db4660f6f28747c2c889b1f0fda0eb84ad767f73211e583be575c0d049c2",
+        "slot": 4840
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "late",
+      "matched": true,
+      "tip": {
+        "block": 999,
+        "epoch": 10,
+        "hash": "a918828b9cec84b09c42347fa4bd11789db65730af96137fb154a2cb8d0d0a4d",
+        "slot": 5039
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "start",
+      "matched": true,
+      "tip": {
+        "block": 1002,
+        "epoch": 11,
+        "hash": "8e8024772b1fddea38377f3fd0c430a90ff397cbf44d4af904a99055ea4c97a8",
+        "slot": 5053
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "after-batch",
+      "matched": true,
+      "tip": {
+        "block": 1013,
+        "epoch": 11,
+        "hash": "bbaa20cf01da1507e9faa78c4b135636d6a9d52c720145e94c61eca0601ffcce",
+        "slot": 5112
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "mid",
+      "matched": true,
+      "tip": {
+        "block": 1047,
+        "epoch": 11,
+        "hash": "f9d41d7c676e781f8452771f9064fe7938f850196be4b4009507386e6eb1cd02",
+        "slot": 5282
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "late",
+      "matched": true,
+      "tip": {
+        "block": 1094,
+        "epoch": 11,
+        "hash": "30c521e0471824058b0c0a4075ba6941269c74a766e08bbccc888f8277113804",
+        "slot": 5495
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "start",
+      "matched": true,
+      "tip": {
+        "block": 1114,
+        "epoch": 12,
+        "hash": "3870b64cf522a915044db6390a817af0369794a328e47d7cad0f287f35b7adb9",
+        "slot": 5582
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "after-batch",
+      "matched": true,
+      "tip": {
+        "block": 1122,
+        "epoch": 12,
+        "hash": "c7791f7c440b5c637b49ba9a73bcaff165384cde7bf16376d48640959e29a092",
+        "slot": 5619
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "mid",
+      "matched": true,
+      "tip": {
+        "block": 1165,
+        "epoch": 12,
+        "hash": "928b5b06525cd4984c4a4fe2dfb628c0037555ec01ecff290f16d9e861cb4d09",
+        "slot": 5806
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "late",
+      "matched": true,
+      "tip": {
+        "block": 1207,
+        "epoch": 12,
+        "hash": "38bb51935135f3c33931dc23d3f5b4848337282486d0ba584914d148b200e645",
+        "slot": 5992
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "start",
+      "matched": true,
+      "tip": {
+        "block": 1226,
+        "epoch": 13,
+        "hash": "f8f11de1efa167d341985d078448f415b8d2008f528765c30c022e8dc7962975",
+        "slot": 6101
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "after-batch",
+      "matched": true,
+      "tip": {
+        "block": 1240,
+        "epoch": 13,
+        "hash": "67157889d5f8efe1f93cff76db45a878a93477b7ecfa007fb58a6dcc84c1ea64",
+        "slot": 6179
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "mid",
+      "matched": true,
+      "tip": {
+        "block": 1265,
+        "epoch": 13,
+        "hash": "9a3ded0e680818efb42c40240950d316c8400f6437a04a6dacb5985cb4b91b92",
+        "slot": 6282
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "late",
+      "matched": true,
+      "tip": {
+        "block": 1307,
+        "epoch": 13,
+        "hash": "ca1e91256f27c97d5016c53d407f740acdb9c7cebb23e6d329c380d1080a2971",
+        "slot": 6497
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "start",
+      "matched": true,
+      "tip": {
+        "block": 1320,
+        "epoch": 14,
+        "hash": "76fe5506b2656aeeff60d4f49bd2da20596974f36b95e15ef8c8f197062c0be7",
+        "slot": 6555
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "after-batch",
+      "matched": true,
+      "tip": {
+        "block": 1324,
+        "epoch": 14,
+        "hash": "4e5c142e65b5a150b39e08a055115abf67f944aedfdced7fedfe0a0510f88930",
+        "slot": 6576
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "mid",
+      "matched": true,
+      "tip": {
+        "block": 1372,
+        "epoch": 14,
+        "hash": "fa36cbcd842a5be2b4c6127c6f4977261fc5da638f89fa27bbb2bbe7cb8cd007",
+        "slot": 6790
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "late",
+      "matched": true,
+      "tip": {
+        "block": 1415,
+        "epoch": 14,
+        "hash": "662f270e955b3b9343e2a3338c672c92e64b2c0d23ce0a9065366d0d6ee88e93",
+        "slot": 6998
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "start",
+      "matched": true,
+      "tip": {
+        "block": 1427,
+        "epoch": 15,
+        "hash": "8030b54014853a0fbdee47ce9fc8381f2c8ecd7e168664daf720bb94069c5d92",
+        "slot": 7066
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "after-batch",
+      "matched": true,
+      "tip": {
+        "block": 1459,
+        "epoch": 15,
+        "hash": "e99360a2c48f264d868c35a9b6b81f68929c24a4f5130aa2ec8c6e769349e665",
+        "slot": 7213
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "mid",
+      "matched": true,
+      "tip": {
+        "block": 1477,
+        "epoch": 15,
+        "hash": "0ad56cc732b109a89209ce5ca10b861cc4da7820dded594155d84275f14cbcb1",
+        "slot": 7288
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "late",
+      "matched": true,
+      "tip": {
+        "block": 1516,
+        "epoch": 15,
+        "hash": "8a437356bdde64999bafd83c057a6810d406b96d4d45633cd98202ca7a337862",
+        "slot": 7493
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "start",
+      "matched": true,
+      "tip": {
+        "block": 1533,
+        "epoch": 16,
+        "hash": "0e108ed183b350abc8c8114a88cb6e0cc2076ef03e77bf17fc04f887b39a0011",
+        "slot": 7561
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "after-batch",
+      "matched": true,
+      "tip": {
+        "block": 1550,
+        "epoch": 16,
+        "hash": "4664dd6626bc9af8bcd1f1cd21321d4a61ce20022c62d0f12f54cb10b6c7e580",
+        "slot": 7639
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "mid",
+      "matched": true,
+      "tip": {
+        "block": 1579,
+        "epoch": 16,
+        "hash": "65c2e647061397358f2c578bbc7364fe3460eee6a97eca41fc6207cf7f010286",
+        "slot": 7785
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "late",
+      "matched": true,
+      "tip": {
+        "block": 1631,
+        "epoch": 16,
+        "hash": "a2f3eb772dfe8df8a6b1211404f4df209aed073c12f8a0b7a53274d239d2913f",
+        "slot": 8016
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "start",
+      "matched": true,
+      "tip": {
+        "block": 1641,
+        "epoch": 17,
+        "hash": "66260ade26acf80bf07cf46ffd9dd5d104b179eb7a709073ba0150a4024c197e",
+        "slot": 8077
+      }
+    },
+    {
+      "differenceCount": 0,
+      "era": "conway",
+      "label": "after-batch",
+      "matched": true,
+      "tip": {
+        "block": 1641,
+        "epoch": 17,
+        "hash": "66260ade26acf80bf07cf46ffd9dd5d104b179eb7a709073ba0150a4024c197e",
+        "slot": 8077
+      }
+    }
+  ]
+}

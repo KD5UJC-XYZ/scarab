@@ -1,0 +1,2508 @@
+{
+  "observations": [
+    {
+      "case": "reject-success-invalid",
+      "collateral": [
+        "130fc1b7401e7cca335f05ae96546eb1f9ba2b72fb5281364c6503f59a641f64",
+        1
+      ],
+      "era": "alonzo",
+      "errors": [],
+      "family": "legacy",
+      "isValid": false,
+      "language": 1,
+      "normalInputs": [
+        [
+          "130fc1b7401e7cca335f05ae96546eb1f9ba2b72fb5281364c6503f59a641f64",
+          0
+        ],
+        [
+          "130fc1b7401e7cca335f05ae96546eb1f9ba2b72fb5281364c6503f59a641f64",
+          2
+        ]
+      ],
+      "observedEffects": {
+        "collateralPresent": true,
+        "normalInputsPresent": [
+          true,
+          true
+        ],
+        "outputs": {}
+      },
+      "operations": [
+        "spend",
+        "mint"
+      ],
+      "passed": true,
+      "referenceAfter": {
+        "era": "alonzo",
+        "eraIndex": 4,
+        "hash": "14f049f9b6597a52dbede7048fada971b51e0f789792aab79c3c5e404578e198",
+        "protocolVersion": {
+          "major": 5,
+          "minor": 0
+        },
+        "slot": 2615
+      },
+      "referenceBefore": {
+        "era": "alonzo",
+        "eraIndex": 4,
+        "hash": "14f049f9b6597a52dbede7048fada971b51e0f789792aab79c3c5e404578e198",
+        "protocolVersion": {
+          "major": 5,
+          "minor": 0
+        },
+        "slot": 2615
+      },
+      "tx": "84a60082825820130fc1b7401e7cca335f05ae96546eb1f9ba2b72fb5281364c6503f59a641f6400825820130fc1b7401e7cca335f05ae96546eb1f9ba2b72fb5281364c6503f59a641f64020181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c551821a011a49a0a1581cfc61e623d413aa67dc9367e8e48f5ab7f38093e871af6d9dd27b717ea1486572612d6c6f616407021a0016e36009a1581cfc61e623d413aa67dc9367e8e48f5ab7f38093e871af6d9dd27b717ea1486572612d6c6f6164070b58205a5d01b0c29378d5728b416261eb242732cda7525455ab8b1f0c7f0358e3fb410d81825820130fc1b7401e7cca335f05ae96546eb1f9ba2b72fb5281364c6503f59a641f6401a400818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840b282d150b42401db4cd2c4e96f570ddc06946ea660e35414c938af9a2ed4624614b183a0746a28286abdb23e8b972443862977c5b4f3f41e7d2dab66b7d0a405038147460100002224990481182a0582840001182a821a00030d401a05f5e100840100182a821a00030d401a05f5e100f4f6",
+      "txSha256": "2cbca18bb8d2ab77edc9a981197a44e0fff2d5d6977442a7c45a28c7674181ed",
+      "txid": "440314cb8b105867294388ae861c2f59f81de05fa5bba0d20b7d66a7f4c253f9"
+    },
+    {
+      "case": "success",
+      "collateral": [
+        "130fc1b7401e7cca335f05ae96546eb1f9ba2b72fb5281364c6503f59a641f64",
+        1
+      ],
+      "era": "alonzo",
+      "errors": [],
+      "family": "legacy",
+      "isValid": true,
+      "language": 1,
+      "normalInputs": [
+        [
+          "130fc1b7401e7cca335f05ae96546eb1f9ba2b72fb5281364c6503f59a641f64",
+          0
+        ],
+        [
+          "130fc1b7401e7cca335f05ae96546eb1f9ba2b72fb5281364c6503f59a641f64",
+          2
+        ]
+      ],
+      "observedEffects": {
+        "collateralPresent": true,
+        "normalInputsPresent": [
+          false,
+          false
+        ],
+        "outputs": {
+          "0": "821a011a49a0a1581cfc61e623d413aa67dc9367e8e48f5ab7f38093e871af6d9dd27b717ea1486572612d6c6f616407"
+        }
+      },
+      "operations": [
+        "spend",
+        "mint"
+      ],
+      "passed": true,
+      "referenceAfter": {
+        "era": "alonzo",
+        "eraIndex": 4,
+        "hash": "e3f855dee927f259e999d5976351e5c0b0612935e9dfd1b039c0a7c98aaf6918",
+        "protocolVersion": {
+          "major": 5,
+          "minor": 0
+        },
+        "slot": 2624
+      },
+      "referenceBefore": {
+        "era": "alonzo",
+        "eraIndex": 4,
+        "hash": "14f049f9b6597a52dbede7048fada971b51e0f789792aab79c3c5e404578e198",
+        "protocolVersion": {
+          "major": 5,
+          "minor": 0
+        },
+        "slot": 2615
+      },
+      "tx": "84a60082825820130fc1b7401e7cca335f05ae96546eb1f9ba2b72fb5281364c6503f59a641f6400825820130fc1b7401e7cca335f05ae96546eb1f9ba2b72fb5281364c6503f59a641f64020181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c551821a011a49a0a1581cfc61e623d413aa67dc9367e8e48f5ab7f38093e871af6d9dd27b717ea1486572612d6c6f616407021a0016e36009a1581cfc61e623d413aa67dc9367e8e48f5ab7f38093e871af6d9dd27b717ea1486572612d6c6f6164070b58205a5d01b0c29378d5728b416261eb242732cda7525455ab8b1f0c7f0358e3fb410d81825820130fc1b7401e7cca335f05ae96546eb1f9ba2b72fb5281364c6503f59a641f6401a400818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840b282d150b42401db4cd2c4e96f570ddc06946ea660e35414c938af9a2ed4624614b183a0746a28286abdb23e8b972443862977c5b4f3f41e7d2dab66b7d0a405038147460100002224990481182a0582840001182a821a00030d401a05f5e100840100182a821a00030d401a05f5e100f5f6",
+      "txSha256": "2121d60984ee3b32e171c9238a3c51dd28075ed638da7426416e978455f2c6e7",
+      "txid": "440314cb8b105867294388ae861c2f59f81de05fa5bba0d20b7d66a7f4c253f9"
+    },
+    {
+      "case": "reject-failure-valid",
+      "collateral": [
+        "130fc1b7401e7cca335f05ae96546eb1f9ba2b72fb5281364c6503f59a641f64",
+        4
+      ],
+      "era": "alonzo",
+      "errors": [],
+      "family": "legacy",
+      "isValid": true,
+      "language": 1,
+      "normalInputs": [
+        [
+          "130fc1b7401e7cca335f05ae96546eb1f9ba2b72fb5281364c6503f59a641f64",
+          3
+        ],
+        [
+          "130fc1b7401e7cca335f05ae96546eb1f9ba2b72fb5281364c6503f59a641f64",
+          5
+        ]
+      ],
+      "observedEffects": {
+        "collateralPresent": true,
+        "normalInputsPresent": [
+          true,
+          true
+        ],
+        "outputs": {}
+      },
+      "operations": [
+        "spend",
+        "mint"
+      ],
+      "passed": true,
+      "referenceAfter": {
+        "era": "alonzo",
+        "eraIndex": 4,
+        "hash": "2d5c66b25484fbc408a311f192c37e289747279e05bf1e0e759636e2973922d3",
+        "protocolVersion": {
+          "major": 5,
+          "minor": 0
+        },
+        "slot": 2630
+      },
+      "referenceBefore": {
+        "era": "alonzo",
+        "eraIndex": 4,
+        "hash": "2d5c66b25484fbc408a311f192c37e289747279e05bf1e0e759636e2973922d3",
+        "protocolVersion": {
+          "major": 5,
+          "minor": 0
+        },
+        "slot": 2630
+      },
+      "tx": "84a60082825820130fc1b7401e7cca335f05ae96546eb1f9ba2b72fb5281364c6503f59a641f6403825820130fc1b7401e7cca335f05ae96546eb1f9ba2b72fb5281364c6503f59a641f64050181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c551821a011a49a0a1581c592b4d362fd98dc054dda15579f5524ccf184eb6228f514b9db32e12a1486572612d6c6f616407021a0016e36009a1581c592b4d362fd98dc054dda15579f5524ccf184eb6228f514b9db32e12a1486572612d6c6f6164070b58205a5d01b0c29378d5728b416261eb242732cda7525455ab8b1f0c7f0358e3fb410d81825820130fc1b7401e7cca335f05ae96546eb1f9ba2b72fb5281364c6503f59a641f6404a400818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd58409e1d5a3d77046009c460514475f1d4d1302302c4f362db776544b83d886533e466bac4d63bfd1e33e6b951938f9b14ac2dffe69e534db26e75dce9bdf791dc0503814544010000610481182a0582840001182a821a00030d401a05f5e100840100182a821a00030d401a05f5e100f5f6",
+      "txSha256": "0243bc8976d3892809532bd77eff9018c3652d1fd7c7a9ef433f2eca44d7af28",
+      "txid": "13aabd86f1c952a6a6121b24368d577944be9efd216a0c2a2c35edddaa6683e3"
+    },
+    {
+      "case": "collateral",
+      "collateral": [
+        "130fc1b7401e7cca335f05ae96546eb1f9ba2b72fb5281364c6503f59a641f64",
+        4
+      ],
+      "era": "alonzo",
+      "errors": [],
+      "family": "legacy",
+      "isValid": false,
+      "language": 1,
+      "normalInputs": [
+        [
+          "130fc1b7401e7cca335f05ae96546eb1f9ba2b72fb5281364c6503f59a641f64",
+          3
+        ],
+        [
+          "130fc1b7401e7cca335f05ae96546eb1f9ba2b72fb5281364c6503f59a641f64",
+          5
+        ]
+      ],
+      "observedEffects": {
+        "collateralPresent": false,
+        "normalInputsPresent": [
+          true,
+          true
+        ],
+        "outputs": {}
+      },
+      "operations": [
+        "spend",
+        "mint"
+      ],
+      "passed": true,
+      "referenceAfter": {
+        "era": "alonzo",
+        "eraIndex": 4,
+        "hash": "32cbe557df8ef214d2740c3fb93f8a7c8fdb9e0aa25ef33c6bbd1fd14fe552de",
+        "protocolVersion": {
+          "major": 5,
+          "minor": 0
+        },
+        "slot": 2659
+      },
+      "referenceBefore": {
+        "era": "alonzo",
+        "eraIndex": 4,
+        "hash": "2d5c66b25484fbc408a311f192c37e289747279e05bf1e0e759636e2973922d3",
+        "protocolVersion": {
+          "major": 5,
+          "minor": 0
+        },
+        "slot": 2630
+      },
+      "tx": "84a60082825820130fc1b7401e7cca335f05ae96546eb1f9ba2b72fb5281364c6503f59a641f6403825820130fc1b7401e7cca335f05ae96546eb1f9ba2b72fb5281364c6503f59a641f64050181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c551821a011a49a0a1581c592b4d362fd98dc054dda15579f5524ccf184eb6228f514b9db32e12a1486572612d6c6f616407021a0016e36009a1581c592b4d362fd98dc054dda15579f5524ccf184eb6228f514b9db32e12a1486572612d6c6f6164070b58205a5d01b0c29378d5728b416261eb242732cda7525455ab8b1f0c7f0358e3fb410d81825820130fc1b7401e7cca335f05ae96546eb1f9ba2b72fb5281364c6503f59a641f6404a400818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd58409e1d5a3d77046009c460514475f1d4d1302302c4f362db776544b83d886533e466bac4d63bfd1e33e6b951938f9b14ac2dffe69e534db26e75dce9bdf791dc0503814544010000610481182a0582840001182a821a00030d401a05f5e100840100182a821a00030d401a05f5e100f4f6",
+      "txSha256": "e0e18f0942da555e7dd7e76812c8da27f15cc94b0bb0e5c8018ffd3765e62fae",
+      "txid": "13aabd86f1c952a6a6121b24368d577944be9efd216a0c2a2c35edddaa6683e3"
+    },
+    {
+      "case": "reject-success-invalid",
+      "collateral": [
+        "70702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941",
+        1
+      ],
+      "era": "babbage",
+      "errors": [],
+      "family": "legacy",
+      "isValid": false,
+      "language": 1,
+      "normalInputs": [
+        [
+          "70702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941",
+          0
+        ],
+        [
+          "70702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941",
+          2
+        ]
+      ],
+      "observedEffects": {
+        "collateralPresent": true,
+        "normalInputsPresent": [
+          true,
+          true
+        ],
+        "outputs": {}
+      },
+      "operations": [
+        "spend",
+        "mint"
+      ],
+      "passed": true,
+      "referenceAfter": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "2854ece18c4d1302fc45701cb9349ed3ed1443db931ef4845383b5ad231a0c4c",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3603
+      },
+      "referenceBefore": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "2854ece18c4d1302fc45701cb9349ed3ed1443db931ef4845383b5ad231a0c4c",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3603
+      },
+      "tx": "84a6008282582070702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f9410082582070702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941020181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c551821a011a49a0a1581cfc61e623d413aa67dc9367e8e48f5ab7f38093e871af6d9dd27b717ea1486572612d6c6f616407021a0016e36009a1581cfc61e623d413aa67dc9367e8e48f5ab7f38093e871af6d9dd27b717ea1486572612d6c6f6164070b58205a5d01b0c29378d5728b416261eb242732cda7525455ab8b1f0c7f0358e3fb410d8182582070702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f94101a400818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840d9fad16eb02d8cb2500f8600c75b98b3c4104b5bbc62d20fc37c811fa31a41fa3e2080802611bf973f10b95823293811afc6eac80fcb394145d59f9c69c9bd04038147460100002224990481182a0582840001182a821a00030d401a05f5e100840100182a821a00030d401a05f5e100f4f6",
+      "txSha256": "a9f794f85f56f72a960b4a2c54e525583fa223e6e40a20344aed1b5b0ae2532d",
+      "txid": "e8b1db36f4b0c2f63f412752c31d5a8d76a5a279a04496f0911065348cf7341c"
+    },
+    {
+      "case": "success",
+      "collateral": [
+        "70702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941",
+        1
+      ],
+      "era": "babbage",
+      "errors": [],
+      "family": "legacy",
+      "isValid": true,
+      "language": 1,
+      "normalInputs": [
+        [
+          "70702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941",
+          0
+        ],
+        [
+          "70702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941",
+          2
+        ]
+      ],
+      "observedEffects": {
+        "collateralPresent": true,
+        "normalInputsPresent": [
+          false,
+          false
+        ],
+        "outputs": {
+          "0": "821a011a49a0a1581cfc61e623d413aa67dc9367e8e48f5ab7f38093e871af6d9dd27b717ea1486572612d6c6f616407"
+        }
+      },
+      "operations": [
+        "spend",
+        "mint"
+      ],
+      "passed": true,
+      "referenceAfter": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "3f0cea503eff5b16460983f11ad689fc584ed3459bab1a510c8ca030abe49c0c",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3615
+      },
+      "referenceBefore": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "2854ece18c4d1302fc45701cb9349ed3ed1443db931ef4845383b5ad231a0c4c",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3603
+      },
+      "tx": "84a6008282582070702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f9410082582070702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941020181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c551821a011a49a0a1581cfc61e623d413aa67dc9367e8e48f5ab7f38093e871af6d9dd27b717ea1486572612d6c6f616407021a0016e36009a1581cfc61e623d413aa67dc9367e8e48f5ab7f38093e871af6d9dd27b717ea1486572612d6c6f6164070b58205a5d01b0c29378d5728b416261eb242732cda7525455ab8b1f0c7f0358e3fb410d8182582070702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f94101a400818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840d9fad16eb02d8cb2500f8600c75b98b3c4104b5bbc62d20fc37c811fa31a41fa3e2080802611bf973f10b95823293811afc6eac80fcb394145d59f9c69c9bd04038147460100002224990481182a0582840001182a821a00030d401a05f5e100840100182a821a00030d401a05f5e100f5f6",
+      "txSha256": "ceaedc9e06009692577072ffb87c2324af0fc533e3fb947ad93904a4bf0f861a",
+      "txid": "e8b1db36f4b0c2f63f412752c31d5a8d76a5a279a04496f0911065348cf7341c"
+    },
+    {
+      "case": "reject-failure-valid",
+      "collateral": [
+        "70702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941",
+        4
+      ],
+      "era": "babbage",
+      "errors": [],
+      "family": "legacy",
+      "isValid": true,
+      "language": 1,
+      "normalInputs": [
+        [
+          "70702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941",
+          3
+        ],
+        [
+          "70702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941",
+          5
+        ]
+      ],
+      "observedEffects": {
+        "collateralPresent": true,
+        "normalInputsPresent": [
+          true,
+          true
+        ],
+        "outputs": {}
+      },
+      "operations": [
+        "spend",
+        "mint"
+      ],
+      "passed": true,
+      "referenceAfter": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "3f0cea503eff5b16460983f11ad689fc584ed3459bab1a510c8ca030abe49c0c",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3615
+      },
+      "referenceBefore": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "3f0cea503eff5b16460983f11ad689fc584ed3459bab1a510c8ca030abe49c0c",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3615
+      },
+      "tx": "84a6008282582070702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f9410382582070702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941050181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c551821a011a49a0a1581c592b4d362fd98dc054dda15579f5524ccf184eb6228f514b9db32e12a1486572612d6c6f616407021a0016e36009a1581c592b4d362fd98dc054dda15579f5524ccf184eb6228f514b9db32e12a1486572612d6c6f6164070b58205a5d01b0c29378d5728b416261eb242732cda7525455ab8b1f0c7f0358e3fb410d8182582070702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f94104a400818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840419d8ede6ab0225ce22500014260dd221d74e38bbbe37770707315a2dc3a52d153cd343b9bd23ea5c292675c4ddeaf870f06f870c5c2481141529b6a8d94650903814544010000610481182a0582840001182a821a00030d401a05f5e100840100182a821a00030d401a05f5e100f5f6",
+      "txSha256": "fed0edcd492d0bfc4b6c21146ed471ed82cf531f6420ba2b2a77de66c68db8c5",
+      "txid": "77ad296e6047458d944221358511959551cfb983aaa00f9c2c0e3c5db590535c"
+    },
+    {
+      "case": "collateral",
+      "collateral": [
+        "70702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941",
+        4
+      ],
+      "era": "babbage",
+      "errors": [],
+      "family": "legacy",
+      "isValid": false,
+      "language": 1,
+      "normalInputs": [
+        [
+          "70702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941",
+          3
+        ],
+        [
+          "70702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941",
+          5
+        ]
+      ],
+      "observedEffects": {
+        "collateralPresent": false,
+        "normalInputsPresent": [
+          true,
+          true
+        ],
+        "outputs": {}
+      },
+      "operations": [
+        "spend",
+        "mint"
+      ],
+      "passed": true,
+      "referenceAfter": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "f5e6c7283d339e20fee7dd355e90de514ea4bf9d2c73d28ecfe7440d816e68fa",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3622
+      },
+      "referenceBefore": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "3f0cea503eff5b16460983f11ad689fc584ed3459bab1a510c8ca030abe49c0c",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3615
+      },
+      "tx": "84a6008282582070702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f9410382582070702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941050181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c551821a011a49a0a1581c592b4d362fd98dc054dda15579f5524ccf184eb6228f514b9db32e12a1486572612d6c6f616407021a0016e36009a1581c592b4d362fd98dc054dda15579f5524ccf184eb6228f514b9db32e12a1486572612d6c6f6164070b58205a5d01b0c29378d5728b416261eb242732cda7525455ab8b1f0c7f0358e3fb410d8182582070702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f94104a400818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840419d8ede6ab0225ce22500014260dd221d74e38bbbe37770707315a2dc3a52d153cd343b9bd23ea5c292675c4ddeaf870f06f870c5c2481141529b6a8d94650903814544010000610481182a0582840001182a821a00030d401a05f5e100840100182a821a00030d401a05f5e100f4f6",
+      "txSha256": "b06c7a70a9b4b0b7dd30265f026f85dad339a2b44b549dca9fa4dd5ca502e7e8",
+      "txid": "77ad296e6047458d944221358511959551cfb983aaa00f9c2c0e3c5db590535c"
+    },
+    {
+      "case": "reject-success-invalid",
+      "collateral": [
+        "70702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941",
+        7
+      ],
+      "era": "babbage",
+      "errors": [],
+      "family": "legacy",
+      "isValid": false,
+      "language": 2,
+      "normalInputs": [
+        [
+          "70702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941",
+          6
+        ],
+        [
+          "70702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941",
+          8
+        ]
+      ],
+      "observedEffects": {
+        "collateralPresent": true,
+        "normalInputsPresent": [
+          true,
+          true
+        ],
+        "outputs": {}
+      },
+      "operations": [
+        "spend",
+        "mint"
+      ],
+      "passed": true,
+      "referenceAfter": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "8f4bc47d1e70cdd3a4293a2cb787c0318bb67b5b27ad4eea42e234143cfc2ab7",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3624
+      },
+      "referenceBefore": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "271b097494ce87dcce92bcbb6c5fa4dc60d29abdf5f152b37c690ad03377cb25",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3623
+      },
+      "tx": "84a6008282582070702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f9410682582070702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941080181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c551821a011a49a0a1581c52c6af0c9b744b4eecce838538a52ceb155038b3de68e2bb2fa8fc37a1486572612d6c6f616407021a0016e36009a1581c52c6af0c9b744b4eecce838538a52ceb155038b3de68e2bb2fa8fc37a1486572612d6c6f6164070b5820b1dfcc23e249c3715ca001fe3b64c236935bd254e775218acb6ebfb8f63c15310d8182582070702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f94107a400818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840dff7c92cb24335a73ac8d9d4ae989c802cab6b236f410cc4e259dbbcd3ca3040e243a2530951a452175b4557809b8ab55f4a3df1f32704247cf8e242051077020481182a0582840001182a821a00030d401a05f5e100840100182a821a00030d401a05f5e10006814746010000222499f4f6",
+      "txSha256": "3aeb7cc732e5d8ec4615cdfd817203fcf9f231474758392b30a0969bab00480c",
+      "txid": "7a3f893ea0ca7aa7e862243ccfc078d07065dc44a7d0627786cf66c095b3a40c"
+    },
+    {
+      "case": "success",
+      "collateral": [
+        "70702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941",
+        7
+      ],
+      "era": "babbage",
+      "errors": [],
+      "family": "legacy",
+      "isValid": true,
+      "language": 2,
+      "normalInputs": [
+        [
+          "70702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941",
+          6
+        ],
+        [
+          "70702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941",
+          8
+        ]
+      ],
+      "observedEffects": {
+        "collateralPresent": true,
+        "normalInputsPresent": [
+          false,
+          false
+        ],
+        "outputs": {
+          "0": "821a011a49a0a1581c52c6af0c9b744b4eecce838538a52ceb155038b3de68e2bb2fa8fc37a1486572612d6c6f616407"
+        }
+      },
+      "operations": [
+        "spend",
+        "mint"
+      ],
+      "passed": true,
+      "referenceAfter": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "fe3a835d29adb056927cb3f2bdf737a76ea0c273e4f478808e1ab8ece5b1fb2a",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3646
+      },
+      "referenceBefore": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "8f4bc47d1e70cdd3a4293a2cb787c0318bb67b5b27ad4eea42e234143cfc2ab7",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3624
+      },
+      "tx": "84a6008282582070702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f9410682582070702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941080181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c551821a011a49a0a1581c52c6af0c9b744b4eecce838538a52ceb155038b3de68e2bb2fa8fc37a1486572612d6c6f616407021a0016e36009a1581c52c6af0c9b744b4eecce838538a52ceb155038b3de68e2bb2fa8fc37a1486572612d6c6f6164070b5820b1dfcc23e249c3715ca001fe3b64c236935bd254e775218acb6ebfb8f63c15310d8182582070702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f94107a400818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840dff7c92cb24335a73ac8d9d4ae989c802cab6b236f410cc4e259dbbcd3ca3040e243a2530951a452175b4557809b8ab55f4a3df1f32704247cf8e242051077020481182a0582840001182a821a00030d401a05f5e100840100182a821a00030d401a05f5e10006814746010000222499f5f6",
+      "txSha256": "a0ad0d793f5f2e8c72958635295fdd21ebd405babc8d73db479fdf8b30e6b026",
+      "txid": "7a3f893ea0ca7aa7e862243ccfc078d07065dc44a7d0627786cf66c095b3a40c"
+    },
+    {
+      "case": "reject-failure-valid",
+      "collateral": [
+        "70702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941",
+        10
+      ],
+      "era": "babbage",
+      "errors": [],
+      "family": "legacy",
+      "isValid": true,
+      "language": 2,
+      "normalInputs": [
+        [
+          "70702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941",
+          9
+        ],
+        [
+          "70702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941",
+          11
+        ]
+      ],
+      "observedEffects": {
+        "collateralPresent": true,
+        "normalInputsPresent": [
+          true,
+          true
+        ],
+        "outputs": {}
+      },
+      "operations": [
+        "spend",
+        "mint"
+      ],
+      "passed": true,
+      "referenceAfter": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "fe3a835d29adb056927cb3f2bdf737a76ea0c273e4f478808e1ab8ece5b1fb2a",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3646
+      },
+      "referenceBefore": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "fe3a835d29adb056927cb3f2bdf737a76ea0c273e4f478808e1ab8ece5b1fb2a",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3646
+      },
+      "tx": "84a6008282582070702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f9410982582070702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f9410b0181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c551821a011a49a0a1581cd7d9f9b77d5ab2d26fe1bfcdad92542eb314392dec23db521ac17154a1486572612d6c6f616407021a0016e36009a1581cd7d9f9b77d5ab2d26fe1bfcdad92542eb314392dec23db521ac17154a1486572612d6c6f6164070b5820b1dfcc23e249c3715ca001fe3b64c236935bd254e775218acb6ebfb8f63c15310d8182582070702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f9410aa400818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd58408512eccf61092c508eb6b8cfa75abc72adcb63ebe4c5ea14b9e0446c4eb4a53415209aee1890507e3fee17d2874c3b65b0fe42498f0ff948bf6499dad62da70e0481182a0582840001182a821a00030d401a05f5e100840100182a821a00030d401a05f5e1000681454401000061f5f6",
+      "txSha256": "e58cdcea6a1551908da8c0eb6e32d8828fd511189e15e6ea320579c6d7d01a93",
+      "txid": "d95598f9fdabf74ed88ddf2468dc4bb7c50703182ff295097ea6071536e5b977"
+    },
+    {
+      "case": "collateral",
+      "collateral": [
+        "70702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941",
+        10
+      ],
+      "era": "babbage",
+      "errors": [],
+      "family": "legacy",
+      "isValid": false,
+      "language": 2,
+      "normalInputs": [
+        [
+          "70702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941",
+          9
+        ],
+        [
+          "70702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f941",
+          11
+        ]
+      ],
+      "observedEffects": {
+        "collateralPresent": false,
+        "normalInputsPresent": [
+          true,
+          true
+        ],
+        "outputs": {}
+      },
+      "operations": [
+        "spend",
+        "mint"
+      ],
+      "passed": true,
+      "referenceAfter": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "a85634797678634c010477d67c02a78ae38640f55051ac1ec735bdd785c0424c",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3654
+      },
+      "referenceBefore": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "fe3a835d29adb056927cb3f2bdf737a76ea0c273e4f478808e1ab8ece5b1fb2a",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3646
+      },
+      "tx": "84a6008282582070702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f9410982582070702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f9410b0181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c551821a011a49a0a1581cd7d9f9b77d5ab2d26fe1bfcdad92542eb314392dec23db521ac17154a1486572612d6c6f616407021a0016e36009a1581cd7d9f9b77d5ab2d26fe1bfcdad92542eb314392dec23db521ac17154a1486572612d6c6f6164070b5820b1dfcc23e249c3715ca001fe3b64c236935bd254e775218acb6ebfb8f63c15310d8182582070702be8aed219d7518d4649e68d590ea237b4c39ef7bfbd6305eeeef695f9410aa400818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd58408512eccf61092c508eb6b8cfa75abc72adcb63ebe4c5ea14b9e0446c4eb4a53415209aee1890507e3fee17d2874c3b65b0fe42498f0ff948bf6499dad62da70e0481182a0582840001182a821a00030d401a05f5e100840100182a821a00030d401a05f5e1000681454401000061f4f6",
+      "txSha256": "3e6535e6ecfbd2eb2d84f70bd2568e7e1b168e30993ece76acfac1adc156b3fd",
+      "txid": "d95598f9fdabf74ed88ddf2468dc4bb7c50703182ff295097ea6071536e5b977"
+    },
+    {
+      "case": "reject-success-invalid",
+      "collateral": [
+        "ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f",
+        1
+      ],
+      "era": "conway",
+      "errors": [],
+      "family": "legacy",
+      "isValid": false,
+      "language": 1,
+      "normalInputs": [
+        [
+          "ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f",
+          0
+        ],
+        [
+          "ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f",
+          2
+        ]
+      ],
+      "observedEffects": {
+        "collateralPresent": true,
+        "normalInputsPresent": [
+          true,
+          true
+        ],
+        "outputs": {}
+      },
+      "operations": [
+        "spend",
+        "mint"
+      ],
+      "passed": true,
+      "referenceAfter": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "960e520159f4c8690d4849643a0e0fe7e1e1af6600ee76d7d12f55ae15af0cef",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4654
+      },
+      "referenceBefore": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "960e520159f4c8690d4849643a0e0fe7e1e1af6600ee76d7d12f55ae15af0cef",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4654
+      },
+      "tx": "84a60082825820ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f00825820ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f020181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c551821a011a49a0a1581cfc61e623d413aa67dc9367e8e48f5ab7f38093e871af6d9dd27b717ea1486572612d6c6f616407021a0016e36009a1581cfc61e623d413aa67dc9367e8e48f5ab7f38093e871af6d9dd27b717ea1486572612d6c6f6164070b582011c4e1e57ef7733761961dafb862fc4513c137cb7e1d4157ddad7706b342fb5c0d81825820ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f01a400818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840d3788043e10419e000c6e80d191ac27e810f58ecfe4314953fcdd61f8b528d95578b0e956c3f609adb19c9994453509dcf8ce033be9047f407b9574cc6c64c0a038147460100002224990481182a05a282000182182a821a00030d401a05f5e10082010082182a821a00030d401a05f5e100f4f6",
+      "txSha256": "d4d22987500d6af3b8a1490346f4517d0fd385fb9c27fc9c76825b8851c067ed",
+      "txid": "bb534e2207651457c5d977926a367887439ccd35b275897457f17da36db81971"
+    },
+    {
+      "case": "success",
+      "collateral": [
+        "ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f",
+        1
+      ],
+      "era": "conway",
+      "errors": [],
+      "family": "legacy",
+      "isValid": true,
+      "language": 1,
+      "normalInputs": [
+        [
+          "ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f",
+          0
+        ],
+        [
+          "ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f",
+          2
+        ]
+      ],
+      "observedEffects": {
+        "collateralPresent": true,
+        "normalInputsPresent": [
+          false,
+          false
+        ],
+        "outputs": {
+          "0": "821a011a49a0a1581cfc61e623d413aa67dc9367e8e48f5ab7f38093e871af6d9dd27b717ea1486572612d6c6f616407"
+        }
+      },
+      "operations": [
+        "spend",
+        "mint"
+      ],
+      "passed": true,
+      "referenceAfter": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "8c5ac3226d3c3b237b9afed3bae2beda77dfa224ea0652907830b6d960130ec4",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4665
+      },
+      "referenceBefore": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "960e520159f4c8690d4849643a0e0fe7e1e1af6600ee76d7d12f55ae15af0cef",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4654
+      },
+      "tx": "84a60082825820ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f00825820ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f020181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c551821a011a49a0a1581cfc61e623d413aa67dc9367e8e48f5ab7f38093e871af6d9dd27b717ea1486572612d6c6f616407021a0016e36009a1581cfc61e623d413aa67dc9367e8e48f5ab7f38093e871af6d9dd27b717ea1486572612d6c6f6164070b582011c4e1e57ef7733761961dafb862fc4513c137cb7e1d4157ddad7706b342fb5c0d81825820ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f01a400818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840d3788043e10419e000c6e80d191ac27e810f58ecfe4314953fcdd61f8b528d95578b0e956c3f609adb19c9994453509dcf8ce033be9047f407b9574cc6c64c0a038147460100002224990481182a05a282000182182a821a00030d401a05f5e10082010082182a821a00030d401a05f5e100f5f6",
+      "txSha256": "986962329344abbab46005d129de08e7150fb1be6891917d288cb43f985cd9f8",
+      "txid": "bb534e2207651457c5d977926a367887439ccd35b275897457f17da36db81971"
+    },
+    {
+      "case": "reject-failure-valid",
+      "collateral": [
+        "ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f",
+        4
+      ],
+      "era": "conway",
+      "errors": [],
+      "family": "legacy",
+      "isValid": true,
+      "language": 1,
+      "normalInputs": [
+        [
+          "ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f",
+          3
+        ],
+        [
+          "ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f",
+          5
+        ]
+      ],
+      "observedEffects": {
+        "collateralPresent": true,
+        "normalInputsPresent": [
+          true,
+          true
+        ],
+        "outputs": {}
+      },
+      "operations": [
+        "spend",
+        "mint"
+      ],
+      "passed": true,
+      "referenceAfter": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "8c5ac3226d3c3b237b9afed3bae2beda77dfa224ea0652907830b6d960130ec4",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4665
+      },
+      "referenceBefore": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "8c5ac3226d3c3b237b9afed3bae2beda77dfa224ea0652907830b6d960130ec4",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4665
+      },
+      "tx": "84a60082825820ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f03825820ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f050181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c551821a011a49a0a1581c592b4d362fd98dc054dda15579f5524ccf184eb6228f514b9db32e12a1486572612d6c6f616407021a0016e36009a1581c592b4d362fd98dc054dda15579f5524ccf184eb6228f514b9db32e12a1486572612d6c6f6164070b582011c4e1e57ef7733761961dafb862fc4513c137cb7e1d4157ddad7706b342fb5c0d81825820ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f04a400818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd58406e3b45fb6f434f6ca36947895767be36832b36af0643476fc19f38dd0022bf98bb45a20c5108fa7984f2e210756b1d9097d5727a468155f745076888dc0b910e03814544010000610481182a05a282000182182a821a00030d401a05f5e10082010082182a821a00030d401a05f5e100f5f6",
+      "txSha256": "867076aefdd674446ee53fd924d29979b0a058ed7d919017cbcdaaaf7b0e62aa",
+      "txid": "60f2398c85a56d741a18b6678fe63943f7d826ec3c95ad77195975d80e02edcd"
+    },
+    {
+      "case": "collateral",
+      "collateral": [
+        "ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f",
+        4
+      ],
+      "era": "conway",
+      "errors": [],
+      "family": "legacy",
+      "isValid": false,
+      "language": 1,
+      "normalInputs": [
+        [
+          "ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f",
+          3
+        ],
+        [
+          "ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f",
+          5
+        ]
+      ],
+      "observedEffects": {
+        "collateralPresent": false,
+        "normalInputsPresent": [
+          true,
+          true
+        ],
+        "outputs": {}
+      },
+      "operations": [
+        "spend",
+        "mint"
+      ],
+      "passed": true,
+      "referenceAfter": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "80f97feb793400fa514672621ef0eabbb39aa4f740f72ade6896e938e87a3dd1",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4679
+      },
+      "referenceBefore": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "8c5ac3226d3c3b237b9afed3bae2beda77dfa224ea0652907830b6d960130ec4",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4665
+      },
+      "tx": "84a60082825820ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f03825820ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f050181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c551821a011a49a0a1581c592b4d362fd98dc054dda15579f5524ccf184eb6228f514b9db32e12a1486572612d6c6f616407021a0016e36009a1581c592b4d362fd98dc054dda15579f5524ccf184eb6228f514b9db32e12a1486572612d6c6f6164070b582011c4e1e57ef7733761961dafb862fc4513c137cb7e1d4157ddad7706b342fb5c0d81825820ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f04a400818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd58406e3b45fb6f434f6ca36947895767be36832b36af0643476fc19f38dd0022bf98bb45a20c5108fa7984f2e210756b1d9097d5727a468155f745076888dc0b910e03814544010000610481182a05a282000182182a821a00030d401a05f5e10082010082182a821a00030d401a05f5e100f4f6",
+      "txSha256": "321cd86f9965af28e9c033cfff20c93bc48696c378ff088c67cda371a67cc082",
+      "txid": "60f2398c85a56d741a18b6678fe63943f7d826ec3c95ad77195975d80e02edcd"
+    },
+    {
+      "case": "reject-success-invalid",
+      "collateral": [
+        "ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f",
+        7
+      ],
+      "era": "conway",
+      "errors": [],
+      "family": "legacy",
+      "isValid": false,
+      "language": 2,
+      "normalInputs": [
+        [
+          "ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f",
+          6
+        ],
+        [
+          "ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f",
+          8
+        ]
+      ],
+      "observedEffects": {
+        "collateralPresent": true,
+        "normalInputsPresent": [
+          true,
+          true
+        ],
+        "outputs": {}
+      },
+      "operations": [
+        "spend",
+        "mint"
+      ],
+      "passed": true,
+      "referenceAfter": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "f9db18b8742c6105d2270a8c83d1c7b3eb8b9cc7f49b93f57d365c28837e450d",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4685
+      },
+      "referenceBefore": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "80f97feb793400fa514672621ef0eabbb39aa4f740f72ade6896e938e87a3dd1",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4679
+      },
+      "tx": "84a60082825820ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f06825820ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f080181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c551821a011a49a0a1581c52c6af0c9b744b4eecce838538a52ceb155038b3de68e2bb2fa8fc37a1486572612d6c6f616407021a0016e36009a1581c52c6af0c9b744b4eecce838538a52ceb155038b3de68e2bb2fa8fc37a1486572612d6c6f6164070b5820602d638504ac1e2b4b0b019d445dc20ea806893b6b06339d133f764fc5a1d8640d81825820ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f07a400818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840788cd6a172375d41ec967b6a54c505785f8c53cfeecd5406d0da81ee203f9f80a5aecaa59767c11aa4e4c00b1639e7b14ca8ec50c511390f80fb421adde9b9010481182a05a282000182182a821a00030d401a05f5e10082010082182a821a00030d401a05f5e10006814746010000222499f4f6",
+      "txSha256": "8cfef82be48f13d444af57578cc5c6997ebecd30cda8683010813f9c9e9142e6",
+      "txid": "d237e89581919f3e8dbe2dc346a76e40e075bbd6c47b06ab3d335f555814dd5a"
+    },
+    {
+      "case": "success",
+      "collateral": [
+        "ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f",
+        7
+      ],
+      "era": "conway",
+      "errors": [],
+      "family": "legacy",
+      "isValid": true,
+      "language": 2,
+      "normalInputs": [
+        [
+          "ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f",
+          6
+        ],
+        [
+          "ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f",
+          8
+        ]
+      ],
+      "observedEffects": {
+        "collateralPresent": true,
+        "normalInputsPresent": [
+          false,
+          false
+        ],
+        "outputs": {
+          "0": "821a011a49a0a1581c52c6af0c9b744b4eecce838538a52ceb155038b3de68e2bb2fa8fc37a1486572612d6c6f616407"
+        }
+      },
+      "operations": [
+        "spend",
+        "mint"
+      ],
+      "passed": true,
+      "referenceAfter": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "e18259cb757a652cfe114f31fc77dbb4481e0ab4a1676311a69f0cd3562ff12c",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4700
+      },
+      "referenceBefore": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "f9db18b8742c6105d2270a8c83d1c7b3eb8b9cc7f49b93f57d365c28837e450d",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4685
+      },
+      "tx": "84a60082825820ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f06825820ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f080181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c551821a011a49a0a1581c52c6af0c9b744b4eecce838538a52ceb155038b3de68e2bb2fa8fc37a1486572612d6c6f616407021a0016e36009a1581c52c6af0c9b744b4eecce838538a52ceb155038b3de68e2bb2fa8fc37a1486572612d6c6f6164070b5820602d638504ac1e2b4b0b019d445dc20ea806893b6b06339d133f764fc5a1d8640d81825820ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f07a400818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840788cd6a172375d41ec967b6a54c505785f8c53cfeecd5406d0da81ee203f9f80a5aecaa59767c11aa4e4c00b1639e7b14ca8ec50c511390f80fb421adde9b9010481182a05a282000182182a821a00030d401a05f5e10082010082182a821a00030d401a05f5e10006814746010000222499f5f6",
+      "txSha256": "68a5756e8ef627512ddcd65dcf1907e0ae472340a1452f427890451ab51be307",
+      "txid": "d237e89581919f3e8dbe2dc346a76e40e075bbd6c47b06ab3d335f555814dd5a"
+    },
+    {
+      "case": "reject-failure-valid",
+      "collateral": [
+        "ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f",
+        10
+      ],
+      "era": "conway",
+      "errors": [],
+      "family": "legacy",
+      "isValid": true,
+      "language": 2,
+      "normalInputs": [
+        [
+          "ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f",
+          9
+        ],
+        [
+          "ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f",
+          11
+        ]
+      ],
+      "observedEffects": {
+        "collateralPresent": true,
+        "normalInputsPresent": [
+          true,
+          true
+        ],
+        "outputs": {}
+      },
+      "operations": [
+        "spend",
+        "mint"
+      ],
+      "passed": true,
+      "referenceAfter": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "40768dfea906ab8eeaefc49415e657a4495d9bbdf532a9e08de206ad4740f996",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4704
+      },
+      "referenceBefore": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "40768dfea906ab8eeaefc49415e657a4495d9bbdf532a9e08de206ad4740f996",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4704
+      },
+      "tx": "84a60082825820ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f09825820ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f0b0181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c551821a011a49a0a1581cd7d9f9b77d5ab2d26fe1bfcdad92542eb314392dec23db521ac17154a1486572612d6c6f616407021a0016e36009a1581cd7d9f9b77d5ab2d26fe1bfcdad92542eb314392dec23db521ac17154a1486572612d6c6f6164070b5820602d638504ac1e2b4b0b019d445dc20ea806893b6b06339d133f764fc5a1d8640d81825820ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f0aa400818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd58407634149189fd0c49cc778746ac93b2ea7e05858f11e0fe2d6c318b6546848bf546db29096ac3ce0d8458346e0049a223949e711eb21be783dd50295d032f62050481182a05a282000182182a821a00030d401a05f5e10082010082182a821a00030d401a05f5e1000681454401000061f5f6",
+      "txSha256": "d68f1535c4ab3db8eb24a2b9ae7b9b3200437ec6489a750b5d603fa3871af595",
+      "txid": "4b30265104dcbe289def5177450ff3583e100a154ec4d5284f82ddd83db2c930"
+    },
+    {
+      "case": "collateral",
+      "collateral": [
+        "ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f",
+        10
+      ],
+      "era": "conway",
+      "errors": [],
+      "family": "legacy",
+      "isValid": false,
+      "language": 2,
+      "normalInputs": [
+        [
+          "ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f",
+          9
+        ],
+        [
+          "ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f",
+          11
+        ]
+      ],
+      "observedEffects": {
+        "collateralPresent": false,
+        "normalInputsPresent": [
+          true,
+          true
+        ],
+        "outputs": {}
+      },
+      "operations": [
+        "spend",
+        "mint"
+      ],
+      "passed": true,
+      "referenceAfter": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "e985ea374dda7a8e9e547d3cfd94dc6bbc0a1680af352cfe18c07603d8becebc",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4718
+      },
+      "referenceBefore": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "40768dfea906ab8eeaefc49415e657a4495d9bbdf532a9e08de206ad4740f996",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4704
+      },
+      "tx": "84a60082825820ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f09825820ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f0b0181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c551821a011a49a0a1581cd7d9f9b77d5ab2d26fe1bfcdad92542eb314392dec23db521ac17154a1486572612d6c6f616407021a0016e36009a1581cd7d9f9b77d5ab2d26fe1bfcdad92542eb314392dec23db521ac17154a1486572612d6c6f6164070b5820602d638504ac1e2b4b0b019d445dc20ea806893b6b06339d133f764fc5a1d8640d81825820ce1441314d1c278c2f4bc81437bc2db9b35be67863c76ebe35af892662b9cf0f0aa400818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd58407634149189fd0c49cc778746ac93b2ea7e05858f11e0fe2d6c318b6546848bf546db29096ac3ce0d8458346e0049a223949e711eb21be783dd50295d032f62050481182a05a282000182182a821a00030d401a05f5e10082010082182a821a00030d401a05f5e1000681454401000061f4f6",
+      "txSha256": "74c32b9489ca0b196bfc3ffb2539a315ba49b64f58bf57e59bca6a95348cf7f6",
+      "txid": "4b30265104dcbe289def5177450ff3583e100a154ec4d5284f82ddd83db2c930"
+    },
+    {
+      "case": "valid",
+      "collateral": [
+        "5a0550c596ef98be0d48f610e41d965c36240ac11ebed1344473a5e86071c823",
+        1
+      ],
+      "era": "alonzo",
+      "errors": [],
+      "family": "auxiliary",
+      "isValid": true,
+      "language": 1,
+      "normalInput": [
+        "5a0550c596ef98be0d48f610e41d965c36240ac11ebed1344473a5e86071c823",
+        0
+      ],
+      "observedEffects": {
+        "collateralAfter": "821a002dc6c0a0",
+        "collateralBefore": "821a002dc6c0a0",
+        "collateralPresent": true,
+        "normalAfter": null,
+        "normalBefore": "821a004c4b40a0",
+        "normalInputPresent": false,
+        "outputs": {
+          "0": "821a0044aa20a0"
+        }
+      },
+      "passed": true,
+      "referenceAfter": {
+        "era": "alonzo",
+        "eraIndex": 4,
+        "hash": "b9cdbe92def988e186bc0d239f12e368f0aa4b934b16832673229b1508281d4c",
+        "protocolVersion": {
+          "major": 5,
+          "minor": 0
+        },
+        "slot": 2674
+      },
+      "referenceBefore": {
+        "era": "alonzo",
+        "eraIndex": 4,
+        "hash": "3bbfd6540ae527530ac8363f21cde47fd28c5a09dfbd612dcdf9a6985a9ec709",
+        "protocolVersion": {
+          "major": 5,
+          "minor": 0
+        },
+        "slot": 2668
+      },
+      "referenceReceipt": {
+        "returncode": 0
+      },
+      "referenceReceiptSha256": "b3a7c71c1ecaafdafcfe254af4f9a0d8ac70831ee5d67024c04d7ab11b693d92",
+      "script": "46010000222499",
+      "tx": "84a500818258205a0550c596ef98be0d48f610e41d965c36240ac11ebed1344473a5e86071c823000181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c5511a0044aa20021a0007a1200758208498e4b62e704d4e747ff7208248982d0c03d9002b25b2580bf28b63e1a7f0e80d818258205a0550c596ef98be0d48f610e41d965c36240ac11ebed1344473a5e86071c82301a100818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840adf7e74b6772b57a0945a59870f965494ad1fd2c2a72d45857b685f682afa15391011da2d1c5bb2b21378719505033e54f0c276bd9492322274f2f84941cee00f5d90103a102814746010000222499",
+      "txSha256": "0c7c4f45614f5c182aa18f51c061f018dc6882a847b0ed99ee154d94eed2f8f2",
+      "txid": "c96b31c8a448997cb46b938a3918e1f6d5d134c3a111f2cd508da4eb75fd0de6"
+    },
+    {
+      "case": "runtime-error",
+      "collateral": [
+        "5a0550c596ef98be0d48f610e41d965c36240ac11ebed1344473a5e86071c823",
+        3
+      ],
+      "era": "alonzo",
+      "errors": [],
+      "family": "auxiliary",
+      "isValid": true,
+      "language": 1,
+      "normalInput": [
+        "5a0550c596ef98be0d48f610e41d965c36240ac11ebed1344473a5e86071c823",
+        2
+      ],
+      "observedEffects": {
+        "collateralAfter": "821a002dc6c0a0",
+        "collateralBefore": "821a002dc6c0a0",
+        "collateralPresent": true,
+        "normalAfter": null,
+        "normalBefore": "821a004c4b40a0",
+        "normalInputPresent": false,
+        "outputs": {
+          "0": "821a0044aa20a0"
+        }
+      },
+      "passed": true,
+      "referenceAfter": {
+        "era": "alonzo",
+        "eraIndex": 4,
+        "hash": "64af6e84e7b5c55f993059b2f854cb9e6ac4a2423bfcef99306ff47143c05164",
+        "protocolVersion": {
+          "major": 5,
+          "minor": 0
+        },
+        "slot": 2678
+      },
+      "referenceBefore": {
+        "era": "alonzo",
+        "eraIndex": 4,
+        "hash": "b9cdbe92def988e186bc0d239f12e368f0aa4b934b16832673229b1508281d4c",
+        "protocolVersion": {
+          "major": 5,
+          "minor": 0
+        },
+        "slot": 2674
+      },
+      "referenceReceipt": {
+        "returncode": 0
+      },
+      "referenceReceiptSha256": "8f872acbe68d2e318bc17ad5b9a9263923f2c94399bc584065394830bc4cc5ab",
+      "script": "4401000061",
+      "tx": "84a500818258205a0550c596ef98be0d48f610e41d965c36240ac11ebed1344473a5e86071c823020181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c5511a0044aa20021a0007a120075820d690daba247880cfcb8d2d29a3bbce6e0571256bcc16321c36b5e91e330903da0d818258205a0550c596ef98be0d48f610e41d965c36240ac11ebed1344473a5e86071c82303a100818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd58403945a8b0d0c2f73bf989af68d07e1d5ace8cbe61459c4355561b2b5897831457ca56aee43e1d43bf91b323c772654914b0c2b8feffd1c9c363900753732d9a02f5d90103a10281454401000061",
+      "txSha256": "7679d043bd628907bba62745496230129831d4a1ddf723e0835e5a2142a34140",
+      "txid": "973e0d400c4e9c4e4cc3a98c88f1dfd7a3267c44078eb0b052aeaa0101cd680d"
+    },
+    {
+      "case": "malformed-valid",
+      "collateral": [
+        "5a0550c596ef98be0d48f610e41d965c36240ac11ebed1344473a5e86071c823",
+        5
+      ],
+      "era": "alonzo",
+      "errors": [],
+      "family": "auxiliary",
+      "isValid": true,
+      "language": 1,
+      "normalInput": [
+        "5a0550c596ef98be0d48f610e41d965c36240ac11ebed1344473a5e86071c823",
+        4
+      ],
+      "observedEffects": {
+        "collateralAfter": "821a002dc6c0a0",
+        "collateralBefore": "821a002dc6c0a0",
+        "collateralPresent": true,
+        "normalAfter": "821a004c4b40a0",
+        "normalBefore": "821a004c4b40a0",
+        "normalInputPresent": true,
+        "outputs": {}
+      },
+      "passed": true,
+      "referenceAfter": {
+        "era": "alonzo",
+        "eraIndex": 4,
+        "hash": "221a4d5e7479b16f28e997ccc732c37dc1d782b56b40d336ea1bc903e8f16d52",
+        "protocolVersion": {
+          "major": 5,
+          "minor": 0
+        },
+        "slot": 2681
+      },
+      "referenceBefore": {
+        "era": "alonzo",
+        "eraIndex": 4,
+        "hash": "64af6e84e7b5c55f993059b2f854cb9e6ac4a2423bfcef99306ff47143c05164",
+        "protocolVersion": {
+          "major": 5,
+          "minor": 0
+        },
+        "slot": 2678
+      },
+      "referenceReceipt": {
+        "rawRefusal": "81820481820082008109",
+        "returncode": 1
+      },
+      "referenceReceiptSha256": "f61181108c0115de1c7f233154d4abde622d0bfa55d5c0d61795dff60a31e022",
+      "script": "4100",
+      "tx": "84a500818258205a0550c596ef98be0d48f610e41d965c36240ac11ebed1344473a5e86071c823040181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c5511a0044aa20021a0007a12007582090e8baa50011b6ecd8be76696b89641efb0b635cdf633ea4e3cdec624c8d2cc20d818258205a0550c596ef98be0d48f610e41d965c36240ac11ebed1344473a5e86071c82305a100818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840a1010d61a16c83210b83f975f1cc52ecdbbe04de2267929e6d031e8f0e2161cc08f2514c94132ccce41a187236df7288a089b984fd74770e5af09ab7ad2fc601f5d90103a10281424100",
+      "txSha256": "c5c9f994e70ef5b95b872fb98a9cf8997088477db532fd039f32928d309b70b4",
+      "txid": "e8ab08a075d4aba1cf80c539ba0309bcb2f9ec0279e5ad84c885bef547fbeb87"
+    },
+    {
+      "case": "malformed-invalid",
+      "collateral": [
+        "5a0550c596ef98be0d48f610e41d965c36240ac11ebed1344473a5e86071c823",
+        5
+      ],
+      "era": "alonzo",
+      "errors": [],
+      "family": "auxiliary",
+      "isValid": false,
+      "language": 1,
+      "normalInput": [
+        "5a0550c596ef98be0d48f610e41d965c36240ac11ebed1344473a5e86071c823",
+        4
+      ],
+      "observedEffects": {
+        "collateralAfter": "821a002dc6c0a0",
+        "collateralBefore": "821a002dc6c0a0",
+        "collateralPresent": true,
+        "normalAfter": "821a004c4b40a0",
+        "normalBefore": "821a004c4b40a0",
+        "normalInputPresent": true,
+        "outputs": {}
+      },
+      "passed": true,
+      "referenceAfter": {
+        "era": "alonzo",
+        "eraIndex": 4,
+        "hash": "4c5b8dcdbd9bb73b2f3376c9a68c3dd8b628b229f4a6edaa5d78731e8b336d85",
+        "protocolVersion": {
+          "major": 5,
+          "minor": 0
+        },
+        "slot": 2687
+      },
+      "referenceBefore": {
+        "era": "alonzo",
+        "eraIndex": 4,
+        "hash": "221a4d5e7479b16f28e997ccc732c37dc1d782b56b40d336ea1bc903e8f16d52",
+        "protocolVersion": {
+          "major": 5,
+          "minor": 0
+        },
+        "slot": 2681
+      },
+      "referenceReceipt": {
+        "rawRefusal": "81820481820082008109",
+        "returncode": 1
+      },
+      "referenceReceiptSha256": "f61181108c0115de1c7f233154d4abde622d0bfa55d5c0d61795dff60a31e022",
+      "script": "4100",
+      "tx": "84a500818258205a0550c596ef98be0d48f610e41d965c36240ac11ebed1344473a5e86071c823040181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c5511a0044aa20021a0007a12007582090e8baa50011b6ecd8be76696b89641efb0b635cdf633ea4e3cdec624c8d2cc20d818258205a0550c596ef98be0d48f610e41d965c36240ac11ebed1344473a5e86071c82305a100818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840a1010d61a16c83210b83f975f1cc52ecdbbe04de2267929e6d031e8f0e2161cc08f2514c94132ccce41a187236df7288a089b984fd74770e5af09ab7ad2fc601f4d90103a10281424100",
+      "txSha256": "ca58d5229a1c3c8d8784acbc9ef5fdb55bcf77b049e655116ffc816bc39c6eeb",
+      "txid": "e8ab08a075d4aba1cf80c539ba0309bcb2f9ec0279e5ad84c885bef547fbeb87"
+    },
+    {
+      "case": "valid",
+      "collateral": [
+        "8278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f",
+        1
+      ],
+      "era": "babbage",
+      "errors": [],
+      "family": "auxiliary",
+      "isValid": true,
+      "language": 1,
+      "normalInput": [
+        "8278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f",
+        0
+      ],
+      "observedEffects": {
+        "collateralAfter": "821a002dc6c0a0",
+        "collateralBefore": "821a002dc6c0a0",
+        "collateralPresent": true,
+        "normalAfter": null,
+        "normalBefore": "821a004c4b40a0",
+        "normalInputPresent": false,
+        "outputs": {
+          "0": "821a0044aa20a0"
+        }
+      },
+      "passed": true,
+      "referenceAfter": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "3c95f382bd5288d5435e5f4bcd68036781b9357c7a6997facf7c0a88b588111a",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3680
+      },
+      "referenceBefore": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "cc5e7623b9634dcc0be8db00204b85695f14e910aad171c57190f4e044b54aaa",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3665
+      },
+      "referenceReceipt": {
+        "returncode": 0
+      },
+      "referenceReceiptSha256": "537ddcfb40347864a7692981f569deefff9dd250ff7678a899d3ff97740a317a",
+      "script": "46010000222499",
+      "tx": "84a500818258208278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f000181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c5511a0044aa20021a0007a1200758208498e4b62e704d4e747ff7208248982d0c03d9002b25b2580bf28b63e1a7f0e80d818258208278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f01a100818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840654260a565200ec71bcf3c8c2aa48965b74c4353dfa47dd4023cdb544f9e3f6f4613aa4453cffa3de18236f82bc61e7daa9d8a125a8e6ad9918261ecd29bc608f5d90103a102814746010000222499",
+      "txSha256": "70d712cebbf4bd00366250f94db0f1dcb84df165b0b3b523f2c2c633a3f70766",
+      "txid": "d5755e435056e16db95950bafed0f3ded63b912efaeedeb5b6cf5c1997b5816c"
+    },
+    {
+      "case": "runtime-error",
+      "collateral": [
+        "8278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f",
+        3
+      ],
+      "era": "babbage",
+      "errors": [],
+      "family": "auxiliary",
+      "isValid": true,
+      "language": 1,
+      "normalInput": [
+        "8278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f",
+        2
+      ],
+      "observedEffects": {
+        "collateralAfter": "821a002dc6c0a0",
+        "collateralBefore": "821a002dc6c0a0",
+        "collateralPresent": true,
+        "normalAfter": null,
+        "normalBefore": "821a004c4b40a0",
+        "normalInputPresent": false,
+        "outputs": {
+          "0": "821a0044aa20a0"
+        }
+      },
+      "passed": true,
+      "referenceAfter": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "3a6c8423fa58f3b4f4c7c77fe303caf1b7b8c60375849f59f8a8f0be1554c657",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3689
+      },
+      "referenceBefore": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "3c95f382bd5288d5435e5f4bcd68036781b9357c7a6997facf7c0a88b588111a",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3680
+      },
+      "referenceReceipt": {
+        "returncode": 0
+      },
+      "referenceReceiptSha256": "5388e90e3feaa465cc19004329cbb539c82c91716651cd52f6b356ad26576d16",
+      "script": "4401000061",
+      "tx": "84a500818258208278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f020181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c5511a0044aa20021a0007a120075820d690daba247880cfcb8d2d29a3bbce6e0571256bcc16321c36b5e91e330903da0d818258208278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f03a100818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840d50b3ff8474479ae3e665477022e2906c8531267bb826dc53c324cf662b531f92cb04790dc5541f5610bd00c84fe9944789e50944151a21b6ad63be092d11002f5d90103a10281454401000061",
+      "txSha256": "01c299ada1dbfe0119a5dcc5374ba1b4532eb01afb450986d8de69c5deea497c",
+      "txid": "c0ac2a64d759a6c7a0df8a9e5a1a98c0bef93f7ffe837b6cc08999352601bfc4"
+    },
+    {
+      "case": "malformed-valid",
+      "collateral": [
+        "8278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f",
+        5
+      ],
+      "era": "babbage",
+      "errors": [],
+      "family": "auxiliary",
+      "isValid": true,
+      "language": 1,
+      "normalInput": [
+        "8278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f",
+        4
+      ],
+      "observedEffects": {
+        "collateralAfter": "821a002dc6c0a0",
+        "collateralBefore": "821a002dc6c0a0",
+        "collateralPresent": true,
+        "normalAfter": "821a004c4b40a0",
+        "normalBefore": "821a004c4b40a0",
+        "normalInputPresent": true,
+        "outputs": {}
+      },
+      "passed": true,
+      "referenceAfter": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "af6f1d76c0077efcfafab9ab63a4b75173d10948361c84c4de1cfb1eeb8dd290",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3693
+      },
+      "referenceBefore": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "af6f1d76c0077efcfafab9ab63a4b75173d10948361c84c4de1cfb1eeb8dd290",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3693
+      },
+      "referenceReceipt": {
+        "rawRefusal": "818205818200820182008109",
+        "returncode": 1
+      },
+      "referenceReceiptSha256": "27b21be7cdf703d87b48e490cf418735e5c2a297af7f93576943d8c556b2aac5",
+      "script": "4100",
+      "tx": "84a500818258208278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f040181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c5511a0044aa20021a0007a12007582090e8baa50011b6ecd8be76696b89641efb0b635cdf633ea4e3cdec624c8d2cc20d818258208278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f05a100818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840e3c4ed47cec94077287913b4bd494e35fb5fd2adcf4d8c15cb7eed66df3b1548c877ec547e5de9204d3c2cd7a3dc1e5b498d792c860574e004a885599a8ee70bf5d90103a10281424100",
+      "txSha256": "1438449566678240df42f30ad39b30d4c8a550497540fbfee4cc9656492cd98b",
+      "txid": "4a05abfa551b67152cf6dd1f5061f586a03bd1807903a515c6aadce6d9045b6e"
+    },
+    {
+      "case": "malformed-invalid",
+      "collateral": [
+        "8278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f",
+        5
+      ],
+      "era": "babbage",
+      "errors": [],
+      "family": "auxiliary",
+      "isValid": false,
+      "language": 1,
+      "normalInput": [
+        "8278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f",
+        4
+      ],
+      "observedEffects": {
+        "collateralAfter": "821a002dc6c0a0",
+        "collateralBefore": "821a002dc6c0a0",
+        "collateralPresent": true,
+        "normalAfter": "821a004c4b40a0",
+        "normalBefore": "821a004c4b40a0",
+        "normalInputPresent": true,
+        "outputs": {}
+      },
+      "passed": true,
+      "referenceAfter": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "77e69beacd03926b17221765d17356ff7be12aeb32c72ac10f19f69a6ab3e2da",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3699
+      },
+      "referenceBefore": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "af6f1d76c0077efcfafab9ab63a4b75173d10948361c84c4de1cfb1eeb8dd290",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3693
+      },
+      "referenceReceipt": {
+        "rawRefusal": "818205818200820182008109",
+        "returncode": 1
+      },
+      "referenceReceiptSha256": "27b21be7cdf703d87b48e490cf418735e5c2a297af7f93576943d8c556b2aac5",
+      "script": "4100",
+      "tx": "84a500818258208278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f040181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c5511a0044aa20021a0007a12007582090e8baa50011b6ecd8be76696b89641efb0b635cdf633ea4e3cdec624c8d2cc20d818258208278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f05a100818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840e3c4ed47cec94077287913b4bd494e35fb5fd2adcf4d8c15cb7eed66df3b1548c877ec547e5de9204d3c2cd7a3dc1e5b498d792c860574e004a885599a8ee70bf4d90103a10281424100",
+      "txSha256": "566b4f790eee859f191bd2d04c75968361aa665850cc2ecce615b42469b102b9",
+      "txid": "4a05abfa551b67152cf6dd1f5061f586a03bd1807903a515c6aadce6d9045b6e"
+    },
+    {
+      "case": "valid",
+      "collateral": [
+        "8278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f",
+        7
+      ],
+      "era": "babbage",
+      "errors": [],
+      "family": "auxiliary",
+      "isValid": true,
+      "language": 2,
+      "normalInput": [
+        "8278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f",
+        6
+      ],
+      "observedEffects": {
+        "collateralAfter": "821a002dc6c0a0",
+        "collateralBefore": "821a002dc6c0a0",
+        "collateralPresent": true,
+        "normalAfter": null,
+        "normalBefore": "821a004c4b40a0",
+        "normalInputPresent": false,
+        "outputs": {
+          "0": "821a0044aa20a0"
+        }
+      },
+      "passed": true,
+      "referenceAfter": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "109b47388493b04862ff507336a7c7638e8fbe6f1de41932f43fd8c9b7f0a395",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3708
+      },
+      "referenceBefore": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "77e69beacd03926b17221765d17356ff7be12aeb32c72ac10f19f69a6ab3e2da",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3699
+      },
+      "referenceReceipt": {
+        "returncode": 0
+      },
+      "referenceReceiptSha256": "f77b424b2296aaf9e237009cda0f606f0f248865650de15d9e99b8fa4cd38fe3",
+      "script": "46010000222499",
+      "tx": "84a500818258208278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f060181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c5511a0044aa20021a0007a1200758203c5aa125ec0faaab60473f8e43971fd58694d8739ef3847295941efb57fade5f0d818258208278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f07a100818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd58406054c96ba40f9b93abad4962a32a726ff7b3b79005724f97b37677de781e32823405895f2211423e461ad4aade35acf425572e81b32d7df58dd45a20a78a7e07f5d90103a103814746010000222499",
+      "txSha256": "e401d6ede410cec57904c95fcfc3c184775b6fb27bc76e4b3aad9cbd70f96573",
+      "txid": "ff0e79f748a0687b440ed7974b8180ac0d27bb7c0ebb5dfd3c787ac1ba79c45d"
+    },
+    {
+      "case": "runtime-error",
+      "collateral": [
+        "8278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f",
+        9
+      ],
+      "era": "babbage",
+      "errors": [],
+      "family": "auxiliary",
+      "isValid": true,
+      "language": 2,
+      "normalInput": [
+        "8278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f",
+        8
+      ],
+      "observedEffects": {
+        "collateralAfter": "821a002dc6c0a0",
+        "collateralBefore": "821a002dc6c0a0",
+        "collateralPresent": true,
+        "normalAfter": null,
+        "normalBefore": "821a004c4b40a0",
+        "normalInputPresent": false,
+        "outputs": {
+          "0": "821a0044aa20a0"
+        }
+      },
+      "passed": true,
+      "referenceAfter": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "31e161facc4465b2ce9bd0ac8409c33500ea3ecdf4ea485abb95b58285237bbb",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3723
+      },
+      "referenceBefore": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "109b47388493b04862ff507336a7c7638e8fbe6f1de41932f43fd8c9b7f0a395",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3708
+      },
+      "referenceReceipt": {
+        "returncode": 0
+      },
+      "referenceReceiptSha256": "77e56a9d9a0f9d1e2f23c32abd0b8cb6bab5d8bde1b0e1cc1ea1866d75c66fb2",
+      "script": "4401000061",
+      "tx": "84a500818258208278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f080181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c5511a0044aa20021a0007a1200758209b0a97893d4806e79e7ee96e185a5c7c6a8e014852c7797711f65a568be6f1cf0d818258208278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f09a100818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd58407cd786520a89cc831992c27cd90fc3c8206b71032773e5acf48db9f852fec49edb9734419b0c7cd59ce9d09aa543c293bf5f641f1844bfbb963e4148d01a6f06f5d90103a10381454401000061",
+      "txSha256": "4d1557e834929c7ab2a8429b174e9af11d091a4c36cfee18f9750bdce00f7a3e",
+      "txid": "dd4b56a6842740909e5ebbb40c835fbb90c2281317966262a02748b0c52a628a"
+    },
+    {
+      "case": "malformed-valid",
+      "collateral": [
+        "8278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f",
+        11
+      ],
+      "era": "babbage",
+      "errors": [],
+      "family": "auxiliary",
+      "isValid": true,
+      "language": 2,
+      "normalInput": [
+        "8278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f",
+        10
+      ],
+      "observedEffects": {
+        "collateralAfter": "821a002dc6c0a0",
+        "collateralBefore": "821a002dc6c0a0",
+        "collateralPresent": true,
+        "normalAfter": "821a004c4b40a0",
+        "normalBefore": "821a004c4b40a0",
+        "normalInputPresent": true,
+        "outputs": {}
+      },
+      "passed": true,
+      "referenceAfter": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "82b4a11fe1b4697fc67e4383f488a531f17fcbc2ba5f0006e6e81fae31f04627",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3728
+      },
+      "referenceBefore": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "82b4a11fe1b4697fc67e4383f488a531f17fcbc2ba5f0006e6e81fae31f04627",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3728
+      },
+      "referenceReceipt": {
+        "rawRefusal": "818205818200820182008109",
+        "returncode": 1
+      },
+      "referenceReceiptSha256": "27b21be7cdf703d87b48e490cf418735e5c2a297af7f93576943d8c556b2aac5",
+      "script": "4100",
+      "tx": "84a500818258208278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f0a0181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c5511a0044aa20021a0007a120075820cd9b46de20ddc75aab01f1f9ac2ae7f90d5cc46ad1a68f2dba28ac864306015b0d818258208278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f0ba100818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840990d8f59d0a279747acdb438e42b652271572c1f29f73324102579e22205766749e7660d78d22801b1acd858c098ca7a27807ca10123fb5954349993ad6f1a09f5d90103a10381424100",
+      "txSha256": "3e27c93c5d9a4bbe0318c97f8fdaf2bae5f222548956c6073ff4cec49c615ce0",
+      "txid": "0b35e4525e2c86654b8640d748e811973659c512ebc038f5be8f3e51b399bf98"
+    },
+    {
+      "case": "malformed-invalid",
+      "collateral": [
+        "8278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f",
+        11
+      ],
+      "era": "babbage",
+      "errors": [],
+      "family": "auxiliary",
+      "isValid": false,
+      "language": 2,
+      "normalInput": [
+        "8278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f",
+        10
+      ],
+      "observedEffects": {
+        "collateralAfter": "821a002dc6c0a0",
+        "collateralBefore": "821a002dc6c0a0",
+        "collateralPresent": true,
+        "normalAfter": "821a004c4b40a0",
+        "normalBefore": "821a004c4b40a0",
+        "normalInputPresent": true,
+        "outputs": {}
+      },
+      "passed": true,
+      "referenceAfter": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "82b4a11fe1b4697fc67e4383f488a531f17fcbc2ba5f0006e6e81fae31f04627",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3728
+      },
+      "referenceBefore": {
+        "era": "babbage",
+        "eraIndex": 5,
+        "hash": "82b4a11fe1b4697fc67e4383f488a531f17fcbc2ba5f0006e6e81fae31f04627",
+        "protocolVersion": {
+          "major": 7,
+          "minor": 0
+        },
+        "slot": 3728
+      },
+      "referenceReceipt": {
+        "rawRefusal": "818205818200820182008109",
+        "returncode": 1
+      },
+      "referenceReceiptSha256": "27b21be7cdf703d87b48e490cf418735e5c2a297af7f93576943d8c556b2aac5",
+      "script": "4100",
+      "tx": "84a500818258208278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f0a0181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c5511a0044aa20021a0007a120075820cd9b46de20ddc75aab01f1f9ac2ae7f90d5cc46ad1a68f2dba28ac864306015b0d818258208278762921de8cf1f9b65dd0cc9419603a7f9be644e16c9596e407835fd7ef4f0ba100818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840990d8f59d0a279747acdb438e42b652271572c1f29f73324102579e22205766749e7660d78d22801b1acd858c098ca7a27807ca10123fb5954349993ad6f1a09f4d90103a10381424100",
+      "txSha256": "4bd08bdc65df033b2b04d81eb082b2445aaec9e7c19eca96f4cc24d1a9f5a1d8",
+      "txid": "0b35e4525e2c86654b8640d748e811973659c512ebc038f5be8f3e51b399bf98"
+    },
+    {
+      "case": "valid",
+      "collateral": [
+        "b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736",
+        1
+      ],
+      "era": "conway",
+      "errors": [],
+      "family": "auxiliary",
+      "isValid": true,
+      "language": 1,
+      "normalInput": [
+        "b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736",
+        0
+      ],
+      "observedEffects": {
+        "collateralAfter": "821a002dc6c0a0",
+        "collateralBefore": "821a002dc6c0a0",
+        "collateralPresent": true,
+        "normalAfter": null,
+        "normalBefore": "821a004c4b40a0",
+        "normalInputPresent": false,
+        "outputs": {
+          "0": "821a0044aa20a0"
+        }
+      },
+      "passed": true,
+      "referenceAfter": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "482883874eadb70a5ec36ba4c6c88c8f4a93593b907fe82fb33707486b7ffce4",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4734
+      },
+      "referenceBefore": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "84200c6e660b500cf9ddeab92d6f8d830ef28f2fd7bd24d510e431deccfff406",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4726
+      },
+      "referenceReceipt": {
+        "returncode": 0
+      },
+      "referenceReceiptSha256": "20bce084d6e6ae491fbd11bec60ec44f9b7f00f17c4a622f496ada099f7b158e",
+      "script": "46010000222499",
+      "tx": "84a50081825820b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736000181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c5511a0044aa20021a0007a1200758208498e4b62e704d4e747ff7208248982d0c03d9002b25b2580bf28b63e1a7f0e80d81825820b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f773601a100818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840f1daff095ae29473fda186aec8cb11aa1338125bd46e87f07bdfa3d5dd6be4a2bd557504f4d3e8400a40e0a4b6036b57631fe89fce06c8ee169c5b04d5426e05f5d90103a102814746010000222499",
+      "txSha256": "6ba66b8cbcd4b0fb6028c2b4ac3e3ab66e669789cb8d977860274b003a6bb6b4",
+      "txid": "806c8bcc8d15cc7d46d7d6225cb9aab0dbc9cd83f6fc9aecd4f3320393eaa5a9"
+    },
+    {
+      "case": "runtime-error",
+      "collateral": [
+        "b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736",
+        3
+      ],
+      "era": "conway",
+      "errors": [],
+      "family": "auxiliary",
+      "isValid": true,
+      "language": 1,
+      "normalInput": [
+        "b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736",
+        2
+      ],
+      "observedEffects": {
+        "collateralAfter": "821a002dc6c0a0",
+        "collateralBefore": "821a002dc6c0a0",
+        "collateralPresent": true,
+        "normalAfter": null,
+        "normalBefore": "821a004c4b40a0",
+        "normalInputPresent": false,
+        "outputs": {
+          "0": "821a0044aa20a0"
+        }
+      },
+      "passed": true,
+      "referenceAfter": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "ad82f86fd084489184fd21e3c61c4a9e44e5acf732b91c6ec9ec2c7f1f86467d",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4738
+      },
+      "referenceBefore": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "482883874eadb70a5ec36ba4c6c88c8f4a93593b907fe82fb33707486b7ffce4",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4734
+      },
+      "referenceReceipt": {
+        "returncode": 0
+      },
+      "referenceReceiptSha256": "c91de1f7b2066d2e06822857177f2c1ff35024fd9a93bf41ae4856f3ca368bed",
+      "script": "4401000061",
+      "tx": "84a50081825820b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736020181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c5511a0044aa20021a0007a120075820d690daba247880cfcb8d2d29a3bbce6e0571256bcc16321c36b5e91e330903da0d81825820b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f773603a100818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd58401f38f69b86cf210222cda185b481c1ae453cdbe7df72781b01f8acf17e0a1d576749f9103e31be6e9cee57b24d3cd92233b664a3e788f42b4683c0386b3f400bf5d90103a10281454401000061",
+      "txSha256": "7e4c598708d28c7157c2dc3ee45f89b5efc9d639142f2d5ab633f0e489764270",
+      "txid": "74899ff32a0ebe3322f2ec3a31eb4b041b6080f72c1c9ec90ee5913592b19ce0"
+    },
+    {
+      "case": "malformed-valid",
+      "collateral": [
+        "b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736",
+        5
+      ],
+      "era": "conway",
+      "errors": [],
+      "family": "auxiliary",
+      "isValid": true,
+      "language": 1,
+      "normalInput": [
+        "b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736",
+        4
+      ],
+      "observedEffects": {
+        "collateralAfter": "821a002dc6c0a0",
+        "collateralBefore": "821a002dc6c0a0",
+        "collateralPresent": true,
+        "normalAfter": "821a004c4b40a0",
+        "normalBefore": "821a004c4b40a0",
+        "normalInputPresent": true,
+        "outputs": {}
+      },
+      "passed": true,
+      "referenceAfter": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "700a1cc5c9f4893544a9af28cdcfe513ca1c70f4277d0c9488006d5511a5f03c",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4746
+      },
+      "referenceBefore": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "ad82f86fd084489184fd21e3c61c4a9e44e5acf732b91c6ec9ec2c7f1f86467d",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4738
+      },
+      "referenceReceipt": {
+        "rawRefusal": "8182068182018108",
+        "returncode": 1
+      },
+      "referenceReceiptSha256": "f75e247ebb9385ba360239bea04fc18f6a6e6f35c85bee1084d3bf17a3d03507",
+      "script": "4100",
+      "tx": "84a50081825820b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736040181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c5511a0044aa20021a0007a12007582090e8baa50011b6ecd8be76696b89641efb0b635cdf633ea4e3cdec624c8d2cc20d81825820b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f773605a100818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840b1d59a0a92fb1e3d083df75d8744372315eeed23e56ce2c8c741078a50bf3844afd863060a78d73660a026ac8fec2c4d551c0cb16361db07fd17af640ee1a209f5d90103a10281424100",
+      "txSha256": "28f2d45be1e96c8cd92bc4104c8e189bc255a92c674c74d3c04512d3a98f8a61",
+      "txid": "7fb21788dd96f1a51c7db2347befd0c0fe7769fa3ea6e5204335f21715474a91"
+    },
+    {
+      "case": "malformed-invalid",
+      "collateral": [
+        "b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736",
+        5
+      ],
+      "era": "conway",
+      "errors": [],
+      "family": "auxiliary",
+      "isValid": false,
+      "language": 1,
+      "normalInput": [
+        "b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736",
+        4
+      ],
+      "observedEffects": {
+        "collateralAfter": "821a002dc6c0a0",
+        "collateralBefore": "821a002dc6c0a0",
+        "collateralPresent": true,
+        "normalAfter": "821a004c4b40a0",
+        "normalBefore": "821a004c4b40a0",
+        "normalInputPresent": true,
+        "outputs": {}
+      },
+      "passed": true,
+      "referenceAfter": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "700a1cc5c9f4893544a9af28cdcfe513ca1c70f4277d0c9488006d5511a5f03c",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4746
+      },
+      "referenceBefore": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "700a1cc5c9f4893544a9af28cdcfe513ca1c70f4277d0c9488006d5511a5f03c",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4746
+      },
+      "referenceReceipt": {
+        "rawRefusal": "8182068182018108",
+        "returncode": 1
+      },
+      "referenceReceiptSha256": "f75e247ebb9385ba360239bea04fc18f6a6e6f35c85bee1084d3bf17a3d03507",
+      "script": "4100",
+      "tx": "84a50081825820b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736040181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c5511a0044aa20021a0007a12007582090e8baa50011b6ecd8be76696b89641efb0b635cdf633ea4e3cdec624c8d2cc20d81825820b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f773605a100818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840b1d59a0a92fb1e3d083df75d8744372315eeed23e56ce2c8c741078a50bf3844afd863060a78d73660a026ac8fec2c4d551c0cb16361db07fd17af640ee1a209f4d90103a10281424100",
+      "txSha256": "69fe6df9266a94e4182f7c3dff20214aaeaf08c959519be8617e65d5fdae99fd",
+      "txid": "7fb21788dd96f1a51c7db2347befd0c0fe7769fa3ea6e5204335f21715474a91"
+    },
+    {
+      "case": "valid",
+      "collateral": [
+        "b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736",
+        7
+      ],
+      "era": "conway",
+      "errors": [],
+      "family": "auxiliary",
+      "isValid": true,
+      "language": 2,
+      "normalInput": [
+        "b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736",
+        6
+      ],
+      "observedEffects": {
+        "collateralAfter": "821a002dc6c0a0",
+        "collateralBefore": "821a002dc6c0a0",
+        "collateralPresent": true,
+        "normalAfter": null,
+        "normalBefore": "821a004c4b40a0",
+        "normalInputPresent": false,
+        "outputs": {
+          "0": "821a0044aa20a0"
+        }
+      },
+      "passed": true,
+      "referenceAfter": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "c63d2c297aa6b504d3cea96ac14bfd760256f12f14b1be224162b16366031fe9",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4761
+      },
+      "referenceBefore": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "155ece5ffd843e215b5010c881ee0ecd94eeb32d1db0a12c0aae9731e310d03e",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4752
+      },
+      "referenceReceipt": {
+        "returncode": 0
+      },
+      "referenceReceiptSha256": "65377048c2faa5c0354516c5268617e777afb89619ec4f9ac3ac3d14da96d097",
+      "script": "46010000222499",
+      "tx": "84a50081825820b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736060181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c5511a0044aa20021a0007a1200758203c5aa125ec0faaab60473f8e43971fd58694d8739ef3847295941efb57fade5f0d81825820b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f773607a100818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840d75c27fef7fad05e469569ecd3a52c0d0a420568cf05e962ac9b6d6f215ac0e65d68ccea39e5de9e2e5b9bafc389eaa2a7f62e29e5b1ea9e1060878348e80a06f5d90103a103814746010000222499",
+      "txSha256": "599c2f219fa73e65930b65c1e3dc1a4faf58e9ca5db2ca87599fa08b31186c14",
+      "txid": "bc52d96cc4ed5fa39a45d9f6ae63534365f422287487b658e65b9f33d3d5196e"
+    },
+    {
+      "case": "runtime-error",
+      "collateral": [
+        "b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736",
+        9
+      ],
+      "era": "conway",
+      "errors": [],
+      "family": "auxiliary",
+      "isValid": true,
+      "language": 2,
+      "normalInput": [
+        "b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736",
+        8
+      ],
+      "observedEffects": {
+        "collateralAfter": "821a002dc6c0a0",
+        "collateralBefore": "821a002dc6c0a0",
+        "collateralPresent": true,
+        "normalAfter": null,
+        "normalBefore": "821a004c4b40a0",
+        "normalInputPresent": false,
+        "outputs": {
+          "0": "821a0044aa20a0"
+        }
+      },
+      "passed": true,
+      "referenceAfter": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "0c8bf55a88ac332ab122f3eaa0aa283541161046612541aecaefb09805730106",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4772
+      },
+      "referenceBefore": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "c63d2c297aa6b504d3cea96ac14bfd760256f12f14b1be224162b16366031fe9",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4761
+      },
+      "referenceReceipt": {
+        "returncode": 0
+      },
+      "referenceReceiptSha256": "c9507fa67e53418759df0044ef4540ad2dd6ad290d2ec8d35165732577ca8a17",
+      "script": "4401000061",
+      "tx": "84a50081825820b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736080181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c5511a0044aa20021a0007a1200758209b0a97893d4806e79e7ee96e185a5c7c6a8e014852c7797711f65a568be6f1cf0d81825820b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f773609a100818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd584082aa5630a68662f660e27a8a5dd3655c3e053f7d02d32b93eae1cd08a2b4863ee445f63db4c82fc4c696eeed89502abe31e9bf6715c5c8034316b00a66a8210bf5d90103a10381454401000061",
+      "txSha256": "c59966e3d9a15539e8072807c6b0a08f6b4e414fbbca047977881d684c39c7a3",
+      "txid": "2c7ceee6123f9423b132745d346149c1e73843e051dcacb458ecee102674a65a"
+    },
+    {
+      "case": "malformed-valid",
+      "collateral": [
+        "b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736",
+        11
+      ],
+      "era": "conway",
+      "errors": [],
+      "family": "auxiliary",
+      "isValid": true,
+      "language": 2,
+      "normalInput": [
+        "b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736",
+        10
+      ],
+      "observedEffects": {
+        "collateralAfter": "821a002dc6c0a0",
+        "collateralBefore": "821a002dc6c0a0",
+        "collateralPresent": true,
+        "normalAfter": "821a004c4b40a0",
+        "normalBefore": "821a004c4b40a0",
+        "normalInputPresent": true,
+        "outputs": {}
+      },
+      "passed": true,
+      "referenceAfter": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "0c8bf55a88ac332ab122f3eaa0aa283541161046612541aecaefb09805730106",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4772
+      },
+      "referenceBefore": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "0c8bf55a88ac332ab122f3eaa0aa283541161046612541aecaefb09805730106",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4772
+      },
+      "referenceReceipt": {
+        "rawRefusal": "8182068182018108",
+        "returncode": 1
+      },
+      "referenceReceiptSha256": "f75e247ebb9385ba360239bea04fc18f6a6e6f35c85bee1084d3bf17a3d03507",
+      "script": "4100",
+      "tx": "84a50081825820b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f77360a0181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c5511a0044aa20021a0007a120075820cd9b46de20ddc75aab01f1f9ac2ae7f90d5cc46ad1a68f2dba28ac864306015b0d81825820b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f77360ba100818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840708914a27265fa19a4577d22e0371d754e225441195e9a19f6c554b96dba62c825b9780c1ec48c492e2c18ff4974e94d990139ab72296fef5a1877888561d40ff5d90103a10381424100",
+      "txSha256": "2a71a44f8b2220b5b19398c1fb0390989c35d05738a8d25e415ff3a09249b814",
+      "txid": "026d6b96cf13ae2ab9cecc382b163842bc54e570572756a37ac56b271c705d5e"
+    },
+    {
+      "case": "malformed-invalid",
+      "collateral": [
+        "b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736",
+        11
+      ],
+      "era": "conway",
+      "errors": [],
+      "family": "auxiliary",
+      "isValid": false,
+      "language": 2,
+      "normalInput": [
+        "b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736",
+        10
+      ],
+      "observedEffects": {
+        "collateralAfter": "821a002dc6c0a0",
+        "collateralBefore": "821a002dc6c0a0",
+        "collateralPresent": true,
+        "normalAfter": "821a004c4b40a0",
+        "normalBefore": "821a004c4b40a0",
+        "normalInputPresent": true,
+        "outputs": {}
+      },
+      "passed": true,
+      "referenceAfter": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "0c8bf55a88ac332ab122f3eaa0aa283541161046612541aecaefb09805730106",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4772
+      },
+      "referenceBefore": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "0c8bf55a88ac332ab122f3eaa0aa283541161046612541aecaefb09805730106",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4772
+      },
+      "referenceReceipt": {
+        "rawRefusal": "8182068182018108",
+        "returncode": 1
+      },
+      "referenceReceiptSha256": "f75e247ebb9385ba360239bea04fc18f6a6e6f35c85bee1084d3bf17a3d03507",
+      "script": "4100",
+      "tx": "84a50081825820b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f77360a0181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c5511a0044aa20021a0007a120075820cd9b46de20ddc75aab01f1f9ac2ae7f90d5cc46ad1a68f2dba28ac864306015b0d81825820b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f77360ba100818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840708914a27265fa19a4577d22e0371d754e225441195e9a19f6c554b96dba62c825b9780c1ec48c492e2c18ff4974e94d990139ab72296fef5a1877888561d40ff4d90103a10381424100",
+      "txSha256": "19494e501b5a420c7e6515479ea8b7953d326312db2cce5c31a617411c48074a",
+      "txid": "026d6b96cf13ae2ab9cecc382b163842bc54e570572756a37ac56b271c705d5e"
+    },
+    {
+      "case": "valid",
+      "collateral": [
+        "b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736",
+        13
+      ],
+      "era": "conway",
+      "errors": [],
+      "family": "auxiliary",
+      "isValid": true,
+      "language": 3,
+      "normalInput": [
+        "b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736",
+        12
+      ],
+      "observedEffects": {
+        "collateralAfter": "821a002dc6c0a0",
+        "collateralBefore": "821a002dc6c0a0",
+        "collateralPresent": true,
+        "normalAfter": null,
+        "normalBefore": "821a004c4b40a0",
+        "normalInputPresent": false,
+        "outputs": {
+          "0": "821a0044aa20a0"
+        }
+      },
+      "passed": true,
+      "referenceAfter": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "435cd8447065de0d22011c2a28dce1342ec1c6f26597360bda550c38279bc2fb",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4790
+      },
+      "referenceBefore": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "0c8bf55a88ac332ab122f3eaa0aa283541161046612541aecaefb09805730106",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4772
+      },
+      "referenceReceipt": {
+        "returncode": 0
+      },
+      "referenceReceiptSha256": "e30b004d77f4d5ed9b381b1a859a772508501283bde99c8bc7bd780cc9f2a53c",
+      "script": "46010000222499",
+      "tx": "84a50081825820b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f77360c0181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c5511a0044aa20021a0007a12007582039e58591ab1c599b50879f52a2a7282b40adc4a9c9c1c3c78bf99871b201c4440d81825820b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f77360da100818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840e35aa2f56a2322941d35e6af1ddc455af22ba1aec6720c14829537845fa7d6138e95fa800f3e1b94cbcffd8a069907c9ece7fb4504519c8e71d639a3d1e5ae0cf5d90103a104814746010000222499",
+      "txSha256": "32009dbc835e0cd40940f0be9eec24242a1ee518d1e55ea91d09c21ebf59b48a",
+      "txid": "3894b6a6aceac2aabac32c27f468267827c35b8cba139cde29ca2e88fe3ac33d"
+    },
+    {
+      "case": "runtime-error",
+      "collateral": [
+        "b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736",
+        15
+      ],
+      "era": "conway",
+      "errors": [],
+      "family": "auxiliary",
+      "isValid": true,
+      "language": 3,
+      "normalInput": [
+        "b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736",
+        14
+      ],
+      "observedEffects": {
+        "collateralAfter": "821a002dc6c0a0",
+        "collateralBefore": "821a002dc6c0a0",
+        "collateralPresent": true,
+        "normalAfter": null,
+        "normalBefore": "821a004c4b40a0",
+        "normalInputPresent": false,
+        "outputs": {
+          "0": "821a0044aa20a0"
+        }
+      },
+      "passed": true,
+      "referenceAfter": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "14bbc38a8af51448d3ef84b95bc02f3e7c4addea330ec04b20d35f034535ae73",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4799
+      },
+      "referenceBefore": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "e3a589fef397e5ac780a7e6e8c0c6b8a35d0d15dfeec5a43cf00fc442cfab559",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4795
+      },
+      "referenceReceipt": {
+        "returncode": 0
+      },
+      "referenceReceiptSha256": "142c47939a2e9e7c308b2b4fd06e14ec1aa8a2880ceddb1980813d6bbc872058",
+      "script": "4401000061",
+      "tx": "84a50081825820b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f77360e0181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c5511a0044aa20021a0007a1200758204fc60bd77e18da11afd64071b912aa1f392e665a434c7368b49b428017b394140d81825820b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f77360fa100818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd5840d1b3a840c3ecd89934ec23d4acdeb0a60abc8d2a9ea30e25f1aa44c2f0199909046660f45339bb267adbee20233981379c83d085df6f90d670210d0bcffbc20ef5d90103a10481454401000061",
+      "txSha256": "bf251dc4ab6b24005a6ddf44dbc30a052d68038017ef3ba8b32f35d10ffa6a87",
+      "txid": "209277168c09fd5e088be49b8aec3ee9851679807a7bb6362002b82f05ed12f6"
+    },
+    {
+      "case": "malformed-valid",
+      "collateral": [
+        "b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736",
+        17
+      ],
+      "era": "conway",
+      "errors": [],
+      "family": "auxiliary",
+      "isValid": true,
+      "language": 3,
+      "normalInput": [
+        "b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736",
+        16
+      ],
+      "observedEffects": {
+        "collateralAfter": "821a002dc6c0a0",
+        "collateralBefore": "821a002dc6c0a0",
+        "collateralPresent": true,
+        "normalAfter": "821a004c4b40a0",
+        "normalBefore": "821a004c4b40a0",
+        "normalInputPresent": true,
+        "outputs": {}
+      },
+      "passed": true,
+      "referenceAfter": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "14bbc38a8af51448d3ef84b95bc02f3e7c4addea330ec04b20d35f034535ae73",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4799
+      },
+      "referenceBefore": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "14bbc38a8af51448d3ef84b95bc02f3e7c4addea330ec04b20d35f034535ae73",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4799
+      },
+      "referenceReceipt": {
+        "rawRefusal": "8182068182018108",
+        "returncode": 1
+      },
+      "referenceReceiptSha256": "f75e247ebb9385ba360239bea04fc18f6a6e6f35c85bee1084d3bf17a3d03507",
+      "script": "4100",
+      "tx": "84a50081825820b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736100181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c5511a0044aa20021a0007a1200758200c033da854ba179b8821a78a5f14f0c9e75b20f6f6962a0fb3708fb3d5a8366b0d81825820b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f773611a100818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd584062197a4a7db36b77b20f1d2723e904129b4f888c51cdd48ae4498ad54a7a0cdff7342a6a43407037d036bf48febadb684798ce294b59a8e3011bc63ebdeb3009f5d90103a10481424100",
+      "txSha256": "d5cdcc8f6ab0b46e0ec8f91db3811ef06901bd2445ed73960277252058efcc6f",
+      "txid": "c97a8753d0046534fa3372041a533639de02777e9680cbd9af6d45e69de3471a"
+    },
+    {
+      "case": "malformed-invalid",
+      "collateral": [
+        "b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736",
+        17
+      ],
+      "era": "conway",
+      "errors": [],
+      "family": "auxiliary",
+      "isValid": false,
+      "language": 3,
+      "normalInput": [
+        "b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736",
+        16
+      ],
+      "observedEffects": {
+        "collateralAfter": "821a002dc6c0a0",
+        "collateralBefore": "821a002dc6c0a0",
+        "collateralPresent": true,
+        "normalAfter": "821a004c4b40a0",
+        "normalBefore": "821a004c4b40a0",
+        "normalInputPresent": true,
+        "outputs": {}
+      },
+      "passed": true,
+      "referenceAfter": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "9a517b698a8923de25dce7d609ee7a4eda8b1e2249ae5a11a563f8f4d0e02a8a",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4809
+      },
+      "referenceBefore": {
+        "era": "conway",
+        "eraIndex": 6,
+        "hash": "14bbc38a8af51448d3ef84b95bc02f3e7c4addea330ec04b20d35f034535ae73",
+        "protocolVersion": {
+          "major": 9,
+          "minor": 0
+        },
+        "slot": 4799
+      },
+      "referenceReceipt": {
+        "rawRefusal": "8182068182018108",
+        "returncode": 1
+      },
+      "referenceReceiptSha256": "f75e247ebb9385ba360239bea04fc18f6a6e6f35c85bee1084d3bf17a3d03507",
+      "script": "4100",
+      "tx": "84a50081825820b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f7736100181825839002c19c0aabf7db21af5d5cf3a6cb24443a78ade72a5eabb0398dcce001b94d76590fedcfd697219a28815a135331665454682109feaf7c5511a0044aa20021a0007a1200758200c033da854ba179b8821a78a5f14f0c9e75b20f6f6962a0fb3708fb3d5a8366b0d81825820b1136ebd61fdb59c455f1d76629a0531f53e78917db6101e286f4b437f5f773611a100818258200c51c67faa93d3fd677edc222df5d8346af23f780df3cb3a5f8dca3537b8cddd584062197a4a7db36b77b20f1d2723e904129b4f888c51cdd48ae4498ad54a7a0cdff7342a6a43407037d036bf48febadb684798ce294b59a8e3011bc63ebdeb3009f4d90103a10481424100",
+      "txSha256": "2fdbfadecb829ef419e8f817727ddd9e794537d12b75cc60145b068fa1cfad01",
+      "txid": "c97a8753d0046534fa3372041a533639de02777e9680cbd9af6d45e69de3471a"
+    }
+  ],
+  "schema": "scarab-plutus-admission-observations-v1",
+  "sourceCommit": "5b290879b8ca8fe12350696e8ad7cc102d4d61f8"
+}
