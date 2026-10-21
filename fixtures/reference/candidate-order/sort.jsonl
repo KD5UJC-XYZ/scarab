@@ -1,0 +1,7 @@
+{"input":[4,0,8],"pairwiseOrd":[["EQ","GT","LT"],["LT","EQ","EQ"],["GT","EQ","EQ"]],"sorted":[0,4,8]}
+{"input":[8,0,4],"pairwiseOrd":[["EQ","EQ","GT"],["EQ","EQ","LT"],["LT","GT","EQ"]],"sorted":[8,0,4]}
+{"input":[0,4,8],"pairwiseOrd":[["EQ","LT","EQ"],["GT","EQ","LT"],["EQ","GT","EQ"]],"sorted":[0,4,8]}
+{"input":[8,4,0],"pairwiseOrd":[["EQ","GT","EQ"],["LT","EQ","GT"],["EQ","LT","EQ"]],"sorted":[0,4,8]}
+{"input":[4,8,0],"pairwiseOrd":[["EQ","LT","GT"],["GT","EQ","EQ"],["LT","EQ","EQ"]],"sorted":[4,8,0]}
+{"input":[0,8,4],"pairwiseOrd":[["EQ","EQ","LT"],["EQ","EQ","GT"],["GT","LT","EQ"]],"sorted":[0,4,8]}
+{"input":[4,0,8,1,9,2,7],"pairwiseOrd":[["EQ","GT","LT","GT","LT","GT","LT"],["LT","EQ","EQ","LT","EQ","LT","EQ"],["GT","EQ","EQ","EQ","LT","EQ","GT"],["LT","GT","EQ","EQ","EQ","LT","EQ"],["GT","EQ","GT","EQ","EQ","EQ","GT"],["LT","GT","EQ","GT","EQ","EQ","LT"],["GT","EQ","LT","EQ","LT","GT","EQ"]],"sorted":[0,4,8,1,9,2,7]}
