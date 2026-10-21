@@ -2786,3 +2786,27 @@ peak lag seven, equal final tips and transaction inclusion. Twelve reconnects
 were observed (eleven KeepAlive client-idle timeouts and one no intersection);
 [#292](https://github.com/KD5UJC-XYZ/scarab/issues/292) tracks classification.
 This finite passing gate is not a zero-reconnect or old/new throughput comparison.
+
+
+## 38. Genesis integration observations (#33)
+
+The private stage runs on Euler (2026-10-21 UTC) used frozen runtime `3819a43af`,
+Docker JDK21 and cardano-node 11.1.3. These are bounded compatibility and lifecycle
+observations, not a production sync-throughput benchmark or a comparison with an
+older Scarab build.
+
+| Scenario | Observed result |
+|---|---|
+| Genesis trusted-local-root relay, 300 seconds of load | All 59 tip samples within one block; equal final tips, 266 transaction inclusions and reverse duplex headers 1→148; zero errors or reconnects. Initial observation also permits the native 120-second no-intersection repromotion delay. |
+| Genesis soak, 600 seconds | 318 block applications across epochs 0–12; 30/30 ledger comparisons matched, zero errors/reconnects; 231 metric series validated on both endpoints. |
+| Genesis V5 restart | Both processes stopped in 0.7 and 0.6 seconds; snapshot restoration passed. |
+| Genesis seven-era e2e | 1,706 block applications, 66/66 Shelley–Conway ledger comparisons matched, zero validation/fatal errors or reconnects. Byron UTxO is checked at handover because the reference CLI cannot query a Byron ledger directly. |
+
+Commands and association requirements are in the [Genesis design](design/genesis.md).
+The local-root relay disables peer sharing to match native `LocalRootsOnly` honest
+availability; it does not change production thresholds. Earlier unrestricted-HAA
+and premature-observation failures remain failed observations. The relay’s strict
+final-tip, lag, transaction inclusion and continued inbound-following assertions
+are unchanged. Completed run databases and owned containers were removed after
+retaining compact source, input and result receipts. The subsequent negotiated-Mux
+boundary correction requires its own affected network checks before acceptance.

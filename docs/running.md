@@ -382,7 +382,9 @@ The outbound peers are chosen by the peer governor (roadmap G1.1, [design](desig
   Normal ChainSync returns drain hot protocols and keep the bearer warm for the reference's
   120- or 180-second repromotion delay. [Design and acceptance](design/genesis.md).
   Topology reload, SRV/TTL resolution and duplex outbound service are implemented in [#142](https://github.com/KD5UJC-XYZ/scarab/issues/142).
-  The private relay scenario confirms sync and duplex following but currently fails transaction inclusion; see the compatibility evidence.
+  The Genesis LocalRootsOnly relay on `3819a43af` passed sync, duplex following and transaction
+  inclusion (2026-10-21); earlier failed relay runs remain historical evidence. See the
+  [compatibility evidence](compatibility.md).
 
 ### Preview
 
