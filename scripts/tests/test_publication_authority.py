@@ -18,10 +18,10 @@ class PublicationAuthorityTests(unittest.TestCase):
     def setUp(self):
         self.source = 'a' * 40
         self.routes = {
-            '/actions/runs/42': dict(head_sha=self.source, head_branch='v1.2.3-beta.1', event='workflow_dispatch',
+            '/actions/runs/42/attempts/1': dict(head_sha=self.source, head_branch='v1.2.3-beta.1', event='workflow_dispatch',
                                     path='.github/workflows/release-publication.yml', run_attempt=1,
                                     repository=dict(full_name='example/scarab')),
-            '/actions/runs/42/jobs': dict(jobs=[dict(name=name, conclusion='success') for name in
+            '/actions/runs/42/attempts/1/jobs': dict(jobs=[dict(name=name, conclusion='success') for name in
                                                ['exact-cut-controls', 'candidate / candidate']]),
             '/actions/artifacts/123': dict(workflow_run=dict(id=42, head_sha=self.source), expired=False,
                                           name='release-candidate-' + self.source + '-1', digest='sha256:' + 'b' * 64)}
@@ -83,25 +83,30 @@ class PublicationAuthorityTests(unittest.TestCase):
     def test_exact_canonical_run_completed_gates_and_original_artifact(self):
         self.assertEqual(self.checked()['workflow_run']['id'], 42)
 
+    def test_retained_attempt_one_survives_later_failed_ui_rerun(self):
+        self.routes['/actions/runs/42'] = dict(self.routes['/actions/runs/42/attempts/1'], run_attempt=2)
+        self.routes['/actions/runs/42/jobs'] = {'jobs': [{'name': 'candidate / candidate', 'conclusion': 'failure'}]}
+        self.assertEqual(self.checked()['name'], 'release-candidate-' + self.source + '-1')
+
     def test_another_source_ref_workflow_event_or_repository_refused(self):
         original = deepcopy(self.routes)
         for field, value in [('head_sha', 'f' * 40), ('head_branch', 'main'), ('event', 'push'),
                              ('path', '.github/workflows/untrusted.yml'), ('repository', {'full_name': 'fork/scarab'})]:
             self.routes = deepcopy(original)
-            self.routes['/actions/runs/42'][field] = value
+            self.routes['/actions/runs/42/attempts/1'][field] = value
             with self.subTest(field=field), self.assertRaises(PublicationError):
                 self.checked()
 
     def test_failed_missing_or_duplicate_candidate_and_tooling_gates_refused(self):
         for name in ['candidate / candidate', 'exact-cut-controls']:
-            original = deepcopy(self.routes['/actions/runs/42/jobs'])
+            original = deepcopy(self.routes['/actions/runs/42/attempts/1/jobs'])
             for conclusion in ['failure', 'cancelled', 'skipped', None]:
-                self.routes['/actions/runs/42/jobs'] = deepcopy(original)
-                row = next(row for row in self.routes['/actions/runs/42/jobs']['jobs'] if row['name'] == name)
+                self.routes['/actions/runs/42/attempts/1/jobs'] = deepcopy(original)
+                row = next(row for row in self.routes['/actions/runs/42/attempts/1/jobs']['jobs'] if row['name'] == name)
                 row['conclusion'] = conclusion
                 with self.subTest(name=name, conclusion=conclusion), self.assertRaises(PublicationError):
                     self.checked()
-            self.routes['/actions/runs/42/jobs'] = original
+            self.routes['/actions/runs/42/attempts/1/jobs'] = original
 
     def test_wrong_artifact_run_hash_expiry_name_or_source_refused(self):
         original = deepcopy(self.routes['/actions/artifacts/123'])

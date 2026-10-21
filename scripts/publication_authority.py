@@ -2,6 +2,7 @@
 """Read-only server authority checks performed before any coordinator mutation."""
 import base64
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -50,26 +51,26 @@ def rules(github, policy, audit=None):
 
 
 def candidate_run(github, run_id, source, tag, artifact_id, artifact_digest):
-    run = github.get('/actions/runs/' + str(run_id))
+    asset = github.get('/actions/artifacts/' + str(artifact_id))
+    match = re.fullmatch(re.escape('release-candidate-' + source + '-') + r'([1-9][0-9]*)', asset.get('name', ''))
+    require(match is not None, 'candidate artifact has no canonical retained attempt identity')
+    attempt = int(match.group(1))
+    require(asset.get('workflow_run', {}).get('id') == run_id and asset.get('expired') is False
+            and asset.get('digest') == 'sha256:' + sha256(artifact_digest)
+            and asset.get('workflow_run', {}).get('head_sha') == source,
+            'candidate artifact belongs to another run/source or has changed')
+    route = '/actions/runs/' + str(run_id) + '/attempts/' + str(attempt)
+    run = github.get(route)
     require(run.get('head_sha') == source and run.get('head_branch') == tag
-            and run.get('event') == 'workflow_dispatch'
+            and run.get('run_attempt') == attempt and run.get('event') == 'workflow_dispatch'
             and run.get('path') == '.github/workflows/release-publication.yml'
             and run.get('repository', {}).get('full_name') == github.repository,
             'candidate run is not the canonical exact-tag publisher invocation')
-    jobs = github.pages('/actions/runs/' + str(run_id) + '/jobs', key='jobs')
+    jobs = github.pages(route + '/jobs', key='jobs')
     for name in ['exact-cut-controls', 'candidate / candidate']:
         gate = [job for job in jobs if job.get('name') == name]
         require(len(gate) == 1 and gate[0].get('conclusion') == 'success',
                 'canonical exact-cut gate is not successful: ' + name)
-    matches = [job for job in jobs if job.get('name') == 'candidate / candidate']
-    require(len(matches) == 1 and matches[0].get('conclusion') == 'success',
-            'trusted reusable candidate workflow did not complete --check successfully')
-    asset = github.get('/actions/artifacts/' + str(artifact_id))
-    require(asset.get('workflow_run', {}).get('id') == run_id and asset.get('expired') is False
-            and asset.get('name') == 'release-candidate-' + source + '-' + str(run['run_attempt'])
-            and asset.get('digest') == 'sha256:' + sha256(artifact_digest)
-            and asset.get('workflow_run', {}).get('head_sha') == source,
-            'candidate artifact belongs to another run/source or has changed')
     return asset
 
 

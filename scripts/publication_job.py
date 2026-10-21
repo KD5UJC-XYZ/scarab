@@ -27,6 +27,16 @@ def main():
         publication_authority.rules(github, policy, load_json(audit) if audit.exists() else None)
         require(environment_snapshot(github, os.environ['RELEASE_CHANNEL'], policy) ==
                 load_json(temporary / 'preflight/environment.json'), 'environment changed after approval')
+        from publication_candidate import checked_candidate
+        from publication_coordinator import Publication
+        manifest = checked_candidate(candidate, os.environ['RELEASE_SOURCE'], os.environ['RELEASE_TAG'],
+                                     os.environ['RELEASE_CHANNEL'], os.environ['CANDIDATE_SHA256'])
+        publication_authority.candidate_run(github, int(os.environ['CANDIDATE_RUN_ID']), os.environ['RELEASE_SOURCE'],
+                                           os.environ['RELEASE_TAG'], int(os.environ['CANDIDATE_ARTIFACT_ID']),
+                                           os.environ['CANDIDATE_ARTIFACT_DIGEST'])
+        publication = Publication(github, manifest['source']['buildIdentity'], os.environ['CANDIDATE_SHA256'],
+                                  manifest['image']['manifest']['digest'])
+        publication.check_source(retry=publication.checked_release(optional=True) is not None)
         return
     if args.operation == 'approved-audit':
         from promotion_rules import owner_audit
