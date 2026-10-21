@@ -192,3 +192,7 @@ export before any comparison. Only that scratch parent is writable; original dat
 read-only and the export suite still checks their complete before/after fingerprints. The signed
 preprod ancillary manifest's complete file list, including its native immutable tail triplet,
 must accompany the ledger files; the recorded Scarab database is a separate input role.
+That recorded import database contains an incomplete legacy network identity. The import suite
+checks its recorded fields against the loaded preprod genesis and explicitly adopts only its
+disposable copy through the normal admission API. The retained original remains unchanged;
+operator acknowledgement supplies current bindings, not historical proof of the omitted fields.
