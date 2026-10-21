@@ -51,7 +51,8 @@ observe label capacity rate overflow events = runSimOrThrow $ do
       "paused" .= paused,"generation" .= configGeneration,"capacity" .= ratioJSON cap,"rate" .= ratioJSON r,"fillOnOverflow" .= oflow],"emptyTimesPicos" .= emptyTimes]
 scenarios :: [(String,Rational,Rational,Bool,[Event])]
 scenarios =
- [ ("default-refill",100000,500,True,[Wait 1000000000000,Fill 1000000000000 1,Wait 2000000000000])
+ [ ("timer-persists-fill-pause",3%2000000,1,True,[Pause 500000 True,Pause 600000 False,Wait 1600000])
+ , ("default-refill",100000,500,True,[Wait 1000000000000,Fill 1000000000000 1,Wait 2000000000000])
  , ("overflow-fill",10,1,True,[Wait 1000000000000,Fill 1000000000000 5])
  , ("overflow-ignore",10,1,False,[Wait 1000000000000,Fill 1000000000000 5])
  , ("pause-resume",10,1,True,[Pause 1000000000000 True,Wait 20000000000000,Fill 20000000000000 1,Pause 21000000000000 True,Pause 22000000000000 False,Wait 23000000000000])

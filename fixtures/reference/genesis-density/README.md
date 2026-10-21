@@ -11,11 +11,12 @@ peers, and every `DensityBounds` field. Unknown latest slots, known Origin, Awai
 headers beyond the forecast horizon, equal completed densities and disconnected candidates are
 represented. No result fields are masked and no generated cases are discarded.
 
-`bucket.jsonl` retains all 40 event prefixes from 11 leaky-bucket scenarios. The observer calls
+`bucket.jsonl` retains all 44 event prefixes from 12 leaky-bucket scenarios. The observer calls
 `runAgainstBucket` in IOSim, retaining the complete rational bucket state, configuration generation,
 paused flag, timestamp, configuration and all on-empty observations. Cases cover both overflow
 policies, pause/resume, reconfiguration while paused, picosecond accounting, zero/negative rates,
-disabled configuration, depletion and a positive balance with less than one microsecond remaining.
+disabled configuration, depletion a positive balance with less than one microsecond remaining, and the native timer that persists
+across pause/resume rather than being rescheduled.
 `FillResult` is opaque in the public native API; no constructors or production bodies are modified.
 
 `loe.jsonl.gz` is a lossless, deterministic gzip of 84 full native peer-simulator observations.
