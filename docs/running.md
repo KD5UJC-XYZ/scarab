@@ -1217,6 +1217,7 @@ section and the catalogue differ.
 | `scarab_mempool_rejected_total` | counter | `reason` | Transactions the mempool refused, by reason. | none (a trace message only) |
 | `scarab_mempool_dropped_total` | counter |  | Held transactions dropped because the new tip no longer admits them. | none (a trace message only) |
 | `scarab_mempool_adopted_total` | counter |  | Held transactions that appeared in a block of our chain. | none |
+| `scarab_mempool_removed_total` | counter |  | Transactions removed from the mempool on request although they still apply (a forged block that our own chain refused). | none |
 
 #### Forging (only on a node started with `--forge`)
 

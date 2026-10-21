@@ -127,7 +127,7 @@ final class EventMetrics[F[_]: Sync] private (
         metrics.inc(mempoolRejected, RejectionLabel.of(reason))
       case MempoolEvent.Dropped(_, _)   => metrics.inc(mempoolDropped)
       case MempoolEvent.Adopted(_)      => metrics.inc(mempoolAdopted)
-      case MempoolEvent.Removed(_)      => Sync[F].unit
+      case MempoolEvent.Removed(_)      => metrics.inc(mempoolRemoved)
       case MempoolEvent.Synced(_, _, _) => Sync[F].unit
 
   /** The phase of the start, as the one-hot gauge [[nodePhase]]: the storage events move it from

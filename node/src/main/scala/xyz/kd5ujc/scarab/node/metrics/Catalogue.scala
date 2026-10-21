@@ -203,6 +203,10 @@ object Catalogue:
     MetricName("scarab_mempool_adopted_total"),
     "Held transactions that appeared in a block of our chain."
   )
+  val mempoolRemoved = CounterDef(
+    MetricName("scarab_mempool_removed_total"),
+    "Transactions removed from the mempool on request although they still apply (a forged block that our own chain refused)."
+  )
 
   // ---- forging (only on a node that forges)
 
@@ -947,6 +951,7 @@ object Catalogue:
     mempoolRejected,
     mempoolDropped,
     mempoolAdopted,
+    mempoolRemoved,
     forgeAboutToLead,
     forgeNodeIsLeader,
     forgeNodeNotLeader,

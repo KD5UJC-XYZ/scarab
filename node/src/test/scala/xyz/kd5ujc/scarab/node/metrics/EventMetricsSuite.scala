@@ -162,6 +162,15 @@ class EventMetricsSuite extends CatsEffectSuite:
     }
   }
 
+  test("a transaction removed on request is counted once") {
+    fixture.flatMap { (metrics, em) =>
+      for
+        _ <- em.mempool.emit(MempoolEvent.Removed(hash))
+        s <- metrics.snapshot
+      yield assertEquals(counter(s, Catalogue.mempoolRemoved, ()), Some(1.0))
+    }
+  }
+
   test("a snapshot written is counted with its duration and size") {
     fixture.flatMap { (metrics, em) =>
       for
