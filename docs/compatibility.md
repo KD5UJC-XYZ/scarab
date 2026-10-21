@@ -25,6 +25,14 @@ remaining gaps with owners and resolution criteria. The [fixture contracts](../f
 describe exact committed identities and mandatory corpus documentation. These inventories supplement
 the executable assertions; they do not waive failed comparisons.
 
+External candidate acceptance ([#294](https://github.com/KD5UJC-XYZ/scarab/issues/294)) remains
+**0/12 executed under the combined gate**. Original inputs have now been preserved and hash-verified
+in shared offline storage; they are not all missing. The [acceptance input status and preparation
+list](../scripts/candidate_acceptance/README.md#preserved-inputs-and-remaining-preparation) record
+the archive identity, untouched Mithril bootstrap reconstruction, distinct K1 format roles and
+native inventory correction still required before provisioning and execution. Input preservation
+does not establish runtime conformance or promote a coverage-register entry.
+
 ## Matrix
 
 | Component | Status | Evidence | Explicitly unchecked or unconfirmed |
