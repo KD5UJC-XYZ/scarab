@@ -658,12 +658,15 @@ class InboundGovernorSuite extends FailsOnUncaught:
       us <- local(
         pool = Some(pool),
         followSession = Some(follow),
+        readAhead = 1,
         keepAliveInterval = 20.millis,
         events = Some(new InboundEvents[IO]:
           def emit(remote: String, event: InboundEvent) = seen.update(_ :+ event)
         )
       )
-      server <- serving(forged.raws.take(1))
+      // One consumed batch plus the three retained pipeline batches. Every submitted response
+      // can drain before FindIntersect; no unanswered AwaitReply is fabricated or cancelled.
+      server <- serving(forged.raws.take(Peer.Depth + 1))
       observe = (bytes: fs2.Chunk[Byte]) => wire.update { (before, cookies) =>
         val (after, sdus) =
           before.feed(Bytes.fromArray(bytes.toArray)).fold(e => fail(e.toString), identity)
@@ -683,6 +686,9 @@ class InboundGovernorSuite extends FailsOnUncaught:
       _ <- connect(Some(server), us, observe) { _ =>
         for
           _ <- delivered.get.timeout(5.seconds)
+          _ <- eventually("all submitted actual block ranges can drain")(
+            server.ranges.get
+          )(_.exists(_._2 == forged.headers(Peer.Depth).point))
           old <- us.governor.cachedSource(remote).flatMap(_.liftTo[IO](
             new AssertionError("the delivering hot activation has no active source key")
           ))
