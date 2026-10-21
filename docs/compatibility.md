@@ -41,13 +41,12 @@ remaining gaps with owners and resolution criteria. The [fixture contracts](../f
 describe exact committed identities and mandatory corpus documentation. These inventories supplement
 the executable assertions; they do not waive failed comparisons.
 
-External candidate acceptance ([#294](https://github.com/KD5UJC-XYZ/scarab/issues/294)) remains
-**0/12 executed under the combined gate**. Original inputs have now been preserved and hash-verified
-in shared offline storage; they are not all missing. The [acceptance input status and preparation
-list](../scripts/candidate_acceptance/README.md#preserved-inputs-and-remaining-preparation) record
-the archive identity, untouched Mithril bootstrap reconstruction, distinct K1 format roles and
-native inventory correction still required before provisioning and execution. Input preservation
-does not establish runtime conformance or promote a coverage-register entry.
+External candidate acceptance ([#294](https://github.com/KD5UJC-XYZ/scarab/issues/294)) passed
+**12/12 mandatory cases and 66/66 additional controls, with zero skips or failures**, on
+2026-10-21 UTC. The [exact-source/runtime receipt](data/external-acceptance-294.json) binds original
+inputs, report hashes, actual heap/CPU settings and completed native Preview comparison. The
+[acceptance contract](../scripts/candidate_acceptance/README.md) records setup, corrected harness
+failures and limits. This closes the external-data gate, not every audit or equivalence obligation.
 
 ## Matrix
 
@@ -110,6 +109,8 @@ does not establish runtime conformance or promote a coverage-register entry.
 | **Per-state provenance (#129)** | implemented in live state and the existing V5 gap/observed fields: genesis/import, block transitions, rollback, save/restore/rewrite; native Shelley voting-deadline counter | Frozen V5 era files rewrite byte-for-byte and retain fingerprint `7c483457b06802d6`; complete native imports, incomplete metadata, repeated reopen, rollback and actual block-boundary regressions | Missing historical likelihoods remain marked. Arbitrary imported delegator counts need three witnessed rotations; restore restarts that conservative proof. Operational preprod/mainnet rehearsal and approved cutover remain [#129](https://github.com/KD5UJC-XYZ/scarab/issues/129), under [storage migrations](storage-migrations.md#per-state-provenance-upgrades-129) |
 
 ## Evidence log
+
+External acceptance #294: measured source `8a9ea6b2896c6bfed26c82b7c05e2ef5919dc636`, 2026-10-21 UTC, command and actual image `sha256:4fb49a113489a705c33c4a07a7d9be8d24f26a28ad7e5b5bf61bb12956f71b92` in [retained receipt](data/external-acceptance-294.json). Docker `check` and 366 script tests pass; all 78 declared acceptance cases pass without skips. Both test subprocesses report 16 GiB maximum heap, four processors and `/work` working directory. Original complete inputs are hash-verified before/after. One native Preview body comparison is required and completed; independent broader equality and ordered failure-list obligations remain unchanged.
 
 Numbers from recorded runs. Each names the commit it was obtained on, taken from the project
 notes; the run logs themselves are not in the repository (they lived in `/tmp` and the gitignored

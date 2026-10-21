@@ -1,0 +1,288 @@
+{
+  "dateUtc": "2026-10-21",
+  "acceptanceReceipt": {
+    "artifactKind": "local-inventory",
+    "artifactSha256": "6d6102fc1186d6a3f2b62dd25d62f166bcd739f86008f70d6a6620b9a08f4279",
+    "casesSha256": "b16d0c6dc0f3d6ad58f1d21a9fcf987d5fff9ab2cb10ec63d4621f73d6a4b8ca",
+    "environment": {
+      "HASKELL_STATE_FILE": "/candidate/inputs/preview-native-k1/ledger/125660129/state",
+      "SCARAB_CANDIDATE_RUNTIME": "1",
+      "SCARAB_EXPORT_DB": "/candidate/results/export-source/db",
+      "SCARAB_EXPORT_FIXTURE": "/candidate/inputs/preprod-import",
+      "SCARAB_EXPORT_OUT": "/candidate/results/export",
+      "SCARAB_IMPORT_DB": "/candidate/results/import-db",
+      "SCARAB_IMPORT_FIXTURE": "/candidate/inputs/preprod-import",
+      "SCARAB_K1_DB": "/candidate/inputs/preview-k1",
+      "SCARAB_MAINNET_GENESIS_DIR": "/candidate/inputs/mainnet-genesis",
+      "SCARAB_MEMPACK_CHECKPOINT": "/candidate/inputs/preprod-baseline/utxo/checkpoints/snapshot-00000000000136511997-5300868",
+      "SCARAB_MEMPACK_TABLES": "/candidate/inputs/preprod-import/ledger/136511997/tables",
+      "SCARAB_MITHRIL_DB": "/candidate/inputs/preview-mithril-db",
+      "SCARAB_MITHRIL_DUMP": "/candidate/results/mithril-dump",
+      "SCARAB_MITHRIL_GENESIS": "/candidate/inputs/preview-genesis",
+      "SCARAB_NATIVE_K1_DB": "/candidate/inputs/preview-native-k1",
+      "SCARAB_PLUTUS_BASELINE": "/candidate/inputs/preprod-baseline",
+      "SCARAB_PLUTUS_CAPTURE": "/candidate/inputs/preprod-capture",
+      "SCARAB_PLUTUS_OUTPUT": "/candidate/results/plutus",
+      "SCARAB_PREVIEW_CAPTURE": "/candidate/inputs/preview-capture",
+      "SCARAB_PREVIEW_CHECKPOINT": "/candidate/inputs/preview-checkpoint",
+      "SCARAB_PREVIEW_GENESIS": "/candidate/inputs/preview-genesis",
+      "SCARAB_PREVIEW_OUTPUT": "/candidate/results/preview",
+      "SCARAB_PREVIEW_REFERENCE": "/candidate/inputs/preview-reference",
+      "SCARAB_PREVIEW_ROUNDS": "1",
+      "SCARAB_PREVIEW_SCHEDULE": "Comparison",
+      "SCARAB_PREVIEW_SNAPSHOT": "/candidate/inputs/preview-k1/snapshots/snapshot-00000000000001037057-46732.bin",
+      "SCARAB_PREVIEW_WORKERS": "2,4"
+    },
+    "image": "sha256:4fb49a113489a705c33c4a07a7d9be8d24f26a28ad7e5b5bf61bb12956f71b92",
+    "inputInventory": {
+      "entries": 88995,
+      "files": 88963,
+      "inventorySha256": "6d6102fc1186d6a3f2b62dd25d62f166bcd739f86008f70d6a6620b9a08f4279",
+      "payloadBytes": 43854463067
+    },
+    "junit": {
+      "additionalPassed": 66,
+      "mandatoryPassed": 12,
+      "reports": {
+        "TEST-xyz.kd5ujc.scarab.node.ConfigSuite.xml": "2dee68496f2d87ad2abfc2132f0ade6c13cdd06ebbc40f9ae2f543e0305f1ece",
+        "TEST-xyz.kd5ujc.scarab.node.PlutusReplaySuite.xml": "2a103771b9f3a61fdcfc9582c2d8cc103b85eb432cd0f21189f94cb1aadf79a4",
+        "TEST-xyz.kd5ujc.scarab.node.differential.BoundaryDigestSuite.xml": "657a980462bc620dd9d1b78c9ff7ebe9edc27df5d9fe22751723710fb64f2e4b",
+        "TEST-xyz.kd5ujc.scarab.node.preview.PreviewReplaySuite.xml": "3dd3b0282059f08ba8b03936048fe1de235c386e45af60824251c5f584c91361",
+        "TEST-xyz.kd5ujc.scarab.storage.MemPackJoinSuite.xml": "3bcb1aba9818affc18e66faf5ab6e9d01e6c25a672b6df1d91254c8544d536a2",
+        "TEST-xyz.kd5ujc.scarab.storage.MithrilBootstrapAcceptanceSuite.xml": "f1019863c4b240cd7f5b71013a5661e7d8b772dcca99293857a451544c6f5b07",
+        "TEST-xyz.kd5ujc.scarab.storage.PreprodSnapshotExportSuite.xml": "419adbffe9c341e00c13bbe996555f22e082d96fccabd880b68abe2bb11ad21c",
+        "TEST-xyz.kd5ujc.scarab.storage.PreprodSnapshotImportSuite.xml": "9a5cfde36ae556d6c69645c144c43cda6b069d4c7c43f28097755cc35ca210f6",
+        "TEST-xyz.kd5ujc.scarab.storage.haskell.HaskellRealFilesSuite.xml": "0743ec39bfca42a9bad188598d85a0f3fbe924e8adb70654de32ea36dc6daec0",
+        "TEST-xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite.xml": "4cc346dc5fa9ce6e520274ff8c92b0e089322f77b72e0558eb6aa585dabbd025",
+        "TEST-xyz.kd5ujc.scarab.storage.haskell.state.SnapshotTableStreamSuite.xml": "8487082e2c4a821710cdd7827b82b5cbabf17a8d9c40aaa0471a728b557e4db7"
+      }
+    },
+    "manifestSha256": "776a3edaba2753e779a4b88dc6a36fac353b0ce03b9483007377bacfa58e06aa",
+    "nativeReplay": {
+      "referenceBodyComparisons": 1,
+      "referenceTargetsRequired": 1,
+      "sha256": "119b703781acdc39bf60fcdffb592e9c4775e0806a6ba7ee112806d3b7b1e4ae"
+    },
+    "schemaVersion": 1,
+    "sourceCommit": "8a9ea6b2896c6bfed26c82b7c05e2ef5919dc636",
+    "status": "passed",
+    "testRuntime": {
+      "node": {
+        "maxHeapBytes": 17179869184,
+        "processors": 4,
+        "workingDirectory": "/work"
+      },
+      "storage": {
+        "maxHeapBytes": 17179869184,
+        "processors": 4,
+        "workingDirectory": "/work"
+      }
+    }
+  },
+  "receiptSha256": "ddae29771a00ba6d4ff1e422e0becb70442cbc54fdf7563c1d5670a2918178d6",
+  "reviewedInputManifest": {
+    "schemaVersion": 1,
+    "status": "reviewed",
+    "provenance": "Original captured Preview artifact 20bfc5b5377f478b7d48e4c0f2c78fe4246b8d93d08a2292cba02411b94e7cbd (native immutable/ledger plus newly reconstructed production bootstrap); original pinned preprod e319-i6320 table/state/checkpoint/capture; maintained V5 K1 conversion source 648aed117f826d06117f616b5c0a3716a50485a7 and original recorded blocks/native reference body. Original expected outputs unchanged; see input-inventory.json and reconstruction receipt. Maintained preprod identity metadata converted once to V6 by source 11eccb0f3 through normal admission; original V2 identity retained separately. No test-time adoption; native signed bytes unchanged.",
+    "artifact": {
+      "kind": "local-inventory",
+      "url": null,
+      "inventory": "input-inventory.json",
+      "sha256": "6d6102fc1186d6a3f2b62dd25d62f166bcd739f86008f70d6a6620b9a08f4279",
+      "maxBytes": 33554432,
+      "maxUnpackedBytes": 51539607552,
+      "maxEntries": 110000
+    },
+    "environment": {
+      "SCARAB_MAINNET_GENESIS_DIR": {
+        "path": "mainnet-genesis",
+        "kind": "directory"
+      },
+      "SCARAB_K1_DB": {
+        "path": "preview-k1",
+        "kind": "directory"
+      },
+      "HASKELL_STATE_FILE": {
+        "path": "preview-native-k1/ledger/125660129/state",
+        "kind": "file"
+      },
+      "SCARAB_MEMPACK_TABLES": {
+        "path": "preprod-import/ledger/136511997/tables",
+        "kind": "file"
+      },
+      "SCARAB_MEMPACK_CHECKPOINT": {
+        "path": "preprod-baseline/utxo/checkpoints/snapshot-00000000000136511997-5300868",
+        "kind": "directory"
+      },
+      "SCARAB_IMPORT_FIXTURE": {
+        "path": "preprod-import",
+        "kind": "directory"
+      },
+      "SCARAB_EXPORT_DB": {
+        "path": "preprod-baseline",
+        "kind": "directory"
+      },
+      "SCARAB_EXPORT_FIXTURE": {
+        "path": "preprod-import",
+        "kind": "directory"
+      },
+      "SCARAB_MITHRIL_DB": {
+        "path": "preview-mithril-db",
+        "kind": "directory"
+      },
+      "SCARAB_MITHRIL_GENESIS": {
+        "path": "preview-genesis",
+        "kind": "directory"
+      },
+      "SCARAB_PLUTUS_CAPTURE": {
+        "path": "preprod-capture",
+        "kind": "directory"
+      },
+      "SCARAB_PLUTUS_BASELINE": {
+        "path": "preprod-baseline",
+        "kind": "directory"
+      },
+      "SCARAB_PREVIEW_CAPTURE": {
+        "path": "preview-capture",
+        "kind": "directory"
+      },
+      "SCARAB_PREVIEW_SNAPSHOT": {
+        "path": "preview-k1/snapshots/snapshot-00000000000001037057-46732.bin",
+        "kind": "file"
+      },
+      "SCARAB_PREVIEW_CHECKPOINT": {
+        "path": "preview-checkpoint",
+        "kind": "directory"
+      },
+      "SCARAB_PREVIEW_GENESIS": {
+        "path": "preview-genesis",
+        "kind": "directory"
+      },
+      "SCARAB_PREVIEW_REFERENCE": {
+        "path": "preview-reference",
+        "kind": "directory"
+      },
+      "SCARAB_NATIVE_K1_DB": {
+        "path": "preview-native-k1",
+        "kind": "directory"
+      }
+    },
+    "nativeK1SecondaryCount": 29091
+  },
+  "fixtureIdentityConversion": {
+    "sourceCommit": "11eccb0f3fdfe99e70561dabdb9d3b31487ae76f",
+    "method": "NetworkIdentityFile.preflight/admit; recorded fields verified against repository preprod genesis; one-time fixture metadata preparation only",
+    "originalSha256": "0b87caeafcb6afc15abfe154bd9c31d63890a1bbcc7d654267b65b37b1321dcc",
+    "currentSha256": "2c2c3ca9bf7fd693b00a43bda219e807ab72196fb6a67f8f9c01933a58a4e055",
+    "originalBlake2b256": "ea194f8f4f46d8061394a55f059b3db9eea9647d555a17f67ec6916e7b347de9",
+    "format": "scarab network identity v6",
+    "provenance": "operator-confirmed-legacy:v2; not historical proof of omitted genesis inputs",
+    "genesisSha256": {
+      "byron-genesis.json": "d88fbffdf78daaccfaddf504e95840c73ce527c06fa4140aefb55d3f91c00cef",
+      "topology.json": "af9d10ae4106ce040bb6ead31cd5c680699bae43dd209c56c1aa217527687726",
+      "shelley-genesis.json": "4b9d32c09159c2948e4386ba1f59db5a249a89b43b84dfd8368f465e650095de",
+      "conway-genesis.json": "c196814fe2e8f36ad1910e5c287184970339657729e7ad4fc354c34e149be3f8",
+      "config.json": "9d8b377123f2835b999d2a73c9b9466906deafdbc42b0f16af537bb9922c07c6",
+      "alonzo-genesis.json": "7333bfafe311589fa09e8bf59a47ec0d85a1959f00748cc0800591d2c7646408"
+    }
+  },
+  "dockerCheck": {
+    "exitCode": 0,
+    "sourceCommit": "8a9ea6b2896c6bfed26c82b7c05e2ef5919dc636",
+    "seconds": 410.6047831629403
+  },
+  "pythonTests": {
+    "passed": 366,
+    "failed": 0
+  },
+  "previewReplay": {
+    "seconds": 31.371373258,
+    "blocks": 8380,
+    "failedTransactionIds": [
+      "842a18e8b3280cf769f7a50551525b60820ea74ac8d3223e78939bd36e8185cc",
+      "23a8f4782087e9b38780c340088717e437ccf39b9ae91b76cbba28d1535e884c",
+      "4490f44907ab935daa2a146be0046476c0685c0391f8175951e7101aa5f19fec",
+      "51476637641061f0ee6f6508eb9484e4f35840cf355a9fac0aac5e3af1daaf99",
+      "b7c5100a8f5d9098ef007e7e95e179acbb2ada3007cf15e9a318c5f06746cfcd",
+      "af0cc24da77016948297b1713ee1cdd8683a180e28268b35596b4173314b3679",
+      "35f79a0dec4d8c3127f95f44a5a3aae020c4b1b2628ef7d39d3bf3e7d2d8fa92",
+      "da468e801e828b6d2283a5c002bb3295b3f8a2447887b364d86e150d8766a397",
+      "a1913ed2a77ae8b163d12117950e8ad37503b7650d4e1969f616f08eb1d8a2ff"
+    ],
+    "referenceTargetsExported": 1,
+    "referenceTargetsRequired": 1,
+    "referenceBodyComparisons": 1,
+    "comparisonScope": "required-native-projection-fields-and-scala-execution-modes",
+    "phase2": {
+      "reachedTransactions": 939,
+      "evaluatedScripts": 1546,
+      "failedTransactions": 9,
+      "failedScripts": 9,
+      "unavailableTransactions": 0,
+      "collectionFailures": 0,
+      "usedMemory": "2980582260",
+      "usedSteps": "857463284845"
+    },
+    "finalScripts": 2630,
+    "initialScripts": 1084
+  },
+  "plutusReplay": {
+    "blocks": 5683,
+    "initialScripts": 0,
+    "finalScripts": 104392,
+    "seconds": 476.362161115,
+    "comparisonScope": "scala-execution-modes-only"
+  },
+  "command": "python3 scripts/candidate_acceptance.py --manifest /reviewed/inputs-reviewed.json --local-inputs /reviewed/input-tree --output /tmp/scarab-acceptance-294",
+  "limitations": [
+    "Bounded original captures and required native projection fields; not universal Cardano equivalence or complete native state-byte identity.",
+    "Serial/parallel preprod comparisons are Scala execution equivalence, independently distinct from native Preview comparison.",
+    "Five optional format benchmarks are outside this acceptance contract.",
+    "Original incomplete identity retained separately; maintained V6 metadata records operator acknowledgement, not historical proof."
+  ],
+  "bootstrapReconstruction": {
+    "exitCode": 0,
+    "seconds": 306.8767832389567,
+    "sourceCommit": "afd68f5cf0d2ae2466778c708a72c6cb10137262",
+    "sourceNativeArtifact": "20bfc5b5377f478b7d48e4c0f2c78fe4246b8d93d08a2292cba02411b94e7cbd",
+    "image": "sha256:c90140def52d2711644c85a81c9bf218ffbe5dc81003bfb866154c2da832af38",
+    "receiptSummary": {
+      "version": 1,
+      "artifact": "20bfc5b5377f478b7d48e4c0f2c78fe4246b8d93d08a2292cba02411b94e7cbd",
+      "verifierSource": "769d862dc2d7941192dac9088d1d86df967bf5cc",
+      "verifierSha256": "43e126e151d6407b258e2ab37399b8fae4fe7e953f4e3f5366fdf133c1f2ca46",
+      "ancillaryManifestHash": "9ba6e61a1e9143913f6ddb880f636e91b51386f852923bcac6367c0bda00adc3",
+      "networkMagic": 2,
+      "certificateNetwork": "preview",
+      "certificateHash": "a1ffb5d99903f3bf49f32b1640d56b32c7e0ae71806900a5809ea6046d940d4a",
+      "ledgerSlot": 125660129,
+      "ledgerHash": "9d23a8e148a112cd86c1f4d23c8a0530955ea3bd06c9e81ba2a404dbb8e89937",
+      "mithrilArtifactVerified": true,
+      "ancillaryFilesMithrilCertified": false,
+      "ancillaryVerified": true
+    }
+  },
+  "dockerCheckSummary": {
+    "moduleSummaries": 14,
+    "passed": 7477,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 17,
+    "execution": {
+      "exitCode": 0,
+      "sourceCommit": "8a9ea6b2896c6bfed26c82b7c05e2ef5919dc636",
+      "seconds": 410.6047831629403
+    }
+  },
+  "postRunChanges": {
+    "commit": "35703f6c6fdaf43cb8e8854193130184ccc1751f",
+    "scope": "Precreate the empty export bind mountpoint on the host so Docker cannot leave a daemon-owned directory that prevents cleanup. Same read-only source mount, environment, selected tests and comparison assertions; no Scala/build/case-manifest changes.",
+    "validation": "Updated mountpoint assertion fails against the measured controller; all 366 script tests pass with the ownership fix. Full Docker check is rerun on the final PR head."
+  },
+  "runtimeVersions": {
+    "jdk": "Eclipse Adoptium 21.0.11",
+    "sbt": "1.10.7",
+    "scala": "3.3.8",
+    "platform": "Linux x86-64"
+  }
+}
