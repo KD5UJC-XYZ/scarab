@@ -4,13 +4,12 @@ package xyz.kd5ujc.scarab.node.governor
 import cats.effect.{IO, Ref}
 import cats.effect.std.Queue
 import cats.effect.testkit.TestControl
-import fs2.concurrent.SignallingRef
 import cats.mtl.{Ask, Tell}
 import cats.syntax.all.*
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.selection.*
-import xyz.kd5ujc.scarab.node.{ChurnLoop, ChurnWorld}
+import xyz.kd5ujc.scarab.node.{ChurnLoop, ChurnTargets, ChurnWorld}
 
 /** The churn loop on virtual time against a world that answers like a governor that meets every
   * target at once (or like one that never meets the increases): the order of the steps, the targets
@@ -45,8 +44,7 @@ class ChurnLoopSuite extends CatsEffectSuite:
       changingJudgement: Option[Ref[IO, LedgerStateJudgement]] = None
   ): IO[Log] =
     for
-      requestedCell <- Ref.of[IO, Churn.Proposal](Churn.Proposal.from(Targets.zero))
-      counterCell <- SignallingRef[IO, GovernorState.Counters](
+      targetState <- ChurnTargets.create[IO](
         empty.copy(
           root = 60,
           known = 150,
@@ -55,34 +53,34 @@ class ChurnLoopSuite extends CatsEffectSuite:
           knownBigLedger = 15,
           establishedBigLedger = 10,
           activeBigLedger = 5
-        )
+        ),
+        Churn.Proposal.from(Targets.zero)
       )
       responses <- Queue.unbounded[IO, Churn.Proposal]
       requests <- Ref.of[IO, Vector[(FiniteDuration, Targets)]](Vector.empty)
       traces <- Ref.of[IO, Vector[(FiniteDuration, Churn.Trace)]](Vector.empty)
       world = new ChurnWorld[IO]:
-        def counters: IO[GovernorState.Counters] = counterCell.get
+        def counters: IO[GovernorState.Counters] = targetState.counters
         def awaitCounters(
             predicate: GovernorState.Counters => Boolean
         ): IO[GovernorState.Counters] =
-          counterCell.discrete
-            .filter(predicate)
-            .take(1)
-            .compile
-            .last
-            .flatMap(_.fold(IO.never[GovernorState.Counters])(IO.pure))
+          targetState.awaitCounters(predicate)
         def localHot: IO[Int] = IO.pure(2)
         def fetchMode: IO[FetchMode] = mode.get
         def judgement: IO[LedgerStateJudgement] =
           changingJudgement.fold(IO.pure(ledgerJudgement))(_.get)
-        def requested: IO[Churn.Proposal] = requestedCell.get
-        def request(t: Churn.Proposal): IO[Unit] =
-          for
-            now <- IO.monotonic
-            _ <- t.validated.traverse_(valid => requests.update(_ :+ (now -> valid)))
-            _ <- requestedCell.set(t)
-            _ <- responses.offer(t)
-          yield ()
+        def requested: IO[Churn.Proposal] = targetState.requested
+        def updateTargets(
+            change: Churn.Proposal => Churn.Proposal
+        ): IO[(GovernorState.Counters, Churn.Proposal)] =
+          targetState.change(BigInt(0))(change).flatTap { (_, next) =>
+            for
+              now <- IO.monotonic
+              _ <- next.validated.traverse_(valid => requests.update(_ :+ (now -> valid)))
+              _ <- responses.offer(next)
+            yield ()
+          }
+        def request(t: Churn.Proposal): IO[Unit] = updateTargets(_ => t).void
       given Ask[IO, ChurnLoop.Config] = Ask.const[IO, ChurnLoop.Config](
         ChurnLoop.Config(
           base,
@@ -102,17 +100,19 @@ class ChurnLoopSuite extends CatsEffectSuite:
           IO.sleep(responseDelay) *> (
             // a governor that meets what it can at once: it follows every decrease, and the
             // increases too unless it is `stuck`
-            counterCell.update { c =>
-              def follow(now: Int, target: Int) = if target > now && stuck then now else target
-              c.copy(
-                root = follow(c.root, t.root),
-                known = follow(c.known, t.known),
-                established = follow(c.established, t.established),
-                active = follow(c.active, t.active),
-                knownBigLedger = follow(c.knownBigLedger, t.knownBig),
-                establishedBigLedger = follow(c.establishedBigLedger, t.establishedBig),
-                activeBigLedger = follow(c.activeBigLedger, t.activeBig)
-              )
+            targetState.counters.flatMap { c =>
+              targetState.publish({
+                def follow(now: Int, target: Int) = if target > now && stuck then now else target
+                c.copy(
+                  root = follow(c.root, t.root),
+                  known = follow(c.known, t.known),
+                  established = follow(c.established, t.established),
+                  active = follow(c.active, t.active),
+                  knownBigLedger = follow(c.knownBigLedger, t.knownBig),
+                  establishedBigLedger = follow(c.establishedBigLedger, t.establishedBig),
+                  activeBigLedger = follow(c.activeBigLedger, t.activeBig)
+                )
+              })
             }
           )
         )

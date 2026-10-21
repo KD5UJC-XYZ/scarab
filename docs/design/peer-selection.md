@@ -708,7 +708,8 @@ the governor; `Main` supplies the interpreters.
 
 The churn governor is a second loop, `ChurnLoop.run`. Its pure part is `Churn.planRaw`, `decrease` and
 `decreaseWithMin`. It writes a `Churn.Proposal` and root-generation pair atomically, then sends a target wake.
-The governor consumes the latest proposal rather than replaying superseded snapshots. Invalid proposals and
+Counter publication and the churn before-counter/proposal update share one atomic cell. The governor consumes
+its latest proposal rather than replaying superseded snapshots. Invalid proposals and
 stale-generation wakes leave accepted targets unchanged. Counter waits observe a `SignallingRef` updated by the governor's counter publication
 without polling and race the step's timeout; a predicate satisfied at the timeout boundary wins. All twelve
 steps run regardless of ledger-query configuration. Changes of regime do not interrupt a fuzzy sleep. Both
@@ -1368,8 +1369,10 @@ a pool whose relays do not decode skipped and reported (`poolSkipped`), stable s
 
 1. **Resolved by #311.** Configured big-ledger targets are retained even when ledger querying is disabled, and
    all twelve churn actions run. Small-network profiles must explicitly configure the target population they want.
-2. *A request for big ledger peers that the ledger cannot answer gets nothing.* The reference gets the public roots (as extra peers, which the
-   request for public roots knows already) and counts that as progress.
+2. **Resolved by #311.** Both root-provider helpers retain a typed distinction between actual big-ledger
+   answers and configured fallback extras. Fallback extras become ordinary public roots, count as discovery
+   progress for retry/backoff, and never increase big-ledger population. The native big-ledger completion
+   disables known-peer advertisement even if the fallback root's configuration allows it.
 3. *The retry time of the request for big ledger peers is a wake-up* (`Skip(Some(retryAt))`); the reference's `GuardedSkip Nothing` waits for
    an unrelated event.
 4. *Close and deactivate subtract the transitions in progress among the big ledger peers*; the reference subtracts those of all peers

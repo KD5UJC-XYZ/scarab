@@ -292,14 +292,20 @@ private[selection] object Events:
 
       case Outcome.BigLedgerFound(found, ttl, generation)
           if st0.bigLedgerInFlight && generation == st0.rootsGeneration =>
-        // as the public roots, but into the big ledger population; a peer that is a local root or
-        // a root of any kind already is left as it is (`BigLedgerPeers.hs` 138-147)
+        // Native merges the complete response: configured fallback extras stay ordinary roots.
+        // Local roots and roots already known retain their existing population. The native job
+        // inserts Just DoNotAdvertisePeer, even when the extra-root configuration permits sharing.
         val local = st0.localRoots.keys
-        val fresh = found.filterNot(p => local(p) || st0.peers.get(p).exists(_.origin.root))
+        val fresh = found.offered.filterNot(p => local(p) || st0.peers.get(p).exists(_.origin.root))
         val peers = fresh.foldLeft(st0.peers) { (m, p) =>
           m.get(p) match
-            case Some(r) => m.updated(p, r.copy(origin = Origin.BigLedger))
-            case None    => m.updated(p, PeerRecord.cold(Origin.BigLedger))
+            case Some(r) =>
+              m.updated(
+                p,
+                r.copy(origin = found.origin(p), advertise = Some(false))
+              )
+            case None =>
+              m.updated(p, PeerRecord.cold(found.origin(p)).copy(advertise = Some(false)))
         }
         val backoffs = if fresh.isEmpty then st0.bigLedgerBackoffs.max(0) + 1 else 0
         val retryIn =

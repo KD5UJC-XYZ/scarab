@@ -5,6 +5,7 @@ import cats.effect.Temporal
 import cats.mtl.{Ask, Tell}
 import cats.syntax.all.*
 import scala.concurrent.duration.*
+import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.network.selection.*
 import xyz.kd5ujc.scarab.network.genesis.PicosClock
 
@@ -21,6 +22,9 @@ trait ChurnWorld[F[_]]:
   def judgement: F[LedgerStateJudgement]
   def requested: F[Churn.Proposal]
   def request(targets: Churn.Proposal): F[Unit]
+  def updateTargets(
+      change: Churn.Proposal => Churn.Proposal
+  ): F[(GovernorState.Counters, Churn.Proposal)]
 
 /** The churn governor (`peerChurnGovernor`, `Cardano/Network/PeerSelection/Churn.hs` 125-654): it
   * does not move peers, it changes the targets the governor works towards, one set at a time in the
@@ -100,12 +104,12 @@ object ChurnLoop:
         */
       def step(achieved: Map[Churn.Step, Int], s: Churn.Step): F[Map[Churn.Step, Int]] =
         for
-          ctx <- context
-          before <- world.counters.map(s.counter)
-          current <- world.requested
-          targets = Churn.planRaw(s, ctx, current, achieved.getOrElse(_, 0))
           began <- F.monotonic
-          _ <- world.request(targets)
+          ctx <- context
+          update <- world
+            .updateTargets(current => Churn.planRaw(s, ctx, current, achieved.getOrElse(_, 0)))
+          (beforeCounters, targets) = update
+          before = s.counter(beforeCounters)
           result <- waiting(s, targets)
           (met, counters) = result
           took <- F.monotonic.map(_ - began)
@@ -145,7 +149,7 @@ object ChurnLoop:
                 BigInt(elapsed.toNanos) * 1000,
                 rng
               )
-              _ <- out.tell(Churn.Trace.Wait(((delay + 999) / 1000).toLong.nanos))
+              _ <- out.tell(Churn.Trace.Wait(Rational(delay, 1000).ceil.toLong.nanos))
               _ <- clock.sleep(delay)
               roundBegan <- F.monotonic
               _ <- round

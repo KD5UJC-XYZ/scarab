@@ -832,7 +832,7 @@ class PeerSelectionSuite extends FunSuite:
       .apply(
         staleRoots,
         Event.Completed(
-          Outcome.BigLedgerFound(Set(9), 5.seconds, initial.rootsGeneration)
+          Outcome.BigLedgerFound(BigLedgerRoots.Ledger(Set(9)), 5.seconds, initial.rootsGeneration)
         ),
         t0
       )

@@ -66,4 +66,4 @@ object Regime:
 
   def afterHead(kind: Kind, base: Targets, current: Churn.Proposal): Churn.Proposal = kind match
     case Kind.BootstrapPraosSync => current
-    case _ => Churn.Proposal.from(base)
+    case _                       => Churn.Proposal.from(base)

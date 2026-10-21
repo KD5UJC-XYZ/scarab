@@ -62,7 +62,7 @@ trait RootProvider[F[_], A]:
   def request(max: Int, bootstrap: Boolean): F[Option[(PublicRoots[A], FiniteDuration)]]
 
   /** Ask for up to `max` big ledger peers (`requestPublicRootPeers` for `SingBigLedgerPeers`). */
-  def requestBigLedger(max: Int): F[Option[(Set[A], FiniteDuration)]]
+  def requestBigLedger(max: Int): F[Option[(BigLedgerRoots[A], FiniteDuration)]]
 
 /** What the governor tells the world besides its traces. */
 enum Output[A]:

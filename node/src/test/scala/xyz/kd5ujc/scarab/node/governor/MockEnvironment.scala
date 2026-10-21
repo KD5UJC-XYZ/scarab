@@ -314,7 +314,7 @@ object MockEnvironment:
             note(Seen.Env(EnvEvent.BigLedgerResult(env.bigLedgerPeers))) *>
               supervisor
                 .supervise(IO.sleep(60.seconds) *> note(Seen.Env(EnvEvent.BigLedgerTtl)))
-                .as(Some(env.bigLedgerPeers -> 60.seconds))
+                .as(Some(BigLedgerRoots.Ledger(env.bigLedgerPeers) -> 60.seconds))
 
         given Stateful[IO, GovernorState[Peer]] = new Stateful[IO, GovernorState[Peer]]:
           def monad = cats.Monad[IO]

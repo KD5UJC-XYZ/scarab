@@ -9,7 +9,6 @@ import cats.syntax.all.*
 import com.comcast.ip4s.{Host, IpAddress, SocketAddress}
 import java.time.Instant
 import scala.concurrent.duration.*
-import fs2.concurrent.SignallingRef
 import io.circe.Json
 import io.circe.syntax.*
 import xyz.kd5ujc.scarab.ledger.{EpochGeometry, GovernorFault, NodeError, PeerError, StorageError}
@@ -404,14 +403,11 @@ object PeerNetwork:
       initialCounters <- Resource.eval(
         (state.get, Clock[F].monotonic).mapN((st, now) => st.view(now).counters)
       )
-      counterSignal <- Resource.eval(SignallingRef[F, GovernorState.Counters](initialCounters))
-      churnRequested <- Resource.eval(
-        Ref.of[F, (Churn.Proposal, BigInt)](
-          (
-            Churn.Proposal.from(
-              Regime.initial(settings.consensusMode, initialKind, initialBase, localHot)
-            ),
-            BigInt(0)
+      churnTargets <- Resource.eval(
+        ChurnTargets.create[F](
+          initialCounters,
+          Churn.Proposal.from(
+            Regime.initial(settings.consensusMode, initialKind, initialBase, localHot)
           )
         )
       )
@@ -482,7 +478,7 @@ object PeerNetwork:
         def tell(l: Output[Addr]): F[Unit] =
           (l match
             case Output.Connections(s)    => connections.set(s)
-            case Output.Counted(counters) => counterSignal.set(counters)
+            case Output.Counted(counters) => churnTargets.publish(counters)
             case _                        => F.unit
           ) *> emit(l)
 
@@ -579,25 +575,22 @@ object PeerNetwork:
           def functor = F
           def tell(l: Churn.Trace): F[Unit] = emit(Output.Churned(l))
         ChurnLoop.run[F](new ChurnWorld[F]:
-          def counters = counterSignal.get
+          def counters = churnTargets.counters
           def awaitCounters(predicate: GovernorState.Counters => Boolean) =
-            counterSignal.discrete
-              .filter(predicate)
-              .take(1)
-              .compile
-              .last
-              .flatMap(_.fold(F.never[GovernorState.Counters])(F.pure))
+            churnTargets.awaitCounters(predicate)
           def localHot = state.get.map { st =>
             val effective = st.localRoots.groups.map(_.hot.value).sum
             if effective > 0 then effective else st.configuredRoots.groups.map(_.hot.value).sum
           }
           def fetchMode = currentFetchMode(state, chain)
           def judgement = judgementCell.get
-          def requested = churnRequested.get.map(_._1)
-          def request(targets: Churn.Proposal) =
+          def requested = churnTargets.requested
+          def request(targets: Churn.Proposal) = updateTargets(_ => targets).void
+          def updateTargets(change: Churn.Proposal => Churn.Proposal) =
             runtime.get.flatMap(current =>
-              churnRequested.set((targets, current.generation)) *>
-                events.offer(Event.ChurnTargetsChanged(current.generation))
+              churnTargets
+                .change(current.generation)(change)
+                .flatTap(_ => events.offer(Event.ChurnTargetsChanged(current.generation)))
             ))
 
       val gsmLoop: F[Nothing] =
@@ -629,9 +622,7 @@ object PeerNetwork:
           events,
           supervisor,
           actions,
-          readRequestedTargets = Some(churnRequested.get.map { (proposal, generation) =>
-            proposal.validated.toOption.map(PeerGovernor.RequestedTargets(_, generation))
-          }),
+          readRequestedTargets = Some(churnTargets.accepted),
           beforeEventApplied = Some {
             case Event.RootsConfigured(_, _, _, Some(generation)) =>
               rootInstallAcks.get.flatMap(_.get(generation).traverse_ { (staged, _) =>

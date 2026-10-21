@@ -16,16 +16,10 @@ import xyz.kd5ujc.scarab.codec.Rational
   * [[PeerMetrics]]), increase them again so that it promotes others, then refresh the established
   * and known sets (`Churn.hs` 117-123, 561-654).
   *
-  * Differences from the reference are recorded in docs/design/peer-selection.md section 7b:
-  *   - a target that would be insane (the reference's Monitor silently ignores an insane update,
-  *     `Monitor.hs` 68-69) is clamped instead, so the round is not wasted: the root target is kept
-  *     within the known target, a negative active target is 0, the established target never below
-  *     the active one (the reference's update is ignored when the base established target equals
-  *     the active one in the bootstrap regime); with the clamps no step yields an insane set for
-  *     any sane base (a property test), and at the defaults none is needed;
-  *   - the six big-ledger steps are left out of a round while the node has no big ledger peers
-  *     ([[round]] with `bigLedger = false`): their counters are zero, so each increase would only
-  *     wait out its timeout (200 s) with nothing to wait for.
+  * The pinned policy retains all twelve actions, including disabled-ledger configurations. Raw
+  * proposals can be insane; the independent peer governor ignores them while churn retains them for
+  * its next calculation and counter predicate. Genesis always uses the default regime and long
+  * interval. Native comparison provenance is in fixtures/peer-selection/churn/README.md.
   */
 object Churn:
 

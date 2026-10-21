@@ -72,14 +72,19 @@ class BigLedgerSuite extends FunSuite:
     val (inFlight, _, _) = settle(st, t0)
     assertEquals(settle(inFlight, 1.second)._2, Nil)
     // an answer without a new peer backs off by 2^1 seconds, the next 2^2, as for the public roots
-    val one = complete(inFlight, Outcome.BigLedgerFound(Set.empty, 5.seconds), t0)
+    val one =
+      complete(inFlight, Outcome.BigLedgerFound(BigLedgerRoots.Ledger(Set.empty), 5.seconds), t0)
     assertEquals((one.bigLedgerBackoffs, one.bigLedgerRetryAt), (1, 2.seconds))
     assertEquals(settle(one, 1.second)._2, Nil)
     val Step.Idle(_, wake) = PeerSelection.decide(one, 1.second): @unchecked
     assertEquals(wake, Some(2.seconds))
     val (again, jobs, _) = settle(one, 2.seconds)
     assertEquals(jobs, List(Job.RequestBigLedger(5)))
-    val two = complete(again, Outcome.BigLedgerFound(Set.empty, 5.seconds), 2.seconds)
+    val two = complete(
+      again,
+      Outcome.BigLedgerFound(BigLedgerRoots.Ledger(Set.empty), 5.seconds),
+      2.seconds
+    )
     assertEquals((two.bigLedgerBackoffs, two.bigLedgerRetryAt), (2, 6.seconds))
   }
 
@@ -123,7 +128,8 @@ class BigLedgerSuite extends FunSuite:
       2 -> PeerRecord.cold(Origin.Ledger),
       3 -> PeerRecord.cold(Origin.Other)
     )
-    val done = complete(st, Outcome.BigLedgerFound(Set(1, 2, 3, 4), 5.seconds), t0)
+    val done =
+      complete(st, Outcome.BigLedgerFound(BigLedgerRoots.Ledger(Set(1, 2, 3, 4)), 5.seconds), t0)
     assertEquals(done.peers(1).origin, Origin.Local)
     assertEquals(done.peers(2).origin, Origin.Ledger)
     // a peer that was no root becomes a big ledger peer, and a new one is known
@@ -390,4 +396,42 @@ class BigLedgerSuite extends FunSuite:
     worker.start()
     worker.join()
     assert(steps >= 0, "the decision overflowed the stack or failed")
+  }
+
+  test("a big-ledger fallback discovers ordinary roots without increasing big-ledger counts") {
+    val initial = withPeers(
+      start(targets(known = 10, knownBig = 6)).copy(bigLedgerInFlight = true),
+      2 -> PeerRecord.cold(Origin.Other).copy(advertise = Some(true))
+    )
+    val fallback = BigLedgerRoots.Fallback(
+      PublicRoots(Set(1, 2), Set.empty[Int], advertise = Map(1 -> true, 2 -> false))
+    )
+    val done = complete(initial, Outcome.BigLedgerFound(fallback, 900.seconds), t0)
+    assertEquals(done.peers.values.map(_.origin).toSet, Set(Origin.Public))
+    assertEquals(done.view(t0).big.known, Set.empty[Int])
+    assertEquals(done.peers(1).advertise, Some(false))
+    assertEquals(done.peers(2).advertise, Some(false))
+    assertEquals(done.bigLedgerBackoffs, 0)
+    assertEquals(done.bigLedgerRetryAt, 900.seconds)
+    assert(!done.bigLedgerInFlight)
+  }
+
+  test("a fallback preserves existing local and ledger root classifications") {
+    val initial = withPeers(
+      start(targets(known = 10, knownBig = 6)).copy(bigLedgerInFlight = true),
+      1 -> PeerRecord.cold(Origin.Local),
+      2 -> big()
+    )
+    val done = complete(
+      initial,
+      Outcome.BigLedgerFound(
+        BigLedgerRoots.Fallback(PublicRoots(Set(1, 2, 3), Set.empty[Int])),
+        900.seconds
+      ),
+      t0
+    )
+    assertEquals(done.peers(1).origin, Origin.Local)
+    assertEquals(done.peers(2).origin, Origin.BigLedger)
+    assertEquals(done.peers(3).origin, Origin.Public)
+    assertEquals(done.view(t0).big.known, Set(2))
   }

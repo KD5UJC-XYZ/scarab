@@ -10,6 +10,7 @@ import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.network.selection.*
 import xyz.kd5ujc.scarab.node.{
+  ChurnTargets,
   GovernorConfig,
   Output,
   PeerGovernor,
@@ -29,13 +30,13 @@ class ChurnTargetWakeSuite extends FailsOnUncaught:
         state <- Ref.of[IO, GovernorState[Int]](
           GovernorState.initial[Int](1L, LocalRoots.empty, Targets.zero, Sensitivity.initial(false))
         )
-        proposals <- Ref.of[IO, (Churn.Proposal, BigInt)](
-          (Churn.Proposal.from(one), BigInt(0))
-        )
+        initial <- state.get
+        proposals <- ChurnTargets
+          .create[IO](initial.view(Duration.Zero).counters, Churn.Proposal.from(one))
         events <- Queue.unbounded[IO, Event[Int]]
         complete <- Deferred[IO, Targets]
         _ <- events0.traverse_(events.offer)
-        _ <- proposals.set((latest, generation))
+        _ <- proposals.change(generation)(_ => latest)
         _ <- events.offer(Event.Wake(Duration.Zero))
         given Stateful[IO, GovernorState[Int]] = RefStateful(state)
         given Ask[IO, GovernorConfig] = Ask.const[IO, GovernorConfig](
@@ -69,9 +70,7 @@ class ChurnTargetWakeSuite extends FailsOnUncaught:
                 roots,
                 events,
                 supervisor,
-                readRequestedTargets = Some(proposals.get.map { (proposal, gen) =>
-                  proposal.validated.toOption.map(PeerGovernor.RequestedTargets(_, gen))
-                }),
+                readRequestedTargets = Some(proposals.accepted),
                 onEventApplied = Some {
                   case Event.Wake(_) =>
                     state.get.flatMap(st => complete.complete(st.requested).void)
@@ -109,4 +108,27 @@ class ChurnTargetWakeSuite extends FailsOnUncaught:
   test("direct target snapshots retain their existing generation semantics") {
     observe(Churn.Proposal.from(two), BigInt(0), List(Event.TargetsRequested(one, Some(BigInt(0)))))
       .map(result => assertEquals(result, one))
+  }
+
+  test("counter publication and proposal modification preserve the same atomic snapshot") {
+    for
+      state <- ChurnTargets.create[IO](
+        GovernorState
+          .initial[Int](1L, LocalRoots.empty, Targets.zero, Sensitivity.initial(false))
+          .view(Duration.Zero)
+          .counters,
+        Churn.Proposal.from(Targets.zero)
+      )
+      initial <- state.counters
+      result <- IO.both(
+        state.publish(initial.copy(known = 100)),
+        state.change(BigInt(0))(_.copy(known = 1))
+      )
+      counters <- state.counters
+      requested <- state.requested
+    yield
+      assertEquals(counters.known, 100)
+      assertEquals(requested.known, 1)
+      assert(Set(0, 100)(result._2._1.known))
+      assertEquals(result._2._2.known, 1)
   }
