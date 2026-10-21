@@ -66,7 +66,7 @@ class PublicationAuthorityTests(unittest.TestCase):
             for path in CONTROL_PATHS:
                 self.routes['/contents/' + path + '?ref=' + revision] = {'type': 'file', 'sha': '1' * 40}
         for path in ['scripts/publication_authority.py', 'scripts/publication_coordinator.py',
-                     'scripts/published_receipt.py', 'scripts/production_acceptance.py']:
+                     'scripts/published_receipt.py']:
             raw = (Path(__file__).resolve().parents[2] / path).read_bytes()
             self.routes['/contents/' + path + '?ref=' + trusted] = {'encoding': 'base64', 'content': base64.b64encode(raw).decode()}
         return trusted

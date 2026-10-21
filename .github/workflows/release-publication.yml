@@ -28,10 +28,6 @@ on:
         description: Optional full owner-reviewed snapshot; retained for protected approval
         type: string
         default: ''
-      production-proof-run:
-        description: Canonical produced-block observation run (required for prod; no follower substitute)
-        type: string
-        default: ''
       candidate-run-id:
         description: Retry only - retained canonical publisher run, not a rebuilt candidate
         type: string
@@ -53,7 +49,6 @@ concurrency:
   group: scarab-official-publication
   cancel-in-progress: false
 env:
-  PRODUCTION_PROOF_RUN: ${{ inputs.production-proof-run }}
   RELEASE_OPERATION: ${{ inputs.operation }}
   RELEASE_SOURCE: ${{ inputs.source }}
   RELEASE_TAG: ${{ inputs.tag }}
@@ -446,14 +441,6 @@ jobs:
           private-key: ${{ secrets.SCARAB_RELEASE_APP_PRIVATE_KEY }}
           permission-contents: write
           permission-actions: read
-      - name: Retrieve original produced-block proof, when supplied
-        if: inputs.production-proof-run != ''
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-        with:
-          name: public-produced-block-observation
-          run-id: ${{ inputs.production-proof-run }}
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/acceptance
       - name: Advance only with authenticated independent receipt
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}

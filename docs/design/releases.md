@@ -23,6 +23,9 @@ The adopted preprod block remains a v0.2 exit gate. Per the owner's 2026-10-21 s
 production cannot happen before October 23; that date is not evidence the gate passed. Planning,
 release tooling and hardening preparation proceed while the gate stays open. Do not publish a
 v0.2 production release or claim milestone completion before its acceptance evidence exists.
+The publication workflow does not check this gate: `prod` is approved through the protected
+`release-prod` environment like the other channels, and the maintainer decides when the
+milestone evidence suffices. An automated produced-block check could be reconsidered later.
 Repository protection/settings and credential installation are maintainer operations; none are
 applied by this document. Runtime, build and publication implementation is staged below.
 
@@ -244,10 +247,7 @@ without claiming a SLSA level merely because an attestation exists.
 ## Implementation sequence and closure
 
 The linked implementation guides record tooling and mechanism evidence. The sequence below still
-requires owner activation and actual platform/artifact acceptance before issue closure. A
-self-hosted observer label is not access control: restrict the host and Docker daemon to the
-reviewed canonical workflow/ref, and prove unauthorized PR/branch jobs cannot reach them before
-using that runner for acceptance.
+requires owner activation and actual platform/artifact acceptance before issue closure.
 
 1. **#161: promotion, version and fragments.** Reconcile integration branches; implement source-rule
    and conventional-title checks; trial and pin the fragment collector on the actual corpus;

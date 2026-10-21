@@ -9,8 +9,7 @@ from pathlib import Path
 from publication_common import commit, digest, require, sha256
 from promotion_rules import verify_rulesets
 
-CONTROL_PATHS = ['.github/workflows/release-publication.yml', '.github/workflows/release-candidate.yml',
-                 '.github/workflows/release-production-acceptance.yml']
+CONTROL_PATHS = ['.github/workflows/release-publication.yml', '.github/workflows/release-candidate.yml']
 
 
 def control_plane(github, source, trusted):
@@ -34,7 +33,7 @@ def control_plane(github, source, trusted):
                 'selected source has an unapproved release control workflow: ' + path)
     # These are deliberately trusted-main helpers, never scripts imported from the selected candidate.
     for relative in ['scripts/publication_authority.py', 'scripts/publication_coordinator.py',
-                     'scripts/published_receipt.py', 'scripts/production_acceptance.py']:
+                     'scripts/published_receipt.py']:
         expected = github.get('/contents/' + relative + '?ref=' + trusted)
         require(expected.get('encoding') == 'base64'
                 and base64.b64decode(expected['content']) == (Path(__file__).parent.parent / relative).read_bytes(),
@@ -73,22 +72,3 @@ def candidate_run(github, run_id, source, tag, artifact_id, artifact_digest):
                 'canonical exact-cut gate is not successful: ' + name)
     return asset
 
-
-def production_run(github, run_id, source, tag):
-    run = github.get('/actions/runs/' + str(run_id))
-    require(run.get('head_sha') == source and run.get('head_branch') == tag
-            and run.get('path') == '.github/workflows/release-production-acceptance.yml'
-            and run.get('event') == 'workflow_dispatch' and run.get('conclusion') == 'success'
-            and run.get('repository', {}).get('full_name') == github.repository,
-            'production proof is not a successful canonical exact-tag observer run')
-    jobs = github.pages('/actions/runs/' + str(run_id) + '/jobs', key='jobs')
-    for name in ['observe', 'authenticate-observation']:
-        found = [row for row in jobs if row.get('name') == name]
-        require(len(found) == 1 and found[0].get('conclusion') == 'success', 'production capture/hosted attestor incomplete')
-    artifacts = github.pages('/actions/runs/' + str(run_id) + '/artifacts', key='artifacts')
-    found = [row for row in artifacts if row.get('name') == 'public-produced-block-observation']
-    require(len(found) == 1 and found[0].get('expired') is False
-            and found[0].get('workflow_run', {}).get('id') == run_id,
-            'original canonical observation artifact missing or ambiguous')
-    sha256(found[0]['digest'].removeprefix('sha256:'))
-    return found[0]

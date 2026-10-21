@@ -120,9 +120,6 @@ def main():
                             '--run-id', os.environ['CANDIDATE_RUN_ID']])
         if args.operation in {'publish', 'finalize'}:
             command.extend(['--receipt', str(temporary / 'verification/verification.json')])
-        acceptance = temporary / 'acceptance/observation.json'
-        if acceptance.exists():
-            command.extend(['--acceptance', str(acceptance), '--acceptance-run', os.environ['PRODUCTION_PROOF_RUN']])
     subprocess.run(command, check=True)
 
 

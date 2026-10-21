@@ -11,7 +11,6 @@ from publication_candidate import checked_candidate, records, release_checksums
 from publication_common import GitHub, canonical, digest, file_digest, load_json, require
 from publication_coordinator import Publication, reserve_tag
 from publication_policy import environment_snapshot
-from production_acceptance import authenticate as acceptance_proof
 from published_receipt import authenticate_receipt
 from publication_registry import copy as registry_copy
 
@@ -97,15 +96,7 @@ def execute(args):
     elif args.operation == 'publish':
         proof = authenticate_receipt(args.receipt, args.repository, args.source, identity['version'], args.tools / 'gh', 'staged')
         publication.transition('draft-staged', 'verified', notes, proof)
-        accepted = None
-        if args.channel == 'prod':
-            require(args.acceptance is not None, 'production remains blocked pending real produced/adopted preprod block evidence')
-            require(args.acceptance_run is not None, 'canonical production observer run identity required')
-            publication_authority.production_run(github, args.acceptance_run, args.source, args.tag)
-            accepted = acceptance_proof(args.acceptance, args.repository, args.source, args.tag, args.candidate_sha256,
-                                        proof.document['subjects']['jarSha256'], publication.expected['imageDigest'],
-                                        policy['preprodGenesisSha256'], args.tools / 'gh', args.acceptance_run)
-        publication.transition('verified', 'published', notes, proof, accepted)
+        publication.transition('verified', 'published', notes, proof)
     else:
         proof = authenticate_receipt(args.receipt, args.repository, args.source, identity['version'], args.tools / 'gh')
         # Alias writes happen only after actual anonymous downloads and both runtime checks.
@@ -136,13 +127,12 @@ def main():
         parser.add_argument('--' + name, required=True)
     for name in ['policy', 'environment-snapshot', 'tools']:
         parser.add_argument('--' + name, type=Path, required=True)
-    for name in ['ruleset-audit', 'candidate', 'receipt', 'acceptance']:
+    for name in ['ruleset-audit', 'candidate', 'receipt']:
         parser.add_argument('--' + name, type=Path)
     parser.add_argument('--candidate-sha256')
     parser.add_argument('--artifact-id', type=int)
     parser.add_argument('--artifact-digest')
     parser.add_argument('--run-id', type=int)
-    parser.add_argument('--acceptance-run', type=int)
     args = parser.parse_args()
     if args.operation != 'reserve':
         require(all([args.candidate, args.candidate_sha256, args.artifact_id, args.artifact_digest, args.run_id]),

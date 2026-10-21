@@ -8,6 +8,5 @@
   "imageRepository": "ghcr.io/kd5ujc-xyz/scarab",
   "bootstrap": null,
   "publishedBaselines": {},
-  "preprodGenesisSha256": {},
   "environments": {}
 }

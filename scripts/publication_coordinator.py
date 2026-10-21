@@ -6,7 +6,6 @@ import urllib.parse
 import release_identity
 from publication_common import PublicationError, canonical, commit, decode_json, file_digest, require, sha256
 from published_receipt import AuthenticatedReceipt, receipt_marker, validate as validate_receipt
-from production_acceptance import AuthenticatedAcceptance
 
 
 MARKER = "<!-- scarab-publication-v1:"
@@ -120,7 +119,7 @@ class Publication:
                 require(remote.get("name") == name and remote.get("size") == record["size"]
                         and remote.get("digest") == "sha256:" + record["sha256"], "uploaded asset identity differs")
 
-    def transition(self, previous, next_state, notes, verified_receipt=None, acceptance=None):
+    def transition(self, previous, next_state, notes, verified_receipt=None):
         require((previous, next_state) in {("draft", "draft-staged"), ("draft-staged", "verified"),
                                           ("verified", "published"), ("published", "aliased")}, "forbidden publication transition")
         release = self.checked_release()
@@ -135,15 +134,6 @@ class Publication:
                                         "public" if next_state == "aliased" else "staged")
             require(verified["candidateSha256"] == self.expected["candidateSha256"]
                     and verified["subjects"]["imageDigest"] == self.expected["imageDigest"], "verification describes other artifacts")
-        if next_state == "published" and self.identity["channel"] == "prod":
-            require(isinstance(acceptance, AuthenticatedAcceptance),
-                    "production requires canonical exact-artifact produced-block acceptance")
-            observed = acceptance.document
-            require(observed["sourceCommit"] == self.identity["gitCommit"]
-                    and observed["candidateSha256"] == self.expected["candidateSha256"]
-                    and observed["imageDigest"] == self.expected["imageDigest"]
-                    and observed["jarSha256"] == verified["subjects"]["jarSha256"],
-                    "production acceptance describes other artifacts")
         updated = dict(state, status=next_state)
         complete_notes = notes + "\n\n" + receipt_marker(verified_receipt) if next_state == "aliased" else notes
         payload = {"body": body_with_state(complete_notes, updated), "make_latest": "false"}

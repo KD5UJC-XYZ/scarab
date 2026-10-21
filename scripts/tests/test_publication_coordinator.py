@@ -12,6 +12,7 @@ import urllib.parse
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from publication_common import GitHub, PublicationError, digest
 from publication_coordinator import Publication, body_with_state, reserve_tag, state_from_release
+from published_receipt import AuthenticatedReceipt, _AUTHENTICATED
 
 
 class PublicationCoordinatorTests(unittest.TestCase):
@@ -171,6 +172,41 @@ class PublicationCoordinatorTests(unittest.TestCase):
             self.publication.transition("draft-staged", "published", self.notes)
         self.assertTrue(self.release["draft"])
         self.assertEqual(state_from_release(self.release)["status"], "draft-staged")
+
+    def production_publication(self):
+        identity = dict(self.identity, version="1.2.3", gitTag="v1.2.3", channel="prod", sourceRef="refs/heads/release/prod")
+        publication = Publication(self.github, identity, "c" * 64, "sha256:" + "d" * 64)
+        state = dict(publication.expected, status="verified")
+        self.release = {"id": 9, "tag_name": "v1.2.3", "prerelease": False, "draft": True,
+                        "body": body_with_state(self.notes, state)}
+        return publication
+
+    def receipt(self, image="sha256:" + "d" * 64):
+        document = {"schemaVersion": 1, "status": "verified", "phase": "staged", "repository": "example/scarab",
+                    "tag": "v1.2.3", "sourceCommit": self.source, "version": "1.2.3", "channel": "prod",
+                    "candidateSha256": "c" * 64,
+                    "subjects": {"jarSha256": "e" * 64, "imageDigest": image, "bomSha256": ["1" * 64, "2" * 64]},
+                    "publisher": {"workflow": ".github/workflows/release-publication.yml",
+                                  "workflowCommit": self.source, "runId": 7},
+                    "checks": {name: True for name in ["hashes", "attestations", "sourceBinding", "bomBinding",
+                                                       "jarRuntime", "imageRuntime", "anonymousDownloads"]}}
+        document["checks"]["anonymousDownloads"] = False
+        return AuthenticatedReceipt(json.dumps(document).encode(), _AUTHENTICATED)
+
+    def test_production_publishes_with_an_authenticated_receipt_and_no_produced_block_proof(self):
+        publication = self.production_publication()
+        publication.transition("verified", "published", self.notes, self.receipt())
+        self.assertFalse(self.release["draft"])
+        self.assertEqual(state_from_release(self.release)["status"], "published")
+
+    def test_production_is_refused_without_a_matching_authenticated_receipt(self):
+        publication = self.production_publication()
+        with self.assertRaisesRegex(PublicationError, "authenticated"):
+            publication.transition("verified", "published", self.notes, {"status": "verified"})
+        with self.assertRaisesRegex(PublicationError, "other artifacts"):
+            publication.transition("verified", "published", self.notes, self.receipt("sha256:" + "f" * 64))
+        self.assertTrue(self.release["draft"])
+        self.assertEqual(state_from_release(self.release)["status"], "verified")
 
     def test_reserved_lightweight_tag_retries_are_immutable(self):
         self.tag_exists = False

@@ -4,7 +4,7 @@ This is an implementation for review, not an activated publisher. The checked-in
 [policy](../release/publication-policy.json) is disabled. No environment, App,
 registry package, official tag or release is created by installing these files.
 [#75](https://github.com/KD5UJC-XYZ/scarab/issues/75) remains open for operator setup
-and actual production acceptance. See the [release design](design/releases.md),
+and actual publication acceptance. See the [release design](design/releases.md),
 [candidate pipeline](release-candidates.md) and [reproducible builds](reproducible-builds.md).
 
 ## Authority and prerequisites
@@ -124,41 +124,15 @@ a completed attempt does not republish assets. Keep the original run/artifact an
 receipt evidence until recovery completes. Do not delete/recreate an official tag
 or overwrite an asset to repair an incomplete attempt.
 
-## Actual production gate
+## Production approval
 
-Production requires a Scarab-produced block accepted by a genuine independent native
-peer on preprod. Following or adopting another node's block, successful unit tests,
-class-path acceptance and a caller JSON success flag do not satisfy it. The planned
-October 23 availability is an operational prerequisite, not a calendar bypass.
-
-[release-production-acceptance.yml](../.github/workflows/release-production-acceptance.yml)
-provides a bounded observer for an **already-running** owner-operated forger and
-native node. The owner must configure a protected `scarab-preprod-observer` runner
-and the policy's explicit forger/native container, host socket, original header
-path and bounded log-window start, plus independently reviewed preprod genesis
-SHA256 values. No such runner/process/configuration is supplied by this change. The scheduling
-label is not an access-control boundary: a GitHub-enforced runner-group/workflow
-allowlist or isolated equivalent must restrict the host and Docker daemon to the
-reviewed canonical workflow/ref. Before activation, verify that an unauthorized
-PR/branch job cannot reach that host; no runner configuration is claimed here.
-
-The observer never starts/restarts a node, initiates forging, accesses keys, changes
-network state or archives process environments/mounts/logs. It verifies the running
-OCI digest/config and embedded JAR, original header hash and public pool/VRF identity,
-ordered matching `forgeStarted`/`forged`/`adopted` JSON events, genuine pinned native
-process binary and its actual genesis/config/socket mapping, then acquires that
-same produced point through native NtC at magic 1. JSON logs must be on stdout and
-the bounded window must include `forgeStarted`. Operator-provided log/header history
-and the trusted runner/Docker daemon/native process are explicit trust assumptions.
-Only public selected fields enter the receipt.
-
-A separate hosted job attests the protected observation. Publication accepts its
-explicit original run locator only after checking the canonical exact-source/tag
-workflow, successful observer/hosted-attestor jobs, retained artifact and actual
-attestation run identity. The proof binds final candidate/JAR/OCI subjects, reviewed
-genesis roots and the produced point. Missing real evidence refuses production.
-No genuine Scarab produced/adopted preprod observation or publication was executed
-while implementing these controls.
+Every channel, `prod` included, is gated by its protected `release-<channel>` environment:
+a reviewer approves the run, and publication then proceeds only after the candidate,
+receipt and ruleset verification above succeed. The workflow does not require a
+produced-block observation for `prod`, and no self-hosted runner is part of the
+pipeline. The adopted preprod block remains a v0.2 milestone decision for the
+maintainer (see the [release design](design/releases.md)); it is not enforced here.
+A produced-block acceptance check could be reconsidered later.
 
 ## Validation scope
 
@@ -168,4 +142,4 @@ mechanism controls, not new native forging verdicts. The pinned real `gh` verifi
 was also exercised against genuine upstream `cli/cli` signatures with wrong-source,
 workflow, repository/ref and tampered-byte negatives; that verifies the selected tool,
 not a Scarab publisher identity. Actual GitHub environment/App/OIDC/GHCR publication
-and the production observation remain owner activation and #75 acceptance work.
+remain owner activation and #75 acceptance work.

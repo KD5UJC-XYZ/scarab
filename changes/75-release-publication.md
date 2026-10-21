@@ -1,3 +1,3 @@
 ### Added
 
-- Add an inactive, protected-environment release coordinator and independent artifact verifier. Publication binds final JAR/image/SBOM subjects to the approved source and tag, preserves incomplete attempts, and requires authentic Scarab-produced preprod block acceptance for production. Operator setup and the actual production observation remain prerequisites.
+- Add an inactive, protected-environment release coordinator and independent artifact verifier. Publication binds final JAR/image/SBOM subjects to the approved source and tag, preserves incomplete attempts, and gates every channel, production included, on the protected environment's reviewer approval. Operator setup remains a prerequisite.
