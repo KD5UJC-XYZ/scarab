@@ -192,7 +192,8 @@ export before any comparison. Only that scratch parent is writable; original dat
 read-only and the export suite still checks their complete before/after fingerprints. The signed
 preprod ancillary manifest's complete file list, including its native immutable tail triplet,
 must accompany the ledger files; the recorded Scarab database is a separate input role.
-That recorded import database contains an incomplete legacy network identity. The import suite
-checks its recorded fields against the loaded preprod genesis and explicitly adopts only its
-disposable copy through the normal admission API. The retained original remains unchanged;
-operator acknowledgement supplies current bindings, not historical proof of the omitted fields.
+Maintained recorded databases use the current network-identity format. Fixture preparation
+upgrades their metadata once through the normal admission API, retaining the original identity
+and conversion provenance separately. Acceptance does not adopt legacy identities while running.
+The upgraded metadata records operator confirmation rather than inventing historical proof of
+the genesis fields omitted by the original identity. Native signed ancillary bytes stay unchanged.
