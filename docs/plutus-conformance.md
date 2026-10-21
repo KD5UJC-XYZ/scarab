@@ -106,10 +106,15 @@ metadata map keys retain their historical duplicate behavior. The metadata walk 
 also retains signed-reference auxiliary transactions and observed input/output effects separately
 from the API corpus. Exact diagnostic prose is outside both comparisons.
 
-The [historical corpus](../fixtures/reference/auxiliary-historical/README.md) (#290 stage A) records
+The [historical corpus](../fixtures/reference/auxiliary-historical/README.md) (#290) records
 the same unchanged-reference observations for Shelley, Allegra and Mary at protocols 2-4 (504
-rows): the 64-byte metadatum bound starts at protocol 3, tag 259 and Plutus forms are refused,
-structure precedes the hash check and the hash covers original bytes. It does not change Scarab.
+rows): the 64-byte metadatum bound starts at protocol 3 (Shelley keeps accepting longer values),
+only Allegra and Mary read the definite `[metadata, native scripts]` list, tag 259 and Plutus
+fields are refused before Alonzo, structure precedes the hash check and the hash covers the
+original bytes. Scarab reads auxiliary data with one era-aware reader (`AuxiliaryScripts.read`,
+decoder versions 2/3/4 are `eraProtVerLow`, Core/Internal/Definition/Era.hs 95-109) from both
+`Tx.fromBlock` and `TxChecks.auxiliaryChecks`; `HistoricalAuxiliarySuite` replays all 504 rows
+without exclusions.
 
 ## Independent costing and context matrix (2026-10-20)
 

@@ -40,16 +40,15 @@ binary `Decoder.hs`/`Encoder.hs` (IPv4 byte order only). Native-script rows ther
 * Native scripts nested through indefinite inner lists decode; an invalid element inside a nested
   `all/any/mOf` is refused.
 
-## Scarab today (source-inferred, not executed)
+## Scarab (stage B/C)
 
-`TxChecks.auxiliaryChecks` decodes auxiliary data only from `protocolMajor >= 5`, and
-`Tx.fromBlock` only from Alonzo. Before that, only presence and the hash of the original bytes are
-checked. So every row above where the reference refuses structure but the hash is right is a
-candidate divergence for stage B (the reference rejects at block decode; Scarab accepts), for
-example the `tx-match-bytes-65`, `tx-match-structurally-invalid-tag259` and `tx-match-list-form`
-rows, and `tx-wrong-hash-bytes-65` at PV3/4 (decode refusal in the reference, a predicate failure in
-Scarab). Stage B must gate the 64-byte bound by decoder version (none at PV2). No divergence is
-claimed here from execution.
+Before #290 Scarab decoded auxiliary data only from Alonzo, so these rows diverged wherever the
+reference refused structure with a matching hash (for example `tx-match-bytes-65`, `-tag259`,
+`-list-form`) or where a wrong hash met a structural refusal. Now `AuxiliaryScripts.read` is
+era-aware (decoder versions 2/3/4), shared by `Tx.fromBlock` and `TxChecks.auxiliaryChecks`, and
+`HistoricalAuxiliarySuite` replays all 504 rows against it without exclusions. The four-element
+and two-element envelopes are refused by `Tx.fromEnvelope`; blocks carry segregated parts, so those
+two rows never occur in a block.
 
 Reproduction: [oracle recipe](../../../scripts/oracle/plutus/historical-auxiliary/README.md).
 Original Apache-2.0 thin observer/generator code; no signing keys or production data. This finite
