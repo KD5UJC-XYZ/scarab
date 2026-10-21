@@ -40,13 +40,15 @@ class FollowerDelegatedSuite extends FailsOnUncaught:
           tracked.get.flatMap(_.traverse_(_.get.flatMap { observed =>
             if authoritative then IO(assertEquals(observed, candidate))
             else IO(assertEquals(observed.headers.size, 0))
-          })) *> remaining.modify {
-            case values if values.nonEmpty => values.tail -> Some(values.head)
-            case values                    => values -> None
-          }.flatMap {
-            case Some(event) => seen.update(_ + 1).as(event)
-            case None        => Raise[IO, PeerError].raise(PeerError.NoIntersection)
-          }
+          })) *> remaining
+            .modify {
+              case values if values.nonEmpty => values.tail -> Some(values.head)
+              case values                    => values -> None
+            }
+            .flatMap {
+              case Some(event) => seen.update(_ + 1).as(event)
+              case None        => Raise[IO, PeerError].raise(PeerError.NoIntersection)
+            }
         def fetch(@scala.annotation.unused header: Header)(using Raise[IO, PeerError]) =
           IO(fail("delegated body consumption must not fetch or apply blocks"))
       follower <- Follower.create[IO, BigInt](
@@ -56,9 +58,15 @@ class FollowerDelegatedSuite extends FailsOnUncaught:
       )
       _ <- follower.installInvalidBlocks(registry)
       outcome <- registry.selectionResource.use { _ =>
-        Handle.allow[NodeError](follower.session(peer, ref => tracked.set(Some(ref))).as(
-          Option.empty[NodeError]
-        )).rescue(error => IO.pure(Some(error)))
+        Handle
+          .allow[NodeError](
+            follower
+              .session(peer, ref => tracked.set(Some(ref)))
+              .as(
+                Option.empty[NodeError]
+              )
+          )
+          .rescue(error => IO.pure(Some(error)))
       }
       count <- seen.get
       view <- tracked.get.flatMap(_.traverse(_.get))
@@ -71,7 +79,9 @@ class FollowerDelegatedSuite extends FailsOnUncaught:
         assertEquals(preference, Gsm.Candidate.Better(true))
       else assertEquals(view.map(_.headers.size), Some(0))
 
-  test("delegated body delivery keeps constant history and accepts an already checked old rollback") {
+  test(
+    "delegated body delivery keeps constant history and accepts an already checked old rollback"
+  ) {
     run(authoritative = false)
   }
 

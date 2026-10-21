@@ -7,6 +7,7 @@ import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.ledger.{
   Block,
   BlockFailure,
+  BlockTransportError,
   ChainError,
   NodeError,
   PeerError,
@@ -319,7 +320,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   }
 
   test(
-    "a block the rules refuse ends its peer's session as a rejection: the peer is lost, the node goes on"
+    "a malformed transported body loses its peer before ledger admission: the other peer continues"
   ) {
     TestControl.executeEmbed(
       node {
@@ -334,7 +335,13 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           events = new FollowerEvents[IO]:
             def emit(event: FollowerEvent) =
               seen.update(_ :+ event) *> (event match
-                case FollowerEvent.Reconnecting(_: PeerError.InvalidBlock, _) =>
+                case FollowerEvent.Reconnecting(
+                      PeerError.Protocol(
+                        PeerError.ProtocolProblem
+                          .FetchedBlockIntegrity(_: BlockTransportError.Decode)
+                      ),
+                      _
+                    ) =>
                   rejected.complete(()).void
                 case _ => IO.unit)
           follower <- Follower.create[IO, MirrorState](
@@ -407,20 +414,29 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           _ <- network.use { net =>
             net.run.background.use { _ =>
               eventually("our chain reaches the tip")(chainRef.get.map(_.tip))(_ == last.point) *>
-                // the garbled block reached the rules in the session: a rejection, typed and the peer's
-                // fault (it is forgotten, not tried again), and the other peer's session went on
+                // Native transport decoding precedes ChainDB admission: this exact typed protocol
+                // failure forgets its sender without poisoning the valid announced header hash.
                 eventually("the lying peer is lost")(seen.get)(_.exists {
-                  case FollowerEvent.Reconnecting(_: PeerError.InvalidBlock, _) => true
-                  case _                                                        => false
+                  case FollowerEvent.Reconnecting(
+                        PeerError.Protocol(
+                          PeerError.ProtocolProblem
+                            .FetchedBlockIntegrity(_: BlockTransportError.Decode)
+                        ),
+                        _
+                      ) =>
+                    true
+                  case _ => false
                 }) *>
                 net.fatal.tryGet.map(fault => assertEquals(fault, None))
             }
           }
           served <- malformed.tryGet
           stopped <- fatals.get
+          invalid <- pool.invalidBlocks.snapshot
         yield
           assertEquals(served, Some(Bytes(Vector(0xff.toByte))))
           assertEquals(stopped, Vector.empty[Fatal])
+          assertEquals(invalid.entries, Map.empty)
       },
       seed = Some("MTM=")
     )

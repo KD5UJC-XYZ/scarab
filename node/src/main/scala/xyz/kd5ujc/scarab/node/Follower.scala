@@ -197,11 +197,11 @@ final class Follower[F[_]: Async, S] private (
   }
 
   /** Run one peer session until the peer fails (a raised [[PeerError]]) or forever. `track` is
-    * handed the validated header candidate when the node-owned body selector is active; this may
-    * be ahead of body delivery. Direct domain sessions expose their own selection candidate.
-    * The two conversations are independent upstream: consensus 82ecba329 ChainSync/Client.hs
-    * retains the validated candidate, while BlockFetch/ClientInterface.hs:192–225 queues actual
-    * originals through addBlockAsync. Body delivery never reconstructs that header candidate.
+    * handed the validated header candidate when the node-owned body selector is active; this may be
+    * ahead of body delivery. Direct domain sessions expose their own selection candidate. The two
+    * conversations are independent upstream: consensus 82ecba329 ChainSync/Client.hs retains the
+    * validated candidate, while BlockFetch/ClientInterface.hs:192–225 queues actual originals
+    * through addBlockAsync. Body delivery never reconstructs that header candidate.
     */
   def session(
       peer: Peer[F],
@@ -330,12 +330,13 @@ final class Follower[F[_]: Async, S] private (
       // ChainSync validates and retains the header fragment; ChainDB independently selects actual
       // body admissions (consensus 82ecba329 BlockFetch/ClientInterface.hs:192–225).
       // The body journal may lag that fragment and must not validate an older rollback again.
-      case true => event match
-        case SyncEvent.RollForward(header, _) =>
-          candidate.set(ChainSelection.Candidate(header.point, Vector.empty)) *>
-            peer.selectionWork.traverse_(_.processing(header.hash).use(_ => F.unit))
-        case SyncEvent.RollBackward(point, _) =>
-          candidate.set(ChainSelection.Candidate(point, Vector.empty))
+      case true =>
+        event match
+          case SyncEvent.RollForward(header, _) =>
+            candidate.set(ChainSelection.Candidate(header.point, Vector.empty)) *>
+              peer.selectionWork.traverse_(_.processing(header.hash).use(_ => F.unit))
+          case SyncEvent.RollBackward(point, _) =>
+            candidate.set(ChainSelection.Candidate(point, Vector.empty))
       case false => directStep(peer, candidate, event, reintersect, registry)
     }
 
