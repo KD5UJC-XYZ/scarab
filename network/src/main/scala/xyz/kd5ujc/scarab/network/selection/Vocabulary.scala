@@ -215,6 +215,7 @@ enum Event[A]:
 
   /** The churn governor's variable changed (here the regime's targets). */
   case TargetsRequested(targets: Targets, generation: Option[BigInt] = None)
+  case ChurnTargetsChanged(generation: BigInt)
 
   /** The Genesis State Machine's judgement of the ledger changed. */
   case JudgementReported(judgement: LedgerStateJudgement)

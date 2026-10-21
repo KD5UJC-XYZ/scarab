@@ -343,15 +343,16 @@ The outbound peers are chosen by the peer governor (roadmap G1.1, [design](desig
   `PeerMetric`: the earliest arrival wins, the join-time correction `adjustAvg` is zero in the pinned release and is not
   implemented). When the governor must demote hot peers it drops those with the lowest `upstreamness + fetchynessBlocks`,
   ties by the slot at which the peer joined, then at random. The churn governor (`ChurnLoop`, the reference's
-  `peerChurnGovernor`) is the one writer of the targets: 3 s after start the root target is released (a head start for the
-  local roots), then it sleeps 3300 s plus up to 600 s (fetch mode deadline) or 900 s plus up to 60 s (bulk sync) and runs a
+  `peerChurnGovernor`) is the one writer of requested targets. Praos starts with a 3 s head start for local roots;
+  Genesis starts with its complete selected targets. It then sleeps 3300 s plus up to 600 s in Genesis or Praos deadline
+  mode, or 900 s plus up to 60 s in Praos bulk sync, and runs a
   round. A round changes one target at a time, in the reference's order, and waits for the counters or a timeout: it lowers
   the active target by 20% (at least one), so that the governor demotes the least useful hot peers, restores it so that
   others are promoted, then does the same for the established and the known sets (steps 7 to 12; steps 1 to 6 do the same for
-  the big ledger peers, and are part of a round only when ledger peers are on: otherwise their counters are zero and each
-  increase would wait out its timeout). While the node is behind with bootstrap peers or in the other sync regime
-  the active targets follow the local roots' valency (`Regime`, design section 1.10). A change of regime during the sleep
-  asks for the new regime's targets at once. The log events `peerSelectionChurn` and the `scarab_peer_selection_churn_*`
+  the big ledger peers). All twelve steps run even when ledger querying is disabled, and configured big-ledger targets
+  remain intact. In Praos sync regimes the active targets follow the local roots' valency (`Regime`, design section 1.10);
+  Genesis always uses the default churn regime. A regime change leaves the current sleep and targets untouched until
+  the next native update point. The log events `peerSelectionChurn` and the `scarab_peer_selection_churn_*`
   metrics tell the rounds.
 - **How long a demotion takes.** A hot peer is deactivated by ending its protocols cleanly, which waits for the peer's next
   blocking TxSubmission2 request and for the ChainSync reply in flight: on the devnet about a minute, at most the 300 s of

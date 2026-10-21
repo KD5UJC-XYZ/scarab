@@ -2,8 +2,11 @@
 package xyz.kd5ujc.scarab.node.governor
 
 import cats.effect.{IO, Ref}
+import cats.effect.std.Queue
 import cats.effect.testkit.TestControl
+import fs2.concurrent.SignallingRef
 import cats.mtl.{Ask, Tell}
+import cats.syntax.all.*
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.selection.*
@@ -38,11 +41,12 @@ class ChurnLoopSuite extends CatsEffectSuite:
       ledgerJudgement: LedgerStateJudgement = LedgerStateJudgement.YoungEnough,
       syncTargets: Targets = Targets.sync,
       intervals: Churn.Intervals = Churn.Intervals(),
-      bigLedger: Boolean = false
+      responseDelay: FiniteDuration = Duration.Zero,
+      changingJudgement: Option[Ref[IO, LedgerStateJudgement]] = None
   ): IO[Log] =
     for
-      requestedCell <- Ref.of[IO, Targets](Targets.zero)
-      counterCell <- Ref.of[IO, GovernorState.Counters](
+      requestedCell <- Ref.of[IO, Churn.Proposal](Churn.Proposal.from(Targets.zero))
+      counterCell <- SignallingRef[IO, GovernorState.Counters](
         empty.copy(
           root = 60,
           known = 150,
@@ -53,22 +57,52 @@ class ChurnLoopSuite extends CatsEffectSuite:
           activeBigLedger = 5
         )
       )
+      responses <- Queue.unbounded[IO, Churn.Proposal]
       requests <- Ref.of[IO, Vector[(FiniteDuration, Targets)]](Vector.empty)
       traces <- Ref.of[IO, Vector[(FiniteDuration, Churn.Trace)]](Vector.empty)
       world = new ChurnWorld[IO]:
         def counters: IO[GovernorState.Counters] = counterCell.get
+        def awaitCounters(
+            predicate: GovernorState.Counters => Boolean
+        ): IO[GovernorState.Counters] =
+          counterCell.discrete
+            .filter(predicate)
+            .take(1)
+            .compile
+            .last
+            .flatMap(_.fold(IO.never[GovernorState.Counters])(IO.pure))
         def localHot: IO[Int] = IO.pure(2)
         def fetchMode: IO[FetchMode] = mode.get
-        def judgement: IO[LedgerStateJudgement] = IO.pure(ledgerJudgement)
-        def requested: IO[Targets] = requestedCell.get
-        def request(t: Targets): IO[Unit] =
+        def judgement: IO[LedgerStateJudgement] =
+          changingJudgement.fold(IO.pure(ledgerJudgement))(_.get)
+        def requested: IO[Churn.Proposal] = requestedCell.get
+        def request(t: Churn.Proposal): IO[Unit] =
           for
             now <- IO.monotonic
-            _ <- requests.update(_ :+ (now -> t))
+            _ <- t.validated.traverse_(valid => requests.update(_ :+ (now -> valid)))
             _ <- requestedCell.set(t)
+            _ <- responses.offer(t)
+          yield ()
+      given Ask[IO, ChurnLoop.Config] = Ask.const[IO, ChurnLoop.Config](
+        ChurnLoop.Config(
+          base,
+          regime,
+          consensusMode = consensusMode,
+          syncTargets = syncTargets,
+          intervals = intervals,
+          seed = 5L
+        )
+      )
+      given Tell[IO, Churn.Trace] = new Tell[IO, Churn.Trace]:
+        def functor = cats.Functor[IO]
+        def tell(l: Churn.Trace): IO[Unit] =
+          IO.monotonic.flatMap(now => traces.update(_ :+ (now -> l)))
+      responder = responses.take
+        .flatMap(t =>
+          IO.sleep(responseDelay) *> (
             // a governor that meets what it can at once: it follows every decrease, and the
             // increases too unless it is `stuck`
-            _ <- counterCell.update { c =>
+            counterCell.update { c =>
               def follow(now: Int, target: Int) = if target > now && stuck then now else target
               c.copy(
                 root = follow(c.root, t.root),
@@ -80,23 +114,10 @@ class ChurnLoopSuite extends CatsEffectSuite:
                 activeBigLedger = follow(c.activeBigLedger, t.activeBig)
               )
             }
-          yield ()
-      given Ask[IO, ChurnLoop.Config] = Ask.const[IO, ChurnLoop.Config](
-        ChurnLoop.Config(
-          base,
-          regime,
-          consensusMode = consensusMode,
-          syncTargets = syncTargets,
-          intervals = intervals,
-          bigLedger = bigLedger,
-          seed = 5L
+          )
         )
-      )
-      given Tell[IO, Churn.Trace] = new Tell[IO, Churn.Trace]:
-        def functor = cats.Functor[IO]
-        def tell(l: Churn.Trace): IO[Unit] =
-          IO.monotonic.flatMap(now => traces.update(_ :+ (now -> l)))
-      _ <- IO.race(ChurnLoop.run[IO](world), IO.sleep(horizon))
+        .foreverM
+      _ <- IO.race(IO.race(ChurnLoop.run[IO](world), responder), IO.sleep(horizon))
       r <- requests.get
       t <- traces.get
     yield Log(r, t)
@@ -129,7 +150,9 @@ class ChurnLoopSuite extends CatsEffectSuite:
       yield assertEquals(
         log.requests.take(2).map(_._2),
         Vector(
-          Churn.head(Churn.Context(Regime.Kind.Default, 2, Targets.sync)),
+          Churn.head(
+            Churn.Context(Regime.Kind.Default, 2, Targets.sync, ConsensusMode.GenesisMode)
+          ),
           Targets.sync
         )
       )
@@ -137,7 +160,7 @@ class ChurnLoopSuite extends CatsEffectSuite:
   }
 
   test(
-    "the first round comes after the interval, with the fuzz, and has the six ordinary steps in order"
+    "the first round comes after the interval, with the fuzz, and has the twelve steps in order"
   ) {
     embed(for
       mode <- Ref.of[IO, FetchMode](FetchMode.Deadline)
@@ -145,8 +168,8 @@ class ChurnLoopSuite extends CatsEffectSuite:
     yield
       val round = log.traces.map(_._2)
       assertEquals(
-        round.collect { case Churn.Trace.Action(step, _, _) => step }.take(6).toList,
-        Churn.round(bigLedger = false)
+        round.collect { case Churn.Trace.Action(step, _, _) => step }.take(12).toList,
+        Churn.round
       )
       val (waitedAt, waited) = log.traces.collectFirst { case (at, Churn.Trace.Wait(d)) =>
         at -> d
@@ -163,10 +186,10 @@ class ChurnLoopSuite extends CatsEffectSuite:
   ) {
     embed(for
       mode <- Ref.of[IO, FetchMode](FetchMode.Deadline)
-      log <- run(5000.seconds, mode = mode, bigLedger = true)
+      log <- run(5000.seconds, mode = mode)
     yield
       val steps = log.traces.map(_._2).collect { case Churn.Trace.Action(step, _, _) => step }
-      assertEquals(steps.take(12).toList, Churn.round(bigLedger = true))
+      assertEquals(steps.take(12).toList, Churn.round)
       assertEquals(steps.take(12).map(_.number).toList, (1 to 12).toList)
       assert(!log.traces.exists { case (_, Churn.Trace.Timeout(_, _, _)) => true; case _ => false })
       // the big ledger targets move: down by a fifth and back to the base
@@ -186,10 +209,10 @@ class ChurnLoopSuite extends CatsEffectSuite:
       )
     yield
       // requests: head, steady, then one per step of the first round
-      val asked = log.requests.drop(2).take(6).map(_._2)
+      val asked = log.requests.drop(2).drop(6).take(6).map(_._2)
       val ctx = Churn.Context(Regime.Kind.Default, 2, Targets.relay)
-      val expected = Churn
-        .round(bigLedger = false)
+      val expected = Churn.round
+        .filterNot(_.bigLedger)
         .foldLeft((Vector.empty[Targets], Churn.steady(ctx))) { case ((out, current), step) =>
           // the ideal world follows every target at once: the active decrease achieves 4 (20 to
           // 16) and the established decrease 4 (30 to 26), which the next decreases take as minimum
@@ -226,14 +249,14 @@ class ChurnLoopSuite extends CatsEffectSuite:
       assertEquals(
         timeouts.take(3).toList,
         List(
-          Churn.Step.IncreaseActive -> 60.seconds,
-          Churn.Step.IncreaseKnown -> 80.seconds,
-          Churn.Step.IncreaseEstablished -> 60.seconds
+          Churn.Step.IncreaseActiveBig -> 60.seconds,
+          Churn.Step.IncreaseKnownBig -> 80.seconds,
+          Churn.Step.IncreaseEstablishedBig -> 60.seconds
         )
       )
       // and the decreases did not
       assert(log.traces.exists {
-        case (_, Churn.Trace.Action(Churn.Step.DecreaseActive, _, _)) => true; case _ => false
+        case (_, Churn.Trace.Action(Churn.Step.DecreaseActiveBig, _, _)) => true; case _ => false
       }))
   }
 
@@ -247,7 +270,7 @@ class ChurnLoopSuite extends CatsEffectSuite:
   }
 
   test(
-    "when the regime changes during the sleep the steady targets of the new one are asked for at once"
+    "a regime change does not interrupt the native churn sleep"
   ) {
     embed(for
       mode <- Ref.of[IO, FetchMode](FetchMode.BulkSync)
@@ -257,7 +280,51 @@ class ChurnLoopSuite extends CatsEffectSuite:
       val log = both._1
       // in the bootstrap regime the active target is cut ...
       assertEquals(log.requests(1)._2.active, 3) // min(max 1 2 + 1, 20)
-      // ... and as soon as the node is in deadline mode the base targets return
-      val back = log.requests.find((at, t) => at >= 100.seconds && t.active == Targets.relay.active)
-      assert(back.exists(_._1 <= 102.seconds), back.toString))
+      assertEquals(log.requests.size, 2)
+      assertEquals(log.requests(1)._2.active, 3))
+  }
+
+  test("counter notifications resume a step before the former polling interval") {
+    embed(for
+      mode <- Ref.of[IO, FetchMode](FetchMode.Deadline)
+      log <- run(
+        20.seconds,
+        mode = mode,
+        intervals = Churn.Intervals(10.seconds, Duration.Zero, 10.seconds, Duration.Zero),
+        responseDelay = 150.millis
+      )
+    yield
+      val elapsed = log.traces.collectFirst {
+        case (_, Churn.Trace.Action(Churn.Step.DecreaseActiveBig, took, _)) => took
+      }
+      assertEquals(elapsed, Some(150.millis)))
+  }
+
+  test("entering bootstrap sync during the head start retains the actual initial targets") {
+    embed(for
+      mode <- Ref.of[IO, FetchMode](FetchMode.Deadline)
+      both <- IO.both(
+        run(4.seconds, mode = mode, regime = Regime.kind(_, true)),
+        IO.sleep(1.second) *> mode.set(FetchMode.BulkSync)
+      )
+    yield
+      val requests = both._1.requests
+      assertEquals(requests.map(_._2.active), Vector(20, 20))
+      assertEquals(requests.map(_._2.root), Vector(0, 0)))
+  }
+
+  test("Genesis refreshes selected targets after startup judgement changes without Praos cuts") {
+    embed(for
+      mode <- Ref.of[IO, FetchMode](FetchMode.BulkSync)
+      judgement <- Ref.of[IO, LedgerStateJudgement](LedgerStateJudgement.TooOld)
+      both <- IO.both(
+        run(
+          4.seconds,
+          mode = mode,
+          consensusMode = ConsensusMode.GenesisMode,
+          changingJudgement = Some(judgement)
+        ),
+        IO.sleep(1.second) *> judgement.set(LedgerStateJudgement.YoungEnough)
+      )
+    yield assertEquals(both._1.requests.map(_._2), Vector(Targets.sync, Targets.relay)))
   }

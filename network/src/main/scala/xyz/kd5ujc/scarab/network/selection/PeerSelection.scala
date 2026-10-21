@@ -668,6 +668,7 @@ object PeerSelection:
     given Ordering[A] = st0.peers.ordering
     val st = tick(st0, now)
     event match
+      case Event.ChurnTargetsChanged(_) => Decision(st, Nil, Nil)
       case Event.TargetsRequested(t, generation) =>
         if generation.exists(_ != st.rootsGeneration) then Decision(st, Nil, Nil)
         else Decision(st.copy(requested = t), Nil, Nil)

@@ -9,6 +9,7 @@ import cats.syntax.all.*
 import com.comcast.ip4s.{Host, IpAddress, SocketAddress}
 import java.time.Instant
 import scala.concurrent.duration.*
+import fs2.concurrent.SignallingRef
 import io.circe.Json
 import io.circe.syntax.*
 import xyz.kd5ujc.scarab.ledger.{EpochGeometry, GovernorFault, NodeError, PeerError, StorageError}
@@ -314,21 +315,7 @@ object PeerNetwork:
       dnsResource: Resource[F, PeerDns[F]]
   ): Resource[F, Running[F, Addr]] =
     val F = Async[F]
-    def baseFor(current: Roots): Targets =
-      if current.ledgerPeers then settings.targets
-      else
-        settings.targets
-          .revised(knownBig = 0, establishedBig = 0, activeBig = 0)
-          .getOrElse(settings.targets)
-    // Without ledger peers there are no big ledger peers to want: the targets for them are zero,
-    // and the churn governor leaves its six steps for them out (a node that never has any would
-    // only wait out their timeouts). The reference asks all the same and gets the public roots.
-    val base: Targets =
-      if settings.roots.ledgerPeers then settings.targets
-      else
-        settings.targets
-          .revised(knownBig = 0, establishedBig = 0, activeBig = 0)
-          .getOrElse(settings.targets)
+    val base: Targets = settings.targets
     val bootstrapOn = settings.roots.bootstrap.isDefined
     val association = AssociationMode.of(
       useLedgerPeers = settings.roots.ledgerPeers,
@@ -389,14 +376,20 @@ object PeerNetwork:
           .void
       )
       fatal <- Resource.eval(Deferred[F, GovernorFault])
-      initialKind = Regime.kind(FetchMode.BulkSync, bootstrapOn)
+      initialKind = Regime.kind(settings.consensusMode, FetchMode.BulkSync, bootstrapOn)
+      initialBase = Churn.targetsFor(
+        settings.consensusMode,
+        LedgerStateJudgement.TooOld,
+        base,
+        settings.syncTargets
+      )
       state <- Resource.eval(
         Ref.of[F, GovernorState[Addr]](
           GovernorState
             .initial[Addr](
               settings.seed,
               roots,
-              Regime.initial(initialKind, base, localHot),
+              Regime.initial(settings.consensusMode, initialKind, initialBase, localHot),
               Sensitivity.initial(
                 bootstrapOn,
                 settings.consensusMode,
@@ -406,6 +399,20 @@ object PeerNetwork:
               )
             )
             .copy(sharing = PeerShare.Governor[Addr](enabled = settings.peerSharing))
+        )
+      )
+      initialCounters <- Resource.eval(
+        (state.get, Clock[F].monotonic).mapN((st, now) => st.view(now).counters)
+      )
+      counterSignal <- Resource.eval(SignallingRef[F, GovernorState.Counters](initialCounters))
+      churnRequested <- Resource.eval(
+        Ref.of[F, (Churn.Proposal, BigInt)](
+          (
+            Churn.Proposal.from(
+              Regime.initial(settings.consensusMode, initialKind, initialBase, localHot)
+            ),
+            BigInt(0)
+          )
         )
       )
       connections <- Resource.eval(
@@ -428,10 +435,9 @@ object PeerNetwork:
             association,
             ChurnLoop.Config(
               base = base,
-              regime = Regime.kind(_, bootstrapOn),
+              regime = Regime.kind(settings.consensusMode, _, bootstrapOn),
               consensusMode = settings.consensusMode,
               syncTargets = settings.syncTargets,
-              bigLedger = settings.roots.ledgerPeers,
               intervals = settings.intervals,
               timeouts = settings.timeouts,
               seed = settings.seed
@@ -475,8 +481,9 @@ object PeerNetwork:
         def functor = F
         def tell(l: Output[Addr]): F[Unit] =
           (l match
-            case Output.Connections(s) => connections.set(s)
-            case _                     => F.unit
+            case Output.Connections(s)    => connections.set(s)
+            case Output.Counted(counters) => counterSignal.set(counters)
+            case _                        => F.unit
           ) *> emit(l)
 
       val rootProvider: RootProvider[F, Addr] = NodeRootProvider.dynamic(runtime, dns, dnsRng)
@@ -502,7 +509,6 @@ object PeerNetwork:
           } *> installed.get
         }
 
-      val modeCell: Ref[F, FetchMode] = fetchMode
       val judgementCell: Ref[F, LedgerStateJudgement] = judgement
 
       /** Start one snapshot monitor per published root generation. The result is only traced; a
@@ -573,17 +579,25 @@ object PeerNetwork:
           def functor = F
           def tell(l: Churn.Trace): F[Unit] = emit(Output.Churned(l))
         ChurnLoop.run[F](new ChurnWorld[F]:
-          def counters = (state.get, Clock[F].monotonic).mapN((st, now) => st.view(now).counters)
+          def counters = counterSignal.get
+          def awaitCounters(predicate: GovernorState.Counters => Boolean) =
+            counterSignal.discrete
+              .filter(predicate)
+              .take(1)
+              .compile
+              .last
+              .flatMap(_.fold(F.never[GovernorState.Counters])(F.pure))
           def localHot = state.get.map { st =>
             val effective = st.localRoots.groups.map(_.hot.value).sum
             if effective > 0 then effective else st.configuredRoots.groups.map(_.hot.value).sum
           }
-          def fetchMode = modeCell.get
+          def fetchMode = currentFetchMode(state, chain)
           def judgement = judgementCell.get
-          def requested = state.get.map(_.requested)
-          def request(targets: Targets) =
+          def requested = churnRequested.get.map(_._1)
+          def request(targets: Churn.Proposal) =
             runtime.get.flatMap(current =>
-              events.offer(Event.TargetsRequested(targets, Some(current.generation)))
+              churnRequested.set((targets, current.generation)) *>
+                events.offer(Event.ChurnTargetsChanged(current.generation))
             ))
 
       val gsmLoop: F[Nothing] =
@@ -615,6 +629,9 @@ object PeerNetwork:
           events,
           supervisor,
           actions,
+          readRequestedTargets = Some(churnRequested.get.map { (proposal, generation) =>
+            proposal.validated.toOption.map(PeerGovernor.RequestedTargets(_, generation))
+          }),
           beforeEventApplied = Some {
             case Event.RootsConfigured(_, _, _, Some(generation)) =>
               rootInstallAcks.get.flatMap(_.get(generation).traverse_ { (staged, _) =>
@@ -681,9 +698,8 @@ object PeerNetwork:
             nextWorker,
             nextAssociation,
             previous.churn.copy(
-              base = baseFor(next),
-              regime = Regime.kind(_, next.bootstrap.isDefined),
-              bigLedger = next.ledgerPeers
+              base = settings.targets,
+              regime = Regime.kind(settings.consensusMode, _, next.bootstrap.isDefined)
             ),
             snapshotCheckStarted = false,
             snapshotCheckCanceled = snapshotCheckCanceled

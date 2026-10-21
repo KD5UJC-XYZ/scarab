@@ -126,6 +126,9 @@ object PeerGovernor:
       connections: Option[OutboundConnectionsState]
   )
 
+  /** A validated observation of the churn target TVar, including its topology generation. */
+  final case class RequestedTargets(targets: Targets, generation: BigInt)
+
   def run[F[_]: Temporal, A](
       actions: PeerStateActions[F, A],
       roots: RootProvider[F, A],
@@ -133,7 +136,8 @@ object PeerGovernor:
       supervisor: Supervisor[F],
       sharing: Option[PeerSharingActions[F, A]] = None,
       beforeEventApplied: Option[Event[A] => F[Unit]] = None,
-      onEventApplied: Option[Event[A] => F[Unit]] = None
+      onEventApplied: Option[Event[A] => F[Unit]] = None,
+      readRequestedTargets: Option[F[Option[RequestedTargets]]] = None
   )(using
       state: Stateful[F, GovernorState[A]],
       config: Ask[F, GovernorConfig],
@@ -152,7 +156,8 @@ object PeerGovernor:
           scheduled,
           sharing,
           beforeEventApplied,
-          onEventApplied
+          onEventApplied,
+          readRequestedTargets
         )
       )
 
@@ -167,7 +172,8 @@ object PeerGovernor:
       scheduled: Ref[F, Set[Time]],
       sharing: Option[PeerSharingActions[F, A]],
       beforeEventApplied: Option[Event[A] => F[Unit]],
-      onEventApplied: Option[Event[A] => F[Unit]]
+      onEventApplied: Option[Event[A] => F[Unit]],
+      readRequestedTargets: Option[F[Option[RequestedTargets]]]
   )(using
       state: Stateful[F, GovernorState[A]],
       config: Ask[F, GovernorConfig],
@@ -326,7 +332,7 @@ object PeerGovernor:
           .whenA(violations.nonEmpty)
       yield ()
 
-    def apply(event: Event[A]): F[Unit] =
+    def applySnapshot(event: Event[A]): F[Unit] =
       for
         at <- now
         _ <- beforeEventApplied.traverse_(_(event))
@@ -335,6 +341,17 @@ object PeerGovernor:
         _ <- commit(PeerSelection.apply(st, event, at, policy))
         _ <- onEventApplied.traverse_(_(event))
       yield ()
+
+    def apply(event: Event[A]): F[Unit] = event match
+      case Event.ChurnTargetsChanged(generation) =>
+        readRequestedTargets.traverse_(
+          _.flatMap(
+            _.filter(_.generation == generation).traverse_(current =>
+              applySnapshot(Event.TargetsRequested(current.targets, Some(current.generation)))
+            )
+          )
+        )
+      case _ => applySnapshot(event)
 
     /** Apply the events that are waiting. */
     val drain: F[Unit] =

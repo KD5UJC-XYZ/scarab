@@ -634,10 +634,11 @@ object Targets:
   val relay: Targets; val blockProducer: Targets; val sync: Targets   // section 1.5
 ```
 
-An insane target update from configuration is a `ConfigError` at start-up; from the churn governor it cannot
-happen (churn builds targets from validated ones with the clamping the reference has), and the property test
-checks that. (The reference silently ignores an insane update, `Monitor.hs:68-69`; we keep the same behaviour at
-the boundary, where the update arrives as untyped numbers from the outside, and refuse earlier where we can.)
+An insane target update from configuration is a `ConfigError` at startup. Churn uses a separate
+`Churn.Proposal` record because native arithmetic can temporarily produce negative active targets or a root
+larger than the reduced known target. The churn writer retains that proposal for subsequent arithmetic and
+counter predicates; the governor ignores it, matching `sanePeerSelectionTargets` in `Monitor.hs`. Validated
+`Targets` therefore retain their construction invariant without clamping native proposals.
 
 ### 4.3 The decision function
 
@@ -705,12 +706,13 @@ reference only traces and continues; we keep it a trace and make it an error onl
 and, from G1.1, `BootstrapPeersCriticalTimeout` (15 minutes, `Types.hs:1863-1869`). `IO` appears nowhere in
 the governor; `Main` supplies the interpreters.
 
-The churn governor is a second loop, `ChurnLoop.run`, with the same shape. Its pure part is the target
-arithmetic of section 1.10: `Churn.regime`, `Churn.step(round: ChurnStep, regime, localHot, base, current):
-Targets`, `decrease`, `decreaseWithMin`. It writes the targets to a `Ref[F, Targets]` that is read as the
-`TargetsChanged` event, and waits for the `Counters` (published by the governor after every pass, as the
-reference's `countersVar`) to meet them or for the step's timeout, using `Temporal.timeoutTo`. Both loops stop
-with the node's `Resource`.
+The churn governor is a second loop, `ChurnLoop.run`. Its pure part is `Churn.planRaw`, `decrease` and
+`decreaseWithMin`. It writes a `Churn.Proposal` and root-generation pair atomically, then sends a target wake.
+The governor consumes the latest proposal rather than replaying superseded snapshots. Invalid proposals and
+stale-generation wakes leave accepted targets unchanged. Counter waits observe a `SignallingRef` updated by the governor's counter publication
+without polling and race the step's timeout; a predicate satisfied at the timeout boundary wins. All twelve
+steps run regardless of ledger-query configuration. Changes of regime do not interrupt a fuzzy sleep. Both
+loops stop with the node's `Resource`.
 
 ### 4.5 Connections and the warm state
 
@@ -1364,9 +1366,8 @@ a pool whose relays do not decode skipped and reported (`poolSkipped`), stable s
 
 **Deviations from the reference, in one place.**
 
-1. *No ledger peers, no big ledger targets.* Without `useLedgerAfterSlot` the three big ledger targets are zero and the churn steps 1 to 6 are not part of a
-   round (`ChurnLoop.Config.bigLedger`); the reference asks anyway and is answered with the configured public roots. With ledger peers the
-   twelve steps run.
+1. **Resolved by #311.** Configured big-ledger targets are retained even when ledger querying is disabled, and
+   all twelve churn actions run. Small-network profiles must explicitly configure the target population they want.
 2. *A request for big ledger peers that the ledger cannot answer gets nothing.* The reference gets the public roots (as extra peers, which the
    request for public roots knows already) and counts that as progress.
 3. *The retry time of the request for big ledger peers is a wake-up* (`Skip(Some(retryAt))`); the reference's `GuardedSkip Nothing` waits for
@@ -1481,19 +1482,22 @@ other hot demotions use it.
 
 **Churn.** The twelve steps in the reference's order, with its timeouts (300, 60, 121, 60, 80, 60, 300, 60, 121, 60, 80, 60 s; the
 request timeout of steps 5 and 11 is `policyPeerShareOverallTimeout`, 10 s), the three regimes, `decrease` and `decreaseWithMin`,
-the head start, and the sleep (3300 s plus up to 600 s in deadline mode, 900 s plus up to 60 s in bulk sync, less the time the round took).
+the mode-specific head start, and the sleep (3300 s plus up to 600 s in Genesis or Praos deadline mode,
+900 s plus up to 60 s in Praos bulk sync, less the time the round took).
 `ChurnLoop` is the one writer of the governor's targets; the 1 s regime loop of G1.1 is now only the publisher of the fetch mode.
 
 **Deviations, in one place.**
 
-1. The six big-ledger steps (1 to 6) are left out of a round until there are big ledger peers (G1.3): their counters are zero, so each
-   increase would wait out its timeout (200 s in all) for nothing. `Churn.round(bigLedger = true)` has all twelve and is tested.
-2. A target that would be insane is clamped (the root target within the known target, no negative active target) where the reference's
-   `Monitor` silently ignores the update; a property shows no step needs it for sane base targets.
-3. The counters are polled every 500 ms where the reference blocks in STM; the amount a step achieved is the change at the moment the
-   poll sees the targets met (or the timeout).
-4. A change of regime during the sleep (the node left bulk sync) asks for the new regime's targets at once; the reference waits for the
-   next round, up to an hour away.
+1. **Resolved by #311.** All twelve steps run regardless of ledger-query configuration, retaining the configured
+   big-ledger targets instead of rewriting them to zero.
+2. **Resolved by #311.** Raw proposals preserve native negative active targets and root/known mismatches.
+   The peer governor ignores an insane latest proposal; queued wakes never replay a superseded valid snapshot.
+3. **Resolved by #311.** Counter waits observe published-counter notifications rather than polling, preserving
+   the counter value that satisfies the predicate and taking the success branch at the timeout boundary.
+4. **Resolved by #311.** Regime changes do not interrupt the native sleep. Genesis always uses the default
+   churn regime and long interval, retains complete selected targets at startup, and selects sync targets while
+   `TooOld`. Fuzz conversion uses native binary-rational floor to picoseconds, retaining signed waits; only the
+   final host timer is rounded to nanoseconds.
 5. **Resolved by #150.** Inbound duplex and outbound client sessions report into the same metrics
    board. The key is the remote socket address; activation/session identity and connection direction
    do not partition scores. An ephemeral inbound source port remains that connection's remote
@@ -1524,7 +1528,7 @@ the head start, and the sleep (3300 s plus up to 600 s in deadline mode, 900 s p
    supersede the former per-block-only deadline cap. Full Genesis remains G3.
 
 **Properties and tests.** `ChurnSuite` (the `decrease` table 1 to 0, 5 to 4, 10 to 8, 100 to 80; the twelve steps, their order and
-timeouts; a round at the relay defaults in each regime; every step sane for any sane base and any amounts achieved; the sleep),
+timeouts; a round at the relay defaults in each regime; invalid raw boundary proposals; signed sleeps),
 `PeerMetricsSuite` (`prop_insert_peer`, `prop_metrics_are_bounded`, `prop_bounded_size` of `PeerMetric.hs`, the earliest-arrival
 and 180-slot rules, `adjustAvg = 0`, the registry, the ranking), `PeerSelectionSuite` (a demotion by the metrics), `ChurnLoopSuite`
 (`TestControl`: head start, the first round after the interval, targets step by step, timeouts, bulk sync interval, regime change),
