@@ -9,6 +9,10 @@ def configuration(root, mode, ports=()):
         return []
     config = json.loads((root / "genesis" / "configuration.yaml").read_text())
     config["ConsensusMode"] = mode
+    # The reference template's paths belong to its container. The follower chooses its own
+    # database with --db and starts no Unix listener; relay supplies an explicit mounted socket.
+    for key in ("SocketPath", "DatabasePath"):
+        config.pop(key, None)
     path = root / "genesis" / "scala-consensus-configuration.json"
     path.write_text(json.dumps(config, indent=2))
     flags = ["--config", f"/genesis/{path.name}"]

@@ -21,7 +21,8 @@ class ConsensusModeTests(unittest.TestCase):
             root = pathlib.Path(temporary)
             (root / "genesis").mkdir()
             source = root / "genesis" / "configuration.yaml"
-            original = '{"ConsensusMode":"PraosMode","ShelleyGenesisFile":"shelley-genesis.json"}\n'
+            original = ('{"ConsensusMode":"PraosMode","ShelleyGenesisFile":"shelley-genesis.json",'
+                        '"SocketPath":"db/node.socket","DatabasePath":"reference-db"}\n')
             source.write_text(original)
             self.assertEqual(configuration(root, None), [])
             self.assertEqual(list((root / "genesis").iterdir()), [source])
