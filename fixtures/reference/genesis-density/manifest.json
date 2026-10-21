@@ -2,6 +2,8 @@
   "schema": "scarab-native-genesis-v1",
   "sourceCommit": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
   "sourceFiles": {
+    "ouroboros-consensus-diffusion/test/consensus-test/Test/Consensus/PeerSimulator/Trace.hs": "5515b2d8afed472eee89e82c9ab45cc13b33919c3ed34fa772644d6cba4ce533",
+    "ouroboros-consensus-diffusion/test/consensus-test/Test/Consensus/PointSchedule/Peers.hs": "0d4b1eb34e28c41c96c043861d176f30e369707c45c551b82e7edff05def8d94",
     "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Genesis/Governor.hs": "9a24d955535f4d977dbe010f8b8f8be5d8f6cc158bf0177f344c7ca2476cae23",
     "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/ChainSync/Client/HistoricityCheck.hs": "0818c07b673e0b1a4f7e30653bd207fdfa38432b5f3fc90290519639837f4b6d",
     "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Node/RethrowPolicy.hs": "152cf1c397b5d25cdb0835182a59c1ed47f7d9896f2af2479298c5bbec02e297",
@@ -21,21 +23,21 @@
   },
   "observers": {
     "Main.hs": "34d8c97314fb24e48abfb38c8e27d9541fd9723ca87b61acea23ea5da07236b4",
-    "MainLoE.hs": "eaee84e5d519e64b34b534b463f5d5ba73f7b716d07dfaaae97fbc39a6d2ea77",
+    "MainLoE.hs": "4a5b9df930a3d73a010e6f089a80232046b9061ef5db83a12751f045ad8bcdac",
     "MainHistoryWindow.hs": "07388930f5e1494b5488df0db341479df86e959086b3509f40bcb78d115ce099",
     "MainBucket.hs": "73604cc7ffa601d068043b90254d4a6c01a2b3476fe69c4793df8d1874336fdc"
   },
   "csjObserverSha256": "1d9e5d89be5b0bcc84a76d707c1697c6d95afa5af4ae0f0f430adce6f6e2b0df",
   "historicityObserverSha256": "068488712bc0b8da18e760523ebe89ea95424d4e19a0ef83c40e95cb71af8adf",
-  "exporterSha256": "f8b438785412a77bd892e849f9ff7146f123693cbb61b743abd35d355da0149f",
+  "exporterSha256": "88085170742deddf126d545fc8f8c91ebfd2c9f9141b0723d1a3065138e05670",
   "buildProjectSha256": "f9c5f7e0ed14360dce074c170a48b630f2e247619ba05d30ddf855a545cbc7b3",
   "planSha256": "7f1416e0423b18a439e83eeab16e8569060e9cacb24e0dcadb856b1705074ddb",
   "image": "sha256:10d59164dce6b49fbeafdc520c1a29d3e4024a5859a3c41bb6181b2e627bebc7",
   "executables": {
-    "density": "e84fc536c6cfbdfa7c73e00f95168f5aee8cd76a61fcf108df6e495e73dfe3a2",
-    "bucket": "d85d202da908521f06323f1fc3ff2307a11f9160f3e1894397e2c7bc30f9e7dd",
-    "loe": "d14d9f8837c92d849c79d3689be960606e7ec70eaeb1c4118af7d3427442c149",
-    "csj": "9916b0b46a69a671ace1f3b1ed8285d2fb4433b7f968cfc2d7cea6bd2527a9e0",
+    "density": "1e1dfd66be0de2be41e349fa05bbc7baae53f75a5b2e8f544ced76dd78788227",
+    "bucket": "e064ae2d29ad5cef05f6a2c9b28489a244e6f95677d4bbcd98330f57f70010ce",
+    "loe": "e1dc66f8d6817450e91470e794928949fafe68a83d2f52e21aa0245205bc22df",
+    "csj": "78eceed82e02b51ea1b516c7b2271e5c3dcba27b8aa36e5a8b88bf476d01d442",
     "historicity": "9c71e6b4ac9bef36a90d4282738a3ae876a32b2727e6eacab55befecaf408488",
     "history-window": "367b757b385b2600c1f7c1af97033a7eb2b506792c70c3cc23ebea7cc5e7c9e5"
   },
@@ -49,9 +51,9 @@
       "cases": 44
     },
     "loe.jsonl.gz": {
-      "sha256": "7e1de4521ab12c3300ebe1a51780367a235d3d3039469b8440ef7fc5d1922f60",
+      "sha256": "69807a9b07335f98ff12b007463a911e8f3b1c3fbacbb68b1f73d86e0cd06081",
       "cases": 84,
-      "uncompressedSha256": "820d3664ab5998b6f37fe8d14b236bd31bfcccb1f1d5f7146ad357cfa85a21d9",
+      "uncompressedSha256": "91a6086a4f7e03536428bcd9937c425bb1cdbb360e17a681dab087683a391eaf",
       "familyCases": {
         "CSJ": 16,
         "DensityDisconnect": 4,

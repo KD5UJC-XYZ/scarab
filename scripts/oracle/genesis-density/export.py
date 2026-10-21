@@ -15,6 +15,8 @@ import subprocess
 PIN = "82ecba329d7d054340bf707d44fe6e9ac27cec40"
 HERE = Path(__file__).resolve().parent
 FILES = [
+    "ouroboros-consensus-diffusion/test/consensus-test/Test/Consensus/PeerSimulator/Trace.hs",
+    "ouroboros-consensus-diffusion/test/consensus-test/Test/Consensus/PointSchedule/Peers.hs",
     "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Genesis/Governor.hs",
     "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/ChainSync/Client/HistoricityCheck.hs",
     "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Node/RethrowPolicy.hs",

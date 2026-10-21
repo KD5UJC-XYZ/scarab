@@ -9,7 +9,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import java.util.zip.GZIPInputStream
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
-import xyz.kd5ujc.scarab.consensus.genesis.GenesisDensity.Fragment
+import xyz.kd5ujc.scarab.consensus.genesis.GenesisDensity.{Bounds, Fragment, LatestSlot, Result}
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, UInt64}
 
 /** The complete original peer-simulator input and observable result, without fixture-specific
@@ -62,6 +62,17 @@ object UpstreamGenesisCases:
       expectedExceptionsPassed: Boolean,
       combinedPassed: Boolean
   )
+  enum GddEvent:
+    case Debug(
+        window: BigInt,
+        current: Fragment,
+        candidates: Vector[(PeerId, Fragment)],
+        suffixes: Vector[(PeerId, Fragment)],
+        result: Result[PeerId],
+        loeHead: Point
+    )
+    case Disconnected(peers: Vector[PeerId])
+  final case class GddTrace(atPicos: BigInt, event: GddEvent, rendering: String)
   final case class Scenario(
       label: String,
       family: Family,
@@ -86,6 +97,7 @@ object UpstreamGenesisCases:
       minEndTimePicos: BigInt,
       schedules: Vector[Schedule],
       timeline: Vector[Tick],
+      gddTrace: Vector[GddTrace],
       completeInputRendering: String,
       expected: Expected
   )
@@ -255,6 +267,49 @@ object UpstreamGenesisCases:
       c.get[Boolean]("propertyPassed")
     ).mapN(Expected.apply)
   )
+  private given Decoder[LatestSlot] = Decoder.instance { c =>
+    c.get[String]("tag").flatMap {
+      case "unknown" => Right(LatestSlot.Unknown)
+      case "origin"  => Right(LatestSlot.Origin)
+      case "at"      => c.get[BigInt]("slot").map(LatestSlot.At(_))
+      case _         => Left(DecodingFailure("unknown latest slot tag", c.history))
+    }
+  }
+  private given Decoder[(PeerId, Fragment)] = Decoder.instance { c =>
+    (c.get[PeerId]("peer"), c.get[Fragment]("fragment")).tupled
+  }
+  private given Decoder[(PeerId, Bounds)] = Decoder.instance { c =>
+    for
+      peer <- c.get[PeerId]("peer")
+      clipped <- c.get[Fragment]("clippedFragment")
+      more <- c.get[Boolean]("offersMoreThanK")
+      lower <- c.get[BigInt]("lowerBound")
+      upper <- c.get[BigInt]("upperBound")
+      after <- c.get[Boolean]("hasBlockAfter")
+      latest <- c.get[LatestSlot]("latestSlot")
+      idle <- c.get[Boolean]("idling")
+    yield peer -> Bounds(clipped, more, lower, upper, after, latest, idle)
+  }
+  private given Decoder[GddTrace] = Decoder.instance { c =>
+    for
+      time <- c.get[BigInt]("timePicos")
+      tag <- c.get[String]("tag")
+      losers <- c.get[Vector[PeerId]]("losingPeers")
+      rendering <- c.get[String]("completeRendering")
+      event <- tag match
+        case "disconnected" => Right(GddEvent.Disconnected(losers))
+        case "debug" =>
+          for
+            window <- c.get[BigInt]("genesisWindow")
+            current <- c.get[Fragment]("current")
+            candidates <- c.get[Vector[(PeerId, Fragment)]]("candidates")
+            suffixes <- c.get[Vector[(PeerId, Fragment)]]("candidateSuffixes")
+            bounds <- c.get[Vector[(PeerId, Bounds)]]("bounds")
+            head <- c.get[Point]("loeHead")
+          yield GddEvent.Debug(window, current, candidates, suffixes, Result(losers, bounds), head)
+        case _ => Left(DecodingFailure("unknown GDD trace tag", c.history))
+    yield GddTrace(time, event, rendering)
+  }
   given Decoder[Scenario] = Decoder.instance { c =>
     for
       label <- c.get[String]("label")
@@ -280,6 +335,7 @@ object UpstreamGenesisCases:
       end <- c.get[BigInt]("minEndTimePicos")
       schedules <- c.get[Vector[Schedule]]("schedules")
       timeline <- c.get[Vector[Tick]]("stateTimeline")
+      gddTrace <- c.get[Vector[GddTrace]]("gddTrace")
       rendering <- c.get[String]("completeInputRendering")
       expected <- c.as[Expected]
     yield Scenario(
@@ -306,6 +362,7 @@ object UpstreamGenesisCases:
       end,
       schedules,
       timeline,
+      gddTrace,
       rendering,
       expected
     )

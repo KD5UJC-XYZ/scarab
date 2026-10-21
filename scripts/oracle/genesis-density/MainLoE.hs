@@ -7,13 +7,16 @@
 module Main where
 import Cardano.Ledger.BaseTypes (unNonZero)
 import Cardano.Slotting.Time (getSlotLength)
-import Control.Monad.IOSim (runSimStrictShutdown)
+import Control.Monad.IOSim (runSimTrace,traceResult,selectTraceEventsDynamic,traceM)
 import Control.Exception (throwIO,try,SomeException,displayException,evaluate)
 import Control.Monad (when)
 import Control.Monad.Class.MonadAsync (AsyncCancelled(..))
 import Data.Aeson.Types (parseMaybe)
 import System.Exit (exitFailure)
-import Control.Tracer (nullTracer)
+import Control.Tracer (mkTracer)
+import Data.Maybe.Strict (StrictMaybe(..))
+import Ouroboros.Consensus.Genesis.Governor (TraceGDDEvent(..),GDDDebugInfo(..),DensityBounds(..))
+import Test.Consensus.PeerSimulator.Trace (TraceEvent(..))
 import Data.Aeson
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.List.NonEmpty as NE
@@ -23,7 +26,7 @@ import Numeric (showHex)
 import Ouroboros.Consensus.Block
 import Ouroboros.Consensus.Config.SecurityParam
 import Ouroboros.Consensus.Util.Condense (condense)
-import Ouroboros.Consensus.Util.IOLike (Time(..),fromException)
+import Ouroboros.Consensus.Util.IOLike (Time(..),fromException,getMonotonicTime)
 import Ouroboros.Consensus.MiniProtocol.ChainSync.Client (ChainSyncClientException(..))
 import Ouroboros.Network.Driver.Limits (ProtocolLimitFailure(..))
 import qualified Ouroboros.Network.AnchoredFragment as AF
@@ -42,7 +45,7 @@ import Test.Consensus.PeerSimulator.Config ()
 import Test.Consensus.PeerSimulator.Run
 import Test.Consensus.PeerSimulator.StateView
 import Test.Consensus.PointSchedule
-import Test.Consensus.PointSchedule.Peers (Peer(..),peersList)
+import Test.Consensus.PointSchedule.Peers (Peer(..),PeerId(..),peersList)
 import Test.Consensus.PointSchedule.NodeState (NodeState(..))
 import Test.Consensus.PointSchedule.SinglePeer
 import Test.QuickCheck (quickCheckWithResult,stdArgs,chatty,maxSuccess,isSuccess)
@@ -95,6 +98,23 @@ peerOutcomeJSON :: PeerSimulatorResult TestBlock -> Value
 peerOutcomeJSON result@PeerSimulatorResult{psePeerId,pseResult} = object
  ["peer" .= show psePeerId,"component" .= component pseResult,
   "outcome" .= maybe "success" (show . failureKind) (pscrToException pseResult),"completeResultRendering" .= condense result]
+latestJSON :: StrictMaybe (WithOrigin SlotNo) -> Value
+latestJSON SNothing = object ["tag" .= ("unknown" :: String)]
+latestJSON (SJust Origin) = object ["tag" .= ("origin" :: String)]
+latestJSON (SJust (NotOrigin slot)) = object ["tag" .= ("at" :: String), "slot" .= unSlotNo slot]
+boundsJSON :: (PeerId,DensityBounds TestBlock) -> Value
+boundsJSON (peer,DensityBounds{clippedFragment,offersMoreThanK,lowerBound,upperBound,hasBlockAfter,latestSlot,idling}) = object
+ ["peer" .= show peer,"clippedFragment" .= fragmentJSON clippedFragment,
+  "offersMoreThanK" .= offersMoreThanK,"lowerBound" .= lowerBound,"upperBound" .= upperBound,
+  "hasBlockAfter" .= hasBlockAfter,"latestSlot" .= latestJSON (SJust latestSlot),"idling" .= idling]
+gddJSON :: Time -> TraceGDDEvent PeerId TestBlock -> Value
+gddJSON (Time now) event = case event of
+ TraceGDDDisconnected peers -> object ["timePicos" .= diffTimeToPicoseconds now,"tag" .= ("disconnected"::String),"losingPeers" .= map show (NE.toList peers),"completeRendering" .= show event]
+ TraceGDDDebug GDDDebugInfo{sgen,curChain,candidates,candidateSuffixes,losingPeers,bounds,loeHead} -> object
+  ["timePicos" .= diffTimeToPicoseconds now,"tag" .= ("debug"::String),"genesisWindow" .= unGenesisWindow sgen,
+   "current" .= fragmentJSON curChain,"candidates" .= map peerFragment candidates,"candidateSuffixes" .= map peerFragment candidateSuffixes,
+   "losingPeers" .= map show losingPeers,"bounds" .= map boundsJSON bounds,"loeHead" .= pointJSON (castPoint $ AF.anchorToPoint loeHead),"completeRendering" .= show event]
+ where peerFragment (peer,fragment) = object ["peer" .= show peer,"fragment" .= fragmentJSON fragment]
 observe :: String -> Int -> ConformanceTest TestBlock -> Int -> IO Value
 observe family ordinal test seed = do
  args <- getProtocolInfoArgs @TestBlock
@@ -102,10 +122,16 @@ observe family ordinal test seed = do
      generatorSize = adjustSize 25
      input@GenesisTest{gtSecurityParam,gtGenesisWindow,gtBlockTree,gtSchedule=PointSchedule{psSchedule,psStartOrder,psMinEndTime=Time end}} = unGen (ctGenerator test) (mkQCGen seed) generatorSize
      Delta delay = gtDelay input
- state <- either throwIO pure $ runSimStrictShutdown $ runPointSchedule args (ctSchedulerConfig test) input nullTracer
+ let simulation = runSimTrace $ runPointSchedule args (ctSchedulerConfig test) input $ mkTracer $ \event -> case event of
+       TraceGenesisDDEvent value -> do
+         now <- getMonotonicTime
+         traceM (gddJSON now value)
+       _ -> pure ()
+ state <- either throwIO pure $ traceResult True simulation
+ let gddTrace = (selectTraceEventsDynamic simulation :: [Value])
  let expectedExceptions = all (maybe True ((/=UnexpectedFailure) . failureKind) . pscrToException . pseResult) (svPeerSimulatorResults state)
  propertyResult <- quickCheckWithResult stdArgs{chatty=False,maxSuccess=1} (ctProperty test input state)
- pure $ object ["label" .= ("upstream-"++family++"-"++show ordinal++"-seed-"++show seed),"description" .= ctDescription test,"family" .= family,
+ pure $ object ["gddTrace" .= gddTrace,"label" .= ("upstream-"++family++"-"++show ordinal++"-seed-"++show seed),"description" .= ctDescription test,"family" .= family,
    "seed" .= seed,"generatorBaseSize" .= (25::Int),"generatorSize" .= generatorSize,"k" .= unNonZero (maxRollbacks gtSecurityParam),"genesisWindow" .= unGenesisWindow gtGenesisWindow,
    "completeInputRendering" .= unlines (prettyGenesisTest prettyPointSchedule input),
    "schedulerConfig" .= configJSON (ctSchedulerConfig test),"forecastRange" .= unForecastRange (gtForecastRange input),"delay" .= delay,

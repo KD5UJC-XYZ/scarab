@@ -35,6 +35,20 @@ including tests that deliberately disable LoE, LoP, jumping or timeouts. The exp
 outcomes and exits unsuccessfully if a native case throws or its property fails; it never filters a
 failure out of the corpus.
 
+The same 84 runs also retain 1,304 complete `TraceGDDDebug` observations and 45 ordered
+`TraceGDDDisconnected` batches, with exact picosecond timestamps and original renderings. The
+observer uses IOSim's passive `traceM` events, adding no STM scheduling points. All pre-existing
+input and result fields remain identical for every case. `UpstreamGddTraceSuite` replays every
+observed decision and compares its shared suffixes, LoE head, complete bounds and ordered refusals.
+These decision batches remain distinct from independently scheduled component finalizers.
+
+The separate `UpstreamGenesisReplaySuite` feeds the original schedules into Scarab's real protocol
+engines, header admission, fetch coordination, Genesis controls and chain selection. Its restart
+interpreter writes received original bodies and selected-chain updates through the production
+`ReceivedBlocks` and `VolatileStore` journals, closes them during native downtime, and validates
+persisted bytes when reopening. It compares complete selected fragments and typed component
+outcomes, retaining failures for integration review.
+
 An initial observer-development probe incorrectly bypassed `ctAdjustMaxSize` and failed the mock
 `TestBlock` hash's 100-word encoding limit. The corrected wrapper uses the unchanged upstream test's
 size adjustment. That failed probe is retained in the private evidence receipt; it is not counted as
