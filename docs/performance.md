@@ -2808,5 +2808,10 @@ availability; it does not change production thresholds. Earlier unrestricted-HAA
 and premature-observation failures remain failed observations. The relay’s strict
 final-tip, lag, transaction inclusion and continued inbound-following assertions
 are unchanged. Completed run databases and owned containers were removed after
-retaining compact source, input and result receipts. The subsequent negotiated-Mux
-boundary correction requires its own affected network checks before acceptance.
+retaining compact source, input and result receipts. The subsequent negotiated-Mux correction on `43d940871` passed independent source
+review, 8,379 standard tests (16 existing optional-input skips), extended fuzz and
+two corrected-build 300-second relays: Genesis/no peer sharing and Praos/peer sharing.
+Both had 59/59 samples within one block, equal final tips, 270 transaction inclusions,
+zero errors/reconnects and continuing reverse sessions (headers 1→160 and 2→168).
+These later runs use the same assertions; the earlier observations above remain
+bound to `3819a43af`.

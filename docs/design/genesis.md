@@ -1,6 +1,8 @@
 # Ouroboros Genesis (#33)
 
-Status: implementation in progress on `feature/33-genesis`; acceptance has not passed.
+Status: current implementation; local stage acceptance passed on `43d940871` (2026-10-21).
+Main integration and CI remain the definition-of-done boundary for #33. See the
+[acceptance evidence](../compatibility.md#evidence-log).
 
 ## Reference and scope
 
@@ -113,6 +115,32 @@ tie-breaker. Global candidate and fetch priority use unrestricted native `Ord`, 
 stable list-sort comparison sequence. The finite native observer covers 24 protocol-view cases,
 seven explicitly synthetic sort cases, and 55 actual Cardano hard-fork cases over Byron through
 Conway. These are independently observed boundary cases, not upstream-generated or exhaustive inputs.
+
+## Handshake and negotiated Mux ownership
+
+The native connection handler runs a raw handshake bearer before constructing the
+negotiated application Mux (`ConnectionHandler.hs:335–381`). Scarab preserves that
+consumed-SDU boundary with a bounded one-SDU handoff. The handshake consumes payloads
+regardless of their incoming protocol/direction labels, as `bearerAsChannel` does.
+Decoder trailing bytes within its final consumed SDU are discarded; the next SDU
+is retained for application dispatch. The reader waits for installation before
+starting that next SDU’s deadline. Native framing still rejects zero-length SDUs.
+
+Both inbound acceptance and outbound negotiation, including client-only connections,
+install the actual protocol/direction map. Absent PeerSharing and late Handshake
+traffic are rejected before queueing or responder activation. Already acquired
+channels and queued egress obey the installed map. Installation and wakeup signals
+are cancellation-atomic, with errors raised through the acquiring caller’s capability.
+KeepAlive uses native `StartOnDemandAny`; an unused reverse direction starts no
+97-second deadline. SDU deadlines remain 10 seconds during handshake and 30 seconds
+for the application.
+
+`NativeHandshakeBoundarySuite`, `NegotiatedDispatchSuite` and
+`ResponderActivationSuite` exercise original-byte retention, next-frame dispatch,
+large final-SDU trailing payloads, fragmented handshakes, installation pauses,
+negotiated roles, cancellation and deadline behavior. The complete reader also
+passes 100,000 SDUs on a 256 KiB stack. These checks assert observable boundaries,
+not identical thread schedules.
 
 ## Implementation sequence and acceptance
 
