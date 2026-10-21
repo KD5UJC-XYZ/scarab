@@ -18,6 +18,17 @@ KINDS = {"native-parity", "regression", "input-boundary", "reference-non-result"
 STATES = {"covered", "open", "pending-integration"}
 
 
+def read_json(path):
+    def unique_fields(pairs):
+        fields = {}
+        for key, value in pairs:
+            if key in fields:
+                raise ValueError(f"duplicate JSON field: {key}")
+            fields[key] = value
+        return fields
+    return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=unique_fields)
+
+
 def relative_file(root, value):
     path = Path(value)
     if path.is_absolute() or ".." in path.parts or not value:
@@ -132,8 +143,8 @@ def main():
             target = root / INVENTORY
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(json.dumps(fixture_inventory(root), indent=2) + "\n", encoding="utf-8")
-        inventory = validate_inventory(root, json.loads((root / INVENTORY).read_text()))
-        entries = validate_register(root, json.loads((root / REGISTER).read_text()), args.candidate)
+        inventory = validate_inventory(root, read_json(root / INVENTORY))
+        entries = validate_register(root, read_json(root / REGISTER), args.candidate)
     except (ValueError, OSError, KeyError, TypeError) as error:
         parser.exit(1, f"coverage check failed: {error}\n")
     print(f"coverage checked: {len(inventory['corpora'])} documented corpora, "

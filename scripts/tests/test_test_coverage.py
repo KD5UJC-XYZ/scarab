@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from check_test_coverage import fixture_inventory, validate_inventory, validate_register
+from check_test_coverage import fixture_inventory, read_json, validate_inventory, validate_register
 
 
 class FixtureCoverageTest(unittest.TestCase):
@@ -19,6 +19,19 @@ class FixtureCoverageTest(unittest.TestCase):
         (self.corpus / "README.md").write_text("Original native output; no regeneration from Scala.\n")
         (self.corpus / "case.cbor").write_bytes(b"\x82\x01\x02")
         self.pinned = fixture_inventory(self.root)
+
+    def test_duplicate_json_fields_cannot_hide_a_payload_identity_or_policy(self):
+        path = self.root / "inventory.json"
+        for raw in (
+            '{"files": {}, "files": {}}',
+            '{"files": {"fixtures/native/case.cbor": "unverified", '
+            '"fixtures/native/case.cbor": "verified"}}',
+            '{"entries": [{"status": "open", "status": "covered"}]}'
+        ):
+            with self.subTest(raw=raw):
+                path.write_text(raw)
+                with self.assertRaisesRegex(ValueError, "duplicate JSON field"):
+                    read_json(path)
 
     def test_missing_added_and_changed_payloads_are_rejected(self):
         original = self.corpus / "case.cbor"
