@@ -166,7 +166,7 @@ object BlockFetchPolicy:
     results
 
   /** Splitting retains each hole's preceding header as the next fragment's anchor. */
-  private def filterFragments(
+  private[selection] def filterFragments(
       fragments: Vector[Fragment],
       keep: Header => Boolean
   ): Vector[Fragment] =
@@ -185,7 +185,7 @@ object BlockFetchPolicy:
       if current.nonEmpty then completed :+ Fragment(anchor, current) else completed
     }
 
-  private def select[P](
+  private[selection] def select[P](
       config: Config,
       mode: FetchMode,
       concurrent: Int,
