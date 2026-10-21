@@ -21,7 +21,9 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
   private def pool(capacity: Long = 100000) = MempoolState.empty(Right(ledger(4)), 1000, capacity)
 
   private def held(raws: Bytes*): MempoolState =
-    raws.foldLeft(pool())((s, raw) => s.add(raw, env).fold(r => fail(r.message), _._1))
+    raws.foldLeft(pool())((s, raw) =>
+      s.add(raw, env, Source.Local).fold(r => fail(r.message), _._1)
+    )
 
   test("the snapshot is validated for the slot after the tip, in arrival order") {
     val (t1, id1) = pay(1)
@@ -116,7 +118,7 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
       first <- source.acquire
       waiting <- source.awaitChange(first).start
       _ <- IO.sleep(30.millis)
-      _ <- mempool.add(t1)
+      _ <- mempool.add(t1, Source.Local)
       second <- waiting.joinWithNever
       again <- source.awaitChange(second).start
       _ <- IO.sleep(30.millis)
@@ -138,7 +140,7 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
       mempool <- Mempool.create[IO](Right(ledger(4)), 1000, env, 100000, MempoolEvents.none[IO])
       source = LocalMonitor.source(mempool)
       stale <- source.acquire
-      _ <- mempool.add(t1)
+      _ <- mempool.add(t1, Source.Local)
       now <- source.awaitChange(stale).timeout(2.seconds)
     yield assertEquals(now.txs.size, 1)
   }

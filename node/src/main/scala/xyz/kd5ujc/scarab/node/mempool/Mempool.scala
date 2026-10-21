@@ -48,8 +48,10 @@ object MempoolEvents:
   * A rejection is a value (it is the normal answer to a bad transaction), not a failure of `F`.
   */
 trait Mempool[F[_]]:
-  /** The transaction id, or why the transaction was refused. */
-  def add(raw: Bytes)(using Raise[F, StorageError]): F[Either[Rejection, Bytes]]
+  /** The transaction id, or why the transaction was refused. `source` says whether a local client
+    * or a peer submitted it ([[Source]]).
+    */
+  def add(raw: Bytes, source: Source)(using Raise[F, StorageError]): F[Either[Rejection, Bytes]]
 
   def snapshot: F[MempoolState]
 
@@ -112,7 +114,7 @@ object Mempool:
       private val F = Async[F]
       private val readEnv = environment.fold(F.pure(env))(_.ask[MempoolEnv])
 
-      def add(raw: Bytes)(using Raise[F, StorageError]) = lock.lock.surround {
+      def add(raw: Bytes, source: Source)(using Raise[F, StorageError]) = lock.lock.surround {
         for
           held <- state.get
           current <- MempoolState.parse(raw) match
@@ -126,7 +128,7 @@ object Mempool:
               )
             case Left(_) => F.pure(held)
           activeEnv <- readEnv
-          result <- F.blocking(current.add(raw, activeEnv))
+          result <- F.blocking(current.add(raw, activeEnv, source))
           out <- result match
             case Right((next, entry)) =>
               state.set(next) *> version.update(_ + 1) *>
@@ -239,4 +241,4 @@ object Mempool:
             // its in-flight IDs; a previous rejection or adoption must not suppress a re-offer.
             state.get.map(_.contains(id))
           def submit(originals: Vector[Bytes]) =
-            StorageBoundary.run(fatal)(originals.traverse_(add(_).void))
+            StorageBoundary.run(fatal)(originals.traverse_(add(_, Source.Remote).void))

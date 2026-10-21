@@ -100,5 +100,7 @@ object LocalSubmission:
       case Left(rejection) => Async[F].pure(response(rejection))
       case Right(tx) =>
         StorageBoundary.run(fatal) {
-          mempool.add(tx).map(_.fold(response, _ => LocalTxSubmissionServer.Response.Accepted))
+          mempool
+            .add(tx, Source.Local)
+            .map(_.fold(response, _ => LocalTxSubmissionServer.Response.Accepted))
         }

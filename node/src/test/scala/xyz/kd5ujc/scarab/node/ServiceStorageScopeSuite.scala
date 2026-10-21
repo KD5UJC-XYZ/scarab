@@ -13,7 +13,7 @@ import xyz.kd5ujc.scarab.consensus.{Anchor, VolatileChain}
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.ledger.{StorageError, TxIn, TxOut, Utxo}
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
-import xyz.kd5ujc.scarab.node.mempool.{LocalSubmission, Mempool, MempoolEvents, TxKit}
+import xyz.kd5ujc.scarab.node.mempool.{LocalSubmission, Mempool, MempoolEvents, Source, TxKit}
 import xyz.kd5ujc.scarab.node.ntc.{CborOut, QueryEnv, QueryView, StateQuerySource}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
@@ -102,9 +102,9 @@ class ServiceStorageScopeSuite extends FailsOnUncaught:
           )
         yield pool
       }
-      failed <- SnapshotFailure.capture(pool.add(raw)).start.flatMap(_.joinWithNever)
+      failed <- SnapshotFailure.capture(pool.add(raw, Source.Local)).start.flatMap(_.joinWithNever)
       _ <- enabled.set(false)
-      retried <- opened(pool.add(raw))
+      retried <- opened(pool.add(raw, Source.Local))
     yield
       assertEquals(failed, Left(SnapshotFailure.Storage(error)))
       assertEquals(retried, Right(id))
