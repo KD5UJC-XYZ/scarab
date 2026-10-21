@@ -167,18 +167,18 @@ class BlockPoolSuite extends CatsEffectSuite:
     yield assertEquals((a, b), (Vector(true), Vector(false)))
   }
 
-  test("deadline mode, one peer per block (the reference's default): the claim stays exclusive") {
+  test("deadline claims permit preferred-peer handover; the coordinator controls admission") {
     for
       pool <- BlockPool.create[IO]
       first <- pool.session.allocated.map(_._1)
       second <- pool.session.allocated.map(_._1)
       a <- first.claim(Vector(hash(1)), FetchMode.Deadline)
       b <- second.claim(Vector(hash(1)), FetchMode.Deadline)
-    yield assertEquals((a, b), (Vector(true), Vector(false)))
+    yield assertEquals((a, b), (Vector(true), Vector(true)))
   }
 
   test(
-    "deadline mode, two peers per block: both claim, the first delivery wins, a third is refused"
+    "deadline claims retain first delivery across all admitted sessions"
   ) {
     for
       pool <- BlockPool.create[IO](BlockPool.FetchPolicy(deadlineConcurrency = 2))
@@ -197,7 +197,7 @@ class BlockPoolSuite extends CatsEffectSuite:
       _ <- first.fill(Vector(hash(1) -> block(1)))
       held <- pool.size
     yield
-      assertEquals((a, again, b, c), (Vector(true), Vector(false), Vector(true), Vector(false)))
+      assertEquals((a, again, b, c), (Vector(true), Vector(false), Vector(true), Vector(true)))
       assertEquals(got, Some(block(2)))
       assertEquals(held, 0)
   }

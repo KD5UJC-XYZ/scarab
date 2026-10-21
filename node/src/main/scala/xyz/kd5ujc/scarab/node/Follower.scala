@@ -173,6 +173,18 @@ final class Follower[F[_]: Async, S] private (
     * it is rebuilt when it is missing or no longer describes the chain (a restored chain, a state
     * set from outside).
     */
+  /** A committed selection snapshot for fetch decisions. This does not acquire the application
+    * lock: an applying session may be waiting for a scheduled block while holding that lock.
+    */
+  private[node] def fetchSelection: F[ChainSelection.Local] =
+    window.get.flatMap {
+      case Some(snapshot) => F.pure(snapshot)
+      case None =>
+        (chain.get, views.get).mapN((current, known) =>
+          ChainSelection.Local.of(current, viewOf(known))
+        )
+    }
+
   private def local: F[ChainSelection.Local] =
     for
       current <- chain.get

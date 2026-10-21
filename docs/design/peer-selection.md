@@ -1494,13 +1494,11 @@ the head start, and the sleep (3300 s plus up to 600 s in deadline mode, 900 s p
    next round, up to an hour away.
 5. Peer metrics come from outbound hot sessions only ([#150](https://github.com/KD5UJC-XYZ/scarab/issues/150)).
 6. The pin's warm promotion is uniform; `main` weights it by the tepid flag ([#149](https://github.com/KD5UJC-XYZ/scarab/issues/149)).
-7. **BlockFetch (#144).** `BlockPool.claim` takes the fetch mode: in bulk sync a block another session holds is not claimed (the
-   reference's `filterNotAlreadyInFlightWithOtherPeers`, `Decision.hs` 659-690); in deadline mode it can be, by up to
-   `MaxConcurrencyDeadline` sessions (the reference bounds the peers fetching at once by it, `fetchRequestDecision` 1100-1120), and the
-   first delivery wins. cardano-node's default is 1 for both modes (`Configuration.hs` 89-100), so the modes fetch alike unless the key
-   is set; the devnet's `configuration.yaml` sets 2. Not ported, with the reasons in [#148](https://github.com/KD5UJC-XYZ/scarab/issues/148):
-   the peer priorities of `prioritisePeerChains`, `maxConcurrencyBulkSync = 1` (ours is a range per idle connection, as measured in
-   performance.md), the per-peer request and byte windows.
+7. **BlockFetch (#144/#148).** A shared coordinator now applies the pinned peer rankings,
+   global bulk/deadline targets with preferred-peer handover, GSV request/byte windows and
+   FIFO outgoing pipelining. Inbound duplex and recovery use the same accounting. The
+   [as-built contract](block-fetch-coordination.md) and original native decision corpus
+   supersede the former per-block-only deadline cap. Full Genesis remains G3.
 
 **Properties and tests.** `ChurnSuite` (the `decrease` table 1 to 0, 5 to 4, 10 to 8, 100 to 80; the twelve steps, their order and
 timeouts; a round at the relay defaults in each regime; every step sane for any sane base and any amounts achieved; the sleep),

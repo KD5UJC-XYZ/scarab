@@ -351,9 +351,9 @@ retains exact registered names and family dispositions. A missing exported upstr
 observation does not imply missing local behavior coverage. Existing local tests
 cover FIFO batches and backpressure, transaction credit, AwaitAcquire, backend
 failures, Mux fragmentation/duplex/bounds, deadlines and cancellation/cleanup.
-Scarab's BlockFetch client and transaction requester deliberately serialize their
-work; Haskell pipeline policies and ST/IO/pipe interpreters are not separate wire
-requirements under [ADR 0008](../adr/0008-networking-as-implemented.md).
+Scarab's production BlockFetch client pipelines bounded requests with ordered replies
+under [#148](block-fetch-coordination.md); the transaction requester serializes its work.
+Haskell ST/IO/pipe interpreters are not separate wire requirements under [ADR 0008](../adr/0008-networking-as-implemented.md).
 Peras remains unadvertised; it is not silently treated as a passing protocol.
 
 The [Plutus evidence](../plutus-conformance.md) now passes all 1,009 original evaluation
