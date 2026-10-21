@@ -24,7 +24,9 @@ class FetchPerformanceRefreshSuite extends FailsOnUncaught:
     Some(Bytes(Vector((n - 1).toByte)))
   )
 
-  test("a candidate trigger uses fresh KeepAlive samples while headers and incumbent remain blocked") {
+  test(
+    "a candidate trigger uses fresh KeepAlive samples while headers and incumbent remain blocked"
+  ) {
     TestControl.executeEmbed {
       FetchCoordinator.create[IO]().flatMap { coordinator =>
         (coordinator.session(0), coordinator.session(1)).tupled.use { (incumbent, waiting) =>
@@ -97,18 +99,20 @@ class FetchPerformanceRefreshSuite extends FailsOnUncaught:
       TestControl.executeEmbed {
         for
           coordinator <- FetchCoordinator.create[IO]()
-          _ <- Option.when(grace > Duration.Zero)(
-            FetchCoordinator.GenesisControl[IO](
-              IO.pure(
-                FetchCoordinator.GenesisContext(
-                  Gsm.Phase.CaughtUp,
-                  0,
-                  GenesisBlockFetch.Starvation.Ongoing
-                )
-              ),
-              _ => IO.unit
+          _ <- Option
+            .when(grace > Duration.Zero)(
+              FetchCoordinator.GenesisControl[IO](
+                IO.pure(
+                  FetchCoordinator.GenesisContext(
+                    Gsm.Phase.CaughtUp,
+                    0,
+                    GenesisBlockFetch.Starvation.Ongoing
+                  )
+                ),
+                _ => IO.unit
+              )
             )
-          ).traverse_(coordinator.installGenesis)
+            .traverse_(coordinator.installGenesis)
           _ <- (coordinator.session(0), coordinator.session(1)).tupled.use { (incumbent, waiting) =>
             val incumbentModel = FetchGsv.fromSample(0, FetchGsv.PicosPerSecond / 5)
             val fresh = FetchGsv.fromSample(
@@ -120,25 +124,32 @@ class FetchPerformanceRefreshSuite extends FailsOnUncaught:
               _ <- incumbent.announce(Some(header(1)), incumbentModel)
               _ <- waiting.announce(Some(header(2)), FetchGsv.default)
               _ <- incumbent.reserve(Vector(header(1)), FetchMode.BulkSync).use { _ =>
-                waiting.reserve(Vector(header(2)), FetchMode.BulkSync).use { allocation =>
-                  IO(assertEquals(allocation.headers, Vector(header(2)))) *>
-                    IO.monotonic.flatMap(admitted.complete).void
-                }.background.use { _ =>
-                  coordinator.watchDecisions(
-                    BigInt(grace.toNanos) * 1000,
-                    Some(PicosClock.system[IO])
-                  ).background.use { _ =>
-                    for
-                      _ <- IO.sleep(5.millis)
-                      _ <- waiting.updatePerformance(fresh)
-                      _ <- IO.sleep(expected - 6.millis)
-                      early <- admitted.tryGet
-                      _ <- IO(assertEquals(early, None))
-                      at <- admitted.get
-                      _ <- IO(assertEquals(at, expected))
-                    yield ()
+                waiting
+                  .reserve(Vector(header(2)), FetchMode.BulkSync)
+                  .use { allocation =>
+                    IO(assertEquals(allocation.headers, Vector(header(2)))) *>
+                      IO.monotonic.flatMap(admitted.complete).void
                   }
-                }
+                  .background
+                  .use { _ =>
+                    coordinator
+                      .watchDecisions(
+                        BigInt(grace.toNanos) * 1000,
+                        Some(PicosClock.system[IO])
+                      )
+                      .background
+                      .use { _ =>
+                        for
+                          _ <- IO.sleep(5.millis)
+                          _ <- waiting.updatePerformance(fresh)
+                          _ <- IO.sleep(expected - 6.millis)
+                          early <- admitted.tryGet
+                          _ <- IO(assertEquals(early, None))
+                          at <- admitted.get
+                          _ <- IO(assertEquals(at, expected))
+                        yield ()
+                      }
+                  }
               }
             yield ()
           }

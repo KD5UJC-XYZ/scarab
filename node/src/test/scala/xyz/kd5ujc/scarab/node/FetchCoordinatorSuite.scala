@@ -174,13 +174,17 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
         _ <- coordinator.installGenesis(
           FetchCoordinator.GenesisControl(
             (phase.get, IO.monotonic).tupled.flatMap { (current, time) =>
-              wake.complete(time).void.whenA(time == 15.millis).as(
-                FetchCoordinator.GenesisContext(
-                  current,
-                  BigInt(time.toNanos) * 1000,
-                  GenesisBlockFetch.Starvation.Ongoing
+              wake
+                .complete(time)
+                .void
+                .whenA(time == 15.millis)
+                .as(
+                  FetchCoordinator.GenesisContext(
+                    current,
+                    BigInt(time.toNanos) * 1000,
+                    GenesisBlockFetch.Starvation.Ongoing
+                  )
                 )
-              )
             },
             _ => IO.unit
           )
