@@ -72,8 +72,13 @@ the first differing byte offsets; inspect these diagnostics before proposing any
 Two locally clean builds share the same trusted Docker engine and pinned toolchain, so this does
 not establish independence from a compromised builder.
 
-[Native CI](../../.github/workflows/native-reproducibility.yml) runs the same comparison and retains
-its actual input/result receipt and diagnostics. Its Python negative controls exercise changed and
+[Native CI](../../.github/workflows/native-reproducibility.yml) always reports its check for PRs
+into `main`, pushes to `main` and manual runs. It rebuilds when the declared builder inputs or the
+verifier, detector, tests or workflow change; unchanged inputs report the explicit skip reason.
+PR changes are measured from their merge base; pushes compare the previous and new commits.
+Manual invocations and unresolved event ranges always rebuild. Only the expensive build and
+artifact upload are conditional; the workflow itself has no path filter. Rebuilds run the same
+comparison and retain their actual input/result receipt and diagnostics. Its Python negative controls exercise changed and
 truncated outputs, missing evidence, input drift and incomplete signature verification; synthetic
 controls are not native observations. The ordinary `BlstSuite` still checks startup known answers,
 resource selection and JNI compatibility; byte identity does not replace those runtime checks.

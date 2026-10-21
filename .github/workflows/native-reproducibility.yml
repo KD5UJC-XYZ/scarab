@@ -3,6 +3,7 @@ name: Native library reproducibility
 
 on:
   pull_request:
+    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
@@ -26,10 +27,15 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - name: Determine whether native inputs changed
+        id: native-inputs
+        run: python3 scripts/native_rebuild_required.py
       - name: Two uncached builds must match the committed library
+        if: steps.native-inputs.outputs.rebuild == 'true'
         run: python3 scripts/check_native_reproducibility.py --output "$RUNNER_TEMP/scarab-native-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
       - name: Retain input identities, actual results and failure diagnostics
-        if: always()
+        if: always() && steps.native-inputs.outputs.rebuild == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: native-reproducibility-${{ github.sha }}-${{ github.run_attempt }}
