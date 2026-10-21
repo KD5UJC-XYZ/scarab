@@ -29,6 +29,7 @@ enum PeerError extends NodeError:
   case MuxSetup(cause: WireMux.Error)
   case MuxWrite(cause: WireMux.Error)
   case Unavailable(cause: PeerError.Unavailability)
+  case Genesis(cause: PeerError.GenesisProblem)
 
   /** The peer's chain shares no point with ours (it is behind, or on another network). */
   case NoIntersection
@@ -54,12 +55,37 @@ enum PeerError extends NodeError:
     case MuxSetup(e)         => s"multiplexer setup: ${e.message}"
     case MuxWrite(e)         => s"multiplexer write: ${e.message}"
     case Unavailable(r)      => s"unavailable: ${r.message}"
+    case Genesis(cause)      => s"Genesis: ${cause.message}"
     case NoIntersection      => "the peer's chain shares no point with ours"
     case Diverged(r)         => s"diverged: ${r.message}"
     case InvalidHeader(p, e) => s"invalid header ${Points.show(p)}: ${e.message}"
     case InvalidBlock(e)     => s"invalid block ${e.message}"
 
 object PeerError:
+  enum GenesisProblem:
+    case HistoricalAwait(
+        point: ChainSync.Point,
+        slotTimePicos: BigInt,
+        arrivalTimePicos: BigInt,
+        cutoffPicos: BigInt
+    )
+    case HistoricalRollback(
+        point: ChainSync.Point,
+        slotTimePicos: BigInt,
+        arrivalTimePicos: BigInt,
+        cutoffPicos: BigInt
+    )
+    case LoPExpired, DensityTooLow
+    case InvalidJumpResponse(requested: ChainSync.Point, actual: Option[ChainSync.Point])
+    def message: String = this match
+      case HistoricalAwait(point, slot, arrival, cutoff) =>
+        s"historical AwaitReply at ${Points.show(point)}: age ${arrival - slot} ps exceeds $cutoff ps"
+      case HistoricalRollback(point, slot, arrival, cutoff) =>
+        s"historical rollback rewinds ${Points.show(point)}: age ${arrival - slot} ps exceeds $cutoff ps"
+      case LoPExpired    => "ChainSync patience bucket exhausted"
+      case DensityTooLow => "candidate density cannot compete with another peer"
+      case InvalidJumpResponse(requested, actual) =>
+        s"intersection response $actual does not match requested jump ${Points.show(requested)}"
   type ProtocolFailure = ProtocolError | ProtocolProblem | NetworkError.IngressLimit |
     NetworkError.Decode | NetworkError.IllegalTransition | NetworkError.QueryRefused |
     NetworkError.TxSubmission
@@ -103,6 +129,17 @@ object PeerError:
     case error: ProtocolError   => error.message
     case error: ProtocolProblem => error.message
     case error: NetworkError    => error.message
+
+/** Violated local Genesis invariants; reconnecting or blaming the remote peer cannot repair them.
+  */
+enum GenesisInternalProblem extends NodeError:
+  case MissingDynamoJumpInfo, UnexpectedIntersection
+  case GraftMissingPoint(point: ChainSync.Point)
+  def message: String = this match
+    case MissingDynamoJumpInfo => "Genesis dynamo has no validated jump snapshot"
+    case UnexpectedIntersection =>
+      "Genesis jumper with a settled intersection received another jump result"
+    case GraftMissingPoint(point) => s"Genesis jump snapshot lacks ${Points.show(point)}"
 
 /** Failures of the local chain model. These are not recoverable by reconnecting. */
 enum ChainError extends NodeError:

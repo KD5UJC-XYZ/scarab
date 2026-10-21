@@ -19,10 +19,15 @@ object FailurePolicy:
     case _: PeerError.Protocol | _: PeerError.Framing | _: PeerError.InvalidHeader |
         _: PeerError.InvalidBlock =>
       FailureClass.Misbehaved
+    // Consensus 82ecba329 Node/RethrowPolicy.hs maps every ChainSyncClientException,
+    // including EmptyBucket, DensityTooLow and HistoricityError, to ShutdownPeer.
+    // Network 2fb69829 PeerStateActions.hs uses epErrorDelay (10s default), preserving
+    // eligibility for re-promotion; Genesis refusals therefore back off rather than forget.
     // the network failed, the peer is on another network or version, behind us, or has parted
     // from our chain through nobody's fault
-    case _: PeerError.Unavailable | _: PeerError.Handshake | PeerError.NoIntersection |
-        _: PeerError.Diverged | _: PeerError.MuxSetup | _: PeerError.MuxWrite =>
+    case _: PeerError.Genesis | _: PeerError.Unavailable | _: PeerError.Handshake |
+        PeerError.NoIntersection | _: PeerError.Diverged | _: PeerError.MuxSetup |
+        _: PeerError.MuxWrite =>
       FailureClass.Transient
 
   /** What the node does about the end of a hot session. Every outcome has an answer here; a failure

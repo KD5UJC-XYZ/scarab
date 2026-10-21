@@ -1,0 +1,3 @@
+{"error":"LoPExpired","inbound":"ShutdownPeer","outbound":"ShutdownPeer"}
+{"error":"DensityTooLow","inbound":"ShutdownPeer","outbound":"ShutdownPeer"}
+{"error":"InvalidJumpResponse","inbound":"ShutdownPeer","outbound":"ShutdownPeer"}
