@@ -138,11 +138,12 @@ def exercise(load, era):
     if era != "alonzo":
         translate = dict(plutus={1: [OK]}, datums=[DATUM], collateral=collateral, script_data=with_redeemers(v1),
                          redeemers=spend_redeemers, fee=FEE)
-        attempt(f"{era}-bad-translation-reference-input", spend_extra=[spend], reference_inputs=[(setup, 2)],
-                **translate)
         attempt(f"{era}-bad-translation-inline-datum", spend_extra=[spend, ((setup, 4), 4_000_000, {})], **translate)
         attempt(f"{era}-bad-translation-reference-script", spend_extra=[spend, ((setup, 5), 8_000_000, {})],
                 **translate)
+        if era == "babbage":  # Conway shows a V1 script no reference input and accepts this one, spending the inputs
+            attempt(f"{era}-bad-translation-reference-input", spend_extra=[spend], reference_inputs=[(setup, 2)],
+                    **translate)
     # (4) plain refusals: a key witness that is missing (a set), an output below the minimum
     w1 = [u for u in load.funds(load.wallets[1].address) if not u[2]]
     if w1:
