@@ -2777,3 +2777,12 @@ argument to change the reference defaults. They support retaining default target
 and exposing `MaxConcurrencyBulkSync`/`MaxConcurrencyDeadline` for measured tuning.
 The former real two-peer observations above remain historical evidence for the old
 range-per-idle-connection policy.
+
+The workload was rerun unchanged on final runtime `e67e5117e` (2026-10-21 UTC),
+with identical numbers above; benchmark-log SHA-256
+`57050133c4f648ae8e6798cc753130fea0bf718713066797c9098e76708ae732`.
+The separate private 300-second relay passed: 53/58 samples within one block,
+peak lag seven, equal final tips and transaction inclusion. Twelve reconnects
+were observed (eleven KeepAlive client-idle timeouts and one no intersection);
+[#292](https://github.com/KD5UJC-XYZ/scarab/issues/292) tracks classification.
+This finite passing gate is not a zero-reconnect or old/new throughput comparison.

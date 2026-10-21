@@ -1,6 +1,6 @@
 # BlockFetch peer coordination (#148)
 
-Status: implemented on the feature branch; combined gates and independent review pending.
+Status: implemented; combined local gates passed, PR #289 awaits review and merge.
 
 ## Reference and boundary
 
@@ -84,3 +84,10 @@ heterogeneous virtual peers; these are service-model measurements, not public-ne
 throughput claims. Actual commands and results belong in [performance](../performance.md)
 and [compatibility](../compatibility.md). Required combined gates are Docker `check`
 and private `relay --seconds 300`; nightly soak is separate.
+
+Final runtime `e67e5117e` passed Docker `check` (5,941 tests, 17 optional-data skips),
+291 script controls and the private five-minute relay. Native decision, runtime,
+coordinator, rollback and typed-failure tracks received independent agent review.
+The relay's observed KeepAlive idle reconnects remain a bounded investigation in
+[#292](https://github.com/KD5UJC-XYZ/scarab/issues/292); the passing gate is not a
+zero-reconnect claim. Full receipts are in the compatibility evidence log.
