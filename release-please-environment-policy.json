@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "enabled": false,
+  "repository": "KD5UJC-XYZ/scarab",
+  "automationEnvironments": {
+    "scarab-release-pr": {
+      "name": "scarab-release-pr",
+      "reviewers": [],
+      "branches": [{"type": "branch", "name": "main"}]
+    }
+  }
+}

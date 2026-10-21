@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "kind": "bootstrap",
+  "source": null,
+  "version": "0.1.0",
+  "reason": "Disabled until the owner reviews and commits an explicit initial planning source. This marker asserts no published release."
+}
