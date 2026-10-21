@@ -48,14 +48,15 @@ final class FetchCoordinator[F[_]: Async] private (
   ): F[Nothing] =
     val timer = clock.getOrElse(PicosClock.system[F])
     type Point = xyz.kd5ujc.scarab.protocol.ChainSync.Point
-    type Fingerprint = (Option[Point], Map[Long, (Option[Point], Boolean)])
+    type Fingerprint = (Option[Point], Map[Long, (Option[Point], Boolean)], Boolean)
     def fingerprint(s: State[F]): Fingerprint =
       (
         s.selected.map(l => l.blocks.lastOption.fold(l.anchor)(_.point)),
         s.peers.map((id, peer) =>
           id ->
             (peer.candidate.map(_.tip).orElse(peer.tip.map(_.point)), peer.busy)
-        )
+        ),
+        s.genesisContext.exists(_.phase == Gsm.Phase.Syncing)
       )
     F.tailRecM[(Option[Fingerprint], BigInt), Nothing]((None, 0)) { (previous, deadline) =>
       (state.get, timer.now).tupled.flatMap { (current, now) =>

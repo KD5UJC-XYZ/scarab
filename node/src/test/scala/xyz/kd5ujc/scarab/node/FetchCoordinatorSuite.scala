@@ -164,6 +164,42 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
     }
   }
 
+  test("a real mode-change decision resets the zero-grace watcher to the new native cadence") {
+    import xyz.kd5ujc.scarab.network.selection.{GenesisBlockFetch, Gsm}
+    TestControl.executeEmbed {
+      for
+        phase <- Ref.of[IO, Gsm.Phase](Gsm.Phase.Syncing)
+        wake <- Deferred[IO, FiniteDuration]
+        coordinator <- FetchCoordinator.create[IO]()
+        _ <- coordinator.installGenesis(
+          FetchCoordinator.GenesisControl(
+            (phase.get, IO.monotonic).tupled.flatMap { (current, time) =>
+              wake.complete(time).void.whenA(time == 15.millis).as(
+                FetchCoordinator.GenesisContext(
+                  current,
+                  BigInt(time.toNanos) * 1000,
+                  GenesisBlockFetch.Starvation.Ongoing
+                )
+              )
+            },
+            _ => IO.unit
+          )
+        )
+        _ <- coordinator.watchDecisions(0).background.use { _ =>
+          for
+            _ <- IO.sleep(5.millis)
+            _ <- phase.set(Gsm.Phase.CaughtUp) *> coordinator.refreshGenesis
+            _ <- IO.sleep(9.millis)
+            early <- wake.tryGet
+            _ <- IO(assertEquals(early, None))
+            at <- wake.get
+            _ <- IO(assertEquals(at, 15.millis))
+          yield ()
+        }
+      yield ()
+    }
+  }
+
   test("fallback waits for its own concurrent prefetch and wakes on a body before BatchDone") {
     TestControl.executeEmbed {
       for

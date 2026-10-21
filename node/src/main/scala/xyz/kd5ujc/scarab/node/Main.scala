@@ -933,7 +933,7 @@ object Main extends IOApp:
                   )
                 )
             }
-            genesisMaintenance = IO
+            decisionMaintenance = IO
               .both(
                 genesisRuntime.fold(IO.never[Unit])(_.governor.run.void),
                 blockPool.fetchCoordinator.watchDecisions(
@@ -1179,7 +1179,7 @@ object Main extends IOApp:
                   MemoryReport
                     .sample(stores)
                     .flatMap(sample => logged(NodeEvent.Memory(sample)))).foreverM.background.void
-            run = genesisMaintenance
+            run = decisionMaintenance
               .flatMap(_ => blockPool.maintenance)
               .surround(network.use { net =>
                 val reloadTopology: IO[Unit] = options.topologyFile.traverse_ { _ =>
