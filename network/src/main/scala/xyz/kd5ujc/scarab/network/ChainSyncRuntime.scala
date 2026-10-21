@@ -35,13 +35,15 @@ object ChainSyncRuntime:
     def observe(observer: ChainSyncClient.Observer[F]): Resource[F, Unit]
 
   /** Single-caller rolling client. Outstanding requests include completed, uncollected replies.
-    * Await callbacks execute in the caller before the receiver reads the final reply. Rolling
-    * methods use only their explicit callback; registered observers belong to legacy methods.
-    * Resource cancellation with outstanding work terminates the connection rather than exposing an
-    * unaligned reusable channel.
+    * Production submits per-request receiver hooks: AwaitReply runs immediately in the receiver,
+    * even while the sender handles an earlier reply. Raw submission and caller Await callbacks
+    * retain the legacy collector API; registered observers belong to legacy methods. Resource
+    * cancellation with outstanding work terminates the connection rather than exposing an unaligned
+    * reusable channel.
     */
   trait Pipeline[F[_], Q, T, P] extends Client[F, Q, T, P]:
     def submit(using Raise[F, NetworkError]): F[Unit]
+    def submitObserved(hook: ChainSyncClient.ReceiverHook[F])(using Raise[F, NetworkError]): F[Unit]
     def tryCollect(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Option[Update[Q, T, P]]]
     def collect(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Update[Q, T, P]]
     def serviceAwait(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Unit]

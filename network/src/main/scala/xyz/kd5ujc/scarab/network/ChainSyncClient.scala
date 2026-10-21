@@ -29,8 +29,15 @@ trait ChainSyncClient[F[_], P]:
     Resource.pure[F, ChainSyncClient.Observer[F]](observer).void
 
 object ChainSyncClient:
+  /** A receiver-owned service. Its operation takes the receiver's fresh capability rather than
+    * retaining a caller's error scope. Capture immutable request context before submission.
+    */
+  trait ReceiverHook[F[_]]:
+    def awaitReply(using Raise[F, NetworkError]): F[Unit]
+
   trait Pipeline[F[_], P] extends ChainSyncClient[F, P]:
     def submit(using Raise[F, NetworkError]): F[Unit]
+    def submitObserved(hook: ReceiverHook[F])(using Raise[F, NetworkError]): F[Unit]
     def tryCollect(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Option[Update[P]]]
     def collect(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Update[P]]
     def serviceAwait(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Unit]
@@ -68,6 +75,8 @@ object ChainSyncClient:
           case ChainSyncRuntime.Update.RollBackward(point, tip) => Update.RollBackward(point, tip)
         new Pipeline[F, P]:
           def submit(using Raise[F, NetworkError]): F[Unit] = runtime.submit
+          def submitObserved(hook: ReceiverHook[F])(using Raise[F, NetworkError]): F[Unit] =
+            runtime.submitObserved(hook)
           def outstanding: F[Int] = runtime.outstanding
           def idle: F[Boolean] = runtime.idle
           def idling: F[Boolean] = runtime.idling

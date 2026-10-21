@@ -28,6 +28,7 @@ private[network] object ChainSyncPipeline:
     sealed trait Event
     final case class Await(ack: Deferred[F, Unit]) extends Event
     final case class Reply(update: Update) extends Event
+    final case class Request(hook: Option[ChainSyncClient.ReceiverHook[F]])
     val cancelled = NetworkError.BearerClosed(NetworkError.Closure.Aborted)
     def illegal[A](cause: NetworkError.RuntimeViolation)(using Raise[F, NetworkError]): F[A] =
       NetworkError.IllegalTransition(id, cause).raise[F, A]
@@ -37,7 +38,7 @@ private[network] object ChainSyncPipeline:
           .whenA(maxOutstanding <= 0 || maxOutstanding > 65535)
       )
       base <- Resource.eval(ChainSyncRuntime.client(channel, point, tip, payload, settings))
-      submissions <- Resource.eval(Queue.bounded[F, Unit](maxOutstanding))
+      submissions <- Resource.eval(Queue.bounded[F, Request](maxOutstanding))
       replies <- Resource.eval(Queue.bounded[F, Event](maxOutstanding + 1))
       head <- Resource.eval(Ref.of[F, Option[Event]](None))
       count <- Resource.eval(Ref.of[F, Int](0))
@@ -91,13 +92,17 @@ private[network] object ChainSyncPipeline:
                   _ => F.unit
                 )
             )
-        def receiveReply(using Raise[F, NetworkError]): F[Unit] =
+        def receiveReply(
+            hook: Option[ChainSyncClient.ReceiverHook[F]]
+        )(using Raise[F, NetworkError]): F[Unit] =
           F.tailRecM(State.NextCanAwait) { current =>
             receive(current).flatMap {
               case Message.AwaitReply =>
-                Deferred[F, Unit].flatMap(ack =>
-                  replies.offer(Await(ack)) *> ack.get.as(Left(State.NextMustReply))
-                )
+                hook
+                  .fold(
+                    Deferred[F, Unit].flatMap(ack => replies.offer(Await(ack)) *> ack.get)
+                  )(_.awaitReply *> awaiting.set(true))
+                  .as(Left(State.NextMustReply))
               case Message.RollForward(value, serverTip) =>
                 replies
                   .offer(Reply(ChainSyncRuntime.Update.RollForward(value, serverTip)))
@@ -110,12 +115,14 @@ private[network] object ChainSyncPipeline:
             }
           }
         val worker = F.tailRecM(()) { _ =>
-          submissions.take *> Fibers
-            .scoped[F, NetworkError, Unit](NetworkError.Defect(_))(receiveReply)
-            .flatMap {
-              case Left(error) => terminate(error).as(Right(()))
-              case Right(_)    => F.pure(Left(()))
-            }
+          submissions.take.flatMap { request =>
+            Fibers
+              .scoped[F, NetworkError, Unit](NetworkError.Defect(_))(receiveReply(request.hook))
+              .flatMap {
+                case Left(error) => terminate(error).as(Right(()))
+                case Right(_)    => F.pure(Left(()))
+              }
+          }
         }
         val ownedWorker = Fibers
           .scoped[F, NetworkError, Unit](NetworkError.Defect(_))(worker)
@@ -136,7 +143,16 @@ private[network] object ChainSyncPipeline:
                   .mapN((n, b, f, t) => n == 0 && b && f.isEmpty && !t)
               def idling: F[Boolean] = awaiting.get
 
-              def submit(using Raise[F, NetworkError]): F[Unit] = guarded {
+              def submit(using Raise[F, NetworkError]): F[Unit] = sendRequest(None)
+
+              def submitObserved(hook: ChainSyncClient.ReceiverHook[F])(using
+                  Raise[F, NetworkError]
+              ): F[Unit] =
+                sendRequest(Some(hook))
+
+              private def sendRequest(hook: Option[ChainSyncClient.ReceiverHook[F]])(using
+                  Raise[F, NetworkError]
+              ): F[Unit] = guarded {
                 sending.lock.surround {
                   healthy *> count.get.flatMap { n =>
                     if n >= maxOutstanding then
@@ -160,7 +176,7 @@ private[network] object ChainSyncPipeline:
                                 channel.send
                               )
                           }) *>
-                          submissions.offer(())
+                          submissions.offer(Request(hook))
                       }
                   }
                 }

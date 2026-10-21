@@ -363,3 +363,100 @@ class ChainSyncPipelineSuite extends FailsOnUncaught:
       }
     }.map(result => assertEquals(result, Right(())))
   }
+
+  test("a later request's AwaitReply runs while validation waits with an older rollback queued") {
+    typed {
+      script.flatMap { s =>
+        for
+          validating <- Deferred[IO, Unit]
+          paused <- Deferred[IO, Unit]
+          seen <- Ref.of[IO, Vector[Int]](Vector.empty)
+          callerAwaits <- Ref.of[IO, Int](0)
+          _ <- s.input.offer(encoded(State.NextCanAwait, Message.RollForward(header(1), tip(100))))
+          _ <- ChainSyncClient
+            .resource(s.channel, ChainSyncFixtures.rawItem, e => s.aborts.update(_ :+ e), settings)
+            .use { client =>
+              def hook(request: Int) = new ChainSyncClient.ReceiverHook[IO]:
+                def awaitReply(using Raise[IO, NetworkError]): IO[Unit] =
+                  seen.update(_ :+ request) *> paused.complete(()).void
+              cats.effect.Resource
+                .make(
+                  (validating.get *>
+                    s.input.offer(
+                      encoded(
+                        State.NextCanAwait,
+                        Message.RollBackward(ChainSync.Point.Origin, ChainSync.Tip.Origin)
+                      )
+                    ) *>
+                    s.input.offer(encoded(State.NextCanAwait, Message.AwaitReply))).start
+                )(_.cancel)
+                .use { _ =>
+                  for
+                    _ <- (1 to 3).toList.traverse_(n => client.submitObserved(hook(n)))
+                    first <- client.collect(callerAwaits.update(_ + 1))
+                    _ <- validating.complete(())
+                    // The sender is suspended here, as it can be in header verification or CSJ.
+                    // It performs no collection or event servicing until the receiver signals Await.
+                    _ <- paused.get.timeout(1.second)
+                    beforeCollect <- seen.get
+                    n <- client.outstanding
+                    rollback <- client.collect(callerAwaits.update(_ + 1))
+                    _ <- s.input.offer(
+                      encoded(State.NextMustReply, Message.RollForward(header(2), tip(2)))
+                    )
+                    last <- client.collect(callerAwaits.update(_ + 1))
+                    legacy <- callerAwaits.get
+                  yield
+                    assertEquals(first, ChainSyncClient.Update.RollForward(header(1), tip(100)))
+                    assertEquals(beforeCollect, Vector(3))
+                    assertEquals(n, 2)
+                    assertEquals(
+                      rollback,
+                      ChainSyncClient.Update
+                        .RollBackward(ChainSync.Point.Origin, ChainSync.Tip.Origin)
+                    )
+                    assertEquals(last, ChainSyncClient.Update.RollForward(header(2), tip(2)))
+                    assertEquals(legacy, 0)
+                }
+            }
+        yield ()
+      }
+    }.map(result => assertEquals(result, Right(())))
+  }
+
+  test("receiver hooks use their worker's error capability and preserve the exact typed failure") {
+    val cause = NetworkError.Timeout(Protocols.ChainSync, "receiver-hook")
+    val made = typed(
+      IO.pure(
+        new ChainSyncClient.ReceiverHook[IO]:
+          def awaitReply(using Raise[IO, NetworkError]): IO[Unit] = cause.raise[IO, Unit]
+      )
+    )
+    made.flatMap {
+      case Left(error) => fail(s"hook construction failed: $error")
+      case Right(hook) =>
+        typed {
+          script.flatMap { s =>
+            ChainSyncClient
+              .resource(
+                s.channel,
+                ChainSyncFixtures.rawItem,
+                e => s.aborts.update(_ :+ e),
+                settings
+              )
+              .use { client =>
+                for
+                  _ <- s.input.offer(encoded(State.NextCanAwait, Message.AwaitReply))
+                  _ <- client.submitObserved(hook)
+                  result <- typed(client.collect(IO.unit))
+                  after <- typed(client.submitObserved(hook))
+                  aborted <- s.aborts.get
+                yield
+                  assertEquals(result, Left(cause))
+                  assertEquals(after, Left(cause))
+                  assertEquals(aborted, Vector(cause))
+              }
+          }
+        }.map(result => assertEquals(result, Right(())))
+    }
+  }
