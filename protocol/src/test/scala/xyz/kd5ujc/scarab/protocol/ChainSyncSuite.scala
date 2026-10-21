@@ -258,6 +258,29 @@ class ChainSyncSuite extends munit.FunSuite:
     val boundary = right(NtNHeader.codec.decode(b("820082820000d8184100")))
     assertEquals(boundary.byron, Some(NtNHeader.ByronInfo(true, 0)))
   }
+  test("NtN header codec: the Byron size hint is the Word32 range both ways (fuzz seed 20747333)") {
+    // Shrunk from the fuzz failure: hint 4233459348 is above Int.MaxValue and decoded, but did not encode.
+    val wire = b("82008282011afc557694d81843010203")
+    val h = right(NtNHeader.codec.decode(wire))
+    assertEquals(h.byron, Some(NtNHeader.ByronInfo(false, BigInt(4233459348L))))
+    assertEquals(right(NtNHeader.codec.encode(h)), wire)
+    val max = b("82008282011affffffffd81843010203")
+    assertEquals(
+      right(NtNHeader.codec.decode(max)).byron,
+      Some(NtNHeader.ByronInfo(false, BigInt(0xffffffffL)))
+    )
+    // One above Word32, as the reference's decodeWord32 refuses it: decode and encode both refuse.
+    assertEquals(
+      NtNHeader.codec.decode(b("82008282011b0000000100000000d81843010203")),
+      Left(ProtocolError.SizeHint(BigInt(0x100000000L)))
+    )
+    assertEquals(
+      NtNHeader.codec.encode(
+        NtNHeader(Era.Byron, b("010203"), Some(NtNHeader.ByronInfo(false, BigInt(0x100000000L))))
+      ),
+      Left(ProtocolError.SizeHint(BigInt(0x100000000L)))
+    )
+  }
   test("NtN header codec rejects malformed envelopes") {
     // Cases in order: unknown era, wrong tag, truncated payload, wrong arity, indefinite array,
     // indefinite bytes, missing Byron wrapper, unknown Byron subtag and trailing bytes.
