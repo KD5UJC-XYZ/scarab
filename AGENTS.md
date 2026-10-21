@@ -11,9 +11,11 @@ rules through [CONTRIBUTING.md](CONTRIBUTING.md).
    then any [design document](docs/design/README.md) and [ADRs](docs/adr/README.md) it links.
 2. Check the issue's state. If it is `status:in-progress` and you were not asked to take it over,
    someone else is on it.
-3. Work in your own git worktree on a branch from `main` (or the base you were given), and rebase onto
-   `main` before you report: other sessions land in parallel and there is no shared integration branch
-   ([CONTRIBUTING.md](CONTRIBUTING.md#landing-in-parallel)).
+3. Work in your own git worktree, normally from `dev`, and rebase onto the PR target before reporting.
+   Normal promotion is `feat/*` -> `dev` -> `main`; only same-repository `dev` may be a PR source
+   for `main`. Other targets accept any source branch. `main`, `dev`, `release/beta` and
+   `release/prod` use the PR/check policy in [the release design](docs/design/releases.md).
+   Protection/settings rollout is tracked by #161; do not claim it is enabled or change settings.
 4. Feedback from the owner arrives as inline commit comments and issues labelled `owner-review`; triage
    it as [CONTRIBUTING.md](CONTRIBUTING.md#owner-review-feedback) says, and a general rule goes into this
    file together with a sweep of the tree.

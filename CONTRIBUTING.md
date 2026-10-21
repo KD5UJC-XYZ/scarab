@@ -183,25 +183,33 @@ error.
 
 ### Landing in parallel
 
-Each piece of work lives in its own git worktree (`git worktree add`) with its own build container, devnet
-name and sbt server socket, and lands on its own: when its gates pass, rebase onto `main`. If the rebase is clean and touches no file the other
-side changed in code, rerun `check` only and push; otherwise rerun the level's gates. Nobody waits
-for another branch's gates, and there is no shared integration branch that serialises landings.
+Each piece of work lives in its own git worktree (`git worktree add`) with its own build container,
+devnet name and sbt server socket. Work normally branches from `dev`; run the change-level gates
+and rebase onto the intended PR target before reporting. Normal promotion is `feat/*` -> `dev` ->
+`main`. Only the same repository's `dev` branch may open a PR into `main`; all other PR targets
+accept any source branch. `release/beta` and `release/prod` also require reviewed PRs.
 
-This direct-push flow is for the research phase. When the v0.2 milestone closes (the remaining
-reference-grade work and an adopted preprod block; see "Order of work" in
-[docs/roadmap.md](docs/roadmap.md)), the maintainer applies the merge-protection decision in
-[#161](https://github.com/KD5UJC-XYZ/scarab/issues/161): branch protection, required CI checks,
-pull requests and independent review for consensus, cryptography, persistence and key handling.
-This section is then rewritten for pull requests. Dedicated public genesis-sync and observation
-campaigns belong to v0.3; the per-change and nightly gates above remain required.
+The owner-directed [release and hardening design](docs/design/releases.md) supersedes the research
+phase direct-push and `main` hotfix-line plans. #161 tracks enforcement: required checks, branch/tag
+protection and independent review for consensus, cryptography, persistence and key handling.
+These documents state the intended policy, not proof settings are enabled. Repository settings
+remain the maintainer's responsibility. Reconcile existing branch histories through reviewed PRs;
+do not reset them as a shortcut.
+
+The adopted preprod block remains the final v0.2 gate (not available before October 23 per the
+2026-10-21 owner update). Release preparation proceeds without asserting that gate passed.
+Dedicated public genesis-sync and observation campaigns remain v0.3 work; per-change and nightly
+gates remain required. Rebase validation follows the change-level gates; do not reuse receipts
+from a different source revision as if they tested the rebased code.
 
 ### Changelog fragments
 
 Each change that needs a changelog entry adds a file `changes/<issue-or-branch>.md` with its entry
 (a `### Added|Changed|Fixed|Removed (...)` heading and the bullets). Nobody edits `CHANGELOG.md`
 between releases, so branches do not conflict there; a release folds the fragments into a version
-section and deletes them ([changes/README.md](changes/README.md)).
+section and deletes only its selected inputs in the same reviewed PR. Beta notes retain pending
+fragments. See [changes/README.md](changes/README.md) and the
+[consolidation contract](docs/design/releases.md#changelog-fragments-and-consolidation).
 
 ## Owner review feedback
 
