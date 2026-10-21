@@ -1,6 +1,7 @@
 # Rolling ChainSync pipeline
 
-**Status: implementation under review; combined acceptance pending (#310).**
+**Status: implemented; independent review and combined acceptance passed (#310). Merge depends on
+[Genesis PR #309](https://github.com/KD5UJC-XYZ/scarab/pull/309).**
 
 ## Reference contract
 
@@ -74,21 +75,56 @@ discarded replies during drain. AwaitReply does not increment it. Round counters
 `chainSyncRounds` log aggregates remain specific to the legacy batch facade; rolling replies are
 not reported as artificial rounds.
 
-## Evidence required before acceptance
+## Acceptance evidence
 
-- Replay all 798 explicit observations of the unchanged native low/high function, including its
+- All 798 explicit observations of the unchanged native low/high function agree, including its
   opaque phase continuation, Origin, near-tip behavior and Word64 boundaries. These are explicit
   decision inputs, not an original upstream generator corpus.
-- Replay all 24 retained original upstream low/high generated cases through the actual observed
+- All 24 retained original upstream low/high generated cases pass through the actual observed
   rolling runtime with their original low/high inputs, complete expected intersection and producer
-  chains, and bounded outstanding work. Do not replace their inputs or expected results.
-- Run all 84 original Genesis runtime cases through rolling connections with the native simulator's
-  10/20 marks. Keep every original property branch and expected fragment unchanged.
-- Exercise asynchronous AwaitReply while an earlier response is blocked, fresh receiver error scopes,
+  chains, and bounded outstanding work. Original inputs and expected results remain unchanged.
+- All 84 original Genesis runtime cases pass through rolling connections with the native simulator's
+  10/20 marks, retaining every original property branch and expected fragment.
+- Controlled regressions cover asynchronous AwaitReply while an earlier response is blocked, fresh receiver error scopes,
   FIFO rollback/refill, typed failures, capacity, cancellation, drain and same-connection reuse.
-- Complete Docker `check`, the private relay300 scenario and independent runtime/node review. Keep
-  environmental missing-input skips separate from these comparisons; no masked results or new
-  expected failures establish conformance.
+- Docker `check`, private relay300 and independent runtime/node review pass. Environmental
+  missing-input skips remain separate from these comparisons; all retained native cases execute.
+
+The accepted runtime is `ce3e1dd16` on main `7b1aa7001`, measured on 2026-10-21 UTC. Docker
+`check` passed 8,422 tests across 14 modules, with 16 existing external-input/benchmark skips and
+zero failures/errors; formatting, warning-clean compilation, standard decoder fuzzing and Scalafix
+passed. All 447 Python script tests pass with the hash-pinned release dependencies. The inventory
+guard verifies 93 corpora, 4,900 pinned files and 28 comparison contracts.
+
+The private gate was:
+
+```sh
+python3 scripts/devnet.py --name scarab-310-reference-relay relay \
+  --seconds 300 --every 10 --seed 310021 --consensus-mode GenesisMode \
+  --no-peer-sharing --keep-data
+```
+
+All 30 samples were within one block; final tips agreed at block 284, with zero node errors or
+reconnects. Inbound headers advanced from 1 to 161. The run retained four rollbacks, 253 mempool-added
+and 252 adopted events, and ten load-build refusals. All scenario assertions passed. A live scrape
+also verified that the rolling header counter increases while the legacy round counter stays zero.
+These are bounded functional observations rather than a controlled throughput comparison.
+
+The 13,497 frozen runtime files matched the compiled source exactly; their tree SHA-256 is
+`763a62c032a435cf0c3c5aa4b46067ff9cd847201471749e211209f3648c91d6`. The actual images were
+JDK `c90140def52d` and reference 11.1.3 `74e849e1b68e`. Build metadata reports the exact workspace
+commit and development version. Compact receipts, public generated genesis inputs and compressed
+logs are retained under `/tmp/scarab/310-rolling-integration-evidence`; disposable databases,
+containers and build outputs are removed after acceptance.
+
+One initial invocation omitted the documented private Genesis `--no-peer-sharing` flag. It remained
+in PreSyncing at the native honest-availability limit and is retained as a failed setup, not an
+accepted relay. Pinned `Cardano/Network/PeerSelection/Governor/Types.hs:111–117,184–203` requires
+big-ledger availability for that unrestricted profile; this private fixture disables ledger discovery.
+The corrected invocation uses the existing trusted-local-root contract and unchanged scenario
+assertions. Fixture corrections preserve all 16 adversarial seeds, native 200/300 windows and
+existing convergence/attribution assertions, supplying current selected-fragment metadata and
+answering actual outstanding AwaitReply requests before reactivation.
 
 Exact thread interleavings and identical wall-clock timing are not the contract. Observable policy
 outputs, callback ordering, resource bounds and complete retained native outcomes are. Remaining
