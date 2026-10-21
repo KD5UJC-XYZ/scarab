@@ -9,8 +9,8 @@ import scala.concurrent.duration.*
 import scala.io.Source
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
-import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.{ChainSyncEngine, NetworkError}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+import xyz.kd5ujc.scarab.protocol.{ChainSync, ChainSyncEngine, NetworkError}
 
 import Peers.*
 
@@ -707,6 +707,163 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
       "min-pipelined"
     )
 
+  private def replayRolling(
+      client: ChainSyncRuntime.Pipeline[IO, Bytes, Bytes, Bytes],
+      testCase: FixtureCase,
+      chain: Ref[IO, Vector[Bytes]],
+      low: Int,
+      high: Int
+  )(using Raise[IO, NetworkError]): IO[Unit] =
+    val row = testCase.row
+    def decoded(bytes: Bytes): Node = Cbor.decode(bytes).fold(e => fail(e.toString), identity)
+    def array(node: Node): Vector[Node] = node.value match
+      case Value.Arr(items) => items
+      case other            => fail(s"seed ${row.seed} expected original array, got $other")
+    def blockNo(node: Node): ChainSync.UInt64 = node.value match
+      case Value.UInt(value) => ChainSync.UInt64.from(value).fold(e => fail(e.message), identity)
+      case other             => fail(s"seed ${row.seed} expected original block number, got $other")
+    // The unchanged native ConcreteBlock codec stores headerBlockNo in the fourth header field.
+    def height(payload: Bytes): ChainSync.UInt64 = blockNo(array(array(decoded(payload))(0))(3))
+    val server = Some(blockNo(array(decoded(row.targetTip))(1)))
+    val window =
+      ChainSyncPipelineDecision.Window.checked(low, high).fold(e => fail(e.toString), identity)
+    def applyUpdate(
+        update: ChainSyncRuntime.Update[Bytes, Bytes, Bytes],
+        handled: Boolean
+    ): IO[Unit] = update match
+      case ChainSyncRuntime.Update.RollBackward(point, _) =>
+        assert(!handled, s"seed ${row.seed} unexpected rollback after the initial fork alignment")
+        val retained =
+          if point == row.genesisPoint then Vector.empty
+          else
+            val found = testCase.fork.indexWhere(_.point == point)
+            assert(found >= 0, s"seed ${row.seed} rollback point must remain on original fork")
+            testCase.fork.take(found + 1).map(_.payload)
+        chain.set(retained)
+      case ChainSyncRuntime.Update.RollForward(payload, _) =>
+        assert(handled, s"seed ${row.seed} expected initial rollback before rolling headers")
+        assert(testCase.pointByPayload.contains(payload), s"seed ${row.seed} original block item")
+        chain.update(_ :+ payload)
+    for
+      occupancy <- Ref.of[IO, Vector[Int]](Vector.empty)
+      _ <- cats.Monad[IO].tailRecM((ChainSyncPipelineDecision.Policy(window), false)) {
+        (policy, handled) =>
+          (chain.get, client.outstanding).tupled.flatMap { (current, count) =>
+            occupancy.update(_ :+ count) *> (
+              if handled && current.lastOption
+                  .flatMap(testCase.pointByPayload.get)
+                  .contains(row.targetPoint)
+              then
+                client.drain(IO.unit)(_ =>
+                  IO(fail(s"seed ${row.seed} request beyond generated target"))
+                ) *>
+                  client.done.as(Right(()))
+              else
+                val (action, next) = policy
+                  .decide(count, current.lastOption.map(height), server)
+                  .fold(e => fail(e.toString), identity)
+                val step = action match
+                  case ChainSyncPipelineDecision.Action.Request =>
+                    client.submit *> client
+                      .collect(IO.unit)
+                      .flatMap(update => applyUpdate(update, handled))
+                      .as(true)
+                  case ChainSyncPipelineDecision.Action.Pipeline => client.submit.as(false)
+                  case ChainSyncPipelineDecision.Action.Collect =>
+                    client.collect(IO.unit).flatMap(update => applyUpdate(update, handled)).as(true)
+                  case ChainSyncPipelineDecision.Action.CollectOrPipeline =>
+                    client.tryCollect(IO.unit).flatMap {
+                      case Some(update) => applyUpdate(update, handled).as(true)
+                      case None         => client.submit.as(false)
+                    }
+                step.map(collected => Left((next, handled || collected)))
+            )
+          }
+      }
+      observed <- occupancy.get
+      remaining <- client.outstanding
+    yield
+      assert(observed.nonEmpty)
+      assertEquals(observed.min, 0, s"seed ${row.seed} initial rolling occupancy")
+      assert(
+        observed.max > 0 && observed.max <= high,
+        s"seed ${row.seed} occupancy ${observed.min}..${observed.max}, low=$low high=$high"
+      )
+      assertEquals(remaining, 0, s"seed ${row.seed} all ordered replies collected before Done")
+
+  private def verifyRollingFinalChains(rows: Vector[PipelineLowHighRow]): IO[Unit] =
+    val fixture = readFixture()
+    assertEquals(rows.map(_.seed), fixture.map(_.row.seed))
+    fixture.zip(rows).traverse_ { (testCase, generated) =>
+      source(testCase).flatMap { oracle =>
+        Ref.of[IO, Vector[Bytes]](testCase.fork.map(_.payload)).flatMap { chain =>
+          typed {
+            linked(protocols = Set(Protocols.ChainSync)).use { (clientMux, serverMux) =>
+              for
+                clientChannel <- clientMux.channel(Protocols.ChainSync)
+                serverChannel <- serverMux.channel(Protocols.ChainSync)
+                _ <- Resource
+                  .make(
+                    Fibers
+                      .scoped[IO, NetworkError, Unit](NetworkError.Defect(_)) {
+                        ChainSyncRuntime.run(
+                          serverChannel,
+                          pointCodec,
+                          tipCodec,
+                          payloadCodec,
+                          oracle,
+                          ChainSyncRuntime.ServerSettings(idleTimeout = 5.seconds)
+                        )
+                      }
+                      .start
+                  )(_.cancel)
+                  .use { server =>
+                    ChainSyncRuntime
+                      .resource(
+                        clientChannel,
+                        pointCodec,
+                        tipCodec,
+                        payloadCodec,
+                        clientMux.abort,
+                        ChainSyncRuntime.ClientSettings(
+                          intersectTimeout = 5.seconds,
+                          canAwaitTimeout = 5.seconds,
+                          mustReplyTimeout = 5.seconds
+                        ),
+                        maxOutstanding = math.max(generated.firstDepth, generated.secondDepth)
+                      )
+                      .use { client =>
+                        for
+                          intersection <- client.findIntersect(testCase.candidatePoints)
+                          _ <- replayRolling(
+                            client,
+                            testCase,
+                            chain,
+                            math.min(generated.firstDepth, generated.secondDepth),
+                            math.max(generated.firstDepth, generated.secondDepth)
+                          ).timeout(10.seconds)
+                          result <- server.joinWithNever
+                          _ <- Fibers.land[IO, NetworkError, Unit](result)
+                          finalChain <- chain.get
+                        yield
+                          assertEquals(
+                            intersection,
+                            testCase.row.expectedIntersection.map(_ -> testCase.row.targetTip)
+                          )
+                          assertEquals(
+                            finalChain,
+                            testCase.producer.map(_.payload),
+                            s"seed ${generated.seed} rolling final chain equals unchanged native oracle"
+                          )
+                      }
+                  }
+              yield ()
+            }
+          }.map(result => assertEquals(result, Right(()), s"seed ${generated.seed}"))
+        }
+      }
+    }
+
   test("production generic ChainSync runtime matches generated low/high final-chain cases"):
     val generated = readPipelinePairRows(
       "chainsync-pipelined-low-high.tsv",
@@ -724,19 +881,7 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
     assertEquals(generated.count(_.outcome == PipelineOutcome.Pass), 24)
     assertEquals(generated.count(_.outcome == PipelineOutcome.UpstreamFailure), 0)
     assertEquals(generated.count(_.outcome == PipelineOutcome.PreconditionDiscard), 0)
-    verifyPipelinedFinalChains(
-      generated.map(row =>
-        PipelineRow(
-          row.seed,
-          row.ordinal,
-          row.size,
-          row.firstDepthSeed,
-          math.max(row.firstDepth, row.secondDepth),
-          row.outcome
-        )
-      ),
-      "low/high-pipelined"
-    )
+    verifyRollingFinalChains(generated)
 
   test("production generic ChainSync runtime matches min-buffered final-chain cases"):
     val generated = readPipelinePairRows(
