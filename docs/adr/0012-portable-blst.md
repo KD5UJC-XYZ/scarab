@@ -47,7 +47,7 @@ before blst-java on the class path.**
   node) with `bindings/java/build.sh -D__BLST_PORTABLE__`, the recipe of blst-java's workflow: on
   `ubuntu:22.04` (digest pinned; gcc 11.4.0, SWIG 4.0.2, binutils 2.38, JDK headers of
   openjdk-17 17.0.20.1; the same toolchain as the upstream workflow, and no glibc symbol above
-  2.14 is needed, as for the upstream library). The source is fetched by commit and the build stops if `git rev-parse HEAD` differs.
+  2.14 is needed, as for the upstream library). The source is fetched by commit and the build stops if `git rev-parse HEAD` or the pinned source-archive SHA-256 differs. Toolchain packages now come from the signed, timestamp-pinned Ubuntu snapshot described below.
   Original output sha-256 of `libblst.so` (superseded by the raw-DST build recorded below):
   `8d158308ec8179a2e33eb1b26c3e09621307031715877867b46af11ebf884235` (a rebuild with `--no-cache`
   gave the same bytes). The maintained artifact's identity is `Blst.portableSha256`, also
@@ -104,7 +104,20 @@ without ADX.
 | The library it replaces | `foundation.icon:blst-java:0.3.2` (jar sha-256 `f668af639696199e8b9f47e17a9ede4426c888fbc300aec84689f56f39ed6238`), `Linux/amd64/libblst.so` sha-256 `bd250731c0805cab213c1db860dbcd3bb8848955aa1da7a6fc81a11235b92817`, blst v0.3.10 from the workflow, gcc 11.4.0, built with `-D__ADX__` and no portable switch |
 | JNI exports | every `Java_supranational_blst_blstJNI_*` symbol of the jar's library is in ours (`blst-native/src/test/resources/blst-exports.txt` is the export list of the shipped library) |
 
-To update blst: change `BLST_COMMIT` in `docker/blst.Dockerfile`, run
+The [native rebuild controller](../../blst-native/native/README.md#rebuild-and-byte-verification-229)
+implements #229's build-and-compare gate. It uses the signed Ubuntu `20261020T000000Z` snapshot,
+explicit direct package versions and the digest-pinned base above, freezes source/adapter inputs,
+and requires two uncached Linux/amd64 builds to equal the unchanged committed resource. The current
+recipe explicitly selects `__ADX__` together with `__BLST_PORTABLE__`, preserving that artifact
+while preventing the build host CPU from choosing a different compile configuration.
+The receipt includes source archive/tree hashes, all installed packages, downloaded package and
+signed-index hashes, independent signature verification using the original base image's keyring,
+and actual output identities. Failures preserve diagnostics; they never refresh a golden or bless
+a different binary. The two builds share the trusted Docker engine/toolchain. This is bounded
+byte-reproducibility evidence, not upstream source signing, native cross-platform verification or
+a signed/published Scarab release. The ordinary startup/JNI known-answer tests remain required.
+
+To update blst: review the commit and source-archive SHA-256 pins in `docker/blst.Dockerfile`, run
 `docker build -f docker/blst.Dockerfile --target artifact -o blst-native/out .`, copy
 `blst-native/out/libblst.so` over the resource, `blst-native/out/exports.txt` over
 `blst-native/src/test/resources/blst-exports.txt`, put the new sha-256 into `Blst.portableSha256`
