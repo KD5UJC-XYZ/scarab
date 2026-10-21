@@ -149,8 +149,7 @@ object Main extends IOApp:
                 chain.tipRef,
                 environment.copy(geometry = chain.state.geometry(environment.geometry))
               )
-              .left
-              .map(ChainError.MempoolTick(chain.tipRef.fold(BigInt(0))(_.slot + 1), _))
+              .leftMap(ChainError.MempoolTick(chain.tipRef.fold(BigInt(0))(_.slot + 1), _))
           )
         )
         .flatMap(Raise[IO, NodeError].fromEither(_))
