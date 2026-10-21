@@ -440,6 +440,24 @@
         "fixtures/reference/candidate-order/sort.jsonl",
         "node/src/test/scala/xyz/kd5ujc/scarab/node/CandidateSelectionSuite.scala"
       ]
+    },
+    {
+      "id": "candidate-hard-fork-selection",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "All 55 constructed actual Cardano HFC view comparisons: all 42 ordered cross-era pairs from Byron through Conway, seven same-era controls and six near-slot, chain-length or certificate-boundary cases.",
+      "assertion": "Compare every native Ord result, both configured preferCandidate directions and the complete sorted identity vector; require all 42 ordered cross-era pairs and preserve every original row.",
+      "rationale": "The actual pinned HardForkProtocol Cardano instances supply independent observations. These finite differential examples are separate from the homogeneous protocol-view and synthetic sort corpora; they are not upstream-generated or signed-header validity cases.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/33",
+      "resolution": "Preserve the complete native HFC payload and provenance, enforce later-era shared eligibility configuration and retain no cross-era tie-breaker between Byron and Shelley-based eras.",
+      "evidence": [
+        "fixtures/reference/candidate-order/README.md",
+        "fixtures/reference/candidate-order/manifest.json",
+        "fixtures/reference/candidate-order/hfc.jsonl",
+        "consensus/src/test/scala/xyz/kd5ujc/scarab/consensus/genesis/UpstreamHfcSelectionSuite.scala"
+      ],
+      "candidateRequired": true
     }
   ]
 }
