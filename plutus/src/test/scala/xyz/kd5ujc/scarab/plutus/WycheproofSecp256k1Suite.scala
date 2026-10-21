@@ -6,8 +6,12 @@ import io.circe.parser.parse
 import java.math.BigInteger
 import java.security.MessageDigest
 import munit.FunSuite
+import org.bouncycastle.asn1.{ASN1Encoding, ASN1Integer, ASN1Primitive, ASN1Sequence}
 import org.bouncycastle.asn1.sec.SECNamedCurves
 import scala.util.control.NonFatal
+import scala.util.{Try, Using}
+import java.nio.charset.StandardCharsets.UTF_8
+import xyz.kd5ujc.scarab.codec.Bytes
 
 /** The Google Wycheproof ECDSA secp256k1/SHA-256 corpus through the reference semantics of
   * [[Secp256k1.verifyEcdsa]] (documented there): a 33-byte compressed key, the 32-byte message, a
@@ -110,6 +114,8 @@ class WycheproofSecp256k1Suite extends FunSuite:
   private final case class Case(
       tcId: Int,
       comment: String,
+      der: String,
+      sourceResult: String,
       key: Array[Byte],
       message: Array[Byte],
       signature: Array[Byte],
@@ -120,9 +126,13 @@ class WycheproofSecp256k1Suite extends FunSuite:
     result.fold(e => fail(s"corpus field $what: ${e.getMessage}"), identity)
 
   private lazy val cases: Vector[Case] =
-    val text =
-      val in = getClass.getResourceAsStream("/wycheproof/ecdsa_secp256k1_sha256_test.json")
-      scala.io.Source.fromInputStream(in).mkString
+    val in = getClass.getResourceAsStream("/wycheproof/ecdsa_secp256k1_sha256_test.json")
+    val original = Using.resource(in)(_.readAllBytes())
+    assertEquals(
+      Bytes.fromArray(MessageDigest.getInstance("SHA-256").digest(original)).hex,
+      "43db761c0a2eae71fb0755d355d5130e28ce64a5b07846cf27e7072082597a81"
+    )
+    val text = new String(original, UTF_8)
     val corpus = need(parse(text), "root")
     val groups = need(corpus.hcursor.downField("testGroups").as[Vector[Json]], "testGroups")
     groups.flatMap { group =>
@@ -144,15 +154,24 @@ class WycheproofSecp256k1Suite extends FunSuite:
         val message = sha256.digest(hex(msg))
         parseSig(der) match
           case None =>
-            Case(tcId, comment, key, message, Array.emptyByteArray, Outcome.DerRejects)
+            Case(tcId, comment, der, result, key, message, Array.emptyByteArray, Outcome.DerRejects)
           case Some((r, s)) if r.bitLength > 256 || s.bitLength > 256 =>
             // No compact form exists; the builtin never receives such a signature.
-            Case(tcId, comment, key, message, Array.emptyByteArray, Outcome.DerRejects)
+            Case(tcId, comment, der, result, key, message, Array.emptyByteArray, Outcome.DerRejects)
           case Some((r, s)) if r >= n || s >= n =>
-            Case(tcId, comment, key, message, be32(r) ++ be32(s), Outcome.CompactFails)
+            Case(tcId, comment, der, result, key, message, be32(r) ++ be32(s), Outcome.CompactFails)
           case Some((r, s)) =>
             val verdict = result == "valid" && r != 0 && s != 0 && s <= n / 2
-            Case(tcId, comment, key, message, be32(r) ++ be32(s), Outcome.Verdict(verdict))
+            Case(
+              tcId,
+              comment,
+              der,
+              result,
+              key,
+              message,
+              be32(r) ++ be32(s),
+              Outcome.Verdict(verdict)
+            )
       }
     }
 
@@ -165,12 +184,56 @@ class WycheproofSecp256k1Suite extends FunSuite:
     assertEquals(all.size, 476)
   }
 
-  test("every case matches the reference semantics of verifyEcdsa") {
-    cases.zipWithIndex.foreach { case (c, i) =>
-      val clue = s"case $i tcId=${c.tcId} ${c.comment}"
+  /** Independent ASN.1 implementation: accepting BER alone is insufficient; DER encoding must
+    * reproduce the complete original bytes, and both scalar INTEGERs must be non-negative.
+    */
+  private def independentDer(der: String): Option[(BigInt, BigInt)] =
+    Try {
+      val original = hex(der)
+      ASN1Primitive.fromByteArray(original) match
+        case seq: ASN1Sequence
+            if seq.size() == 2 &&
+              java.util.Arrays.equals(original, seq.getEncoded(ASN1Encoding.DER)) =>
+          (seq.getObjectAt(0), seq.getObjectAt(1)) match
+            case (r: ASN1Integer, s: ASN1Integer)
+                if r.getValue.signum() >= 0 && s.getValue.signum() >= 0 =>
+              Some((BigInt(r.getValue), BigInt(s.getValue)))
+            case _ => None
+        case _ => None
+    }.toOption.flatten
+
+  test("all 476 original IDs have explicit, independently checked DER-to-compact classifications") {
+    assertEquals(cases.map(_.tcId).sorted, (1 to 476).toVector)
+    cases.foreach { c =>
+      val clue = s"tcId=${c.tcId} ${c.comment}"
+      val parsed = independentDer(c.der)
+      assertEquals(parseSig(c.der), parsed, clue)
       c.outcome match
-        // The builtin never receives a DER signature; `cases` already proved the parser rejects it.
-        case Outcome.DerRejects => ()
+        case Outcome.DerRejects =>
+          assertEquals(c.sourceResult, "invalid", clue)
+          assert(parsed.forall((r, s) => r.bitLength > 256 || s.bitLength > 256), clue)
+          assertEquals(c.signature.length, 0, clue)
+        case Outcome.CompactFails =>
+          val (r, s) = parsed.getOrElse(fail(s"missing DER components: $clue"))
+          assert(r.bitLength <= 256 && s.bitLength <= 256 && (r >= n || s >= n), clue)
+          assertEquals(c.signature.toVector, (be32(r) ++ be32(s)).toVector, clue)
+        case Outcome.Verdict(value) =>
+          val (r, s) = parsed.getOrElse(fail(s"missing DER components: $clue"))
+          assert(r < n && s < n, clue)
+          assertEquals(c.signature.toVector, (be32(r) ++ be32(s)).toVector, clue)
+          assertEquals(value, c.sourceResult == "valid" && r != 0 && s != 0 && s <= n / 2, clue)
+    }
+  }
+
+  test(
+    "242 representable compact inputs match verifyEcdsa; 234 DER-only cases stay outside its ABI"
+  ) {
+    val compact = cases.filterNot(_.outcome == Outcome.DerRejects)
+    assertEquals(compact.size, 242)
+    compact.foreach { c =>
+      val clue = s"tcId=${c.tcId} ${c.comment}"
+      c.outcome match
+        case Outcome.DerRejects => fail(s"DER-only input entered compact replay: $clue")
         case Outcome.CompactFails =>
           assert(Secp256k1.verifyEcdsa(c.key, c.message, c.signature).isLeft, clue)
         case Outcome.Verdict(value) =>
