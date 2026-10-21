@@ -867,7 +867,13 @@ the tip, the transactions in arrival order), walks it with `NextTx`, asks `HasTx
 each transaction counts for its size plus 4 bytes, and the capacity is a whole number of block-sized units
 (`2 * (maxBlockBodySize - 1024)` without an override, as the reference; `ceil(--mempool-bytes / unit)` units with
 one, so the same `--mempool-bytes` gives the same `capacityInBytes`). The pool enforces that capacity in all four
-components (bytes, execution-unit memory and steps, reference-script bytes).
+components (bytes, execution-unit memory and steps, reference-script bytes). A transaction that fits an empty pool
+but not the room left waits for the pool to change instead of being refused, as the reference does, whether it
+comes from a peer (TxSubmission2: the peer's replies are held back meanwhile, which a peer's own timeouts allow) or
+from a local client (`cardano-cli transaction submit` waits for its answer); the `mempoolWaiting` log line marks
+the start of a wait. Local clients are served before peers that queue, a closed client or lost peer leaves the line,
+and one transaction larger than the whole capacity is refused at once as "mempool full" (the reference would wait for
+ever, [IN-82](implementer-notes.md)).
 Local ChainSync (mini-protocol 5, what db-sync, Ogmios and `cardano-cli`'s followers use) serves each block as
 `#6.24(bytes)` of the block as stored (`[era, block]`), from the immutable store (with `--db`) and the volatile
 chain, with the same intersection, roll-forward, roll-backward and await behaviour as on node-to-node.
@@ -1007,6 +1013,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `fetchModeChanged` | `Net.FetchModeChanged` | Info | `mode` |
 | `mempoolAdded` | `Mempool.MempoolAdded` | Info | `tx`, `size`, `count`, `bytes` |
 | `mempoolRejected` | `Mempool.MempoolRejected` | Info | `tx`, `reason` |
+| `mempoolWaiting` | `Mempool.MempoolWaiting` | Info | `tx`, `reason` |
 | `mempoolDropped` | `Mempool.MempoolDropped` | Info | `tx`, `reason` |
 | `mempoolAdopted` | `Mempool.MempoolAdopted` | Info | `tx` |
 | `mempoolRemoved` | `Mempool.MempoolRemoved` | Info | `tx` |

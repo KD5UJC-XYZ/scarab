@@ -755,11 +755,18 @@ transactions against 200 KiB (phase 2, `TxRefScriptsSizeTooBig`); a refusal ther
 the ledger does not run. The capacity is a vector of bytes (size plus 4), execution-unit memory, steps and
 reference-script bytes, `computeMempoolCapacity` of the parameters of the ticked base: two blocks without
 `--mempool-bytes`, the override rounded up to whole blocks with it, recomputed at every `sync` and never trimming a
-pool that a parameter change left over it. A transaction that would exceed any component is `Rejection.Full`; the
+pool that a parameter change left over it. A transaction that would exceed any component finds no room; the
 check runs after phase 1 (without the reference-script component) and again after phase 2, as `doAddTx` and
-`pureTryAddTx` do ([IN-81](implementer-notes.md)). A transaction is validated in the slot after the tip within the tip's epoch (it is not ticked over an epoch
+`pureTryAddTx` do ([IN-81](implementer-notes.md)). `Mempool.add` then waits, as the reference's `implAddTx` does
+([IN-82](implementer-notes.md)): it releases the state lock and retries from the first measure whenever the pool
+changes (`version`: an add, a `sync`, a removal), until it is held or refused for another reason, and only a
+transaction larger than the whole capacity is refused with `Rejection.Full`. Waiters are served through two FIFO
+queues, a peer's transaction taking the remote queue and then the common one and a local client's only the common
+one, so a local client passes the peers in line and only the head of the line waits for room. The wait is
+cancelable (a closed client or a lost peer leaves the line) and the `mempoolWaiting` event marks it. A peer's
+wait stalls that peer's TxSubmission2 replies, as in the reference, outside every protocol deadline. A transaction is validated in the slot after the tip within the tip's epoch (it is not ticked over an epoch
 boundary). Transactions of rolled-back blocks are not put back. `Mempool[F]` serialises the
-operations, offers `source`/`sink` for TxSubmission2 and remembers recently refused ids so peers
+state changes (one state lock, held for one validation or one revalidation, never while an add waits), offers `source`/`sink` for TxSubmission2 and remembers recently refused ids so peers
 that offer them again are not asked for the body.
 
 **Chain selection** (`consensus/ChainSelection.scala`, `Follower.scala`). A peer session keeps a
@@ -786,7 +793,7 @@ peers fetching at once with `maxConcurrencyBulkSync`; ours is limited by the num
 keeps failing is retried forever, with one it is fatal after 30 attempts), `--listen` starts the
 inbound server, `--local-socket` the local one, `--mempool-bytes` overrides the capacity. The followed
 peers get our mempool through TxSubmission2. The JSON log gains `listening`, `inbound`,
-`mempoolAdded`, `mempoolRejected`, `mempoolAdopted`, `mempoolRemoved`, `mempoolDropped` and `mempoolSynced`.
+`mempoolAdded`, `mempoolRejected`, `mempoolWaiting`, `mempoolAdopted`, `mempoolRemoved`, `mempoolDropped` and `mempoolSynced`.
 
 ## Connections: the manager and the inbound governor (G2)
 
