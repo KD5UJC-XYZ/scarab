@@ -77,7 +77,7 @@ final class InboundGovernor[F[_]: Async] private (
     repromotion: RepromotionWait[F],
     sessionTable: Ref[F, Map[String, InboundGovernor.Session]],
     sourceCounter: Ref[F, BigInt],
-    liveSources: Ref[F, Map[BigInt, PeerError => F[Unit]]],
+    liveSources: Ref[F, Map[BigInt, InboundGovernor.LiveSource[F]]],
     sourceLock: Mutex[F]
 ):
   private val F = Async[F]
@@ -194,16 +194,14 @@ final class InboundGovernor[F[_]: Async] private (
       agreed: HandshakeClient.Agreed,
       mux: Mux[F]
   ): Resource[F, Unit] =
-    source(
-      remote,
-      error => mux.abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error)))
-    ).flatMap { key =>
-      (update(remote)(_ => InboundGovernor.Session(remote.toString, number = key.generation)) *>
-        attempt(remote, agreed.version, agreed.data.peerSharing, mux, key)).background.void
+    Resource.eval(sourceCounter.updateAndGet(_ + 1)).flatMap { number =>
+      (update(remote)(_ => InboundGovernor.Session(remote.toString, number = number)) *>
+        attempt(remote, agreed.version, agreed.data.peerSharing, mux)).background.void
     }
 
   /** The pool retains only this immutable key and the governor. Live transport callbacks are
-    * removed with their bearer; a later connection at the same address has a different key.
+    * removed after their hot protocol has drained. A later activation on the same bearer has a
+    * different key (network2fb69829 PeerStateActions.hs:979,1000–1016,1164–1195).
     * ChainSel.hs:1051–1067 / InvalidBlockPunishment.hs:48–56 punish the adding client.
     */
   private[node] def source(
@@ -214,9 +212,21 @@ final class InboundGovernor[F[_]: Async] private (
       .eval(sourceCounter.modify(n => (n + 1, InboundGovernor.SourceKey(n + 1, remote))))
       .flatMap { key =>
         Resource.make(
-          sourceLock.lock.surround(liveSources.update(_ + (key.generation -> abort))).as(key)
-        )(_ => sourceLock.lock.surround(liveSources.update(_ - key.generation)))
+          sourceLock.lock
+            .surround(
+              liveSources.update(_ + (key.generation -> InboundGovernor.LiveSource(key, abort)))
+            )
+            .as(key)
+        )(_ => retire(key))
       }
+
+  private def retire(key: InboundGovernor.SourceKey): F[Unit] =
+    sourceLock.lock.surround(liveSources.update(_ - key.generation))
+
+  private[node] def cachedSource(
+      remote: SocketAddress[IpAddress]
+  ): F[Option[InboundGovernor.SourceKey]] =
+    liveSources.get.map(_.valuesIterator.find(_.key.remote == remote).map(_.key))
 
   private[node] def rejectedCachedBlock(
       key: InboundGovernor.SourceKey,
@@ -225,7 +235,7 @@ final class InboundGovernor[F[_]: Async] private (
     F.uncancelable { _ =>
       sourceLock.lock
         .surround(liveSources.get.flatMap { live =>
-          val abort = live.get(key.generation)
+          val abort = live.get(key.generation).map(_.abort)
           abort.traverse_(_(PeerError.InvalidBlock(refusal))).as(abort.isDefined)
         })
         .flatMap(sourceLive =>
@@ -240,8 +250,7 @@ final class InboundGovernor[F[_]: Async] private (
       remote: SocketAddress[IpAddress],
       version: Int,
       peerSharing: Boolean,
-      mux: Mux[F],
-      source: InboundGovernor.SourceKey
+      mux: Mux[F]
   ): F[Unit] =
     for
       end <- SessionEnd.scoped(node) { (_, _) ?=>
@@ -257,9 +266,12 @@ final class InboundGovernor[F[_]: Async] private (
           )
           .use { warm =>
             F.tailRecM[Unit, SessionEnd](()) { _ =>
-              warm
-                .activate(transactions)
-                .use { connection =>
+              source(
+                remote,
+                error => mux.abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error)))
+              )
+                .flatMap(key => warm.activate(transactions, Some(retire(key))).map(_ -> key))
+                .use { (connection, source) =>
                   SessionEnd
                     .scoped(node) { (_, _) ?=>
                       following(remote, connection, source).as(SessionEnd.Returned)
@@ -527,6 +539,8 @@ object InboundGovernor:
 
   private[node] final case class SourceKey(generation: BigInt, remote: SocketAddress[IpAddress])
 
+  private final case class LiveSource[F[_]](key: SourceKey, abort: PeerError => F[Unit])
+
   private val RetainedSessions = 64
 
   /** `runClients` off serves inbound connections without following them. */
@@ -558,7 +572,7 @@ object InboundGovernor:
     (
       Ref.of[F, Map[String, Session]](Map.empty),
       Ref.of[F, BigInt](0),
-      Ref.of[F, Map[BigInt, PeerError => F[Unit]]](Map.empty),
+      Ref.of[F, Map[BigInt, LiveSource[F]]](Map.empty),
       Mutex[F]
     ).mapN { (sessions, counter, sources, lock) =>
       new InboundGovernor[F](

@@ -16,6 +16,9 @@ import scala.concurrent.duration.*
   *
   * @param transactions
   *   The TxSubmission2 client, when this activation runs one and can end it.
+  * @param blockFetchEnded
+  *   Retire attribution to the adding BlockFetch client after its successful MsgClientDone, before
+  *   another hot protocol can wait while finishing (consensus ClientInterface.hs:193).
   */
 final class NodeToNodeConnection[F[_], P](
     val version: Int,
@@ -23,7 +26,8 @@ final class NodeToNodeConnection[F[_], P](
     val blockFetch: BlockFetchClient[F],
     val mux: Mux[F],
     val transactions: Option[TxSubmissionClient.Running[F]] = None,
-    val fetchPerformance: Option[F[FetchGsv.PeerGsv]] = None
+    val fetchPerformance: Option[F[FetchGsv.PeerGsv]] = None,
+    blockFetchEnded: Option[F[Unit]] = None
 ):
   /** End the hot protocols on the wire, so the connection can carry a new activation: ChainSync and
     * BlockFetch say `MsgDone` where they are idle, TxSubmission2 at the peer's next blocking
@@ -33,7 +37,9 @@ final class NodeToNodeConnection[F[_], P](
   def finish(within: FiniteDuration)(using Monad[F], Raise[F, NetworkError]): F[Boolean] =
     (chainSync.idle, blockFetch.idle).tupled.flatMap {
       case (true, true) =>
-        chainSync.done *> blockFetch.done *> transactions.fold(true.pure[F])(_.finish(within))
+        chainSync.done *> blockFetch.done *> blockFetchEnded.sequence_ *> transactions.fold(
+          true.pure[F]
+        )(_.finish(within))
       case _ => false.pure[F]
     }
 
@@ -44,7 +50,10 @@ final class NodeToNodeConnection[F[_], P](
       within: FiniteDuration
   )(using Monad[F], Raise[F, NetworkError]): F[Boolean] =
     blockFetch.idle.flatMap {
-      case true  => blockFetch.done *> transactions.fold(true.pure[F])(_.finish(within))
+      case true =>
+        blockFetch.done *> blockFetchEnded.sequence_ *> transactions.fold(true.pure[F])(
+          _.finish(within)
+        )
       case false => false.pure[F]
     }
 
@@ -70,9 +79,13 @@ final class WarmConnection[F[_], P] private[network] (
     val fetchPerformance: Option[F[FetchGsv.PeerGsv]] = None
 ):
   /** Start the hot protocols as the initiator side of each. With `transactions` the node offers
-    * those transactions over TxSubmission2 for the life of the resource.
+    * those transactions over TxSubmission2 for the life of the resource. `blockFetchEnded` is a
+    * resource-owned retirement hook; it retains no caller error capability.
     */
-  def activate(transactions: Option[TxSubmissionClient.Source[F]] = None)(using
+  def activate(
+      transactions: Option[TxSubmissionClient.Source[F]] = None,
+      blockFetchEnded: Option[F[Unit]] = None
+  )(using
       Async[F],
       Raise[F, NetworkError]
   ): Resource[F, NodeToNodeConnection[F, P]] =
@@ -84,7 +97,15 @@ final class WarmConnection[F[_], P] private[network] (
       blockFetchChannel <- Resource.eval(mux.channel(Protocols.BlockFetch, role))
       chainSync <- Resource.eval(ChainSyncClient(chainSyncChannel, codec, settings.chainSync))
       blockFetch <- BlockFetchClient.resource(blockFetchChannel, mux.abort, settings.blockFetch)
-    yield NodeToNodeConnection(version, chainSync, blockFetch, mux, running, fetchPerformance)
+    yield NodeToNodeConnection(
+      version,
+      chainSync,
+      blockFetch,
+      mux,
+      running,
+      fetchPerformance,
+      blockFetchEnded
+    )
 
 object NodeToNode:
   /** @param offerPeerSharing

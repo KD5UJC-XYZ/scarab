@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.effect.{Async, Deferred, Ref, Resource}
-import cats.effect.std.Supervisor
+import cats.effect.std.{Mutex, Supervisor}
 import cats.effect.syntax.all.*
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.syntax.all.*
@@ -57,7 +57,10 @@ final class OutboundPeers[F[_]: Async, A] private (
     report: Event[A] => F[Unit],
     metrics: Stateful[F, PeerMetrics[A]],
     table: Ref[F, Map[A, OutboundPeers.Link[F]]],
-    connected: Option[(A, SocketAddress[IpAddress]) => F[Unit]]
+    connected: Option[(A, SocketAddress[IpAddress]) => F[Unit]],
+    sourceCounter: Ref[F, BigInt],
+    liveSources: Ref[F, Map[BigInt, PeerError => F[Unit]]],
+    sourceLock: Mutex[F]
 ) extends PeerStateActions[F, A]:
   import OutboundPeers.*
   import Peer.networkAsPeer
@@ -102,7 +105,7 @@ final class OutboundPeers[F[_]: Async, A] private (
             Peer.contramapped[F, PeerError, ConnectionError](summon)(e =>
               PeerError.Unavailable(PeerError.Unavailability.Connection(e))
             )
-          val open: Resource[F, WarmConnection[F, NtNHeader]] =
+          val open: Resource[F, (WarmConnection[F, NtNHeader], Supervisor[F])] =
             for
               slot <- manager.outbound(remote, alongsideInbound = true)
               bearer <- transport.bearer(peer, remote)
@@ -115,19 +118,20 @@ final class OutboundPeers[F[_]: Async, A] private (
                   case DiffusionMode.InitiatorOnly         => None
                   case DiffusionMode.InitiatorAndResponder => hot.serve
               )
+              children <- Supervisor[F](await = false)
               _ <- Resource.eval(
                 slot.connected *> slot.negotiated(
                   if warm.duplex then ConnectionState.DataFlow.Duplex
                   else ConnectionState.DataFlow.Unidirectional
                 )
               )
-            yield warm
+            yield (warm, children)
 
-          open.use { warm =>
+          open.use { (warm, children) =>
             for
               phase <- Ref.of[F, Phase[F]](Phase.Warm())
               fatalReported <- Ref.of[F, Boolean](false)
-              link = Link(warm, release, gone, phase, generation, fatalReported)
+              link = Link(warm, release, gone, phase, generation, fatalReported, children)
               installed <- table.modify { current =>
                 if current.contains(peer) then (current, false)
                 else (current.updated(peer, link), true)
@@ -210,22 +214,57 @@ final class OutboundPeers[F[_]: Async, A] private (
             .void
     }
 
-  /** Attribution outlives a connection. It refers only to the peer identity and the governor, never
-    * a released session's Raise or Link. Stop a newer connection to that same peer too.
+  /** Match the adding hot BlockFetch client, never a later activation on the same bearer. The
+    * bounded pool reporter retains only immutable metadata; resource-owned callbacks disappear
+    * before release of their mux. Native mkPunishThisThread captures the adding ThreadId
+    * (82ecba329, ChainDB/API/Types/InvalidBlockPunishment.hs:48–56).
     */
-  private[node] def rejectedCachedBlock(
+  private def source(
       peer: A,
-      generation: BigInt,
-      refusal: ValidationError
-  ): F[Unit] =
-    F.uncancelable { _ =>
-      table.get.flatMap(_.get(peer).filter(_.rootsGeneration == generation).traverse_ { link =>
-        link.phase.set(Phase.Ending()) *> link.release.complete(()).void *>
-          hot.lost(PeerError.InvalidBlock(refusal)) *>
-          report(
-            Event.Observed(peer, Observation.CachedBlockRejected(refusal.message), Some(generation))
-          )
+      rootsGeneration: BigInt,
+      abort: PeerError => F[Unit]
+  ): Resource[F, SourceKey[A]] =
+    Resource
+      .eval(sourceCounter.modify(n => (n + 1, SourceKey(peer, rootsGeneration, n + 1))))
+      .flatMap { key =>
+        Resource.make(
+          sourceLock.lock
+            .surround(liveSources.update(_ + (key.activationGeneration -> abort)))
+            .as(key)
+        )(_ => retire(key))
+      }
+
+  private def retire(key: SourceKey[A]): F[Unit] =
+    sourceLock.lock.surround(liveSources.update(_ - key.activationGeneration))
+
+  private[node] def cachedSource(peer: A): F[Option[SourceKey[A]]] =
+    table.get
+      .flatMap(_.get(peer).traverse { link =>
+        link.phase.get.flatMap {
+          case Phase.Hot(session) =>
+            session.source.get.map(_.map(SourceKey(peer, link.rootsGeneration, _)))
+          case _ => F.pure(None)
+        }
       })
+      .map(_.flatten)
+
+  private[node] def rejectedCachedBlock(key: SourceKey[A], refusal: ValidationError): F[Unit] =
+    F.uncancelable { _ =>
+      sourceLock.lock
+        .surround(liveSources.get.flatMap { current =>
+          val abort = current.get(key.activationGeneration)
+          abort.traverse_(_(PeerError.InvalidBlock(refusal))).as(abort.isDefined)
+        })
+        .flatMap(live =>
+          report(
+            Event.Observed(
+              key.peer,
+              Observation
+                .CachedBlockRejected(SourceRefusal.Typed(refusal), key.activationGeneration, live),
+              Some(key.rootsGeneration)
+            )
+          )
+        )
     }
 
   /** A request starts in its own scope. Domain network failures terminate that mini-protocol's
@@ -269,7 +308,7 @@ final class OutboundPeers[F[_]: Async, A] private (
               case true =>
                 for
                   started <- Deferred[F, Option[FailureClass]]
-                  _ <- supervisor.supervise(hotSession(peer, link, session, started))
+                  _ <- link.children.supervise(hotSession(peer, link, session, started))
                   result <- started.get
                   // a hot session that did not start leaves no half-open connection behind
                   _ <- result.traverse_(_ => close(link))
@@ -327,82 +366,90 @@ final class OutboundPeers[F[_]: Async, A] private (
 
     val run: F[SessionEnd] =
       SessionEnd.scoped(node) { (_, _) ?=>
-        link.warm.activate(hot.transactions).use { connection =>
-          GenesisRuntime
-            .controls(
-              hot.genesis,
-              Some(hot.pool),
-              peer.hashCode.toLong,
-              connection.mux.connectionId,
-              error =>
-                connection.mux
-                  .abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error))),
-              problem => stop(link, Fatal.Internal(problem))
-            )
-            .use { (fetching, genesis) =>
-              Peer
-                .over(
-                  connection,
-                  hot.peer,
-                  hot.prepare,
-                  genesis
-                    .fold(hot.headers)(bound => hot.headers.map(_.withPatience(bound.patience))),
-                  Some(metered(peer)),
-                  Some(hot.pool),
-                  hot.fetchMode,
-                  Some(rejectedCachedBlock(peer, link.rootsGeneration, _)),
-                  fetchIdentity = Some(peer.hashCode.toLong),
-                  patience = genesis.map(_.patience),
-                  received = genesis.map(_.received),
-                  chainSyncObserver = genesis.map(_.observer),
-                  fetchSession = fetching,
-                  genesis = genesis.map(_.control),
-                  receivedBody = hot.receivedBody,
-                  retainedHeaders = genesis.fold(BlockPool.Retained)(_.retainedHeaders),
-                  selectionWork = genesis.map(_.work)
-                )
-                .use { over =>
-                  session.connection.complete(connection) *> started.complete(None) *>
-                    follow(over)
-                      .flatMap {
-                        // the pool is shared: a block that another session delivered and the rules
-                        // refuse is no fault of this peer, which fetches it itself when it tries again
-                        case SessionEnd.Rejected(refusal) =>
-                          over
-                            .refused(refusal)
-                            .map(foreign =>
-                              if foreign then
-                                SessionEnd.Failed(
-                                  PeerError
-                                    .Diverged(PeerError.Divergence.ForeignBlock(refusal))
-                                )
-                              else SessionEnd.Rejected(refusal)
-                            )
-                        case other => F.pure(other)
+        source(
+          peer,
+          link.rootsGeneration,
+          error =>
+            link.warm.mux.abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error)))
+        ).evalTap(key => session.source.set(Some(key.activationGeneration)))
+          .onFinalize(session.source.set(None))
+          .flatMap(key => link.warm.activate(hot.transactions, Some(retire(key))).map(_ -> key))
+          .use { (connection, sourceKey) =>
+            GenesisRuntime
+              .controls(
+                hot.genesis,
+                Some(hot.pool),
+                peer.hashCode.toLong,
+                connection.mux.connectionId,
+                error =>
+                  connection.mux
+                    .abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error))),
+                problem => stop(link, Fatal.Internal(problem))
+              )
+              .use { (fetching, genesis) =>
+                Peer
+                  .over(
+                    connection,
+                    hot.peer,
+                    hot.prepare,
+                    genesis
+                      .fold(hot.headers)(bound => hot.headers.map(_.withPatience(bound.patience))),
+                    Some(metered(peer)),
+                    Some(hot.pool),
+                    hot.fetchMode,
+                    Some(rejectedCachedBlock(sourceKey, _)),
+                    fetchIdentity = Some(peer.hashCode.toLong),
+                    patience = genesis.map(_.patience),
+                    received = genesis.map(_.received),
+                    chainSyncObserver = genesis.map(_.observer),
+                    fetchSession = fetching,
+                    genesis = genesis.map(_.control),
+                    receivedBody = hot.receivedBody,
+                    retainedHeaders = genesis.fold(BlockPool.Retained)(_.retainedHeaders),
+                    selectionWork = genesis.map(_.work)
+                  )
+                  .use { over =>
+                    session.connection.complete(connection) *> started.complete(None) *>
+                      follow(over)
+                        .flatMap {
+                          // the pool is shared: a block that another session delivered and the rules
+                          // refuse is no fault of this peer, which fetches it itself when it tries again
+                          case SessionEnd.Rejected(refusal) =>
+                            over
+                              .refused(refusal)
+                              .map(foreign =>
+                                if foreign then
+                                  SessionEnd.Failed(
+                                    PeerError
+                                      .Diverged(PeerError.Divergence.ForeignBlock(refusal))
+                                  )
+                                else SessionEnd.Rejected(refusal)
+                              )
+                          case other => F.pure(other)
+                        }
+                        .flatTap {
+                          // asked to stop: bring the pipeline to rest before the wire is ended
+                          case SessionEnd.Stopped(_) => asked.flatMap(a => over.quiesce.whenA(a))
+                          case end if SessionEnd.returnDelay(end).nonEmpty => over.quiesce
+                          case end =>
+                            val saved = SessionEnd
+                              .networkFailure(end)
+                              .traverse_(_ => session.ended.complete(end).void)
+                            saved *> SessionEnd.networkFailure(end).traverse_(connection.mux.abort)
+                        }
+                  }
+                  .flatMap {
+                    case SessionEnd.Stopped(_) =>
+                      connection.finish(config.deactivateTimeout).map(SessionEnd.Stopped(_))
+                    case end if SessionEnd.returnDelay(end).nonEmpty =>
+                      connection.finishAfterChainSync(config.deactivateTimeout).flatMap {
+                        case true  => F.pure(end)
+                        case false => close(link).as(SessionEnd.Stopped(false))
                       }
-                      .flatTap {
-                        // asked to stop: bring the pipeline to rest before the wire is ended
-                        case SessionEnd.Stopped(_) => asked.flatMap(a => over.quiesce.whenA(a))
-                        case end if SessionEnd.returnDelay(end).nonEmpty => over.quiesce
-                        case end =>
-                          val saved = SessionEnd
-                            .networkFailure(end)
-                            .traverse_(_ => session.ended.complete(end).void)
-                          saved *> SessionEnd.networkFailure(end).traverse_(connection.mux.abort)
-                      }
-                }
-                .flatMap {
-                  case SessionEnd.Stopped(_) =>
-                    connection.finish(config.deactivateTimeout).map(SessionEnd.Stopped(_))
-                  case end if SessionEnd.returnDelay(end).nonEmpty =>
-                    connection.finishAfterChainSync(config.deactivateTimeout).flatMap {
-                      case true  => F.pure(end)
-                      case false => close(link).as(SessionEnd.Stopped(false))
-                    }
-                  case other => F.pure(other)
-                }
-            }
-        }
+                    case other => F.pure(other)
+                  }
+              }
+          }
       }
 
     // Preserve a classified outcome if closing the bearer cancels its owning session.
@@ -596,7 +643,14 @@ object OutboundPeers:
       val gone: Deferred[F, Unit],
       val phase: Ref[F, Phase[F]],
       val rootsGeneration: BigInt,
-      val fatalReported: Ref[F, Boolean]
+      val fatalReported: Ref[F, Boolean],
+      val children: Supervisor[F]
+  )
+
+  private[node] final case class SourceKey[A](
+      peer: A,
+      rootsGeneration: BigInt,
+      activationGeneration: BigInt
   )
 
   private[node] enum Phase[F[_]]:
@@ -616,7 +670,8 @@ object OutboundPeers:
       val asked: Ref[F, Boolean],
       val ended: Deferred[F, SessionEnd],
       val connection: Deferred[F, NodeToNodeConnection[F, NtNHeader]],
-      val candidate: Deferred[F, Ref[F, ChainSelection.Candidate]]
+      val candidate: Deferred[F, Ref[F, ChainSelection.Candidate]],
+      val source: Ref[F, Option[BigInt]]
   )
 
   private[node] object Session:
@@ -626,8 +681,9 @@ object OutboundPeers:
         Ref.of[F, Boolean](false),
         Deferred[F, SessionEnd],
         Deferred[F, NodeToNodeConnection[F, NtNHeader]],
-        Deferred[F, Ref[F, ChainSelection.Candidate]]
-      ).mapN(new Session[F](_, _, _, _, _))
+        Deferred[F, Ref[F, ChainSelection.Candidate]],
+        Ref.of[F, Option[BigInt]](None)
+      ).mapN(new Session[F](_, _, _, _, _, _))
 
   def create[F[_]: Async, A](
       transport: Transport[F, A],
@@ -639,19 +695,25 @@ object OutboundPeers:
       metrics: Stateful[F, PeerMetrics[A]],
       connected: Option[(A, SocketAddress[IpAddress]) => F[Unit]] = None
   )(using node: Handle[F, NodeError]): F[OutboundPeers[F, A]] =
-    Ref
-      .of[F, Map[A, Link[F]]](Map.empty)
-      .map(
-        new OutboundPeers[F, A](
-          node,
-          transport,
-          manager,
-          config,
-          hot,
-          supervisor,
-          report,
-          metrics,
-          _,
-          connected
-        )
+    (
+      Ref.of[F, Map[A, Link[F]]](Map.empty),
+      Ref.of[F, BigInt](0),
+      Ref.of[F, Map[BigInt, PeerError => F[Unit]]](Map.empty),
+      Mutex[F]
+    ).mapN { (table, counter, sources, lock) =>
+      new OutboundPeers[F, A](
+        node,
+        transport,
+        manager,
+        config,
+        hot,
+        supervisor,
+        report,
+        metrics,
+        table,
+        connected,
+        counter,
+        sources,
+        lock
       )
+    }

@@ -73,23 +73,24 @@ private[selection] object Events:
       now: Time,
       policy: Policy
   )(using Ordering[A]): Decision[A] =
+    observation match
+      case Observation.CachedBlockRejected(cause, generation, live) =>
+        Decision(st0, Nil, List(Trace.CachedBlockRejected(peer, cause, generation, live)))
+      case other => observedConnection(st0, peer, other, now, policy)
+
+  private def observedConnection[A](
+      st0: GovernorState[A],
+      peer: A,
+      observation: Observation,
+      now: Time,
+      policy: Policy
+  )(using Ordering[A]): Decision[A] =
     st0.peers.get(peer) match
       case None => Decision(st0, Nil, Nil)
       case Some(record) =>
         observation match
-          case Observation.CachedBlockRejected(reason) =>
-            val result = report(st0, peer, now, FailureClass.Misbehaved, policy, _ => Duration.Zero)
-            Decision(
-              result.state,
-              List(Job.Close(peer)),
-              Trace.DemoteAsynchronous(
-                peer,
-                Temperature.Cold,
-                Some(FailureClass.Misbehaved),
-                Some(reason)
-              ) ::
-                (if result.forgotten then List(Trace.Forgotten(List(peer))) else Nil)
-            )
+          case Observation.CachedBlockRejected(cause, generation, live) =>
+            Decision(st0, Nil, List(Trace.CachedBlockRejected(peer, cause, generation, live)))
           // a hot protocol ended and the connection is up: warm again
           case Observation.HotEnded(delay) if record.status == Status.Hot =>
             val (extra, st) = fuzz(st0, policy.warmReconnectFuzz._1, policy.warmReconnectFuzz._2)

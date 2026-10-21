@@ -126,6 +126,18 @@ object LogSamples:
       Some(FailureClass.Transient),
       Some("unavailable: connection closed")
     ),
+    Trace.CachedBlockRejected(
+      peerA,
+      SourceRefusal.Typed(ValidationError(point, BlockFailure.HeaderDiffers)),
+      BigInt(7),
+      true
+    ),
+    Trace.CachedBlockRejected(
+      peerA,
+      SourceRefusal.Typed(ValidationError(point, BlockFailure.HeaderDiffers)),
+      BigInt(8),
+      false
+    ),
     Trace.ForgetCold(150, 160, List(peerB)),
     Trace.Forgotten(List(peerA)),
     Trace.BigLedgerRequest(15, 3),

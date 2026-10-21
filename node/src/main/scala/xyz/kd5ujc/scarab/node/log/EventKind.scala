@@ -99,6 +99,7 @@ enum EventKind(val area: Area, val severity: Severity):
   case PeerSelectionRoots extends EventKind(Area.Net, Severity.Info)
   case PeerSelectionPromote extends EventKind(Area.Net, Severity.Info)
   case PeerSelectionDemote extends EventKind(Area.Net, Severity.Info)
+  case PeerSelectionSource extends EventKind(Area.Net, Severity.Warning)
   case PeerSelectionForget extends EventKind(Area.Net, Severity.Info)
   case PeerSelectionSensitive extends EventKind(Area.Net, Severity.Notice)
   case PeerSelectionCounters extends EventKind(Area.Net, Severity.Info)

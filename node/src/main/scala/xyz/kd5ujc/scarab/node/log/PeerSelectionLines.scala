@@ -130,6 +130,14 @@ private[log] object PeerSelectionLines:
           "reason" -> reason.asJson
         )
         .at(if f.isDefined then Severity.Warning else Severity.Info)
+    case Trace.CachedBlockRejected(peer, cause, generation, live) =>
+      EventKind.PeerSelectionSource.line(
+        "action" -> "cachedBlockRejected".asJson,
+        "peer" -> peer.toString.asJson,
+        "reason" -> cause.message.asJson,
+        "sourceGeneration" -> generation.asJson,
+        "sourceLive" -> live.asJson
+      )
     case Trace.ForgetCold(target, known, ps) =>
       EventKind.PeerSelectionForget.line(
         "action" -> "cold".asJson,

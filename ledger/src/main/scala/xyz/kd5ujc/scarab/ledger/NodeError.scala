@@ -205,6 +205,9 @@ final case class ValidationError(point: ChainSync.Point, failure: BlockFailure) 
   def reason: String = failure.reason
   def message: String = s"${Points.show(point)} rejected by $rule: $reason"
 
+object ValidationError:
+  given cats.Show[ValidationError] = cats.Show.show(_.message)
+
 /** The implementation cannot evaluate this block. It is no verdict on the block or its peer. */
 final case class EvaluationUnavailable(point: ChainSync.Point, failure: LedgerFailure.Unavailable)
     extends NodeError:

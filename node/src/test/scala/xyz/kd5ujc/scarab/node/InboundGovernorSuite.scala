@@ -610,7 +610,9 @@ class InboundGovernorSuite extends FailsOnUncaught:
       )
   }
 
-  test("a retained original from an old hot activation cannot punish its successor on the same bearer") {
+  test(
+    "a retained original from an old hot activation cannot punish its successor on the same bearer"
+  ) {
     import cats.mtl.Raise
     import xyz.kd5ujc.scarab.ledger.{BlockFailure, ValidationError}
     import xyz.kd5ujc.scarab.protocol.{Mux as WireMux, KeepAlive}
@@ -632,79 +634,120 @@ class InboundGovernorSuite extends FailsOnUncaught:
       pool <- BlockPool.create[IO]
       follow: InboundGovernor.Follow[IO] = (peer: Peer[IO]) =>
         (node: Raise[IO, NodeError]) ?=>
-          Handle.allow[PeerError] {
-            for
-              activation <- activations.getAndUpdate(_ + 1)
-              intersection <- peer.intersect(Vector(Point.Origin))
-              _ <- IO(assertEquals(intersection, Some(Point.Origin)))
-              _ <- if activation == 0 then
-                for
-                  update <- peer.next
-                  announced <- update match
-                    case SyncEvent.RollForward(value, _) => IO.pure(value)
-                    case other => IO(fail(s"expected the first actual header, got $other"))
-                  raw <- peer.fetch(announced)
-                  _ <- IO(assertEquals(raw, forged.raws.head))
-                  _ <- delivered.complete(()) *> finishFirst.get
-                  missing <- peer.intersect(Vector(forged.headers.last.point))
-                  _ <- IO(assertEquals(missing, None))
-                  // The real failed FindIntersect has sent MsgDone. This is the same normal
-                  // NoMoreIntersection result the native client returns after draining.
-                  _ <- summon[Raise[IO, PeerError]].raise[PeerError, Unit](PeerError.NoIntersection)
-                yield ()
-              else secondHot.complete(()).void *> IO.never[Unit]
-            yield ()
-          }.rescue(error => node.raise[NodeError, Unit](error))
+          Handle
+            .allow[PeerError] {
+              for
+                activation <- activations.getAndUpdate(_ + 1)
+                intersection <- peer.intersect(Vector(Point.Origin))
+                _ <- IO(assertEquals(intersection, Some(Point.Origin)))
+                _ <-
+                  if activation == 0 then
+                    for
+                      announced <- cats.Monad[IO].tailRecM(()) { _ =>
+                        peer.next.flatMap {
+                          case SyncEvent.RollForward(value, _) => IO.pure(Right(value))
+                          case SyncEvent.RollBackward(point, _) =>
+                            IO(assertEquals(point, Point.Origin)).as(Left(()))
+                        }
+                      }
+                      raw <- peer.fetch(announced)
+                      _ <- IO(assertEquals(raw, forged.raws.head))
+                      _ <- delivered.complete(()) *> finishFirst.get
+                      missing <- peer.intersect(Vector(forged.headers.last.point))
+                      _ <- IO(assertEquals(missing, None))
+                      // The real failed FindIntersect has sent MsgDone. This is the same normal
+                      // NoMoreIntersection result the native client returns after draining.
+                      _ <- summon[Raise[IO, PeerError]].raise[PeerError, Unit](
+                        PeerError.NoIntersection
+                      )
+                    yield ()
+                  else secondHot.complete(()).void *> IO.never[Unit]
+              yield ()
+            }
+            .rescue(error => node.raise[NodeError, Unit](error))
       us <- local(
         pool = Some(pool),
         followSession = Some(follow),
         readAhead = 1,
         keepAliveInterval = 20.millis,
-        events = Some(new InboundEvents[IO]:
-          def emit(remote: String, event: InboundEvent) = seen.update(_ :+ event)
+        events = Some(
+          new InboundEvents[IO]:
+            def emit(remote: String, event: InboundEvent) = seen.update(_ :+ event)
         )
       )
       // One consumed batch plus the three retained pipeline batches. Every submitted response
       // can drain before FindIntersect; no unanswered AwaitReply is fabricated or cancelled.
       server <- serving(forged.raws.take(Peer.Depth + 1))
-      observe = (bytes: fs2.Chunk[Byte]) => wire.update { (before, cookies) =>
-        val (after, sdus) =
-          before.feed(Bytes.fromArray(bytes.toArray)).fold(e => fail(e.toString), identity)
-        val requests = sdus.filter(s =>
-          s.protocol == Protocols.KeepAlive && s.direction == WireMux.Direction.Initiator
-        ).flatMap(s =>
-          KeepAlive.decode(KeepAlive.State.Client, KeepAlive.Role.Client, s.payload).fold(
-            e => fail(e.toString),
-            {
-              case KeepAlive.Message.Request(cookie) => Vector(cookie.value)
-              case other => fail(s"unexpected client message $other")
-            }
-          )
-        )
-        after -> (cookies ++ requests)
-      }
+      observe = (bytes: fs2.Chunk[Byte]) =>
+        wire.update { (before, cookies) =>
+          val (after, sdus) =
+            before.feed(Bytes.fromArray(bytes.toArray)).fold(e => fail(e.toString), identity)
+          val requests = sdus
+            .filter(s =>
+              s.protocol == Protocols.KeepAlive && s.direction == WireMux.Direction.Initiator
+            )
+            .flatMap(s =>
+              KeepAlive
+                .decode(KeepAlive.State.Client, KeepAlive.Role.Client, s.payload)
+                .fold(
+                  e => fail(e.toString),
+                  {
+                    case KeepAlive.Message.Request(cookie) => Vector(cookie.value)
+                    case other => fail(s"unexpected client message $other")
+                  }
+                )
+            )
+          after -> (cookies ++ requests)
+        }
       _ <- connect(Some(server), us, observe) { _ =>
         for
-          _ <- delivered.get.timeout(5.seconds)
+          _ <- delivered.get.timeoutTo(
+            5.seconds,
+            (
+              activations.get,
+              seen.get,
+              server.ranges.get,
+              server.intersections.get,
+              us.governor.sessions
+            ).tupled.flatMap(state => IO(fail(s"hot1 body was not delivered: $state")))
+          )
           _ <- eventually("all submitted actual block ranges can drain")(
             server.ranges.get
           )(_.exists(_._2 == forged.headers(Peer.Depth).point))
-          old <- us.governor.cachedSource(remote).flatMap(_.liftTo[IO](
-            new AssertionError("the delivering hot activation has no active source key")
-          ))
-          original <- pool.session.use(_.take(header.hash)).flatMap(_.liftTo[IO](
-            new AssertionError("the actual delivered original was not retained")
-          ))
+          old <- us.governor
+            .cachedSource(remote)
+            .flatMap(
+              _.liftTo[IO](
+                new AssertionError("the delivering hot activation has no active source key")
+              )
+            )
+          original <- pool.session
+            .use(_.take(header.hash))
+            .flatMap(
+              _.liftTo[IO](
+                new AssertionError("the actual delivered original was not retained")
+              )
+            )
           _ <- finishFirst.complete(())
-          delay <- enteredWarm.get.timeout(5.seconds)
+          delay <- enteredWarm.get.timeoutTo(
+            5.seconds,
+            IO(fail("hot1 failed FindIntersect did not finish draining"))
+          )
           _ <- IO(assertEquals(delay, 120.seconds))
           warmSource <- us.governor.cachedSource(remote)
           _ <- IO(assertEquals(warmSource, None))
           _ <- promote.complete(())
-          _ <- secondHot.get.timeout(5.seconds)
-          current <- us.governor.cachedSource(remote).flatMap(_.liftTo[IO](
-            new AssertionError("the successor hot activation has no active source key")
-          ))
+          _ <- secondHot.get.timeoutTo(
+            5.seconds,
+            IO(fail("hot2 did not reach its actual intersection"))
+          )
+          current <- us.governor
+            .cachedSource(remote)
+            .flatMap(
+              _.liftTo[IO](
+                new AssertionError("the successor hot activation has no active source key")
+              )
+            )
           before <- wire.get.map(_._2.size)
           // Native ClientInterface.hs:193 captures the adding BlockFetch thread; the punishment
           // DSL's mkPunishThisThread (InvalidBlockPunishment.hs:48–52) cannot target hot2's thread.

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network.selection
 
+import cats.Show
 import scala.concurrent.duration.FiniteDuration
+import xyz.kd5ujc.scarab.codec.DomainError
 import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 
 /** How a peer failed, as far as the governor cares (owner decision 8, docs/design/
@@ -16,6 +18,19 @@ enum FailureClass:
 /** The temperatures a transition goes between. */
 enum Temperature:
   case Cold, Warm, Hot
+
+/** A closed boundary packet retaining another service's typed refusal and its presentation
+  * capability. The cause is rendered only by telemetry consumers.
+  */
+sealed abstract class SourceRefusal extends Product with Serializable:
+  type Cause <: DomainError
+  val cause: Cause
+  def message: String
+
+object SourceRefusal:
+  final case class Typed[E <: DomainError](cause: E)(using show: Show[E]) extends SourceRefusal:
+    type Cause = E
+    def message: String = show.show(cause)
 
 /** What the effect layer sees of an established peer's connection when it looks without blocking
   * (`monitorPeerConnection`, `PeerStateActions.hs` 908-950): a change the governor did not ask for
@@ -33,10 +48,10 @@ enum Observation:
     */
   case Lost(failure: FailureClass, delay: FiniteDuration, released: Boolean, reason: String)
 
-  /** A retained block was rejected after its source session may already have disconnected. This is
-    * source misbehaviour independently of its current temperature; text is for tracing.
+  /** Attribution evidence only. The adding bearer is stopped by its exact live source key; this
+    * observation must never demote or close a replacement connection at the same address.
     */
-  case CachedBlockRejected(reason: String)
+  case CachedBlockRejected(cause: SourceRefusal, sourceGeneration: BigInt, sourceLive: Boolean)
 
 /** The peers a request for public roots found: ordinary public roots, bootstrap peers, and the
   * ledger peers the ledger answered with (when it answers, the configured public roots are not
@@ -146,6 +161,12 @@ enum Trace[A]:
       to: Temperature,
       failure: Option[FailureClass],
       reason: Option[String]
+  )
+  case CachedBlockRejected(
+      peer: A,
+      cause: SourceRefusal,
+      sourceGeneration: BigInt,
+      sourceLive: Boolean
   )
   case ForgetCold(target: Int, known: Int, peers: List[A])
   case Forgotten(peers: List[A])
