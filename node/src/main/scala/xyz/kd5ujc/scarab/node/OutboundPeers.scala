@@ -308,6 +308,8 @@ final class OutboundPeers[F[_]: Async, A] private (
       SessionEnd.scoped(node) { (scope, _) ?=>
         val gated = new Peer[F]:
           override def selectionWork = over.selectionWork
+          override def rejected(refusal: ValidationError)(using cats.Applicative[F]) =
+            over.rejected(refusal)
           def intersect(candidates: Vector[xyz.kd5ujc.scarab.protocol.ChainSync.Point])(using
               Raise[F, PeerError]
           ) = over.intersect(candidates)

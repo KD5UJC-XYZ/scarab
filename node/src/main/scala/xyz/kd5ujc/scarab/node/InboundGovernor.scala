@@ -359,6 +359,8 @@ final class InboundGovernor[F[_]: Async] private (
   /** The peer, with what the session sees of it counted. */
   private def counted(remote: SocketAddress[IpAddress], peer: Peer[F]): Peer[F] = new Peer[F]:
     override def selectionWork = peer.selectionWork
+    override def rejected(refusal: xyz.kd5ujc.scarab.ledger.ValidationError)(using cats.Applicative[F]) =
+      peer.rejected(refusal)
     def intersect(candidates: Vector[ChainSync.Point])(using Raise[F, PeerError]) =
       peer.intersect(candidates).flatTap { found =>
         found.traverse_ { point =>
