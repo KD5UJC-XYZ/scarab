@@ -2,3 +2,4 @@
 self-hosted-runner:
   labels:
     - scarab-candidate
+    - scarab-preprod-observer

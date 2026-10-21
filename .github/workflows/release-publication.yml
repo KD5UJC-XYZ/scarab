@@ -1,0 +1,597 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Authorized release publication
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        options: [reserve, publish]
+        default: reserve
+        required: true
+      source:
+        description: Approved exact release-branch cut
+        type: string
+        required: true
+      tag:
+        description: Authoritative vSemVer tag
+        type: string
+        required: true
+      channel:
+        type: choice
+        options: [alpha, beta, preprod, prod]
+        required: true
+      trusted-source:
+        description: Independently approved current main control-plane SHA
+        type: string
+        required: true
+      ruleset-audit:
+        description: Optional full owner-reviewed snapshot; retained for protected approval
+        type: string
+        default: ''
+      production-proof-run:
+        description: Canonical produced-block observation run (required for prod; no follower substitute)
+        type: string
+        default: ''
+      candidate-run-id:
+        description: Retry only - retained canonical publisher run, not a rebuilt candidate
+        type: string
+        default: ''
+      candidate-artifact-id:
+        type: string
+        default: ''
+      candidate-artifact-digest:
+        type: string
+        default: ''
+      candidate-manifest-sha256:
+        type: string
+        default: ''
+permissions:
+  contents: read
+  actions: read
+  checks: read
+concurrency:
+  group: scarab-official-publication
+  cancel-in-progress: false
+env:
+  PRODUCTION_PROOF_RUN: ${{ inputs.production-proof-run }}
+  RELEASE_OPERATION: ${{ inputs.operation }}
+  RELEASE_SOURCE: ${{ inputs.source }}
+  RELEASE_TAG: ${{ inputs.tag }}
+  RELEASE_CHANNEL: ${{ inputs.channel }}
+  TRUSTED_SOURCE: ${{ inputs.trusted-source }}
+  IMAGE_REPOSITORY: ghcr.io/kd5ujc-xyz/scarab
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      environment: ${{ steps.policy.outputs.environment }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Verify approved current-main control plane before reading operator input
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'POLICY'
+          import os, sys
+          sys.path.insert(0, 'scripts')
+          from publication_common import GitHub, require
+          reserve = os.environ['RELEASE_OPERATION'] == 'reserve'
+          require((os.environ['GITHUB_REF'] == 'refs/heads/main' and os.environ['GITHUB_SHA'] == os.environ['TRUSTED_SOURCE']) if reserve else
+                  (os.environ['GITHUB_REF'] == 'refs/tags/' + os.environ['RELEASE_TAG'] and os.environ['GITHUB_SHA'] == os.environ['RELEASE_SOURCE']),
+                  'wrong reserve/publish invocation context')
+          from publication_authority import control_plane
+          control_plane(GitHub(os.environ['GITHUB_REPOSITORY'], os.environ['GH_TOKEN']),
+                        os.environ['RELEASE_SOURCE'], os.environ['TRUSTED_SOURCE'])
+          POLICY
+      - name: Require existing protected environment before any job references it
+        id: policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RULESET_AUDIT: ${{ inputs.ruleset-audit }}
+        run: python3 scripts/publication_job.py preflight
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: publication-preflight
+          path: ${{ runner.temp }}/preflight/
+          if-no-files-found: error
+  reserve:
+    if: inputs.operation == 'reserve'
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: ${{ needs.preflight.outputs.environment }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.trusted-source }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: publication-preflight
+          path: ${{ runner.temp }}/preflight
+      - name: Install checksum-pinned verification tools and notes collector
+        run: |
+          python3 scripts/install_publication_tools.py --output "$RUNNER_TEMP/publication-tools"
+          python3 -m venv "$RUNNER_TEMP/notes"
+          "$RUNNER_TEMP/notes/bin/pip" install --require-hashes -r scripts/release/requirements.txt
+      - name: Repeat existing environment policy check after approval and before credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/publication_policy.py --repository "$GITHUB_REPOSITORY"
+          --channel "$RELEASE_CHANNEL" --policy release/publication-policy.json
+          --previous "$RUNNER_TEMP/preflight/environment.json" --output "$RUNNER_TEMP/approved-environment.json"
+      - name: Recheck retained audit template and reviewer digest before credentials
+        run: python3 scripts/publication_job.py approved-audit
+      - name: Mint environment-scoped release App token
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
+        with:
+          app-id: ${{ vars.SCARAB_RELEASE_APP_ID }}
+          private-key: ${{ secrets.SCARAB_RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-actions: write
+      - name: Reserve immutable official tag and explicitly dispatch exact-tag publisher
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: '"$RUNNER_TEMP/notes/bin/python" scripts/publication_job.py reserve'
+  exact-cut-controls:
+    if: inputs.operation == 'publish'
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tooling and inventory controls at the actual release cut
+        run: |
+          python3 -m venv "$RUNNER_TEMP/controls"
+          "$RUNNER_TEMP/controls/bin/pip" install --require-hashes -r scripts/release/requirements.txt
+          "$RUNNER_TEMP/controls/bin/pip" install --require-hashes -r scripts/release/publication-requirements.txt
+          "$RUNNER_TEMP/controls/bin/python" scripts/check_publication_schema.py
+          "$RUNNER_TEMP/controls/bin/python" -m unittest discover -s scripts/tests
+          python3 scripts/check_test_coverage.py
+          python3 scripts/check_error_channels.py
+          python3 scripts/check_crypto_guard.py
+      - name: Full-history secret scan at the exact cut
+        run: >-
+          docker run --rm -v "$PWD:/repo:ro"
+          zricethezav/gitleaks:v8.24.3@sha256:e1b35e12a8c6fa8901f060459cfb6b2fc4c484d3afbe3b029733a3bbfab07055
+          git /repo --log-opts="--full-history HEAD" --config /repo/.gitleaks.toml --no-banner --redact --exit-code 1
+      - name: Crypto static rules at the exact cut
+        run: |
+          pip install semgrep==1.181.0
+          semgrep scan --no-git-ignore --config .semgrep/scarab-crypto.yaml --error --severity WARNING --severity ERROR .
+  candidate:
+    if: inputs.operation == 'publish' && inputs.candidate-run-id == ''
+    needs: preflight
+    uses: ./.github/workflows/release-candidate.yml
+    with:
+      expected-commit: ${{ inputs.source }}
+      release-tag: ${{ inputs.tag }}
+      expected-tag-object: ${{ inputs.source }}
+      channel: ${{ inputs.channel }}
+      source-ref: refs/heads/release/${{ inputs.channel }}
+  select-candidate:
+    if: always() && inputs.operation == 'publish' && needs.preflight.result == 'success' && (needs.candidate.result == 'success' || needs.candidate.result == 'skipped')
+    needs: [preflight, candidate]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      artifact-id: ${{ steps.select.outputs.artifact-id }}
+      artifact-digest: ${{ steps.select.outputs.artifact-digest }}
+      manifest-sha256: ${{ steps.select.outputs.manifest-sha256 }}
+      run-id: ${{ steps.select.outputs.run-id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.trusted-source }}
+          persist-credentials: false
+      - id: select
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIOUS_CANDIDATE_RUN: ${{ inputs.candidate-run-id }}
+          PREVIOUS_ARTIFACT_ID: ${{ inputs.candidate-artifact-id }}
+          PREVIOUS_ARTIFACT_DIGEST: ${{ inputs.candidate-artifact-digest }}
+          PREVIOUS_MANIFEST_SHA256: ${{ inputs.candidate-manifest-sha256 }}
+          FRESH_ARTIFACT_ID: ${{ needs.candidate.outputs.artifact-id }}
+          FRESH_ARTIFACT_DIGEST: ${{ needs.candidate.outputs.artifact-digest }}
+          FRESH_MANIFEST_SHA256: ${{ needs.candidate.outputs.manifest-sha256 }}
+        run: python3 scripts/publication_job.py select-candidate
+  stage:
+    outputs:
+      status: ${{ steps.stage.outputs.status }}
+    needs: [preflight, exact-cut-controls, select-candidate]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: ${{ needs.preflight.outputs.environment }}
+    permissions:
+      actions: read
+      checks: read
+      contents: write
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      CANDIDATE_RUN_ID: ${{ needs.select-candidate.outputs.run-id }}
+      CANDIDATE_SHA256: ${{ needs.select-candidate.outputs.manifest-sha256 }}
+      CANDIDATE_ARTIFACT_ID: ${{ needs.select-candidate.outputs.artifact-id }}
+      CANDIDATE_ARTIFACT_DIGEST: ${{ needs.select-candidate.outputs.artifact-digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.trusted-source }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          artifact-ids: ${{ needs.select-candidate.outputs.artifact-id }}
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.select-candidate.outputs.run-id }}
+          path: ${{ runner.temp }}/candidate
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: publication-preflight
+          path: ${{ runner.temp }}/preflight
+      - name: Install pinned tools and notes collector
+        run: |
+          python3 scripts/install_publication_tools.py --output "$RUNNER_TEMP/publication-tools"
+          python3 -m venv "$RUNNER_TEMP/notes"
+          "$RUNNER_TEMP/notes/bin/pip" install --require-hashes -r scripts/release/requirements.txt
+      - name: Repeat existing environment policy check after approval and before credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/publication_policy.py --repository "$GITHUB_REPOSITORY"
+          --channel "$RELEASE_CHANNEL" --policy release/publication-policy.json
+          --previous "$RUNNER_TEMP/preflight/environment.json" --output "$RUNNER_TEMP/approved-environment.json"
+      - name: Recheck retained audit template and reviewer digest before credentials
+        run: python3 scripts/publication_job.py approved-audit
+      - name: Authenticate registry transport
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GH_TOKEN" | "$RUNNER_TEMP/publication-tools/bin/oras" login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: Mint protected environment release App token
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
+        with:
+          app-id: ${{ vars.SCARAB_RELEASE_APP_ID }}
+          private-key: ${{ secrets.SCARAB_RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+      - name: Verify live App authority before any signing or staging mutation
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: python3 scripts/publication_job.py authorize
+      - name: Prepare fixed signature subjects
+        id: subjects
+        run: python3 scripts/publication_job.py prepare
+      - name: Sign every retained candidate input and SHA256SUMS
+        id: provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-checksums: ${{ runner.temp }}/candidate/signing-subjects.txt
+      - name: Bind JVM SBOM to the final JAR subject
+        id: jar-bom
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: ${{ steps.subjects.outputs.jar }}
+          sbom-path: ${{ steps.subjects.outputs.jar-bom }}
+      - name: Sign exact OCI manifest content
+        id: image-provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-name: ${{ env.IMAGE_REPOSITORY }}
+          subject-digest: ${{ steps.subjects.outputs.image-digest }}
+      - name: Bind image SBOM to the OCI manifest subject
+        id: image-bom
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-name: ${{ env.IMAGE_REPOSITORY }}
+          subject-digest: ${{ steps.subjects.outputs.image-digest }}
+          sbom-path: ${{ steps.subjects.outputs.image-bom }}
+      - name: Retain original signature bundles and stage immutable assets
+        id: stage
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          REGISTRY_TOKEN: ${{ github.token }}
+          PROVENANCE: ${{ steps.provenance.outputs.bundle-path }}
+          JAR_BOM: ${{ steps.jar-bom.outputs.bundle-path }}
+          IMAGE_PROVENANCE: ${{ steps.image-provenance.outputs.bundle-path }}
+          IMAGE_BOM: ${{ steps.image-bom.outputs.bundle-path }}
+        run: |
+          python3 - <<'BUNDLES'
+          import os, shutil
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'candidate'
+          for variable, name in [('PROVENANCE','provenance'),('JAR_BOM','jar-sbom'),('IMAGE_PROVENANCE','image-provenance'),('IMAGE_BOM','image-sbom')]:
+              shutil.copyfile(os.environ[variable], root / (name + '.sigstore.json'))
+          BUNDLES
+          "$RUNNER_TEMP/notes/bin/python" scripts/publication_job.py stage
+  verify-staged:
+    if: needs.stage.outputs.status == 'draft-staged' || needs.stage.outputs.status == 'verified'
+    needs: [preflight, select-candidate, stage]
+    environment: ${{ needs.preflight.outputs.environment }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      checks: read
+      contents: write
+      packages: read
+      id-token: write
+      attestations: write
+    env:
+      CANDIDATE_RUN_ID: ${{ needs.select-candidate.outputs.run-id }}
+      CANDIDATE_SHA256: ${{ needs.select-candidate.outputs.manifest-sha256 }}
+      CANDIDATE_ARTIFACT_ID: ${{ needs.select-candidate.outputs.artifact-id }}
+      CANDIDATE_ARTIFACT_DIGEST: ${{ needs.select-candidate.outputs.artifact-digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.trusted-source }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          artifact-ids: ${{ needs.select-candidate.outputs.artifact-id }}
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.select-candidate.outputs.run-id }}
+          path: ${{ runner.temp }}/candidate
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: publication-preflight
+          path: ${{ runner.temp }}/preflight
+      - name: Install pinned tools and notes collector
+        run: |
+          python3 scripts/install_publication_tools.py --output "$RUNNER_TEMP/publication-tools"
+          python3 -m venv "$RUNNER_TEMP/notes"
+          "$RUNNER_TEMP/notes/bin/pip" install --require-hashes -r scripts/release/requirements.txt
+      - name: Repeat existing environment policy after approval before draft access
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/publication_policy.py --repository "$GITHUB_REPOSITORY"
+          --channel "$RELEASE_CHANNEL" --policy release/publication-policy.json
+          --previous "$RUNNER_TEMP/preflight/environment.json" --output "$RUNNER_TEMP/approved-environment.json"
+      - name: Authenticate registry transport
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GH_TOKEN" | "$RUNNER_TEMP/publication-tools/bin/oras" login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: Build trusted verifier JDK and retain immutable local image ID
+        run: |
+          docker build -f docker/jdk.Dockerfile -t scarab-publication-verifier:ci .
+          echo "VERIFIER_JDK=$(docker image inspect --format '{{.Id}}' scarab-publication-verifier:ci)" >> "$GITHUB_ENV"
+      - name: Independently retrieve, authenticate and exercise actual artifact bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/publication_job.py verify-staged
+      - name: Attest original independent verification receipt
+        id: receipt-signature
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: ${{ runner.temp }}/verify-staged-result/verification*
+      - name: Retain original verification signature bundle
+        env:
+          BUNDLE: ${{ steps.receipt-signature.outputs.bundle-path }}
+        run: cp "$BUNDLE" "$RUNNER_TEMP/verify-staged-result/verification.sigstore.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: verify-staged-receipt
+          path: ${{ runner.temp }}/verify-staged-result/verification*
+          if-no-files-found: error
+  publish:
+    if: needs.verify-staged.result == 'success'
+    needs: [preflight, select-candidate, verify-staged]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: ${{ needs.preflight.outputs.environment }}
+    permissions:
+      actions: read
+      checks: read
+      contents: write
+      packages: read
+      id-token: write
+      attestations: write
+    env:
+      CANDIDATE_RUN_ID: ${{ needs.select-candidate.outputs.run-id }}
+      CANDIDATE_SHA256: ${{ needs.select-candidate.outputs.manifest-sha256 }}
+      CANDIDATE_ARTIFACT_ID: ${{ needs.select-candidate.outputs.artifact-id }}
+      CANDIDATE_ARTIFACT_DIGEST: ${{ needs.select-candidate.outputs.artifact-digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.trusted-source }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          artifact-ids: ${{ needs.select-candidate.outputs.artifact-id }}
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.select-candidate.outputs.run-id }}
+          path: ${{ runner.temp }}/candidate
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: publication-preflight
+          path: ${{ runner.temp }}/preflight
+      - name: Install pinned tools and notes collector
+        run: |
+          python3 scripts/install_publication_tools.py --output "$RUNNER_TEMP/publication-tools"
+          python3 -m venv "$RUNNER_TEMP/notes"
+          "$RUNNER_TEMP/notes/bin/pip" install --require-hashes -r scripts/release/requirements.txt
+      - name: Repeat existing environment policy check after approval and before credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/publication_policy.py --repository "$GITHUB_REPOSITORY"
+          --channel "$RELEASE_CHANNEL" --policy release/publication-policy.json
+          --previous "$RUNNER_TEMP/preflight/environment.json" --output "$RUNNER_TEMP/approved-environment.json"
+      - name: Recheck retained audit template and reviewer digest before credentials
+        run: python3 scripts/publication_job.py approved-audit
+      - name: Authenticate registry transport
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GH_TOKEN" | "$RUNNER_TEMP/publication-tools/bin/oras" login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: verify-staged-receipt
+          path: ${{ runner.temp }}/verification
+      - name: Mint protected environment release App token
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
+        with:
+          app-id: ${{ vars.SCARAB_RELEASE_APP_ID }}
+          private-key: ${{ secrets.SCARAB_RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+      - name: Retrieve original produced-block proof, when supplied
+        if: inputs.production-proof-run != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: public-produced-block-observation
+          run-id: ${{ inputs.production-proof-run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/acceptance
+      - name: Advance only with authenticated independent receipt
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: '"$RUNNER_TEMP/notes/bin/python" scripts/publication_job.py publish'
+  verify-public:
+    if: always() && needs.stage.result == 'success' && needs.stage.outputs.status != 'aliased' && (needs.publish.result == 'success' || needs.stage.outputs.status == 'published')
+    needs: [preflight, select-candidate, stage, publish]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+      packages: read
+      id-token: write
+      attestations: write
+    env:
+      CANDIDATE_RUN_ID: ${{ needs.select-candidate.outputs.run-id }}
+      CANDIDATE_SHA256: ${{ needs.select-candidate.outputs.manifest-sha256 }}
+      CANDIDATE_ARTIFACT_ID: ${{ needs.select-candidate.outputs.artifact-id }}
+      CANDIDATE_ARTIFACT_DIGEST: ${{ needs.select-candidate.outputs.artifact-digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.trusted-source }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          artifact-ids: ${{ needs.select-candidate.outputs.artifact-id }}
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.select-candidate.outputs.run-id }}
+          path: ${{ runner.temp }}/candidate
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: publication-preflight
+          path: ${{ runner.temp }}/preflight
+      - name: Install pinned tools and notes collector
+        run: |
+          python3 scripts/install_publication_tools.py --output "$RUNNER_TEMP/publication-tools"
+          python3 -m venv "$RUNNER_TEMP/notes"
+          "$RUNNER_TEMP/notes/bin/pip" install --require-hashes -r scripts/release/requirements.txt
+      - name: Authenticate registry transport
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GH_TOKEN" | "$RUNNER_TEMP/publication-tools/bin/oras" login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: Build trusted verifier JDK and retain immutable local image ID
+        run: |
+          docker build -f docker/jdk.Dockerfile -t scarab-publication-verifier:ci .
+          echo "VERIFIER_JDK=$(docker image inspect --format '{{.Id}}' scarab-publication-verifier:ci)" >> "$GITHUB_ENV"
+      - name: Independently retrieve, authenticate and exercise actual artifact bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/publication_job.py verify-public
+      - name: Attest original independent verification receipt
+        id: receipt-signature
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: ${{ runner.temp }}/verify-public-result/verification*
+      - name: Retain original verification signature bundle
+        env:
+          BUNDLE: ${{ steps.receipt-signature.outputs.bundle-path }}
+        run: cp "$BUNDLE" "$RUNNER_TEMP/verify-public-result/verification.sigstore.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: verify-public-receipt
+          path: ${{ runner.temp }}/verify-public-result/verification*
+          if-no-files-found: error
+  finalize:
+    if: needs.verify-public.result == 'success'
+    needs: [preflight, select-candidate, verify-public]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: ${{ needs.preflight.outputs.environment }}
+    permissions:
+      actions: read
+      checks: read
+      contents: write
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      CANDIDATE_RUN_ID: ${{ needs.select-candidate.outputs.run-id }}
+      CANDIDATE_SHA256: ${{ needs.select-candidate.outputs.manifest-sha256 }}
+      CANDIDATE_ARTIFACT_ID: ${{ needs.select-candidate.outputs.artifact-id }}
+      CANDIDATE_ARTIFACT_DIGEST: ${{ needs.select-candidate.outputs.artifact-digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.trusted-source }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          artifact-ids: ${{ needs.select-candidate.outputs.artifact-id }}
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.select-candidate.outputs.run-id }}
+          path: ${{ runner.temp }}/candidate
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: publication-preflight
+          path: ${{ runner.temp }}/preflight
+      - name: Install pinned tools and notes collector
+        run: |
+          python3 scripts/install_publication_tools.py --output "$RUNNER_TEMP/publication-tools"
+          python3 -m venv "$RUNNER_TEMP/notes"
+          "$RUNNER_TEMP/notes/bin/pip" install --require-hashes -r scripts/release/requirements.txt
+      - name: Repeat existing environment policy check after approval and before credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/publication_policy.py --repository "$GITHUB_REPOSITORY"
+          --channel "$RELEASE_CHANNEL" --policy release/publication-policy.json
+          --previous "$RUNNER_TEMP/preflight/environment.json" --output "$RUNNER_TEMP/approved-environment.json"
+      - name: Recheck retained audit template and reviewer digest before credentials
+        run: python3 scripts/publication_job.py approved-audit
+      - name: Authenticate registry transport
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GH_TOKEN" | "$RUNNER_TEMP/publication-tools/bin/oras" login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: verify-public-receipt
+          path: ${{ runner.temp }}/verification
+      - name: Mint protected environment release App token
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
+        with:
+          app-id: ${{ vars.SCARAB_RELEASE_APP_ID }}
+          private-key: ${{ secrets.SCARAB_RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+      - name: Advance only with authenticated independent receipt
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: '"$RUNNER_TEMP/notes/bin/python" scripts/publication_job.py finalize'
