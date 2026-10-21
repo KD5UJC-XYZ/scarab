@@ -40,10 +40,12 @@ object UpstreamGenesisReplay:
       case ChainSync.Point.Block(_, hash) => Some(BlockRef(slot, hash, blockNo))
   final case class Closure(peer: Option[PeerId], problem: Problem)
   final case class Terminal(peer: PeerId, component: Component, end: End, cause: Option[Problem])
+  final case class GddDecision(atPicos: BigInt, value: GenesisGovernor.Observation)
   final case class Result(
       selection: Fragment,
       closures: Vector[Closure],
-      terminals: Vector[Terminal]
+      terminals: Vector[Terminal],
+      gdd: Vector[GddDecision]
   )
 
   private def end(problem: Problem): End = problem match
@@ -57,8 +59,15 @@ object UpstreamGenesisReplay:
           PeerError.Unavailable(PeerError.Unavailability.Network(_: NetworkError.Timeout))
         ) =>
       End.Timeout
-    case Problem.Node(PeerError.NoIntersection) => End.Success
-    case _                                      => End.Unexpected
+    case Problem.Node(error) =>
+      SessionEnd.of(error) match
+        case SessionEnd.NoMoreIntersection | SessionEnd.RolledBackPastIntersection(_) => End.Success
+        case _ => End.Unexpected
+    case _ => End.Unexpected
+
+  private def densityKey(peer: PeerId): Long = peer match
+    case PeerId.Honest(index)      => index.toLong - Int.MinValue.toLong
+    case PeerId.Adversarial(index) => (1L << 32) + index.toLong - Int.MinValue.toLong
 
   private val clock = new PicosClock[IO]:
     def now = IO.monotonic.map(t => BigInt(t.toNanos))
@@ -122,6 +131,7 @@ object UpstreamGenesisReplay:
           )
           closed <- Ref.of[IO, Vector[Closure]](Vector.empty)
           terminals <- Ref.of[IO, Vector[Terminal]](Vector.empty)
+          gdd <- Ref.of[IO, Vector[GddDecision]](Vector.empty)
           record = (peer: PeerId, component: Component, outcome: Either[Problem, Unit]) =>
             terminals.update(
               _ :+ Terminal(
@@ -201,7 +211,11 @@ object UpstreamGenesisReplay:
                           _ <- follower.installFetchCoordinator(pool.fetchCoordinator)
                           governor <- GenesisGovernor.create[IO](
                             follower.genesisView((_, _, _) => Some(scenario.genesisWindow)),
-                            GenesisGovernor.Config(scenario.config.loe, Duration.Zero)
+                            GenesisGovernor.Config(scenario.config.loe, Duration.Zero),
+                            Some(observation =>
+                              clock.now
+                                .flatMap(now => gdd.update(_ :+ GddDecision(now, observation)))
+                            )
                           )
                           settings = GenesisSettings(
                             enableCSJ = scenario.config.jumping,
@@ -278,7 +292,7 @@ object UpstreamGenesisReplay:
                                             serverBF <- Resource.eval(
                                               serverMux.channel(Protocols.BlockFetch)
                                             )
-                                            _ <- Resource.make(
+                                            servingChainSync <- Resource.make(
                                               Fibers
                                                 .scoped[IO, NetworkError, Unit](
                                                   NetworkError.Defect(_)
@@ -373,7 +387,9 @@ object UpstreamGenesisReplay:
                                               p =>
                                                 closed.update(
                                                   _ :+ Closure(Some(id), Problem.Invariant(p))
-                                                )
+                                                ) *> refused.complete(Problem.Invariant(p)).void,
+                                              densityOrder =
+                                                Some(GenesisGovernor.OrderKey(densityKey(id)))
                                             )
                                             (fetchSession, controls) = bound
                                             connection = NodeToNodeConnection(
@@ -434,9 +450,9 @@ object UpstreamGenesisReplay:
                                                   )
                                               )
                                             )
-                                          yield peer
+                                          yield peer -> servingChainSync
                                         }
-                                    connection.use { peer =>
+                                    connection.use { (peer, servingChainSync) =>
                                       ready.complete(()).void *> Fibers
                                         .scoped[IO, Problem, Unit](Problem.Defect(_)) {
                                           given Raise[IO, NodeError] =
@@ -452,6 +468,9 @@ object UpstreamGenesisReplay:
                                         }
                                         .flatMap { result =>
                                           record(id, Component.ChainSyncClient, result) *>
+                                            servingChainSync.join.void.whenA(
+                                              result.fold(end, _ => End.Success) == End.Success
+                                            ) *>
                                             result.left.toOption.traverse_(e =>
                                               closed.update(_ :+ Closure(Some(id), e))
                                             )
@@ -502,8 +521,8 @@ object UpstreamGenesisReplay:
                           .fold(BigInt(0))(_.atPicos)).max(0)
                       )
                       _ <- clock.sleep(scenario.minEndTimePicos).whenA(restarted)
-                      result <- (chain.get, closed.get, terminals.get).mapN {
-                        (selected, failures, ended) =>
+                      result <- (chain.get, closed.get, terminals.get, gdd.get).mapN {
+                        (selected, failures, ended, decisions) =>
                           Result(
                             Fragment(
                               selected.anchor.point,
@@ -512,7 +531,8 @@ object UpstreamGenesisReplay:
                               }
                             ),
                             failures,
-                            ended
+                            ended,
+                            decisions
                           )
                       }
                     yield result

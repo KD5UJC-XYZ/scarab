@@ -87,7 +87,10 @@ class UpstreamGenesisReplaySuite extends FailsOnUncaught:
           .traverse { scenario =>
             IO.println(s"replaying ${scenario.label}") *> UpstreamGenesisReplay
               .run(scenario)
-              .flatTap(result => IO.println(s"outcome ${scenario.label}: $result"))
+              .flatTap(result =>
+                IO.println(s"outcome ${scenario.label}: ${result
+                    .map(r => (r.selection, r.closures, r.terminals, r.gdd.size))}")
+              )
               .map(scenario.label -> _)
           }
           .flatMap { results =>
@@ -114,7 +117,7 @@ class UpstreamGenesisReplaySuite extends FailsOnUncaught:
                   }
                   Vector(
                     Option.when(actual.selection != native.selection)(
-                      s"$label selection: actual=$actual expected=${native.selection}"
+                      s"$label selection: actual=${actual.selection} expected=${native.selection}"
                     ),
                     Option.when(
                       actualEnds.groupMapReduce(identity)(_ => 1)(_ + _) != nativeEnds
