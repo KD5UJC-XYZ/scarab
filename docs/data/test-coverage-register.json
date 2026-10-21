@@ -480,6 +480,26 @@
         "docs/design/chainsync-pipeline.md"
       ],
       "candidateRequired": true
+    },
+    {
+      "id": "native-churn-decisions",
+      "classification": "native-parity",
+      "status": "pending-integration",
+      "scope": "1,152 explicit native IOSim cases invoking the unchanged pinned peerChurnGovernor, including 13,824 first-cycle actions.",
+      "assertion": "Compare complete initial and post-head-start targets, every raw target proposal, sanity flags, signed achieved changes, timeout outcomes and native picosecond wait values for every retained case.",
+      "rationale": "Genesis and Praos choose different startup targets, regimes and intervals. Raw invalid targets remain observable churn inputs even when the peer governor ignores them. These are explicit boundary cases, not an upstream generator corpus.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/311",
+      "resolution": "Production decision helpers and notification-driven runtime tests retain all native outputs, including negative active targets and root/known mismatches. Native PRNG streams and wall-clock thread schedules are not equated.",
+      "evidence": [
+        "fixtures/peer-selection/churn/manifest.json",
+        "fixtures/peer-selection/churn/README.md",
+        "scripts/oracle/churn/Main.hs",
+        "network/src/test/scala/xyz/kd5ujc/scarab/network/selection/NativeChurnPolicySuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/governor/ChurnLoopSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/governor/ChurnTargetWakeSuite.scala"
+      ],
+      "candidateRequired": true
     }
   ]
 }

@@ -1708,9 +1708,10 @@ validator rejects empty, refused, wrong-peer, unregistered, duplicated, unproven
 Every owned container is removed even if evidence archiving fails. Gate results are recorded in the
 compatibility evidence log; initial excluded setup attempts are disclosed there.
 
-Broader follow-ups remain [#150](https://github.com/KD5UJC-XYZ/scarab/issues/150),
+At G1.4 acceptance, broader follow-ups were tracked in [#150](https://github.com/KD5UJC-XYZ/scarab/issues/150),
 [#152](https://github.com/KD5UJC-XYZ/scarab/issues/152), and
-[#180](https://github.com/KD5UJC-XYZ/scarab/issues/180). This stage does not claim a new public-network
+[#180](https://github.com/KD5UJC-XYZ/scarab/issues/180). The shared metrics board described in section 7b
+now addresses #150. The G1.4 evidence does not claim a new public-network
 sync: earlier Preview evidence covers its unchanged target/churn/ledger-peer paths; the new sharing
 behavior is checked on the private reference topology.
 

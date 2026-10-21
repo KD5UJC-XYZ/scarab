@@ -299,6 +299,8 @@
     "fixtures/opcert/evidence/sources.json": "f0754bdd9f1f079453a1719ad40757a3f554e58728b6cdd464a459ee4ffceca8",
     "fixtures/opcert/serialization.tsv": "73949fd4e68b12a2213556931f350f6a61221974987ef8f8839821078d11e385",
     "fixtures/opcert/sha256.json": "869727cf5d33478de8a8deb99c646d5fc7138163ea1b080aa386fade4ff4540f",
+    "fixtures/peer-selection/churn/decisions.jsonl": "d093b953a6cb6ffcf2d5e6e84ba368dd9bc91c42454e3926152efc16dcb48deb",
+    "fixtures/peer-selection/churn/manifest.json": "733d8a5ff737b280835b9173004ba705c920eba8b1c1ee54ae3e29e3b28d83fb",
     "fixtures/peer-selection/policies/decisions.jsonl": "ff29e99bdd92ffdfd715dbffc606bbe55893fbaa41f8c2c60e8f0695d0a13c6e",
     "fixtures/peer-selection/policies/manifest.json": "c7fa9949ef378fe4ac9ce13c366382103bc7d841bbd92812135e6b9d5b7ebe72",
     "fixtures/praos/alpha.tsv": "92c5f0ae1fe54f169067437c18cf5739171d754c91bb2e7430fe15dd218cae87",
