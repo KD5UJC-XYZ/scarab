@@ -32,8 +32,13 @@ class ByronTransportSuite extends FunSuite:
     array(hex("02"), map(bytes -> map(bytes -> list(bytes))), certificates),
     array(hex("03"), certificates)
   )
-  private def body(ssc: Bytes, txs: Bytes = list(), delegation: Bytes = list()): Bytes =
-    array(txs, ssc, delegation, array(array(), list()))
+  private def body(
+      ssc: Bytes,
+      txs: Bytes = list(),
+      delegation: Bytes = list(),
+      updates: Bytes = array(array(), list())
+  ): Bytes =
+    array(txs, ssc, delegation, updates)
   private def check(ssc: Bytes): Either[xyz.kd5ujc.scarab.ledger.LedgerDecodeError, Unit] =
     ByronTransport.check(body(ssc), extra, boundary = false)
   private def items(node: Node): Vector[Node] = node.value match
@@ -183,4 +188,233 @@ class ByronTransportSuite extends FunSuite:
     xyz.kd5ujc.scarab.ledger.PreprodDeepTx.onSmallStack {
       assertEquals(check(array(hex("01"), opening, tagged())), Right(()))
     }
+  }
+
+  private def blob(size: Int): Bytes = ByronCbor.bytes(Bytes.fromArray(Array.fill[Byte](size)(0)))
+  private def known(value: Bytes): Bytes = hex("d818") ++ ByronCbor.bytes(value)
+  private def txt(value: String): Bytes =
+    Cbor.encode(Value.Text(value)).fold(e => fail(e.message), identity)
+  private def integer(value: BigInt): Bytes =
+    if value >= 0 && value < (BigInt(1) << 64) then ByronCbor.uint(value)
+    else if value < 0 && value >= -(BigInt(1) << 64) then
+      val raw = ByronCbor.uint(-value - 1)
+      ByronCbor.of((raw(0) & 255) + 32) ++ raw.drop(1)
+    else
+      val magnitude = if value >= 0 then value else -value - 1
+      val raw = magnitude.toByteArray.dropWhile(_ == 0)
+      ByronCbor.of(if value >= 0 then 0xc2 else 0xc3) ++ ByronCbor.bytes(Bytes.fromArray(raw))
+  private def addr(attrs: Bytes = map(), kind: Bytes = zero): Bytes =
+    val payload = array(blob(28), attrs, kind)
+    array(known(payload), ByronCbor.uint(BigInt(ByronCbor.crc32(payload))))
+  private def txInput(index: Bytes = zero): Bytes = array(zero, known(array(blob(32), index)))
+  private def txOutput(address: Bytes = addr(), amount: Bytes = zero): Bytes =
+    array(address, amount)
+  private def tx(
+      inputs: Bytes = list(txInput()),
+      outputs: Bytes = list(txOutput()),
+      attrs: Bytes = map()
+  ): Bytes =
+    array(inputs, outputs, attrs)
+  private def txWitness(tag: Bytes = zero, keySize: Int = 64): Bytes =
+    array(tag, known(array(blob(keySize), blob(64))))
+  private def txAux(transaction: Bytes = tx(), witnesses: Bytes = array(txWitness())): Bytes =
+    array(transaction, witnesses)
+  private val deleg = array(zero, blob(64), blob(64), blob(64))
+  private def checkTx(value: Bytes): Either[xyz.kd5ujc.scarab.ledger.LedgerDecodeError, Unit] =
+    ByronTransport.check(body(payloads(3), txs = list(value)), extra, boundary = false)
+  private def params(index: Int = -1, value: Bytes = zero): Bytes =
+    array(Vector.tabulate(14)(i => if i == index then array(value) else array())*)
+  private def proposal(
+      parameters: Bytes = params(),
+      metadata: Bytes = map(),
+      attrs: Bytes = map()
+  ): Bytes =
+    array(
+      array(zero, zero, zero),
+      parameters,
+      array(txt(""), zero),
+      metadata,
+      attrs,
+      blob(64),
+      blob(64)
+    )
+  private val vote = array(blob(64), blob(32), hex("f4"), blob(64))
+  private def checkUpdate(value: Bytes): Either[xyz.kd5ujc.scarab.ledger.LedgerDecodeError, Unit] =
+    ByronTransport.check(body(payloads(3), updates = value), extra, boundary = false)
+  private def withParams(value: Bytes): Bytes = array(array(proposal(value)), list(vote))
+  private def fee(a: BigInt, b: BigInt): Bytes = array(zero, known(array(integer(a), integer(b))))
+
+  test(
+    "ordinary native transaction, redemption witness, delegation, proposal and false vote decode"
+  ) {
+    assertEquals(checkTx(txAux()), Right(()))
+    assertEquals(checkTx(txAux(witnesses = array(txWitness(hex("02"), 32)))), Right(()))
+    assertEquals(
+      ByronTransport.check(body(payloads(3), delegation = list(deleg)), extra, false),
+      Right(())
+    )
+    assertEquals(checkUpdate(array(array(proposal()), list(vote))), Right(()))
+    // Ordinary noncanonical length heads remain legal where native DecCBOR does not ask Canonical.
+    assertEquals(checkTx(hex("9802") ++ tx() ++ array(txWitness())), Right(()))
+    assertEquals(checkTx(txAux(tx(attrs = map(hex("1800") -> hex("5800"))))), Right(()))
+  }
+
+  private val invalidTransactions = Vector(
+    "indefinite TxAux" -> list(tx(), array(txWitness())),
+    "indefinite transaction" -> txAux(list(list(txInput()), list(txOutput()), map())),
+    "definite inputs" -> txAux(tx(inputs = array(txInput()))),
+    "empty inputs" -> txAux(tx(inputs = list())),
+    "definite outputs" -> txAux(tx(outputs = array(txOutput()))),
+    "empty outputs" -> txAux(tx(outputs = list())),
+    "indefinite input tuple" -> txAux(tx(inputs = list(list(zero, known(array(blob(32), zero)))))),
+    "unknown input tag" -> txAux(tx(inputs = list(array(hex("01"), known(array(blob(32), zero)))))),
+    "indefinite input reference" -> txAux(
+      tx(inputs = list(array(zero, known(list(blob(32), zero)))))
+    ),
+    "input index Word16 overflow" -> txAux(tx(inputs = list(txInput(hex("1a00010000"))))),
+    "missing nested input tag" -> txAux(
+      tx(inputs = list(array(zero, ByronCbor.bytes(array(blob(32), zero)))))
+    ),
+    "nested input trailing item" -> txAux(
+      tx(inputs = list(array(zero, known(array(blob(32), zero) ++ zero))))
+    ),
+    "indefinite output tuple" -> txAux(tx(outputs = list(list(addr(), zero)))),
+    "lovelace above supply" -> txAux(
+      tx(outputs = list(txOutput(amount = integer(ByronLedger.MaxLovelace + 1))))
+    ),
+    "indefinite witness vector" -> txAux(witnesses = list(txWitness())),
+    "indefinite witness tuple" -> txAux(witnesses =
+      array(list(zero, known(array(blob(64), blob(64)))))
+    ),
+    "unknown witness tag" -> txAux(witnesses = array(txWitness(hex("01")))),
+    "short witness key" -> txAux(witnesses = array(txWitness(keySize = 63))),
+    "indefinite witness value" -> txAux(witnesses =
+      array(array(zero, known(list(blob(64), blob(64)))))
+    ),
+    "duplicate transaction attributes" -> txAux(tx(attrs = map(zero -> bytes, zero -> bytes))),
+    "unordered transaction attributes" -> txAux(tx(attrs = map(hex("02") -> bytes, zero -> bytes))),
+    "indefinite transaction attributes" -> txAux(tx(attrs = hex("bfff"))),
+    "script address type" -> txAux(tx(outputs = list(txOutput(addr(kind = hex("01")))))),
+    "noncanonical address type" -> txAux(tx(outputs = list(txOutput(addr(kind = hex("1800")))))),
+    "duplicate address attributes" -> txAux(
+      tx(outputs = list(txOutput(addr(map(zero -> bytes, zero -> bytes)))))
+    ),
+    "unordered address attributes" -> txAux(
+      tx(outputs = list(txOutput(addr(map(hex("03") -> bytes, zero -> bytes)))))
+    ),
+    "noncanonical network magic" -> txAux(
+      tx(outputs = list(txOutput(addr(map(hex("02") -> ByronCbor.bytes(hex("1800")))))))
+    ),
+    "noncanonical derivation bytes" -> txAux(
+      tx(outputs = list(txOutput(addr(map(hex("01") -> ByronCbor.bytes(hex("5800")))))))
+    )
+  )
+  invalidTransactions.foreach { (label, value) =>
+    test(s"ordinary native transaction rejection: $label") { assert(checkTx(value).isLeft) }
+  }
+
+  test("ordinary attributes preserve unknown data without applying ledger admission limits") {
+    val unknown = map(hex("03") -> blob(512))
+    assertEquals(
+      checkTx(txAux(tx(attrs = unknown, outputs = list(txOutput(addr(unknown)))))),
+      Right(())
+    )
+    assertEquals(
+      checkTx(
+        txAux(
+          tx(outputs =
+            list(
+              txOutput(
+                addr(map(hex("01") -> ByronCbor.bytes(bytes), hex("02") -> ByronCbor.bytes(zero)))
+              )
+            )
+          )
+        )
+      ),
+      Right(())
+    )
+  }
+
+  test("delegation decoding enforces tuple, epoch and cryptographic byte lengths") {
+    Vector(
+      list(zero, blob(64), blob(64), blob(64)),
+      array(integer(-1), blob(64), blob(64), blob(64)),
+      array(integer(BigInt(1) << 64), blob(64), blob(64), blob(64)),
+      array(zero, blob(63), blob(64), blob(64))
+    )
+      .foreach { value =>
+        assert(
+          ByronTransport.check(body(payloads(3), delegation = list(value)), extra, false).isLeft
+        )
+      }
+  }
+
+  test(
+    "native Natural parameters, signed Nano coefficients and decoder rounding remain permissive"
+  ) {
+    (1 to 5).foreach(i =>
+      assertEquals(checkUpdate(withParams(params(i, integer(BigInt(1) << 80)))), Right(()))
+    )
+    Vector(
+      fee(-1, -1),
+      fee(0, -(BigInt(1) << 80)),
+      fee((BigInt(1) << 64) * 1000000000, 0),
+      fee(ByronLedger.MaxLovelace * 1000000000 + 500000000, 0)
+    ).foreach { value =>
+      assertEquals(checkUpdate(withParams(params(12, value))), Right(()))
+    }
+    assert(checkUpdate(withParams(params(12, fee(-1000000000, 0)))).isLeft)
+    assert(
+      checkUpdate(
+        withParams(params(12, fee(ByronLedger.MaxLovelace * 1000000000 + 500000001, 0)))
+      ).isLeft
+    )
+  }
+
+  test("ordinary update map ordering uses decoded Unicode codepoints, not UTF-16 ordering") {
+    val installer = array(bytes, blob(32), bytes, bytes)
+    val sorted = map(txt("\ue000") -> installer, txt("\ud800\udc00") -> installer)
+    assertEquals(checkUpdate(array(array(proposal(metadata = sorted)), list(vote))), Right(()))
+    Vector(
+      map(txt("z") -> installer, txt("a") -> installer),
+      map(txt("a") -> installer, txt("a") -> installer)
+    )
+      .foreach(value =>
+        assert(checkUpdate(array(array(proposal(metadata = value)), list())).isLeft)
+      )
+  }
+
+  private val invalidUpdates = Vector(
+    "indefinite payload" -> list(array(), list()),
+    "definite votes" -> array(array(), array(vote)),
+    "indefinite Maybe" -> array(list(), list()),
+    "multiple proposals" -> array(array(proposal(), proposal()), list()),
+    "indefinite proposal" -> array(
+      array(
+        list(
+          array(zero, zero, zero),
+          params(),
+          array(txt(""), zero),
+          map(),
+          map(),
+          blob(64),
+          blob(64)
+        )
+      ),
+      list()
+    ),
+    "nonempty proposal attributes" -> array(array(proposal(attrs = map(zero -> bytes))), list()),
+    "indefinite vote" -> array(array(), list(list(blob(64), blob(32), hex("f4"), blob(64)))),
+    "nonboolean vote" -> array(array(), list(array(blob(64), blob(32), zero, blob(64)))),
+    "short voter" -> array(array(), list(array(blob(63), blob(32), hex("f4"), blob(64)))),
+    "negative Natural" -> withParams(params(1, integer(-1))),
+    "script version overflow" -> withParams(params(0, integer(65536))),
+    "portion above denominator" -> withParams(params(6, integer(BigInt(10).pow(15) + 1))),
+    "negative slot" -> withParams(params(10, integer(-1))),
+    "epoch overflow" -> withParams(params(13, integer(BigInt(1) << 64))),
+    "unknown fee policy" -> withParams(params(12, array(hex("01"), known(array(zero, zero))))),
+    "indefinite fee coefficients" -> withParams(params(12, array(zero, known(list(zero, zero)))))
+  )
+  invalidUpdates.foreach { (label, value) =>
+    test(s"ordinary native update rejection: $label") { assert(checkUpdate(value).isLeft) }
   }
