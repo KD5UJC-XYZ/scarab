@@ -85,7 +85,9 @@ class UpstreamGenesisReplaySuite extends FailsOnUncaught:
         import cats.syntax.all.*
         cases
           .traverse { scenario =>
-            IO.println(s"replaying ${scenario.label}") *> UpstreamGenesisReplay
+            IO.println(
+              s"replaying ${scenario.label} nativeSeed=${scenario.seed} runtimeSeed=${UpstreamGenesisReplay.runtimeSeed(scenario)}"
+            ) *> UpstreamGenesisReplay
               .run(scenario)
               .flatTap(result =>
                 IO.println(s"outcome ${scenario.label}: ${result
