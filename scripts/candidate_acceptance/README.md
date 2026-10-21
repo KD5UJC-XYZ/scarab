@@ -143,3 +143,31 @@ and the replay track's complete native-body comparison/summary. Rebase onto thos
 before treating a real run as candidate acceptance. Updating coverage status and promoting a
 candidate are separate reviewed actions linked to that actual retained receipt; an absent dataset
 or successful controller unit test does not close the gap.
+
+## Local inventory mode
+
+For a reviewed LAN/offline tree, use an artifact with `kind: local-inventory`, `url: null`,
+`inventory: <relative JSON filename>` and `sha256` equal to that inventory's SHA-256. The inventory
+lives beside the input manifest and contains `schemaVersion: 1` and a `files` array of canonical
+relative `path`, exact `bytes` and `sha256` fields for every file in the input tree. Bounds apply
+both to the inventory document and the complete payload/entry count. `nativeK1SecondaryCount`
+pins the native source's genuine complete secondary-index count; it is not a selection limit.
+
+```sh
+python3 scripts/candidate_acceptance.py --manifest /reviewed/inputs.json \
+  --local-inputs /reviewed/input-tree --output /tmp/scarab-candidate-unique-run
+```
+
+All files must belong to declared input mappings. Missing, changed, extra, duplicate, linked,
+nonregular or signing-key inputs are refused. The controller verifies the complete tree before
+and after execution, mounts it read-only, and never chmods, extracts over or removes these inputs.
+`--cleanup` removes only the controller's generated output. The receipt records the inventory
+identity as the local artifact identity, distinct from an HTTPS archive identity. Shared dependency
+caches are mounted at the same `/work/.cache` path as other worktree builds; the sbt socket stays
+private. The default manifest remains unavailable until a real reviewed manifest is supplied.
+
+`SCARAB_K1_DB` supplies the V5 snapshots and matching recorded Scarab immutable data for boundary
+checks. `SCARAB_NATIVE_K1_DB` separately supplies the complete original Haskell database for native
+index parsing. Fixture trees may be materialized with hard links to immutable original files;
+never chmod those shared inodes or allow a writable container mount. Preserving the original
+Mithril bootstrap requires keeping its initial snapshot/checkpoint before any follower replay.
