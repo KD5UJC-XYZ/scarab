@@ -443,6 +443,11 @@ final class InboundGovernor[F[_]: Async] private (
   /** The peer, with what the session sees of it counted. */
   private def counted(remote: SocketAddress[IpAddress], peer: Peer[F]): Peer[F] = new Peer[F]:
     override def selectionWork = peer.selectionWork
+    override def invalidBlocks = peer.invalidBlocks
+    override def invalidated(header: Header, refusal: ValidationError)(using cats.Applicative[F]) =
+      peer.invalidated(header, refusal)
+    override def validation(header: Header)(using cats.Applicative[F], Raise[F, PeerError]) =
+      peer.validation(header)
     override def rejected(refusal: xyz.kd5ujc.scarab.ledger.ValidationError)(using
         cats.Applicative[F]
     ) =
@@ -573,8 +578,9 @@ object InboundGovernor:
       Ref.of[F, Map[String, Session]](Map.empty),
       Ref.of[F, BigInt](0),
       Ref.of[F, Map[BigInt, LiveSource[F]]](Map.empty),
-      Mutex[F]
-    ).mapN { (sessions, counter, sources, lock) =>
+      Mutex[F],
+      pool.fold(BlockPool.create[F])(Async[F].pure)
+    ).mapN { (sessions, counter, sources, lock, sharedPool) =>
       new InboundGovernor[F](
         node,
         fatal,
@@ -588,7 +594,7 @@ object InboundGovernor:
         events,
         observe,
         sharing,
-        pool,
+        Some(sharedPool),
         fetchMode,
         genesis,
         receivedBody,

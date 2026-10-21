@@ -883,6 +883,7 @@ object Main extends IOApp:
               )
             )
             _ <- follower.installFetchCoordinator(blockPool.fetchCoordinator)
+            _ <- follower.installInvalidBlocks(blockPool.invalidBlocks)
             genesisGovernor <- Option
               .when(
                 setup.config.settings.consensusMode ==
