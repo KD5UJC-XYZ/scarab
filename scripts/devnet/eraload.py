@@ -127,6 +127,7 @@ class EraLoad:
         self.stop = threading.Event()
         self.pending = 0
         self.ext = None  # govextra.Extended while the extended governance scenarios run
+        self.dynamic_forks = False  # the protocol walk (protocolwalk.py) proposes every hard fork, the base rounds none
         self.ext_thread = None
         self.evidence = []  # expected rejections and what the reference said
         self.era_first = {}
@@ -784,7 +785,8 @@ class EraLoad:
         if n >= 1 and f"gproposals{phase}" not in self.done:
             actions = [eratx.info_action()]
             if pv < 10:
-                actions += [eratx.hard_fork_action(10, 0), eratx.param_change_action({3: pp["maxTxSize"] + 8}),
+                actions += ([] if self.dynamic_forks else [eratx.hard_fork_action(10, 0)])
+                actions += [eratx.param_change_action({3: pp["maxTxSize"] + 8}),
                             eratx.param_change_action({24: pp["maxCollateralInputs"] + 1})]
             else:
                 actions += [eratx.param_change_action({16: pp["minPoolCost"] + 1000}),
@@ -813,7 +815,9 @@ class EraLoad:
             if "ground3" in self.done and not self.committee_members():
                 self.stage("ground4", lambda: self.fourth_round(pv, epoch))
         else:
-            if "ground2" in self.done and n >= 6:
+            # the no-confidence round dissolves the committee the hard forks of the protocol walk still need
+            walked = self.ext is None or self.ext.walk is None or self.ext.walk.complete
+            if "ground2" in self.done and n >= 6 and walked:
                 self.stage("ground3", lambda: self.third_round(pv))
             if "ground3" in self.done and n >= 8:
                 self.stage("ground4", lambda: self.fourth_round(pv, epoch))
@@ -837,14 +841,16 @@ class EraLoad:
         genesis = self.live_genesis_dreps()
         if pv < 10:
             # bootstrap: DReps may only vote on info actions; pools vote on the hard fork and on security
-            # parameters (all_ids: info, hard fork, security parameter change, other parameter change)
+            # parameters (all_ids: info, hard fork, security parameter change, other parameter change; without the
+            # hard fork, which the protocol walk proposes: info, security parameter change, other parameter change)
+            pool_ids = all_ids[1:2] if self.dynamic_forks else all_ids[1:3]
             for k in genesis:
                 casts.append((eratx.voter("drep", k.hash), [(info, "yes")]))
             casts.append((eratx.voter("drep", self.gdrep[0].hash), [(info, "no")]))
             for p in self.pool_cold[:2]:
-                casts.append((eratx.voter("pool", p.hash), [(all_ids[1], "yes"), (all_ids[2], "yes")]))
+                casts.append((eratx.voter("pool", p.hash), [(i, "yes") for i in pool_ids]))
             casts.append((eratx.voter("pool", self.pool_cold[2].hash),
-                          [(info, "abstain"), (all_ids[1], "no"), (all_ids[2], "no")]))
+                          [(info, "abstain")] + [(i, "no") for i in pool_ids]))
         else:
             for k in genesis[:2]:
                 casts.append((eratx.voter("drep", k.hash), [(i, "yes") for i in all_ids]))
@@ -878,7 +884,8 @@ class EraLoad:
         return self.gov_votes(label + "-votes", self.gw[0], casts, signers)
 
     def second_round(self, pv):
-        """A withdrawal and the hard fork to protocol version 11, both needing the committee. In the extended
+        """A withdrawal and the hard fork to protocol version 11, both needing the committee (with `dynamic_forks`
+        the withdrawal only: the protocol walk proposes the hard forks). In the extended
         run there are two competing hard forks: pool 3 alone votes for the first (pool 1's default is No for a
         hard fork even though it delegates to always-abstain), pools 2 and 3 for the second, which is enacted."""
         dreps = self.live_dreps()[:2]
@@ -892,12 +899,17 @@ class EraLoad:
                 casts.append((eratx.voter("committee", self.hot[0].hash), [(i, "yes") for i in ids]))
                 casts.append((eratx.voter("committee", self.hot[1].hash), [(ids[0], "no"), (ids[1], "yes"), (ids[2], "yes")]))
                 return casts, dreps + self.pool_cold[1:] + self.hot
+            if self.dynamic_forks:  # the withdrawal only: the committee splits, no pool has a vote on it
+                casts.append((eratx.voter("committee", self.hot[0].hash), [(ids[0], "yes")]))
+                casts.append((eratx.voter("committee", self.hot[1].hash), [(ids[0], "no")]))
+                return casts, dreps + self.hot
             casts += [(eratx.voter("pool", p.hash), [(ids[1], "yes")]) for p in self.pool_cold[:2]]
             casts.append((eratx.voter("committee", self.hot[0].hash), [(i, "yes") for i in ids]))
             casts.append((eratx.voter("committee", self.hot[1].hash), [(ids[0], "no"), (ids[1], "yes")]))
             return casts, dreps + self.pool_cold[:2] + self.hot
-        actions = [eratx.treasury_withdrawal_action({self.gw[3].reward: 2_000_000}),
-                   eratx.hard_fork_action(11, 0, self.hard_fork_root())]
+        actions = [eratx.treasury_withdrawal_action({self.gw[3].reward: 2_000_000})]
+        if not self.dynamic_forks:
+            actions.append(eratx.hard_fork_action(11, 0, self.hard_fork_root()))
         anchors = None
         if extended:
             actions.append(eratx.hard_fork_action(11, 0, self.hard_fork_root()))

@@ -7,7 +7,7 @@ import subprocess
 import sys
 import threading
 import time
-from .. import eraload, govextra
+from .. import eraload, govextra, protocolversions, protocolwalk
 from ..cluster import down, freeze_classes, scala_container, up_eras
 from ..compare import Comparisons, compare_era, comparison_table, judge_comparisons, lsq
 from ..follower import follower_problem, start_follower
@@ -16,7 +16,10 @@ from ..util import ERAS, MAGIC, TAG_ERA, data_root, docker, read_log, ref, starv
 
 
 EXTENDED_WAIT = 600  # seconds the run waits past its target epoch for extended stages that apply but are not done
-CONWAY_EPOCHS = 7  # Conway epochs the e2e run follows: bootstrap governance, the hard fork to 10, then full governance
+CONWAY_EPOCHS = 7  # Conway epochs the e2e run follows at least: bootstrap governance, the hard forks, then full governance
+# The run goes on past that target until the chain is at the highest protocol version the reference supports (the walk
+# of protocolwalk.py) and the checks of the versions it passed are done, within the time the walk derives from the
+# governance parameters.
 
 
 def block_era(hex_line):
@@ -178,8 +181,9 @@ def e2e(args):
             if args.no_load:
                 return
             loader = eraload.EraLoad(args.name, lambda: lsq(args.name), log=lambda m: print(json.dumps(m), flush=True))
+            loader.dynamic_forks = True  # the protocol walk drives the Conway versions
             loader.ready.set()
-            compare = (lambda era, label: None) if args.no_compare else \
+            compare =(lambda era, label: None) if args.no_compare else \
                 (lambda era, label: compare_era(args.name, era, label, comparisons))
 
             def conway_hook():
@@ -221,8 +225,12 @@ def e2e(args):
                 reason = "follower exited"
                 break
             if applied and max(applied) >= target:
+                ext = loader.ext if loader is not None else None
+                # the chain is still on its way to the reference's highest version: the walk has a time of its own
+                if ext is not None and ext.walk is not None and ext.walk.pending() and not ext.walk.overdue():
+                    continue
                 # the extended stages that apply (a protocol version reached late) get a time of their own
-                if loader is not None and loader.ext is not None and govextra.extended_pending(loader.ext):
+                if ext is not None and govextra.extended_pending(ext):
                     extended_wait = extended_wait or time.monotonic()
                     if time.monotonic() - extended_wait < EXTENDED_WAIT:
                         continue
@@ -260,7 +268,12 @@ def e2e(args):
                 loader.ext.results, loader.ext.done, loader.ext.max_protocol, loader.stats.get("negativeUnexpected", 0))
             failures += extended_failures
             summary["extended"] = {"done": sorted(loader.ext.done), "results": loader.ext.results,
-                                   "maxProtocol": loader.ext.max_protocol, "notApplicable": not_applicable}
+                                   "maxProtocol": loader.ext.max_protocol, "notApplicable": not_applicable,
+                                   "versionChecks": protocolversions.version_check_report(
+                                       loader.ext.results, loader.ext.done, loader.ext.max_protocol)}
+            if loader.ext.walk is not None:
+                summary["protocol"] = loader.ext.walk.summary()
+                failures += protocolwalk.walk_failures(loader.ext.walk)
         elif loader is not None:
             failures.append("the extended governance stages never started")
         if loader is not None and loader.stats.get("unexpected"):

@@ -495,33 +495,41 @@ class ExtendedOutcomeTest(unittest.TestCase):
         return govextra.extended_outcome(results, set(done), protocol, unexpected)
 
     OK = {"ok": True, "tries": 1}
+    GENERIC = ("xfund", "xrewards", "xscriptreg")
+    BEFORE_11 = GENERIC + ("xrefoverlap-pre11",)
+    ALL = BEFORE_11 + ("xrefoverlap-11", "xvrf")
 
     def test_all_stages_done_passes(self):
-        results = {k: self.OK for k in ("xfund", "xrewards", "xscriptreg", "xvrf")}
+        results = {k: self.OK for k in self.ALL}
         self.assertEqual(self.outcome(results, results, 11), ([], {}))
 
     def test_a_stage_that_reported_ok_false_fails_the_run(self):
-        results = {"xfund": self.OK, "xrewards": self.OK, "xscriptreg": self.OK,
-                   "xvrf": {"ok": False, "tries": 1, "error": ""}}
-        failures, na = self.outcome(results, ["xfund", "xrewards", "xscriptreg"], 11)
+        results = {k: self.OK for k in self.ALL[:-1]}
+        results["xvrf"] = {"ok": False, "tries": 1, "error": ""}
+        failures, na = self.outcome(results, self.ALL[:-1], 11)
         self.assertEqual(na, {})
         self.assertEqual(len(failures), 1)
         self.assertIn("xvrf reported ok:false", failures[0])
 
     def test_a_stage_that_failed_then_succeeded_passes(self):
-        results = {k: self.OK for k in ("xfund", "xrewards", "xscriptreg", "xvrf")}
-        self.assertEqual(self.outcome(results, results, 11), ([], {}))
+        results = {k: self.OK for k in self.ALL}
         self.assertEqual(self.outcome({**results, "xscriptreg": {"ok": True, "tries": 2}}, results, 11), ([], {}))
 
-    def test_xvrf_before_protocol_11_is_not_applicable_with_its_reason(self):
-        results = {k: self.OK for k in ("xfund", "xrewards", "xscriptreg")}
+    def test_the_stages_of_protocol_11_before_it_are_not_applicable_with_their_reason(self):
+        results = {k: self.OK for k in self.BEFORE_11}
         failures, na = self.outcome(results, results, 10)
         self.assertEqual(failures, [])
-        self.assertEqual(list(na), ["xvrf"])
+        self.assertEqual(sorted(na), ["xrefoverlap-11", "xvrf"])
         self.assertIn("protocol version 11", na["xvrf"])
 
+    def test_the_stage_before_11_applies_from_the_first_conway_version(self):
+        results = {k: self.OK for k in self.GENERIC}
+        failures, na = self.outcome(results, results, 9)
+        self.assertEqual(failures, ["extended stage xrefoverlap-pre11 did not complete (protocol version 9 reached)"])
+        self.assertEqual(sorted(na), ["xrefoverlap-11", "xvrf"])
+
     def test_an_applicable_stage_that_never_ran_fails(self):
-        results = {k: self.OK for k in ("xfund", "xrewards", "xscriptreg")}
+        results = {k: self.OK for k in self.ALL[:-1]}
         failures, na = self.outcome(results, results, 11)
         self.assertEqual(na, {})
         self.assertIn("xvrf did not complete", failures[0])
@@ -532,18 +540,31 @@ class ExtendedOutcomeTest(unittest.TestCase):
         self.assertEqual(set(na), set(govextra.LIGHT_STAGES))
 
     def test_unexpected_negative_cases_fail(self):
-        results = {k: self.OK for k in ("xfund", "xrewards", "xscriptreg", "xvrf")}
+        results = {k: self.OK for k in self.ALL}
         failures, _ = self.outcome(results, results, 11, unexpected=1)
         self.assertEqual(len(failures), 1)
 
     def test_pending_stages_are_those_applicable_not_done_and_not_given_up(self):
         ext = govextra.Extended(types.SimpleNamespace(), full=False)
         self.assertEqual(govextra.extended_pending(ext), [])
-        ext.max_protocol = 11
-        self.assertEqual(sorted(govextra.extended_pending(ext)), ["xfund", "xrewards", "xscriptreg", "xvrf"])
-        ext.done.update(["xfund", "xrewards", "xscriptreg"])
+        ext.max_protocol = ext.pv = 11
+        self.assertEqual(sorted(govextra.extended_pending(ext)), sorted(self.ALL[:3] + self.ALL[4:]))
+        ext.done.update(self.GENERIC + ("xrefoverlap-11",))
         ext.failed["xvrf"] = "diverged"
         self.assertEqual(govextra.extended_pending(ext), [])
+
+    def test_a_stage_of_a_version_window_the_chain_left_is_no_longer_waited_for(self):
+        ext = govextra.Extended(types.SimpleNamespace(), full=False)
+        ext.done.update(self.GENERIC)
+        ext.max_protocol = ext.pv = 10
+        self.assertEqual(govextra.extended_pending(ext), ["xrefoverlap-pre11"])
+        ext.max_protocol = ext.pv = 11
+        self.assertEqual(sorted(govextra.extended_pending(ext)), ["xrefoverlap-11", "xvrf"])
+
+    def test_the_light_set_owns_the_hard_forks_only_in_the_e2e(self):
+        self.assertIsNone(govextra.Extended(types.SimpleNamespace(), full=False).walk)
+        self.assertIsNone(govextra.Extended(types.SimpleNamespace(dynamic_forks=True), full=True).walk)
+        self.assertIsNotNone(govextra.Extended(types.SimpleNamespace(dynamic_forks=True), full=False).walk)
 
 
 class ExtendedStageTest(unittest.TestCase):
@@ -558,12 +579,22 @@ class ExtendedStageTest(unittest.TestCase):
         def run():
             raise govextra.ReferenceDiverged("xvrf-dup-active: accepted")
         ext.stage("xvrf", run)
-        self.assertEqual(ext.results["xvrf"], {"ok": False, "tries": 1, "error": "xvrf-dup-active: accepted"})
+        self.assertEqual(ext.results["xvrf"], {"ok": False, "tries": 1, "error": "xvrf-dup-active: accepted", "protocol": None})
         calls = []
         ext.stage("xvrf", lambda: calls.append(1))
         self.assertEqual(calls, [])  # never retried
         self.assertIn({"extended": True, "stage": "xvrf", "ok": False, "tries": 1,
                        "error": "xvrf-dup-active: accepted"}, logs)
+
+    def test_a_stage_records_the_protocol_version_it_ran_at(self):
+        ext, _ = self.ext()
+        ext.pv = 11
+        ext.stage("xvrf", lambda: True)
+        self.assertEqual(ext.results["xvrf"]["protocol"], 11)
+        ext.pv = 12
+        ext.stage("xother", lambda: None, tries=2)
+        self.assertEqual(ext.results["xother"]["protocol"], 12)
+        self.assertEqual(ext.limits["xother"], 2)
 
     def test_a_falsy_result_is_retried_up_to_the_tries(self):
         ext, _ = self.ext()
