@@ -8,7 +8,7 @@ from pr_policy import require
 
 
 BRANCHES = ["main", "dev", "release/alpha", "release/beta", "release/preprod", "release/prod"]
-CHECKS = ["PR title and promotion source", "scalafmt, compile and test",
+CHECKS = ["PR title and promotion source", "release proposal controls", "scalafmt, compile and test",
           "scripts (compile, unit tests, help)", "workflow lint", "secret scan (gitleaks, full history)",
           "dependency review", "crypto guard (variable-time math stays in the vrf package)",
           "semgrep (crypto rules, WARNING-gated)", "portable Linux amd64 native byte comparison",
