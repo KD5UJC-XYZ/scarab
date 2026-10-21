@@ -29,7 +29,7 @@ private[node] final class BlockAdmissions[F[_]: Async] private (
         F.tailRecM(())(_ =>
           queue.tryTake.flatMap {
             case None                       => F.pure(Right(()))
-            case Some(Work.Add(_, _))       => capacity.release.as(Left(()))
+            case Some(Work.Add(_))          => capacity.release.as(Left(()))
             case Some(Work.Reprocess(done)) => capacity.release *> done.complete(()).as(Left(()))
           }
         )
@@ -58,10 +58,10 @@ private[node] final class BlockAdmissions[F[_]: Async] private (
       }
     }
 
-  def submit(publish: F[Option[BlockPool.Admission]], prepare: F[Unit]): F[Unit] =
+  def submit(publish: F[Option[BlockPool.Admission]]): F[Unit] =
     enqueue(
       publish.flatMap(
-        _.traverse(taken => admitted.get.flatMap(_(taken)).as(Work.Add[F](taken, prepare): Work[F]))
+        _.traverse(taken => admitted.get.flatMap(_(taken)).as(Work.Add[F](taken): Work[F]))
       )
     )
 
@@ -74,7 +74,7 @@ private[node] final class BlockAdmissions[F[_]: Async] private (
 
 object BlockAdmissions:
   private[node] enum Work[F[_]]:
-    case Add(taken: BlockPool.Admission, prepare: F[Unit])
+    case Add(taken: BlockPool.Admission)
     case Reprocess(complete: Deferred[F, Unit])
 
   private[node] def create[F[_]: Async]: F[BlockAdmissions[F]] =

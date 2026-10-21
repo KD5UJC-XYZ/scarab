@@ -142,8 +142,12 @@ object UpstreamGenesisBlocks:
       case None => search(true).flatMap(_.toRight(Problem.BlockEstimate(1000)))
     }
 
-  def build(scenario: Scenario): Either[Problem, Universe] =
-    val points = scenario.tree.flatMap(_.headers).distinct.sortBy(_.hash.size)
+  def build(scenario: Scenario): Either[Problem, Universe] = buildPoints(
+    scenario.tree.flatMap(_.headers)
+  )
+
+  def buildPoints(originals: Vector[ChainSync.Point.Block]): Either[Problem, Universe] =
+    val points = originals.distinct.sortBy(_.hash.size)
     points
       .foldLeftM(Vector.empty[Block]) { (done, point) =>
         val parent = point.hash.value.drop(8)

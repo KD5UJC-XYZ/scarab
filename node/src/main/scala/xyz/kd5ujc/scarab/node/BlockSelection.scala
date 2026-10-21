@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.effect.{Async, Ref, Resource}
+import cats.effect.{Async, Deferred, Resource}
 import cats.effect.syntax.all.*
 import cats.mtl.{Handle, Raise}
 import cats.mtl.syntax.all.*
@@ -18,9 +18,9 @@ import xyz.kd5ujc.scarab.protocol.ChainSync
 private[node] final class BlockSelection[F[_]: Async] private (
     pool: BlockPool[F],
     work: SelectionWork.Session[F],
-    available: Ref[F, Map[Bytes, BlockPool.Admission]],
     application: BlockSelection.Application[F],
-    originPredecessor: Option[Bytes]
+    originPredecessor: Option[Bytes],
+    before: BlockSelection.Before[F]
 ):
   private val F = Async[F]
 
@@ -53,51 +53,71 @@ private[node] final class BlockSelection[F[_]: Async] private (
         )(a => pool.invalidated(a.taken, header, error))
 
   private def select(adding: Option[BlockPool.Admission])(using Raise[F, NodeError]): F[Unit] =
-    application.locked(F.tailRecM(true) { restricted =>
-      for
-        current <- application.local
-        bodies <- available.get
-        known <- pool.invalidBlocks.snapshot
-        paths <- AvailableBlocks
-          .candidates(
-            current,
-            bodies.view.mapValues(_.delivered.header).toMap,
-            known.entries.keySet,
-            adding.filter(_ => restricted).map(_.delivered.header.hash),
-            originPredecessor
-          )
-          .leftMap {
-            case AvailableBlocks.Error.HashMismatch(key, actual) =>
-              BlockPoolProblem.AvailableHashMismatch(key, actual)
-            case AvailableBlocks.Error.Cycle(hash) => BlockPoolProblem.AvailableCycle(hash)
-          }
-          .fold(_.raise[F, Vector[ChainSelection.Candidate]], F.pure)
-        // AvailableBlocks emits only nonempty paths, in native unsigned-hash DFS order. Stable
-        // ties retain that order; preference belongs to the selected era's consensus protocol.
-        best = paths.reduceOption((left, right) =>
-          if application.prefers(left.headers.last, right.headers.last) then right else left
+    application.locked(selectLocked(adding))
+
+  private def selectLocked(
+      adding: Option[BlockPool.Admission]
+  )(using Raise[F, NodeError]): F[Unit] =
+    for
+      current <- application.local
+      bodies <- pool.processedSnapshot
+      known <- pool.invalidBlocks.snapshot
+      original <- AvailableBlocks
+        .candidates(
+          current,
+          bodies.view.mapValues(_.delivered.header).toMap,
+          known.entries.keySet,
+          adding.map(_.delivered.header.hash),
+          originPredecessor
         )
-        _ <- best.traverse_(candidate =>
-          application.apply(
-            reader(candidate, bodies),
-            candidate,
-            adding.fold(Peer.Validation.none[F])(Peer.Validation.admission(pool, _))
+        .leftMap {
+          case AvailableBlocks.Error.HashMismatch(key, actual) =>
+            BlockPoolProblem.AvailableHashMismatch(key, actual)
+          case AvailableBlocks.Error.Cycle(hash) => BlockPoolProblem.AvailableCycle(hash)
+        }
+        .fold(_.raise[F, Vector[ChainSelection.Candidate]], F.pure)
+      _ <- F.tailRecM(()) { _ =>
+        for
+          before <- pool.invalidBlocks.snapshot
+          // ChainSel.hs:1145–1186 truncates and reinserts the original candidate pool. An unrelated
+          // branch cannot become attributed to this adding client during an invalid-prefix retry.
+          truncated = original.map(candidate =>
+            candidate.copy(headers =
+              candidate.headers.takeWhile(h => !before.entries.contains(h.hash))
+            )
           )
-        )
-        after <- pool.invalidBlocks.snapshot
-      yield if after.revision != known.revision then Left(false) else Right(())
-    })
+          ordered <- application.project(truncated)
+          _ <- ordered.headOption.traverse_(candidate =>
+            application.apply(
+              reader(candidate, bodies),
+              candidate,
+              adding.fold(Peer.Validation.none[F])(Peer.Validation.admission(pool, _))
+            )
+          )
+          after <- pool.invalidBlocks.snapshot
+        yield if after.revision != before.revision then Left(()) else Right(())
+      }
+    yield ()
 
   private def consume(using Raise[F, NodeError]): F[Unit] =
     F.foreverM(pool.admissions.next.flatMap {
-      case BlockAdmissions.Work.Add(admission, prepare) =>
+      case BlockAdmissions.Work.Add(admission) =>
         val header = admission.delivered.header
-        prepare *> available.update(_.updated(header.hash, admission)) *>
-          work.processing(header.hash).surround(select(Some(admission))) *>
-          pool.completeAdmission(header.hash) *>
-          application.anchorSlot.flatMap(cutoff =>
-            available.update(_.filter((_, body) => cutoff.forall(body.delivered.header.slot >= _)))
-          )
+        work
+          .processing(header.hash)
+          .surround(application.locked {
+            application.admits(header).flatMap {
+              case false => F.unit
+              case true =>
+                pool.processedSnapshot.flatMap { processed =>
+                  if processed.contains(header.hash) then F.unit
+                  else
+                    before.prepare(header, admission.taken.block) *> pool
+                      .processAdmission(admission) *>
+                      selectLocked(Some(admission))
+                }
+            }
+          }) *> pool.completeAdmission(header.hash)
       case BlockAdmissions.Work.Reprocess(done) => select(None).guarantee(done.complete(()).void)
     })
 
@@ -109,7 +129,7 @@ private[node] final class BlockSelection[F[_]: Async] private (
     )
   })
 
-  def run(fatal: Fatal => F[Unit]): F[Unit] =
+  def run(fatal: Fatal => F[Unit], ready: Deferred[F, Either[Fatal, Unit]]): F[Unit] =
     Fibers
       .scoped[F, Fatal, Unit](Fatal.Defect(_)) {
         val scope = summon[Handle[F, Fatal]]
@@ -119,18 +139,33 @@ private[node] final class BlockSelection[F[_]: Async] private (
             case SessionEnd.Unavailable(cause) => Fatal.Unavailable(cause)
             case _                             => Fatal.Internal(error)
         )
-        select(None) *> F.both(consume, reselect).void
+        application
+          .locked(application.reset *> selectLocked(None)) *> ready.complete(Right(())).void *>
+          F.both(consume, reselect).void
       }
       .guarantee(pool.admissions.close)
-      .flatMap(_.fold(fatal, _ => F.unit))
+      .flatMap {
+        case Left(error) => ready.complete(Left(error)).void *> fatal(error)
+        case Right(_)    => F.unit
+      }
 
 private[node] object BlockSelection:
+  trait Before[F[_]]:
+    def prepare(header: Header, raw: Bytes)(using Raise[F, NodeError]): F[Unit]
+
+  object Before:
+    def noop[F[_]: cats.Applicative]: Before[F] = new Before[F]:
+      def prepare(@scala.annotation.unused header: Header, @scala.annotation.unused raw: Bytes)(
+          using Raise[F, NodeError]
+      ): F[Unit] = cats.Applicative[F].unit
+
   trait Application[F[_]]:
     def local: F[ChainSelection.Local]
-    def anchorSlot: F[Option[BigInt]]
+    def admits(header: Header): F[Boolean]
+    def reset(using Raise[F, NodeError]): F[Unit]
     def governor: F[Option[GenesisGovernor[F]]]
     def locked[A](body: F[A]): F[A]
-    def prefers(left: Header, right: Header): Boolean
+    def project(candidates: Vector[ChainSelection.Candidate]): F[Vector[ChainSelection.Candidate]]
     def apply(peer: Peer[F], candidate: ChainSelection.Candidate, validation: Peer.Validation[F])(
         using Raise[F, NodeError]
     ): F[Unit]
@@ -141,20 +176,24 @@ private[node] object BlockSelection:
       fatal: Fatal => F[Unit],
       application: Application[F],
       originPredecessor: Option[Bytes]
-  ): Resource[F, Unit] =
+  )(using before: Before[F], owner: Raise[F, NodeError]): Resource[F, Unit] =
     work.session.flatMap { session =>
       pool.invalidBlocks.selectionResource *> pool.admissions.resource(a =>
         session.ready(Vector(a.delivered.header.hash))
       ) *>
-        Resource
-          .eval(pool.selectionSnapshot.flatMap(Ref.of[F, Map[Bytes, BlockPool.Admission]](_)))
-          .flatMap(available =>
-            Resource
-              .make(
-                new BlockSelection(pool, session, available, application, originPredecessor)
-                  .run(fatal)
-                  .start
-              )(_.cancel)
-              .void
-          )
+        (for
+          ready <- Resource.eval(Deferred[F, Either[Fatal, Unit]])
+          _ <- Resource.make(
+            new BlockSelection(pool, session, application, originPredecessor, before)
+              .run(fatal, ready)
+              .start
+          )(_.cancel)
+          result <- Resource.eval(ready.get)
+          _ <- Resource.eval(result match
+            case Right(_)                       => Async[F].unit
+            case Left(Fatal.Storage(cause))     => owner.raise[NodeError, Unit](cause)
+            case Left(Fatal.Unavailable(cause)) => owner.raise[NodeError, Unit](cause)
+            case Left(Fatal.Internal(cause))    => owner.raise[NodeError, Unit](cause)
+            case Left(Fatal.Defect(cause))      => Async[F].raiseError[Unit](cause))
+        yield ())
     }

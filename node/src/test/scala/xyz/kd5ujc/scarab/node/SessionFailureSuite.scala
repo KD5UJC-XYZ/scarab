@@ -126,7 +126,7 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             Follower.OnTip((chain, _) =>
               chain.tipRef.fold(IO.unit)(tipRef =>
                 published.update(_ :+ headers.find(_.hash == tipRef.hash).get) *>
-                  summon[Raise[IO, NodeError]]
+                  Raise[IO, NodeError]
                     .raise[NodeError, Unit](ChainError.NoIntersection)
                     .whenA(
                       breakTip.contains(tipRef.blockNo.toInt)

@@ -109,18 +109,61 @@ final class Follower[F[_]: Async, S] private (
       work: SelectionWork[F],
       fatal: Fatal => F[Unit],
       originPredecessor: Option[Bytes] = None
-  ): Resource[F, Unit] =
+  )(using BlockSelection.Before[F], Raise[F, NodeError]): Resource[F, Unit] =
     val application = new BlockSelection.Application[F]:
       def local = fetchSelection
-      def anchorSlot = chain.get.map(_.anchor.block.map(_.slot))
+      def admits(header: Header) = chain.get.map(
+        _.anchor.block.forall(anchor =>
+          header.blockNo > anchor.blockNo || (header.isBoundary && header.blockNo == anchor.blockNo)
+        )
+      )
+      def reset(using Raise[F, NodeError]): F[Unit] =
+        for
+          current <- chain.get
+          _ <- (for
+            _ <- persistence.traverse_(_.rolledBack(current.anchor.point))
+            cached <- window.get
+            anchored = current.copy(blocks = Vector.empty)
+            _ <- F.uncancelable(_ =>
+              chain.set(anchored) *>
+                window.set(
+                  Follower.Committed(anchored, cached.selection.copy(blocks = Vector.empty))
+                )
+            )
+            _ <- selectionChanged.get.flatten
+            _ <- onTip.traverse_(_(anchored, Vector.empty))
+          yield ()).whenA(current.blocks.nonEmpty)
+        yield ()
       def governor = genesis.get
       def locked[A](body: F[A]): F[A] = lock.lock.surround(body)
-      def prefers(left: Header, right: Header): Boolean =
-        ChainSelection.prefers(tiebreaker(right.era), SelectView.of(left), SelectView.of(right))
+      def project(
+          candidates: Vector[ChainSelection.Candidate]
+      ): F[Vector[ChainSelection.Candidate]] =
+        for
+          current <- chain.get
+          selected <- local
+          control <- genesis.get
+          fragment = Fragment(
+            selected.anchor,
+            selected.blocks.map(_.point).collect { case block: ChainSync.Point.Block =>
+              block
+            }
+          )
+          limit <- control.traverse(_.limitAt(fragment)).map(_.flatten)
+        yield CandidateSelection.project(current.k, selected, candidates, limit, tiebreaker)
       def apply(peer: Peer[F], candidate: ChainSelection.Candidate, validation: Peer.Validation[F])(
           using Raise[F, NodeError]
       ): F[Unit] =
-        adoptLocked(peer, candidate, ChainSync.Tip.Origin, pool.invalidBlocks, validation).void
+        local.flatMap { selected =>
+          ChainSelection.decide(tiebreaker(candidate.headers.last.era), selected, candidate) match
+            case ChainSelection.Decision.Switch(to, depth, take) =>
+              val causal =
+                if validation.addedPoint.exists(point => take.exists(_.point == point)) then
+                  validation
+                else Peer.Validation.none[F]
+              switchTo(peer, to, depth, take, ChainSync.Tip.Origin, pool.invalidBlocks, causal).void
+            case _ => BlockPoolProblem.SelectionProjectionChanged(candidate.tip).raise[F, Unit]
+        }
     BlockSelection.resource(pool, work, fatal, application, originPredecessor)
 
   private def registryFor(peer: Peer[F])(using Raise[F, NodeError]): F[InvalidBlocks[F]] =
@@ -267,7 +310,7 @@ final class Follower[F[_]: Async, S] private (
         if !points.exists(snapshot.points) then Gsm.Candidate.DoesNotIntersect
         else
           Gsm.Candidate.Better(
-            ChainSelection.prefers(tip.tiebreaker, snapshot.selection.tipView, tip.value)
+            ChainSelection.prefersCandidate(tip.tiebreaker, snapshot.selection.tipView, tip.value)
           )
       }
     }
@@ -528,7 +571,7 @@ final class Follower[F[_]: Async, S] private (
               localNow <- local
               prefix = take.take(refused.valid.size)
               preferred = prefix.lastOption.exists(h =>
-                ChainSelection.prefers(
+                ChainSelection.prefersCandidate(
                   tiebreaker(h.era),
                   localNow.tipView,
                   SelectView.of(h)
@@ -694,7 +737,8 @@ object Follower:
       new OnTip[F, S]:
         def apply(chain: VolatileChain[S], raws: Vector[Bytes])(using
             Raise[F, NodeError]
-        ): F[Unit] = run(chain, raws)
+        ): F[Unit] =
+          run(chain, raws)
 
   /** Publish chain state and its selection window atomically for GDD readers. Capturing the
     * immutable ledger and fragment never waits for a block fetch or a running ledger check.

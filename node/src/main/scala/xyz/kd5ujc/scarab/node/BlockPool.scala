@@ -27,10 +27,10 @@ import scala.concurrent.duration.*
   * A claim that is not filled (the connection failed, the peer lacks the block) is released, and a
   * session waiting for it fetches the block itself. Received original bodies remain readable while
   * validation or LoE postpones selection, like upstream VolatileDB. The bounded cache drops the
-  * oldest ordinary bodies past [[BlockPool.Retained]] entries. Checked first admissions awaiting
-  * selection, and known-invalid originals, are exempt: native VolatileDB retains the latter until
-  * immutable-slot GC. Their raw bytes and attribution remain in memory even with a durable received
-  * journal; pruning the shared invalid registry releases both at the same strict slot cutoff.
+  * oldest ordinary bodies past [[BlockPool.Retained]] entries. Queued admissions and the processed
+  * VolatileDB forest are separate: all processed originals, including invalid ones, remain readable
+  * until immutable-slot GC. Their raw bytes and metadata remain in memory even with a durable
+  * received journal; pruning at the native strict slot cutoff releases that forest and invalid pins.
   *
   * Claims are made through a [[BlockPool.Claims]] that belongs to one session ([[session]]). It is
   * a resource: when the session ends, however it ends (a failure, a cancellation), every claim it
@@ -121,6 +121,7 @@ final class BlockPool[F[_]: Async] private (
             if !acc.origins.get(owner).exists(_.expires.isEmpty) then (acc, flags :+ false)
             else
               acc.entries.get(hash) match
+                case None if acc.processed.contains(hash) => (acc, flags :+ false)
                 case None =>
                   (
                     acc.copy(
@@ -258,7 +259,14 @@ final class BlockPool[F[_]: Async] private (
         case Some(Slot.Pending(done, _, _)) =>
           (s, done.get)
         case None =>
-          (s, recovered.traverse(_.get(hash)).map(_.flatten.map(Filled(_, Source.Recovered))))
+          val processed =
+            s.processed.get(hash).map(a => Filled(a.taken.block, a.taken.origin, Some(a.delivered)))
+          (
+            s,
+            processed.fold(
+              recovered.traverse(_.get(hash)).map(_.flatten.map(Filled(_, Source.Recovered)))
+            )(value => F.pure(Some(value)))
+          )
     }.flatten
 
   /** Drop the retained blocks that session `origin` delivered, and tell it why: its blocks are not
@@ -449,7 +457,8 @@ final class BlockPool[F[_]: Async] private (
           reapAt = None,
           headers = Map.empty,
           fresh = Set.empty,
-          pinned = Set.empty
+          pinned = Set.empty,
+          processed = Map.empty
         )
       )
       .flatMap(_.entries.values.toVector.traverse_ {
@@ -471,7 +480,7 @@ final class BlockPool[F[_]: Async] private (
   def size: F[Int] = slots.get.map(_.entries.size)
 
   private[node] def selectionSnapshot: F[Map[Bytes, Admission]] = slots.get.map { current =>
-    current.headers.flatMap { (hash, delivered) =>
+    current.processed ++ current.headers.flatMap { (hash, delivered) =>
       current.entries.get(hash) match
         case Some(Slot.Done(raw, _, source)) =>
           Some(hash -> Admission(Taken(raw, false, source, Some(delivered)), delivered))
@@ -479,29 +488,46 @@ final class BlockPool[F[_]: Async] private (
     }
   }
 
-  /** Recovered VolatileDB originals participate in selection without a dead adding thread. */
+  private[node] def processedSnapshot: F[Map[Bytes, Admission]] = slots.get.map(_.processed)
+
+  private[node] def processAdmission(admission: Admission): F[Boolean] = slots.modify { current =>
+    val hash = admission.delivered.header.hash
+    if current.processed.contains(hash) then current -> false
+    else current.copy(processed = current.processed.updated(hash, admission)) -> true
+  }
+
+  /** Read every checked recovered original as one startup forest. The ordinary cache limit must not
+    * discard branches before native initialChainSelection has compared them.
+    */
   private[node] def seedRecoveredHeaders(blocks: Vector[Delivered]): F[Unit] =
-    seedRecovered(blocks.map(b => b.header.hash -> b.block)) *>
-      slots.update(current =>
-        current.copy(headers = current.headers ++ blocks.map(b => b.header.hash -> b.metadata))
-      )
+    slots.update { current =>
+      val recovered = blocks.map { b =>
+        b.header.hash -> Admission(
+          Taken(b.block, false, Source.Recovered, Some(b.metadata)),
+          b.metadata
+        )
+      }.toMap
+      current.copy(processed = recovered ++ current.processed)
+    } *> fetchCoordinator.refreshGenesis
 
   private[node] def completeAdmission(hash: Bytes): F[Unit] =
-    slots.update(current => current.copy(fresh = current.fresh - hash))
+    slots.update { current =>
+      val completed = current.copy(fresh = current.fresh - hash)
+      if current.processed.contains(hash) then completed
+      else completed.copy(entries = completed.entries - hash).coherent
+    } *> fetchCoordinator.refreshGenesis
 
   private def deliver(
       owner: Long,
-      blocks: Vector[Delivered],
-      before: Delivered => F[Unit]
+      blocks: Vector[Delivered]
   ): F[Unit] =
     blocks.traverse_ { value =>
       val publish = fillChecked(owner, value)
       admissions.active.flatMap {
-        case false => before(value) *> publish.void
+        case false => publish.void
         case true =>
           admissions.submit(
-            publish,
-            before(value)
+            publish
           )
       }
     }
@@ -557,10 +583,8 @@ object BlockPool:
       pool.invalidated(taken, header, error)
     private[node] def takeAddition(header: Header): F[Either[BlockPoolProblem, Option[Taken]]] =
       pool.takeAddition(owner, header)
-    def fillDelivered(blocks: Vector[Delivered]): F[Unit] =
-      pool.deliver(owner, blocks, _ => pool.F.unit)
-    def fillDeliveredWith(blocks: Vector[Delivered])(before: Delivered => F[Unit]): F[Unit] =
-      pool.deliver(owner, blocks, before)
+    private[node] def usesSelectionWorker: F[Boolean] = pool.admissions.active
+    def fillDelivered(blocks: Vector[Delivered]): F[Unit] = pool.deliver(owner, blocks)
 
     /** Provenance of original bytes delivered by this connection, independently of which peer won a
       * duplicate pool claim. Genesis can validate that delivery before its range ends.
@@ -699,7 +723,7 @@ object BlockPool:
             Some(
               (slots.get, recovered.traverse(_.hashes)).mapN { (current, durable) =>
                 current.entries.collect { case (hash, Slot.Done(_, _, _)) => hash }.toSet ++
-                  durable.getOrElse(Set.empty)
+                  current.processed.keySet ++ durable.getOrElse(Set.empty)
               }
             ),
             policy.peerSalt
@@ -708,13 +732,18 @@ object BlockPool:
             InvalidBlocks
               .create[F](cutoff =>
                 slots.update { current =>
-                  val expired = current.pinned
-                    .filter(hash => current.headers.get(hash).exists(_.header.slot < cutoff))
+                  val expired = current.headers.collect {
+                    case (hash, metadata)
+                        if metadata.header.slot < cutoff && !current.fresh(hash) =>
+                      hash
+                  }.toSet
                   current.copy(
                     entries = current.entries -- expired,
                     headers = current.headers -- expired,
                     fresh = current.fresh -- expired,
-                    pinned = current.pinned -- expired
+                    pinned = current.pinned -- expired,
+                    processed =
+                      current.processed.filter((_, a) => a.delivered.header.slot >= cutoff)
                   )
                 }
               )
@@ -772,7 +801,8 @@ object BlockPool:
       headers: Map[Bytes, DeliveredHeader] = Map.empty,
       fresh: Set[Bytes] = Set.empty,
       pinned: Set[Bytes] = Set.empty,
-      admissions: BigInt = 0
+      admissions: BigInt = 0,
+      processed: Map[Bytes, Admission] = Map.empty
   ):
     def pruned(now: FiniteDuration, policy: AttributionPolicy): Slots[F] =
       if released <= policy.retained && reapAt.forall(_ > now) then this

@@ -716,9 +716,10 @@ object Peer:
                             .checked(header, raw)
                             .fold(protocol[BlockPool.Delivered], F.pure)
                           _ <- fetcher.received(allocation, header.hash)
-                          _ <- claims.fillDeliveredWith(Vector(delivered))(_ =>
-                            receivedBody.traverse_(_(header, raw)) *> prepare(Vector(raw))
-                          )
+                          delegated <- claims.usesSelectionWorker
+                          _ <- (receivedBody.traverse_(_(header, raw)) *> prepare(Vector(raw)))
+                            .unlessA(delegated)
+                          _ <- claims.fillDelivered(Vector(delivered))
                           winner <- claims.take(header.hash)
                           _ <- winner.fold(
                             PeerError
