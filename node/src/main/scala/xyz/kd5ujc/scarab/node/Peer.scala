@@ -679,7 +679,11 @@ object Peer:
               result <- accepted match
                 case HeaderGate.Acceptance.Accepted => recordUpdates(batch, updates)
                 case HeaderGate.Acceptance.Restart(point) =>
-                  pendingRestart.set(Some(point)).as(Vector.empty[SyncEvent])
+                  genesis.fold(
+                    PeerError
+                      .Diverged(PeerError.Divergence.DetachedCandidate(point))
+                      .raise[F, Vector[SyncEvent]]
+                  )(_ => pendingRestart.set(Some(point)).as(Vector.empty[SyncEvent]))
             yield result
 
           def recordUpdates(
