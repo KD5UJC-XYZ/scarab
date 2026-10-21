@@ -45,6 +45,12 @@ cancellation and joining even if abort itself fails. FindIntersect and Done requ
 requests. Normal draining consumes final replies without header work or ordinary final-reply hooks;
 receiver AwaitReply hooks still run. Genesis jump, restart and termination use that boundary.
 
+FindIntersect outcomes retain the remote tip on both acceptance and rejection. A rejected CSJ jump
+can resume ordinary processing when an asynchronous AwaitReply has disengaged its peer during
+drain; its announced tip must therefore update the policy input even though its intersection was
+rejected. An empty accepted checkpoint likewise retains that tip and obtains its local height from
+the captured anchor rather than requiring a last header.
+
 ## Candidate metadata and publication
 
 Policy heights come from the candidate header chain, including its retained anchor. They do not
