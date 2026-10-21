@@ -75,7 +75,12 @@ class ChainSyncPipelineSuite extends FailsOnUncaught:
           val client: Resource[IO, ChainSyncClient[IO, Bytes]] =
             if rolling then
               ChainSyncClient
-                .resource(s.channel, ChainSyncFixtures.rawItem, e => s.aborts.update(_ :+ e), settings)
+                .resource(
+                  s.channel,
+                  ChainSyncFixtures.rawItem,
+                  e => s.aborts.update(_ :+ e),
+                  settings
+                )
                 .map(c => c: ChainSyncClient[IO, Bytes])
             else Resource.eval(ChainSyncClient(s.channel, ChainSyncFixtures.rawItem, settings))
           List(

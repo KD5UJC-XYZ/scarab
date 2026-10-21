@@ -250,7 +250,9 @@ private[network] object ChainSyncPipeline:
                   }
                 )
 
-              def findIntersect(points: Vector[Q])(using Raise[F, NetworkError]): F[Option[(Q, T)]] =
+              def findIntersect(points: Vector[Q])(using
+                  Raise[F, NetworkError]
+              ): F[Option[(Q, T)]] =
                 findIntersectResult(points).map(_.toOption)
 
               def findIntersectResult(points: Vector[Q])(using

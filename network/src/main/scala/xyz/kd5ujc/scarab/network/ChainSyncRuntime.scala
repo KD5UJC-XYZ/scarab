@@ -202,7 +202,9 @@ object ChainSyncRuntime:
         def findIntersect(points: Vector[Q])(using Raise[F, NetworkError]) =
           findIntersectResult(points).map(_.toOption)
 
-        def findIntersectResult(points: Vector[Q])(using Raise[F, NetworkError]): F[Intersection[Q, T]] =
+        def findIntersectResult(points: Vector[Q])(using
+            Raise[F, NetworkError]
+        ): F[Intersection[Q, T]] =
           flight {
             send(Message.FindIntersect(points)) *> receive.flatMap {
               case Message.IntersectFound(point, tip) if points.contains(point) =>
@@ -210,7 +212,7 @@ object ChainSyncRuntime:
               case Message.IntersectFound(_, _) =>
                 illegal(RuntimeViolation.IntersectionNotOffered)
               case Message.IntersectNotFound(tip) => F.pure(Intersection.NotFound(tip))
-              case other                        => unexpected(other)
+              case other                          => unexpected(other)
             }
           }
 
