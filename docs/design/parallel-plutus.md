@@ -115,7 +115,7 @@ Set `SCARAB_PREVIEW_WINDOWS` to the exported `windows.jsonl`,
 `SCARAB_PREVIEW_WORKERS=4`, then run `scripts/sbtw 'node/testOnly *PreviewReplaySuite'` in Docker.
 For a forked test JVM, set its heap explicitly (10 GiB for the largest captured states) and use
 absolute input paths; sbt normally starts it in the node module directory. Mount capture records,
-snapshots, checkpoints, genesis files and optional reference data read-only, with fresh writable
+snapshots, checkpoints, genesis files and required reference data read-only, with fresh writable
 output paths supplied in the batch manifest.
 
 The default `Comparison` schedule validates each block once serially and once at every requested
@@ -128,8 +128,27 @@ the pinned 242 identities, rather than the sum of window counters. `RotatedMeasu
 `SCARAB_PREVIEW_ROUNDS=3` adds warmed, rotated timing controls for a selected window; ordinary
 comparison timings are not treated as that benchmark.
 
-With `SCARAB_PREVIEW_REFERENCE` naming the authentic reference directory, reached reference points
-also produce the follower's full-UTxO K1 projections. `K1OfflineMain` reuses the production
+`SCARAB_PREVIEW_REFERENCE` is required for `PreviewReplaySuite`. It names the existing
+[`scripts/oracle/reference.py`](../../scripts/oracle/reference.py) directory format: `index.jsonl`
+and each original `<slot:012d>-<hash>.json` reduced native body. Supply a directory for this
+window, or set each manifest row's `reference` field to its own directory; retain original rows
+and body bytes when staging a window-specific index. The index must be nonempty;
+every indexed point must follow the anchor and occur in the selected replay window. Missing bodies,
+point mismatches and differences fail acceptance. No target is silently filtered out.
+
+At every required point, the follower's full-UTxO K1 projection is compared recursively against
+all supplied native fields, with exact numeric equality and complete map digest/count/bucket
+comparison using `StateDump.canon` and `StateDump.Digest`. Native era metadata is checked against
+the decoded block; Scala-only extra fields are outside this relation. This checks the reduced
+reference projection, not every field of the full Haskell ledger. The binding receipt hashes each
+original reference body; `reference-comparisons.jsonl` records successful content comparisons.
+A successful summary requires `referenceBodyComparisons == referenceTargetsRequired > 0`.
+The explicitly named legacy rotated-measurement entry point remains a Scala serial/parallel
+comparison and makes no native projection claim.
+
+`MithrilBootstrapAcceptanceSuite` independently restores its pinned artifact/checkpoint and
+constructs an optional projection export. It does not compare that export with a native body.
+ `K1OfflineMain` reuses the production
 `ChainStorage.open` stored-block replay for the contiguous genesis prefix; it constructs no follower
 or peer. The [staging recipe](../../fixtures/preview/phase2-failures/README.md) gives it private
 indexes, format metadata and a writable tail, with older bodies linked into a read-only mount.

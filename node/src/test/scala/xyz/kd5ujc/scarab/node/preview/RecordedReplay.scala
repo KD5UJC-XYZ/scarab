@@ -21,8 +21,8 @@ import xyz.kd5ujc.scarab.node.{MirrorRules, NativeSnapshots, NodeSetup, Parallel
 import xyz.kd5ujc.scarab.storage.{RocksUtxoStore, UtxoStore}
 
 /** Opt-in original-block acceptance. Every mode sees the same pre-block state and store; only the
-  * serial reference advances. Input directories must be read-only mounts. Each window gets its own
-  * fresh scratch store, closed before the next window in a single JVM.
+  * Scala serial baseline advances. Input directories must be read-only mounts. Each window gets its
+  * own fresh scratch store, closed before the next window in a single JVM.
   */
 object RecordedReplay extends munit.Assertions:
 
@@ -208,16 +208,41 @@ object RecordedReplay extends munit.Assertions:
       )
       expected = expectedInput.map(_._1)
       expectedSha = expectedInput.map(_._2)
-      referenceTargets <- config.reference.fold(IO.pure(Map.empty[BigInt, String]))(dir =>
-        IO.blocking {
-          val lines = Files.readAllLines(dir.resolve("index.jsonl")).asScala.toVector
-          ReplayInputs.referenceTargets(lines).fold(e => fail(e.toString), identity)
-        }
+      referenceInput <- config.reference.traverse(dir =>
+        readBound(dir.resolve("index.jsonl"))(ReplayInputs.referenceTargets)
       )
+      referenceTargets = referenceInput.fold(Map.empty[BigInt, String])(_._1)
       selected = entries.filter(_.slot > anchor.slot)
       _ <- IO(assert(selected.nonEmpty, "no block follows the baseline"))
-      lastSlot = selected.lastOption.fold(anchor.slot)(_.slot)
-      targets = referenceTargets.filter((slot, _) => slot > anchor.slot && slot <= lastSlot)
+      targets <- config.reference match
+        case Some(_) =>
+          IO(
+            ReplayInputs
+              .referenceWindow(referenceTargets, anchor.slot, selected)
+              .fold(e => fail(e.toString), identity)
+          )
+        case None
+            if config.legacyOutputs && config.schedule == ReplayInputs.Schedule.RotatedMeasurements =>
+          IO.pure(Map.empty[BigInt, String])
+        case None => IO(fail(ReplayInputs.Error.Missing(ReplayInputs.Setting.Reference).toString))
+      references <- config.reference.fold(IO.pure(Map.empty[BigInt, ReplayReference.Bound])) {
+        directory =>
+          targets.toVector
+            .sortBy(_._1)
+            .traverse { (slot, hash) =>
+              ReplayReference
+                .load[IO](directory, slot, hash)
+                .map(_.fold(e => fail(e.toString), value => slot -> value))
+            }
+            .map(_.toMap)
+      }
+      _ <- IO(
+        assertEquals(
+          references.keySet,
+          targets.keySet,
+          "every target has a complete native reference body"
+        )
+      )
       _ <- writeLine(
         config.output.resolve("binding.jsonl"),
         Json.obj(
@@ -228,6 +253,12 @@ object RecordedReplay extends munit.Assertions:
           "anchorBlock" -> anchor.blockNo.toString.asJson,
           "anchorHash" -> anchor.hash.hex.asJson,
           "recordsSha256" -> recordsSha.asJson,
+          "referenceIndexSha256" -> referenceInput.map(_._2).asJson,
+          "referenceBodiesSha256" -> references.toVector
+            .sortBy(_._1)
+            .map((slot, reference) => slot.toString -> reference.sha256)
+            .toMap
+            .asJson,
           "genesisSha256" -> genesisHashes.asJson,
           "expectedFailuresSha256" -> expectedSha.asJson,
           "schedule" -> config.schedule.toString.asJson,
@@ -274,7 +305,7 @@ object RecordedReplay extends munit.Assertions:
                       record.check(block.header, blockSha).fold(e => fail(e.toString), identity)
                     )
                     original <- validate(setup, store, state, block, raw, None, config.trace)
-                    (reference, trace, originalNanos) = original
+                    (serialState, trace, originalNanos) = original
                     measuredModes = config.schedule match
                       case ReplayInputs.Schedule.Comparison          => modes.filter(_._1 != 0)
                       case ReplayInputs.Schedule.RotatedMeasurements => modes
@@ -297,7 +328,7 @@ object RecordedReplay extends munit.Assertions:
                           actual <- validate(setup, store, state, block, raw, service, config.trace)
                           _ <- IO {
                             assert(
-                              actual._1 == reference,
+                              actual._1 == serialState,
                               s"full state: slot=${record.slot} workers=$workers"
                             )
                             assertEquals(
@@ -331,15 +362,43 @@ object RecordedReplay extends munit.Assertions:
                       )
                     )
                     _ <-
-                      if index % 128 == 127 then UtxoStore.advance(store, reference.utxo)
+                      if index % 128 == 127 then UtxoStore.advance(store, serialState.utxo)
                       else IO.unit
                     flushed <- store.flushed
-                    next = MirrorStep.mapUtxo(reference)(_.settled(flushed))
-                    _ <- targets.get(record.slot).traverse_ { expectedHash =>
-                      IO(assertEquals(block.header.hash.hex, expectedHash, "reference point")) *>
-                        K1Projection
+                    next = MirrorStep.mapUtxo(serialState)(_.settled(flushed))
+                    _ <- references.get(record.slot).traverse_ { native =>
+                      for
+                        _ <- IO(
+                          assertEquals(block.header.hash.hex, native.hash, "native reference point")
+                        )
+                        exported <- K1Projection
                           .write(block.header, next, store, config.output.resolve("dump"))
-                          .flatMap(_.fold(error => IO(fail(error.toString)), _ => IO.unit))
+                          .flatMap(_.fold(error => IO(fail(error.toString)), IO.pure))
+                        actualBytes <- IO.blocking(Files.readAllBytes(exported))
+                        actual <- IO {
+                          val text =
+                            ReplayInputs.lines(actualBytes).fold(e => fail(e.toString), identity)
+                          io.circe.parser
+                            .parse(text.mkString("\n"))
+                            .fold(e => fail(e.message), identity)
+                        }
+                        _ <- IO(
+                          ReplayReference
+                            .compare(native, actual, block.era)
+                            .fold(e => fail(e.toString), identity)
+                        )
+                        _ <- writeLine(
+                          config.output.resolve("reference-comparisons.jsonl"),
+                          Json.obj(
+                            "slot" -> record.slot.asJson,
+                            "hash" -> native.hash.asJson,
+                            "referenceFile" -> native.source.toString.asJson,
+                            "referenceSha256" -> native.sha256.asJson,
+                            "actualSha256" -> sha256(actualBytes).asJson,
+                            "matchedRequiredNativeFields" -> true.asJson
+                          )
+                        )
+                      yield ()
                     }
                     _ <- IO
                       .println(s"PREVIEW_REPLAY blocks=${index + 1} slot=${record.slot}")
@@ -370,7 +429,7 @@ object RecordedReplay extends munit.Assertions:
                   assertEquals(
                     exported,
                     targets.keySet,
-                    "every reference target in the window is exported"
+                    "every required native body was compared, without filtering any reference target"
                   )
                   expected.foreach(ids =>
                     assertEquals(failedIds, ids, "original invalid transactions, in order")
@@ -383,6 +442,11 @@ object RecordedReplay extends munit.Assertions:
                 "blocks" -> selected.size.asJson,
                 "failedTransactionIds" -> failedIds.map(_.hex).asJson,
                 "referenceTargetsExported" -> exported.size.asJson,
+                "referenceTargetsRequired" -> targets.size.asJson,
+                "referenceBodyComparisons" -> exported.size.asJson,
+                "comparisonScope" -> (if config.reference.isDefined then
+                                        "required-native-projection-fields-and-scala-execution-modes"
+                                      else "scala-execution-modes-only").asJson,
                 "phase2" -> countsJson(totals),
                 "finalScripts" -> after.plutus.scripts.asJson,
                 "initialScripts" -> initial.state.plutus.scripts.asJson
@@ -406,7 +470,8 @@ object RecordedReplay extends munit.Assertions:
               .focus
               .getOrElse(Json.Null),
             "finalScripts" -> summary.hcursor.downField("finalScripts").focus.getOrElse(Json.Null),
-            "seconds" -> seconds.asJson
+            "seconds" -> seconds.asJson,
+            "comparisonScope" -> Json.fromString("scala-execution-modes-only")
           )
         else summary.deepMerge(Json.obj("seconds" -> seconds.asJson))
       _ <- IO.blocking(Files.writeString(config.output.resolve("summary.json"), compatible.spaces2))

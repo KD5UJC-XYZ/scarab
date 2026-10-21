@@ -25,6 +25,7 @@ object ReplayInputs:
     case Snapshot extends Setting("SCARAB_PREVIEW_SNAPSHOT")
     case Checkpoint extends Setting("SCARAB_PREVIEW_CHECKPOINT")
     case Output extends Setting("SCARAB_PREVIEW_OUTPUT")
+    case Reference extends Setting("SCARAB_PREVIEW_REFERENCE")
 
   enum Error extends DomainError:
     case Missing(setting: Setting)
@@ -43,6 +44,12 @@ object ReplayInputs:
     case DuplicateTransaction(id: Bytes)
     case ExpectedInvalid(id: Bytes)
     case DuplicateTarget(slot: BigInt)
+    case EmptyReference
+    case NegativeTarget(slot: BigInt)
+    case ReferenceHash(value: String, cause: HexError)
+    case ReferenceHashLength(value: String)
+    case TargetOutsideWindow(slot: BigInt, anchor: BigInt, last: BigInt)
+    case TargetAbsentFromWindow(slot: BigInt)
     case DuplicateOutput(path: Path)
     case Slot(expected: BigInt, actual: BigInt)
     case BlockNumber(expected: BigInt, actual: BigInt)
@@ -192,7 +199,7 @@ object ReplayInputs:
       )
       _ <- Either.cond(workers.exists(_.value > 1), (), Error.NoParallelWorkers)
       genesis <- pathOf(environment.getOrElse("SCARAB_PREVIEW_GENESIS", "fixtures/preview/genesis"))
-      reference <- environment.get("SCARAB_PREVIEW_REFERENCE").traverse(pathOf)
+      reference <- required(Setting.Reference)
       failures <- environment.get("SCARAB_PREVIEW_EXPECTED_FAILURES").traverse(pathOf)
       rounds = environment.get("SCARAB_PREVIEW_ROUNDS").fold(1)(_.toIntOption.getOrElse(0))
       _ <- Either.cond(rounds > 0, (), Error.Rounds(rounds))
@@ -213,7 +220,7 @@ object ReplayInputs:
       genesis,
       workers,
       rounds,
-      reference,
+      Some(reference),
       expectedFailures = failures,
       schedule = schedule
     )
@@ -289,9 +296,13 @@ object ReplayInputs:
           for
             slot <- json.hcursor.get[BigInt]("slot").left.map(Error.Json(index + 1, _))
             hash <- json.hcursor.get[String]("hash").left.map(Error.Json(index + 1, _))
+            _ <- Either.cond(slot >= 0, (), Error.NegativeTarget(slot))
+            bytes <- Bytes.fromHex(hash).left.map(Error.ReferenceHash(hash, _))
+            _ <- Either.cond(bytes.size == 32, (), Error.ReferenceHashLength(hash))
           yield slot -> hash
         }
       }
+      .flatMap(rows => Either.cond(rows.nonEmpty, rows, Error.EmptyReference))
       .flatMap { rows =>
         rows
           .groupBy(_._1)
@@ -300,3 +311,19 @@ object ReplayInputs:
             Left(Error.DuplicateTarget(slot))
           )
       }
+
+  /** Every requested reference point must be in this exact replay, not silently filtered out. */
+  def referenceWindow(
+      targets: Map[BigInt, String],
+      anchor: BigInt,
+      records: Vector[Record]
+  ): Either[Error, Map[BigInt, String]] =
+    for
+      last <- records.lastOption.map(_.slot).toRight(Error.EmptyWindow)
+      _ <- Either.cond(targets.nonEmpty, (), Error.EmptyReference)
+      slots = records.map(_.slot).toSet
+      _ <- targets.keys.toVector.sorted.traverse_ { slot =>
+        if slot <= anchor || slot > last then Left(Error.TargetOutsideWindow(slot, anchor, last))
+        else Either.cond(slots(slot), (), Error.TargetAbsentFromWindow(slot))
+      }
+    yield targets

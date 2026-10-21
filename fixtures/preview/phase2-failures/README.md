@@ -80,3 +80,19 @@ projections, and exits before any follower or network connection. Afterwards req
 --results /scratch/comparison.json --expected-epochs 1451`. A successful replay alone does not
 establish reference equality. Compare its ordered `failedTransactionIds` with this fixture as well;
 the early 10,000-block smoke prefix contains no phase-two transactions.
+
+## Recorded replay reference contract
+
+`PreviewReplaySuite` requires `SCARAB_PREVIEW_REFERENCE` to name a nonempty authentic
+`index.jsonl` and its original reduced native `<slot:012d>-<hash>.json` bodies, as produced by
+[`scripts/oracle/reference.py`](../../../scripts/oracle/reference.py). All indexed points must
+lie in the selected replay window; missing bodies and differing contents fail. Its successful
+summary requires `referenceBodyComparisons == referenceTargetsRequired > 0`. Each reference
+field is compared recursively and numerically exactly, including every map digest bucket;
+Scala-only fields are outside this relation. This is independent of the Scala serial/parallel
+execution comparison and does not assert full native ledger equivalence. Synthetic comparator
+controls in `ReplayReferenceSuite` test this contract, not additional observed native cases.
+
+The separate `MithrilBootstrapAcceptanceSuite` checks pinned-artifact restoration, anchor and
+UTxO count, then constructs an optional projection export. That test does not compare a native
+projection body; a successful export alone is not reference equality.
