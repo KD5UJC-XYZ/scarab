@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.genesis
 
-import cats.effect.{IO, Ref}
+import cats.effect.{Deferred, IO, Ref}
 import cats.syntax.all.*
 import fs2.Stream
 import fs2.concurrent.SignallingRef
@@ -12,12 +12,14 @@ import UpstreamGenesisCases.NodeState
 import UpstreamGenesisBlocks.{Block, Problem, Universe}
 
 /** The server conditions of PeerSimulator/Handlers.hs, interpreted over unchanged native state
-  * ticks. Silence before AwaitReply and delayed block availability remain separate observations.
+  * ticks. ScheduledServer.hs:53–61 starts offline, so no handler may answer before the first actual
+  * tick. Silence before AwaitReply and delayed block availability remain separate observations.
   */
 final class UpstreamGenesisServer private (
     universe: Universe,
     available: SignallingRef[IO, (Long, NodeState)],
     cursor: Ref[IO, ChainSync.Point],
+    online: Deferred[IO, Unit],
     problem: Problem => IO[Nothing]
 ):
   import ChainSync.Point
@@ -65,7 +67,7 @@ final class UpstreamGenesisServer private (
     available.discrete.dropWhile(_._1 == version).take(1).compile.drain
 
   private def reply(allowAwait: Boolean): IO[Option[Update[NtNHeader]]] =
-    cats.Monad[IO].tailRecM(()) { _ =>
+    online.get *> cats.Monad[IO].tailRecM(()) { _ =>
       (available.get, cursor.get).tupled.flatMap { case ((version, state), at) =>
         decide(at, state).flatMap {
           case Decision.Reply(update, next) => cursor.set(next).as(Right(Some(update)))
@@ -76,7 +78,7 @@ final class UpstreamGenesisServer private (
     }
 
   val chainSync: ChainSyncServer.Source[IO, NtNHeader] = new ChainSyncServer.Source[IO, NtNHeader]:
-    def intersect(points: Vector[Point]) = available.get.flatMap { (_, state) =>
+    def intersect(points: Vector[Point]) = online.get *> available.get.flatMap { (_, state) =>
       val offered = points.flatMap(p => universe.decode(p).toOption)
       offered.find(ancestor(_, state.tip)) match
         case Some(point) => cursor.set(point) *> encoded(point).map(p => Right(p -> tip(state.tip)))
@@ -85,7 +87,7 @@ final class UpstreamGenesisServer private (
     def poll = reply(true)
     def await = reply(false).flatMap(_.fold(IO.never[Update[NtNHeader]])(IO.pure))
 
-  private def waitBlock(block: Block): IO[Unit] = cats.Monad[IO].tailRecM(()) { _ =>
+  private def waitBlock(block: Block): IO[Unit] = online.get *> cats.Monad[IO].tailRecM(()) { _ =>
     available.get.flatMap { (version, state) =>
       val point = block.native
       val present = ancestor(point, state.block) ||
@@ -99,7 +101,7 @@ final class UpstreamGenesisServer private (
 
   val blocks: BlockFetchServer.Blocks[IO] = new BlockFetchServer.Blocks[IO]:
     def range(from: Point, to: Point, maxBlocks: Int) =
-      IO.pure {
+      online.get *> IO.pure {
         for
           nativeTo <- universe.decode(to).toOption
           source = universe.chain(nativeTo)
@@ -115,9 +117,10 @@ final class UpstreamGenesisServer private (
   def restart: IO[UpstreamGenesisServer] =
     Ref
       .of[IO, ChainSync.Point](ChainSync.Point.Origin)
-      .map(next => new UpstreamGenesisServer(universe, available, next, problem))
+      .map(next => new UpstreamGenesisServer(universe, available, next, online, problem))
 
-  def publish(state: NodeState): IO[Unit] = available.update((version, _) => (version + 1, state))
+  def publish(state: NodeState): IO[Unit] =
+    available.update((version, _) => (version + 1, state)) *> online.complete(()).void
 
 object UpstreamGenesisServer:
   def create(universe: Universe, problem: Problem => IO[Nothing]): IO[UpstreamGenesisServer] =
@@ -125,5 +128,8 @@ object UpstreamGenesisServer:
       SignallingRef[IO, (Long, NodeState)](
         0L -> NodeState(ChainSync.Point.Origin, ChainSync.Point.Origin, ChainSync.Point.Origin)
       ),
-      Ref.of[IO, ChainSync.Point](ChainSync.Point.Origin)
-    ).mapN((available, cursor) => new UpstreamGenesisServer(universe, available, cursor, problem))
+      Ref.of[IO, ChainSync.Point](ChainSync.Point.Origin),
+      Deferred[IO, Unit]
+    ).mapN((available, cursor, online) =>
+      new UpstreamGenesisServer(universe, available, cursor, online, problem)
+    )
