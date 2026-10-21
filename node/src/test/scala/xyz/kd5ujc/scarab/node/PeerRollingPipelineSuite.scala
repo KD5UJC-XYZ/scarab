@@ -55,6 +55,7 @@ class PeerRollingPipelineSuite extends FailsOnUncaught:
         captures <- Ref.of[IO, Int](0)
         awaited <- Ref.of[IO, Vector[Int]](Vector.empty)
         handled <- Ref.of[IO, Int](0)
+        completedHeaders <- Ref.of[IO, Int](0)
         nextCalls <- Ref.of[IO, Int](0)
         checkpoint = GenesisPeer.Checkpoint(
           HeaderChain.at[NodeHeaderState](ChainSync.Point.Origin, None),
@@ -158,7 +159,16 @@ class PeerRollingPipelineSuite extends FailsOnUncaught:
           def outstanding = inFlight.get
           def drain(onAwait: IO[Unit])(onUpdate: ChainSyncClient.Update[NtNHeader] => IO[Unit])(
               using Raise[IO, NetworkError]
-          ) = if unknownRollback then inFlight.set(0) else IO.never
+          ) =
+            if unknownRollback then
+              inFlight.getAndSet(0).flatMap { remaining =>
+                Vector
+                  .fill(remaining)(
+                    ChainSyncClient.Update.RollBackward(chain.headers.head.point, tip)
+                  )
+                  .traverse_(onUpdate)
+              }
+            else IO.never
           def requestNext(using Raise[IO, NetworkError]) = IO(fail("legacy request"))
           def requestNextBatch(n: Int)(using Raise[IO, NetworkError]) = IO(fail("legacy batch"))
           def done(using Raise[IO, NetworkError]) = IO.unit
@@ -240,6 +250,10 @@ class PeerRollingPipelineSuite extends FailsOnUncaught:
             heights,
             headers = Option.unless(unknownRollback || offeredHeight.nonEmpty)(check),
             chainSyncObserver = Some(observer),
+            observe = Some {
+              case Peer.Observation.HeaderReceived => completedHeaders.update(_ + 1)
+              case _                               => IO.unit
+            },
             genesis = Option.when(blocked == Blocked.Jumping || emptyGraft || rejectedJump)(control)
           )
           .use { peer =>
@@ -268,12 +282,16 @@ class PeerRollingPipelineSuite extends FailsOnUncaught:
                 .flatMap { result =>
                   for
                     requests <- awaited.get
+                    headersReceived <- completedHeaders.get
+                    submittedRequests <- submitted.get
                     _ <- IO(
                       assertEquals(requests, if unknownRollback then Vector.empty else Vector(3))
                     )
+                    _ <- IO(assert(headersReceived >= 1))
                     _ <-
                       if unknownRollback then
-                        IO(
+                        IO {
+                          assertEquals(headersReceived, submittedRequests)
                           assertEquals(
                             result,
                             Left(
@@ -282,7 +300,7 @@ class PeerRollingPipelineSuite extends FailsOnUncaught:
                               )
                             )
                           )
-                        )
+                        }
                       else if abort then
                         finalized.get *> IO(assertEquals(result, Left(Peer.networkFault(reason))))
                       else IO(assert(result.isRight))

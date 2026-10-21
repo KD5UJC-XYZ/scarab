@@ -257,6 +257,31 @@ class EventMetricsSuite extends CatsEffectSuite:
     }
   }
 
+  test("rolling replies count headers without inventing batch rounds or latencies") {
+    fixture.flatMap { (metrics, em) =>
+      for
+        before <- metrics.snapshot
+        _ <- em.peer(Peer.Observation.HeaderReceived)
+        _ <- em.peer(Peer.Observation.HeaderReceived)
+        rolling <- metrics.snapshot
+        _ <- em.peer(Peer.Observation.Round(8, 7, 250L))
+        combined <- metrics.snapshot
+      yield
+        assertEquals(counter(rolling, Catalogue.chainSyncHeaders, ()), Some(2.0))
+        assertEquals(
+          counter(rolling, Catalogue.chainSyncRounds, ()),
+          counter(before, Catalogue.chainSyncRounds, ())
+        )
+        assertEquals(
+          observations(rolling, Catalogue.chainSyncRoundSeconds, ()),
+          observations(before, Catalogue.chainSyncRoundSeconds, ())
+        )
+        assertEquals(counter(combined, Catalogue.chainSyncHeaders, ()), Some(9.0))
+        assertEquals(counter(combined, Catalogue.chainSyncRounds, ()), Some(1.0))
+        assertEquals(observations(combined, Catalogue.chainSyncRoundSeconds, ()), Some(1L))
+    }
+  }
+
   test(
     "the churn governor's rounds and steps are counted, the sleep is a gauge, observations are free"
   ) {

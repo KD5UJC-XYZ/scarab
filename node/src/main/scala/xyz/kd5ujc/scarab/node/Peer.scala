@@ -284,6 +284,11 @@ object Peer:
       */
     case Round(requested: Int, received: Int, millis: Long)
 
+    /** One complete rolling ChainSync roll-forward or rollback collected, including replies
+      * discarded while draining. AwaitReply is not a complete reply.
+      */
+    case HeaderReceived
+
     /** One block fetched on its own (at the tip), from the request to the block. */
     case Fetched(millis: Long)
 
@@ -304,8 +309,8 @@ object Peer:
     case BlocksArrived(blocks: Vector[(Long, Long)], at: Time)
 
   /** @param readAhead
-    *   Most ChainSync requests pipelined at once while the peer is far ahead (D3: 128, see
-    *   docs/performance.md; 64 to 256 were measured against the public Preview relay).
+    *   Maximum headers per ordered body-publication chunk. The rolling request window is set
+    *   independently by `pipelineWindow`.
     * @param byronEpochSlots
     *   Slots per Byron epoch (10k of the Byron genesis), to place Byron headers on the slot axis.
     */
@@ -890,8 +895,9 @@ object Peer:
                     ) *> contexts.update(_.enqueue(captured))
                   }
                 }
+                def headerReceived: F[Unit] = observe.traverse_(_(Observation.HeaderReceived))
                 def handled(update: ChainSyncClient.Update[NtNHeader]): F[Unit] =
-                  stopping.flatMap {
+                  headerReceived *> stopping.flatMap {
                     case true => pop
                     case false =>
                       head.flatMap(_.reply) *> capacity(update) *>
@@ -918,7 +924,9 @@ object Peer:
                 F.tailRecM(ChainSyncPipelineDecision.Policy(settings.pipelineWindow)) { policy =>
                   stopping.flatMap {
                     case true =>
-                      pipeline.drain(onAwait)(_ => pop) *> finishPendingEnd.as(Right(()))
+                      pipeline.drain(onAwait)(_ => headerReceived *> pop) *> finishPendingEnd.as(
+                        Right(())
+                      )
                     case false =>
                       for
                         _ <- pipeline.serviceAwait(onAwait)
