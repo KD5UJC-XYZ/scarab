@@ -3,8 +3,7 @@ package xyz.kd5ujc.scarab.network
 
 import xyz.kd5ujc.scarab.protocol.ChainSync.UInt64
 
-/** `pipelineDecisionLowHighMark`, ouroboros-network
-  * `2fb69829a19b5c04e4fb212bdd78fb63f9d2d776`,
+/** `pipelineDecisionLowHighMark`, ouroboros-network `2fb69829a19b5c04e4fb212bdd78fb63f9d2d776`,
   * `Ouroboros/Network/Protocol/ChainSync/PipelineDecision.hs`.
   */
 object ChainSyncPipelineDecision:
@@ -34,7 +33,9 @@ object ChainSyncPipelineDecision:
     ): Either[Error, (Action, Policy)] =
       if outstanding < 0 then Left(Error.NegativeOutstanding(outstanding))
       else if outstanding == 0 then
-        Right((if client == server then Action.Request else Action.Pipeline, copy(phase = Phase.Low)))
+        Right(
+          (if client == server then Action.Request else Action.Pipeline, copy(phase = Phase.Low))
+        )
       else
         phase match
           case Phase.High =>
@@ -44,5 +45,6 @@ object ChainSyncPipelineDecision:
             val plus = (client.fold(BigInt(1))(_.value) + outstanding) & UInt64.Max
             val reachesServer = server.forall(_.value <= plus)
             if reachesServer then Right(Action.Collect -> this)
-            else if outstanding >= window.high then Right(Action.Collect -> copy(phase = Phase.High))
+            else if outstanding >= window.high then
+              Right(Action.Collect -> copy(phase = Phase.High))
             else Right(Action.CollectOrPipeline -> this)

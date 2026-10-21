@@ -34,12 +34,22 @@ object ChainSyncRuntime:
     def idling: F[Boolean]
     def observe(observer: ChainSyncClient.Observer[F]): Resource[F, Unit]
 
+  /** Single-caller rolling client. Outstanding requests include completed, uncollected replies.
+    * Await callbacks execute in the caller before the receiver reads the final reply. Rolling
+    * methods use only their explicit callback; registered observers belong to legacy methods.
+    * Resource cancellation with outstanding work terminates the connection rather than exposing an
+    * unaligned reusable channel.
+    */
   trait Pipeline[F[_], Q, T, P] extends Client[F, Q, T, P]:
     def submit(using Raise[F, NetworkError]): F[Unit]
     def tryCollect(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Option[Update[Q, T, P]]]
     def collect(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Update[Q, T, P]]
     def serviceAwait(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Unit]
     def outstanding: F[Int]
+
+    /** Collect outstanding replies without legacy reply observers; the callback accounts for each
+      * discarded final reply (for example, retiring its captured request context).
+      */
     def drain(onAwait: F[Unit])(onUpdate: Update[Q, T, P] => F[Unit])(using
         Raise[F, NetworkError]
     ): F[Unit]

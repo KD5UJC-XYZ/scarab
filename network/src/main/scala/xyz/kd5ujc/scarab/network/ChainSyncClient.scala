@@ -114,7 +114,8 @@ object ChainSyncClient:
       intersectTimeout: FiniteDuration = 10.seconds,
       canAwaitTimeout: FiniteDuration = 10.seconds,
       mustReplyTimeout: FiniteDuration = 300.seconds,
-      timeouts: Option[ChainSyncRuntime.Timeouts] = None
+      timeouts: Option[ChainSyncRuntime.Timeouts] = None,
+      pipelineCapacity: Int = 300
   )
 
   def apply[F[_]: Temporal, P](
