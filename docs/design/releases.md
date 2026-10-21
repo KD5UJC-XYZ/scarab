@@ -1,9 +1,15 @@
 # Releases and repository hardening
 
-**Status: Owner decisions accepted (2026-10-21); implementation plan, not an enabled release service.**
+**Status: Release tooling implemented; owner activation and actual publication evidence remain pending.**
 Tracks [#161](https://github.com/KD5UJC-XYZ/scarab/issues/161),
 [#75](https://github.com/KD5UJC-XYZ/scarab/issues/75) and
 [#76](https://github.com/KD5UJC-XYZ/scarab/issues/76).
+
+The implementation guides cover [release PR preparation](../release-pr-preparation.md),
+[verified candidates and SBOMs](../release-candidates.md), and
+[publication, independent verification and recovery](../release-publication.md). Their checked-in
+activation policies remain disabled; mechanism tests do not establish installed GitHub protections
+or a genuine Scarab publication.
 
 ## Decisions and current boundary
 
@@ -34,9 +40,10 @@ by pull requests. These channel names describe release maturity; they do not sel
 network or establish safety on it. The `preprod` release channel is distinct from the Cardano
 preprod network and the adopted-block acceptance gate.
 
-The four-channel contract is planned now. Creating all branches, GitHub deployment environments,
-approval policies and publishing workflows is deferred under #161/#75; this update does not
-configure those resources or authorize deployment.
+The four-channel contract and inactive workflows are implemented. Creating branches, GitHub
+deployment environments and approval policies remains deferred under #161/#75. Provision only
+the channels being activated; installing workflow files does not configure those resources or
+authorize deployment.
 
 | PR target | Permitted PR source | Intended use |
 |---|---|---|
@@ -81,11 +88,11 @@ their commit; they are not automatically published alpha releases.
 
 Use Ottochain's release-please plus sbt-dynver arrangement as the reference. Release-please's
 manifest is planning state, not another published-version authority. Do not add a separately
-hand-maintained `VERSION` as an independent truth. Configure the build to derive the version
-from the exact selected tag and refuse release builds with a dirty tree, absent/moved/ambiguous
-tag, incorrect channel, unapproved source, or mismatched metadata. Remove the existing hard-coded
-build version only when this implementation and its controls land. Development versions must
-be recognizably unreleased and record the commit; release jobs cannot use a fallback version.
+hand-maintained `VERSION` as an independent truth. The [tag-derived build and export](../reproducible-builds.md)
+resolve the exact selected tag and refuse release builds with a dirty tree, absent/moved/ambiguous
+tag, incorrect channel, unapproved source, or mismatched metadata. The hard-coded build version
+has been replaced. Development versions are recognizably unreleased and record the commit;
+release jobs cannot use a fallback version.
 
 The immutable-source reproducibility wrapper exports source without `.git`. Resolve and verify
 tag, commit and version before export, then freeze that metadata with the source inputs for both
@@ -97,8 +104,8 @@ it or adding an image alias while its embedded version remains `-rc.N`. Build th
 production artifact from the approved source and fixed inputs, verify its own reproducibility,
 and exercise that exact artifact/digest in acceptance before production use.
 
-Conventional `feat`, `fix` and breaking-change markers feed the next-version proposal. The initial
-implementation should explicitly configure and test the reference's pre-1.0 policy: breaking
+Conventional `feat`, `fix` and breaking-change markers feed the next-version proposal. The
+[preparation coordinator](../release-pr-preparation.md) configures and tests the pre-1.0 policy: breaking
 changes advance the minor, compatible features advance the minor, fixes advance the patch.
 After 1.0, incompatible changes advance the major. Review compatibility and migration impacts;
 commit classification is not proof that an interface is compatible. A maintenance-only release
@@ -109,7 +116,7 @@ can be explicitly proposed and reviewed even without a feature/fix commit.
 The existing [fragment contract](../../changes/README.md) remains the human-written changelog
 source. The [local preparation tool](../changelog-preparation.md) implements immutable selection,
 pinned Scriv collection, preview, checked stable cleanup and pending-attempt recovery. Publication
-and version/tag authority remain separate implementation stages. Conventional commit subjects choose
+and version/tag authority remain separate responsibilities. Conventional commit subjects choose
 a proposed bump; they must not replace or duplicate the fragment prose. The current `CHANGELOG.md` also contains legacy Unreleased text: inventory it and
 include it exactly once in the first applicable release, not just the directory's newer fragments.
 
@@ -170,14 +177,18 @@ Ottochain's separate commit-log overwrite are not the Scarab implementation.
 
 ## Publisher credentials and distribution
 
-Separate three capabilities rather than create one broad release secret:
+Separate preparation, coordination, package publication and signing capabilities:
 
-- Release-PR/tag automation: prefer a narrowly scoped GitHub App installation token. Ottochain's
-  `RELEASE_TOKEN` PAT is a reference mechanism, not mandatory for Scarab. If a PAT is selected,
-  scope, expiry, rotation and owner are documented. A human approval can also be the trigger.
-- Asset and package publication: use job-scoped `GITHUB_TOKEN` permissions (`contents: write` for
-  release assets and `packages: write` for repository-linked GHCR publication), restricted to
-  trusted release jobs. Ordinary PR checks retain read-only permissions and no publisher secrets.
+- Release PR preparation uses a dedicated repository-scoped App with Contents and Pull requests
+  write. Its coordinator exposes PR operations only; official-tag creation belongs to the release
+  coordinator's separate allowlist. Its environment-scoped key has no repository-level fallback.
+- Tag/release coordination uses a separate protected App: Contents write for tags and release
+  assets, Actions write only for explicit dispatch, and Actions read for subsequent run/artifact
+  verification. It may bypass tag creation only. Complete workflow-tree equality avoids adding
+  Workflows write; runtime Apps receive no Administration write.
+- Package publication uses job-scoped `GITHUB_TOKEN` Packages write for repository-linked GHCR
+  staging/version tags, restricted to trusted protected jobs. Ordinary PR checks retain read-only
+  permissions and no publisher secrets.
 - Signing/provenance: use GitHub OIDC and artifact attestations, with `id-token: write` and
   `attestations: write` limited to the attesting job. Bind the authorized repository, workflow,
   ref/source and subject digest. A long-lived personal signing key is not required by this design.
@@ -202,8 +213,13 @@ Coordinate publication: build and verify first, upload candidate assets to a dra
 the GHCR image by digest, then independently retrieve and verify both before marking the release
 complete and advancing aliases. GitHub Releases and GHCR are not an atomic transaction; retain
 an explicit incomplete/failed state, retry immutable inputs, and never advertise partial success.
-The post-publication verifier also checks the publicly downloadable files after publication.
-A manual retry accepts an existing validated tag, not an arbitrary branch/version override.
+The post-publication verifier also checks anonymously downloadable files after publication.
+All release assets and their signature bundles are attached while the release is a draft. The
+original public verification receipt is added afterward as a bounded release-notes marker, with
+its signature retained in GitHub's attestation service; this supports immutable release assets.
+Extracting the notes marker is transport only: its original bytes must still pass publisher,
+source/ref and signature verification. A manual retry reuses the original authenticated candidate
+run/artifact and validated tag, rather than rebuilding evidence or overriding a version.
 
 ## Acceptance under issue 75
 
@@ -223,6 +239,12 @@ only with its own build/runtime evidence. Define image reproducibility separatel
 without claiming a SLSA level merely because an attestation exists.
 
 ## Implementation sequence and closure
+
+The linked implementation guides record tooling and mechanism evidence. The sequence below still
+requires owner activation and actual platform/artifact acceptance before issue closure. A
+self-hosted observer label is not access control: restrict the host and Docker daemon to the
+reviewed canonical workflow/ref, and prove unauthorized PR/branch jobs cannot reach them before
+using that runner for acceptance.
 
 1. **#161: promotion, version and fragments.** Reconcile integration branches; implement source-rule
    and conventional-title checks; trial and pin the fragment collector on the actual corpus;
