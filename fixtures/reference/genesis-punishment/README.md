@@ -24,7 +24,10 @@ not an additional signature-validation claim.
 
 The [ChainDB observer](../../../scripts/oracle/genesis-punishment/MainClassification.hs)
 opens actual native ChainDB instances using the upstream EBB-capable storage test block
-and ledger. Disposable real threads observe the opaque punishment callbacks. All inputs,
+and ledger. Disposable real threads observe the opaque punishment callbacks. A shared marker first
+calibrates the non-exported exception type using the actual native API, then
+releases and joins each target deterministically. Unexpected exceptions are rethrown;
+there is no sleep or polling deadline that could mistake delayed delivery for forgiveness. All inputs,
 processed results and selected chains are retained for four cases: invalid added block,
 invalid prefix of a newly preferred fork, later invalid suffix and valid same-slot EBB
 before an invalid regular suffix. Classification input points identify those constructed

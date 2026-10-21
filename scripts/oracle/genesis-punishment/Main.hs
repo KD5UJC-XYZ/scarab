@@ -14,8 +14,7 @@ import Data.Aeson
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy.Char8 as BL
 import Data.List (mapAccumL)
-import qualified Control.Concurrent as C
-import qualified Control.Exception as E
+import qualified Marker
 import Ouroboros.Consensus.Util.IOLike (atomically)
 import qualified Ouroboros.Consensus.Storage.ChainDB.API.Types.InvalidBlockPunishment as P
 import Data.Proxy
@@ -96,24 +95,15 @@ observe label inputs = object ["label" .= label,"steps" .= snd (mapAccumL step i
   step old input = let { result=applyTentativeHeaderView (Proxy @Block) (view input) old; next=maybe old id result }
                   in (next,object ["input" .= inputJSON input,"accepted" .= maybe False (const True) result,
                        "state" .= stateJSON next,"completeNativeState" .= show next])
--- Observe the actual opaque DSL by targeting a disposable real thread.
-observePunishment :: (P.InvalidBlockPunishment IO -> P.InvalidBlockPunishment IO) -> P.Invalidity -> IO Bool
-observePunishment make invalidity = do
- ready <- C.newEmptyMVar
- observed <- C.newEmptyMVar
- tid <- C.forkIO $ E.catch
-  (do p <- P.mkPunishThisThread; C.putMVar ready p; C.threadDelay maxBound)
-  (\(err :: E.SomeException) -> case E.fromException err :: Maybe E.AsyncException of
-    Just E.ThreadKilled -> pure ()
-    _ -> C.putMVar observed ())
- p <- C.takeMVar ready
- P.enact (make p) invalidity
- C.threadDelay 10000
- result <- C.tryTakeMVar observed
- C.killThread tid
- pure $ maybe False (const True) result
+-- Completion is synchronized with the actual child, never a scheduler delay.
+observePunishment :: Marker.Observer -> (P.InvalidBlockPunishment IO -> P.InvalidBlockPunishment IO) -> P.Invalidity -> IO Bool
+observePunishment observer make invalidity = do
+ marker <- Marker.start
+ P.enact (make $ Marker.punishment marker) invalidity
+ Marker.finish observer marker
 main :: IO ()
 main = do
+ observer <- Marker.calibrate
  args <- getArgs
  let output=head args
  case args of
@@ -129,11 +119,11 @@ main = do
      let punishment target=P.branch $ \invalidity -> case invalidity of
           P.BlockPrefix -> target
           P.BlockItself -> criterion cfg header target
-     prefix <- observePunishment punishment P.BlockPrefix
-     first <- observePunishment punishment P.BlockItself
-     repeated <- observePunishment punishment P.BlockItself
+     prefix <- observePunishment observer punishment P.BlockPrefix
+     first <- observePunishment observer punishment P.BlockItself
+     repeated <- observePunishment observer punishment P.BlockItself
      fresh <- atomically $ P.mkForDiffusionPipelining @IO @(ShelleyBlock (Praos StandardCrypto) ConwayEra)
-     reset <- observePunishment (fresh cfg header) P.BlockItself
+     reset <- observePunishment observer (fresh cfg header) P.BlockItself
      BL.writeFile projectionFile $ encode $ object ["dslPunished" .= [prefix,first,repeated,reset],"header" .= hex (BL.toStrict raw),"era" .= (6::Int),"blockNo" .= height,"issuer" .= hex (Hash.hashToBytes issuer),"issueNo" .= issue]
     Right _ -> fail "unconsumed original header bytes"
   [_] -> pure ()
