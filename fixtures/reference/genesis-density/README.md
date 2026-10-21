@@ -18,6 +18,27 @@ policies, pause/resume, reconfiguration while paused, picosecond accounting, zer
 disabled configuration, depletion and a positive balance with less than one microsecond remaining.
 `FillResult` is opaque in the public native API; no constructors or production bodies are modified.
 
+`loe.jsonl.gz` is a lossless, deterministic gzip of 84 full native peer-simulator observations.
+All 21 original keys are included: LoE (2), DensityDisconnect (1), LoP (7), CSJ (4), Uniform (6),
+and LongRangeAttack (1), with four fixed seeds per key. The wrapper applies each original
+`ctAdjustMaxSize` to a base size of 25 before calling the unchanged `ctGenerator`; the resulting
+sizes are 2, 5 or 25. No seed is resampled and no case family or negative control is removed.
+The original native `ChainDB`, peer simulator and strict IOSim shutdown execute every schedule.
+Every original `ctProperty` and the original harness's expected-exception law pass.
+
+The full generated runtime configuration, all tree fragments, original peer schedules and event
+timestamps, selected chain (including its immutable anchor), tip block and every component outcome
+are retained. Closed native exception tags are exported by matching exception constructors, alongside
+complete original result renderings. The compatibility adapter must honor each case's switches,
+including tests that deliberately disable LoE, LoP, jumping or timeouts. The exporter writes all
+outcomes and exits unsuccessfully if a native case throws or its property fails; it never filters a
+failure out of the corpus.
+
+An initial observer-development probe incorrectly bypassed `ctAdjustMaxSize` and failed the mock
+`TestBlock` hash's 100-word encoding limit. The corrected wrapper uses the unchanged upstream test's
+size adjustment. That failed probe is retained in the private evidence receipt; it is not counted as
+a passing reference run.
+
 Mock `TestHash` values are encoded losslessly as the concatenated 64-bit big-endian words of
 `unTestHash`, in their original stored order. Slot numbers and rational numerators/denominators
 remain exact integers. Header points are sufficient for these pure rules, which never inspect
