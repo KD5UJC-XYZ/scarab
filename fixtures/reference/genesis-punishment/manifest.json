@@ -1,0 +1,28 @@
+{
+  "schema": "scarab-native-diffusion-punishment-v1",
+  "sourceCommit": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+  "sourceFiles": {
+    "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Block/SupportsDiffusionPipelining.hs": "ef1aa5d07de3ab7dbcff9061a60d92cc2aeee64ea23f52f87480c33038f99a3e",
+    "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/API/Types/InvalidBlockPunishment.hs": "a8316346d4c30696298580fb2ab336d19a1eb509976f791280fedbd75f969ed7",
+    "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/Node/DiffusionPipelining.hs": "387055ea9c2a3cb8b987b0625fff581e425597c07341a21ffde6cdff018bf75a",
+    "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Protocol/PBFT.hs": "113e9e7234ba604d22b70b09c305389a609271c778eabf89a47c97526c3d9eb4",
+    "ouroboros-consensus-cardano/src/byron/Ouroboros/Consensus/Byron/Node.hs": "f5ff372a537f54cfed2e0c396d7e06ccb1ddb69519a04515a00f674634ef549e",
+    "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Node/DiffusionPipelining.hs": "e7dbef19465b6a07016afb2d23d023e4691fcc61c17785ed2570eecfcc78c751",
+    "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/BlockFetch/ClientInterface.hs": "cfc423d84a6386e7ae34c6b8461c529f91b1df96786e1c7bd87e2caf4a06f0d6",
+    "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/ChainSel.hs": "63e377f2f5d75a8bb99b29337050e354f1b8f2a082adae38d26e102360f88973"
+  },
+  "observerSha256": "7d679389fe277b7cf4d9edd328d8264dff8f92a277e05523e3501803f8d1e2bf",
+  "classificationObserverSha256": "7d0c9c6e6051b2987a0fa65781441f4f2c44d3e34e59d6523c2498a4ea87aaaf",
+  "projectionSha256": "5a870e7a0e39ad16a03c9a06ee8336240ee52a49c8e35cadd2c718c69e076c61",
+  "classificationSha256": "35d8aaf87f2d6faaf79abc24824b2b55b882f5278416ec1a940d3df1033ea0d7",
+  "originalBlockFixtureSha256": "dd1df52ac755915efacbd33ffafb5257e8a8bfd7c593b33f9d7809c0ab68c5ff",
+  "exporterSha256": "72b3021351b8fb70238d61582013ee22a14d4f9279edcd56cfd247d1785429f1",
+  "corpusSha256": "bf34298f8c9ea0886ad70186f69152b3b18becda617d62a59aec32ef6c606e58",
+  "traces": 72,
+  "steps": 4178,
+  "domain": "Byron through Conway, the existing supported eras; future Dijkstra is not an exported input",
+  "image": "sha256:10d59164dce6b49fbeafdc520c1a29d3e4024a5859a3c41bb6181b2e627bebc7",
+  "executableSha256": "9c3d2bf6e2af4abf873f4f4d37ad169b37daad6f16071730c6c6bbb06a1edb72",
+  "classificationExecutableSha256": "4ad6757f95ca5f171738788bd4e7b975f6388f352781aaf4e0c6ad51ef95cdaf",
+  "planSha256": "813a93c4bcea33f0ee9f377ceb19a2402d890d4815b13b8900ea785f7f8eb5c0"
+}
