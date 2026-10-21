@@ -90,6 +90,7 @@ lazy val crypto = scarab("crypto")
     libraryDependencies ++= Seq(
       Libraries.bouncyCastle,
       Libraries.curve25519,
+      Libraries.circeParserTest,
       Libraries.blstJava
     )
   )

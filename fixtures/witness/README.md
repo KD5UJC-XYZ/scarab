@@ -77,3 +77,29 @@ The original installed native oracle was libsodium 1.0.18 with unknown complete 
 A separate exact-source non-COMPAT self-build strengthens that evidence: all 2,207 fixed-size rows
 agree. It is not the shipped Cardano node binary, whose compiler, flags and native linkage remain
 unestablished.
+
+## Current comparison contract
+
+`WitnessGoldenSuite` hashes the unchanged `vectors.tsv`, `status.tsv` and pinned-source oracle
+`results.json` against independent test constants, requires unique and identical ID sets, validates
+recorded native input lengths/call status, then executes **all 2,219 raw inputs**. Exactly 1,121 must
+verify and 1,086 must reject, agreeing with both archived system-sodium status and the pinned-source
+native observation. The 12 malformed signatures must produce their exact typed length error;
+`NotRunMalformedLength` is never interpreted as native rejection. Missing, duplicate, extra, malformed
+or inconsistent observations fail the reader. Negative controls exercise those boundaries.
+
+`StrictEd25519DifferentialSuite` separately compares all 2,207 fixed-size inputs against the previous
+Scala implementation. Its explicitly counted 12 inputs outside that verifier's ABI are covered by
+the raw-input golden suite; the older implementation is additional regression evidence, not the
+native golden oracle. Neither suite establishes shipped Cardano release-binary equivalence.
+
+For a fresh native observation, rebuild the exact sodium source and non-COMPAT configuration in
+[`archive/pinned-source-oracle/provenance.json`](archive/pinned-source-oracle/provenance.json), then
+adapt the retained [`verify_public.py`](archive/pinned-source-oracle/verify_public.py) public-input
+runner to reviewed local artifact paths. Its historical JSON inputs and binary are not bundled;
+the public four-column TSV is the maintained input. Check the full ID/byte-length sets and record
+new source/build/artifact hashes before comparing. The historical projector is not maintained, so
+there is no supported one-command regeneration of all archived metadata. Preserve this original
+corpus and expectations when adding a newly identified oracle; never replace results to make a
+comparison pass. `SHA256SUMS` covers the documentation as well as data, so an editorial README
+change updates only its own digest there.
