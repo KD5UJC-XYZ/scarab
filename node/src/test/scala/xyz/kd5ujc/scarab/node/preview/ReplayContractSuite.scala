@@ -111,11 +111,16 @@ class ReplayContractSuite extends FunSuite:
     "SCARAB_PREVIEW_CAPTURE" -> "/capture",
     "SCARAB_PREVIEW_SNAPSHOT" -> "/snapshot.bin",
     "SCARAB_PREVIEW_CHECKPOINT" -> "/checkpoint",
-    "SCARAB_PREVIEW_OUTPUT" -> "/scratch"
+    "SCARAB_PREVIEW_OUTPUT" -> "/scratch",
+    "SCARAB_PREVIEW_REFERENCE" -> "/native-reference"
   )
 
   test("configuration rejects invalid bounds, rounds and filesystem paths with typed cases") {
     assert(ReplayInputs.config(environment).isRight)
+    assertEquals(
+      ReplayInputs.config(environment.removed("SCARAB_PREVIEW_REFERENCE")),
+      Left(ReplayInputs.Error.Missing(ReplayInputs.Setting.Reference))
+    )
     assertEquals(
       ReplayInputs.config(environment.updated("SCARAB_PREVIEW_WORKERS", "1")),
       Left(ReplayInputs.Error.NoParallelWorkers)

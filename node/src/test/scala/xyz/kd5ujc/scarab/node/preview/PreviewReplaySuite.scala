@@ -11,7 +11,9 @@ import xyz.kd5ujc.scarab.network.FailsOnUncaught
 class PreviewReplaySuite extends FailsOnUncaught:
   override def munitIOTimeout: Duration = 2.hours
 
-  test("original Preview blocks preserve complete state and ordered phase2 results") {
+  test(
+    "original Preview blocks match required native projection fields and Scala execution modes"
+  ) {
     assume(
       sys.env.contains("SCARAB_PREVIEW_CAPTURE") || sys.env.contains("SCARAB_PREVIEW_WINDOWS"),
       "requires an offline Preview capture or window manifest"
