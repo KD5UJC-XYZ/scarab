@@ -175,6 +175,15 @@ class ConformanceSourcesTest(unittest.TestCase):
         for path in manifest["sourceFiles"]:
             self.assertTrue(path.startswith(network.prefixes), path)
 
+    def test_ledger_watch_covers_recorded_byron_decoder_and_fee_sources(self):
+        import json
+        root = SCRIPT.parent.parent
+        ledger = next(row for row in MODULE.sources(root) if row.name == "ledger")
+        manifest = json.loads((root / "fixtures/reference/byron-params/manifest.json").read_text())
+        self.assertEqual(ledger.commit, manifest["sourceCommit"])
+        for path in manifest["sourceFiles"]:
+            self.assertTrue(path.startswith(ledger.prefixes), path)
+
     def test_branch_names_cannot_replace_pins(self):
         source = MODULE.Source("sample", "example/repo", "main", ("tests/",))
         with self.assertRaisesRegex(ValueError, "complete commit"):

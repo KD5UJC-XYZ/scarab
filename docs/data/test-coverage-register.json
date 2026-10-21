@@ -387,6 +387,23 @@
         "consensus/src/test/scala/xyz/kd5ujc/scarab/consensus/genesis/UpstreamDiffusionPunishmentSuite.scala"
       ],
       "candidateRequired": true
+    },
+    {
+      "id": "byron-native-parameters-and-fees",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "All 29 pinned native parameter and fee-policy decoder cases, including 21 accepted states and 66 exact fee outcomes.",
+      "assertion": "Compare complete decoded parameter state, signed Nano normalization, arbitrary Natural values and every native fee result or typed arithmetic error with operands; retain all rejected decoder rows.",
+      "rationale": "The actual pinned Byron and binary packages supply the oracle. These finite boundary cases and separate JSON-source regressions do not claim exhaustive wire-decoder coverage.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/33",
+      "resolution": "Preserve all native inputs and outcomes, checked original mainnet transaction regressions and unchanged persisted field layout.",
+      "evidence": [
+        "fixtures/reference/byron-params/README.md",
+        "fixtures/reference/byron-params/manifest.json",
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/byron/ByronParamsNativeSuite.scala"
+      ],
+      "candidateRequired": true
     }
   ]
 }
