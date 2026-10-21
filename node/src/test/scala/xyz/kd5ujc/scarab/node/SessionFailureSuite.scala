@@ -249,6 +249,16 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
+  test("rollback before the intersection is a normal result with the native 180-second delay") {
+    val point = ChainSync.Point.Origin
+    session(script = List(Left(PeerError.RolledBackPastIntersection(point)))).map { result =>
+      assertEquals(result.end, SessionEnd.RolledBackPastIntersection(point))
+      assertEquals(FailurePolicy.disposition(result.end), Disposition.Settled)
+      assertEquals(SessionEnd.returnDelay(result.end), Some(180.seconds))
+      assertEquals(SessionEnd.networkFailure(result.end), None)
+    }
+  }
+
   test("an implementation limit stops without a ledger verdict or peer failure, exit eight") {
     session(unavailable = Some(2)).map { left =>
       left.end match

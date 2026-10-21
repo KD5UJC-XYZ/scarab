@@ -380,7 +380,7 @@ final class OutboundPeers[F[_]: Async, A] private (
                       .flatTap {
                         // asked to stop: bring the pipeline to rest before the wire is ended
                         case SessionEnd.Stopped(_) => asked.flatMap(a => over.quiesce.whenA(a))
-                        case SessionEnd.NoMoreIntersection => over.quiesce
+                        case end if SessionEnd.returnDelay(end).nonEmpty => over.quiesce
                         case end =>
                           val saved = SessionEnd
                             .networkFailure(end)
@@ -391,9 +391,9 @@ final class OutboundPeers[F[_]: Async, A] private (
                 .flatMap {
                   case SessionEnd.Stopped(_) =>
                     connection.finish(config.deactivateTimeout).map(SessionEnd.Stopped(_))
-                  case SessionEnd.NoMoreIntersection =>
+                  case end if SessionEnd.returnDelay(end).nonEmpty =>
                     connection.finishAfterChainSync(config.deactivateTimeout).flatMap {
-                      case true  => F.pure(SessionEnd.NoMoreIntersection)
+                      case true  => F.pure(end)
                       case false => close(link).as(SessionEnd.Stopped(false))
                     }
                   case other => F.pure(other)
@@ -433,23 +433,22 @@ final class OutboundPeers[F[_]: Async, A] private (
           case _ => F.unit
         // A successful ChainSync return demotes hot to warm without charging a failure.
         // Consensus Node/ExitPolicy.hs:30; network PeerStateActions.hs:746-748.
-        val returned =
-          if end == SessionEnd.NoMoreIntersection then
-            link.phase
-              .modify {
-                case Phase.Hot(current) if current eq session => (Phase.Warm(), true)
-                case other                                    => (other, false)
-              }
-              .flatMap(changed =>
-                report(
-                  Event.Observed(
-                    peer,
-                    Observation.HotEnded(Some(120.seconds)),
-                    Some(link.rootsGeneration)
-                  )
-                ).whenA(changed)
-              )
-          else F.unit
+        val returned = SessionEnd.returnDelay(end).traverse_ { delay =>
+          link.phase
+            .modify {
+              case Phase.Hot(current) if current eq session => (Phase.Warm(), true)
+              case other                                    => (other, false)
+            }
+            .flatMap(changed =>
+              report(
+                Event.Observed(
+                  peer,
+                  Observation.HotEnded(Some(delay)),
+                  Some(link.rootsGeneration)
+                )
+              ).whenA(changed)
+            )
+        }
         // a start that failed tells the governor; a session that ends on its own is a loss
         stopNode *> returned *> started.complete(failure.map(FailurePolicy.classify)).flatMap {
           startedHere =>

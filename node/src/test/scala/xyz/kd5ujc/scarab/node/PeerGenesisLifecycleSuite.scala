@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.node
 
 import cats.effect.{Deferred, IO, Resource}
 import cats.mtl.{Handle, Raise}
+import cats.syntax.all.*
 import com.comcast.ip4s.*
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -13,7 +14,7 @@ import xyz.kd5ujc.scarab.protocol.{ChainSync, NtNHeader}
 
 class PeerGenesisLifecycleSuite extends FailsOnUncaught:
   private enum Operation:
-    case Waiting, RequestTimeout, RestartTimeout, NoIntersection
+    case Waiting, RequestTimeout, RestartTimeout, NoIntersection, RollbackEnd
 
   for operation <- Operation.values do
     test(operation match
@@ -24,7 +25,9 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
       case Operation.RestartTimeout =>
         "internal restart timeout uses the supervised producer's own error scope"
       case Operation.NoIntersection =>
-        "a normal drained ChainSync exit sends Done and preserves the bearer") {
+        "a normal drained ChainSync exit sends Done and preserves the bearer"
+      case Operation.RollbackEnd =>
+        "rollback before the intersection drains the batch and preserves the bearer") {
       for
         waiting <- Deferred[IO, Unit]
         timeout: NetworkError.Timeout = NetworkError.Timeout(2, "NextCanAwait")
@@ -51,6 +54,12 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
             if operation == Operation.RequestTimeout then
               Raise[IO, NetworkError]
                 .raise[NetworkError, Vector[ChainSyncClient.Update[NtNHeader]]](timeout)
+            else if operation == Operation.RollbackEnd then
+              IO.pure(
+                Vector.fill(2)(
+                  ChainSyncClient.Update.RollBackward(ChainSync.Point.Origin, ChainSync.Tip.Origin)
+                )
+              )
             else
               IO.raiseError[Vector[ChainSyncClient.Update[NtNHeader]]](
                 new AssertionError("CSJ is waiting")
@@ -84,7 +93,8 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
             case Operation.Waiting =>
               waiting.complete(()).void *> IO
                 .never[ChainSyncJumping.Instruction[GenesisPeer.Checkpoint]]
-            case Operation.RequestTimeout => IO.pure(ChainSyncJumping.Instruction.RunNormally)
+            case Operation.RequestTimeout | Operation.RollbackEnd =>
+              IO.pure(ChainSyncJumping.Instruction.RunNormally)
             case Operation.RestartTimeout | Operation.NoIntersection =>
               IO.pure(ChainSyncJumping.Instruction.Restart)
           def observed(
@@ -107,22 +117,44 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
             Peer
               .Settings(SocketAddress[Host](ip"10.5.0.1", port"3001"), 42, byronEpochSlots = 21600),
             _ => IO.unit,
-            genesis = Some(control)
+            genesis = Some(control),
+            headers = Option.when(operation == Operation.RollbackEnd)(
+              new HeaderCheck[IO]:
+                def start(@scala.annotation.unused point: ChainSync.Point) =
+                  IO.pure(new HeaderGate[IO]:
+                    def accept(@scala.annotation.unused batch: Vector[SyncEvent])(using
+                        Raise[IO, PeerError]
+                    ) = IO.unit
+                    override def acceptOrRestart(
+                        @scala.annotation.unused batch: Vector[SyncEvent]
+                    )(using Raise[IO, PeerError], cats.Functor[IO]) =
+                      IO.pure(HeaderGate.Acceptance.End(ChainSync.Point.Origin))
+                    def counts = IO.pure(HeaderGate.Counts(0, 0, 0)))
+            )
           )
           .use { peer =>
             if operation != Operation.Waiting then
               Handle
-                .allow[PeerError](peer.next.as(Right(()): Either[PeerError, Unit]))
+                .allow[PeerError](
+                  (peer
+                    .intersect(Vector(ChainSync.Point.Origin))
+                    .void
+                    .whenA(operation == Operation.RollbackEnd) *> peer.next)
+                    .as(Right(()): Either[PeerError, Unit])
+                )
                 .rescue(e => IO.pure(Left(e)))
                 .map(result =>
                   assertEquals(
                     result,
                     Left(
                       if operation == Operation.NoIntersection then PeerError.NoIntersection
+                      else if operation == Operation.RollbackEnd then
+                        PeerError.RolledBackPastIntersection(ChainSync.Point.Origin)
                       else PeerError.Unavailable(PeerError.Unavailability.Network(timeout))
                     )
                   )
-                ) *> (if operation == Operation.NoIntersection then
+                ) *> (if operation == Operation.NoIntersection || operation == Operation.RollbackEnd
+                      then
                         peer.quiesce.timeout(2.seconds) *> closeSignal.tryGet
                           .map(reason => assertEquals(reason, None))
                       else IO.unit)

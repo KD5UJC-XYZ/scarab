@@ -429,7 +429,8 @@ object Peer:
         Ref.of[F, Boolean](false),
         Ref.of[F, Staged](Staged()),
         Deferred[F, Unit].flatMap(signal => Ref.of[F, Deferred[F, Unit]](signal)),
-        Ref.of[F, Option[ChainSync.Point]](None)
+        Ref.of[F, Option[ChainSync.Point]](None),
+        Ref.of[F, Option[PeerError.RolledBackPastIntersection]](None)
       ).mapN {
         (
             queue,
@@ -446,7 +447,8 @@ object Peer:
             performanceStarted,
             stagedBlocks,
             drainRequested,
-            pendingRestart
+            pendingRestart,
+            pendingEnd
         ) =>
           def decode(update: ChainSyncClient.Update[NtNHeader])(using
               Raise[F, PeerError]
@@ -650,9 +652,9 @@ object Peer:
               n = requestDepth(ahead, settings.readAhead)
               began <- F.monotonic
               updates <- connection.chainSync.requestNextBatchObserved(n) { update =>
-                pendingRestart.get.flatMap {
-                  case Some(_) => F.unit
-                  case None =>
+                (pendingRestart.get, pendingEnd.get).tupled.flatMap {
+                  case (Some(_), _) | (_, Some(_)) => F.unit
+                  case (None, None) =>
                     F.race(drainRequested.get.flatMap(_.get), acceptUpdates(Vector(update)))
                       .flatMap {
                         case Left(_)      => F.unit
@@ -660,6 +662,9 @@ object Peer:
                       }
                 }
               }
+              _ <- pendingEnd
+                .getAndSet(None)
+                .flatMap(_.traverse_(error => connection.chainSync.done *> error.raise[F, Unit]))
               arrived <- F.monotonic
               _ <- observe.traverse_(
                 _(Peer.Observation.Round(n, updates.size, (arrived - began).toMillis))
@@ -688,11 +693,15 @@ object Peer:
                 g.acceptOrRestart(batch).flatTap {
                   case HeaderGate.Acceptance.Accepted =>
                     batch.traverse_(e => genesis.traverse_(_.observed(g, e)))
-                  case HeaderGate.Acceptance.Restart(_) => F.unit
+                  case HeaderGate.Acceptance.Restart(_) | HeaderGate.Acceptance.End(_) => F.unit
                 }
               )
               result <- accepted match
                 case HeaderGate.Acceptance.Accepted => recordUpdates(batch, updates)
+                case HeaderGate.Acceptance.End(point) =>
+                  pendingEnd
+                    .set(Some(PeerError.RolledBackPastIntersection(point)))
+                    .as(Vector.empty[SyncEvent])
                 case HeaderGate.Acceptance.Restart(point) =>
                   genesis.fold(
                     PeerError
@@ -876,7 +885,7 @@ object Peer:
               initial <- candidateHeaders.get
               changed <- Deferred[F, Unit]
               journal <- Ref.of[F, HeaderJournal[F]](HeaderJournal(initial, None, false, changed))
-              intersectionEnded <- Ref.of[F, Boolean](false)
+              intersectionEnded <- Ref.of[F, Option[PeerError]](None)
               updateJournal = (
                   candidate: ChainSelection.Candidate,
                   tip: Option[ChainSync.Tip],
@@ -973,8 +982,13 @@ object Peer:
                   drainCompletion.get.flatMap {
                     case None =>
                       Fault.fiber(request).flatMap {
-                        case Left(Fault.Failed(PeerError.NoIntersection)) =>
-                          intersectionEnded.set(true) *> journal.get
+                        case Left(
+                              Fault.Failed(
+                                error @ (PeerError.NoIntersection |
+                                _: PeerError.RolledBackPastIntersection)
+                              )
+                            ) =>
+                          intersectionEnded.set(Some(error)) *> journal.get
                             .flatMap(s => updateJournal(s.candidate, s.tip, true, false))
                             .as(Right(()))
                         case other => Fault.land(other).as(Left(()))
@@ -1017,12 +1031,12 @@ object Peer:
                     if events.isEmpty then
                       permits.release *> (if latest.done then
                                             intersectionEnded.get
-                                              .flatMap { ended =>
-                                                if ended then
-                                                  val fault = Fault.Failed(PeerError.NoIntersection)
+                                              .flatMap {
+                                                case Some(error) =>
+                                                  val fault = Fault.Failed(error)
                                                   pipelineFailure.set(Some(fault)) *>
                                                     queue.offer(PipelineEvent.Failed(fault))
-                                                else queue.offer(PipelineEvent.Drained)
+                                                case None => queue.offer(PipelineEvent.Drained)
                                               }
                                               .as(Right(()))
                                           else latest.changed.get.as(Left((after, latest.epoch))))
@@ -1136,7 +1150,9 @@ object Peer:
           def drain(using Raise[F, PeerError]): F[Unit] = pipelineFailure.get.flatMap {
             // The normal ChainSync exit is published only after the body dispatcher has finished
             // its ordered requests. Its terminal queue marker may already have been consumed.
-            case Some(Fault.Failed(PeerError.NoIntersection)) =>
+            case Some(
+                  Fault.Failed(PeerError.NoIntersection | _: PeerError.RolledBackPastIntersection)
+                ) =>
               current.set(Vector.empty) *> workSession.traverse_(_.discardPending)
             case _ => drainPipeline
           }
@@ -1193,7 +1209,9 @@ object Peer:
 
             def intersect(candidates: Vector[ChainSync.Point])(using Raise[F, PeerError]) =
               for
-                _ <- drain *> pendingRestart.set(None) *> progress.set(None) *> last.set(None) *>
+                _ <- drain *> pendingRestart.set(None) *> pendingEnd.set(None) *> progress.set(
+                  None
+                ) *> last.set(None) *>
                   candidateVersions.set(Vector.empty) *> candidateHeaders.set(
                     ChainSelection.Candidate(ChainSync.Point.Origin, Vector.empty)
                   )

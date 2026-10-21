@@ -333,6 +333,8 @@ final class InboundGovernor[F[_]: Async] private (
                       case SessionEnd.Defect(error)      => F.raiseError[Unit](error)
                       case SessionEnd.Cancelled          => F.canceled *> F.never[Unit]
                       case SessionEnd.Returned | SessionEnd.Stopped(_) => F.unit
+                      case SessionEnd.RolledBackPastIntersection(point) =>
+                        caller.raise[NodeError, Unit](PeerError.RolledBackPastIntersection(point))
                       case SessionEnd.NoMoreIntersection =>
                         caller.raise[NodeError, Unit](PeerError.NoIntersection))
                   }

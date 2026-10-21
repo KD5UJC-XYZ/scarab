@@ -26,8 +26,8 @@ object FailurePolicy:
     // the network failed, the peer is on another network or version, behind us, or has parted
     // from our chain through nobody's fault
     case _: PeerError.Genesis | _: PeerError.Unavailable | _: PeerError.Handshake |
-        PeerError.NoIntersection | _: PeerError.Diverged | _: PeerError.MuxSetup |
-        _: PeerError.MuxWrite =>
+        PeerError.NoIntersection | _: PeerError.RolledBackPastIntersection | _: PeerError.Diverged |
+        _: PeerError.MuxSetup | _: PeerError.MuxWrite =>
       FailureClass.Transient
 
   /** What the node does about the end of a hot session. Every outcome has an answer here; a failure
@@ -43,6 +43,6 @@ object FailurePolicy:
     case SessionEnd.Storage(e)     => Disposition.StopNode(Fatal.Storage(e))
     case SessionEnd.Internal(e)    => Disposition.StopNode(Fatal.Internal(e))
     case SessionEnd.Defect(t)      => Disposition.StopNode(Fatal.Defect(t))
-    case SessionEnd.Returned | SessionEnd.NoMoreIntersection | SessionEnd.Cancelled |
-        _: SessionEnd.Stopped =>
+    case SessionEnd.Returned | SessionEnd.NoMoreIntersection |
+        _: SessionEnd.RolledBackPastIntersection | SessionEnd.Cancelled | _: SessionEnd.Stopped =>
       Disposition.Settled
