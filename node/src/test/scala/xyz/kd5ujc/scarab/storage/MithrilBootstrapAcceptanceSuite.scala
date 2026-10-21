@@ -14,7 +14,9 @@ import xyz.kd5ujc.scarab.ledger.Utxo
 import xyz.kd5ujc.scarab.node.{NodeSetup, Projection, StateDump}
 
 /** Optional recorded-fixture acceptance: project the actual bootstrap's untouched V5/checkpoint.
-  * This uses the same projection/digest as follow, before replaying any post-snapshot blocks.
+  * This uses the same projection/digest as follow, before replaying any post-snapshot blocks. It
+  * verifies artifact provenance, restored anchor and UTxO count, then constructs (and optionally
+  * exports) a projection. It does not load or compare an independent native projection body.
   */
 class MithrilBootstrapAcceptanceSuite extends CatsEffectSuite:
   override def munitIOTimeout: Duration = 5.minutes

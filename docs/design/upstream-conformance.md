@@ -237,8 +237,9 @@ executes the real native LEDGERS rule over original signed transactions. Two acc
 batches contain actual output dependencies; reversed order and a repeated spend are
 rejected. Accepted comparisons cover complete native state and every inline MemPack
 UTxO field, excluding only unavailable output-original bytes and Scala change-history
-bookkeeping. Haskell accumulates failures while Scarab fails fast; complete structured
-failure membership is checked without requiring identical error order/multiplicity.
+bookkeeping. Haskell accumulates failures while Scarab fails fast; Scarab's single complete
+structured failure payload must be a member of the native failure list.
+This does not check the full accumulated list, its order or multiplicity.
 
 The [reward timing corpus](../../storage/src/test/resources/rewards-timing-1.19.0.1/README.md)
 uses the unchanged released `cardano-ledger-shelley 1.19.0.1` RUPD and `applyRUpd` APIs

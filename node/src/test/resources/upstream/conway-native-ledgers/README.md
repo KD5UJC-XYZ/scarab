@@ -27,7 +27,8 @@ representations are the only state-comparison exclusions, as in the original tra
 For rejected batches, native Haskell accumulates several predicate failures while Scarab
 returns the first failure. The test encodes Scarab's typed cause using its production
 Conway predicate-failure encoder and requires that complete structured payload to occur
-among the native observations. It does not branch on rendered diagnostic messages.
+among the native observations. This is single-cause membership, not equality of the complete
+accumulated failure list, order or multiplicity. It does not branch on rendered diagnostic messages.
 
 `manifest.json` pins all retained bytes, observer patches, source/dependency revisions,
 runner arguments and source trace manifest. This is bounded native coverage, not a formal

@@ -14,7 +14,8 @@ uses the original signed body and witness bytes and compares complete native
 states. Native inline MemPack does not retain `TxOut.raw` or Scala change-history
 bookkeeping; every decoded output/cache/accounting field is compared independently
 before comparing the remaining state. Rejections compare the complete typed
-Scarab failure payload with native accumulated failures. Differing native/formal
+Scarab failure payload for membership in native accumulated failures. This does not compare
+the complete failure list, order or multiplicity. Differing native/formal
 rejection text is retained; it is not claimed equal.
 
 ## Results and bounded scope
