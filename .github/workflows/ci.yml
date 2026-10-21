@@ -45,6 +45,13 @@ jobs:
             sbt-${{ runner.os }}-
       - name: scalafmt, compile and all tests
         run: bash scripts/sbtw check node/runtimeClasspathFile
+      - name: Frozen release version controls in the JDK image
+        run: |
+          docker build -f docker/jdk.Dockerfile -t scarab-version-jdk:ci .
+          docker run --rm --cpus=4 --user "$(id -u):$(id -g)" \
+            -v "$PWD":/work -w /work -e HOME=/work/.cache/home \
+            -e SCARAB_CACHE_DIR=/work/.cache -e SBT_GLOBAL_BASE=/tmp/sbt-version-ci \
+            scarab-version-jdk:ci python3 -O scripts/check_build_identity.py
 
   scripts:
     name: scripts (compile, unit tests, help)

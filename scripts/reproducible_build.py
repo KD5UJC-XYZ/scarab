@@ -36,6 +36,45 @@ def compare(first, second):
     raise ValueError(f"artifacts differ: {detail}")
 
 
+def require_export_contract(source):
+    required = ["project/BuildIdentity.scala", "scripts/release_identity.py", "build.sbt"]
+    if (not all((source / name).is_file() for name in required)
+            or "scarabBuildIdentity" not in (source / "build.sbt").read_text(encoding="utf-8")):
+        raise ValueError("revision predates the verified version export contract; use its historical verifier separately")
+
+
+def verify_output_identity(output, build_identity):
+    """Host-side check of actual bytes, never the selected revision's PASS message."""
+    release_identity.validate(build_identity)
+    reports = json.loads((output / "artifact-builds.json").read_text(encoding="utf-8"))
+    if not isinstance(reports, list) or len(reports) != 2:
+        raise ValueError("two original build artifact reports are required")
+    verified = []
+    for index, report in enumerate(reports, 1):
+        artifact = output / f"build-{index}.jar"
+        expected_name = f"scarab-node-{build_identity['version']}-assembly.jar"
+        if (not isinstance(report, dict) or set(report) != {"file", "assemblyName", "sha256"}
+                or not artifact.is_file() or artifact.is_symlink() or report.get("file") != artifact.name
+                or report.get("assemblyName") != expected_name or report.get("sha256") != sha256(artifact)):
+            raise ValueError("actual artifact digest or assembly filename differs from its frozen build report")
+        with zipfile.ZipFile(artifact) as jar:
+            names = jar.namelist()
+            if len(names) != len(set(names)):
+                raise ValueError("artifact has ambiguous duplicate ZIP entries")
+            metadata = dict(line.split("=", 1) for line in jar.read(
+                "META-INF/scarab/build-info.properties").decode("utf-8").splitlines())
+            expected = {key: build_identity[key] for key in ["version", "gitCommit", "gitTag", "gitTagObject", "sourceRef", "sourceRefCommit"]}
+            expected.update(buildMode=build_identity["mode"], releaseChannel=build_identity["channel"])
+            if any(metadata.get(key) != value for key, value in expected.items()):
+                raise ValueError("actual artifact metadata differs from the host-verified Git identity")
+            attributes = manifest_attributes(jar.read("META-INF/MANIFEST.MF"))
+            if attributes.get("implementation-version") != build_identity["version"]:
+                raise ValueError("actual JAR manifest version differs from the host-verified Git identity")
+        verified.append(dict(file=artifact.name, assemblyName=expected_name, sha256=sha256(artifact)))
+    compare(output / "build-1.jar", output / "build-2.jar")
+    return verified
+
+
 def copy_source(source, destination, manifest):
     destination.mkdir(parents=True)
     for name, expected in manifest["files"].items():
@@ -213,6 +252,7 @@ def inside_jdk():
     with tempfile.TemporaryDirectory(prefix="scarab-repro-") as scratch:
         locations = [Path(scratch) / "first", Path(scratch) / "different" / "depth" / "second"]
         artifacts = []
+        reports = []
         for index, location in enumerate(locations, 1):
             copy_source(source, location, manifest)
             if any(location.rglob("target")):
@@ -240,8 +280,10 @@ def inside_jdk():
             smoke(artifact, location, classpath, manifest["gitCommit"], manifest["buildIdentity"])
             print(f"Build {index}: fat JAR resources, java -jar and portable native/Plutus checks passed", flush=True)
             artifacts.append(artifact)
+            reports.append(dict(file=artifact.name, assemblyName=produced[0].name, sha256=sha256(artifact)))
             print(f"Build {index}: {sha256(artifact)}", flush=True)
         compare(*artifacts)
+        (output / "artifact-builds.json").write_text(json.dumps(reports, sort_keys=True) + "\n", encoding="utf-8")
         print(f"PASS: two clean builds of {manifest['gitCommit']} have identical bytes", flush=True)
 
 
@@ -254,6 +296,7 @@ def export_source(repo, revision, output, **release_inputs):
     output.mkdir()
     with tarfile.open(archive) as tree:
         tree.extractall(output, filter="data")
+    require_export_contract(output)
     if any((output / name).exists() for name in [release_identity.IDENTITY_FILE, MANIFEST]):
         raise ValueError("source revision contains reserved generated export metadata")
     if release_identity.resolve(repo, commit, **release_inputs) != identity:
@@ -282,7 +325,15 @@ def main():
     parser.add_argument("--source-ref", help="approved release/{beta,prod} local or origin remote-tracking ref")
     parser.add_argument("--expected-version", help="optional proposal cross-check; cannot override the tag")
     parser.add_argument("--inside-jdk", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--verify-output-jvm", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if args.verify_output_jvm:
+        if args.expected_commit is None:
+            parser.error("independent JVM verification requires the host-verified source commit")
+        for index in [1, 2]:
+            with tempfile.TemporaryDirectory(prefix="scarab-outer-jvm-") as temporary:
+                jvm_resources(Path(temporary), args.verify_output_jvm / f"build-{index}.jar", args.expected_commit)
+        return
     if args.inside_jdk:
         inside_jdk()
         return
@@ -312,6 +363,21 @@ def main():
             "-e", f"SCARAB_REPRO_CHECK={int(args.check)}", image,
             "bash", "scripts/sbtw", "reproducibleCheck"
         ], check=True)
+        verified = verify_output_identity(output, manifest["buildIdentity"])
+        # Execute this caller's verifier, not code from the selected revision. Expected identity
+        # stays in host memory while the build runs; child logs/receipts cannot override it.
+        subprocess.run([
+            "docker", "run", "--rm", "--network", "none", "--cpus=4",
+            "--user", f"{os.getuid()}:{os.getgid()}", "-v", f"{repo / 'scripts'}:/verifier:ro",
+            "-v", f"{output}:/artifacts:ro", "-w", "/verifier", image,
+            "python3", "reproducible_build.py", "--verify-output-jvm", "/artifacts",
+            "--expected-commit", commit
+        ], check=True)
+        receipt = {"gitCommit": commit, "buildIdentity": manifest["buildIdentity"],
+                   "jdkImage": image, "artifacts": verified,
+                   "verifierSha256": sha256(Path(__file__).resolve())}
+        (output / "verified-artifacts.json").write_text(json.dumps(receipt, sort_keys=True) + "\n", encoding="utf-8")
+        print("PASS: host artifact digests/metadata and independent JVM BuildInfo verification", flush=True)
 
 
 if __name__ == "__main__":

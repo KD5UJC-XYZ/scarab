@@ -21,6 +21,12 @@ class ReleaseIdentityTests(unittest.TestCase):
         self.git("init", "--quiet")
         self.git("config", "user.name", "Version control")
         self.git("config", "user.email", "version@example.invalid")
+        actual = Path(__file__).resolve().parents[2]
+        for name in ["project/BuildIdentity.scala", "scripts/release_identity.py", "build.sbt"]:
+            target = self.repo / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((actual / name).read_bytes())
+        self.git("add", "project", "scripts", "build.sbt")
         self.commit = self.advance("first")
         self.git("branch", "release/prod")
         self.git("branch", "release/beta")
@@ -165,6 +171,12 @@ class ReleaseIdentityTests(unittest.TestCase):
         del identity["gitTag"]
         with self.assertRaisesRegex(ValueError, "incomplete"):
             version.validate(identity)
+
+    def test_pre_versioning_revision_is_refused_before_build(self):
+        self.git("rm", "project/BuildIdentity.scala", "scripts/release_identity.py")
+        self.git("commit", "--quiet", "-m", "simulate historical versioning contract")
+        with self.assertRaisesRegex(ValueError, "predates the verified version export contract"):
+            repro.export_source(self.repo, "HEAD", self.repo.parent / "unsupported")
 
     def test_committed_export_metadata_cannot_be_an_independent_version_truth(self):
         (self.repo / version.IDENTITY_FILE).write_text("version=9.9.9\n")

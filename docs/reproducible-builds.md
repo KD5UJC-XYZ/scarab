@@ -40,6 +40,8 @@ without Git or frozen export identity is refused instead of falling back to a ti
 The existing `--revision <commit>` command remains a development reproducibility check. It exports
 only committed files, with deterministic `0.0.0-dev.g<FULL_COMMIT>`, independent of nearby release
 tags or subsequent working-tree edits. It does not label an untagged candidate as released.
+Revisions predating the verified version-export contract are explicitly refused by this wrapper;
+use their historical verifier separately without claiming this release identity contract.
 
 A future trusted release coordinator supplies the selected tag, channel, full expected source SHA,
 full expected tag-object SHA and approved source ref. For example, with identities obtained from
@@ -79,11 +81,19 @@ checkout. Artifact filenames, compiled BuildInfo, the started log/metrics versio
 `META-INF/scarab/build-info.properties` use that identity. The verifier checks the filename and
 packaged version/channel/tag/source against the frozen inputs, then checks compiled BuildInfo at
 runtime. `build-environment.json` retains the resolved identity alongside the JDK image ID.
+After the selected revision's build process exits, the host independently reads both actual JARs,
+recomputes their hashes, checks the exact assembly-name reports and embedded/manifest versions,
+and compares their complete bytes. A separate container runs the caller's runtime verifier against
+both JARs; the selected revision's own PASS message cannot replace these checks.
+`verified-artifacts.json` records those outer checks and the caller-verifier hash. Historical
+verifiers lacking the output contract, changed artifacts and mismatched metadata are refused.
 
 The host controls use temporary local repositories:
 `python3 -m unittest scripts.tests.test_release_identity scripts.tests.test_reproducible_build`.
 Inside the JDK image, `python3 scripts/check_build_identity.py` exercises the actual sbt settings
 in isolated minimal projects, including beta/stable/development archives and refused metadata.
+CI runs these sbt controls inside the JDK Docker image after its ordinary full check, including
+with Python optimization enabled so control failures cannot disappear with assertions.
 The full verifier additionally compiles and smokes the actual node artifacts. SBOMs, provenance and
 image labels must consume this same identity when their separate implementation lands; this PR
 does not claim those outputs exist.

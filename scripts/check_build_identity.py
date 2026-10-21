@@ -11,6 +11,11 @@ import tempfile
 import release_identity
 
 
+def require(condition, detail):
+    if not condition:
+        raise ValueError(detail)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--case", action="append", help="run selected controls only")
@@ -20,7 +25,7 @@ def main():
     settings = source[source.index("lazy val scarabBuildIdentity"):source.index("ThisBuild / organization")]
     plugins = [line for line in (root / "project/plugins.sbt").read_text().splitlines()
                if '"sbt-dynver"' in line]
-    assert len(plugins) == 1
+    require(len(plugins) == 1, "exactly one pinned dynver plugin is required")
     full_commit = "a" * 40
     common = dict.fromkeys(release_identity.KEYS, "")
     common.update(schemaVersion="1", mode="development", version="0.0.0-dev.g" + full_commit,
@@ -81,11 +86,12 @@ versionContract := IO.write(baseDirectory.value / "resolved-version.txt",
             result = subprocess.run(["bash", "scripts/sbtw", "versionContract"], cwd=location, env=env,
                                     text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             if refused:
-                assert result.returncode != 0 and refused in result.stdout, (label, result.stdout[-5000:])
+                require(result.returncode != 0 and refused in result.stdout, f"{label}: expected refusal missing: {result.stdout[-5000:]}")
             else:
-                assert result.returncode == 0, (label, result.stdout[-5000:])
+                require(result.returncode == 0, f"{label}: sbt failed: {result.stdout[-5000:]}")
                 actual = (location / "resolved-version.txt").read_text().splitlines()
-                assert actual == [expected, expected, str(identity is None or identity["mode"] != "release").lower()], (label, actual)
+                require(actual == [expected, expected, str(identity is None or identity["mode"] != "release").lower()],
+                        f"{label}: wrong identity: {actual}")
             print("PASS " + label, flush=True)
     print(f"PASS {len(cases)} real sbt identity controls", flush=True)
 
