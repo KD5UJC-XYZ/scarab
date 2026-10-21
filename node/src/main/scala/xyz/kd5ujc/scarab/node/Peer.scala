@@ -876,6 +876,7 @@ object Peer:
               initial <- candidateHeaders.get
               changed <- Deferred[F, Unit]
               journal <- Ref.of[F, HeaderJournal[F]](HeaderJournal(initial, None, false, changed))
+              intersectionEnded <- Ref.of[F, Boolean](false)
               updateJournal = (
                   candidate: ChainSelection.Candidate,
                   tip: Option[ChainSync.Tip],
@@ -910,21 +911,26 @@ object Peer:
                 }
               _ <- supervised {
                 def restart(control: GenesisPeer[F])(using Raise[F, PeerError]): F[Unit] =
-                  control.restartCandidates
-                    .flatMap(points => connection.chainSync.findIntersect(thin(points)))
-                    .flatMap {
+                  for
+                    captured <- headers.traverse(_.capture).map(_.flatten)
+                    points <- captured.fold(control.restartCandidates)(c => F.pure(c.points))
+                    found <- connection.chainSync.findIntersect(thin(points))
+                    _ <- found match
                       case None =>
                         connection.chainSync.done *> PeerError.NoIntersection.raise[F, Unit]
                       case Some((point, tip)) =>
-                        headers.fold(F.pure(HeaderGate.none[F]))(_.start(point)).flatMap {
-                          nextGate =>
+                        captured
+                          .fold(headers.fold(F.pure(HeaderGate.none[F]))(_.start(point)))(
+                            _.start(point)
+                          )
+                          .flatMap { nextGate =>
                             val candidate = ChainSelection.Candidate(point, Vector.empty)
                             gate.set(nextGate) *> control.restarted(point, nextGate) *> remember(
                               candidate
                             ) *>
                               progress.set(None) *> updateJournal(candidate, Some(tip), false, true)
-                        }
-                    }
+                          }
+                  yield ()
                 def request(using Raise[F, PeerError]): F[Unit] =
                   genesis.fold(requestHeadersStreaming(publish)) { control =>
                     import xyz.kd5ujc.scarab.network.selection.ChainSyncJumping.Instruction
@@ -965,7 +971,14 @@ object Peer:
                   }
                 F.tailRecM(()) { _ =>
                   drainCompletion.get.flatMap {
-                    case None => request.as(Left(()))
+                    case None =>
+                      Fault.fiber(request).flatMap {
+                        case Left(Fault.Failed(PeerError.NoIntersection)) =>
+                          intersectionEnded.set(true) *> journal.get
+                            .flatMap(s => updateJournal(s.candidate, s.tip, true, false))
+                            .as(Right(()))
+                        case other => Fault.land(other).as(Left(()))
+                      }
                     case Some(_) =>
                       journal.get
                         .flatMap(s => updateJournal(s.candidate, s.tip, true, false))
@@ -1003,7 +1016,15 @@ object Peer:
                   delta.flatMap { (after, events) =>
                     if events.isEmpty then
                       permits.release *> (if latest.done then
-                                            queue.offer(PipelineEvent.Drained).as(Right(()))
+                                            intersectionEnded.get
+                                              .flatMap { ended =>
+                                                if ended then
+                                                  val fault = Fault.Failed(PeerError.NoIntersection)
+                                                  pipelineFailure.set(Some(fault)) *>
+                                                    queue.offer(PipelineEvent.Failed(fault))
+                                                else queue.offer(PipelineEvent.Drained)
+                                              }
+                                              .as(Right(()))
                                           else latest.changed.get.as(Left((after, latest.epoch))))
                     else
                       (
@@ -1112,7 +1133,15 @@ object Peer:
             * Draining also returns queued batch permits. Faults retain their typed cause; an old
             * producer failure must not be hidden by a successful new FindIntersect.
             */
-          def drain(using Raise[F, PeerError]): F[Unit] = F.uncancelable { poll =>
+          def drain(using Raise[F, PeerError]): F[Unit] = pipelineFailure.get.flatMap {
+            // The normal ChainSync exit is published only after the body dispatcher has finished
+            // its ordered requests. Its terminal queue marker may already have been consumed.
+            case Some(Fault.Failed(PeerError.NoIntersection)) =>
+              current.set(Vector.empty) *> workSession.traverse_(_.discardPending)
+            case _ => drainPipeline
+          }
+
+          def drainPipeline(using Raise[F, PeerError]): F[Unit] = F.uncancelable { poll =>
             for
               fresh <- Deferred[F, DrainOutcome]
               waiting <- drainCompletion.modify {
@@ -1163,23 +1192,27 @@ object Peer:
               Fault.fiber(drain).void
 
             def intersect(candidates: Vector[ChainSync.Point])(using Raise[F, PeerError]) =
-              drain *> pendingRestart.set(None) *> progress.set(None) *> last.set(
-                None
-              ) *> candidateVersions.set(
-                Vector.empty
-              ) *> candidateHeaders.set(
-                ChainSelection.Candidate(ChainSync.Point.Origin, Vector.empty)
-              ) *>
-                connection.chainSync.findIntersect(thin(candidates)).flatMap { found =>
-                  connection.chainSync.done.whenA(found.isEmpty) *> found.traverse_ {
-                    case (point, _) =>
-                      candidateHeaders.set(ChainSelection.Candidate(point, Vector.empty)) *>
-                        headers.traverse_(_.start(point).flatMap(gate.set)) *>
-                        gate.get.flatMap(g => genesis.traverse_(_.restarted(point, g)))
-                  } *> Deferred[F, Unit].flatMap(drainRequested.set) *> drainCompletion.set(
-                    None
-                  ) *> started.set(false).as(found.map(_._1))
+              for
+                _ <- drain *> pendingRestart.set(None) *> progress.set(None) *> last.set(None) *>
+                  candidateVersions.set(Vector.empty) *> candidateHeaders.set(
+                    ChainSelection.Candidate(ChainSync.Point.Origin, Vector.empty)
+                  )
+                captured <- headers.traverse(_.capture).map(_.flatten)
+                found <- connection.chainSync.findIntersect(
+                  thin(captured.fold(candidates)(_.points))
+                )
+                _ <- connection.chainSync.done.whenA(found.isEmpty)
+                _ <- found.traverse_ { (point, _) =>
+                  candidateHeaders.set(ChainSelection.Candidate(point, Vector.empty)) *>
+                    captured.fold(headers.traverse_(_.start(point).flatMap(gate.set)))(
+                      _.start(point).flatMap(gate.set)
+                    ) *>
+                    gate.get.flatMap(g => genesis.traverse_(_.restarted(point, g)))
                 }
+                _ <- Deferred[F, Unit].flatMap(drainRequested.set) *> drainCompletion.set(
+                  None
+                ) *> started.set(false)
+              yield found.map(_._1)
 
             def next(using Raise[F, PeerError]): F[SyncEvent] = pull
 

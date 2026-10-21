@@ -240,6 +240,15 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertEquals(broken.chain.tip, headers(0).point)
   }
 
+  test("no intersection is the reference normal ChainSync result, not a failed connection") {
+    session(script = List(Left(PeerError.NoIntersection))).map { result =>
+      assertEquals(result.end, SessionEnd.NoMoreIntersection)
+      assertEquals(FailurePolicy.disposition(result.end), Disposition.Settled)
+      assertEquals(SessionEnd.peerError(result.end), None)
+      assertEquals(SessionEnd.networkFailure(result.end), None)
+    }
+  }
+
   test("an implementation limit stops without a ledger verdict or peer failure, exit eight") {
     session(unavailable = Some(2)).map { left =>
       left.end match

@@ -55,6 +55,11 @@ enum SessionEnd:
   /** The session returned (the follower never does). */
   case Returned
 
+  /** ChainSync sent MsgDone after finding no intersection. This is a normal return, with the
+    * reference's 120-second repromotion delay (consensus Node/ExitPolicy.hs:30).
+    */
+  case NoMoreIntersection
+
   /** The peer or the connection failed: [[FailurePolicy.classify]] says whether the peer is
     * forgotten (it broke the protocol or sent an invalid header) or tried again after a delay.
     */
@@ -106,6 +111,7 @@ object SessionEnd:
     case ValidationError(point, BlockFailure.Tx(failure: LedgerFailure.Unavailable)) =>
       Unavailable(EvaluationUnavailable(point, failure))
     case e: EvaluationUnavailable => Unavailable(e)
+    case PeerError.NoIntersection => NoMoreIntersection
     case e: PeerError             => Failed(e)
     case e: ValidationError       => Rejected(e)
     case e: StorageError          => Storage(e)
@@ -154,12 +160,12 @@ object SessionEnd:
       Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(Fatal.Storage(error))))
     case Internal(error) =>
       Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(Fatal.Internal(error))))
-    case Defect(cause)                     => Some(NetworkError.Defect(cause))
-    case Returned | Cancelled | Stopped(_) => None
+    case Defect(cause)                                          => Some(NetworkError.Defect(cause))
+    case Returned | NoMoreIntersection | Cancelled | Stopped(_) => None
 
   /** The scope of a session's fiber has the outcome as its error. */
   def raiseOf[F[_]](scope: Raise[F, SessionEnd]): Raise[F, PeerError] =
-    Peer.contramapped[F, SessionEnd, PeerError](scope)(Failed(_))
+    Peer.contramapped[F, SessionEnd, PeerError](scope)(of)
 
 /** What the node must do about an outcome that no peer-selection policy can handle. */
 enum Fatal extends DomainError:

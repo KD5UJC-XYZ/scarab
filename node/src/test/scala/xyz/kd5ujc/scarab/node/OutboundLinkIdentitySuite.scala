@@ -7,7 +7,7 @@ import cats.mtl.{Handle, Raise, Stateful}
 import cats.syntax.all.*
 import com.comcast.ip4s.*
 import scala.concurrent.duration.*
-import xyz.kd5ujc.scarab.ledger.NodeError
+import xyz.kd5ujc.scarab.ledger.{NodeError, PeerError}
 import xyz.kd5ujc.scarab.network.*
 import xyz.kd5ujc.scarab.network.selection.*
 import xyz.kd5ujc.scarab.protocol.{ChainSync, NtNHeader}
@@ -74,7 +74,9 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
   private def fixture(
       firstStarted: Deferred[IO, Unit],
       releaseFirst: Deferred[IO, Unit],
-      failFirst: Boolean
+      failFirst: Boolean,
+      follow: OutboundPeers.Follow[IO] = (_, _) => IO.never[Unit],
+      report: Event[PeerNetwork.Addr] => IO[Unit] = _ => IO.unit
   ): Resource[IO, Fixture] =
     for
       node <- NodeScope.resource
@@ -93,7 +95,7 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
             NodeToNode.Settings(),
             Peer
               .Settings(SocketAddress(host"127.0.0.1", port"3001"), magic, byronEpochSlots = 21600),
-            (_, _) => IO.never[Unit],
+            follow,
             _ => IO.unit,
             None,
             None,
@@ -110,7 +112,7 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
             OutboundPeers.Config(),
             hot,
             supervisor,
-            _ => IO.unit,
+            report,
             summon[Stateful[IO, PeerMetrics[PeerNetwork.Addr]]]
           )
         yield Fixture(outbound, transport, manager)
@@ -147,4 +149,45 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
 
   test("an old late handshake cannot overwrite a newer ready link for the same peer") {
     overlap(failFirst = false)
+  }
+
+  test("normal no-intersection keeps the established bearer warm with the native return delay") {
+    for
+      firstStarted <- Deferred[IO, Unit]
+      releaseFirst <- Deferred[IO, Unit]
+      ended <- Deferred[IO, Observation]
+      follow: OutboundPeers.Follow[IO] = (over, _) =>
+        over.intersect(Vector(ChainSync.Point.Origin)).flatMap {
+          case None    => Raise[IO, NodeError].raise[NodeError, Unit](PeerError.NoIntersection)
+          case Some(_) => IO.raiseError(new AssertionError("server has no intersection"))
+        }
+      report = (event: Event[PeerNetwork.Addr]) =>
+        event match
+          case Event.Observed(_, observation, _) => ended.complete(observation).void
+          case _                                 => IO.unit
+      _ <- releaseFirst.complete(())
+      _ <- fixture(firstStarted, releaseFirst, false, follow, report).use { current =>
+        for
+          established <- current.outbound.establish(
+            peer,
+            DiffusionMode.InitiatorOnly,
+            Provenance.Outbound
+          )
+          _ <- IO(assertEquals(established, None))
+          activated <- current.outbound.activate(peer)
+          _ <- IO(assertEquals(activated, None))
+          observation <- ended.get.timeout(5.seconds)
+          closed <- current.transport.closedConnections
+          _ <- IO {
+            assertEquals(observation, Observation.HotEnded(Some(120.seconds)))
+            assertEquals(closed.getOrElse(peer, 0), 0)
+          }
+          // The same connection can start another hot conversation; the server is restarted on demand.
+          again <- current.outbound.activate(peer)
+          _ <- IO(assertEquals(again, None))
+          opened <- current.transport.connections
+          _ <- IO(assertEquals(opened.getOrElse(peer, 0), 1))
+        yield ()
+      }
+    yield ()
   }

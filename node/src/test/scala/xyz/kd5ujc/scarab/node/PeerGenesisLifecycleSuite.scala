@@ -13,7 +13,7 @@ import xyz.kd5ujc.scarab.protocol.{ChainSync, NtNHeader}
 
 class PeerGenesisLifecycleSuite extends FailsOnUncaught:
   private enum Operation:
-    case Waiting, RequestTimeout, RestartTimeout
+    case Waiting, RequestTimeout, RestartTimeout, NoIntersection
 
   for operation <- Operation.values do
     test(operation match
@@ -22,7 +22,9 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
       case Operation.RequestTimeout =>
         "streaming header timeout uses the supervised producer's own error scope"
       case Operation.RestartTimeout =>
-        "internal restart timeout uses the supervised producer's own error scope") {
+        "internal restart timeout uses the supervised producer's own error scope"
+      case Operation.NoIntersection =>
+        "a normal drained ChainSync exit sends Done and preserves the bearer") {
       for
         waiting <- Deferred[IO, Unit]
         timeout: NetworkError.Timeout = NetworkError.Timeout(2, "NextCanAwait")
@@ -33,6 +35,7 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
               Raise[IO, NetworkError].raise[NetworkError, Option[(ChainSync.Point, ChainSync.Tip)]](
                 timeout
               )
+            else if operation == Operation.NoIntersection then IO.pure(None)
             else
               IO.pure(
                 Option.when(points.contains(ChainSync.Point.Origin))(
@@ -82,7 +85,8 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
               waiting.complete(()).void *> IO
                 .never[ChainSyncJumping.Instruction[GenesisPeer.Checkpoint]]
             case Operation.RequestTimeout => IO.pure(ChainSyncJumping.Instruction.RunNormally)
-            case Operation.RestartTimeout => IO.pure(ChainSyncJumping.Instruction.Restart)
+            case Operation.RestartTimeout | Operation.NoIntersection =>
+              IO.pure(ChainSyncJumping.Instruction.Restart)
           def observed(
               @scala.annotation.unused gate: HeaderGate[IO],
               @scala.annotation.unused event: SyncEvent
@@ -113,9 +117,15 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
                 .map(result =>
                   assertEquals(
                     result,
-                    Left(PeerError.Unavailable(PeerError.Unavailability.Network(timeout)))
+                    Left(
+                      if operation == Operation.NoIntersection then PeerError.NoIntersection
+                      else PeerError.Unavailable(PeerError.Unavailability.Network(timeout))
+                    )
                   )
-                )
+                ) *> (if operation == Operation.NoIntersection then
+                        peer.quiesce.timeout(2.seconds) *> closeSignal.tryGet
+                          .map(reason => assertEquals(reason, None))
+                      else IO.unit)
             else
               Resource
                 .make(

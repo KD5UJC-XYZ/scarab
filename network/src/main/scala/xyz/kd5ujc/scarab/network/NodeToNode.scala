@@ -37,6 +37,17 @@ final class NodeToNodeConnection[F[_], P](
       case _ => false.pure[F]
     }
 
+  /** ChainSync has already sent MsgDone as a normal result. Drain the remaining hot protocols
+    * without sending a second ChainSync message in its terminal state.
+    */
+  def finishAfterChainSync(
+      within: FiniteDuration
+  )(using Monad[F], Raise[F, NetworkError]): F[Boolean] =
+    blockFetch.idle.flatMap {
+      case true  => blockFetch.done *> transactions.fold(true.pure[F])(_.finish(within))
+      case false => false.pure[F]
+    }
+
 /** A connection with its handshake done and KeepAlive running, the temperature the reference calls
   * warm (`Ouroboros.Network.PeerSelection.PeerStateActions`: established protocols only). The hot
   * protocols start with [[activate]] and end when its resource is released; a connection can be
