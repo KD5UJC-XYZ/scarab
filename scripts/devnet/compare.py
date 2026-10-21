@@ -206,9 +206,13 @@ def compare_pre_conway(name, era, attempts=10):
             scala_view["rewardUpdate"] = None  # reference pulser incomplete: nothing to compare
         scala_view["params"] = {k: eraview._float(v) for k, v in scala_view["params"].items()
                                 if k in reference["params"]}
+        reference["ppup"], reference_encodings = eraview.proposal_values(reference["ppup"])
+        scala_view["ppup"], scala_encodings = eraview.proposal_values(scala_view["ppup"])
         differences = diff(reference, scala_view)
         return {"tip": tip, "epoch": reference["epoch"], "utxoSize": len(reference["utxo"]),
-                "evidence": {**(evidence or {}), "mirPending": {
+                "evidence": {**(evidence or {}),
+                    "ppupCostModelEncodings": {"reference": reference_encodings, "scala": scala_encodings},
+                    "mirPending": {
                     "reserves": len(reference["mir"]["reserves"]), "treasury": len(reference["mir"]["treasury"]),
                     "deltaReserves": reference["mir"]["deltaReserves"], "deltaTreasury": reference["mir"]["deltaTreasury"]},
                     "rewardUpdate": {**(evidence or {}).get("rewardUpdate", {}),
@@ -271,6 +275,8 @@ def judge_comparisons(comparisons, minimum, loaded):
         row = comparisons.per_era[era]
         if row["mismatched"]:
             failures.append(f"{era}: {row['mismatched']} of {row['matched'] + row['mismatched']} ledger comparisons differ")
+        if row["errors"]:
+            failures.append(f"{era}: {row['errors']} ledger comparison errors")
         if row["matched"] < minimum:
             failures.append(f"{era}: only {row['matched']} matched ledger comparisons (need {minimum})")
     return failures
