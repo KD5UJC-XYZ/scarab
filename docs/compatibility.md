@@ -431,16 +431,19 @@ no forecast failure is converted to unchecked acceptance.
 
 | Gate | Observed result |
 |---|---|
-| Docker `check`, source `9f63141c3` plus formatting-only test normalization | 8,456 passed, 16 existing optional external-input/benchmark skips, zero failures/errors across fourteen modules. Formatting, `-Werror`, default fuzz and scalafix pass; every new native comparison executes. |
-| Python and fixture guards | 451 Python tests pass. Normal coverage guard validates 93 corpora, 4,904 pinned payloads and 30 comparison contracts. All 4,900 original payloads are unchanged. The separate strict candidate guard still fails the unchanged pre-Conway instant-stake obligation [#299](https://github.com/KD5UJC-XYZ/scarab/issues/299); no waiver is added. |
+| Final Docker `check`, rebased source `7d5946fd3` | 8,471 passed, 16 existing optional external-input/benchmark skips, zero failures/errors across fourteen modules. Formatting, `-Werror`, default fuzz and scalafix pass; every new native comparison executes. |
+| Python and fixture guards | All 469 Python tests pass after the rebase. Normal coverage guard validates 94 corpora, 4,906 pinned payloads and 31 comparison contracts. All 4,900 original payloads are unchanged. The separate strict candidate guard still fails the unchanged pre-Conway instant-stake obligation [#299](https://github.com/KD5UJC-XYZ/scarab/issues/299); no waiver is added. |
 | Praos `e2e`, source `ca0fdda8e` | All seven eras, six transitions and 66 matching ledger comparisons across the Shelley-based eras through Conway epoch17, zero mismatches/errors/skips. The standard CLI gate checks Byron's UTxO at the first Shelley boundary, rather than claiming a direct Byron ledger query. This run precedes the independent final churn changes. |
-| Genesis `relay --seconds 300 --every 10 --seed 311150 --no-peer-sharing`, source `9f63141c3` | PASS: all 30 samples within one block; all final tips equal at block272, hash `00d148eda7bfb2758cacb1a0277a6902f3a89e341236dca3f994b51ee1b072f4`. Actual inbound duplex clients run; zero reconnects/node errors, one rollback. |
-| Original `governor`, source `9f63141c3` | FAIL, retained: only four complete churn rounds within the observation bound; a slow peer exhausted the 300-second deactivation deadline. The native twelve-step ordering, ranking and timeout assertions remain unchanged. Investigation identified cancellation between publishing the pipeline's started flag and registering its producer; the repair and a complete rerun are required before acceptance. |
+| Final Genesis `relay --seconds 300 --every 10 --seed 311150 --no-peer-sharing`, runtime source `4fc725a4b` | PASS: all 30 samples within one block; all final tips equal at block260, hash `0a9ef7c4fc78d97d18e6906878881432b2423f93980eef7a6e575e5de16a2c86`. Actual inbound duplex clients run; zero reconnects/node errors, two rollbacks. |
+| Original `governor`, source `9f63141c3` | FAIL, retained: only four complete churn rounds within the observation bound; a slow peer exhausted the 300-second deactivation deadline. The native twelve-step ordering, ranking and timeout assertions remain unchanged. Investigation reproduced cancellation between publishing the pipeline's started flag and registering its producer. A controlled regression fails before the repair and passes afterward; the complete unchanged-gate rerun passes below. |
+| Final `governor`, runtime source `4fc725a4b` | PASS: five complete twelve-step rounds in302seconds with no timeouts during those rounds; slow peer selected on all three occasions it was hot; hot set changes; silent-peer loss, continued growth and recovery to3established/2hot/1warm. Zero stalls/node errors. The later deliberate cut produces one reconnect, a failed demotion and an `IncreaseEstablished` timeout while the peer is unavailable; all are retained as fault/recovery evidence. |
 
-The relay and original governor use identical frozen runtime files, verified against the completed
-build. Compact input identities, compressed logs and the original failed governor summary are
-retained by the task. Their completed disposable devnets have been removed; no operational database
-was modified.
+Both final live runs use the same 13,530 frozen class/resource files. Rebasing onto main
+`3151ba92d` adds only six non-JVM tooling/documentation files. The embedded git identity changes
+in three `BuildInfo` outputs; the other 13,527 runtime files match the completed full check byte
+for byte. Exact file hashes and both build identities are retained. Compact input identities,
+compressed logs and the original failed governor summary remain available for review; completed
+disposable devnets have been removed. No operational database was modified.
 
 ## Not checked at all
 
