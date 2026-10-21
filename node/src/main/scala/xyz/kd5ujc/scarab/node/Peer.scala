@@ -36,6 +36,8 @@ enum SyncEvent:
   * (issue 132).
   */
 trait Peer[F[_]]:
+  /** The validated ChainSync fragment, independent of ordered body delivery. */
+  def headerCandidate: Option[Ref[F, ChainSelection.Candidate]] = None
   def selectionWork: Option[SelectionWork.Session[F]] = None
   def invalidBlocks: Option[InvalidBlocks[F]] = None
 
@@ -1398,6 +1400,7 @@ object Peer:
           }
 
           new Controlled[F]:
+            override def headerCandidate = Some(candidateHeaders)
             override def selectionWork: Option[SelectionWork.Session[F]] = workSession
             def quiesce: F[Unit] =
               // Quiescing ends this hot session; a pending fault is of no further interest.

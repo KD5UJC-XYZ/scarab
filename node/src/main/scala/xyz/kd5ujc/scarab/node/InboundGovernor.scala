@@ -442,6 +442,7 @@ final class InboundGovernor[F[_]: Async] private (
 
   /** The peer, with what the session sees of it counted. */
   private def counted(remote: SocketAddress[IpAddress], peer: Peer[F]): Peer[F] = new Peer[F]:
+    override def headerCandidate = peer.headerCandidate
     override def selectionWork = peer.selectionWork
     override def invalidBlocks = peer.invalidBlocks
     override def invalidated(header: Header, refusal: ValidationError)(using cats.Applicative[F]) =

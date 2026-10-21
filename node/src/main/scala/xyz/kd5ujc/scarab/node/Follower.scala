@@ -197,8 +197,11 @@ final class Follower[F[_]: Async, S] private (
   }
 
   /** Run one peer session until the peer fails (a raised [[PeerError]]) or forever. `track` is
-    * handed the session's candidate chain once it exists, for whoever compares it with the
-    * selection ([[versus]]).
+    * handed the validated header candidate when the node-owned body selector is active; this may
+    * be ahead of body delivery. Direct domain sessions expose their own selection candidate.
+    * The two conversations are independent upstream: consensus 82ecba329 ChainSync/Client.hs
+    * retains the validated candidate, while BlockFetch/ClientInterface.hs:192–225 queues actual
+    * originals through addBlockAsync. Body delivery never reconstructs that header candidate.
     */
   def session(
       peer: Peer[F],
@@ -208,7 +211,8 @@ final class Follower[F[_]: Async, S] private (
       registry <- registryFor(peer)
       initial <- intersect(peer)
       candidate <- Ref.of[F, ChainSelection.Candidate](initial)
-      _ <- track(candidate)
+      delegated <- registry.selectionActive
+      _ <- track(if delegated then peer.headerCandidate.getOrElse(candidate) else candidate)
       control <- genesis.get
       _ <- control.fold(
         Monad[F].foreverM(
@@ -249,7 +253,7 @@ final class Follower[F[_]: Async, S] private (
                           else
                             registry.selectionActive
                               .flatMap {
-                                case true  => considered(peer, known).as(Some(known))
+                                case true  => F.pure(Some(known))
                                 case false => adopt(peer, known, tip, registry)
                               }
                               .flatMap {
@@ -321,6 +325,26 @@ final class Follower[F[_]: Async, S] private (
       event: SyncEvent,
       reintersect: F[ChainSelection.Candidate],
       registry: InvalidBlocks[F]
+  )(using Raise[F, NodeError]): F[Unit] =
+    registry.selectionActive.flatMap {
+      // ChainSync validates and retains the header fragment; ChainDB independently selects actual
+      // body admissions (consensus 82ecba329 BlockFetch/ClientInterface.hs:192–225).
+      // The body journal may lag that fragment and must not validate an older rollback again.
+      case true => event match
+        case SyncEvent.RollForward(header, _) =>
+          candidate.set(ChainSelection.Candidate(header.point, Vector.empty)) *>
+            peer.selectionWork.traverse_(_.processing(header.hash).use(_ => F.unit))
+        case SyncEvent.RollBackward(point, _) =>
+          candidate.set(ChainSelection.Candidate(point, Vector.empty))
+      case false => directStep(peer, candidate, event, reintersect, registry)
+    }
+
+  private def directStep(
+      peer: Peer[F],
+      candidate: Ref[F, ChainSelection.Candidate],
+      event: SyncEvent,
+      reintersect: F[ChainSelection.Candidate],
+      registry: InvalidBlocks[F]
   )(using Raise[F, NodeError]): F[Unit] = event match
     case SyncEvent.RollBackward(point, _) =>
       candidate.get.flatMap { c =>
@@ -343,22 +367,18 @@ final class Follower[F[_]: Async, S] private (
           case None =>
             protocol(PeerError.ProtocolProblem.HeaderDoesNotExtend(header.point, c.tip))
           case Some(grown) =>
-            registry.selectionActive.flatMap {
-              case true => candidate.set(grown) *> considered(peer, grown)
-              case false =>
-                peer
-                  .validation(header)
-                  .flatMap(_.fold(_.raise[F, Peer.Validation[F]], F.pure))
-                  .flatMap { validation =>
-                    candidate.set(grown) *> adopt(peer, grown, tip, registry, validation).flatMap {
-                      case Some(kept) => candidate.set(kept)
-                      // NoLongerIntersects: drain the pipeline and find a new intersection on this
-                      // connection (consensus 82ecba329, ChainSync/Client.hs:1499–1511). Another session
-                      // may have advanced the retained window while this candidate was catching up.
-                      case None => reintersect.flatMap(candidate.set)
-                    }
-                  }
-            }
+            peer
+              .validation(header)
+              .flatMap(_.fold(_.raise[F, Peer.Validation[F]], F.pure))
+              .flatMap { validation =>
+                candidate.set(grown) *> adopt(peer, grown, tip, registry, validation).flatMap {
+                  case Some(kept) => candidate.set(kept)
+                  // NoLongerIntersects: drain the pipeline and find a new intersection on this
+                  // connection (consensus 82ecba329, ChainSync/Client.hs:1499–1511). Another session
+                  // may have advanced the retained window while this candidate was catching up.
+                  case None => reintersect.flatMap(candidate.set)
+                }
+              }
       }
 
   /** Our chain as chain selection sees it. The window is kept between calls and updated by

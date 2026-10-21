@@ -346,6 +346,7 @@ final class OutboundPeers[F[_]: Async, A] private (
     def follow(over: Peer[F]): F[SessionEnd] =
       SessionEnd.scoped(node) { (scope, _) ?=>
         val gated = new Peer[F]:
+          override def headerCandidate = over.headerCandidate
           override def selectionWork = over.selectionWork
           override def invalidBlocks = over.invalidBlocks
           override def invalidated(
