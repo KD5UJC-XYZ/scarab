@@ -24,6 +24,10 @@
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"following","reason":"4200@abababababababab"}
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"sessionEnded","reason":"the peer's chain shares no point with ours"}
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"sessionDropped","reason":"the peer's chain shares no point with ours"}
+{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"sessionReturned","reason":"no more intersection; repromote after 120s"}
+{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"sessionReturned","reason":"rolled back past intersection: 4200@abababababababab; repromote after 180s"}
+{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"cachedBlockRejected","reason":"4200@abababababababab rejected by structure: block header differs from announced header; source generation 7; live=true"}
+{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"cachedBlockRejected","reason":"4200@abababababababab rejected by structure: block header differs from announced header; source generation 8; live=false"}
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"closed","reason":"connection closed: closed by peer"}
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"refused","reason":"refused inbound connection from 10.0.0.2:4000: 64 connections accepted already"}
 {"event":"peerSelectionTargets","at":"2026-10-16T12:00:00Z","root":60,"known":150,"established":30,"active":20,"knownBigLedger":15,"establishedBigLedger":10,"activeBigLedger":5}

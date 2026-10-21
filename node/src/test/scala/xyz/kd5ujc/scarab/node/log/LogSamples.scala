@@ -14,6 +14,7 @@ import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent, SchedulingReport}
 import xyz.kd5ujc.scarab.consensus.state.StateMirrorError
 import xyz.kd5ujc.scarab.ledger.{
   Block,
+  BlockFailure,
   ChainError,
   FormatVersion,
   FileKind,
@@ -23,7 +24,8 @@ import xyz.kd5ujc.scarab.ledger.{
   OCertError,
   PeerError,
   PlutusStats,
-  StorageError
+  StorageError,
+  ValidationError
 }
 import xyz.kd5ujc.scarab.network.{ConnectionEnd, ConnectionError, ConnectionEvent, NetworkError}
 import xyz.kd5ujc.scarab.node.{
@@ -213,6 +215,21 @@ object LogSamples:
       InboundGovernor.SessionFailure
         .Peer(PeerError.NoIntersection),
       dropped = true
+    ),
+    InboundEvent.SessionReturned(InboundGovernor.ReturnReason.NoMoreIntersection, 120.seconds),
+    InboundEvent.SessionReturned(
+      InboundGovernor.ReturnReason.RolledBackPastIntersection(point),
+      180.seconds
+    ),
+    InboundEvent.CachedBlockRejected(
+      ValidationError(point, BlockFailure.HeaderDiffers),
+      generation = BigInt(7),
+      sourceLive = true
+    ),
+    InboundEvent.CachedBlockRejected(
+      ValidationError(point, BlockFailure.HeaderDiffers),
+      generation = BigInt(8),
+      sourceLive = false
     ),
     InboundEvent.Closed(
       InboundEnd.Connection(
