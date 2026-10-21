@@ -170,7 +170,7 @@ def e2e(args):
 
         def nodes_up(_root):
             nonlocal follower
-            follower = start_follower(args.name, root, oracle=args.oracle)
+            follower = start_follower(args.name, root, oracle=args.oracle, scala_cpus=args.scala_cpus)
 
         def pools_ready(driver):
             nonlocal loader, worker
