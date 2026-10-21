@@ -128,17 +128,28 @@ final class Follower[F[_]: Async, S] private (
       candidate <- Ref.of[F, ChainSelection.Candidate](initial)
       _ <- track(candidate)
       control <- genesis.get
-      _ <- control.fold(Monad[F].foreverM(peer.next.flatMap(step(peer, candidate, _)))) {
-        governor =>
+      _ <- control.fold(
+        Monad[F].foreverM(peer.next.flatMap(event => step(peer, candidate, event, intersect(peer))))
+      ) { governor =>
+        SessionInput.resource(peer).use { input =>
           for
             serial <- Mutex[F]
             lastTip <- Ref.of[F, ChainSync.Tip](ChainSync.Tip.Origin)
-            consume = Monad[F].foreverM(peer.next.flatMap { event =>
+            consume = Monad[F].foreverM(input.next.flatMap { read =>
               serial.lock.surround {
-                val tip = event match
-                  case SyncEvent.RollForward(_, value)  => value
-                  case SyncEvent.RollBackward(_, value) => value
-                lastTip.set(tip) *> step(peer, candidate, event)
+                input.current(read).flatMap { current =>
+                  if !current then F.unit
+                  else
+                    val tip = read.event match
+                      case SyncEvent.RollForward(_, value)  => value
+                      case SyncEvent.RollBackward(_, value) => value
+                    lastTip.set(tip) *> step(
+                      peer,
+                      candidate,
+                      read.event,
+                      input.reintersect(intersect(peer))
+                    )
+                }
               }
             })
             reselect = F.tailRecM[Long, Unit](-1L) { previous =>
@@ -150,7 +161,7 @@ final class Follower[F[_]: Async, S] private (
                       else
                         adopt(peer, known, tip).flatMap {
                           case Some(kept) => candidate.set(kept)
-                          case None       => intersect(peer).flatMap(candidate.set)
+                          case None => input.reintersect(intersect(peer)).flatMap(candidate.set)
                         }
                     }
                   }
@@ -159,6 +170,7 @@ final class Follower[F[_]: Async, S] private (
             }
             _ <- F.both(consume, reselect).void
           yield ()
+        }
       }
     yield ()
 
@@ -211,7 +223,8 @@ final class Follower[F[_]: Async, S] private (
   private def step(
       peer: Peer[F],
       candidate: Ref[F, ChainSelection.Candidate],
-      event: SyncEvent
+      event: SyncEvent,
+      reintersect: F[ChainSelection.Candidate]
   )(using Raise[F, NodeError]): F[Unit] = event match
     case SyncEvent.RollBackward(point, _) =>
       candidate.get.flatMap { c =>
@@ -239,7 +252,7 @@ final class Follower[F[_]: Async, S] private (
               // NoLongerIntersects: drain the pipeline and find a new intersection on this
               // connection (consensus 82ecba329, ChainSync/Client.hs:1499–1511). Another session
               // may have advanced the retained window while this candidate was catching up.
-              case None => intersect(peer).flatMap(candidate.set)
+              case None => reintersect.flatMap(candidate.set)
             }
       }
 

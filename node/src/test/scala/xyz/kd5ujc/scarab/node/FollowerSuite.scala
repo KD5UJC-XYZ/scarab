@@ -391,10 +391,12 @@ class FollowerSuite extends FailsOnUncaught:
         given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)
         incoming <- Queue.unbounded[IO, SyncEvent]
         fetched <- Ref.of[IO, Vector[Bytes]](Vector.empty)
+        cancelledReads <- Ref.of[IO, Int](0)
         peer = new Peer[IO]:
           def intersect(points: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
             IO.pure(points.lastOption)
-          def next(using Raise[IO, PeerError]) = incoming.take
+          def next(using Raise[IO, PeerError]) =
+            incoming.take.onCancel(cancelledReads.update(_ + 1))
           def fetch(header: Header)(using Raise[IO, PeerError]) =
             fetched.update(_ :+ header.hash).as(Bytes.empty)
         follower <- Follower.create[IO, BigInt](rules(), noEvents, geometry)
@@ -421,12 +423,89 @@ class FollowerSuite extends FailsOnUncaught:
               after <- ref.get
               delivered <- fetched.get
               early <- ended.tryGet
+              cancelled <- cancelledReads.get
             yield
               assertEquals(after.tip, headers.last.point)
               assertEquals(delivered, headers.map(_.hash))
               assertEquals(early, None)
+              assertEquals(cancelled, 0)
           }
       yield result
+    }
+  }
+
+  test("Genesis reintersection stops the pending queue consumer before draining its old epoch") {
+    TestControl.executeEmbed {
+      val original = Fixtures.chain(5)
+      val replacement = Fixtures.chain(8, salt = 1)
+      val fresh = Fixtures.chain(1, salt = 1, from = replacement.lastOption).head
+      val switched = replacement.foldLeft(VolatileChain.genesis[BigInt](2, -1)) { (chain, header) =>
+        chain.extend(header, header.blockNo).fold(e => fail(e.message), _._1)
+      }
+      for
+        ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(2, -1))
+        given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)
+        incoming <- Queue.unbounded[IO, SyncEvent]
+        reading <- Ref.of[IO, Boolean](false)
+        reads <- Ref.of[IO, Int](0)
+        intersections <- Ref.of[IO, Int](0)
+        pending <- Deferred[IO, Unit]
+        reintersected <- Deferred[IO, Unit]
+        applied <- Deferred[IO, Unit]
+        ended <- Deferred[IO, Either[SessionEnd, Unit]]
+        peer = new Peer[IO]:
+          def intersect(points: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
+            intersections.getAndUpdate(_ + 1).flatMap {
+              case 0 => IO.pure(Some(ChainSync.Point.Origin))
+              case _ =>
+                reading.get.flatMap { active =>
+                  IO(
+                    assert(!active, "peer.next must stop before the peer drains the same queue")
+                  ) *>
+                    reintersected.complete(()).as(points.headOption)
+                }
+            }
+          def next(using Raise[IO, PeerError]) =
+            (reading.set(true) *> reads
+              .getAndUpdate(_ + 1)
+              .flatMap(n => pending.complete(()).void.whenA(n == original.size)) *> incoming.take)
+              .guarantee(reading.set(false))
+          def fetch(@scala.annotation.unused header: Header)(using Raise[IO, PeerError]) =
+            IO.pure(Bytes.empty)
+        events: FollowerEvents[IO] =
+          case xyz.kd5ujc.scarab.consensus.FollowerEvent.Extended(block, _, _, _)
+              if block.point == fresh.point =>
+            applied.complete(()).void
+          case _ => IO.unit
+        follower <- Follower.create[IO, BigInt](rules(), events, geometry)
+        governor <- GenesisGovernor.create[IO](follower.genesisView((_, _, _) => Some(30)))
+        _ <- follower.installGenesis(governor)
+        _ <- xyz.kd5ujc.scarab.network.Fibers
+          .scoped[IO, SessionEnd, Unit](SessionEnd.Defect(_)) {
+            val scope = summon[Handle[IO, SessionEnd]]
+            given Raise[IO, NodeError] =
+              Peer.contramapped[IO, SessionEnd, NodeError](scope)(SessionEnd.of)
+            follower.session(peer)
+          }
+          .flatTap(ended.complete)
+          .background
+          .use { _ =>
+            for
+              _ <- original.traverse_(h => incoming.offer(SyncEvent.RollForward(h, tip)))
+              _ <- pending.get
+              _ <- ref.set(switched)
+              _ <- governor.setPhase(xyz.kd5ujc.scarab.network.selection.Gsm.Phase.CaughtUp)
+              result <- IO.race(reintersected.get, ended.get).timeout(1.second)
+              _ <- IO(assertEquals(result, Left(())))
+              _ <- incoming.offer(SyncEvent.RollForward(fresh, tip))
+              _ <- applied.get.timeout(1.second)
+              selected <- ref.get
+              early <- ended.tryGet
+            yield
+              assertEquals(selected.tip, fresh.point)
+              assertEquals(early, None)
+          }
+      yield ()
     }
   }
 
