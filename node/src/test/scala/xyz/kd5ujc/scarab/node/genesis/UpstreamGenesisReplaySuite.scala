@@ -148,7 +148,8 @@ class UpstreamGenesisReplaySuite extends FailsOnUncaught:
                     Option.when(
                       actual.closures.exists(c =>
                         c.problem match
-                          case _: UpstreamGenesisReplay.Problem.Invariant |
+                          case _: UpstreamGenesisReplay.Problem.Worker |
+                              _: UpstreamGenesisReplay.Problem.Invariant |
                               _: UpstreamGenesisReplay.Problem.Defect |
                               _: UpstreamGenesisReplay.Problem.Blocks =>
                             true

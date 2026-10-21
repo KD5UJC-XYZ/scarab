@@ -5,6 +5,7 @@ import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.testkit.TestControl
 import cats.mtl.{Ask, Handle, Raise, Stateful, Tell}
 import cats.syntax.all.*
+import cats.mtl.syntax.all.*
 import com.comcast.ip4s.*
 import java.time.Instant
 import java.nio.charset.StandardCharsets
@@ -36,6 +37,7 @@ object UpstreamGenesisReplay:
     case Network(cause: NetworkError)
     case Node(cause: NodeError)
     case Invariant(cause: GenesisInternalProblem)
+    case Worker(cause: Fatal)
     case Defect(cause: Throwable)
   final case class Ledger(point: ChainSync.Point, blockNo: BigInt, slot: BigInt):
     def previous: Option[BlockRef] = point match
@@ -232,6 +234,14 @@ object UpstreamGenesisReplay:
                                 opened.received.invalidate
                               )
                             )
+                            _ <- opened.received.entries
+                              .flatMap(_.traverse { (ref, raw) =>
+                                ReceivedBlockRecovery
+                                  .checked(ref, raw, geometry.byron.epochSlots)
+                                  .fold(_.raise[IO, BlockPool.Delivered], IO.pure)
+                              })
+                              .flatMap(pool.seedRecoveredHeaders)
+                            _ <- follower.installInvalidBlocks(pool.invalidBlocks)
                             _ <- follower.installFetchCoordinator(pool.fetchCoordinator)
                             governor <- GenesisGovernor.create[IO](
                               follower.genesisView((_, _, _) => Some(scenario.genesisWindow)),
@@ -269,277 +279,303 @@ object UpstreamGenesisReplay:
                                 runtime.demoteDynamo
                               )
                             )
-                          yield (
-                            Resource.make(governor.run.start)(_.cancel),
-                            Resource.make(
-                              pool.fetchCoordinator
-                                .watchDecisions(
-                                  settings.blockFetchGracePicos,
-                                  Some(clock),
-                                  FetchCoordinator.DecisionIntervals(0, 0)
+                          yield {
+                            given Raise[IO, NodeError] =
+                              Peer.contramapped(summon[Raise[IO, Problem]])(Problem.Node(_))
+                            given BlockSelection.Before[IO] = new BlockSelection.Before[IO]:
+                              def prepare(header: Header, raw: Bytes)(using Raise[IO, NodeError]) =
+                                given Raise[IO, StorageError] = Peer.contramapped(
+                                  summon[Raise[IO, NodeError]]
+                                )(identity[StorageError])
+                                opened.received.put(
+                                  BlockRef(
+                                    header.slot,
+                                    header.hash,
+                                    header.blockNo,
+                                    header.isBoundary
+                                  ),
+                                  raw
                                 )
-                                .start
-                            )(_.cancel),
-                            order.zipWithIndex.filter((id, _) => active(id)).traverse {
-                              (id, ordinal) =>
-                                Resource.eval(servers(id).restart).flatMap { server =>
-                                  (
-                                    Resource.eval(Deferred[IO, Problem]),
-                                    Resource.eval(Deferred[IO, Unit])
-                                  ).tupled.flatMap { (refused, ready) =>
-                                    val owned = Fibers.scoped[IO, Problem, Unit](
-                                      Problem.Defect(_)
-                                    ) {
-                                      given Raise[IO, NetworkError] =
-                                        Peer.contramapped(summon[Raise[IO, Problem]])(
-                                          Problem.Network(_)
-                                        )
-                                      val connection =
-                                        Peers
-                                          .linked(
-                                            protocols =
-                                              Set(Protocols.ChainSync, Protocols.BlockFetch),
-                                            client = Mux.Config(),
-                                            server = Mux.Config(role = Mux.Role.Responder)
+                            follower.blockSelection(
+                              pool,
+                              runtime.work,
+                              failure => closed.update(_ :+ Closure(None, Problem.Worker(failure)))
+                            ) *> (
+                              Resource.make(governor.run.start)(_.cancel),
+                              Resource.make(
+                                pool.fetchCoordinator
+                                  .watchDecisions(
+                                    settings.blockFetchGracePicos,
+                                    Some(clock),
+                                    FetchCoordinator.DecisionIntervals(0, 0)
+                                  )
+                                  .start
+                              )(_.cancel),
+                              order.zipWithIndex.filter((id, _) => active(id)).traverse {
+                                (id, ordinal) =>
+                                  Resource.eval(servers(id).restart).flatMap { server =>
+                                    (
+                                      Resource.eval(Deferred[IO, Problem]),
+                                      Resource.eval(Deferred[IO, Unit])
+                                    ).tupled.flatMap { (refused, ready) =>
+                                      val owned = Fibers.scoped[IO, Problem, Unit](
+                                        Problem.Defect(_)
+                                      ) {
+                                        given Raise[IO, NetworkError] =
+                                          Peer.contramapped(summon[Raise[IO, Problem]])(
+                                            Problem.Network(_)
                                           )
-                                          .flatMap { (clientMux, serverMux) =>
-                                            for
-                                              clientCS <- Resource.eval(
-                                                clientMux.channel(Protocols.ChainSync)
-                                              )
-                                              serverCS <- Resource.eval(
-                                                serverMux.channel(Protocols.ChainSync)
-                                              )
-                                              clientBF <- Resource.eval(
-                                                clientMux.channel(Protocols.BlockFetch)
-                                              )
-                                              serverBF <- Resource.eval(
-                                                serverMux.channel(Protocols.BlockFetch)
-                                              )
-                                              servingChainSync <- Resource.make(
-                                                Fibers
-                                                  .scoped[IO, NetworkError, Unit](
-                                                    NetworkError.Defect(_)
-                                                  )(
-                                                    ChainSyncServer.run(
-                                                      serverCS,
-                                                      NtNHeader.codec,
-                                                      server.chainSync,
-                                                      ChainSyncServer
-                                                        .Settings(idleDeadline =
-                                                          Some(ProtocolDeadline.Unbounded)
-                                                        )
-                                                    )
-                                                  )
-                                                  .map(_.leftMap(Problem.Network(_)))
-                                                  .flatMap(record(id, Component.ChainSyncServer, _))
-                                                  .onCancel(
-                                                    cancelled(id, Component.ChainSyncServer)
-                                                  )
-                                                  .start
-                                              )(_.cancel)
-                                              _ <- Resource.make(
-                                                Fibers
-                                                  .scoped[IO, NetworkError, Unit](
-                                                    NetworkError.Defect(_)
-                                                  )(
-                                                    BlockFetchServer.run(
-                                                      serverBF,
-                                                      server.blocks,
-                                                      BlockFetchServer
-                                                        .Settings(idleDeadline =
-                                                          Some(ProtocolDeadline.Unbounded)
-                                                        )
-                                                    )
-                                                  )
-                                                  .map(_.leftMap(Problem.Network(_)))
-                                                  .flatMap(
-                                                    record(id, Component.BlockFetchServer, _)
-                                                  )
-                                                  .onCancel(
-                                                    cancelled(id, Component.BlockFetchServer)
-                                                  )
-                                                  .start
-                                              )(_.cancel)
-                                              chainSync <- Resource.eval(
-                                                ChainSyncClient(
-                                                  clientCS,
-                                                  NtNHeader.codec,
-                                                  ChainSyncClient.Settings(timeouts =
-                                                    Some(
-                                                      ChainSyncRuntime.Timeouts(
-                                                        deadline(
-                                                          scenario.config.chainSyncTimeouts,
-                                                          scenario.chainSync.intersect
-                                                        ),
-                                                        deadline(
-                                                          scenario.config.chainSyncTimeouts,
-                                                          scenario.chainSync.canAwait
-                                                        ),
-                                                        deadline(
-                                                          scenario.config.chainSyncTimeouts,
-                                                          scenario.chainSync.mustReply
-                                                        )
+                                        val connection =
+                                          Peers
+                                            .linked(
+                                              protocols =
+                                                Set(Protocols.ChainSync, Protocols.BlockFetch),
+                                              client = Mux.Config(),
+                                              server = Mux.Config(role = Mux.Role.Responder)
+                                            )
+                                            .flatMap { (clientMux, serverMux) =>
+                                              for
+                                                clientCS <- Resource.eval(
+                                                  clientMux.channel(Protocols.ChainSync)
+                                                )
+                                                serverCS <- Resource.eval(
+                                                  serverMux.channel(Protocols.ChainSync)
+                                                )
+                                                clientBF <- Resource.eval(
+                                                  clientMux.channel(Protocols.BlockFetch)
+                                                )
+                                                serverBF <- Resource.eval(
+                                                  serverMux.channel(Protocols.BlockFetch)
+                                                )
+                                                servingChainSync <- Resource.make(
+                                                  Fibers
+                                                    .scoped[IO, NetworkError, Unit](
+                                                      NetworkError.Defect(_)
+                                                    )(
+                                                      ChainSyncServer.run(
+                                                        serverCS,
+                                                        NtNHeader.codec,
+                                                        server.chainSync,
+                                                        ChainSyncServer
+                                                          .Settings(idleDeadline =
+                                                            Some(ProtocolDeadline.Unbounded)
+                                                          )
                                                       )
                                                     )
-                                                  )
-                                                )
-                                              )
-                                              blockFetch <- BlockFetchClient.resource(
-                                                clientBF,
-                                                clientMux.abort,
-                                                BlockFetchClient.Settings(timeouts =
-                                                  Some(
-                                                    BlockFetchRuntime.Timeouts(
-                                                      deadline(
-                                                        scenario.config.blockFetchTimeouts,
-                                                        scenario.blockFetch.busy
-                                                      ),
-                                                      deadline(
-                                                        scenario.config.blockFetchTimeouts,
-                                                        scenario.blockFetch.streaming
-                                                      ),
-                                                      ProtocolDeadline.Unbounded
+                                                    .map(_.leftMap(Problem.Network(_)))
+                                                    .flatMap(
+                                                      record(id, Component.ChainSyncServer, _)
                                                     )
-                                                  )
-                                                )
-                                              )
-                                              _ <- Resource.onFinalize(
-                                                cancelled(id, Component.BlockFetchClient)
-                                              )
-                                              bound <- runtime.bind(
-                                                pool,
-                                                ordinal.toLong,
-                                                e =>
-                                                  closed.update(
-                                                    _ :+ Closure(Some(id), Problem.Node(e))
-                                                  ) *> refused.complete(Problem.Node(e)).void,
-                                                p =>
-                                                  closed.update(
-                                                    _ :+ Closure(Some(id), Problem.Invariant(p))
-                                                  ) *> refused.complete(Problem.Invariant(p)).void,
-                                                densityOrder =
-                                                  GenesisGovernor.OrderKey.Model(densityKey(id))
-                                              )
-                                              (fetchSession, controls) = bound
-                                              connection = NodeToNodeConnection(
-                                                15,
-                                                chainSync,
-                                                blockFetch,
-                                                clientMux
-                                              )
-                                              peer <- Peer.over(
-                                                connection,
-                                                Peer.Settings(
-                                                  SocketAddress[Host](ip"10.1.1.1", port"3001"),
-                                                  42L,
-                                                  byronEpochSlots = 1
-                                                ),
-                                                _ => IO.unit,
-                                                headers = Some(
-                                                  HeaderCheck
-                                                    .forGenesisChain(
-                                                      headerRules,
-                                                      Compute.inline[IO],
-                                                      controls.retainedHeaders,
-                                                      stall = 120000000000000L.nanos,
-                                                      poll = 20000000000L.nanos
+                                                    .onCancel(
+                                                      cancelled(id, Component.ChainSyncServer)
                                                     )
-                                                    .withPatience(controls.patience)
-                                                ),
-                                                pool = Some(pool),
-                                                patience = Some(controls.patience),
-                                                received = Some(event =>
-                                                  (event match
-                                                    case SyncEvent.RollForward(header, _) =>
-                                                      downloaded
-                                                        .update(
-                                                          _ :+ Downloaded(
-                                                            id,
-                                                            ChainSync.Point.Block(
-                                                              ChainSync.UInt64
-                                                                .saturating(header.slot),
-                                                              header.hash
-                                                            )
+                                                    .start
+                                                )(_.cancel)
+                                                _ <- Resource.make(
+                                                  Fibers
+                                                    .scoped[IO, NetworkError, Unit](
+                                                      NetworkError.Defect(_)
+                                                    )(
+                                                      BlockFetchServer.run(
+                                                        serverBF,
+                                                        server.blocks,
+                                                        BlockFetchServer
+                                                          .Settings(idleDeadline =
+                                                            Some(ProtocolDeadline.Unbounded)
+                                                          )
+                                                      )
+                                                    )
+                                                    .map(_.leftMap(Problem.Network(_)))
+                                                    .flatMap(
+                                                      record(id, Component.BlockFetchServer, _)
+                                                    )
+                                                    .onCancel(
+                                                      cancelled(id, Component.BlockFetchServer)
+                                                    )
+                                                    .start
+                                                )(_.cancel)
+                                                chainSync <- Resource.eval(
+                                                  ChainSyncClient(
+                                                    clientCS,
+                                                    NtNHeader.codec,
+                                                    ChainSyncClient.Settings(timeouts =
+                                                      Some(
+                                                        ChainSyncRuntime.Timeouts(
+                                                          deadline(
+                                                            scenario.config.chainSyncTimeouts,
+                                                            scenario.chainSync.intersect
+                                                          ),
+                                                          deadline(
+                                                            scenario.config.chainSyncTimeouts,
+                                                            scenario.chainSync.canAwait
+                                                          ),
+                                                          deadline(
+                                                            scenario.config.chainSyncTimeouts,
+                                                            scenario.chainSync.mustReply
                                                           )
                                                         )
-                                                    case _: SyncEvent.RollBackward => IO.unit
-                                                  ) *> controls.received(event)
-                                                ),
-                                                chainSyncObserver = Some(controls.observer),
-                                                retainedHeaders = controls.retainedHeaders,
-                                                fetchSession = Some(fetchSession),
-                                                genesis = Some(controls.control),
-                                                selectionWork = Some(controls.work),
-                                                receivedBody = Some((header, raw) =>
-                                                  Fibers
-                                                    .scoped[IO, StorageError, Unit](e =>
-                                                      StorageError
-                                                        .Io("simulator received journal", e)
-                                                    ) {
-                                                      opened.received.put(
-                                                        BlockRef(
-                                                          header.slot,
-                                                          header.hash,
-                                                          header.blockNo
-                                                        ),
-                                                        raw
-                                                      )
-                                                    }
-                                                    .flatMap(
-                                                      _.fold(
-                                                        e =>
-                                                          refused
-                                                            .complete(Problem.Storage(e))
-                                                            .void *> IO.never[Unit],
-                                                        IO.pure
                                                       )
                                                     )
+                                                  )
                                                 )
-                                              )
-                                            yield peer -> servingChainSync
-                                          }
-                                      connection.use { (peer, servingChainSync) =>
-                                        ready.complete(()).void *> Fibers
-                                          .scoped[IO, Problem, Unit](Problem.Defect(_)) {
-                                            given Raise[IO, NodeError] =
-                                              Peer.contramapped(summon[Raise[IO, Problem]])(
-                                                Problem.Node(_)
-                                              )
-                                            IO.race(
-                                              follower.session(peer),
-                                              refused.get.flatMap(e =>
-                                                Raise[IO, Problem].raise[Problem, Unit](e)
-                                              )
-                                            ).void
-                                          }
-                                          .flatMap { result =>
-                                            record(id, Component.ChainSyncClient, result) *>
-                                              servingChainSync.join.void.whenA(
-                                                result.fold(end, _ => End.Success) == End.Success
-                                              ) *>
-                                              result.left.toOption.traverse_(e =>
+                                                blockFetch <- BlockFetchClient.resource(
+                                                  clientBF,
+                                                  clientMux.abort,
+                                                  BlockFetchClient.Settings(timeouts =
+                                                    Some(
+                                                      BlockFetchRuntime.Timeouts(
+                                                        deadline(
+                                                          scenario.config.blockFetchTimeouts,
+                                                          scenario.blockFetch.busy
+                                                        ),
+                                                        deadline(
+                                                          scenario.config.blockFetchTimeouts,
+                                                          scenario.blockFetch.streaming
+                                                        ),
+                                                        ProtocolDeadline.Unbounded
+                                                      )
+                                                    )
+                                                  )
+                                                )
+                                                _ <- Resource.onFinalize(
+                                                  cancelled(id, Component.BlockFetchClient)
+                                                )
+                                                bound <- runtime.bind(
+                                                  pool,
+                                                  ordinal.toLong,
+                                                  e =>
+                                                    closed.update(
+                                                      _ :+ Closure(Some(id), Problem.Node(e))
+                                                    ) *> refused.complete(Problem.Node(e)).void,
+                                                  p =>
+                                                    closed.update(
+                                                      _ :+ Closure(Some(id), Problem.Invariant(p))
+                                                    ) *> refused
+                                                      .complete(Problem.Invariant(p))
+                                                      .void,
+                                                  densityOrder =
+                                                    GenesisGovernor.OrderKey.Model(densityKey(id))
+                                                )
+                                                (fetchSession, controls) = bound
+                                                connection = NodeToNodeConnection(
+                                                  15,
+                                                  chainSync,
+                                                  blockFetch,
+                                                  clientMux
+                                                )
+                                                peer <- Peer.over(
+                                                  connection,
+                                                  Peer.Settings(
+                                                    SocketAddress[Host](ip"10.1.1.1", port"3001"),
+                                                    42L,
+                                                    byronEpochSlots = 1
+                                                  ),
+                                                  _ => IO.unit,
+                                                  headers = Some(
+                                                    HeaderCheck
+                                                      .forGenesisChain(
+                                                        headerRules,
+                                                        Compute.inline[IO],
+                                                        controls.retainedHeaders,
+                                                        stall = 120000000000000L.nanos,
+                                                        poll = 20000000000L.nanos
+                                                      )
+                                                      .withPatience(controls.patience)
+                                                  ),
+                                                  pool = Some(pool),
+                                                  patience = Some(controls.patience),
+                                                  received = Some(event =>
+                                                    (event match
+                                                      case SyncEvent.RollForward(header, _) =>
+                                                        downloaded
+                                                          .update(
+                                                            _ :+ Downloaded(
+                                                              id,
+                                                              ChainSync.Point.Block(
+                                                                ChainSync.UInt64
+                                                                  .saturating(header.slot),
+                                                                header.hash
+                                                              )
+                                                            )
+                                                          )
+                                                      case _: SyncEvent.RollBackward => IO.unit
+                                                    ) *> controls.received(event)
+                                                  ),
+                                                  chainSyncObserver = Some(controls.observer),
+                                                  retainedHeaders = controls.retainedHeaders,
+                                                  fetchSession = Some(fetchSession),
+                                                  genesis = Some(controls.control),
+                                                  selectionWork = Some(controls.work),
+                                                  receivedBody = Some((header, raw) =>
+                                                    Fibers
+                                                      .scoped[IO, StorageError, Unit](e =>
+                                                        StorageError
+                                                          .Io("simulator received journal", e)
+                                                      ) {
+                                                        opened.received.put(
+                                                          BlockRef(
+                                                            header.slot,
+                                                            header.hash,
+                                                            header.blockNo
+                                                          ),
+                                                          raw
+                                                        )
+                                                      }
+                                                      .flatMap(
+                                                        _.fold(
+                                                          e =>
+                                                            refused
+                                                              .complete(Problem.Storage(e))
+                                                              .void *> IO.never[Unit],
+                                                          IO.pure
+                                                        )
+                                                      )
+                                                  )
+                                                )
+                                              yield peer -> servingChainSync
+                                            }
+                                        connection.use { (peer, servingChainSync) =>
+                                          ready.complete(()).void *> Fibers
+                                            .scoped[IO, Problem, Unit](Problem.Defect(_)) {
+                                              given Raise[IO, NodeError] =
+                                                Peer.contramapped(summon[Raise[IO, Problem]])(
+                                                  Problem.Node(_)
+                                                )
+                                              IO.race(
+                                                follower.session(peer),
+                                                refused.get.flatMap(e =>
+                                                  Raise[IO, Problem].raise[Problem, Unit](e)
+                                                )
+                                              ).void
+                                            }
+                                            .flatMap { result =>
+                                              record(id, Component.ChainSyncClient, result) *>
+                                                servingChainSync.join.void.whenA(
+                                                  result.fold(end, _ => End.Success) == End.Success
+                                                ) *>
+                                                result.left.toOption.traverse_(e =>
+                                                  closed.update(_ :+ Closure(Some(id), e))
+                                                )
+                                            }
+                                            .onCancel(cancelled(id, Component.ChainSyncClient))
+                                        }
+                                      }
+                                      Resource.make(
+                                        owned
+                                          .flatMap(
+                                            _.left.toOption
+                                              .traverse_(e =>
                                                 closed.update(_ :+ Closure(Some(id), e))
                                               )
-                                          }
-                                          .onCancel(cancelled(id, Component.ChainSyncClient))
-                                      }
+                                          )
+                                          .start
+                                      )(_.cancel) *>
+                                        Resource.eval(ready.get)
                                     }
-                                    Resource.make(
-                                      owned
-                                        .flatMap(
-                                          _.left.toOption
-                                            .traverse_(e =>
-                                              closed.update(_ :+ Closure(Some(id), e))
-                                            )
-                                        )
-                                        .start
-                                    )(_.cancel) *>
-                                      Resource.eval(ready.get)
                                   }
-                                }
-                            }
-                          ).tupled.evalMap(_ => governor.setPhase(Gsm.Phase.Syncing)).void
+                              }
+                            ).tupled.evalMap(_ => governor.setPhase(Gsm.Phase.Syncing)).void
+                          }
                         }.flatten
                       }
                     Resource.make(Ref.of[IO, IO[Unit]](IO.unit))(_.get.flatten).use { release =>

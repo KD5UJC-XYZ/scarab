@@ -94,10 +94,25 @@ processed (`ChainSel.hs:449`). A later queued body must not affect an earlier ad
 Each successful first admission carries its original bytes, checked header and immutable sending
 BlockFetch-run context. Duplicate deliveries do not create another admission or change its source.
 One serial worker processes that FIFO, records semantic invalidity and applies the native punishment
-criterion, then compares any valid prefix before committing it. Recovery and LoE reconsideration
+criterion, then reinserts any valid prefix into that admission’s original candidate pool. It
+projects every surviving path through LoE and eligibility before ordering; only the final valid
+winner commits. Recovery and LoE reconsideration
 carry no new adding client. Peer cancellation cannot remove a queued admission or cancel ledger
 selection. Worker shutdown and infrastructure failure settle current and queued work, following
 `Background.hs:658–708` and `Types.hs:740–755`; they never masquerade as a peer refusal.
+
+Startup resets selection to the immutable anchor and considers the complete recovered forest,
+including originals beyond the ordinary delivery-cache capacity. Opening network clients and servers
+waits for that initial selection to finish. Readiness failures land through the acquiring caller’s
+error capability; the long-lived worker creates its own scope. Mempool updates use the worker’s
+current error capability and follow the selected state, including an immutable-only startup result.
+
+Eligibility and candidate ordering are separate upstream operations. Hard-fork eligibility uses
+the later era’s configuration across Shelley-based eras; Byron/Shelley has no equal-height
+tie-breaker. Global candidate and fetch priority use unrestricted native `Ord`, with the native
+stable list-sort comparison sequence. The finite native observer covers 24 protocol-view cases,
+seven explicitly synthetic sort cases, and 55 actual Cardano hard-fork cases over Byron through
+Conway. These are independently observed boundary cases, not upstream-generated or exhaustive inputs.
 
 ## Implementation sequence and acceptance
 

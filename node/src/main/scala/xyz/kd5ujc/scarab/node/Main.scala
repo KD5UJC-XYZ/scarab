@@ -123,6 +123,71 @@ object Main extends IOApp:
       case Right(end)  => IO.pure(InboundEnd.Local(end))
     }
 
+  private[node] def synchronizeMempool(
+      mempool: Mempool[IO],
+      scheduling: Scheduling[IO],
+      epochSlots: BigInt
+  )(
+      chain: VolatileChain[MirrorState],
+      raws: Vector[xyz.kd5ujc.scarab.codec.Bytes]
+  )(using Ask[IO, MempoolEnv], Raise[IO, NodeError]): IO[Unit] =
+    for
+      decoded <- scheduling.compute.within(IO.delay(raws.traverse(Block.decode(_, epochSlots))))
+      blocks <- decoded.fold(error => summon[Raise[IO, NodeError]].raise(error), IO.pure)
+      adopted = blocks.flatMap {
+        case block: Block.Shelley => block.transactions.map(_.id)
+        case _                    => Vector.empty
+      }.toSet
+      environment <- Ask[IO, MempoolEnv].ask
+      ledger <- scheduling.compute.within(IO.delay(
+        MempoolLedger.at(
+          chain.state,
+          chain.tipRef,
+          environment.copy(geometry = chain.state.geometry(environment.geometry))
+        ).left.map(ChainError.MempoolTick(chain.tipRef.fold(BigInt(0))(_.slot + 1), _))
+      )).flatMap(Raise[IO, NodeError].fromEither(_))
+      _ <- mempool.sync(
+        ledger,
+        chain.tipRef.fold(BigInt(-1))(_.slot),
+        adopted
+      )
+    yield ()
+
+  private def seedReceived(
+      pool: BlockPool[IO],
+      received: Option[ReceivedBlocks[IO]],
+      epochSlots: BigInt
+  )(using Raise[IO, NodeError]): IO[Unit] =
+    received.traverse_(_.entries.flatMap { entries =>
+      entries
+        .traverse { (ref, raw) => ReceivedBlockRecovery.checked(ref, raw, epochSlots) }
+        .fold(error => summon[Raise[IO, NodeError]].raise(error), IO.pure)
+        .flatMap(pool.seedRecoveredHeaders)
+    })
+
+  private def selectionWorker(
+      follower: Follower[IO, MirrorState],
+      pool: BlockPool[IO],
+      work: Option[SelectionWork[IO]],
+      received: Option[ReceivedBlocks[IO]],
+      preverify: Peer.Prepare[IO],
+      fatal: Fatal => IO[Unit],
+      origin: Option[xyz.kd5ujc.scarab.codec.Bytes]
+  )(using Raise[IO, NodeError]): Resource[IO, Unit] =
+    given BlockSelection.Before[IO] with
+      def prepare(header: Header, raw: xyz.kd5ujc.scarab.codec.Bytes)(using
+          Raise[IO, NodeError]
+      ): IO[Unit] =
+        received.traverse_(
+          _.put(
+            BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary),
+            raw
+          )
+        ) *> preverify(Vector(raw))
+    Resource
+      .eval(work.fold(SelectionWork.create[IO](pool.fetchCoordinator.refreshGenesis))(IO.pure))
+      .flatMap(shared => follower.blockSelection(pool, shared, fatal, origin))
+
   /** @param metricsListen
     *   `--metrics-listen host:port`: where the Prometheus endpoint (and nothing else) listens.
     * @param snapshotEvery
@@ -724,41 +789,18 @@ object Main extends IOApp:
               NodeRules.observe(genesis.geometry),
               Some(persistence.fold(served)(Persistence.both(_, served))),
               Some(
-                Follower.OnTip((chain, added) =>
-                  // decoding the added blocks is CPU-bound: off the compute pool like the rules
-                  scheduling.compute
-                    .within(IO.delay {
-                      added.flatMap { raw =>
-                        Block
-                          .decode(raw, genesis.geometry.byron.epochSlots)
-                          .toOption
-                          .toVector
-                          .flatMap {
-                            case b: Block.Shelley => b.transactions.map(_.id)
-                            case _                => Vector.empty
-                          }
-                      }.toSet
-                    })
-                    .flatMap { adopted =>
-                      val slot = chain.tipRef.fold(BigInt(-1))(_.slot)
-                      scheduling.compute
-                        .within(IO.delay {
-                          MempoolLedger
-                            .at(
-                              chain.state,
-                              chain.tipRef,
-                              MempoolEnv(globals, chain.state.geometry(genesis.geometry))
-                            )
-                            .left
-                            .map(
-                              ChainError.MempoolTick(chain.tipRef.fold(BigInt(0))(_.slot + 1), _)
-                            )
-                        })
-                        .flatMap(cats.mtl.Raise[IO, NodeError].fromEither(_))
-                        .flatMap(mempool.sync(_, slot, adopted))
-                        .void
-                    }
-                )
+                new Follower.OnTip[IO, MirrorState]:
+                  def apply(
+                      chain: VolatileChain[MirrorState],
+                      added: Vector[xyz.kd5ujc.scarab.codec.Bytes]
+                  )(using
+                      Raise[IO, NodeError]
+                  ): IO[Unit] =
+                    given Ask[IO, MempoolEnv] = mempoolEnvironment
+                    synchronizeMempool(mempool, scheduling, genesis.geometry.byron.epochSlots)(
+                      chain,
+                      added
+                    )
               ),
               epochOf = Some((s, slot) => s.geometry(genesis.geometry).epochOf(slot)),
               initialViews = resumed.map(r => r.ref.hash -> r.view).toMap,
@@ -882,6 +924,7 @@ object Main extends IOApp:
                 )
               )
             )
+            _ <- seedReceived(blockPool, receivedBlocks, genesis.geometry.byron.epochSlots)
             _ <- follower.installFetchCoordinator(blockPool.fetchCoordinator)
             _ <- follower.installInvalidBlocks(blockPool.invalidBlocks)
             genesisGovernor <- Option
@@ -1182,6 +1225,17 @@ object Main extends IOApp:
                     .flatMap(sample => logged(NodeEvent.Memory(sample)))).foreverM.background.void
             run = decisionMaintenance
               .flatMap(_ => blockPool.maintenance)
+              .flatMap(_ =>
+                selectionWorker(
+                  follower,
+                  blockPool,
+                  genesisRuntime.map(_.work),
+                  receivedBlocks,
+                  warm,
+                  fatalSink,
+                  setup.origin
+                )
+              )
               .surround(network.use { net =>
                 val reloadTopology: IO[Unit] = options.topologyFile.traverse_ { _ =>
                   // `options.peers` includes the topology loaded at startup. Keep reload roots tied
