@@ -1,59 +1,41 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Offline candidate acceptance
 
-Status: controller implemented; original inputs have been located and preserved in shared offline
-storage, but **a complete controller artifact is not provisioned and acceptance has not run**.
-The tracked input manifest deliberately has `status: unavailable`, null URL/hash/provenance and
-therefore fails before a download, Docker build or test invocation. That status describes the
-provisioning contract, not the absence of every original dataset. Work is tracked by
-[#294](https://github.com/KD5UJC-XYZ/scarab/issues/294).
+Status: **all 12 mandatory external cases and all 66 additional controls passed**, with zero
+skips, missing cases, failures or errors, on 2026-10-21 UTC. The
+[retained acceptance receipt](../../docs/data/external-acceptance-294.json) records the measured
+source, actual Docker image, test JVM observations, complete input inventory identity and report
+hashes. The default input manifest remains deliberately unavailable: operators supply the reviewed
+manifest and original private datasets explicitly. See [#294](https://github.com/KD5UJC-XYZ/scarab/issues/294).
 
-## Preserved inputs and remaining preparation
+## Preserved inputs and completed preparation
 
-The 2026-10-21 UTC preservation run, against main
-`2c26058cf191535c78f78e6ea9f211d9697c43d9`, verified 545 direct input files and all 1,451
-maintained V5 K1 snapshots plus their conversion manifest in operator-managed shared storage.
-Archive identity: `scarab-acceptance-inputs-2026-10-20`. Its worker README, `input-files.json`,
-`case-input-status.json`, `preservation-receipt.json` and checksum manifests retain the mappings,
-original source/conversion identities and verification results; access details remain in the
-private worker handoff. Original native observations were not regenerated.
+Archive `scarab-acceptance-inputs-2026-10-20`, supplemented by its `gate-2026-10-21` input/evidence
+set, retains original native observations, all 1,451 maintained V5 snapshots, authentic captures,
+signed manifests and worker reconstruction instructions. Access mappings remain in the private
+worker handoff. Original expected results were not regenerated. The input tree uses hard links
+and read-only mounts rather than a second bulk copy; its complete per-file inventory is verified
+before and after execution.
 
-The snapshot archive is 18,284,302,254 bytes, SHA-256
-`4b4eb755dbd0178c2a986dcdc5eee78024eeb08dcb638dbd5a1f1898539de3d3`.
-All archived file hashes match the originals. The complete new shared input footprint is about
-20 GiB; 66 required existing chain chunks were hash-checked and reused. No bulk local staging
-copy, operational database change or cloud download was needed. Compression used Zstandard
-1.5.7 and GNU tar 1.35. This preservation archive is not the controller's reviewed gzip/USTAR
-artifact, and its convenience symlinks are not admissible controller members.
+The untouched original Mithril bootstrap was reconstructed offline through production import using
+its original artifact/certificates/digests and official pinned client. It restores slot 125660129,
+block 4769524, with 3,192,290 UTxOs. Native Haskell indexes and recorded Scarab boundary data have
+separate input roles; the reviewed native source contains 29,091 complete triplets. Maintained
+preprod identity metadata was upgraded once to V6 with retained original bytes and conversion
+provenance; acceptance does not perform legacy adoption.
 
-Located inputs include the pinned 4,526,058-output preprod table, its original state/metadata and
-signed ancillary manifest, matching V5 snapshot/checkpoint, recorded preprod blocks, complete
-mainnet genesis files, original Preview ledger data and Mithril verification material. A Preview
-window has its matching V5 snapshot/checkpoint, 8,380 original blocks and an unchanged native
-reference body at slot 1123210. Its window-specific index selects an original row; the complete
-original index is retained separately. These identities establish availability, not a passing
-comparison on the current candidate.
+The run compares all 4,526,058 preprod table entries and matching checkpoint keys/semantics,
+original native state/table export bytes and V5 import/restore, six unchanged boundary digests,
+5,683 captured preprod blocks across serial/parallel modes, and 8,380 original Preview blocks.
+Preview compares every required native field at the one original indexed reference point and
+reproduces all nine expected invalid transactions, with no collection/unavailability failures.
+This is bounded native projection and Scala execution evidence, not universal whole-state parity.
 
-Remaining work under #294:
-
-1. Reconstruct and verify the original untouched Mithril bootstrap. The earlier bootstrap
-   database was subsequently replayed and contains later snapshots/checkpoints; it cannot stand
-   in for the test's sole original state at slot 125660129. Original native data, archives,
-   certificate/digest material and verification provenance survive. Check any reused immutable
-   prefix against the artifact digests; the older K1 archive is not automatically that artifact.
-2. Separate native Haskell and Scarab K1 input roles. Both tests currently use `SCARAB_K1_DB`,
-   but `HaskellRealFilesSuite` reads native primary/secondary indexes while `BoundaryDigestSuite`
-   reads Scarab chunks, `.index` files and `format`. Reused chunk bytes match; the archived Scarab
-   indexes are v2 while the recorded boundary fixture uses v1. The matching 59 index/format files
-   were preserved separately (3,035,630 bytes), without replacing archived indexes.
-3. Replace the controller's stale fixed native inventory assumption with a reviewed pinned
-   identity/count contract: the archived native source has 29,035 secondary indexes, while the
-   current controller requires 29,031. Do not drop original files or mix formats to satisfy it.
-4. Provision the complete reviewed artifact, or implement and verify a provenance-preserving LAN
-   input mode, then execute all mandatory cases and retain their exact-source/runtime receipt.
-
-**External acceptance remains 0/12 executed under this combined gate.** Earlier historical runs,
-ordinary CI and successful input preservation do not close that acceptance requirement.
+Confirmed harness failures were corrected rather than waived: storage's ordinary in-process
+sbt grouping ignored the requested fork heap; default subprocess working directories hid maintained
+fixtures; export needed a writable sibling lock outside its read-only database; and signed import
+needed the ancillary manifest's immutable tail triplet. Raw failing reports and positive probes are
+retained alongside the successful receipt. No production ledger or codec logic changed.
 
 ## Boundary
 
@@ -84,9 +66,9 @@ SHA-256, compressed-byte limit, expanded-byte limit, entry limit and all approve
 Keep the original native bytes and expectations unchanged. The controller never generates expected
 outputs, downloads an unpinned latest dataset, accepts a native non-result as false, or changes a
 coverage-register status. The known preprod tables hash is additionally checked independently in
-the controller; its sibling `state` and `meta` must accompany it. The current controller requires
-29,031 native secondary indexes and a current-format snapshot corpus in one K1 role; the inventory
-and format-role corrections above must precede real provisioning. The Plutus baseline retains its original fixed
+the controller; its sibling `state` and `meta` must accompany it. The reviewed manifest pins the
+genuine complete native secondary-index count; native Haskell indexes and the current-format
+Scarab snapshot corpus occupy separate roles. The Plutus baseline retains its original fixed
 snapshot/checkpoint stem. Native tests enforce their additional state, keyset and original-byte
 contracts.
 

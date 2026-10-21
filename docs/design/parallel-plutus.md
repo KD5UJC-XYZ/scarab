@@ -225,3 +225,10 @@ and took responsibility for following up if [post-merge CI](https://github.com/K
 fails. This records an owner-directed closeout without claiming that pending CI passed; the usual
 [definition of done](../process.md#definition-of-done) is unchanged. Nightly CI remains the
 continuing safety net, not an additional new run required before closing this item.
+
+The 2026-10-21 external acceptance run executed this preprod contract on all 5,683 captured
+blocks and the separate native Preview contract on 8,380 original blocks. All 12 mandatory
+external cases and 66 ordinary controls passed without skips. The
+[retained exact-source receipt](../data/external-acceptance-294.json) distinguishes full Scala
+execution-mode equality from the one required complete native projection-body comparison.
+This does not extend the native projection scope or establish universal historical equivalence.

@@ -4,16 +4,17 @@
     {
       "id": "mempack-join",
       "classification": "native-parity",
-      "status": "open",
+      "status": "covered",
       "scope": "A paired native tables file and RocksDB checkpoint.",
       "assertion": "Require complete identical nonempty key streams, pinned table identity, exact entry count and same-snapshot checkpoint stamp; distinguish semantic equality and canonical encoding differences.",
       "rationale": "Zero semantic differences alone can pass without a comparison.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
-      "resolution": "The complete fail-closed contract and small native-vector negative controls are implemented; execute the full paired preprod inputs and retain the candidate receipt.",
+      "resolution": "The pinned original preprod table and same-snapshot checkpoint passed complete nonempty key/semantic comparison and canonical packing for all 4,526,058 outputs; see exact-source external acceptance receipt.",
       "evidence": [
         "storage/src/test/scala/xyz/kd5ujc/scarab/storage/MemPackJoinCheck.scala",
-        "storage/src/test/scala/xyz/kd5ujc/scarab/storage/MemPackComparisonSuite.scala"
+        "storage/src/test/scala/xyz/kd5ujc/scarab/storage/MemPackComparisonSuite.scala",
+        "docs/data/external-acceptance-294.json"
       ],
       "candidateRequired": true
     },
@@ -67,16 +68,17 @@
     {
       "id": "external-candidate-inputs",
       "classification": "external-input",
-      "status": "open",
+      "status": "covered",
       "scope": "Twelve external-data tests; five optional benchmarks are a separate performance contract.",
       "assertion": "Candidate acceptance must provision pinned input identities and reject missing, skipped or unreported required cases.",
       "rationale": "Normal unit-test success does not establish acceptance for absent private or large offline inputs.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
-      "resolution": "Provide reviewed candidate datasets and retain a successful mandatory-case receipt; never synthesize an acceptance result.",
+      "resolution": "All twelve pinned external-data cases and all 66 additional controls passed without skips, missing cases or failures. Actual source/runtime, complete input identities and JUnit hashes are retained in the reviewed receipt.",
       "evidence": [
         ".github/workflows/ci.yml",
-        "node/src/test/scala/xyz/kd5ujc/scarab/node/PlutusReplaySuite.scala"
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/PlutusReplaySuite.scala",
+        "docs/data/external-acceptance-294.json"
       ],
       "candidateRequired": true
     },
@@ -99,18 +101,19 @@
     {
       "id": "recorded-replay-comparison",
       "classification": "native-parity",
-      "status": "open",
+      "status": "covered",
       "scope": "Recorded Preview replay against required reduced native projection bodies, separately from Scala serial/parallel execution equivalence.",
       "assertion": "Require nonempty original reference bodies for every indexed in-window point; compare every required native field exactly, including complete map digests/counts/buckets, and require referenceBodyComparisons == referenceTargetsRequired > 0.",
       "rationale": "An export is an input to a comparison and must not be reported as completed native parity.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
-      "resolution": "Strict body loading/comparison and six synthetic comparison-mechanism controls are implemented. Actual external native replay remains unexecuted here: provision reviewed authentic window inputs and retain its successful content-comparison receipt before marking native coverage covered.",
+      "resolution": "All 8,380 original Preview blocks passed Scala execution-mode comparison; the one required authentic in-window native reference body was fully compared, with all nine ordered expected invalid transaction identities reproduced and no collection/unavailability failures. Broader historical native equality is outside this bounded run.",
       "evidence": [
         "node/src/test/scala/xyz/kd5ujc/scarab/node/preview/RecordedReplay.scala",
         "node/src/test/scala/xyz/kd5ujc/scarab/node/preview/ReplayReference.scala",
         "node/src/test/scala/xyz/kd5ujc/scarab/node/preview/ReplayReferenceSuite.scala",
-        "docs/design/parallel-plutus.md"
+        "docs/design/parallel-plutus.md",
+        "docs/data/external-acceptance-294.json"
       ],
       "candidateRequired": true
     },
