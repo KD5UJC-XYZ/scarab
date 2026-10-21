@@ -33,7 +33,7 @@ def recipe_identity(source):
     return {'baseImage': one(r'^FROM (ubuntu@sha256:[a-f0-9]{64}) AS build$'),
             'sourceCommit': one(r'^ARG BLST_COMMIT=([a-f0-9]{40})$'),
             'sourceArchiveSha256': one(r'^ARG BLST_SOURCE_ARCHIVE_SHA256=([a-f0-9]{64})$'),
-            'flags': one(r'^ARG BLST_FLAGS=(.+)$'),
+            'flags': one(r'^ARG BLST_FLAGS="([^"]+)"$'),
             'snapshot': sorted(set(re.findall(r'https://snapshot.ubuntu.com/ubuntu/(\d{8}T\d{6}Z)', recipe)))}
 
 

@@ -46,7 +46,7 @@ RUN rm -f /etc/apt/sources.list.d/* \
  && rm -rf /var/lib/apt/lists/*
 ARG BLST_COMMIT=6d960cd05d6fe2b5bc9ba161edf0c1a131b87c4c
 # Pin the existing ADX + runtime-dispatch build even when the builder CPU lacks ADX.
-ARG BLST_FLAGS=-D__ADX__ -D__BLST_PORTABLE__
+ARG BLST_FLAGS="-D__ADX__ -D__BLST_PORTABLE__"
 ARG BLST_SOURCE_ARCHIVE_SHA256=15e976ff729ebac12da5377ba454b6761aa7f77747cf5693074ee99336637024
 WORKDIR /src
 RUN git init -q blst \
