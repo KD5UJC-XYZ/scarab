@@ -8,6 +8,7 @@ import time
 from .. import metrics as node_metrics
 from ..cluster import up
 from ..compare import compare_once
+from ..consensus import arguments
 from ..follower import own_build
 from ..util import ENTRY, QUERY_PORT, data_root, docker, read_log
 
@@ -61,6 +62,7 @@ def soak(args):
     root = data_root(args.name)
     up(args)
     follower = subprocess.Popen([sys.executable, str(ENTRY), "--name", args.name, "follow",
+                                 *arguments(args),
                                  *(["--dump-state"] if getattr(args, "oracle", False) else [])],
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     loader = subprocess.Popen([sys.executable, str(ENTRY), "--name", args.name, "load", "--seed", str(args.seed)],

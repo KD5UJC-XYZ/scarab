@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 from .cluster import database_mounts, freeze_classes, scala_container
+from .consensus import configuration
 from .metrics import METRICS_PORT
 from .util import ENTRY, QUERY_PORT, data_root, read_log
 
@@ -22,6 +23,7 @@ def follow(args):
     log = root / "follower.jsonl"
     program = ["follow", "--genesis-dir", "/genesis", "--peer", f"127.0.0.1:{ports[str(args.node)]}",
                "--query-port", str(QUERY_PORT)]
+    program += configuration(root, getattr(args, "consensus_mode", None))
     if own_build(args):
         # the Prometheus endpoint on a listener of its own (an older build, run for a baseline, has no such flag)
         program += ["--metrics-listen", f"127.0.0.1:{METRICS_PORT}"]

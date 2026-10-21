@@ -40,6 +40,8 @@ def start_scala_relay(args, root, peers):
     config = json.loads((root / "genesis" / "configuration.yaml").read_text())
     config["PeerSharing"] = bool(getattr(args, "peer_sharing", True))
     config["ExperimentalProtocolsEnabled"] = getattr(args, "max_ntn_version", 15) > 15
+    if getattr(args, "consensus_mode", None) is not None:
+        config["ConsensusMode"] = args.consensus_mode
     (root / "genesis" / "scala-configuration.json").write_text(json.dumps(config, indent=2))
     program += ["--config", "/genesis/scala-configuration.json"]
     command = scala_container(args, root, classpath, "xyz.kd5ujc.scarab.node.Main", program,

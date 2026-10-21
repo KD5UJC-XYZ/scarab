@@ -5,6 +5,7 @@ import subprocess
 import sys
 import time
 from ..cluster import up
+from ..consensus import arguments
 from ..util import ENTRY, data_root, docker, read_log
 
 # `docker stop -t STOP_LIMIT` sends SIGTERM and kills after the limit; a node that ends by itself needs far less
@@ -43,8 +44,8 @@ def format_problem(magics):
     return None
 
 
-def _start(name):
-    command = [sys.executable, str(ENTRY), "--name", name, "follow", "--db"]
+def _start(args):
+    command = [sys.executable, str(ENTRY), "--name", args.name, "follow", "--db", *arguments(args)]
     return subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
 
@@ -73,7 +74,7 @@ def restart(args):
     failures, stops = [], []
     for round_ in (1, 2):
         before = len(read_log(root / "follower.jsonl")[0])
-        process = _start(args.name)
+        process = _start(args)
         if not _wait_for(root, "extended", 120, before):
             failures.append(f"round {round_}: no block followed within 120 s")
             docker("rm", "-f", f"{args.name}-scala", check=False)
