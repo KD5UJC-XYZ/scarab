@@ -1,0 +1,17 @@
+{
+  "dependencies": {
+    "@octokit/rest": "20.1.2",
+    "release-please": "17.11.2"
+  },
+  "name": "scarab-release-pr-preparation",
+  "version": "0.0.0",
+  "private": true,
+  "engines": {
+    "node": "24.22.1"
+  },
+  "scripts": {
+    "test": "node --test coordinator.test.cjs github-pr.test.cjs"
+  },
+  "packageManager": "npm@11.19.1",
+  "license": "Apache-2.0"
+}
