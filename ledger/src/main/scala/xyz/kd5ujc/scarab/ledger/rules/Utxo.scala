@@ -44,10 +44,11 @@ import xyz.kd5ujc.scarab.ledger.state.*
 final case class UtxoEnv[+C](ctx: TxEnv, pp: ProtocolParams, cert: C)
 
 /** What the instant stake of the UTxO becomes as outputs are created and spent
-  * (`addConwayInstantStake`, `deleteConwayInstantStake`, `Conway/State/Stake.hs:87-108`): the
-  * lovelace of an output with a stake credential is added to (or taken from) the credential's
-  * entry, and an entry that reaches zero is removed. An output of an address with no stake
-  * credential (an enterprise address, a pointer address, a Byron address) is not in it.
+  * (`addConwayInstantStake`, `deleteConwayInstantStake`, `Conway/State/Stake.hs:87-120` at
+  * f649f975): the lovelace uses native Word64 arithmetic, and an entry that reaches zero is
+  * removed. An absent credential receives the output amount for either operation, as native
+  * Map.alter specifies. An output of an address with no stake credential (an enterprise address, a
+  * pointer address, a Byron address) is not in it.
   */
 object InstantStakeOps:
   private def adjust(
@@ -59,9 +60,13 @@ object InstantStakeOps:
       case Address.Kind.Shelley(_, _, Some(credential), _) =>
         for
           c <- Convert.credential[Staking](credential)
-          next <- CompactCoin.fromBigInt(
-            stake.get(c).fold(BigInt(0))(_.toBigInt) + sign * out.value.coin
-          )
+          amount <- CompactCoin.fromBigInt(out.value.coin)
+          next = stake.get(c).fold(amount) { old =>
+            val word =
+              if sign > 0 then Word64.wrappingAdd(old.word, amount.word)
+              else Word64.wrappingSubtract(old.word, amount.word)
+            CompactCoin.fromUnsigned(word.bits)
+          }
         yield if next.word.isZero then stake.removed(c) else stake.updated(c, next)
       case _ => Right(stake)
 
@@ -307,7 +312,11 @@ object Utxo
     if tx.isValid then
       val created = body.outputs.zipWithIndex.map { (out, i) => TxIn(id, i) -> out }
       for
-        stake <- InstantStakeOps.update(s.instantStake, body.outputs, ann.spent)
+        stake <- InstantStakeOps.update(
+          s.instantStake,
+          body.outputs,
+          body.inputs.distinct.sorted.flatMap(utxo.get)
+        )
         deposited <- Coin.fromBigInt(s.deposited.value + deposits - refunds)
         fees <- Coin.fromBigInt(s.fees.value + body.fee)
         donation <- Coin.fromBigInt(s.donation.value + body.donation)

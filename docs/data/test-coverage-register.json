@@ -132,15 +132,18 @@
     },
     {
       "id": "incoherent-cache-generators",
-      "classification": "known-divergence",
-      "status": "open",
-      "scope": "Nine retained generated cases with incoherent cached instant stake.",
-      "assertion": "Require the exact typed compact-coin underflow; keep the original native/formal judgments and separate lawful counts.",
-      "rationale": "Historical native/formal acceptance of incoherent cached state does not establish a lawful replay input or justify claiming parity.",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "All 17 original generated-cache contexts (nine native accepts and eight refusals), separately counted from 39 coherent-state inputs.",
+      "assertion": "Replay unchanged complete native accepted state fields and UTxO entries under the documented byte adapter; require one complete typed cause to occur in each native refusal list, without claiming full list/order equality. Pin 58 observations and 56 distinct rule inputs (37 accepts, 19 refusals).",
+      "rationale": "The discrepancy was checked signed arithmetic versus native modular Word64 arithmetic and missing-entry insertion, not an evidenced native cache-coherence precondition.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
-      "resolution": "Establish the native precondition or repair generator construction independently, retaining all original judgments and a separately counted regression.",
+      "resolution": "Match modular arithmetic, absent-entry insertion, zero removal and native TxIn deletion order; retain checked CompactCoin construction, seven source-derived controls and all original fixture bytes.",
       "evidence": [
+        "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Utxo.scala",
+        "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Word64.scala",
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/rules/InstantStakeArithmeticSuite.scala",
         "node/src/test/scala/xyz/kd5ujc/scarab/node/UpstreamFreshLedgerConformanceSuite.scala",
         "node/src/test/resources/upstream/conway-pv11-generators/README.md"
       ],
@@ -149,16 +152,19 @@
     {
       "id": "cddl-optional-seeds",
       "classification": "sampling-limit",
-      "status": "open",
-      "scope": "Optional CDDL sampling and unsupported grammar paths in fuzz seed construction.",
-      "assertion": "Every registered decoder target has accepted seeds; an unsupported optional sample batch contributes no seeds.",
-      "rationale": "A populated target can still lack coverage of an optional constructor or grammar production.",
+      "status": "covered",
+      "scope": "Configured ChainSync header, LeiosFetch and LeiosNotify CDDL seed catalogs, including their declared imports and existing wire adapters.",
+      "assertion": "Every requested sample is required; missing modules/rules, unsupported grammar and sampling cycles fail. Require 120 samples per formerly empty catalog and all 8/5/8 constructor tags.",
+      "rationale": "Optional partial-module fallbacks previously converted unsupported or unresolved batches into empty vectors; restored imports supply the intended configured schemas.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
-      "resolution": "Add independently justified seeds for each missing production and remove unsupported-batch fallbacks when supported.",
+      "resolution": "Retain strict batch counts and negative controls; 360 actual samples passed independent Cuddle 1.8.1 validation against the composed schemas, including existing base.word16 and tx=any adapters. This is schema membership, not signed Cardano transaction admission.",
       "evidence": [
         "fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/Corpus.scala",
-        "fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/GuardSuite.scala"
+        "fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/GuardSuite.scala",
+        "models/src/main/cddl/models.conf",
+        "models/src/main/cddl/overrides/leios-fetch-tx.cddl",
+        "docs/models.md"
       ],
       "candidateRequired": false
     },
@@ -166,12 +172,12 @@
       "id": "cddl-constructor-optionals",
       "classification": "input-boundary",
       "status": "open",
-      "scope": "Non-trailing optional fields in the generic CDDL sampler and hand-built generated values.",
-      "assertion": "Sampler construction forces the supported optional layout; a hand-built None can produce an invalid shortened array.",
-      "rationale": "Generator-domain restrictions are not a decoder conformance exemption.",
+      "scope": "Public generated constructors, preserved field/raw consistency and optional array layouts.",
+      "assertion": "Generated case classes and copied preserved values can violate greedy optional layout or field/raw consistency; the checked writer does not currently guarantee these contracts.",
+      "rationale": "Byte-only round trips do not prove member consistency. Pinned Cuddle inline backtracking differs from its spliced-group behavior; RFC8610 greedy semantics support retaining the current Scala matching rule rather than treating validator acceptance alone as normative validity.",
       "owner": "Scarab maintainers",
-      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
-      "resolution": "Encode constructor validity in the generated types or validate the boundary; cover all valid optional layouts with independent examples.",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/86",
+      "resolution": "Implement typed checked construction/member validation, including preserved field/raw coherence and optional presence, while retaining greedy matching and independent group controls. Keep the reproduced validator observations distinct from expected normative behavior; tracked by M13/#86.",
       "evidence": [
         "models-gen/src/main/scala/xyz/kd5ujc/scarab/models/gen/CddlSampler.scala",
         "docs/models.md"
@@ -274,16 +280,34 @@
     {
       "id": "legacy-native-comparison-gaps",
       "classification": "known-divergence",
-      "status": "pending-integration",
-      "scope": "Legacy ledger-query byte masks and rounded numeric projection comparisons on the current base.",
-      "assertion": "Four ledger-query answer shapes compare bytes outside explicitly reported masked fields; legacy projection numeric comparisons round to ten decimal digits.",
-      "rationale": "Masked equality and rounded numeric equality do not establish complete native answer equality. Their removal is owned by the separate query/provenance workstream.",
+      "status": "covered",
+      "scope": "Removal of four legacy debug-ledger answer masks and rounded numeric projection comparisons, integrated by PR #285.",
+      "assertion": "Same-point query answers require complete wire-byte equality and valid debug-state framing; native projection comparisons use exact represented values without decimal rounding.",
+      "rationale": "This bounded contract does not establish universal ledger equivalence: projection comparison checks reference fields and digests, permits extra Scala fields and excludes era metadata. Historical masked receipts remain qualified.",
       "owner": "Scarab query/provenance workstream",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/pull/285",
-      "resolution": "Integrate the separately owned query/provenance work, remove the masks/tolerance, and retain unmasked exact native-comparison receipts.",
+      "resolution": "Retain the unmasked private-native receipt on runtime d9d089039 (330/330 query answers, including 20 debug-state pairs) separately from final f7795522 CI (6,915 passed, 17 skipped). Neither receipt establishes the twelve-case external candidate campaign.",
       "evidence": [
         "scripts/devnet/ntcqueries.py",
-        "scripts/oracle/compare.py"
+        "scripts/devnet/ledgercompare.py",
+        "scripts/devnet/scenarios/ntc.py",
+        "scripts/oracle/compare.py",
+        "docs/compatibility.md"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "pre-conway-instant-stake-arithmetic",
+      "classification": "known-divergence",
+      "status": "open",
+      "scope": "Pre-Conway ShelleyInstantStakeOps credential and pointer caches, separately from the nine corrected Conway cases.",
+      "assertion": "Source inspection shows checked signed updates and input-order deletion where the pinned native updater uses modular Word64 operations, missing-entry insertion and ordered UTxO traversal. New arbitrary-cache native API captures have not been executed.",
+      "rationale": "Correcting the Conway corpus does not establish parity for the analogous earlier-era updater; no cache-coherence precondition justifies ignoring these source differences.",
+      "owner": "Scarab ledger maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/299",
+      "resolution": "Capture actual pinned native API boundary results for both maps, align arithmetic and traversal order while preserving checked input conversion, and retain focused/full/scenario receipts.",
+      "evidence": [
+        "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/ShelleyUtxo.scala"
       ],
       "candidateRequired": true
     }

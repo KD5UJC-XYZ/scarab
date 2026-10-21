@@ -23,9 +23,13 @@ rejection text is retained; it is not claimed equal.
 Twenty-six fixed runner invocations passed. They produced **41 lawful observations,
 39 unique typed STS input tuples**: 28 unique accepted outputs and 11 refusals.
 Two repeated bootstrap funding hooks are retained and marked `duplicateOf`; they
-do not add coverage. Separately, nine original incoherent-cache draws remain typed
-domain-refusal controls, not native/Scarab parity passes. The focused Scala suite
-checks these records and their provenance.
+do not add coverage. Separately, nine original generated-cache regressions now compare
+complete unchanged native accepted outputs. The eight other original generated states also
+replay their retained native refusals,
+checking typed failure membership rather than accumulated-list equality. Together these are
+**56 unique native rule inputs** (37 accepts and 19 refusals) across 58 observations;
+the coherent-state supplement and original cache cases remain
+separately counted. The focused Scala suite checks all original records and their provenance.
 
 | Boundary | Cases |
 |---|---|
@@ -60,13 +64,24 @@ LEDGER/LEDGERS context construction is supplemental; it is not advertised as fou
 unchanged upstream property registrations.
 
 The original generator leaves cached instant stake unrelated to the actual UTxO.
-All **17** original generated states had this inconsistency; nine accepted
-native/formal outputs reached a precise `Negative(CompactCoin, amount)` in Scala.
-The first Scala run was **28 passed / 9 failed**. The other eight records rejected
-before reaching the bad cache. Original observations are retained under
-[original-generated](original-generated), and the nine underflows are also explicit
-suite controls. Native accepted/formal accepted on an incoherent cached state is
-not counted as Scarab parity, and no CompactCoin bound was relaxed.
+All **17** original generated states had this discrepancy; nine accepted
+native/formal outputs reached `Negative(CompactCoin, amount)` in the first Scala run
+(**28 passed / 9 failed**). The other eight records rejected before updating the cache.
+Original observations remain under [original-generated](original-generated). The manifest's
+`originalIncoherentScalaReplay`, `expectedUnderflow` fields and exporter patch preserve that
+historical run and its original interpretation; they do not describe current exclusions.
+
+Source review identified a production arithmetic mismatch, not an evidenced native input
+precondition. At the same pin,
+[`Conway/State/Stake.hs:87–120`](https://github.com/IntersectMBO/cardano-ledger/blob/f649f9751074d2ab3de033fc3912f29c9862c1f5/eras/conway/impl/src/Cardano/Ledger/Conway/State/Stake.hs#L87)
+uses modular `Word64` addition/subtraction, inserts the amount on a missing credential for
+both operations, and removes zero entries. Native
+[`Shelley/Rules/Utxo.hs:613–624`](https://github.com/IntersectMBO/cardano-ledger/blob/f649f9751074d2ab3de033fc3912f29c9862c1f5/eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxo.hs#L613)
+adds new outputs before deleting the ordered input map. Scarab now matches those operations,
+including input-map order, and compares all nine original full native accepted states instead
+of expecting underflow. Checked output-coin conversion, CompactCoin bounds, original signed
+bytes and all native/formal judgments remain unchanged. Seven source-derived arithmetic and
+ordering controls exercise the production updater; they are not additional native captures.
 
 The lawful supplement applies native `smartUTxOState` to the exact original UTxO,
 computes deposits using native `totalObligation`, and supplies the same current
@@ -75,8 +90,11 @@ contexts, environments and signals are byte-identical; their complete native UTx
 maps, fees and donations are unchanged. Only explicitly constructed state fields
 change. Native/formal execution runs again on those full lawful states before
 Scala replay. The suite independently recomputes instant stake from the complete
-UTxO, asserts the original cache precondition fails, and checks each exact typed
-underflow rather than accepting any `Left`.
+UTxO, asserts the original cache differs, and compares the nine original native outputs
+separately. The eight original refusals use
+their original input states and native failure lists, bringing strict replay to all 17 original
+generated states; no coherent-state reconstruction substitutes for those judgments.
+The coherent supplement does not replace or waive those original cases.
 
 ## Formal runtime repair and historical failures
 

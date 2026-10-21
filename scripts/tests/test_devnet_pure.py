@@ -14,7 +14,7 @@ from fractions import Fraction
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from devnet import cbor, cluster, compare, encoding, eraload, eratx, eraview, govextra, govview, ntccli, ntclocal, ntcqueries, ntcquery, refused_fixture, util  # noqa: E402
+from devnet import cbor, cluster, compare, encoding, eraload, eratx, eraview, follower, govextra, govview, ntccli, ntclocal, ntcqueries, ntcquery, refused_fixture, util  # noqa: E402
 from devnet.scenarios import peercut
 from devnet.scenarios import ntc  # noqa: E402
 from devnet.scenarios import pool  # noqa: E402
@@ -34,6 +34,21 @@ def bech32_text(hrp, data):
     acc <<= pad
     chars = [encoding.BECH32[(acc >> (5 * i)) & 31] for i in reversed(range((bits + pad) // 5))]
     return hrp + "1" + "".join(chars) + "qqqqqq"
+
+
+class FollowerCommandTest(unittest.TestCase):
+    def test_explicit_cpu_limit_reaches_child_cli_without_changing_oracle_option(self):
+        with patch.object(follower.subprocess, "Popen") as launch:
+            follower.start_follower("audit", pathlib.Path("/tmp/audit"), oracle=True, scala_cpus=4)
+        self.assertEqual(launch.call_args.args[0], [
+            sys.executable, str(follower.ENTRY), "--name", "audit", "follow",
+            "--dump-state", "--scala-cpus", "4"])
+
+    def test_omitted_cpu_limit_preserves_child_cli_default(self):
+        with patch.object(follower.subprocess, "Popen") as launch:
+            follower.start_follower("audit", pathlib.Path("/tmp/audit"))
+        self.assertEqual(launch.call_args.args[0], [
+            sys.executable, str(follower.ENTRY), "--name", "audit", "follow"])
 
 
 class RenameFallbackTest(unittest.TestCase):

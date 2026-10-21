@@ -63,13 +63,18 @@ node-local signing and a secret-memory boundary that require review.
   remains [K3a / #179](https://github.com/KD5UJC-XYZ/scarab/issues/179). Full Ouroboros Genesis
   density and ledger-dependent fork choice remain [G3 / #33](https://github.com/KD5UJC-XYZ/scarab/issues/33);
   finite fork/withholding tests do not close that gap. Per-client mempool admission fairness remains G5-F1.
-- Current conformance exceptions and query masks are review inputs, not accepted audit waivers.
+- Conformance gaps and historical query masks are review inputs, not accepted audit waivers.
   Apply the [threat-model policy](threat-model.md#evidence-limits-and-review-policy): remove
   Scarab-side ignores unless a specific evidenced JVM constraint justifies a narrowly documented
-  exception. The elimination/reconciliation work remains open; a passing masked comparison must
-  retain that label. [PR #273](https://github.com/KD5UJC-XYZ/scarab/pull/273) now computes fresh non-myopic
-  likelihoods; historical missing state and operational provenance transitions remain
-  [#129](https://github.com/KD5UJC-XYZ/scarab/issues/129). Review the integrated behavior on the agreed candidate.
+  exception. [PR #285](https://github.com/KD5UJC-XYZ/scarab/pull/285) removed the four debug-ledger
+  masks and numeric projection rounding. Its retained private run on runtime `d9d089039` matched
+  330/330 complete same-point query answers, including 20 debug-state pairs; see
+  [compatibility evidence](../compatibility.md). Historical masked runs retain their qualifications.
+  The [coverage register](../data/test-coverage-register.json) records remaining dataset, generator
+  and sampling gaps; no authentic twelve-case external candidate campaign is established here.
+  Operational provenance transitions remain [#129](https://github.com/KD5UJC-XYZ/scarab/issues/129).
+  Review the integrated behavior on the agreed candidate; finite devnet equality is not universal
+  chain equivalence.
 - No independent review or review-ready candidate evidence bundle is asserted. Signed releases/SBOM
   remain the broader O2 / [#75](https://github.com/KD5UJC-XYZ/scarab/issues/75) work; preparation of
   build reproducibility artifacts is separate from creating the O5 reviewer bundle.

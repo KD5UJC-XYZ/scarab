@@ -10,7 +10,7 @@ import xyz.kd5ujc.scarab.ledger.byron.ByronBody
 import xyz.kd5ujc.scarab.ledger.{Address, TxBody}
 import scala.jdk.CollectionConverters.*
 import scala.util.Random
-import xyz.kd5ujc.scarab.models.gen.{CddlSampler, Config, GenError, Generator, QName}
+import xyz.kd5ujc.scarab.models.gen.{CddlSampler, Config, Generator, QName}
 
 /** The seeds the mutations start from: committed fixtures, and valid CBOR sampled from the pinned
   * CDDL.
@@ -189,8 +189,13 @@ object Corpus extends munit.Assertions:
       s"module node-to-node-version-data-v16 v16 $specs/node-to-node-version-data-v16.cddl",
       s"module handshake-node-to-node-v14 hs $specs/handshake-node-to-node-v14.cddl",
       s"module handshake-node-to-client hc $specs/handshake-node-to-client.cddl",
-      "module base chain upstream/ouroboros-consensus/ouroboros-consensus-cardano/cddl/base.cddl",
-      "module chainsync-header hfc upstream/ouroboros-consensus/ouroboros-consensus-cardano/cddl/node-to-node/chainsync/header.cddl"
+      "module base chain upstream/ouroboros-consensus/ouroboros-consensus-cardano/cddl/base.cddl overrides/base-word16.cddl",
+      "module chainsync-header hfc upstream/ouroboros-consensus/ouroboros-consensus-cardano/cddl/node-to-node/chainsync/header.cddl",
+      "module header leiosheader upstream/ouroboros-consensus/ouroboros-consensus-cardano/cddl/node-to-node/chainsync/header.cddl",
+      "module tx leiostx overrides/leios-fetch-tx.cddl",
+      "module leios-fetch leiosfetch upstream/cardano-blueprint/src/network/node-to-node/leios-fetch/messages.cddl",
+      "module leios-notify leiosnotify upstream/ouroboros-consensus/ouroboros-consensus-cardano/cddl/node-to-node/leiosnotify/leiosNotify.cddl",
+      "module byron byron upstream/cardano-ledger/eras/byron/ledger/impl/cddl-spec/byron.cddl"
     )
     val ledger = eras.map { e =>
       val extra =
@@ -208,24 +213,14 @@ object Corpus extends munit.Assertions:
       .map(new CddlSampler(_))
       .fold(e => fail(e.message), identity)
 
-  /** Valid items of a CDDL rule (`module:rule`); empty when the sampler cannot express the rule. */
+  /** Every requested CDDL sample is required; schema or sampling defects fail the seed gate. */
   def sampled(rule: String, count: Int = 60, seed: Long = 11): Vector[Array[Byte]] =
     val Array(m, n) = rule.split(":", 2): @unchecked
     val rnd = new Random(seed ^ rule.hashCode)
     Vector
       .fill(count)(())
       .traverse(_ => sampler.sample(QName(m, n), rnd))
-      .fold(
-        {
-          // This optional seed catalogue uses partial CDDL modules. A rule whose imports or
-          // dependencies are absent cannot supply seeds; configuration/loading defects still fail.
-          case GenError.Unsupported(_, _) | GenError.SamplingCycle(_) |
-              GenError.UnknownModule(_, _) | GenError.UnresolvedName(_, _) =>
-            Vector.empty
-          case other => fail(other.message)
-        },
-        identity
-      )
+      .fold(error => fail(s"$rule: ${error.message}"), identity)
 
   def sampledEras(rule: String, from: String = "shelley"): Vector[Array[Byte]] =
     eras.dropWhile(_ != from).flatMap(e => sampled(s"$e:$rule", 25)).toVector

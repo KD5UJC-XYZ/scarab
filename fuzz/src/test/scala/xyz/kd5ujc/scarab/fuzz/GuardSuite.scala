@@ -83,13 +83,31 @@ class GuardSuite extends FunSuite:
       assert(after > before, s"pinned upstream fixture seeds were not accepted by $name")
   }
 
-  test("optional partial-schema samples may be absent while available rules still supply seeds") {
-    for rule <- Vector(
-        "chainsync-header:header",
-        "leios-fetch:leiosBlockFetchMessage",
-        "leios-notify:leiosNotifyMessage"
-      )
-    do assertEquals(Corpus.sampled(rule, count = 4), Vector.empty[Array[Byte]], rule)
+  test("previously missing imported CDDL modules supply every constructor without dropped seeds") {
+    val rules = Vector(
+      "chainsync-header:header" -> (0 to 7).toSet,
+      "leios-fetch:leiosBlockFetchMessage" -> (0 to 4).toSet,
+      "leios-notify:leiosNotifyMessage" -> (0 to 7).toSet
+    )
+    rules.foreach { (rule, expected) =>
+      val samples = Corpus.sampled(rule, count = 120)
+      assertEquals(samples.size, 120, rule)
+      val tags = samples.map { bytes =>
+        Cbor.decode(Bytes.fromArray(bytes)).fold(e => fail(e.toString), identity).value match
+          case Value.Arr(fields) =>
+            fields.headOption.map(_.value) match
+              case Some(Value.UInt(tag)) => tag.toInt
+              case other                 => fail(s"$rule has no constructor tag: $other")
+          case other => fail(s"$rule is not an array: $other")
+      }.toSet
+      assertEquals(tags, expected, rule)
+    }
+  }
+
+  test("unknown modules, missing rules and unsupported standalone groups fail the seed gate") {
+    Vector("missing:rule", "conway:missing_rule", "conway:pool_params").foreach { rule =>
+      intercept[munit.FailException](Corpus.sampled(rule, count = 4))
+    }
     assertEquals(Corpus.sampled("conway:transaction_input", count = 4).size, 4)
   }
 

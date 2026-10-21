@@ -29,6 +29,13 @@ object Word64:
   /** The word whose bits are `bits` (so `-1` is 2^64 - 1). Total. */
   def fromUnsigned(bits: Long): Word64 = bits
 
+  /** Native Word64 arithmetic modulo 2^64, for rules that explicitly use it. Checked constructors
+    * and [[Word64.successor]] retain their separate refusal contracts.
+    */
+  private[ledger] def wrappingAdd(left: Word64, right: Word64): Word64 = left + right
+
+  private[ledger] def wrappingSubtract(left: Word64, right: Word64): Word64 = left - right
+
   extension (w: Word64)
     /** The two's-complement bits, for a codec that writes the word as 8 bytes. */
     def bits: Long = w
