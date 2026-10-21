@@ -4,7 +4,6 @@ package xyz.kd5ujc.scarab.node.mempool
 import cats.effect.IO
 import io.circe.parser.parse
 import java.nio.file.{Files, Path}
-import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.*
@@ -16,7 +15,7 @@ import xyz.kd5ujc.scarab.node.forge.BlockBuilder
   * recorded `raw-dst` boundary cases (a script that passes or fails, each claimed valid or invalid;
   * `fixtures/reference/plutus-boundaries`) over a Conway ledger that holds their inputs.
   */
-class MempoolInterventionSuite extends CatsEffectSuite:
+class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   private given cats.mtl.Raise[IO, StorageError] with
     def functor = cats.Functor[IO]
     def raise[E <: StorageError, A](error: E): IO[A] = IO(fail(error.message))
@@ -32,22 +31,28 @@ class MempoolInterventionSuite extends CatsEffectSuite:
     def raw(flag: Boolean): Bytes = MempoolState.encode(parts.copy(isValid = flag))
     def pool: MempoolState = MempoolState.empty(Right(ledger), tipSlot, 1000000)
 
+  private def hex(j: io.circe.Json, field: String): Option[Bytes] =
+    j.hcursor
+      .get[Option[String]](field)
+      .fold(e => fail(e.message), identity)
+      .map(h => Bytes.fromHex(h).fold(e => fail(e.message), identity))
+
   private val cases: Map[String, Case] =
     parse(
       Files.readString(
         Path.of("fixtures/reference/plutus-boundaries/transactions/conway-pv10.json")
       )
     )
-      .fold(e => sys.error(e.message), identity)
+      .fold(e => fail(e.message), identity)
       .asArray
-      .getOrElse(Vector.empty)
+      .getOrElse(fail("the boundary fixture is not an array"))
       .map { j =>
-        def hex(f: String) = j.hcursor.get[String](f).toOption.map(Bytes.fromHex(_).toOption.get)
         val plutus = PlutusCase.fromJson(j)
+        val body = hex(j, "body").getOrElse(fail("a case has no body"))
+        val witnesses = hex(j, "witnesses").getOrElse(fail("a case has no witnesses"))
         plutus.name -> Case(
           plutus,
-          Block
-            .Transaction(hex("body").get, hex("witnesses").get, hex("auxiliary"), plutus.tx.isValid)
+          Block.Transaction(body, witnesses, hex(j, "auxiliary"), plutus.tx.isValid)
         )
       }
       .toMap
