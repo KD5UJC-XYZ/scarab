@@ -77,6 +77,11 @@
     "SCARAB_PREVIEW_REFERENCE": {
       "path": "preview-reference",
       "kind": "directory"
+    },
+    "SCARAB_NATIVE_K1_DB": {
+      "path": "preview-native-k1",
+      "kind": "directory"
     }
-  }
+  },
+  "nativeK1SecondaryCount": null
 }

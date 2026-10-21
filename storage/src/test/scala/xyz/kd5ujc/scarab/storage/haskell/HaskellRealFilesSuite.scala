@@ -9,7 +9,7 @@ import scala.util.Using
 
 /** Complete captured native index files must parse successfully and agree with the legacy Scala
   * parsers. This is a differential regression, not an independent Haskell acceptance oracle.
-  * `SCARAB_K1_DB` names the pinned external database; its artifact identity belongs to the
+  * `SCARAB_NATIVE_K1_DB` names the pinned external database; its artifact identity belongs to the
   * candidate manifest. Closed files are strict; only the greatest numeric chunk may retain a
   * partial tail, matching HaskellImmutableReader. Tail byte counts are reported separately, never
   * erased from source files or counted as decoded entries. Other malformed-input controls remain
@@ -22,10 +22,23 @@ class HaskellRealFilesSuite extends FunSuite:
   private val chunkSlots = ChunkSlots.of(4320).getOrElse(fail("invalid constant chunk geometry"))
 
   private def immutableDir: Option[Path] =
-    sys.env.get("SCARAB_K1_DB").map(Path.of(_).resolve("immutable")).filter(Files.isDirectory(_))
+    sys.env
+      .get("SCARAB_NATIVE_K1_DB")
+      .map(Path.of(_).resolve("immutable"))
+      .filter(Files.isDirectory(_))
 
   test("every chunk's primary and secondary index parse as they did before") {
-    assume(immutableDir.isDefined, "SCARAB_K1_DB is not set")
+    assume(immutableDir.isDefined, "SCARAB_NATIVE_K1_DB is not set")
+    if sys.env.contains("SCARAB_CANDIDATE_RUNTIME") then
+      val heap = Runtime.getRuntime.maxMemory()
+      val processors = Runtime.getRuntime.availableProcessors()
+      val directory = Path.of("").toAbsolutePath.normalize()
+      println(
+        s"candidate-runtime project=storage maxHeapBytes=$heap processors=$processors workingDirectory=$directory"
+      )
+      assert(heap >= 16L * 1024 * 1024 * 1024, s"candidate fork heap is only $heap bytes")
+      assertEquals(processors, 4)
+      assertEquals(directory, Path.of("/work"))
     val dir = immutableDir.getOrElse(fail("required native ImmutableDB directory is absent"))
     val files = Using.resource(Files.list(dir)) { entries =>
       entries.iterator().asScala.filter(Files.isRegularFile(_)).map(_.getFileName.toString).toVector

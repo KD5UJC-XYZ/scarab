@@ -1,10 +1,41 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Offline candidate acceptance
 
-Status: controller implemented; **real external datasets are unavailable and acceptance has not
-run**. The tracked input manifest deliberately has `status: unavailable`, null URL/hash/provenance
-and therefore fails before a download, Docker build or test invocation. This is not an acceptance
-receipt. Work is tracked by [#294](https://github.com/KD5UJC-XYZ/scarab/issues/294).
+Status: **all 12 mandatory external cases and all 66 additional controls passed**, with zero
+skips, missing cases, failures or errors, on 2026-10-21 UTC. The
+[retained acceptance receipt](../../docs/data/external-acceptance-294.json) records the measured
+source, actual Docker image, test JVM observations, complete input inventory identity and report
+hashes. The default input manifest remains deliberately unavailable: operators supply the reviewed
+manifest and original private datasets explicitly. See [#294](https://github.com/KD5UJC-XYZ/scarab/issues/294).
+
+## Preserved inputs and completed preparation
+
+Archive `scarab-acceptance-inputs-2026-10-20`, supplemented by its `gate-2026-10-21` input/evidence
+set, retains original native observations, all 1,451 maintained V5 snapshots, authentic captures,
+signed manifests and worker reconstruction instructions. Access mappings remain in the private
+worker handoff. Original expected results were not regenerated. The input tree uses hard links
+and read-only mounts rather than a second bulk copy; its complete per-file inventory is verified
+before and after execution.
+
+The untouched original Mithril bootstrap was reconstructed offline through production import using
+its original artifact/certificates/digests and official pinned client. It restores slot 125660129,
+block 4769524, with 3,192,290 UTxOs. Native Haskell indexes and recorded Scarab boundary data have
+separate input roles; the reviewed native source contains 29,091 complete triplets. Maintained
+preprod identity metadata was upgraded once to V6 with retained original bytes and conversion
+provenance; acceptance does not perform legacy adoption.
+
+The run compares all 4,526,058 preprod table entries and matching checkpoint keys/semantics,
+original native state/table export bytes and V5 import/restore, six unchanged boundary digests,
+5,683 captured preprod blocks across serial/parallel modes, and 8,380 original Preview blocks.
+Preview compares every required native field at the one original indexed reference point and
+reproduces all nine expected invalid transactions, with no collection/unavailability failures.
+This is bounded native projection and Scala execution evidence, not universal whole-state parity.
+
+Confirmed harness failures were corrected rather than waived: storage's ordinary in-process
+sbt grouping ignored the requested fork heap; default subprocess working directories hid maintained
+fixtures; export needed a writable sibling lock outside its read-only database; and signed import
+needed the ancillary manifest's immutable tail triplet. Raw failing reports and positive probes are
+retained alongside the successful receipt. No production ledger or codec logic changed.
 
 ## Boundary
 
@@ -35,8 +66,9 @@ SHA-256, compressed-byte limit, expanded-byte limit, entry limit and all approve
 Keep the original native bytes and expectations unchanged. The controller never generates expected
 outputs, downloads an unpinned latest dataset, accepts a native non-result as false, or changes a
 coverage-register status. The known preprod tables hash is additionally checked independently in
-the controller; its sibling `state` and `meta` must accompany it. K1 includes all 29,031 secondary
-indexes and its current-format snapshot corpus; the Plutus baseline retains its original fixed
+the controller; its sibling `state` and `meta` must accompany it. The reviewed manifest pins the
+genuine complete native secondary-index count; native Haskell indexes and the current-format
+Scarab snapshot corpus occupy separate roles. The Plutus baseline retains its original fixed
 snapshot/checkpoint stem. Native tests enforce their additional state, keyset and original-byte
 contracts.
 
@@ -93,3 +125,57 @@ and the replay track's complete native-body comparison/summary. Rebase onto thos
 before treating a real run as candidate acceptance. Updating coverage status and promoting a
 candidate are separate reviewed actions linked to that actual retained receipt; an absent dataset
 or successful controller unit test does not close the gap.
+
+## Local inventory mode
+
+For a reviewed LAN/offline tree, use an artifact with `kind: local-inventory`, `url: null`,
+`inventory: <relative JSON filename>` and `sha256` equal to that inventory's SHA-256. The inventory
+lives beside the input manifest and contains `schemaVersion: 1` and a `files` array of canonical
+relative `path`, exact `bytes` and `sha256` fields for every file in the input tree. Bounds apply
+both to the inventory document and the complete payload/entry count. `nativeK1SecondaryCount`
+pins the native source's genuine complete secondary-index count; it is not a selection limit.
+
+```sh
+python3 scripts/candidate_acceptance.py --manifest /reviewed/inputs.json \
+  --local-inputs /reviewed/input-tree --output /tmp/scarab-candidate-unique-run
+```
+
+All files must belong to declared input mappings. Missing, changed, extra, duplicate, linked,
+nonregular or signing-key inputs are refused. The controller verifies the complete tree before
+and after execution, mounts it read-only, and never chmods, extracts over or removes these inputs.
+`--cleanup` removes only the controller's generated output. The receipt records the inventory
+identity as the local artifact identity, distinct from an HTTPS archive identity. Shared dependency
+caches are mounted at the same `/work/.cache` path as other worktree builds; the sbt socket stays
+private. The default manifest remains unavailable until a real reviewed manifest is supplied.
+
+`SCARAB_K1_DB` supplies the V5 snapshots and matching recorded Scarab immutable data for boundary
+checks. `SCARAB_NATIVE_K1_DB` separately supplies the complete original Haskell database for native
+index parsing. Fixture trees may be materialized with hard links to immutable original files;
+never chmod those shared inodes or allow a writable container mount. Preserving the original
+Mithril bootstrap requires keeping its initial snapshot/checkpoint before any follower replay.
+
+The controller explicitly overrides `Test / testGrouping` with a subprocess group. Storage's
+ordinary build group uses `Tests.InProcess`, which ignores `Test / fork := true` and its heap
+options. Gate-only runtime observations in the native-index and boundary tests assert and record
+at least a 16 GiB maximum heap and exactly four configured processors. The final receipt requires
+both actual observations; merely mentioning JVM options in a command cannot establish the runtime.
+The ordinary small-heap storage regression remains part of normal `check`, outside these selected
+external suites. A reproduced old-policy run fails the heap assertion before parsing native files.
+
+Forks also pin their working directory to the build root. The native ledger-file and streaming
+suites load maintained fixtures relative to that root; module-default fork directories cannot
+supply them. Runtime guards record and assert `/work` alongside heap and processor observations,
+and receipt validation rejects a module-directory observation. This leaves all fixture reads and
+byte/state comparisons intact.
+
+The export database has an additional read-only bind below owned writable results. Its stable
+ownership lock is a sibling of the database, so mounting the entire parent read-only prevents
+export before any comparison. Only that scratch parent is writable; original database bytes stay
+read-only and the export suite still checks their complete before/after fingerprints. The signed
+preprod ancillary manifest's complete file list, including its native immutable tail triplet,
+must accompany the ledger files; the recorded Scarab database is a separate input role.
+Maintained recorded databases use the current network-identity format. Fixture preparation
+upgrades their metadata once through the normal admission API, retaining the original identity
+and conversion provenance separately. Acceptance does not adopt legacy identities while running.
+The upgraded metadata records operator confirmation rather than inventing historical proof of
+the genesis fields omitted by the original identity. Native signed ancillary bytes stay unchanged.

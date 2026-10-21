@@ -28,7 +28,7 @@ class CandidateAcceptanceTests(unittest.TestCase):
 
     def available(self):
         value = copy.deepcopy(self.manifest)
-        value.update(status="reviewed", provenance="synthetic controller test only")
+        value.update(status="reviewed", provenance="synthetic controller test only", nativeK1SecondaryCount=29035)
         value["artifact"].update(url="https://example.invalid/public-fixtures.tar", sha256="ab" * 32)
         return value
 
@@ -226,6 +226,9 @@ class CandidateAcceptanceTests(unittest.TestCase):
                     return "a" * 40
                 def execute(command, **_):
                     if command[:2] == ["docker", "run"]:
+                        self.assertIn(f"{self.root}:/candidate/results/export-source/db:ro", command)
+                        self.assertIn("SCARAB_EXPORT_DB=/candidate/results/export-source/db", command)
+                        self.assertTrue((output / "results/export-source/db").is_dir())
                         report.parent.mkdir(parents=True)
                         report.write_bytes(body)
                         if fails_sbt:
@@ -243,6 +246,80 @@ class CandidateAcceptanceTests(unittest.TestCase):
                 self.assertTrue((output / "sbt.log").exists())
                 self.assertEqual(candidate.load_json(output / "failure.json")["status"], "failed")
                 self.assertFalse((output / "receipt.json").exists())
+
+    def local_fixture(self):
+        import hashlib
+        root = self.root / "local"
+        root.mkdir()
+        (root / "dataset").mkdir()
+        (root / "dataset/a").write_bytes(b"original")
+        inventory = self.root / "inventory.json"
+        inventory.write_text(json.dumps({"schemaVersion": 1, "files": [
+            {"path": "dataset/a", "bytes": 8, "sha256": hashlib.sha256(b"original").hexdigest()}
+        ]}))
+        artifact = dict(self.available()["artifact"], kind="local-inventory", url=None,
+                        inventory="inventory.json", sha256=candidate.sha256(inventory))
+        environment = {"SCARAB_MEMPACK_TABLES": {"path": "dataset/tables", "kind": "file"},
+                       "fixture": {"path": "dataset", "kind": "directory"}}
+        return root, artifact, inventory, environment
+
+    def test_local_originals_are_verified_without_chmod_copy_or_download(self):
+        root, artifact, inventory, environment = self.local_fixture()
+        before = (root / "dataset/a").stat()
+        with patch.object(candidate, "download") as download:
+            result = candidate.verify_local_inputs(root, artifact, inventory, environment)
+            download.assert_not_called()
+        self.assertEqual(result["files"], 1)
+        self.assertEqual(result["payloadBytes"], 8)
+        after = (root / "dataset/a").stat()
+        self.assertEqual((before.st_ino, before.st_mode, before.st_mtime_ns),
+                         (after.st_ino, after.st_mode, after.st_mtime_ns))
+
+    def test_local_inventory_rejects_changed_missing_extra_linked_and_unmapped_inputs(self):
+        import shutil
+        for kind in ("changed", "missing", "extra", "linked", "inventory", "unmapped", "duplicate", "size", "entries"):
+            with self.subTest(kind=kind):
+                root, artifact, inventory, environment = self.local_fixture()
+                if kind == "changed":
+                    (root / "dataset/a").write_bytes(b"modified")
+                elif kind == "missing":
+                    (root / "dataset/a").unlink()
+                elif kind == "extra":
+                    (root / "dataset/extra").write_bytes(b"extra")
+                elif kind == "linked":
+                    (root / "dataset/a").unlink()
+                    (root / "dataset/a").symlink_to(inventory)
+                elif kind == "inventory":
+                    inventory.write_text("{}")
+                elif kind == "unmapped":
+                    environment["fixture"]["path"] = "other"
+                elif kind == "duplicate":
+                    document = candidate.load_json(inventory)
+                    document["files"] *= 2
+                    inventory.write_text(json.dumps(document))
+                    artifact["sha256"] = candidate.sha256(inventory)
+                elif kind == "size":
+                    artifact["maxUnpackedBytes"] = 7
+                else:
+                    artifact["maxEntries"] = 1
+                with self.assertRaises(candidate.Rejected):
+                    candidate.verify_local_inputs(root, artifact, inventory, environment)
+                shutil.rmtree(root)
+
+    def test_local_mode_and_pinned_native_count_are_explicit(self):
+        value = self.available()
+        value["artifact"].update(kind="local-inventory", url=None, inventory="inventory.json")
+        candidate.validate_manifest(value)
+        for kind in ("missing-inventory", "url", "count", "boolean-count"):
+            altered = copy.deepcopy(value)
+            if kind == "missing-inventory":
+                altered["artifact"]["inventory"] = "../escape"
+            elif kind == "url":
+                altered["artifact"]["url"] = "https://example.invalid/data"
+            else:
+                altered["nativeK1SecondaryCount"] = True if kind == "boolean-count" else 0
+            with self.assertRaises(candidate.Rejected):
+                candidate.validate_manifest(altered)
 
     def test_output_cannot_be_created_inside_source_checkout(self):
         checkout = self.root / "checkout"
@@ -278,8 +355,20 @@ class CandidateAcceptanceTests(unittest.TestCase):
         path.write_text(json.dumps({"blocks": 4, "referenceTargetsRequired": 4, "referenceBodyComparisons": 4}))
         self.assertEqual(candidate.replay_receipt(path)["referenceBodyComparisons"], 4)
 
+    def test_runtime_receipt_requires_observed_fork_configuration(self):
+        path = self.root / "sbt.log"
+        heap = 16 * 1024**3
+        good = f"candidate-runtime project=storage maxHeapBytes={heap} processors=4 workingDirectory=/work\ncandidate-runtime project=node maxHeapBytes={heap} processors=4 workingDirectory=/work\n"
+        path.write_text(good)
+        self.assertEqual(candidate.runtime_receipt(path)["storage"]["maxHeapBytes"], heap)
+        for value in ("", good + good, good.replace(str(heap), str(2 * 1024**3)), good.replace("processors=4", "processors=2"), good.replace("workingDirectory=/work", "workingDirectory=/work/storage")):
+            path.write_text(value)
+            with self.assertRaises(candidate.Rejected):
+                candidate.runtime_receipt(path)
+
     def test_commands_run_whole_suites_without_benchmark_or_filtered_skip_workaround(self):
         commands = candidate.sbt_commands(self.cases)
         self.assertFalse(any("--tests" in command or "Bench" in command for command in commands))
         self.assertTrue(any("-Xmx16g" in command for command in commands))
         self.assertEqual(sum("/testOnly " in command for command in commands), 2)
+        self.assertEqual(sum("Tests.SubProcess" in command for command in commands), 2)
