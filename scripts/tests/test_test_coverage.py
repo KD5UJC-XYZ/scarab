@@ -62,6 +62,16 @@ class FixtureCoverageTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "nonregular"):
             fixture_inventory(self.root)
 
+    def test_symlink_directories_and_dangling_aliases_cannot_hide_fixture_inputs(self):
+        linked = self.corpus / "alias"
+        linked.symlink_to(self.root / "missing", target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "nonregular"):
+            fixture_inventory(self.root)
+        linked.unlink()
+        linked.symlink_to(self.corpus, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "nonregular"):
+            fixture_inventory(self.root)
+
     def test_coverage_register_does_not_authorize_unresolved_candidate_gaps(self):
         row = {"id": "native-join", "classification": "native-parity", "status": "open",
                "scope": "paired native snapshots", "assertion": "nonempty exact keys and values",
@@ -90,6 +100,10 @@ class FixtureCoverageTest(unittest.TestCase):
         row["evidence"] = ["fixtures/native/missing.scala"]
         with self.assertRaisesRegex(ValueError, "missing or nonregular"):
             validate_register(self.root, register)
+        row["evidence"] = "fixtures/native/README.md"
+        with self.assertRaisesRegex(ValueError, "missing candidate policy/evidence"):
+            validate_register(self.root, register)
+        row["evidence"] = ["fixtures/native/README.md"]
         row["classification"] = "ignore-a-failure"
         with self.assertRaisesRegex(ValueError, "unknown classification"):
             validate_register(self.root, register)

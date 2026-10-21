@@ -23,7 +23,9 @@ def relative_file(root, value):
     if path.is_absolute() or ".." in path.parts or not value:
         raise ValueError(f"unsafe repository path: {value!r}")
     target = root / path
-    if target.is_symlink() or not target.is_file() or root.resolve() not in target.resolve().parents:
+    linked = any(root.joinpath(*path.parts[:n]).is_symlink()
+                 for n in range(1, len(path.parts) + 1))
+    if linked or not target.is_file() or root.resolve() not in target.resolve().parents:
         raise ValueError(f"missing or nonregular repository file: {value}")
     return target
 
@@ -33,6 +35,8 @@ def discover_corpora(root):
     fixtures = root / "fixtures"
     if fixtures.is_dir():
         for path in fixtures.rglob("*"):
+            if path.is_symlink():
+                raise ValueError(f"nonregular fixture path: {path.relative_to(root)}")
             if not path.is_file():
                 continue
             parts = path.relative_to(root).parts
@@ -41,7 +45,11 @@ def discover_corpora(root):
             depth = 3 if parts[1] in {"reference", "preview"} and len(parts) > 3 else 2
             corpora.add("/".join(parts[:depth]))
     for resources in root.glob("*/src/test/resources"):
+        if resources.is_symlink():
+            raise ValueError(f"nonregular fixture path: {resources.relative_to(root)}")
         for path in resources.rglob("*"):
+            if path.is_symlink():
+                raise ValueError(f"nonregular fixture path: {path.relative_to(root)}")
             if not path.is_file():
                 continue
             parts = path.relative_to(resources).parts
@@ -100,7 +108,9 @@ def validate_register(root, register, candidate=False):
         for key in required - {"evidence", "candidateRequired"}:
             if not isinstance(row[key], str) or not row[key].strip():
                 raise ValueError(f"empty {key}: {row['id']}")
-        if not isinstance(row["candidateRequired"], bool) or not row["evidence"]:
+        if (not isinstance(row["candidateRequired"], bool) or
+                not isinstance(row["evidence"], list) or not row["evidence"] or
+                any(not isinstance(path, str) for path in row["evidence"])):
             raise ValueError(f"missing candidate policy/evidence: {row['id']}")
         for path in row["evidence"]:
             relative_file(root, path)
