@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.network
 
 import cats.effect.{Async, Deferred, Ref, Resource}
-import cats.effect.std.{Mutex, Queue}
+import cats.effect.std.{Mutex, Queue, Random}
 import cats.effect.syntax.all.*
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -40,6 +40,7 @@ private[network] object ChainSyncPipeline:
           .whenA(maxOutstanding <= 0 || maxOutstanding > 65535)
       )
       base <- Resource.eval(ChainSyncRuntime.client(channel, point, tip, payload, settings))
+      random <- Resource.eval(Random.scalaUtilRandom[F])
       submissions <- Resource.eval(Queue.bounded[F, Request](maxOutstanding))
       replies <- Resource.eval(Queue.bounded[F, Event](maxOutstanding + 1))
       head <- Resource.eval(Ref.of[F, Option[Event]](None))
@@ -63,26 +64,22 @@ private[network] object ChainSyncPipeline:
               illegal[Unit](NetworkError.RuntimeViolation.PipelinedRequest(State.Done)).whenA(ended)
             )
         def receive(current: State)(using Raise[F, NetworkError]): F[Message[Q, T, P]] =
-          val timeout =
-            if current == State.NextCanAwait then
-              settings.timeouts.fold[ProtocolDeadline](
-                ProtocolDeadline.After(settings.canAwaitTimeout)
-              )(_.canAwait)
-            else
-              settings.timeouts.fold[ProtocolDeadline](
-                ProtocolDeadline.After(settings.mustReplyTimeout)
-              )(_.mustReply)
-          Timed
-            .within(timeout, id, current.toString)(
-              channel.recv(settings.limits.maxMessageBytes)(
-                ChainSyncEngine.decodePrefix(
-                  current,
-                  Role.Server,
-                  _,
-                  point,
-                  tip,
-                  payload,
-                  settings.limits
+          ChainSyncTimeouts
+            .next(current, settings)(
+              random.nextLong.map(ChainSyncTimeouts.sampledSeconds)
+            )
+            .flatMap(timeout =>
+              Timed.within(timeout, id, current.toString)(
+                channel.recv(settings.limits.maxMessageBytes)(
+                  ChainSyncEngine.decodePrefix(
+                    current,
+                    Role.Server,
+                    _,
+                    point,
+                    tip,
+                    payload,
+                    settings.limits
+                  )
                 )
               )
             )

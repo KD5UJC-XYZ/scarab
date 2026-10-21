@@ -63,7 +63,7 @@ class ChainSyncPipelineSuite extends FailsOnUncaught:
 
   private def settings = ChainSyncClient.Settings(
     canAwaitTimeout = 5.seconds,
-    mustReplyTimeout = 1.second
+    mustReply = ChainSyncTimeouts.Policy.Fixed(ProtocolDeadline.After(1.second))
   )
 
   for rolling <- List(false, true) do

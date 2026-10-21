@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.network
 
 import cats.Applicative
-import cats.effect.{Async, Resource, Temporal}
+import cats.effect.{Async, Resource}
 import cats.mtl.Raise
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.protocol.ChainSync
@@ -69,7 +69,7 @@ object ChainSyncClient:
           settings.limits,
           settings.intersectTimeout,
           settings.canAwaitTimeout,
-          settings.mustReplyTimeout,
+          settings.mustReply,
           settings.timeouts
         ),
         maxOutstanding
@@ -131,12 +131,15 @@ object ChainSyncClient:
       limits: ChainSync.Limits = ChainSync.Limits(),
       intersectTimeout: FiniteDuration = 10.seconds,
       canAwaitTimeout: FiniteDuration = 10.seconds,
-      mustReplyTimeout: FiniteDuration = 300.seconds,
+      mustReply: ChainSyncTimeouts.Policy =
+        ChainSyncTimeouts.Policy.Reference(ChainSyncTimeouts.PeerTrust.Untrustable),
       timeouts: Option[ChainSyncRuntime.Timeouts] = None,
       pipelineCapacity: Int = 300
-  )
+  ):
+    def withPeerTrust(peer: ChainSyncTimeouts.PeerTrust): Settings =
+      copy(mustReply = mustReply.withPeerTrust(peer))
 
-  def apply[F[_]: Temporal, P](
+  def apply[F[_]: Async, P](
       channel: MuxChannel[F],
       codec: ChainSync.PayloadCodec[P],
       settings: Settings = Settings()
@@ -151,7 +154,7 @@ object ChainSyncClient:
           settings.limits,
           settings.intersectTimeout,
           settings.canAwaitTimeout,
-          settings.mustReplyTimeout,
+          settings.mustReply,
           settings.timeouts
         )
       )
