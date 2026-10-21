@@ -321,13 +321,9 @@ final class OutboundPeers[F[_]: Async, A] private (
     * first with a header and a block), one update of the shared board per batch of headers and per
     * range of blocks.
     */
-  private def metered(peer: A): Peer.Observation => F[Unit] = {
-    case o @ Peer.Observation.HeadersArrived(slots, at) =>
-      hot.observe.traverse_(_(o)) *> metrics.modify(_.reportHeaders(peer, slots, at))
-    case o @ Peer.Observation.BlocksArrived(blocks, at) =>
-      hot.observe.traverse_(_(o)) *> metrics.modify(_.reportFetches(peer, blocks, at))
-    case other => hot.observe.traverse_(_(other))
-  }
+  private def metered(peer: A): Peer.Observation => F[Unit] =
+    given Stateful[F, PeerMetrics[A]] = metrics
+    PeerMetricsObserver(peer, hot.observe)
 
   /** The hot protocols and the session over them, for as long as the session lasts. The session
     * runs in an error scope of its own and ends with a [[SessionEnd]], a value: what the peer does,

@@ -336,8 +336,10 @@ The outbound peers are chosen by the peer governor (roadmap G1.1, [design](desig
   are not advertised). The server shares only advertised peers with a successful connection and zero
   failures, returns at most `min(requested,10)`, and holds its ordering salt for 823 s. IPv4 words are
   converted from the reference's little-endian host convention; IPv6 words stay in network order.
-- **Peer metrics and churn.** The feedback from the chain (roadmap G1.2). Each hot session reports the headers and blocks
-  it delivers; two boards of 180 slots keep, per slot, the peer that was *first* (`PeerMetrics`, the reference's
+- **Peer metrics and churn.** The feedback from the chain (roadmap G1.2). Outbound hot sessions and
+  inbound duplex client sessions share one metrics board, keyed by the remote socket address.
+  Accepted headers retain their arrival timestamp; invalid headers do not earn usefulness credit.
+  Each client session reports the headers and blocks it delivers; two boards of 180 slots keep, per slot, the peer that was *first* (`PeerMetrics`, the reference's
   `PeerMetric`: the earliest arrival wins, the join-time correction `adjustAvg` is zero in the pinned release and is not
   implemented). When the governor must demote hot peers it drops those with the lowest `upstreamness + fetchynessBlocks`,
   ties by the slot at which the peer joined, then at random. The churn governor (`ChurnLoop`, the reference's

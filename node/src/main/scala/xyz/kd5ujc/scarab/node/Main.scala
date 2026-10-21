@@ -83,7 +83,7 @@ import xyz.kd5ujc.scarab.network.ConnectionEvent
 import xyz.kd5ujc.scarab.node.ntc.{EraHistory, QueryEnv, StateQuerySource}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.network.NodeToNode
-import xyz.kd5ujc.scarab.network.selection.{Churn, FetchMode, Targets, UseLedgerPeers}
+import xyz.kd5ujc.scarab.network.selection.{Churn, FetchMode, PeerMetrics, Targets, UseLedgerPeers}
 import xyz.kd5ujc.scarab.node.relay.{ChainServer, Persistence}
 import scala.concurrent.duration.*
 
@@ -1042,6 +1042,7 @@ object Main extends IOApp:
             )
             _ <- collectors.add(Collectors.connections(manager))
             fetchModeRef <- Ref.of[IO, FetchMode](FetchMode.BulkSync)
+            peerMetrics <- Ref.of[IO, PeerMetrics[PeerNetwork.Addr]](PeerMetrics.empty())
             chainSyncHeights = new Peer.HeightSnapshot[IO]:
               def capture = ref.get.map { chain =>
                 val refs = chain.anchor.block.toVector ++ chain.blocks.map(_._1)
@@ -1087,7 +1088,8 @@ object Main extends IOApp:
               pool = Some(blockPool),
               fetchMode = Some(fetchModeRef.get),
               genesis = genesisRuntime,
-              receivedBody = receivedBody
+              receivedBody = receivedBody,
+              peerMetrics = Some(peerMetrics)
             )
             // The outbound peer network (G1): the governor chooses the peers, moves them between
             // temperatures and replaces the ones that fail; the Genesis State Machine tells it
@@ -1184,7 +1186,8 @@ object Main extends IOApp:
               LedgerPeersSource.fromChain[IO, MirrorState](ref.get),
               sharing = Some(sharing),
               immutable = immutable,
-              genesisReadings = genesisRuntime.map(_.gsmReadings(follower.versusHeaders))
+              genesisReadings = genesisRuntime.map(_.gsmReadings(follower.versusHeaders)),
+              peerMetrics = Some(peerMetrics)
             )
             relay = options.listen.fold(Resource.unit[IO])(address =>
               BearerServer

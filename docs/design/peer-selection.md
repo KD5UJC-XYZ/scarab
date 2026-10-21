@@ -1471,8 +1471,9 @@ argument; `PeerGovernor` reads them through `Ask[F, PeerMetrics[A]]` once per pa
 **Peer metrics.** `Peer.Observation` gains `HeadersArrived(slots, at)` (the slots of the roll-forwards of one ChainSync batch, one
 arrival time) and `BlocksArrived(blocks, at)` (the `(slot, size)` of one BlockFetch request). One observation per batch, not per
 header (the reference reports per header; the headers of a pipelined batch arrive together, so the arrival time is the same, and one
-`Ref` update per batch keeps the callback off the per-header path). `OutboundPeers` attaches the peer's address where the hot session
-starts and updates the shared `Ref[PeerMetrics]`. The board is the reference's: earliest arrival wins, 180 slots, an older slot on a
+`Ref` update per accepted group keeps the callback bounded). `PeerMetricsObserver` attaches the peer's remote address for outbound and inbound duplex client sessions and updates one shared `Ref[PeerMetrics]`.
+Header usefulness is reported only after header acceptance, using its captured arrival timestamp;
+traffic counters remain independent. Inbound serving-only connections contribute no client arrivals. The board is the reference's: earliest arrival wins, 180 slots, an older slot on a
 full board is dropped, the join and last-seen registries are pruned at the oldest slot of the boards, and `adjustAvg` is not
 implemented (it is `0` in the pinned release). The hot-demotion pick ranks `(upstreamness + fetchynessBlocks, joined slot, random)`;
 a peer the board does not know ranks before all that it does (`Map.findWithDefault (0, Nothing)`), and both the local-root and the
@@ -1493,7 +1494,19 @@ the head start, and the sleep (3300 s plus up to 600 s in deadline mode, 900 s p
    poll sees the targets met (or the timeout).
 4. A change of regime during the sleep (the node left bulk sync) asks for the new regime's targets at once; the reference waits for the
    next round, up to an hour away.
-5. Peer metrics come from outbound hot sessions only ([#150](https://github.com/KD5UJC-XYZ/scarab/issues/150)).
+5. **Resolved by #150.** Inbound duplex and outbound client sessions report into the same metrics
+   board. The key is the remote socket address; activation/session identity and connection direction
+   do not partition scores. An ephemeral inbound source port remains that connection's remote
+   address; it is not guessed to be a separately advertised listening endpoint. First arrivals
+   compete across both directions, and equal timestamps retain the existing winner.
+   Pinned consensus `82ecba329`,
+   `ouroboros-consensus-diffusion/.../Consensus/Network/NodeToNode.hs:795–921`,
+   installs metric tracers for every client connection. Pinned network `2fb69829`,
+   `ouroboros-network/.../PeerSelection/PeerMetric.hs:242–254`, projects its remote address.
+   `MiniProtocol/ChainSync/Client.hs:1487–1520` retains receipt time through successful
+   candidate admission before reporting usefulness; `BlockFetch/Client.hs:249–281` reports
+   after requested-point, block-integrity and fetched-block admission checks.
+
 6. **Resolved by #149.** The current network pin `2fb69829a19b5c04e4fb212bdd78fb63f9d2d776`
    weights warm promotion with `promoteWeight` (`Diffusion/Policies.hs:201–250`): non-tepid
    peers receive one quarter of their unsigned Word32 draw. Ordinary, local-root and big-ledger

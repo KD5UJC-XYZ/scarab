@@ -12,6 +12,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ConnectionState, NtNHeader}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.network.*
+import xyz.kd5ujc.scarab.network.selection.PeerMetrics
 import xyz.kd5ujc.scarab.node.forge.ForgedChain
 import xyz.kd5ujc.scarab.node.relay.ChainServer
 import scala.concurrent.duration.*
@@ -102,7 +103,8 @@ class InboundGovernorSuite extends FailsOnUncaught:
       val chain: Ref[IO, VolatileChain[MirrorState]],
       val manager: ConnectionManager[IO],
       val governor: InboundGovernor[IO],
-      val applied: Ref[IO, Vector[Bytes]]
+      val applied: Ref[IO, Vector[Bytes]],
+      val metrics: Ref[IO, PeerMetrics[PeerNetwork.Addr]]
   )
 
   private def local(
@@ -149,6 +151,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
         }
         .rescue(e => IO(fail(e.message)))
       manager <- ConnectionManager.create[IO](ConnectionManager.Limits(maxInbound = 4))
+      metrics <- Ref.of[IO, PeerMetrics[PeerNetwork.Addr]](PeerMetrics.empty())
       validating = Option.when(headerFirst)(
         HeaderCheck.forChain[IO, MirrorState, xyz.kd5ujc.scarab.consensus.state.ProtocolState](
           NodeHeaderRules[MirrorState](ForgedChain.config, ForgedChain.globals),
@@ -207,9 +210,10 @@ class InboundGovernorSuite extends FailsOnUncaught:
         transactions = transactions,
         events = events,
         pool = pool,
-        heightSnapshot = heights
+        heightSnapshot = heights,
+        peerMetrics = Some(metrics)
       )
-    yield new Local(ref, manager, governor, applied)
+    yield new Local(ref, manager, governor, applied, metrics)
 
   /** The remote peer dials `us` (duplex when it serves `remoteNode` 's chain, else initiator-only);
     * `during` runs while the connection is up and is given the time at which our side ended. When
@@ -313,7 +317,11 @@ class InboundGovernorSuite extends FailsOnUncaught:
       ranges <- remoteNode.ranges.get
       applied <- us.applied.get
       after <- us.manager.snapshot
+      metrics <- us.metrics.get
     yield
+      assertEquals(metrics.upstreamness.get(remote), Some(forged.headers.size))
+      assertEquals(metrics.fetchynessBlocks.get(remote), Some(forged.headers.size))
+      assertEquals(metrics.fetchynessBytes.get(remote), Some(forged.raws.map(_.size.toLong).sum))
       assertEquals(tip, last.point)
       assertEquals(table.counters, ConnectionState.Counters(1, 0, 1, 1))
       assertEquals(
@@ -439,9 +447,11 @@ class InboundGovernorSuite extends FailsOnUncaught:
       }
       sessions <- us.governor.sessions
       chain <- us.chain.get
+      metrics <- us.metrics.get
     yield
       assertEquals(outcome._1.counters, ConnectionState.Counters(1, 0, 0, 1))
       assertEquals(sessions, Vector.empty)
+      assertEquals(metrics.sizes, (0, 0))
       assertEquals(chain.tip, ChainSync.Point.Origin)
   }
 

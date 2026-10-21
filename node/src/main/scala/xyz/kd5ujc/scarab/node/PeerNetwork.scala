@@ -288,6 +288,8 @@ object PeerNetwork:
     *   starts.
     * @param ledgerSource
     *   The ledger the ledger peers are taken from.
+    * @param peerMetrics
+    *   A caller-owned board shared with inbound duplex clients; otherwise allocate a private board.
     */
   def resource[F[_]: Async](
       settings: Settings,
@@ -305,7 +307,8 @@ object PeerNetwork:
       ledgerSource: LedgerPeersSource[F],
       sharing: Option[PeerSharingRuntime[F]] = None,
       immutable: Option[ImmutableStore[F]] = None,
-      genesisReadings: Option[F[Vector[Gsm.PeerReading]]] = None
+      genesisReadings: Option[F[Vector[Gsm.PeerReading]]] = None,
+      peerMetrics: Option[Ref[F, PeerMetrics[Addr]]] = None
   )(using
       node: Handle[F, NodeError],
       dnsResource: Resource[F, PeerDns[F]]
@@ -408,7 +411,9 @@ object PeerNetwork:
       connections <- Resource.eval(
         Ref.of[F, OutboundConnectionsState](OutboundConnectionsState.UntrustedState)
       )
-      metrics <- Resource.eval(Ref.of[F, PeerMetrics[Addr]](PeerMetrics.empty[Addr]()))
+      metrics <- Resource.eval(
+        peerMetrics.fold(Ref.of[F, PeerMetrics[Addr]](PeerMetrics.empty[Addr]()))(F.pure)
+      )
       judgement <- Resource.eval(Ref.of[F, LedgerStateJudgement](LedgerStateJudgement.TooOld))
       worker <- Resource.eval(createWorker(settings.roots))
       initialSnapshotCheckCanceled <- Resource.eval(Deferred[F, Unit])
