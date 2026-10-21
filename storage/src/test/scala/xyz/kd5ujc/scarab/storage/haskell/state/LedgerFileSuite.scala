@@ -6,7 +6,6 @@ import java.nio.file.{Files, Path}
 import munit.ScalaCheckSuite
 import org.scalacheck.{Arbitrary, Gen}
 import org.scalacheck.Prop.forAll
-import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.state.{StateGen as _, *}
 import xyz.kd5ujc.scarab.consensus.state.StateGen as ConsensusGen
@@ -337,19 +336,13 @@ class LedgerFileSuite extends ScalaCheckSuite:
 
   private val fixtureRoot = Path.of("fixtures/haskell-state")
 
-  private val fixtures: Vector[Path] =
-    if Files.isDirectory(fixtureRoot) then
-      Files
-        .list(fixtureRoot)
-        .iterator
-        .asScala
-        .filter(p => Files.isRegularFile(p.resolve("state")))
-        .toVector
-        .sortBy(_.getFileName.toString)
-    else Vector.empty
+  private val fixtures: Vector[Path] = NativeStateFixtures.names.map(fixtureRoot.resolve)
 
-  test("the fixtures directory has the committed states of the Haskell node") {
-    assert(fixtures.nonEmpty, s"no fixture under $fixtureRoot")
+  private lazy val verified =
+    NativeStateFixtures.verify(fixtureRoot).fold(e => fail(e.toString), identity)
+
+  test("the exact seven native snapshots retain all 21 pinned files") {
+    assertEquals(verified, fixtures)
   }
 
   fixtures.foreach { dir =>
