@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.node
 
 import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.syntax.all.*
+import xyz.kd5ujc.scarab.network.genesis.PicosClock
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
 import xyz.kd5ujc.scarab.ledger.Header
@@ -35,6 +36,37 @@ final class FetchCoordinator[F[_]: Async] private (
   def installGenesis(control: GenesisControl[F]): F[Unit] =
     genesis.set(Some(control)) *> refreshGenesis
   def refreshGenesis: F[Unit] = change(identity)
+
+  /** State.hs:150 retriggers a stalled decision after the grace period even when every ChainSync
+    * client is waiting for a forecast and the devoted fetcher sends no bodies.
+    */
+  private[node] def watchGenesis(
+      gracePicos: BigInt,
+      clock: Option[PicosClock[F]] = None
+  ): F[Nothing] =
+    val timer = clock.getOrElse(PicosClock.system[F])
+    type Point = xyz.kd5ujc.scarab.protocol.ChainSync.Point
+    type Fingerprint = (Option[Point], Map[Long, (Option[Point], Boolean)])
+    def fingerprint(s: State[F]): Fingerprint =
+      (
+        s.selected.map(l => l.blocks.lastOption.fold(l.anchor)(_.point)),
+        s.peers.map((id, peer) =>
+          id ->
+            (peer.candidate.map(_.tip).orElse(peer.tip.map(_.point)), peer.busy)
+        )
+      )
+    F.tailRecM[(Option[Fingerprint], BigInt), Nothing]((None, 0)) { (previous, deadline) =>
+      (state.get, timer.now).tupled.flatMap { (current, now) =>
+        val input = fingerprint(current)
+        val expires = if previous.contains(input) then deadline else now + gracePicos.max(0)
+        val remaining = (expires - now).max(0)
+        F.race(current.signal.get, timer.sleep(remaining))
+          .flatMap {
+            case Left(_)  => F.pure(Left((Some(input), expires)))
+            case Right(_) => refreshGenesis.as(Left((None, 0)))
+          }
+      }
+    }
   private[node] def inFlight: F[Map[Long, BlockFetchPolicy.InFlight]] = state.get.map { s =>
     s.peers.map { (id, p) =>
       val active = p.active.values.toVector
@@ -92,12 +124,12 @@ final class FetchCoordinator[F[_]: Async] private (
       }
     }
 
-  private def await(id: Long, hash: Bytes): F[Unit] =
+  private def await(hash: Bytes): F[Unit] =
     F.tailRecM(()) { _ =>
       state.get.flatMap { s =>
         fetched.sequence.flatMap { cached =>
           val claimed =
-            s.peers.exists((peer, p) => peer != id && p.active.values.exists(_.claimed(hash)))
+            s.peers.valuesIterator.exists(p => p.active.values.exists(_.claimed(hash)))
           if cached.exists(_(hash)) || !claimed then F.pure(Right(()))
           else s.signal.get.as(Left(()))
         }
@@ -444,7 +476,7 @@ object FetchCoordinator:
         candidate: Option[ChainSelection.Candidate] = None
     ): Resource[F, Allocation] =
       owner.reserve(id, headers, mode, candidate)
-    private[node] def await(hash: Bytes): F[Unit] = owner.await(id, hash)
+    private[node] def await(hash: Bytes): F[Unit] = owner.await(hash)
     private[node] def received(allocation: Allocation, hash: Bytes): F[Unit] =
       owner.received(id, allocation.token, hash)
     private[node] def reconcile(allocation: Allocation, runs: Vector[Vector[Header]]): F[Unit] =

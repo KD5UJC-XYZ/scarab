@@ -127,3 +127,63 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
       }
     }
   }
+
+  test("Genesis grace expiry wakes a stalled decision despite unrelated estimate refreshes") {
+    TestControl.executeEmbed {
+      for
+        coordinator <- FetchCoordinator.create[IO]()
+        observations <- Ref.of[IO, Vector[FiniteDuration]](Vector.empty)
+        _ <- coordinator.installGenesis(
+          FetchCoordinator.GenesisControl(
+            IO.monotonic.flatMap { time =>
+              observations
+                .update(_ :+ time)
+                .as(
+                  FetchCoordinator.GenesisContext(
+                    xyz.kd5ujc.scarab.network.selection.Gsm.Phase.Syncing,
+                    BigInt(time.toNanos) * 1000,
+                    xyz.kd5ujc.scarab.network.selection.GenesisBlockFetch.Starvation.Ongoing
+                  )
+                )
+            },
+            _ => IO.unit
+          )
+        )
+        _ <- coordinator.session(1).use { peer =>
+          coordinator.watchGenesis(BigInt(10) * 1000000000000L).background.use { _ =>
+            List
+              .fill(9)(())
+              .traverse_(_ =>
+                IO.sleep(1.second) *>
+                  peer.updatePerformance(FetchGsv.default)
+              ) *> IO.sleep(1100.millis) *>
+              observations.get.map(times => assert(times.contains(10.seconds), times.toString))
+          }
+        }
+      yield ()
+    }
+  }
+
+  test("fallback waits for its own concurrent prefetch and wakes on a body before BatchDone") {
+    TestControl.executeEmbed {
+      for
+        cached <- Ref.of[IO, Set[Bytes]](Set.empty)
+        coordinator <- FetchCoordinator.create[IO](fetched = Some(cached.get))
+        _ <- coordinator.session(7).use { session =>
+          session.reserve(Vector(header(1)), FetchMode.BulkSync).use { _ =>
+            for
+              returned <- Ref.of[IO, Boolean](false)
+              waiter <- session.await(header(1).hash).flatMap(_ => returned.set(true)).start
+              _ <- IO.sleep(1.second)
+              _ <- returned.get.assertEquals(false)
+              _ <- cached.update(_ + header(1).hash) *> coordinator.refreshGenesis
+              _ <- waiter.joinWithNever
+              _ <- returned.get.assertEquals(true)
+              flight <- coordinator.inFlight
+              _ <- IO(assertEquals(flight(session.identity).requests, 1))
+            yield ()
+          }
+        }
+      yield ()
+    }
+  }
