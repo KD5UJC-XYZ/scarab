@@ -80,6 +80,27 @@ class FetchedBlockIntegritySuite extends FunSuite:
       case other => fail(s"body commitment mismatch entered semantic admission: $other")
   }
 
+  test("a hash-committed malformed transaction fails transport before tentative forgiveness") {
+    val (_, raw) = originals
+      .find { (block, bytes) =>
+        block.era == Era.Babbage && array(parts(bytes)(1)).nonEmpty
+      }
+      .getOrElse(fail("missing nonempty Babbage block"))
+    val changedBody = replace(raw, array(parts(raw)(1)).head, encoded(Value.UInt(0)))
+    val decodedBody = Block.decode(changedBody, epochSlots).fold(e => fail(e.message), identity)
+    val hash = decodedBody match
+      case block: Block.Shelley => block.bodyHash
+      case _                    => fail("expected Babbage block")
+    val bodyHashField = array(array(parts(changedBody)(0))(0))(7)
+    val changed = replace(changedBody, bodyHashField, encoded(Value.ByteString(hash)))
+    val decoded = Block.decode(changed, epochSlots).fold(e => fail(e.message), identity)
+    BlockTransport.check(decoded.header, changed) match
+      case Left(BlockTransportError.TransactionDecode(_, _)) => ()
+      case other => fail(s"malformed transaction entered semantic admission: $other")
+    // The altered signed header is used only to distinguish decoding from commitment failure.
+    // No signature or ledger-admission claim is made for this malformed fixture.
+  }
+
   test("Byron main delegation proof is a transport check over original payload bytes") {
     val (block, raw) = originals
       .find { (block, _) => block.era == Era.Byron && !block.header.isBoundary }

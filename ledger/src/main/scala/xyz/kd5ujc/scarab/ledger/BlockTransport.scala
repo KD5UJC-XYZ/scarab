@@ -12,6 +12,7 @@ enum BlockTransportError extends DomainError:
   case WrongEra(expected: Era, actual: Era)
   case WrongHeader(expected: ChainSync.Point, actual: ChainSync.Point)
   case WrongBodyHash(expected: Bytes, actual: Bytes)
+  case TransactionDecode(id: Bytes, cause: LedgerDecodeError)
   case ByronBodyDecode(cause: LedgerDecodeError)
   case ByronBodyProof(cause: ByronError)
 
@@ -21,6 +22,8 @@ enum BlockTransportError extends DomainError:
     case WrongHeader(expected, actual) => s"fetched header $actual differs from announced $expected"
     case WrongBodyHash(expected, actual) =>
       s"fetched body hash ${actual.hex} differs from announced ${expected.hex}"
+    case TransactionDecode(id, cause) =>
+      s"fetched transaction ${id.hex} does not decode: ${cause.message}"
     case ByronBodyDecode(cause) => s"fetched Byron body does not decode: ${cause.message}"
     case ByronBodyProof(cause)  => cause.message
 
@@ -48,7 +51,11 @@ object BlockTransport:
       )
       _ <- (announced, block) match
         case (header: Header.Shelley, body: Block.Shelley) =>
-          Either.cond(
+          // Native TxSeq decoding constructs transaction bodies, witnesses and auxiliary data
+          // before blockMatchesHeader. A malformed transaction is not a ledger-invalid trap.
+          body.transactions.traverse_(tx =>
+            Tx.fromBlock(tx, body.era).leftMap(BlockTransportError.TransactionDecode(tx.id, _))
+          ) *> Either.cond(
             body.bodyHash == header.bodyHash,
             (),
             BlockTransportError.WrongBodyHash(header.bodyHash, body.bodyHash)
