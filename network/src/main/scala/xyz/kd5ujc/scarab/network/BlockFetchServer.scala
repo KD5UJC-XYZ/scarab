@@ -28,7 +28,8 @@ object BlockFetchServer:
   final case class Settings(
       limits: BlockFetch.Limits = BlockFetch.Limits(),
       maxBlocks: Int = 2160,
-      idleTimeout: FiniteDuration = 3373.seconds
+      idleTimeout: FiniteDuration = 3373.seconds,
+      idleDeadline: Option[ProtocolDeadline] = None
   )
 
   def run[F[_]: Temporal](
@@ -72,5 +73,10 @@ object BlockFetchServer:
         CardanoBlockFetch.InclusiveRange
           .fromPoints(from, to)
           .map(range => (range.from.point, range.to.point)),
-      BlockFetchRuntime.ServerSettings(settings.limits, settings.maxBlocks, settings.idleTimeout)
+      BlockFetchRuntime.ServerSettings(
+        settings.limits,
+        settings.maxBlocks,
+        settings.idleTimeout,
+        settings.idleDeadline
+      )
     )

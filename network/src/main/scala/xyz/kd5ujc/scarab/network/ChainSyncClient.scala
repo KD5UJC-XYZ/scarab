@@ -41,7 +41,8 @@ object ChainSyncClient:
       limits: ChainSync.Limits = ChainSync.Limits(),
       intersectTimeout: FiniteDuration = 10.seconds,
       canAwaitTimeout: FiniteDuration = 10.seconds,
-      mustReplyTimeout: FiniteDuration = 300.seconds
+      mustReplyTimeout: FiniteDuration = 300.seconds,
+      timeouts: Option[ChainSyncRuntime.Timeouts] = None
   )
 
   def apply[F[_]: Temporal, P](
@@ -59,7 +60,8 @@ object ChainSyncClient:
           settings.limits,
           settings.intersectTimeout,
           settings.canAwaitTimeout,
-          settings.mustReplyTimeout
+          settings.mustReplyTimeout,
+          settings.timeouts
         )
       )
       .map { runtime =>

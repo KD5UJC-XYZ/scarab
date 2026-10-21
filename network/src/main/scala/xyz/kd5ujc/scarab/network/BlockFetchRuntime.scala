@@ -47,17 +47,25 @@ object BlockFetchRuntime:
       */
     def range(from: P, to: P, maxBlocks: Int): F[Option[Stream[F, B]]]
 
+  final case class Timeouts(
+      busy: ProtocolDeadline,
+      streaming: ProtocolDeadline,
+      wholeRequest: ProtocolDeadline
+  )
+
   final case class ClientSettings(
       limits: BlockFetchEngine.Limits = BlockFetchEngine.Limits(),
       timeLimits: BlockFetchEngine.TimeLimits = BlockFetchEngine.TimeLimits(),
       request: BlockFetchEngine.RequestLimits = BlockFetchEngine.RequestLimits(maxBlocks = 128),
-      maxInFlightRequests: Int = 100
+      maxInFlightRequests: Int = 100,
+      timeouts: Option[Timeouts] = None
   )
 
   final case class ServerSettings(
       limits: BlockFetchEngine.Limits = BlockFetchEngine.Limits(),
       maxBlocks: Int = 2160,
-      idleTimeout: FiniteDuration = 3373.seconds
+      idleTimeout: FiniteDuration = 3373.seconds,
+      idleDeadline: Option[ProtocolDeadline] = None
   )
 
   def client[F[_]: Temporal, P, B](
@@ -88,9 +96,19 @@ object BlockFetchRuntime:
       def receive(using Raise[F, NetworkError]): F[Message[P, B]] =
         state.get.flatMap { current =>
           val wait = current match
-            case State.Busy      => F.pure(settings.timeLimits.busy)
-            case State.Streaming => F.pure(settings.timeLimits.streaming)
-            case other => illegal[FiniteDuration](RuntimeViolation.ReplyNotExpected(other))
+            case State.Busy =>
+              F.pure(
+                settings.timeouts.fold[ProtocolDeadline](
+                  ProtocolDeadline.After(settings.timeLimits.busy)
+                )(_.busy)
+              )
+            case State.Streaming =>
+              F.pure(
+                settings.timeouts.fold[ProtocolDeadline](
+                  ProtocolDeadline.After(settings.timeLimits.streaming)
+                )(_.streaming)
+              )
+            case other => illegal[ProtocolDeadline](RuntimeViolation.ReplyNotExpected(other))
           wait.flatMap { limit =>
             Timed
               .within(limit, id, current.toString)(
@@ -155,7 +173,13 @@ object BlockFetchRuntime:
             observe: Event => F[Unit]
         )(using Raise[F, NetworkError]): F[Option[Vector[B]]] = lock.lock.surround {
           Timed
-            .within(settings.timeLimits.wholeRequest, id, "request")(
+            .within(
+              settings.timeouts.fold[ProtocolDeadline](
+                ProtocolDeadline.After(settings.timeLimits.wholeRequest)
+              )(_.wholeRequest),
+              id,
+              "request"
+            )(
               send(Message.RequestRange(from, to)) *>
                 F.monotonic.flatMap(at => observe(Event.Sent(at))) *> receive.flatMap {
                   case Message.NoBlocks   => F.pure(None)
@@ -227,8 +251,14 @@ object BlockFetchRuntime:
             .fold(illegal(_), channel.send)
         def receive(state: State)(using Raise[F, NetworkError]): F[Message[P, B]] =
           val limit =
-            if state == State.Busy then settings.timeLimits.busy
-            else settings.timeLimits.streaming
+            if state == State.Busy then
+              settings.timeouts.fold[ProtocolDeadline](
+                ProtocolDeadline.After(settings.timeLimits.busy)
+              )(_.busy)
+            else
+              settings.timeouts.fold[ProtocolDeadline](
+                ProtocolDeadline.After(settings.timeLimits.streaming)
+              )(_.streaming)
           Timed.within(limit, id, state.toString)(
             channel.recv(settings.limits.messageBytes(state))(
               BlockFetchEngine.decodePrefix(
@@ -275,7 +305,11 @@ object BlockFetchRuntime:
                   F.monotonic
                     .flatMap { now =>
                       Timed.within(
-                        settings.timeLimits.wholeRequest - (now - sentAt),
+                        settings.timeouts
+                          .fold[ProtocolDeadline](
+                            ProtocolDeadline.After(settings.timeLimits.wholeRequest)
+                          )(_.wholeRequest)
+                          .remaining(now - sentAt),
                         id,
                         "request"
                       )(collect(job))
@@ -377,7 +411,11 @@ object BlockFetchRuntime:
 
     val step: F[Boolean] =
       Timed
-        .within(settings.idleTimeout, id, "idle")(
+        .within(
+          settings.idleDeadline.getOrElse(ProtocolDeadline.After(settings.idleTimeout)),
+          id,
+          "idle"
+        )(
           channel.recv(settings.limits.messageBytes(State.Idle))(
             BlockFetchEngine.decodePrefix(
               State.Idle,

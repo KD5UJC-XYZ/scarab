@@ -43,7 +43,8 @@ object BlockFetchClient:
       limits: BlockFetch.Limits = BlockFetch.Limits(),
       timeLimits: BlockFetch.TimeLimits = BlockFetch.TimeLimits(),
       request: BlockFetch.RequestLimits = BlockFetch.RequestLimits(maxBlocks = 128),
-      maxInFlightRequests: Int = 100
+      maxInFlightRequests: Int = 100,
+      timeouts: Option[BlockFetchRuntime.Timeouts] = None
   )
 
   def apply[F[_]: Temporal](
@@ -54,7 +55,9 @@ object BlockFetchClient:
     val runtimeSettings = BlockFetchRuntime.ClientSettings(
       settings.limits,
       settings.timeLimits,
-      settings.request
+      settings.request,
+      settings.maxInFlightRequests,
+      settings.timeouts
     )
     BlockFetchRuntime
       .client(channel, CardanoBlockFetch.pointCodec, codec, _.bytes.size, runtimeSettings)
@@ -76,7 +79,8 @@ object BlockFetchClient:
           settings.limits,
           settings.timeLimits,
           settings.request,
-          settings.maxInFlightRequests
+          settings.maxInFlightRequests,
+          settings.timeouts
         )
       )
       .map(adapt(_))

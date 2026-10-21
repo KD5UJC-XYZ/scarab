@@ -38,17 +38,25 @@ object ChainSyncRuntime:
     def poll: F[Option[Update[Q, T, P]]]
     def await: F[Update[Q, T, P]]
 
+  final case class Timeouts(
+      intersect: ProtocolDeadline,
+      canAwait: ProtocolDeadline,
+      mustReply: ProtocolDeadline
+  )
+
   final case class ClientSettings(
       limits: ChainSync.Limits = ChainSync.Limits(),
       intersectTimeout: FiniteDuration = 10.seconds,
       canAwaitTimeout: FiniteDuration = 10.seconds,
-      mustReplyTimeout: FiniteDuration = 300.seconds
+      mustReplyTimeout: FiniteDuration = 300.seconds,
+      timeouts: Option[Timeouts] = None
   )
 
   final case class ServerSettings(
       limits: ChainSync.Limits = ChainSync.Limits(),
       idleTimeout: FiniteDuration = 3373.seconds,
-      protocol: Int = Protocols.ChainSync
+      protocol: Int = Protocols.ChainSync,
+      idleDeadline: Option[ProtocolDeadline] = None
   )
 
   val NodeToClient: ServerSettings =
@@ -85,10 +93,25 @@ object ChainSyncRuntime:
 
       def receiveAt(current: State)(using Raise[F, NetworkError]): F[Message[Q, T, P]] =
         val limit = current match
-          case State.Intersect     => F.pure(settings.intersectTimeout)
-          case State.NextCanAwait  => F.pure(settings.canAwaitTimeout)
-          case State.NextMustReply => F.pure(settings.mustReplyTimeout)
-          case other => illegal[FiniteDuration](RuntimeViolation.ReplyNotExpected(other))
+          case State.Intersect =>
+            F.pure(
+              settings.timeouts.fold[ProtocolDeadline](
+                ProtocolDeadline.After(settings.intersectTimeout)
+              )(_.intersect)
+            )
+          case State.NextCanAwait =>
+            F.pure(
+              settings.timeouts.fold[ProtocolDeadline](
+                ProtocolDeadline.After(settings.canAwaitTimeout)
+              )(_.canAwait)
+            )
+          case State.NextMustReply =>
+            F.pure(
+              settings.timeouts.fold[ProtocolDeadline](
+                ProtocolDeadline.After(settings.mustReplyTimeout)
+              )(_.mustReply)
+            )
+          case other => illegal[ProtocolDeadline](RuntimeViolation.ReplyNotExpected(other))
         limit.flatMap { wait =>
           Timed.within(wait, id, current.toString)(
             channel.recv(settings.limits.maxMessageBytes)(
@@ -229,7 +252,11 @@ object ChainSyncRuntime:
 
     val step: F[Boolean] =
       Timed
-        .within(settings.idleTimeout, id, "idle")(
+        .within(
+          settings.idleDeadline.getOrElse(ProtocolDeadline.After(settings.idleTimeout)),
+          id,
+          "idle"
+        )(
           channel.recv(settings.limits.maxMessageBytes)(
             ChainSyncEngine
               .decodePrefix(State.Idle, Role.Client, _, point, tip, payload, settings.limits)
