@@ -151,10 +151,15 @@ object PeerError:
 enum BlockPoolProblem extends NodeError:
   case MissingDeliveredHeader(point: ChainSync.Point)
   case DifferentInvalidRegistry
+  case AvailableHashMismatch(key: Bytes, actual: Bytes)
+  case AvailableCycle(hash: Bytes)
 
   def message: String = this match
     case MissingDeliveredHeader(point) =>
       s"received block ${Points.show(point)} has no original adding-header context"
+    case AvailableHashMismatch(key, actual) =>
+      s"available block key ${key.hex} differs from header hash ${actual.hex}"
+    case AvailableCycle(hash) => s"available block ancestry contains a cycle at ${hash.hex}"
     case DifferentInvalidRegistry =>
       "follower sessions do not share the same invalid-block registry"
 
