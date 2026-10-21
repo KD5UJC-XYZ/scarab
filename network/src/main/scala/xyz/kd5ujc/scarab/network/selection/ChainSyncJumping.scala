@@ -154,7 +154,7 @@ object ChainSyncJumping:
       peer.role match
         case Role.Dynamo(_, _) | Role.Objector(_, _, _) if goodPoint =>
           if accepted then graft(s) else Processed(disengage(s, id, true), None)
-        case Role.Jumping(_, jumper) if !goodPoint =>
+        case Role.Jumping(pending, jumper) if !goodPoint =>
           jumper match
             case Jumper.Happy(true, _) => if accepted then graft(s) else Processed(s, None)
             case Jumper.Found(_, _, _) =>
@@ -162,7 +162,9 @@ object ChainSyncJumping:
             case Jumper.Happy(false, good) =>
               if accepted then
                 graft(
-                  modify(s, id)(_.copy(role = Role.Jumping(None, Jumper.Happy(false, Some(info)))))
+                  modify(s, id)(
+                    _.copy(role = Role.Jumping(pending, Jumper.Happy(false, Some(info))))
+                  )
                 )
               else Processed(search(s, id, good.getOrElse(info.prefix(0)), info), None)
             case Jumper.Looking(good, bad) =>

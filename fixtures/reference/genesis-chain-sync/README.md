@@ -9,15 +9,16 @@ The observer calls the native public `registerClient`, `mkJumping`, `rotateDynam
 `unregisterClient` APIs. Its jump information contains lawful `TestBlock` chains and native
 `HeaderStateHistory.fromChain` histories. It records every role, pending instruction,
 intersection-search state, published candidate, candidate tip and next instruction after
-every event. Scala replays all 75 traces and 1037 transitions without filtering outcomes.
+every event. Scala replays all 76 traces and 1046 transitions without filtering outcomes.
 
 The original `Test.Consensus.MiniProtocol.ChainSync.CSJ` property has a constant
 `Arbitrary TestSetup`: two clients that register while caught up must run normally.
-That scenario is observed through the native callbacks. Ten additional traces cover accepted
+That scenario is observed through the native callbacks. Eleven additional traces cover accepted
 jumps, binary intersection search, good-point rejection/restart, dynamo rotation, historical
 rollback, a response arriving after a role change, competing objectors with different
 intersections, objector replacement/backfill, agreement and rollback disengagement, and
-preference for a started objector when the dynamo disappears. A further 64 reproducible QuickCheck
+preference for a started objector when the dynamo disappears, and a new jump queued
+while an older accepted jump response is still in flight. A further 64 reproducible QuickCheck
 integer-vector seeds (331001–331064) vary jump lengths and acceptance before rotation,
 disconnection and idling. These supplementary events are explicitly separate from the
 original upstream generator.

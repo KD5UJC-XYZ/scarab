@@ -6,16 +6,16 @@
     "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/ChainSync/Client/State.hs": "19d7496717bb256e0f4ce7db9fb87142b10126a02be179385f633f04320db2e6",
     "ouroboros-consensus/test/consensus-test/Test/Consensus/MiniProtocol/ChainSync/CSJ.hs": "f65498d7c7d9fad71089c8b906783e621a8031a70e1a1fc1edcf9d2e2412d800"
   },
-  "observerSha256": "4a79a95d50907e66f2ea5fe3bf32ab561e959458159ae56705b7ddace9083a8c",
+  "observerSha256": "1d9e5d89be5b0bcc84a76d707c1697c6d95afa5af4ae0f0f430adce6f6e2b0df",
   "exporterSha256": "0749e390f2d7e8a687693ea73d2989e1990070b4141224cf6bc11bf088a64f74",
-  "sha256": "ccfed046f12bbeea72d6d1d5252bfbfc2d95e6c66946086671c2ac8b80c65a0e",
-  "traces": 75,
-  "steps": 1037,
+  "sha256": "9cdb6d19988246bccb418c3f51a3c5a8a3e1fb2f5f702a0245757ec43edaefc5",
+  "traces": 76,
+  "steps": 1046,
   "originalProperty": "Test.Consensus.MiniProtocol.ChainSync.CSJ.prop_CaughtUpCsj; original Arbitrary TestSetup is constant",
   "additionalGeneration": "64 QuickCheck Int-vector seeds 331001..331064; complete event traces, no filtered outcomes",
   "image": "sha256:b9e81590371f7d1784b0e4a62eac7560e0da3498d8b1a6b791e50f6420ae15fb",
-  "executableSha256": "12b88e53185d4442bc0dc2b139fdd14b332ba76b8cc091dced06e582d2aef826",
-  "planSha256": "dad1376f8b54095ec3e07bc9135f6d2fd70b07d308786ce2188695d952153bcd",
-  "observerCabalSha256": "ebe133c4518302d84e37fe992a7ba588fb7bfcf3d86fdae16c5502ec3ec7f2e6",
+  "executableSha256": "9916b0b46a69a671ace1f3b1ed8285d2fb4433b7f968cfc2d7cea6bd2527a9e0",
+  "planSha256": "7b0c491a9871a1ed924cc5b22726bdb8dd6f66d548740312abee8d07e5d88b9b",
+  "observerCabalSha256": "058cc043c7b4cfa82b6c30cf4c23b99437d72847239f4ded419c18c3f036cac1",
   "nativeSodiumSha256": "ba24828b9bd23f19457f5ccac052b278a0443a1c29a4ab148eba997ed37d5d1b"
 }

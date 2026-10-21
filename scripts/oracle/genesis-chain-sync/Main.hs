@@ -107,7 +107,8 @@ main=do
      cases=[("caught-up",[Register 1 True,Register 2 True,Next 1,Next 2]),("accepted",common++[Answer 2 True,Forward 1 9,Next 2,Answer 2 True]),("bisect-reject",common++[Answer 2 False,Next 2,Answer 2 False,Next 2,Answer 2 False,Next 2,Answer 2 False,Next 2,Answer 2 True,Remove 1,Next 2]),("good-point-reject",common++[Answer 2 False,Next 2,Answer 2 False,Next 2,Answer 2 False,Next 2,Answer 2 False,Next 2,Answer 2 False,Next 2]),("rotation",common++[Register 3 False,Rotate 1,Next 2,Answer 2 True,Await 2,Next 3]),("rollback",common++[Answer 2 True,Forward 1 9,Backward 1 1,Next 2]),("fresh-response",common++[Register 3 False,Rotate 1,Answer 2 True,Next 3])]
  let objectorSteps=[Answer 2 False,Next 2,Answer 2 True,Next 2,Answer 2 False,Next 2,Answer 2 True,Next 2,Answer 2 True]
      objector=common++[Register 3 False]++objectorSteps
-     extra=[("earlier-objector-and-backfill",objector++[Next 3,Answer 3 False,Next 3,Answer 3 False,Next 3,Answer 3 False,Next 3,Answer 3 False,Next 3,Answer 3 True,Remove 3,Next 2]),
+     extra=[("new-jump-while-response-in-flight",common++[Update 1 16,Forward 1 17,Answer 2 True,Next 2,Answer 2 True]),
+            ("earlier-objector-and-backfill",objector++[Next 3,Answer 3 False,Next 3,Answer 3 False,Next 3,Answer 3 False,Next 3,Answer 3 False,Next 3,Answer 3 True,Remove 3,Next 2]),
             ("objector-agrees-disengages",objector++[Forward 2 6,Next 2]),
             ("objector-rolls-back-disengages",objector++[Backward 2 5,Next 2]),
             ("prefer-started-objector",[Register 1 False,Update 1 8,Register 3 False,Register 2 False,Next 2]++objectorSteps++[Remove 1,Next 2])]

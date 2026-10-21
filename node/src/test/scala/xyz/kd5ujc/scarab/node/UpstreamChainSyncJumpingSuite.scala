@@ -90,7 +90,7 @@ class UpstreamChainSyncJumpingSuite extends FunSuite:
       .mkString
     assertEquals(digest, field[String](manifest, "sha256"))
     assertEquals(rows.size, field[Int](manifest, "traces"))
-    assertEquals(rows.size, 75)
+    assertEquals(rows.size, 76)
     assertEquals(
       rows.map(j => field[Vector[Json]](j, "steps").size).sum,
       field[Int](manifest, "steps")
