@@ -535,9 +535,6 @@ final case class Tx(
   def hasAuxiliaryData: Boolean = auxiliary.isDefined
 
 object Tx:
-  /** Ledger size is the size of the serialized transaction: `[body, witnesses, isValid, aux]` from
-    * Alonzo, `[body, witnesses, aux]` before.
-    */
   /** `eraProtVerLow`, the version a block of the era is decoded at (Core/Internal/Definition/Era.hs
     * 95-132 at f649f975). Byron has no transactions of this shape and reads as Shelley.
     */
@@ -576,6 +573,9 @@ object Tx:
       }
     }
 
+  /** Ledger size is the size of the serialized transaction: `[body, witnesses, isValid, aux]` from
+    * Alonzo, `[body, witnesses, aux]` before.
+    */
   def fromBlock(t: Block.Transaction, era: Era): Either[LedgerDecodeError, Tx] =
     for
       body <- TxBody.decode(t.body, Address.Mode.of(era))
