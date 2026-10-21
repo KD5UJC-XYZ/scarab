@@ -530,6 +530,12 @@ object Tx:
     for
       body <- TxBody.decode(t.body, Address.Mode.of(era))
       witnesses <- Witnesses.decode(t.witnesses)
+      _ <- t.auxiliaryData
+        .filter(_ => era.ordinal >= Era.Alonzo.ordinal)
+        .traverse_(bytes =>
+          AuxiliaryScripts
+            .read(bytes, if era == Era.Alonzo then 5 else if era == Era.Babbage then 7 else 9)
+        )
     yield
       // The fee size is the array header, body, witnesses and auxiliary data (`null` is one byte);
       // the `is_valid` flag is not counted (checked against Preview transactions).

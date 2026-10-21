@@ -240,6 +240,28 @@ object Corpus extends munit.Assertions:
       case _ => Vector.empty
     reference ++ shelleyBlocks.filter(_.era == era).flatMap(_.transactions.map(wholeTx(_, era)))
 
+  /** Auxiliary boundary bytes enter the real submitted-transaction decoder, rather than a test-only
+    * parser. The enclosing body/witnesses are committed era transaction inputs.
+    */
+  def auxiliaryTransactions(era: Era): Vector[Array[Byte]] =
+    if !era.hasInvalidTransactions then Vector.empty
+    else
+      val template = transactionsOf(era).headOption
+        .flatMap(bytes => asTransaction(Bytes.fromArray(bytes), era))
+        .getOrElse(fail(s"no transaction template for $era"))
+      val rows = io.circe.parser
+        .parse(Files.readString(Path.of("fixtures/reference/auxiliary-scripts/auxiliary.json")))
+        .fold(error => fail(error.message), identity)
+        .asArray
+        .getOrElse(fail("not an array"))
+      rows.filter(_.hcursor.get[String]("era").toOption.contains(era.toString)).map { row =>
+        val auxiliary = row.hcursor
+          .get[String]("auxiliary")
+          .fold(error => fail(error.message), identity)
+        val raw = Bytes.fromHex(auxiliary).fold(error => fail(error.toString), identity)
+        wholeTx(template.copy(auxiliaryData = Some(raw)), era)
+      }
+
   private def wholeTx(t: Block.Transaction, era: Era): Array[Byte] =
     val aux = t.auxiliaryData.fold(Array(0xf6.toByte))(_.toArray)
     val head = Array((if era.hasInvalidTransactions then 0x84 else 0x83).toByte)

@@ -31,6 +31,9 @@ enum TxDefect:
   /** Redeemers, datums or a script data hash in a transaction before Alonzo. */
   case PlutusFieldsBeforeAlonzo
 
+  /** Auxiliary data is not admitted by the era's decoder. */
+  case AuxiliaryData(cause: LedgerDecodeError)
+
   /** The protocol version of an update proposal is not a pair of numbers. */
   case UnreadableProtocolVersion
 
@@ -40,6 +43,7 @@ enum TxDefect:
     case ConwayCertificate(c)         => s"certificate $c before Conway"
     case GovernanceFieldsBeforeConway => "governance fields before Conway"
     case PlutusFieldsBeforeAlonzo     => "Plutus fields before Alonzo"
+    case AuxiliaryData(cause)         => s"malformed auxiliary data: $cause"
     case UnreadableProtocolVersion    => "an update with an unreadable protocol version"
 
 /** Where this implementation could not supply a script verdict. */

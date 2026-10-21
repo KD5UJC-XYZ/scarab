@@ -1,0 +1,10 @@
+cabal-version: 3.0
+-- SPDX-License-Identifier: Apache-2.0
+name: scarab-auxiliary-oracle
+version: 0.1.0.0
+build-type: Simple
+executable scarab-auxiliary-oracle
+  main-is: Main.hs
+  build-depends: base, cardano-ledger-conway, cardano-ledger-babbage, cardano-ledger-alonzo, cardano-ledger-core, cardano-ledger-binary, cardano-ledger-mary, cardano-ledger-shelley, cardano-slotting, cardano-crypto-class, plutus-ledger-api, bytestring, containers, aeson, base16-bytestring, text, time, vector, microlens, mtl
+  default-language: Haskell2010
+  ghc-options: -Wall -Werror

@@ -183,3 +183,8 @@ v1-context/context-errors corpora and explicitly marked API-only derivations, wi
 released Haskell era-specific context/evaluation outputs. No signature revalidation or whole-ledger
 admission is claimed for derivations. Original Apache-2.0 observer/generation code; upstream package
 licenses and notices remain under fixtures/licenses and in fetched source distributions.
+
+fixtures/reference/auxiliary-scripts contains original synthetic auxiliary CBOR with decoder and
+script-validity observations from unchanged released Haskell ledger APIs. This API corpus makes no
+signed transaction-admission claim. Original Apache-2.0 observer/generation code; upstream package
+licenses/notices remain under fixtures/licenses and in fetched source distributions. No signing keys.
