@@ -46,19 +46,17 @@ class ResponderActivationSuite extends FailsOnUncaught:
       assertEquals(phase, "client")
     case other => fail(s"expected the responder's KeepAlive deadline, got $other")
 
-  test("unused duplex responders stay open beyond 97s; own replies and handshake do not arm them") {
+  test("unused duplex responders stay open beyond 97s; our own replies do not arm them") {
     TestControl
       .executeEmbed(typed {
         duplex
           .flatMap { (ours, remote) =>
-            NodeToNodeServer.start(ours, handlers).as(ours -> remote)
+            NodeToNodeServer.start(ours, handlers, initiators = true).as(ours -> remote)
           }
           .use { (ours, remote) =>
             for
               replies <- remote.channel(Protocols.ChainSync, Mux.Role.Responder)
-              handshake <- remote.channel(Protocols.Handshake, Mux.Role.Initiator)
               _ <- replies.send(Bytes(Vector(0.toByte)))
-              _ <- handshake.send(Bytes(Vector(0.toByte)))
               _ <- IO.sleep(200.seconds)
               _ <- assertOpen(ours)
             yield ()
@@ -73,7 +71,7 @@ class ResponderActivationSuite extends FailsOnUncaught:
         .executeEmbed(typed {
           duplex
             .flatMap { (ours, remote) =>
-              NodeToNodeServer.start(ours, handlers).as(ours -> remote)
+              NodeToNodeServer.start(ours, handlers, initiators = true).as(ours -> remote)
             }
             .use { (ours, remote) =>
               for
@@ -108,7 +106,7 @@ class ResponderActivationSuite extends FailsOnUncaught:
       .executeEmbed(typed {
         duplex
           .flatMap { (ours, remote) =>
-            NodeToNodeServer.start(ours, handlers).as(ours -> remote)
+            NodeToNodeServer.start(ours, handlers, initiators = true).as(ours -> remote)
           }
           .use { (ours, remote) =>
             for
@@ -136,4 +134,33 @@ class ResponderActivationSuite extends FailsOnUncaught:
         }
       })
       .map(result => assertEquals(result, Left(reason)))
+  }
+
+  test("negotiated PeerSharing activates KeepAlive with the unchanged deadline") {
+    TestControl
+      .executeEmbed(typed {
+        duplex
+          .flatMap { (ours, remote) =>
+            NodeToNodeServer
+              .start(ours, handlers, peerSharing = true, initiators = true)
+              .as(ours -> remote)
+          }
+          .use { (ours, remote) =>
+            for
+              _ <- IO.sleep(200.seconds)
+              channel <- remote.channel(Protocols.PeerSharing, Mux.Role.Initiator)
+              client <- PeerSharingClient[IO](channel)
+              began <- IO.monotonic
+              peers <- client.request(xyz.kd5ujc.scarab.protocol.PeerSharing.Amount.saturating(1))
+              _ <- IO(assertEquals(peers, Vector.empty))
+              reason <- ours.closed
+              ended <- IO.monotonic
+              _ <- IO {
+                keepAliveTimeout(reason)
+                assertEquals(ended - began, 97.seconds)
+              }
+            yield ()
+          }
+      })
+      .map(result => assertEquals(result, Right(())))
   }

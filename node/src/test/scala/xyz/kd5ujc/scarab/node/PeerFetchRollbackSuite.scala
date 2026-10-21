@@ -137,6 +137,9 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
             def done(using Raise[IO, NetworkError]) = IO.unit
             def idle = IO.pure(true)
           val mux = new Mux[IO]:
+            def installApplication(initiators: Set[Int], responders: Set[Int])(using
+                cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+            ): IO[Unit] = IO.unit
             def awaitResponderActivity(using
                 cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
             ) =

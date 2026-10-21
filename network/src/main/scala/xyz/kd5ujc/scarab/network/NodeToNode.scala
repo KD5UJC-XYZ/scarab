@@ -200,7 +200,7 @@ object NodeToNode:
       )
     )
     for
-      mux <- Mux.resource(
+      mux <- Mux.handshakeResource(
         bearer,
         NodeToNodeServer.Protocol,
         settings.mux.copy(duplex = serve.isDefined)
@@ -210,9 +210,23 @@ object NodeToNode:
           .channel(Protocols.Handshake)
           .flatMap(HandshakeClient.run(_, offers, settings.handshakeTimeout))
       )
-      _ <- serve.filter(_ => !agreed.data.initiatorOnly).traverse_ { handlers =>
-        NodeToNodeServer.start(mux, handlers, peerSharing = agreed.data.peerSharing)
-      }
+      _ <- serve
+        .filter(_ => !agreed.data.initiatorOnly)
+        .fold(
+          Resource.eval(
+            mux.installApplication(
+              NodeToNodeServer.applicationProtocols(agreed.data.peerSharing),
+              Set.empty
+            )
+          )
+        ) { handlers =>
+          NodeToNodeServer.start(
+            mux,
+            handlers,
+            peerSharing = agreed.data.peerSharing,
+            initiators = true
+          )
+        }
       warm <- warm(
         mux,
         settings.mux.role,

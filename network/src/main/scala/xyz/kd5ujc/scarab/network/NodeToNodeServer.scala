@@ -60,6 +60,10 @@ object NodeToNodeServer:
     Protocols.PeerSharing
   )
 
+  private[network] def applicationProtocols(peerSharing: Boolean): Set[Int] =
+    Protocol - Protocols.Handshake -- (if peerSharing then Set.empty
+                                       else Set(Protocols.PeerSharing))
+
   /** Run the servers for the life of the resource. A failed server aborts the multiplexer, which
     * ends the connection; a client that finishes its protocol (`Done`) just ends that conversation,
     * and the server waits for the next one on the same channel: a peer that demotes us from hot to
@@ -71,7 +75,8 @@ object NodeToNodeServer:
       mux: Mux[F],
       handlers: ServerHandlers[F, P],
       settings: Settings = Settings(),
-      peerSharing: Boolean = false
+      peerSharing: Boolean = false,
+      initiators: Boolean = false
   )(using Raise[F, NetworkError]): Resource[F, Unit] =
     // each server fiber runs in an error scope of its own and ends the connection with the reason
     def guarded(name: String)(program: Handle[F, NetworkError] ?=> F[Unit]): F[Unit] =
@@ -79,7 +84,11 @@ object NodeToNodeServer:
         .scoped[F, NetworkError, Unit](t => NetworkError.fromThrowable(name, t))(program)
         .flatMap(_.fold(mux.abort, _ => Async[F].unit))
     def channel(protocol: Int) = Resource.eval(mux.channel(protocol, Mux.Role.Responder))
+    val installed = applicationProtocols(peerSharing)
     for
+      _ <- Resource.eval(
+        mux.installApplication(if initiators then installed else Set.empty, installed)
+      )
       chainSync <- channel(Protocols.ChainSync)
       blockFetch <- channel(Protocols.BlockFetch)
       txs <- channel(Protocols.TxSubmission2)
@@ -123,7 +132,7 @@ object NodeToNodeServer:
         Resource.unit[F]
   )(using Raise[F, NetworkError]): F[ConnectionEnd] =
     val config = settings.mux.copy(role = Mux.Role.Responder, duplex = settings.duplex)
-    Mux.resource(bearer, Protocol, config).use { mux =>
+    Mux.handshakeResource(bearer, Protocol, config).use { mux =>
       for
         agreed <- mux
           .channel(Protocols.Handshake)
@@ -140,7 +149,13 @@ object NodeToNodeServer:
             )
           )
         reason <- (
-          start(mux, handlers, settings, agreed.data.peerSharing) *> negotiated(agreed, mux)
+          start(
+            mux,
+            handlers,
+            settings,
+            agreed.data.peerSharing,
+            initiators = !agreed.data.initiatorOnly
+          ) *> negotiated(agreed, mux)
         ).surround(mux.closed)
         result <- reason match
           case defect: NetworkError.Defect => defect.raise[F, ConnectionEnd]

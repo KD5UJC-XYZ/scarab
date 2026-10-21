@@ -60,6 +60,11 @@ trait Mux[F[_]]:
     */
   def awaitResponderActivity(using Raise[F, NetworkError]): F[Unit]
 
+  /** Finish the handshake mux and install exactly the negotiated application and directions. */
+  def installApplication(initiators: Set[Int], responders: Set[Int])(using
+      Raise[F, NetworkError]
+  ): F[Unit]
+
   /** Captured transport identity; in-memory and Unix bearers have no TCP identity. */
   def connectionId
       : Option[Either[xyz.kd5ujc.scarab.protocol.ConnectionIdentityError, ConnectionId]] = None
@@ -114,28 +119,163 @@ object Mux:
     * channel has not taken, and how many bytes they are.
     */
   private final class Ingress[F[_]: Async](
-      queue: Queue[F, Bytes],
+      queue: Queue[F, (BigInt, Bytes)],
       queued: Ref[F, Long],
+      received: Ref[F, BigInt],
+      consumed: Ref[F, BigInt],
+      read: F[Unit],
       val limit: Long
   ):
     /** Queue a payload; `Some(bytes)` instead when it would take the queue past its limit, with the
       * size it would have had.
       */
     def offer(payload: Bytes): F[Option[Long]] =
-      queued
-        .modify { held =>
-          val grown = held + payload.size
-          if grown <= limit then (grown, None) else (held, Some(grown))
-        }
-        .flatTap(over => queue.offer(payload).whenA(over.isEmpty))
+      received.updateAndGet(_ + 1).flatMap { sequence =>
+        // Native ingress counts bytes. Empty SDUs do not create unbounded queue items.
+        if payload.size == 0 then Async[F].pure(None)
+        else
+          queued
+            .modify { held =>
+              val grown = held + payload.size
+              if grown <= limit then (grown, None) else (held, Some(grown))
+            }
+            .flatTap(over => queue.offer(sequence -> payload).whenA(over.isEmpty))
+      }
 
-    private def taken(payload: Bytes): F[Bytes] = queued.update(_ - payload.size).as(payload)
+    private def taken(value: (BigInt, Bytes)): F[Bytes] =
+      queued.update(_ - value._2.size) *> consumed.set(value._1) *> read.as(value._2)
 
     def tryTake: F[Option[Bytes]] = queue.tryTake.flatMap(_.traverse(taken))
     def take: F[Bytes] = queue.take.flatMap(taken)
+    def pendingFrames: F[Boolean] = (received.get, consumed.get).mapN(_ > _)
 
     /** The bytes queued now (tests). */
     def held: F[Long] = queued.get
+
+  private final class HandshakeInput[F[_]: Async](
+      pending: Ref[F, Option[(Deferred[F, Unit], Boolean)]],
+      val finished: Deferred[F, Unit]
+  ):
+    private val F = Async[F]
+    def consumed: F[Unit] = pending.update(_.map((ack, _) => ack -> true))
+    def continue: F[Unit] = F.uncancelable(_ =>
+      pending
+        .modify {
+          case Some((ack, true)) => None -> Some(ack)
+          case current           => current -> None
+        }
+        .flatMap(_.traverse_(_.complete(()).void))
+    )
+    def complete: F[Unit] = F.uncancelable(_ => finished.complete(()).void *> continue)
+    def feed(payload: Bytes)(enqueue: F[Option[Long]]): F[Option[NetworkError]] =
+      if payload.size == 0 then F.pure(None)
+      else
+        Deferred[F, Unit].flatMap { ack =>
+          F.uncancelable { poll =>
+            pending.set(Some(ack -> false)) *> enqueue.flatMap {
+              case Some(bytes) =>
+                F.pure(Some(NetworkError.IngressLimit(Protocols.Handshake, bytes)))
+              case None => poll(ack.get).as(None)
+            }
+          }
+        }
+
+  private type Key = (Int, Role)
+  private final case class DispatchState(
+      application: Option[Set[Key]],
+      early: Vector[(Key, Boolean)]
+  )
+  private final class Dispatch[F[_]: Async](
+      state: Ref[F, DispatchState],
+      lock: Mutex[F],
+      val installed: Deferred[F, Unit],
+      val active: Deferred[F, Unit]
+  ):
+    private val F = Async[F]
+    private def denied(allowed: Set[Key], key: Key): Option[NetworkError] =
+      Option.unless(allowed(key)) {
+        NetworkError.IllegalTransition(
+          key._1,
+          if allowed.exists(_._1 == key._1) then NetworkError.RuntimeViolation.WrongModeBit
+          else NetworkError.RuntimeViolation.UnexpectedProtocol(key._1)
+        )
+      }
+    def check(key: Key): F[Option[NetworkError]] =
+      state.get.map(_.application.flatMap(denied(_, key)))
+    def configured: F[Boolean] = state.get.map(_.application.isDefined)
+    def route(key: Key, payload: Bytes)(enqueue: F[Option[Long]]): F[Option[NetworkError]] =
+      lock.lock.surround(
+        F.uncancelable(_ =>
+          state.get.flatMap { current =>
+            current.application.flatMap(denied(_, key)) match
+              case Some(error) => F.pure(Some(error))
+              case None =>
+                enqueue.flatMap {
+                  case Some(bytes) => F.pure(Some(NetworkError.IngressLimit(key._1, bytes)))
+                  case None =>
+                    val responder = key._2 == Role.Responder && key._1 != Protocols.Handshake
+                    current.application match
+                      case Some(_) =>
+                        active
+                          .complete(())
+                          .void
+                          .whenA(responder && payload.size > 0)
+                          .as(None)
+                      case None if key._1 != Protocols.Handshake =>
+                        val seen = current.early.exists(_._1 == key)
+                        val updated =
+                          if seen then
+                            current.early.map { case (k, nonempty) =>
+                              k -> (nonempty || (k == key && payload.size > 0))
+                            }
+                          else current.early :+ (key -> (payload.size > 0))
+                        state.set(current.copy(early = updated)).as(None)
+                      case None => F.pure(None)
+                }
+          }
+        )
+      )
+    def install(allowed: Set[Key], handshakePending: F[Boolean]): F[Either[NetworkError, Unit]] =
+      lock.lock.surround(
+        F.uncancelable(_ =>
+          state.get.flatMap { current =>
+            current.application match
+              case Some(existing) if existing == allowed => F.pure(Right(()))
+              case Some(_) =>
+                F.pure(
+                  Left(
+                    NetworkError.IllegalTransition(
+                      Protocols.Handshake,
+                      NetworkError.RuntimeViolation.ApplicationAlreadyInstalled
+                    )
+                  )
+                )
+              case None =>
+                handshakePending.flatMap { pending =>
+                  val rejected = Option
+                    .when(pending)(
+                      NetworkError.IllegalTransition(
+                        Protocols.Handshake,
+                        NetworkError.RuntimeViolation.UnexpectedProtocol(Protocols.Handshake)
+                      )
+                    )
+                    .orElse(
+                      current.early.iterator.flatMap((key, _) => denied(allowed, key)).nextOption()
+                    )
+                  rejected match
+                    case Some(error) => F.pure(Left(error))
+                    case None =>
+                      val awaken = current.early.exists { case ((protocol, role), nonempty) =>
+                        role == Role.Responder && protocol != Protocols.Handshake && nonempty
+                      }
+                      state.set(DispatchState(Some(allowed), Vector.empty)) *>
+                        installed
+                          .complete(())
+                          .void *> active.complete(()).void.whenA(awaken).as(Right(()))
+                }
+          }
+        )
+      )
 
   /** Open the multiplexer. `Raise` is the scope of whoever opens it, used only while opening: the
     * resource's own fibers report through [[Mux.closed]], and the channels take the `Raise` of
@@ -143,7 +283,31 @@ object Mux:
     */
   def resource[F[_]: Async](bearer: Bearer[F], protocols: Set[Int], config: Config = Config())(using
       Raise[F, NetworkError]
-  ): Resource[F, Mux[F]] =
+  ): Resource[F, Mux[F]] = open(bearer, protocols, config, handshake = false)
+
+  /** Native ConnectionHandler.hs:335–381: raw handshake SDUs precede application dispatch. */
+  def handshakeResource[F[_]: Async](
+      bearer: Bearer[F],
+      protocols: Set[Int],
+      config: Config
+  )(using Raise[F, NetworkError]): Resource[F, Mux[F]] =
+    if protocols(Protocols.Handshake) then open(bearer, protocols, config, handshake = true)
+    else
+      Resource.eval(
+        NetworkError
+          .IllegalTransition(
+            Protocols.Handshake,
+            NetworkError.RuntimeViolation.UnexpectedProtocol(Protocols.Handshake)
+          )
+          .raise[F, Mux[F]]
+      )
+
+  private def open[F[_]: Async](
+      bearer: Bearer[F],
+      protocols: Set[Int],
+      config: Config,
+      handshake: Boolean
+  )(using Raise[F, NetworkError]): Resource[F, Mux[F]] =
     val F = Async[F]
     val roles: List[Role] =
       if config.duplex then List(Role.Initiator, Role.Responder) else List(config.role)
@@ -158,12 +322,41 @@ object Mux:
     val setup = for
       connectionIdentity <- Resource.eval(bearer.connectionId.sequence)
       done <- Resource.eval(Deferred[F, NetworkError])
-      responderActivity <- Resource.eval(Deferred[F, Unit])
+      handshakeInput <- Resource.eval(
+        Option
+          .when(handshake)(())
+          .traverse(_ =>
+            (Ref.of[F, Option[(Deferred[F, Unit], Boolean)]](None), Deferred[F, Unit])
+              .mapN(new HandshakeInput[F](_, _))
+          )
+      )
+      dispatch <- Resource.eval(
+        (
+          Ref.of[F, DispatchState](DispatchState(None, Vector.empty)),
+          Mutex[F],
+          Deferred[F, Unit],
+          Deferred[F, Unit]
+        ).mapN(new Dispatch[F](_, _, _, _))
+      )
       inbound <- Resource.eval(
         (for p <- protocols.toList; r <- roles yield (p, r))
           .traverse { key =>
-            (Queue.unbounded[F, Bytes], Ref.of[F, Long](0L)).mapN((queue, queued) =>
-              key -> new Ingress[F](queue, queued, config.ingressLimit(key._1))
+            (
+              Queue.unbounded[F, (BigInt, Bytes)],
+              Ref.of[F, Long](0L),
+              Ref.of[F, BigInt](0),
+              Ref.of[F, BigInt](0)
+            ).mapN((queue, queued, received, consumed) =>
+              val rawHandshake = key == (Protocols.Handshake -> config.role)
+              key -> new Ingress[F](
+                queue,
+                queued,
+                received,
+                consumed,
+                handshakeInput.filter(_ => rawHandshake).traverse_(_.consumed),
+                if handshake && rawHandshake then WireMux.WireMaxPayloadBytes
+                else config.ingressLimit(key._1)
+              )
             )
           }
           .map(_.toMap)
@@ -171,123 +364,186 @@ object Mux:
       outbound <- Resource.eval(
         MuxEgress.create[F](config.egressQueueMessages, config.maxSduPayload)
       )
-      decoder <- Resource.eval(
+      _ <- Resource.eval(
         WireMux.Decoder
           .create(WireMux.Limits(maxPayloadBytes = config.maxSduPayload))
           .fold(e => NetworkError.MuxSetup(e).raise[F, WireMux.Decoder], F.pure)
       )
-    yield (done, inbound, outbound, decoder, connectionIdentity, responderActivity)
+    yield (done, inbound, outbound, connectionIdentity, dispatch, handshakeInput)
 
-    setup.flatMap { case (done, inbound, outbound, decoder, transportId, active) =>
-      // Route decoded SDUs in order; the first protocol violation ends the connection.
-      def route(sdus: List[WireMux.Sdu]): F[Option[NetworkError]] = sdus match
-        case Nil => F.pure(None)
-        case sdu :: rest =>
-          if !protocols.contains(sdu.protocol) then
-            F.pure(
-              Some(
-                NetworkError.IllegalTransition(
-                  sdu.protocol,
-                  NetworkError.RuntimeViolation.UnexpectedProtocol(sdu.protocol)
-                )
+    setup.flatMap { case (done, inbound, outbound, transportId, dispatch, handshakeInput) =>
+      def routeApplication(sdu: WireMux.Sdu): F[Option[NetworkError]] =
+        if !protocols.contains(sdu.protocol) then
+          F.pure(
+            Some(
+              NetworkError.IllegalTransition(
+                sdu.protocol,
+                NetworkError.RuntimeViolation.UnexpectedProtocol(sdu.protocol)
               )
             )
-          else
-            inbound.get((sdu.protocol, receiverOf(sdu.direction))) match
-              case None =>
-                F.pure(
-                  Some(
-                    NetworkError.IllegalTransition(
-                      sdu.protocol,
-                      NetworkError.RuntimeViolation.WrongModeBit
-                    )
+          )
+        else
+          inbound.get((sdu.protocol, receiverOf(sdu.direction))) match
+            case None =>
+              F.pure(
+                Some(
+                  NetworkError.IllegalTransition(
+                    sdu.protocol,
+                    NetworkError.RuntimeViolation.WrongModeBit
                   )
                 )
-              case Some(ingress) =>
-                ingress.offer(sdu.payload).flatMap {
-                  case Some(bytes) =>
-                    F.pure(Some(NetworkError.IngressLimit(sdu.protocol, bytes)))
-                  case None =>
-                    // network-mux Mux.hs:424–449,625–628: only queued responder bytes
-                    // activate StartOnDemandAny; the handshake is outside that mux application.
-                    active
-                      .complete(())
-                      .void
-                      .whenA(
-                        receiverOf(sdu.direction) == Role.Responder &&
-                          sdu.protocol != Protocols.Handshake && sdu.payload.size > 0
-                      ) *> route(rest)
-                }
+              )
+            case Some(ingress) =>
+              dispatch.route((sdu.protocol, receiverOf(sdu.direction)), sdu.payload)(
+                ingress.offer(sdu.payload)
+              )
+
+      def route(sdu: WireMux.Sdu): F[Option[NetworkError]] = handshakeInput match
+        case None => routeApplication(sdu)
+        case Some(input) =>
+          input.finished.tryGet.flatMap {
+            case None =>
+              input.feed(sdu.payload)(
+                inbound((Protocols.Handshake, config.role)).offer(sdu.payload)
+              )
+            case Some(_) => dispatch.installed.get *> routeApplication(sdu)
+          }
 
       val closedByPeer = NetworkError.BearerClosed(NetworkError.Closure.PeerClosed)
-      // Socket.hs:72-102: wait indefinitely for the first header bytes, then one absolute SDU
-      // deadline. Pull.timed owns its source and timer; continuing a partial SDU never resets it.
-      // Pull's suspended bind, rather than the JVM stack, owns this externally sized loop.
-      def read(
-          current: WireMux.Decoder,
+      // Socket.hs:74–110 reads exactly one SDU. Decoder acknowledgement may pause the
+      // handshake; no following SDU's deadline starts until the next logical read begins.
+      def readHeader(
+          held: Bytes,
+          available: Bytes,
           input: Pull.Timed[F, Byte]
       ): Pull[F, NetworkError, Unit] =
-        input.uncons.flatMap {
-          case None =>
-            Pull.output1(current.finish.fold(NetworkError.Framing(_), _ => closedByPeer))
-          case Some((Left(_), _)) =>
-            Pull.output1(NetworkError.SduTimeout(NetworkError.SduOperation.Read))
-          case Some((Right(chunk), rest)) =>
-            current.feed(Bytes.wrap(chunk.toArray)) match
-              case Left(reason) => Pull.output1(NetworkError.Framing(reason))
-              case Right((next, sdus)) =>
-                val timer =
-                  if next.pendingBytes == 0 then rest.timeout(Duration.Zero)
-                  else if current.pendingBytes == 0 || sdus.nonEmpty then
-                    rest.timeout(config.sduTimeout)
-                  else Pull.done
-                timer >> Pull.eval(route(sdus.toList)).flatMap {
-                  case Some(reason) => Pull.output1(reason)
-                  case None         => read(next, rest)
-                }
-        }
+        val installed =
+          if held.size != 0 then F.unit
+          else
+            handshakeInput.traverse_(input =>
+              input.finished.tryGet.flatMap(_.fold(F.unit)(_ => dispatch.installed.get))
+            )
+        Pull.eval(installed) >> readHeaderReady(held, available, input)
+
+      def readHeaderReady(
+          held: Bytes,
+          available: Bytes,
+          input: Pull.Timed[F, Byte]
+      ): Pull[F, NetworkError, Unit] =
+        if available.nonEmpty then
+          val count = (WireMux.HeaderBytes - held.size).min(available.size)
+          val header = held ++ available.take(count)
+          val rest = available.drop(count)
+          val deadline =
+            if held.size != 0 then Pull.done
+            else
+              Pull
+                .eval(handshakeInput.traverse(_.finished.tryGet).map { status =>
+                  if status.exists(_.isEmpty) then config.handshakeSduTimeout else config.sduTimeout
+                })
+                .flatMap(input.timeout)
+          deadline >> (if header.size < WireMux.HeaderBytes then readHeader(header, rest, input)
+                       else
+                         WireMux.decodeHeader(header, config.maxSduPayload) match
+                           case Left(error) => Pull.output1(NetworkError.Framing(error))
+                           case Right(value) =>
+                             readPayload(value, Nil, value.payloadLength, rest, input))
+        else
+          input.uncons.flatMap {
+            case None =>
+              Pull.output1(
+                if held.size == 0 then closedByPeer
+                else NetworkError.Framing(WireMux.Error.TruncatedHeader(held.size))
+              )
+            case Some((Left(_), _)) =>
+              Pull.output1(NetworkError.SduTimeout(NetworkError.SduOperation.Read))
+            case Some((Right(chunk), rest)) => readHeader(held, Bytes.wrap(chunk.toArray), rest)
+          }
+
+      def readPayload(
+          header: WireMux.Header,
+          parts: List[Bytes],
+          remaining: Int,
+          available: Bytes,
+          input: Pull.Timed[F, Byte]
+      ): Pull[F, NetworkError, Unit] =
+        if remaining == 0 then
+          val payload = Bytes(parts.reverseIterator.flatMap(_.value).toVector)
+          input.timeout(Duration.Zero) >> Pull
+            .eval(route(WireMux.Sdu(header.timestamp, header.protocol, header.direction, payload)))
+            .flatMap {
+              case Some(error) => Pull.output1(error)
+              case None        => readHeader(Bytes.empty, available, input)
+            }
+        else if available.nonEmpty then
+          val count = remaining.min(available.size)
+          readPayload(
+            header,
+            available.take(count) :: parts,
+            remaining - count,
+            available.drop(count),
+            input
+          )
+        else
+          input.uncons.flatMap {
+            case None =>
+              Pull.output1(
+                NetworkError.Framing(
+                  WireMux.Error
+                    .TruncatedPayload(header.payloadLength, header.payloadLength - remaining)
+                )
+              )
+            case Some((Left(_), _)) =>
+              Pull.output1(NetworkError.SduTimeout(NetworkError.SduOperation.Read))
+            case Some((Right(chunk), rest)) =>
+              readPayload(header, parts, remaining, Bytes.wrap(chunk.toArray), rest)
+          }
+
       val reader: F[NetworkError] =
         bearer.reads
           .chunkLimit(config.readChunkBytes)
           .unchunks
           .pull
-          .timed(read(decoder, _))
+          .timed(readHeader(Bytes.empty, Bytes.empty, _))
           .stream
           .compile
           .last
           .map(_.getOrElse(closedByPeer))
-          // a transport failure is the library's exception: it becomes a typed reason here
           .handleError(t => NetworkError.fromThrowable("bearer failed", t))
 
       val writer: F[NetworkError] =
         outbound
           .run { (lane, payload) =>
-            Clock[F].monotonic.flatMap { now =>
-              val frames = WireMux
-                .segmentProtocolMessage(
-                  payload,
-                  now.toMicros & 0xffffffffL,
-                  sending(lane.role),
-                  config.maxSduPayload,
-                  lane.protocol,
-                  config.maxMessageBytes
-                )
-                .flatMap(_.traverse(WireMux.encode))
-              frames match
-                case Left(reason)   => F.pure(Left(NetworkError.MuxWrite(reason)))
-                case Right(encoded) =>
-                  // Egress.hs:189–213 rotates after one SDU. Socket.hs:190–230 gives each
-                  // actual write one budget per SDU: a stalled first SDU gets no later SDU's time.
-                  val perSdu =
-                    if lane.protocol == Protocols.Handshake then config.handshakeSduTimeout
-                    else config.sduTimeout
-                  F.timeoutTo(
-                    bearer
-                      .write(Chunk.concat(encoded.map(b => Chunk.array(b.toArray))))
-                      .as(Right(()): Either[NetworkError, Unit]),
-                    perSdu * encoded.size.toLong,
-                    F.pure(Left(NetworkError.SduTimeout(NetworkError.SduOperation.Write)))
-                  )
+            dispatch.check((lane.protocol, lane.role)).flatMap {
+              case Some(error) => F.pure(Left(error))
+              case None =>
+                Clock[F].monotonic.flatMap { now =>
+                  val frames = WireMux
+                    .segmentProtocolMessage(
+                      payload,
+                      now.toMicros & 0xffffffffL,
+                      sending(lane.role),
+                      config.maxSduPayload,
+                      lane.protocol,
+                      config.maxMessageBytes
+                    )
+                    .flatMap(_.traverse(WireMux.encode))
+                  frames match
+                    case Left(reason)   => F.pure(Left(NetworkError.MuxWrite(reason)))
+                    case Right(encoded) =>
+                      // Egress.hs:189–213 rotates after one SDU. Socket.hs:190–230 gives each
+                      // actual write one budget per SDU: a stalled first SDU gets no later SDU's time.
+                      val perSdu =
+                        if lane.protocol == Protocols.Handshake then config.handshakeSduTimeout
+                        else config.sduTimeout
+                      F.timeoutTo(
+                        bearer
+                          .write(Chunk.concat(encoded.map(b => Chunk.array(b.toArray))))
+                          .as(Right(()): Either[NetworkError, Unit]),
+                        perSdu * encoded.size.toLong,
+                        F.pure(Left(NetworkError.SduTimeout(NetworkError.SduOperation.Write)))
+                      )
+                }
             }
           }
           .handleError(t => NetworkError.fromThrowable("bearer failed", t))
@@ -301,25 +557,82 @@ object Mux:
               for
                 buffer <- Ref.of[F, Bytes](Bytes.empty)
                 lock <- Mutex[F]
-              yield key -> channel(protocol, role, ingress, outbound, done, buffer, lock, config)
+              yield key -> (
+                channel(
+                  protocol,
+                  role,
+                  ingress,
+                  outbound,
+                  done,
+                  buffer,
+                  lock,
+                  config,
+                  dispatch,
+                  handshakeInput.filter(_ => (protocol, role) == (Protocols.Handshake, config.role))
+                ),
+                buffer
+              )
             }
             .map(_.toMap)
         )
       yield new Mux[F]:
         override val connectionId = transportId
         def awaitResponderActivity(using Raise[F, NetworkError]): F[Unit] =
-          F.race(done.get, active.get).flatMap(_.fold(_.raise[F, Unit], F.pure))
+          F.race(done.get, dispatch.active.get).flatMap(_.fold(_.raise[F, Unit], F.pure))
+        def installApplication(initiators: Set[Int], responders: Set[Int])(using
+            Raise[F, NetworkError]
+        ): F[Unit] =
+          val allowed = initiators.map(_ -> Role.Initiator) ++ responders.map(_ -> Role.Responder)
+          val invalid = allowed.toVector.sortBy((p, r) => (p, r.ordinal)).find { key =>
+            key._1 == Protocols.Handshake || !channels.contains(key)
+          }
+          val handshakePending = inbound.toVector
+            .filter(_._1._1 == Protocols.Handshake)
+            .traverse { (key, ingress) =>
+              (ingress.pendingFrames, channels(key)._2.get)
+                .mapN((pending, buffer) => pending || buffer.size > 0)
+            }
+            .map(_.contains(true))
+          val validation = invalid.fold(dispatch.install(allowed, handshakePending)) { (p, role) =>
+            F.pure(
+              Left(
+                NetworkError.IllegalTransition(
+                  p,
+                  if p == Protocols.Handshake || !protocols(p) then
+                    NetworkError.RuntimeViolation.UnexpectedProtocol(p)
+                  else NetworkError.RuntimeViolation.NotRegistered(role)
+                )
+              )
+            )
+          }
+          handshakeInput.traverse_(input =>
+            F.race(done.get, input.finished.get).flatMap(_.fold(_.raise[F, Unit], F.pure))
+          ) *> F
+            .race(done.get, outbound.flush)
+            .flatMap(
+              _.fold(
+                _.raise[F, Unit],
+                _ =>
+                  validation.flatMap(
+                    _.fold(error => done.complete(error).void *> error.raise[F, Unit], F.pure)
+                  )
+              )
+            )
         def channel(protocol: Int)(using Raise[F, NetworkError]) = channel(protocol, config.role)
         def channel(protocol: Int, role: Role)(using Raise[F, NetworkError]) =
-          channels.get((protocol, role)) match
-            case Some(c) => F.pure(c)
+          dispatch.check((protocol, role)).flatMap {
+            case Some(error) => error.raise[F, MuxChannel[F]]
             case None =>
-              NetworkError
-                .IllegalTransition(
-                  protocol,
-                  NetworkError.RuntimeViolation.NotRegistered(role)
-                )
-                .raise[F, MuxChannel[F]]
+              channels.get((protocol, role)) match
+                case Some((c, _)) => F.pure(c)
+                case None =>
+                  NetworkError
+                    .IllegalTransition(
+                      protocol,
+                      NetworkError.RuntimeViolation.NotRegistered(role)
+                    )
+                    .raise[F, MuxChannel[F]]
+          }
         def closed = done.get
         def abort(reason: NetworkError) = done.complete(reason).void
     }
@@ -332,39 +645,51 @@ object Mux:
       closed: Deferred[F, NetworkError],
       buffer: Ref[F, Bytes],
       lock: Mutex[F],
-      config: Config
+      config: Config,
+      dispatch: Dispatch[F],
+      handshakeInput: Option[HandshakeInput[F]]
   ): MuxChannel[F] = new MuxChannel[F]:
     private val F = Async[F]
     def protocol = id
 
-    def send(message: Bytes)(using Raise[F, NetworkError]): F[Unit] =
-      if message.size == 0 || message.size > config.maxMessageBytes then
-        NetworkError
-          .IllegalTransition(
-            id,
-            NetworkError.RuntimeViolation.OutgoingMessageSize(message.size, config.maxMessageBytes)
-          )
-          .raise
-      else
-        closed.tryGet.flatMap {
-          case Some(reason) => reason.raise[F, Unit]
-          case None =>
-            F.race(closed.get, outbound.send(id, role, message)).flatMap {
-              case Left(reason) => reason.raise[F, Unit]
-              case Right(_)     => F.unit
-            }
-        }
+    private def permitted(using Raise[F, NetworkError]): F[Unit] =
+      dispatch.check((id, role)).flatMap(_.fold(F.unit)(_.raise[F, Unit]))
+
+    def send(message: Bytes)(using Raise[F, NetworkError]): F[Unit] = permitted *>
+      (if message.size == 0 || message.size > config.maxMessageBytes then
+         NetworkError
+           .IllegalTransition(
+             id,
+             NetworkError.RuntimeViolation.OutgoingMessageSize(message.size, config.maxMessageBytes)
+           )
+           .raise
+       else
+         closed.tryGet.flatMap {
+           case Some(reason) => reason.raise[F, Unit]
+           case None =>
+             F.race(closed.get, outbound.send(id, role, message)).flatMap {
+               case Left(reason) => reason.raise[F, Unit]
+               case Right(_)     => F.unit
+             }
+         })
 
     def flush: F[Unit] = F.race(closed.get, outbound.flush).void
 
     // Queued SDUs are delivered before a close is reported; the reader closes only after enqueueing.
-    private def nextPayload(using Raise[F, NetworkError]): F[Bytes] =
+    private def nextPayload(using Raise[F, NetworkError]): F[Bytes] = permitted *>
       ingress.tryTake.flatMap {
         case Some(payload) => F.pure(payload)
         case None =>
           closed.tryGet.flatMap {
             case Some(reason) => reason.raise[F, Bytes]
-            case None => F.race(closed.get, ingress.take).flatMap(_.fold(_ => nextPayload, F.pure))
+            case None =>
+              val waiting = dispatch.configured.flatMap {
+                case true => ingress.take
+                case false =>
+                  F.race(dispatch.installed.get, ingress.take)
+                    .flatMap(_.fold(_ => nextPayload, F.pure))
+              }
+              F.race(closed.get, waiting).flatMap(_.fold(_ => nextPayload, F.pure))
           }
       }
 
@@ -372,16 +697,23 @@ object Mux:
         Raise[F, NetworkError]
     ): F[A] =
       lock.lock.surround {
-        def loop: F[A] =
+        def loop: F[A] = permitted *>
           buffer.get.flatMap { held =>
             decode(held) match
               case DecodeResult.Decoded(value, consumed) =>
                 if consumed > maxBytes then NetworkError.IngressLimit(id, consumed).raise[F, A]
-                else buffer.set(held.drop(consumed)).as(value)
+                else
+                  handshakeInput
+                    .fold(buffer.set(held.drop(consumed)))(input =>
+                      buffer.set(Bytes.empty) *> input.complete
+                    )
+                    .as(value)
               case DecodeResult.Failed(reason) => NetworkError.Decode(id, reason).raise[F, A]
               case DecodeResult.NeedMore =>
                 if held.size > maxBytes then NetworkError.IngressLimit(id, held.size).raise[F, A]
-                else nextPayload.flatMap(more => buffer.set(held ++ more) *> loop)
+                else
+                  handshakeInput.traverse_(_.continue) *>
+                    nextPayload.flatMap(more => buffer.set(held ++ more) *> loop)
           }
         loop
       }
