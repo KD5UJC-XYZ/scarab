@@ -163,7 +163,7 @@ object ForgedChain:
     * `epoch`, and return the blocks with the state after each.
     */
   def forge(slots: Range, epoch: BigInt = 5, seed: Int = 1): IO[ForgedChain] =
-    val p = pool(kesStart = (slots.head / 100).toInt - 1, seed)
+    val p = pool(kesStart = ((slots.head / 100).toInt - 1).max(0), seed)
     val flatGenesis = nodeState(ledgerWith(p, epoch))
     val env = mirrorEnv
     // the chain the pool forges on is the mirror of the fixture's flat state; the blocks are then

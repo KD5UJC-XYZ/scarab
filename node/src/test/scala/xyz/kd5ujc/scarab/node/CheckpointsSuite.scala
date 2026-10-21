@@ -120,7 +120,8 @@ class CheckpointsSuite extends FunSuite:
       assert(header.hash != wrong)
       val failure = EnvelopeError.CheckpointMismatch(header.blockNo, wrong, header.hash)
       val config = setup.praos.copy(checkpoints = HeaderCheckpoints(Map(header.blockNo -> wrong)))
-      val check = new NodeHeaderRules[MirrorState](config, setup.globals)
+      val check =
+        new NodeHeaderRules[MirrorState](config, setup.globals, setup.byronRules, setup.handOver)
       assertEquals(
         check.validate(setup.mirrorStart, None, check.at(setup.mirrorStart), header),
         HeaderRules.Outcome.Invalid(HeaderError.Envelope(failure))

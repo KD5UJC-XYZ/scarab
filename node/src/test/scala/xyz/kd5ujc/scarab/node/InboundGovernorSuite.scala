@@ -28,7 +28,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
   private val remote: SocketAddress[IpAddress] =
     SocketAddress(ip"10.1.2.3", port"3001")
 
-  private lazy val forged: ForgedChain = ForgedChain.forge(5000 until 5060).unsafeRunSync()
+  private lazy val forged: ForgedChain = ForgedChain.forge(0 until 60, epoch = 0).unsafeRunSync()
 
   private def flipInside(raw: Bytes, header: Header.Shelley): Bytes =
     // the KES signature is a 448-byte string that appears verbatim in the block
@@ -153,7 +153,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
       manager <- ConnectionManager.create[IO](ConnectionManager.Limits(maxInbound = 4))
       metrics <- Ref.of[IO, PeerMetrics[PeerNetwork.Addr]](PeerMetrics.empty())
       validating = Option.when(headerFirst)(
-        HeaderCheck.forChain[IO, MirrorState, xyz.kd5ujc.scarab.consensus.state.ProtocolState](
+        HeaderCheck.forChain[IO, MirrorState, NodeHeaderState](
           NodeHeaderRules[MirrorState](ForgedChain.config, ForgedChain.globals),
           Compute.inline[IO]
         )

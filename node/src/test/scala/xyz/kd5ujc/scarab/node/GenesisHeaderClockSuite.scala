@@ -87,7 +87,7 @@ class GenesisHeaderClockSuite extends FailsOnUncaught:
       given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(state)
       given Ask[IO, ChainSelection.Local] = Ask.const[IO, ChainSelection.Local](selected)
       inner = HeaderCheck.forGenesisChain[IO, MirrorState](
-        GenesisHeaderRules(c.setup.praos, c.setup.globals, c.setup.byronRules, c.setup.handOver),
+        NodeHeaderRules(c.setup.praos, c.setup.globals, c.setup.byronRules, c.setup.handOver),
         Compute.inline[IO],
         10000
       )
