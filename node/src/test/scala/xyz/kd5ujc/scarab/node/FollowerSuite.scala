@@ -17,17 +17,17 @@ import xyz.kd5ujc.scarab.ledger.{
   PeerError,
   ValidationError
 }
-import cats.effect.{IO, Ref, Resource}
+import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.std.Queue
 import cats.effect.testkit.TestControl
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
-import munit.CatsEffectSuite
+import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import scala.concurrent.duration.*
 
-class FollowerSuite extends CatsEffectSuite:
+class FollowerSuite extends FailsOnUncaught:
   private val geometry =
     EpochGeometry(
       java.time.Instant.EPOCH,
@@ -381,4 +381,146 @@ class FollowerSuite extends CatsEffectSuite:
         }
         .rescue(e => IO.pure(e.asLeft[Unit]))
     yield assertEquals(outcome, Left(PeerError.NoIntersection))
+  }
+
+  test("CaughtUp reselects the stored LoE-postponed candidate without another peer event") {
+    TestControl.executeEmbed {
+      val headers = Fixtures.chain(5)
+      for
+        ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(2, -1))
+        given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)
+        incoming <- Queue.unbounded[IO, SyncEvent]
+        fetched <- Ref.of[IO, Vector[Bytes]](Vector.empty)
+        peer = new Peer[IO]:
+          def intersect(points: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
+            IO.pure(points.lastOption)
+          def next(using Raise[IO, PeerError]) = incoming.take
+          def fetch(header: Header)(using Raise[IO, PeerError]) =
+            fetched.update(_ :+ header.hash).as(Bytes.empty)
+        follower <- Follower.create[IO, BigInt](rules(), noEvents, geometry)
+        governor <- GenesisGovernor.create[IO](follower.genesisView((_, _, _) => Some(30)))
+        _ <- follower.installGenesis(governor)
+        ended <- Deferred[IO, Either[SessionEnd, Unit]]
+        result <- xyz.kd5ujc.scarab.network.Fibers
+          .scoped[IO, SessionEnd, Unit](SessionEnd.Defect(_)) {
+            val scope = summon[Handle[IO, SessionEnd]]
+            given Raise[IO, NodeError] =
+              Peer.contramapped[IO, SessionEnd, NodeError](scope)(SessionEnd.of)
+            follower.session(peer)
+          }
+          .flatTap(ended.complete)
+          .background
+          .use { _ =>
+            for
+              _ <- headers.traverse_(h => incoming.offer(SyncEvent.RollForward(h, tip)))
+              _ <- IO.sleep(10.millis)
+              before <- ref.get
+              _ <- IO(assertEquals(before.tip, headers(1).point))
+              _ <- governor.setPhase(xyz.kd5ujc.scarab.network.selection.Gsm.Phase.CaughtUp)
+              _ <- IO.sleep(10.millis)
+              after <- ref.get
+              delivered <- fetched.get
+              early <- ended.tryGet
+            yield
+              assertEquals(after.tip, headers.last.point)
+              assertEquals(delivered, headers.map(_.hash))
+              assertEquals(early, None)
+          }
+      yield result
+    }
+  }
+
+  test("Genesis readers capture the last committed chain without waiting for ledger application") {
+    TestControl.executeEmbed {
+      val header = Fixtures.chain(1).head
+      for
+        ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(geometry.securityParam, -1))
+        given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)
+        entered <- Deferred[IO, Unit]
+        release <- Deferred[IO, Unit]
+        follower <- Follower.create[IO, BigInt](
+          BlockRules.from((_, h, _) => entered.complete(()).void *> release.get.as(h.blockNo)),
+          noEvents,
+          geometry
+        )
+        _ <- Resource
+          .make(
+            Handle
+              .allow[NodeError](follower.adoptForged(header, Bytes.empty))
+              .rescue(e => IO(fail(e.message)))
+              .start
+          )(_.cancel)
+          .use { applying =>
+            for
+              _ <- entered.get
+              before <- follower.genesisView((state, _, _) => Some(state)).timeout(1.second)
+              selected <- follower.fetchSelection
+              _ <- IO(assertEquals(before.current.tip, ChainSync.Point.Origin))
+              _ <- IO(assertEquals(before.windowAt(0), Some(BigInt(-1))))
+              _ <- IO(assertEquals(selected.anchor, ChainSync.Point.Origin))
+              _ <- release.complete(()) *> applying.joinWithNever
+              after <- follower.genesisView((state, _, _) => Some(state))
+              _ <- IO(assertEquals(after.current.tip, header.point))
+            yield ()
+          }
+      yield ()
+    }
+  }
+
+  test("GSM preference retains the captured prefix when selection forks before its intersection") {
+    import xyz.kd5ujc.scarab.consensus.{ChainSelection, HeaderChain, SelectView}
+    import xyz.kd5ujc.scarab.network.selection.Gsm
+    val old = Fixtures.chain(3)
+    val announced = Fixtures.chain(2, from = Some(old.last))
+    val selected = old.take(1) ++ Fixtures.chain(2, salt = 1, from = Some(old.head))
+    val current = selected.foldLeft(VolatileChain.genesis[BigInt](5, -1))((chain, h) =>
+      chain.extend(h, h.blockNo).fold(e => fail(e.message), _._1)
+    )
+    val history = HeaderChain[NodeHeaderState](
+      old.last.point,
+      None,
+      announced.map(h => HeaderChain.Entry(h, None)),
+      (ChainSync.Point.Origin +: old.dropRight(1).map(_.point)).map(p => HeaderChain.Known(p, None))
+    )
+    for
+      ref <- Ref.of[IO, VolatileChain[BigInt]](current)
+      given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)
+      follower <- Follower.create[IO, BigInt](
+        rules(),
+        noEvents,
+        geometry,
+        initialViews = selected.map(h => h.hash -> SelectView.of(h)).toMap
+      )
+      lostPrefix <- follower.versus(ChainSelection.Candidate(history.base, announced))
+      full <- follower.versusHeaders(history)
+    yield
+      assertEquals(lostPrefix, Gsm.Candidate.DoesNotIntersect)
+      assertEquals(full, Gsm.Candidate.Better(true))
+  }
+
+  test(
+    "the shared validation boundary invalidates delivered originals and preserves the typed refusal"
+  ) {
+    val header = Fixtures.chain(1).head
+    for
+      ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(geometry.securityParam, -1))
+      given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)
+      notified <- Ref.of[IO, Vector[ValidationError]](Vector.empty)
+      peer = new Peer[IO]:
+        def intersect(points: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
+          IO.pure(points.lastOption)
+        def next(using Raise[IO, PeerError]) = IO.pure(SyncEvent.RollForward(header, tip))
+        def fetch(@scala.annotation.unused h: Header)(using Raise[IO, PeerError]) =
+          IO.pure(Bytes.empty)
+        override def rejected(refusal: ValidationError)(using cats.Applicative[IO]) =
+          notified.update(_ :+ refusal)
+      follower <- Follower.create[IO, BigInt](rules(Set(header.hash)), noEvents, geometry)
+      outcome <- Handle
+        .allow[NodeError](follower.session(peer).as(Right(()): Either[NodeError, Unit]))
+        .rescue(e => IO.pure(Left(e)))
+      observed <- notified.get
+    yield
+      val expected = ValidationError(header.point, BlockFailure.HeaderDiffers)
+      assertEquals(outcome, Left(expected))
+      assertEquals(observed, Vector(expected))
   }

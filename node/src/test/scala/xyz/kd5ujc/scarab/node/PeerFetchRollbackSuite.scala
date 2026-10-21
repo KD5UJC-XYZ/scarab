@@ -67,6 +67,7 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
         remaining <- Ref.of[IO, List[Vector[ChainSyncClient.Update[NtNHeader]]]](scripts)
         requests <- Ref.of[IO, Vector[(ChainSync.Point, ChainSync.Point)]](Vector.empty)
         applied <- Ref.of[IO, Vector[Bytes]](Vector.empty)
+        receivedBodies <- Ref.of[IO, Vector[(Bytes, Bytes)]](Vector.empty)
         closeReason <- Deferred[IO, NetworkError]
         chain <- Ref.of[IO, VolatileChain[BigInt]](
           VolatileChain(
@@ -167,8 +168,25 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
                     readAhead = 16,
                     byronEpochSlots = ForgedChain.geometry.byron.epochSlots
                   ),
-                  _ => IO.unit,
+                  raws =>
+                    receivedBodies.get.flatMap(seen =>
+                      IO(
+                        assert(
+                          raws.forall(raw => seen.exists(_._2 == raw)),
+                          "received originals must be persisted before preparation"
+                        )
+                      )
+                    ),
                   pool = Some(pool),
+                  receivedBody = Some((header, raw) =>
+                    IO(
+                      assertEquals(
+                        raw,
+                        bodies.getOrElse(header.hash, fail("unannounced original body"))
+                      )
+                    ) *>
+                      receivedBodies.update(_ :+ (header.hash -> raw))
+                  ),
                   patience = Option.when(streaming)(patience),
                   headers = Option.when(streaming)(
                     new HeaderCheck[IO]:

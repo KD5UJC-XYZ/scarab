@@ -23,8 +23,9 @@ import scala.concurrent.duration.*
   * imposing a second, incompatible per-block duplicate cap here.
   *
   * A claim that is not filled (the connection failed, the peer lacks the block) is released, and a
-  * session waiting for it fetches the block itself. Blocks that nobody takes (a candidate that was
-  * not preferred) are dropped, oldest first, past [[BlockPool.Retained]] entries.
+  * session waiting for it fetches the block itself. Received original bodies remain readable while
+  * validation or LoE postpones selection, like upstream VolatileDB. The bounded cache drops the
+  * oldest bodies past [[BlockPool.Retained]] entries.
   *
   * Claims are made through a [[BlockPool.Claims]] that belongs to one session ([[session]]). It is
   * a resource: when the session ends, however it ends (a failure, a cancellation), every claim it
@@ -35,7 +36,8 @@ final class BlockPool[F[_]: Async] private (
     slots: Ref[F, BlockPool.Slots[F]],
     policy: BlockPool.FetchPolicy,
     attribution: BlockPool.AttributionPolicy,
-    private[node] val fetchCoordinator: FetchCoordinator[F]
+    private[node] val fetchCoordinator: FetchCoordinator[F],
+    recovered: Option[BlockPool.Recovered[F]]
 ):
   import BlockPool.*
   private val F = Async[F]
@@ -139,15 +141,19 @@ final class BlockPool[F[_]: Async] private (
                   if owners(owner) && acc.origins.get(owner).exists(_.expires.isEmpty) =>
                 (
                   acc.copy(
-                    entries = acc.entries.updated(hash, Slot.Done(block, seq, owner)),
+                    entries =
+                      acc.entries.updated(hash, Slot.Done(block, seq, Source.Session(owner))),
                     origins = acc.origins.updatedWith(owner)(_.map(_.copy(delivered = true)))
                   ),
-                  waiting :+ (done -> Filled(block, owner))
+                  waiting :+ (done -> Filled(block, Source.Session(owner)))
                 )
               case _ => (acc, waiting)
         }
       }
-      .flatMap(_.traverse_((done, filled) => done.complete(Some(filled))))
+      .flatMap { completed =>
+        completed.traverse_((done, filled) => done.complete(Some(filled))) *>
+          fetchCoordinator.refreshGenesis.whenA(completed.nonEmpty)
+      }
 
   /** Give up the claims of `owner` that are still open (those already filled stay). A block that
     * another session also claimed stays pending for it; one nobody holds any more is released to
@@ -187,8 +193,8 @@ final class BlockPool[F[_]: Async] private (
         case _ => (acc, open)
     }
 
-  /** The block, once some session has fetched it; none when no session holds a claim on it (or the
-    * claim was released), and the caller fetches it itself.
+  /** The original block remains readable after receipt, including while another session applies it.
+    * None means that no live claim or retained body exists and the caller must fetch it.
     */
   def take(hash: Bytes): F[Option[Bytes]] = takeFilled(hash).map(_.map(_.block))
 
@@ -197,17 +203,29 @@ final class BlockPool[F[_]: Async] private (
     reap *> slots.modify { s =>
       s.entries.get(hash) match
         case Some(Slot.Done(block, _, origin)) =>
-          (s.copy(entries = s.entries - hash), F.pure(Option(Filled(block, origin))))
+          (s, F.pure(Option(Filled(block, origin))))
         case Some(Slot.Pending(done, _, _)) =>
-          (s, done.get.flatTap(_ => slots.update(a => a.copy(entries = a.entries - hash))))
-        case None => (s, F.pure(Option.empty[Filled]))
+          (s, done.get)
+        case None =>
+          (s, recovered.traverse(_.get(hash)).map(_.flatten.map(Filled(_, Source.Recovered))))
     }.flatten
 
-  /** Drop the blocks that session `origin` delivered and nobody has taken, and tell it why: its
-    * blocks are not trusted, since one of them was refused (`error`). A session that waits for one
-    * of them fetches it itself.
+  /** Drop the retained blocks that session `origin` delivered, and tell it why: its blocks are not
+    * trusted, since one of them was refused (`error`). A session that waits for one of them fetches
+    * it itself.
     */
-  private def distrust(origin: Long, error: ValidationError): F[Unit] =
+  private def refusedHash(error: ValidationError): Option[Bytes] = error.point match
+    case xyz.kd5ujc.scarab.protocol.ChainSync.Point.Block(_, hash) => Some(hash)
+    case xyz.kd5ujc.scarab.protocol.ChainSync.Point.Origin         => None
+
+  private def distrust(source: Source, error: ValidationError): F[Unit] =
+    (source match
+      case Source.Session(origin) => distrustSession(origin, error)
+      case Source.Recovered =>
+        slots.update(s => s.copy(entries = s.entries -- refusedHash(error)))
+    ) *> recovered.traverse_(store => refusedHash(error).traverse_(store.invalidate))
+
+  private def distrustSession(origin: Long, error: ValidationError): F[Unit] =
     F.uncancelable { _ =>
       reap *> slots
         .modify { s =>
@@ -218,8 +236,8 @@ final class BlockPool[F[_]: Async] private (
           (
             released.copy(
               entries = released.entries.filter {
-                case (_, Slot.Done(_, _, from)) => from != origin
-                case _                          => true
+                case (_, Slot.Done(_, _, Source.Session(from))) => from != origin
+                case _                                          => true
               },
               origins = s.origins - origin,
               released =
@@ -233,6 +251,30 @@ final class BlockPool[F[_]: Async] private (
             source.traverse_(o => o.report.fold(o.blame.complete(error).void)(_(error)))
         }
     }
+
+  private def retained(source: Source, hash: Bytes): F[Boolean] =
+    reap *> (source match
+      case Source.Session(origin) => slots.get.map(_.origins.contains(origin))
+      case Source.Recovered =>
+        (slots.get, recovered.traverse(_.hashes)).mapN { (current, durable) =>
+          current.entries.contains(hash) || durable.exists(_(hash))
+        })
+
+  /** Seed actual original bytes with restart provenance, never a fabricated live-session owner. */
+  private[node] def seedRecovered(blocks: Vector[(Bytes, Bytes)]): F[Unit] =
+    slots.update { before =>
+      blocks
+        .foldLeft(before) { case (current, (hash, raw)) =>
+          if current.entries.contains(hash) then current
+          else
+            current.copy(
+              entries =
+                current.entries.updated(hash, Slot.Done(raw, current.next, Source.Recovered)),
+              next = current.next + 1
+            )
+        }
+        .trimmed
+    } *> fetchCoordinator.refreshGenesis
 
   /** Expiry also drops untaken blocks: a cache entry never survives its retained source. */
   private[node] def reap: F[Unit] =
@@ -301,18 +343,30 @@ object BlockPool:
     ): F[Vector[Boolean]] =
       pool.claim(owner, hashes, mode, allowOverlap)
     def fill(blocks: Vector[(Bytes, Bytes)]): F[Unit] = pool.fill(owner, blocks)
+
+    /** Provenance of original bytes delivered by this connection, independently of which peer won a
+      * duplicate pool claim. Genesis can validate that delivery before its range ends.
+      */
+    private[node] def delivered(block: Bytes): Taken =
+      Taken(block, own = true, Source.Session(owner))
     def release(hashes: Vector[Bytes]): F[Unit] = pool.release(owner, hashes)
 
     /** The block, once some session has fetched it (see [[BlockPool.take]]), and whether this
       * session fetched it.
       */
     def take(hash: Bytes)(using Functor[F]): F[Option[Taken]] =
-      pool.takeFilled(hash).map(_.map(f => Taken(f.block, f.origin == owner, f.origin)))
+      pool
+        .takeFilled(hash)
+        .map(_.map(f => Taken(f.block, f.origin == Source.Session(owner), f.origin)))
 
     /** The rules refused a block that session `origin` delivered: drop the others it delivered and
       * tell it ([[blamed]]).
       */
-    def distrust(origin: Long, error: ValidationError): F[Unit] = pool.distrust(origin, error)
+    def distrust(origin: Source, error: ValidationError): F[Unit] = pool.distrust(origin, error)
+
+    /** A staged body cannot outlive invalidation or the retained attribution of its source. */
+    private[node] def retained(origin: Source, hash: Bytes): F[Boolean] =
+      pool.retained(origin, hash)
 
     /** Completes when the rules have refused a block that this session delivered, with their
       * reason: the session's peer sent an invalid block.
@@ -320,12 +374,23 @@ object BlockPool:
     def blamed: F[ValidationError] = blame.get
 
   /** A block and the session that delivered it. */
-  final case class Filled(block: Bytes, origin: Long)
+  enum Source:
+    case Session(owner: Long)
+    case Recovered
+
+  /** Durable callbacks return readable original bytes and own their infrastructure error scope. */
+  final case class Recovered[F[_]](
+      hashes: F[Set[Bytes]],
+      get: Bytes => F[Option[Bytes]],
+      invalidate: Bytes => F[Unit]
+  )
+
+  final case class Filled(block: Bytes, origin: Source)
 
   /** A block taken from the pool: `own` when the session that takes it fetched it, else `origin`
     * delivered it.
     */
-  final case class Taken(block: Bytes, own: Boolean, origin: Long)
+  final case class Taken(block: Bytes, own: Boolean, origin: Source)
 
   /** Entries kept before the oldest finished ones are dropped. */
   val Retained = 8192
@@ -341,10 +406,17 @@ object BlockPool:
   ): F[BlockPool[F]] =
     create(policy, AttributionPolicy(), Some(selection))
 
+  def create[F[_]: Async](
+      policy: FetchPolicy,
+      selection: F[ChainSelection.Local],
+      recovered: Recovered[F]
+  ): F[BlockPool[F]] = create(policy, AttributionPolicy(), Some(selection), Some(recovered))
+
   private[node] def create[F[_]: Async](
       policy: FetchPolicy,
       attribution: AttributionPolicy,
-      selection: Option[F[ChainSelection.Local]] = None
+      selection: Option[F[ChainSelection.Local]] = None,
+      recovered: Option[Recovered[F]] = None
   ): F[BlockPool[F]] =
     Ref
       .of[F, Slots[F]](Slots(Map.empty, 0L, 0L, Map.empty, 0, None))
@@ -358,17 +430,14 @@ object BlockPool:
             ),
             selection,
             Some(
-              slots.get.map(
-                _.entries
-                  .collect { case (hash, Slot.Done(_, _, _)) =>
-                    hash
-                  }
-                  .toSet
-              )
+              (slots.get, recovered.traverse(_.hashes)).mapN { (current, durable) =>
+                current.entries.collect { case (hash, Slot.Done(_, _, _)) => hash }.toSet ++
+                  durable.getOrElse(Set.empty)
+              }
             ),
             policy.peerSalt
           )
-          .map(new BlockPool(slots, policy, attribution, _))
+          .map(new BlockPool(slots, policy, attribution, _, recovered))
       )
 
   /** The node owns the expiry worker; release removes callbacks and wakes any remaining waiters. */
@@ -383,7 +452,7 @@ object BlockPool:
 
   private enum Slot[F[_]]:
     case Pending(done: Deferred[F, Option[Filled]], seq: Long, owners: Set[Long])
-    case Done(block: Bytes, seq: Long, origin: Long)
+    case Done(block: Bytes, seq: Long, origin: Source)
 
   private final case class Origin[F[_]](
       blame: Deferred[F, ValidationError],
@@ -425,8 +494,8 @@ object BlockPool:
         released = retained.size,
         reapAt = keep.values.flatMap(_.expires).minOption,
         entries = entries.filter {
-          case (_, Slot.Done(_, _, origin)) => !dropped(origin)
-          case _                            => true
+          case (_, Slot.Done(_, _, Source.Session(origin))) => !dropped(origin)
+          case _                                            => true
         }
       )
 
