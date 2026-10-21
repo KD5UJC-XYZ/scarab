@@ -253,7 +253,7 @@ class ConfigSuite extends FunSuite:
       .noSpaces
     val config = NodeConfig.parse(dijkstra, strict = true).fold(e => fail(e.message), identity)
     assert(config.settings.unsupported.exists(_.contains("Dijkstra")))
-    assert(parsed("preview").settings.unsupported.exists(_.contains("GenesisMode")))
+    assert(!parsed("preview").settings.unsupported.exists(_.contains("GenesisMode")))
     // settings the node acts on when started from a configuration file
     val settings = NodeConfig
       .parse(

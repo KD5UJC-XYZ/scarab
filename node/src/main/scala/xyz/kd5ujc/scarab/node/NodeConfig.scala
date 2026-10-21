@@ -131,10 +131,6 @@ final case class ConfigSettings(
       Option.when(experimentalHardForksEnabled)(
         "ExperimentalHardForksEnabled: the Dijkstra era is not implemented"
       ),
-      Option.when(consensusMode == ConsensusMode.GenesisMode)(
-        "ConsensusMode GenesisMode: chain-density and ledger-dependent fork choice are not " +
-          "implemented; peer selection provides sync targets and trusted-state hooks only"
-      ),
       Option.when(hardForkVersions.nonEmpty)(
         "Test<Era>HardForkAtVersion: hard forks triggered by a version are not honoured"
       )
