@@ -18,11 +18,25 @@ import NetworkError.RuntimeViolation
   * tip, and payload values remain codec-owned.
   */
 object ChainSyncRuntime:
+  /** Both intersection outcomes retain the advertised server tip (Client.hs:1310–1341). */
+  enum Intersection[+Q, +T]:
+    case Found(point: Q, remoteTip: T)
+    case NotFound(remoteTip: T)
+
+    def tip: T = this match
+      case Found(_, remoteTip) => remoteTip
+      case NotFound(remoteTip) => remoteTip
+
+    def toOption: Option[(Q, T)] = this match
+      case Found(point, remoteTip) => Some(point -> remoteTip)
+      case NotFound(_)             => None
+
   enum Update[+Q, +T, +P]:
     case RollForward(payload: P, tip: T)
     case RollBackward(point: Q, tip: T)
 
   trait Client[F[_], Q, T, P]:
+    def findIntersectResult(points: Vector[Q])(using Raise[F, NetworkError]): F[Intersection[Q, T]]
     def findIntersect(points: Vector[Q])(using Raise[F, NetworkError]): F[Option[(Q, T)]]
     def requestNext(using Raise[F, NetworkError]): F[Update[Q, T, P]]
     def requestNextBatch(n: Int)(using Raise[F, NetworkError]): F[Vector[Update[Q, T, P]]]
@@ -186,13 +200,16 @@ object ChainSyncRuntime:
 
       new Client[F, Q, T, P]:
         def findIntersect(points: Vector[Q])(using Raise[F, NetworkError]) =
+          findIntersectResult(points).map(_.toOption)
+
+        def findIntersectResult(points: Vector[Q])(using Raise[F, NetworkError]): F[Intersection[Q, T]] =
           flight {
             send(Message.FindIntersect(points)) *> receive.flatMap {
               case Message.IntersectFound(point, tip) if points.contains(point) =>
-                F.pure(Some(point -> tip))
+                F.pure(Intersection.Found(point, tip))
               case Message.IntersectFound(_, _) =>
                 illegal(RuntimeViolation.IntersectionNotOffered)
-              case Message.IntersectNotFound(_) => F.pure(None)
+              case Message.IntersectNotFound(tip) => F.pure(Intersection.NotFound(tip))
               case other                        => unexpected(other)
             }
           }

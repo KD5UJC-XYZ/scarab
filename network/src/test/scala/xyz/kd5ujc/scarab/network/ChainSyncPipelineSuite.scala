@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.effect.{Deferred, IO, Ref}
+import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.std.Queue
 import cats.effect.testkit.TestControl
 import cats.mtl.Raise
@@ -65,6 +65,45 @@ class ChainSyncPipelineSuite extends FailsOnUncaught:
     canAwaitTimeout = 5.seconds,
     mustReplyTimeout = 1.second
   )
+
+  for rolling <- List(false, true) do
+    test(s"intersection rejection retains the remote tip with rolling=$rolling") {
+      typed {
+        script.flatMap { s =>
+          val advertised = tip(100)
+          val offered = ChainSync.Point.Origin
+          val client: Resource[IO, ChainSyncClient[IO, Bytes]] =
+            if rolling then
+              ChainSyncClient
+                .resource(s.channel, ChainSyncFixtures.rawItem, e => s.aborts.update(_ :+ e), settings)
+                .map(c => c: ChainSyncClient[IO, Bytes])
+            else Resource.eval(ChainSyncClient(s.channel, ChainSyncFixtures.rawItem, settings))
+          List(
+            encoded(State.Intersect, Message.IntersectNotFound(advertised)),
+            encoded(State.Intersect, Message.IntersectNotFound(advertised)),
+            encoded(State.Intersect, Message.IntersectFound(offered, advertised)),
+            encoded(State.NextCanAwait, Message.RollForward(header(1), advertised))
+          ).traverse_(s.input.offer) *> client.use { c =>
+            for
+              rejected <- c.findIntersectResult(Vector(offered))
+              legacy <- c.findIntersect(Vector(offered))
+              found <- c.findIntersectResult(Vector(offered))
+              update <- c.requestNext
+              _ <- c.done
+              aborts <- s.aborts.get
+            yield
+              assertEquals(rejected, ChainSyncRuntime.Intersection.NotFound(advertised))
+              assertEquals(rejected.tip, advertised)
+              assertEquals(rejected.toOption, None)
+              assertEquals(legacy, None)
+              assertEquals(found, ChainSyncRuntime.Intersection.Found(offered, advertised))
+              assertEquals(found.toOption, Some(offered -> advertised))
+              assertEquals(update, ChainSyncClient.Update.RollForward(header(1), advertised))
+              assertEquals(aborts, Vector.empty)
+          }
+        }
+      }.timeout(5.seconds)
+    }
 
   test("rolling replenishment preserves reply order across rollback without draining the window") {
     typed {

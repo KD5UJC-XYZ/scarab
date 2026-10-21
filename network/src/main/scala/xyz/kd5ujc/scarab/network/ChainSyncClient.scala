@@ -12,6 +12,7 @@ import scala.concurrent.duration.*
 /** Strict Cardano ChainSync client facade over the generic typed runtime. Use from a single fiber.
   */
 trait ChainSyncClient[F[_], P]:
+  def findIntersectResult(points: Vector[Point])(using Raise[F, NetworkError]): F[ChainSyncClient.Intersection]
   def findIntersect(points: Vector[Point])(using Raise[F, NetworkError]): F[Option[(Point, Tip)]]
   def requestNext(using Raise[F, NetworkError]): F[ChainSyncClient.Update[P]]
   def requestNextBatch(n: Int)(using Raise[F, NetworkError]): F[Vector[ChainSyncClient.Update[P]]]
@@ -29,6 +30,8 @@ trait ChainSyncClient[F[_], P]:
     Resource.pure[F, ChainSyncClient.Observer[F]](observer).void
 
 object ChainSyncClient:
+  type Intersection = ChainSyncRuntime.Intersection[Point, Tip]
+
   /** A receiver-owned service. Its operation takes the receiver's fresh capability rather than
     * retaining a caller's error scope. Capture immutable request context before submission.
     */
@@ -90,6 +93,8 @@ object ChainSyncClient:
               Raise[F, NetworkError]
           ): F[Unit] =
             runtime.drain(onAwait)(u => onUpdate(translated(u)))
+          def findIntersectResult(points: Vector[Point])(using Raise[F, NetworkError]): F[Intersection] =
+            runtime.findIntersectResult(points)
           def findIntersect(points: Vector[Point])(using
               Raise[F, NetworkError]
           ): F[Option[(Point, Tip)]] =
@@ -148,6 +153,8 @@ object ChainSyncClient:
       )
       .map { runtime =>
         new ChainSyncClient[F, P]:
+          def findIntersectResult(points: Vector[Point])(using Raise[F, NetworkError]): F[Intersection] =
+            runtime.findIntersectResult(points)
           def findIntersect(points: Vector[Point])(using Raise[F, NetworkError]) =
             runtime.findIntersect(points)
 

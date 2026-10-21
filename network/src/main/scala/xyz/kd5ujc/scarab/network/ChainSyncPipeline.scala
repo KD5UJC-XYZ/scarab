@@ -250,13 +250,16 @@ private[network] object ChainSyncPipeline:
                   }
                 )
 
-              def findIntersect(points: Vector[Q])(using
+              def findIntersect(points: Vector[Q])(using Raise[F, NetworkError]): F[Option[(Q, T)]] =
+                findIntersectResult(points).map(_.toOption)
+
+              def findIntersectResult(points: Vector[Q])(using
                   Raise[F, NetworkError]
-              ): F[Option[(Q, T)]] =
+              ): F[ChainSyncRuntime.Intersection[Q, T]] =
                 guarded(sending.lock.surround(healthy *> count.get.flatMap { n =>
                   if n != 0 then
                     illegal(NetworkError.RuntimeViolation.PipelinedRequest(State.NextCanAwait))
-                  else wire(base.findIntersect(points))
+                  else wire(base.findIntersectResult(points))
                 }))
               def done(using Raise[F, NetworkError]): F[Unit] =
                 guarded(sending.lock.surround(healthy *> count.get.flatMap { n =>
