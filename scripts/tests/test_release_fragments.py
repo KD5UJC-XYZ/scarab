@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 SPEC = importlib.util.spec_from_file_location("release_fragments", Path(__file__).resolve().parents[1] / "release_fragments.py")
 r = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(r)
@@ -110,12 +111,45 @@ class ReleaseFragmentsTests(unittest.TestCase):
         with self.assertRaises(r.ReleaseError):
             self.build(release_version="0.2.0-beta.01")
 
-    def test_beta_preview_retains_every_input_and_cannot_apply(self):
+    def test_every_prerelease_preview_retains_every_input_and_cannot_apply(self):
         originals = {p: p.read_bytes() for p in self.repo.rglob("*.md")}
-        plan = self.prepare("0.2.0-beta.1")
-        with self.assertRaisesRegex(r.ReleaseError, "beta"):
-            r.apply(self.repo, plan)
-        self.assertEqual(originals, {p: p.read_bytes() for p in originals})
+        for suffix in ("alpha", "beta", "rc"):
+            with self.subTest(suffix=suffix):
+                plan = self.prepare(f"0.2.0-{suffix}.1")
+                with self.assertRaisesRegex(r.ReleaseError, "prerelease"):
+                    r.apply(self.repo, plan)
+                self.assertEqual(originals, {p: p.read_bytes() for p in originals})
+                self.assertFalse((self.repo / ".release").exists())
+
+    def test_shared_version_contract_selects_all_four_channels(self):
+        for suffix, channel in (("-alpha.0", "alpha"), ("-beta.0", "beta"),
+                                ("-rc.0", "preprod"), ("", "prod")):
+            with self.subTest(channel=channel):
+                version = "0.2.0" + suffix
+                plan, notes, _ = self.build(release_version=version)
+                self.assertEqual(plan["channel"], channel)
+                self.assertTrue(notes.startswith(f"## [{version}]".encode()))
+
+    def test_unknown_channel_suffixes_and_noncanonical_ordinals_are_refused(self):
+        for suffix in ("-preprod.1", "-prod.1", "-Alpha.1", "-rc", "-alpha.01",
+                       "-beta.01", "-rc.01", "-alpha.-1", "-rc.1+build"):
+            with self.subTest(suffix=suffix):
+                with self.assertRaises(r.ReleaseError):
+                    self.build(release_version="0.2.0" + suffix)
+
+    def test_existing_stable_and_beta_plan_hashes_remain_compatible(self):
+        expected = {"0.2.0": "625b6539e6b8b5502b247c037d5f4109478f77c0e923a40de66c649b59616f8f",
+                    "0.2.0-beta.1": "74e0443b4dcdc156691890dfa3fba1991b3d5ee11eae8c457f880f690030ae4f"}
+        for version, frozen_hash in expected.items():
+            with self.subTest(version=version):
+                plan, _, _ = self.build(release_version=version)
+                receipt = dict(plan, state="pending-publication", planSha256=r.digest(r.json_bytes(plan)))
+                r.validate_receipt(self.repo, receipt)
+                # Commit timestamps vary across fixture runs; only those identities are normalized.
+                plan.update(source="1" * 40, baseline="2" * 40, legacySource="1" * 40)
+                for item in plan["inputs"]:
+                    item["source"] = "1" * 40
+                self.assertEqual(r.digest(r.json_bytes(plan)), frozen_hash)
 
     def test_explicit_selection_retains_deferred_and_newly_arrived_inputs(self):
         plan = self.prepare(selected=["changes/2-one.md"])
@@ -160,18 +194,20 @@ class ReleaseFragmentsTests(unittest.TestCase):
                 with self.assertRaisesRegex(r.ReleaseError, "changes/bad.md:"):
                     r.validate_fragment(body.encode(), "changes/bad.md")
 
-    def test_pending_stable_blocks_second_preparation_but_beta_recovers_old_and_new(self):
+    def test_pending_stable_blocks_second_preparation_but_prereleases_recover_old_and_new(self):
         first = self.prepare()
         r.apply(self.repo, first)
         self.write("11-later.md", "### Fixed\n\n- Later.\n")
         self.source = self.save()
         with self.assertRaisesRegex(r.ReleaseError, "pending"):
             self.build(release_version="0.2.1")
-        plan, notes, _ = self.build(release_version="0.2.1-beta.1")
-        self.assertEqual(len(plan["inputs"]), 5)
-        self.assertEqual(notes.count(b"Original legacy text"), 1)
-        self.assertIn(b"Distinct entry", notes)
-        self.assertIn(b"Later.", notes)
+        for suffix in ("alpha", "beta", "rc"):
+            with self.subTest(suffix=suffix):
+                plan, notes, _ = self.build(release_version=f"0.2.1-{suffix}.1")
+                self.assertEqual(len(plan["inputs"]), 5)
+                self.assertEqual(notes.count(b"Original legacy text"), 1)
+                self.assertIn(b"Distinct entry", notes)
+                self.assertIn(b"Later.", notes)
 
     def test_stale_frozen_plan_cannot_bypass_another_pending_preparation(self):
         first, other = self.prepare(), self.prepare("0.2.1")

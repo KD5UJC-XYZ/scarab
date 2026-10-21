@@ -15,6 +15,8 @@ import re
 import subprocess
 import tempfile
 
+from release_identity import VERSION, channel_for_version
+
 
 class ReleaseError(ValueError):
     """An invalid selection, changed input, or incomplete preparation transaction."""
@@ -235,14 +237,14 @@ def build(repo, source, baseline, release_version, release_date, selected=None, 
     commit(repo, source)
     commit(repo, baseline)
     ancestor(repo, baseline, source)
-    require(re.fullmatch(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-beta\.(0|[1-9]\d*))?", release_version),
-            "require MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-beta.N")
+    require(VERSION.fullmatch(release_version),
+            "require canonical MAJOR.MINOR.PATCH with optional alpha.N, beta.N or rc.N suffix")
     require(date.fromisoformat(release_date).isoformat() == release_date, "require explicit ISO release date")
-    beta = "-beta." in release_version
+    channel = channel_for_version(release_version)
     context = _context or History(repo)
     context.prime(source, baseline)
     previous = pending(repo, source, baseline, context)
-    require(beta or previous is None, "stable preparation already pending; publish or review restoration first")
+    require(channel != "prod" or previous is None, "stable preparation already pending; publish or review restoration first")
     receipts = tree(repo, source, ".release/changelog")
     require(f".release/changelog/{release_version}.json" not in receipts, "version already reserved")
     available = [p for p in tree(repo, source, "changes") if eligible(p)]
@@ -288,7 +290,7 @@ def build(repo, source, baseline, release_version, release_date, selected=None, 
     candidate = prefix + notes + "\n" + history
     plan = {"schemaVersion": 1, "collector": "scriv-1.8.0/topics-v1", "source": source,
             "baseline": baseline, "version": release_version, "date": release_date,
-            "channel": "beta" if beta else "prod", "selected": chosen, "inputs": inputs,
+            "channel": channel, "selected": chosen, "inputs": inputs,
             "legacySource": legacy_source, "legacySha256": digest(legacy.encode()),
             "originalChangelogSha256": digest(original), "notesSha256": digest(notes.encode()),
             "changelogSha256": digest(candidate.encode())}
@@ -455,7 +457,7 @@ def verify_applied(repo, receipt):
 
 def apply(repo, plan_path):
     plan = load_json(plan_path)
-    require(plan.get("channel") == "prod", "beta preview never consumes fragments")
+    require(plan.get("channel") == "prod", "prerelease preview never consumes fragments")
     with locked(repo):
         require(not git_path(repo, "scarab-changelog-transaction.json").exists(), "incomplete transaction: run recover")
         receipt_path = f".release/changelog/{plan['version']}.json"
@@ -518,7 +520,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", type=Path, default=Path.cwd())
     commands = parser.add_subparsers(dest="command", required=True)
-    preview = commands.add_parser("preview", help="freeze beta/stable notes without touching tracked inputs")
+    preview = commands.add_parser("preview", help="freeze release notes for any channel without touching tracked inputs")
     for name in ("source", "baseline", "version", "date"):
         preview.add_argument("--" + name, required=True)
     preview.add_argument("--select", action="append", dest="selected")

@@ -2,9 +2,12 @@
 import importlib.util
 from pathlib import Path
 import tempfile
+import sys
 import unittest
 import zipfile
 
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 SPEC = importlib.util.spec_from_file_location(
     "reproducible_build", Path(__file__).resolve().parents[1] / "reproducible_build.py")
@@ -21,8 +24,13 @@ class ReproducibleBuildTests(unittest.TestCase):
             (source / "build.sbt").write_text("source", encoding="utf-8")
             (source / "target").mkdir()
             (source / "target/stale.jar").write_bytes(b"must not be copied")
-            manifest = {"gitCommit": "a" * 40,
-                        "files": {"build.sbt": repro.sha256(source / "build.sbt")}}
+            identity = dict.fromkeys(repro.release_identity.KEYS, "")
+            identity.update(schemaVersion="1", mode="development", gitCommit="a"*40,
+                            version="0.0.0-dev.g" + "a"*40, channel="development")
+            repro.release_identity.write(identity, source / repro.release_identity.IDENTITY_FILE)
+            manifest = {"gitCommit": "a" * 40, "buildIdentity": identity,
+                        "files": {name: repro.sha256(source / name)
+                                  for name in ["build.sbt", repro.release_identity.IDENTITY_FILE]}}
             for destination in [root / "first", root / "different/depth/second"]:
                 repro.copy_source(source, destination, manifest)
                 self.assertFalse((destination / "target").exists())
@@ -40,6 +48,57 @@ class ReproducibleBuildTests(unittest.TestCase):
             item.write_text("changed", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "frozen source changed"):
                 repro.copy_source(root / "source", root / "copy", manifest)
+
+    def test_outer_host_rejects_old_verifier_success_and_mismatched_artifact_metadata(self):
+        import json
+        with tempfile.TemporaryDirectory() as scratch:
+            output = Path(scratch)
+            identity = dict.fromkeys(repro.release_identity.KEYS, "")
+            identity.update(schemaVersion="1", mode="development", gitCommit="a"*40,
+                            version="0.0.0-dev.g" + "a"*40, channel="development")
+            (output / "old-verifier.log").write_text("PASS: old verifier accepted both artifacts\n")
+            with self.assertRaises(FileNotFoundError):
+                repro.verify_output_identity(output, identity)
+            expected = dict(gitCommit=identity["gitCommit"], version=identity["version"],
+                            gitTag="", gitTagObject="", sourceRef="", sourceRefCommit="",
+                            buildMode="development", releaseChannel="development")
+
+            def write(metadata, manifest_version=None):
+                reports = []
+                for index in [1, 2]:
+                    jar = output / f"build-{index}.jar"
+                    with zipfile.ZipFile(jar, "w") as archive:
+                        archive.writestr("META-INF/MANIFEST.MF", "Implementation-Version: " +
+                                         (manifest_version or identity["version"]) + "\n\n")
+                        archive.writestr("META-INF/scarab/build-info.properties",
+                                         "".join(f"{key}={value}\n" for key, value in sorted(metadata.items())))
+                    reports.append(dict(file=jar.name, assemblyName="scarab-node-" + identity["version"] + "-assembly.jar",
+                                        sha256=repro.sha256(jar)))
+                (output / "artifact-builds.json").write_text(json.dumps(reports))
+
+            write(expected)
+            self.assertEqual(len(repro.verify_output_identity(output, identity)), 2)
+            write(dict(expected, version="0.1.0"))
+            with self.assertRaisesRegex(ValueError, "actual artifact metadata"):
+                repro.verify_output_identity(output, identity)
+            write(expected, "0.1.0")
+            with self.assertRaisesRegex(ValueError, "actual JAR manifest version"):
+                repro.verify_output_identity(output, identity)
+            write(expected)
+            with (output / "build-1.jar").open("ab") as stream:
+                stream.write(b"changed bytes")
+            with self.assertRaisesRegex(ValueError, "actual artifact digest"):
+                repro.verify_output_identity(output, identity)
+
+    def test_real_sbt_control_guard_survives_python_optimization(self):
+        import subprocess
+        command = [sys.executable, "-O", "-c",
+                   "import sys; sys.path.insert(0, 'scripts'); "
+                   "import check_build_identity; check_build_identity.require(False, 'expected guard')"]
+        result = subprocess.run(command, cwd=Path(__file__).resolve().parents[2],
+                                text=True, capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("expected guard", result.stderr)
 
     def test_comparison_rejects_byte_changes_and_reports_entry(self):
         with tempfile.TemporaryDirectory() as scratch:

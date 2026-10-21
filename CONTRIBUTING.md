@@ -15,7 +15,9 @@ run it in the JDK image:
 
 ```sh
 docker build -f docker/jdk.Dockerfile -t scarab-jdk:local .
-docker run --rm -v "$PWD":/work -w /work --user "$(id -u):$(id -g)" -e HOME=/work/.cache/home \
+scarab_git_metadata="$(git rev-parse --path-format=absolute --git-common-dir)"
+docker run --rm -v "$PWD":/work -v "$scarab_git_metadata:$scarab_git_metadata:ro" \
+  -w /work --user "$(id -u):$(id -g)" -e HOME=/work/.cache/home \
   scarab-jdk:local bash scripts/sbtw check
 ```
 
@@ -23,6 +25,12 @@ docker run --rm -v "$PWD":/work -w /work --user "$(id -u):$(id -g)" -e HOME=/wor
 tests of all modules (`blstNative` and its `BlstSuite` among them: library selection, start-up checks, the export list of the JNI glue), the fuzz suite among them, and ends with `scalafixAll --check`; the compiler runs with `-Werror` and the unused-code warnings (imports, privates, locals, explicit parameters, pattern variables); a module may only depend on the modules before it in the graph of [docs/architecture.md](docs/architecture.md#modules), and sbt refuses a cycle. Dependencies and the sbt launcher are
 cached under `.cache/` (gitignored). `bash scripts/sbtw node/runtimeClasspathFile` writes
 `node/target/runtime-classpath.txt`, which the scenarios use.
+
+A linked worktree's `.git` file points outside the mounted checkout. The read-only common Git
+metadata mount above keeps its `worktrees/` metadata and shared refs visible at their original
+absolute paths; use it for every Docker sbt invocation, including a persistent server. The build
+reads HEAD without needing a Git executable in the JDK image. Missing Git identity is refused,
+not labeled `unknown`; an immutable export instead supplies the verified identity described below.
 
 The classpath file names jars as `/work/.cache/...`. `scripts/devnet.py` mounts the dependency cache
 there itself: `SCARAB_CACHE_DIR` if set, else the checkout's own `.cache` if it holds anything, else
@@ -42,8 +50,8 @@ See [the artifact contract and verification commands](docs/reproducible-builds.m
 Starting sbt costs 40 to 60 seconds of JVM start and compile. For many small edits keep one
 container alive and talk to its sbt server:
 
-1. Start a long-lived container from `scarab-jdk:local` with the checkout mounted at `/work`
-   and the same `HOME` as above (for example `docker run -d --name scarab-sbt ... tail -f /dev/null`).
+1. Start a long-lived container from `scarab-jdk:local` with the checkout, read-only Git metadata
+   and `HOME` mounts/settings above (for example `docker run -d --name scarab-sbt ... tail -f /dev/null`).
 2. Run sbt once inside it with the server enabled (a copy of `scripts/sbtw` without
    `-Dsbt.server.autostart=false`, kept outside the repository).
 3. Send commands with `docker exec scarab-sbt <that launcher> --client "ledger/testOnly xyz.kd5ujc.scarab.ledger.*"`.
@@ -86,11 +94,12 @@ with a pattern that matches your own shell command line.
 - **`dependencyUpdates`** lists newer versions of the dependencies and plugins (it only reads; the
   Scalus artifacts move together). **`dependencyTree`** (also `node/dependencyTree`) prints the
   resolved graph, to see where a transitive version comes from.
-- **sbt-buildinfo** generates `xyz.kd5ujc.scarab.node.BuildInfo` (version, Scala and sbt versions, git
-  commit, read from `.git` by `project/GitHead.scala` so the build container needs no `git`; `unknown`
-  outside a checkout, or in a worktree whose `gitdir` path the container cannot see). The `started`
-  log line carries it as
-  `build`.
+- **sbt-buildinfo** generates `xyz.kd5ujc.scarab.node.BuildInfo` (version, Scala and sbt versions,
+  Git commit, build mode, release channel and selected tag). `project/GitHead.scala` reads visible
+  Git metadata without a Git executable; the version configuration refuses a missing identity.
+  Workspace versions are explicitly unreleased. The [immutable export wrapper](docs/reproducible-builds.md#version-identity)
+  verifies and freezes release identity before building without Git history. The `started` log line
+  carries the compiled version and commit as `build`.
 - **sbt-tpolecat** is on the classpath but disabled per project: its option set would replace
   the one in `build.sbt`. `show node/scalacOptions` before and after a build change shows whether
   the effective options moved (`-Xsemanticdb` and its target are added for scalafix).
@@ -211,7 +220,9 @@ devnet name and sbt server socket. Work branches from and targets `main` for now
 change-level gates and rebase onto the intended target before reporting. The owner will activate
 `feat/*` -> `dev` -> `main` promotion separately. After that cutover, only the same repository's
 `dev` branch may open a PR into `main`; all other PR targets accept any source branch.
-`release/beta` and `release/prod` also require reviewed PRs.
+`release/alpha`, `release/beta`, `release/preprod` and `release/prod` also require reviewed PRs
+after cutover. Their planned tag suffixes are `-alpha.N`, `-beta.N`, `-rc.N` and no suffix,
+respectively; environment creation and protection setup remain deferred.
 
 The owner-directed [release and hardening design](docs/design/releases.md) supersedes the research
 phase landing and `main` hotfix-line plans at cutover. #161 tracks enforcement: required checks, branch/tag
@@ -232,7 +243,7 @@ from a different source revision as if they tested the rebased code.
 Each change that needs a changelog entry adds a file `changes/<issue-or-branch>.md` with its entry
 (a `### Added|Changed|Fixed|Removed (...)` heading and the bullets). Nobody edits `CHANGELOG.md`
 between releases, so branches do not conflict there; a release folds the fragments into a version
-section and deletes only its selected inputs in the same reviewed PR. Beta notes retain pending
+section and deletes only its selected inputs in the same reviewed PR. Prerelease notes retain pending
 fragments. See [changes/README.md](changes/README.md) and the
 [consolidation contract](docs/design/releases.md#changelog-fragments-and-consolidation).
 

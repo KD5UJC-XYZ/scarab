@@ -1,7 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 import Dependencies.*
 ThisBuild / scalaVersion := "3.3.8"
-ThisBuild / version := "0.1.0"
+lazy val scarabBuildIdentity =
+  settingKey[BuildIdentity.Identity]("Verified export or unreleased workspace identity")
+ThisBuild / dynverVTagPrefix := true
+ThisBuild / dynverCurrentDate := new java.util.Date(0L)
+ThisBuild / scarabBuildIdentity := BuildIdentity.load(
+  (ThisBuild / baseDirectory).value.toPath,
+  (ThisBuild / dynverGitDescribeOutput).value
+)
+ThisBuild / version := (ThisBuild / scarabBuildIdentity).value.version
+ThisBuild / dynver := (ThisBuild / version).value
+ThisBuild / isVersionStable := (ThisBuild / scarabBuildIdentity).value.mode == "release"
+ThisBuild / isSnapshot := !(ThisBuild / isVersionStable).value
 ThisBuild / organization := "xyz.kd5ujc"
 ThisBuild / licenses := Seq("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
 // Enable the unused-code warnings supported by the maintained source. At Scala 3.3.8, the excluded
@@ -224,11 +235,15 @@ lazy val node = scarab("node")
     buildInfoPackage := "xyz.kd5ujc.scarab.node",
     buildInfoKeys := {
       val root = (ThisBuild / baseDirectory).value
+      val identity = (ThisBuild / scarabBuildIdentity).value
       Seq[BuildInfoKey](
         version,
         scalaVersion,
         sbtVersion,
-        BuildInfoKey.action("gitCommit")(gitCommit(root))
+        BuildInfoKey.action("gitCommit")(gitCommit(root)),
+        BuildInfoKey.action("buildMode")(identity.mode),
+        BuildInfoKey.action("releaseChannel")(identity.channel),
+        BuildInfoKey.action("gitTag")(identity.tag)
       )
     },
     scalacOptions += "-Xmax-inlines:512",
@@ -271,9 +286,7 @@ lazy val node = scarab("node")
     Compile / resourceGenerators += Def.task {
       val root = (ThisBuild / baseDirectory).value
       val output = (Compile / resourceManaged).value / "META-INF" / "scarab"
-      val identity = Seq(
-        "gitCommit" -> GitHead.commit(root.toPath).getOrElse("unknown"),
-        "version" -> version.value,
+      val identity = (ThisBuild / scarabBuildIdentity).value.metadata ++ Seq(
         "scalaVersion" -> scalaVersion.value,
         "sbtVersion" -> sbtVersion.value,
         "javaVendor" -> sys.props("java.vendor"),
