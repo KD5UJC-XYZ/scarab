@@ -84,7 +84,8 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
         ) =
           generation match
             case _ => establish(peer, mode, provenance)
-        def activate(peer: Int) = IO.pure(Option.empty[FailureClass])
+        def activate(peer: Int, trust: xyz.kd5ujc.scarab.network.ChainSyncTimeouts.PeerTrust) =
+          IO.pure(Option.empty[FailureClass])
         def deactivate(peer: Int) = IO.pure(PeerStateActions.Deactivation.Warm)
         def close(peer: Int) = IO.pure(true)
         def closeIfGeneration(peer: Int, generation: BigInt) = IO.pure(Some(true))
@@ -136,7 +137,8 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
           ) =
             generation match
               case _ => establish(peer, mode, provenance)
-          def activate(peer: Int) = IO.pure(Option.empty[FailureClass])
+          def activate(peer: Int, trust: xyz.kd5ujc.scarab.network.ChainSyncTimeouts.PeerTrust) =
+            IO.pure(Option.empty[FailureClass])
           def deactivate(peer: Int) = IO.pure(PeerStateActions.Deactivation.Warm)
           def close(peer: Int) = IO.pure(true)
           def closeIfGeneration(peer: Int, generation: BigInt) = IO.pure(Some(true))
@@ -211,7 +213,8 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
           ) =
             generation match
               case _ => establish(peer, mode, provenance)
-          def activate(peer: Int) = IO.pure(Option.empty[FailureClass])
+          def activate(peer: Int, trust: xyz.kd5ujc.scarab.network.ChainSyncTimeouts.PeerTrust) =
+            IO.pure(Option.empty[FailureClass])
           def deactivate(peer: Int) = IO.pure(PeerStateActions.Deactivation.Warm)
           def close(peer: Int) = IO.pure(true)
           def closeIfGeneration(peer: Int, generation: BigInt) = IO.pure(Some(true))
@@ -289,7 +292,8 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
           ) =
             generation match
               case _ => establish(peer, mode, provenance)
-          def activate(peer: Int) = IO.pure(Option.empty[FailureClass])
+          def activate(peer: Int, trust: xyz.kd5ujc.scarab.network.ChainSyncTimeouts.PeerTrust) =
+            IO.pure(Option.empty[FailureClass])
           def deactivate(peer: Int) = IO.pure(PeerStateActions.Deactivation.Warm)
           def close(peer: Int) = IO.pure(true)
           def closeIfGeneration(peer: Int, generation: BigInt) = IO.pure(Some(true))
@@ -407,7 +411,8 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
               generation: BigInt
           ) =
             liveLinkGeneration.set(Some(generation)) *> establish(peer, mode, provenance)
-          def activate(peer: Int) = IO.pure(Option.empty[FailureClass])
+          def activate(peer: Int, trust: xyz.kd5ujc.scarab.network.ChainSyncTimeouts.PeerTrust) =
+            IO.pure(Option.empty[FailureClass])
           def deactivate(peer: Int) = IO.pure(PeerStateActions.Deactivation.Warm)
           def close(peer: Int) = closeCalls.update(_ :+ peer).as(true)
           def closeIfGeneration(peer: Int, generation: BigInt) =

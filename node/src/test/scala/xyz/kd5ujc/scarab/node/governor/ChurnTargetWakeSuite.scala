@@ -55,7 +55,8 @@ class ChurnTargetWakeSuite extends FailsOnUncaught:
               provenance: ConnectionState.Provenance,
               generation: BigInt
           ) = establish(peer, mode, provenance)
-          def activate(peer: Int) = IO.pure(Option.empty[FailureClass])
+          def activate(peer: Int, trust: xyz.kd5ujc.scarab.network.ChainSyncTimeouts.PeerTrust) =
+            IO.pure(Option.empty[FailureClass])
           def deactivate(peer: Int) = IO.pure(PeerStateActions.Deactivation.Warm)
           def close(peer: Int) = IO.pure(true)
           def closeIfGeneration(peer: Int, generation: BigInt) = IO.pure(Some(true))

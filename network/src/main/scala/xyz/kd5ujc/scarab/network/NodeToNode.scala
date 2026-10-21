@@ -88,7 +88,8 @@ final class WarmConnection[F[_], P] private[network] (
     */
   def activate(
       transactions: Option[TxSubmissionClient.Source[F]] = None,
-      blockFetchEnded: Option[F[Unit]] = None
+      blockFetchEnded: Option[F[Unit]] = None,
+      peerTrust: ChainSyncTimeouts.PeerTrust = ChainSyncTimeouts.PeerTrust.Untrustable
   )(using
       Async[F],
       Raise[F, NetworkError]
@@ -103,7 +104,7 @@ final class WarmConnection[F[_], P] private[network] (
         chainSyncChannel,
         codec,
         mux.abort,
-        settings.chainSync,
+        settings.chainSync.withPeerTrust(peerTrust),
         maxOutstanding = settings.chainSync.pipelineCapacity
       )
       blockFetch <- BlockFetchClient.resource(blockFetchChannel, mux.abort, settings.blockFetch)

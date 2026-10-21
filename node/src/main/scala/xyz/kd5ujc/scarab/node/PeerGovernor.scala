@@ -8,6 +8,7 @@ import cats.mtl.{Ask, Raise, Stateful, Tell}
 import cats.syntax.all.*
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.selection.*
+import xyz.kd5ujc.scarab.network.ChainSyncTimeouts.PeerTrust
 import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 
 /** What the governor asks of the world to move a peer between temperatures (the reference's
@@ -29,7 +30,10 @@ trait PeerStateActions[F[_], A]:
   ): F[Option[FailureClass]]
 
   /** Start the hot protocols on an established connection; none when it worked. */
-  def activate(peer: A): F[Option[FailureClass]]
+  def activate(peer: A): F[Option[FailureClass]] = activate(peer, PeerTrust.Untrustable)
+
+  /** Activate with the trust flags captured when the governor selected this job. */
+  def activate(peer: A, trust: PeerTrust): F[Option[FailureClass]]
 
   /** End the hot protocols and keep the connection. */
   def deactivate(peer: A): F[PeerStateActions.Deactivation]
@@ -262,9 +266,9 @@ object PeerGovernor:
               )
             )
         )
-      case Job.Activate(peer) =>
+      case Job.Activate(peer, trust) =>
         complete(
-          actions.activate(peer).flatMap {
+          actions.activate(peer, trust).flatMap {
             case None => F.pure[Outcome[A]](Outcome.Activated(peer))
             case Some(failure) =>
               config.reader(_.activationPause).flatMap(F.sleep) *>

@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.network.selection
 
 import scala.concurrent.duration.*
+import xyz.kd5ujc.scarab.network.ChainSyncTimeouts.PeerTrust
 import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 
 /** The decision function of the P2P governor, pure over its state, the time and a generator.
@@ -552,7 +553,13 @@ object PeerSelection:
       if picked.nonEmpty then
         go(
           withStatus(picked, Status.Activating).copy(rng = next),
-          picked.map(Job.Activate(_)),
+          picked.map(peer =>
+            Job.Activate(
+              peer,
+              if st.localRoots.config.get(peer).exists(_.trustable) then PeerTrust.Trustable
+              else PeerTrust.Untrustable
+            )
+          ),
           List(
             Trace.Promote(
               Temperature.Warm,

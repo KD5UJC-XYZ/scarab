@@ -57,7 +57,7 @@ class PeerSelectionSuite extends FunSuite:
         val done = jobs.foldLeft(settled) { (s, job) =>
           val outcome: Outcome[Int] = job match
             case Job.Connect(p, _, _, generation)    => Outcome.Connected(p, generation)
-            case Job.Activate(p)                     => Outcome.Activated(p)
+            case Job.Activate(p, _)                  => Outcome.Activated(p)
             case Job.Deactivate(p)                   => Outcome.Deactivated(p)
             case Job.Close(p, _)                     => Outcome.Closed(p)
             case Job.RequestRoots(_, _, generation)  => Outcome.RootsFailed(generation)
@@ -79,7 +79,7 @@ class PeerSelectionSuite extends FunSuite:
 
     val st2 = connects.foldLeft(st1)((s, p) => complete(s, Outcome.Connected(p), t0))
     val (st3, jobs3, _) = settle(st2, t0)
-    val activates = jobs3.collect { case Job.Activate(p) => p }
+    val activates = jobs3.collect { case Job.Activate(p, _) => p }
     assertEquals(activates.size, 2)
     val st4 = activates.foldLeft(st3)((s, p) => complete(s, Outcome.Activated(p), t0))
     val counters = st4.view(t0).counters
@@ -95,7 +95,7 @@ class PeerSelectionSuite extends FunSuite:
     assertEquals(jobs1.collect { case Job.Connect(p, _, _, _) => p }.toSet, Set(1, 2, 3))
     val st2 = Set(1, 2, 3).foldLeft(st1)((s, p) => complete(s, Outcome.Connected(p), t0))
     val (st3, jobs3, _) = settle(st2, t0)
-    assertEquals(jobs3.collect { case Job.Activate(p) => p }.toSet, Set(1, 2, 3))
+    assertEquals(jobs3.collect { case Job.Activate(p, _) => p }.toSet, Set(1, 2, 3))
     assert(!jobs3.exists { case Job.Close(_, _) | Job.Deactivate(_) => true; case _ => false })
     assertEquals(st3.view(t0).established.size, 3)
   }
@@ -340,7 +340,7 @@ class PeerSelectionSuite extends FunSuite:
     val (after, jobs, _) = settle(st, t0)
     // one is activated for the active target, then the surplus of the established target is closed
     assertEquals(jobs.count { case Job.Close(_, _) => true; case _ => false }, 3)
-    assertEquals(jobs.count { case Job.Activate(_) => true; case _ => false }, 1)
+    assertEquals(jobs.count { case Job.Activate(_, _) => true; case _ => false }, 1)
     assertEquals(after.view(t0).established.size, 5)
   }
 

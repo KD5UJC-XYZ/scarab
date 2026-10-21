@@ -259,7 +259,7 @@ object MockEnvironment:
             generation match
               case _ => establish(peer, mode, provenance)
 
-          def activate(peer: Peer) =
+          def activate(peer: Peer, trust: xyz.kd5ujc.scarab.network.ChainSyncTimeouts.PeerTrust) =
             note(Seen.Env(EnvEvent.Activate(peer))) *> IO.sleep(1.second) *>
               statuses.get.map(_.get(peer)).flatMap {
                 case None => IO.pure(Some(FailureClass.Transient))

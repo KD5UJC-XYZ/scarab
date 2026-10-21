@@ -192,7 +192,7 @@ class BigLedgerSuite extends FunSuite:
       3 -> big(Status.Warm(t0))
     )
     val (after, jobs, _) = settle(st, t0)
-    assertEquals(count(jobs) { case Job.Activate(_) => () }, 2)
+    assertEquals(count(jobs) { case Job.Activate(_, _) => () }, 2)
     assertEquals(after.view(t0).counters.warmBigLedgerPromotions, 2)
     // a peer that is not ready yet is waited for
     val later = withPeers(

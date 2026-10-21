@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.network.selection
 import cats.Show
 import scala.concurrent.duration.FiniteDuration
 import xyz.kd5ujc.scarab.codec.DomainError
+import xyz.kd5ujc.scarab.network.ChainSyncTimeouts.PeerTrust
 import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 
 /** How a peer failed, as far as the governor cares (owner decision 8, docs/design/
@@ -121,7 +122,7 @@ enum Outcome[A]:
 /** A piece of work for the effect layer (a job of the reference's `JobPool`). */
 enum Job[A]:
   case Connect(peer: A, mode: DiffusionMode, provenance: Provenance, generation: BigInt = BigInt(0))
-  case Activate(peer: A)
+  case Activate(peer: A, trust: PeerTrust = PeerTrust.Untrustable)
   case Deactivate(peer: A)
   case Close(peer: A, generation: Option[BigInt] = None)
 
