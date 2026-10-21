@@ -549,7 +549,7 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
                           intersectTimeout = 5.seconds,
                           canAwaitTimeout = 5.seconds,
                           mustReply =
-                            ChainSyncTimeouts.Policy.Fixed(ProtocolDeadline.After(5.second)) s
+                            ChainSyncTimeouts.Policy.Fixed(ProtocolDeadline.After(5.seconds))
                         )
                       )
                       intersection <- client.findIntersect(testCase.candidatePoints)
@@ -660,7 +660,7 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
                             intersectTimeout = 5.seconds,
                             canAwaitTimeout = 5.seconds,
                             mustReply =
-                              ChainSyncTimeouts.Policy.Fixed(ProtocolDeadline.After(5.second)) s
+                              ChainSyncTimeouts.Policy.Fixed(ProtocolDeadline.After(5.seconds))
                           )
                         )
                         intersection <- client.findIntersect(testCase.candidatePoints)
@@ -834,7 +834,7 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
                           intersectTimeout = 5.seconds,
                           canAwaitTimeout = 5.seconds,
                           mustReply =
-                            ChainSyncTimeouts.Policy.Fixed(ProtocolDeadline.After(5.second)) s
+                            ChainSyncTimeouts.Policy.Fixed(ProtocolDeadline.After(5.seconds))
                         ),
                         maxOutstanding = math.max(generated.firstDepth, generated.secondDepth)
                       )

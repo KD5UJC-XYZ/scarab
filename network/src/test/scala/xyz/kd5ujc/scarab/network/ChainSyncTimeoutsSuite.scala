@@ -4,7 +4,6 @@ package xyz.kd5ujc.scarab.network
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.testkit.TestControl
 import cats.mtl.Raise
-import cats.syntax.all.*
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ChainSyncFixtures}
