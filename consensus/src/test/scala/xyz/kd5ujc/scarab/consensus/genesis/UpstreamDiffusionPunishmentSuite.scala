@@ -8,6 +8,7 @@ import cats.syntax.all.*
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
+import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
 import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash, ShelleyBasedEra, Word64, VocabError}
 import DiffusionPunishment.*
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, UInt64}
@@ -105,6 +106,20 @@ class UpstreamDiffusionPunishmentSuite extends FunSuite:
         val expected = state(c.downField("state").success.fold(fail("missing state"))(identity))
           .fold(e => fail(e.toString), identity)
         val accepted = c.get[Boolean]("accepted").fold(e => fail(e.toString), identity)
+        (old, view) match
+          case (State.Byron(Some(previous)), next: View.Byron) =>
+            def selection(header: View.Byron): SelectView =
+              SelectView(Word64.toBigInt(header.blockNo), 0, None, 0, None, header.isEBB)
+            assertEquals(
+              ChainSelection.prefers(
+                ChainSelection.Tiebreaker.Unrestricted,
+                selection(previous),
+                selection(next)
+              ),
+              accepted,
+              label
+            )
+          case _ => ()
         val actual = judge(old, view, Invalidity.BlockItself)
         assertEquals(
           actual,
