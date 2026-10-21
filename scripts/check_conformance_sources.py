@@ -70,6 +70,7 @@ def sources(root: Path) -> list[Source]:
                 "ouroboros-consensus-diffusion/test/consensus-test/Test/Consensus/Genesis/",
                 "ouroboros-consensus-diffusion/test/consensus-test/Test/Consensus/PointSchedule/",
                 "ouroboros-consensus-diffusion/test/consensus-test/Test/Consensus/PeerSimulator/",
+                "ouroboros-consensus-diffusion/test/consensus-test/Test/Util/PartialAccessors.hs",
                 "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Node/",
                 "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Genesis/",
                 "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/ChainSync/",
