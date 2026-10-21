@@ -64,8 +64,8 @@ class UpstreamGenesisBucketSuite extends FunSuite:
     .toVector
 
   test("every native event prefix remains in the corpus") {
-    assertEquals(rows.size, 40)
-    assertEquals(rows.map(field[String](_, "label")).distinct.size, 40)
+    assertEquals(rows.size, 44)
+    assertEquals(rows.map(field[String](_, "label")).distinct.size, 44)
   }
 
   rows.foreach { row =>
