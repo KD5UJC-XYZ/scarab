@@ -95,9 +95,11 @@ with independently checked cache consistency. No numeric bound is weakened or st
 The lawful corpus retains all fixed draws, including rejected LEDGERS attempts,
 bootstrap witness controls and native Plutus overlap controls. Its 41 observations
 contain **39 distinct rule inputs: 28 accept and 11 refuse**; two duplicate funding
-hooks do not increase that count. The nine original cache regressions are counted separately,
-giving 48 distinct native rule inputs overall (37 accepts and 11 refusals). Accepted complete states and typed refusal
-membership compare through production transitions, retaining original signed
+hooks do not increase that count. The nine original accepted cache regressions and eight
+original refusals are counted separately, giving **56 distinct native rule inputs overall
+(37 accepts and 19 refusals)** across 58 observations. All 17 original generated states now
+execute directly; the coherent supplement does not substitute for their judgments. Accepted
+complete states and typed refusal membership compare through production transitions, retaining original signed
 bytes. Only unavailable MemPack output-original bytes and Scala change-history
 bookkeeping are excluded, as in the earlier adapter.
 

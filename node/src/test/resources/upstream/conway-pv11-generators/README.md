@@ -24,8 +24,11 @@ Twenty-six fixed runner invocations passed. They produced **41 lawful observatio
 39 unique typed STS input tuples**: 28 unique accepted outputs and 11 refusals.
 Two repeated bootstrap funding hooks are retained and marked `duplicateOf`; they
 do not add coverage. Separately, nine original generated-cache regressions now compare
-complete unchanged native accepted outputs. Together these are **48 unique native rule inputs**
-(37 accepts and 11 refusals); the coherent-state supplement and original cache cases remain
+complete unchanged native accepted outputs. The eight other original generated states also
+replay their retained native refusals,
+checking typed failure membership rather than accumulated-list equality. Together these are
+**56 unique native rule inputs** (37 accepts and 19 refusals) across 58 observations;
+the coherent-state supplement and original cache cases remain
 separately counted. The focused Scala suite checks all original records and their provenance.
 
 | Boundary | Cases |
@@ -87,7 +90,10 @@ contexts, environments and signals are byte-identical; their complete native UTx
 maps, fees and donations are unchanged. Only explicitly constructed state fields
 change. Native/formal execution runs again on those full lawful states before
 Scala replay. The suite independently recomputes instant stake from the complete
-UTxO, asserts the original cache differs, and compares the nine original native outputs separately.
+UTxO, asserts the original cache differs, and compares the nine original native outputs
+separately. The eight original refusals use
+their original input states and native failure lists, bringing strict replay to all 17 original
+generated states; no coherent-state reconstruction substitutes for those judgments.
 The coherent supplement does not replace or waive those original cases.
 
 ## Formal runtime repair and historical failures

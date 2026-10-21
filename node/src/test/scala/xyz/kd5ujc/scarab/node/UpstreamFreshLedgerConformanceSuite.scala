@@ -54,11 +54,21 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
   private def array(n: Node): Vector[Node] = n.value match
     case Value.Arr(xs) => xs
     case other         => fail(s"expected array, got $other")
-  private def node(id: String, name: String): Node =
-    val p = base.resolve(s"cases/$id/$name.cbor")
+  private def nodeAt(p: Path): Node =
     Cbor
       .decode(Bytes.fromArray(Files.readAllBytes(p)), Cbor.Limits(allowFloats = true))
       .fold(e => fail(s"$p: ${e.message}"), identity)
+  private def node(id: String, name: String): Node =
+    nodeAt(base.resolve(s"cases/$id/$name.cbor"))
+
+  private def inputDigest(rule: String, directory: Path): String =
+    val fingerprint = MessageDigest.getInstance("SHA-256")
+    fingerprint.update((rule + "\u0000").getBytes(java.nio.charset.StandardCharsets.UTF_8))
+    Vector("context", "environment", "state", "signal").foreach { part =>
+      fingerprint.update(Files.readAllBytes(directory.resolve(s"$part.cbor")))
+    }
+    fingerprint.digest().map(b => f"${b & 255}%02x").mkString
+
   private def decode[A](n: Node, c: Codec[A]): A = c.decode(n).fold(e => fail(e.render), identity)
   private def tx(n: Node): Tx =
     val fs = array(n)
@@ -103,7 +113,10 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
       Diff[LedgerState[Conway]].diff(found.copy[Conway](utxo = wanted.utxo), wanted),
       None
     )
-  private def rejection(id: String, rule: String, e: LedgerFailure): Unit =
+  /** One complete typed Scala cause must occur in the native failure list; this does not compare
+    * the accumulated list or its order.
+    */
+  private def rejection(rule: String, e: LedgerFailure, failures: Node): Unit =
     val predicate = e match
       case LedgerFailure.Rejected(_, cause) => cause
       case other                            => fail(s"expected typed native refusal, got $other")
@@ -117,9 +130,8 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
       case "LEDGERS" => ledgerFailure
       case "LEDGER"  => ledgerFailure
       case other     => fail(s"unsupported native STS rule $other")
-    val failures = array(node(id, "implementation-failures"))
     assert(
-      failures.exists(_.value == encoded.value),
+      array(failures).exists(_.value == encoded.value),
       s"complete typed Scarab failure absent from native accumulated failures: $predicate"
     )
 
@@ -145,90 +157,150 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
         "native smartUTxOState cache matches the complete original UTxO"
       )
 
+  private def replay(row: Json, directory: Path, incoherent: Boolean): Unit =
+    def read(name: String): Node = nodeAt(directory.resolve(s"$name.cbor"))
+    val rule = text(row, "rule")
+    val fields = array(read("environment"))
+    val result = text(row, "native")
+    assertEquals(Files.readString(directory.resolve("result.txt")), text(row, "result"))
+    if rule == "UTXO" || rule == "UTXOW" then
+      assertEquals(fields.size, 3)
+      val slot = decode(fields(0), summon[Codec[SlotNo]]).toBigInt
+      val pp = decode(fields(1), Params.conwayCodec)
+      val cert = decode(fields(2), summon[Codec[ConwayCertState]])
+      val before = decode(read("state"), UpstreamNativeStates.nativeUtxoState)
+      cacheInvariant(before, incoherent)
+      val transaction = tx(read("signal"))
+      val execution = UtxoEnv(env(slot, geometry.epochOf(slot)), pp, cert)
+      val signal = StAnnTx(transaction, before.utxo.utxo)
+      val actual =
+        if rule == "UTXO" then
+          Sts.apply(Utxo)(globals, execution, Counted(before, PlutusStats.zero), signal)
+        else Sts.apply(Utxow)(globals, execution, Counted(before, PlutusStats.zero), signal)
+      result match
+        case "accepted" =>
+          sameUtxo(
+            actual.fold(e => fail(e.message), _.state),
+            decode(read("implementation-state"), UpstreamNativeStates.nativeUtxoState)
+          )
+        case "rejected" =>
+          rejection(
+            rule,
+            actual.swap.toOption.getOrElse(fail("native rejection accepted")),
+            read("implementation-failures")
+          )
+        case other => fail(s"unknown observation $other")
+    else
+      val before = decode(read("state"), UpstreamNativeStates.nativeLedgerState)
+      cacheInvariant(before.utxo, incoherent)
+      val slot = decode(fields(0), summon[Codec[SlotNo]]).toBigInt
+      val (epoch, index, pp, account) = if rule == "LEDGERS" then
+        assertEquals(fields.size, 4)
+        (
+          decode(fields(1), summon[Codec[EpochNo]]).toBigInt,
+          0,
+          decode(fields(2), Params.conwayCodec),
+          decode(fields(3), summon[Codec[ChainAccountState]])
+        )
+      else
+        assertEquals(fields.size, 5)
+        val epoch = array(fields(1)).headOption.fold(geometry.epochOf(slot))(n =>
+          decode(n, summon[Codec[EpochNo]]).toBigInt
+        )
+        (
+          epoch,
+          decode(fields(2), Wire.word16).toInt,
+          decode(fields(3), Params.conwayCodec),
+          decode(fields(4), summon[Codec[ChainAccountState]])
+        )
+      assertEquals(pp, before.utxo.gov.curPParams)
+      val actual =
+        if rule == "LEDGERS" then
+          Sts.apply(Ledgers)(
+            globals,
+            LedgersEnv(env(slot, epoch), account.treasury),
+            Counted(before, PlutusStats.zero),
+            array(read("signal")).map(tx)
+          )
+        else
+          Sts.apply(Ledger)(
+            globals,
+            LedgerEnv(env(slot, epoch, index), account.treasury),
+            Counted(before, PlutusStats.zero),
+            tx(read("signal"))
+          )
+      result match
+        case "accepted" =>
+          sameLedger(
+            actual.fold(e => fail(e.message), _.state),
+            decode(read("implementation-state"), UpstreamNativeStates.nativeLedgerState)
+          )
+        case "rejected" =>
+          rejection(
+            rule,
+            actual.swap.toOption.getOrElse(fail("native rejection accepted")),
+            read("implementation-failures")
+          )
+        case other => fail(s"unknown observation $other")
+
   cases.foreach { row =>
     val id = text(row, "id")
     val rule = text(row, "rule")
-    val incoherent = text(row, "replayScope") == "incoherent-cache"
     val scope =
-      if incoherent then "original native cache acceptance"
-      else "native accepted-state / typed-failure membership"
+      if text(row, "native") == "rejected" then "typed native refusal membership"
+      else "native accepted-state replay"
     test(s"$rule $scope: $id") {
-      val fields = array(node(id, "environment"))
-      val result = text(row, "native")
-      assertEquals(Files.readString(base.resolve(s"cases/$id/result.txt")), text(row, "result"))
-      if rule == "UTXO" || rule == "UTXOW" then
-        assertEquals(fields.size, 3)
-        val slot = decode(fields(0), summon[Codec[SlotNo]]).toBigInt
-        val pp = decode(fields(1), Params.conwayCodec)
-        val cert = decode(fields(2), summon[Codec[ConwayCertState]])
-        val before = decode(node(id, "state"), UpstreamNativeStates.nativeUtxoState)
-        cacheInvariant(before, incoherent)
-        val transaction = tx(node(id, "signal"))
-        val execution = UtxoEnv(env(slot, geometry.epochOf(slot)), pp, cert)
-        val signal = StAnnTx(transaction, before.utxo.utxo)
-        val actual =
-          if rule == "UTXO" then
-            Sts.apply(Utxo)(globals, execution, Counted(before, PlutusStats.zero), signal)
-          else Sts.apply(Utxow)(globals, execution, Counted(before, PlutusStats.zero), signal)
-        result match
-          case "accepted" =>
-            sameUtxo(
-              actual.fold(e => fail(e.message), _.state),
-              decode(node(id, "implementation-state"), UpstreamNativeStates.nativeUtxoState)
-            )
-          case "rejected" =>
-            rejection(id, rule, actual.swap.toOption.getOrElse(fail("native rejection accepted")))
-          case other => fail(s"unknown observation $other")
-      else
-        val before = decode(node(id, "state"), UpstreamNativeStates.nativeLedgerState)
-        cacheInvariant(before.utxo, incoherent)
-        val slot = decode(fields(0), summon[Codec[SlotNo]]).toBigInt
-        val (epoch, index, pp, account) = if rule == "LEDGERS" then
-          assertEquals(fields.size, 4)
-          (
-            decode(fields(1), summon[Codec[EpochNo]]).toBigInt,
-            0,
-            decode(fields(2), Params.conwayCodec),
-            decode(fields(3), summon[Codec[ChainAccountState]])
-          )
-        else
-          assertEquals(fields.size, 5)
-          val epoch = array(fields(1)).headOption.fold(geometry.epochOf(slot))(n =>
-            decode(n, summon[Codec[EpochNo]]).toBigInt
-          )
-          (
-            epoch,
-            decode(fields(2), Wire.word16).toInt,
-            decode(fields(3), Params.conwayCodec),
-            decode(fields(4), summon[Codec[ChainAccountState]])
-          )
-        assertEquals(pp, before.utxo.gov.curPParams)
-        val actual =
-          if rule == "LEDGERS" then
-            Sts.apply(Ledgers)(
-              globals,
-              LedgersEnv(env(slot, epoch), account.treasury),
-              Counted(before, PlutusStats.zero),
-              array(node(id, "signal")).map(tx)
-            )
-          else
-            Sts.apply(Ledger)(
-              globals,
-              LedgerEnv(env(slot, epoch, index), account.treasury),
-              Counted(before, PlutusStats.zero),
-              tx(node(id, "signal"))
-            )
-        result match
-          case "accepted" =>
-            sameLedger(
-              actual.fold(e => fail(e.message), _.state),
-              decode(node(id, "implementation-state"), UpstreamNativeStates.nativeLedgerState)
-            )
-          case "rejected" =>
-            rejection(id, rule, actual.swap.toOption.getOrElse(fail("native rejection accepted")))
-          case other => fail(s"unknown observation $other")
+      replay(row, base.resolve(s"cases/$id"), text(row, "replayScope") == "incoherent-cache")
     }
   }
+
+  private val originalInputs = manifest.hcursor
+    .get[Vector[Json]]("originalGeneratedArtifacts")
+    .fold(e => fail(e.message), identity)
+  private val originalRefusalIds = Set("ledger-274101") ++
+    (274101 to 274107).map(seed => s"ledgers-$seed")
+  private val originalRefusals = originalInputs.filter(row => originalRefusalIds(text(row, "id")))
+  private def originalRefusal(row: Json): Json =
+    val id = text(row, "id")
+    cases.filter(one => text(one, "id") == id) match
+      case Vector(one) =>
+        one.mapObject(
+          _.add("native", Json.fromString("rejected"))
+            .add(
+              "result",
+              Json.fromString("implementation-rejected\nagda-rejected\noutputs-differ\n")
+            )
+        )
+      case other => fail(s"expected one native rule binding for $id, found ${other.size}")
+
+  originalRefusals.foreach { row =>
+    val id = text(row, "id")
+    test(s"original generated-cache native refusal membership: $id") {
+      replay(originalRefusal(row), base.resolve(s"original-generated/$id"), incoherent = true)
+    }
+  }
+
+  test("all seventeen original generated states execute with their original native outcomes") {
+    val ids = originalInputs.map(row => text(row, "id"))
+    assertEquals(ids.size, 17)
+    assertEquals(ids.distinct.size, 17)
+    assertEquals(originalRefusals.size, 8)
+    assertEquals(originalRefusals.map(row => text(row, "id")).toSet, originalRefusalIds)
+    val acceptedIds = cases
+      .filter(row => text(row, "replayScope") == "incoherent-cache")
+      .map(row => text(row, "id").stripPrefix("original-incoherent-"))
+      .toSet
+    assertEquals(acceptedIds.size, 9)
+    assertEquals(acceptedIds ++ originalRefusalIds, ids.toSet)
+    val originalTuples = originalRefusals.map { row =>
+      val id = text(row, "id")
+      inputDigest(text(originalRefusal(row), "rule"), base.resolve(s"original-generated/$id"))
+    }
+    val allTuples = cases.map(row => text(row, "nativeStsTupleSha256")) ++ originalTuples
+    assertEquals(allTuples.size, 58)
+    assertEquals(allTuples.distinct.size, 56)
+  }
+
   test("native-only standalone UTXO refuses missing collateral without redeemers") {
     val supplement = Path.of("node/src/test/resources/upstream/conway-utxo-missing-collateral")
     val provenance = parse(Files.readString(supplement.resolve("manifest.json")))
@@ -289,14 +361,7 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
   test("every original input, native output and independent formal verdict is pinned") {
     cases.foreach { row =>
       val id = text(row, "id")
-      val fingerprint = MessageDigest.getInstance("SHA-256")
-      fingerprint.update(
-        (text(row, "rule") + "\u0000").getBytes(java.nio.charset.StandardCharsets.UTF_8)
-      )
-      Vector("context", "environment", "state", "signal").foreach { part =>
-        fingerprint.update(Files.readAllBytes(base.resolve(s"cases/$id/$part.cbor")))
-      }
-      val tupleHash = fingerprint.digest().map(b => f"${b & 255}%02x").mkString
+      val tupleHash = inputDigest(text(row, "rule"), base.resolve(s"cases/$id"))
       assertEquals(text(row, "nativeStsTupleSha256"), tupleHash)
       val files = row.hcursor.get[Map[String, Json]]("files").fold(e => fail(e.message), identity)
       files.foreach { (name, description) =>
