@@ -134,8 +134,8 @@
       "id": "incoherent-cache-generators",
       "classification": "native-parity",
       "status": "covered",
-      "scope": "Nine original generated-cache native/formal accepts, separately counted from 39 coherent-state inputs.",
-      "assertion": "Production STS replay compares all nine unchanged complete native state fields and UTxO entries under the documented byte adapter, including instant stake; retain native judgments and historical Scala underflow records.",
+      "scope": "All 17 original generated-cache contexts (nine native accepts and eight refusals), separately counted from 39 coherent-state inputs.",
+      "assertion": "Replay unchanged complete native accepted state fields and UTxO entries under the documented byte adapter; require one complete typed cause to occur in each native refusal list, without claiming full list/order equality. Pin 58 observations and 56 distinct rule inputs (37 accepts, 19 refusals).",
       "rationale": "The discrepancy was checked signed arithmetic versus native modular Word64 arithmetic and missing-entry insertion, not an evidenced native cache-coherence precondition.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
@@ -173,11 +173,11 @@
       "classification": "input-boundary",
       "status": "open",
       "scope": "Public generated constructors, preserved field/raw consistency and optional array layouts.",
-      "assertion": "Generated case classes and canonical/unchecked writers do not establish valid or field-consistent construction; inline optional absence and spliced-group greediness require distinct decoder controls.",
-      "rationale": "A decoder-only round trip is insufficient: preserved raw can disagree with copied fields, while Cuddle accepts some inline omitted optionals that the current decoder rejects.",
+      "assertion": "Generated case classes and copied preserved values can violate greedy optional layout or field/raw consistency; the checked writer does not currently guarantee these contracts.",
+      "rationale": "Byte-only round trips do not prove member consistency. Pinned Cuddle inline backtracking differs from its spliced-group behavior; RFC8610 greedy semantics support retaining the current Scala matching rule rather than treating validator acceptance alone as normative validity.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/86",
-      "resolution": "Implement a checked construction/field-consistency boundary and reconcile inline optional decoding with independently validated CDDL cases, preserving spliced-group controls. Keep this entry open until both writer and decoder contracts are tested; tracked by M13/#86.",
+      "resolution": "Implement typed checked construction/member validation, including preserved field/raw coherence and optional presence, while retaining greedy matching and independent group controls. Keep the reproduced validator observations distinct from expected normative behavior; tracked by M13/#86.",
       "evidence": [
         "models-gen/src/main/scala/xyz/kd5ujc/scarab/models/gen/CddlSampler.scala",
         "docs/models.md"
@@ -293,6 +293,21 @@
         "scripts/devnet/scenarios/ntc.py",
         "scripts/oracle/compare.py",
         "docs/compatibility.md"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "pre-conway-instant-stake-arithmetic",
+      "classification": "known-divergence",
+      "status": "open",
+      "scope": "Pre-Conway ShelleyInstantStakeOps credential and pointer caches, separately from the nine corrected Conway cases.",
+      "assertion": "Source inspection shows checked signed updates and input-order deletion where the pinned native updater uses modular Word64 operations, missing-entry insertion and ordered UTxO traversal. New arbitrary-cache native API captures have not been executed.",
+      "rationale": "Correcting the Conway corpus does not establish parity for the analogous earlier-era updater; no cache-coherence precondition justifies ignoring these source differences.",
+      "owner": "Scarab ledger maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/299",
+      "resolution": "Capture actual pinned native API boundary results for both maps, align arithmetic and traversal order while preserving checked input conversion, and retain focused/full/scenario receipts.",
+      "evidence": [
+        "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/ShelleyUtxo.scala"
       ],
       "candidateRequired": true
     }
