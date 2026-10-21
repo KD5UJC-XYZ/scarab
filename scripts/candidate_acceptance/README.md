@@ -185,3 +185,10 @@ suites load maintained fixtures relative to that root; module-default fork direc
 supply them. Runtime guards record and assert `/work` alongside heap and processor observations,
 and receipt validation rejects a module-directory observation. This leaves all fixture reads and
 byte/state comparisons intact.
+
+The export database has an additional read-only bind below owned writable results. Its stable
+ownership lock is a sibling of the database, so mounting the entire parent read-only prevents
+export before any comparison. Only that scratch parent is writable; original database bytes stay
+read-only and the export suite still checks their complete before/after fingerprints. The signed
+preprod ancillary manifest's complete file list, including its native immutable tail triplet,
+must accompany the ledger files; the recorded Scarab database is a separate input role.
