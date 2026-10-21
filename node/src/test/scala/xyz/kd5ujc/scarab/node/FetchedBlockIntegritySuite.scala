@@ -7,6 +7,8 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{Block, BlockTransport, BlockTransportError, Header}
 import xyz.kd5ujc.scarab.ledger.byron.ByronError
 import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.consensus.BlockRef
+import xyz.kd5ujc.scarab.ledger.StorageError
 
 class FetchedBlockIntegritySuite extends FunSuite:
   private val epochSlots = BigInt(50)
@@ -56,6 +58,35 @@ class FetchedBlockIntegritySuite extends FunSuite:
       val block = Block.decode(raw, BigInt(21600)).fold(e => fail(e.message), identity)
       assertEquals(BlockTransport.check(block.header, raw), Right(block))
     }
+  }
+
+  test("restart recovery verifies original bytes and every persisted reference field") {
+    val (block, raw) = originals.find(_._1.header.isBoundary).getOrElse(fail("no Byron EBB"))
+    val header = block.header
+    val ref = BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary)
+    val recovered = ReceivedBlockRecovery
+      .checked(ref, raw, epochSlots)
+      .fold(error => fail(error.message), identity)
+    assertEquals(recovered.header, header)
+    assertEquals(recovered.block, raw)
+    val changed = Vector(
+      ref.copy(slot = ref.slot + 1),
+      ref.copy(hash = Bytes(Vector.fill(32)(0.toByte))),
+      ref.copy(blockNo = ref.blockNo + 1),
+      ref.copy(boundary = !ref.boundary)
+    )
+    changed.foreach { wrong =>
+      assertEquals(
+        ReceivedBlockRecovery.checked(wrong, raw, epochSlots),
+        Left(
+          StorageError.Corrupt(
+            "received block metadata",
+            ReceivedBlockRecovery.Problem.MetadataMismatch(wrong, ref)
+          )
+        )
+      )
+    }
+    assert(ReceivedBlockRecovery.checked(ref, Bytes(Vector(0xff.toByte)), epochSlots).isLeft)
   }
 
   for era <- Era.values.filterNot(_ == Era.Byron) do
