@@ -183,7 +183,8 @@ belong to nightly CI, not to a change.
 
 `.github/workflows/e2e.yml` runs soak, e2e, relay, pool, kes-rotate, ntc and restart every night, each scenario in its own job (a matrix), and on demand and on
 version tags; `fuzz.yml` and `cuddle-crosscheck.yml` run the longer fuzzing and the CDDL cross-check. `.github/workflows/ci.yml` runs `check`, the script tests, actionlint, a gitleaks
-scan of the whole history (`.gitleaks.toml`; a new false positive is allowlisted there by path or
+scan of the checked-out commit's full history, including merge parents (unrelated fetched branches
+are scanned in their own runs; `.gitleaks.toml`; a new false positive is allowlisted there by path or
 commit, scoped to its rule, with a reason) and, on pull requests, a dependency review. A red
 nightly is fixed first, before new work lands: it is the cheapest point at which to find what the
 per-change gates did not cover.
