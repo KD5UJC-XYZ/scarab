@@ -1070,10 +1070,6 @@ object Peer:
                 case SyncEvent.RollBackward(_, _)     => F.unit
               }
               _ <- batch.traverse_(event => received.traverse_(_(event)))
-              _ <- observe.traverse_ { report =>
-                val slots = batch.collect { case SyncEvent.RollForward(h, _) => h.slot.toLong }
-                report(Peer.Observation.HeadersArrived(slots, arrived)).whenA(slots.nonEmpty)
-              }
               _ <- batch.lastOption.traverse_ {
                 case SyncEvent.RollForward(_, tip) =>
                   observe.traverse_(_(Peer.Observation.Announced(tip)))
@@ -1121,6 +1117,10 @@ object Peer:
                       .Diverged(PeerError.Divergence.DetachedCandidate(point))
                       .raise[F, Vector[SyncEvent]]
                   )(_ => pendingRestart.set(Some(point)).as(Vector.empty[SyncEvent]))
+              _ <- observe.traverse_ { report =>
+                val slots = result.collect { case SyncEvent.RollForward(h, _) => h.slot.toLong }
+                report(Peer.Observation.HeadersArrived(slots, arrived)).whenA(slots.nonEmpty)
+              }
             yield result
 
           def recordUpdates(
