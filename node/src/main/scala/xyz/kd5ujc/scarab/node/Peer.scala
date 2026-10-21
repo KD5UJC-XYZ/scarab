@@ -255,9 +255,10 @@ object Peer:
   /** Batches the peer keeps in flight: one being applied, the others being fetched. */
   private[node] val Depth = 3
 
-  /** Same interval as the pinned Praos decision loop. A stalled header producer must not prevent
-    * KeepAlive measurements from changing peer preference. Unchanged samples do not rebuild
-    * decisions; the resource's supervised fiber owns failures and cancellation.
+  /** Keep measurements current even while the header producer is blocked. Pinned BlockFetch
+    * State.hs:396–425 reads GSVs only after a candidate, status or grace trigger, in both modes;
+    * this sampling interval does not itself trigger a fetch decision. The supervised fiber owns
+    * failures and cancellation.
     */
   private[node] val FetchPerformanceInterval: FiniteDuration = 10.millis
 

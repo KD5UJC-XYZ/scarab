@@ -933,16 +933,17 @@ object Main extends IOApp:
                   )
                 )
             }
-            genesisMaintenance = genesisRuntime.fold(Resource.unit[IO]) { runtime =>
-              IO.both(
-                runtime.governor.run,
-                blockPool.fetchCoordinator.watchGenesis(
-                  setup.config.settings.genesis.blockFetchGracePicos
+            genesisMaintenance = IO
+              .both(
+                genesisRuntime.fold(IO.never[Unit])(_.governor.run.void),
+                blockPool.fetchCoordinator.watchDecisions(
+                  if genesisRuntime.nonEmpty then setup.config.settings.genesis.blockFetchGracePicos
+                  else BigInt(0)
                 )
-              ).handleErrorWith(cause => fatalSink(Fatal.Defect(cause)) *> IO.never)
-                .background
-                .void
-            }
+              )
+              .handleErrorWith(cause => fatalSink(Fatal.Defect(cause)) *> IO.never)
+              .background
+              .void
             // the connection manager (G2): one connection per peer address, limits, accounting
             manager <- ConnectionManager.create[IO](
               ConnectionManager.Limits(maxInbound = options.maxInbound),

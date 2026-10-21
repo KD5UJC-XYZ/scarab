@@ -150,7 +150,7 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
           )
         )
         _ <- coordinator.session(1).use { peer =>
-          coordinator.watchGenesis(BigInt(10) * 1000000000000L).background.use { _ =>
+          coordinator.watchDecisions(BigInt(10) * 1000000000000L).background.use { _ =>
             List
               .fill(9)(())
               .traverse_(_ =>

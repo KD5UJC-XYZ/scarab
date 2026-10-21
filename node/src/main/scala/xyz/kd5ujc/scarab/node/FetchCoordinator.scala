@@ -37,12 +37,14 @@ final class FetchCoordinator[F[_]: Async] private (
     genesis.set(Some(control)) *> refreshGenesis
   def refreshGenesis: F[Unit] = change(identity)
 
-  /** State.hs:150 retriggers a stalled decision after the grace period even when every ChainSync
-    * client is waiting for a forecast and the devoted fetcher sends no bodies.
+  /** State.hs:100–107,150: grace expiry retriggers decisions in both modes. Node/Genesis.hs:114
+    * configures zero grace without Genesis, so the Praos loop instead runs at its 10ms rate limit.
+    * With Genesis enabled, the configured grace also applies while the GSM is caught up.
     */
-  private[node] def watchGenesis(
+  private[node] def watchDecisions(
       gracePicos: BigInt,
-      clock: Option[PicosClock[F]] = None
+      clock: Option[PicosClock[F]] = None,
+      intervals: DecisionIntervals = DecisionIntervals.default
   ): F[Nothing] =
     val timer = clock.getOrElse(PicosClock.system[F])
     type Point = xyz.kd5ujc.scarab.protocol.ChainSync.Point
@@ -58,7 +60,10 @@ final class FetchCoordinator[F[_]: Async] private (
     F.tailRecM[(Option[Fingerprint], BigInt), Nothing]((None, 0)) { (previous, deadline) =>
       (state.get, timer.now).tupled.flatMap { (current, now) =>
         val input = fingerprint(current)
-        val expires = if previous.contains(input) then deadline else now + gracePicos.max(0)
+        val interval =
+          if current.genesisContext.exists(_.phase == Gsm.Phase.Syncing) then intervals.genesisPicos
+          else intervals.praosPicos
+        val expires = if previous.contains(input) then deadline else now + gracePicos.max(interval)
         val remaining = (expires - now).max(0)
         F.race(current.signal.get, timer.sleep(remaining))
           .flatMap {
@@ -434,6 +439,11 @@ final class FetchCoordinator[F[_]: Async] private (
     else (granted._1.copy(genesisState = s.genesisState), granted._2)
 
 object FetchCoordinator:
+  /** Pinned diffusion Configuration.hs:95–96; native simulator policies can explicitly use zero. */
+  final case class DecisionIntervals(genesisPicos: BigInt, praosPicos: BigInt)
+  object DecisionIntervals:
+    val default: DecisionIntervals = DecisionIntervals(40000000000L, 10000000000L)
+
   final case class GenesisContext(
       phase: Gsm.Phase,
       nowPicos: BigInt,

@@ -268,7 +268,11 @@ object UpstreamGenesisReplay:
                             Resource.make(governor.run.start)(_.cancel),
                             Resource.make(
                               pool.fetchCoordinator
-                                .watchGenesis(settings.blockFetchGracePicos, Some(clock))
+                                .watchDecisions(
+                                  settings.blockFetchGracePicos,
+                                  Some(clock),
+                                  FetchCoordinator.DecisionIntervals(0, 0)
+                                )
                                 .start
                             )(_.cancel),
                             order.zipWithIndex.filter((id, _) => active(id)).traverse {
