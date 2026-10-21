@@ -23,14 +23,9 @@ import xyz.kd5ujc.scarab.protocol.Era
 class ChainDepGoldenSuite extends FunSuite:
   private val fixtures = Path.of("fixtures/chain-dep")
 
-  /** The capture is a fixture of the repository; a checkout without it skips the suite. */
-  private val captured: Boolean = Files.exists(fixtures.resolve("answers.json"))
-
   private val setup: NodeSetup =
     NodeSetup
-      .fromDirectory(
-        if captured then fixtures.resolve("genesis") else Path.of("fixtures/eras/genesis")
-      )
+      .fromDirectory(fixtures.resolve("genesis"))
       .fold(e => fail(e.message), identity)
 
   private val queryEnv = QueryEnv(
@@ -46,14 +41,12 @@ class ChainDepGoldenSuite extends FunSuite:
   )
 
   private val raws: Vector[Bytes] =
-    if !captured then Vector.empty
-    else
-      Files
-        .readAllLines(fixtures.resolve("blocks.hex"))
-        .asScala
-        .toVector
-        .filter(_.nonEmpty)
-        .map(l => Bytes.fromHex(l).fold(e => fail(e.message), identity))
+    Files
+      .readAllLines(fixtures.resolve("blocks.hex"))
+      .asScala
+      .toVector
+      .filter(_.nonEmpty)
+      .map(l => Bytes.fromHex(l).fold(e => fail(e.message), identity))
 
   private val blocks: Vector[Block] =
     raws.map(Block.decode(_, setup.geometry.byron.epochSlots).fold(e => fail(e.message), identity))
@@ -64,8 +57,11 @@ class ChainDepGoldenSuite extends FunSuite:
       .foldLeft((setup.mirrorStart, Map.empty[String, (Block, MirrorState)])) {
         case ((before, acc), i) =>
           MirrorSteps.block(setup, before, blocks(i).header, raws(i)) match
-            case Right(next) => (next, acc.updated(blocks(i).header.hash.hex, (blocks(i), next)))
-            case Left(f)     => fail(s"block $i rejected by ${f.rule.name}: ${f.reason}")
+            case Right(next) =>
+              val hash = blocks(i).header.hash.hex
+              assert(!acc.contains(hash), s"duplicate captured block at line ${i + 1}: $hash")
+              (next, acc.updated(hash, (blocks(i), next)))
+            case Left(f) => fail(s"block $i rejected by ${f.rule.name}: ${f.reason}")
       }
       ._2
 
@@ -79,31 +75,29 @@ class ChainDepGoldenSuite extends FunSuite:
   )
 
   private val goldens: Vector[Golden] =
-    if !captured then Vector.empty
-    else
-      parser
-        .parse(Files.readString(fixtures.resolve("answers.json")))
-        .flatMap(_.as[Vector[io.circe.Json]])
-        .fold(e => fail(e.getMessage), identity)
-        .map { j =>
-          val c = j.hcursor
-          val get = (c.get[String]("era"), c.get[BigInt]("epoch"), c.get[BigInt]("slot"))
-          val era = get._1.toOption.flatMap(n => Era.values.find(_.toString.equalsIgnoreCase(n)))
-          Golden(
-            era.getOrElse(fail("unknown era")),
-            get._2.getOrElse(fail("epoch")),
-            get._3.getOrElse(fail("slot")),
-            c.get[String]("hash").getOrElse(fail("hash")),
-            c.get[String]("answer").getOrElse(fail("answer"))
-          )
-        }
+    parser
+      .parse(Files.readString(fixtures.resolve("answers.json")))
+      .flatMap(_.as[Vector[io.circe.Json]])
+      .fold(e => fail(e.getMessage), identity)
+      .map { j =>
+        val c = j.hcursor
+        val get = (c.get[String]("era"), c.get[BigInt]("epoch"), c.get[BigInt]("slot"))
+        val era = get._1.toOption.flatMap(n => Era.values.find(_.toString.equalsIgnoreCase(n)))
+        Golden(
+          era.getOrElse(fail("unknown era")),
+          get._2.getOrElse(fail("epoch")),
+          get._3.getOrElse(fail("slot")),
+          c.get[String]("hash").getOrElse(fail("hash")),
+          c.get[String]("answer").getOrElse(fail("answer"))
+        )
+      }
 
   private def label(g: Golden): String = s"${g.era} epoch ${g.epoch} slot ${g.slot}"
 
-  override def beforeEach(context: BeforeEach): Unit =
-    assume(captured, "fixtures/chain-dep is not in this checkout")
-
   test("the capture has points in every Shelley-based era and in the first Babbage epoch") {
+    assertEquals(raws.size, 789, "the complete original block corpus is required")
+    assertEquals(goldens.size, 43, "the complete original answer corpus is required")
+    assertEquals(goldens.map(_.hash).distinct.size, goldens.size, "acquired points must be unique")
     assertEquals(
       goldens.map(_.era).distinct.toSet,
       Set(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway)

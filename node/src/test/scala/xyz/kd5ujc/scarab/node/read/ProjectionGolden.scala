@@ -2,7 +2,13 @@
 package xyz.kd5ujc.scarab.node.read
 
 import io.circe.Json
-import java.nio.file.{Files, Path}
+import cats.effect.{ExitCode, IO, IOApp}
+import cats.effect.std.Console
+import cats.syntax.all.*
+import java.nio.file.{Files, Path, StandardOpenOption}
+import scala.jdk.CollectionConverters.*
+import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
+import xyz.kd5ujc.scarab.protocol.Era
 import java.security.MessageDigest
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.node.Projection
@@ -26,7 +32,7 @@ import xyz.kd5ujc.scarab.node.Projection
   * The Byron states are in the file for the record: the projection then was of a placeholder ledger
   * state, which a chain in Byron does not have, and is now the consensus part alone.
   */
-object ProjectionGolden:
+object ProjectionGolden extends IOApp:
   val file: Path = Path.of("fixtures/projection-golden/eras.tsv")
 
   def sha256(text: String): String =
@@ -46,11 +52,71 @@ object ProjectionGolden:
   def line(i: Int, s: ErasStates.Sample): String =
     s"$i\t${s.era}\t${s.block.header.blockNo}\t${sha256(ofMirror(s).noSpaces)}"
 
-  /** Writes the file from the mirror. Not a refresh: a change of the file is a change of the
-    * digest, which needs its reasons.
+  enum RecordingError extends DomainError:
+    case CandidatePathRequired
+    case OriginalDestination
+    case CandidateExists(path: Path)
+    case RowCount(expected: Int, actual: Int)
+    case ArchivedByronRow(index: Int)
+
+  private[read] def candidatePath(path: Path): Either[RecordingError, Path] =
+    Either.cond(
+      path.toAbsolutePath.normalize != file.toAbsolutePath.normalize,
+      path,
+      RecordingError.OriginalDestination
+    )
+
+  private[read] def candidateRows(
+      original: Vector[String],
+      eras: Vector[Era]
+  )(project: Int => String): Either[RecordingError, Vector[String]] =
+    if original.size != eras.size then Left(RecordingError.RowCount(eras.size, original.size))
+    else
+      eras.zipWithIndex.traverse { (era, index) =>
+        if era != Era.Byron then Right(project(index))
+        else
+          original(index).split("\t", -1).toVector match
+            case Vector(row, "Byron", _, digest)
+                if row == index.toString && digest.length == 64 && Bytes.fromHex(digest).isRight =>
+              Right(original(index))
+            case _ => Left(RecordingError.ArchivedByronRow(index))
+      }
+
+  private def refuse(error: RecordingError): IO[ExitCode] =
+    Console[IO].errorln(s"projection golden candidate refused: $error").as(ExitCode.Error)
+
+  /** Records a separate regression candidate. Original Byron rows are an archive of a removed
+    * projection and are copied verbatim; their current projector is deliberately never called.
     */
-  def main(args: Array[String]): Unit =
-    Files.createDirectories(file.getParent)
-    val lines = ErasStates.samples.zipWithIndex.map((s, i) => line(i, s)).map(l => s"$l\n")
-    Files.writeString(file, lines.mkString)
-    println(s"wrote ${lines.size} lines to $file")
+  def run(args: List[String]): IO[ExitCode] = args match
+    case name :: Nil =>
+      IO.blocking(Path.of(name)).flatMap { path =>
+        candidatePath(path).fold(
+          refuse,
+          { candidate =>
+            IO.blocking(Files.exists(candidate)).flatMap { exists =>
+              if exists then refuse(RecordingError.CandidateExists(candidate))
+              else
+                IO.blocking {
+                  val original = Files.readAllLines(file).asScala.toVector
+                  val samples = ErasStates.samples
+                  candidateRows(original, samples.map(_.era))(i => line(i, samples(i)))
+                }.flatMap {
+                  case Left(error) => refuse(error)
+                  case Right(rows) =>
+                    IO.blocking {
+                      Option(candidate.getParent).foreach(parent => Files.createDirectories(parent))
+                      Files.writeString(
+                        candidate,
+                        rows.mkString("", "\n", "\n"),
+                        StandardOpenOption.CREATE_NEW,
+                        StandardOpenOption.WRITE
+                      )
+                    }.flatMap(out => IO.println(s"wrote ${rows.size} candidate rows to $out"))
+                      .as(ExitCode.Success)
+                }
+            }
+          }
+        )
+      }
+    case _ => refuse(RecordingError.CandidatePathRequired)

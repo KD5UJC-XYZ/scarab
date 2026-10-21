@@ -16,7 +16,7 @@ class BlockGoldenSuite extends munit.FunSuite:
       header: Bytes,
       bodies: Vector[Bytes],
       witnesses: Vector[Bytes],
-      auxiliaryAt: Vector[Int],
+      auxiliary: Vector[(Int, Bytes)],
       invalid: Vector[Int]
   )
 
@@ -35,7 +35,8 @@ class BlockGoldenSuite extends munit.FunSuite:
             b.header.raw,
             b.transactionBodies.map(_.raw),
             b.transactionWitnessSets.map(_.raw),
-            b.auxiliaryDataSet.map(_._1.value),
+            b.auxiliaryDataSet
+              .map((index, data) => index.value -> conway.AuxiliaryData.encodeUnchecked(data)),
             b.invalidTransactions.map(_.value)
           )
         }
@@ -45,7 +46,8 @@ class BlockGoldenSuite extends munit.FunSuite:
             b.header.raw,
             b.transactionBodies.map(_.raw),
             b.transactionWitnessSets.map(_.raw),
-            b.auxiliaryDataSet.map(_._1.value),
+            b.auxiliaryDataSet
+              .map((index, data) => index.value -> babbage.AuxiliaryData.encodeUnchecked(data)),
             b.invalidTransactions.map(_.value)
           )
         }
@@ -55,34 +57,40 @@ class BlockGoldenSuite extends munit.FunSuite:
             b.header.raw,
             b.transactionBodies.map(_.raw),
             b.transactionWitnessSets.map(_.raw),
-            b.auxiliaryDataSet.map(_._1.value),
+            b.auxiliaryDataSet
+              .map((index, data) => index.value -> alonzo.AuxiliaryData.encodeUnchecked(data)),
             b.invalidTransactions.map(_.value)
           )
         }
       case other => fail(s"no block model for $other")
 
   private val files = Vector(
-    "alonzo-first-20",
-    "alonzo-txs",
-    "babbage-transition",
-    "babbage-mint",
-    "conway",
-    "conway-governance",
-    "deeply-nested-datum",
-    "duplicate-redeemer-conway",
-    "empty-redeemers"
+    ("alonzo-first-20", 20, 2, 0),
+    ("alonzo-txs", 2, 2, 0),
+    ("babbage-transition", 30, 0, 0),
+    ("babbage-mint", 1, 1, 1),
+    ("conway", 30, 8, 4),
+    ("conway-governance", 23, 54, 4),
+    ("deeply-nested-datum", 1, 2, 1),
+    ("duplicate-redeemer-conway", 1, 3, 1),
+    ("empty-redeemers", 6, 17, 3)
   )
 
-  for file <- files do
+  for (file, expectedBlocks, expectedTransactions, expectedAuxiliary) <- files do
     test(
       s"fixtures/preview/$file.hex: every block decodes to the same transactions as the hand-written decoder"
     ) {
       val fetched = Fixtures.hexLines(s"fixtures/preview/$file.hex")
-      var txs = 0
-      fetched.foreach { f =>
+      assertEquals(fetched.size, expectedBlocks, "the complete original block corpus is required")
+      val (transactions, auxiliary) = fetched.map { f =>
         val hand = Block.decodeShelley(f).fold(e => fail(e.message), identity) match
           case b: Block.Shelley => b
           case other            => fail(s"unexpected $other")
+        assertEquals(
+          hand.bodyHash,
+          hand.header.bodyHash,
+          "the original body matches its header commitment"
+        )
         val raw = inner(f)
         val v = view(hand.era, raw).fold(
           e =>
@@ -98,11 +106,11 @@ class BlockGoldenSuite extends munit.FunSuite:
           s"bodies of block ${hand.header.blockNo}"
         )
         assertEquals(v.witnesses, hand.transactions.map(_.witnesses))
-        assertEquals(
-          v.auxiliaryAt.sorted,
-          hand.transactions.zipWithIndex.collect {
-            case (t, i) if t.auxiliaryData.isDefined => i
-          }.sorted
+        assertAuxiliary(
+          v.auxiliary,
+          hand.transactions.zipWithIndex.flatMap { case (transaction, index) =>
+            transaction.auxiliaryData.map(index -> _)
+          }
         )
         assertEquals(
           v.invalid.sorted,
@@ -110,10 +118,45 @@ class BlockGoldenSuite extends munit.FunSuite:
         )
         // The transaction id is the hash of the original body bytes, not of a re-encoding.
         assertEquals(v.bodies.map(Blake2b.hash256.hash), hand.transactions.map(_.id))
-        txs += v.bodies.size
-      }
-      assert(txs >= 0)
+        (v.bodies.size, v.auxiliary.size)
+      }.unzip
+      assertEquals(
+        transactions.sum,
+        expectedTransactions,
+        "all original transactions are exercised"
+      )
+      assertEquals(
+        auxiliary.sum,
+        expectedAuxiliary,
+        "all original auxiliary payloads are exercised"
+      )
     }
+
+  private def assertAuxiliary(actual: Vector[(Int, Bytes)], expected: Vector[(Int, Bytes)]): Unit =
+    assertEquals(
+      actual.sortBy(_._1),
+      expected.sortBy(_._1),
+      "auxiliary indices and complete payloads"
+    )
+
+  test("changing an auxiliary payload at the same index fails the complete comparison") {
+    val original = files.iterator
+      .flatMap { case (file, _, _, _) => Fixtures.hexLines(s"fixtures/preview/$file.hex") }
+      .map { raw =>
+        val block = Block.decodeShelley(raw).fold(e => fail(e.message), identity)
+        view(block.era, inner(raw)).fold(e => fail(e.render), identity).auxiliary
+      }
+      .find(_.nonEmpty)
+      .getOrElse(fail("the corpus must include auxiliary data"))
+    val replacement = Bytes.fromHex("a10001").fold(e => fail(e.message), identity)
+    val different =
+      if original.head._2 == replacement then
+        Bytes.fromHex("a10002").fold(e => fail(e.message), identity)
+      else replacement
+    val tampered = original.updated(0, original.head._1 -> different)
+    assertEquals(tampered.map(_._1), original.map(_._1), "positions alone cannot detect corruption")
+    intercept[munit.ComparisonFailException](assertAuxiliary(tampered, original))
+  }
 
   test("a block that is not the era's layout is a typed error pointing into the block") {
     val raw = inner(Fixtures.hexLines("fixtures/preview/conway.hex").head)

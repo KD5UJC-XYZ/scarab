@@ -85,17 +85,27 @@ class IndexedNodeSuite extends munit.FunSuite:
       Files.walk(Path.of("fixtures")).iterator.asScala.filter(Files.isRegularFile(_)).toVector
     files.flatMap { f =>
       val name = f.toString
-      if name.endsWith(".hex") then
-        Files
-          .readAllLines(f)
-          .asScala
-          .toVector
-          .map(_.trim)
-          .filter(_.nonEmpty)
-          .flatMap(l => Bytes.fromHex(l).toOption)
+      if name.endsWith(".hex") then hexLines(f, Files.readAllLines(f).asScala.toVector)
       else if name.endsWith(".cbor") then Vector(Bytes.wrap(Files.readAllBytes(f)))
       else Vector.empty
     }
+
+  private def hexLines(path: Path, lines: Vector[String]): Vector[Bytes] =
+    lines.zipWithIndex.collect {
+      case (line, index) if line.trim.nonEmpty =>
+        Bytes.fromHex(line.trim).fold(e => fail(s"$path:${index + 1}: ${e.message}"), identity)
+    }
+
+  test("a malformed hex fixture fails with its file and original line number") {
+    val failure = intercept[munit.FailException] {
+      hexLines(Path.of("fixtures/broken.hex"), Vector("00", "", "0g", "01"))
+    }
+    assert(failure.getMessage.contains("fixtures/broken.hex:3:"))
+    assertEquals(
+      hexLines(Path.of("fixtures/valid.hex"), Vector("00", "", "01")),
+      Vector(bytes("00"), bytes("01"))
+    )
+  }
 
   /** A random well-formed item, the wire forms of RFC 8949 that a decoder must keep: non-minimal
     * heads, indefinite strings and containers, tags, floats.
