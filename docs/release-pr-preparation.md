@@ -86,6 +86,12 @@ node scripts/release-please/run.cjs --source "$reviewed_source" --channel prepro
   --gh /tmp/scarab-release-tools/gh --output /tmp/scarab-proposal-preview
 ```
 
+Fetch all remote tags before a local preview (`git fetch origin --tags`); an exact local
+`v<proposed-version>` tag is a reservation and refuses the proposal, including annotated tags.
+The App writer also checks the exact live tag ref immediately before PR preparation writes; only
+HTTP404 counts as absence. This read-only check is not atomic tag reservation; the later publisher
+must independently reserve/verify the exact tag.
+
 The reviewed authority file must already be valid. `--validate` checks the reviewed input authority
 without a PR write. A successful preview contains `proposal.json`, the complete `patch.json` with
 explicit deletions, and `result.json`; the working checkout remains unchanged. The collector runs its

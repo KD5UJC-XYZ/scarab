@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
-const {execFileSync} = require('node:child_process');
+const {execFileSync, spawnSync} = require('node:child_process');
 const rp = require('release-please');
 const {Version} = require('release-please/build/src/version');
 const {buildVersioningStrategy} = require('release-please/build/src/factories/versioning-strategy-factory');
@@ -35,6 +35,12 @@ function stableVersion(value) {
   const version = Version.parse(value);
   requireThat(version.toString() === value && !version.preRelease && !version.build, 'baseline requires canonical stable version');
   return version;
+}
+function requireLocalTagAbsent(repo, version) {
+  const result = spawnSync('git', ['-C', repo, 'show-ref', '--verify', '--quiet', `refs/tags/v${version}`],
+    {encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']});
+  requireThat(!result.error && (result.status === 0 || result.status === 1), 'cannot inspect exact local version tag');
+  requireThat(result.status === 1, 'exact release version tag already reserved');
 }
 function render(request, version) {
   return JSON.parse(execFileSync(request.python || 'python3', [path.join(ROOT, 'scripts/release_proposal_fragments.py'),
@@ -120,6 +126,7 @@ async function prepare(request, scm) {
     }};
   });
   rp.registerChangelogNotes('scarab-fragments', () => ({async buildNotes(_changes, options) {
+    requireLocalTagAbsent(request.repo, options.version);
     frozen = render(request, options.version);
     requireThat(frozen.plan.channel === request.channel, 'proposed version and selected channel disagree');
     receipt = {schemaVersion: 1, state: 'proposed', tool: `release-please-${rp.VERSION}`, target: TARGET,

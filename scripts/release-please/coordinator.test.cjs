@@ -191,3 +191,19 @@ test('a PR transport failure retains the exact generated patch and an incomplete
   assert.equal(summary.state, 'incomplete');assert.equal(summary.publication, 'not-performed');
   assert.deepEqual(summary.pullRequests, []);
 });
+
+
+test('actual local version tags reserve both annotated and lightweight versions without prefix overreach', async t => {
+  for (const annotated of [false, true]) {
+    const f = fixture(t);
+    git(f.repo, 'tag', ...(annotated ? ['-a', '-m', 'disposable reservation'] : []), 'v0.2.0');
+    const scm = new MemoryScm(f.request);const coordinator = await prepare(f.request, scm);
+    await assert.rejects(() => coordinator.manifest.createPullRequests(), /version tag already reserved/);
+    assert.equal(scm.state.writes, 0);
+  }
+  const f = fixture(t);git(f.repo, 'tag', 'v0.2.0-beta.0');
+  let coordinator = await prepare(f.request, new HistoryScm(f.request));
+  assert.equal((await coordinator.manifest.buildPullRequests())[0].version.toString(), '0.2.0');
+  coordinator = await prepare({...f.request, channel: 'beta', ordinal: 0}, new HistoryScm(f.request));
+  await assert.rejects(() => coordinator.manifest.buildPullRequests(), /version tag already reserved/);
+});
