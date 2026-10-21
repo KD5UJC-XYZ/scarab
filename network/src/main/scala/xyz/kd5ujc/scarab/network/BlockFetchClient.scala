@@ -20,6 +20,18 @@ trait BlockFetchClient[F[_]]:
       @scala.annotation.unused observe: BlockFetchRuntime.Event => F[Unit]
   )(using Raise[F, NetworkError]): F[Option[Vector[Bytes]]] = requestRange(from, to)
 
+  /** Hand each original body to the consumer before collecting the next response. Callback failures
+    * are values: the collector raises them in its own fiber's scope (ADR 0017). The default
+    * interpreter retains compatibility with scripted, complete-vector test clients.
+    */
+  def requestRangeStreaming(from: Point, to: Point)(
+      onBlock: Bytes => F[Either[NetworkError, Unit]],
+      observe: BlockFetchRuntime.Event => F[Unit]
+  )(using Raise[F, NetworkError], cats.Monad[F]): F[Option[Vector[Bytes]]] =
+    requestRangeObserved(from, to)(observe).flatTap(
+      _.traverse_(_.traverse_(body => onBlock(body).flatMap(_.fold(_.raise[F, Unit], _.pure[F]))))
+    )
+
   /** Tell the peer we are finished; valid only when no request is outstanding. */
   def done(using Raise[F, NetworkError]): F[Unit]
 
@@ -95,4 +107,14 @@ object BlockFetchClient:
       )(using Raise[F, NetworkError]): F[Option[Vector[Bytes]]] =
         range(from, to)
           .flatMap(r => runtime.requestRangeObserved(r.from.point, r.to.point)(observe))
+          .map(_.map(_.map(_.bytes)))
+
+      override def requestRangeStreaming(from: Point, to: Point)(
+          onBlock: Bytes => F[Either[NetworkError, Unit]],
+          observe: BlockFetchRuntime.Event => F[Unit]
+      )(using Raise[F, NetworkError], cats.Monad[F]): F[Option[Vector[Bytes]]] =
+        range(from, to)
+          .flatMap(r =>
+            runtime.requestRangeStreaming(r.from.point, r.to.point)(b => onBlock(b.bytes), observe)
+          )
           .map(_.map(_.map(_.bytes)))

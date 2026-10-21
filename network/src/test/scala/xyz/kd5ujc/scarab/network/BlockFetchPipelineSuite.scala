@@ -269,3 +269,102 @@ class BlockFetchPipelineSuite extends FailsOnUncaught:
       .map { result =>
         assertEquals(result, Right(Left(NetworkError.BearerClosed(NetworkError.Closure.Aborted))))
       }
+
+  for pipelined <- List(false, true) do
+    test(
+      s"each original body is delivered before the next body or BatchDone; pipelined=$pipelined"
+    ) {
+      Peers
+        .typed {
+          Peers.linked(protocols = Set(Protocols.BlockFetch)).use { (clientMux, serverMux) =>
+            for
+              c <- clientMux.channel(Protocols.BlockFetch)
+              s <- serverMux.channel(Protocols.BlockFetch)
+              result <- (if pipelined then BlockFetchClient.resource(c, clientMux.abort)
+                         else cats.effect.Resource.eval(BlockFetchClient(c))).use { client =>
+                for
+                  first <- Deferred[IO, Unit]
+                  second <- Deferred[IO, Unit]
+                  bodies <- Ref.of[IO, Vector[xyz.kd5ujc.scarab.codec.Bytes]](Vector.empty)
+                  completed <- Ref.of[IO, Boolean](false)
+                  one = CardanoBlockFetch.RawNtNBlock
+                    .from(Peers.block(1))
+                    .fold(e => fail(e.message), identity)
+                  two = CardanoBlockFetch.RawNtNBlock
+                    .from(Peers.block(2))
+                    .fold(e => fail(e.message), identity)
+                  downloading <- Peers
+                    .typed(
+                      client.requestRangeStreaming(Peers.point(1), Peers.point(2))(
+                        body =>
+                          bodies.update(_ :+ body) *> (if body == one.bytes then first else second)
+                            .complete(())
+                            .as(Right(())),
+                        {
+                          case _: BlockFetchRuntime.Event.Completed => completed.set(true)
+                          case _                                    => IO.unit
+                        }
+                      )
+                    )
+                    .start
+                  _ <- request(s)
+                  _ <- send(s, BlockFetch.State.Busy, BlockFetch.Message.StartBatch)
+                  _ <- send(s, BlockFetch.State.Streaming, BlockFetch.Message.Block(one))
+                  _ <- first.get
+                  beforeSecond <- bodies.get
+                  beforeDone <- completed.get
+                  _ <- send(s, BlockFetch.State.Streaming, BlockFetch.Message.Block(two))
+                  _ <- second.get
+                  _ <- send(s, BlockFetch.State.Streaming, BlockFetch.Message.BatchDone)
+                  outcome <- downloading.joinWithNever
+                  _ <- client.done
+                yield
+                  assertEquals(beforeSecond, Vector(one.bytes))
+                  assert(!beforeDone)
+                  assertEquals(outcome, Right(Some(Vector(one.bytes, two.bytes))))
+              }
+            yield result
+          }
+        }
+        .map(result => assertEquals(result, Right(())))
+    }
+
+  test("a typed streaming consumer failure aborts ordered collection and settles queued requests") {
+    val refused = NetworkError.IngressLimit(Protocols.BlockFetch, 999)
+    Peers
+      .typed {
+        Peers.linked(protocols = Set(Protocols.BlockFetch)).use { (clientMux, serverMux) =>
+          for
+            c <- clientMux.channel(Protocols.BlockFetch)
+            s <- serverMux.channel(Protocols.BlockFetch)
+            result <- BlockFetchClient.resource(c, clientMux.abort).use { client =>
+              for
+                first <- Peers
+                  .typed(
+                    client.requestRangeStreaming(Peers.point(1), Peers.point(1))(
+                      _ => IO.pure(Left(refused)),
+                      _ => IO.unit
+                    )
+                  )
+                  .start
+                _ <- request(s)
+                second <- Peers.typed(client.requestRange(Peers.point(2), Peers.point(2))).start
+                _ <- request(s)
+                _ <- send(s, BlockFetch.State.Busy, BlockFetch.Message.StartBatch)
+                block = CardanoBlockFetch.RawNtNBlock
+                  .from(Peers.block(1))
+                  .fold(e => fail(e.message), identity)
+                _ <- send(s, BlockFetch.State.Streaming, BlockFetch.Message.Block(block))
+                a <- first.joinWithNever
+                b <- second.joinWithNever
+                reason <- clientMux.closed
+              yield
+                assertEquals(a, Left(refused))
+                assertEquals(b, Left(refused))
+                assertEquals(reason, refused)
+            }
+          yield result
+        }
+      }
+      .map(result => assertEquals(result, Right(())))
+  }

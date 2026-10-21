@@ -33,6 +33,10 @@ object BlockFetchRuntime:
     def requestRangeObserved(from: P, to: P)(observe: Event => F[Unit])(using
         Raise[F, NetworkError]
     ): F[Option[Vector[B]]]
+    def requestRangeStreaming(from: P, to: P)(
+        onBlock: B => F[Either[NetworkError, Unit]],
+        observe: Event => F[Unit]
+    )(using Raise[F, NetworkError]): F[Option[Vector[B]]]
     def done(using Raise[F, NetworkError]): F[Unit]
     def idle: F[Boolean]
 
@@ -110,7 +114,9 @@ object BlockFetchRuntime:
           }
         }
 
-      def stream(observe: Event => F[Unit])(using Raise[F, NetworkError]): F[Vector[B]] =
+      def stream(onBlock: B => F[Either[NetworkError, Unit]], observe: Event => F[Unit])(using
+          Raise[F, NetworkError]
+      ): F[Vector[B]] =
         F.tailRecM((BlockFetchEngine.Received.Empty, Vector.empty[B])) { case (received, blocks) =>
           receive.flatMap {
             case Message.Block(block) =>
@@ -121,8 +127,10 @@ object BlockFetchRuntime:
                     .raise[F, Either[(BlockFetchEngine.Received, Vector[B]), Vector[B]]]
                 case Right(next) =>
                   F.monotonic
-                    .flatMap(at => observe(Event.Block(sizeOf(block), at)))
-                    .as(Left((next, blocks :+ block)))
+                    .flatMap(at => observe(Event.Block(sizeOf(block), at))) *>
+                    onBlock(block)
+                      .flatMap(_.fold(_.raise[F, Unit], F.pure))
+                      .as(Left((next, blocks :+ block)))
             case Message.BatchDone => F.pure(Right(blocks))
             case other             => illegal(RuntimeViolation.BlockFetchEngineUnexpected(other))
           }
@@ -140,13 +148,18 @@ object BlockFetchRuntime:
 
         def requestRangeObserved(from: P, to: P)(observe: Event => F[Unit])(using
             Raise[F, NetworkError]
-        ): F[Option[Vector[B]]] = lock.lock.surround {
+        ): F[Option[Vector[B]]] = requestRangeStreaming(from, to)(_ => F.pure(Right(())), observe)
+
+        def requestRangeStreaming(from: P, to: P)(
+            onBlock: B => F[Either[NetworkError, Unit]],
+            observe: Event => F[Unit]
+        )(using Raise[F, NetworkError]): F[Option[Vector[B]]] = lock.lock.surround {
           Timed
             .within(settings.timeLimits.wholeRequest, id, "request")(
               send(Message.RequestRange(from, to)) *>
                 F.monotonic.flatMap(at => observe(Event.Sent(at))) *> receive.flatMap {
                   case Message.NoBlocks   => F.pure(None)
-                  case Message.StartBatch => stream(observe).map(Some(_))
+                  case Message.StartBatch => stream(onBlock, observe).map(Some(_))
                   case other => illegal(RuntimeViolation.BlockFetchEngineUnexpected(other))
                 }
             )
@@ -175,7 +188,8 @@ object BlockFetchRuntime:
     final case class Job(
         result: Deferred[F, Result],
         ready: Deferred[F, FiniteDuration],
-        observe: Event => F[Unit]
+        observe: Event => F[Unit],
+        onBlock: B => F[Either[NetworkError, Unit]]
     )
     def illegal[A](cause: NetworkError.Violation)(using Raise[F, NetworkError]): F[A] =
       NetworkError.IllegalTransition(id, cause).raise[F, A]
@@ -242,8 +256,11 @@ object BlockFetchRuntime:
                             .raise[F, Either[(BlockFetchEngine.Received, Vector[B]), Vector[B]]]
                         case Right(next) =>
                           F.monotonic
-                            .flatMap(at => job.observe(Event.Block(sizeOf(block), at)))
-                            .as(Left((next, blocks :+ block)))
+                            .flatMap(at => job.observe(Event.Block(sizeOf(block), at))) *>
+                            job
+                              .onBlock(block)
+                              .flatMap(_.fold(_.raise[F, Unit], F.pure))
+                              .as(Left((next, blocks :+ block)))
                     case Message.BatchDone => F.pure(Right(blocks))
                     case other => illegal(RuntimeViolation.BlockFetchEngineUnexpected(other))
                   }
@@ -300,9 +317,15 @@ object BlockFetchRuntime:
             def requestRangeObserved(from: P, to: P)(observe: Event => F[Unit])(using
                 Raise[F, NetworkError]
             ): F[Option[Vector[B]]] =
+              requestRangeStreaming(from, to)(_ => F.pure(Right(())), observe)
+
+            def requestRangeStreaming(from: P, to: P)(
+                onBlock: B => F[Either[NetworkError, Unit]],
+                observe: Event => F[Unit]
+            )(using Raise[F, NetworkError]): F[Option[Vector[B]]] =
               credits.permit.use { _ =>
                 (Deferred[F, Result], Deferred[F, FiniteDuration])
-                  .mapN(Job(_, _, observe))
+                  .mapN(Job(_, _, observe, onBlock))
                   .flatMap { job =>
                     val submitted = Fibers
                       .scoped[F, NetworkError, Unit](NetworkError.Defect(_)) {
