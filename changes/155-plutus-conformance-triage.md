@@ -5,7 +5,7 @@
 - **`hashToGroup` with a domain separation tag of non-ASCII bytes fails with a typed `EvalFailure.Unsupported`** instead of answering with another point than the reference (Scalus passes the tag to blst as a string).
 
 ### Changed (Plutus conformance, #155)
-- [docs/plutus-conformance.md](../docs/plutus-conformance.md) pins the reference evaluator (plutus 1.70.0.0, commit `507cab8c`, read from the package identifiers of the pinned 11.1.3 executable) and classifies the 22 allowlisted cases: nine reachable by a transaction, two not a divergence, eleven differences of the suite harness. The allowlist keeps the 22 with new classes and reasons.
+- [docs/plutus-conformance.md](https://github.com/KD5UJC-XYZ/scarab/blob/fadf4ae2363e2986ab620ee6ff2fcc8e59ab7948/docs/plutus-conformance.md) pins the reference evaluator (plutus 1.70.0.0, commit `507cab8c`, read from the package identifiers of the pinned 11.1.3 executable) and classifies the 22 allowlisted cases: nine reachable by a transaction, two not a divergence, eleven differences of the suite harness. The allowlist keeps the 22 with new classes and reasons.
 
-### Known gaps
+#### Known gaps
 - `hashToGroup` with a non-ASCII tag is refused, not computed; the Haskell side of the boundary cases is read from source, not run (plutus-conformance.md, section 5).

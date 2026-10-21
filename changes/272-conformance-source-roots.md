@@ -1,1 +1,3 @@
-Fix conformance freshness coverage for the actual network/governor, Cardano codec/CDDL and ledger API test/golden directories. Validate every watched root independently and report missing roots as errors; retain legitimate added/removed-directory events and per-root endpoint counts.
+### Fixed (conformance source roots, #272)
+
+- Fix conformance freshness coverage for the actual network/governor, Cardano codec/CDDL and ledger API test/golden directories. Validate every watched root independently and report missing roots as errors; retain legitimate added/removed-directory events and per-root endpoint counts.

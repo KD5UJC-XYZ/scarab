@@ -1,4 +1,6 @@
-Replay the original size-zero NEWEPOCH judgment through its shared production
+### Fixed (newepoch original domain, #49)
+
+- Replay the original size-zero NEWEPOCH judgment through its shared production
 non-boundary branch, comparing the complete native output bytes and retaining all
 untouched original fields. Keep strict full-state NonZero stake decoding unchanged
 and reject boundary signals at the narrow entry point.
