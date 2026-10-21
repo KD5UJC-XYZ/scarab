@@ -68,7 +68,9 @@ incomplete name, never as a verified candidate.
    pinned JDK and executed against the actual JRE image's JAR, with no product changes or host Java.
    OCI export validation
    checks every blob, manifest/config, compressed layer digest, uncompressed filesystem identity
-   and the exact embedded JAR. Archive SHA-256 and OCI manifest/config digests are distinct.
+   and the exact embedded JAR. The live Docker ID is bound through its retained, hashed descriptor
+   graph to exactly one Linux/amd64 configuration; containerd index IDs and legacy configuration
+   IDs remain distinct. Archive SHA-256 and OCI manifest/config digests are distinct.
 6. Pinned Syft inventories the actual image offline. Each installed dpkg name/version/architecture
    must be represented and the detected Java runtime must match its actual `release` file.
    Scanner guesses about the assembled JAR are replaced by its resolver-backed inventory;
