@@ -284,5 +284,10 @@
     "sbt": "1.10.7",
     "scala": "3.3.8",
     "platform": "Linux x86-64"
+  },
+  "integration": {
+    "baseCommit": "917f1d54b4ce03eec0d936d0a21f18a8ddc1bd05",
+    "measuredSourceBranch": "evidence/294-external-20261021",
+    "scope": "Main advanced with NtC failure-encoding work. The measured storage/ledger/evaluator implementation, selected acceptance suites, build definition, Dockerfile and case declaration remain unchanged; final-head check covers the integration. The external receipt continues to identify its actual measured source, not the rebased PR head."
   }
 }
