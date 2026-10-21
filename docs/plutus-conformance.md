@@ -98,8 +98,11 @@ hash/presence checks precede script well-formedness; malformed contained Plutus 
 unavailability. The same phase-1 check precedes validity-tag/UTXOS checks on serial and prepared
 paths, so a refusal discards tentative state before any collateral effects can be published.
 
-The [independent auxiliary corpus](../fixtures/reference/auxiliary-scripts/README.md) separates
-structural decoding from the unchanged reference validity predicate. The normal era-load driver
+The [independent auxiliary corpus](../fixtures/reference/auxiliary-scripts/README.md) contains 490
+observations: 324 decoding refusals, 136 valid auxiliary values and 30 invalid Plutus-script values.
+It separates structural decoding from the unchanged reference validity predicate. Duplicate sparse
+auxiliary fields are refused; top metadata labels become unique from protocol 9, while nested
+metadata map keys retain their historical duplicate behavior. The metadata walk is stack safe. The normal era-load driver
 also retains signed-reference auxiliary transactions and observed input/output effects separately
 from the API corpus. Exact diagnostic prose is outside both comparisons.
 
