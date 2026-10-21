@@ -1,0 +1,9 @@
+**
+!scripts/
+!scripts/oracle/
+!scripts/oracle/plutus/
+!scripts/oracle/plutus/historical-auxiliary/
+!scripts/oracle/plutus/historical-auxiliary/Main.hs
+!scripts/oracle/plutus/historical-auxiliary/cabal.project
+!scripts/oracle/plutus/historical-auxiliary/cabal.project.freeze
+!scripts/oracle/plutus/historical-auxiliary/scarab-historical-auxiliary-oracle.cabal
