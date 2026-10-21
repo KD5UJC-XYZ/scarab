@@ -220,6 +220,8 @@ def gitCommit(root: File): String =
   GitHead.commit(root.toPath).map(_.take(8)).getOrElse("unknown")
 
 lazy val runtimeClasspathFile = taskKey[File]("Write the resolved application runtime classpath")
+lazy val releaseInventory =
+  taskKey[File]("Export the resolved runtime graph and exact assembly inputs")
 lazy val reproducibleCheck = taskKey[Unit]("Compare two clean builds of a frozen source export")
 
 // Tagless-final node: wiring, mempool, forger, relay, node-to-client, the query server, the CLI.
@@ -263,6 +265,11 @@ lazy val node = scarab("node")
       IO.write(output, (Runtime / fullClasspath).value.files.mkString(java.io.File.pathSeparator))
       output
     },
+    releaseInventory := ReleaseInventory.write(
+      updateFull.value,
+      (Runtime / fullClasspath).value.files,
+      target.value / "release-inventory.json"
+    ),
     Compile / mainClass := Some("xyz.kd5ujc.scarab.node.Main"),
     assembly / mainClass := (Compile / mainClass).value,
     assembly / assemblyJarName := s"scarab-node-${version.value}-assembly.jar",
