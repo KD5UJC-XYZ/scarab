@@ -18,10 +18,13 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
     def raise[E <: xyz.kd5ujc.scarab.ledger.StorageError, A](error: E): IO[A] = IO(
       fail(error.message)
     )
-  private def pool(capacity: Long = 100000) = MempoolState.empty(Right(ledger(4)), 1000, capacity)
+  private def pool(capacityOverride: Option[Long] = None) =
+    MempoolState.empty(Right(ledger(4)), 1000, capacityOverride)
 
   private def held(raws: Bytes*): MempoolState =
-    raws.foldLeft(pool())((s, raw) => s.add(raw, env).fold(r => fail(r.message), _._1))
+    raws.foldLeft(pool())((s, raw) =>
+      s.add(raw, env, Source.Local).fold(r => fail(r.message), _._1)
+    )
 
   test("the snapshot is validated for the slot after the tip, in arrival order") {
     val (t1, id1) = pay(1)
@@ -72,24 +75,26 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
     val params = ledger(1).params
     val unit = params.maxBlockBodySize.toLong - 1024
     assertEquals(unit, 64512L)
-    val one = LocalMonitor.blockUnit(params)
+    val one = Capacity.blockUnit(params)
     assertEquals(one.refScriptsBytes, 1048576L)
-    assertEquals(LocalMonitor.capacity(params, 2 * unit).bytes, 2 * unit)
-    assertEquals(LocalMonitor.capacity(params, 2 * unit - 1).bytes, 2 * unit)
-    assertEquals(LocalMonitor.capacity(params, 2 * unit + 1).bytes, 3 * unit)
-    assertEquals(LocalMonitor.capacity(params, 1).bytes, unit)
-    assertEquals(LocalMonitor.capacity(params, 0).bytes, unit)
-    assertEquals(LocalMonitor.capacity(params, 2 * unit).refScriptsBytes, 2L * 1048576)
-    assertEquals(LocalMonitor.snapshot(pool(100000)).sizes.capacityInBytes, 2 * unit)
+    assertEquals(Capacity.of(params, None).bytes, 2 * unit)
+    assertEquals(Capacity.of(params, Some(2 * unit)).bytes, 2 * unit)
+    assertEquals(Capacity.of(params, Some(2 * unit - 1)).bytes, 2 * unit)
+    assertEquals(Capacity.of(params, Some(2 * unit + 1)).bytes, 3 * unit)
+    assertEquals(Capacity.of(params, Some(1)).bytes, unit)
+    assertEquals(Capacity.of(params, Some(0)).bytes, unit)
+    assertEquals(Capacity.of(params, Some(2 * unit)).refScriptsBytes, 2L * 1048576)
+    assertEquals(LocalMonitor.snapshot(pool()).sizes.capacityInBytes, 2 * unit)
+    assertEquals(LocalMonitor.snapshot(pool(Some(1))).sizes.capacityInBytes, unit)
   }
 
   property("capacity is monotone in the byte capacity and never below one unit") {
     forAll(Gen.choose(0L, 5000000L), Gen.choose(0L, 5000000L)) { (a, b) =>
       val params = ledger(1).params
       val (lo, hi) = (a.min(b), a.max(b))
-      val cl = LocalMonitor.capacity(params, lo)
-      val ch = LocalMonitor.capacity(params, hi)
-      cl.bytes <= ch.bytes && cl.bytes >= LocalMonitor.blockUnit(params).bytes &&
+      val cl = Capacity.of(params, Some(lo))
+      val ch = Capacity.of(params, Some(hi))
+      cl.bytes <= ch.bytes && cl.bytes >= Capacity.blockUnit(params).bytes &&
       ch.bytes >= hi
     }
   }
@@ -111,12 +116,12 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
   test("a client awaiting a new snapshot is woken by a transaction and by a new tip") {
     val (t1, id1) = pay(1)
     for
-      mempool <- Mempool.create[IO](Right(ledger(4)), 1000, env, 100000, MempoolEvents.none[IO])
+      mempool <- Mempool.create[IO](Right(ledger(4)), 1000, env, None, MempoolEvents.none[IO])
       source = LocalMonitor.source(mempool)
       first <- source.acquire
       waiting <- source.awaitChange(first).start
       _ <- IO.sleep(30.millis)
-      _ <- mempool.add(t1)
+      _ <- mempool.add(t1, Source.Local)
       second <- waiting.joinWithNever
       again <- source.awaitChange(second).start
       _ <- IO.sleep(30.millis)
@@ -135,10 +140,10 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
   test("awaiting a snapshot the pool already differs from returns at once") {
     val (t1, _) = pay(1)
     for
-      mempool <- Mempool.create[IO](Right(ledger(4)), 1000, env, 100000, MempoolEvents.none[IO])
+      mempool <- Mempool.create[IO](Right(ledger(4)), 1000, env, None, MempoolEvents.none[IO])
       source = LocalMonitor.source(mempool)
       stale <- source.acquire
-      _ <- mempool.add(t1)
+      _ <- mempool.add(t1, Source.Local)
       now <- source.awaitChange(stale).timeout(2.seconds)
     yield assertEquals(now.txs.size, 1)
   }

@@ -24,6 +24,7 @@ import org.scalacheck.{Gen, Prop}
 import org.scalacheck.Prop.*
 
 import TestLedger.*
+import Capacity.fits
 
 /** Real transaction bytes over a synthetic Conway ledger. */
 object TxKit:
@@ -62,7 +63,8 @@ object TxKit:
       valid: Boolean = true,
       votes: Vector[Byte] = Vector.empty,
       referenceScript: Option[(ScriptKind, Bytes)] = None,
-      expires: Option[BigInt] = None
+      expires: Option[BigInt] = None,
+      exUnits: Option[(BigInt, BigInt)] = None
   ): (Bytes, Bytes) =
     val ins =
       head(4, inputs.size) ++ inputs.flatMap(i => head(4, 2) ++ bstr(i.id) ++ head(0, i.index))
@@ -87,7 +89,13 @@ object TxKit:
     val vkeys = head(4, signers.size) ++ signers.flatMap { k =>
       head(4, 2) ++ bstr(k.vkey) ++ bstr(k.sign(id))
     }
-    val witnesses = head(5, 1) ++ Vector(0x00.toByte) ++ vkeys
+    // one spending redeemer `[0, 0, 0, [mem, steps]]` (no script runs: the measure is read first)
+    val redeemers = exUnits.fold(Vector.empty[Byte]) { (mem, steps) =>
+      Vector(0x05.toByte) ++ head(4, 1) ++ head(4, 4) ++ head(0, 0) ++ head(0, 0) ++ head(0, 0) ++
+        head(4, 2) ++ head(0, mem) ++ head(0, steps)
+    }
+    val witnesses =
+      head(5, 1 + exUnits.size) ++ Vector(0x00.toByte) ++ vkeys ++ redeemers
     (
       Bytes(
         head(4, 4) ++ body.value ++ witnesses ++ Vector(
@@ -127,12 +135,13 @@ object TxKit:
 
   extension (l: MempoolLedger)
     /** The ledger with the protocol version changed (the rules read the version in force). */
-    def withProtocol(major: Int): MempoolLedger =
+    def withProtocol(major: Int): MempoolLedger = withParams(_.copy(protocolMajor = major))
+
+    /** The ledger with its protocol parameters changed. */
+    def withParams(f: ProtocolParams => ProtocolParams): MempoolLedger =
       val gov = l.ls.utxo.gov
       l.copy(ls =
-        l.ls.copy[Conway](utxo =
-          l.ls.utxo.copy(gov = gov.copy(curPParams = gov.curPParams.copy(protocolMajor = major)))
-        )
+        l.ls.copy[Conway](utxo = l.ls.utxo.copy(gov = gov.copy(curPParams = f(gov.curPParams))))
       )
 
     /** The ledger after the transaction, which the test knows to be valid. */
@@ -149,11 +158,11 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
     def raise[E <: StorageError, A](error: E): IO[A] = IO(fail(error.message))
   import TxKit.*
 
-  private def pool(ledger: MempoolLedger, capacity: Long = 100000) =
-    MempoolState.empty(Right(ledger), 1000, capacity)
+  private def pool(ledger: MempoolLedger, capacityOverride: Option[Long] = None) =
+    MempoolState.empty(Right(ledger), 1000, capacityOverride)
 
   private def add(s: MempoolState, raw: Bytes): Either[Rejection, MempoolState] =
-    s.add(raw, env).map(_._1)
+    s.add(raw, env, Source.Local).map(_._1)
 
   private def reasonItem(rejection: Rejection): Bytes =
     LocalSubmission.reasonItem(rejection).fold(error => fail(error.message), identity)
@@ -176,23 +185,25 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
     )
     val (raw, _) = pay(1)
     val old = MempoolLedger.of(scheduled)
-    assert(MempoolState.empty(Right(old), 5999, 100000).add(raw, env).isRight)
+    assert(MempoolState.empty(Right(old), 5999, None).add(raw, env, Source.Local).isRight)
     val ticked =
       MempoolLedger.tick(scheduled, Some(5999), env).fold(e => fail(e.toString), identity)
     assertEquals(ticked.epoch, BigInt(6))
     assertEquals(ticked.params, nextParams)
     assertEquals(ticked.treasury.value, BigInt(123))
-    MempoolState.empty(Right(ticked), 5999, 100000).add(raw, env) match
-      case Left(Rejection.Ledger(LedgerFailure.Rejected(_, failure))) =>
+    MempoolState.empty(Right(ticked), 5999, None).add(raw, env, Source.Local) match
+      case Left(Rejection.Limits(_, failures)) =>
         val parsed = MempoolState.parse(raw).fold(e => fail(e.message), _._2)
         assertEquals(
-          failure,
-          PredicateFailure.utxo(UtxoFailure.MaxTxSize(Mismatch(BigInt(parsed.size), BigInt(1))))
+          failures.toList,
+          List(
+            PredicateFailure.utxo(UtxoFailure.MaxTxSize(Mismatch(BigInt(parsed.size), BigInt(1))))
+          )
         )
       case other => fail(s"expected the adopted maximum-size rejection, received $other")
     val held = MempoolState
-      .empty(Right(old), 5999, 100000)
-      .add(raw, env)
+      .empty(Right(old), 5999, None)
+      .add(raw, env, Source.Local)
       .fold(e => fail(e.message), _._1)
     val (synced, dropped) = held.sync(Right(ticked), 5999, env)
     assertEquals(synced.entries, Vector.empty)
@@ -220,10 +231,10 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
     )
     val parentTx = MempoolState.parse(parent).fold(e => fail(e.message), _._2)
     for
-      pool <- Mempool.create[IO](Right(base), 1000, env, 100000, MempoolEvents.none[IO])
+      pool <- Mempool.create[IO](Right(base), 1000, env, None, MempoolEvents.none[IO])
       sink = pool.sink(failure => IO(fail(s"unexpected fatal: $failure")))
-      _ <- pool.add(parent)
-      _ <- pool.add(child)
+      _ <- pool.add(parent, Source.Local)
+      _ <- pool.add(child, Source.Local)
       first <- pool.source.after(0, 10)
       _ <- pool.sync(Right(base.applied(parentTx)), 1001, Set(parentId))
       adoptedKnown <- sink.known(parentId)
@@ -252,12 +263,12 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
       expires = Some(1002)
     )
     for
-      pool <- Mempool.create[IO](Right(base), 1000, env, 100000, MempoolEvents.none[IO])
-      admitted <- pool.add(raw)
+      pool <- Mempool.create[IO](Right(base), 1000, env, None, MempoolEvents.none[IO])
+      admitted <- pool.add(raw, Source.Local)
       dropped <- pool.sync(Right(base), 1002)
       known <- pool.sink(failure => IO(fail(s"unexpected fatal: $failure"))).known(id)
       _ <- pool.sync(Right(base), 1000)
-      retried <- pool.add(raw)
+      retried <- pool.add(raw, Source.Local)
       body <- pool.source.body(id)
     yield
       assertEquals(admitted, Right(id))
@@ -272,14 +283,14 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
     val (accepted, _) = pay(1)
     val (refused, refusedId) = pay(1, fee = 2 * ada)
     for
-      pool <- Mempool.create[IO](Right(base), 1000, env, 100000, MempoolEvents.none[IO])
-      _ <- pool.add(accepted)
-      first <- pool.add(refused)
+      pool <- Mempool.create[IO](Right(base), 1000, env, None, MempoolEvents.none[IO])
+      _ <- pool.add(accepted, Source.Local)
+      first <- pool.add(refused, Source.Local)
       known <- pool.sink(failure => IO(fail(s"unexpected fatal: $failure"))).known(refusedId)
       empty = base.withUtxo(Utxo.empty)
       _ <- pool.sync(Right(empty), 1001)
       _ <- pool.sync(Right(base), 1000)
-      retried <- pool.add(refused)
+      retried <- pool.add(refused, Source.Local)
     yield
       assert(first.isLeft)
       assert(!known)
@@ -378,13 +389,23 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
     )
   }
 
-  test("capacity is counted in bytes and refuses what does not fit") {
+  test("capacity is counted in the measure of a transaction and refuses what does not fit") {
     val (t1, _) = pay(1)
     val (t2, _) = pay(2)
-    val s0 = pool(ledger(3), capacity = t1.size.toLong + t2.size - 1)
+    val measure = (t: Bytes) => MempoolState.parse(t).fold(r => fail(r.message), _._2.size) + 4L
+    // a block whose body leaves room for 3/4 of a transaction: the two blocks hold one
+    val unit = measure(t1) * 3 / 4 + 1
+    val s0 = pool(ledger(3).withParams(_.copy(maxBlockBodySize = 1024 + unit)))
+    assertEquals(s0.capacity.bytes, 2 * unit)
     val s1 = add(s0, t1).fold(r => fail(r.message), identity)
     assertEquals(s1.bytes, t1.size.toLong)
-    assertEquals(add(s1, t2), Left(Rejection.Full(t2.size, s1.free)))
+    assertEquals(s1.used.bytes, measure(t1))
+    add(s1, t2) match
+      case Left(full @ Rejection.Full(needed, free)) =>
+        assertEquals(needed.bytes, measure(t2))
+        assertEquals(free, s1.free)
+        assertEquals(full.dimension, CapacityDimension.Bytes)
+      case other => fail(s"expected a full pool, received $other")
   }
 
   test("a transaction may spend the outputs of one held before it, and only in that order") {
@@ -481,11 +502,11 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
   property("held transactions always apply in order to the tip state; accounting stays exact") {
     forAll(opGen) { script =>
       val l0 = ledger(6)
-      var s = pool(l0, capacity = 3000)
+      var s = pool(l0.withParams(_.copy(maxBlockBodySize = 1024 + 1500)))
       var history = List.empty[MempoolLedger]
       script.foreach {
         case Op.Add(i) =>
-          s.add(candidates(i)._1, env).foreach { case (next, _) => s = next }
+          s.add(candidates(i)._1, env, Source.Local).foreach { case (next, _) => s = next }
         case Op.Remove(i) =>
           s = s.remove(Set(candidates(i)._2), env)._1
         case Op.Block(n) =>
@@ -504,7 +525,7 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
       assertEquals(replay(s).map(_.utxo), Right(s.current.toOption.get.utxo))
       assertEquals(s.entries.map(_.id).distinct.size, s.entries.size)
       assertEquals(s.bytes, s.entries.map(_.size.toLong).sum)
-      assert(s.bytes <= s.capacityBytes)
+      assert(s.used.fits(s.capacity), s"${s.used} over ${s.capacity}")
       assert(s.entries.map(_.ticket) == s.entries.map(_.ticket).sorted)
     }
   }
@@ -519,11 +540,11 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
   test("Mempool[F]: add, offer to peers by ticket, collect from peers, sync") {
     for
       ev <- events
-      mempool <- Mempool.create[IO](Right(ledger(4)), 1000, env, 100000, ev._1)
+      mempool <- Mempool.create[IO](Right(ledger(4)), 1000, env, None, ev._1)
       (t1, id1) = pay(1)
       (t2, id2) = pay(2)
-      first <- mempool.add(t1)
-      dup <- mempool.add(t1)
+      first <- mempool.add(t1, Source.Local)
+      dup <- mempool.add(t1, Source.Local)
       // as a TxSubmission2 server we collect from a peer; known ids are not fetched
       knownBefore <- mempool.sink(failure => IO(fail(s"unexpected fatal: $failure"))).known(id1)
       knownOther <- mempool.sink(failure => IO(fail(s"unexpected fatal: $failure"))).known(id2)
@@ -537,7 +558,7 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
       waiting <- mempool.source.awaitAfter(offered.last.ticket).start
       (t3, id3) = pay(3)
       _ <- IO.sleep(scala.concurrent.duration.DurationInt(20).millis)
-      _ <- mempool.add(t3)
+      _ <- mempool.add(t3, Source.Local)
       _ <- waiting.joinWithNever
       log <- ev._2.get
     yield
@@ -551,6 +572,58 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
       assert(log.exists {
         case MempoolEvent.Rejected(_, _: Rejection.Malformed) => true; case _ => false
       })
+  }
+
+  test(
+    "removeTxsEvenIfValid drops a parent's dependant, keeps the rest in order and wakes awaiters"
+  ) {
+    val (t1, id1) = pay(1)
+    val (child, idChild) =
+      tx(Vector(TxIn(id1, 0)), Vector(alice.address() -> (98 * ada)), ada, Vector(bob))
+    val (t2, id2) = pay(2)
+    val (t3, id3) = pay(3)
+    for
+      ev <- events
+      mempool <- Mempool.create[IO](Right(ledger(4)), 1000, env, None, ev._1)
+      _ <- List(t1, child, t2, t3).foldLeft(IO.unit)((done, t) =>
+        done *> mempool.add(t, Source.Local).void
+      )
+      before <- mempool.snapshot
+      waiting <- mempool.awaitChange(_.entries.size == 4).start
+      dependants <- mempool.removeTxsEvenIfValid(Set(id1))
+      woken <- waiting.joinWithNever
+      after <- mempool.snapshot
+      log <- ev._2.get
+      reoffered <- mempool.add(t1, Source.Local)
+    yield
+      assertEquals(dependants.map(_._1.id), Vector(idChild))
+      assertEquals(woken.entries.map(_.id), Vector(id2, id3))
+      assertEquals(after.entries.map(_.id), Vector(id2, id3))
+      assertEquals(
+        after.entries.map(_.ticket),
+        before.entries.filter(e => Set(id2, id3)(e.id)).map(_.ticket)
+      )
+      assertEquals(log.collect { case MempoolEvent.Removed(id) => id }, Vector(id1))
+      assertEquals(log.collect { case MempoolEvent.Dropped(id, _) => id }, Vector(idChild))
+      assertEquals(reoffered, Right(id1))
+  }
+
+  test("removeTxsEvenIfValid of ids that are not held changes nothing") {
+    val (t1, id1) = pay(1)
+    val (_, unknown) = pay(2)
+    for
+      ev <- events
+      mempool <- Mempool.create[IO](Right(ledger(2)), 1000, env, None, ev._1)
+      _ <- mempool.add(t1, Source.Local)
+      before <- mempool.snapshot
+      dependants <- mempool.removeTxsEvenIfValid(Set(unknown))
+      after <- mempool.snapshot
+      log <- ev._2.get
+    yield
+      assertEquals(dependants, Vector.empty)
+      assertEquals(after, before)
+      assertEquals(after.entries.map(_.id), Vector(id1))
+      assert(!log.exists(_.isInstanceOf[MempoolEvent.Removed]))
   }
 
   test("real mempool validation retries unavailable add and revalidation after decoder recovery") {
@@ -581,20 +654,20 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
         val applicative = summon[cats.Applicative[IO]]
         def ask[E >: MempoolEnv]: IO[E] = context.get.map(value => value: E)
       mempool <- Mempool
-        .create[IO](Right(base), 1000, env, 100000, MempoolEvents.none[IO], environment = Some(ask))
-      first <- mempool.add(raw)
+        .create[IO](Right(base), 1000, env, None, MempoolEvents.none[IO], environment = Some(ask))
+      first <- mempool.add(raw, Source.Local)
       knownAfterUnavailableAdd <- mempool
         .sink(failure => IO(fail(s"unexpected fatal: $failure")))
         .known(id)
       _ <- context.set(env)
-      retried <- mempool.add(raw)
+      retried <- mempool.add(raw, Source.Local)
       _ <- context.set(unavailableEnv)
       dropped <- mempool.sync(Right(base), 1000)
       knownAfterUnavailableSync <- mempool
         .sink(failure => IO(fail(s"unexpected fatal: $failure")))
         .known(id)
       _ <- context.set(env)
-      retryAfterSync <- mempool.add(raw)
+      retryAfterSync <- mempool.add(raw, Source.Local)
     yield
       first match
         case Left(Rejection.Ledger(_: LedgerFailure.Unavailable)) => ()
@@ -628,12 +701,12 @@ class MempoolStoreSuite extends CatsEffectSuite:
         Right(bare),
         1000,
         env,
-        100000,
+        None,
         MempoolEvents.none[IO],
         utxoStore = Some(store: UtxoStore[IO])
       )
       (t1, id1) = pay(1)
-      added <- mempool.add(t1)
+      added <- mempool.add(t1, Source.Local)
       _ <- IO(assertEquals(added, Right(id1)))
       dropped <- mempool.sync(Right(bare), 1001)
       _ <- IO(assertEquals(dropped, Vector.empty))

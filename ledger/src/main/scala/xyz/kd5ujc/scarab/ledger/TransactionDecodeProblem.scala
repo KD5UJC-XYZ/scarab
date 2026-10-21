@@ -30,7 +30,7 @@ enum MempoolProblem:
   case Ledger(cause: LedgerFailure)
   case Rule(cause: PredicateFailure)
   case Malformed(cause: TransactionDecodeProblem)
-  case Capacity(size: Int, free: Long)
+  case Capacity(dimension: CapacityDimension, needed: BigInt, free: BigInt)
   case NoLedger(cause: MempoolLedgerProblem)
 
   def message: String = this match
@@ -42,11 +42,21 @@ enum MempoolProblem:
       "Unelected committee members are not allowed to cast votes: " + voters
         .map(credential)
         .mkString("[", ",", "]")
-    case Ledger(cause)        => cause.message
-    case Rule(cause)          => cause.detail
-    case Malformed(cause)     => s"malformed transaction: ${cause.message}"
-    case Capacity(size, free) => s"mempool full: $size bytes needed, $free free"
-    case NoLedger(cause)      => s"no Conway ledger state: ${cause.message}"
+    case Ledger(cause)    => cause.message
+    case Rule(cause)      => cause.detail
+    case Malformed(cause) => s"malformed transaction: ${cause.message}"
+    case Capacity(dimension, needed, free) =>
+      s"mempool full: $needed ${dimension.unit} needed, $free free"
+    case NoLedger(cause) => s"no Conway ledger state: ${cause.message}"
+
+/** The component of the mempool's capacity vector that a transaction does not fit in (the first, in
+  * this order, when several are exceeded).
+  */
+enum CapacityDimension(val unit: String):
+  case Bytes extends CapacityDimension("bytes")
+  case ExUnitsMemory extends CapacityDimension("execution-unit memory")
+  case ExUnitsSteps extends CapacityDimension("execution-unit steps")
+  case RefScriptBytes extends CapacityDimension("reference-script bytes")
 
 enum MempoolLedgerProblem:
   case InByron

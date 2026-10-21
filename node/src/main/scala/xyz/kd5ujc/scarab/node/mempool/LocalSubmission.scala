@@ -67,7 +67,9 @@ object LocalSubmission:
     case Rejection.AlreadyHeld(_) =>
       Right(text(MempoolProblem.AllInputsSpent))
     case Rejection.Malformed(cause) => Right(text(MempoolProblem.Malformed(cause)))
-    case Rejection.Full(size, free) => Right(text(MempoolProblem.Capacity(size, free)))
+    case Rejection.Limits(_, failures) =>
+      Right(PredicateFailureCbor.applyTxError(failures.toList.toVector))
+    case full: Rejection.Full => Right(text(full.problem))
     case Rejection.NoLedger(why) =>
       val cause = why match
         case xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.InByron =>
@@ -100,5 +102,7 @@ object LocalSubmission:
       case Left(rejection) => Async[F].pure(response(rejection))
       case Right(tx) =>
         StorageBoundary.run(fatal) {
-          mempool.add(tx).map(_.fold(response, _ => LocalTxSubmissionServer.Response.Accepted))
+          mempool
+            .add(tx, Source.Local)
+            .map(_.fold(response, _ => LocalTxSubmissionServer.Response.Accepted))
         }

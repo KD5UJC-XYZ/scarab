@@ -15,7 +15,7 @@ import xyz.kd5ujc.scarab.ledger.ForgeError
 import xyz.kd5ujc.scarab.ledger.VrfCert
 import xyz.kd5ujc.scarab.node.Follower
 import xyz.kd5ujc.scarab.ledger.*
-import xyz.kd5ujc.scarab.node.mempool.TxKit
+import xyz.kd5ujc.scarab.node.mempool.{Source, TxKit}
 import xyz.kd5ujc.scarab.crypto.vrf.{Draft03Prover, PraosLeaderThreshold as Leader}
 
 /** Forging against the real block rules: whatever the forger builds must pass the same `NodeRules`
@@ -47,8 +47,8 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
     withHandle {
       for
         h <- harness(p, ledgerWith(p, 3))
-        _ <- h.mempool.add(t1)
-        _ <- h.mempool.add(t2)
+        _ <- h.mempool.add(t1, Source.Local)
+        _ <- h.mempool.add(t2, Source.Local)
         _ <- (5000 until 5040).toList.traverse_(s => h.forger.step(s))
         forged <- forgedIn(h)
         chain <- h.chain
@@ -204,7 +204,7 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
     withHandle {
       for
         h <- harness(p, ledgerWith(p, 2))
-        _ <- h.mempool.add(t1)
+        _ <- h.mempool.add(t1, Source.Local)
         _ <- (5000 until 5040).toList.traverse_(s => h.forger.step(s))
         held <- h.mempool.snapshot
       yield assertEquals(held.entries.map(_.id), Vector.empty[Bytes])

@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.ledger.PeerError
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.selection.{Churn, FetchMode}
 import xyz.kd5ujc.scarab.node.{HeaderGate, InboundEvent, InboundGovernor, Output, Peer}
+import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.forge.ForgeEvent
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, MempoolEvents, Rejection}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ConnectionState, Era}
@@ -152,13 +153,32 @@ class EventMetricsSuite extends CatsEffectSuite:
             )
           )
         )
-        _ <- em.mempool.emit(MempoolEvent.Rejected(Some(hash), Rejection.Full(10, 5)))
-        _ <- em.mempool.emit(MempoolEvent.Rejected(Some(hash), Rejection.Full(10, 5)))
+        _ <- em.mempool.emit(
+          MempoolEvent.Rejected(
+            Some(hash),
+            Rejection.Full(TxMeasure(10, 0, 0, 0), TxMeasure(5, 0, 0, 0))
+          )
+        )
+        _ <- em.mempool.emit(
+          MempoolEvent.Rejected(
+            Some(hash),
+            Rejection.Full(TxMeasure(10, 0, 0, 0), TxMeasure(5, 0, 0, 0))
+          )
+        )
         s <- metrics.snapshot
       yield
         assertEquals(counter(s, Catalogue.txsProcessed, ()), Some(1.0))
         assertEquals(counter(s, Catalogue.mempoolRejected, RejectionLabel.Malformed), Some(1.0))
         assertEquals(counter(s, Catalogue.mempoolRejected, RejectionLabel.Full), Some(2.0))
+    }
+  }
+
+  test("a transaction removed on request is counted once") {
+    fixture.flatMap { (metrics, em) =>
+      for
+        _ <- em.mempool.emit(MempoolEvent.Removed(hash))
+        s <- metrics.snapshot
+      yield assertEquals(counter(s, Catalogue.mempoolRemoved, ()), Some(1.0))
     }
   }
 

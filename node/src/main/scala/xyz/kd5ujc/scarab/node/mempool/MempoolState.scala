@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
-import xyz.kd5ujc.scarab.ledger.{TransactionDecodeProblem, MempoolProblem}
+import xyz.kd5ujc.scarab.ledger.{CapacityDimension, TransactionDecodeProblem, MempoolProblem}
+import cats.data.NonEmptyList
 import cats.syntax.all.*
 import cats.Id
+import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.plutus.{ScalusEvaluator, ScriptDecoder, ScriptEvaluator}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
@@ -19,7 +21,10 @@ import xyz.kd5ujc.scarab.ledger.{
   PredicateFailure,
   Tx,
   TxEnv,
-  Utxo
+  Utxo,
+  UtxoFailure,
+  UtxosFailure,
+  UtxowFailure
 }
 import xyz.kd5ujc.scarab.ledger.rules.{
   Counted,
@@ -44,8 +49,19 @@ enum Rejection:
   /** The ledger rules (phase 1, and phase 2 for scripts) refuse it in the current state. */
   case Ledger(failure: LedgerFailure)
 
-  /** Holding it would exceed the mempool's capacity in bytes. */
-  case Full(size: Int, free: Long)
+  /** The transaction on its own exceeds a limit of the protocol parameters, its size or execution
+    * units (the failures are those of the reference's `txMeasurePhase1`, all of them as it reports
+    * them), and the ledger rules did not run.
+    */
+  case Limits(id: Bytes, failures: NonEmptyList[PredicateFailure])
+
+  /** Holding it would exceed the mempool's capacity in a component of the measure vector: `needed`
+    * is what the transaction counts for and `free` the capacity left, whose components are negative
+    * where the pool is over capacity (after a parameter change). [[MempoolState.add]] returns it
+    * for any shortage; [[Mempool.add]] waits for room unless `needed` exceeds the whole capacity,
+    * and only that case reaches its caller.
+    */
+  case Full(needed: TxMeasure, free: TxMeasure)
 
   /** The submission names an era other than the ledger's (Conway). */
   case WrongEra(era: Int)
@@ -59,9 +75,37 @@ enum Rejection:
     case Malformed(d)    => s"malformed transaction: ${d.message}"
     case AlreadyHeld(id) => s"tx ${id.hex.take(16)} is already in the mempool"
     case Ledger(f)       => f.message
-    case Full(s, free)   => s"mempool full: $s bytes needed, $free free"
-    case WrongEra(e)     => s"era $e is not Conway"
+    case Limits(id, fs) =>
+      s"tx ${id.hex.take(16)} violates ${fs.map(_.detail).toList.mkString("; ")}"
+    case f: Full       => f.problem.message
+    case WrongEra(e)   => s"era $e is not Conway"
     case NoLedger(why) => s"no Conway ledger state: ${cats.Show[ConwayView.Unavailable].show(why)}"
+
+object Rejection:
+  extension (full: Full)
+    /** The component that does not fit (the first, when several do not). */
+    def dimension: CapacityDimension =
+      import Capacity.exceeded
+      full.needed.exceeded(full.free).getOrElse(CapacityDimension.Bytes)
+
+    def problem: MempoolProblem.Capacity =
+      import Capacity.component
+      val d = full.dimension
+      MempoolProblem.Capacity(d, full.needed.component(d), full.free.component(d))
+
+/** Where a submission comes from: `WhetherToIntervene` of the reference
+  * (`Ledger/SupportsMempool.hs`). `Mempool/Update.hs` `implAddTx` runs a transaction from a local
+  * client (`AddTxForLocalClient`) as `Intervene` and one from a peer (`AddTxForRemotePeer`) as
+  * `DoNotIntervene`.
+  */
+enum Source:
+  /** LocalTxSubmission: the transaction is validated as received, `is_valid` included. */
+  case Local
+
+  /** TxSubmission2: the transaction is validated with `is_valid` forced to true, and if only the
+    * scripts disagree with that, kept with `is_valid` false (the submitter loses the collateral).
+    */
+  case Remote
 
 /** A held transaction. `ticket` grows with arrival order and is how peers are given each
   * transaction once. `refScriptBytes` is the size of the reference scripts the transaction names
@@ -119,6 +163,43 @@ final case class MempoolLedger(ls: LedgerState[Conway], treasury: Coin, epoch: B
     Sts(Ledger)(rules, LedgerEnv(env, treasury), Counted(ls, PlutusStats.zero), tx)
       .map(after => copy(ls = after.state))
 
+  /** The transaction admitted from `source`, with the transaction as it is to be held (its
+    * `is_valid` possibly changed). A local transaction is applied as received. A remote one is
+    * applied with `is_valid` true; when exactly that flag is what the rules refuse, because a
+    * script fails (`UtxosFailure.ValidationTagMismatch(true, _)`), it is applied again with
+    * `is_valid` false and that result is the answer. This is `applyAlonzoBasedTx` with
+    * `DoNotIntervene`
+    * (`ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Eras.hs` at
+    * `82ecba329d7d054340bf707d44fe6e9ac27cec40`, `isIncorrectClaimedFlag`). The reference takes a
+    * refusal that is the only element of the failure list; this ledger reports its first failure
+    * and checks the phase-1 rules before the scripts run, so a mismatch is the first failure only
+    * when nothing before it failed.
+    */
+  def admit(
+      tx: Tx,
+      env: TxEnv,
+      rules: Globals,
+      source: Source
+  ): Either[LedgerFailure, (MempoolLedger, Tx)] =
+    source match
+      case Source.Local => apply(tx, env, rules).map(_ -> tx)
+      case Source.Remote =>
+        val claimed = tx.copy(isValid = true)
+        apply(claimed, env, rules) match
+          case Left(
+                LedgerFailure.Rejected(
+                  _,
+                  PredicateFailure.Utxow(
+                    UtxowFailure.Utxo(
+                      UtxoFailure.Utxos(UtxosFailure.ValidationTagMismatch(true, _))
+                    )
+                  )
+                )
+              ) =>
+            val failed = tx.copy(isValid = false)
+            apply(failed, env, rules).map(_ -> failed)
+          case other => other.map(_ -> claimed)
+
 object MempoolLedger:
   /** The ledger of the new-epoch state at the tip. */
   def of(nes: NewEpochState[Conway]): MempoolLedger =
@@ -167,20 +248,59 @@ final case class MempoolState(
     entries: Vector[Entry],
     bytes: Long,
     nextTicket: Long,
-    capacityBytes: Long
+    capacityOverride: Option[Long]
 ):
-  def free: Long = capacityBytes - bytes
+  /** The capacity: `computeMempoolCapacity` of the parameters of the ticked ledger at the base of
+    * the pool, so it follows a parameter change at the next revalidation ([[sync]]), and is zero
+    * while there is no ledger. A pool over its capacity is not trimmed.
+    */
+  def capacity: TxMeasure =
+    base.fold(_ => TxMeasure.zero, l => Capacity.of(l.params, capacityOverride))
+
+  /** What the held transactions count for, the sum of their measures. */
+  def used: TxMeasure = entries.foldLeft(TxMeasure.zero)(_ + Capacity.measure(_))
+
+  /** The capacity left, in each component. */
+  def free: TxMeasure =
+    import Capacity.-
+    capacity - used
+
+  /** Whether `needed` fits in what is free, in every component (`pureTryAddTx`: the transaction is
+    * added if and only if it would not overrun any component of the capacity).
+    */
+  private def room(needed: TxMeasure): Either[Rejection, Unit] =
+    import Capacity.fits
+    Either.cond(needed.fits(free), (), Rejection.Full(needed, free))
+
   def contains(id: Bytes): Boolean = entries.exists(_.id == id)
 
-  /** Validate and append a transaction (original bytes). */
-  def add(raw: Bytes, env: MempoolEnv): Either[Rejection, (MempoolState, Entry)] =
+  /** Validate and append a transaction (original bytes) submitted from `source`. A remote
+    * transaction may be held with the `is_valid` flag it did not carry ([[MempoolLedger.admit]]);
+    * its relayed bytes are then the received ones with only that flag byte changed.
+    *
+    * The order is that of `Mempool/Update.hs` `doAddTx` and `pureTryAddTx`: the first measure (size
+    * and execution units against the parameters), the capacity in those components, the second
+    * measure (reference scripts against the state after the held transactions), the capacity in all
+    * of them, and only then the rules of the ledger. A refusal of a measure is the only failure
+    * returned; the ledger does not run. Scarab checks for a duplicate between the first measure and
+    * the capacity: the reference has none (a duplicate fails the MEMPOOL rule, after waiting for
+    * room), so a duplicate here is answered even by a full pool. A held transaction passes both
+    * measures, which its revalidation keeps true (the LEDGER rule checks the same limits), so the
+    * check does not hide a measure refusal.
+    */
+  def add(raw: Bytes, env: MempoolEnv, source: Source): Either[Rejection, (MempoolState, Entry)] =
     for
-      parsed <- MempoolState.parse(raw)
-      (id, tx) = parsed
-      _ <- Either.cond(!contains(id), (), Rejection.AlreadyHeld(id))
-      _ <- Either.cond(raw.size <= free, (), Rejection.Full(raw.size, free))
+      parsed <- MempoolState.parseParts(raw)
+      MempoolState.Parsed(id, tx, parts) = parsed
       ledger <- current.leftMap(Rejection.NoLedger(_))
       baseLedger <- base.leftMap(Rejection.NoLedger(_))
+      phase1 <- Capacity.phase1(tx, ledger.params).leftMap(Rejection.Limits(id, _))
+      _ <- Either.cond(!contains(id), (), Rejection.AlreadyHeld(id))
+      _ <- room(phase1)
+      refScriptBytes <- Capacity
+        .phase2(ledger, tx)
+        .leftMap(f => Rejection.Ledger(LedgerFailure.Rejected(id, f)))
+      _ <- room(phase1.copy(refScriptsBytes = refScriptBytes.toLong))
       // The MEMPOOL rule of the ledger (`Rules/Mempool.hs`) runs before LEDGER: a transaction none
       // of whose inputs is unspent is "probably a duplicate" and is refused with that alone. Votes
       // of unelected committee members are refused here, and only here, before protocol version 11;
@@ -206,15 +326,23 @@ final case class MempoolState(
           )
         )
       )
-      next <- ledger(tx, env.txEnv(tipSlot, baseLedger, entries.size), env.rules)
+      admitted <- ledger
+        .admit(tx, env.txEnv(tipSlot, baseLedger, entries.size), env.rules, source)
         .leftMap(Rejection.Ledger(_))
     yield
-      val entry = Entry(id, raw, tx, nextTicket, MempoolState.refScriptBytes(ledger, tx))
+      val (next, held) = admitted
+      // The flag is neither hashed nor signed (the id is the hash of the body alone), so the
+      // transaction is relayed with its other three parts as received and the flag of the verdict,
+      // as the reference relays `[body, witnesses, flag, auxiliary_data]` it rebuilt.
+      val kept =
+        if held.isValid == tx.isValid then raw
+        else MempoolState.encode(parts.copy(isValid = held.isValid))
+      val entry = Entry(id, kept, held, nextTicket, refScriptBytes)
       (
         copy(
           current = Right(next),
           entries = entries :+ entry,
-          bytes = bytes + raw.size,
+          bytes = bytes + kept.size,
           nextTicket = nextTicket + 1
         ),
         entry
@@ -326,9 +454,9 @@ object MempoolState:
   def empty(
       ledger: Either[ConwayView.Unavailable, MempoolLedger],
       tipSlot: BigInt,
-      capacityBytes: Long
+      capacityOverride: Option[Long]
   ): MempoolState =
-    MempoolState(ledger, tipSlot, ledger, Vector.empty, 0L, 1L, capacityBytes)
+    MempoolState(ledger, tipSlot, ledger, Vector.empty, 0L, 1L, capacityOverride)
 
   private val limits = Cbor.Limits(
     maxInputBytes = 1048576,
@@ -336,8 +464,24 @@ object MempoolState:
     maxStringBytes = 1048576
   )
 
+  /** A parsed submission: its id (the hash of the original body), the decoded transaction and the
+    * original bytes of its parts with the flag it carried.
+    */
+  final case class Parsed(id: Bytes, tx: Tx, parts: Block.Transaction)
+
+  /** The transaction `[body, witnesses, is_valid, aux]` of its parts, each as its original bytes
+    * and the flag as the boolean that is encoded.
+    */
+  def encode(t: Block.Transaction): Bytes =
+    Bytes.fromArray(Array(0x84.toByte)) ++ t.body ++ t.witnesses ++
+      Bytes.fromArray(Array((if t.isValid then 0xf5 else 0xf4).toByte)) ++
+      t.auxiliaryData.getOrElse(Bytes.fromArray(Array(0xf6.toByte)))
+
   /** Split `[body, witnesses, is_valid, aux]` keeping each component's original bytes. */
   def parse(raw: Bytes): Either[Rejection, (Bytes, Tx)] =
+    parseParts(raw).map(p => (p.id, p.tx))
+
+  def parseParts(raw: Bytes): Either[Rejection, Parsed] =
     def malformed[A](detail: TransactionDecodeProblem): Either[Rejection, A] = Left(
       Rejection.Malformed(detail)
     )
@@ -358,4 +502,4 @@ object MempoolState:
       tx <- Tx
         .fromBlock(transaction, Era.Conway)
         .leftMap(e => Rejection.Malformed(TransactionDecodeProblem.Ledger(e)))
-    yield (Blake2b.hash256.hash(parts(0).original), tx)
+    yield Parsed(Blake2b.hash256.hash(parts(0).original), tx, transaction)

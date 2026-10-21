@@ -165,6 +165,11 @@ def corpus(name, socket):
     words = ", ".join(f'"{"x" * 60}"' for _ in range(300))
     b.sh(f"echo '{{\"1\": [{words}]}}' > /work/big.json")
     add("tx-too-large", "MaxTxSizeUTxO", b.tx(w, extra="--metadata-json-file /work/big.json"))
+    # the measure comes before the ledger rules (`Mempool/Update.hs`): the oversize transaction that also
+    # spends an input that does not exist is refused for its size alone, not with "All inputs are spent"
+    add("tx-too-large-spent-inputs", "MaxTxSizeUTxO",
+        b.tx(w, ins=["0000000000000000000000000000000000000000000000000000000000000000#0"],
+             extra="--metadata-json-file /work/big.json"))
     # the network of a withdrawal, under each value of the validity flag
     add("withdrawal-network-flag-false", "WrongNetworkWithdrawal",
         script_tx(b, w, other, FAILS, account="mainnet", invalid=True)[0])

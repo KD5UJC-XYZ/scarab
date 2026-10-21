@@ -738,15 +738,35 @@ volatile chain. Without `--db` only the volatile chain can be served.
 the invariant is that they apply in order to the ledger state at the tip through the real
 the ledger's `Ledger` rule (`ledger/rules/Ledger.scala`: phase 1, phase 2 and the Conway rules). `add` validates against the state after all held
 transactions, so a transaction may spend the output of one before it. Rejections are typed
-(`Malformed`, `AlreadyHeld`, `Ledger(failure)`, `Full`) and returned as values. `sync(ledger, slot)`
+(`Malformed`, `AlreadyHeld`, `Ledger(failure)`, `Full`) and returned as values. `add` takes the
+`Source` of the transaction, as the reference's `WhetherToIntervene`: a transaction from a local client
+(`Local`) is validated as received, one from a peer (`Remote`, TxSubmission2) is validated with
+`is_valid` forced to true and, when only that flag is wrong because a script fails, held with
+`is_valid` false (the submitter loses the collateral); its relayed bytes are then the received ones with
+the flag byte changed ([IN-80](implementer-notes.md)). `sync(ledger, slot)`
 runs on every new tip, rollback or fork switch, keeps what still applies and reports the rest;
 transactions that a block contains leave as adopted. Before the transaction rules, `add` applies the
 ledger's MEMPOOL rule: a transaction none of whose inputs is unspent is refused with that alone
 (`ConwayMempoolFailure`, "All inputs are spent..."), as is a vote of an unelected committee member
-before protocol version 11. Capacity is counted in bytes. A transaction
-is validated in the slot after the tip within the tip's epoch (it is not ticked over an epoch
+before protocol version 11. Before either, `add` measures the transaction as `Mempool/Update.hs` does
+(`Capacity`): its size against `maxTxSize` and its execution units against `maxTxExUnits` (phase 1, both failures
+reported when both are exceeded, `Rejection.Limits`), then its reference-script bytes in the state after the held
+transactions against 200 KiB (phase 2, `TxRefScriptsSizeTooBig`); a refusal there is the only failure returned and
+the ledger does not run. The capacity is a vector of bytes (size plus 4), execution-unit memory, steps and
+reference-script bytes, `computeMempoolCapacity` of the parameters of the ticked base: two blocks without
+`--mempool-bytes`, the override rounded up to whole blocks with it, recomputed at every `sync` and never trimming a
+pool that a parameter change left over it. A transaction that would exceed any component finds no room; the
+check runs after phase 1 (without the reference-script component) and again after phase 2, as `doAddTx` and
+`pureTryAddTx` do ([IN-81](implementer-notes.md)). `Mempool.add` then waits, as the reference's `implAddTx` does
+([IN-82](implementer-notes.md)): it releases the state lock and retries from the first measure whenever the pool
+changes (`version`: an add, a `sync`, a removal), until it is held or refused for another reason, and only a
+transaction larger than the whole capacity is refused with `Rejection.Full`. Waiters are served through two FIFO
+queues, a peer's transaction taking the remote queue and then the common one and a local client's only the common
+one, so a local client passes the peers in line and only the head of the line waits for room. The wait is
+cancelable (a closed client or a lost peer leaves the line) and the `mempoolWaiting` event marks it. A peer's
+wait stalls that peer's TxSubmission2 replies, as in the reference, outside every protocol deadline. A transaction is validated in the slot after the tip within the tip's epoch (it is not ticked over an epoch
 boundary). Transactions of rolled-back blocks are not put back. `Mempool[F]` serialises the
-operations, offers `source`/`sink` for TxSubmission2 and remembers recently refused ids so peers
+state changes (one state lock, held for one validation or one revalidation, never while an add waits), offers `source`/`sink` for TxSubmission2 and remembers recently refused ids so peers
 that offer them again are not asked for the body.
 
 **Chain selection** (`consensus/ChainSelection.scala`, `Follower.scala`). A peer session keeps a
@@ -771,9 +791,9 @@ peers fetching at once with `maxConcurrencyBulkSync`; ours is limited by the num
 
 **Wiring** (`Main`). `--peer` may be given several times (with more than one peer a peer that
 keeps failing is retried forever, with one it is fatal after 30 attempts), `--listen` starts the
-inbound server, `--local-socket` the local one, `--mempool-bytes` sets the capacity. The followed
+inbound server, `--local-socket` the local one, `--mempool-bytes` overrides the capacity. The followed
 peers get our mempool through TxSubmission2. The JSON log gains `listening`, `inbound`,
-`mempoolAdded`, `mempoolRejected`, `mempoolAdopted`, `mempoolDropped` and `mempoolSynced`.
+`mempoolAdded`, `mempoolRejected`, `mempoolWaiting`, `mempoolAdopted`, `mempoolRemoved`, `mempoolDropped` and `mempoolSynced`.
 
 ## Connections: the manager and the inbound governor (G2)
 
@@ -1050,7 +1070,8 @@ transactions differ (`Mempool.awaitChange`, woken by `add` and by `sync`). `Loca
 server in numbers: the snapshot's slot is the one after the tip; a transaction counts for its ledger size (the
 serialised transaction without the `is_valid` byte, `sizeTxF`) plus 4 bytes, its execution units and the bytes
 of the reference scripts of its inputs and reference inputs (`Entry.refScriptBytes`, measured when it was
-added); the capacity is `computeMempoolCapacity`: a whole number of units, a unit being `maxBlockBodySize -
+added); the capacity is the one the pool enforces (`MempoolState.capacity`, `Capacity.of`, which also does the
+measures): `computeMempoolCapacity`, a whole number of units, a unit being `maxBlockBodySize -
 1024` bytes, `maxBlockExUnits` and 1 MiB of reference scripts, and the number of units `ceil(--mempool-bytes /
 unit)` (the reference's override rule, and 2 without one). `GetSizes` describes the whole snapshot,
 `GetMeasures` only the transactions `NextTx` has not handed out (the reference's quirk). A transaction is
