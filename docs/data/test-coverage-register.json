@@ -6,7 +6,7 @@
       "classification": "native-parity",
       "status": "pending-integration",
       "scope": "A paired native tables file and RocksDB checkpoint.",
-      "assertion": "Nonempty decoded overlap, explicit key/count expectations, typed decode failures and separate semantic/byte accounting.",
+      "assertion": "Require complete identical nonempty key streams, pinned table identity, exact entry count and same-snapshot checkpoint stamp; distinguish semantic equality and canonical encoding differences.",
       "rationale": "Zero semantic differences alone can pass without a comparison.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
@@ -176,8 +176,8 @@
       "id": "half-nan-canonicalization",
       "classification": "canonicalization",
       "status": "covered",
-      "scope": "All 65,536 half-float bit patterns, including 2,046 NaNs.",
-      "assertion": "Non-NaNs round-trip exactly; NaN conversion uses canonical 0x7e00, with one explicit canonical-NaN assertion.",
+      "scope": "63,490 non-NaN half-float patterns and one canonical-NaN control; the 2,046 NaN payload patterns are not individually asserted.",
+      "assertion": "Every non-NaN pattern round-trips exactly; the separate Float.NaN assertion yields canonical 0x7e00.",
       "rationale": "IEEE NaN payload preservation is not the conversion contract; the current identity loop excludes NaNs.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
@@ -198,7 +198,8 @@
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
       "resolution": "Keep exact source-pinned eligibility and counts; expand coverage using independently valid inputs.",
       "evidence": [
-        "protocol/src/test/resources/upstream/network-mux-sdu/README.md"
+        "network/src/test/scala/xyz/kd5ujc/scarab/network/UpstreamMuxStarvationSuite.scala",
+        "network/src/test/resources/upstream/mux-starvation/README.md"
       ],
       "candidateRequired": false
     },
