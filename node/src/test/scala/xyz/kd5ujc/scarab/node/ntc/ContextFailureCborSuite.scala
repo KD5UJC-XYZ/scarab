@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.*
 
 class ContextFailureCborSuite extends FunSuite:
+  import ContextFailureCbor.ContextEra.Conway
   import ContextReferenceCases.{all, field, hex}
 
   all.filterNot(_.collected).foreach { recorded =>
@@ -17,7 +18,7 @@ class ContextFailureCborSuite extends FunSuite:
       val errors =
         recorded.collect.swap.fold(_ => fail("collection unexpectedly succeeded"), identity)
       assertEquals(
-        ContextFailureCbor.utxos(errors),
+        ContextFailureCbor.utxos(Conway, errors),
         Some(hex(field[String](recorded.oracle, "utxosFailureCbor")))
       )
       val failure = PredicateFailure.utxo(UtxoFailure.Utxos(UtxosFailure.CollectErrors(errors)))
@@ -34,7 +35,7 @@ class ContextFailureCborSuite extends FunSuite:
         val errors =
           NonEmptyVector.one(CollectError.NoRedeemer(Purpose.Certifying(index, certificate)))
         assertEquals(
-          ContextFailureCbor.utxos(errors),
+          ContextFailureCbor.utxos(Conway, errors),
           Some(hex(field[String](oracle, "noRedeemerUtxosCbor")))
         )
       }
@@ -80,6 +81,7 @@ class ContextFailureCborSuite extends FunSuite:
     assert(!PredicateFailureCbor.inConway(failure))
     assertEquals(
       ContextFailureCbor.utxos(
+        Conway,
         NonEmptyVector.one(CollectError.BadTranslation(TranslationError.NoEraHistory))
       ),
       None
@@ -99,7 +101,10 @@ class ContextFailureCborSuite extends FunSuite:
     val poolId = pool.tx.body.id
     assert(
       ContextFailureCbor
-        .utxos(NonEmptyVector.one(CollectError.NoRedeemer(Purpose.Certifying(0, certificate))))
+        .utxos(
+          Conway,
+          NonEmptyVector.one(CollectError.NoRedeemer(Purpose.Certifying(0, certificate)))
+        )
         .isDefined
     )
     assertEquals(pool.tx.body.raw, poolBody)
@@ -119,7 +124,7 @@ class ContextFailureCborSuite extends FunSuite:
     val body = proposal.tx.body.raw
     val id = proposal.tx.body.id
     val errors = proposal.collect.swap.fold(_ => fail("no context refusal"), identity)
-    assert(ContextFailureCbor.utxos(errors).isDefined)
+    assert(ContextFailureCbor.utxos(Conway, errors).isDefined)
     assertEquals(proposal.tx.body.raw, body)
     assertEquals(proposal.tx.body.id, id)
     assertEquals(update.fields(0).hex, "1801")
@@ -130,7 +135,7 @@ class ContextFailureCborSuite extends FunSuite:
     val error = CollectError.NoWitness(Bytes(Vector.fill(28)(1.toByte)))
     val errors = NonEmptyVector(error, Vector.fill(19999)(error))
     val encoded = PreprodDeepTx
-      .onSmallStack(ContextFailureCbor.utxos(errors))
+      .onSmallStack(ContextFailureCbor.utxos(Conway, errors))
       .getOrElse(fail("no reference encoding"))
     // encodeList uses indefinite framing beyond23 items, including NonEmpty CollectError lists.
     assert(encoded.hex.startsWith("82019f"))

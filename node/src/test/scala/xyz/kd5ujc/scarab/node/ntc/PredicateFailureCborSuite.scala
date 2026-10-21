@@ -220,3 +220,27 @@ class PredicateFailureCborSuite extends FunSuite:
         case other => fail(s"$f: $other")
     }
   }
+
+  test("Conway: a missing redeemer of a certifying purpose carries its certificate, not null") {
+    // Hand-derived (no node confirmation): [6 era, [[1 LEDGER UTXOW (Conway/Rules/Ledger.hs:231), [10 MissingRedeemers,
+    // [[[2 Certifying, [1 UnRegCert, [1 script, hash]]], script]]]]]. The certificate is the Conway
+    // one: an unregistration without a refund is [1, credential] (Conway/TxCert.hs).
+    val scriptHash = Bytes(Vector.fill(28)(0xcc.toByte))
+    val s = scriptHash.hex
+    val failure = PredicateFailure.utxow(
+      UtxowFailure.MissingRedeemers(
+        Vector(
+          Purpose.Certifying(
+            0,
+            Certificate.Unregister(Credential.Script(scriptHash), None)
+          ) -> scriptHash
+        )
+      )
+    )
+    assertEquals(
+      PredicateFailureCbor.applyTxError(Era.Conway, Vector(failure)).map(_.hex),
+      Some(
+        "81" + "8206" + "81" + "8201" + "820a" + "81" + "82" + "8202" + "8201" + "8201" + "581c" + s + "581c" + s
+      )
+    )
+  }
