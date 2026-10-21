@@ -13,9 +13,9 @@
   "cases": 72,
   "errorsSha256": "b6efc4cae54870432710f3de5e3e98eb227d05dc842d813d1a7adfef8db69048",
   "coverage": "all 3 GSM states, both messages, genesis and applied header state, 37h cutoff -1/0/+1ps, future time; all native outcomes retained",
-  "image": "sha256:b9e81590371f7d1784b0e4a62eac7560e0da3498d8b1a6b791e50f6420ae15fb",
+  "image": "sha256:10d59164dce6b49fbeafdc520c1a29d3e4024a5859a3c41bb6181b2e627bebc7",
   "executableSha256": "9c71e6b4ac9bef36a90d4282738a3ae876a32b2727e6eacab55befecaf408488",
-  "planSha256": "7b0c491a9871a1ed924cc5b22726bdb8dd6f66d548740312abee8d07e5d88b9b",
-  "observerCabalSha256": "058cc043c7b4cfa82b6c30cf4c23b99437d72847239f4ded419c18c3f036cac1",
+  "planSha256": "7f1416e0423b18a439e83eeab16e8569060e9cacb24e0dcadb856b1705074ddb",
+  "observerCabalSha256": "93a034c7fdcca3903e070c3095f25728d75c3b031ba30961013991b6700f87fe",
   "nativeSodiumSha256": "ba24828b9bd23f19457f5ccac052b278a0443a1c29a4ab148eba997ed37d5d1b"
 }
