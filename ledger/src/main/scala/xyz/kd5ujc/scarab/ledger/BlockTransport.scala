@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
-import xyz.kd5ujc.scarab.ledger.byron.{ByronBody, ByronError, ByronLedger}
+import xyz.kd5ujc.scarab.ledger.byron.{ByronBodyProof, ByronError, ByronTransport}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
 
 /** Transport failures precede ChainDB admission and are never tentative-block forgiveness cases. */
@@ -53,12 +53,14 @@ object BlockTransport:
             (),
             BlockTransportError.WrongBodyHash(header.bodyHash, body.bodyHash)
           )
-        case (header: Header.Byron, body: Block.Byron) if !header.boundary =>
-          ByronBody
-            .decode(body.body)
-            .leftMap(BlockTransportError.ByronBodyDecode(_))
-            .flatMap(
-              ByronLedger.checkProofs(header, _).leftMap(BlockTransportError.ByronBodyProof(_))
-            )
+        case (header: Header.Byron, body: Block.Byron) =>
+          ByronTransport
+            .check(body.body, body.extra, header.boundary)
+            .leftMap(BlockTransportError.ByronBodyDecode(_)) *>
+            (if header.boundary then Right(())
+             else
+               ByronBodyProof
+                 .check(header, body.body)
+                 .leftMap(BlockTransportError.ByronBodyProof(_)))
         case _ => Right(())
     yield block

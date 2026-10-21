@@ -109,8 +109,8 @@ object PeerError:
     case HeaderValidationDidNotSettle
     case BlockCount(expected: Int, actual: Int)
     def message: String = this match
-      case HeaderDecode(cause)          => cause.message
-      case FetchedBlockIntegrity(cause) => cause.message
+      case HeaderDecode(cause)            => cause.message
+      case FetchedBlockIntegrity(cause)   => cause.message
       case InvalidPunishmentHeader(cause) => s"invalid tentative-header vocabulary: $cause"
       case HeaderDoesNotExtend(point, _) =>
         s"header ${Points.show(point)} does not extend the peer's chain"
@@ -155,7 +155,8 @@ enum BlockPoolProblem extends NodeError:
   def message: String = this match
     case MissingDeliveredHeader(point) =>
       s"received block ${Points.show(point)} has no original adding-header context"
-    case DifferentInvalidRegistry => "follower sessions do not share the same invalid-block registry"
+    case DifferentInvalidRegistry =>
+      "follower sessions do not share the same invalid-block registry"
 
 enum GenesisInternalProblem extends NodeError:
   case MissingSharedBlockPool, UnsupportedHeaderFamily, MissingConnectionIdentity

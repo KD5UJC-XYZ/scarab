@@ -87,7 +87,7 @@ class FetchedBlockIntegritySuite extends FunSuite:
     val delegationProof = array(array(parts(raw)(0))(2))(2)
     val changedHash = delegationProof.value match
       case Value.ByteString(value) => Bytes(value.value.map(b => (b ^ 1).toByte))
-      case other                  => fail(s"expected delegation hash, got $other")
+      case other                   => fail(s"expected delegation hash, got $other")
     val changed = replace(raw, delegationProof, encoded(Value.ByteString(changedHash)))
     val decoded = Block.decode(changed, epochSlots).fold(e => fail(e.message), identity)
     assertEquals(parts(changed)(1).original, parts(raw)(1).original)
