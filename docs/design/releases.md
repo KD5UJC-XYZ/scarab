@@ -84,9 +84,10 @@ can be explicitly proposed and reviewed even without a feature/fix commit.
 ## Changelog fragments and consolidation
 
 The existing [fragment contract](../../changes/README.md) remains the human-written changelog
-source. Today it specifies release-time folding, but there is no committed consolidation tool.
-Conventional commit subjects choose a proposed bump; they must not replace or duplicate the
-fragment prose. The current `CHANGELOG.md` also contains legacy Unreleased text: inventory it and
+source. The [local preparation tool](../changelog-preparation.md) implements immutable selection,
+pinned Scriv collection, preview, checked stable cleanup and pending-attempt recovery. Publication
+and version/tag authority remain separate implementation stages. Conventional commit subjects choose
+a proposed bump; they must not replace or duplicate the fragment prose. The current `CHANGELOG.md` also contains legacy Unreleased text: inventory it and
 include it exactly once in the first applicable release, not just the directory's newer fragments.
 
 This is the established news-fragment pattern implemented by

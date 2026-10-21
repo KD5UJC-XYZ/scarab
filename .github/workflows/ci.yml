@@ -71,8 +71,12 @@ jobs:
         run: python3 scripts/check_test_coverage.py
       - name: Closed error channel guard
         run: python3 scripts/check_error_channels.py
+      - name: Install pinned changelog tool in an isolated environment
+        run: |
+          python3 -m venv /tmp/scarab-python-tests
+          /tmp/scarab-python-tests/bin/pip install --require-hashes -r scripts/release/requirements.txt
       - name: Unit tests (no Docker)
-        run: python3 -m unittest discover -s scripts/tests -v
+        run: /tmp/scarab-python-tests/bin/python -m unittest discover -s scripts/tests -v
       - name: Every devnet subcommand parses its flags
         run: |
           python3 scripts/devnet.py --help > /dev/null

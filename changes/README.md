@@ -15,24 +15,23 @@ editing `CHANGELOG.md`, so that branches landing in parallel do not conflict.
   and deletes only those exact, hash-matching inputs in the same reviewed PR. Beta notes retain
   the fragments. Until stable consolidation, fragments are the unreleased changes.
 
-## Consolidation plan
+## Consolidation tooling
 
-The [release design](../docs/design/releases.md#changelog-fragments-and-consolidation) specifies
-news-fragment collection, a known pattern supported by Scriv/Towncrier. No collector is installed
-yet. The first implementation trials the existing Markdown corpus without losing prose, including
-legacy fragments needing structural repair and the old `CHANGELOG.md` Unreleased entries.
+The [preparation guide](../docs/changelog-preparation.md) describes the pinned Scriv adapter,
+immutable selection, preview, stable application and interrupted-transaction recovery. The
+[release design](../docs/design/releases.md#changelog-fragments-and-consolidation) remains the
+publication/promotion contract; this tool does not publish or authenticate a release.
 
-The release PR freezes the source/version/date and records eligible paths and hashes; validates
-headings and bullets; renders deterministic issue/path order; updates the changelog and matching
-release notes; then removes only the selected stable-release fragments. New or changed inputs
-require regeneration/review. The README and unselected files remain. Repeated collection cannot
-create duplicate sections. Git history and the release receipt retain the consumed inputs.
+Use `scripts/release_fragments.py preview` with explicit source, externally verified published
+stable baseline, version/date and a fresh scratch output directory. Review its exact selected
+paths/hashes and rendered changelog/notes. Beta previews retain fragments. Stable `apply` updates
+`CHANGELOG.md` and deletes only selected, hash-matching inputs in a reviewed preparation PR.
+New/deferred files remain; changed/missing inputs fail. Existing legacy Unreleased text is included
+once; repeated application cannot duplicate a version. Keep nested body headings (for example
+`#### Known gaps`) under a valid topic section, with at least one bullet in each topic section.
 
-Conventional commits propose version increments; fragments supply the human-written notes.
-Release-please must use the reviewed fragment output instead of a competing commit-log changelog.
-Stable preparation lands through `dev` -> `main` before promotion to `release/prod`; beta snapshots
-are cumulative from the previous successfully published/verified stable baseline and do not
-consume the pending fragments. If stable publication stalls after consolidation, beta collection
-also recovers consumed-but-unpublished entries from the retained source/receipt. Allow one pending
-stable consolidation; abandonment requires reviewed restoration before the next consolidation.
-This prevents a failed publication from making unreleased changes disappear from later notes.
+Retained `.release/changelog/` receipts are preparation records, never publication receipts.
+A pending stable attempt blocks another stable attempt; beta previews recover its consumed inputs
+from immutable Git alongside new fragments. Only the trusted coordinator may supply a new verified
+published baseline after actual publication/verification. Reviewed abandonment restores originals,
+reserves the old version, and does not move/reuse tags. See the guide for exact limits and commands.
