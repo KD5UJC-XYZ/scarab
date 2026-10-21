@@ -25,8 +25,9 @@ refused bytes are kept in `negative-txs.jsonl` so the Scala rules can be replaye
 import json
 import random
 
-from . import eratx, govview
+from . import eratx, govview, protocolversions as pvs
 from .eratx import Key, Tag
+from .protocolwalk import ProtocolWalk
 
 ENV = "/work/env"
 MAGIC = 1082026
@@ -38,13 +39,19 @@ class ReferenceDiverged(Exception):
     accepted transaction changed the state the case depends on), so the stage ends failed."""
 
 
-# What `e2e` requires of the light extended set, stage -> the protocol version from which the stage applies.
-# A stage whose version the chain did not reach before the run ended is reported in the summary as not
-# applicable, with this reason; any other stage must be done, and a stage that ended with ok false fails the run.
-LIGHT_STAGES = {"xfund": (0, ""), "xrewards": (0, ""), "xscriptreg": (0, ""),
-                "xvrf": (11, "the VRF key-hash uniqueness rule applies from protocol version 11 "
-                             "(hardforkConwayDisallowDuplicatedVRFKeys, Shelley/Rules/Pool.hs:265); the chain "
-                             "did not reach it")}
+# What `e2e` requires of the light extended set, stage -> the protocol version from which the stage applies and, for a
+# stage that is not applicable to a run that never reached it, the reason. The stages that belong to protocol versions
+# come from the registry of `protocolversions.py` (the ones its `e2e` scenario runs); the others apply from the start.
+GENERIC_STAGES = {"xfund": (0, ""), "xrewards": (0, ""), "xscriptreg": (0, "")}
+
+
+def light_stages(checks=pvs.VERSION_CHECKS):
+    stages = dict(GENERIC_STAGES)
+    stages.update({c.stage: (c.since, c.reason) for c in checks if "e2e" in c.scenarios})
+    return stages
+
+
+LIGHT_STAGES = light_stages()
 
 
 def extended_outcome(results, done, max_protocol, negative_unexpected, stages=None):
@@ -70,12 +77,15 @@ def extended_outcome(results, done, max_protocol, negative_unexpected, stages=No
     return failures, not_applicable
 
 
-def extended_pending(ext, stages=None):
-    """The applicable stages of the light set that have not finished: `e2e` waits for them after its target epoch."""
+def extended_pending(ext, stages=None, checks=pvs.VERSION_CHECKS):
+    """The applicable stages of the light set that have not finished: `e2e` waits for them after its target epoch. A
+    stage of a protocol version window the chain has left is not pending (it is judged failed by `extended_outcome`)."""
     stages = LIGHT_STAGES if stages is None else stages
+    until = {c.stage: c.until for c in checks}
     return [k for k, (since, _) in stages.items()
             if ext.max_protocol is not None and ext.max_protocol >= since and k not in ext.done
-            and ext.attempts.get(k, 0) < ext.TRIES and k not in ext.failed]
+            and (until.get(k) is None or ext.pv is None or ext.pv <= until[k])
+            and ext.attempts.get(k, 0) < ext.limits.get(k, ext.TRIES) and k not in ext.failed]
 
 
 def bech32_from_values(hrp, values):
@@ -130,6 +140,10 @@ class Extended:
         self.results = {}  # stage -> {"ok", "tries", "error"} of its last attempt
         self.failed = {}  # stages that ended failed for good (stage -> reason), never retried
         self.max_protocol = None  # highest protocol version seen on the reference
+        self.pv = None  # protocol version of the last pass
+        self.limits = {}  # stage -> the tries it is given
+        # in the e2e (`dynamic_forks`) the walk owns every HardFork proposal; the full set keeps its scripted forks
+        self.walk = ProtocolWalk(self) if getattr(load, "dynamic_forks", False) and not full else None
 
     TRIES = 5
 
@@ -146,6 +160,7 @@ class Extended:
         """Run `run` until it returns something truthy, at most `tries` times; a stage whose precondition
         `when` does not hold yet is not attempted (and costs no try). `run` raising `ReferenceDiverged` ends
         the stage failed for good."""
+        self.limits[key] = tries
         if key in self.done or key in self.failed or self.attempts.get(key, 0) >= tries or not when:
             return None
         self.attempts[key] = self.attempts.get(key, 0) + 1
@@ -158,7 +173,7 @@ class Extended:
         if result:
             self.done.add(key)
             self.count(key)
-        self.results[key] = {"ok": bool(result), "tries": self.attempts[key], "error": error}
+        self.results[key] = {"ok": bool(result), "tries": self.attempts[key], "error": error, "protocol": self.pv}
         self.log(stage=key, ok=bool(result), tries=self.attempts[key], **({"error": error} if error else {}))
         return result
 
@@ -227,6 +242,7 @@ class Extended:
         epoch = tip["epoch"]
         pp = l.protocol_params()
         pv = pp["protocolVersion"]["major"]
+        self.pv = pv
         self.max_protocol = pv if self.max_protocol is None else max(self.max_protocol, pv)
         deposit, drep_deposit = pp["stakeAddressDeposit"], pp["dRepDeposit"]
         self.stage("xfund", lambda: l.act("conway", "xfund", l.delegator(1),
@@ -235,11 +251,16 @@ class Extended:
         if "xfund" not in self.done:
             return
         self.stage("xrewards", lambda: self.pool_reward_accounts(deposit))
+        if self.walk is not None:
+            try:
+                self.walk.step(tip, pp)
+            except Exception as e:  # a failed query or submission: the next pass tries again, the walk's own bound ends it
+                self.log(walkPassFailed=repr(e))
         self.stage("xscriptreg", lambda: self.script_registration(pp, deposit, drep_deposit))
         if not self.full:
             if "xscriptreg" in self.done:
                 self.reference_input_cases(pp, pv)
-            if pv >= 11:
+            if pvs.check_for("xvrf").applies_at(pv):
                 self.stage("xvrf", lambda: self.vrf_cases(pp))
             return
         if {"ground2", "gcommittee"} <= l.done and {"xrewards", "xscriptreg"} <= self.done and pv >= 10:
@@ -249,7 +270,7 @@ class Extended:
             self.stage("xscriptwithdraw", lambda: self.script_withdrawal(pp), when=bool(self.script_balance()))
         if "xscriptreg" in self.done:
             self.reference_input_cases(pp, pv)
-        if pv >= 11:
+        if pvs.check_for("xvrf").applies_at(pv):
             self.stage("xvrf", lambda: self.vrf_cases(pp))
         self.unelected_voters(pv, epoch)
         self.committee_cases(pp, pv, epoch)
@@ -358,39 +379,43 @@ class Extended:
 
     # ------------------------------------------------------------ B5: reference inputs
     def reference_input_cases(self, pp, pv):
+        if pvs.check_for("xrefoverlap-pre11").applies_at(pv):
+            self.stage("xrefoverlap-pre11", self.refoverlap_refused, tries=6)
+        if pvs.check_for("xrefoverlap-11").applies_at(pv):
+            self.stage("xrefoverlap-11", lambda: self.refoverlap_allowed(pp), tries=6)
+
+    def refoverlap_refused(self):
+        """Before protocol version 11 a reference input that is also an input is refused."""
+        w = self.xw[4]
+        u = self.spare_output(w)
+        if u and self.l.act("conway", "xrefoverlap-pv10", w, [(w.address, 3_000_000, None, {})], spend_extra=[u],
+                            avoid=[u[0]], reference_inputs=[u[0]], fee=500_000,
+                            expect_reject=["BabbageNonDisjointRefInputs"]):
+            self.count("refoverlap_refused_pv10")
+            return True
+        return None
+
+    def refoverlap_allowed(self, pp):
+        """From protocol version 11 it is accepted without scripts and refused when a Plutus V3 script runs."""
         l = self.l
         w = self.xw[4]
-        key = f"xrefinput{pv}"
-        coll = None
-        if pv < 11:
-            if self.attempts.get(key, 0) < 3 and key not in self.done:
-                self.attempts[key] = self.attempts.get(key, 0) + 1
-                u = self.spare_output(w)
-                if u:
-                    ok = l.act("conway", "xrefoverlap-pv10", w, [(w.address, 3_000_000, None, {})], spend_extra=[u],
-                               avoid=[u[0]], reference_inputs=[u[0]], fee=500_000,
-                               expect_reject=["BabbageNonDisjointRefInputs"])
-                    if ok:
-                        self.done.add(key)
-                        self.count("refoverlap_refused_pv10")
-            return
-        if key not in self.done and self.attempts.get(key, 0) < 4:
-            self.attempts[key] = self.attempts.get(key, 0) + 1
-            u = self.spare_output(w)
-            if u and l.act("conway", "xrefoverlap-pv11", w, [(w.address, 3_000_000, None, {})], spend_extra=[u],
-                           avoid=[u[0]], reference_inputs=[u[0]], fee=500_000):
-                self.count("refoverlap_accepted_pv11")
-                coll = self.collateral(w)
-                u2 = self.spare_output(w) if coll else None
-                if coll and u2:
-                    mint = {self.script_hash: {b"xv3": 1}}
-                    ok = l.act("conway", "xrefoverlap-v3", w, [], mint=mint, spend_extra=[u2], avoid=[u2[0], coll[0]],
-                               reference_inputs=[u2[0]], collateral=[coll[0]], fee=1_500_000,
-                               expect_reject=["ReferenceInputsNotDisjointFromInputs"],
-                               **self.plutus_args(pp, [(1, 0, 0, UNITS)]))
-                    if ok:
-                        self.done.add(key)
-                        self.count("refoverlap_refused_v3_pv11")
+        u = self.spare_output(w)
+        if not (u and l.act("conway", "xrefoverlap-pv11", w, [(w.address, 3_000_000, None, {})], spend_extra=[u],
+                            avoid=[u[0]], reference_inputs=[u[0]], fee=500_000)):
+            return None
+        self.count("refoverlap_accepted_pv11")
+        coll = self.collateral(w)
+        u2 = self.spare_output(w) if coll else None
+        if not (coll and u2):
+            return None
+        mint = {self.script_hash: {b"xv3": 1}}
+        if l.act("conway", "xrefoverlap-v3", w, [], mint=mint, spend_extra=[u2], avoid=[u2[0], coll[0]],
+                 reference_inputs=[u2[0]], collateral=[coll[0]], fee=1_500_000,
+                 expect_reject=["ReferenceInputsNotDisjointFromInputs"],
+                 **self.plutus_args(pp, [(1, 0, 0, UNITS)])):
+            self.count("refoverlap_refused_v3_pv11")
+            return True
+        return None
 
     def spare_output(self, wallet):
         """A second ADA-only output of `wallet` (the biggest is the one `act` spends itself)."""
@@ -464,7 +489,8 @@ class Extended:
         """While the committee election is pending (no committee), the hot keys of the proposed members
         are authorised but not elected: from protocol version 11 their votes are refused."""
         l = self.l
-        if pv < 11 or "xunelected" in self.done or self.attempts.get("xunelected", 0) >= 4:
+        if not pvs.check_for("xunelected").applies_at(pv) or "xunelected" in self.done \
+                or self.attempts.get("xunelected", 0) >= 4:
             return
         proposals = json.dumps(self.pending_proposals())
         if self.xcold[0].hash.hex() not in proposals or l.committee_members():
