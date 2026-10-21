@@ -500,6 +500,26 @@
         "node/src/test/scala/xyz/kd5ujc/scarab/node/governor/ChurnTargetWakeSuite.scala"
       ],
       "candidateRequired": true
+    },
+    {
+      "id": "native-big-ledger-root-fallback",
+      "classification": "native-parity",
+      "status": "pending-integration",
+      "scope": "Nine explicit native BigLedgerPeers requests, with absent, empty or nonempty ledger answers and requested counts 0, 1 and 4.",
+      "assertion": "Compare the production BigLedgerRoots.fromLedger adapter against complete native offered partitions, origins and configured advertisement flags for every captured case.",
+      "rationale": "Configured fallback peers belong to ordinary public roots; only actual ledger answers belong to the big-ledger partition. Empty and absent ledger answers are different values.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/311",
+      "resolution": "All nine directly generated native Big-request cases are retained. Actual static/dynamic provider and governor tests separately verify TTLs, root-generation behavior and initial known-peer advertisement flags. The unchanged All-request classifier is outside this adapter boundary.",
+      "evidence": [
+        "fixtures/peer-selection/root-fallback/manifest.json",
+        "fixtures/peer-selection/root-fallback/README.md",
+        "scripts/oracle/root-fallback/Main.hs",
+        "network/src/test/scala/xyz/kd5ujc/scarab/network/selection/NativeRootFallbackSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/LedgerPeersWiringSuite.scala",
+        "network/src/test/scala/xyz/kd5ujc/scarab/network/selection/BigLedgerSuite.scala"
+      ],
+      "candidateRequired": true
     }
   ]
 }

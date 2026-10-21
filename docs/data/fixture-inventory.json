@@ -303,6 +303,8 @@
     "fixtures/peer-selection/churn/manifest.json": "733d8a5ff737b280835b9173004ba705c920eba8b1c1ee54ae3e29e3b28d83fb",
     "fixtures/peer-selection/policies/decisions.jsonl": "ff29e99bdd92ffdfd715dbffc606bbe55893fbaa41f8c2c60e8f0695d0a13c6e",
     "fixtures/peer-selection/policies/manifest.json": "c7fa9949ef378fe4ac9ce13c366382103bc7d841bbd92812135e6b9d5b7ebe72",
+    "fixtures/peer-selection/root-fallback/decisions.jsonl": "3e44b29c1622b426d40282b11e4961675582f724242613aa94423f6510e85563",
+    "fixtures/peer-selection/root-fallback/manifest.json": "ba19e395fe6f79fa0444971d72f0ee08d5762bed9a90e445c7b7e4b8acef8517",
     "fixtures/praos/alpha.tsv": "92c5f0ae1fe54f169067437c18cf5739171d754c91bb2e7430fe15dd218cae87",
     "fixtures/praos/certificates.tsv": "69e9488ad4cda6ec1cb157409449c4b97e741d2a37987ae743025041cfb36aac",
     "fixtures/praos/evidence/Consensus-Praos.hs": "b770f0c73f2c34dd69146f2b087a786d7d937d119f0efb961ff6757105119e23",

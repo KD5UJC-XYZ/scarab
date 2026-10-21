@@ -9,3 +9,8 @@ thread schedules or exhaustive governor-state coverage.
 1,152 explicit pinned-native IOSim cases, including raw invalid proposals, signed achieved
 changes, timeout outcomes and exact native wait arithmetic. Genesis and Praos, both ledger
 judgements and changing startup inputs are included; no captured output is excluded.
+
+[Native big-ledger fallback](root-fallback/README.md) compares nine directly generated
+BigLedgerPeers requests against the production classification adapter. Actual ledger answers
+and configured public fallback retain distinct partitions; empty ledger answers remain distinct
+from an absent answer.
