@@ -104,12 +104,14 @@ object PeerError:
   enum ProtocolProblem:
     case HeaderDecode(cause: ChainError)
     case FetchedBlockIntegrity(cause: BlockTransportError)
+    case InvalidPunishmentHeader(cause: TentativeHeaderError)
     case HeaderDoesNotExtend(point: ChainSync.Point, tip: ChainSync.Point)
     case HeaderValidationDidNotSettle
     case BlockCount(expected: Int, actual: Int)
     def message: String = this match
       case HeaderDecode(cause)          => cause.message
       case FetchedBlockIntegrity(cause) => cause.message
+      case InvalidPunishmentHeader(cause) => s"invalid tentative-header vocabulary: $cause"
       case HeaderDoesNotExtend(point, _) =>
         s"header ${Points.show(point)} does not extend the peer's chain"
       case HeaderValidationDidNotSettle => "header validation did not settle"
