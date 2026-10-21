@@ -17,6 +17,15 @@ def control_plane(github, source, trusted):
     commit(trusted)
     main = github.get('/git/ref/heads/main')
     require(main['object']['sha'] == trusted, 'trusted default branch advanced; start a new reviewed dispatch')
+    def workflow_tree(revision):
+        rows = github.get('/contents/.github/workflows?ref=' + revision)
+        require(isinstance(rows, list) and rows, 'complete workflow directory listing required')
+        identities = [(row['name'], row['type'], row['sha']) for row in rows]
+        require(len({row[0] for row in identities}) == len(identities), 'duplicate workflow directory identity')
+        return sorted(identities)
+    # GitHub release creation otherwise requires Workflows write for any differing workflow file.
+    require(workflow_tree(source) == workflow_tree(trusted),
+            'selected cut differs from the approved complete workflow tree; align the release cut')
     for path in CONTROL_PATHS:
         approved = github.get('/contents/' + path + '?ref=' + trusted)
         selected = github.get('/contents/' + path + '?ref=' + source)

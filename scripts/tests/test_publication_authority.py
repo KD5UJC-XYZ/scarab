@@ -10,7 +10,7 @@ import unittest
 import urllib.parse
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from publication_authority import candidate_run
+from publication_authority import candidate_run, control_plane, CONTROL_PATHS
 from publication_common import GitHub, PublicationError
 
 
@@ -30,6 +30,8 @@ class PublicationAuthorityTests(unittest.TestCase):
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
                 path = urllib.parse.urlsplit(self.path).path.removeprefix('/repos/example/scarab')
+                if path.startswith('/contents/'):
+                    path += '?' + urllib.parse.urlsplit(self.path).query
                 self.send_response(200 if path in owner.routes else 404)
                 self.send_header('Content-Type', 'application/json')
                 self.end_headers()
@@ -52,6 +54,31 @@ class PublicationAuthorityTests(unittest.TestCase):
 
     def checked(self):
         return candidate_run(self.github, 42, self.source, 'v1.2.3-beta.1', 123, 'b' * 64)
+
+    def setup_control_plane(self):
+        import base64
+        trusted = 'f' * 40
+        self.routes['/git/ref/heads/main'] = {'object': {'sha': trusted}}
+        tree = [{'name': Path(path).name, 'type': 'file', 'sha': '1' * 40} for path in CONTROL_PATHS]
+        tree.append({'name': 'ci.yml', 'type': 'file', 'sha': '2' * 40})
+        for revision in [self.source, trusted]:
+            self.routes['/contents/.github/workflows?ref=' + revision] = deepcopy(tree)
+            for path in CONTROL_PATHS:
+                self.routes['/contents/' + path + '?ref=' + revision] = {'type': 'file', 'sha': '1' * 40}
+        for path in ['scripts/publication_authority.py', 'scripts/publication_coordinator.py',
+                     'scripts/published_receipt.py', 'scripts/production_acceptance.py']:
+            raw = (Path(__file__).resolve().parents[2] / path).read_bytes()
+            self.routes['/contents/' + path + '?ref=' + trusted] = {'encoding': 'base64', 'content': base64.b64encode(raw).decode()}
+        return trusted
+
+    def test_complete_workflow_tree_matches_approved_current_control_plane(self):
+        control_plane(self.github, self.source, self.setup_control_plane())
+
+    def test_unrelated_workflow_difference_refuses_without_extra_app_permission(self):
+        trusted = self.setup_control_plane()
+        self.routes['/contents/.github/workflows?ref=' + self.source][-1]['sha'] = '3' * 40
+        with self.assertRaisesRegex(PublicationError, 'complete workflow tree'):
+            control_plane(self.github, self.source, trusted)
 
     def test_exact_canonical_run_completed_gates_and_original_artifact(self):
         self.assertEqual(self.checked()['workflow_run']['id'], 42)

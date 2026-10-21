@@ -41,8 +41,10 @@ The live App must still see the same IDs/update timestamps and its exact bypass
 modes. This trusts repository administrators and the API; timestamps are not a
 cryptographic defense against an administrator.
 
-The canonical control workflows at the selected cut must match approved current
-`main`. Privileged scripts come from that approved control plane. First publication
+The complete `.github/workflows` tree at the selected cut must match approved
+current `main`, including unrelated workflows. This keeps release creation compatible
+with the minimal App without granting Workflows write. Align/reprepare a stale cut
+rather than weakening this guard. Privileged scripts come from that approved control plane. First publication
 requires the exact `release/<channel>` tip. A retained attempt can retry after the
 branch advances only when its immutable source/tag/candidate identities still agree.
 The source and tag object come from the server, not merely checkout metadata.
