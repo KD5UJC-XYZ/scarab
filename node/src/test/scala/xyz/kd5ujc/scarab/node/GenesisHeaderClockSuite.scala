@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.effect.{IO, Ref}
-import cats.mtl.{Ask, Stateful, Tell}
+import cats.effect.{Deferred, IO, Ref}
+import cats.effect.testkit.TestControl
+import cats.mtl.{Ask, Raise, Stateful, Tell}
+import cats.syntax.all.*
+import scala.concurrent.duration.*
+import xyz.kd5ujc.scarab.network.genesis.{LeakyBucket, LimitOnPatience}
 import java.nio.file.{Files, Path}
 import java.time.Instant
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -134,5 +138,118 @@ class GenesisHeaderClockSuite extends FailsOnUncaught:
     val onset = geometry.systemStart.plusMillis(geometry.slotOffsetMillis(h.slot).toLong)
     check(c, index, onset).map(result =>
       assertEquals(result, Right(HeaderGate.Acceptance.Accepted))
+    )
+  }
+
+  test(
+    "native checkTime pauses forecasts, delays once across a wall-clock step, then resumes before validation"
+  ) {
+    TestControl.executeEmbed {
+      LimitOnPatience.resource[IO](LeakyBucket.Config.disabled, IO.unit).use { patience =>
+        for
+          offset <- Ref.of[IO, FiniteDuration](Duration.Zero)
+          accepted <- Ref.of[IO, Option[FiniteDuration]](None)
+          clock = new SlotClock[IO]:
+            def now =
+              (IO.realTime, offset.get).mapN((t, o) => Instant.EPOCH.plusNanos((t + o).toNanos))
+            def geometry = IO.raiseError(new AssertionError("canonical global geometry"))
+          checker = new HeaderCheck[IO]:
+            def start(intersection: ChainSync.Point) = IO.pure(new HeaderGate[IO]:
+              override val canonicalTiming = true
+              override def forecastTime(header: xyz.kd5ujc.scarab.ledger.Header)(using
+                  cats.Applicative[IO]
+              ) =
+                patience.snapshot.flatMap(s => IO(assert(s.paused))) *>
+                  IO.sleep(100.millis).as(Some(HeaderGate.TimeForecast.Known(BigInt(10).pow(12))))
+              override def prepareHeader(header: xyz.kd5ujc.scarab.ledger.Header)(using
+                  cats.Applicative[IO],
+                  Raise[IO, PeerError]
+              ) =
+                patience.snapshot.flatMap(s => IO(assert(s.paused))) *>
+                  IO.sleep(100.millis).as(HeaderGate.Acceptance.Accepted)
+              def accept(batch: Vector[SyncEvent])(using Raise[IO, PeerError]) =
+                patience.snapshot.flatMap(s => IO(assert(!s.paused))) *>
+                  IO.monotonic.flatMap(t => accepted.set(Some(t)))
+              def counts = IO.pure(HeaderGate.Counts(0, 0, 0)))
+          gate <- HeaderClock
+            .clocked(clock, checker, patience = Some(patience))
+            .start(ChainSync.Point.Origin)
+          fiber <- Fault
+            .fiber(
+              gate.accept(
+                Vector(SyncEvent.RollForward(preprod.blocks(1).header, ChainSync.Tip.Origin))
+              )
+            )
+            .start
+          _ <- IO.sleep(200.millis) *> offset.set(-1.second)
+          outcome <- fiber.joinWithNever
+          reached <- accepted.get
+          _ = assertEquals(outcome, Right(()))
+          _ = assertEquals(reached, Some(1100.millis))
+        yield ()
+      }
+    }
+  }
+
+  test("canceling canonical ledger forecast preparation resumes the patience bucket") {
+    TestControl.executeEmbed {
+      LimitOnPatience.resource[IO](LeakyBucket.Config.disabled, IO.unit).use { patience =>
+        for
+          waiting <- Deferred[IO, Unit]
+          checker = new HeaderCheck[IO]:
+            def start(intersection: ChainSync.Point) = IO.pure(new HeaderGate[IO]:
+              override val canonicalTiming = true
+              override def forecastTime(header: xyz.kd5ujc.scarab.ledger.Header)(using
+                  cats.Applicative[IO]
+              ) =
+                IO.pure(Some(HeaderGate.TimeForecast.Known(0)))
+              override def prepareHeader(header: xyz.kd5ujc.scarab.ledger.Header)(using
+                  cats.Applicative[IO],
+                  Raise[IO, PeerError]
+              ) =
+                waiting.complete(()).void *> IO.never[HeaderGate.Acceptance]
+              def accept(batch: Vector[SyncEvent])(using Raise[IO, PeerError]) = IO.unit
+              def counts = IO.pure(HeaderGate.Counts(0, 0, 0)))
+          clock = SlotClock.system[IO](
+            IO.raiseError(new AssertionError("canonical global geometry"))
+          )
+          gate <- HeaderClock
+            .clocked(clock, checker, patience = Some(patience))
+            .start(ChainSync.Point.Origin)
+          fiber <- Fault
+            .fiber(
+              gate.accept(
+                Vector(SyncEvent.RollForward(preprod.blocks(1).header, ChainSync.Tip.Origin))
+              )
+            )
+            .start
+          _ <- waiting.get *> fiber.cancel
+          state <- patience.snapshot
+          _ = assert(!state.paused)
+        yield ()
+      }
+    }
+  }
+
+  test(
+    "legacy live clock also rejects an original signed Byron header before its known Byron onset"
+  ) {
+    val c = preprod
+    val h = c.blocks
+      .find(b => b.header.era == Era.Byron && b.header.slot > 0)
+      .fold(fail("Byron header missing"))(_.header)
+    val onset = c.setup.geometry.systemStart
+      .plusMillis((h.slot * c.setup.geometry.byron.slotLengthMillis).toLong)
+    val clock = new SlotClock[IO]:
+      def now = IO.pure(onset.minusSeconds(3))
+      def geometry = IO.pure(c.setup.geometry)
+    for
+      gate <- HeaderClock.clocked(clock, HeaderCheck.none[IO]).start(ChainSync.Point.Origin)
+      result <- Fault.fiber(gate.accept(Vector(SyncEvent.RollForward(h, ChainSync.Tip.Origin))))
+    yield assertEquals(
+      result,
+      Left(
+        Fault.Failed(PeerError.InvalidHeader(h.point, HeaderError.FarFuture(h.slot, 3000, 2000)))
+      )
     )
   }

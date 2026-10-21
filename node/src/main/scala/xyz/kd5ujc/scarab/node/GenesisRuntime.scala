@@ -43,19 +43,21 @@ final class GenesisRuntime[F[_]: Async] private (
       pool: BlockPool[F],
       identity: Long,
       disconnect: PeerError => F[Unit],
-      fatal: GenesisInternalProblem => F[Unit]
+      fatal: GenesisInternalProblem => F[Unit],
+      densityOrder: Option[GenesisGovernor.OrderKey] = None
   ): Resource[F, (FetchCoordinator.Session[F], GenesisRuntime.Bound[F])] =
     for
       fetching <- pool.fetchCoordinator.session(identity)
       current <- Resource.eval(selection)
-      bound <- session(fetching.identity, current.anchor, disconnect, fatal)
+      bound <- session(fetching.identity, current.anchor, disconnect, fatal, densityOrder)
     yield fetching -> bound
 
   def session(
       identity: Long,
       anchor: Point,
       disconnect: PeerError => F[Unit],
-      fatal: GenesisInternalProblem => F[Unit]
+      fatal: GenesisInternalProblem => F[Unit],
+      densityOrder: Option[GenesisGovernor.OrderKey] = None
   ): Resource[F, GenesisRuntime.Bound[F]] =
     def refused[A](problem: PeerError.GenesisProblem): F[A] =
       disconnect(PeerError.Genesis(problem)) *> F.never[A]
@@ -81,7 +83,8 @@ final class GenesisRuntime[F[_]: Async] private (
             if phase == Gsm.Phase.Syncing then settings.bucket
             else LeakyBucket.Config.disabled
           ),
-        disconnect(PeerError.Genesis(PeerError.GenesisProblem.DensityTooLow))
+        disconnect(PeerError.Genesis(PeerError.GenesisProblem.DensityTooLow)),
+        densityOrder.orElse(Some(GenesisGovernor.OrderKey(identity)))
       )
       phase <- Resource.eval(governor.phase)
       jumper <- jumping.session(
@@ -171,21 +174,29 @@ final class GenesisRuntime[F[_]: Async] private (
         def observed(gate: HeaderGate[F], event: SyncEvent): F[Unit] =
           gateRef.set(Some(gate)) *> snapshot.flatMap { history =>
             history.traverse_ { h =>
-              selection.flatMap { selected =>
-                jumper.update(
-                  JumpInfo(
-                    h.points.head,
-                    h.points.tail,
-                    GenesisPeer.Checkpoint(
-                      h,
-                      selected,
-                      h.points.reverseIterator
-                        .find(selected.contains)
-                        .getOrElse(h.base)
+              gate.intersectionSelection
+                .flatMap(
+                  _.fold(
+                    invariant[ChainSelection.Local](
+                      GenesisInternalProblem.HeaderSelectionUnavailable(h.base)
                     )
-                  )
+                  )(F.pure)
                 )
-              }
+                .flatMap { selected =>
+                  h.points.reverseIterator
+                    .find(selected.contains)
+                    .fold(
+                      invariant[Unit](GenesisInternalProblem.HeaderSelectionUnavailable(h.base))
+                    )(intersection =>
+                      jumper.update(
+                        JumpInfo(
+                          h.points.head,
+                          h.points.tail,
+                          GenesisPeer.Checkpoint(h, selected, intersection)
+                        )
+                      )
+                    )
+                }
             }
           } *> (event match
             // Client.hs:1607-1619: jump-info/candidate precede rollback notification.
@@ -199,15 +210,25 @@ final class GenesisRuntime[F[_]: Async] private (
         def restarted(point: Point, gate: HeaderGate[F]): F[Unit] =
           gateRef.set(Some(gate)) *> snapshot.flatMap(
             _.traverse_(h =>
-              selection.flatMap { selected =>
-                jumper.update(
-                  JumpInfo(
-                    h.points.head,
-                    h.points.tail,
-                    GenesisPeer.Checkpoint(h, selected, point)
-                  )
+              gate.intersectionSelection
+                .flatMap(
+                  _.fold(
+                    invariant[ChainSelection.Local](
+                      GenesisInternalProblem.HeaderSelectionUnavailable(h.base)
+                    )
+                  )(F.pure)
                 )
-              }
+                .flatMap { selected =>
+                  if selected.contains(point) && h.points.contains(point) then
+                    jumper.update(
+                      JumpInfo(
+                        h.points.head,
+                        h.points.tail,
+                        GenesisPeer.Checkpoint(h, selected, point)
+                      )
+                    )
+                  else invariant[Unit](GenesisInternalProblem.HeaderSelectionUnavailable(point))
+                }
             )
           ) *> raw.set(point match
             case Point.Origin         => LatestSlot.Origin
@@ -225,46 +246,49 @@ final class GenesisRuntime[F[_]: Async] private (
               jumper.processJump(info, goodPoint, found.contains(info.tip)).flatMap {
                 case None => F.pure(GenesisPeer.Applied.Retained)
                 case Some(accepted) =>
-                  gate.graft(accepted.payload.history, accepted.tip).flatMap {
-                    case Left(HeaderCheck.GraftError.MissingPoint(point)) =>
-                      invariant(GenesisInternalProblem.GraftMissingPoint(point))
-                    case Left(HeaderCheck.GraftError.MissingSelection(point)) =>
-                      invariant(GenesisInternalProblem.HeaderSelectionUnavailable(point))
-                    case Left(HeaderCheck.GraftError.MissingState(point)) =>
-                      invariant(GenesisInternalProblem.HeaderStateUnavailable(point))
-                    case Left(HeaderCheck.GraftError.Unsupported) =>
-                      invariant(GenesisInternalProblem.UnsupportedHeaderFamily)
-                    case Right(_) =>
-                      gate.snapshot.flatMap {
-                        case None =>
-                          invariant(GenesisInternalProblem.GraftMissingPoint(accepted.tip))
-                        case Some(installed) =>
-                          installed.entries.lastOption
-                            .map(_.header.blockNo)
-                            .orElse(installed.baseState.flatMap {
-                              case NodeHeaderState.Byron(_, _, _, blockNo) => blockNo
-                              case NodeHeaderState.Shelley(_, previous, _, _) =>
-                                previous.map(_.blockNo)
-                            })
-                            .orElse {
-                              val ours = accepted.payload.selection
-                              if installed.base == ours.anchor then Some(ours.anchorView.blockNo)
-                              else ours.blocks.find(_.point == installed.base).map(_.view.blockNo)
-                            }
-                            // Client.hs:1340-1385: only JumpToGoodPoint installs validator state.
-                            .traverse_(n => patience.jumpedTo(n).whenA(goodPoint)) *> gateRef.set(
-                            Some(gate)
-                          ) *>
-                            raw.set(accepted.tip match
-                              case Point.Origin         => LatestSlot.Origin
-                              case Point.Block(slot, _) => LatestSlot.At(slot.value)) *> publish.as(
-                              GenesisPeer.Applied.Grafted(
-                                ChainSelection
-                                  .Candidate(installed.base, installed.entries.map(_.header))
-                              )
-                            )
-                      }
-                  }
+                  gate
+                    .graft(accepted.payload.history, accepted.tip, accepted.payload.selection)
+                    .flatMap {
+                      case Left(HeaderCheck.GraftError.MissingPoint(point)) =>
+                        invariant(GenesisInternalProblem.GraftMissingPoint(point))
+                      case Left(HeaderCheck.GraftError.MissingSelection(point)) =>
+                        invariant(GenesisInternalProblem.HeaderSelectionUnavailable(point))
+                      case Left(HeaderCheck.GraftError.MissingState(point)) =>
+                        invariant(GenesisInternalProblem.HeaderStateUnavailable(point))
+                      case Left(HeaderCheck.GraftError.Unsupported) =>
+                        invariant(GenesisInternalProblem.UnsupportedHeaderFamily)
+                      case Right(_) =>
+                        gate.snapshot.flatMap {
+                          case None =>
+                            invariant(GenesisInternalProblem.GraftMissingPoint(accepted.tip))
+                          case Some(installed) =>
+                            installed.entries.lastOption
+                              .map(_.header.blockNo)
+                              .orElse(installed.baseState.flatMap {
+                                case NodeHeaderState.Byron(_, _, _, blockNo) => blockNo
+                                case NodeHeaderState.Shelley(_, previous, _, _) =>
+                                  previous.map(_.blockNo)
+                              })
+                              .orElse {
+                                val ours = accepted.payload.selection
+                                if installed.base == ours.anchor then Some(ours.anchorView.blockNo)
+                                else ours.blocks.find(_.point == installed.base).map(_.view.blockNo)
+                              }
+                              // Client.hs:1340-1385: only JumpToGoodPoint installs validator state.
+                              .traverse_(n => patience.jumpedTo(n).whenA(goodPoint)) *> gateRef.set(
+                              Some(gate)
+                            ) *>
+                              raw.set(accepted.tip match
+                                case Point.Origin         => LatestSlot.Origin
+                                case Point.Block(slot, _) => LatestSlot.At(slot.value)) *> publish
+                                .as(
+                                  GenesisPeer.Applied.Grafted(
+                                    ChainSelection
+                                      .Candidate(installed.base, installed.entries.map(_.header))
+                                  )
+                                )
+                        }
+                    }
               }
       val received: SyncEvent => F[Unit] = {
         case SyncEvent.RollForward(header, _) =>

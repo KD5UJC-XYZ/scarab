@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.consensus.*
-import xyz.kd5ujc.scarab.consensus.HeaderRules.{ForecastReason, Outcome}
+import xyz.kd5ujc.scarab.consensus.HeaderRules.{ForecastReason, Outcome, Prepared}
 import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, PBftState, ProtocolState}
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.byron.ByronLedger
@@ -70,19 +70,27 @@ final class GenesisHeaderRules[S](
       tip: Option[BlockRef],
       previous: NodeHeaderState,
       header: Header
-  ): Outcome[NodeHeaderState] = (previous, header) match
+  ): Outcome[NodeHeaderState] =
+    prepareValidation(anchor, tip, previous, header).result
+
+  def prepareValidation(
+      anchor: S,
+      tip: Option[BlockRef],
+      previous: NodeHeaderState,
+      header: Header
+  ): Prepared[NodeHeaderState] = (previous, header) match
     case (old: NodeHeaderState.Byron, h: Header.Byron)   => validateByron(anchor, tip, old, h)
     case (old: NodeHeaderState.Byron, h: Header.Shelley) => enterShelley(anchor, tip, old, h)
     case (_: NodeHeaderState.Shelley, _: Header.Byron) =>
-      Outcome.Invalid(HeaderError.Structure(HeaderStructureProblem.MissingByronLedger))
+      Prepared.Invalid(HeaderError.Structure(HeaderStructureProblem.MissingByronLedger))
     case (old: NodeHeaderState.Shelley, h: Header.Shelley) =>
       val ledgerTip = old.previous.orElse(tip)
       anchor.ledger(tip) match
         case Left(error) =>
-          Outcome.Invalid(HeaderError.Structure(HeaderStructureProblem.LedgerRead(error)))
+          Prepared.Invalid(HeaderError.Structure(HeaderStructureProblem.LedgerRead(error)))
         case Right(Some(InEra.Of(_, ledger))) =>
           wrap(
-            shelleyRules.shelley(
+            shelleyRules.prepareShelley(
               anchor,
               ledger,
               tip,
@@ -104,7 +112,7 @@ final class GenesisHeaderRules[S](
               val glob = old.firstEpoch.fold(globals)(first => globals.copy(firstEpoch = first))
               wrap(
                 NodeHeaderRules[S](cfg, glob)
-                  .shelley(
+                  .prepareShelley(
                     anchor,
                     ledger,
                     tip,
@@ -120,26 +128,21 @@ final class GenesisHeaderRules[S](
                 old.firstEpoch,
                 old.translated
               )
-            case None => Outcome.Later(ForecastReason.ShelleyLedgerNotReady)
+            case None => Prepared.Unknown(ForecastReason.ShelleyLedgerNotReady)
 
   private def wrap(
-      outcome: Outcome[ProtocolState],
+      outcome: Prepared[ProtocolState],
       header: Header.Shelley,
       first: Option[BigInt],
       translated: Option[InEra]
-  ): Outcome[NodeHeaderState] = outcome match
-    case Outcome.Valid(next) =>
-      Outcome.Valid(
-        NodeHeaderState.Shelley(
-          next,
-          Some(BlockRef(header.slot, header.hash, header.blockNo)),
-          first,
-          translated
-        )
-      )
-    case Outcome.Invalid(error)  => Outcome.Invalid(error)
-    case Outcome.Later(reason)   => Outcome.Later(reason)
-    case Outcome.Unchecked(_, _) => Outcome.Later(ForecastReason.ParentStateUnknown)
+  ): Prepared[NodeHeaderState] = outcome.map(next =>
+    NodeHeaderState.Shelley(
+      next,
+      Some(BlockRef(header.slot, header.hash, header.blockNo)),
+      first,
+      translated
+    )
+  )
 
   private def envelope(
       previous: Option[BlockRef],
@@ -174,6 +177,7 @@ final class GenesisHeaderRules[S](
         (),
         HeaderError.Structure(HeaderStructureProblem.PreviousHash(actualHash, expectedHash))
       )
+      _ <- config.checkpoints.validate(header).leftMap(HeaderError.Envelope(_))
     yield ()
 
   private def validateByron(
@@ -181,7 +185,7 @@ final class GenesisHeaderRules[S](
       tip: Option[BlockRef],
       previous: NodeHeaderState.Byron,
       header: Header.Byron
-  ): Outcome[NodeHeaderState] =
+  ): Prepared[NodeHeaderState] =
     (byron, anchor.consensus.byron.ledger) match
       case (Some(cfg), Some(ledger)) =>
         val parent = previous.previous.map(p =>
@@ -191,10 +195,10 @@ final class GenesisHeaderRules[S](
         val maxSlot = ledger.lastSlot + 1 + 2 * cfg.ledger.genesis.securityParam
         envelope(parent, header, boundary) match
           case _ if header.slot >= maxSlot =>
-            Outcome.Later(ForecastReason.Horizon(header.slot, ledger.lastSlot))
-          case Left(error) => Outcome.Invalid(error)
+            Prepared.Unknown(ForecastReason.Horizon(header.slot, ledger.lastSlot))
+          case Left(error) => Prepared.Invalid(error)
           case Right(_) if header.boundary && header.slot % cfg.ledger.epochSlots != 0 =>
-            Outcome.Invalid(
+            Prepared.Invalid(
               HeaderError.Structure(
                 HeaderStructureProblem.UnexpectedBoundarySlot(header.slot, cfg.ledger.epochSlots)
               )
@@ -203,36 +207,38 @@ final class GenesisHeaderRules[S](
               if cfg.configuredShelleyEpoch
                 .orElse(ByronLedger.transition(cfg.ledger, ledger))
                 .exists(header.epoch >= _) =>
-            Outcome.Invalid(
+            Prepared.Invalid(
               HeaderError.Envelope(
                 EnvelopeError.WrongEra(Era.Byron, Era.Shelley, header.epoch, BigInt(2))
               )
             )
           case Right(_) =>
             val ticked = ByronLedger.tick(cfg.ledger, ledger, header.slot)
-            ByronRules
-              .validateHeader(header, previous.pbft, ticked.delegation, cfg)
-              .leftMap(HeaderError.Byron(_))
-              .fold(
-                Outcome.Invalid(_),
-                next =>
-                  Outcome.Valid(
-                    NodeHeaderState.Byron(
-                      next,
-                      previous.pendingShelley,
-                      Some(ByronTip(header.hash, header.epoch, header.slot, header.boundary)),
-                      Some(header.blockNo)
+            Prepared.Check(() =>
+              ByronRules
+                .validateHeader(header, previous.pbft, ticked.delegation, cfg)
+                .leftMap(HeaderError.Byron(_))
+                .fold(
+                  Outcome.Invalid(_),
+                  next =>
+                    Outcome.Valid(
+                      NodeHeaderState.Byron(
+                        next,
+                        previous.pendingShelley,
+                        Some(ByronTip(header.hash, header.epoch, header.slot, header.boundary)),
+                        Some(header.blockNo)
+                      )
                     )
-                  )
-              )
-      case _ => Outcome.Invalid(HeaderError.Structure(HeaderStructureProblem.MissingByronLedger))
+                )
+            )
+      case _ => Prepared.Invalid(HeaderError.Structure(HeaderStructureProblem.MissingByronLedger))
 
   private def enterShelley(
       anchor: S,
       tip: Option[BlockRef],
       previous: NodeHeaderState.Byron,
       header: Header.Shelley
-  ): Outcome[NodeHeaderState] =
+  ): Prepared[NodeHeaderState] =
     val current = anchor.consensus.byron
     val entry = NodeRules.entry(current, header, config, globals, byron)
     val translated = for
@@ -263,9 +269,9 @@ final class GenesisHeaderRules[S](
     yield result
     translated match
       case Left(_: BlockFailure.TransitionUndecided) =>
-        Outcome.Later(ForecastReason.ShelleyLedgerNotReady)
+        Prepared.Unknown(ForecastReason.ShelleyLedgerNotReady)
       case Left(error) =>
-        Outcome.Invalid(HeaderError.Structure(HeaderStructureProblem.Transition(error)))
+        Prepared.Invalid(HeaderError.Structure(HeaderStructureProblem.Transition(error)))
       case Right((first, cfg, glob, ledger @ InEra.Of(_, view))) =>
         val parent = previous.previous.map(p =>
           BlockRef(p.slot, p.hash, previous.previousBlockNo.orElse(tip.map(_.blockNo)).getOrElse(0))
@@ -285,7 +291,7 @@ final class GenesisHeaderRules[S](
           case _ => previous.pendingShelley
         wrap(
           NodeHeaderRules[S](cfg, glob)
-            .shelley(
+            .prepareShelley(
               anchor,
               view,
               tip,

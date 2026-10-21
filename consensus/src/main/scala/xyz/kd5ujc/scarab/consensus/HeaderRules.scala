@@ -31,10 +31,41 @@ object HeaderRules:
     case Unknown(reason: ForecastReason)
     case Invalid(error: HeaderError)
 
+  /** A forecast ledger view is captured before resuming the patience bucket; header predicates and
+    * cryptographic verification run afterwards (`ChainSync/Client.hs` 1881–1889).
+    */
+  enum Prepared[+H]:
+    case Check(run: () => Outcome[H])
+    case Unknown(reason: ForecastReason)
+    case Invalid(error: HeaderError)
+
+    def result: Outcome[H] = this match
+      case Check(run)      => run()
+      case Unknown(reason) => Outcome.Later(reason)
+      case Invalid(error)  => Outcome.Invalid(error)
+
+    def map[J](f: H => J): Prepared[J] = this match
+      case Check(run) =>
+        Check(() =>
+          run() match
+            case Outcome.Valid(next)             => Outcome.Valid(f(next))
+            case Outcome.Invalid(error)          => Outcome.Invalid(error)
+            case Outcome.Later(reason)           => Outcome.Later(reason)
+            case Outcome.Unchecked(reason, next) => Outcome.Unchecked(reason, next.map(f))
+        )
+      case Unknown(reason) => Unknown(reason)
+      case Invalid(error)  => Invalid(error)
+
   /** The reference time query uses the same intersection ledger as header validation. */
   trait Timing[S, H]:
     def tiebreaker(anchor: S): ChainSelection.Tiebreaker
     def forecastTime(anchor: S, tip: Option[BlockRef], previous: H, header: Header): TimeForecast
+    def prepareValidation(
+        anchor: S,
+        tip: Option[BlockRef],
+        previous: H,
+        header: Header
+    ): Prepared[H]
 
   enum ForecastReason:
     case ShelleyLedgerNotReady

@@ -138,6 +138,15 @@ object HeaderClock:
     def start(intersection: ChainSync.Point): F[HeaderGate[F]] =
       inner.start(intersection).map(gate => new Gated[F](clock, gate, skew, patience))
 
+    override def capture(using cats.Applicative[F]): F[Option[HeaderCheck.Captured[F]]] =
+      inner.capture.map(
+        _.map(captured =>
+          captured.copy(start =
+            point => captured.start(point).map(gate => new Gated[F](clock, gate, skew, patience))
+          )
+        )
+      )
+
   private final class Gated[F[_]: Temporal](
       clock: SlotClock[F],
       inner: HeaderGate[F],
@@ -146,6 +155,13 @@ object HeaderClock:
   ) extends HeaderGate[F]:
     def counts = inner.counts
 
+    override def canonicalTiming: Boolean = inner.canonicalTiming
+
+    override def prepareHeader(
+        header: xyz.kd5ujc.scarab.ledger.Header
+    )(using cats.Applicative[F], Raise[F, PeerError]): F[HeaderGate.Acceptance] =
+      inner.prepareHeader(header)
+
     override def forecastTime(header: xyz.kd5ujc.scarab.ledger.Header)(using
         cats.Applicative[F]
     ): F[Option[HeaderGate.TimeForecast]] = inner.forecastTime(header)
@@ -153,15 +169,25 @@ object HeaderClock:
     override def snapshot(using cats.Applicative[F]): F[Option[HeaderChain[NodeHeaderState]]] =
       inner.snapshot
 
-    override def graft(snapshot: HeaderChain[NodeHeaderState], point: ChainSync.Point)(using
+    override def intersectionSelection(using
         cats.Applicative[F]
-    ): F[Either[HeaderCheck.GraftError, Unit]] = inner.graft(snapshot, point)
+    ): F[Option[xyz.kd5ujc.scarab.consensus.ChainSelection.Local]] = inner.intersectionSelection
+
+    override def graft(
+        snapshot: HeaderChain[NodeHeaderState],
+        point: ChainSync.Point,
+        selection: xyz.kd5ujc.scarab.consensus.ChainSelection.Local
+    )(using
+        cats.Applicative[F]
+    ): F[Either[HeaderCheck.GraftError, Unit]] = inner.graft(snapshot, point, selection)
 
     def accept(batch: Vector[SyncEvent])(using Raise[F, PeerError]): F[Unit] =
       eligible(batch).flatMap {
         case HeaderGate.Acceptance.Accepted => inner.accept(batch)
         case HeaderGate.Acceptance.Restart(point) =>
           PeerError.Diverged(PeerError.Divergence.DetachedCandidate(point)).raise[F, Unit]
+        case HeaderGate.Acceptance.End(point) =>
+          PeerError.RolledBackPastIntersection(point).raise[F, Unit]
       }
 
     override def acceptOrRestart(batch: Vector[SyncEvent])(using
@@ -178,7 +204,7 @@ object HeaderClock:
       val headers = batch.collect { case SyncEvent.RollForward(h, _) => h }
       headers.headOption.fold(Temporal[F].pure(HeaderGate.Acceptance.Accepted)) { first =>
         clock.now.flatMap { arrival =>
-          inner.forecastTime(first).flatMap {
+          val checkTime = inner.forecastTime(first).flatMap {
             case None => legacyEligible(batch).as(HeaderGate.Acceptance.Accepted)
             case Some(initial) =>
               Temporal[F].tailRecM((0, Option(initial))) { (index, cached) =>
@@ -217,14 +243,12 @@ object HeaderClock:
                             case HeaderEligibility.FarFuture(error) =>
                               PeerError.InvalidHeader(header.point, error).raise[F, Unit]
                             case HeaderEligibility.WaitUntil(until) =>
-                              val wait = HeaderClock.until(clock, until)
-                              patience.fold(wait)(p =>
-                                (p.setPaused(LimitOnPatience.PauseReason.HeaderTime, true) *> wait)
-                                  .guarantee(
-                                    p.setPaused(LimitOnPatience.PauseReason.HeaderTime, false)
-                                  )
-                              )
-                        check.as(Left((index + 1, None)))
+                              val wait = HeaderClock.delayOnce(clock, until)
+                              wait
+                        check *> inner.prepareHeader(header).map {
+                          case HeaderGate.Acceptance.Accepted => Left((index + 1, None))
+                          case restart                        => Right(restart)
+                        }
                       case None =>
                         PeerError
                           .Protocol(PeerError.ProtocolProblem.HeaderValidationDidNotSettle)
@@ -236,6 +260,12 @@ object HeaderClock:
                   }
               }
           }
+          if inner.canonicalTiming then
+            patience.fold(checkTime)(p =>
+              (p.setPaused(LimitOnPatience.PauseReason.HeaderTime, true) *> checkTime)
+                .guarantee(p.setPaused(LimitOnPatience.PauseReason.HeaderTime, false))
+            )
+          else checkTime
         }
       }
 
@@ -246,7 +276,13 @@ object HeaderClock:
         for
           arrival <- clock.now
           geometry <- clock.geometry
-          verdicts = headers.map(h => h -> HeaderEligibility.judge(geometry, h.slot, arrival, skew))
+          verdicts = headers.map { h =>
+            val known = h match
+              case _: xyz.kd5ujc.scarab.ledger.Header.Byron =>
+                geometry.copy(byron = geometry.byron.copy(derived = false))
+              case _ => geometry
+            h -> HeaderEligibility.judge(known, h.slot, arrival, skew)
+          }
           _ <- verdicts
             .collectFirst { case (h, HeaderEligibility.FarFuture(e)) => h -> e }
             .traverse_ { case (h, e) =>
@@ -263,6 +299,16 @@ object HeaderClock:
               )
             )
         yield ()
+
+  /** Native `handleHeaderArrival` samples wall time once, then delays once (InFutureCheck.hs
+    * 160–176); a wall-clock step during that delay does not schedule another wait.
+    */
+  private[node] def delayOnce[F[_]: Temporal](clock: SlotClock[F], onset: Instant): F[Unit] =
+    clock.now.flatMap { now =>
+      val remaining = java.time.Duration.between(now, onset)
+      if remaining.isNegative || remaining.isZero then Temporal[F].unit
+      else Temporal[F].sleep(remaining.toNanos.nanos)
+    }
 
   /** Sleep (on the monotonic clock) until the wall clock reaches `onset`. The wall clock is read
     * again after each sleep, so a clock that stepped back is waited out and one that stepped

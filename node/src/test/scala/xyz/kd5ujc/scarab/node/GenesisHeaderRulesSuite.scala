@@ -175,3 +175,31 @@ class GenesisHeaderRulesSuite extends FunSuite:
       )
     )
   }
+
+  test("configured checkpoint hashes apply to every original header family before crypto") {
+    val c = eras
+    c.blocks.indices.foreach { i =>
+      val header = c.blocks(i).header
+      val anchor = c.states(i)
+      val tip = c.blocks.take(i).lastOption.map(b => ref(b.header))
+      val wrong = Bytes(Vector.fill(32)(42.toByte))
+      val configured = new GenesisHeaderRules[MirrorState](
+        c.setup.praos.copy(checkpoints =
+          xyz.kd5ujc.scarab.consensus.HeaderCheckpoints(Map(header.blockNo -> wrong))
+        ),
+        c.setup.globals,
+        c.setup.byronRules,
+        c.setup.handOver
+      )
+      assertEquals(
+        configured.validate(anchor, tip, configured.at(anchor), header),
+        HeaderRules.Outcome.Invalid(
+          HeaderError.Envelope(
+            xyz.kd5ujc.scarab.ledger.EnvelopeError
+              .CheckpointMismatch(header.blockNo, wrong, header.hash)
+          )
+        ),
+        s"header $i (${header.era})"
+      )
+    }
+  }

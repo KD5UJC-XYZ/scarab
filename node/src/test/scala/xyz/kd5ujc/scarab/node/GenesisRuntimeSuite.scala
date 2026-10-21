@@ -38,11 +38,16 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
     (8, 0),
     Bytes.empty
   )
-  private def gate(history: HeaderChain[NodeHeaderState]): HeaderGate[IO] = new HeaderGate[IO]:
+  private def gate(
+      history: HeaderChain[NodeHeaderState],
+      selected: ChainSelection.Local = local
+  ): HeaderGate[IO] = new HeaderGate[IO]:
     def accept(batch: Vector[SyncEvent])(using Raise[IO, PeerError]): IO[Unit] = IO.unit
     def counts: IO[HeaderGate.Counts] = IO.pure(HeaderGate.Counts(0, 0, 0))
     override def snapshot(using Applicative[IO]): IO[Option[HeaderChain[NodeHeaderState]]] =
       IO.pure(Some(history))
+    override def intersectionSelection(using Applicative[IO]): IO[Option[ChainSelection.Local]] =
+      IO.pure(Some(selected))
   private def setup(
       settings: GenesisSettings = GenesisSettings(),
       changed: IO[Unit] = IO.unit,
@@ -322,7 +327,7 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
           runtime.session(2, ChainSync.Point.Origin, _ => IO.unit, _ => IO.unit)
         ).tupled.use { (first, second) =>
           for
-            _ <- first.control.observed(gate(history), SyncEvent.RollForward(two, tip))
+            _ <- first.control.observed(gate(history, selected), SyncEvent.RollForward(two, tip))
             _ <- first.received(SyncEvent.RollForward(header(3), tip))
             instruction <- second.control.next
             _ <- IO(instruction match
@@ -355,7 +360,14 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
           def counts: IO[HeaderGate.Counts] = IO.pure(HeaderGate.Counts(0, 0, 0))
           override def snapshot(using Applicative[IO]): IO[Option[HeaderChain[NodeHeaderState]]] =
             installed.get.map(Some(_))
-          override def graft(source: HeaderChain[NodeHeaderState], point: ChainSync.Point)(using
+          override def intersectionSelection(using
+              Applicative[IO]
+          ): IO[Option[ChainSelection.Local]] = IO.pure(Some(local))
+          override def graft(
+              source: HeaderChain[NodeHeaderState],
+              point: ChainSync.Point,
+              @scala.annotation.unused selected: ChainSelection.Local
+          )(using
               Applicative[IO]
           ): IO[Either[HeaderCheck.GraftError, Unit]] =
             if source.tipPoint == point then installed.set(source).as(Right(()))
@@ -471,6 +483,8 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
           Vector(HeaderChain.Entry(one, Some(state)))
         )
         val atTwo = atOne.copy(entries = atOne.entries :+ HeaderChain.Entry(two, Some(state)))
+        val selectedAtOne =
+          local.copy(blocks = Vector(ChainSelection.LocalBlock(one.point, SelectView.of(one))))
         val cutoff = NodeGenesisHistory.DefaultCutoffPicos
         val secondPicos = BigInt(10).pow(12)
         val arrival = cutoff + secondPicos + 1
@@ -483,7 +497,7 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
           runtime <- GenesisRuntime.create[IO](
             governor,
             GenesisSettings(enableCSJ = csjEnabled),
-            IO.pure(local),
+            IO.pure(selectedAtOne),
             IO.pure(geometry),
             IO.pure(arrival),
             IO.unit
@@ -492,9 +506,12 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
             .session(1, ChainSync.Point.Origin, e => failures.update(_ :+ e), _ => IO.unit)
             .use { bound =>
               for
-                _ <- bound.control.restarted(one.point, gate(atOne))
+                _ <- bound.control.restarted(one.point, gate(atOne, selectedAtOne))
                 _ <- bound.control.next
-                _ <- bound.control.observed(gate(atTwo), SyncEvent.RollForward(two, tip))
+                _ <- bound.control.observed(
+                  gate(atTwo, selectedAtOne),
+                  SyncEvent.RollForward(two, tip)
+                )
                 _ <- bound.observer.awaitReply.background.use { _ =>
                   IO.sleep(1.millis) *> failures.get.flatMap { seen =>
                     IO(

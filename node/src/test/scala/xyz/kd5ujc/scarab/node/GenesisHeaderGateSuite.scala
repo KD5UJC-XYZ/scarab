@@ -41,6 +41,15 @@ class GenesisHeaderGateSuite extends FailsOnUncaught:
     new HeaderRules[BigInt, NodeHeaderState] with HeaderRules.Timing[BigInt, NodeHeaderState]:
       def tiebreaker(@unused anchor: BigInt): ChainSelection.Tiebreaker =
         ChainSelection.Tiebreaker.Unrestricted
+      def prepareValidation(
+          anchor: BigInt,
+          tip: Option[BlockRef],
+          previous: NodeHeaderState,
+          header: Header
+      ): HeaderRules.Prepared[NodeHeaderState] =
+        if header.blockNo > anchor + horizon then
+          HeaderRules.Prepared.Unknown(HeaderRules.ForecastReason.Horizon(header.slot, anchor))
+        else HeaderRules.Prepared.Check(() => validate(anchor, tip, previous, header))
       def forecastTime(
           anchor: BigInt,
           @unused tip: Option[BlockRef],
@@ -96,7 +105,8 @@ class GenesisHeaderGateSuite extends FailsOnUncaught:
       original <- gate.snapshot
       snapshot <- IO.fromOption(original)(new AssertionError("canonical snapshot missing"))
       _ <- IO(assertEquals(snapshot.points, ChainSync.Point.Origin +: headers.take(4).map(_.point)))
-      result <- gate.graft(snapshot, headers(1).point)
+      local <- summon[Ask[IO, ChainSelection.Local]].ask[ChainSelection.Local]
+      result <- gate.graft(snapshot, headers(1).point, local)
       _ <- IO(assertEquals(result, Right(())))
       restored <- gate.snapshot
       _ <- IO {
@@ -113,11 +123,11 @@ class GenesisHeaderGateSuite extends FailsOnUncaught:
       counts <- gate.counts
       _ <- IO(assertEquals(counts, HeaderGate.Counts(1, 0, 0)))
       missing = Fixtures.chain(1, salt = 9).head.point
-      refused <- gate.graft(snapshot, missing)
+      refused <- gate.graft(snapshot, missing, local)
       _ <- IO(assertEquals(refused, Left(HeaderCheck.GraftError.MissingPoint(missing))))
-      noState <- gate.graft(snapshot.copy(baseState = None), snapshot.base)
+      noState <- gate.graft(snapshot.copy(baseState = None), snapshot.base, local)
       _ <- IO(assertEquals(noState, Left(HeaderCheck.GraftError.MissingState(snapshot.base))))
-      noView <- gate.graft(snapshot.copy(baseView = None), snapshot.base)
+      noView <- gate.graft(snapshot.copy(baseView = None), snapshot.base, local)
       _ <- IO(assertEquals(noView, Left(HeaderCheck.GraftError.MissingSelection(snapshot.base))))
     yield ()
   }
@@ -221,4 +231,71 @@ class GenesisHeaderGateSuite extends FailsOnUncaught:
         )
       yield ()
     }
+  }
+
+  test(
+    "FindIntersect uses the fragment and exact selection views captured before the local chain switches forks"
+  ) {
+    val offered = Fixtures.chain(5)
+    val replacement = Fixtures.chain(5, salt = 19)
+    for
+      original <- chain(offered.take(4), 50)
+      state <- Ref.of[IO, VolatileChain[BigInt]](original)
+      given Stateful[IO, VolatileChain[BigInt]] = RefStateful(state)
+      given Ask[IO, ChainSelection.Local] = selected(state, offered ++ replacement)
+      check = HeaderCheck.forGenesisChain[IO, BigInt](model(100), Compute.inline[IO], 100)
+      captured <- check.capture.flatMap(c =>
+        IO.fromOption(c)(new AssertionError("missing canonical capture"))
+      )
+      _ = assertEquals(
+        captured.points,
+        offered.take(4).reverse.map(_.point) :+ ChainSync.Point.Origin
+      )
+      switched <- chain(replacement.take(4), 50)
+      _ <- state.set(switched)
+      gate <- captured.start(offered(1).point)
+      snapshot <- gate.snapshot.flatMap(c =>
+        IO.fromOption(c)(new AssertionError("missing snapshot"))
+      )
+      _ = assertEquals(snapshot.points, ChainSync.Point.Origin +: offered.take(2).map(_.point))
+      _ = assertEquals(snapshot.baseView.map(_.value), Some(SelectView.of(offered(1))))
+      _ = assert(snapshot.prefix.forall(_.view.nonEmpty))
+      capturedSelection <- gate.intersectionSelection
+      _ = assert(capturedSelection.exists(_.contains(offered(3).point)))
+      _ = assert(!capturedSelection.exists(_.contains(replacement(3).point)))
+      accepted <- Fault.fiber(
+        gate.acceptOrRestart(Vector(SyncEvent.RollForward(offered(2), ChainSync.Tip.Origin)))
+      )
+      _ = assertEquals(accepted, Right(HeaderGate.Acceptance.Accepted))
+      refreshed <- gate.intersectionSelection
+      _ = assert(refreshed.exists(_.contains(replacement(3).point)))
+    yield ()
+  }
+
+  test(
+    "rollback outside the captured candidate ends normally even if the new local fork contains it"
+  ) {
+    val offered = Fixtures.chain(5)
+    val replacement = Fixtures.chain(5, salt = 19)
+    for
+      original <- chain(offered.take(4), 50)
+      state <- Ref.of[IO, VolatileChain[BigInt]](original)
+      given Stateful[IO, VolatileChain[BigInt]] = RefStateful(state)
+      given Ask[IO, ChainSelection.Local] = selected(state, offered ++ replacement)
+      check = HeaderCheck.forGenesisChain[IO, BigInt](model(100), Compute.inline[IO], 100)
+      captured <- check.capture.flatMap(c =>
+        IO.fromOption(c)(new AssertionError("missing canonical capture"))
+      )
+      switched <- chain(replacement.take(4), 50)
+      _ <- state.set(switched)
+      gate <- captured.start(offered(1).point)
+      outcome <- Fault.fiber(
+        gate.acceptOrRestart(
+          Vector(SyncEvent.RollBackward(replacement(1).point, ChainSync.Tip.Origin))
+        )
+      )
+      _ = assertEquals(outcome, Right(HeaderGate.Acceptance.End(replacement(1).point)))
+      snapshot <- gate.snapshot
+      _ = assertEquals(snapshot.map(_.tipPoint), Some(offered(1).point))
+    yield ()
   }

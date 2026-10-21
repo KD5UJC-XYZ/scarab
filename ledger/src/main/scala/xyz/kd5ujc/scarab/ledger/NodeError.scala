@@ -34,6 +34,9 @@ enum PeerError extends NodeError:
   /** The peer's chain shares no point with ours (it is behind, or on another network). */
   case NoIntersection
 
+  /** Native normal ChainSync termination after draining (`Client.hs` 1555–1585). */
+  case RolledBackPastIntersection(point: ChainSync.Point)
+
   /** The peer's chain and ours part ways in a way that is nobody's fault: it rolled back beyond
     * what we keep, or our chain moved on so that its candidate no longer joins it. The session
     * starts again; the peer did nothing wrong.
@@ -49,14 +52,16 @@ enum PeerError extends NodeError:
   case InvalidBlock(error: ValidationError)
 
   def message: String = this match
-    case Handshake(r)        => s"handshake: ${r.message}"
-    case Protocol(r)         => s"protocol: ${PeerError.protocolMessage(r)}"
-    case Framing(e)          => s"protocol: multiplexer framing: ${e.message}"
-    case MuxSetup(e)         => s"multiplexer setup: ${e.message}"
-    case MuxWrite(e)         => s"multiplexer write: ${e.message}"
-    case Unavailable(r)      => s"unavailable: ${r.message}"
-    case Genesis(cause)      => s"Genesis: ${cause.message}"
-    case NoIntersection      => "the peer's chain shares no point with ours"
+    case Handshake(r)   => s"handshake: ${r.message}"
+    case Protocol(r)    => s"protocol: ${PeerError.protocolMessage(r)}"
+    case Framing(e)     => s"protocol: multiplexer framing: ${e.message}"
+    case MuxSetup(e)    => s"multiplexer setup: ${e.message}"
+    case MuxWrite(e)    => s"multiplexer write: ${e.message}"
+    case Unavailable(r) => s"unavailable: ${r.message}"
+    case Genesis(cause) => s"Genesis: ${cause.message}"
+    case NoIntersection => "the peer's chain shares no point with ours"
+    case RolledBackPastIntersection(point) =>
+      s"the peer rolled back beyond the captured intersection fragment to ${Points.show(point)}"
     case Diverged(r)         => s"diverged: ${r.message}"
     case InvalidHeader(p, e) => s"invalid header ${Points.show(p)}: ${e.message}"
     case InvalidBlock(e)     => s"invalid block ${e.message}"
@@ -76,7 +81,11 @@ object PeerError:
         cutoffPicos: BigInt
     )
     case LoPExpired, DensityTooLow
-    case CandidateTooSparse(intersection: ChainSync.Point, ourTip: ChainSync.Point, theirTip: ChainSync.Point)
+    case CandidateTooSparse(
+        intersection: ChainSync.Point,
+        ourTip: ChainSync.Point,
+        theirTip: ChainSync.Point
+    )
     case InvalidJumpResponse(requested: ChainSync.Point, actual: Option[ChainSync.Point])
     def message: String = this match
       case HistoricalAwait(point, slot, arrival, cutoff) =>
@@ -146,8 +155,9 @@ enum GenesisInternalProblem extends NodeError:
     case MissingDynamoJumpInfo => "Genesis dynamo has no validated jump snapshot"
     case UnexpectedIntersection =>
       "Genesis jumper with a settled intersection received another jump result"
-    case UnsupportedHeaderFamily => "Genesis requires a header gate supporting typed snapshot grafts"
-    case MissingSharedBlockPool => "Genesis requires the shared block pool"
+    case UnsupportedHeaderFamily =>
+      "Genesis requires a header gate supporting typed snapshot grafts"
+    case MissingSharedBlockPool   => "Genesis requires the shared block pool"
     case GraftMissingPoint(point) => s"Genesis jump snapshot lacks ${Points.show(point)}"
     case HeaderSelectionUnavailable(point) =>
       s"Genesis validated header lacks a selection view at ${Points.show(point)}"
