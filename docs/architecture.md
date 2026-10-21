@@ -738,7 +738,12 @@ volatile chain. Without `--db` only the volatile chain can be served.
 the invariant is that they apply in order to the ledger state at the tip through the real
 the ledger's `Ledger` rule (`ledger/rules/Ledger.scala`: phase 1, phase 2 and the Conway rules). `add` validates against the state after all held
 transactions, so a transaction may spend the output of one before it. Rejections are typed
-(`Malformed`, `AlreadyHeld`, `Ledger(failure)`, `Full`) and returned as values. `sync(ledger, slot)`
+(`Malformed`, `AlreadyHeld`, `Ledger(failure)`, `Full`) and returned as values. `add` takes the
+`Source` of the transaction, as the reference's `WhetherToIntervene`: a transaction from a local client
+(`Local`) is validated as received, one from a peer (`Remote`, TxSubmission2) is validated with
+`is_valid` forced to true and, when only that flag is wrong because a script fails, held with
+`is_valid` false (the submitter loses the collateral); its relayed bytes are then the received ones with
+the flag byte changed ([IN-80](implementer-notes.md)). `sync(ledger, slot)`
 runs on every new tip, rollback or fork switch, keeps what still applies and reports the rest;
 transactions that a block contains leave as adopted. Before the transaction rules, `add` applies the
 ledger's MEMPOOL rule: a transaction none of whose inputs is unspent is refused with that alone

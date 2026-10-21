@@ -803,6 +803,16 @@ are the ones most in need of a second reading.
 - **Suggested upstream action:** ouroboros-leios / Blueprint: state whether padding bits and identity points are a decode failure or only a verification failure.
 - **Status:** observed
 
+### IN-80 Mempool: a transaction from a peer is held with the `is_valid` flag its scripts call for
+
+- **Era:** Alonzo onwards (seen in Conway)
+- **Specification or CDDL says:** A transaction carries an `is_valid` flag that the submitter sets; the ledger rules refuse the transaction when the flag disagrees with the outcome of its scripts (`ValidationTagMismatch`).
+- **Implementation does:** The reference mempool treats the two submission paths differently (`Mempool/Update.hs` `implAddTx`: a local client is `Intervene`, a remote peer `DoNotIntervene`). For a remote transaction, `applyAlonzoBasedTx` (`Shelley/Eras.hs`) validates it with the flag forced to true; if the only failure is that tag mismatch, it applies the transaction again with the flag false and keeps that result (the submitter loses the collateral). A remote transaction claiming false whose scripts pass is therefore held as valid. A local transaction is validated as received and a wrong flag is refused. The mempool relays and forges `[body, witnesses, flag, auxiliary_data]` with the original bytes of the three parts and a freshly encoded flag: the flag is not part of the transaction id, and a block carries it only as an index in `invalid_transactions`.
+- **Evidence:** Source reading only (ouroboros-consensus `82ecba329d7d054340bf707d44fe6e9ac27cec40`; the ledger as of tag `cardano-ledger-conway-1.23.0.0`, exact patch not resolved). Scarab replays the four recorded `raw-dst` cases of `fixtures/reference/plutus-boundaries` through both paths.
+- **Pinned by:** [`MempoolInterventionSuite`](../node/src/test/scala/xyz/kd5ujc/scarab/node/mempool/MempoolInterventionSuite.scala).
+- **Suggested upstream action:** None. The consensus documentation of `WhetherToIntervene` could name the collateral consequence for a remote flag.
+- **Status:** confirmed in source
+
 ## Part C: index
 
 | ID | Title | Era | Status | Evidence |
@@ -886,6 +896,7 @@ are the ones most in need of a second reading.
 | [IN-77](#in-77-scalus-serialisedata-constructor-index-and-a-nesting-limit-in-the-encoder) | Scalus: `serialiseData` constructor index, and a nesting limit in the encoder | Plutus V2 onwards | confirmed in source | preprod slot 80,239,053 |
 | [IN-78](#in-78-leios-the-cip-dijkstracddl-the-blueprint-and-the-rust-specification-disagree) | Leios: the CIP, `dijkstra.cddl`, the Blueprint and the Rust specification disagree | Dijkstra (Leios, proposed) | observed | design note, section 2 and 4 |
 | [IN-79](#in-79-leios-bls-signer-bitfield-padding-bits-and-identity-points) | Leios: BLS signer bitfield padding bits and identity points | Dijkstra (Leios, proposed) | observed | design note, section 9 |
+| [IN-80](#in-80-mempool-a-transaction-from-a-peer-is-held-with-the-is_valid-flag-its-scripts-call-for) | Mempool: a transaction from a peer is held with the `is_valid` flag its scripts call for | Alonzo onwards | confirmed in source | none (read from source) |
 
 ## Related pages
 
