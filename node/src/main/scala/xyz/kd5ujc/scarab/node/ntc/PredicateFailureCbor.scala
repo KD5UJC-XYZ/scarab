@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.node.ntc
 
 import cats.Order
+import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.state.{ProtVer, ShelleyBasedEra}
@@ -16,6 +17,8 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
   Versions,
   Wire
 }
+
+import ContextFailureCbor.ContextEra
 
 /** The ledger's predicate-failure CBOR (`EncCBOR` of `ConwayLedgerPredFailure` and the rules it
   * nests), which `cardano-cli transaction submit` decodes to render a rejection.
@@ -68,8 +71,10 @@ object PredicateFailureCbor:
 
   private def utxowInConway(u: UtxowFailure): Boolean = u match
     case UtxowFailure.MIRInsufficientGenesisSigs(_) => false
+    case UtxowFailure.MissingRedeemers(ps) =>
+      ps.forall((purpose, _) => conwayPurpose(purpose).isDefined)
     case UtxowFailure.Utxo(UtxoFailure.Utxos(UtxosFailure.CollectErrors(errors))) =>
-      ContextFailureCbor.utxos(errors).isDefined
+      ContextFailureCbor.utxos(ContextEra.Conway, errors).isDefined
     case UtxowFailure.Utxo(UtxoFailure.ExpiredUTxO(_) | UtxoFailure.Update(_)) =>
       false
     case _ => true
@@ -215,10 +220,15 @@ object PredicateFailureCbor:
     case UtxowFailure.InvalidMetadata               => w.array(1).uint(8)
     case UtxowFailure.ExtraneousScriptWitnesses(hs) => w.array(2).uint(9); hashSet(w, hs)
     case UtxowFailure.MissingRedeemers(ps) =>
-      w.array(2).uint(10)
-      list(w, ps) { case (k, (purpose, script)) =>
-        k.array(2); item(k, purpose); k.bytes(script)
-      }
+      ps.toVector
+        .traverse((purpose, script) => conwayPurpose(purpose).map(_ -> script))
+        .fold(notInConway(w)) { entries =>
+          w.array(2).uint(10)
+          list(w, entries) { case (k, (purpose, script)) =>
+            k.array(2); k.raw(purpose); k.bytes(script)
+          }
+          ()
+        }
     case UtxowFailure.MissingRequiredDatums(missing, received) =>
       w.array(3).uint(11); hashSet(w, missing); hashSet(w, received)
     case UtxowFailure.NotAllowedSupplementalDatums(unallowed, acceptable) =>
@@ -235,7 +245,9 @@ object PredicateFailureCbor:
     case UtxowFailure.MIRInsufficientGenesisSigs(_) => notInConway(w)
 
   /** A Plutus purpose as the ledger names it with the item it applies to (`PlutusPurpose AsItem`):
-    * `[tag, item]`. A certifying purpose carries the certificate, which is not re-encoded here.
+    * `[tag, item]`. The certifying purpose is the exception: its item is the Conway certificate,
+    * which [[ContextFailureCbor.purpose]] writes, so no caller reaches the certifying arm below
+    * (`conwayPurpose` routes it there). The arm is kept only because the match is total.
     */
   private[ntc] def item(w: W, p: Purpose): Unit = p match
     case Purpose.Spending(_, input, _)  => w.array(2).uint(0); txIn(w, input)
@@ -244,6 +256,11 @@ object PredicateFailureCbor:
     case Purpose.Rewarding(_, account)  => w.array(2).uint(3); rewardAccount(w, account)
     case Purpose.Voting(_, v)           => w.array(2).uint(4); voter(w, v)
     case Purpose.Proposing(_, proposal) => w.array(2).uint(5); proposalProcedure(w, proposal)
+
+  /** The Conway `[tag, item]` of a purpose, or None when its certificate has no encoding. */
+  private def conwayPurpose(p: Purpose): Option[Bytes] = p match
+    case Purpose.Certifying(_, _) => ContextFailureCbor.purpose(ContextEra.Conway, p)
+    case other                    => Some(CborOut.build(item(_, other)))
 
   // ---- UTXO
 
@@ -310,7 +327,11 @@ object PredicateFailureCbor:
               .bytes(PlutusFailureCbor.reconstruction(failure))
           }
     case UtxosFailure.CollectErrors(errors) =>
-      ContextFailureCbor.utxos(errors).fold(notInConway(w))(raw => { w.raw(raw); () })
+      ContextFailureCbor
+        .utxos(ContextEra.Conway, errors)
+        .fold(notInConway(w))(raw => {
+          w.raw(raw); ()
+        })
 
   // ---- CERTS, CERT, DELEG, POOL, GOVCERT
 

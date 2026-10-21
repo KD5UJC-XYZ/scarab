@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.node.ntc
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as CborValue}
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.TestLedger.out
+import xyz.kd5ujc.scarab.plutus.PlutusLanguage
 import xyz.kd5ujc.scarab.protocol.Era
 import munit.FunSuite
 
@@ -228,7 +229,7 @@ class PreConwayFailureCborSuite extends FunSuite:
     )
   }
 
-  test("Alonzo: the failures of a script that could not be set up have no encoding here") {
+  test("Alonzo: a setup fault with no reference constructor has no encoding here") {
     assertEquals(
       reason(
         Era.Alonzo,
@@ -382,4 +383,156 @@ class PreConwayFailureCborSuite extends FunSuite:
               assertEquals(index.value, CborValue.UInt(BigInt(era.index)), s"$era $f")
             case other => fail(s"$era $f: $other")
         case other => fail(s"$era $f: $other")
+  }
+
+  // ---- Collect errors and missing redeemers with certifying purposes (Alonzo, Babbage)
+  //
+  // Hand-derived from the pinned instances (see the header of ContextFailureCbor): a purpose is
+  // [tag, item] with the bare certificate (Alonzo/Scripts.hs:370-397, AsItem), the certificate is
+  // ShelleyTxCert (Shelley/TxCert.hs:420-435). A script credential is [1, hash]. The reference
+  // node's own bytes for the certifying missing redeemers, NoRedeemer and the Babbage translation
+  // faults are in PlutusFailureReferenceSuite (recorded by the e2e load); the cases below that it
+  // does not cover (NoWitness, NoCostModel, Alonzo's unresolved input) stay hand-derived.
+
+  private val scriptHash = hex("cc" * 28)
+  private val s = scriptHash.hex
+  private val pool = hex("dd" * 28)
+  private val unregistration = Certificate.Unregister(Credential.Script(scriptHash), None)
+  private val script = "581c" + s
+  // a script credential as the reference writes it: [1, hash]
+  private val scriptCredential = "8201" + script
+  // the certificate [1 UnRegCert, credential] and the purpose [2 Certifying, certificate]
+  private val unregisteredCert = "8201" + scriptCredential
+  private val certifyingPurpose = "8202" + unregisteredCert
+  // a missing redeemer entry: [purpose, script hash]
+  private val missingEntry = "82" + certifyingPurpose + script
+
+  private def collectErrors(error: CollectError): UtxoFailure =
+    UtxoFailure.Utxos(
+      UtxosFailure.CollectErrors(cats.data.NonEmptyVector.one(error))
+    )
+
+  test("Alonzo: a missing redeemer of a script-required unregistration carries the certificate") {
+    // [4 era, [[0 LEDGER UTXOW, [1 MissingRedeemers, [[purpose, script]]]]]] in the failure list
+    assertEquals(
+      reason(
+        Era.Alonzo,
+        PredicateFailure.utxow(
+          UtxowFailure.MissingRedeemers(Vector(Purpose.Certifying(0, unregistration) -> scriptHash))
+        )
+      ),
+      Some("81" + "8204" + "81" + "8200" + "8201" + "81" + missingEntry)
+    )
+  }
+
+  test("Babbage: the missing redeemer is Alonzo's, held at UTXOW tag 1") {
+    // [5 era, [[0 LEDGER UTXOW, [1 Babbage: Alonzo's, [1 MissingRedeemers, [[purpose, script]]]]]]]
+    assertEquals(
+      reason(
+        Era.Babbage,
+        PredicateFailure.utxow(
+          UtxowFailure.MissingRedeemers(Vector(Purpose.Certifying(0, unregistration) -> scriptHash))
+        )
+      ),
+      Some("81" + "8205" + "81" + "8200" + "8201" + "8201" + "81" + missingEntry)
+    )
+  }
+
+  test("Alonzo: a delegation by a script credential is [2, credential, pool]") {
+    val delegation = Certificate.Delegate(Credential.Script(scriptHash), Some(pool), None, None)
+    // the purpose [2, [2 DelegCert (a 3-element list), credential, pool]]
+    val purpose = "8202" + "83" + "02" + scriptCredential + "581c" + pool.hex
+    assertEquals(
+      reason(
+        Era.Alonzo,
+        PredicateFailure.utxow(
+          UtxowFailure.MissingRedeemers(Vector(Purpose.Certifying(0, delegation) -> scriptHash))
+        )
+      ),
+      Some("81" + "8204" + "81" + "8200" + "8201" + "81" + "82" + purpose + script)
+    )
+  }
+
+  test("Alonzo: a certificate no script can name in a purpose has no encoding") {
+    // the reference names only a script credential's unregistration and delegation
+    // (getScriptWitnessShelleyTxCert, Shelley/TxCert.hs:577-586)
+    val keyUnregistration = Certificate.Unregister(Credential.Key(keyHash), None)
+    assertEquals(
+      reason(
+        Era.Alonzo,
+        PredicateFailure.utxow(
+          UtxowFailure.MissingRedeemers(
+            Vector(Purpose.Certifying(0, keyUnregistration) -> scriptHash)
+          )
+        )
+      ),
+      None
+    )
+  }
+
+  test("Alonzo: NoRedeemer names the certifying purpose: UTXOS 1 under UTXO 7, under UTXOW 4") {
+    // [0 LEDGER UTXOW, [0 Shelley UTXOW, [4 UTXO, [7 UTXOS, [1, [[0 NoRedeemer, purpose]]]]]]]
+    val utxo = "8207" + "8201" + "81" + "8200" + certifyingPurpose
+    assertEquals(
+      reason(
+        Era.Alonzo,
+        PredicateFailure.utxo(
+          collectErrors(
+            CollectError.NoRedeemer(
+              Purpose.Certifying(0, unregistration)
+            )
+          )
+        )
+      ),
+      Some("81" + "8204" + "81" + "8200" + "8200" + "8204" + utxo)
+    )
+  }
+
+  test("Alonzo: NoWitness is tag 1 with the script hash; NoCostModel is tag 2 with the language") {
+    assertEquals(
+      reason(Era.Alonzo, PredicateFailure.utxo(collectErrors(CollectError.NoWitness(scriptHash)))),
+      Some(
+        "81" + "8204" + "81" + "8200" + "8200" + "8204" + "8207" + "8201" + "81" + "8201" + script
+      )
+    )
+    // NoCostModel: [2, language], the language as its enum index (PlutusV1 = 0, encodeEnum)
+    assertEquals(
+      reason(
+        Era.Alonzo,
+        PredicateFailure.utxo(collectErrors(CollectError.NoCostModel(PlutusLanguage.V1)))
+      ),
+      Some("81" + "8204" + "81" + "8200" + "8200" + "8204" + "8207" + "8201" + "81" + "8202" + "00")
+    )
+  }
+
+  test("Alonzo: a translation that misses an input is ContextError 1 under BadTranslation 3") {
+    val input = TxIn(Bytes(keyHash.value ++ keyHash.value.take(4)), 0)
+    // TxIn is the list [transaction id, index]: 82, 5820 id, 00
+    val txIn = "82" + "5820" + input.id.hex + "00"
+    assertEquals(
+      reason(
+        Era.Alonzo,
+        PredicateFailure.utxo(
+          collectErrors(CollectError.BadTranslation(TranslationError.UnresolvedInput(input)))
+        )
+      ),
+      // [3 BadTranslation, [1 TranslationLogicMissingInput, txIn]]
+      Some(
+        "81" + "8204" + "81" + "8200" + "8200" + "8204" + "8207" + "8201" + "81" + "8203" + "8201" + txIn
+      )
+    )
+  }
+
+  test("Babbage: the collect errors are UTXO 1 (Alonzo's) under UTXO 7 (UTXOS)") {
+    // [5 era, [[0 LEDGER UTXOW, [2 Babbage UTXO, [1 Alonzo's, [7 UTXOS, [1, [[0, purpose]]]]]]]]]
+    val utxo = "8202" + "8201" + "8207" + "8201" + "81" + "8200" + certifyingPurpose
+    assertEquals(
+      reason(
+        Era.Babbage,
+        PredicateFailure.utxo(
+          collectErrors(CollectError.NoRedeemer(Purpose.Certifying(0, unregistration)))
+        )
+      ),
+      Some("81" + "8205" + "81" + "8200" + utxo)
+    )
   }

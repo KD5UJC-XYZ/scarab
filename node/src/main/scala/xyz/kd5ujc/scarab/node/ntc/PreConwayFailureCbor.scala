@@ -8,6 +8,7 @@ import xyz.kd5ujc.scarab.ledger.state.{ProtVer, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.haskell.state.{NodeOrders, Versions}
 
+import ContextFailureCbor.ContextEra
 import PredicateFailureCbor.*
 
 /** The predicate-failure CBOR of the eras from Shelley to Babbage (`EncCBOR` of
@@ -40,7 +41,12 @@ import PredicateFailureCbor.*
   * failures the rules raise. Against the reference's own answers (`PreConwayFailureReferenceSuite`,
   * recorded from the `e2e` scenario) those of Shelley, Allegra, Mary and Alonzo for a small output,
   * a large value and the MIR checks are byte-equal; the other tags and all of Babbage's are read
-  * from the instances (`PreConwayFailureCborSuite`).
+  * from the instances (`PreConwayFailureCborSuite`). The Plutus and witness failures of Alonzo and
+  * Babbage that `erarefusal.py` provokes (missing redeemers with certificates, the `NoRedeemer` and
+  * translation collect errors of [[ContextFailureCbor]], the integrity hash, the datum and redeemer
+  * checks, a missing key witness, a small output) are byte-equal to the node's answers, Babbage's
+  * at protocol version 7 (`PlutusFailureReferenceSuite`); Babbage's `ContextError` payloads are
+  * also byte-equal to the reference's matrix rows (`ContextMatrixSuite`).
   */
 object PreConwayFailureCbor:
   import NodeOrders.given
@@ -88,7 +94,7 @@ object PreConwayFailureCbor:
     failures.traverse(ledger(shelleyUtxow(allegraUtxo), _))
 
   private def alonzo(failures: Vector[PredicateFailure])(using ProtVer): Option[Vector[Enc]] =
-    failures.traverse(ledger(alonzoUtxow(alonzoUtxo), _))
+    failures.traverse(ledger(alonzoUtxow(ContextEra.Alonzo, alonzoUtxo(ContextEra.Alonzo)), _))
 
   private def babbage(failures: Vector[PredicateFailure])(using ProtVer): Option[Vector[Enc]] =
     failures.traverse(ledger(babbageUtxow, _))
@@ -147,20 +153,23 @@ object PreConwayFailureCbor:
       None
 
   /** `AlonzoUtxowPredFailure`: the Shelley constructors at 0 (the UTXO failure inside them is the
-    * era's), then Alonzo's own.
+    * era's), then Alonzo's own. A missing redeemer names its purposes as [[ContextFailureCbor]]
+    * writes them, a certifying one with its certificate; a purpose with no encoding in the era
+    * (voting and proposing) leaves the failure without one.
     */
-  private def alonzoUtxow(utxo: UtxoFailure => Option[Enc])(u: UtxowFailure)(using
+  private def alonzoUtxow(era: ContextEra, utxo: UtxoFailure => Option[Enc])(u: UtxowFailure)(using
       ProtVer
   ): Option[Enc] = u match
     case UtxowFailure.MissingRedeemers(ps) =>
-      // a certifying purpose carries the certificate, which is not written here
-      Option.when(ps.forall(p => alonzoPurpose(p._1)))(
-        sum(1)(w =>
-          list(w, ps) { case (k, (purpose, script)) =>
-            k.array(2); item(k, purpose); k.bytes(script)
-          }
+      ps.toVector
+        .traverse((purpose, script) => ContextFailureCbor.purpose(era, purpose).map(_ -> script))
+        .map(entries =>
+          sum(1)(w =>
+            list(w, entries) { case (k, (raw, script)) =>
+              k.array(2); k.raw(raw); k.bytes(script)
+            }
+          )
         )
-      )
     case UtxowFailure.MissingRequiredDatums(missing, received) =>
       Some(sum(2)(hashSet(_, missing), hashSet(_, received)))
     case UtxowFailure.NotAllowedSupplementalDatums(unallowed, acceptable) =>
@@ -181,17 +190,12 @@ object PreConwayFailureCbor:
         UtxowFailure.ExtraneousScriptWitnesses(_)) =>
       shelleyUtxow(utxo)(shelley).map(e => sum(0)(e))
 
-  /** The purposes of Alonzo's `PlutusPurpose`: spending, minting and withdrawing. */
-  private def alonzoPurpose(p: Purpose): Boolean = p match
-    case Purpose.Spending(_, _, _) | Purpose.Minting(_, _) | Purpose.Rewarding(_, _) => true
-    case Purpose.Certifying(_, _) | Purpose.Voting(_, _) | Purpose.Proposing(_, _)   => false
-
   /** `BabbageUtxowPredFailure`: Alonzo's at 1, UTXO at 2, the malformed scripts at 3 and 4. */
   private def babbageUtxow(u: UtxowFailure)(using ProtVer): Option[Enc] = u match
     case UtxowFailure.Utxo(f)                       => babbageUtxo(f).map(e => sum(2)(e))
     case UtxowFailure.MalformedScriptWitnesses(hs)  => Some(sum(3)(hashSet(_, hs)))
     case UtxowFailure.MalformedReferenceScripts(hs) => Some(sum(4)(hashSet(_, hs)))
-    case other => alonzoUtxow(babbageUtxo)(other).map(e => sum(1)(e))
+    case other => alonzoUtxow(ContextEra.Babbage, babbageUtxo)(other).map(e => sum(1)(e))
 
   // ---- UTXO
 
@@ -241,8 +245,10 @@ object PreConwayFailureCbor:
     maybe(w, notBefore)((k, s) => k.uint(s))
     maybe(w, before)((k, s) => k.uint(s))
 
-  /** `AlonzoUtxoPredFailure`; PPUP is under UTXOS (`Alonzo/Rules/Utxos.hs:351-356`). */
-  private def alonzoUtxo(f: UtxoFailure)(using ProtVer): Option[Enc] = f match
+  /** `AlonzoUtxoPredFailure`; PPUP is under UTXOS (`Alonzo/Rules/Utxos.hs:351-356`), and the
+    * `CollectErrors` of UTXOS are written with the era's collect errors ([[ContextFailureCbor]]).
+    */
+  private def alonzoUtxo(era: ContextEra)(f: UtxoFailure)(using ProtVer): Option[Enc] = f match
     case UtxoFailure.BadInputs(ins) => Some(sum(0)(set(_, ins)(txIn)))
     case UtxoFailure.OutsideValidityInterval(notBefore, before, slot) =>
       Some(sum(1)(validityInterval(notBefore, before), _.uint(slot)))
@@ -254,7 +260,8 @@ object PreConwayFailureCbor:
     case UtxoFailure.Utxos(u) =>
       u match
         case UtxosFailure.ValidationTagMismatch(_, _) => Some(sum(7)(w => utxos(w, u)))
-        case UtxosFailure.CollectErrors(_)            => None
+        case UtxosFailure.CollectErrors(errors) =>
+          ContextFailureCbor.utxos(era, errors).map(raw => sum(7)(w => { w.raw(raw); () }))
     case UtxoFailure.Update(p) => Some(sum(7)(sum(2)(ppup(p))))
     case UtxoFailure.WrongNetwork(expected, addresses) =>
       Some(sum(8)(_.uint(expected), set(_, addresses)((k, a) => k.bytes(a))))
@@ -295,7 +302,7 @@ object PreConwayFailureCbor:
         )
       )
     case UtxoFailure.BabbageNonDisjointRefInputs(ins) => Some(sum(4)(w => list(w, ins)(txIn)))
-    case other                                        => alonzoUtxo(other).map(e => sum(1)(e))
+    case other => alonzoUtxo(ContextEra.Babbage)(other).map(e => sum(1)(e))
 
   // ---- PPUP
 

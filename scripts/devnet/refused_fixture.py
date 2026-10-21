@@ -35,7 +35,21 @@ def build(run_dir):
     return lines
 
 
+RAW_PLUTUS_OUT = REPO / "fixtures" / "devnet" / "refused-raw-plutus.jsonl"
+
+
+def raw_plutus_fixture(args):
+    """The raw reasons `erarefusal` kept in an `e2e` run, as they were recorded (one line per refused case)."""
+    rows = read(data_root(args.name) / "refused-raw-plutus.jsonl")
+    out = pathlib.Path(RAW_PLUTUS_OUT if args.out == str(DEFAULT_OUT) else args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in rows))
+    print(json.dumps({"written": str(out), "lines": len(rows)}))
+
+
 def refused_fixture(args):
+    if args.raw_plutus:
+        return raw_plutus_fixture(args)
     out = pathlib.Path(args.out)
     lines = build(data_root(args.name))
     kinds = {}

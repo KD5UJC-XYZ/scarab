@@ -260,6 +260,9 @@ def main():
     rf = sub.add_parser("refused-fixture", help="write fixtures/devnet/refused-txs.jsonl from the run directory of a "
                                                 "`soak --governance-extended`")
     rf.add_argument("--out", default=str(DEFAULT_OUT), help="fixture file")
+    rf.add_argument("--raw-plutus", action="store_true",
+                    help="instead write fixtures/devnet/refused-raw-plutus.jsonl (the raw reasons of `e2e`'s Plutus and "
+                         "witness refusals) from the run directory of a finished `e2e`")
     rf.set_defaults(run=refused_fixture)
     rs = sub.add_parser("restart", parents=[scala_options],
                         help="up + follow --db, SIGTERM (must exit within 30 s), follow --db again (must restore the snapshot)")

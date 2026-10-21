@@ -101,6 +101,7 @@ class EraLoad:
         self.era_first = {}
         self.plutus_evidence = []
         self.auxiliary_evidence = []
+        self.refusal_evidence = []
 
     # ------------------------------------------------------------ reference plumbing
     def sh(self, script, stdin=None, timeout=60):
@@ -198,7 +199,8 @@ class EraLoad:
     def act(self, era, label, wallet, outputs=(), certs=None, withdrawals=None, deposit=0, refund=0, mint=None,
             extra_signers=(), native_scripts=(), valid_from=None, ttl=None, spend_extra=(), metadata=None,
             aux_scripts=(), collateral=None, required_signers=None, reference_inputs=None, network_id=None,
-            collateral_return=None, total_collateral=None, avoid=(), fee=FEE, expect_reject=None, record=None, **build):
+            collateral_return=None, total_collateral=None, avoid=(), fee=FEE, expect_reject=None, record=None, refusal=None,
+            **build):
         """Spend from `wallet` (largest ADA-only output plus any `spend_extra` inputs), pay `outputs`
         ((address, coin, assets, kwargs) tuples), send the change back to the wallet, sign, submit and
         wait for the confirmation. Returns the transaction id, or None."""
@@ -261,6 +263,11 @@ class EraLoad:
                 total_collateral=total_collateral, **build)
         except Exception as e:  # a bug in a scenario must not stop the cluster walk
             self.log({"buildFailed": label, "error": repr(e)})
+            return None
+        if refusal is not None:
+            # the reference's raw refusal is kept for the failure encodings; nothing is expected of its text
+            from .erarefusal import record as record_refusal
+            record_refusal(self, era, tx, label)
             return None
         if expect_reject is not None and not isinstance(expect_reject, str):
             # governance scenarios: a list of predicate-failure names, the refused bytes are kept for replay
@@ -1009,6 +1016,12 @@ class EraLoad:
         if era in ("alonzo", "babbage", "conway") and self.once(f"auxiliary-plutus-{era}"):
             from .eraauxiliary import exercise
             exercise(self, era)
+        if era in ("alonzo", "babbage", "conway") and self.once(f"refusals-{era}"):
+            from .erarefusal import exercise
+            try:
+                exercise(self, era)
+            except Exception as e:  # evidence only: a failed capture must not stop the cluster walk
+                self.log({"refusalsFailed": era, "error": repr(e)})
         self.transfers(era, 2)
         if era != "conway":  # the ledger-state layout the withdrawals read is the pre-Conway one
             self.withdrawals(era)

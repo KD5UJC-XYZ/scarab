@@ -79,11 +79,16 @@ class ContextMatrixSuite extends FunSuite:
             case CollectError.BadTranslation(_) => "BadTranslation"
           }
           assertEquals(kinds, field[Vector[String]](expected, "failureKinds"))
-          if era == Era.Conway then
-            val reference = CborOut.build(w =>
-              w.array(2).uint(1).raw(hex(field[String](expected, "collectErrorsCbor")))
-            )
-            assertEquals(ContextFailureCbor.utxos(errors), Some(reference))
+          // every refused collection of the matrix retains the reference's CollectError list
+          val reference = CborOut.build(w =>
+            w.array(2).uint(1).raw(hex(field[String](expected, "collectErrorsCbor")))
+          )
+          val contextEra = era match
+            case Era.Alonzo  => ContextFailureCbor.ContextEra.Alonzo
+            case Era.Babbage => ContextFailureCbor.ContextEra.Babbage
+            case Era.Conway  => ContextFailureCbor.ContextEra.Conway
+            case other       => fail(s"no context era for $other")
+          assertEquals(ContextFailureCbor.utxos(contextEra, errors), Some(reference))
         case Right(requests) =>
           val expectedRequests = field[Vector[Json]](expected, "scripts")
           assertEquals(requests.size, expectedRequests.size)

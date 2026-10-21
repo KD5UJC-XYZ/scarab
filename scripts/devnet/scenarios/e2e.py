@@ -268,6 +268,7 @@ def e2e(args):
             summary["loadEvidence"] = loader.evidence
             summary["legacyPlutus"] = loader.plutus_evidence
             summary["auxiliaryPlutus"] = loader.auxiliary_evidence
+            summary["refusals"] = loader.refusal_evidence
         summary["failures"] = failures
         summary["passed"] = not failures
         root.mkdir(parents=True, exist_ok=True)

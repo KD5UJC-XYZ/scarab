@@ -126,6 +126,7 @@
     "fixtures/devnet/lsq/genesis/shelley-genesis.json": "5b91c0b96f9644a4dd446f91d95944a411e15b9d61262cdba6124470a0dce706",
     "fixtures/devnet/lsq/golden.json": "3140be49b1889e00266772826bfe5e0c5c843a541dd73844721b1382b86e7c68",
     "fixtures/devnet/refused-raw-eras.jsonl": "14e8fb9ba012d4db8a29c25fc655fc56297ed35e9dce8f5b372a4f2221fe58a9",
+    "fixtures/devnet/refused-raw-plutus.jsonl": "f6a7739d067554c1d01894626c24ac60c05cce9a6bb69cc1a715a001fd41c8ce",
     "fixtures/devnet/refused-txs.jsonl": "69aeafb755cde09c6e70dba76a70a8e84939d7a0cd0df7b94b7a770c4a5b015c",
     "fixtures/eras/blocks.hex": "ce887fd208cefdd27bc6c987ba997d2a3c1feafb05ce908011882588293a0c0f",
     "fixtures/eras/eras.json": "1dd8937ba66e365cb9108bc6283577ca2f11e8d32eec2f73cf50e43e08ef0401",
