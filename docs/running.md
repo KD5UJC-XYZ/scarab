@@ -1655,6 +1655,14 @@ CPU-starvation warnings than that (otherwise they are only reported: `cpuStarvat
 the longest CPU-bound step the node measured). `pool --scala-cpus 1` is the check that the forger's slot
 clock holds with one CPU (roadmap D8).
 
+`--consensus-mode GenesisMode` on `follow`, `restart`, `relay` or `soak` selects Genesis
+for Scarab using a separate run-local configuration and a topology naming only that
+run's controlled reference pools as trustable local roots. The reference pools keep
+their original configuration. Restart retains the explicit mode on both starts;
+soak passes it to its follower. `PraosMode` explicitly selects Praos; omitting the
+option retains the harness's existing configuration. See the [Genesis design](design/genesis.md)
+for the reference contracts and acceptance gates.
+
 `--oracle` (on `e2e` and `soak`) makes the follower write a state digest at every epoch boundary and ends the run with the db-analyser comparison described under "Ledger state against the Haskell node"; `devnet.py oracle` repeats that comparison on a cluster that is still up.
 
 Building blocks (also runnable on their own): `up` (start the 3-pool cluster), `up-eras [--epoch-length 500 --active-slots-coeff 0.2 --byron-epochs 1 --byron-slot-ms 1000 --stall-seconds 90 --shelley-epochs 1 --min-utxo-value 0 --pool-margin 0 --cross-rewards]`, `capture-eras [--out fixtures/eras --conway-blocks 3]`, `sample-chain-dep --out FILE [--interval 0.8 --spacing 100 --until-epoch 9]` (run next to `up-eras`: acquires the reference node's volatile tip once per poll and records its DebugChainDepState answer with the era, epoch and tip point of that same acquire; `assemble-chain-dep --points FILE --out DIR` then keeps the points whose block is in a `capture-eras --out DIR` chain, as `fixtures/chain-dep`), `tip [--node N]`, `follow [--seconds N] [--node N]`, `load [--seconds N --wallets 10 --stakers 4 ...]`, `govload [--seconds N]`, `compare`, `down`.
