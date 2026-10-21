@@ -40,9 +40,9 @@ object MirrorRefusal:
   * the version of its era. The UTxO is not in the answer (the reference answers `map(0)` there, its
   * entries live in the tables of the ledger), as it is not in the state file.
   *
-  * What the node cannot give is the [[xyz.kd5ujc.scarab.ledger.state.Gap]]s of the mirror: the
-  * answer differs from the reference's only inside them, and the ones the devnet comparison masks
-  * are listed in `scripts/devnet/gapmask.py`.
+  * Historical incompleteness is carried by the state's provenance. It does not alter these native
+  * answers or permit comparison exclusions: the devnet compares every received byte and reports
+  * differences, including differences caused by unavailable imported history.
   */
 object MirrorAnswers:
   /** The ledger state of the era the chain is in (a Shelley-based one: Byron has no new-epoch

@@ -126,15 +126,16 @@ object MirrorStep:
               (
                 vocab(SlotNo.fromBigInt(header.slot)),
                 vocab(BlockNo.fromBigInt(header.blockNo)),
-                vocab(Hash32.fromBytes(header.hash))
-              ).tupled.map { (slot, blockNo, hash) =>
+                vocab(Hash32.fromBytes(header.hash)),
+                transition(m, placement.geometry, header.slot)
+              ).tupled.map { (slot, blockNo, hash, counter) =>
                 (
                   EraNes.eraOf(n.era),
                   EraLedgerState.inEra[e](
                     ShelleyLedgerState[e](
                       WithOrigin.At(ShelleyTip(slot, blockNo, hash)),
                       n.nes,
-                      ShelleyTransition(Word32.fromUnsigned(0)),
+                      counter,
                       None
                     )
                   )(using n.era),
@@ -152,8 +153,60 @@ object MirrorStep:
           MirrorExtras.InShelley(
             ledgerExtras.copy(plutus = plutus),
             consensus.copy(protocol = protocol.extras)
-          )
+          ),
+          provenanceAfter(m, placement.geometry, era, header.slot, start.epoch)
         )
+
+  /** Consensus `Shelley/Ledger/Ledger.hs:568-575,713-741` (82ecba3): reset at a new epoch, then
+    * increment at/after the voting deadline. `subSlots` saturates at zero. Native `succ` throws on
+    * Word32 overflow; this pure boundary reports a typed refusal instead of an uncaught exception.
+    * Across-Shelley translation preserves the counter (`Cardano/CanHardFork.hs:704`); Byron enters
+    * with zero (:360).
+    */
+  private[state] def afterVoting(
+      geometry: EpochGeometry,
+      slot: BigInt,
+      previousEpoch: Option[BigInt],
+      previous: Word32
+  ): Either[StateMirrorError, Word32] =
+    val epoch = geometry.epochOf(slot)
+    val before = if previousEpoch.contains(epoch) then previous.bits else 0
+    val deadline = (geometry.firstSlot(epoch + 1) - 2 * geometry.stabilityWindow).max(0)
+    if slot >= deadline && before == -1 then Left(StateMirrorError.TransitionCounterOverflow)
+    else Right(Word32.fromUnsigned(if slot >= deadline then before + 1 else before))
+
+  private def transition(
+      m: MirrorState,
+      geometry: EpochGeometry,
+      slot: BigInt
+  ): Either[StateMirrorError, ShelleyTransition] =
+    val previous = m.ext.ledgerState.state match
+      case EraLedgerState.ByronCurrent(_) => None
+      case i: EraLedgerState.InShelleyEra[e] =>
+        i.state.tip match
+          case WithOrigin.Origin => None
+          case WithOrigin.At(tip) =>
+            Some(geometry.epochOf(tip.slot.toBigInt) -> i.state.transition.afterVoting)
+    afterVoting(geometry, slot, previous.map(_._1), previous.fold(Word32.fromUnsigned(0))(_._2))
+      .map(ShelleyTransition(_))
+
+  private def provenanceAfter(
+      m: MirrorState,
+      geometry: EpochGeometry,
+      era: Era,
+      slot: BigInt,
+      entered: BigInt
+  ): MirrorProvenance =
+    val previousEpoch = nesOf(m).map { case i: EraNes.InEra[e] =>
+      i.nes.epoch.toBigInt
+    }
+    val epoch = geometry.epochOf(slot)
+    val next = if previousEpoch.exists(_ < epoch) then m.provenance.epochBoundary else m.provenance
+    if era == m.ext.ledgerState.era then next
+    else
+      Era.values.iterator
+        .filter(e => e.index > m.ext.ledgerState.era.index && e.index <= era.index)
+        .foldLeft(next)((p, e) => p.entered(e, entered))
 
   /** The mirror of a chain that has just left Byron, with the first Shelley block applied: the
     * hand-over's state `nes` (of Shelley, at the epoch the chain entered it) and the
@@ -206,7 +259,8 @@ object MirrorStep:
                 m.ext.headerState.chainDep.withState(ChainDepState.PBft(byron.pbft))
               )
             ),
-            MirrorExtras.InByron(pending, boot, protocol)
+            MirrorExtras.InByron(pending, boot, protocol),
+            m.provenance
           )
         }
 

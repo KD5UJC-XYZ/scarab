@@ -1,0 +1,6 @@
+*
+!scripts/
+!scripts/oracle/
+!scripts/oracle/remaining-predicates/
+!scripts/oracle/remaining-predicates/Pool.hs
+!scripts/oracle/remaining-predicates/Outputs.hs

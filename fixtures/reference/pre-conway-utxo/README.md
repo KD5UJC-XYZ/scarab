@@ -31,4 +31,6 @@ Scope: independent predicate execution, not complete Haskell UTXO/LEDGER admissi
 evaluation, or failure accumulation. The Scala validator retains its first-failure interface;
 the reference returns every predicate failure. Bootstrap address roots are deterministic public
 test data; no signing keys are retained. Before Shelley, Byron's output rule has a different
-attribute limit; the Shelley/Allegra/Mary bootstrap-attribute gap remains [F7/#141](https://github.com/KD5UJC-XYZ/scarab/issues/141).
+attribute limit. [F7/#141](https://github.com/KD5UJC-XYZ/scarab/issues/141) completes the
+Shelley/Allegra/Mary predicates with the separate
+[remaining-predicates corpus](../remaining-predicates/README.md).

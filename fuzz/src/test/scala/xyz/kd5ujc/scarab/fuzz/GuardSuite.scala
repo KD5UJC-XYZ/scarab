@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.fuzz
 
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
-import xyz.kd5ujc.scarab.ledger.Tx
+import xyz.kd5ujc.scarab.ledger.{Address, Certificate, Tx, TxBody}
 import xyz.kd5ujc.scarab.protocol.Era
 import munit.FunSuite
 
@@ -31,6 +31,32 @@ class GuardSuite extends FunSuite:
         assert(tx.body.inputs.nonEmpty, s"$era seed has no inputs")
         assert(tx.body.outputs.nonEmpty, s"$era seed has no outputs")
       }
+  }
+
+  test("every era's transaction-body corpus includes both sides of the pool metadata hash limit") {
+    for era <- Vector(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway) do
+      val sizes = Corpus
+        .txBodies(era)
+        .flatMap { raw =>
+          TxBody.decode(Bytes.fromArray(raw), Address.Mode.of(era)).toOption.toVector.flatMap {
+            _.certificates.collect { case Certificate.RegisterPool(p) => p }.flatMap { p =>
+              p.metadata.toVector.flatMap { encoded =>
+                Cbor
+                  .decode(encoded)
+                  .toOption
+                  .toVector
+                  .flatMap(_.value match
+                    case Value.Arr(Vector(_, hash)) =>
+                      hash.value match
+                        case Value.ByteString(bytes) => Vector(bytes.size)
+                        case _                       => Vector.empty
+                    case _ => Vector.empty)
+              }
+            }
+          }
+        }
+        .toSet
+      assert(sizes.contains(32) && sizes.contains(33), s"$era pool metadata fuzz seeds: $sizes")
   }
 
   test("every target accepts a seed from its corpus in this run") {

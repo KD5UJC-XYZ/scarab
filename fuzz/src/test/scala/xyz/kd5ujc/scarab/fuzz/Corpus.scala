@@ -101,7 +101,8 @@ object Corpus extends munit.Assertions:
   lazy val leiosBlocks: Vector[Array[Byte]] = leiosColumn("blocks.tsv", 5)
 
   def txBodies(era: Era): Vector[Array[Byte]] =
-    shelleyBlocks.filter(_.era == era).flatMap(_.transactions.map(_.body.toArray))
+    shelleyBlocks.filter(_.era == era).flatMap(_.transactions.map(_.body.toArray)) ++
+      lines("fixtures/reference/remaining-predicates/metadata-bodies.hex")
   def txWitnesses(era: Era): Vector[Array[Byte]] =
     shelleyBlocks.filter(_.era == era).flatMap(_.transactions.map(_.witnesses.toArray))
   def txAux(era: Era): Vector[Array[Byte]] =

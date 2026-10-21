@@ -115,8 +115,9 @@ class CompareTest(unittest.TestCase):
         self.assertEqual(compare.diff({"x": 1}, {"x": 1, "y": 2}), [])
         self.assertEqual(compare.diff({"x": 1, "y": 2}, {"x": 1}), [("/y", 2, "<absent>")])
 
-    def test_doubles_are_compared_to_ten_digits(self):
-        self.assertEqual(compare.diff({"d": 0.3333333333}, {"d": 0.33333333333333}), [])
+    def test_doubles_are_compared_without_a_rounding_tolerance(self):
+        self.assertEqual(compare.diff({"d": 0.3333333333}, {"d": 0.33333333333333}),
+                         [("/d", 0.3333333333, 0.33333333333333)])
         self.assertEqual(len(compare.diff({"d": 0.3}, {"d": 0.31})), 1)
 
 
@@ -134,7 +135,7 @@ class LedgerPiecesTest(unittest.TestCase):
     def test_rationals(self):
         self.assertEqual(ledger.ratio(Fraction(6, 8)), "3/4")
         self.assertEqual(ledger.ratio([1, 3]), "1/3")
-        self.assertEqual(ledger.double(Fraction(1, 3)), 0.3333333333)
+        self.assertEqual(ledger.double(Fraction(1, 3)), 0.3333333333333333)
 
     def test_anchor_encodings(self):
         a = ["https://x", bytes(32)]

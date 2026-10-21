@@ -471,6 +471,20 @@ object Pool extends Sts[CertEnv, PState, PoolCert, LedgerFailure]:
               )
             )
           )
+          // `Shelley/Rules/Pool.hs:245-250`: network, metadata hash, then minimum cost,
+          // before either registration or re-registration can change the pool state.
+          metadata <- Sts.lift[F, LedgerFailure, Option[Bytes]](
+            params.metadata
+              .traverse(PoolParams.metadataHash)
+              .leftMap(cause => LedgerFailure.Undecodable(id, TxDefect.PoolMetadata(cause)))
+          )
+          _ <- Refuse.unless[F](
+            !pp.restrictsPoolMetadataHash || metadata.forall(_.size <= 32),
+            id,
+            PredicateFailure.pool(
+              PoolFailure.PoolMedataHashTooBig(params.operator, metadata.fold(0)(_.size))
+            )
+          )
           _ <- Refuse.unless[F](
             params.cost >= pp.minPoolCost,
             id,

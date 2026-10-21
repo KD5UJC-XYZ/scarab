@@ -142,6 +142,10 @@ final case class ProtocolParams(
     */
   def validatesPoolRewardAccountNetwork: Boolean = protocolMajor > 4
 
+  /** `Shelley/SoftForks.hs:14` (f649f975): `pv > ProtVer 4 0`, including Mary 4.1. */
+  def restrictsPoolMetadataHash: Boolean = protocolMajor > 4 ||
+    (protocolMajor == 4 && protocolMinor > 0)
+
 object ProtocolParams:
   /** The parameters `changed` has over `base`, laid over `full`: field by field, the value of
     * `changed` where it differs from `base`, else the one of `full`. The Haskell `PParams` of an

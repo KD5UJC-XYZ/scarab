@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-10-20",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "referenceNode": "11.1.3 matching released ledger libraries; not the cardano-node process",
+  "compiler": "GHC 9.10.3",
+  "image": "sha256:aa7e2d96e9f15eb8556f9b6a2685b0aaf3a22608ed1299821f7a7edc4c491847",
+  "network": "none",
+  "sourceFiles": [
+    {
+      "package": "cardano-ledger-shelley",
+      "version": "1.19.0.1",
+      "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Pool.hs",
+      "sha256": "f3cbf061736fa7e901f4ca2e1316c5b5a08e5a5d3c787d56995330e3b149450b",
+      "matchesPin": true
+    },
+    {
+      "package": "cardano-ledger-shelley",
+      "version": "1.19.0.1",
+      "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/SoftForks.hs",
+      "sha256": "884174c718131f327ddf92751af3bb9ca2539fef4315886f6baccbd47c478067",
+      "matchesPin": true
+    },
+    {
+      "package": "cardano-ledger-shelley",
+      "version": "1.19.0.1",
+      "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxo.hs",
+      "sha256": "bb7f5c9caae9ea4973666164d32e567099115f4e33ed46e6edafb4b5b7484eda",
+      "matchesPin": true
+    },
+    {
+      "package": "cardano-ledger-allegra",
+      "version": "1.10.1.0",
+      "file": "eras/allegra/impl/src/Cardano/Ledger/Allegra/Rules/Utxo.hs",
+      "sha256": "86896878f30b4879b01370f668068521cbac577904c02faab2a7a1052c187823",
+      "matchesPin": true
+    },
+    {
+      "package": "cardano-ledger-core",
+      "version": "1.21.0.0",
+      "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+      "sha256": "bf63493aff3bbea614698908595999e5c0b0b23a3c101a4c5bf735b243a0165e",
+      "matchesPin": true
+    }
+  ],
+  "ruleSourcePatched": false,
+  "poolTransitions": 43,
+  "poolAccepted": 32,
+  "poolRejected": 11,
+  "outputBodies": 36,
+  "independentOutputPredicateCalls": 72,
+  "failureAccumulation": "Native applySTS records all failures in reverse execution order; Scala returns the first predicate failure in source order.",
+  "scope": "Native POOL transitions; isolated native pre-Alonzo output predicates; Scala signed LEDGER admission additionally tested. No claim of complete native LEDGER admission.",
+  "files": {
+    "fixtures/reference/remaining-predicates/pool.json": "afc41b4a756b34bbda68b245c397041686033c6ab48dd4fd2f29a1f2c9c4dc7a",
+    "fixtures/reference/remaining-predicates/outputs.json": "e92a1ad9239729e382082e47c2a11c09d73efb115cad0ccbacd56f57a76bf4c2",
+    "fixtures/reference/remaining-predicates/metadata-bodies.hex": "8cd3c0a8693a022f1cb5cb558a6844a41a3d3df4ad0f9390f978471671a6e38e",
+    "scripts/oracle/remaining-predicates/Pool.hs": "331438eedf9d360cf47ab7e6170e03f33e70c86d36474db1f115459757cda680",
+    "scripts/oracle/remaining-predicates/Outputs.hs": "48fc1799bd4bc8f78a2159570fa7c7ae0b88d1d1f15237e821edbdc952befa25"
+  }
+}

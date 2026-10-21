@@ -1,0 +1,59 @@
+{
+  "schema": "scarab-native-wallet-peer-queries-v1",
+  "reference": "cardano-node 11.1.3",
+  "ledger": {
+    "commit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "shelley": "1.19.0.1",
+    "core": "1.21.0.0",
+    "conway": "1.23.0.0",
+    "sources": {
+      "eras/shelley/impl/src/Cardano/Ledger/Shelley/PoolRank.hs": "62f66ab3449f8e4bc9b2b6d5e6b8ef0aeeef23fb0a74ceae451034ec82d0a323",
+      "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Wallet.hs": "d42fa854eec33503a6a0a7aaacd6ee73849220151c121d0568f54dcfdda3b6c5"
+    }
+  },
+  "network": {
+    "commit": "c45735a56c567fa977969173d18943bac6bb3821",
+    "version": "1.2.0.0",
+    "sources": {
+      "Ouroboros/Network/Block.hs": "83e93f9be5a5bf30600c4d5257f8527bd06adc22d5f92bcc83165a479982a822",
+      "Ouroboros/Network/Point.hs": "008c89de1f0b8e3acdf72c98b11a731125b411d03292833b22ac29b16b6a0108",
+      "Ouroboros/Network/Magic.hs": "766010c9c775e5dfa4b5a1943ed4d2b2087f69e8dd4f23a8a0f0150b918233e6",
+      "Ouroboros/Network/Util/ShowProxy.hs": "1382497bc3d87521d1e6e0f56dc908c5697df05a6ff11bb7a47fd46397c7761b",
+      "Ouroboros/Network/PeerSelection/RelayAccessPoint.hs": "b7a21d3d86773ebe22b095f780aa6ec66436feb8bf98ac9a9fbdd7b09862148a",
+      "Ouroboros/Network/PeerSelection/LedgerPeers/Type.hs": "d9d86115570eac1f5f46bb49dffac1d3fadc1cdd486b5e42b055e9b7666e6b81",
+      "Ouroboros/Network/PeerSelection/LedgerPeers/Utils.hs": "572603e0a82627945b819bdc8adddb39539f8b3ac7d73252387dd0baa473b974"
+    }
+  },
+  "buildImages": {
+    "scarab-135-reward-oracle:local": "sha256:eb4d641e05d3da2a63bfa1e68ba870f9072db3fecc03afbb6c264614504ec872",
+    "scarab-v02-49-protocols-cache:peer-acceptance-20261019": "sha256:b9e81590371f7d1784b0e4a62eac7560e0da3498d8b1a6b791e50f6420ae15fb"
+  },
+  "observers": {
+    "scripts/oracle/wallet-queries/Main.hs": "b059eca837b52652b9caf8f97392632e11f7b13eb96c697c785e4d02a2f334c6",
+    "scripts/oracle/wallet-queries/PeerSnapshots.hs": "40f9e6bc99c4536f72b192864e43ab48674d0d7ecb980027c3aaee275d080732"
+  },
+  "fixtures": {
+    "answers.json": "fa20db59a6ae17b8f11a325915293359cbb337a8b900264be092024845f03e35",
+    "inputs.json": "8598f23859d5a94efba7816ab2e2753900057dbd2f9c6556b11dee36b79be4a3",
+    "peer-snapshots.hex": "03e2cf5fc40e0a557a1404d41578286c300ee843233cbd97ede4b9b1a4b68459"
+  },
+  "observations": {
+    "walletStates": 4,
+    "walletAnswerPairs": 16,
+    "peerSnapshotEncodings": 11
+  },
+  "controls": [
+    "missing likelihood history",
+    "zero reward pot",
+    "stable pool-id ranking cutoff",
+    "failed owner pledge",
+    "coin and unknown key/script requests",
+    "current stake differs from mark/set/go",
+    "native unbounded Coin encoder with a 2^80 pot",
+    "SRV filtering after quota",
+    "legacy result on modern transport",
+    "exact90-percent and crossing90-percent",
+    "origin and empty",
+    "IPv4 and IPv6"
+  ]
+}

@@ -16,8 +16,7 @@ import xyz.kd5ujc.scarab.protocol.Era
   *   the epochs in which the node saw each era begin where the configuration does not say
   *   ([[xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv.observed]]): the telescopes of the
   *   Haskell section were built with them, so the reader rebuilds them under the same ones. They
-  *   are empty after a restart, and then a later snapshot is built on the guesses of
-  *   `EraHistory.summary` (roadmap F1).
+  *   belong to the live state and survive restore, subsequent transitions and rewrites.
   * @param gaps
   *   the gaps the state was written with (`Gap`): what the Haskell section holds but the node does
   *   not compute, kept so that a later migration never invents data

@@ -344,3 +344,214 @@ class SnapshotV5Suite extends CatsEffectSuite:
       }
     }
   }
+
+  test("frozen V5 files retain their exact source gaps and observed eras on read and rewrite") {
+    recorded.traverse_ { (name, content, _) =>
+      val original = SnapshotV5.sidecarOf(content).fold(e => fail(e.message), identity)
+      for
+        back <- decoded(content)
+        _ = assertEquals(back.state.provenance.gaps, original.gaps, name)
+        _ = assertEquals(back.state.provenance.observed, original.observed, name)
+        again <- v5.encode(back).map(_.fold(r => fail(r.toString), identity))
+      yield assert(java.util.Arrays.equals(again, content), name)
+    }
+  }
+
+  test(
+    "complete and incomplete sources keep every gap across repeated V5 rewrites and conflicting environments"
+  ) {
+    import xyz.kd5ujc.scarab.consensus.state.MirrorProvenance
+    import xyz.kd5ujc.scarab.ledger.state.Gap
+    val all = Set(
+      Gap.NonMyopic,
+      Gap.RewardAttribution,
+      Gap.PendingPulsingUpdate,
+      Gap.NumDelegatorsLowerBound,
+      Gap.ShelleyTransition
+    )
+    val sources = Vector(Set.empty[Gap], all) ++ all.toVector.map(Set(_))
+    val seen = Map(Era.Shelley -> BigInt(71), Era.Mary -> BigInt(93))
+    val conflicting =
+      env.copy(observed = Map(Era.Shelley -> BigInt(999), Era.Conway -> BigInt(1000)))
+    val examples = accepted.groupBy(_._1).valuesIterator.map(_.head._2).toVector
+    examples.traverse_ { original =>
+      sources.traverse_ { gaps =>
+        val snapshot = original.copy(state =
+          original.state.copy(provenance = MirrorProvenance.recorded(gaps, seen))
+        )
+        (0 until 3).toList
+          .foldM(snapshot) { (current, _) =>
+            val raw = SnapshotV5.encoded(current).fold(r => fail(r.toString), identity)
+            val back = SnapshotV5.decode(conflicting, raw).fold(e => fail(e.message), identity)
+            val sidecar = SnapshotV5.sidecarOf(raw).fold(e => fail(e.message), identity)
+            assertEquals(back.state.provenance.gaps, gaps)
+            assertEquals(back.state.provenance.observed, seen)
+            assertEquals(sidecar.gaps, gaps)
+            assertEquals(sidecar.observed, seen)
+            IO.pure(back)
+          }
+          .void
+      }
+    }
+  }
+
+  test("rollback restores source provenance before healing and before later era observations") {
+    import xyz.kd5ujc.scarab.consensus.{Anchor, VolatileChain}
+    import xyz.kd5ujc.scarab.consensus.state.MirrorProvenance
+    import xyz.kd5ujc.scarab.ledger.state.Gap
+    val source = MirrorProvenance.recorded(
+      Set(Gap.NonMyopic, Gap.PendingPulsingUpdate, Gap.ShelleyTransition),
+      Map(Era.Shelley -> BigInt(0))
+    )
+    val entries = snapshots.take(2).zipWithIndex.map { case ((_, s), i) =>
+      val ref = s.anchor.getOrElse(fail("fixture block has no anchor"))
+      val provenance = if i == 0 then source else source.epochBoundary.entered(Era.Conway, 9)
+      ref -> s.state.copy(provenance = provenance)
+    }
+    val chain = VolatileChain(100, Anchor(None, setup.mirrorStart), entries)
+    val back = chain.rollback(entries.head._1.point).fold(e => fail(e.message), identity)
+    assertEquals(back.state.provenance, source)
+    assertEquals(chain.state.provenance.gaps, Set(Gap.NonMyopic))
+  }
+
+  test("closing and reopening the snapshot store preserves incomplete source diagnostics") {
+    import xyz.kd5ujc.scarab.consensus.state.MirrorProvenance
+    import xyz.kd5ujc.scarab.ledger.state.Gap
+    val original = snapshots.last._2
+    val provenance = MirrorProvenance.recorded(
+      Set(Gap.NonMyopic, Gap.RewardAttribution, Gap.NumDelegatorsLowerBound),
+      Map(Era.Shelley -> BigInt(0), Era.Conway -> BigInt(6))
+    )
+    val snapshot = original.copy(state = original.state.copy(provenance = provenance))
+    tempDir.use { dir =>
+      ok {
+        for
+          store <- FileLedgerSnapshots.open[IO, MirrorState](dir)
+          _ <- store.write(snapshot)
+          _ <- (0 until 3).toList.traverse_ { _ =>
+            for
+              reopened <- FileLedgerSnapshots.open[IO, MirrorState](dir)
+              restored <- reopened.restore(_ => IO.pure(true))
+              back = restored.snapshot.getOrElse(fail("the saved snapshot disappeared"))._2
+              _ = assertEquals(back.state.provenance.gaps, provenance.gaps)
+              _ = assertEquals(back.state.provenance.observed, provenance.observed)
+              _ <- reopened.write(back)
+            yield ()
+          }
+        yield ()
+      }
+    }
+  }
+
+  test(
+    "actual block transitions preserve incomplete history and heal only after replacement boundaries"
+  ) {
+    import xyz.kd5ujc.scarab.consensus.state.MirrorProvenance
+    import xyz.kd5ujc.scarab.ledger.state.Gap
+    val first = snapshots.indexWhere(_._1 == Era.Shelley)
+    assert(first >= 0)
+    val source = MirrorProvenance.recorded(
+      Set(
+        Gap.NonMyopic,
+        Gap.PendingPulsingUpdate,
+        Gap.NumDelegatorsLowerBound,
+        Gap.ShelleyTransition
+      ),
+      Map(Era.Shelley -> BigInt(77))
+    )
+    val start = snapshots(first)._2.state.copy(provenance = source)
+    val initialEpoch = start.ledgerEpoch
+    val history = ((first + 1) until blocks.size).foldLeft(Vector(start)) { (acc, i) =>
+      val next = MirrorSteps
+        .block(setup, acc.last, blocks(i).header, raws(i))
+        .fold(e => fail(e.reason), identity)
+      val boundaries = acc.sliding(2).count {
+        case Vector(a, b) => a.ledgerEpoch < b.ledgerEpoch
+        case _            => false
+      } + (if next.ledgerEpoch > acc.last.ledgerEpoch then 1 else 0)
+      assert(next.provenance.gaps.contains(Gap.NonMyopic))
+      assertEquals(next.provenance.observed.get(Era.Shelley), Some(BigInt(77)))
+      assertEquals(
+        next.provenance.gaps.contains(Gap.PendingPulsingUpdate),
+        next.ledgerEpoch == initialEpoch
+      )
+      assertEquals(
+        next.provenance.gaps.contains(Gap.ShelleyTransition),
+        next.ledgerEpoch == initialEpoch
+      )
+      assertEquals(next.provenance.gaps.contains(Gap.NumDelegatorsLowerBound), boundaries < 3)
+      acc :+ next
+    }
+    assert(history.last.ledgerEpoch > initialEpoch + 2, "capture must reach recovery boundaries")
+  }
+
+  test("the mirror projection preserves a same-epoch counter across a Shelley-era translation") {
+    import xyz.kd5ujc.scarab.consensus.state.{MirrorStep, Placement, ShelleyTransition, Word32}
+    import xyz.kd5ujc.scarab.ledger.Header
+    import xyz.kd5ujc.scarab.ledger.state.{SlotNo, WithOrigin}
+    val targetIndex = snapshots.indexWhere(_._1 == Era.Mary)
+    val previous = snapshots(targetIndex - 1)._2.state
+    val after = snapshots(targetIndex)._2.state
+    val header = blocks(targetIndex).header match
+      case h: Header.Shelley => h.copy(slot = h.slot + 1)
+      case _                 => fail("expected Shelley-based header")
+    val nes = xyz.kd5ujc.scarab.consensus.state.MirrorStep
+      .nesOf(after)
+      .getOrElse(fail("expected Shelley-based state"))
+    // Exercise only the pure consensus projection: an earlier era can end within the epoch
+    // whose previous block already contributed 41 to the counter. No block is decoded or signed.
+    val priorSlot = SlotNo.fromBigInt(header.slot - 1).fold(e => fail(e.toString), identity)
+    val before = previous.ext.ledgerState.state match
+      case i: EraLedgerState.InShelleyEra[e] =>
+        val tip = i.state.tip match
+          case WithOrigin.At(t)  => WithOrigin.At(t.copy(slot = priorSlot))
+          case WithOrigin.Origin => fail("expected previous tip")
+        val state = i.state.copy(tip = tip, transition = ShelleyTransition(Word32.fromUnsigned(41)))
+        previous.copy(ext =
+          previous.ext.copy(ledgerState =
+            previous.ext.ledgerState.withState(EraLedgerState.InShelleyEra(i.era, state))
+          )
+        )
+      case _ => fail("expected an earlier Shelley-based era")
+    val projected = MirrorStep
+      .block(
+        before,
+        Placement(setup.geometry, setup.byronHistory, setup.praos.forks),
+        header,
+        nes,
+        after.protocol,
+        after.consensus,
+        after.plutus
+      )
+      .fold(e => fail(e.toString), identity)
+    val epoch = setup.geometry.epochOf(header.slot)
+    val deadline = (setup.geometry.firstSlot(epoch + 1) - 2 * setup.geometry.stabilityWindow).max(0)
+    val expected = if header.slot >= deadline then 42L else 41L
+    projected.ext.ledgerState.state match
+      case i: EraLedgerState.InShelleyEra[e] =>
+        assertEquals(i.state.transition.afterVoting.toLong, expected)
+      case _ => fail("translation did not enter a Shelley-based era")
+    assertEquals(projected.era, Era.Mary)
+    val exhausted = before.ext.ledgerState.state match
+      case i: EraLedgerState.InShelleyEra[e] =>
+        val state = i.state.copy(transition = ShelleyTransition(Word32.fromUnsigned(-1)))
+        before.copy(ext =
+          before.ext.copy(ledgerState =
+            before.ext.ledgerState.withState(EraLedgerState.InShelleyEra(i.era, state))
+          )
+        )
+      case _ => fail("expected a Shelley-based state")
+    val lastSlot = header.copy(slot = setup.geometry.firstSlot(epoch + 1) - 1)
+    assertEquals(
+      MirrorStep.block(
+        exhausted,
+        Placement(setup.geometry, setup.byronHistory, setup.praos.forks),
+        lastSlot,
+        nes,
+        after.protocol,
+        after.consensus,
+        after.plutus
+      ),
+      Left(xyz.kd5ujc.scarab.consensus.state.StateMirrorError.TransitionCounterOverflow)
+    )
+  }

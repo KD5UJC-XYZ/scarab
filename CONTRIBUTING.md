@@ -143,6 +143,16 @@ Generic toy-format migration framework tests keep testing version transitions in
 the maintained native fixture corpus. Fixture conversion alone does not retire production readers
 or authorise an operational writer upgrade.
 
+## Conformance comparisons
+
+Original upstream cases must execute without Scarab-specific expected failures, masked fields or
+rounding tolerances. Historical non-conformance and ledger reachability are reasons to fix the
+implementation or match the upstream harness profile, not to omit a case. A specific JVM limitation
+requires a minimal reproducer, platform evidence, exact affected cases and a tracked removal
+condition. Missing implementations and missing fixtures make the relevant gate incomplete; they
+must not contribute a pass. Report environmental skips and projection coverage separately from
+conformance results.
+
 ## Gates and ceremony by level of change
 
 Thoroughness lives in two places: the gates a change passes before it lands, and the nightly CI,

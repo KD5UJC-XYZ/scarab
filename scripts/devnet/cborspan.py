@@ -1,9 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Where the items of a CBOR byte string are: spans, not values.
 
-The comparison of the two nodes' ledger-state answers masks the documented gaps and compares every other
-byte, so the items are located by their spans (start, end) in the original bytes. A span can be replaced
-by a placeholder; nothing outside it is decoded, re-encoded or normalised.
+Items are located by their spans (start, end) in the original bytes. Query framing
+can be inspected without decoding, re-encoding or normalising ledger fields.
 """
 
 BREAK = 0xFF

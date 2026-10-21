@@ -1,0 +1,63 @@
+{
+  "reference": {
+    "nodeVersion": "11.1.3",
+    "nodeRevision": "938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+    "ledgerSource": "4c81e909df7555b6a58a000db8f8f4f89c7acdc4",
+    "consensusSource": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+    "networkSource": "ouroboros-network-1.2.0.0",
+    "imageId": "sha256:63bb366ad306366653fd9dfb23e16cceadd1ab68de6556c1e761358a5364bb1e"
+  },
+  "cases": [
+    {
+      "name": "peer-relays",
+      "point": {
+        "slot": 29,
+        "hash": "ad1375e64ef2283be1ae9d745e22c3cf18f81e1629b41d5ca1eaea751b73887c"
+      },
+      "queries": 23,
+      "newEpochStateSha256": "797bf789df2be934841c74e610e7f5f26018813906a62a72c68a962cc71ea030",
+      "queriesSha256": "7b9e96741e30daa7219746b27e58761de2e4695722018d8da2434aa18f779298",
+      "genesisSha256": {
+        "alonzo-genesis.json": "4291b3e5fbcdd1f1daed9ab8f78e4d0181eb7eac4506e34c8aa0fecab6051f3b",
+        "byron-genesis.json": "aa3ef1fd56872a5bf168612f6bae55fe3f822f735d7abc20e604e7b4eb5c92d3",
+        "configuration.yaml": "879960a310eccd7c435e7eb802638fa885f59da1c50ecbfeefd5756dcb747e15",
+        "conway-genesis.json": "ea2990da8add04800098c284e9b122c83d8be3a7c44f24b285ec8f918e096d4a",
+        "shelley-genesis.json": "7129c38fb2092944f88e9dc683a1768e656b188c1d35539874a556e6957fa0c1"
+      }
+    },
+    {
+      "name": "reward-history",
+      "point": {
+        "slot": 4877,
+        "hash": "4c794c04b737af14d164ec81569db857ebb076c4446a34f4afed854c6ecd422a"
+      },
+      "queries": 23,
+      "newEpochStateSha256": "70af9ba5c07b7685e2e067f0acec1404fb81f8c87d8a8b44a62a8912d37d2cbe",
+      "queriesSha256": "0a1f415b0f20f1111718870c74f606de073ef2aa329324b4bed558091915914c",
+      "genesisSha256": {
+        "alonzo-genesis.json": "4291b3e5fbcdd1f1daed9ab8f78e4d0181eb7eac4506e34c8aa0fecab6051f3b",
+        "byron-genesis.json": "79595225d2f1fa575f0fcff3ee2eda2890c545aee265a3224170ce385b02e8cd",
+        "configuration.yaml": "50885a49a2c3981c8ae1bcea89aab5ef9d211f46ba37a413105d4109418be656",
+        "conway-genesis.json": "8d0e9d301fae30d7d17d869602863ac368281cb88880294661338c619e7519f7",
+        "shelley-genesis.json": "f86a88edf62c8139c8c36f828828f7cb593e82f927396a23152f655ac940b095"
+      }
+    },
+    {
+      "name": "reward-later",
+      "point": {
+        "slot": 8977,
+        "hash": "2199d1882b5caa9134be4b7bd49c128df63324ac6addce237bce1224027dae25"
+      },
+      "queries": 23,
+      "newEpochStateSha256": "fa4e6b3f1d2f7f7f7095efb537dff34e6d7ddd5b865f50b12a93495e30b1f100",
+      "queriesSha256": "032276077d37ceab3b987db9a2a9a8e4e3184d7c22868a6cfee655cd198ddcb4",
+      "genesisSha256": {
+        "alonzo-genesis.json": "4291b3e5fbcdd1f1daed9ab8f78e4d0181eb7eac4506e34c8aa0fecab6051f3b",
+        "byron-genesis.json": "79595225d2f1fa575f0fcff3ee2eda2890c545aee265a3224170ce385b02e8cd",
+        "configuration.yaml": "50885a49a2c3981c8ae1bcea89aab5ef9d211f46ba37a413105d4109418be656",
+        "conway-genesis.json": "8d0e9d301fae30d7d17d869602863ac368281cb88880294661338c619e7519f7",
+        "shelley-genesis.json": "f86a88edf62c8139c8c36f828828f7cb593e82f927396a23152f655ac940b095"
+      }
+    }
+  ]
+}

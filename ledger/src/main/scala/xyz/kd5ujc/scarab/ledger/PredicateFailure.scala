@@ -135,6 +135,7 @@ enum PoolFailure:
   )
   case StakePoolCostTooLow(mismatch: Mismatch[BigInt])
   case WrongNetworkPool(mismatch: Mismatch[Int], pool: Bytes)
+  case PoolMedataHashTooBig(pool: Bytes, size: Int)
   case VRFKeyHashAlreadyRegistered(pool: Bytes, vrf: Bytes)
 
 /** Stake credential failures (`ConwayDelegPredFailure`); the cases of the eras before Conway are
@@ -339,6 +340,7 @@ object PredicateFailure:
     case PoolFailure.StakePoolRetirementWrongEpoch(_, _) => "StakePoolRetirementWrongEpochPOOL"
     case PoolFailure.StakePoolCostTooLow(_)              => "StakePoolCostTooLowPOOL"
     case PoolFailure.WrongNetworkPool(_, _)              => "WrongNetworkPOOL"
+    case PoolFailure.PoolMedataHashTooBig(_, _)          => "PoolMedataHashTooBig"
     case PoolFailure.VRFKeyHashAlreadyRegistered(_, _)   => "VRFKeyHashAlreadyRegistered"
 
   private def delegName(d: DelegFailure): String = d match

@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import cats.data.NonEmptyVector
 import cats.syntax.all.*
 import scala.annotation.unused
 import scala.collection.immutable.SortedMap
 import java.time.{Instant, ZoneOffset}
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
 import xyz.kd5ujc.scarab.protocol.{Era, NtcVersion}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
@@ -47,7 +48,8 @@ final case class QueryEnv(
     maxSupply: BigInt,
     shelleyGenesis: io.circe.Json,
     mirror: MirrorEnv,
-    observedEras: Map[Era, BigInt] = Map.empty
+    observedEras: Map[Era, BigInt] = Map.empty,
+    networkMagic: Long
 ):
   /** What the mirror of the ledger state (`DebugEpochState`, `DebugNewEpochState`) reads. */
   def consensusMirror: ConsensusMirrorEnv = ConsensusMirrorEnv(mirror, forks, byron, observedEras)
@@ -55,7 +57,7 @@ final case class QueryEnv(
 /** Why a query has no answer: the closed set of the reasons, where the connection then ends (as a
   * decode failure ends it on the reference).
   */
-enum Unanswered:
+enum Unanswered extends DomainError:
   /** The node does not answer this query (in this era). */
   case Unsupported
 
@@ -66,6 +68,9 @@ enum Unanswered:
 
   /** The answer holds a value outside the range of the Haskell type it is written as. */
   case Unwritable
+
+  /** Stored pool relays could not be decoded; retain every affected pool and typed cause. */
+  case StoredRelays(pools: NonEmptyVector[xyz.kd5ujc.scarab.node.SkippedPool])
 
 /** The acquired state: the point it was taken at, the block number there and the state of the chain
   * (the mirror: [[ChainRead]] reads it).
@@ -259,7 +264,7 @@ object QueryAnswers:
         geometry(env, view),
         env.byron,
         env.forks,
-        env.observedEras,
+        view.read.provenance(view.state).observed,
         view.era,
         tipSlot
       )
@@ -270,7 +275,7 @@ object QueryAnswers:
         geometry(env, view),
         env.byron,
         env.forks,
-        env.observedEras,
+        view.read.provenance(view.state).observed,
         era,
         BigInt(0)
       )
@@ -466,6 +471,9 @@ object QueryAnswers:
             )
           })
         }
+      case GetRewardInfoPools => conway(f => RewardQueries.poolInfo(env, f))
+      case GetNonMyopicMemberRewards(credentials) =>
+        conway(f => RewardQueries.queryMembers(env, f, credentials))
       case GetStakePools =>
         conway(f => Wire.definiteSetOf(poolId).answerRead(f.pools.map(_.keySet)))
       // a registered pool's reward account on the node's network, its future parameters' as they
@@ -608,6 +616,10 @@ object QueryAnswers:
               )
           }
         }
+      case GetLedgerPeerSnapshotLegacy =>
+        conway(f => PeerSnapshotQueries.answer(env, f, view.point, None, version.number >= 22))
+      case GetLedgerPeerSnapshot(kind) =>
+        conway(f => PeerSnapshotQueries.answer(env, f, view.point, Some(kind), true))
       case GetMaxMajorProtocolVersion =>
         coin.answer(BigInt(env.forks.maxMajorProtVer))
       case GetDRepDelegations(dreps) =>

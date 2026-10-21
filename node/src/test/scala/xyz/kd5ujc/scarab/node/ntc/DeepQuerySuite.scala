@@ -45,7 +45,8 @@ class DeepQuerySuite extends FunSuite:
     setup.mirrorEnv().byron,
     setup.globals.maxSupply,
     setup.genesis.raw,
-    setup.mirrorEnv().ledger
+    setup.mirrorEnv().ledger,
+    networkMagic = setup.genesis.networkMagic.toLong
   )
   private val view = QueryView(Point.Origin, None, setup.mirrorStart)
 

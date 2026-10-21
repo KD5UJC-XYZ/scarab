@@ -55,7 +55,8 @@ object NtcGolden:
     ),
     setup.globals.maxSupply,
     setup.genesis.raw,
-    setup.mirrorEnv().ledger
+    setup.mirrorEnv().ledger,
+    networkMagic = setup.genesis.networkMagic.toLong
   )
 
   private def hex(h: String): Bytes = Bytes.fromHex(h).fold(e => sys.error(e.message), identity)

@@ -53,6 +53,18 @@ final case class PoolParams(
 )
 
 object PoolParams:
+  /** `PoolMetadata` (`State/StakePool.hs:516-524`, f649f975) keeps the hash as arbitrary bytes;
+    * POOL, rather than decoding, enforces its upper bound after protocol 4.0. Keep the original
+    * metadata term for hashing, snapshots and transaction presentation.
+    */
+  private[ledger] def metadataHash(raw: Bytes): Either[LedgerDecodeError, Bytes] =
+    for
+      node <- CborRead.decode(raw)
+      fields <- CborRead.arrayN(node, 2, "pool metadata")
+      _ <- CborRead.text(fields(0), "pool metadata URL")
+      hash <- CborRead.bytes(fields(1), "pool metadata hash")
+    yield hash
+
   extension (p: PoolParams)
     /** The parameters of a registered pool as the reference reads them back: `StakePoolState` and
       * `StakePoolSnapShot` keep the reward account's credential only (`mkStakePoolState`,
@@ -199,9 +211,9 @@ object Certificate:
       owners <- CborRead
         .set(xs(6), "pool owners")
         .flatMap(_.traverse(CborRead.bytesN(_, 28, "pool owner")))
-      metadata = xs(8).value match
-        case xyz.kd5ujc.scarab.codec.Value.Null => None
-        case _                                  => Some(xs(8).original)
+      metadata <- xs(8).value match
+        case xyz.kd5ujc.scarab.codec.Value.Null => Right(None)
+        case _ => PoolParams.metadataHash(xs(8).original).map(_ => Some(xs(8).original))
     // Match the ledger-state codec's typed representation: the empty relay sequence is the
     // empty value (Bytes.empty), while non-empty relay sequences retain their original wire.
     yield PoolParams(

@@ -351,6 +351,7 @@ object PredicateFailureCbor:
     case PoolFailure.StakePoolCostTooLow(m) => w.array(3).uint(3); group(w, m)(coin)
     case PoolFailure.WrongNetworkPool(m, p) =>
       w.array(4).uint(4); swapped(w, m)(small); w.bytes(p)
+    case PoolFailure.PoolMedataHashTooBig(p, size) => w.array(3).uint(5).bytes(p).uint(size)
     case PoolFailure.VRFKeyHashAlreadyRegistered(p, vrf) =>
       w.array(3).uint(6).bytes(p).bytes(vrf)
 

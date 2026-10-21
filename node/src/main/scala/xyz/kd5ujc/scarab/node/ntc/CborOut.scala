@@ -29,16 +29,16 @@ final class CborOut private ():
 
   def uint(n: BigInt): CborOut = head(0, n)
 
-  /** An unsigned `Integer` as cborg's `encodeInteger` writes it: an integer up to 64 bits, beyond
-    * that a tag-2 big number (the bytes big-endian, without leading zeros). The era history's
-    * times, in picoseconds, pass 2^64 about 213 days after the system start.
+  /** `Integer` as cborg's `encodeInteger` writes it: a direct integer through 64 bits, then tag 2
+    * or 3 with the unsigned magnitude. Era-history times and peer-snapshot ratio components can
+    * exceed the direct integer range.
     */
   def integer(n: BigInt): CborOut =
-    if n.bitLength <= 64 then uint(n)
-    else tag(2).bytes(Bytes.fromArray(n.toByteArray.dropWhile(_ == 0)))
+    val argument = if n >= 0 then n else -1 - n
+    if argument.bitLength <= 64 then head(if n >= 0 then 0 else 1, argument)
+    else tag(if n >= 0 then 2 else 3).bytes(Bytes.fromArray(argument.toByteArray.dropWhile(_ == 0)))
 
-  /** A signed integer. */
-  def int(n: BigInt): CborOut = if n >= 0 then head(0, n) else head(1, -1 - n)
+  def int(n: BigInt): CborOut = integer(n)
 
   def bytes(b: Bytes): CborOut = { head(2, b.size); b.toArray.foreach(x => byte(x & 255)); this }
   def text(s: String): CborOut =

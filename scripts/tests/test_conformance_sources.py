@@ -2,6 +2,7 @@
 """Source drift must not silently become a generator or compatibility pass."""
 
 import importlib.util
+import json
 from pathlib import Path
 import sys
 import tempfile
@@ -107,9 +108,58 @@ class ConformanceSourcesTest(unittest.TestCase):
     def test_pins_come_from_existing_reference_evidence(self):
         rows = MODULE.sources(SCRIPT.parent.parent)
         self.assertEqual({row.name for row in rows},
-                         {"ledger", "network", "rewards", "formal", "constrained", "plutus"})
+                         {"ledger", "network", "rewards", "wallet-queries", "peer-snapshot-queries",
+                          "formal", "constrained", "plutus"})
         for row in rows:
             self.assertRegex(row.commit, r"^[0-9a-f]{40}$")
+
+    def test_query_watches_use_actual_fixture_pins_and_sources(self):
+        root = SCRIPT.parent.parent
+        evidence = json.loads((root / "fixtures/reference/wallet-queries/manifest.json").read_text())
+        rows = {row.name: row for row in MODULE.sources(root)}
+        wallet = rows["wallet-queries"]
+        peers = rows["peer-snapshot-queries"]
+        self.assertEqual(wallet.commit, evidence["ledger"]["commit"])
+        self.assertEqual(wallet.prefixes, tuple(evidence["ledger"]["sources"]))
+        self.assertIn("eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Wallet.hs", wallet.prefixes)
+        self.assertEqual(peers.commit, evidence["network"]["commit"])
+        self.assertEqual(peers.prefixes,
+                         tuple("ouroboros-network/api/lib/" + path for path in evidence["network"]["sources"]))
+        for name in ("LedgerPeers/Type.hs", "LedgerPeers/Utils.hs", "RelayAccessPoint.hs"):
+            self.assertIn("ouroboros-network/api/lib/Ouroboros/Network/PeerSelection/" + name, peers.prefixes)
+        network_evidence = json.loads((root / "fixtures/reference/ouroboros-network-protocol-codecs/keepalive.tsv.manifest.json").read_text())
+        self.assertEqual(rows["network"].commit, network_evidence["sourceCommit"])
+        self.assertNotEqual(rows["network"].commit, peers.commit)
+        for source in (wallet, peers):
+            before = {path: "a" for path in source.prefixes}
+            after = dict(before)
+            changed = source.prefixes[-1]
+            after[changed] = "b"
+            observed = MODULE.Source(source.name, source.repository, self.pin, source.prefixes)
+            result = MODULE.inspect(observed, self.fetcher(before, after))
+            self.assertEqual(result["changed"], [changed])
+            self.assertEqual(result["watchedRoots"], [
+                {"prefix": path, "pinnedFiles": 1, "observedFiles": 1} for path in source.prefixes])
+
+    def test_query_manifest_changes_are_not_replaced_by_hardcoded_pins_or_roots(self):
+        original_read = Path.read_text
+        def read(path, *args, **kwargs):
+            text = original_read(path, *args, **kwargs)
+            if path == SCRIPT.parent.parent / "fixtures/reference/wallet-queries/manifest.json":
+                evidence = json.loads(text)
+                evidence["ledger"]["commit"] = "a" * 40
+                evidence["ledger"]["sources"] = {"new/Wallet.hs": "digest"}
+                evidence["network"]["commit"] = "b" * 40
+                evidence["network"]["sources"] = {"New/PeerType.hs": "digest"}
+                return json.dumps(evidence)
+            return text
+        with patch.object(Path, "read_text", read):
+            rows = {row.name: row for row in MODULE.sources(SCRIPT.parent.parent)}
+        self.assertEqual(rows["wallet-queries"].commit, "a" * 40)
+        self.assertEqual(rows["wallet-queries"].prefixes, ("new/Wallet.hs",))
+        self.assertEqual(rows["peer-snapshot-queries"].commit, "b" * 40)
+        self.assertEqual(rows["peer-snapshot-queries"].prefixes,
+                         ("ouroboros-network/api/lib/New/PeerType.hs",))
 
     def test_branch_names_cannot_replace_pins(self):
         source = MODULE.Source("sample", "example/repo", "main", ("tests/",))

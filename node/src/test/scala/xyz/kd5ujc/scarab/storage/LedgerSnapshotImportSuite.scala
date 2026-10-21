@@ -168,6 +168,8 @@ class LedgerSnapshotImportSuite extends CatsEffectSuite:
             assert(content.takeRight(original.size).sameElements(original.toArray))
             val sidecar = SnapshotV5.sidecarOf(content).fold(e => fail(e.message), identity)
             assertEquals(sidecar.gaps, Set.empty)
+            assertEquals(read.state.provenance.gaps, Set.empty)
+            assertEquals(read.state.provenance.observed, sidecar.observed)
             assertEquals(fingerprint(db / "immutable"), before)
             assertEquals(read.anchor, Some(anchor(state)))
           }

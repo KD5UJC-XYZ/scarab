@@ -9,6 +9,10 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{Credential, DRep, GovActionId, TxIn}
 import xyz.kd5ujc.scarab.protocol.NtcVersion
 
+/** The two native `LedgerPeersKind` cases of a peer snapshot query. */
+enum LedgerPeerKind:
+  case All, Big
+
 /** A ledger (Shelley-based era) query as `Ouroboros.Consensus.Shelley.Ledger.Query` numbers them.
   * `Unsupported(tag)` is a query this node understands the framing of but does not answer.
   */
@@ -48,7 +52,7 @@ enum LedgerQuery:
   case GetRatifyState
   case GetFuturePParams
   case GetLedgerPeerSnapshotLegacy
-  case GetLedgerPeerSnapshot(kind: Int)
+  case GetLedgerPeerSnapshot(kind: LedgerPeerKind)
   case QueryStakePoolDefaultVote(pool: Bytes)
   case GetPoolDistr2(pools: Option[Set[Bytes]])
   case GetStakeDistribution2
@@ -352,8 +356,9 @@ object NtcQuery:
               if xs.size == 1 then Right(GetLedgerPeerSnapshotLegacy)
               else
                 arg1(uint(_, "peer kind")).flatMap {
-                  case kind @ (0 | 1) => Right(GetLedgerPeerSnapshot(kind))
-                  case kind           => Left(Error.UnknownTag("ledger peer kind", kind))
+                  case n if n == 0 => Right(GetLedgerPeerSnapshot(LedgerPeerKind.All))
+                  case n if n == 1 => Right(GetLedgerPeerSnapshot(LedgerPeerKind.Big))
+                  case kind        => Left(Error.UnknownTag("ledger peer kind", kind))
                 }
             case 35    => arg1(keyHash).map(QueryStakePoolDefaultVote(_))
             case 36    => arg1(maybeSet(_, "pools")(keyHash)).map(GetPoolDistr2(_))

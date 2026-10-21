@@ -185,9 +185,39 @@ object TxChecks:
     else if pp.protocolMajor >= 3 then Some(BigInt(4000))
     else None
 
-  /** Output predicates before Conway. Alonzo and Babbage check the minimum, value size, bootstrap
-    * attributes and then the network, including bootstrap addresses (pinned ledger f649f975,
-    * `Alonzo/Rules/Utxo.hs:543-556`, `Babbage/Rules/Utxo.hs:384-397`).
+  private def bootstrapOutputs(outs: Vector[TxOut]): Vector[(TxOut, byron.ByronAddress)] =
+    outs.flatMap(out =>
+      out.address.kind match
+        case Address.Kind.Byron(_) =>
+          byron.ByronAddress.decode(out.address.raw).toOption.map(out -> _)
+        case _ => None
+    )
+
+  /** `Shelley/Rules/Utxo.hs:378-380` and `Allegra/Rules/Utxo.hs:188-190` (f649f975): output
+    * networks, including bootstrap addresses, precede withdrawals and value conservation.
+    */
+  private[ledger] def outputNetwork(env: Env, id: Bytes, outs: Vector[TxOut]): Result[Unit] =
+    val wrong = outs
+      .filter(_.address.kind match
+        case Address.Kind.Shelley(n, _, _, _) => n != env.network
+        case _                                => false)
+      .map(_.address.raw)
+      .toSet ++ bootstrapOutputs(outs).collect {
+      case (out, address) if address.network != env.network => out.address.raw
+    }
+    Either.cond(
+      wrong.isEmpty,
+      (),
+      LedgerFailure.Rejected(
+        id,
+        PredicateFailure.utxo(UtxoFailure.WrongNetwork(env.network, wrong))
+      )
+    )
+
+  /** Output bounds before Conway. Shelley/Allegra/Mary run their network predicate earlier in UTXO.
+    * All eras check minimum value, value size (from Allegra), then bootstrap attributes
+    * (`Shelley/Rules/Utxo.hs:394-397`, `Allegra/Rules/Utxo.hs:207-214`, f649f975). Alonzo and
+    * Babbage then check networks (`Alonzo/Rules/Utxo.hs:543-556`, `Babbage/Rules/Utxo.hs:384-397`).
     */
   private[ledger] def outputChecks(
       pp: ProtocolParams,
@@ -205,29 +235,12 @@ object TxChecks:
         (o.value.serializedSize, max.toInt, o)
       }
     }
-    val bootstrap =
-      if pp.protocolMajor < 5 then Vector.empty
-      else
-        outs.flatMap(out =>
-          out.address.kind match
-            case Address.Kind.Byron(_) =>
-              byron.ByronAddress.decode(out.address.raw).toOption.map(out -> _)
-            case _ => None
-        )
-    val largeAttributes = bootstrap.collect { case (out, a) if a.attributesSize > 64 => out }
-    val wrong = outs
-      .filter(_.address.kind match
-        case Address.Kind.Shelley(n, _, _, _) => n != env.network
-        case _                                => false)
-      .map(_.address.raw)
-      .toSet ++
-      bootstrap.collect { case (out, a) if a.network != env.network => out.address.raw }
+    val largeAttributes = bootstrapOutputs(outs).collect {
+      case (out, address) if address.attributesSize > 64 => out
+    }
     def check(ok: Boolean, f: => UtxoFailure): Result[Unit] =
       Either.cond(ok, (), LedgerFailure.Rejected(id, PredicateFailure.utxo(f)))
-    def network = check(wrong.isEmpty, UtxoFailure.WrongNetwork(env.network, wrong))
     for
-      // Preserve the earlier eras' existing order; #178 concerns Alonzo and Babbage.
-      _ <- if pp.protocolMajor < 5 then network else Right(())
       _ <- check(
         small.isEmpty,
         if pp.protocolMajor >= 7 then
@@ -236,7 +249,7 @@ object TxChecks:
       )
       _ <- check(big.isEmpty, UtxoFailure.OutputTooBig(big))
       _ <- check(largeAttributes.isEmpty, UtxoFailure.OutputBootAddrAttrsTooBig(largeAttributes))
-      _ <- if pp.protocolMajor >= 5 then network else Right(())
+      _ <- if pp.protocolMajor >= 5 then outputNetwork(env, id, outs) else Right(())
     yield ()
 
   /** The output checks of Babbage and Conway UTXO, each reporting every offending output: too small
