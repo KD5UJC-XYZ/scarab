@@ -748,8 +748,16 @@ runs on every new tip, rollback or fork switch, keeps what still applies and rep
 transactions that a block contains leave as adopted. Before the transaction rules, `add` applies the
 ledger's MEMPOOL rule: a transaction none of whose inputs is unspent is refused with that alone
 (`ConwayMempoolFailure`, "All inputs are spent..."), as is a vote of an unelected committee member
-before protocol version 11. Capacity is counted in bytes. A transaction
-is validated in the slot after the tip within the tip's epoch (it is not ticked over an epoch
+before protocol version 11. Before either, `add` measures the transaction as `Mempool/Update.hs` does
+(`Capacity`): its size against `maxTxSize` and its execution units against `maxTxExUnits` (phase 1, both failures
+reported when both are exceeded, `Rejection.Limits`), then its reference-script bytes in the state after the held
+transactions against 200 KiB (phase 2, `TxRefScriptsSizeTooBig`); a refusal there is the only failure returned and
+the ledger does not run. The capacity is a vector of bytes (size plus 4), execution-unit memory, steps and
+reference-script bytes, `computeMempoolCapacity` of the parameters of the ticked base: two blocks without
+`--mempool-bytes`, the override rounded up to whole blocks with it, recomputed at every `sync` and never trimming a
+pool that a parameter change left over it. A transaction that would exceed any component is `Rejection.Full`; the
+check runs after phase 1 (without the reference-script component) and again after phase 2, as `doAddTx` and
+`pureTryAddTx` do ([IN-81](implementer-notes.md)). A transaction is validated in the slot after the tip within the tip's epoch (it is not ticked over an epoch
 boundary). Transactions of rolled-back blocks are not put back. `Mempool[F]` serialises the
 operations, offers `source`/`sink` for TxSubmission2 and remembers recently refused ids so peers
 that offer them again are not asked for the body.
@@ -776,7 +784,7 @@ peers fetching at once with `maxConcurrencyBulkSync`; ours is limited by the num
 
 **Wiring** (`Main`). `--peer` may be given several times (with more than one peer a peer that
 keeps failing is retried forever, with one it is fatal after 30 attempts), `--listen` starts the
-inbound server, `--local-socket` the local one, `--mempool-bytes` sets the capacity. The followed
+inbound server, `--local-socket` the local one, `--mempool-bytes` overrides the capacity. The followed
 peers get our mempool through TxSubmission2. The JSON log gains `listening`, `inbound`,
 `mempoolAdded`, `mempoolRejected`, `mempoolAdopted`, `mempoolRemoved`, `mempoolDropped` and `mempoolSynced`.
 
@@ -1055,7 +1063,8 @@ transactions differ (`Mempool.awaitChange`, woken by `add` and by `sync`). `Loca
 server in numbers: the snapshot's slot is the one after the tip; a transaction counts for its ledger size (the
 serialised transaction without the `is_valid` byte, `sizeTxF`) plus 4 bytes, its execution units and the bytes
 of the reference scripts of its inputs and reference inputs (`Entry.refScriptBytes`, measured when it was
-added); the capacity is `computeMempoolCapacity`: a whole number of units, a unit being `maxBlockBodySize -
+added); the capacity is the one the pool enforces (`MempoolState.capacity`, `Capacity.of`, which also does the
+measures): `computeMempoolCapacity`, a whole number of units, a unit being `maxBlockBodySize -
 1024` bytes, `maxBlockExUnits` and 1 MiB of reference scripts, and the number of units `ceil(--mempool-bytes /
 unit)` (the reference's override rule, and 2 without one). `GetSizes` describes the whole snapshot,
 `GetMeasures` only the transactions `NextTx` has not handed out (the reference's quirk). A transaction is

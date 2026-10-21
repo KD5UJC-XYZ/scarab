@@ -813,6 +813,17 @@ are the ones most in need of a second reading.
 - **Suggested upstream action:** None. The consensus documentation of `WhetherToIntervene` could name the collateral consequence for a remote flag.
 - **Status:** confirmed in source
 
+### IN-81 Mempool: the capacity is two blocks of the current parameters, and a transaction is measured before any ledger rule runs
+
+- **Era:** Alonzo onwards for the execution-unit measure; Conway for the reference-script measure
+- **Specification or CDDL says:** Nothing: the mempool is consensus, not ledger. The ledger rules limit a transaction's size, its execution units and (Conway) its reference-script bytes, and a block's total of each.
+- **Implementation does:** The reference mempool has no byte capacity of its own. `computeMempoolCapacity` (`Mempool/Capacity.hs`) makes it a whole number of blocks, each the vector (`maxBlockBodySize - 1024` bytes, `maxBlockExUnits` memory and steps, 1 MiB of reference scripts): two blocks without `MempoolCapacityBytesOverride`, and `max 1 (ceil (override / block bytes))` with it. The capacity is recomputed from the ticked ledger state at every revalidation (`revalidateTxsFor`), so it follows a parameter change, and a pool left over its capacity is not trimmed. A transaction is added only if the pool's total plus its measure is within the capacity in every component. Before the ledger runs at all, `doAddTx` and `pureTryAddTx` (`Mempool/Update.hs`) measure the transaction (`Shelley/Ledger/Mempool.hs`): phase 1 is its size plus `perTxOverhead` (4) against `maxTxSize` and its execution units against `maxTxExUnits` (`txMeasureAlonzo`; both failures are returned, size first, when both are exceeded); the capacity is then checked in the phase 1 components alone; phase 2 is its reference-script bytes in the state after the held transactions (`txNonDistinctRefScriptsSize`) against the per-transaction limit (`txMeasureRefScripts`), and the capacity is checked again in all four components. A refused measure is the only failure returned, as `MaxTxSizeUTxO`, `ExUnitsTooBigUTxO` or `ConwayTxRefScriptsSizeTooBig`, so a transaction that is oversize and also spends spent inputs is refused for its size alone, where the MEMPOOL rule would have said "All inputs are spent". A transaction that does not fit waits for room (it is not refused); a duplicate waits too and then fails the MEMPOOL rule.
+- **Scarab does:** The same, except that a duplicate is answered at once as already held (the same refusal bytes as the reference's eventual MEMPOOL failure) even when the pool has no room, and the pool does not wait: `Rejection.Full` is returned.
+- **Evidence:** Source reading only (ouroboros-consensus `82ecba329d7d054340bf707d44fe6e9ac27cec40`). Scarab's earlier default was a 1 MiB byte limit on the received size, and the node-to-client monitor reported a different capacity from the one enforced.
+- **Pinned by:** [`MempoolMeasureSuite`](../node/src/test/scala/xyz/kd5ujc/scarab/node/mempool/MempoolMeasureSuite.scala).
+- **Suggested upstream action:** None. The pending-for-room behaviour of a transaction larger than the whole capacity (it can never fit) could be named in the consensus documentation.
+- **Status:** confirmed in source
+
 ## Part C: index
 
 | ID | Title | Era | Status | Evidence |
@@ -897,6 +908,7 @@ are the ones most in need of a second reading.
 | [IN-78](#in-78-leios-the-cip-dijkstracddl-the-blueprint-and-the-rust-specification-disagree) | Leios: the CIP, `dijkstra.cddl`, the Blueprint and the Rust specification disagree | Dijkstra (Leios, proposed) | observed | design note, section 2 and 4 |
 | [IN-79](#in-79-leios-bls-signer-bitfield-padding-bits-and-identity-points) | Leios: BLS signer bitfield padding bits and identity points | Dijkstra (Leios, proposed) | observed | design note, section 9 |
 | [IN-80](#in-80-mempool-a-transaction-from-a-peer-is-held-with-the-is_valid-flag-its-scripts-call-for) | Mempool: a transaction from a peer is held with the `is_valid` flag its scripts call for | Alonzo onwards | confirmed in source | none (read from source) |
+| [IN-81](#in-81-mempool-the-capacity-is-two-blocks-of-the-current-parameters-and-a-transaction-is-measured-before-any-ledger-rule-runs) | Mempool: the capacity is two blocks of the current parameters, and a transaction is measured before any ledger rule runs | Alonzo onwards (reference-script measure: Conway) | confirmed in source | none (read from source) |
 
 ## Related pages
 

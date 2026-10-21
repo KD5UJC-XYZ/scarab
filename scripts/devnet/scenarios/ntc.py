@@ -84,12 +84,6 @@ def incomplete_cli_comparisons(results):
             if not row["total"] or row["matched"] != row["total"]]
 
 
-def mempool_bytes(args):
-    """The Scala mempool capacity that LocalTxMonitor reports as the reference does by default: two
-    block units (`2 * (maxBlockBodySize - 1024)`), the capacity `cardano-node` computes without an override."""
-    return 2 * (query(args.name, "protocol-parameters")["maxBlockBodySize"] - 1024)
-
-
 def start_scala(args, root):
     """The Scala node following pool 1 with a node-to-client socket the host can reach."""
     classpath = freeze_classes(root)
@@ -101,7 +95,6 @@ def start_scala(args, root):
     db.chmod(0o777)
     ports = json.loads((root / "ports.json").read_text())
     program = ["follow", "--genesis-dir", "/genesis", "--query-port", str(QUERY_PORT), "--db", "/db",
-               "--mempool-bytes", str(mempool_bytes(args)),
                "--local-socket", "/sock/node.socket", "--peer", f"127.0.0.1:{ports['1']}"]
     command = scala_container(args, root, classpath, "xyz.kd5ujc.scarab.node.Main", program,
                               mounts=[f"{root / 'genesis'}:/genesis:ro", *database_mounts(db), f"{sock}:/sock"],
