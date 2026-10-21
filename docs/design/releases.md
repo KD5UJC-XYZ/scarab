@@ -187,10 +187,10 @@ A manual retry accepts an existing validated tag, not an arbitrary branch/versio
 | Provenance | Exact tag/commit, source export, pinned builder/JDK/toolchain, resolved dependency identities, parameters, native inputs, artifact hashes and two-clean-build receipt. Native source rebuild/byte comparison is [#229](https://github.com/KD5UJC-XYZ/scarab/issues/229). |
 | Published verification | A separate job downloads release assets and pulls the GHCR digest; checks identity/source/subjects, BOM binding and hashes, compares the downloaded JAR with its reproducibility receipt, runs standalone/native/resource smoke checks and retains results. Wrong identity, modified bytes and mismatched BOM must fail. |
 
-Fat-JAR byte reproducibility has bounded evidence in
+Fat-JAR byte reproducibility is implemented in the
+[immutable-source verifier](../reproducible-builds.md), with bounded evidence in
 [#276](https://github.com/KD5UJC-XYZ/scarab/pull/276); it does not establish authenticated downloads,
-source-built JNI or OCI image byte reproducibility. Reconcile that main implementation into `dev`
-before wiring these stages. Start with the evidenced Linux/amd64 native profile; add each platform
+source-built JNI or OCI image byte reproducibility. Reuse that implementation for these stages. Start with the evidenced Linux/amd64 native profile; add each platform
 only with its own build/runtime evidence. Define image reproducibility separately. Use
 [GitHub artifact attestations](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations)
 without claiming a SLSA level merely because an attestation exists.
