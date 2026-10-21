@@ -103,6 +103,71 @@ def updates(m):
     return out
 
 
+def cost_model_values(raw_hex):
+    """Decode every language/parameter while ignoring only CBOR container length forms.
+
+    Query.scala exposes original proposal field bytes; the reference state query exposes a
+    decoded CostModels value. Validate the complete field and compare that value instead of
+    contrasting its reference re-encoding with original signed-transaction bytes.
+    """
+    raw = bytes.fromhex(raw_hex)
+    if not raw or raw[0] >> 5 != 5:
+        raise ValueError("proposal cost models must be a CBOR map")
+    info, pos = raw[0] & 31, 1
+    if info < 24:
+        count = info
+    elif info in (24, 25, 26, 27):
+        size = 1 << (info - 24)
+        if pos + size > len(raw):
+            raise ValueError("truncated proposal cost-model map header")
+        count, pos = int.from_bytes(raw[pos:pos + size], "big"), pos + size
+    elif info == 31:
+        count = None
+    else:
+        raise ValueError("invalid proposal cost-model map header")
+    values = {}
+    while count is None or count:
+        if pos >= len(raw):
+            raise ValueError("truncated proposal cost-model map")
+        if count is None and raw[pos] == 0xff:
+            pos += 1
+            break
+        try:
+            language, pos = ntcquery.decode(raw, pos)
+            parameters, pos = ntcquery.decode(raw, pos)
+        except (ntcquery.Incomplete, IndexError, TypeError) as error:
+            raise ValueError("malformed proposal cost-model entry") from error
+        if type(language) is not int or not 0 <= language <= 255 or str(language) in values:
+            raise ValueError("proposal cost-model languages must be distinct Word8 values")
+        if not isinstance(parameters, list) or any(type(n) is not int or not -(2 ** 63) <= n < 2 ** 63
+                                                   for n in parameters):
+            raise ValueError("proposal cost-model parameters must be complete Int64 vectors")
+        values[str(language)] = parameters
+        if count is not None:
+            count -= 1
+    if pos != len(raw):
+        raise ValueError("trailing bytes after proposal cost models")
+    return values
+
+
+def proposal_values(ppup):
+    """Compare field 18 as complete CostModels values, retaining separate original encodings.
+
+    Both current/future proposals and all proposers/fields remain present. Other parameter
+    fields retain their existing comparison representation. No transaction or node state is
+    rewritten; returned dictionaries are independent projections of the inputs.
+    """
+    semantic, encodings = {}, {}
+    for phase, proposals in ppup.items():
+        semantic[phase], encodings[phase] = {}, {}
+        for genesis, fields in proposals.items():
+            semantic[phase][genesis] = dict(fields)
+            if "18" in fields:
+                encodings[phase][genesis] = fields["18"]
+                semantic[phase][genesis]["18"] = cost_model_values(fields["18"])
+    return semantic, encodings
+
+
 def _cbor_value(v):
     if isinstance(v, Fraction):
         return eratx.Tag(30, [v.numerator, v.denominator])

@@ -243,6 +243,11 @@ def e2e(args):
                 args.name, root, log=lambda m: print(json.dumps(m), flush=True))
             summary["oracle"].pop("results", None)  # the per-epoch rows are in oracle-summary.json
             failures += oracle_failures
+        if loader is not None:
+            from ..eraplutus import coverage_failures
+            failures += coverage_failures(loader.plutus_evidence)
+            from ..eraauxiliary import coverage_failures as auxiliary_coverage_failures
+            failures += auxiliary_coverage_failures(loader.auxiliary_evidence)
         if loader is not None and loader.stats.get("unexpected"):
             failures.append(f"{loader.stats['unexpected']} submissions that must be rejected were accepted or "
                             f"rejected for another reason: {[e for e in loader.evidence if e['verdict'] != 'expected'][:3]}")
@@ -261,6 +266,8 @@ def e2e(args):
         if loader is not None:
             summary["load"] = loader.stats
             summary["loadEvidence"] = loader.evidence
+            summary["legacyPlutus"] = loader.plutus_evidence
+            summary["auxiliaryPlutus"] = loader.auxiliary_evidence
         summary["failures"] = failures
         summary["passed"] = not failures
         root.mkdir(parents=True, exist_ok=True)

@@ -1,0 +1,27 @@
+{
+  "plutusCommit": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+  "sourceCommit": "8584d5710ec3220d316cc84fd33c3aeaf4094be6",
+  "oracleImage": "sha256:01961cacb7812313680b6dd5641ddf7ad77c2159d3492d5a7d3b3887274f092b",
+  "scripts": 1858,
+  "upstreamScripts": 797,
+  "profiles": 30,
+  "observations": 55740,
+  "successes": 37184,
+  "boundaryObservations": 111552,
+  "sha256": {
+    "scripts.jsonl": "0aca9b4320465c4b4257f38cf9b8d5629f98762bbdf5009eeae6c0fdcd3cbf02",
+    "models.jsonl": "e085f37a591c0f018a16205d69f854631ce20328deead3852bacece0251d2755",
+    "verdicts.jsonl": "d2f0c73e44409f810d37ce86ee92b20ca3acc027d7a22e28b17d5cecaf599bd3",
+    "cost-shapes.json": "8920edcafa00b62b8da4e808de9687a4e45f81d5e8d19cb14becc91609f8d081"
+  },
+  "dateUtc": "2026-10-20T23:46:55.413827+00:00",
+  "oracleBaseImage": "sha256:e061568cd4971962854e85f26910eb5094ff1c416567a547feb3ba6eff59c5da",
+  "toolSha256": {
+    "scripts/oracle/plutus/costing/Main.hs": "88b5200a4afc9f3fb8fc922e8974383e612d43d566c0f359b48a5e548016127a",
+    "plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/BuiltinCostingCorpus.scala": "67381505faf5e07789ba30d27b6eb66c9bd2e24f2e400901d2158a7c49a767f7"
+  },
+  "rawSha256": {
+    "raw-counting.jsonl": "afa4fb8bb5d95114be58f68265dca167f9b07bd6e9a5e19f7a8ddc594bc5b729",
+    "raw-boundaries.jsonl": "ad5305f866dbe8b4cad10d1a3196c07ff1723b8e0d990a7e093236ef2de079b0"
+  }
+}

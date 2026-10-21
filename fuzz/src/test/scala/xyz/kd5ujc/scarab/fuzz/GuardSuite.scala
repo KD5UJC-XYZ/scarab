@@ -136,3 +136,20 @@ class GuardSuite extends FunSuite:
       }
     }
   }
+
+  test(
+    "auxiliary fuzz seeds reach the public transaction decoder with accepted and refused envelopes"
+  ) {
+    for era <- Vector(Era.Alonzo, Era.Babbage, Era.Conway) do
+      val seeds = Corpus.auxiliaryTransactions(era)
+      assert(seeds.nonEmpty)
+      val parts = seeds.map(bytes =>
+        Corpus
+          .asTransaction(Bytes.fromArray(bytes), era)
+          .getOrElse(fail(s"auxiliary seed lost its transaction envelope: $era"))
+      )
+      assert(parts.forall(_.auxiliaryData.nonEmpty))
+      val verdicts = parts.map(Tx.fromBlock(_, era))
+      assert(verdicts.exists(_.isRight), s"$era has no accepted auxiliary seeds")
+      assert(verdicts.exists(_.isLeft), s"$era has no refused auxiliary seeds")
+  }

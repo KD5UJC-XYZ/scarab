@@ -1,0 +1,4197 @@
+{
+  "A": {
+    "addInteger": {
+      "cpu": [
+        "max_size"
+      ],
+      "memory": [
+        "max_size"
+      ]
+    },
+    "appendByteString": {
+      "cpu": [
+        "added_sizes"
+      ],
+      "memory": [
+        "added_sizes"
+      ]
+    },
+    "appendString": {
+      "cpu": [
+        "added_sizes"
+      ],
+      "memory": [
+        "added_sizes"
+      ]
+    },
+    "bData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "blake2b_224": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "blake2b_256": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_add": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_compress": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_equal": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_hashToGroup": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_neg": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_scalarMul": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_multiScalarMul": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_uncompress": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_add": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_compress": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_equal": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_hashToGroup": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_neg": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_scalarMul": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_multiScalarMul": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_uncompress": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_finalVerify": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_millerLoop": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_mulMlResult": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "byteStringToInteger": {
+      "cpu": [
+        "quadratic_in_y"
+      ],
+      "memory": [
+        "linear_in_y"
+      ]
+    },
+    "chooseData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "chooseList": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "chooseUnit": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "consByteString": {
+      "cpu": [
+        "linear_in_y"
+      ],
+      "memory": [
+        "added_sizes"
+      ]
+    },
+    "constrData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "decodeUtf8": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "divideInteger": {
+      "cpu": [
+        "const_above_diagonal",
+        "multiplied_sizes"
+      ],
+      "memory": [
+        "subtracted_sizes"
+      ]
+    },
+    "encodeUtf8": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "equalsByteString": {
+      "cpu": [
+        "linear_on_diagonal"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "equalsData": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "equalsInteger": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "equalsString": {
+      "cpu": [
+        "linear_on_diagonal"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "fstPair": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "headList": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "iData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "ifThenElse": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "indexByteString": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "integerToByteString": {
+      "cpu": [
+        "quadratic_in_z"
+      ],
+      "memory": [
+        "literal_in_y_or_linear_in_z"
+      ]
+    },
+    "keccak_256": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lengthOfByteString": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lessThanByteString": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lessThanEqualsByteString": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lessThanEqualsInteger": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lessThanInteger": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "listData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "mapData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "mkCons": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "mkNilData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "mkNilPairData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "mkPairData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "modInteger": {
+      "cpu": [
+        "const_above_diagonal",
+        "multiplied_sizes"
+      ],
+      "memory": [
+        "subtracted_sizes"
+      ]
+    },
+    "multiplyInteger": {
+      "cpu": [
+        "added_sizes"
+      ],
+      "memory": [
+        "added_sizes"
+      ]
+    },
+    "nullList": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "indexArray": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lengthOfArray": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "listToArray": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "quotientInteger": {
+      "cpu": [
+        "const_above_diagonal",
+        "multiplied_sizes"
+      ],
+      "memory": [
+        "subtracted_sizes"
+      ]
+    },
+    "remainderInteger": {
+      "cpu": [
+        "const_above_diagonal",
+        "multiplied_sizes"
+      ],
+      "memory": [
+        "subtracted_sizes"
+      ]
+    },
+    "serialiseData": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "sha2_256": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "sha3_256": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "sliceByteString": {
+      "cpu": [
+        "linear_in_z"
+      ],
+      "memory": [
+        "linear_in_z"
+      ]
+    },
+    "sndPair": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "subtractInteger": {
+      "cpu": [
+        "max_size"
+      ],
+      "memory": [
+        "max_size"
+      ]
+    },
+    "tailList": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "trace": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "unBData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "unConstrData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "unIData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "unListData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "unMapData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "verifyEcdsaSecp256k1Signature": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "verifyEd25519Signature": {
+      "cpu": [
+        "linear_in_z"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "verifySchnorrSecp256k1Signature": {
+      "cpu": [
+        "linear_in_y"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "andByteString": {
+      "cpu": [
+        "linear_in_y_and_z"
+      ],
+      "memory": [
+        "linear_in_max_yz"
+      ]
+    },
+    "orByteString": {
+      "cpu": [
+        "linear_in_y_and_z"
+      ],
+      "memory": [
+        "linear_in_max_yz"
+      ]
+    },
+    "xorByteString": {
+      "cpu": [
+        "linear_in_y_and_z"
+      ],
+      "memory": [
+        "linear_in_max_yz"
+      ]
+    },
+    "complementByteString": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "readBit": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "writeBits": {
+      "cpu": [
+        "linear_in_y"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "replicateByte": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "shiftByteString": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "rotateByteString": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "countSetBits": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "findFirstSetBit": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "ripemd_160": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "expModInteger": {
+      "cpu": [
+        "exp_mod_cost"
+      ],
+      "memory": [
+        "linear_in_z"
+      ]
+    },
+    "dropList": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lookupCoin": {
+      "cpu": [
+        "linear_in_z"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "valueContains": {
+      "cpu": [
+        "const_above_diagonal",
+        "linear_in_x_and_y"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "valueData": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "unValueData": {
+      "cpu": [
+        "quadratic_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "insertCoin": {
+      "cpu": [
+        "linear_in_u"
+      ],
+      "memory": [
+        "linear_in_u"
+      ]
+    },
+    "unionValue": {
+      "cpu": [
+        "with_interaction_in_x_and_y"
+      ],
+      "memory": [
+        "added_sizes"
+      ]
+    },
+    "scaleValue": {
+      "cpu": [
+        "linear_in_y"
+      ],
+      "memory": [
+        "linear_in_y"
+      ]
+    },
+    "multiIndexArray": {
+      "cpu": [
+        "quadratic_in_y"
+      ],
+      "memory": [
+        "linear_in_y"
+      ]
+    },
+    "assetCount": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "policies": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    }
+  },
+  "B": {
+    "addInteger": {
+      "cpu": [
+        "max_size"
+      ],
+      "memory": [
+        "max_size"
+      ]
+    },
+    "appendByteString": {
+      "cpu": [
+        "added_sizes"
+      ],
+      "memory": [
+        "added_sizes"
+      ]
+    },
+    "appendString": {
+      "cpu": [
+        "added_sizes"
+      ],
+      "memory": [
+        "added_sizes"
+      ]
+    },
+    "bData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "blake2b_224": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "blake2b_256": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_add": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_compress": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_equal": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_hashToGroup": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_neg": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_scalarMul": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_multiScalarMul": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_uncompress": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_add": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_compress": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_equal": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_hashToGroup": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_neg": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_scalarMul": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_multiScalarMul": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_uncompress": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_finalVerify": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_millerLoop": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_mulMlResult": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "byteStringToInteger": {
+      "cpu": [
+        "quadratic_in_y"
+      ],
+      "memory": [
+        "linear_in_y"
+      ]
+    },
+    "chooseData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "chooseList": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "chooseUnit": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "consByteString": {
+      "cpu": [
+        "linear_in_y"
+      ],
+      "memory": [
+        "added_sizes"
+      ]
+    },
+    "constrData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "decodeUtf8": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "divideInteger": {
+      "cpu": [
+        "const_above_diagonal",
+        "multiplied_sizes"
+      ],
+      "memory": [
+        "subtracted_sizes"
+      ]
+    },
+    "encodeUtf8": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "equalsByteString": {
+      "cpu": [
+        "linear_on_diagonal"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "equalsData": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "equalsInteger": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "equalsString": {
+      "cpu": [
+        "linear_on_diagonal"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "fstPair": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "headList": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "iData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "ifThenElse": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "indexByteString": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "integerToByteString": {
+      "cpu": [
+        "quadratic_in_z"
+      ],
+      "memory": [
+        "literal_in_y_or_linear_in_z"
+      ]
+    },
+    "keccak_256": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lengthOfByteString": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lessThanByteString": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lessThanEqualsByteString": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lessThanEqualsInteger": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lessThanInteger": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "listData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "mapData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "mkCons": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "mkNilData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "mkNilPairData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "mkPairData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "modInteger": {
+      "cpu": [
+        "const_above_diagonal",
+        "multiplied_sizes"
+      ],
+      "memory": [
+        "subtracted_sizes"
+      ]
+    },
+    "multiplyInteger": {
+      "cpu": [
+        "multiplied_sizes"
+      ],
+      "memory": [
+        "added_sizes"
+      ]
+    },
+    "nullList": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "indexArray": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lengthOfArray": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "listToArray": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "quotientInteger": {
+      "cpu": [
+        "const_above_diagonal",
+        "multiplied_sizes"
+      ],
+      "memory": [
+        "subtracted_sizes"
+      ]
+    },
+    "remainderInteger": {
+      "cpu": [
+        "const_above_diagonal",
+        "multiplied_sizes"
+      ],
+      "memory": [
+        "subtracted_sizes"
+      ]
+    },
+    "serialiseData": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "sha2_256": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "sha3_256": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "sliceByteString": {
+      "cpu": [
+        "linear_in_z"
+      ],
+      "memory": [
+        "linear_in_z"
+      ]
+    },
+    "sndPair": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "subtractInteger": {
+      "cpu": [
+        "max_size"
+      ],
+      "memory": [
+        "max_size"
+      ]
+    },
+    "tailList": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "trace": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "unBData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "unConstrData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "unIData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "unListData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "unMapData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "verifyEcdsaSecp256k1Signature": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "verifyEd25519Signature": {
+      "cpu": [
+        "linear_in_y"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "verifySchnorrSecp256k1Signature": {
+      "cpu": [
+        "linear_in_y"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "andByteString": {
+      "cpu": [
+        "linear_in_y_and_z"
+      ],
+      "memory": [
+        "linear_in_max_yz"
+      ]
+    },
+    "orByteString": {
+      "cpu": [
+        "linear_in_y_and_z"
+      ],
+      "memory": [
+        "linear_in_max_yz"
+      ]
+    },
+    "xorByteString": {
+      "cpu": [
+        "linear_in_y_and_z"
+      ],
+      "memory": [
+        "linear_in_max_yz"
+      ]
+    },
+    "complementByteString": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "readBit": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "writeBits": {
+      "cpu": [
+        "linear_in_y"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "replicateByte": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "shiftByteString": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "rotateByteString": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "countSetBits": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "findFirstSetBit": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "ripemd_160": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "expModInteger": {
+      "cpu": [
+        "exp_mod_cost"
+      ],
+      "memory": [
+        "linear_in_z"
+      ]
+    },
+    "dropList": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lookupCoin": {
+      "cpu": [
+        "linear_in_z"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "valueContains": {
+      "cpu": [
+        "const_above_diagonal",
+        "linear_in_x_and_y"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "valueData": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "unValueData": {
+      "cpu": [
+        "quadratic_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "insertCoin": {
+      "cpu": [
+        "linear_in_u"
+      ],
+      "memory": [
+        "linear_in_u"
+      ]
+    },
+    "unionValue": {
+      "cpu": [
+        "with_interaction_in_x_and_y"
+      ],
+      "memory": [
+        "added_sizes"
+      ]
+    },
+    "scaleValue": {
+      "cpu": [
+        "linear_in_y"
+      ],
+      "memory": [
+        "linear_in_y"
+      ]
+    },
+    "multiIndexArray": {
+      "cpu": [
+        "quadratic_in_y"
+      ],
+      "memory": [
+        "linear_in_y"
+      ]
+    },
+    "assetCount": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "policies": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    }
+  },
+  "C": {
+    "addInteger": {
+      "cpu": [
+        "max_size"
+      ],
+      "memory": [
+        "max_size"
+      ]
+    },
+    "appendByteString": {
+      "cpu": [
+        "added_sizes"
+      ],
+      "memory": [
+        "added_sizes"
+      ]
+    },
+    "appendString": {
+      "cpu": [
+        "added_sizes"
+      ],
+      "memory": [
+        "added_sizes"
+      ]
+    },
+    "bData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "blake2b_224": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "blake2b_256": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_add": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_compress": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_equal": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_hashToGroup": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_neg": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_scalarMul": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_multiScalarMul": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_uncompress": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_add": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_compress": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_equal": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_hashToGroup": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_neg": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_scalarMul": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_multiScalarMul": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_uncompress": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_finalVerify": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_millerLoop": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_mulMlResult": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "byteStringToInteger": {
+      "cpu": [
+        "quadratic_in_y"
+      ],
+      "memory": [
+        "linear_in_y"
+      ]
+    },
+    "chooseData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "chooseList": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "chooseUnit": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "consByteString": {
+      "cpu": [
+        "linear_in_y"
+      ],
+      "memory": [
+        "added_sizes"
+      ]
+    },
+    "constrData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "decodeUtf8": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "divideInteger": {
+      "cpu": [
+        "const_above_diagonal",
+        "quadratic_in_x_and_y"
+      ],
+      "memory": [
+        "subtracted_sizes"
+      ]
+    },
+    "encodeUtf8": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "equalsByteString": {
+      "cpu": [
+        "linear_on_diagonal"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "equalsData": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "equalsInteger": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "equalsString": {
+      "cpu": [
+        "linear_on_diagonal"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "fstPair": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "headList": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "iData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "ifThenElse": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "indexByteString": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "integerToByteString": {
+      "cpu": [
+        "quadratic_in_z"
+      ],
+      "memory": [
+        "literal_in_y_or_linear_in_z"
+      ]
+    },
+    "keccak_256": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lengthOfByteString": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lessThanByteString": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lessThanEqualsByteString": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lessThanEqualsInteger": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lessThanInteger": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "listData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "mapData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "mkCons": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "mkNilData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "mkNilPairData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "mkPairData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "modInteger": {
+      "cpu": [
+        "const_above_diagonal",
+        "quadratic_in_x_and_y"
+      ],
+      "memory": [
+        "linear_in_y"
+      ]
+    },
+    "multiplyInteger": {
+      "cpu": [
+        "multiplied_sizes"
+      ],
+      "memory": [
+        "added_sizes"
+      ]
+    },
+    "nullList": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "indexArray": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lengthOfArray": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "listToArray": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "quotientInteger": {
+      "cpu": [
+        "const_above_diagonal",
+        "quadratic_in_x_and_y"
+      ],
+      "memory": [
+        "subtracted_sizes"
+      ]
+    },
+    "remainderInteger": {
+      "cpu": [
+        "const_above_diagonal",
+        "quadratic_in_x_and_y"
+      ],
+      "memory": [
+        "linear_in_y"
+      ]
+    },
+    "serialiseData": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "sha2_256": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "sha3_256": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "sliceByteString": {
+      "cpu": [
+        "linear_in_z"
+      ],
+      "memory": [
+        "linear_in_z"
+      ]
+    },
+    "sndPair": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "subtractInteger": {
+      "cpu": [
+        "max_size"
+      ],
+      "memory": [
+        "max_size"
+      ]
+    },
+    "tailList": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "trace": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "unBData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "unConstrData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "unIData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "unListData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "unMapData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "verifyEcdsaSecp256k1Signature": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "verifyEd25519Signature": {
+      "cpu": [
+        "linear_in_y"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "verifySchnorrSecp256k1Signature": {
+      "cpu": [
+        "linear_in_y"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "andByteString": {
+      "cpu": [
+        "linear_in_y_and_z"
+      ],
+      "memory": [
+        "linear_in_max_yz"
+      ]
+    },
+    "orByteString": {
+      "cpu": [
+        "linear_in_y_and_z"
+      ],
+      "memory": [
+        "linear_in_max_yz"
+      ]
+    },
+    "xorByteString": {
+      "cpu": [
+        "linear_in_y_and_z"
+      ],
+      "memory": [
+        "linear_in_max_yz"
+      ]
+    },
+    "complementByteString": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "readBit": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "writeBits": {
+      "cpu": [
+        "linear_in_y"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "replicateByte": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "shiftByteString": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "rotateByteString": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "countSetBits": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "findFirstSetBit": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "ripemd_160": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "expModInteger": {
+      "cpu": [
+        "exp_mod_cost"
+      ],
+      "memory": [
+        "linear_in_z"
+      ]
+    },
+    "dropList": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lookupCoin": {
+      "cpu": [
+        "linear_in_z"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "valueContains": {
+      "cpu": [
+        "const_above_diagonal",
+        "linear_in_x_and_y"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "valueData": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "unValueData": {
+      "cpu": [
+        "quadratic_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "insertCoin": {
+      "cpu": [
+        "linear_in_u"
+      ],
+      "memory": [
+        "linear_in_u"
+      ]
+    },
+    "unionValue": {
+      "cpu": [
+        "with_interaction_in_x_and_y"
+      ],
+      "memory": [
+        "added_sizes"
+      ]
+    },
+    "scaleValue": {
+      "cpu": [
+        "linear_in_y"
+      ],
+      "memory": [
+        "linear_in_y"
+      ]
+    },
+    "multiIndexArray": {
+      "cpu": [
+        "quadratic_in_y"
+      ],
+      "memory": [
+        "linear_in_y"
+      ]
+    },
+    "assetCount": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "policies": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    }
+  },
+  "D": {
+    "addInteger": {
+      "cpu": [
+        "max_size"
+      ],
+      "memory": [
+        "max_size"
+      ]
+    },
+    "appendByteString": {
+      "cpu": [
+        "added_sizes"
+      ],
+      "memory": [
+        "added_sizes"
+      ]
+    },
+    "appendString": {
+      "cpu": [
+        "added_sizes"
+      ],
+      "memory": [
+        "added_sizes"
+      ]
+    },
+    "bData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "blake2b_224": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "blake2b_256": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_add": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_compress": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_equal": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_hashToGroup": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_neg": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_scalarMul": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_multiScalarMul": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_uncompress": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_add": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_compress": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_equal": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_hashToGroup": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_neg": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_scalarMul": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_multiScalarMul": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_uncompress": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_finalVerify": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_millerLoop": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_mulMlResult": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "byteStringToInteger": {
+      "cpu": [
+        "quadratic_in_y"
+      ],
+      "memory": [
+        "linear_in_y"
+      ]
+    },
+    "chooseData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "chooseList": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "chooseUnit": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "consByteString": {
+      "cpu": [
+        "linear_in_y"
+      ],
+      "memory": [
+        "added_sizes"
+      ]
+    },
+    "constrData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "decodeUtf8": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "divideInteger": {
+      "cpu": [
+        "above_and_below_diagonal",
+        "multiplied_sizes"
+      ],
+      "memory": [
+        "subtracted_sizes"
+      ]
+    },
+    "encodeUtf8": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "equalsByteString": {
+      "cpu": [
+        "linear_on_diagonal"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "equalsData": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "equalsInteger": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "equalsString": {
+      "cpu": [
+        "linear_on_diagonal"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "fstPair": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "headList": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "iData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "ifThenElse": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "indexByteString": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "integerToByteString": {
+      "cpu": [
+        "quadratic_in_z"
+      ],
+      "memory": [
+        "literal_in_y_or_linear_in_z"
+      ]
+    },
+    "keccak_256": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lengthOfByteString": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lessThanByteString": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lessThanEqualsByteString": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lessThanEqualsInteger": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lessThanInteger": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "listData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "mapData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "mkCons": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "mkNilData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "mkNilPairData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "mkPairData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "modInteger": {
+      "cpu": [
+        "above_and_below_diagonal",
+        "multiplied_sizes"
+      ],
+      "memory": [
+        "linear_in_y2"
+      ]
+    },
+    "multiplyInteger": {
+      "cpu": [
+        "multiplied_sizes"
+      ],
+      "memory": [
+        "added_sizes"
+      ]
+    },
+    "nullList": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "indexArray": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lengthOfArray": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "listToArray": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "quotientInteger": {
+      "cpu": [
+        "const_above_diagonal",
+        "multiplied_sizes"
+      ],
+      "memory": [
+        "subtracted_sizes"
+      ]
+    },
+    "remainderInteger": {
+      "cpu": [
+        "const_above_diagonal",
+        "multiplied_sizes"
+      ],
+      "memory": [
+        "linear_in_y2"
+      ]
+    },
+    "serialiseData": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "sha2_256": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "sha3_256": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "sliceByteString": {
+      "cpu": [
+        "linear_in_z"
+      ],
+      "memory": [
+        "linear_in_z"
+      ]
+    },
+    "sndPair": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "subtractInteger": {
+      "cpu": [
+        "max_size"
+      ],
+      "memory": [
+        "max_size"
+      ]
+    },
+    "tailList": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "trace": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "unBData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "unConstrData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "unIData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "unListData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "unMapData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "verifyEcdsaSecp256k1Signature": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "verifyEd25519Signature": {
+      "cpu": [
+        "linear_in_y"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "verifySchnorrSecp256k1Signature": {
+      "cpu": [
+        "linear_in_y"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "andByteString": {
+      "cpu": [
+        "linear_in_y_and_z"
+      ],
+      "memory": [
+        "linear_in_max_yz"
+      ]
+    },
+    "orByteString": {
+      "cpu": [
+        "linear_in_y_and_z"
+      ],
+      "memory": [
+        "linear_in_max_yz"
+      ]
+    },
+    "xorByteString": {
+      "cpu": [
+        "linear_in_y_and_z"
+      ],
+      "memory": [
+        "linear_in_max_yz"
+      ]
+    },
+    "complementByteString": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "readBit": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "writeBits": {
+      "cpu": [
+        "linear_in_y"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "replicateByte": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "shiftByteString": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "rotateByteString": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "countSetBits": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "findFirstSetBit": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "ripemd_160": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "expModInteger": {
+      "cpu": [
+        "exp_mod_cost"
+      ],
+      "memory": [
+        "linear_in_z"
+      ]
+    },
+    "dropList": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lookupCoin": {
+      "cpu": [
+        "linear_in_z"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "valueContains": {
+      "cpu": [
+        "const_above_diagonal",
+        "linear_in_x_and_y"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "valueData": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "unValueData": {
+      "cpu": [
+        "quadratic_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "insertCoin": {
+      "cpu": [
+        "linear_in_u"
+      ],
+      "memory": [
+        "linear_in_u"
+      ]
+    },
+    "unionValue": {
+      "cpu": [
+        "with_interaction_in_x_and_y"
+      ],
+      "memory": [
+        "added_sizes"
+      ]
+    },
+    "scaleValue": {
+      "cpu": [
+        "linear_in_y"
+      ],
+      "memory": [
+        "linear_in_y"
+      ]
+    },
+    "multiIndexArray": {
+      "cpu": [
+        "quadratic_in_y"
+      ],
+      "memory": [
+        "linear_in_y"
+      ]
+    },
+    "assetCount": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "policies": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    }
+  },
+  "E": {
+    "addInteger": {
+      "cpu": [
+        "max_size"
+      ],
+      "memory": [
+        "max_size"
+      ]
+    },
+    "appendByteString": {
+      "cpu": [
+        "added_sizes"
+      ],
+      "memory": [
+        "added_sizes"
+      ]
+    },
+    "appendString": {
+      "cpu": [
+        "added_sizes"
+      ],
+      "memory": [
+        "added_sizes"
+      ]
+    },
+    "bData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "blake2b_224": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "blake2b_256": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_add": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_compress": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_equal": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_hashToGroup": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_neg": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_scalarMul": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_multiScalarMul": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G1_uncompress": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_add": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_compress": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_equal": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_hashToGroup": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_neg": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_scalarMul": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_multiScalarMul": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_G2_uncompress": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_finalVerify": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_millerLoop": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "bls12_381_mulMlResult": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "byteStringToInteger": {
+      "cpu": [
+        "quadratic_in_y"
+      ],
+      "memory": [
+        "linear_in_y"
+      ]
+    },
+    "chooseData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "chooseList": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "chooseUnit": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "consByteString": {
+      "cpu": [
+        "linear_in_y"
+      ],
+      "memory": [
+        "added_sizes"
+      ]
+    },
+    "constrData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "decodeUtf8": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "divideInteger": {
+      "cpu": [
+        "above_and_below_diagonal",
+        "quadratic_in_x_and_y"
+      ],
+      "memory": [
+        "subtracted_sizes"
+      ]
+    },
+    "encodeUtf8": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "equalsByteString": {
+      "cpu": [
+        "linear_on_diagonal"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "equalsData": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "equalsInteger": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "equalsString": {
+      "cpu": [
+        "linear_on_diagonal"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "fstPair": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "headList": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "iData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "ifThenElse": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "indexByteString": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "integerToByteString": {
+      "cpu": [
+        "quadratic_in_z"
+      ],
+      "memory": [
+        "literal_in_y_or_linear_in_z"
+      ]
+    },
+    "keccak_256": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lengthOfByteString": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lessThanByteString": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lessThanEqualsByteString": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lessThanEqualsInteger": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lessThanInteger": {
+      "cpu": [
+        "min_size"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "listData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "mapData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "mkCons": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "mkNilData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "mkNilPairData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "mkPairData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "modInteger": {
+      "cpu": [
+        "above_and_below_diagonal",
+        "quadratic_in_x_and_y"
+      ],
+      "memory": [
+        "linear_in_y"
+      ]
+    },
+    "multiplyInteger": {
+      "cpu": [
+        "multiplied_sizes"
+      ],
+      "memory": [
+        "added_sizes"
+      ]
+    },
+    "nullList": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "indexArray": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lengthOfArray": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "listToArray": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "quotientInteger": {
+      "cpu": [
+        "const_above_diagonal",
+        "quadratic_in_x_and_y"
+      ],
+      "memory": [
+        "subtracted_sizes"
+      ]
+    },
+    "remainderInteger": {
+      "cpu": [
+        "const_above_diagonal",
+        "quadratic_in_x_and_y"
+      ],
+      "memory": [
+        "linear_in_y"
+      ]
+    },
+    "serialiseData": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "sha2_256": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "sha3_256": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "sliceByteString": {
+      "cpu": [
+        "linear_in_z"
+      ],
+      "memory": [
+        "linear_in_z"
+      ]
+    },
+    "sndPair": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "subtractInteger": {
+      "cpu": [
+        "max_size"
+      ],
+      "memory": [
+        "max_size"
+      ]
+    },
+    "tailList": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "trace": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "unBData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "unConstrData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "unIData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "unListData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "unMapData": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "verifyEcdsaSecp256k1Signature": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "verifyEd25519Signature": {
+      "cpu": [
+        "linear_in_y"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "verifySchnorrSecp256k1Signature": {
+      "cpu": [
+        "linear_in_y"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "andByteString": {
+      "cpu": [
+        "linear_in_y_and_z"
+      ],
+      "memory": [
+        "linear_in_max_yz"
+      ]
+    },
+    "orByteString": {
+      "cpu": [
+        "linear_in_y_and_z"
+      ],
+      "memory": [
+        "linear_in_max_yz"
+      ]
+    },
+    "xorByteString": {
+      "cpu": [
+        "linear_in_y_and_z"
+      ],
+      "memory": [
+        "linear_in_max_yz"
+      ]
+    },
+    "complementByteString": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "readBit": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "writeBits": {
+      "cpu": [
+        "linear_in_y"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "replicateByte": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "shiftByteString": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "rotateByteString": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "countSetBits": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "findFirstSetBit": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "ripemd_160": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "expModInteger": {
+      "cpu": [
+        "exp_mod_cost"
+      ],
+      "memory": [
+        "linear_in_z"
+      ]
+    },
+    "dropList": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "lookupCoin": {
+      "cpu": [
+        "linear_in_z"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "valueContains": {
+      "cpu": [
+        "const_above_diagonal",
+        "linear_in_x_and_y"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "valueData": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "unValueData": {
+      "cpu": [
+        "quadratic_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    },
+    "insertCoin": {
+      "cpu": [
+        "linear_in_u"
+      ],
+      "memory": [
+        "linear_in_u"
+      ]
+    },
+    "unionValue": {
+      "cpu": [
+        "with_interaction_in_x_and_y"
+      ],
+      "memory": [
+        "added_sizes"
+      ]
+    },
+    "scaleValue": {
+      "cpu": [
+        "linear_in_y"
+      ],
+      "memory": [
+        "linear_in_y"
+      ]
+    },
+    "multiIndexArray": {
+      "cpu": [
+        "quadratic_in_y"
+      ],
+      "memory": [
+        "linear_in_y"
+      ]
+    },
+    "assetCount": {
+      "cpu": [
+        "constant_cost"
+      ],
+      "memory": [
+        "constant_cost"
+      ]
+    },
+    "policies": {
+      "cpu": [
+        "linear_in_x"
+      ],
+      "memory": [
+        "linear_in_x"
+      ]
+    }
+  }
+}

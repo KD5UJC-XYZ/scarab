@@ -976,7 +976,7 @@ object Targets:
         ),
         Target(
           s"tx-whole-$tag",
-          () => Corpus.transactionsOf(era) ++ Corpus.tricky,
+          () => Corpus.transactionsOf(era) ++ Corpus.auxiliaryTransactions(era) ++ Corpus.tricky,
           probe(s"tx-whole-$tag") { b =>
             Corpus
               .asTransaction(b, era)

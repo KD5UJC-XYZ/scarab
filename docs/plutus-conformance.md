@@ -81,6 +81,135 @@ UPLC program version 1.1.0 (`constr`, `case`) is V3 from 9 and V1/V2 from 11.
    the applied term (`UntypedPlutusCore/Check/Scope.hs` 28-45). A failure there is a failed script.
 3. The machine runs under the cost model and the budget of the redeemer.
 
+### Auxiliary-data admission (#286)
+
+Auxiliary data is decoded structurally before ledger predicates. Its original bytes remain the
+input to the auxiliary-data hash; decoding never replaces them with a normalized encoding.
+Alonzo and later validate every contained Plutus script with the active language/protocol decoder,
+even if the transaction has no phase-2 script or advertises the invalid validity flag. Auxiliary
+scripts do not become witness scripts and are not evaluated. A deserializable script containing
+`error` therefore differs from malformed Flat bytes.
+
+The correspondence is `Shelley/Rules/Utxow.hs:427–443` (`validateMetadata`) and
+`Alonzo/TxAuxData.hs:220–306,369–373` (`decodeAlonzoTxAuxData`, `validateAlonzoTxAuxData`) at ledger
+`f649f975`. Structural auxiliary failures stay typed decoding failures. Once decoding succeeds,
+hash/presence checks precede script well-formedness; malformed contained Plutus produces the existing
+`InvalidMetadata` predicate. Backend unavailability supplies no script verdict and remains typed
+unavailability. The same phase-1 check precedes validity-tag/UTXOS checks on serial and prepared
+paths, so a refusal discards tentative state before any collateral effects can be published.
+
+The [independent auxiliary corpus](../fixtures/reference/auxiliary-scripts/README.md) contains 490
+observations: 324 decoding refusals, 136 valid auxiliary values and 30 invalid Plutus-script values.
+It separates structural decoding from the unchanged reference validity predicate. Duplicate sparse
+auxiliary fields are refused; top metadata labels become unique from protocol 9, while nested
+metadata map keys retain their historical duplicate behavior. The metadata walk is stack safe. The normal era-load driver
+also retains signed-reference auxiliary transactions and observed input/output effects separately
+from the API corpus. Exact diagnostic prose is outside both comparisons.
+
+## Independent costing and context matrix (2026-10-20)
+
+The remaining admission/context work is at Scarab's ledger integration and verification boundary;
+it is not a demonstrated missing Scalus language implementation. The VM dependency remains unchanged
+by the expanded costing and context campaigns. Counting-term conformance, script deserialization,
+context construction and signed transaction admission are distinct claims.
+
+[#287](https://github.com/KD5UJC-XYZ/scarab/issues/287) adds an unchanged-Haskell
+[costing corpus](../fixtures/reference/plutus-costing/README.md): 1,858 original-byte scripts across
+all fifteen legal V1/V2/V3 language/protocol profiles from 5 through 11, each under the default
+parameters and a second valid model with every parameter doubled. The 55,740 primary observations
+agree on decoding, evaluation stage and 37,184 exact successful CPU/memory budgets. Each successful
+case also agrees at its exact budget and with either CPU or memory reduced by one: 111,552 additional
+restricting observations. Inputs mention all 101 released builtins and sample arithmetic sizing and
+diagonal branches, byte-word boundaries, structured Data/list/array/Value sizes, and real crypto.
+The cost-shape inventory explicitly identifies unreleased names. These finite grids establish neither
+universal equality for all parameter vectors nor consumed-budget equality after failure; the reference
+restricting API does not expose failure consumption. Diagnostic prose remains outside the comparison.
+
+[#288](https://github.com/KD5UJC-XYZ/scarab/issues/288) adds an era-dispatched unchanged-Haskell
+[context corpus](../fixtures/reference/context-matrix/README.md): 309 cases, including 98 original
+signed transaction inputs and 211 clearly labelled API-only derivations. Every legal era/language/
+protocol cell is represented: Alonzo 5/6, Babbage 7/8 and Conway 9/10/11. The four historical purposes
+and Conway voting/proposing have accepted controls or explicit language refusals. All 214 complete
+ordered requests from 174 successful collections match, including full context arguments, clocks,
+cost models, scripts and declared budgets. The 135 collection refusals match their ordered typed
+categories; Conway also matches complete error CBOR. Evaluation matches 189 successful budgets and
+25 failures. Historical reference error bytes are retained without asserting historical wire parity; that separate contract remains [#123](https://github.com/KD5UJC-XYZ/scarab/issues/123).
+The observer calls the actual era's API; it does not translate every input as Conway or compare a
+Scalus-built context against another Scalus-built context.
+
+Neither API campaign establishes signature checking, complete UTXOW/BBODY admission or collateral
+effects for its derived probes. Original signed reference corpora retain those separate claims.
+Routine era load [#44](https://github.com/KD5UJC-XYZ/scarab/issues/44) now requires twenty V1/V2
+spending/minting controls across Alonzo, Babbage and Conway: successful execution, invalid-tag
+collateral consumption and both opposite-validity rejections, with observed normal/collateral inputs
+and complete resulting outputs/minted assets. This remains a bounded admission matrix rather than
+a Cartesian enumeration of every transaction shape and protocol parameter.
+
+The fixture manifests pin source, input, output, tool and image identities. Both campaigns use
+Plutus `507cab8cf6192e5143f12be5b2d3005a2928dc6d` / ledger
+`f649f9751074d2ab3de033fc3912f29c9862c1f5`, GHC 9.10.3 and complete Linux/amd64 crypto.
+They are correctness measurements, not latency or throughput benchmarks.
+
+### Integrated admission gates (2026-10-21)
+
+Measured source `5b290879b8ca8fe12350696e8ad7cc102d4d61f8`, rebased onto main
+`2fcd309047c7935de653fd6fd0f22ec95364c2dd`, passes Docker `check` (6,449 passed,17 optional skips),
+331 Python tests and the complete private ledger e2e. All twenty legacy and twenty-four auxiliary
+signed controls pass at individually acquired reference era/protocol/points. All 66 Shelley-through-
+Conway ledger projections match across 1,691 block applications through epoch17, with zero comparison
+mismatches/errors/skips or validation/fatal errors. The [compact admission fixture](../fixtures/reference/plutus-admission/README.md)
+retains original signed bytes, effects, all comparison points, commands and full image identities.
+
+The first era-load attempt exposed a bootstrap defect: an extra V2 model in Alonzo genesis was not
+adopted at the hard fork. The PV6-to-7 update now installs V1 and V2 together, preserving V1; the pinned
+CLI encodes the expected 166/175 parameters and the final live Babbage V2 cases verify adoption.
+The first integrated scenario then passed all 44 transaction cases but failed three Alonzo comparisons:
+reference JSON normalized pending cost-model CBOR to definite arrays, whereas Scarab's JSON retained
+original indefinite arrays. Every one of the 341 parameters already agreed. The driver now strictly
+compares complete language-to-ordered-Int64-vector values for only PPUP field18, preserving both raw
+encodings as evidence. It refuses duplicate languages, malformed/trailing encodings and changed values,
+order or length; other fields remain unchanged. Counterfactual tests fail against the old comparator
+and pass the correction. Comparison errors now fail the scenario even when other points match.
+The successful run retains all nine affected proposer/point observations, rather than avoiding them.
+
+Extended fuzz passed 84 targets / 33,600,000 cases on `b991c9413`; the subsequent correction changed
+only Python comparison/tests and a changelog fragment, leaving all Scala decoders/fuzz sources
+identical. The frozen scenario runtime matched all 12,725 build files and 64 dependency jars before
+and after check. Fixture manifests' earlier preparation source revisions identify their capture
+bases; separately hashed observer/generator tools and this measured source identify the actual tests.
+These results add no latency, allocation or throughput claim.
+
+The scenario retained 45 handled rollbacks and seven KeepAlive reconnects. Source/timing evidence
+identifies the responder's 97-second idle deadline; an eager reverse-direction responder versus
+upstream demand-driven startup is a hypothesis tracked in [#292](https://github.com/KD5UJC-XYZ/scarab/issues/292),
+not a newly proved transport root cause or a claim of continuous network health. Pre-Alonzo auxiliary
+structure remains [#290](https://github.com/KD5UJC-XYZ/scarab/issues/290). This stage is ready for review;
+issue completion still requires main landing and green main CI.
+
+After main advanced with BlockFetch coordination (#289), source `0c94e76a4` was rebased onto
+`0a6693fb0` and passed fresh Docker check (6,781 passed/17 optional skips), Python331/331, source-head
+CI and the complete e2e:1,656 applications,66 matched projections,44 signed cases,36 handled rollbacks
+and seven reconnects; zero comparison/validation/fatal errors. The [separate rebased receipts](../fixtures/reference/plutus-admission/README.md#rebased-integration-gate)
+retain new signed bytes/points rather than relabeling the earlier run. All12,804 actual runtime files
+and64 jars match the build. The unchanged auxiliary/transaction/fuzz decoder implementation retains
+its historical extended-fuzz evidence; new upstream fetch lifecycle/configuration/sampling is covered
+by the fresh integration gates, not by claiming an exact-head extended-fuzz rerun.
+
+### Platform boundary
+
+Platform support is separate from these semantic results. The JVM build already uses JNI;
+a native executable is not required to support another operating system or CPU. Each target needs
+the corrected portable blst library and raw-byte-DST JNI bridge built for its OS/architecture,
+packaged with deterministic selection, and exercised on that target with startup known answers,
+BLS/DST boundary cases and the reference corpus. An absent or incompatible library must retain the
+typed unavailable outcome. Current Linux/amd64 evidence does not certify another target.
+
+A future GraalVM Native Image experiment adds JNI reachability, library packaging/loading and
+initialization constraints; it does not remove the native crypto dependency. It is outside this
+correctness stage. See the official [JNI design](https://docs.oracle.com/en/java/javase/21/docs/specs/jni/design.html)
+and [Native Image JNI requirements](https://www.graalvm.org/latest/reference-manual/native-image/dynamic-features/JNI/).
+Exact diagnostic string parity remains optional [#208](https://github.com/KD5UJC-XYZ/scarab/issues/208).
+
 ## 3. Historical classification of the original 22 cases
 
 The original class labels were (ii), a dependency deviation, and (iii), a harness-profile difference.

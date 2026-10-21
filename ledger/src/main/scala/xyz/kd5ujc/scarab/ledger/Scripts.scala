@@ -160,7 +160,8 @@ object NativeScript:
               .toRight(LedgerDecodeError.MissingField("native script", i.toString))
               .flatMap(CborRead.array(_, "scripts"))
           )
-        (tag.toInt, xs.size) match
+        val boundedTag = if tag <= Int.MaxValue then tag.toInt else -1
+        (boundedTag, xs.size) match
           case (0, 2) =>
             malformed(CborRead.bytesN(xs(1), 28, "script key hash")).map(h => Step.Leaf(Sig(h)))
           case (1, 2) => list(1).map(Step.Branch(_, ss => Right(AllOf(ss))))
@@ -169,8 +170,8 @@ object NativeScript:
             required(xs(1)).flatMap(k => list(2).map(Step.Branch(_, ss => Right(NOfK(k, ss)))))
           case (4, 2) => slot(xs(1), "invalid before").map(s => Step.Leaf(InvalidBefore(s)))
           case (5, 2) => slot(xs(1), "invalid hereafter").map(s => Step.Leaf(InvalidHereafter(s)))
-          case (t, k) =>
-            Left(DecodeError.Malformed(LedgerDecodeError.TaggedArity("native script", t, k)))
+          case (_, k) =>
+            Left(DecodeError.Malformed(LedgerDecodeError.TaggedArity("native script", tag, k)))
       }
     }
 

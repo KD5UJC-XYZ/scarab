@@ -1,0 +1,7518 @@
+[
+ {
+  "name": "alonzo-pv5-metadata-empty",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "a0",
+  "kind": "metadata-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv5-metadata-empty",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv5-metadata-nested",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "a1078344646174616576616c7565a101822002",
+  "kind": "metadata-nested",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv5-metadata-nested",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv5-legacy-native",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "82a1074576616c75658282028082041903e7",
+  "kind": "legacy-native",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv5-legacy-native",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv5-tagged-empty",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a0",
+  "kind": "tagged-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv5-tagged-empty",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv5-native-not-satisfied-is-wellformed",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a10181820280",
+  "kind": "native-not-satisfied-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv5-native-not-satisfied-is-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv5-metadata-duplicate-label",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "a200010002",
+  "kind": "metadata-duplicate-label",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv5-metadata-duplicate-label",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv5-metadata-duplicate-nested-map",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "a100a201010102",
+  "kind": "metadata-duplicate-nested-map",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv5-metadata-duplicate-nested-map",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv5-metadata-chunked-bytes64",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "a1005f5820787878787878787878787878787878787878787878787878787878787878787858207979797979797979797979797979797979797979797979797979797979797979ff",
+  "kind": "metadata-chunked-bytes64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv5-metadata-chunked-bytes64",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv5-metadata-chunked-bytes65",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "a1005f582078787878787878787878787878787878787878787878787878787878787878785821797979797979797979797979797979797979797979797979797979797979797979ff",
+  "kind": "metadata-chunked-bytes65",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-metadata-chunked-bytes65"
+  }
+ },
+ {
+  "name": "alonzo-pv5-metadata-chunked-text64",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "a1007f7820c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a97820c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9ff",
+  "kind": "metadata-chunked-text64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv5-metadata-chunked-text64",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv5-metadata-chunked-text66",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "a1007f7820c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a97822c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9ff",
+  "kind": "metadata-chunked-text66",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-metadata-chunked-text66"
+  }
+ },
+ {
+  "name": "alonzo-pv5-metadata-bytes64",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "a100584078787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+  "kind": "metadata-bytes64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv5-metadata-bytes64",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv5-metadata-bytes65",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "a10058417878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+  "kind": "metadata-bytes65",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-metadata-bytes65"
+  }
+ },
+ {
+  "name": "alonzo-pv5-metadata-utf8-64",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "a1007840c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9",
+  "kind": "metadata-utf8-64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv5-metadata-utf8-64",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv5-metadata-utf8-66",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "a1007842c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9",
+  "kind": "metadata-utf8-66",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-metadata-utf8-66"
+  }
+ },
+ {
+  "name": "alonzo-pv5-metadata-label-negative",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "a12000",
+  "kind": "metadata-label-negative",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-metadata-label-negative"
+  }
+ },
+ {
+  "name": "alonzo-pv5-metadata-label-text",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "a1656c6162656c00",
+  "kind": "metadata-label-text",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-metadata-label-text"
+  }
+ },
+ {
+  "name": "alonzo-pv5-metadata-null",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "a100f6",
+  "kind": "metadata-null",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-metadata-null"
+  }
+ },
+ {
+  "name": "alonzo-pv5-metadata-bool",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "a100f5",
+  "kind": "metadata-bool",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-metadata-bool"
+  }
+ },
+ {
+  "name": "alonzo-pv5-metadata-tagged-bignum",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "a100c24101",
+  "kind": "metadata-tagged-bignum",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-metadata-tagged-bignum"
+  }
+ },
+ {
+  "name": "alonzo-pv5-metadata-integer-max",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "a1001bffffffffffffffff",
+  "kind": "metadata-integer-max",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv5-metadata-integer-max",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv5-metadata-integer-min",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "a1003bffffffffffffffff",
+  "kind": "metadata-integer-min",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv5-metadata-integer-min",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv5-tagged-metadata-not-map",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a10080",
+  "kind": "tagged-metadata-not-map",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-tagged-metadata-not-map"
+  }
+ },
+ {
+  "name": "alonzo-pv5-tagged-metadata-invalid",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a100a10058417878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+  "kind": "tagged-metadata-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-tagged-metadata-invalid"
+  }
+ },
+ {
+  "name": "alonzo-pv5-legacy-metadata-invalid",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "82a100f580",
+  "kind": "legacy-metadata-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-legacy-metadata-invalid"
+  }
+ },
+ {
+  "name": "alonzo-pv5-native-wrong-hash-length",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a101818200581b111111111111111111111111111111111111111111111111111111",
+  "kind": "native-wrong-hash-length",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-native-wrong-hash-length"
+  }
+ },
+ {
+  "name": "alonzo-pv5-native-wrapped-tag",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a10181821b0000000100000000581c11111111111111111111111111111111111111111111111111111111",
+  "kind": "native-wrapped-tag",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-native-wrapped-tag"
+  }
+ },
+ {
+  "name": "alonzo-pv5-native-unknown-tag",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a101818206581c11111111111111111111111111111111111111111111111111111111",
+  "kind": "native-unknown-tag",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-native-unknown-tag"
+  }
+ },
+ {
+  "name": "alonzo-pv5-native-invalid-slot",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a10181820420",
+  "kind": "native-invalid-slot",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-native-invalid-slot"
+  }
+ },
+ {
+  "name": "alonzo-pv5-native-field-not-array",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a101426e6f",
+  "kind": "native-field-not-array",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-native-field-not-array"
+  }
+ },
+ {
+  "name": "alonzo-pv5-wrong-tag",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90102a0",
+  "kind": "wrong-tag",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-wrong-tag"
+  }
+ },
+ {
+  "name": "alonzo-pv5-unknown-field",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a1186380",
+  "kind": "unknown-field",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-unknown-field"
+  }
+ },
+ {
+  "name": "alonzo-pv5-unsupported-v4-field",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a10580",
+  "kind": "unsupported-v4-field",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-unsupported-v4-field"
+  }
+ },
+ {
+  "name": "alonzo-pv5-legacy-wrong-arity",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "83a08080",
+  "kind": "legacy-wrong-arity",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-legacy-wrong-arity"
+  }
+ },
+ {
+  "name": "alonzo-pv5-duplicate-native-fields",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a201818200581c111111111111111111111111111111111111111111111111111111110181820280",
+  "kind": "duplicate-native-fields",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-duplicate-native-fields"
+  }
+ },
+ {
+  "name": "alonzo-pv5-duplicate-native-invalid-earlier",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a201818200411101818200581c11111111111111111111111111111111111111111111111111111111",
+  "kind": "duplicate-native-invalid-earlier",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-duplicate-native-invalid-earlier"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v1-wellformed",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a102814746010000222499",
+  "kind": "v1-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv5-v1-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv5-v1-malformed",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a1028141ff",
+  "kind": "v1-malformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv5-v1-malformed",
+   "valid": false
+  }
+ },
+ {
+  "name": "alonzo-pv5-v1-truncated-zero",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a102814100",
+  "kind": "v1-truncated-zero",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv5-v1-truncated-zero",
+   "valid": false
+  }
+ },
+ {
+  "name": "alonzo-pv5-v1-runtime-error-is-wellformed",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a10281454401000061",
+  "kind": "v1-runtime-error-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv5-v1-runtime-error-is-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv5-v1-empty-list",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a10280",
+  "kind": "v1-empty-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv5-v1-empty-list",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv5-v1-script-not-bytes",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a10281182a",
+  "kind": "v1-script-not-bytes",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v1-script-not-bytes"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v1-field-not-list",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a1024746010000222499",
+  "kind": "v1-field-not-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v1-field-not-list"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v1-duplicate-invalid-then-valid",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a2028141ff02814746010000222499",
+  "kind": "v1-duplicate-invalid-then-valid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v1-duplicate-invalid-then-valid"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v1-duplicate-valid-then-invalid",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a202814746010000222499028141ff",
+  "kind": "v1-duplicate-valid-then-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v1-duplicate-valid-then-invalid"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v1-duplicate-invalid-then-empty",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a2028141ff0280",
+  "kind": "v1-duplicate-invalid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v1-duplicate-invalid-then-empty"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v1-duplicate-valid-then-empty",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a2028147460100002224990280",
+  "kind": "v1-duplicate-valid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v1-duplicate-valid-then-empty"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v2-wellformed",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a103814746010000222499",
+  "kind": "v2-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v2-wellformed"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v2-malformed",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a1038141ff",
+  "kind": "v2-malformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v2-malformed"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v2-truncated-zero",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a103814100",
+  "kind": "v2-truncated-zero",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v2-truncated-zero"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v2-runtime-error-is-wellformed",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a10381454401000061",
+  "kind": "v2-runtime-error-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v2-runtime-error-is-wellformed"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v2-empty-list",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a10380",
+  "kind": "v2-empty-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v2-empty-list"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v2-script-not-bytes",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a10381182a",
+  "kind": "v2-script-not-bytes",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v2-script-not-bytes"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v2-field-not-list",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a1034746010000222499",
+  "kind": "v2-field-not-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v2-field-not-list"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v2-duplicate-invalid-then-valid",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a2038141ff03814746010000222499",
+  "kind": "v2-duplicate-invalid-then-valid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v2-duplicate-invalid-then-valid"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v2-duplicate-valid-then-invalid",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a203814746010000222499038141ff",
+  "kind": "v2-duplicate-valid-then-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v2-duplicate-valid-then-invalid"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v2-duplicate-invalid-then-empty",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a2038141ff0380",
+  "kind": "v2-duplicate-invalid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v2-duplicate-invalid-then-empty"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v2-duplicate-valid-then-empty",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a2038147460100002224990380",
+  "kind": "v2-duplicate-valid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v2-duplicate-valid-then-empty"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v3-wellformed",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a104814746010000222499",
+  "kind": "v3-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v3-wellformed"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v3-malformed",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a1048141ff",
+  "kind": "v3-malformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v3-malformed"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v3-truncated-zero",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a104814100",
+  "kind": "v3-truncated-zero",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v3-truncated-zero"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v3-runtime-error-is-wellformed",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a10481454401000061",
+  "kind": "v3-runtime-error-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v3-runtime-error-is-wellformed"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v3-empty-list",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a10480",
+  "kind": "v3-empty-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v3-empty-list"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v3-script-not-bytes",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a10481182a",
+  "kind": "v3-script-not-bytes",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v3-script-not-bytes"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v3-field-not-list",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a1044746010000222499",
+  "kind": "v3-field-not-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v3-field-not-list"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v3-duplicate-invalid-then-valid",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a2048141ff04814746010000222499",
+  "kind": "v3-duplicate-invalid-then-valid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v3-duplicate-invalid-then-valid"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v3-duplicate-valid-then-invalid",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a204814746010000222499048141ff",
+  "kind": "v3-duplicate-valid-then-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v3-duplicate-valid-then-invalid"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v3-duplicate-invalid-then-empty",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a2048141ff0480",
+  "kind": "v3-duplicate-invalid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v3-duplicate-invalid-then-empty"
+  }
+ },
+ {
+  "name": "alonzo-pv5-v3-duplicate-valid-then-empty",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a2048147460100002224990480",
+  "kind": "v3-duplicate-valid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-v3-duplicate-valid-then-empty"
+  }
+ },
+ {
+  "name": "alonzo-pv5-all-three-languages",
+  "era": "Alonzo",
+  "protocolMajor": 5,
+  "auxiliary": "d90103a30281474601000022249903814746010000222499048146450101002499",
+  "kind": "all-three-languages",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv5-all-three-languages"
+  }
+ },
+ {
+  "name": "alonzo-pv6-metadata-empty",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "a0",
+  "kind": "metadata-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv6-metadata-empty",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv6-metadata-nested",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "a1078344646174616576616c7565a101822002",
+  "kind": "metadata-nested",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv6-metadata-nested",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv6-legacy-native",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "82a1074576616c75658282028082041903e7",
+  "kind": "legacy-native",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv6-legacy-native",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv6-tagged-empty",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a0",
+  "kind": "tagged-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv6-tagged-empty",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv6-native-not-satisfied-is-wellformed",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a10181820280",
+  "kind": "native-not-satisfied-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv6-native-not-satisfied-is-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv6-metadata-duplicate-label",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "a200010002",
+  "kind": "metadata-duplicate-label",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv6-metadata-duplicate-label",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv6-metadata-duplicate-nested-map",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "a100a201010102",
+  "kind": "metadata-duplicate-nested-map",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv6-metadata-duplicate-nested-map",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv6-metadata-chunked-bytes64",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "a1005f5820787878787878787878787878787878787878787878787878787878787878787858207979797979797979797979797979797979797979797979797979797979797979ff",
+  "kind": "metadata-chunked-bytes64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv6-metadata-chunked-bytes64",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv6-metadata-chunked-bytes65",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "a1005f582078787878787878787878787878787878787878787878787878787878787878785821797979797979797979797979797979797979797979797979797979797979797979ff",
+  "kind": "metadata-chunked-bytes65",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-metadata-chunked-bytes65"
+  }
+ },
+ {
+  "name": "alonzo-pv6-metadata-chunked-text64",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "a1007f7820c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a97820c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9ff",
+  "kind": "metadata-chunked-text64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv6-metadata-chunked-text64",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv6-metadata-chunked-text66",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "a1007f7820c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a97822c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9ff",
+  "kind": "metadata-chunked-text66",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-metadata-chunked-text66"
+  }
+ },
+ {
+  "name": "alonzo-pv6-metadata-bytes64",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "a100584078787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+  "kind": "metadata-bytes64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv6-metadata-bytes64",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv6-metadata-bytes65",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "a10058417878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+  "kind": "metadata-bytes65",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-metadata-bytes65"
+  }
+ },
+ {
+  "name": "alonzo-pv6-metadata-utf8-64",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "a1007840c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9",
+  "kind": "metadata-utf8-64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv6-metadata-utf8-64",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv6-metadata-utf8-66",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "a1007842c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9",
+  "kind": "metadata-utf8-66",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-metadata-utf8-66"
+  }
+ },
+ {
+  "name": "alonzo-pv6-metadata-label-negative",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "a12000",
+  "kind": "metadata-label-negative",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-metadata-label-negative"
+  }
+ },
+ {
+  "name": "alonzo-pv6-metadata-label-text",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "a1656c6162656c00",
+  "kind": "metadata-label-text",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-metadata-label-text"
+  }
+ },
+ {
+  "name": "alonzo-pv6-metadata-null",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "a100f6",
+  "kind": "metadata-null",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-metadata-null"
+  }
+ },
+ {
+  "name": "alonzo-pv6-metadata-bool",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "a100f5",
+  "kind": "metadata-bool",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-metadata-bool"
+  }
+ },
+ {
+  "name": "alonzo-pv6-metadata-tagged-bignum",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "a100c24101",
+  "kind": "metadata-tagged-bignum",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-metadata-tagged-bignum"
+  }
+ },
+ {
+  "name": "alonzo-pv6-metadata-integer-max",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "a1001bffffffffffffffff",
+  "kind": "metadata-integer-max",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv6-metadata-integer-max",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv6-metadata-integer-min",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "a1003bffffffffffffffff",
+  "kind": "metadata-integer-min",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv6-metadata-integer-min",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv6-tagged-metadata-not-map",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a10080",
+  "kind": "tagged-metadata-not-map",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-tagged-metadata-not-map"
+  }
+ },
+ {
+  "name": "alonzo-pv6-tagged-metadata-invalid",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a100a10058417878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+  "kind": "tagged-metadata-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-tagged-metadata-invalid"
+  }
+ },
+ {
+  "name": "alonzo-pv6-legacy-metadata-invalid",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "82a100f580",
+  "kind": "legacy-metadata-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-legacy-metadata-invalid"
+  }
+ },
+ {
+  "name": "alonzo-pv6-native-wrong-hash-length",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a101818200581b111111111111111111111111111111111111111111111111111111",
+  "kind": "native-wrong-hash-length",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-native-wrong-hash-length"
+  }
+ },
+ {
+  "name": "alonzo-pv6-native-wrapped-tag",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a10181821b0000000100000000581c11111111111111111111111111111111111111111111111111111111",
+  "kind": "native-wrapped-tag",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-native-wrapped-tag"
+  }
+ },
+ {
+  "name": "alonzo-pv6-native-unknown-tag",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a101818206581c11111111111111111111111111111111111111111111111111111111",
+  "kind": "native-unknown-tag",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-native-unknown-tag"
+  }
+ },
+ {
+  "name": "alonzo-pv6-native-invalid-slot",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a10181820420",
+  "kind": "native-invalid-slot",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-native-invalid-slot"
+  }
+ },
+ {
+  "name": "alonzo-pv6-native-field-not-array",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a101426e6f",
+  "kind": "native-field-not-array",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-native-field-not-array"
+  }
+ },
+ {
+  "name": "alonzo-pv6-wrong-tag",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90102a0",
+  "kind": "wrong-tag",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-wrong-tag"
+  }
+ },
+ {
+  "name": "alonzo-pv6-unknown-field",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a1186380",
+  "kind": "unknown-field",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-unknown-field"
+  }
+ },
+ {
+  "name": "alonzo-pv6-unsupported-v4-field",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a10580",
+  "kind": "unsupported-v4-field",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-unsupported-v4-field"
+  }
+ },
+ {
+  "name": "alonzo-pv6-legacy-wrong-arity",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "83a08080",
+  "kind": "legacy-wrong-arity",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-legacy-wrong-arity"
+  }
+ },
+ {
+  "name": "alonzo-pv6-duplicate-native-fields",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a201818200581c111111111111111111111111111111111111111111111111111111110181820280",
+  "kind": "duplicate-native-fields",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-duplicate-native-fields"
+  }
+ },
+ {
+  "name": "alonzo-pv6-duplicate-native-invalid-earlier",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a201818200411101818200581c11111111111111111111111111111111111111111111111111111111",
+  "kind": "duplicate-native-invalid-earlier",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-duplicate-native-invalid-earlier"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v1-wellformed",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a102814746010000222499",
+  "kind": "v1-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv6-v1-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv6-v1-malformed",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a1028141ff",
+  "kind": "v1-malformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv6-v1-malformed",
+   "valid": false
+  }
+ },
+ {
+  "name": "alonzo-pv6-v1-truncated-zero",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a102814100",
+  "kind": "v1-truncated-zero",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv6-v1-truncated-zero",
+   "valid": false
+  }
+ },
+ {
+  "name": "alonzo-pv6-v1-runtime-error-is-wellformed",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a10281454401000061",
+  "kind": "v1-runtime-error-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv6-v1-runtime-error-is-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv6-v1-empty-list",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a10280",
+  "kind": "v1-empty-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "alonzo-pv6-v1-empty-list",
+   "valid": true
+  }
+ },
+ {
+  "name": "alonzo-pv6-v1-script-not-bytes",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a10281182a",
+  "kind": "v1-script-not-bytes",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v1-script-not-bytes"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v1-field-not-list",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a1024746010000222499",
+  "kind": "v1-field-not-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v1-field-not-list"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v1-duplicate-invalid-then-valid",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a2028141ff02814746010000222499",
+  "kind": "v1-duplicate-invalid-then-valid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v1-duplicate-invalid-then-valid"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v1-duplicate-valid-then-invalid",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a202814746010000222499028141ff",
+  "kind": "v1-duplicate-valid-then-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v1-duplicate-valid-then-invalid"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v1-duplicate-invalid-then-empty",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a2028141ff0280",
+  "kind": "v1-duplicate-invalid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v1-duplicate-invalid-then-empty"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v1-duplicate-valid-then-empty",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a2028147460100002224990280",
+  "kind": "v1-duplicate-valid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v1-duplicate-valid-then-empty"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v2-wellformed",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a103814746010000222499",
+  "kind": "v2-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v2-wellformed"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v2-malformed",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a1038141ff",
+  "kind": "v2-malformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v2-malformed"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v2-truncated-zero",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a103814100",
+  "kind": "v2-truncated-zero",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v2-truncated-zero"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v2-runtime-error-is-wellformed",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a10381454401000061",
+  "kind": "v2-runtime-error-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v2-runtime-error-is-wellformed"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v2-empty-list",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a10380",
+  "kind": "v2-empty-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v2-empty-list"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v2-script-not-bytes",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a10381182a",
+  "kind": "v2-script-not-bytes",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v2-script-not-bytes"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v2-field-not-list",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a1034746010000222499",
+  "kind": "v2-field-not-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v2-field-not-list"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v2-duplicate-invalid-then-valid",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a2038141ff03814746010000222499",
+  "kind": "v2-duplicate-invalid-then-valid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v2-duplicate-invalid-then-valid"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v2-duplicate-valid-then-invalid",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a203814746010000222499038141ff",
+  "kind": "v2-duplicate-valid-then-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v2-duplicate-valid-then-invalid"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v2-duplicate-invalid-then-empty",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a2038141ff0380",
+  "kind": "v2-duplicate-invalid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v2-duplicate-invalid-then-empty"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v2-duplicate-valid-then-empty",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a2038147460100002224990380",
+  "kind": "v2-duplicate-valid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v2-duplicate-valid-then-empty"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v3-wellformed",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a104814746010000222499",
+  "kind": "v3-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v3-wellformed"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v3-malformed",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a1048141ff",
+  "kind": "v3-malformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v3-malformed"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v3-truncated-zero",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a104814100",
+  "kind": "v3-truncated-zero",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v3-truncated-zero"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v3-runtime-error-is-wellformed",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a10481454401000061",
+  "kind": "v3-runtime-error-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v3-runtime-error-is-wellformed"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v3-empty-list",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a10480",
+  "kind": "v3-empty-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v3-empty-list"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v3-script-not-bytes",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a10481182a",
+  "kind": "v3-script-not-bytes",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v3-script-not-bytes"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v3-field-not-list",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a1044746010000222499",
+  "kind": "v3-field-not-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v3-field-not-list"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v3-duplicate-invalid-then-valid",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a2048141ff04814746010000222499",
+  "kind": "v3-duplicate-invalid-then-valid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v3-duplicate-invalid-then-valid"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v3-duplicate-valid-then-invalid",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a204814746010000222499048141ff",
+  "kind": "v3-duplicate-valid-then-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v3-duplicate-valid-then-invalid"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v3-duplicate-invalid-then-empty",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a2048141ff0480",
+  "kind": "v3-duplicate-invalid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v3-duplicate-invalid-then-empty"
+  }
+ },
+ {
+  "name": "alonzo-pv6-v3-duplicate-valid-then-empty",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a2048147460100002224990480",
+  "kind": "v3-duplicate-valid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-v3-duplicate-valid-then-empty"
+  }
+ },
+ {
+  "name": "alonzo-pv6-all-three-languages",
+  "era": "Alonzo",
+  "protocolMajor": 6,
+  "auxiliary": "d90103a30281474601000022249903814746010000222499048146450101002499",
+  "kind": "all-three-languages",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "alonzo-pv6-all-three-languages"
+  }
+ },
+ {
+  "name": "babbage-pv7-metadata-empty",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "a0",
+  "kind": "metadata-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv7-metadata-empty",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv7-metadata-nested",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "a1078344646174616576616c7565a101822002",
+  "kind": "metadata-nested",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv7-metadata-nested",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv7-legacy-native",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "82a1074576616c75658282028082041903e7",
+  "kind": "legacy-native",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv7-legacy-native",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv7-tagged-empty",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a0",
+  "kind": "tagged-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv7-tagged-empty",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv7-native-not-satisfied-is-wellformed",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a10181820280",
+  "kind": "native-not-satisfied-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv7-native-not-satisfied-is-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv7-metadata-duplicate-label",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "a200010002",
+  "kind": "metadata-duplicate-label",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv7-metadata-duplicate-label",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv7-metadata-duplicate-nested-map",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "a100a201010102",
+  "kind": "metadata-duplicate-nested-map",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv7-metadata-duplicate-nested-map",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv7-metadata-chunked-bytes64",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "a1005f5820787878787878787878787878787878787878787878787878787878787878787858207979797979797979797979797979797979797979797979797979797979797979ff",
+  "kind": "metadata-chunked-bytes64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv7-metadata-chunked-bytes64",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv7-metadata-chunked-bytes65",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "a1005f582078787878787878787878787878787878787878787878787878787878787878785821797979797979797979797979797979797979797979797979797979797979797979ff",
+  "kind": "metadata-chunked-bytes65",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-metadata-chunked-bytes65"
+  }
+ },
+ {
+  "name": "babbage-pv7-metadata-chunked-text64",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "a1007f7820c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a97820c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9ff",
+  "kind": "metadata-chunked-text64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv7-metadata-chunked-text64",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv7-metadata-chunked-text66",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "a1007f7820c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a97822c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9ff",
+  "kind": "metadata-chunked-text66",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-metadata-chunked-text66"
+  }
+ },
+ {
+  "name": "babbage-pv7-metadata-bytes64",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "a100584078787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+  "kind": "metadata-bytes64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv7-metadata-bytes64",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv7-metadata-bytes65",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "a10058417878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+  "kind": "metadata-bytes65",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-metadata-bytes65"
+  }
+ },
+ {
+  "name": "babbage-pv7-metadata-utf8-64",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "a1007840c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9",
+  "kind": "metadata-utf8-64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv7-metadata-utf8-64",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv7-metadata-utf8-66",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "a1007842c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9",
+  "kind": "metadata-utf8-66",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-metadata-utf8-66"
+  }
+ },
+ {
+  "name": "babbage-pv7-metadata-label-negative",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "a12000",
+  "kind": "metadata-label-negative",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-metadata-label-negative"
+  }
+ },
+ {
+  "name": "babbage-pv7-metadata-label-text",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "a1656c6162656c00",
+  "kind": "metadata-label-text",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-metadata-label-text"
+  }
+ },
+ {
+  "name": "babbage-pv7-metadata-null",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "a100f6",
+  "kind": "metadata-null",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-metadata-null"
+  }
+ },
+ {
+  "name": "babbage-pv7-metadata-bool",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "a100f5",
+  "kind": "metadata-bool",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-metadata-bool"
+  }
+ },
+ {
+  "name": "babbage-pv7-metadata-tagged-bignum",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "a100c24101",
+  "kind": "metadata-tagged-bignum",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-metadata-tagged-bignum"
+  }
+ },
+ {
+  "name": "babbage-pv7-metadata-integer-max",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "a1001bffffffffffffffff",
+  "kind": "metadata-integer-max",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv7-metadata-integer-max",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv7-metadata-integer-min",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "a1003bffffffffffffffff",
+  "kind": "metadata-integer-min",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv7-metadata-integer-min",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv7-tagged-metadata-not-map",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a10080",
+  "kind": "tagged-metadata-not-map",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-tagged-metadata-not-map"
+  }
+ },
+ {
+  "name": "babbage-pv7-tagged-metadata-invalid",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a100a10058417878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+  "kind": "tagged-metadata-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-tagged-metadata-invalid"
+  }
+ },
+ {
+  "name": "babbage-pv7-legacy-metadata-invalid",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "82a100f580",
+  "kind": "legacy-metadata-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-legacy-metadata-invalid"
+  }
+ },
+ {
+  "name": "babbage-pv7-native-wrong-hash-length",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a101818200581b111111111111111111111111111111111111111111111111111111",
+  "kind": "native-wrong-hash-length",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-native-wrong-hash-length"
+  }
+ },
+ {
+  "name": "babbage-pv7-native-wrapped-tag",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a10181821b0000000100000000581c11111111111111111111111111111111111111111111111111111111",
+  "kind": "native-wrapped-tag",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-native-wrapped-tag"
+  }
+ },
+ {
+  "name": "babbage-pv7-native-unknown-tag",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a101818206581c11111111111111111111111111111111111111111111111111111111",
+  "kind": "native-unknown-tag",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-native-unknown-tag"
+  }
+ },
+ {
+  "name": "babbage-pv7-native-invalid-slot",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a10181820420",
+  "kind": "native-invalid-slot",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-native-invalid-slot"
+  }
+ },
+ {
+  "name": "babbage-pv7-native-field-not-array",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a101426e6f",
+  "kind": "native-field-not-array",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-native-field-not-array"
+  }
+ },
+ {
+  "name": "babbage-pv7-wrong-tag",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90102a0",
+  "kind": "wrong-tag",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-wrong-tag"
+  }
+ },
+ {
+  "name": "babbage-pv7-unknown-field",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a1186380",
+  "kind": "unknown-field",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-unknown-field"
+  }
+ },
+ {
+  "name": "babbage-pv7-unsupported-v4-field",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a10580",
+  "kind": "unsupported-v4-field",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-unsupported-v4-field"
+  }
+ },
+ {
+  "name": "babbage-pv7-legacy-wrong-arity",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "83a08080",
+  "kind": "legacy-wrong-arity",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-legacy-wrong-arity"
+  }
+ },
+ {
+  "name": "babbage-pv7-duplicate-native-fields",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a201818200581c111111111111111111111111111111111111111111111111111111110181820280",
+  "kind": "duplicate-native-fields",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-duplicate-native-fields"
+  }
+ },
+ {
+  "name": "babbage-pv7-duplicate-native-invalid-earlier",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a201818200411101818200581c11111111111111111111111111111111111111111111111111111111",
+  "kind": "duplicate-native-invalid-earlier",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-duplicate-native-invalid-earlier"
+  }
+ },
+ {
+  "name": "babbage-pv7-v1-wellformed",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a102814746010000222499",
+  "kind": "v1-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv7-v1-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv7-v1-malformed",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a1028141ff",
+  "kind": "v1-malformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv7-v1-malformed",
+   "valid": false
+  }
+ },
+ {
+  "name": "babbage-pv7-v1-truncated-zero",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a102814100",
+  "kind": "v1-truncated-zero",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv7-v1-truncated-zero",
+   "valid": false
+  }
+ },
+ {
+  "name": "babbage-pv7-v1-runtime-error-is-wellformed",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a10281454401000061",
+  "kind": "v1-runtime-error-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv7-v1-runtime-error-is-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv7-v1-empty-list",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a10280",
+  "kind": "v1-empty-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv7-v1-empty-list",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv7-v1-script-not-bytes",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a10281182a",
+  "kind": "v1-script-not-bytes",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-v1-script-not-bytes"
+  }
+ },
+ {
+  "name": "babbage-pv7-v1-field-not-list",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a1024746010000222499",
+  "kind": "v1-field-not-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-v1-field-not-list"
+  }
+ },
+ {
+  "name": "babbage-pv7-v1-duplicate-invalid-then-valid",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a2028141ff02814746010000222499",
+  "kind": "v1-duplicate-invalid-then-valid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-v1-duplicate-invalid-then-valid"
+  }
+ },
+ {
+  "name": "babbage-pv7-v1-duplicate-valid-then-invalid",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a202814746010000222499028141ff",
+  "kind": "v1-duplicate-valid-then-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-v1-duplicate-valid-then-invalid"
+  }
+ },
+ {
+  "name": "babbage-pv7-v1-duplicate-invalid-then-empty",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a2028141ff0280",
+  "kind": "v1-duplicate-invalid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-v1-duplicate-invalid-then-empty"
+  }
+ },
+ {
+  "name": "babbage-pv7-v1-duplicate-valid-then-empty",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a2028147460100002224990280",
+  "kind": "v1-duplicate-valid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-v1-duplicate-valid-then-empty"
+  }
+ },
+ {
+  "name": "babbage-pv7-v2-wellformed",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a103814746010000222499",
+  "kind": "v2-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv7-v2-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv7-v2-malformed",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a1038141ff",
+  "kind": "v2-malformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv7-v2-malformed",
+   "valid": false
+  }
+ },
+ {
+  "name": "babbage-pv7-v2-truncated-zero",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a103814100",
+  "kind": "v2-truncated-zero",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv7-v2-truncated-zero",
+   "valid": false
+  }
+ },
+ {
+  "name": "babbage-pv7-v2-runtime-error-is-wellformed",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a10381454401000061",
+  "kind": "v2-runtime-error-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv7-v2-runtime-error-is-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv7-v2-empty-list",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a10380",
+  "kind": "v2-empty-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv7-v2-empty-list",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv7-v2-script-not-bytes",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a10381182a",
+  "kind": "v2-script-not-bytes",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-v2-script-not-bytes"
+  }
+ },
+ {
+  "name": "babbage-pv7-v2-field-not-list",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a1034746010000222499",
+  "kind": "v2-field-not-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-v2-field-not-list"
+  }
+ },
+ {
+  "name": "babbage-pv7-v2-duplicate-invalid-then-valid",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a2038141ff03814746010000222499",
+  "kind": "v2-duplicate-invalid-then-valid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-v2-duplicate-invalid-then-valid"
+  }
+ },
+ {
+  "name": "babbage-pv7-v2-duplicate-valid-then-invalid",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a203814746010000222499038141ff",
+  "kind": "v2-duplicate-valid-then-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-v2-duplicate-valid-then-invalid"
+  }
+ },
+ {
+  "name": "babbage-pv7-v2-duplicate-invalid-then-empty",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a2038141ff0380",
+  "kind": "v2-duplicate-invalid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-v2-duplicate-invalid-then-empty"
+  }
+ },
+ {
+  "name": "babbage-pv7-v2-duplicate-valid-then-empty",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a2038147460100002224990380",
+  "kind": "v2-duplicate-valid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-v2-duplicate-valid-then-empty"
+  }
+ },
+ {
+  "name": "babbage-pv7-v3-wellformed",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a104814746010000222499",
+  "kind": "v3-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-v3-wellformed"
+  }
+ },
+ {
+  "name": "babbage-pv7-v3-malformed",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a1048141ff",
+  "kind": "v3-malformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-v3-malformed"
+  }
+ },
+ {
+  "name": "babbage-pv7-v3-truncated-zero",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a104814100",
+  "kind": "v3-truncated-zero",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-v3-truncated-zero"
+  }
+ },
+ {
+  "name": "babbage-pv7-v3-runtime-error-is-wellformed",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a10481454401000061",
+  "kind": "v3-runtime-error-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-v3-runtime-error-is-wellformed"
+  }
+ },
+ {
+  "name": "babbage-pv7-v3-empty-list",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a10480",
+  "kind": "v3-empty-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-v3-empty-list"
+  }
+ },
+ {
+  "name": "babbage-pv7-v3-script-not-bytes",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a10481182a",
+  "kind": "v3-script-not-bytes",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-v3-script-not-bytes"
+  }
+ },
+ {
+  "name": "babbage-pv7-v3-field-not-list",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a1044746010000222499",
+  "kind": "v3-field-not-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-v3-field-not-list"
+  }
+ },
+ {
+  "name": "babbage-pv7-v3-duplicate-invalid-then-valid",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a2048141ff04814746010000222499",
+  "kind": "v3-duplicate-invalid-then-valid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-v3-duplicate-invalid-then-valid"
+  }
+ },
+ {
+  "name": "babbage-pv7-v3-duplicate-valid-then-invalid",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a204814746010000222499048141ff",
+  "kind": "v3-duplicate-valid-then-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-v3-duplicate-valid-then-invalid"
+  }
+ },
+ {
+  "name": "babbage-pv7-v3-duplicate-invalid-then-empty",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a2048141ff0480",
+  "kind": "v3-duplicate-invalid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-v3-duplicate-invalid-then-empty"
+  }
+ },
+ {
+  "name": "babbage-pv7-v3-duplicate-valid-then-empty",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a2048147460100002224990480",
+  "kind": "v3-duplicate-valid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-v3-duplicate-valid-then-empty"
+  }
+ },
+ {
+  "name": "babbage-pv7-all-three-languages",
+  "era": "Babbage",
+  "protocolMajor": 7,
+  "auxiliary": "d90103a30281474601000022249903814746010000222499048146450101002499",
+  "kind": "all-three-languages",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv7-all-three-languages"
+  }
+ },
+ {
+  "name": "babbage-pv8-metadata-empty",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "a0",
+  "kind": "metadata-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv8-metadata-empty",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv8-metadata-nested",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "a1078344646174616576616c7565a101822002",
+  "kind": "metadata-nested",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv8-metadata-nested",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv8-legacy-native",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "82a1074576616c75658282028082041903e7",
+  "kind": "legacy-native",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv8-legacy-native",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv8-tagged-empty",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a0",
+  "kind": "tagged-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv8-tagged-empty",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv8-native-not-satisfied-is-wellformed",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a10181820280",
+  "kind": "native-not-satisfied-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv8-native-not-satisfied-is-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv8-metadata-duplicate-label",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "a200010002",
+  "kind": "metadata-duplicate-label",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv8-metadata-duplicate-label",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv8-metadata-duplicate-nested-map",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "a100a201010102",
+  "kind": "metadata-duplicate-nested-map",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv8-metadata-duplicate-nested-map",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv8-metadata-chunked-bytes64",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "a1005f5820787878787878787878787878787878787878787878787878787878787878787858207979797979797979797979797979797979797979797979797979797979797979ff",
+  "kind": "metadata-chunked-bytes64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv8-metadata-chunked-bytes64",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv8-metadata-chunked-bytes65",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "a1005f582078787878787878787878787878787878787878787878787878787878787878785821797979797979797979797979797979797979797979797979797979797979797979ff",
+  "kind": "metadata-chunked-bytes65",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-metadata-chunked-bytes65"
+  }
+ },
+ {
+  "name": "babbage-pv8-metadata-chunked-text64",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "a1007f7820c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a97820c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9ff",
+  "kind": "metadata-chunked-text64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv8-metadata-chunked-text64",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv8-metadata-chunked-text66",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "a1007f7820c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a97822c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9ff",
+  "kind": "metadata-chunked-text66",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-metadata-chunked-text66"
+  }
+ },
+ {
+  "name": "babbage-pv8-metadata-bytes64",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "a100584078787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+  "kind": "metadata-bytes64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv8-metadata-bytes64",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv8-metadata-bytes65",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "a10058417878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+  "kind": "metadata-bytes65",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-metadata-bytes65"
+  }
+ },
+ {
+  "name": "babbage-pv8-metadata-utf8-64",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "a1007840c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9",
+  "kind": "metadata-utf8-64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv8-metadata-utf8-64",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv8-metadata-utf8-66",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "a1007842c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9",
+  "kind": "metadata-utf8-66",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-metadata-utf8-66"
+  }
+ },
+ {
+  "name": "babbage-pv8-metadata-label-negative",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "a12000",
+  "kind": "metadata-label-negative",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-metadata-label-negative"
+  }
+ },
+ {
+  "name": "babbage-pv8-metadata-label-text",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "a1656c6162656c00",
+  "kind": "metadata-label-text",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-metadata-label-text"
+  }
+ },
+ {
+  "name": "babbage-pv8-metadata-null",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "a100f6",
+  "kind": "metadata-null",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-metadata-null"
+  }
+ },
+ {
+  "name": "babbage-pv8-metadata-bool",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "a100f5",
+  "kind": "metadata-bool",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-metadata-bool"
+  }
+ },
+ {
+  "name": "babbage-pv8-metadata-tagged-bignum",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "a100c24101",
+  "kind": "metadata-tagged-bignum",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-metadata-tagged-bignum"
+  }
+ },
+ {
+  "name": "babbage-pv8-metadata-integer-max",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "a1001bffffffffffffffff",
+  "kind": "metadata-integer-max",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv8-metadata-integer-max",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv8-metadata-integer-min",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "a1003bffffffffffffffff",
+  "kind": "metadata-integer-min",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv8-metadata-integer-min",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv8-tagged-metadata-not-map",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a10080",
+  "kind": "tagged-metadata-not-map",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-tagged-metadata-not-map"
+  }
+ },
+ {
+  "name": "babbage-pv8-tagged-metadata-invalid",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a100a10058417878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+  "kind": "tagged-metadata-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-tagged-metadata-invalid"
+  }
+ },
+ {
+  "name": "babbage-pv8-legacy-metadata-invalid",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "82a100f580",
+  "kind": "legacy-metadata-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-legacy-metadata-invalid"
+  }
+ },
+ {
+  "name": "babbage-pv8-native-wrong-hash-length",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a101818200581b111111111111111111111111111111111111111111111111111111",
+  "kind": "native-wrong-hash-length",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-native-wrong-hash-length"
+  }
+ },
+ {
+  "name": "babbage-pv8-native-wrapped-tag",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a10181821b0000000100000000581c11111111111111111111111111111111111111111111111111111111",
+  "kind": "native-wrapped-tag",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-native-wrapped-tag"
+  }
+ },
+ {
+  "name": "babbage-pv8-native-unknown-tag",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a101818206581c11111111111111111111111111111111111111111111111111111111",
+  "kind": "native-unknown-tag",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-native-unknown-tag"
+  }
+ },
+ {
+  "name": "babbage-pv8-native-invalid-slot",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a10181820420",
+  "kind": "native-invalid-slot",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-native-invalid-slot"
+  }
+ },
+ {
+  "name": "babbage-pv8-native-field-not-array",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a101426e6f",
+  "kind": "native-field-not-array",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-native-field-not-array"
+  }
+ },
+ {
+  "name": "babbage-pv8-wrong-tag",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90102a0",
+  "kind": "wrong-tag",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-wrong-tag"
+  }
+ },
+ {
+  "name": "babbage-pv8-unknown-field",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a1186380",
+  "kind": "unknown-field",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-unknown-field"
+  }
+ },
+ {
+  "name": "babbage-pv8-unsupported-v4-field",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a10580",
+  "kind": "unsupported-v4-field",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-unsupported-v4-field"
+  }
+ },
+ {
+  "name": "babbage-pv8-legacy-wrong-arity",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "83a08080",
+  "kind": "legacy-wrong-arity",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-legacy-wrong-arity"
+  }
+ },
+ {
+  "name": "babbage-pv8-duplicate-native-fields",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a201818200581c111111111111111111111111111111111111111111111111111111110181820280",
+  "kind": "duplicate-native-fields",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-duplicate-native-fields"
+  }
+ },
+ {
+  "name": "babbage-pv8-duplicate-native-invalid-earlier",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a201818200411101818200581c11111111111111111111111111111111111111111111111111111111",
+  "kind": "duplicate-native-invalid-earlier",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-duplicate-native-invalid-earlier"
+  }
+ },
+ {
+  "name": "babbage-pv8-v1-wellformed",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a102814746010000222499",
+  "kind": "v1-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv8-v1-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv8-v1-malformed",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a1028141ff",
+  "kind": "v1-malformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv8-v1-malformed",
+   "valid": false
+  }
+ },
+ {
+  "name": "babbage-pv8-v1-truncated-zero",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a102814100",
+  "kind": "v1-truncated-zero",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv8-v1-truncated-zero",
+   "valid": false
+  }
+ },
+ {
+  "name": "babbage-pv8-v1-runtime-error-is-wellformed",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a10281454401000061",
+  "kind": "v1-runtime-error-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv8-v1-runtime-error-is-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv8-v1-empty-list",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a10280",
+  "kind": "v1-empty-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv8-v1-empty-list",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv8-v1-script-not-bytes",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a10281182a",
+  "kind": "v1-script-not-bytes",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-v1-script-not-bytes"
+  }
+ },
+ {
+  "name": "babbage-pv8-v1-field-not-list",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a1024746010000222499",
+  "kind": "v1-field-not-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-v1-field-not-list"
+  }
+ },
+ {
+  "name": "babbage-pv8-v1-duplicate-invalid-then-valid",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a2028141ff02814746010000222499",
+  "kind": "v1-duplicate-invalid-then-valid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-v1-duplicate-invalid-then-valid"
+  }
+ },
+ {
+  "name": "babbage-pv8-v1-duplicate-valid-then-invalid",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a202814746010000222499028141ff",
+  "kind": "v1-duplicate-valid-then-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-v1-duplicate-valid-then-invalid"
+  }
+ },
+ {
+  "name": "babbage-pv8-v1-duplicate-invalid-then-empty",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a2028141ff0280",
+  "kind": "v1-duplicate-invalid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-v1-duplicate-invalid-then-empty"
+  }
+ },
+ {
+  "name": "babbage-pv8-v1-duplicate-valid-then-empty",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a2028147460100002224990280",
+  "kind": "v1-duplicate-valid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-v1-duplicate-valid-then-empty"
+  }
+ },
+ {
+  "name": "babbage-pv8-v2-wellformed",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a103814746010000222499",
+  "kind": "v2-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv8-v2-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv8-v2-malformed",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a1038141ff",
+  "kind": "v2-malformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv8-v2-malformed",
+   "valid": false
+  }
+ },
+ {
+  "name": "babbage-pv8-v2-truncated-zero",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a103814100",
+  "kind": "v2-truncated-zero",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv8-v2-truncated-zero",
+   "valid": false
+  }
+ },
+ {
+  "name": "babbage-pv8-v2-runtime-error-is-wellformed",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a10381454401000061",
+  "kind": "v2-runtime-error-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv8-v2-runtime-error-is-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv8-v2-empty-list",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a10380",
+  "kind": "v2-empty-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "babbage-pv8-v2-empty-list",
+   "valid": true
+  }
+ },
+ {
+  "name": "babbage-pv8-v2-script-not-bytes",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a10381182a",
+  "kind": "v2-script-not-bytes",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-v2-script-not-bytes"
+  }
+ },
+ {
+  "name": "babbage-pv8-v2-field-not-list",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a1034746010000222499",
+  "kind": "v2-field-not-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-v2-field-not-list"
+  }
+ },
+ {
+  "name": "babbage-pv8-v2-duplicate-invalid-then-valid",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a2038141ff03814746010000222499",
+  "kind": "v2-duplicate-invalid-then-valid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-v2-duplicate-invalid-then-valid"
+  }
+ },
+ {
+  "name": "babbage-pv8-v2-duplicate-valid-then-invalid",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a203814746010000222499038141ff",
+  "kind": "v2-duplicate-valid-then-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-v2-duplicate-valid-then-invalid"
+  }
+ },
+ {
+  "name": "babbage-pv8-v2-duplicate-invalid-then-empty",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a2038141ff0380",
+  "kind": "v2-duplicate-invalid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-v2-duplicate-invalid-then-empty"
+  }
+ },
+ {
+  "name": "babbage-pv8-v2-duplicate-valid-then-empty",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a2038147460100002224990380",
+  "kind": "v2-duplicate-valid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-v2-duplicate-valid-then-empty"
+  }
+ },
+ {
+  "name": "babbage-pv8-v3-wellformed",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a104814746010000222499",
+  "kind": "v3-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-v3-wellformed"
+  }
+ },
+ {
+  "name": "babbage-pv8-v3-malformed",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a1048141ff",
+  "kind": "v3-malformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-v3-malformed"
+  }
+ },
+ {
+  "name": "babbage-pv8-v3-truncated-zero",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a104814100",
+  "kind": "v3-truncated-zero",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-v3-truncated-zero"
+  }
+ },
+ {
+  "name": "babbage-pv8-v3-runtime-error-is-wellformed",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a10481454401000061",
+  "kind": "v3-runtime-error-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-v3-runtime-error-is-wellformed"
+  }
+ },
+ {
+  "name": "babbage-pv8-v3-empty-list",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a10480",
+  "kind": "v3-empty-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-v3-empty-list"
+  }
+ },
+ {
+  "name": "babbage-pv8-v3-script-not-bytes",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a10481182a",
+  "kind": "v3-script-not-bytes",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-v3-script-not-bytes"
+  }
+ },
+ {
+  "name": "babbage-pv8-v3-field-not-list",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a1044746010000222499",
+  "kind": "v3-field-not-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-v3-field-not-list"
+  }
+ },
+ {
+  "name": "babbage-pv8-v3-duplicate-invalid-then-valid",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a2048141ff04814746010000222499",
+  "kind": "v3-duplicate-invalid-then-valid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-v3-duplicate-invalid-then-valid"
+  }
+ },
+ {
+  "name": "babbage-pv8-v3-duplicate-valid-then-invalid",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a204814746010000222499048141ff",
+  "kind": "v3-duplicate-valid-then-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-v3-duplicate-valid-then-invalid"
+  }
+ },
+ {
+  "name": "babbage-pv8-v3-duplicate-invalid-then-empty",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a2048141ff0480",
+  "kind": "v3-duplicate-invalid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-v3-duplicate-invalid-then-empty"
+  }
+ },
+ {
+  "name": "babbage-pv8-v3-duplicate-valid-then-empty",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a2048147460100002224990480",
+  "kind": "v3-duplicate-valid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-v3-duplicate-valid-then-empty"
+  }
+ },
+ {
+  "name": "babbage-pv8-all-three-languages",
+  "era": "Babbage",
+  "protocolMajor": 8,
+  "auxiliary": "d90103a30281474601000022249903814746010000222499048146450101002499",
+  "kind": "all-three-languages",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "babbage-pv8-all-three-languages"
+  }
+ },
+ {
+  "name": "conway-pv9-metadata-empty",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "a0",
+  "kind": "metadata-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-metadata-empty",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv9-metadata-nested",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "a1078344646174616576616c7565a101822002",
+  "kind": "metadata-nested",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-metadata-nested",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv9-legacy-native",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "82a1074576616c75658282028082041903e7",
+  "kind": "legacy-native",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-legacy-native",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv9-tagged-empty",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a0",
+  "kind": "tagged-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-tagged-empty",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv9-native-not-satisfied-is-wellformed",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a10181820280",
+  "kind": "native-not-satisfied-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-native-not-satisfied-is-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv9-metadata-duplicate-label",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "a200010002",
+  "kind": "metadata-duplicate-label",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-metadata-duplicate-label"
+  }
+ },
+ {
+  "name": "conway-pv9-metadata-duplicate-nested-map",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "a100a201010102",
+  "kind": "metadata-duplicate-nested-map",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-metadata-duplicate-nested-map",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv9-metadata-chunked-bytes64",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "a1005f5820787878787878787878787878787878787878787878787878787878787878787858207979797979797979797979797979797979797979797979797979797979797979ff",
+  "kind": "metadata-chunked-bytes64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-metadata-chunked-bytes64",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv9-metadata-chunked-bytes65",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "a1005f582078787878787878787878787878787878787878787878787878787878787878785821797979797979797979797979797979797979797979797979797979797979797979ff",
+  "kind": "metadata-chunked-bytes65",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-metadata-chunked-bytes65"
+  }
+ },
+ {
+  "name": "conway-pv9-metadata-chunked-text64",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "a1007f7820c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a97820c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9ff",
+  "kind": "metadata-chunked-text64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-metadata-chunked-text64",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv9-metadata-chunked-text66",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "a1007f7820c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a97822c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9ff",
+  "kind": "metadata-chunked-text66",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-metadata-chunked-text66"
+  }
+ },
+ {
+  "name": "conway-pv9-metadata-bytes64",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "a100584078787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+  "kind": "metadata-bytes64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-metadata-bytes64",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv9-metadata-bytes65",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "a10058417878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+  "kind": "metadata-bytes65",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-metadata-bytes65"
+  }
+ },
+ {
+  "name": "conway-pv9-metadata-utf8-64",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "a1007840c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9",
+  "kind": "metadata-utf8-64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-metadata-utf8-64",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv9-metadata-utf8-66",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "a1007842c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9",
+  "kind": "metadata-utf8-66",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-metadata-utf8-66"
+  }
+ },
+ {
+  "name": "conway-pv9-metadata-label-negative",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "a12000",
+  "kind": "metadata-label-negative",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-metadata-label-negative"
+  }
+ },
+ {
+  "name": "conway-pv9-metadata-label-text",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "a1656c6162656c00",
+  "kind": "metadata-label-text",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-metadata-label-text"
+  }
+ },
+ {
+  "name": "conway-pv9-metadata-null",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "a100f6",
+  "kind": "metadata-null",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-metadata-null"
+  }
+ },
+ {
+  "name": "conway-pv9-metadata-bool",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "a100f5",
+  "kind": "metadata-bool",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-metadata-bool"
+  }
+ },
+ {
+  "name": "conway-pv9-metadata-tagged-bignum",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "a100c24101",
+  "kind": "metadata-tagged-bignum",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-metadata-tagged-bignum"
+  }
+ },
+ {
+  "name": "conway-pv9-metadata-integer-max",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "a1001bffffffffffffffff",
+  "kind": "metadata-integer-max",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-metadata-integer-max",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv9-metadata-integer-min",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "a1003bffffffffffffffff",
+  "kind": "metadata-integer-min",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-metadata-integer-min",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv9-tagged-metadata-not-map",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a10080",
+  "kind": "tagged-metadata-not-map",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-tagged-metadata-not-map"
+  }
+ },
+ {
+  "name": "conway-pv9-tagged-metadata-invalid",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a100a10058417878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+  "kind": "tagged-metadata-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-tagged-metadata-invalid"
+  }
+ },
+ {
+  "name": "conway-pv9-legacy-metadata-invalid",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "82a100f580",
+  "kind": "legacy-metadata-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-legacy-metadata-invalid"
+  }
+ },
+ {
+  "name": "conway-pv9-native-wrong-hash-length",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a101818200581b111111111111111111111111111111111111111111111111111111",
+  "kind": "native-wrong-hash-length",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-native-wrong-hash-length"
+  }
+ },
+ {
+  "name": "conway-pv9-native-wrapped-tag",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a10181821b0000000100000000581c11111111111111111111111111111111111111111111111111111111",
+  "kind": "native-wrapped-tag",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-native-wrapped-tag"
+  }
+ },
+ {
+  "name": "conway-pv9-native-unknown-tag",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a101818206581c11111111111111111111111111111111111111111111111111111111",
+  "kind": "native-unknown-tag",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-native-unknown-tag"
+  }
+ },
+ {
+  "name": "conway-pv9-native-invalid-slot",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a10181820420",
+  "kind": "native-invalid-slot",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-native-invalid-slot"
+  }
+ },
+ {
+  "name": "conway-pv9-native-field-not-array",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a101426e6f",
+  "kind": "native-field-not-array",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-native-field-not-array"
+  }
+ },
+ {
+  "name": "conway-pv9-wrong-tag",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90102a0",
+  "kind": "wrong-tag",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-wrong-tag"
+  }
+ },
+ {
+  "name": "conway-pv9-unknown-field",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a1186380",
+  "kind": "unknown-field",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-unknown-field"
+  }
+ },
+ {
+  "name": "conway-pv9-unsupported-v4-field",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a10580",
+  "kind": "unsupported-v4-field",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-unsupported-v4-field"
+  }
+ },
+ {
+  "name": "conway-pv9-legacy-wrong-arity",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "83a08080",
+  "kind": "legacy-wrong-arity",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-legacy-wrong-arity"
+  }
+ },
+ {
+  "name": "conway-pv9-duplicate-native-fields",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a201818200581c111111111111111111111111111111111111111111111111111111110181820280",
+  "kind": "duplicate-native-fields",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-duplicate-native-fields"
+  }
+ },
+ {
+  "name": "conway-pv9-duplicate-native-invalid-earlier",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a201818200411101818200581c11111111111111111111111111111111111111111111111111111111",
+  "kind": "duplicate-native-invalid-earlier",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-duplicate-native-invalid-earlier"
+  }
+ },
+ {
+  "name": "conway-pv9-v1-wellformed",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a102814746010000222499",
+  "kind": "v1-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-v1-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv9-v1-malformed",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a1028141ff",
+  "kind": "v1-malformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-v1-malformed",
+   "valid": false
+  }
+ },
+ {
+  "name": "conway-pv9-v1-truncated-zero",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a102814100",
+  "kind": "v1-truncated-zero",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-v1-truncated-zero",
+   "valid": false
+  }
+ },
+ {
+  "name": "conway-pv9-v1-runtime-error-is-wellformed",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a10281454401000061",
+  "kind": "v1-runtime-error-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-v1-runtime-error-is-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv9-v1-empty-list",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a10280",
+  "kind": "v1-empty-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-v1-empty-list",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv9-v1-script-not-bytes",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a10281182a",
+  "kind": "v1-script-not-bytes",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-v1-script-not-bytes"
+  }
+ },
+ {
+  "name": "conway-pv9-v1-field-not-list",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a1024746010000222499",
+  "kind": "v1-field-not-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-v1-field-not-list"
+  }
+ },
+ {
+  "name": "conway-pv9-v1-duplicate-invalid-then-valid",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a2028141ff02814746010000222499",
+  "kind": "v1-duplicate-invalid-then-valid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-v1-duplicate-invalid-then-valid"
+  }
+ },
+ {
+  "name": "conway-pv9-v1-duplicate-valid-then-invalid",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a202814746010000222499028141ff",
+  "kind": "v1-duplicate-valid-then-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-v1-duplicate-valid-then-invalid"
+  }
+ },
+ {
+  "name": "conway-pv9-v1-duplicate-invalid-then-empty",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a2028141ff0280",
+  "kind": "v1-duplicate-invalid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-v1-duplicate-invalid-then-empty"
+  }
+ },
+ {
+  "name": "conway-pv9-v1-duplicate-valid-then-empty",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a2028147460100002224990280",
+  "kind": "v1-duplicate-valid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-v1-duplicate-valid-then-empty"
+  }
+ },
+ {
+  "name": "conway-pv9-v2-wellformed",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a103814746010000222499",
+  "kind": "v2-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-v2-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv9-v2-malformed",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a1038141ff",
+  "kind": "v2-malformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-v2-malformed",
+   "valid": false
+  }
+ },
+ {
+  "name": "conway-pv9-v2-truncated-zero",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a103814100",
+  "kind": "v2-truncated-zero",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-v2-truncated-zero",
+   "valid": false
+  }
+ },
+ {
+  "name": "conway-pv9-v2-runtime-error-is-wellformed",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a10381454401000061",
+  "kind": "v2-runtime-error-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-v2-runtime-error-is-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv9-v2-empty-list",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a10380",
+  "kind": "v2-empty-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-v2-empty-list",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv9-v2-script-not-bytes",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a10381182a",
+  "kind": "v2-script-not-bytes",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-v2-script-not-bytes"
+  }
+ },
+ {
+  "name": "conway-pv9-v2-field-not-list",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a1034746010000222499",
+  "kind": "v2-field-not-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-v2-field-not-list"
+  }
+ },
+ {
+  "name": "conway-pv9-v2-duplicate-invalid-then-valid",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a2038141ff03814746010000222499",
+  "kind": "v2-duplicate-invalid-then-valid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-v2-duplicate-invalid-then-valid"
+  }
+ },
+ {
+  "name": "conway-pv9-v2-duplicate-valid-then-invalid",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a203814746010000222499038141ff",
+  "kind": "v2-duplicate-valid-then-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-v2-duplicate-valid-then-invalid"
+  }
+ },
+ {
+  "name": "conway-pv9-v2-duplicate-invalid-then-empty",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a2038141ff0380",
+  "kind": "v2-duplicate-invalid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-v2-duplicate-invalid-then-empty"
+  }
+ },
+ {
+  "name": "conway-pv9-v2-duplicate-valid-then-empty",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a2038147460100002224990380",
+  "kind": "v2-duplicate-valid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-v2-duplicate-valid-then-empty"
+  }
+ },
+ {
+  "name": "conway-pv9-v3-wellformed",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a104814746010000222499",
+  "kind": "v3-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-v3-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv9-v3-malformed",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a1048141ff",
+  "kind": "v3-malformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-v3-malformed",
+   "valid": false
+  }
+ },
+ {
+  "name": "conway-pv9-v3-truncated-zero",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a104814100",
+  "kind": "v3-truncated-zero",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-v3-truncated-zero",
+   "valid": false
+  }
+ },
+ {
+  "name": "conway-pv9-v3-runtime-error-is-wellformed",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a10481454401000061",
+  "kind": "v3-runtime-error-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-v3-runtime-error-is-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv9-v3-empty-list",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a10480",
+  "kind": "v3-empty-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-v3-empty-list",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv9-v3-script-not-bytes",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a10481182a",
+  "kind": "v3-script-not-bytes",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-v3-script-not-bytes"
+  }
+ },
+ {
+  "name": "conway-pv9-v3-field-not-list",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a1044746010000222499",
+  "kind": "v3-field-not-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-v3-field-not-list"
+  }
+ },
+ {
+  "name": "conway-pv9-v3-duplicate-invalid-then-valid",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a2048141ff04814746010000222499",
+  "kind": "v3-duplicate-invalid-then-valid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-v3-duplicate-invalid-then-valid"
+  }
+ },
+ {
+  "name": "conway-pv9-v3-duplicate-valid-then-invalid",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a204814746010000222499048141ff",
+  "kind": "v3-duplicate-valid-then-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-v3-duplicate-valid-then-invalid"
+  }
+ },
+ {
+  "name": "conway-pv9-v3-duplicate-invalid-then-empty",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a2048141ff0480",
+  "kind": "v3-duplicate-invalid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-v3-duplicate-invalid-then-empty"
+  }
+ },
+ {
+  "name": "conway-pv9-v3-duplicate-valid-then-empty",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a2048147460100002224990480",
+  "kind": "v3-duplicate-valid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv9-v3-duplicate-valid-then-empty"
+  }
+ },
+ {
+  "name": "conway-pv9-all-three-languages",
+  "era": "Conway",
+  "protocolMajor": 9,
+  "auxiliary": "d90103a30281474601000022249903814746010000222499048146450101002499",
+  "kind": "all-three-languages",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv9-all-three-languages",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv10-metadata-empty",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "a0",
+  "kind": "metadata-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-metadata-empty",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv10-metadata-nested",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "a1078344646174616576616c7565a101822002",
+  "kind": "metadata-nested",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-metadata-nested",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv10-legacy-native",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "82a1074576616c75658282028082041903e7",
+  "kind": "legacy-native",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-legacy-native",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv10-tagged-empty",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a0",
+  "kind": "tagged-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-tagged-empty",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv10-native-not-satisfied-is-wellformed",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a10181820280",
+  "kind": "native-not-satisfied-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-native-not-satisfied-is-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv10-metadata-duplicate-label",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "a200010002",
+  "kind": "metadata-duplicate-label",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-metadata-duplicate-label"
+  }
+ },
+ {
+  "name": "conway-pv10-metadata-duplicate-nested-map",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "a100a201010102",
+  "kind": "metadata-duplicate-nested-map",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-metadata-duplicate-nested-map",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv10-metadata-chunked-bytes64",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "a1005f5820787878787878787878787878787878787878787878787878787878787878787858207979797979797979797979797979797979797979797979797979797979797979ff",
+  "kind": "metadata-chunked-bytes64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-metadata-chunked-bytes64",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv10-metadata-chunked-bytes65",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "a1005f582078787878787878787878787878787878787878787878787878787878787878785821797979797979797979797979797979797979797979797979797979797979797979ff",
+  "kind": "metadata-chunked-bytes65",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-metadata-chunked-bytes65"
+  }
+ },
+ {
+  "name": "conway-pv10-metadata-chunked-text64",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "a1007f7820c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a97820c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9ff",
+  "kind": "metadata-chunked-text64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-metadata-chunked-text64",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv10-metadata-chunked-text66",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "a1007f7820c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a97822c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9ff",
+  "kind": "metadata-chunked-text66",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-metadata-chunked-text66"
+  }
+ },
+ {
+  "name": "conway-pv10-metadata-bytes64",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "a100584078787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+  "kind": "metadata-bytes64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-metadata-bytes64",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv10-metadata-bytes65",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "a10058417878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+  "kind": "metadata-bytes65",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-metadata-bytes65"
+  }
+ },
+ {
+  "name": "conway-pv10-metadata-utf8-64",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "a1007840c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9",
+  "kind": "metadata-utf8-64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-metadata-utf8-64",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv10-metadata-utf8-66",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "a1007842c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9",
+  "kind": "metadata-utf8-66",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-metadata-utf8-66"
+  }
+ },
+ {
+  "name": "conway-pv10-metadata-label-negative",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "a12000",
+  "kind": "metadata-label-negative",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-metadata-label-negative"
+  }
+ },
+ {
+  "name": "conway-pv10-metadata-label-text",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "a1656c6162656c00",
+  "kind": "metadata-label-text",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-metadata-label-text"
+  }
+ },
+ {
+  "name": "conway-pv10-metadata-null",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "a100f6",
+  "kind": "metadata-null",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-metadata-null"
+  }
+ },
+ {
+  "name": "conway-pv10-metadata-bool",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "a100f5",
+  "kind": "metadata-bool",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-metadata-bool"
+  }
+ },
+ {
+  "name": "conway-pv10-metadata-tagged-bignum",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "a100c24101",
+  "kind": "metadata-tagged-bignum",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-metadata-tagged-bignum"
+  }
+ },
+ {
+  "name": "conway-pv10-metadata-integer-max",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "a1001bffffffffffffffff",
+  "kind": "metadata-integer-max",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-metadata-integer-max",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv10-metadata-integer-min",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "a1003bffffffffffffffff",
+  "kind": "metadata-integer-min",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-metadata-integer-min",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv10-tagged-metadata-not-map",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a10080",
+  "kind": "tagged-metadata-not-map",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-tagged-metadata-not-map"
+  }
+ },
+ {
+  "name": "conway-pv10-tagged-metadata-invalid",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a100a10058417878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+  "kind": "tagged-metadata-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-tagged-metadata-invalid"
+  }
+ },
+ {
+  "name": "conway-pv10-legacy-metadata-invalid",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "82a100f580",
+  "kind": "legacy-metadata-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-legacy-metadata-invalid"
+  }
+ },
+ {
+  "name": "conway-pv10-native-wrong-hash-length",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a101818200581b111111111111111111111111111111111111111111111111111111",
+  "kind": "native-wrong-hash-length",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-native-wrong-hash-length"
+  }
+ },
+ {
+  "name": "conway-pv10-native-wrapped-tag",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a10181821b0000000100000000581c11111111111111111111111111111111111111111111111111111111",
+  "kind": "native-wrapped-tag",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-native-wrapped-tag"
+  }
+ },
+ {
+  "name": "conway-pv10-native-unknown-tag",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a101818206581c11111111111111111111111111111111111111111111111111111111",
+  "kind": "native-unknown-tag",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-native-unknown-tag"
+  }
+ },
+ {
+  "name": "conway-pv10-native-invalid-slot",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a10181820420",
+  "kind": "native-invalid-slot",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-native-invalid-slot"
+  }
+ },
+ {
+  "name": "conway-pv10-native-field-not-array",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a101426e6f",
+  "kind": "native-field-not-array",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-native-field-not-array"
+  }
+ },
+ {
+  "name": "conway-pv10-wrong-tag",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90102a0",
+  "kind": "wrong-tag",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-wrong-tag"
+  }
+ },
+ {
+  "name": "conway-pv10-unknown-field",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a1186380",
+  "kind": "unknown-field",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-unknown-field"
+  }
+ },
+ {
+  "name": "conway-pv10-unsupported-v4-field",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a10580",
+  "kind": "unsupported-v4-field",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-unsupported-v4-field"
+  }
+ },
+ {
+  "name": "conway-pv10-legacy-wrong-arity",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "83a08080",
+  "kind": "legacy-wrong-arity",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-legacy-wrong-arity"
+  }
+ },
+ {
+  "name": "conway-pv10-duplicate-native-fields",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a201818200581c111111111111111111111111111111111111111111111111111111110181820280",
+  "kind": "duplicate-native-fields",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-duplicate-native-fields"
+  }
+ },
+ {
+  "name": "conway-pv10-duplicate-native-invalid-earlier",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a201818200411101818200581c11111111111111111111111111111111111111111111111111111111",
+  "kind": "duplicate-native-invalid-earlier",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-duplicate-native-invalid-earlier"
+  }
+ },
+ {
+  "name": "conway-pv10-v1-wellformed",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a102814746010000222499",
+  "kind": "v1-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-v1-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv10-v1-malformed",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a1028141ff",
+  "kind": "v1-malformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-v1-malformed",
+   "valid": false
+  }
+ },
+ {
+  "name": "conway-pv10-v1-truncated-zero",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a102814100",
+  "kind": "v1-truncated-zero",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-v1-truncated-zero",
+   "valid": false
+  }
+ },
+ {
+  "name": "conway-pv10-v1-runtime-error-is-wellformed",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a10281454401000061",
+  "kind": "v1-runtime-error-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-v1-runtime-error-is-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv10-v1-empty-list",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a10280",
+  "kind": "v1-empty-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-v1-empty-list",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv10-v1-script-not-bytes",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a10281182a",
+  "kind": "v1-script-not-bytes",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-v1-script-not-bytes"
+  }
+ },
+ {
+  "name": "conway-pv10-v1-field-not-list",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a1024746010000222499",
+  "kind": "v1-field-not-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-v1-field-not-list"
+  }
+ },
+ {
+  "name": "conway-pv10-v1-duplicate-invalid-then-valid",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a2028141ff02814746010000222499",
+  "kind": "v1-duplicate-invalid-then-valid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-v1-duplicate-invalid-then-valid"
+  }
+ },
+ {
+  "name": "conway-pv10-v1-duplicate-valid-then-invalid",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a202814746010000222499028141ff",
+  "kind": "v1-duplicate-valid-then-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-v1-duplicate-valid-then-invalid"
+  }
+ },
+ {
+  "name": "conway-pv10-v1-duplicate-invalid-then-empty",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a2028141ff0280",
+  "kind": "v1-duplicate-invalid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-v1-duplicate-invalid-then-empty"
+  }
+ },
+ {
+  "name": "conway-pv10-v1-duplicate-valid-then-empty",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a2028147460100002224990280",
+  "kind": "v1-duplicate-valid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-v1-duplicate-valid-then-empty"
+  }
+ },
+ {
+  "name": "conway-pv10-v2-wellformed",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a103814746010000222499",
+  "kind": "v2-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-v2-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv10-v2-malformed",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a1038141ff",
+  "kind": "v2-malformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-v2-malformed",
+   "valid": false
+  }
+ },
+ {
+  "name": "conway-pv10-v2-truncated-zero",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a103814100",
+  "kind": "v2-truncated-zero",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-v2-truncated-zero",
+   "valid": false
+  }
+ },
+ {
+  "name": "conway-pv10-v2-runtime-error-is-wellformed",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a10381454401000061",
+  "kind": "v2-runtime-error-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-v2-runtime-error-is-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv10-v2-empty-list",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a10380",
+  "kind": "v2-empty-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-v2-empty-list",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv10-v2-script-not-bytes",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a10381182a",
+  "kind": "v2-script-not-bytes",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-v2-script-not-bytes"
+  }
+ },
+ {
+  "name": "conway-pv10-v2-field-not-list",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a1034746010000222499",
+  "kind": "v2-field-not-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-v2-field-not-list"
+  }
+ },
+ {
+  "name": "conway-pv10-v2-duplicate-invalid-then-valid",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a2038141ff03814746010000222499",
+  "kind": "v2-duplicate-invalid-then-valid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-v2-duplicate-invalid-then-valid"
+  }
+ },
+ {
+  "name": "conway-pv10-v2-duplicate-valid-then-invalid",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a203814746010000222499038141ff",
+  "kind": "v2-duplicate-valid-then-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-v2-duplicate-valid-then-invalid"
+  }
+ },
+ {
+  "name": "conway-pv10-v2-duplicate-invalid-then-empty",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a2038141ff0380",
+  "kind": "v2-duplicate-invalid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-v2-duplicate-invalid-then-empty"
+  }
+ },
+ {
+  "name": "conway-pv10-v2-duplicate-valid-then-empty",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a2038147460100002224990380",
+  "kind": "v2-duplicate-valid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-v2-duplicate-valid-then-empty"
+  }
+ },
+ {
+  "name": "conway-pv10-v3-wellformed",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a104814746010000222499",
+  "kind": "v3-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-v3-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv10-v3-malformed",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a1048141ff",
+  "kind": "v3-malformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-v3-malformed",
+   "valid": false
+  }
+ },
+ {
+  "name": "conway-pv10-v3-truncated-zero",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a104814100",
+  "kind": "v3-truncated-zero",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-v3-truncated-zero",
+   "valid": false
+  }
+ },
+ {
+  "name": "conway-pv10-v3-runtime-error-is-wellformed",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a10481454401000061",
+  "kind": "v3-runtime-error-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-v3-runtime-error-is-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv10-v3-empty-list",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a10480",
+  "kind": "v3-empty-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-v3-empty-list",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv10-v3-script-not-bytes",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a10481182a",
+  "kind": "v3-script-not-bytes",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-v3-script-not-bytes"
+  }
+ },
+ {
+  "name": "conway-pv10-v3-field-not-list",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a1044746010000222499",
+  "kind": "v3-field-not-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-v3-field-not-list"
+  }
+ },
+ {
+  "name": "conway-pv10-v3-duplicate-invalid-then-valid",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a2048141ff04814746010000222499",
+  "kind": "v3-duplicate-invalid-then-valid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-v3-duplicate-invalid-then-valid"
+  }
+ },
+ {
+  "name": "conway-pv10-v3-duplicate-valid-then-invalid",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a204814746010000222499048141ff",
+  "kind": "v3-duplicate-valid-then-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-v3-duplicate-valid-then-invalid"
+  }
+ },
+ {
+  "name": "conway-pv10-v3-duplicate-invalid-then-empty",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a2048141ff0480",
+  "kind": "v3-duplicate-invalid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-v3-duplicate-invalid-then-empty"
+  }
+ },
+ {
+  "name": "conway-pv10-v3-duplicate-valid-then-empty",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a2048147460100002224990480",
+  "kind": "v3-duplicate-valid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv10-v3-duplicate-valid-then-empty"
+  }
+ },
+ {
+  "name": "conway-pv10-all-three-languages",
+  "era": "Conway",
+  "protocolMajor": 10,
+  "auxiliary": "d90103a30281474601000022249903814746010000222499048146450101002499",
+  "kind": "all-three-languages",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv10-all-three-languages",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv11-metadata-empty",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "a0",
+  "kind": "metadata-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-metadata-empty",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv11-metadata-nested",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "a1078344646174616576616c7565a101822002",
+  "kind": "metadata-nested",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-metadata-nested",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv11-legacy-native",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "82a1074576616c75658282028082041903e7",
+  "kind": "legacy-native",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-legacy-native",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv11-tagged-empty",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a0",
+  "kind": "tagged-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-tagged-empty",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv11-native-not-satisfied-is-wellformed",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a10181820280",
+  "kind": "native-not-satisfied-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-native-not-satisfied-is-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv11-metadata-duplicate-label",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "a200010002",
+  "kind": "metadata-duplicate-label",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-metadata-duplicate-label"
+  }
+ },
+ {
+  "name": "conway-pv11-metadata-duplicate-nested-map",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "a100a201010102",
+  "kind": "metadata-duplicate-nested-map",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-metadata-duplicate-nested-map",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv11-metadata-chunked-bytes64",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "a1005f5820787878787878787878787878787878787878787878787878787878787878787858207979797979797979797979797979797979797979797979797979797979797979ff",
+  "kind": "metadata-chunked-bytes64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-metadata-chunked-bytes64",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv11-metadata-chunked-bytes65",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "a1005f582078787878787878787878787878787878787878787878787878787878787878785821797979797979797979797979797979797979797979797979797979797979797979ff",
+  "kind": "metadata-chunked-bytes65",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-metadata-chunked-bytes65"
+  }
+ },
+ {
+  "name": "conway-pv11-metadata-chunked-text64",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "a1007f7820c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a97820c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9ff",
+  "kind": "metadata-chunked-text64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-metadata-chunked-text64",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv11-metadata-chunked-text66",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "a1007f7820c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a97822c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9ff",
+  "kind": "metadata-chunked-text66",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-metadata-chunked-text66"
+  }
+ },
+ {
+  "name": "conway-pv11-metadata-bytes64",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "a100584078787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+  "kind": "metadata-bytes64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-metadata-bytes64",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv11-metadata-bytes65",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "a10058417878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+  "kind": "metadata-bytes65",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-metadata-bytes65"
+  }
+ },
+ {
+  "name": "conway-pv11-metadata-utf8-64",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "a1007840c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9",
+  "kind": "metadata-utf8-64",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-metadata-utf8-64",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv11-metadata-utf8-66",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "a1007842c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9",
+  "kind": "metadata-utf8-66",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-metadata-utf8-66"
+  }
+ },
+ {
+  "name": "conway-pv11-metadata-label-negative",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "a12000",
+  "kind": "metadata-label-negative",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-metadata-label-negative"
+  }
+ },
+ {
+  "name": "conway-pv11-metadata-label-text",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "a1656c6162656c00",
+  "kind": "metadata-label-text",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-metadata-label-text"
+  }
+ },
+ {
+  "name": "conway-pv11-metadata-null",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "a100f6",
+  "kind": "metadata-null",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-metadata-null"
+  }
+ },
+ {
+  "name": "conway-pv11-metadata-bool",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "a100f5",
+  "kind": "metadata-bool",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-metadata-bool"
+  }
+ },
+ {
+  "name": "conway-pv11-metadata-tagged-bignum",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "a100c24101",
+  "kind": "metadata-tagged-bignum",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-metadata-tagged-bignum"
+  }
+ },
+ {
+  "name": "conway-pv11-metadata-integer-max",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "a1001bffffffffffffffff",
+  "kind": "metadata-integer-max",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-metadata-integer-max",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv11-metadata-integer-min",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "a1003bffffffffffffffff",
+  "kind": "metadata-integer-min",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-metadata-integer-min",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv11-tagged-metadata-not-map",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a10080",
+  "kind": "tagged-metadata-not-map",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-tagged-metadata-not-map"
+  }
+ },
+ {
+  "name": "conway-pv11-tagged-metadata-invalid",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a100a10058417878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+  "kind": "tagged-metadata-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-tagged-metadata-invalid"
+  }
+ },
+ {
+  "name": "conway-pv11-legacy-metadata-invalid",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "82a100f580",
+  "kind": "legacy-metadata-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-legacy-metadata-invalid"
+  }
+ },
+ {
+  "name": "conway-pv11-native-wrong-hash-length",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a101818200581b111111111111111111111111111111111111111111111111111111",
+  "kind": "native-wrong-hash-length",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-native-wrong-hash-length"
+  }
+ },
+ {
+  "name": "conway-pv11-native-wrapped-tag",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a10181821b0000000100000000581c11111111111111111111111111111111111111111111111111111111",
+  "kind": "native-wrapped-tag",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-native-wrapped-tag"
+  }
+ },
+ {
+  "name": "conway-pv11-native-unknown-tag",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a101818206581c11111111111111111111111111111111111111111111111111111111",
+  "kind": "native-unknown-tag",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-native-unknown-tag"
+  }
+ },
+ {
+  "name": "conway-pv11-native-invalid-slot",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a10181820420",
+  "kind": "native-invalid-slot",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-native-invalid-slot"
+  }
+ },
+ {
+  "name": "conway-pv11-native-field-not-array",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a101426e6f",
+  "kind": "native-field-not-array",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-native-field-not-array"
+  }
+ },
+ {
+  "name": "conway-pv11-wrong-tag",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90102a0",
+  "kind": "wrong-tag",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-wrong-tag"
+  }
+ },
+ {
+  "name": "conway-pv11-unknown-field",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a1186380",
+  "kind": "unknown-field",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-unknown-field"
+  }
+ },
+ {
+  "name": "conway-pv11-unsupported-v4-field",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a10580",
+  "kind": "unsupported-v4-field",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-unsupported-v4-field"
+  }
+ },
+ {
+  "name": "conway-pv11-legacy-wrong-arity",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "83a08080",
+  "kind": "legacy-wrong-arity",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-legacy-wrong-arity"
+  }
+ },
+ {
+  "name": "conway-pv11-duplicate-native-fields",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a201818200581c111111111111111111111111111111111111111111111111111111110181820280",
+  "kind": "duplicate-native-fields",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-duplicate-native-fields"
+  }
+ },
+ {
+  "name": "conway-pv11-duplicate-native-invalid-earlier",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a201818200411101818200581c11111111111111111111111111111111111111111111111111111111",
+  "kind": "duplicate-native-invalid-earlier",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-duplicate-native-invalid-earlier"
+  }
+ },
+ {
+  "name": "conway-pv11-v1-wellformed",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a102814746010000222499",
+  "kind": "v1-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-v1-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv11-v1-malformed",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a1028141ff",
+  "kind": "v1-malformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-v1-malformed",
+   "valid": false
+  }
+ },
+ {
+  "name": "conway-pv11-v1-truncated-zero",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a102814100",
+  "kind": "v1-truncated-zero",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-v1-truncated-zero",
+   "valid": false
+  }
+ },
+ {
+  "name": "conway-pv11-v1-runtime-error-is-wellformed",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a10281454401000061",
+  "kind": "v1-runtime-error-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-v1-runtime-error-is-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv11-v1-empty-list",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a10280",
+  "kind": "v1-empty-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-v1-empty-list",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv11-v1-script-not-bytes",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a10281182a",
+  "kind": "v1-script-not-bytes",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-v1-script-not-bytes"
+  }
+ },
+ {
+  "name": "conway-pv11-v1-field-not-list",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a1024746010000222499",
+  "kind": "v1-field-not-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-v1-field-not-list"
+  }
+ },
+ {
+  "name": "conway-pv11-v1-duplicate-invalid-then-valid",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a2028141ff02814746010000222499",
+  "kind": "v1-duplicate-invalid-then-valid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-v1-duplicate-invalid-then-valid"
+  }
+ },
+ {
+  "name": "conway-pv11-v1-duplicate-valid-then-invalid",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a202814746010000222499028141ff",
+  "kind": "v1-duplicate-valid-then-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-v1-duplicate-valid-then-invalid"
+  }
+ },
+ {
+  "name": "conway-pv11-v1-duplicate-invalid-then-empty",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a2028141ff0280",
+  "kind": "v1-duplicate-invalid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-v1-duplicate-invalid-then-empty"
+  }
+ },
+ {
+  "name": "conway-pv11-v1-duplicate-valid-then-empty",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a2028147460100002224990280",
+  "kind": "v1-duplicate-valid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-v1-duplicate-valid-then-empty"
+  }
+ },
+ {
+  "name": "conway-pv11-v2-wellformed",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a103814746010000222499",
+  "kind": "v2-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-v2-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv11-v2-malformed",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a1038141ff",
+  "kind": "v2-malformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-v2-malformed",
+   "valid": false
+  }
+ },
+ {
+  "name": "conway-pv11-v2-truncated-zero",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a103814100",
+  "kind": "v2-truncated-zero",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-v2-truncated-zero",
+   "valid": false
+  }
+ },
+ {
+  "name": "conway-pv11-v2-runtime-error-is-wellformed",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a10381454401000061",
+  "kind": "v2-runtime-error-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-v2-runtime-error-is-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv11-v2-empty-list",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a10380",
+  "kind": "v2-empty-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-v2-empty-list",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv11-v2-script-not-bytes",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a10381182a",
+  "kind": "v2-script-not-bytes",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-v2-script-not-bytes"
+  }
+ },
+ {
+  "name": "conway-pv11-v2-field-not-list",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a1034746010000222499",
+  "kind": "v2-field-not-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-v2-field-not-list"
+  }
+ },
+ {
+  "name": "conway-pv11-v2-duplicate-invalid-then-valid",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a2038141ff03814746010000222499",
+  "kind": "v2-duplicate-invalid-then-valid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-v2-duplicate-invalid-then-valid"
+  }
+ },
+ {
+  "name": "conway-pv11-v2-duplicate-valid-then-invalid",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a203814746010000222499038141ff",
+  "kind": "v2-duplicate-valid-then-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-v2-duplicate-valid-then-invalid"
+  }
+ },
+ {
+  "name": "conway-pv11-v2-duplicate-invalid-then-empty",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a2038141ff0380",
+  "kind": "v2-duplicate-invalid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-v2-duplicate-invalid-then-empty"
+  }
+ },
+ {
+  "name": "conway-pv11-v2-duplicate-valid-then-empty",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a2038147460100002224990380",
+  "kind": "v2-duplicate-valid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-v2-duplicate-valid-then-empty"
+  }
+ },
+ {
+  "name": "conway-pv11-v3-wellformed",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a104814746010000222499",
+  "kind": "v3-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-v3-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv11-v3-malformed",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a1048141ff",
+  "kind": "v3-malformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-v3-malformed",
+   "valid": false
+  }
+ },
+ {
+  "name": "conway-pv11-v3-truncated-zero",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a104814100",
+  "kind": "v3-truncated-zero",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-v3-truncated-zero",
+   "valid": false
+  }
+ },
+ {
+  "name": "conway-pv11-v3-runtime-error-is-wellformed",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a10481454401000061",
+  "kind": "v3-runtime-error-is-wellformed",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-v3-runtime-error-is-wellformed",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv11-v3-empty-list",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a10480",
+  "kind": "v3-empty-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-v3-empty-list",
+   "valid": true
+  }
+ },
+ {
+  "name": "conway-pv11-v3-script-not-bytes",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a10481182a",
+  "kind": "v3-script-not-bytes",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-v3-script-not-bytes"
+  }
+ },
+ {
+  "name": "conway-pv11-v3-field-not-list",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a1044746010000222499",
+  "kind": "v3-field-not-list",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-v3-field-not-list"
+  }
+ },
+ {
+  "name": "conway-pv11-v3-duplicate-invalid-then-valid",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a2048141ff04814746010000222499",
+  "kind": "v3-duplicate-invalid-then-valid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-v3-duplicate-invalid-then-valid"
+  }
+ },
+ {
+  "name": "conway-pv11-v3-duplicate-valid-then-invalid",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a204814746010000222499048141ff",
+  "kind": "v3-duplicate-valid-then-invalid",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-v3-duplicate-valid-then-invalid"
+  }
+ },
+ {
+  "name": "conway-pv11-v3-duplicate-invalid-then-empty",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a2048141ff0480",
+  "kind": "v3-duplicate-invalid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-v3-duplicate-invalid-then-empty"
+  }
+ },
+ {
+  "name": "conway-pv11-v3-duplicate-valid-then-empty",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a2048147460100002224990480",
+  "kind": "v3-duplicate-valid-then-empty",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": false,
+   "name": "conway-pv11-v3-duplicate-valid-then-empty"
+  }
+ },
+ {
+  "name": "conway-pv11-all-three-languages",
+  "era": "Conway",
+  "protocolMajor": 11,
+  "auxiliary": "d90103a30281474601000022249903814746010000222499048146450101002499",
+  "kind": "all-three-languages",
+  "provenance": {
+   "kind": "synthetic-auxiliary-api-input",
+   "ledgerAdmissionClaim": false
+  },
+  "oracle": {
+   "decoded": true,
+   "name": "conway-pv11-all-three-languages",
+   "valid": true
+  }
+ }
+]

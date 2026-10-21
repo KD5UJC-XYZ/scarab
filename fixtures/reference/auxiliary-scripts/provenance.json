@@ -1,0 +1,102 @@
+{
+  "ledgerSourceRevision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "referenceNode": "11.1.3",
+  "referenceGitRevision": "938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+  "oracleCompiler": "GHC9.10.3",
+  "oracleCabal": "3.14.1.1",
+  "sourceArchiveSha256": {
+    "cardano-ledger-alonzo-1.16.0.0.tar.gz": "195f1b9dac59bcdd8d4f499275f450bc37ee57169efee0fadf0d1676bc37cae5",
+    "cardano-ledger-babbage-1.14.0.0.tar.gz": "8a0466673e9de9f0a2375cd137fb1b6368c901929865b0def41abd83a200730d",
+    "cardano-ledger-conway-1.23.0.0.tar.gz": "486831d3d94060fff90e5e85c74030c744008526aa83f4a18215da124720cf1a",
+    "cardano-ledger-core-1.21.0.0.tar.gz": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a"
+  },
+  "comparedValidationSources": [
+    {
+      "package": "cardano-ledger-alonzo-1.16.0.0",
+      "file": "Cardano/Ledger/Alonzo/Plutus/Evaluate.hs",
+      "releasedSha256": "91367fddfcc2de241d44d2f8861028438d798199204951ef51e73a991a4e4905",
+      "pinnedSha256": "91367fddfcc2de241d44d2f8861028438d798199204951ef51e73a991a4e4905",
+      "equal": true
+    },
+    {
+      "package": "cardano-ledger-alonzo-1.16.0.0",
+      "file": "Cardano/Ledger/Alonzo/Plutus/Context.hs",
+      "releasedSha256": "836b3098a25cc5db9edbf5b255899f13da9af9e39ba4d4b0f2430365b83652ab",
+      "pinnedSha256": "836b3098a25cc5db9edbf5b255899f13da9af9e39ba4d4b0f2430365b83652ab",
+      "equal": true
+    },
+    {
+      "package": "cardano-ledger-alonzo-1.16.0.0",
+      "file": "Cardano/Ledger/Alonzo/UTxO.hs",
+      "releasedSha256": "637a54cee5edfec6e8dc5fa0962b242ef8a516a6ba9e5874b07a32413b76139b",
+      "pinnedSha256": "637a54cee5edfec6e8dc5fa0962b242ef8a516a6ba9e5874b07a32413b76139b",
+      "equal": true
+    },
+    {
+      "package": "cardano-ledger-babbage-1.14.0.0",
+      "file": "Cardano/Ledger/Babbage/TxInfo.hs",
+      "releasedSha256": "abd2de6148fd2383d0becea1d662257155329bd2607c3b86cacfc0363ac7aba5",
+      "pinnedSha256": "abd2de6148fd2383d0becea1d662257155329bd2607c3b86cacfc0363ac7aba5",
+      "equal": true
+    },
+    {
+      "package": "cardano-ledger-conway-1.23.0.0",
+      "file": "Cardano/Ledger/Conway/TxInfo.hs",
+      "releasedSha256": "1314db4f5b631d9cba5737302043ac364b8ea3c2268e8bdf9c6ca96cb1340a57",
+      "pinnedSha256": "1314db4f5b631d9cba5737302043ac364b8ea3c2268e8bdf9c6ca96cb1340a57",
+      "equal": true
+    },
+    {
+      "package": "cardano-ledger-conway-1.23.0.0",
+      "file": "Cardano/Ledger/Conway/UTxO.hs",
+      "releasedSha256": "11d7c614cfdc16aff2c7f0e1d6f6b553657c298de08afa631b5173eb7dcd04be",
+      "pinnedSha256": "11d7c614cfdc16aff2c7f0e1d6f6b553657c298de08afa631b5173eb7dcd04be",
+      "equal": true
+    },
+    {
+      "package": "cardano-ledger-conway-1.23.0.0",
+      "file": "Cardano/Ledger/Conway/Rules/Utxos.hs",
+      "releasedSha256": "8ebb3a841eee5161d43e08966b57bd259667c397e8b9ddd5b9152175a53942c8",
+      "pinnedSha256": "8ebb3a841eee5161d43e08966b57bd259667c397e8b9ddd5b9152175a53942c8",
+      "equal": true
+    },
+    {
+      "package": "cardano-ledger-core-1.21.0.0",
+      "file": "Cardano/Ledger/Plutus/TxInfo.hs",
+      "releasedSha256": "0f358b95a13e726318ec1dd8677a296fb5378416143250ac882a6384b30a47b7",
+      "pinnedSha256": "0f358b95a13e726318ec1dd8677a296fb5378416143250ac882a6384b30a47b7",
+      "equal": true
+    },
+    {
+      "package": "cardano-ledger-alonzo-1.16.0.0",
+      "file": "Cardano/Ledger/Alonzo/TxAuxData.hs",
+      "releasedSha256": "012fe28b75907c3312dcf0647f8b93511b8437206eb316d43cb7c3858be40018",
+      "pinnedSha256": "012fe28b75907c3312dcf0647f8b93511b8437206eb316d43cb7c3858be40018",
+      "equal": true
+    },
+    {
+      "package": "cardano-ledger-core-1.21.0.0",
+      "file": "Cardano/Ledger/Metadata.hs",
+      "releasedSha256": "817bcfaf09b3d6b6d0c754296e09cf3dfef141286ad3adf05f7ea2880d88542c",
+      "pinnedSha256": "817bcfaf09b3d6b6d0c754296e09cf3dfef141286ad3adf05f7ea2880d88542c",
+      "equal": true
+    }
+  ],
+  "plutusRevision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+  "date": "2026-10-20",
+  "oracleBaseImage": "sha256:66c862cc374749f3631e91114358f3c063a7b0ec144163e501f3d22ca47821ef",
+  "apiOnly": true,
+  "wholeLedgerAdmissionClaim": false,
+  "oracleImage": "sha256:3b5742d67371a8b9ce5ac42dc28043424d4f44c7026888fa0fa3450c7fca13b8",
+  "oracleBinarySha256": "500ee23eaf77cf86635cb5a530ecd6826735680b85f9c44f7e230e34ec501f07",
+  "oracleSourcesSha256": {
+    "scripts/oracle/plutus/auxiliary/Dockerfile": "d4c281b370f1f5c969da0216a2838dac8752577b094364ddd5ef93c5b1416600",
+    "scripts/oracle/plutus/auxiliary/Dockerfile.dockerignore": "b04c95fb766ee968f47ff3b68cefd5ea63d1d6e9836aad78f68f53a96892503a",
+    "scripts/oracle/plutus/auxiliary/Main.hs": "0312b1e394b5d9c412a036c1e4b97d9a77251cc4cf37519c0331b3a5a470ad2e",
+    "scripts/oracle/plutus/auxiliary/cabal.project": "c8e3e046ac067d88cb9315a4f962bf318b7184ab95f5c2d1f5ef059b01b95618",
+    "scripts/oracle/plutus/auxiliary/cabal.project.freeze": "f7e6220cf1d723bb8722b4a7e90be5993c4f1fa5a380e64a13c3303546e8a68c",
+    "scripts/oracle/plutus/auxiliary/prepare.py": "b9fb66b858f38722398eda7ecf9e240855a5a8da116031782ce4ebbd9ca8333b",
+    "scripts/oracle/plutus/auxiliary/run.py": "282e68060e8c2edde9d5da30ae0004ea7e505ef06221cd937161378c75ebde62",
+    "scripts/oracle/plutus/auxiliary/scarab-auxiliary-oracle.cabal": "b99bf2500653218764f495cea6218c73059bb8938346a9c8e1aad8dab3a000bc"
+  }
+}

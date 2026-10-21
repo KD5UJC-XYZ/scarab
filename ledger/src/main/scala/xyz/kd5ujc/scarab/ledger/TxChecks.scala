@@ -485,7 +485,47 @@ object TxChecks:
         )
       yield ()
 
-  private[ledger] def auxiliaryChecks(tx: Tx): Result[Unit] =
+  /** Shelley/Rules/Utxow.hs:427-443 and Alonzo/TxAuxData.hs:369-373 at f649f975. Auxiliary scripts
+    * are checked even when they are not used by phase 2, for either validity flag. A backend outage
+    * supplies no validation verdict.
+    */
+  private[ledger] def auxiliaryChecks(pp: ProtocolParams, tx: Tx, env: Env): Result[Unit] =
+    for
+      decoded <- tx.auxiliary
+        .filter(_ => pp.protocolMajor >= 5)
+        .traverse(bytes =>
+          AuxiliaryScripts
+            .read(bytes, pp.protocolMajor)
+            .leftMap(error => LedgerFailure.Undecodable(tx.body.id, TxDefect.AuxiliaryData(error)))
+        )
+      _ <- auxiliaryHash(tx)
+      _ <- decoded.traverse_ { scripts =>
+        scripts
+          .traverse { script =>
+            env.decoder.validate(script.language, pp.protocolMajor.toInt, script.code) match
+              case Right(())                                                       => Right(true)
+              case Left(xyz.kd5ujc.scarab.plutus.ScriptDecodeFailure.Malformed(_)) => Right(false)
+              case Left(xyz.kd5ujc.scarab.plutus.ScriptDecodeFailure.Unavailable(why)) =>
+                Left(
+                  LedgerFailure.Unavailable(
+                    tx.body.id,
+                    ScriptLocation.Phase1(script.hash),
+                    xyz.kd5ujc.scarab.plutus.EvalFailure.Unsupported(why)
+                  )
+                )
+          }
+          .flatMap { valid =>
+            Either.cond(
+              valid.forall(identity),
+              (),
+              LedgerFailure
+                .Rejected(tx.body.id, PredicateFailure.utxow(UtxowFailure.InvalidMetadata))
+            )
+          }
+      }
+    yield ()
+
+  private def auxiliaryHash(tx: Tx): Result[Unit] =
     val id = tx.body.id
     (tx.body.auxDataHash, tx.auxiliary) match
       case (None, None) => Right(())

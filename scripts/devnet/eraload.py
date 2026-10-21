@@ -10,8 +10,8 @@ rules of each era and compared with the reference node while the chain is still 
            retirement
   Mary     minting and burning under native-script policies, multi-asset transfers
   Alonzo   collateral inputs, datum-hash outputs, required signers, network id
-           (TODO: always-succeeds Plutus spends and mints once the script data hash is built here)
-  Babbage  inline datums, reference-script outputs, reference inputs, collateral return
+           Plutus V1 spends, minting and failed-script collateral
+  Babbage  inline datums, reference-script outputs, reference inputs, collateral return; V1/V2 scripts
 
 Boundary cases (devnet.py e2e runs three Shelley epochs, genesis minUTxOValue 1 ada, pool margin 0.1):
 
@@ -99,6 +99,8 @@ class EraLoad:
         self.ext_thread = None
         self.evidence = []  # expected rejections and what the reference said
         self.era_first = {}
+        self.plutus_evidence = []
+        self.auxiliary_evidence = []
 
     # ------------------------------------------------------------ reference plumbing
     def sh(self, script, stdin=None, timeout=60):
@@ -578,9 +580,6 @@ class EraLoad:
             datum_hash = eratx.blake2b(eratx.enc([1, 2, 3]))
             self.act(era, "datum-hash", w[4], [(w[2].address, 5_000_000, None, {"datum_hash": datum_hash})],
                      required_signers=[w[4].pay.hash], network_id=0, ttl=slot + 2000)
-        # TODO(plutus): always-succeeds PlutusV1 spend and mint. Needs the script data hash (redeemers,
-        # datums and the language view of the cost models) and execution-unit fees; add with the
-        # Plutus evaluation work.
 
     def babbage_features(self, era):
         w = self.wallets
@@ -1004,6 +1003,12 @@ class EraLoad:
             getattr(self, self.FEATURES[era])(era)
         if era == "conway":
             self.conway_features(epoch)
+        if era in ("alonzo", "babbage", "conway") and self.once(f"legacy-plutus-{era}"):
+            from .eraplutus import exercise
+            exercise(self, era)
+        if era in ("alonzo", "babbage", "conway") and self.once(f"auxiliary-plutus-{era}"):
+            from .eraauxiliary import exercise
+            exercise(self, era)
         self.transfers(era, 2)
         if era != "conway":  # the ledger-state layout the withdrawals read is the pre-Conway one
             self.withdrawals(era)

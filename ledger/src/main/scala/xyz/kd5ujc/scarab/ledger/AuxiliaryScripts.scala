@@ -1,0 +1,116 @@
+// SPDX-License-Identifier: Apache-2.0
+package xyz.kd5ujc.scarab.ledger
+
+import cats.syntax.all.*
+import xyz.kd5ujc.scarab.codec.{Bytes, Node, TreeFold, Value}
+import xyz.kd5ujc.scarab.plutus.PlutusLanguage
+
+/** An original-byte view of auxiliary scripts, never added to the transaction's script witnesses.
+  * cardano-ledger f649f975, Alonzo/TxAuxData.hs:220–306,369–373; Metadata.hs:153–222.
+  */
+private[ledger] object AuxiliaryScripts:
+  final case class Plutus private[AuxiliaryScripts] (
+      language: PlutusLanguage,
+      code: Bytes,
+      hash: Bytes
+  )
+
+  private def metadatum(root: Node): Either[LedgerDecodeError, Unit] =
+    TreeFold.foldE[Node, Unit, LedgerDecodeError](root) { node =>
+      import TreeFold.Step
+      def length(actual: Int): Either[LedgerDecodeError, Step[Node, Unit, LedgerDecodeError]] =
+        Either.cond(
+          actual <= 64,
+          Step.Leaf(()),
+          LedgerDecodeError.NumberOutOfRange("metadata byte length", actual, 0, 64)
+        )
+      node.value match
+        case _: Value.UInt | _: Value.NInt => Right(Step.Leaf(()))
+        case Value.ByteString(bytes)       => length(bytes.size)
+        case Value.Text(text) =>
+          length(text.getBytes(java.nio.charset.StandardCharsets.UTF_8).length)
+        case Value.Arr(children) => Right(Step.Branch(children, _ => Right(())))
+        case Value.Map(pairs)    => Right(Step.Branch(TreeFold.flatten(pairs), _ => Right(())))
+        case other =>
+          Left(
+            LedgerDecodeError.Expected("metadata value", LedgerDecodeError.Shape.Metadatum, other)
+          )
+    }
+
+  private def metadata(node: Node, protocol: BigInt): Either[LedgerDecodeError, Unit] =
+    CborRead.map(node, "metadata").flatMap { pairs =>
+      pairs
+        .traverse { case (label, value) =>
+          CborRead.uint(label, "metadata label").flatTap(_ => metadatum(value))
+        }
+        .flatMap(labels =>
+          Either.cond(
+            protocol < 9 || labels.distinct.size == labels.size,
+            (),
+            LedgerDecodeError.DuplicateKey("metadata labels")
+          )
+        )
+    }
+
+  private def native(node: Node): Either[LedgerDecodeError, Vector[Plutus]] =
+    CborRead
+      .array(node, "auxiliary native scripts")
+      .flatMap(_.traverse_(Script.native))
+      .as(Vector.empty)
+
+  private def plutus(
+      language: PlutusLanguage,
+      protocol: BigInt,
+      node: Node
+  ): Either[LedgerDecodeError, Vector[Plutus]] =
+    val (kind, minimum) = language match
+      case PlutusLanguage.V1 => (ScriptKind.PlutusV1, 5)
+      case PlutusLanguage.V2 => (ScriptKind.PlutusV2, 7)
+      case PlutusLanguage.V3 => (ScriptKind.PlutusV3, 9)
+    if protocol < minimum then
+      Left(LedgerDecodeError.NumberOutOfRange("auxiliary script protocol", protocol, minimum, 11))
+    else
+      CborRead
+        .array(node, "auxiliary Plutus scripts")
+        .flatMap(
+          _.traverse(
+            CborRead
+              .bytes(_, "auxiliary Plutus script")
+              .map(code => Plutus(language, code, Script.plutus(kind, code).hash))
+          )
+        )
+
+  def read(bytes: Bytes, protocol: BigInt): Either[LedgerDecodeError, Vector[Plutus]] =
+    CborRead.decode(bytes).flatMap { node =>
+      node.value match
+        case _: Value.Map                     => metadata(node, protocol).as(Vector.empty)
+        case Value.Arr(Vector(data, scripts)) => metadata(data, protocol) *> native(scripts)
+        case Value.Tag(tag, contents) if tag == 259 =>
+          CborRead.map(contents, "auxiliary data").flatMap { fields =>
+            fields
+              .traverse { case (key, value) =>
+                CborRead.uint(key, "auxiliary field").map(_ -> value)
+              }
+              .flatMap { keyed =>
+                if keyed.map(_._1).distinct.size != keyed.size then
+                  Left(LedgerDecodeError.DuplicateKey("auxiliary data"))
+                else
+                  keyed
+                    .traverse {
+                      case (n, value) if n == 0 =>
+                        metadata(value, protocol).as(Vector.empty[Plutus])
+                      case (n, value) if n == 1 => native(value)
+                      case (n, value) if n == 2 => plutus(PlutusLanguage.V1, protocol, value)
+                      case (n, value) if n == 3 => plutus(PlutusLanguage.V2, protocol, value)
+                      case (n, value) if n == 4 => plutus(PlutusLanguage.V3, protocol, value)
+                      case (n, _) => Left(LedgerDecodeError.UnknownTag("auxiliary field", n))
+                    }
+                    .map(_.flatten)
+              }
+          }
+        case _ =>
+          Left(
+            LedgerDecodeError
+              .Expected("auxiliary data", LedgerDecodeError.Shape.ArrayOrMap, node.value)
+          )
+    }

@@ -15,7 +15,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Verdicts
 }
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.plutus.{ScalusEvaluator, ScriptEvaluator}
+import xyz.kd5ujc.scarab.plutus.{ScalusEvaluator, ScriptDecoder, ScriptEvaluator}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** A block of any Shelley-based era applied to the ledger state, on the era-indexed rules: the
@@ -37,6 +37,7 @@ object EraBlock:
       verdicts: Verdicts = Verdicts.Direct,
       evaluator: ScriptEvaluator[cats.Id] = ScalusEvaluator.default,
       observer: Option[Phase2.Observation => Unit] = None,
+      decoder: ScriptDecoder[cats.Id] = ScalusEvaluator.defaultDecoder,
       private[ledger] val preparation: Option[Phase2.Preparation] = None
   )
 
@@ -219,6 +220,7 @@ object EraBlock:
       updateQuorum = globals.quorum,
       clock = Some(slot => BigInt(geometry.slotStart(slot).toEpochMilli)),
       evaluator = ctx.evaluator,
+      decoder = ctx.decoder,
       observer = ctx.observer,
       verdicts = ctx.verdicts,
       preparation = ctx.preparation

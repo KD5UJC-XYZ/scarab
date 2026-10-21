@@ -59,4 +59,4 @@ enum LedgerDecodeError extends DomainError:
 
 object LedgerDecodeError:
   enum Shape:
-    case Unsigned, Integer, Bytes, Text, Boolean, Array, Map, ArrayOrMap
+    case Unsigned, Integer, Bytes, Text, Boolean, Array, Map, ArrayOrMap, Metadatum

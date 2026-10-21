@@ -1,0 +1,471 @@
+{
+  "baseCommit": "2fcd309047c7935de653fd6fd0f22ec95364c2dd",
+  "check": {
+    "dateUtc": "2026-10-21T00:37:03.446492+00:00",
+    "errors": 0,
+    "exitCode": 0,
+    "failed": 0,
+    "head": "5b290879b8ca8fe12350696e8ad7cc102d4d61f8",
+    "logSha256": "3f3d16c9f1d550f09d0600541a907cec915fd3f3af961f4ba8d90cb0ee20e71d",
+    "modules": 14,
+    "passed": 6449,
+    "skipped": 17,
+    "total": 6466
+  },
+  "commands": {
+    "build": "docker exec scarab-plutus-parity-build bash scripts/sbtw node/runtimeClasspathFile",
+    "check": "docker exec scarab-plutus-parity-build bash scripts/sbtw check",
+    "extendedFuzz": "docker exec scarab-plutus-parity-build bash scripts/sbtw 'fuzz 100000 1 4'",
+    "python": "python3 -m unittest discover -s scripts/tests",
+    "scenario": "SCARAB_DATA_DIR=/tmp/scarab SCARAB_CACHE_DIR=/home/euler/repos/cardano-scala-lab/.cache python3 scripts/devnet.py --name scarab-plutus-parity-final e2e"
+  },
+  "dateUtc": "2026-10-21",
+  "extendedFuzz": {
+    "binding": "Only Python comparison/tests and a changelog fragment changed between this fuzz source and the final candidate; all Scala decoders and fuzz sources are identical.",
+    "cases": 33600000,
+    "decoded": 3734413,
+    "failed": 0,
+    "logSha256": "5192ca6bb883f25326ac554d0f5877cfb5184c47669e748db4b2f103093d7850",
+    "sourceCommit": "b991c94136999af0be597c14472b43e6201605c3",
+    "targets": 84
+  },
+  "images": [
+    {
+      "image": "sha256:c90140def52d2711644c85a81c9bf218ffbe5dc81003bfb866154c2da832af38",
+      "javaSettings": [],
+      "memoryBytes": 0,
+      "name": "scarab-plutus-parity-build",
+      "nanoCpus": 0
+    },
+    {
+      "image": "sha256:74e849e1b68e2cf8ba3cdfe3fcda67114f22d9bebc6a34372657cd179e704c4b",
+      "javaSettings": [],
+      "memoryBytes": 6442450944,
+      "name": "scarab-plutus-parity-final-ref",
+      "nanoCpus": 3000000000
+    },
+    {
+      "image": "sha256:c90140def52d2711644c85a81c9bf218ffbe5dc81003bfb866154c2da832af38",
+      "javaSettings": [
+        "-Xmx768m",
+        "-XX:+UseG1GC",
+        "-XX:MaxGCPauseMillis=20"
+      ],
+      "memoryBytes": 2147483648,
+      "name": "scarab-plutus-parity-final-scala",
+      "nanoCpus": 2000000000
+    }
+  ],
+  "logsSha256": {
+    "follower": "ae95926b983d4bcd2cc743cc8a03ef30b10b679299403879c95fed757e0a390c",
+    "scenario": "4c150e3d1d501da820e00a6d55820c013832841425042fa5ed754d3fcc1365a1",
+    "summary": "706b622329a48907909d4c2fdc1b58117532b53bbf7f9af5f7aeeb61a2c1bcaa"
+  },
+  "networkFollowup": "https://github.com/KD5UJC-XYZ/scarab/issues/292",
+  "python": {
+    "failed": 0,
+    "logSha256": "45e103c48217538701db15e8796feee79f28c52aa400c43a0f7d843f4109bf28",
+    "passed": 331
+  },
+  "runtimeAudit": {
+    "allFrozenRuntimeFilesMatch": true,
+    "allSourceFilesUnchanged": true,
+    "dateUtc": "2026-10-21T00:31:50.660989+00:00",
+    "head": "5b290879b8ca8fe12350696e8ad7cc102d4d61f8",
+    "jars": 64,
+    "postCheckAuditUtc": "2026-10-21T00:37:03.514249+00:00",
+    "postCheckSourcesRuntimeJarsUnchanged": true,
+    "runtimeFiles": 12725,
+    "runtimeManifestSha256": "f66ea10f71dd8d74cdc27dc2d50a2c49e1af2f151afb473a84662fac3ac59082",
+    "sourceFiles": 6363,
+    "sourceManifestSha256": "c189cf0df07b7b0bb45a78a7c47b383e43a0eecb99339b0001bac48663229422"
+  },
+  "scenario": {
+    "blocksApplied": 1691,
+    "blocksPerEra": {
+      "allegra": {
+        "blocks": 88,
+        "boundary": 0,
+        "firstEpoch": 4,
+        "headers": 86,
+        "lastEpoch": 4,
+        "leaderThreshold": 86,
+        "leaderUnchecked": 0,
+        "offSchedule": 0,
+        "overlay": 0,
+        "signatureVerified": 0,
+        "transactions": 0
+      },
+      "alonzo": {
+        "blocks": 190,
+        "boundary": 0,
+        "firstEpoch": 6,
+        "headers": 187,
+        "lastEpoch": 7,
+        "leaderThreshold": 187,
+        "leaderUnchecked": 0,
+        "offSchedule": 0,
+        "overlay": 0,
+        "signatureVerified": 0,
+        "transactions": 0
+      },
+      "babbage": {
+        "blocks": 182,
+        "boundary": 0,
+        "firstEpoch": 8,
+        "headers": 177,
+        "lastEpoch": 9,
+        "leaderThreshold": 177,
+        "leaderUnchecked": 0,
+        "offSchedule": 0,
+        "overlay": 0,
+        "signatureVerified": 0,
+        "transactions": 0
+      },
+      "byron": {
+        "blocks": 49,
+        "boundary": 1,
+        "firstEpoch": 0,
+        "headers": 49,
+        "lastEpoch": 0,
+        "leaderThreshold": 0,
+        "leaderUnchecked": 0,
+        "offSchedule": 0,
+        "overlay": 0,
+        "signatureVerified": 48,
+        "transactions": 0
+      },
+      "conway": {
+        "blocks": 761,
+        "boundary": 0,
+        "firstEpoch": 10,
+        "headers": 726,
+        "lastEpoch": 17,
+        "leaderThreshold": 726,
+        "leaderUnchecked": 0,
+        "offSchedule": 0,
+        "overlay": 0,
+        "signatureVerified": 0,
+        "transactions": 0
+      },
+      "mary": {
+        "blocks": 115,
+        "boundary": 0,
+        "firstEpoch": 5,
+        "headers": 110,
+        "lastEpoch": 5,
+        "leaderThreshold": 110,
+        "leaderUnchecked": 0,
+        "offSchedule": 0,
+        "overlay": 0,
+        "signatureVerified": 0,
+        "transactions": 0
+      },
+      "shelley": {
+        "blocks": 306,
+        "boundary": 0,
+        "firstEpoch": 1,
+        "headers": 302,
+        "lastEpoch": 3,
+        "leaderThreshold": 102,
+        "leaderUnchecked": 0,
+        "offSchedule": 0,
+        "overlay": 200,
+        "signatureVerified": 0,
+        "transactions": 0
+      }
+    },
+    "cpuStarvationWarnings": 0,
+    "expectedTransitions": [
+      {
+        "epoch": 0,
+        "era": "byron"
+      },
+      {
+        "epoch": 1,
+        "era": "shelley"
+      },
+      {
+        "epoch": 4,
+        "era": "allegra"
+      },
+      {
+        "epoch": 5,
+        "era": "mary"
+      },
+      {
+        "epoch": 6,
+        "era": "alonzo"
+      },
+      {
+        "epoch": 8,
+        "era": "babbage"
+      },
+      {
+        "epoch": 10,
+        "era": "conway"
+      }
+    ],
+    "failures": [],
+    "fatalErrors": [],
+    "followerExit": null,
+    "lastEpoch": 17,
+    "ledgerComparison": {
+      "mismatches": [],
+      "perEra": {
+        "allegra": {
+          "errors": 0,
+          "matched": 4,
+          "mismatched": 0,
+          "skipped": 0
+        },
+        "alonzo": {
+          "errors": 0,
+          "matched": 8,
+          "mismatched": 0,
+          "skipped": 0
+        },
+        "babbage": {
+          "errors": 0,
+          "matched": 8,
+          "mismatched": 0,
+          "skipped": 0
+        },
+        "byron": {
+          "errors": 0,
+          "matched": 0,
+          "mismatched": 0,
+          "note": "not compared: cardano-cli 11.2.3 cannot query a Byron ledger; the Byron UTxO is compared through the first Shelley epoch",
+          "skipped": 0
+        },
+        "conway": {
+          "errors": 0,
+          "matched": 30,
+          "mismatched": 0,
+          "skipped": 0
+        },
+        "mary": {
+          "errors": 0,
+          "matched": 4,
+          "mismatched": 0,
+          "skipped": 0
+        },
+        "shelley": {
+          "errors": 0,
+          "matched": 12,
+          "mismatched": 0,
+          "skipped": 0
+        }
+      }
+    },
+    "load": {
+      "assets": 1,
+      "auxiliary": 3,
+      "burn": 1,
+      "collateral": 2,
+      "conway": 1,
+      "datum": 1,
+      "delegate": 1,
+      "dereg": 3,
+      "expectedRejected": 8,
+      "fund": 1,
+      "gcommittee": 1,
+      "gdeleg": 1,
+      "gdeleg2": 1,
+      "gdonate": 1,
+      "gendeleg": 1,
+      "gfund": 1,
+      "gmore": 1,
+      "gproposals10": 1,
+      "gproposals2": 2,
+      "gproposals3": 2,
+      "gproposals9": 1,
+      "greg": 1,
+      "gvotes10": 1,
+      "gvotes9": 1,
+      "inline": 1,
+      "interval": 1,
+      "legacy": 13,
+      "metadata": 1,
+      "min": 6,
+      "mint": 1,
+      "mir": 5,
+      "mir0": 1,
+      "mir1": 1,
+      "negativeOk": 13,
+      "newpool": 1,
+      "plutus": 3,
+      "ref": 2,
+      "register": 1,
+      "rejected": 1,
+      "repool": 1,
+      "retire": 1,
+      "timelock": 2,
+      "transfer": 33,
+      "value": 2,
+      "withdrawal": 7,
+      "x.refoverlap_refused_pv10": 2,
+      "x.vrf_refused": 1,
+      "x.xfund": 1,
+      "x.xrewards": 1,
+      "x.xscriptreg": 1,
+      "xcollateral": 1,
+      "xfund": 1,
+      "xrefoverlap": 1,
+      "xrewards": 1,
+      "xscriptreg": 1,
+      "xspare": 1,
+      "xvrf": 1
+    },
+    "passed": true,
+    "reconnects": 7,
+    "rollbacks": 45,
+    "stoppedBecause": "reached",
+    "targetConwayEpoch": 17,
+    "transitions": [
+      {
+        "block": 0,
+        "epoch": 0,
+        "from": null,
+        "slot": 0,
+        "to": "Byron"
+      },
+      {
+        "block": 49,
+        "epoch": 1,
+        "from": "Byron",
+        "slot": 50,
+        "to": "Shelley"
+      },
+      {
+        "block": 351,
+        "epoch": 4,
+        "from": "Shelley",
+        "slot": 1566,
+        "to": "Allegra"
+      },
+      {
+        "block": 437,
+        "epoch": 5,
+        "from": "Allegra",
+        "slot": 2050,
+        "to": "Mary"
+      },
+      {
+        "block": 547,
+        "epoch": 6,
+        "from": "Mary",
+        "slot": 2559,
+        "to": "Alonzo"
+      },
+      {
+        "block": 734,
+        "epoch": 8,
+        "from": "Alonzo",
+        "slot": 3561,
+        "to": "Babbage"
+      },
+      {
+        "block": 911,
+        "epoch": 10,
+        "from": "Babbage",
+        "slot": 4575,
+        "to": "Conway"
+      }
+    ],
+    "unparsedOutput": [],
+    "validationErrors": []
+  },
+  "schema": "scarab-plutus-parity-gates-v1",
+  "sourceAuditAfterScenario": {
+    "allUnchanged": true,
+    "trackedFiles": 6363
+  },
+  "sourceCommit": "5b290879b8ca8fe12350696e8ad7cc102d4d61f8",
+  "sourceHeadCi": {
+    "headRefOid": "5b290879b8ca8fe12350696e8ad7cc102d4d61f8",
+    "isDraft": true,
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-21T00:40:10Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/KD5UJC-XYZ/scarab/actions/runs/39521687080/job/118966777621",
+        "name": "scalafmt, compile and test",
+        "startedAt": "2026-10-21T00:30:07Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-21T00:30:35Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/KD5UJC-XYZ/scarab/actions/runs/39521687075/job/118966777780",
+        "name": "semgrep (crypto rules, WARNING-gated)",
+        "startedAt": "2026-10-21T00:30:08Z",
+        "status": "COMPLETED",
+        "workflowName": "Security"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-21T00:30:46Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/KD5UJC-XYZ/scarab/actions/runs/39521687080/job/118966777647",
+        "name": "scripts (compile, unit tests, help)",
+        "startedAt": "2026-10-21T00:30:08Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-21T00:30:15Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/KD5UJC-XYZ/scarab/actions/runs/39521687075/job/118966777860",
+        "name": "crypto guard (variable-time math stays in the vrf package)",
+        "startedAt": "2026-10-21T00:30:08Z",
+        "status": "COMPLETED",
+        "workflowName": "Security"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-21T00:30:14Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/KD5UJC-XYZ/scarab/actions/runs/39521687080/job/118966777745",
+        "name": "workflow lint",
+        "startedAt": "2026-10-21T00:30:07Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-21T00:30:28Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/KD5UJC-XYZ/scarab/actions/runs/39521687080/job/118966777750",
+        "name": "secret scan (gitleaks, full history)",
+        "startedAt": "2026-10-21T00:30:08Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-21T00:30:15Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/KD5UJC-XYZ/scarab/actions/runs/39521687080/job/118966777834",
+        "name": "dependency review",
+        "startedAt": "2026-10-21T00:30:07Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-21T00:30:05Z",
+        "conclusion": "SKIPPED",
+        "detailsUrl": "https://github.com/KD5UJC-XYZ/scarab/actions/runs/39521687080/job/118966779637",
+        "name": "submit sbt dependency graph",
+        "startedAt": "2026-10-21T00:30:06Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      }
+    ]
+  }
+}

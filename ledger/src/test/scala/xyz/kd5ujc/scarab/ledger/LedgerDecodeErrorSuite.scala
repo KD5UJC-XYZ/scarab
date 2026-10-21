@@ -80,3 +80,18 @@ class LedgerDecodeErrorSuite extends FunSuite:
       Left(LedgerDecodeError.ArrayLength("DRep voting thresholds", 10, 0))
     )
   }
+
+  test("native script Word64 tags cannot wrap into a recognized constructor") {
+    for (tag, encodedTag) <- Vector(
+        (BigInt(1) << 32) -> "1b0000000100000000",
+        ((BigInt(1) << 32) + 4) -> "1b0000000100000004",
+        ((BigInt(1) << 64) - 1) -> "1bffffffffffffffff"
+      )
+    do
+      assertEquals(
+        NativeScript.decode(node("82" + encodedTag + "581c" + "00" * 28)),
+        Left(
+          NativeScript.DecodeError.Malformed(LedgerDecodeError.TaggedArity("native script", tag, 2))
+        )
+      )
+  }

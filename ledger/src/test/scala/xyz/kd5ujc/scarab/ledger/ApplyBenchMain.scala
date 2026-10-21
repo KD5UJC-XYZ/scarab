@@ -189,7 +189,7 @@ object ApplyBenchMain:
           .flatten
           .toSet
         ns("alonzoChecks") += time(TxChecks.alonzoChecks(pp, tx, spent, scripts, purposes))._2
-        ns("auxiliaryChecks") += time(TxChecks.auxiliaryChecks(tx))._2
+        ns("auxiliaryChecks") += time(TxChecks.auxiliaryChecks(pp, tx, e))._2
         ns("witnessChecks") += time(
           TxChecks.witnessChecks(
             Map.empty,
