@@ -25,11 +25,22 @@ class ConsensusModeTests(unittest.TestCase):
             self.assertEqual(configuration(root, None), [])
             self.assertEqual(list((root / "genesis").iterdir()), [source])
             for mode in ("GenesisMode", "PraosMode"):
-                flags = configuration(root, mode)
-                self.assertEqual(flags, ["--config", "/genesis/scala-consensus-configuration.json"])
+                flags = configuration(root, mode, [3001, 3002])
+                self.assertEqual(flags[:2], ["--config", "/genesis/scala-consensus-configuration.json"])
                 selected = json.loads((root / "genesis" / pathlib.Path(flags[1]).name).read_text())
                 self.assertEqual(selected, {"ConsensusMode": mode, "ShelleyGenesisFile": "shelley-genesis.json"})
                 self.assertEqual(source.read_text(), original)
+                if mode == "GenesisMode":
+                    self.assertEqual(flags[2:], ["--topology", "/genesis/scala-consensus-topology.json"])
+                    topology = json.loads((root / "genesis" / pathlib.Path(flags[3]).name).read_text())
+                    group = topology["localRoots"][0]
+                    self.assertTrue(group["trustable"])
+                    self.assertEqual(group["hotValency"], 2)
+                    self.assertEqual(group["accessPoints"], [{"address": "127.0.0.1", "port": 3001},
+                                                            {"address": "127.0.0.1", "port": 3002}])
+                    self.assertIsNone(topology["bootstrapPeers"])
+                else:
+                    self.assertEqual(len(flags), 2)
 
     def test_restart_keeps_explicit_mode_on_every_start(self):
         args = SimpleNamespace(name="scarab-33-mode", consensus_mode="GenesisMode")

@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 from ..cluster import database_mounts, freeze_classes, scala_container, up
+from ..consensus import trusted_pools
 from ..util import (CLI, ENTRY, ENV, MAGIC, QUERY_PORT, REFERENCE_IMAGE, USER, data_root, docker, in_ref, put_file,
                     read_json, read_log, ref)
 
@@ -31,8 +32,11 @@ def start_scala_relay(args, root, peers):
     sock.chmod(0o777)
     program = ["follow", "--genesis-dir", "/genesis", "--query-port", str(QUERY_PORT),
                "--listen", f"127.0.0.1:{SCALA_PORT}", "--db", "/db", "--local-socket", "/sock/node.socket"]
-    for port in peers:
-        program += ["--peer", f"127.0.0.1:{port}"]
+    if getattr(args, "consensus_mode", None) == "GenesisMode":
+        program += trusted_pools(root, peers)
+    else:
+        for port in peers:
+            program += ["--peer", f"127.0.0.1:{port}"]
     # The Scala node takes part in peer sharing, as the Haskell relay does by default (a node without producer
     # credentials), and reads ExperimentalProtocolsEnabled, which decides the highest node-to-node version it
     # offers: cardano-testnet writes `true`, so the key is set from --max-ntn-version either way (15, the

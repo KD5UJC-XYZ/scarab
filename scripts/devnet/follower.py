@@ -21,9 +21,12 @@ def follow(args):
     ports = json.loads((root / "ports.json").read_text())
     classpath = freeze_classes(root, getattr(args, "classes", None) or os.environ.get("SCARAB_FOLLOW_CLASSES"))
     log = root / "follower.jsonl"
-    program = ["follow", "--genesis-dir", "/genesis", "--peer", f"127.0.0.1:{ports[str(args.node)]}",
-               "--query-port", str(QUERY_PORT)]
-    program += configuration(root, getattr(args, "consensus_mode", None))
+    mode = getattr(args, "consensus_mode", None)
+    port = ports[str(args.node)]
+    program = ["follow", "--genesis-dir", "/genesis", "--query-port", str(QUERY_PORT)]
+    if mode != "GenesisMode":
+        program += ["--peer", f"127.0.0.1:{port}"]
+    program += configuration(root, mode, [port])
     if own_build(args):
         # the Prometheus endpoint on a listener of its own (an older build, run for a baseline, has no such flag)
         program += ["--metrics-listen", f"127.0.0.1:{METRICS_PORT}"]
