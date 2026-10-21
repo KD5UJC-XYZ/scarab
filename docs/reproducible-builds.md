@@ -1,8 +1,9 @@
 # Reproducible node fat JARs
 
 **Status: Current** — `node/assembly` packaging and a two-clean-build verification task. This is
-the artifact portion of [O2 / #75](https://github.com/KD5UJC-XYZ/scarab/issues/75); signed releases,
-SBOMs, provenance attestations and published-image reproducibility remain separate work.
+the artifact portion of [O2 / #75](https://github.com/KD5UJC-XYZ/scarab/issues/75).
+The [candidate pipeline](release-candidates.md) consumes this contract for SBOMs and local OCI
+artifacts; signed releases, provenance attestations and published-image verification remain separate.
 
 ## Artifact contract
 
@@ -168,7 +169,7 @@ The contract is identical committed source, JDK image/runtime, sbt/compiler/plug
 resolved dependency bytes. The existing pinned dependencies and SHA-256-checked sbt launcher are
 build inputs; dependency versions alone do not authenticate downloaded bytes. The two builds use
 one image and one trusted download cache, so this does not establish independent dependency supply
-chains, cross-JDK or cross-platform reproducibility. Rebuilding the committed libblst from its
-source recipe remains [#229](https://github.com/KD5UJC-XYZ/scarab/issues/229), distinct from preserving
-the packaged native bytes. Signed releases, dependency verification, SBOM/provenance and published
-image verification remain under #75.
+chains, cross-JDK or cross-platform reproducibility. The [native source rebuild and byte comparison](../blst-native/native/README.md)
+is a separate check from preserving packaged native bytes. The [candidate pipeline](release-candidates.md)
+combines those contracts with SBOM/image inventories. Signed releases, independent dependency
+authentication, provenance attestations and published-image verification remain under #75.

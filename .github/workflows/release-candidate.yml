@@ -1,0 +1,134 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Verified release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected-commit:
+        description: Exact approved forty-character source commit
+        required: true
+        type: string
+      release-tag:
+        description: Existing exact vSemVer tag (empty builds an unpublished development candidate)
+        type: string
+      expected-tag-object:
+        description: Independently approved tag-object SHA (required for releases)
+        type: string
+      channel:
+        description: alpha, beta, preprod or prod (required for releases)
+        type: string
+      source-ref:
+        description: Approved release branch reference (required for releases)
+        type: string
+  workflow_call:
+    inputs:
+      expected-commit:
+        required: true
+        type: string
+      release-tag:
+        default: ''
+        type: string
+      expected-tag-object:
+        default: ''
+        type: string
+      channel:
+        default: ''
+        type: string
+      source-ref:
+        default: ''
+        type: string
+    outputs:
+      artifact-name:
+        value: ${{ jobs.candidate.outputs.artifact-name }}
+      artifact-id:
+        value: ${{ jobs.candidate.outputs.artifact-id }}
+      artifact-digest:
+        value: ${{ jobs.candidate.outputs.artifact-digest }}
+      source-commit:
+        value: ${{ jobs.candidate.outputs.source-commit }}
+      manifest-sha256:
+        value: ${{ jobs.candidate.outputs.manifest-sha256 }}
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    outputs:
+      artifact-name: ${{ steps.manifest.outputs.artifact-name }}
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+      artifact-digest: ${{ steps.upload.outputs.artifact-digest }}
+      source-commit: ${{ steps.manifest.outputs.source-commit }}
+      manifest-sha256: ${{ steps.manifest.outputs.manifest-sha256 }}
+    steps:
+      - name: Check out exact candidate source with tag and approved-ref history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.expected-commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Cache dependency downloads, never compiled outputs
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: .cache/scarab
+          key: candidate-sbt-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/build.properties', 'project/repositories', 'scripts/sbtw') }}
+          restore-keys: candidate-sbt-${{ runner.os }}-
+      - name: Build the pinned Java release once and retain its immutable image identity
+        run: docker build -f docker/jdk.Dockerfile -t scarab-candidate-jdk:ci .
+      - name: Verify clean fat JARs, native source rebuilds, OCI contents and SBOM subjects
+        env:
+          EXPECTED_COMMIT: ${{ inputs.expected-commit }}
+          RELEASE_TAG: ${{ inputs.release-tag }}
+          EXPECTED_TAG_OBJECT: ${{ inputs.expected-tag-object }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+          SOURCE_REF: ${{ inputs.source-ref }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import subprocess
+          output = Path(os.environ['RUNNER_TEMP']) / 'scarab-candidate'
+          command = ['python3', 'scripts/build_release_candidate.py', '--check', '--image',
+                     'scarab-candidate-jdk:ci', '--cache', '.cache', '--output', str(output),
+                     '--expected-commit', os.environ['EXPECTED_COMMIT']]
+          for variable, flag in [('RELEASE_TAG', '--release-tag'), ('EXPECTED_TAG_OBJECT', '--expected-tag-object'),
+                                 ('RELEASE_CHANNEL', '--channel'), ('SOURCE_REF', '--source-ref')]:
+              if os.environ[variable]:
+                  command.extend([flag, os.environ[variable]])
+          subprocess.run(command, check=True)
+          PY
+      - name: Publish immutable transport outputs for a separate authorized coordinator
+        id: manifest
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import sys
+          sys.path.insert(0, 'scripts')
+          import candidate_manifest
+          root = Path(os.environ['RUNNER_TEMP']) / 'scarab-candidate'
+          manifest = candidate_manifest.validate(root)
+          source = manifest['source']['buildIdentity']['gitCommit']
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'artifact-name=release-candidate-{source}-{os.environ["GITHUB_RUN_ATTEMPT"]}\n')
+              output.write(f'source-commit={source}\n')
+              output.write(f'manifest-sha256={candidate_manifest.sha256(root / "candidate.json")}\n')
+          PY
+      - name: Retain verified candidate transport
+        id: upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ steps.manifest.outputs.artifact-name }}
+          path: ${{ runner.temp }}/scarab-candidate/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Retain incomplete attempts without representing them as verified candidates
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: incomplete-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/scarab-candidate/evidence/
+          if-no-files-found: warn
+          retention-days: 14

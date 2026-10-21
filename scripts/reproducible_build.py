@@ -176,7 +176,7 @@ def verify_resources(artifact, source, classpath, commit, build_identity=None):
                 raise ValueError(f"fat JAR lost or added service providers: {name}")
 
 
-def jvm_resources(runtime, artifact, commit):
+def resource_check_source(runtime):
     source = runtime / "ArtifactResourcesCheck.java"
     source.write_text("""// SPDX-License-Identifier: Apache-2.0
 class ArtifactResourcesCheck {
@@ -217,6 +217,11 @@ class ArtifactResourcesCheck {
   }
 }
 """, encoding="utf-8")
+    return source
+
+
+def jvm_resources(runtime, artifact, commit):
+    source = resource_check_source(runtime)
     result = subprocess.run(["java", "-cp", str(artifact), source.name, str(artifact), commit],
                             cwd=runtime, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
     if result.returncode:
@@ -249,7 +254,7 @@ def inside_jdk():
         raise ValueError("a frozen git source export is required; use the host entrypoint")
     output = Path(os.environ["SCARAB_REPRO_OUTPUT"])
     output.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="scarab-repro-") as scratch:
+    with tempfile.TemporaryDirectory(prefix="scarab-repro-", dir=output if os.environ.get("SCARAB_REPRO_INVENTORY") == "1" else None) as scratch:
         locations = [Path(scratch) / "first", Path(scratch) / "different" / "depth" / "second"]
         artifacts = []
         reports = []
@@ -261,8 +266,9 @@ def inside_jdk():
             env = dict(os.environ, SBT_GLOBAL_BASE=f"/tmp/sbt-repro-{index}")
             print(f"Clean build {index}/2: {location}; log {log}", flush=True)
             tasks = (["check"] if index == 1 and os.environ.get("SCARAB_REPRO_CHECK") == "1" else [])
+            inventory_tasks = ["node/releaseInventory"] if os.environ.get("SCARAB_REPRO_INVENTORY") == "1" else []
             with log.open("w", encoding="utf-8") as stream:
-                result = subprocess.run(["bash", "scripts/sbtw", *tasks, "node/assembly", "node/runtimeClasspathFile"],
+                result = subprocess.run(["bash", "scripts/sbtw", *tasks, "node/assembly", "node/runtimeClasspathFile", *inventory_tasks],
                                         cwd=location, env=env, stdout=stream, stderr=subprocess.STDOUT)
             if result.returncode:
                 print("\n".join(log.read_text(encoding="utf-8").splitlines()[-80:]), flush=True)
@@ -278,6 +284,9 @@ def inside_jdk():
             classpath = [Path(entry) for entry in (location / "node/target/runtime-classpath.txt")
                          .read_text(encoding="utf-8").strip().split(":")]
             smoke(artifact, location, classpath, manifest["gitCommit"], manifest["buildIdentity"])
+            if inventory_tasks:
+                from assembly_inventory import export
+                export(artifact, location / "node/target/release-inventory.json", output / f"inventory-{index}")
             print(f"Build {index}: fat JAR resources, java -jar and portable native/Plutus checks passed", flush=True)
             artifacts.append(artifact)
             reports.append(dict(file=artifact.name, assemblyName=produced[0].name, sha256=sha256(artifact)))
@@ -318,6 +327,7 @@ def main():
     parser.add_argument("--cache", type=Path, default=Path(os.environ.get("SCARAB_CACHE_DIR", ".cache")))
     parser.add_argument("--output", type=Path, help="fresh directory for two artifacts and build logs")
     parser.add_argument("--check", action="store_true", help="also run the full check gate in the first clean build")
+    parser.add_argument("--inventory", action="store_true", help="retain reconciled runtime/assembly inputs for both builds")
     parser.add_argument("--release-tag", help="exact vSemVer tag; enables strict release validation")
     parser.add_argument("--channel", choices=["alpha", "beta", "preprod", "prod"])
     parser.add_argument("--expected-commit", help="trusted full source SHA, not inferred from a moving tag")
@@ -344,12 +354,15 @@ def main():
     cache.mkdir(parents=True, exist_ok=True)
     image = subprocess.check_output(
         ["docker", "image", "inspect", args.image, "--format", "{{.Id}}"], text=True).strip()
-    with tempfile.TemporaryDirectory(prefix="scarab-frozen-source-") as scratch:
+    with tempfile.TemporaryDirectory(prefix="scarab-frozen-source-", dir=output.parent if args.inventory else None) as scratch:
         source = Path(scratch) / "source"
         commit = export_source(repo, args.revision, source, tag=args.release_tag, channel=args.channel,
                                expected_commit=args.expected_commit, expected_tag_object=args.expected_tag_object,
                                source_ref=args.source_ref, expected_version=args.expected_version)
         manifest = json.loads((source / MANIFEST).read_text(encoding="utf-8"))
+        if args.inventory:
+            shutil.copyfile(source.parent / "source.tar", output / "source.tar")
+            shutil.copyfile(source / MANIFEST, output / "source-manifest.json")
         print(f"Source {commit}; JDK image {image}; output {output}", flush=True)
         (output / "build-environment.json").write_text(
             json.dumps({"gitCommit": commit, "jdkImage": image, "buildIdentity": manifest["buildIdentity"]}, sort_keys=True) + "\n", encoding="utf-8")
@@ -360,7 +373,8 @@ def main():
             "-e", "HOME=/cache/home", "-e", "SCARAB_CACHE_DIR=/cache",
             "-e", "SBT_GLOBAL_BASE=/tmp/sbt-repro-orchestrator", "-e", "SCARAB_REPRO_OUTPUT=/output",
             "-e", "TZ=UTC", "-e", "LC_ALL=C.UTF-8",
-            "-e", f"SCARAB_REPRO_CHECK={int(args.check)}", image,
+            "-e", f"SCARAB_REPRO_CHECK={int(args.check)}",
+            "-e", f"SCARAB_REPRO_INVENTORY={int(args.inventory)}", image,
             "bash", "scripts/sbtw", "reproducibleCheck"
         ], check=True)
         verified = verify_output_identity(output, manifest["buildIdentity"])
