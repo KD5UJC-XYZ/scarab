@@ -127,9 +127,9 @@ object MempoolLedger:
   /** Tick the complete Conway state before projecting its transaction view. This is
     * `tickLedgerState (ForgeInUnknownSlot _)` in consensus Mempool/Impl/Common.hs: the next
     * available slot, including epoch transitions, rewards, certificate state and treasury. `None`
-    * denotes Origin, whose next available slot is zero. The selected state's epoch agrees with
-    * its tip, so its successor crosses at most one epoch boundary. Conway is the final era:
-    * no hard-fork translation precedes this tick. Reference: ouroboros-consensus
+    * denotes Origin, whose next available slot is zero. The selected state's epoch agrees with its
+    * tip, so its successor crosses at most one epoch boundary. Conway is the final era: no
+    * hard-fork translation precedes this tick. Reference: ouroboros-consensus
     * `82ecba329d7d054340bf707d44fe6e9ac27cec40`, `Mempool/Impl/Common.hs`, `tickLedgerState`.
     */
   def tick(
@@ -157,8 +157,8 @@ object MempoolLedger:
   * `entries` applied in order to `base` through the transaction rules succeed and give `current`.
   *
   * `base` is the complete ledger ticked to the successor of the chain tip the pool was last
-  * synchronised with. `tipSlot` is -1 at Origin, making its successor slot zero. Every operation
-  * is a pure function; [[Mempool]] serialises them.
+  * synchronised with. `tipSlot` is -1 at Origin, making its successor slot zero. Every operation is
+  * a pure function; [[Mempool]] serialises them.
   */
 final case class MempoolState(
     base: Either[ConwayView.Unavailable, MempoolLedger],

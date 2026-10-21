@@ -628,7 +628,7 @@ object Main extends IOApp:
         case Storage(anchor, state, resumed, persistence, immutable) =>
           // A chain whose Byron span is derived learns the first Shelley epoch when it enters
           // Shelley; a restored state past that point knows it, a fresh sync learns it on the way
-          // (the mempool and the forger need a restart after that, see docs/compatibility.md).
+          // (the forger still needs a restart after that, see docs/compatibility.md).
           val geometry = state.geometry(genesis.geometry)
           val globals =
             state.consensus.byron.firstShelleyEpoch.fold(setup.globals)(e =>

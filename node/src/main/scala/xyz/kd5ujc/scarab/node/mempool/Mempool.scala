@@ -59,9 +59,9 @@ trait Mempool[F[_]]:
   def forBlock(maxBytes: Long): F[Vector[Entry]]
 
   /** Revalidate against `ledger`, ticked to the successor of the new tip (`tipSlot`, or -1 at
-    * Origin). `adopted` are the
-    * ids of the transactions in the blocks that just joined our chain: held ones among them leave
-    * the pool as adopted, the others that no longer apply are returned with the reason.
+    * Origin). `adopted` are the ids of the transactions in the blocks that just joined our chain:
+    * held ones among them leave the pool as adopted, the others that no longer apply are returned
+    * with the reason.
     */
   def sync(
       ledger: Either[ConwayView.Unavailable, MempoolLedger],
