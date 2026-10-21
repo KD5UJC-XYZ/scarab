@@ -26,6 +26,12 @@ trait HeaderGate[F[_]]:
   /** How the headers so far were established. */
   def counts: F[HeaderGate.Counts]
 
+  def snapshot(using F: Applicative[F]): F[Option[HeaderChain[NodeHeaderState]]] = F.pure(None)
+
+  def graft(snapshot: HeaderChain[NodeHeaderState], point: ChainSync.Point)(using
+      F: Applicative[F]
+  ): F[Either[HeaderCheck.GraftError, Unit]] = F.pure(Left(HeaderCheck.GraftError.Unsupported))
+
 object HeaderGate:
   /** `validated` headers passed every header rule; `unchecked` were left to their block's own
     * validation (Byron headers, the first Shelley header after a Byron prefix).
@@ -45,6 +51,10 @@ trait HeaderCheck[F[_]]:
   def observed(observer: HeaderCheck.Event => F[Unit]): HeaderCheck[F] = this
 
 object HeaderCheck:
+  enum GraftError:
+    case Unsupported
+    case MissingPoint(point: ChainSync.Point)
+
   enum Event:
     case Validated(header: Header)
     case RolledBack(point: ChainSync.Point)
@@ -52,6 +62,28 @@ object HeaderCheck:
   /** No header-first validation: every block is checked when it is applied (tests, tools). */
   def none[F[_]: Applicative]: HeaderCheck[F] = new HeaderCheck[F]:
     def start(intersection: ChainSync.Point) = Applicative[F].pure(HeaderGate.none[F])
+
+  /** The production Genesis family shares canonical header states across accepted CSJ jumps. The
+    * equality witness is supplied by the compiler; arbitrary test state types cannot be recovered
+    * with an erased cast or installed as a different protocol's state.
+    */
+  def forGenesisChain[F[_]: Async, S](
+      rules: HeaderRules[S, NodeHeaderState],
+      compute: Compute[F],
+      retained: Int,
+      warm: Option[(Vector[Header], NodeHeaderState) => F[Unit]] = None,
+      observe: Option[HeaderGate.Counts => F[Unit]] = None,
+      added: Option[HeaderGate.Counts => F[Unit]] = None
+  )(using Stateful[F, VolatileChain[S]]): HeaderCheck[F] =
+    forChain(
+      rules,
+      compute,
+      warm = warm,
+      retained = retained,
+      observe = observe,
+      added = added,
+      stateWitness = Some(summon[NodeHeaderState =:= NodeHeaderState])
+    )
 
   /** Header-first validation against the node's own chain.
     *
@@ -77,18 +109,42 @@ object HeaderCheck:
       observe: Option[HeaderGate.Counts => F[Unit]] = None,
       added: Option[HeaderGate.Counts => F[Unit]] = None,
       patience: Option[LimitOnPatience[F]] = None,
-      publication: Option[Event => F[Unit]] = None
+      publication: Option[Event => F[Unit]] = None,
+      stateWitness: Option[H =:= NodeHeaderState] = None
   )(using
       chain: Stateful[F, VolatileChain[S]]
   ): HeaderCheck[F] = new HeaderCheck[F]:
     private val F = Async[F]
 
     override def withPatience(value: LimitOnPatience[F]): HeaderCheck[F] =
-      forChain(rules, compute, warm, stall, poll, retained, observe, added, Some(value), publication)
+      forChain(
+        rules,
+        compute,
+        warm,
+        stall,
+        poll,
+        retained,
+        observe,
+        added,
+        Some(value),
+        publication,
+        stateWitness
+      )
 
     override def observed(observer: Event => F[Unit]): HeaderCheck[F] =
-      forChain(rules, compute, warm, stall, poll, retained, observe, added, patience,
-        Some(event => publication.traverse_(_(event)) *> observer(event)))
+      forChain(
+        rules,
+        compute,
+        warm,
+        stall,
+        poll,
+        retained,
+        observe,
+        added,
+        patience,
+        Some(event => publication.traverse_(_(event)) *> observer(event)),
+        stateWitness
+      )
 
     def start(intersection: ChainSync.Point): F[HeaderGate[F]] =
       for
@@ -120,6 +176,21 @@ object HeaderCheck:
     ): HeaderGate[F] =
       new HeaderGate[F]:
         def counts = tally.get
+
+        override def snapshot(using Applicative[F]): F[Option[HeaderChain[NodeHeaderState]]] =
+          state.get.map(history => stateWitness.map(equality => history.map(equality)))
+
+        override def graft(snapshot: HeaderChain[NodeHeaderState], point: ChainSync.Point)(using
+            Applicative[F]
+        ): F[Either[GraftError, Unit]] =
+          stateWitness match
+            case None => F.pure(Left(GraftError.Unsupported))
+            case Some(equality) =>
+              snapshot.rollback(point) match
+                case None => F.pure(Left(GraftError.MissingPoint(point)))
+                case Some(prefix) =>
+                  val restored = prefix.map(equality.flip)
+                  state.set(restored) *> released.set(restored.entries.size).as(Right(()))
 
         def accept(batch: Vector[SyncEvent])(using Raise[F, PeerError]): F[Unit] =
           // The signatures of the leading headers are verified in parallel first; the rules below
@@ -308,8 +379,10 @@ object HeaderCheck:
                 )
               else
                 val waiting = F.sleep(poll) *> resolve(header, waited = true, since = Some(moved))
-                patience.filter(_ => since.isEmpty).fold(waiting)(p =>
-                  (p.setPaused(LimitOnPatience.PauseReason.Forecast, true) *> waiting)
-                    .guarantee(p.setPaused(LimitOnPatience.PauseReason.Forecast, false))
-                )
+                patience
+                  .filter(_ => since.isEmpty)
+                  .fold(waiting)(p =>
+                    (p.setPaused(LimitOnPatience.PauseReason.Forecast, true) *> waiting)
+                      .guarantee(p.setPaused(LimitOnPatience.PauseReason.Forecast, false))
+                  )
           yield result

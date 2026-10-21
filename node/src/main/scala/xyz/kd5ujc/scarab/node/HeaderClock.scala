@@ -12,6 +12,7 @@ import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.ledger.{EpochGeometry, HeaderError, PeerError}
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.network.genesis.LimitOnPatience
+import xyz.kd5ujc.scarab.consensus.HeaderChain
 
 /** The node's clock over the era history: the wall time, and the history that places a slot on it.
   * The history is read at each use because a chain that starts in Byron learns where Byron ends
@@ -128,6 +129,13 @@ object HeaderClock:
       patience: Option[LimitOnPatience[F]]
   ) extends HeaderGate[F]:
     def counts = inner.counts
+
+    override def snapshot(using cats.Applicative[F]): F[Option[HeaderChain[NodeHeaderState]]] =
+      inner.snapshot
+
+    override def graft(snapshot: HeaderChain[NodeHeaderState], point: ChainSync.Point)(using
+        cats.Applicative[F]
+    ): F[Either[HeaderCheck.GraftError, Unit]] = inner.graft(snapshot, point)
 
     def accept(batch: Vector[SyncEvent])(using Raise[F, PeerError]): F[Unit] =
       val headers = batch.collect { case SyncEvent.RollForward(h, _) => h }

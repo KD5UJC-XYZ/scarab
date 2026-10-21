@@ -73,6 +73,13 @@ final case class HeaderChain[H](
     baseState: Option[H],
     entries: Vector[HeaderChain.Entry[H]]
 ):
+  def map[J](f: H => J): HeaderChain[J] =
+    HeaderChain(
+      base,
+      baseState.map(f),
+      entries.map(e => HeaderChain.Entry(e.header, e.state.map(f)))
+    )
+
   def tipHash: Option[Bytes] = entries.lastOption.map(_.header.hash).orElse(baseHash)
 
   private def baseHash: Option[Bytes] = base match
