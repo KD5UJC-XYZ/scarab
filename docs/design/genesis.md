@@ -24,6 +24,28 @@ support. This work does not alter the network's signed block formats or ledger
 transition predicates. It changes which validated chains may be selected, when
 selection is retriggered, and how upstream work and disconnections are coordinated.
 
+## Shared early-header validation (#318)
+
+`NodeHeaderRules` and `HeaderCheck.forNodeChain` implement the same canonical all-era
+header path for Genesis and header-first-enabled Praos sessions. This enables Byron
+PBFT checks, the initial Shelley forecast and parameter-dependent epoch-boundary
+envelopes in Praos without enabling GSM, LoE, GDD, LoP or jumping. Praos retains the
+explicit `--header-first off` setting.
+
+At the consensus pin above, `MiniProtocol/ChainSync/Client.hs:1498–1510` obtains the
+intersection-ledger time forecast before validating the header;
+`HeaderValidation.hs:219–230` ticks the chain-dependent state with the forecast ledger
+view. The shared implementation preserves this ordering, Byron's exclusive
+`NOW+1+2k` forecast (`Byron/Ledger/Ledger.hs:268–320`) and the initial Shelley forecast
+(`CanHardFork.hs:421–470`). A missing forecast waits for ledger progress; it cannot
+fall back to an unchecked header. The private `ShelleyHeaderForecast` checks the
+same forecast parameters and envelope on both sides of an epoch boundary.
+
+`PraosHeaderValidationSuite` uses actual ChainSync/BlockFetch clients without a
+Genesis runtime, original signed headers from all seven eras, and typed signature
+and epoch-boundary envelope refusals before any body request. Existing original
+all-era captures and the unchanged Genesis replay corpus remain separate controls.
+
 ## Shared contracts
 
 - **Candidate state:** publish original decoded headers and the validated header-state
