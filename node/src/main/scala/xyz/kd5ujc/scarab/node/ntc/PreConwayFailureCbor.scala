@@ -41,9 +41,12 @@ import PredicateFailureCbor.*
   * failures the rules raise. Against the reference's own answers (`PreConwayFailureReferenceSuite`,
   * recorded from the `e2e` scenario) those of Shelley, Allegra, Mary and Alonzo for a small output,
   * a large value and the MIR checks are byte-equal; the other tags and all of Babbage's are read
-  * from the instances (`PreConwayFailureCborSuite`). The collect errors of Alonzo and Babbage
-  * ([[ContextFailureCbor]]) are read the same way, and Babbage's `ContextError` payloads are also
-  * byte-equal to the reference's matrix rows (`ContextMatrixSuite`).
+  * from the instances (`PreConwayFailureCborSuite`). The Plutus and witness failures of Alonzo and
+  * Babbage that `erarefusal.py` provokes (missing redeemers with certificates, the `NoRedeemer` and
+  * translation collect errors of [[ContextFailureCbor]], the integrity hash, the datum and redeemer
+  * checks, a missing key witness, a small output) are byte-equal to the node's answers, Babbage's
+  * at protocol version 7 (`PlutusFailureReferenceSuite`); Babbage's `ContextError` payloads are
+  * also byte-equal to the reference's matrix rows (`ContextMatrixSuite`).
   */
 object PreConwayFailureCbor:
   import NodeOrders.given

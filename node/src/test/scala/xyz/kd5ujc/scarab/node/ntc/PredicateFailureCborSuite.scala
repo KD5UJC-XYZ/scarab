@@ -222,7 +222,8 @@ class PredicateFailureCborSuite extends FunSuite:
   }
 
   test("Conway: a missing redeemer of a certifying purpose carries its certificate, not null") {
-    // Hand-derived (no node confirmation): [6 era, [[1 LEDGER UTXOW (Conway/Rules/Ledger.hs:231), [10 MissingRedeemers,
+    // Hand-derived here and byte-equal to the reference node's answer in PlutusFailureReferenceSuite
+    // (recorded by the e2e load at protocol 9): [6 era, [[1 LEDGER UTXOW (Conway/Rules/Ledger.hs:231), [10 MissingRedeemers,
     // [[[2 Certifying, [1 UnRegCert, [1 script, hash]]], script]]]]]. The certificate is the Conway
     // one: an unregistration without a refund is [1, credential] (Conway/TxCert.hs).
     val scriptHash = Bytes(Vector.fill(28)(0xcc.toByte))

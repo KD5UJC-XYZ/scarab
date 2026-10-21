@@ -15,7 +15,8 @@ import scala.jdk.CollectionConverters.*
   * over LocalTxSubmission for each transaction of the `e2e` scenario that must be refused while the
   * chain is in an earlier era (`devnet.py e2e`, `eraload.keep_raw_reason`), with the transaction.
   * The cardano-cli of the reference submits in the era of the chain, so these exist for Shelley,
-  * Allegra, Mary and Alonzo (the e2e load has no refusal in Babbage).
+  * Allegra, Mary and Alonzo; the Plutus and witness refusals of Alonzo, Babbage and Conway are in
+  * [[PlutusFailureReferenceSuite]] (`fixtures/devnet/refused-raw-plutus.jsonl`).
   *
   * Each failure is rebuilt from the payload of the recorded reason (the outputs, the slots) and
   * written by [[PreConwayFailureCbor]]; the bytes must be the recorded ones.

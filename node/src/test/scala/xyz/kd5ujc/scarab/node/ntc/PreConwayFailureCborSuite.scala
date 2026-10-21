@@ -389,9 +389,10 @@ class PreConwayFailureCborSuite extends FunSuite:
   //
   // Hand-derived from the pinned instances (see the header of ContextFailureCbor): a purpose is
   // [tag, item] with the bare certificate (Alonzo/Scripts.hs:370-397, AsItem), the certificate is
-  // ShelleyTxCert (Shelley/TxCert.hs:420-435). A script credential is [1, hash]. None of these
-  // goldens is a confirmation against a node; the matrix rows of ContextMatrixSuite are the
-  // reference's own bytes for Babbage's ContextErrors.
+  // ShelleyTxCert (Shelley/TxCert.hs:420-435). A script credential is [1, hash]. The reference
+  // node's own bytes for the certifying missing redeemers, NoRedeemer and the Babbage translation
+  // faults are in PlutusFailureReferenceSuite (recorded by the e2e load); the cases below that it
+  // does not cover (NoWitness, NoCostModel, Alonzo's unresolved input) stay hand-derived.
 
   private val scriptHash = hex("cc" * 28)
   private val s = scriptHash.hex

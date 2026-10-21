@@ -36,10 +36,18 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
   *
   * The `CollectError` tags are one instance for all three eras, and the Conway rows of the
   * reference's collection confirm them. Babbage's `ContextError` payloads match the matrix's
-  * reference rows at protocol versions 7 and 8 (`ContextMatrixSuite`). The Alonzo and Babbage
-  * envelopes (UTXO 7, Babbage 1), the Shelley certificate shape and the Conway missing-redeemer
-  * envelope are read from the instances and hand-derived in `PreConwayFailureCborSuite` and
-  * `PredicateFailureCborSuite`; that is not a confirmation against a node.
+  * reference rows at protocol versions 7 and 8 (`ContextMatrixSuite`).
+  *
+  * Recorded from the reference node 11.1.3 by the `e2e` load (`erarefusal.py`) and byte-equal in
+  * `PlutusFailureReferenceSuite`: the Alonzo (protocol 5), Babbage (7) and Conway (9) missing
+  * redeemers of a script credential's delegation and unregistration (Conway also the unregistration
+  * with a refund) with the certificate; the `NoRedeemer` collect error of a certifying and of a
+  * spending purpose in the three eras (UTXO 7 under UTXOW 0 in Alonzo, UTXO 1 under UTXO 2 in
+  * Babbage); Babbage's and Conway's translation faults for an inline datum, Babbage's for a
+  * reference script and a reference input, and the unresolved input in Babbage and Conway. Not
+  * observable on the devnet, so hand-derived in `PreConwayFailureCborSuite`: `NoWitness` and
+  * `NoCostModel` (see `docs/compatibility.md`), the Alonzo unresolved input (the bad input stops
+  * the rules before UTXOS) and the Byron-output and redeemer-pointer faults.
   */
 private[ntc] object ContextFailureCbor:
   import PredicateFailureCbor.{
