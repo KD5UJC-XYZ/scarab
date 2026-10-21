@@ -46,7 +46,7 @@ enum ConnectionEventLabel derives LabelValue:
 /** What the inbound governor did on a connection ([[xyz.kd5ujc.scarab.node.InboundEvent]]). */
 enum InboundEventLabel derives LabelValue:
   case Accepted, Duplex, Unidirectional, Following, SessionEnded, SessionReturned, SessionDropped,
-    Closed, Refused
+    CachedBlockRejected, Closed, Refused
 
 /** What the peer governor did to a peer, or learnt of it
   * ([[xyz.kd5ujc.scarab.network.selection.Trace]]).

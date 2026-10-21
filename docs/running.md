@@ -998,7 +998,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `slowFetch` | `Chain.SlowFetch` | Info | `millis` |
 | `ledgerEpoch` | `Ledger.LedgerEpoch` | Info | `epoch`, `utxo`, `accounts`, `pools`, `treasury`, `reserves`, `protocolVersion`, `phase2`, `scriptIntegrityHashChecked`, `scheduling` |
 | `connection` | `Net.Connection` | Info (Warning when `what` is `refused`) | `remote`, `what`, `provenance`, `from`, `to`, `reason` |
-| `inbound` | `Net.Inbound` | Info (Warning when `state` is `refused`) | `remote`, `state`, `reason` |
+| `inbound` | `Net.Inbound` | Info (Warning when `state` is `refused` or `cachedBlockRejected`) | `remote`, `state`, `reason` |
 | `peerSelectionTargets` | `Net.PeerSelectionTargets` | Notice | `root`, `known`, `established`, `active`, `knownBigLedger`, `establishedBigLedger`, `activeBigLedger` |
 | `peerSelectionRoots` | `Net.PeerSelectionRoots` | Info (Warning when `action` is `failure`) | `action`, `bigLedger`, `before`, `after`, `target`, `current`, `found`, `backoffs`, `retryInSeconds`; sharing actions `pickInbound`, `peerShareRequests`, `peerShareResults` add `peers`, `amount`, `results`, `added` |
 | `peerSelectionPromote` | `Net.PeerSelectionPromote` | Info (Warning when `action` is `failed`) | `action`, `bigLedger`, `from`, `to`, `peers`, `peer`, `local`, `target`, `current`, `failure`, `retryInSeconds`, `forgotten` |
@@ -1148,7 +1148,7 @@ Meanings and units worth knowing before building a dashboard:
 `ledger`, `tpraos` or `praos`; `state` (of a connection) is `Reserved`, `Unnegotiated`, `Established`, `Terminating`
 or `Terminated`; `event` is, for `scarab_connection_events_total`, `Opened`, `Changed`, `Refused` or `Closed`, and for
 `scarab_inbound_events_total`, `Accepted`, `Duplex`, `Unidirectional`, `Following`, `SessionEnded`, `SessionReturned`,
-`SessionDropped`, `Closed` or `Refused`; `reason` is, for `scarab_mempool_rejected_total`, `Malformed`,
+`SessionDropped`, `CachedBlockRejected`, `Closed` or `Refused`; `reason` is, for `scarab_mempool_rejected_total`, `Malformed`,
 `AlreadyHeld`, `Ledger`, `Full` or `WrongEra`, and for `scarab_forge_skipped_total`, `Busy`, `TipTooOld`,
 `SlotOccupied`, `NotConnected` or `Other`; `kind` (snapshots) is `Skipped`, `Failed` or `Refused`; `over_ms` is
 `50` or `100`; `area` is `heap` or `nonheap`; `gc` is the name the JVM gives the collector (`G1 Young

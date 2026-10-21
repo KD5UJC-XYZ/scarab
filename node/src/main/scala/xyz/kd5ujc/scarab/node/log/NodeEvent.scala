@@ -306,6 +306,12 @@ object NodeEvent:
             "sessionReturned",
             Some(s"${reason.message}; repromote after ${delay.toSeconds}s")
           )
+        case InboundEvent.CachedBlockRejected(refusal, generation, sourceLive) =>
+          inbound(
+            remote,
+            "cachedBlockRejected",
+            Some(s"${refusal.message}; source generation $generation; live=$sourceLive")
+          ).at(Severity.Warning)
         case InboundEvent.Closed(reason) => inbound(remote, "closed", Some(reason.message))
         case InboundEvent.Refused(reason) =>
           inbound(remote, "refused", Some(reason.message)).at(Severity.Warning)
