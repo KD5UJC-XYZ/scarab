@@ -294,6 +294,9 @@ tags govern releases; the compatibility matrix states reference support separate
 [release design](design/releases.md) records fragment consolidation, Ottochain as reference,
 credentials, release-please/dynver integration, GHCR delivery and #75 evidence. Settings remain
 maintainer-managed; this plan does not enable protections, publish releases or close v0.2.
+The [promotion cutover guide](promotion-cutover.md) stages the main-only merge controller and
+separate tag-creation/immutability settings; required checks report on every planned protected
+PR target. Activation and actual platform acceptance remain owner work under #161.
 
 **v0.3, Leios and audit readiness**
 

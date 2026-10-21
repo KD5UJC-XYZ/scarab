@@ -16,7 +16,9 @@ rules through [CONTRIBUTING.md](CONTRIBUTING.md).
    [the release design](docs/design/releases.md): after cutover only same-repository `dev` may
    target `main`; other targets accept any source. `release/alpha`, `release/beta`,
    `release/preprod` and `release/prod` also use protected PRs. Until then `main` remains the
-   working target. #161 tracks enforcement;
+   working target. At cutover use the [reviewed promotion workflow](docs/promotion-cutover.md)
+   for `dev` -> `main`; do not treat a shared commit's green check as source-branch authority.
+   #161 tracks enforcement;
    do not claim protections are enabled or change repository settings.
 4. Feedback from the owner arrives as inline commit comments and issues labelled `owner-review`; triage
    it as [CONTRIBUTING.md](CONTRIBUTING.md#owner-review-feedback) says, and a general rule goes into this

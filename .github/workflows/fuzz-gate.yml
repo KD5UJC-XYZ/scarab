@@ -10,7 +10,7 @@ name: Fuzz gate
 # below skips them and the job succeeds in seconds.
 on:
   pull_request:
-    branches: [main]
+    branches: [main, dev, release/alpha, release/beta, release/preprod, release/prod]
   workflow_dispatch:
 
 permissions:

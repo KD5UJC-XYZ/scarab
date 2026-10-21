@@ -49,9 +49,12 @@ configure those resources or authorize deployment.
 | Other branches | Any branch | No additional source-branch restriction |
 
 Require checks and PRs for protected integration/release branches; independent review for
-consensus, cryptography, persistence and key handling follows #161. A required metadata-only
-check must enforce both the `dev` head name and source repository for PRs to `main`; branch
-protection alone does not express this source rule. Never execute untrusted PR code with publisher
+consensus, cryptography, persistence and key handling follows #161. A trusted metadata-only
+check reports the `dev` head name and source repository for PRs to `main`. Because required
+checks are commit-bound and two PRs can share a commit, the source restriction is enforced by
+the [live promotion controller and separate main update rule](../promotion-cutover.md), not a
+named green check alone. After cutover the reviewed promotion workflow replaces main's ordinary
+merge button; the dedicated App cannot bypass PR review or required checks. Never execute untrusted PR code with publisher
 credentials. Required checks must actually run for each protected target, including changes to
 PR base/head and merge-queue use if enabled. The owner controls bypasses and their audit trail.
 

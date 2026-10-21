@@ -3,7 +3,7 @@ name: Native library reproducibility
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, dev, release/alpha, release/beta, release/preprod, release/prod]
   push:
     branches: [main]
   workflow_dispatch:
