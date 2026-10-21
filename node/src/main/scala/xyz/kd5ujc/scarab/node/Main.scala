@@ -188,6 +188,79 @@ object Main extends IOApp:
       .eval(work.fold(SelectionWork.create[IO](pool.fetchCoordinator.refreshGenesis))(IO.pure))
       .flatMap(shared => follower.blockSelection(pool, shared, fatal, origin))
 
+  private def createGenesisRuntime(
+      setup: NodeSetup,
+      follower: Follower[IO, MirrorState],
+      blockPool: BlockPool[IO],
+      geometry: IO[xyz.kd5ujc.scarab.ledger.EpochGeometry]
+  ): IO[Option[GenesisRuntime[IO]]] =
+    for
+      governor <- Option
+        .when(
+          setup.config.settings.consensusMode ==
+            xyz.kd5ujc.scarab.network.selection.ConsensusMode.GenesisMode
+        )(
+          GenesisGovernor.create[IO](
+            follower
+              .genesisView((state, tip, slot) => GenesisHistory.window(state, tip, slot, setup)),
+            GenesisGovernor.Config(
+              setup.config.settings.genesis.enableLoEAndGDD,
+              ((setup.config.settings.genesis.gddIntervalPicos.max(0) + 999) / 1000)
+                .min(BigInt(Long.MaxValue))
+                .toLong
+                .nanos
+            )
+          )
+        )
+        .sequence
+      runtime <- governor.traverse(g =>
+        GenesisRuntime.create[IO](
+          g,
+          setup.config.settings.genesis,
+          follower.fetchSelection,
+          geometry,
+          IO.realTime.map(now =>
+            BigInt(now.toNanos) * 1000 -
+              (BigInt(setup.geometry.systemStart.getEpochSecond) * 1000000000000L +
+                BigInt(setup.geometry.systemStart.getNano) * 1000)
+          ),
+          blockPool.fetchCoordinator.refreshGenesis
+        )
+      )
+      _ <- runtime.traverse_ { runtime =>
+        follower.installGenesis(runtime.governor) *>
+          blockPool.fetchCoordinator.installGenesis(
+            FetchCoordinator.GenesisControl(
+              (runtime.governor.phase, IO.monotonic, runtime.work.snapshot).mapN {
+                (phase, now, starvation) =>
+                  FetchCoordinator.GenesisContext(
+                    phase,
+                    BigInt(now.toNanos) * 1000,
+                    starvation,
+                    setup.config.settings.genesis.blockFetchGracePicos
+                  )
+              },
+              runtime.demoteDynamo
+            )
+          )
+      }
+    yield runtime
+
+  private def maintainDecisions(
+      runtime: Option[GenesisRuntime[IO]],
+      pool: BlockPool[IO],
+      settings: GenesisSettings,
+      fatal: Fatal => IO[Unit]
+  ): Resource[IO, Unit] =
+    IO.both(
+      runtime.fold(IO.never[Unit])(_.governor.run.void),
+      pool.fetchCoordinator.watchDecisions(
+        if runtime.nonEmpty then settings.blockFetchGracePicos else BigInt(0)
+      )
+    ).handleErrorWith(cause => fatal(Fatal.Defect(cause)) *> IO.never)
+      .background
+      .void
+
   /** @param metricsListen
     *   `--metrics-listen host:port`: where the Prometheus endpoint (and nothing else) listens.
     * @param snapshotEvery
@@ -924,70 +997,22 @@ object Main extends IOApp:
                 )
               )
             )
-            _ <- seedReceived(blockPool, receivedBlocks, genesis.geometry.byron.epochSlots)
-            _ <- follower.installFetchCoordinator(blockPool.fetchCoordinator)
-            _ <- follower.installInvalidBlocks(blockPool.invalidBlocks)
-            genesisGovernor <- Option
-              .when(
-                setup.config.settings.consensusMode ==
-                  xyz.kd5ujc.scarab.network.selection.ConsensusMode.GenesisMode
-              )(
-                GenesisGovernor.create[IO](
-                  follower.genesisView((state, tip, slot) =>
-                    GenesisHistory.window(state, tip, slot, setup)
-                  ),
-                  GenesisGovernor.Config(
-                    setup.config.settings.genesis.enableLoEAndGDD,
-                    ((setup.config.settings.genesis.gddIntervalPicos.max(0) + 999) / 1000)
-                      .min(BigInt(Long.MaxValue))
-                      .toLong
-                      .nanos
-                  )
-                )
-              )
-              .sequence
-            genesisRuntime <- genesisGovernor.traverse(g =>
-              GenesisRuntime.create[IO](
-                g,
-                setup.config.settings.genesis,
-                follower.fetchSelection,
-                ref.get.map(_.state.geometry(genesis.geometry)),
-                IO.realTime.map(now =>
-                  BigInt(now.toNanos) * 1000 -
-                    (BigInt(genesis.geometry.systemStart.getEpochSecond) * 1000000000000L +
-                      BigInt(genesis.geometry.systemStart.getNano) * 1000)
-                ),
-                blockPool.fetchCoordinator.refreshGenesis
-              )
+            _ <- seedReceived(blockPool, receivedBlocks, genesis.geometry.byron.epochSlots) *>
+              follower.installFetchCoordinator(blockPool.fetchCoordinator) *>
+              follower.installInvalidBlocks(blockPool.invalidBlocks)
+            genesisRuntime <- createGenesisRuntime(
+              setup,
+              follower,
+              blockPool,
+              ref.get.map(_.state.geometry(genesis.geometry))
             )
-            _ <- genesisRuntime.traverse_ { runtime =>
-              follower.installGenesis(runtime.governor) *>
-                blockPool.fetchCoordinator.installGenesis(
-                  FetchCoordinator.GenesisControl(
-                    (runtime.governor.phase, IO.monotonic, runtime.work.snapshot).mapN {
-                      (phase, now, starvation) =>
-                        FetchCoordinator.GenesisContext(
-                          phase,
-                          BigInt(now.toNanos) * 1000,
-                          starvation,
-                          setup.config.settings.genesis.blockFetchGracePicos
-                        )
-                    },
-                    runtime.demoteDynamo
-                  )
-                )
-            }
-            decisionMaintenance = IO
-              .both(
-                genesisRuntime.fold(IO.never[Unit])(_.governor.run.void),
-                blockPool.fetchCoordinator.watchDecisions(
-                  if genesisRuntime.nonEmpty then setup.config.settings.genesis.blockFetchGracePicos
-                  else BigInt(0)
-                )
-              )
-              .handleErrorWith(cause => fatalSink(Fatal.Defect(cause)) *> IO.never)
-              .background
-              .void
+            genesisGovernor = genesisRuntime.map(_.governor)
+            decisionMaintenance = maintainDecisions(
+              genesisRuntime,
+              blockPool,
+              setup.config.settings.genesis,
+              fatalSink
+            )
             // the connection manager (G2): one connection per peer address, limits, accounting
             manager <- ConnectionManager.create[IO](
               ConnectionManager.Limits(maxInbound = options.maxInbound),
