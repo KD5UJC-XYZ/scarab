@@ -33,6 +33,51 @@ MAGIC = 1082026
 UNITS = [1_000_000, 400_000_000]
 
 
+class ReferenceDiverged(Exception):
+    """The reference accepted a transaction the scenario requires it to refuse. Retrying cannot help (the
+    accepted transaction changed the state the case depends on), so the stage ends failed."""
+
+
+# What `e2e` requires of the light extended set, stage -> the protocol version from which the stage applies.
+# A stage whose version the chain did not reach before the run ended is reported in the summary as not
+# applicable, with this reason; any other stage must be done, and a stage that ended with ok false fails the run.
+LIGHT_STAGES = {"xfund": (0, ""), "xrewards": (0, ""), "xscriptreg": (0, ""),
+                "xvrf": (11, "the VRF key-hash uniqueness rule applies from protocol version 11 "
+                             "(hardforkConwayDisallowDuplicatedVRFKeys, Shelley/Rules/Pool.hs:265); the chain "
+                             "did not reach it")}
+
+
+def extended_outcome(results, done, max_protocol, negative_unexpected, stages=None):
+    """(failures, not applicable): the verdict of `e2e` on the extended stages. `results` is stage -> {"ok", "tries"}
+    of its last attempt, `done` the set of finished stages, `max_protocol` the highest protocol version seen.
+    Fails on a stage whose last attempt reported ok false, on an applicable stage that is not done and on any
+    refusal case the reference did not answer as expected. Pure."""
+    stages = LIGHT_STAGES if stages is None else stages
+    failures, not_applicable = [], {}
+    for key, last in sorted(results.items()):
+        if key not in done and not last["ok"]:
+            failures.append(f"extended stage {key} reported ok:false (after {last['tries']} tries)"
+                            + (f": {last['error']}" if last.get("error") else ""))
+    for key, (since, reason) in stages.items():
+        if key in done or key in results and not results[key]["ok"]:
+            continue
+        if max_protocol is None or max_protocol < since:
+            not_applicable[key] = reason
+        else:
+            failures.append(f"extended stage {key} did not complete (protocol version {max_protocol} reached)")
+    if negative_unexpected:
+        failures.append(f"{negative_unexpected} transactions the reference must refuse were not refused as expected")
+    return failures, not_applicable
+
+
+def extended_pending(ext, stages=None):
+    """The applicable stages of the light set that have not finished: `e2e` waits for them after its target epoch."""
+    stages = LIGHT_STAGES if stages is None else stages
+    return [k for k, (since, _) in stages.items()
+            if ext.max_protocol is not None and ext.max_protocol >= since and k not in ext.done
+            and ext.attempts.get(k, 0) < ext.TRIES and k not in ext.failed]
+
+
 def bech32_from_values(hrp, values):
     """BIP 173 bech32 of 5-bit `values`."""
     charset = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
@@ -82,6 +127,11 @@ class Extended:
         self.info = {}  # facts the base rounds record (committee election epoch, expiry)
         self.ids = {}
         self.counters = {}
+        self.results = {}  # stage -> {"ok", "tries", "error"} of its last attempt
+        self.failed = {}  # stages that ended failed for good (stage -> reason), never retried
+        self.max_protocol = None  # highest protocol version seen on the reference
+
+    TRIES = 5
 
     # ------------------------------------------------------------ plumbing
     def log(self, **kv):
@@ -92,17 +142,24 @@ class Extended:
         self.l.stats["x." + key] = self.counters[key]
         self.log(counted=key, total=self.counters[key])
 
-    def stage(self, key, run, tries=5, when=True):
+    def stage(self, key, run, tries=TRIES, when=True):
         """Run `run` until it returns something truthy, at most `tries` times; a stage whose precondition
-        `when` does not hold yet is not attempted (and costs no try)."""
-        if key in self.done or self.attempts.get(key, 0) >= tries or not when:
+        `when` does not hold yet is not attempted (and costs no try). `run` raising `ReferenceDiverged` ends
+        the stage failed for good."""
+        if key in self.done or key in self.failed or self.attempts.get(key, 0) >= tries or not when:
             return None
         self.attempts[key] = self.attempts.get(key, 0) + 1
-        result = run()
+        error = ""
+        try:
+            result = run()
+        except ReferenceDiverged as e:
+            result, error = None, str(e)
+            self.failed[key] = error
         if result:
             self.done.add(key)
             self.count(key)
-        self.log(stage=key, ok=bool(result), tries=self.attempts[key])
+        self.results[key] = {"ok": bool(result), "tries": self.attempts[key], "error": error}
+        self.log(stage=key, ok=bool(result), tries=self.attempts[key], **({"error": error} if error else {}))
         return result
 
     def act(self, label, wallet, *a, **kw):
@@ -170,6 +227,7 @@ class Extended:
         epoch = tip["epoch"]
         pp = l.protocol_params()
         pv = pp["protocolVersion"]["major"]
+        self.max_protocol = pv if self.max_protocol is None else max(self.max_protocol, pv)
         deposit, drep_deposit = pp["stakeAddressDeposit"], pp["dRepDeposit"]
         self.stage("xfund", lambda: l.act("conway", "xfund", l.delegator(1),
                                           [(w.address, 150_000_000, None, {}) for w in self.xw],
@@ -366,6 +424,7 @@ class Extended:
                       "reward_account": self.xw[3].reward, "owners": [op.stake.hash]}
             cert = eratx.pool_registration_cert(params)
             kw = {"expect_reject": ["VRFKeyHashAlreadyRegistered"]} if refused else {}
+            l.last_verdict = None  # set again only when the transaction reaches the reference
             return l.act("conway", label, payer, [], certs=[cert], deposit=deposit if fresh else 0,
                          extra_signers=[op.pay, op.stake], fee=500_000, record="vrf-txs.jsonl", **kw)
         steps = [("xvrf-dup-active", a, pool1_vrf, 400_000, True, True),
@@ -382,6 +441,10 @@ class Extended:
             if f"{label}" in self.done:
                 continue
             if not register(label, op, vrf, cost, refused, fresh):
+                verdict = l.last_verdict if refused else None
+                if verdict is not None and verdict.kind == "accepted":
+                    raise ReferenceDiverged(f"{label}: the reference accepted a pool registration that must be "
+                                            f"refused with VRFKeyHashAlreadyRegistered")
                 return None  # retried from here in the next pass
             self.done.add(label)
             self.count("vrf_refused" if refused else "vrf_accepted")

@@ -7,7 +7,7 @@ import subprocess
 import sys
 import threading
 import time
-from .. import eraload
+from .. import eraload, govextra
 from ..cluster import down, freeze_classes, scala_container, up_eras
 from ..compare import Comparisons, compare_era, comparison_table, judge_comparisons, lsq
 from ..follower import follower_problem, start_follower
@@ -15,6 +15,7 @@ from ..load import start_conway_load
 from ..util import ERAS, MAGIC, TAG_ERA, data_root, docker, read_log, ref, starvation_warnings
 
 
+EXTENDED_WAIT = 600  # seconds the run waits past its target epoch for extended stages that apply but are not done
 CONWAY_EPOCHS = 7  # Conway epochs the e2e run follows: bootstrap governance, the hard fork to 10, then full governance
 
 
@@ -208,6 +209,7 @@ def e2e(args):
         log = root / "follower.jsonl"
         deadline = time.monotonic() + args.timeout
         reason = "timeout"
+        extended_wait = None  # when the target epoch was reached with extended stages still running
         while time.monotonic() < deadline:
             time.sleep(2)
             events, other = read_log(log)
@@ -219,6 +221,11 @@ def e2e(args):
                 reason = "follower exited"
                 break
             if applied and max(applied) >= target:
+                # the extended stages that apply (a protocol version reached late) get a time of their own
+                if loader is not None and loader.ext is not None and govextra.extended_pending(loader.ext):
+                    extended_wait = extended_wait or time.monotonic()
+                    if time.monotonic() - extended_wait < EXTENDED_WAIT:
+                        continue
                 # let the worker finish the comparisons of the epoch before the target one
                 reason = "reached"
                 break
@@ -248,6 +255,14 @@ def e2e(args):
             failures += coverage_failures(loader.plutus_evidence)
             from ..eraauxiliary import coverage_failures as auxiliary_coverage_failures
             failures += auxiliary_coverage_failures(loader.auxiliary_evidence)
+        if loader is not None and loader.ext is not None:
+            extended_failures, not_applicable = govextra.extended_outcome(
+                loader.ext.results, loader.ext.done, loader.ext.max_protocol, loader.stats.get("negativeUnexpected", 0))
+            failures += extended_failures
+            summary["extended"] = {"done": sorted(loader.ext.done), "results": loader.ext.results,
+                                   "maxProtocol": loader.ext.max_protocol, "notApplicable": not_applicable}
+        elif loader is not None:
+            failures.append("the extended governance stages never started")
         if loader is not None and loader.stats.get("unexpected"):
             failures.append(f"{loader.stats['unexpected']} submissions that must be rejected were accepted or "
                             f"rejected for another reason: {[e for e in loader.evidence if e['verdict'] != 'expected'][:3]}")
