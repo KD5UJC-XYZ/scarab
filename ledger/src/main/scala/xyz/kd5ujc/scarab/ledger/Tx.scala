@@ -538,16 +538,49 @@ object Tx:
   /** Ledger size is the size of the serialized transaction: `[body, witnesses, isValid, aux]` from
     * Alonzo, `[body, witnesses, aux]` before.
     */
+  /** `eraProtVerLow`, the version a block of the era is decoded at (Core/Internal/Definition/Era.hs
+    * 95-132 at f649f975). Byron has no transactions of this shape and reads as Shelley.
+    */
+  private def decoderVersion(era: Era): Int = era match
+    case Era.Byron | Era.Shelley => 2
+    case Era.Allegra             => 3
+    case Era.Mary                => 4
+    case Era.Alonzo              => 5
+    case Era.Babbage             => 7
+    case Era.Conway              => 9
+
+  /** A whole transaction as a client sends it: `[body, witnesses, auxiliary_data / nil]` before
+    * Alonzo and `[body, witnesses, is_valid, auxiliary_data / nil]` from it, decoded exactly as a
+    * block's parts are ([[fromBlock]]).
+    */
+  def fromEnvelope(bytes: Bytes, era: Era): Either[LedgerDecodeError, Tx] =
+    CborRead.decode(bytes).flatMap { node =>
+      val withFlag = era.ordinal >= Era.Alonzo.ordinal
+      CborRead.arrayN(node, if withFlag then 4 else 3, "transaction").flatMap { xs =>
+        val valid =
+          if withFlag then
+            xs(2).value match
+              case xyz.kd5ujc.scarab.codec.Value.Bool(flag) => Right(flag)
+              case other =>
+                Left(
+                  LedgerDecodeError.Expected("is_valid", LedgerDecodeError.Shape.Boolean, other)
+                )
+          else Right(true)
+        val aux = xs.last
+        val auxBytes = aux.value match
+          case xyz.kd5ujc.scarab.codec.Value.Null => None
+          case _                                  => Some(aux.original)
+        valid.flatMap(flag =>
+          fromBlock(Block.Transaction(xs(0).original, xs(1).original, auxBytes, flag), era)
+        )
+      }
+    }
+
   def fromBlock(t: Block.Transaction, era: Era): Either[LedgerDecodeError, Tx] =
     for
       body <- TxBody.decode(t.body, Address.Mode.of(era))
       witnesses <- Witnesses.decode(t.witnesses)
-      _ <- t.auxiliaryData
-        .filter(_ => era.ordinal >= Era.Alonzo.ordinal)
-        .traverse_(bytes =>
-          AuxiliaryScripts
-            .read(bytes, if era == Era.Alonzo then 5 else if era == Era.Babbage then 7 else 9)
-        )
+      _ <- t.auxiliaryData.traverse_(bytes => AuxiliaryScripts.read(bytes, decoderVersion(era)))
     yield
       // The fee size is the array header, body, witnesses and auxiliary data (`null` is one byte);
       // the `is_valid` flag is not counted (checked against Preview transactions).
