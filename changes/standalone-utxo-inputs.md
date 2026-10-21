@@ -1,1 +1,3 @@
-Standalone Conway UTXO validation now rejects absent spending, collateral and reference inputs even when no redeemers are present. The full transaction path already performed this check in UTXOW; direct rule conformance now enforces the same native Haskell premise, preserving validity, empty-input and fee-check precedence.
+### Fixed (standalone utxo inputs)
+
+- Standalone Conway UTXO validation now rejects absent spending, collateral and reference inputs even when no redeemers are present. The full transaction path already performed this check in UTXOW; direct rule conformance now enforces the same native Haskell premise, preserving validity, empty-input and fee-check precedence.

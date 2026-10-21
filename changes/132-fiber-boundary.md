@@ -9,7 +9,7 @@
   the multiplexer's reader and writer, the KeepAlive pinger, the TxSubmission2 client, the four server fibers of
   `NodeToNodeServer`, the node-to-client servers, the producer and the block-fetching fibers of a session, the
   connection and the hot session of `OutboundPeers` and the session of `InboundGovernor`. The rule is in `AGENTS.md`
-  and [ADR 0017](../docs/adr/0017-fibers-end-with-values.md); `FailsOnUncaught` now guards every suite of the network
+  and [ADR 0017](https://github.com/KD5UJC-XYZ/scarab/blob/fadf4ae2363e2986ab620ee6ff2fcc8e59ab7948/docs/adr/0017-fibers-end-with-values.md); `FailsOnUncaught` now guards every suite of the network
   module, `FollowerStallSuite`, `SessionFailureSuite` and `PipelineBackpressureSuite`.
 
 ### Changed (multiplexer ingress queues, #132)
@@ -55,7 +55,7 @@
   [#152](https://github.com/KD5UJC-XYZ/scarab/issues/152).
 - Further boundary and attribution work is tracked by
   [#180](https://github.com/KD5UJC-XYZ/scarab/issues/180), G7-F1 through G7-F5. Channel and fiber costs are
-  recorded in [performance.md](../docs/performance.md) section 22.
+  recorded in [performance.md](https://github.com/KD5UJC-XYZ/scarab/blob/fadf4ae2363e2986ab620ee6ff2fcc8e59ab7948/docs/performance.md) section 22.
 
 - **An unavailable local submission closes only its connection.** The local adapter has no rejection
   bytes for `LedgerFailure.Unavailable`; its closed service outcome reaches the connection owner as

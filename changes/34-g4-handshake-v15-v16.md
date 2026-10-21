@@ -28,6 +28,6 @@
   `MsgLeiosBlockAnnouncement` re-encoded the item through the value tree, so a non-shortest integer changed the bytes and the
   hash (found by the new `leios-fetch` fuzz target). Nothing sent these yet.
 
-### Known gaps
+#### Known gaps
 - The Blueprint and the prototype changed LeiosFetch on 2026-10-16 (`MsgLeiosBlockTxs` is `[4, tx_list]`, tag-24
   transactions): the codec and the pinned copy follow the form of the testnet release ([#174](https://github.com/KD5UJC-XYZ/scarab/issues/174)).

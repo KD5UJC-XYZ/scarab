@@ -12,7 +12,7 @@
   unresolved input, the redeemer pointer and the inline datum, reference script and reference input
   constructors). Other certificates and the remaining translation faults still have no encoding in those eras.
 
-### Verified (failure encodings, #123)
+#### Verified (failure encodings, #123)
 
 - The e2e load provokes the node's refusal of a script credential's delegation and unregistration without a
   redeemer, of a spend without a redeemer or without its script, of a Plutus V1 script given a reference
