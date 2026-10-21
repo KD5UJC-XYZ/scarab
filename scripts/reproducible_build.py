@@ -13,6 +13,8 @@ import tempfile
 import uuid
 import zipfile
 
+import release_identity
+
 
 MANIFEST = ".reproducible-source.json"
 
@@ -43,6 +45,10 @@ def copy_source(source, destination, manifest):
         target = destination / name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(original, target)
+    identity = release_identity.validate(manifest["buildIdentity"])
+    expected = "".join(f"{key}={identity[key]}\n" for key in sorted(identity))
+    if (destination / release_identity.IDENTITY_FILE).read_text(encoding="utf-8") != expected:
+        raise ValueError("frozen build identity differs from the verified export manifest")
     metadata = destination / ".git"
     metadata.mkdir()
     (metadata / "HEAD").write_text(manifest["gitCommit"] + "\n", encoding="utf-8")
@@ -65,7 +71,7 @@ def legal_metadata(name):
             and not leaf.endswith((".class", ".tasty")))
 
 
-def verify_resources(artifact, source, classpath, commit):
+def verify_resources(artifact, source, classpath, commit, build_identity=None):
     with zipfile.ZipFile(artifact) as jar:
         names = jar.namelist()
         members = set(names)
@@ -80,6 +86,11 @@ def verify_resources(artifact, source, classpath, commit):
             "META-INF/scarab/build-info.properties").decode("utf-8").splitlines())
         if identity.get("gitCommit") != commit:
             raise ValueError("fat JAR source identity differs from the frozen commit")
+        if build_identity is not None:
+            expected = {key: build_identity[key] for key in ["version", "gitCommit", "gitTag", "gitTagObject", "sourceRef", "sourceRefCommit"]}
+            expected.update(buildMode=build_identity["mode"], releaseChannel=build_identity["channel"])
+            if any(identity.get(key) != value for key, value in expected.items()):
+                raise ValueError("fat JAR version/release metadata differs from the frozen identity")
         for name in ("LICENSE", "NOTICE"):
             target = "META-INF/scarab/" + name
             if target not in members or jar.read(target) != (source / name).read_bytes():
@@ -151,7 +162,7 @@ class ArtifactResourcesCheck {
     final Object instance = info.getField("MODULE$").get(null);
     if (!args[1].substring(0, 8).equals(info.getMethod("gitCommit").invoke(instance)))
       throw new IllegalStateException("BuildInfo does not identify the frozen source");
-    for (final String field : new String[] {"version", "scalaVersion", "sbtVersion"}) {
+    for (final String field : new String[] {"version", "scalaVersion", "sbtVersion", "buildMode", "releaseChannel", "gitTag"}) {
       if (!metadata.getProperty(field).equals(info.getMethod(field).invoke(instance)))
         throw new IllegalStateException("compiled BuildInfo and artifact metadata disagree: " + field);
     }
@@ -173,8 +184,8 @@ class ArtifactResourcesCheck {
         raise ValueError(f"fat JAR resource/service/identity check failed: {result.stdout}")
 
 
-def smoke(artifact, source, classpath, commit):
-    verify_resources(artifact, source, classpath, commit)
+def smoke(artifact, source, classpath, commit, build_identity=None):
+    verify_resources(artifact, source, classpath, commit, build_identity)
     with tempfile.TemporaryDirectory(prefix="scarab-fatjar-runtime-") as scratch:
         runtime = Path(scratch)
         jvm_resources(runtime, artifact, commit)
@@ -219,11 +230,14 @@ def inside_jdk():
             produced = list((location / "node/target").glob("scala-*/*-assembly.jar"))
             if len(produced) != 1:
                 raise ValueError(f"expected one fat JAR, found {produced}")
+            expected_name = f"scarab-node-{manifest['buildIdentity']['version']}-assembly.jar"
+            if produced[0].name != expected_name:
+                raise ValueError("fat JAR filename differs from the frozen version")
             artifact = output / f"build-{index}.jar"
             shutil.copyfile(produced[0], artifact)
             classpath = [Path(entry) for entry in (location / "node/target/runtime-classpath.txt")
                          .read_text(encoding="utf-8").strip().split(":")]
-            smoke(artifact, location, classpath, manifest["gitCommit"])
+            smoke(artifact, location, classpath, manifest["gitCommit"], manifest["buildIdentity"])
             print(f"Build {index}: fat JAR resources, java -jar and portable native/Plutus checks passed", flush=True)
             artifacts.append(artifact)
             print(f"Build {index}: {sha256(artifact)}", flush=True)
@@ -231,19 +245,23 @@ def inside_jdk():
         print(f"PASS: two clean builds of {manifest['gitCommit']} have identical bytes", flush=True)
 
 
-def export_source(repo, revision, output):
-    commit = subprocess.check_output(
-        ["git", "rev-parse", "--verify", "--end-of-options", revision + "^{commit}"],
-        cwd=repo, text=True).strip()
+def export_source(repo, revision, output, **release_inputs):
+    identity = release_identity.resolve(repo, revision, **release_inputs)
+    commit = identity["gitCommit"]
     archive = output.parent / "source.tar"
     with archive.open("wb") as stream:
         subprocess.run(["git", "archive", "--format=tar", commit], cwd=repo, stdout=stream, check=True)
     output.mkdir()
     with tarfile.open(archive) as tree:
         tree.extractall(output, filter="data")
+    if any((output / name).exists() for name in [release_identity.IDENTITY_FILE, MANIFEST]):
+        raise ValueError("source revision contains reserved generated export metadata")
+    if release_identity.resolve(repo, commit, **release_inputs) != identity:
+        raise ValueError("version authority changed during source export")
+    release_identity.write(identity, output / release_identity.IDENTITY_FILE)
     files = {str(path.relative_to(output)): sha256(path)
              for path in sorted(output.rglob("*")) if path.is_file()}
-    manifest = {"gitCommit": commit, "files": files}
+    manifest = {"gitCommit": commit, "buildIdentity": identity, "files": files}
     (output / MANIFEST).write_text(json.dumps(manifest, sort_keys=True), encoding="utf-8")
     (output / ".git").mkdir()
     (output / ".git/HEAD").write_text(commit + "\n", encoding="utf-8")
@@ -257,6 +275,12 @@ def main():
     parser.add_argument("--cache", type=Path, default=Path(os.environ.get("SCARAB_CACHE_DIR", ".cache")))
     parser.add_argument("--output", type=Path, help="fresh directory for two artifacts and build logs")
     parser.add_argument("--check", action="store_true", help="also run the full check gate in the first clean build")
+    parser.add_argument("--release-tag", help="exact vSemVer tag; enables strict release validation")
+    parser.add_argument("--channel", choices=["beta", "prod"])
+    parser.add_argument("--expected-commit", help="trusted full source SHA, not inferred from a moving tag")
+    parser.add_argument("--expected-tag-object", help="trusted full tag object SHA (commit SHA for lightweight tags)")
+    parser.add_argument("--source-ref", help="approved release/{beta,prod} local or origin remote-tracking ref")
+    parser.add_argument("--expected-version", help="optional proposal cross-check; cannot override the tag")
     parser.add_argument("--inside-jdk", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.inside_jdk:
@@ -271,12 +295,15 @@ def main():
         ["docker", "image", "inspect", args.image, "--format", "{{.Id}}"], text=True).strip()
     with tempfile.TemporaryDirectory(prefix="scarab-frozen-source-") as scratch:
         source = Path(scratch) / "source"
-        commit = export_source(repo, args.revision, source)
+        commit = export_source(repo, args.revision, source, tag=args.release_tag, channel=args.channel,
+                               expected_commit=args.expected_commit, expected_tag_object=args.expected_tag_object,
+                               source_ref=args.source_ref, expected_version=args.expected_version)
+        manifest = json.loads((source / MANIFEST).read_text(encoding="utf-8"))
         print(f"Source {commit}; JDK image {image}; output {output}", flush=True)
         (output / "build-environment.json").write_text(
-            json.dumps({"gitCommit": commit, "jdkImage": image}, sort_keys=True) + "\n", encoding="utf-8")
+            json.dumps({"gitCommit": commit, "jdkImage": image, "buildIdentity": manifest["buildIdentity"]}, sort_keys=True) + "\n", encoding="utf-8")
         subprocess.run([
-            "docker", "run", "--rm", "--name", f"scarab-repro-{uuid.uuid4().hex[:12]}",
+            "docker", "run", "--rm", "--cpus=4", "--name", f"scarab-repro-{uuid.uuid4().hex[:12]}",
             "--user", f"{os.getuid()}:{os.getgid()}", "-v", f"{source}:/source",
             "-v", f"{cache}:/cache", "-v", f"{output}:/output", "-w", "/source",
             "-e", "HOME=/cache/home", "-e", "SCARAB_CACHE_DIR=/cache",

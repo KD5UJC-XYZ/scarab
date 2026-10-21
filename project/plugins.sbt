@@ -12,3 +12,6 @@ addSbtPlugin("com.timushev.sbt" % "sbt-updates" % "0.7.0")
 addDependencyTreePlugin
 
 addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "2.5.0")
+
+// Tag-derived version data; frozen exports use the pre-verified identity instead of date fallback.
+addSbtPlugin("com.github.sbt" % "sbt-dynver" % "5.1.0")

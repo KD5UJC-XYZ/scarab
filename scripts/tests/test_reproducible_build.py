@@ -2,9 +2,12 @@
 import importlib.util
 from pathlib import Path
 import tempfile
+import sys
 import unittest
 import zipfile
 
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 SPEC = importlib.util.spec_from_file_location(
     "reproducible_build", Path(__file__).resolve().parents[1] / "reproducible_build.py")
@@ -21,8 +24,13 @@ class ReproducibleBuildTests(unittest.TestCase):
             (source / "build.sbt").write_text("source", encoding="utf-8")
             (source / "target").mkdir()
             (source / "target/stale.jar").write_bytes(b"must not be copied")
-            manifest = {"gitCommit": "a" * 40,
-                        "files": {"build.sbt": repro.sha256(source / "build.sbt")}}
+            identity = dict.fromkeys(repro.release_identity.KEYS, "")
+            identity.update(schemaVersion="1", mode="development", gitCommit="a"*40,
+                            version="0.0.0-dev.g" + "a"*40, channel="development")
+            repro.release_identity.write(identity, source / repro.release_identity.IDENTITY_FILE)
+            manifest = {"gitCommit": "a" * 40, "buildIdentity": identity,
+                        "files": {name: repro.sha256(source / name)
+                                  for name in ["build.sbt", repro.release_identity.IDENTITY_FILE]}}
             for destination in [root / "first", root / "different/depth/second"]:
                 repro.copy_source(source, destination, manifest)
                 self.assertFalse((destination / "target").exists())

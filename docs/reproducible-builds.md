@@ -10,7 +10,7 @@ Inside the [JDK build container](../CONTRIBUTING.md#build-docker-only), run:
 
 ```sh
 bash scripts/sbtw node/assembly
-java -jar node/target/scala-3.3.8/scarab-node-0.1.0-assembly.jar <node arguments>
+java -jar node/target/scala-3.3.8/scarab-node-<resolved-version>-assembly.jar <node arguments>
 ```
 
 The versioned filename follows the build's project and Scala versions. The fat JAR contains the
@@ -24,6 +24,69 @@ selectors keep generated forwarder ordering stable. BuildInfo retains source
 identity; `META-INF/scarab/build-info.properties` records the full commit, project/Scala/sbt versions
 and JDK vendor/runtime. Direct `node/assembly` invocation packages current working files while
 identifying HEAD; use the immutable-source wrapper below for verified release-candidate identity.
+
+## Version identity
+
+Release versions come from the exact selected Git tag: `vMAJOR.MINOR.PATCH` for `prod`,
+or `vMAJOR.MINOR.PATCH-beta.N` for `beta`. The wrapper is the sole release-version entrypoint.
+The pinned [sbt-dynver configuration](https://github.com/sbt/sbt-dynver/tree/v5.1.0) deliberately keeps ordinary workspace builds unreleased,
+including a clean checkout at a release tag. In the standard JDK image, which has no Git executable,
+that version is `0.0.0-dev.g<FULL_COMMIT>.workspace`; it identifies HEAD without attesting the
+working files are clean. With Git available, dynver supplies the nearby tag and dirty state,
+and the custom formatter retains an explicit `-dev.g<FULL_COMMIT>` suffix without dates.
+Different committed development revisions therefore have different versions. A raw source archive
+without Git or frozen export identity is refused instead of falling back to a timestamp.
+
+The existing `--revision <commit>` command remains a development reproducibility check. It exports
+only committed files, with deterministic `0.0.0-dev.g<FULL_COMMIT>`, independent of nearby release
+tags or subsequent working-tree edits. It does not label an untagged candidate as released.
+
+A future trusted release coordinator supplies the selected tag, channel, full expected source SHA,
+full expected tag-object SHA and approved source ref. For example, with identities obtained from
+that coordinator rather than inferred from a possibly moved tag:
+
+```sh
+python3 scripts/reproducible_build.py --revision "$APPROVED_COMMIT" \
+  --release-tag "$APPROVED_TAG" --channel beta \
+  --expected-commit "$APPROVED_COMMIT" --expected-tag-object "$APPROVED_TAG_OBJECT" \
+  --source-ref refs/remotes/origin/release/beta --expected-version "$PROPOSED_VERSION" \
+  --cache /path/to/dependency-cache --output /tmp/scarab-beta-repro --check
+```
+
+Release mode refuses a dirty index/worktree or untracked inputs, shallow history, missing tag/ref,
+wrong channel/source, moved tag object or commit, and a proposal version that differs from the tag.
+It never auto-selects a tag: beta and stable tags may legitimately identify the same source, but
+both must be built explicitly with their own exact tag identity and different embedded versions.
+The approved `release/beta` or `release/prod` local/origin-tracking ref must retain the selected cut
+as an ancestor. Its later advancement does not alter the frozen version or prevent an immutable
+retry of that cut. Deleted or rewritten authority is not silently accepted.
+
+These checks validate local Git inputs; they do not authenticate a publisher, prove branch/tag
+protection, authorize publication, or establish that a locally supplied expected identity was
+approved. Protected refs, trusted workflow/event inputs and publication authorization remain
+[#161](https://github.com/KD5UJC-XYZ/scarab/issues/161) and
+[#75](https://github.com/KD5UJC-XYZ/scarab/issues/75). No release tags or repository settings are
+created by this wrapper.
+
+Before archive creation, the host resolves the identity and checks it again after export. It writes
+sorted `.scarab-build-identity.properties` and binds its SHA-256 in `.reproducible-source.json`.
+The latter also records `buildIdentity`: schema version, mode, version, full commit, selected tag
+and object, channel, source ref and approved cut commit. These generated inputs transport verified
+Git identity; they are not a hand-maintained `VERSION` authority. Tracked files using the reserved
+export-metadata names are refused. Both clean copies verify those bytes and receive identical
+metadata. The build refuses missing/mismatched fields or a frozen identity injected into a live
+checkout. Artifact filenames, compiled BuildInfo, the started log/metrics version and packaged
+`META-INF/scarab/build-info.properties` use that identity. The verifier checks the filename and
+packaged version/channel/tag/source against the frozen inputs, then checks compiled BuildInfo at
+runtime. `build-environment.json` retains the resolved identity alongside the JDK image ID.
+
+The host controls use temporary local repositories:
+`python3 -m unittest scripts.tests.test_release_identity scripts.tests.test_reproducible_build`.
+Inside the JDK image, `python3 scripts/check_build_identity.py` exercises the actual sbt settings
+in isolated minimal projects, including beta/stable/development archives and refused metadata.
+The full verifier additionally compiles and smokes the actual node artifacts. SBOMs, provenance and
+image labels must consume this same identity when their separate implementation lands; this PR
+does not claim those outputs exist.
 
 ## Resource merging
 
