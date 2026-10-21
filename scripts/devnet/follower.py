@@ -54,8 +54,9 @@ def follow(args):
         sys.exit(proc.wait())
 
 
-def start_follower(name, root, oracle=False, scala_cpus=None):
+def start_follower(name, root, oracle=False, scala_cpus=None, consensus_mode=None):
     return subprocess.Popen([sys.executable, str(ENTRY), "--name", name, "follow",
+                             *(["--consensus-mode", consensus_mode] if consensus_mode is not None else []),
                              *(["--dump-state"] if oracle else []),
                              *(["--scala-cpus", str(scala_cpus)] if scala_cpus is not None else [])],
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

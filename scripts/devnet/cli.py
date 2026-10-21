@@ -288,7 +288,7 @@ def main():
     sub.add_parser("oracle", help="compare Scala state digests with db-analyser states of the reference node"
                    ).set_defaults(run=oracle)
     sub.add_parser("down", help="remove the containers and the run directory").set_defaults(run=down)
-    for scenario in (f, sk, rl, sub.choices["restart"]):
+    for scenario in (f, sk, rl, e2, sub.choices["restart"]):
         scenario.add_argument("--consensus-mode", choices=["PraosMode", "GenesisMode"],
                               help="Scala consensus mode; reference pools retain their original configuration")
     args = p.parse_args()

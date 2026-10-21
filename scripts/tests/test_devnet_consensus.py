@@ -11,6 +11,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from devnet.consensus import arguments, configuration
+from devnet import follower
 from devnet.scenarios import restart
 
 
@@ -53,3 +54,12 @@ class ConsensusModeTests(unittest.TestCase):
                 self.assertEqual(command[-2:], ["--consensus-mode", "GenesisMode"])
                 self.assertIn("--db", command)
         self.assertEqual(arguments(SimpleNamespace()), [])
+
+    def test_era_walking_follower_keeps_mode_and_oracle(self):
+        with patch.object(follower.subprocess, "Popen") as spawn:
+            follower.start_follower("scarab-33-mode", pathlib.Path("unused"),
+                                    oracle=True, consensus_mode="GenesisMode")
+            command = spawn.call_args.args[0]
+            index = command.index("--consensus-mode")
+            self.assertEqual(command[index + 1], "GenesisMode")
+            self.assertIn("--dump-state", command)
