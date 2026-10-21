@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 # Native ImmutableDB comparison corpus
 
 This logical corpus includes `preview/immutable/`, `preview/protocolMagicId` and
