@@ -333,11 +333,24 @@ def replay_receipt(path):
     return {"sha256": sha256(path), "referenceTargetsRequired": required, "referenceBodyComparisons": compared}
 
 
+def runtime_receipt(path):
+    observations = re.findall(r"candidate-runtime project=(storage|node) maxHeapBytes=(\d+) processors=(\d+)", Path(path).read_text())
+    require(len(observations) == 2 and {row[0] for row in observations} == {"storage", "node"}, "missing/duplicate fork runtime observations")
+    result = {}
+    for project, heap, processors in observations:
+        require(int(heap) >= 16 * 1024**3 and int(processors) == 4, "candidate fork ignored heap/CPU configuration")
+        result[project] = {"maxHeapBytes": int(heap), "processors": int(processors)}
+    return result
+
+
 def sbt_commands(cases):
     identities(cases)
     commands = []
     for project in ("storage", "node"):
         commands.extend((f"set {project} / Test / fork := true", f'set {project} / Test / javaOptions ++= Seq("-Xmx16g", "-XX:ActiveProcessorCount=4")'))
+        # Storage's build definition explicitly selects InProcess for ordinary suites, so
+        # setting Test/fork alone does not select the requested heap or process isolation.
+        commands.append(f'set {project} / Test / testGrouping := Seq(Tests.Group("candidate-{project}", ({project} / Test / definedTests).value, Tests.SubProcess(({project} / Test / forkOptions).value)))')
         suites = sorted({row["suite"] for row in cases["required"] if row["project"] == project})
         require(all(re.fullmatch(r"[A-Za-z0-9_.]+", suite) for suite in suites), "unsafe sbt suite")
         commands.append(f"{project}/testOnly " + " ".join(suites))
@@ -388,7 +401,7 @@ def run(manifest_path, cases_path, checkout, output, local_inputs=None):
                    "-v", f"{scratch}:/candidate/results", "-w", "/work", "-e", "HOME=/work/.cache/home", "-e", "SBT_GLOBAL_BASE=/tmp/sbt-global"]
         actual_env = {key: "/candidate/inputs/" + manifest["environment"][key]["path"] for key in env}
         actual_env.update({key: "/candidate/results/" + value for key, value in OUTPUTS.items()})
-        actual_env.update({"SCARAB_PREVIEW_WORKERS": "2,4", "SCARAB_PREVIEW_ROUNDS": "1", "SCARAB_PREVIEW_SCHEDULE": "Comparison"})
+        actual_env.update({"SCARAB_CANDIDATE_RUNTIME": "1", "SCARAB_PREVIEW_WORKERS": "2,4", "SCARAB_PREVIEW_ROUNDS": "1", "SCARAB_PREVIEW_SCHEDULE": "Comparison"})
         common = Path(subprocess.check_output(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=checkout, text=True).strip())
         cache = common.parent / ".cache"
         if cache.is_dir():
@@ -412,6 +425,7 @@ def run(manifest_path, cases_path, checkout, output, local_inputs=None):
                    "manifestSha256": manifest_hash, "casesSha256": cases_hash,
                    "artifactSha256": artifact["sha256"] if local else sha256(archive), "artifactKind": artifact.get("kind", "https-archive"), "image": image, "inputInventory": inventory,
                    "environment": actual_env, "junit": junit,
+                   "testRuntime": runtime_receipt(output / "sbt.log"),
                    "nativeReplay": replay_receipt(scratch / "preview/summary.json")}
         (output / "receipt.json").write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
     except Exception as error:
