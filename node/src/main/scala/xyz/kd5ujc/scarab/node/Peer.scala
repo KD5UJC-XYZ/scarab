@@ -908,65 +908,71 @@ object Peer:
                   }
                   updateJournal(candidate, tip, false, false)
                 }
-              restart = (control: GenesisPeer[F]) =>
-                control.restartCandidates
-                  .flatMap(points => connection.chainSync.findIntersect(thin(points)))
-                  .flatMap {
-                    case None =>
-                      connection.chainSync.done *> PeerError.NoIntersection.raise[F, Unit]
-                    case Some((point, tip)) =>
-                      headers.fold(F.pure(HeaderGate.none[F]))(_.start(point)).flatMap { nextGate =>
-                        val candidate = ChainSelection.Candidate(point, Vector.empty)
-                        gate.set(nextGate) *> control.restarted(point, nextGate) *> remember(
-                          candidate
-                        ) *>
-                          progress.set(None) *> updateJournal(candidate, Some(tip), false, true)
-                      }
-                  }
-              request = genesis.fold(requestHeadersStreaming(publish)) { control =>
-                import xyz.kd5ujc.scarab.network.selection.ChainSyncJumping.Instruction
-                pendingRestart.getAndSet(None).flatMap {
-                  case Some(_) => restart(control)
-                  case None =>
-                    F.race(drainRequested.get.flatMap(_.get), control.next).flatMap {
-                      case Left(_) => F.unit
-                      case Right(instruction) =>
-                        instruction match {
-                          case Instruction.RunNormally     => requestHeadersStreaming(publish)
-                          case Instruction.Restart         => restart(control)
-                          case Instruction.Wait            => F.cede
-                          case Instruction.Failed(problem) => control.failed[Unit](problem)
-                          case Instruction.Jump(info, goodPoint) =>
-                            connection.chainSync.findIntersect(Vector(info.tip)).flatMap { found =>
-                              gate.get.flatMap { currentGate =>
-                                control
-                                  .processJump(info, goodPoint, found.map(_._1), currentGate)
-                                  .flatMap {
-                                    case GenesisPeer.Applied.Retained => F.unit
-                                    case GenesisPeer.Applied.Restart  => restart(control)
-                                    case GenesisPeer.Applied.Grafted(candidate) =>
-                                      remember(candidate) *> found.traverse_ { (_, tip) =>
-                                        progress.set(
-                                          candidate.headers.lastOption.map(h => tip -> h.blockNo)
-                                        ) *>
-                                          updateJournal(candidate, Some(tip), false, true)
-                                      }
-                                  }
-                              }
+              _ <- supervised {
+                def restart(control: GenesisPeer[F])(using Raise[F, PeerError]): F[Unit] =
+                  control.restartCandidates
+                    .flatMap(points => connection.chainSync.findIntersect(thin(points)))
+                    .flatMap {
+                      case None =>
+                        connection.chainSync.done *> PeerError.NoIntersection.raise[F, Unit]
+                      case Some((point, tip)) =>
+                        headers.fold(F.pure(HeaderGate.none[F]))(_.start(point)).flatMap {
+                          nextGate =>
+                            val candidate = ChainSelection.Candidate(point, Vector.empty)
+                            gate.set(nextGate) *> control.restarted(point, nextGate) *> remember(
+                              candidate
+                            ) *>
+                              progress.set(None) *> updateJournal(candidate, Some(tip), false, true)
+                        }
+                    }
+                def request(using Raise[F, PeerError]): F[Unit] =
+                  genesis.fold(requestHeadersStreaming(publish)) { control =>
+                    import xyz.kd5ujc.scarab.network.selection.ChainSyncJumping.Instruction
+                    pendingRestart.getAndSet(None).flatMap {
+                      case Some(_) => restart(control)
+                      case None =>
+                        F.race(drainRequested.get.flatMap(_.get), control.next).flatMap {
+                          case Left(_) => F.unit
+                          case Right(instruction) =>
+                            instruction match {
+                              case Instruction.RunNormally     => requestHeadersStreaming(publish)
+                              case Instruction.Restart         => restart(control)
+                              case Instruction.Wait            => F.cede
+                              case Instruction.Failed(problem) => control.failed[Unit](problem)
+                              case Instruction.Jump(info, goodPoint) =>
+                                connection.chainSync.findIntersect(Vector(info.tip)).flatMap {
+                                  found =>
+                                    gate.get.flatMap { currentGate =>
+                                      control
+                                        .processJump(info, goodPoint, found.map(_._1), currentGate)
+                                        .flatMap {
+                                          case GenesisPeer.Applied.Retained => F.unit
+                                          case GenesisPeer.Applied.Restart  => restart(control)
+                                          case GenesisPeer.Applied.Grafted(candidate) =>
+                                            remember(candidate) *> found.traverse_ { (_, tip) =>
+                                              progress.set(
+                                                candidate.headers.lastOption
+                                                  .map(h => tip -> h.blockNo)
+                                              ) *>
+                                                updateJournal(candidate, Some(tip), false, true)
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
+                  }
+                F.tailRecM(()) { _ =>
+                  drainCompletion.get.flatMap {
+                    case None => request.as(Left(()))
+                    case Some(_) =>
+                      journal.get
+                        .flatMap(s => updateJournal(s.candidate, s.tip, true, false))
+                        .as(Right(()))
+                  }
                 }
               }
-              _ <- supervised(F.tailRecM(()) { _ =>
-                drainCompletion.get.flatMap {
-                  case None => request.as(Left(()))
-                  case Some(_) =>
-                    journal.get
-                      .flatMap(s => updateJournal(s.candidate, s.tip, true, false))
-                      .as(Right(()))
-                }
-              })
               _ <- F.tailRecM((initial, 0L)) { (published, epoch) =>
                 permits.acquire *> journal.get.flatMap { latest =>
                   val delta = latest.tip.fold(F.pure(published -> Vector.empty[SyncEvent])) { tip =>
