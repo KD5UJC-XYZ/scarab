@@ -300,6 +300,12 @@ object NodeEvent:
             if dropped then "sessionDropped" else "sessionEnded",
             Some(reason.message)
           )
+        case InboundEvent.SessionReturned(reason, delay) =>
+          inbound(
+            remote,
+            "sessionReturned",
+            Some(s"${reason.message}; repromote after ${delay.toSeconds}s")
+          )
         case InboundEvent.Closed(reason) => inbound(remote, "closed", Some(reason.message))
         case InboundEvent.Refused(reason) =>
           inbound(remote, "refused", Some(reason.message)).at(Severity.Warning)

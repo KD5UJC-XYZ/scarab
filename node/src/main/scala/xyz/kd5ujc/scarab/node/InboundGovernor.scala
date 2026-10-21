@@ -6,6 +6,7 @@ import cats.effect.{Async, Ref, Resource}
 import cats.effect.syntax.all.*
 import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
+import scala.concurrent.duration.*
 import com.comcast.ip4s.{IpAddress, SocketAddress}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ConnectionState, NtNHeader}
 import xyz.kd5ujc.scarab.network.*
@@ -26,6 +27,9 @@ enum InboundEvent:
 
   /** Our client session on the connection ended; the connection stays unless `dropped`. */
   case SessionEnded(reason: InboundGovernor.SessionFailure, dropped: Boolean)
+
+  /** A normal ChainSync result leaves the established bearer warm before reactivation. */
+  case SessionReturned(reason: InboundGovernor.ReturnReason, delay: FiniteDuration)
 
   /** The connection ended. */
   case Closed(reason: InboundEnd)
@@ -66,6 +70,7 @@ final class InboundGovernor[F[_]: Async] private (
     fetchMode: Option[F[xyz.kd5ujc.scarab.network.selection.FetchMode]],
     genesis: Option[GenesisRuntime[F]],
     receivedBody: Option[Peer.BodySink[F]],
+    repromotion: RepromotionWait[F],
     sessionTable: Ref[F, Map[String, InboundGovernor.Session]]
 ):
   private val F = Async[F]
@@ -174,10 +179,8 @@ final class InboundGovernor[F[_]: Async] private (
              else Resource.unit[F])
       }
 
-  /** Our clients on the connection and the follower session over them, for the life of the
-    * connection. A peer that shares no point with our chain (it is behind us, as a relay that is
-    * still syncing from us is) is tried again after `retryDelay`: the protocol is back in its idle
-    * state after a failed FindIntersect, so the connection is reusable.
+  /** Established protocols live for the bearer; each clean normal return gets a fresh hot
+    * activation after the reference repromotion delay.
     */
   private def sessionResource(
       remote: SocketAddress[IpAddress],
@@ -198,13 +201,8 @@ final class InboundGovernor[F[_]: Async] private (
       _ <- attempt(remote, version, peerSharing, mux)
     yield ()
 
-  /** Our clients on the connection, for as long as the session lasts. They are started once: a
-    * retry after [[PeerError.NoIntersection]] follows again over the same clients, since starting
-    * them again would begin each mini-protocol a second time on the same channels (a second
-    * TxSubmission2 `MsgInit` mid-protocol makes the peer drop the connection).
-    *
-    * The session is a fiber of its own and ends with a [[SessionEnd]], a value
-    * ([[SessionEnd.scoped]]); what the node does about it is [[FailurePolicy.disposition]].
+  /** KeepAlive and PeerSharing survive clean hot-protocol returns. Reusing a terminal ChainSync
+    * runtime would send a new FindIntersect after MsgDone.
     */
   private def attempt(
       remote: SocketAddress[IpAddress],
@@ -215,17 +213,54 @@ final class InboundGovernor[F[_]: Async] private (
     for
       end <- SessionEnd.scoped(node) { (_, _) ?=>
         NodeToNode
-          .clients[F, NtNHeader](
+          .warm[F, NtNHeader](
             mux,
             Mux.Role.Initiator,
             version,
             NtNHeader.codec,
             config.peer.network,
-            transactions,
-            peerSharing = peerSharing
+            peerSharing = peerSharing,
+            duplex = true
           )
-          .use(connection => following(remote, connection))
-          .as(SessionEnd.Returned)
+          .use { warm =>
+            F.tailRecM[Unit, SessionEnd](()) { _ =>
+              warm
+                .activate(transactions)
+                .use { connection =>
+                  SessionEnd
+                    .scoped(node) { (_, _) ?=>
+                      following(remote, connection).as(SessionEnd.Returned)
+                    }
+                    .flatMap { end =>
+                      val cooling =
+                        (InboundGovernor.ReturnReason.of(end), SessionEnd.returnDelay(end)).tupled
+                      cooling match
+                        case None =>
+                          F.pure(
+                            Right(end): Either[
+                              (InboundGovernor.ReturnReason, FiniteDuration),
+                              SessionEnd
+                            ]
+                          )
+                        case Some(value) =>
+                          connection.finishAfterChainSync(config.deactivateTimeout).flatMap {
+                            case true => F.pure(Left(value))
+                            case false =>
+                              mux
+                                .abort(NetworkError.BearerClosed(NetworkError.Closure.Aborted))
+                                .as(Right(SessionEnd.Stopped(false)))
+                          }
+                    }
+                }
+                .flatMap {
+                  case Left((reason, delay)) =>
+                    update(remote)(s => s.copy(retries = s.retries + 1)) *>
+                      emit(remote, InboundEvent.SessionReturned(reason, delay)) *>
+                      repromotion.delay(delay).as(Left(()))
+                  case Right(end) => F.pure(Right(end))
+                }
+            }
+          }
       }
       disposition = FailurePolicy.disposition(end)
       reason = disposition match
@@ -255,9 +290,7 @@ final class InboundGovernor[F[_]: Async] private (
         case _ => F.unit
     yield ()
 
-  /** Follow the peer over `connection`; while it shares no point with our chain, try again after
-    * `retryDelay` on the same clients.
-    */
+  /** One hot activation, returning normal results only after its submitted replies are drained. */
   private def following(
       remote: SocketAddress[IpAddress],
       connection: NodeToNodeConnection[F, NtNHeader]
@@ -270,6 +303,7 @@ final class InboundGovernor[F[_]: Async] private (
             genesis,
             pool,
             remote.hashCode.toLong,
+            connection.mux.connectionId,
             error =>
               connection.mux
                 .abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error))),
@@ -308,6 +342,17 @@ final class InboundGovernor[F[_]: Async] private (
                   .scoped(node) { (_, _) ?=>
                     follow(counted(remote, peer)).as(SessionEnd.Returned)
                   }
+                  .flatMap {
+                    case SessionEnd.Rejected(refusal) =>
+                      peer.refused(refusal).map { foreign =>
+                        if foreign then
+                          SessionEnd.Failed(
+                            PeerError.Diverged(PeerError.Divergence.ForeignBlock(refusal))
+                          )
+                        else SessionEnd.Rejected(refusal)
+                      }
+                    case other => F.pure(other)
+                  }
                   .flatMap { end =>
                     val record = FailurePolicy.disposition(end) match
                       case Disposition.StopNode(problem) =>
@@ -322,7 +367,7 @@ final class InboundGovernor[F[_]: Async] private (
                             )
                           )
                       case Disposition.Settled => F.unit
-                    record *> SessionEnd
+                    record *> peer.quiesce.whenA(SessionEnd.returnDelay(end).nonEmpty) *> SessionEnd
                       .networkFailure(end)
                       .traverse_(connection.mux.abort) *> (end match
                       case SessionEnd.Failed(error)      => caller.raise[NodeError, Unit](error)
@@ -344,22 +389,16 @@ final class InboundGovernor[F[_]: Async] private (
       }
       .rescue(e => F.pure(Some(e)))
       .flatMap {
-        case None => F.unit
-        case Some(PeerError.NoIntersection) =>
-          update(remote)(s => s.copy(retries = s.retries + 1)) *>
-            emit(
-              remote,
-              InboundEvent
-                .SessionEnded(InboundGovernor.SessionFailure.Peer(PeerError.NoIntersection), false)
-            ) *>
-            F.sleep(config.retryDelay) *> following(remote, connection)
+        case None        => F.unit
         case Some(error) => outer.raise(error)
       }
 
   /** The peer, with what the session sees of it counted. */
   private def counted(remote: SocketAddress[IpAddress], peer: Peer[F]): Peer[F] = new Peer[F]:
     override def selectionWork = peer.selectionWork
-    override def rejected(refusal: xyz.kd5ujc.scarab.ledger.ValidationError)(using cats.Applicative[F]) =
+    override def rejected(refusal: xyz.kd5ujc.scarab.ledger.ValidationError)(using
+        cats.Applicative[F]
+    ) =
       peer.rejected(refusal)
     def intersect(candidates: Vector[ChainSync.Point])(using Raise[F, PeerError]) =
       peer.intersect(candidates).flatTap { found =>
@@ -379,6 +418,20 @@ final class InboundGovernor[F[_]: Async] private (
   private def tipBlock(tip: ChainSync.Tip): Option[BigInt] = Some(tip.blockNo.value)
 
 object InboundGovernor:
+  enum ReturnReason:
+    case NoMoreIntersection
+    case RolledBackPastIntersection(point: ChainSync.Point)
+    def message: String = this match
+      case NoMoreIntersection => "no more intersection"
+      case RolledBackPastIntersection(point) =>
+        s"rolled back past intersection: ${Points.show(point)}"
+  object ReturnReason:
+    def of(end: SessionEnd): Option[ReturnReason] = end match
+      case SessionEnd.NoMoreIntersection => Some(ReturnReason.NoMoreIntersection)
+      case SessionEnd.RolledBackPastIntersection(point) =>
+        Some(ReturnReason.RolledBackPastIntersection(point))
+      case _ => None
+
   /** A client session's retained failure, before log/JSON presentation. */
   enum SessionFailure:
     case Peer(error: PeerError)
@@ -421,7 +474,7 @@ object InboundGovernor:
   /** The session of one inbound connection: what our clients saw of the peer.
     *
     * @param retries
-    *   Times the peer shared no point with our chain and the session was started again.
+    *   Normal ChainSync returns awaiting a fresh hot activation.
     */
   final case class Session(
       remote: String,
@@ -439,18 +492,13 @@ object InboundGovernor:
 
   private val RetainedSessions = 64
 
-  /** `runClients` off serves inbound connections without following them.
-    *
-    * @param retryDelay
-    *   How long to wait before following a peer again that shared no point with our chain.
-    */
+  /** `runClients` off serves inbound connections without following them. */
   final case class Config(
       magic: Long,
       server: NodeToNodeServer.Settings,
       peer: Peer.Settings,
       runClients: Boolean = true,
-      retryDelay: scala.concurrent.duration.FiniteDuration =
-        scala.concurrent.duration.DurationInt(10).seconds
+      deactivateTimeout: FiniteDuration = 300.seconds
   )
 
   def create[F[_]: Async](
@@ -469,7 +517,7 @@ object InboundGovernor:
       fetchMode: Option[F[xyz.kd5ujc.scarab.network.selection.FetchMode]] = None,
       genesis: Option[GenesisRuntime[F]] = None,
       receivedBody: Option[Peer.BodySink[F]] = None
-  )(using node: Handle[F, NodeError]): F[InboundGovernor[F]] =
+  )(using node: Handle[F, NodeError], repromotion: RepromotionWait[F]): F[InboundGovernor[F]] =
     Ref
       .of[F, Map[String, Session]](Map.empty)
       .map(
@@ -490,6 +538,7 @@ object InboundGovernor:
           fetchMode,
           genesis,
           receivedBody,
+          repromotion,
           _
         )
       )

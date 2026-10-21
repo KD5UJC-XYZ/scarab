@@ -195,8 +195,9 @@ final class EventMetrics[F[_]: Sync] private (
         case InboundEvent.Following(_)   => InboundEventLabel.Following
         case InboundEvent.SessionEnded(_, dropped) =>
           if dropped then InboundEventLabel.SessionDropped else InboundEventLabel.SessionEnded
-        case InboundEvent.Closed(_)  => InboundEventLabel.Closed
-        case InboundEvent.Refused(_) => InboundEventLabel.Refused
+        case InboundEvent.SessionReturned(_, _) => InboundEventLabel.SessionReturned
+        case InboundEvent.Closed(_)             => InboundEventLabel.Closed
+        case InboundEvent.Refused(_)            => InboundEventLabel.Refused
     )
 
   /** What the peer governor tells: its decisions as counts, its counters as the gauges of the
