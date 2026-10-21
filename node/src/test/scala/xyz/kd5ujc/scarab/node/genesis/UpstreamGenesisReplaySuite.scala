@@ -98,10 +98,24 @@ class UpstreamGenesisReplaySuite extends FailsOnUncaught:
           .flatMap { results =>
             IO {
               val expected = cases.map(s => s.label -> s.expected).toMap
+              val scenarios = cases.map(s => s.label -> s).toMap
               val disagreements = results.flatMap {
                 case (label, Left(problem)) => Vector(s"$label failed: $problem")
                 case (label, Right(actual)) =>
                   val native = expected(label)
+                  val scenario = scenarios(label)
+                  // CSJ.hs166–234: only normal received headers away from the last jump window.
+                  // Honest peers may download at most one extra jump window after an objector promotion.
+                  val trunkTipSlot =
+                    scenario.tree.head.headers.lastOption.fold(BigInt(-1))(_.slot.value)
+                  val counted = actual.downloaded.filter(download =>
+                    download.peer.isInstanceOf[PeerId.Honest] &&
+                      download.header.slot.value + scenario.jumpSize < trunkTipSlot + 1
+                  )
+                  val downloadBound = scenario.family != Family.CSJ ||
+                    BigInt(counted.size) <= BigInt(
+                      counted.map(_.header).distinct.size
+                    ) + scenario.jumpSize
                   val actualEnds = actual.terminals.map(t => (t.peer, t.component, t.end))
                   val nativeEnds = native.peers.map(t => (t.peer, t.component, t.end))
                   val policy = Set(End.DensityTooLow, End.PatienceExpired, End.CandidateTooSparse)
@@ -118,6 +132,9 @@ class UpstreamGenesisReplaySuite extends FailsOnUncaught:
                       )
                   }
                   Vector(
+                    Option.when(!downloadBound)(
+                      s"$label CSJ honest download bound: downloaded=$counted jumpSize=${scenario.jumpSize}"
+                    ),
                     Option.when(actual.selection != native.selection)(
                       s"$label selection: actual=${actual.selection} expected=${native.selection}"
                     ),

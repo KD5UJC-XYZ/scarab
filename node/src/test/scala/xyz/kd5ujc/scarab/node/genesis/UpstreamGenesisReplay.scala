@@ -42,12 +42,14 @@ object UpstreamGenesisReplay:
       case ChainSync.Point.Block(_, hash) => Some(BlockRef(slot, hash, blockNo))
   final case class Closure(peer: Option[PeerId], problem: Problem)
   final case class Terminal(peer: PeerId, component: Component, end: End, cause: Option[Problem])
+  final case class Downloaded(peer: PeerId, header: ChainSync.Point.Block)
   final case class GddDecision(atPicos: BigInt, value: GenesisGovernor.Observation)
   final case class Result(
       selection: Fragment,
       closures: Vector[Closure],
       terminals: Vector[Terminal],
-      gdd: Vector[GddDecision]
+      gdd: Vector[GddDecision],
+      downloaded: Vector[Downloaded]
   )
 
   private def end(problem: Problem): End = problem match
@@ -142,6 +144,7 @@ object UpstreamGenesisReplay:
             closed <- Ref.of[IO, Vector[Closure]](Vector.empty)
             terminals <- Ref.of[IO, Vector[Terminal]](Vector.empty)
             gdd <- Ref.of[IO, Vector[GddDecision]](Vector.empty)
+            downloaded <- Ref.of[IO, Vector[Downloaded]](Vector.empty)
             record = (peer: PeerId, component: Component, outcome: Either[Problem, Unit]) =>
               terminals.update(
                 _ :+ Terminal(
@@ -437,7 +440,23 @@ object UpstreamGenesisReplay:
                                                 ),
                                                 pool = Some(pool),
                                                 patience = Some(controls.patience),
-                                                received = Some(controls.received),
+                                                received = Some(event =>
+                                                  (event match
+                                                    case SyncEvent.RollForward(header, _) =>
+                                                      downloaded
+                                                        .update(
+                                                          _ :+ Downloaded(
+                                                            id,
+                                                            ChainSync.Point.Block(
+                                                              ChainSync.UInt64
+                                                                .saturating(header.slot),
+                                                              header.hash
+                                                            )
+                                                          )
+                                                        )
+                                                    case _: SyncEvent.RollBackward => IO.unit
+                                                  ) *> controls.received(event)
+                                                ),
                                                 chainSyncObserver = Some(controls.observer),
                                                 retainedHeaders = controls.retainedHeaders,
                                                 fetchSession = Some(fetchSession),
@@ -542,8 +561,8 @@ object UpstreamGenesisReplay:
                             .fold(BigInt(0))(_.atPicos)).max(0)
                         )
                         _ <- clock.sleep(scenario.minEndTimePicos).whenA(restarted)
-                        result <- (chain.get, closed.get, terminals.get, gdd.get).mapN {
-                          (selected, failures, ended, decisions) =>
+                        result <- (chain.get, closed.get, terminals.get, gdd.get, downloaded.get)
+                          .mapN { (selected, failures, ended, decisions, headers) =>
                             Result(
                               Fragment(
                                 selected.anchor.point,
@@ -553,9 +572,10 @@ object UpstreamGenesisReplay:
                               ),
                               failures,
                               ended,
-                              decisions
+                              decisions,
+                              headers
                             )
-                        }
+                          }
                       yield result
                     }
                   }
@@ -566,9 +586,16 @@ object UpstreamGenesisReplay:
                         case block: ChainSync.Point.Block => Right(block)
                         case other => Left(UpstreamGenesisBlocks.Problem.MissingPoint(other))
                       }
+                    ),
+                    result.downloaded.traverse(download =>
+                      universe.decode(download.header).flatMap {
+                        case block: ChainSync.Point.Block => Right(download.copy(header = block))
+                        case other => Left(UpstreamGenesisBlocks.Problem.MissingPoint(other))
+                      }
                     )
-                  ).mapN((anchor, headers) => result.copy(selection = Fragment(anchor, headers)))
-                    .leftMap(Problem.Blocks(_))
+                  ).mapN((anchor, headers, downloads) =>
+                    result.copy(selection = Fragment(anchor, headers), downloaded = downloads)
+                  ).leftMap(Problem.Blocks(_))
                     .fold(Raise[IO, Problem].raise, IO.pure)
                 yield original
               }
