@@ -202,6 +202,9 @@ class PredicateFailureCborSuite extends FunSuite:
       PredicateFailure.utxo(UtxoFailure.InsufficientCollateral(10, 20)),
       PredicateFailure.utxow(UtxowFailure.ExtraneousScriptWitnesses(Set(keyHash))),
       PredicateFailure.utxow(UtxowFailure.PPViewHashesDontMatch(Mismatch(None, Some(keyHash)))),
+      PredicateFailure.utxow(
+        UtxowFailure.ScriptIntegrityHashMismatch(Mismatch(None, Some(keyHash)), Some(keyHash))
+      ),
       PredicateFailure.WdrlNotDelegatedToDRep(Vector(keyHash)),
       PredicateFailure.TxRefScriptsSizeTooBig(Mismatch(300000, 204800)),
       PredicateFailure.deleg(DelegFailure.DepositIncorrect(Mismatch(1, 2))),
@@ -219,6 +222,75 @@ class PredicateFailureCborSuite extends FunSuite:
             case other                         => fail(s"$f: $other")
         case other => fail(s"$f: $other")
     }
+  }
+
+  test("Conway: the integrity hash mismatch from protocol 11 is tag 18 with the preimage") {
+    // [18 ScriptIntegrityHashMismatch, [supplied, expected], expected preimage] with StrictMaybe
+    // as an empty or one-element list (Conway/Rules/Utxow.hs, the Sum encoder).
+    val h = keyHash.hex
+    assertEquals(
+      PredicateFailureCbor
+        .applyTxError(
+          Era.Conway,
+          Vector(
+            PredicateFailure.utxow(
+              UtxowFailure.ScriptIntegrityHashMismatch(
+                Mismatch(None, Some(keyHash)),
+                Some(Bytes(Vector(0xa0.toByte)))
+              )
+            )
+          )
+        )
+        .map(_.hex),
+      Some(
+        "81" + "8206" + "81" + "8201" + "83" + "12" + "82" + "80" + "81" + "581c" + h + "81" + "41a0"
+      )
+    )
+  }
+
+  test(
+    "Conway: the integrity hash mismatch is byte-equal to the reference node's refusal at protocol 11"
+  ) {
+    // Recorded from the reference node 11.1.3 by `devnet.py ntc` (case script-integrity-hash-mismatch: a
+    // Plutus V3 mint built against a cost model one unit off, UTXOW tag 18): the mismatch pair and the
+    // preimage of the expected hash (the redeemers and the language views, no datums).
+    val recorded =
+      "818206818201831282815820ae09c91630e2308bc5d6df0400ef63094264fe4b505249744553472be3eaa7e281582069" +
+        "f198b0685b443f01c4822569dc5c0a2c65d24f78bc1a5e59d3c55d8e820596815902c3a18201008200821a001e84801a" +
+        "3b9aca00a10298fb1a000189b41901a401011903e818ad00011903e819ea350401192baf18201a000312591920a40419" +
+        "3e801864193e801864193e801864193e801864193e801864193e80186418641864193e8018641a000170a718201a0002" +
+        "0782182019f016041a0001194a18b2000119568718201a0001643519030104021a00014f581a0001e143191c89390383" +
+        "1906b41903c018391a00014f580001011903e819a7a9040219779f197053184b011a000db464196a8f0119ca3f19022e" +
+        "011999101903e819ecb2011a00022a4718201a000144ce1820193bc318201a0001291101193371041956540a19714718" +
+        "4a01197147184a0119a9151902280119aecd19021d0119843c18201a00010a9618201a00011aaa1820191c4b1820191c" +
+        "df1820192d1a18201a00014f581a0001e143191c893903831906b41903c018391a00014f5800011a0001614219020700" +
+        "011a000122c118201a00014f581a0001e143191c893903831906b41903c018391a00014f580001011a00014f581a0001" +
+        "e143191c893903831906b41903c018391a00014f5800011a000e94721a0003414000021a0004213c19583c041a00163c" +
+        "ad19fc3604194ff30104001a00022aa818201a000189b41901a401011a00013eff182019e86a1820194eae182019600c" +
+        "1820195108182019654d182019602f18201a0290f1e70a1a032e93af1937fd0a1a0298e40b1966c40a193e801864193e" +
+        "8018641a000eaf1f121a002a6e06061a0006be98011a0321aac7190eac121a00041699121a048e466e1922a4121a0327" +
+        "ec9a121a001e743c18241a0031410f0c1a000dbf9e011a09f2f6d31910d318241a0004578218241a096e44021967b518" +
+        "241a0473cee818241a13e62472011a0f23d40118481a00212c5618481a0022814619fc3b041a00032b00192076041a00" +
+        "13be0419702c183f00011a000f59d919aa6718fb0001"
+    val supplied = hex(recorded.slice(24, 24 + 64))
+    val expected = hex(recorded.slice(24 + 64 + 6, 24 + 64 + 6 + 64))
+    val preimage = hex(recorded.drop(24 + 64 + 6 + 64 + 8))
+    assertEquals(
+      PredicateFailureCbor
+        .applyTxError(
+          Era.Conway,
+          Vector(
+            PredicateFailure.utxow(
+              UtxowFailure.ScriptIntegrityHashMismatch(
+                Mismatch(Some(supplied), Some(expected)),
+                Some(preimage)
+              )
+            )
+          )
+        )
+        .map(_.hex),
+      Some(recorded)
+    )
   }
 
   test("Conway: a missing redeemer of a certifying purpose carries its certificate, not null") {

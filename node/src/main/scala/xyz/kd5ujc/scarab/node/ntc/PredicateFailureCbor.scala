@@ -242,6 +242,8 @@ object PredicateFailureCbor:
       list(w, ps) { case (k, (tag, ix)) => k.array(2).uint(tag).uint(ix) }
     case UtxowFailure.MalformedScriptWitnesses(hs)  => w.array(2).uint(16); hashSet(w, hs)
     case UtxowFailure.MalformedReferenceScripts(hs) => w.array(2).uint(17); hashSet(w, hs)
+    case UtxowFailure.ScriptIntegrityHashMismatch(m, expected) =>
+      w.array(3).uint(18); w.array(2); group(w, m)(maybeHash(_, _)); maybeHash(w, expected); ()
     case UtxowFailure.MIRInsufficientGenesisSigs(_) => notInConway(w)
 
   /** A Plutus purpose as the ledger names it with the item it applies to (`PlutusPurpose AsItem`):
