@@ -24,3 +24,7 @@ The harness calls the released `decodeFullAnnotator` of `cardano-ledger-binary` 
 `TxBody`, `TxWits` or `Tx` at decoder version 9, and on a Babbage `TxBody` at version 7, and records
 the verdict and the complete failure. It runs no ledger rule. The [fixtures](../../../fixtures/reference/conway-decoding/README.md)
 retain the original encodings, the verdicts, and the source and package pins.
+
+The same harness reads the Shelley, Allegra, Mary, Alonzo and Babbage decoders at their versions
+(2, 3, 4, 5, 7) for the [pre-Conway set corpus](../../../fixtures/reference/pre-conway-sets/README.md);
+its cases come from `pre_conway_cases.py` and are run the same way.

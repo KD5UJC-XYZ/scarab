@@ -1,0 +1,492 @@
+[
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body: baseline",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body: two distinct inputs",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body: indefinite length",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body: repeated input",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body: repeated input written with a wide index",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body: repeated input written with a wide array header",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body: repeated input among others, indefinite length",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body: tag 258 is not read",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxBody\" (DeserialiseFailure 2 \"expected list len or indef\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses: one vkey witness",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses: repeated vkey witness",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses: repeated vkey witness written with a wide array header",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses: tag 258 is not read",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxWits\" (DeserialiseFailure 2 \"expected list len or indef\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body: baseline",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body: two distinct inputs",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body: indefinite length",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body: repeated input",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body: repeated input written with a wide index",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body: repeated input written with a wide array header",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body: repeated input among others, indefinite length",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body: tag 258 is not read",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxBody\" (DeserialiseFailure 2 \"expected list len or indef\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses: one vkey witness",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses: repeated vkey witness",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses: repeated vkey witness written with a wide array header",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses: tag 258 is not read",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxWits\" (DeserialiseFailure 2 \"expected list len or indef\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body: baseline",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body: two distinct inputs",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body: indefinite length",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body: repeated input",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body: repeated input written with a wide index",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body: repeated input written with a wide array header",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body: repeated input among others, indefinite length",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body: tag 258 is not read",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 2 \"expected list len or indef\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses: one vkey witness",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses: repeated vkey witness",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses: repeated vkey witness written with a wide array header",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses: tag 258 is not read",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxWits\" (DeserialiseFailure 2 \"expected list len or indef\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body: baseline",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body: two distinct inputs",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body: indefinite length",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body: repeated input",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body: repeated input written with a wide index",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body: repeated input written with a wide array header",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body: repeated input among others, indefinite length",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body: tag 258 is not read",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 2 \"expected list len or indef\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses: one vkey witness",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses: repeated vkey witness",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses: repeated vkey witness written with a wide array header",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses: tag 258 is not read",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxWits\" (DeserialiseFailure 2 \"expected list len or indef\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body: baseline",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body: two distinct inputs",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body: indefinite length",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body: repeated input",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body: repeated input written with a wide index",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body: repeated input written with a wide array header",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body: repeated input among others, indefinite length",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body: tag 258 is not read",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 2 \"expected list len or indef\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses: one vkey witness",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses: repeated vkey witness",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses: repeated vkey witness written with a wide array header",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses: tag 258 is not read",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxWits\" (DeserialiseFailure 2 \"expected list len or indef\")"
+  }
+ }
+]

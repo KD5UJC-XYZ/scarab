@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-10-22",
+  "scope": "Unchanged released decoders (decodeFullAnnotator) of a transaction body and a witness set of each era from Shelley to Babbage, at the era's decoder version (2, 3, 4, 5, 7); no ledger rule, signature or script is run",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "compiler": "GHC 9.10.3",
+  "referenceNode": "11.1.3 (matching embedded ledger package versions, not a bit-identical node release build)",
+  "packages": {
+    "cardano-ledger-binary": "1.9.1.0",
+    "cardano-ledger-shelley": "1.19.0.1",
+    "cardano-ledger-allegra": "1.10.1.0",
+    "cardano-ledger-mary": "1.11.0.0",
+    "cardano-ledger-alonzo": "1.16.0.0",
+    "cardano-ledger-babbage": "1.14.0.0"
+  },
+  "sourceFiles": {
+    "binaryDecoder": {
+      "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+      "sourceSha256": "3ff3541b2900ceaab9bda26f633d7ea5118a49f5faab3936d036cfe9b49f94cc",
+      "matchesPin": false,
+      "archiveSha256": "05d59229edffc94b8f61273117456601532e23d8656f3076775bbf38e600bb8a",
+      "difference": "two lines of decodeIPv4 (byte order of the address read); the set, map, list, tag and non-empty decoders are identical"
+    }
+  },
+  "harnessSha256": "bfb45c453f16726765809651d438e1c1a7d0be5a2fadf5d662b10a25bc64e07c",
+  "generatorSha256": "4f759417d04ff0f6af59664797271d4edc5b7aa88ac0d6a69b61d1387f749f55",
+  "casesSha256": "60ec5c592cfcfc526158cc67cf2c4aface9d963adedfec7eee04620a16a5b568",
+  "referenceSha256": "3405a608da9c0be40f5deacba9200ff0e2abf90417ddda89d55ff9f21bbc0617",
+  "cases": 60,
+  "accepted": 50,
+  "refused": 10,
+  "originalBytesRetained": true,
+  "network": "none",
+  "keysRetained": false
+}

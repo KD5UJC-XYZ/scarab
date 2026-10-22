@@ -59,17 +59,20 @@ private[ledger] object CborRead:
     case Value.Tag(t, inner) if t == 258 && version.atLeast(9) => array(inner, what)
     case _                                                     => array(n, what)
 
-  /** `decodeSet` / `decodeOSet`. From version 9 duplicates fail the decode (the decoded set is
-    * smaller than the count read), judged on the decoded elements, so two encodings of one element
-    * are duplicates; below it the set keeps the first occurrence (`Set.fromList`).
+  /** `decodeSet` / `decodeOSet`. Duplicates are judged on the decoded elements, so two encodings of
+    * one element are one element: from version 9 they fail the decode (the decoded set is smaller
+    * than the count read); below it the set keeps the first occurrence (`Set.fromList <$>
+    * decodeCollection`, Decoder.hs). Only the decoded elements are collapsed: the caller keeps the
+    * original bytes that are hashed or signed.
     */
   def set[A](n: Node, what: String, version: DecoderVersion)(
       elem: Node => Result[A]
   ): Result[Vector[A]] =
-    list(n, what, version).flatMap { xs =>
-      if version.atLeast(9) then xs.traverse(elem).flatMap(unique(_, what))
-      else xs.distinctBy(_.original).traverse(elem)
-    }
+    list(n, what, version).flatMap(
+      _.traverse(elem).flatMap(as =>
+        if version.atLeast(9) then unique(as, what) else Right(as.distinct)
+      )
+    )
 
   /** A sequence the reference decodes with `decodeStrictSeq` before version 9 (duplicates kept) and
     * as an `OSet` from it. From version 9 duplicates fail the decode (`decodeOSet`,
