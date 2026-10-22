@@ -135,6 +135,7 @@ enum EventKind(val area: Area, val severity: Severity):
   case FormatMigrated extends EventKind(Area.Storage, Severity.Notice)
   case ImmutableOpened extends EventKind(Area.Storage, Severity.Info)
   case VolatileOpened extends EventKind(Area.Storage, Severity.Info)
+  case ReceivedBlockDiscarded extends EventKind(Area.Storage, Severity.Warning)
   case VolatileResumed extends EventKind(Area.Storage, Severity.Info)
   case NetworkRecorded extends EventKind(Area.Storage, Severity.Info)
   case SnapshotSkipped extends EventKind(Area.Storage, Severity.Warning)

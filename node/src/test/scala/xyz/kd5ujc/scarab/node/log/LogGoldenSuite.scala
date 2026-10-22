@@ -53,6 +53,12 @@ class LogGoldenSuite extends CatsEffectSuite:
         )
         _ <- blstReports.traverse_(r => node(NodeEvent.Blst(r)))
         _ <- errors.traverse_(e => node(NodeEvent.Failed(e)))
+        _ <- node(
+          NodeEvent.ReceivedBlockDiscarded(
+            hash,
+            StorageError.Corrupt("received block", xyz.kd5ujc.scarab.codec.Cbor.Error.UnexpectedEnd)
+          )
+        )
         _ <- node(NodeEvent.Memory(memory))
         _ <- node(NodeEvent.CpuStarvation(250.millis, 0.1, 1.second))
         _ <- node(NodeEvent.Listening("0.0.0.0:3001"))

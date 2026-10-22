@@ -6,6 +6,7 @@
 {"event":"error","at":"2026-10-16T12:00:00Z","kind":"NoIntersection","message":"the peer's chain shares no point with ours"}
 {"event":"error","at":"2026-10-16T12:00:00Z","kind":"Decode","message":"decode block: Syntax(UnexpectedEnd)"}
 {"event":"error","at":"2026-10-16T12:00:00Z","kind":"Missing","message":"missing immutable/format"}
+{"event":"receivedBlockDiscarded","at":"2026-10-16T12:00:00Z","hash":"abababababababababababababababababababababababababababababababab","reason":"corrupt received block: UnexpectedEnd"}
 {"event":"memory","at":"2026-10-16T12:00:00Z","sample":{"heapUsed":1024,"rssAnon":null}}
 {"event":"cpuStarvation","at":"2026-10-16T12:00:00Z","clockDriftMs":250,"threshold":0.1,"intervalMs":1000}
 {"event":"listening","at":"2026-10-16T12:00:00Z","address":"0.0.0.0:3001"}

@@ -139,13 +139,20 @@ object Main extends IOApp:
         case _                    => Vector.empty
       }.toSet
       environment <- Ask[IO, MempoolEnv].ask
-      ledger <- scheduling.compute.within(IO.delay(
-        MempoolLedger.at(
-          chain.state,
-          chain.tipRef,
-          environment.copy(geometry = chain.state.geometry(environment.geometry))
-        ).left.map(ChainError.MempoolTick(chain.tipRef.fold(BigInt(0))(_.slot + 1), _))
-      )).flatMap(Raise[IO, NodeError].fromEither(_))
+      ledger <- scheduling.compute
+        .within(
+          IO.delay(
+            MempoolLedger
+              .at(
+                chain.state,
+                chain.tipRef,
+                environment.copy(geometry = chain.state.geometry(environment.geometry))
+              )
+              .left
+              .map(ChainError.MempoolTick(chain.tipRef.fold(BigInt(0))(_.slot + 1), _))
+          )
+        )
+        .flatMap(Raise[IO, NodeError].fromEither(_))
       _ <- mempool.sync(
         ledger,
         chain.tipRef.fold(BigInt(-1))(_.slot),
@@ -157,13 +164,20 @@ object Main extends IOApp:
       pool: BlockPool[IO],
       received: Option[ReceivedBlocks[IO]],
       epochSlots: BigInt
-  )(using Raise[IO, NodeError]): IO[Unit] =
-    received.traverse_(_.entries.flatMap { entries =>
-      entries
-        .traverse { (ref, raw) => ReceivedBlockRecovery.checked(ref, raw, epochSlots) }
-        .fold(error => summon[Raise[IO, NodeError]].raise(error), IO.pure)
-        .flatMap(pool.seedRecoveredHeaders)
-    })
+  )(using Raise[IO, NodeError], Log[IO]): IO[Unit] =
+    received.traverse_(cache =>
+      cache.entries.flatMap { entries =>
+        entries
+          .traverse { (ref, raw) =>
+            ReceivedBlockRecovery.checked(ref, raw, epochSlots) match
+              case Right(delivered) => IO.pure(Some(delivered))
+              case Left(error) =>
+                Log[IO].emit(NodeEvent.ReceivedBlockDiscarded(ref.hash, error)) *>
+                  cache.discardRecovered(ref.hash).as(None)
+          }
+          .flatMap(items => pool.seedRecoveredHeaders(items.flatten))
+      }
+    )
 
   private def selectionWorker(
       follower: Follower[IO, MirrorState],
@@ -786,7 +800,7 @@ object Main extends IOApp:
             // Older databases have only the selected-chain log. Preserve those known originals
             // without inventing downloaded fork history that the old writer never recorded.
             _ <- receivedBlocks.traverse_(received =>
-              resumed.traverse_(block => received.put(block.ref, block.raw))
+              resumed.traverse_(block => received.restoreSelected(block.ref, block.raw))
             )
             receivedBody: Option[Peer.BodySink[IO]] = receivedBlocks.map {
               received => (header, raw) =>
@@ -912,12 +926,15 @@ object Main extends IOApp:
                     xyz.kd5ujc.scarab.network.selection.ConsensusMode.GenesisMode
                 then
                   HeaderCheck.forGenesisChain[IO, MirrorState](
-                    GenesisHeaderRules(
-                      setup.praos.copy(verdicts = cache.forHeaders),
-                      setup.globals,
-                      setup.byronRules,
-                      setup.handOver
-                    ),
+                    {
+                      given HeaderTimeRead[MirrorState] = HeaderTimeRead.mirror(setup.byronHistory)
+                      GenesisHeaderRules(
+                        setup.praos.copy(verdicts = cache.forHeaders),
+                        setup.globals,
+                        setup.byronRules,
+                        setup.handOver
+                      )
+                    },
                     scheduling.compute,
                     GenesisRuntime.retainedHeaders(genesis.geometry),
                     warm = Some((headers, state) =>
@@ -925,7 +942,8 @@ object Main extends IOApp:
                         praosConfig.get.flatMap(cache.warmHeaders[IO](headers, protocol, _))
                       )
                     ),
-                    added = Some(measured.headers)
+                    added = Some(measured.headers),
+                    changes = Some(follower.headerChanges)
                   )
                 else if options.headerFirst then
                   HeaderCheck.forChain[IO, MirrorState, ProtocolState](
@@ -1131,12 +1149,13 @@ object Main extends IOApp:
               fetchModeRef,
               emitOutput,
               (phase, event) =>
-                genesisGovernor.traverse_(_.setPhase(phase)) *>
-                  blockPool.fetchCoordinator.refreshGenesis *>
-                  measured.gsm(phase) *> logged(NodeEvent.GsmTransition(phase, event)),
+                blockPool.fetchCoordinator.transitionGenesis(
+                  genesisGovernor.traverse_(_.setPhase(phase))
+                ) *> measured.gsm(phase) *> logged(NodeEvent.GsmTransition(phase, event)),
               phase =>
-                genesisGovernor.traverse_(_.setPhase(phase)) *>
-                  blockPool.fetchCoordinator.refreshGenesis *> measured.gsm(phase),
+                blockPool.fetchCoordinator.transitionGenesis(
+                  genesisGovernor.traverse_(_.setPhase(phase))
+                ) *> measured.gsm(phase),
               mode =>
                 blockPool.fetchCoordinator.setMode(mode) *>
                   measured.fetchMode(mode) *> logged(NodeEvent.FetchModeChanged(mode)),
