@@ -113,12 +113,11 @@ object HeaderEligibility:
 object HeaderClock:
   /** Hold the headers of a live ChainSync session to the node's clock (AUD-01, #153).
     *
-    * The arrival time is read once when a batch reaches the gate (the reference records it when the
-    * header arrives, `Client.hs` 1491; here that lags by the decode time of the batch). A header
-    * beyond the skew raises [[PeerError.InvalidHeader]] with [[HeaderError.FarFuture]], before any
-    * of the batch is validated or fetched. Otherwise the batch waits until the latest onset among
-    * its headers (the reference delays the client for each header, `InFutureCheck.hs` 160-164, so
-    * the headers behind a waiting one wait too), and then goes to `inner`.
+    * Sample each header's arrival before its history query, as the reference does in
+    * `InFutureCheck.hs` 144–176. Forecasting, validation or synthetic delay for an earlier header
+    * cannot make a later header appear to arrive too early. A header beyond the skew raises
+    * [[PeerError.InvalidHeader]] with [[HeaderError.FarFuture]]; otherwise delay once to its onset
+    * before continuing to the next header and eventually offering the batch to `inner`.
     *
     * It is a wrapper, so it applies whether or not header-first validation is on, and sessions made
     * without it (snapshot restore, `--db` replay, tools) never meet it.
@@ -202,103 +201,76 @@ object HeaderClock:
         Raise[F, PeerError]
     ): F[HeaderGate.Acceptance] =
       val headers = batch.collect { case SyncEvent.RollForward(h, _) => h }
-      headers.headOption.fold(Temporal[F].pure(HeaderGate.Acceptance.Accepted)) { first =>
-        clock.now.flatMap { arrival =>
-          val checkTime = inner.forecastTime(first).flatMap {
-            case None => legacyEligible(batch).as(HeaderGate.Acceptance.Accepted)
-            case Some(initial) =>
-              Temporal[F].tailRecM((0, Option(initial))) { (index, cached) =>
-                headers
-                  .lift(index)
-                  .fold(
-                    Temporal[F]
-                      .pure[Either[(Int, Option[HeaderGate.TimeForecast]), HeaderGate.Acceptance]](
-                        Right(HeaderGate.Acceptance.Accepted)
-                      )
-                  ) { header =>
-                    cached.fold(inner.forecastTime(header))(_.some.pure[F]).flatMap {
-                      case Some(HeaderGate.TimeForecast.Restart(point)) =>
-                        HeaderGate.Acceptance
-                          .Restart(point)
-                          .asRight[(Int, Option[HeaderGate.TimeForecast])]
-                          .pure[F]
-                      case Some(HeaderGate.TimeForecast.Refused(problem)) =>
-                        PeerError
-                          .Genesis(problem)
-                          .raise[F, Either[
-                            (Int, Option[HeaderGate.TimeForecast]),
-                            HeaderGate.Acceptance
-                          ]]
-                      case Some(HeaderGate.TimeForecast.Invalid(error)) =>
-                        PeerError
-                          .InvalidHeader(header.point, error)
-                          .raise[F, Either[
-                            (Int, Option[HeaderGate.TimeForecast]),
-                            HeaderGate.Acceptance
-                          ]]
-                      case Some(HeaderGate.TimeForecast.Known(onset)) =>
-                        val check =
-                          HeaderEligibility.forecast(header.slot, onset, arrival, skew) match
-                            case HeaderEligibility.Eligible => Temporal[F].unit
-                            case HeaderEligibility.FarFuture(error) =>
-                              PeerError.InvalidHeader(header.point, error).raise[F, Unit]
-                            case HeaderEligibility.WaitUntil(until) =>
-                              val wait = HeaderClock.delayOnce(clock, until)
-                              wait
-                        check *> inner.prepareHeader(header).map {
-                          case HeaderGate.Acceptance.Accepted => Left((index + 1, None))
-                          case restart                        => Right(restart)
-                        }
-                      case None =>
-                        PeerError
-                          .Protocol(PeerError.ProtocolProblem.HeaderValidationDidNotSettle)
-                          .raise[F, Either[
-                            (Int, Option[HeaderGate.TimeForecast]),
-                            HeaderGate.Acceptance
-                          ]]
-                    }
-                  }
-              }
-          }
-          if inner.canonicalTiming then
-            patience.fold(checkTime)(p =>
-              (p.setPaused(LimitOnPatience.PauseReason.HeaderTime, true) *> checkTime)
-                .guarantee(p.setPaused(LimitOnPatience.PauseReason.HeaderTime, false))
+      val checkTime = Temporal[F].tailRecM(0) { index =>
+        headers
+          .lift(index)
+          .fold(
+            Temporal[F].pure[Either[Int, HeaderGate.Acceptance]](
+              Right(HeaderGate.Acceptance.Accepted)
             )
-          else checkTime
-        }
+          ) { header =>
+            // Native recordHeaderArrival runs for this header before its history query.
+            // A previous header's forecast, validation or synthetic delay must not age this sample.
+            clock.now.flatMap { arrival =>
+              inner.forecastTime(header).flatMap {
+                case Some(HeaderGate.TimeForecast.Restart(point)) =>
+                  Temporal[F].pure(Right(HeaderGate.Acceptance.Restart(point)))
+                case Some(HeaderGate.TimeForecast.Refused(problem)) =>
+                  PeerError.Genesis(problem).raise[F, Either[Int, HeaderGate.Acceptance]]
+                case Some(HeaderGate.TimeForecast.Invalid(error)) =>
+                  PeerError
+                    .InvalidHeader(header.point, error)
+                    .raise[F, Either[Int, HeaderGate.Acceptance]]
+                case Some(HeaderGate.TimeForecast.Known(onset)) =>
+                  val check = HeaderEligibility.forecast(header.slot, onset, arrival, skew) match
+                    case HeaderEligibility.Eligible => Temporal[F].unit
+                    case HeaderEligibility.FarFuture(error) =>
+                      PeerError.InvalidHeader(header.point, error).raise[F, Unit]
+                    case HeaderEligibility.WaitUntil(until) => HeaderClock.delayOnce(clock, until)
+                  check *> inner.prepareHeader(header).map {
+                    case HeaderGate.Acceptance.Accepted => Left(index + 1)
+                    case restart                        => Right(restart)
+                  }
+                case None if index == 0 =>
+                  legacyEligible(batch, arrival).as(Right(HeaderGate.Acceptance.Accepted))
+                case None =>
+                  PeerError
+                    .Protocol(PeerError.ProtocolProblem.HeaderValidationDidNotSettle)
+                    .raise[F, Either[Int, HeaderGate.Acceptance]]
+              }
+            }
+          }
       }
+      if inner.canonicalTiming then
+        patience.fold(checkTime)(p =>
+          (p.setPaused(LimitOnPatience.PauseReason.HeaderTime, true) *> checkTime)
+            .guarantee(p.setPaused(LimitOnPatience.PauseReason.HeaderTime, false))
+        )
+      else checkTime
 
-    private def legacyEligible(batch: Vector[SyncEvent])(using Raise[F, PeerError]): F[Unit] =
-      val headers = batch.collect { case SyncEvent.RollForward(h, _) => h }
-      if headers.isEmpty then Temporal[F].unit
-      else
-        for
-          arrival <- clock.now
-          geometry <- clock.geometry
-          verdicts = headers.map { h =>
-            val known = h match
+    private def legacyEligible(batch: Vector[SyncEvent], firstArrival: Instant)(using
+        Raise[F, PeerError]
+    ): F[Unit] =
+      batch.collect { case SyncEvent.RollForward(header, _) => header }.zipWithIndex.traverse_ {
+        (header, index) =>
+          val arrived = if index == 0 then Temporal[F].pure(firstArrival) else clock.now
+          (arrived, clock.geometry).tupled.flatMap { (arrival, geometry) =>
+            val known = header match
               case _: xyz.kd5ujc.scarab.ledger.Header.Byron =>
                 geometry.copy(byron = geometry.byron.copy(derived = false))
               case _ => geometry
-            h -> HeaderEligibility.judge(known, h.slot, arrival, skew)
+            HeaderEligibility.judge(known, header.slot, arrival, skew) match
+              case HeaderEligibility.Eligible => Temporal[F].unit
+              case HeaderEligibility.FarFuture(error) =>
+                PeerError.InvalidHeader(header.point, error).raise[F, Unit]
+              case HeaderEligibility.WaitUntil(onset) =>
+                val waiting = delayOnce(clock, onset)
+                patience.fold(waiting)(p =>
+                  (p.setPaused(LimitOnPatience.PauseReason.HeaderTime, true) *> waiting)
+                    .guarantee(p.setPaused(LimitOnPatience.PauseReason.HeaderTime, false))
+                )
           }
-          _ <- verdicts
-            .collectFirst { case (h, HeaderEligibility.FarFuture(e)) => h -> e }
-            .traverse_ { case (h, e) =>
-              PeerError.InvalidHeader(h.point, e).raise[F, Unit]
-            }
-          _ <- verdicts
-            .collect { case (_, HeaderEligibility.WaitUntil(onset)) => onset }
-            .maxOption
-            .traverse_(onset =>
-              val waiting = until(clock, onset)
-              patience.fold(waiting)(p =>
-                (p.setPaused(LimitOnPatience.PauseReason.HeaderTime, true) *> waiting)
-                  .guarantee(p.setPaused(LimitOnPatience.PauseReason.HeaderTime, false))
-              )
-            )
-        yield ()
+      }
 
   /** Native `handleHeaderArrival` samples wall time once, then delays once (InFutureCheck.hs
     * 160–176); a wall-clock step during that delay does not schedule another wait.

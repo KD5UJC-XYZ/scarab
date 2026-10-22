@@ -171,7 +171,7 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
             pool <- BlockPool.create[IO](BlockPool.FetchPolicy(), follower.fetchSelection)
             connection = NodeToNodeConnection(15, chainSync, blockFetch, mux)
             outcome <- LimitOnPatience
-              .resource[IO](LeakyBucket.Config.disabled, IO.unit)
+              .resource[IO](LeakyBucket.Config.disabled, IO.unit, error => IO(fail(error.message)))
               .flatMap { patience =>
                 Peer.over(
                   connection,

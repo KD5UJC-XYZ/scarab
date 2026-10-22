@@ -198,9 +198,26 @@ object HeaderCheck:
     private val F = Async[F]
     private val timing = canonical.map(_.timing)
 
+    private def revision: F[Option[Long]] = canonical.flatMap(_.changes).traverse(_.revision)
+
+    private def waitForChange(version: Option[Long]): F[Unit] =
+      (canonical.flatMap(_.changes), version) match
+        case (Some(changes), Some(seen)) => changes.changed(seen).void
+        case _                           => F.sleep(poll)
+
+    private def awaitSample[A](sample: F[Either[Unit, A]]): F[A] =
+      F.tailRecM(()) { _ =>
+        revision.flatMap { version =>
+          sample.flatMap {
+            case Left(_) => waitForChange(version).as(Left(()))
+            case done    => F.pure(done)
+          }
+        }
+      }
+
     private def coherentCurrent: F[(VolatileChain[S], Option[ChainSelection.Local])] =
       canonical.fold(chain.get.map(_ -> Option.empty[ChainSelection.Local])) { context =>
-        F.tailRecM(()) { _ =>
+        awaitSample {
           (chain.get, context.selection).tupled.map { (current, selected) =>
             if selected.anchor != current.anchor.point || selected.blocks.map(
                 _.point
@@ -404,12 +421,7 @@ object HeaderCheck:
                 case Some((h, parent, _)) if h == header && parent == hc.tipPoint =>
                   F.pure(HeaderGate.Acceptance.Accepted)
                 case _ =>
-                  val checkTime = F.tailRecM(())(_ =>
-                    sample.flatMap {
-                      case Left(_) => F.sleep(poll).as(Left(()))
-                      case done    => F.pure(done)
-                    }
-                  )
+                  val checkTime = awaitSample(sample)
                   patience.fold(checkTime)(p =>
                     (p.setPaused(LimitOnPatience.PauseReason.Forecast, true) *> checkTime)
                       .guarantee(p.setPaused(LimitOnPatience.PauseReason.Forecast, false))
@@ -445,15 +457,11 @@ object HeaderCheck:
                           }
                       }
               }
-            sample.flatMap {
-              case Right(known) => F.pure(known)
-              case Left(_) =>
-                val waiting = F.tailRecM(())(_ => F.sleep(poll) *> sample)
-                patience.fold(waiting)(p =>
-                  (p.setPaused(LimitOnPatience.PauseReason.Forecast, true) *> waiting)
-                    .guarantee(p.setPaused(LimitOnPatience.PauseReason.Forecast, false))
-                )
-            }
+            val waiting = awaitSample(sample)
+            patience.fold(waiting)(p =>
+              (p.setPaused(LimitOnPatience.PauseReason.Forecast, true) *> waiting)
+                .guarantee(p.setPaused(LimitOnPatience.PauseReason.Forecast, false))
+            )
           }
 
         override def snapshot(using Applicative[F]): F[Option[HeaderChain[NodeHeaderState]]] =
@@ -660,6 +668,7 @@ object HeaderCheck:
             since: Option[(Option[BlockRef], FiniteDuration)]
         )(using Raise[F, PeerError], Raise[F, Reintersection]): F[(Outcome[H], Boolean)] =
           for
+            version <- revision
             hc <- state.get
             snapshot <- coherentCurrent
             (current, selected) = snapshot
@@ -675,7 +684,7 @@ object HeaderCheck:
                   case (Some(prev), Some((anchorState, tip))) =>
                     F.delay(rules.validate(anchorState, tip, prev, header)).flatMap {
                       case Outcome.Later(reason) =>
-                        wait(header, reason, since, current, hc, selected)
+                        wait(header, reason, since, current, hc, selected, version)
                       case other => F.pure(other -> waited)
                     }
                   case (None, Some(_)) =>
@@ -696,7 +705,8 @@ object HeaderCheck:
                           since,
                           current,
                           hc,
-                          selected
+                          selected,
+                          version
                         )
                     }
                   case (_, None) if patience.nonEmpty || canonical.nonEmpty =>
@@ -737,7 +747,8 @@ object HeaderCheck:
             since: Option[(Option[BlockRef], FiniteDuration)],
             current: VolatileChain[S],
             hc: HeaderChain[H],
-            selected: Option[ChainSelection.Local]
+            selected: Option[ChainSelection.Local],
+            version: Option[Long]
         )(using Raise[F, PeerError], Raise[F, Reintersection]): F[(Outcome[H], Boolean)] =
           for
             refusal <- sparse(hc, selected)
@@ -770,7 +781,8 @@ object HeaderCheck:
                   ) -> true
                 )
               else
-                val waiting = F.sleep(poll) *> resolve(header, waited = true, since = Some(moved))
+                val waiting =
+                  waitForChange(version) *> resolve(header, waited = true, since = Some(moved))
                 patience
                   .filter(_ => since.isEmpty)
                   .fold(waiting)(p =>

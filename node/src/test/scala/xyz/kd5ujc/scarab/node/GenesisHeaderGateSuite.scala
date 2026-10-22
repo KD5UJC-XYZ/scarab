@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.effect.{IO, Ref}
+import fs2.concurrent.SignallingRef
 import cats.effect.testkit.TestControl
 import cats.mtl.{Ask, Stateful, Tell}
 import cats.syntax.all.*
@@ -146,32 +147,82 @@ class GenesisHeaderGateSuite extends FailsOnUncaught:
           state,
           headers ++ Fixtures.chain(5, salt = 9)
         )
-        _ <- LimitOnPatience.resource[IO](LeakyBucket.Config.disabled, IO.unit, error => IO(fail(error.message))).use { patience =>
-          val check = HeaderCheck
-            .forGenesisChain[IO, BigInt](model(1), Compute.inline[IO], 100, poll = 1.millis)
-            .withPatience(patience)
-          for
-            gate <- check.start(applied.tip)
-            _ <- Fault.fiber(
-              gate.accept(Vector(SyncEvent.RollForward(headers(2), ChainSync.Tip.Origin)))
-            )
-            waiting <- Fault
-              .fiber(
-                gate
-                  .acceptOrRestart(Vector(SyncEvent.RollForward(headers(3), ChainSync.Tip.Origin)))
+        _ <- LimitOnPatience
+          .resource[IO](LeakyBucket.Config.disabled, IO.unit, error => IO(fail(error.message)))
+          .use { patience =>
+            val check = HeaderCheck
+              .forGenesisChain[IO, BigInt](model(1), Compute.inline[IO], 100, poll = 1.millis)
+              .withPatience(patience)
+            for
+              gate <- check.start(applied.tip)
+              _ <- Fault.fiber(
+                gate.accept(Vector(SyncEvent.RollForward(headers(2), ChainSync.Tip.Origin)))
               )
-              .start
-            _ <- IO.sleep(2.millis)
-            _ <- state.set(replacement)
-            outcome <- waiting.joinWithNever
-            _ <- IO(assertEquals(outcome, Right(HeaderGate.Acceptance.Restart(headers(2).point))))
-            bucket <- patience.snapshot
-            _ <- IO(assert(!bucket.paused))
-            counts <- gate.counts
-            _ <- IO(assertEquals(counts.validated, 1L))
-          yield ()
-        }
+              waiting <- Fault
+                .fiber(
+                  gate
+                    .acceptOrRestart(
+                      Vector(SyncEvent.RollForward(headers(3), ChainSync.Tip.Origin))
+                    )
+                )
+                .start
+              _ <- IO.sleep(2.millis)
+              _ <- state.set(replacement)
+              outcome <- waiting.joinWithNever
+              _ <- IO(assertEquals(outcome, Right(HeaderGate.Acceptance.Restart(headers(2).point))))
+              bucket <- patience.snapshot
+              _ <- IO(assert(!bucket.paused))
+              counts <- gate.counts
+              _ <- IO(assertEquals(counts.validated, 1L))
+            yield ()
+          }
       yield ()
+    }
+  }
+
+  test("disabled patience parks forecasts on publication without polling and remains cancelable") {
+    TestControl.executeEmbed {
+      val headers = Fixtures.chain(4)
+      for
+        applied <- chain(headers.take(2), 50)
+        advanced <- chain(headers.take(3), 50)
+        state <- Ref.of[IO, VolatileChain[BigInt]](applied)
+        versions <- SignallingRef[IO, Long](0L)
+        reads <- Ref.of[IO, Int](0)
+        given Stateful[IO, VolatileChain[BigInt]] = RefStateful(state)
+        base = selected(state, headers)
+        given Ask[IO, ChainSelection.Local] = new Ask[IO, ChainSelection.Local]:
+          val applicative = summon[cats.Applicative[IO]]
+          def ask[E2 >: ChainSelection.Local]: IO[E2] = reads.update(_ + 1) *> base.ask[E2]
+        changes = new HeaderCheck.Changes[IO]:
+          def revision = versions.get
+          def changed(after: Long) =
+            versions.discrete.filter(_ != after).take(1).compile.lastOrError
+        check = HeaderCheck.forGenesisChain[IO, BigInt](
+          model(1, Some(1)),
+          Compute.inline[IO],
+          100,
+          changes = Some(changes)
+        )
+        gate <- check.start(applied.tip)
+        _ <- Fault.fiber(
+          gate.accept(Vector(SyncEvent.RollForward(headers(2), ChainSync.Tip.Origin)))
+        )
+        waiting <- gate.forecastTime(headers(3)).start
+        _ <- IO.sleep(1.millis)
+        before <- reads.get
+        _ <- IO.sleep(100.millis)
+        after <- reads.get
+        _ = assertEquals(after, before)
+        _ <- waiting.cancel
+        resumed <- gate.forecastTime(headers(3)).start
+        _ <- IO.sleep(1.millis)
+        _ <- state.set(advanced) *> versions.update(_ + 1)
+        outcome <- resumed.joinWithNever
+      yield assertEquals(
+        outcome,
+        Some(HeaderGate.TimeForecast.Known(headers(3).slot * BigInt(10).pow(12)))
+      )
     }
   }
 

@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.consensus.{ForkTrigger, HardForkConfig}
+import xyz.kd5ujc.scarab.consensus.{ByronRules, ForkTrigger, HardForkConfig, PraosConfig}
 import xyz.kd5ujc.scarab.consensus.state.{
   Bound,
+  EraHistory,
   EraLedgerState,
   MirrorState,
   Past,
   ShelleyLedgerState
 }
+import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.ledger.byron.ByronLedger
 import xyz.kd5ujc.scarab.ledger.rules.EraLedger
 import xyz.kd5ujc.scarab.ledger.state.{EraTag, ShelleyBasedEra}
@@ -34,9 +36,20 @@ object GenesisHistory:
       setup: NodeSetup
   ): Option[BigInt] =
     val telescope = state.ext.ledgerState
-    val byron = setup.byronHistory
-    val geometry = setup.geometry
-    val parameters = eras.map { era =>
+    val transition = transitionEpoch(state, setup.praos, setup.byronRules)
+    query(
+      telescope.past,
+      Current(telescope.era, telescope.current.start, transition),
+      immutableTipSlot,
+      slot,
+      parameters(setup.geometry, setup.byronHistory)
+    )
+
+  private[node] def parameters(
+      geometry: EpochGeometry,
+      byron: EraHistory.ByronParams
+  ): Map[Era, Parameters] =
+    eras.map { era =>
       era -> (if era == Era.Byron then Parameters(byron.epochSlots, 2 * byron.k, 2 * byron.k)
               else
                 Parameters(
@@ -45,30 +58,30 @@ object GenesisHistory:
                   geometry.stabilityWindow
                 ))
     }.toMap
-    val transition = telescope.state match
-      case EraLedgerState.ByronCurrent(byronState) =>
-        setup.byronRules.flatMap { rules =>
+
+  private[node] def transitionEpoch(
+      state: MirrorState,
+      config: PraosConfig,
+      byron: Option[ByronRules.Config]
+  ): Option[BigInt] =
+    val telescope = state.ext.ledgerState
+    telescope.state match
+      case EraLedgerState.ByronCurrent(old) =>
+        byron.flatMap(rules =>
           rules.configuredShelleyEpoch.orElse(
-            byronState.ledger.flatMap(ByronLedger.transition(rules.ledger, _))
+            old.ledger.flatMap(ByronLedger.transition(rules.ledger, _))
           )
-        }
+        )
       case EraLedgerState.InShelleyEra(era, ledger) =>
-        shelleyTransition(ledger, telescope.era, setup)(using era)
-    query(
-      telescope.past,
-      Current(telescope.era, telescope.current.start, transition),
-      immutableTipSlot,
-      slot,
-      parameters
-    )
+        shelleyTransition(ledger, telescope.era, config)(using era)
 
   private def shelleyTransition[E <: EraTag](
       ledger: ShelleyLedgerState[E],
       current: Era,
-      setup: NodeSetup
+      config: PraosConfig
   )(using ShelleyBasedEra[E]): Option[BigInt] =
     eras.lift(eras.indexOf(current) + 1).flatMap { next =>
-      setup.praos.forks.triggers.get(next).flatMap {
+      config.forks.triggers.get(next).flatMap {
         case ForkTrigger.AtEpoch(epoch)   => Some(epoch)
         case ForkTrigger.AtVersion(major) =>
           // ShelleyHFC.hs:194-227 and State/Governance.hs:131: potential parameters do not
@@ -77,7 +90,7 @@ object GenesisHistory:
             .futurePParams(ledger.nes.es.ls.utxo.gov)
             .definite
             .filter(p =>
-              p.protocolMajor == major && ledger.transition.afterVoting.toLong >= setup.geometry.securityParam
+              p.protocolMajor == major && ledger.transition.afterVoting.toLong >= config.geometry.securityParam
             )
             .map(_ => ledger.nes.epoch.toBigInt + 1)
       }

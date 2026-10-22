@@ -43,12 +43,14 @@ class GenesisHeaderRulesSuite extends FunSuite:
 
   private lazy val eras = capture("fixtures/eras")
   private lazy val preprod = capture("fixtures/preprod")
-  private def rules(c: Capture) = new GenesisHeaderRules[MirrorState](
-    c.setup.praos,
-    c.setup.globals,
-    c.setup.byronRules,
-    c.setup.handOver
-  )
+  private def rules(c: Capture) =
+    given HeaderTimeRead[MirrorState] = HeaderTimeRead.mirror(c.setup.byronHistory)
+    new GenesisHeaderRules[MirrorState](
+      c.setup.praos,
+      c.setup.globals,
+      c.setup.byronRules,
+      c.setup.handOver
+    )
   private def ref(h: Header): BlockRef = BlockRef(h.slot, h.hash, h.blockNo, h.isBoundary)
 
   for (name, readCapture) <- Vector("every-era" -> (() => eras), "preprod" -> (() => preprod)) do
@@ -68,6 +70,36 @@ class GenesisHeaderRulesSuite extends FunSuite:
             fail(s"header $i (${c.blocks(i).era}, slot ${c.blocks(i).header.slot}): $other")
       }
     }
+
+  test("GDD windows and production header-time forecasts share every captured era horizon") {
+    Vector(eras, preprod).foreach { c =>
+      val history = HeaderTimeRead.mirror(c.setup.byronHistory)
+      c.states.zipWithIndex.foreach { (state, index) =>
+        val tip = c.blocks.take(index).lastOption.map(b => ref(b.header))
+        val tipSlot = tip.fold(BigInt(-1))(_.slot)
+        val start = state.ext.ledgerState.current.start.slot
+        val slots = Vector(
+          BigInt(-1),
+          BigInt(0),
+          start,
+          tipSlot,
+          tipSlot + 1,
+          tipSlot + 2 * c.setup.byronHistory.k,
+          tipSlot + c.setup.geometry.stabilityWindow,
+          tipSlot + c.setup.geometry.epochLength
+        )
+        slots.distinct.foreach { slot =>
+          val available = GenesisHistory.window(state, tipSlot, slot, c.setup).nonEmpty
+          val forecast = history.forecast(state, tip, slot, c.setup.praos, c.setup.byronRules)
+          assertEquals(
+            forecast.isInstanceOf[HeaderRules.TimeForecast.Known],
+            available,
+            s"era ${state.ext.ledgerState.era}, tip $tipSlot, query $slot: $forecast"
+          )
+        }
+      }
+    }
+  }
 
   test("Byron forecast headers preserve the full PBFT state without applying their bodies") {
     val c = preprod

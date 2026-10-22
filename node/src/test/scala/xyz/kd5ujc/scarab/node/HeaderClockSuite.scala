@@ -175,7 +175,7 @@ class HeaderClockSuite extends CatsEffectSuite with ScalaCheckSuite:
     }.assertEquals(Vector(10000L))
   }
 
-  test("a far-future header after a waiting one is refused without waiting for the first") {
+  test("a far-future header after a waiting one is judged after the first delay") {
     run {
       for
         clock <- stepped
@@ -185,7 +185,7 @@ class HeaderClockSuite extends CatsEffectSuite with ScalaCheckSuite:
         r <- typed(gate.accept(Vector(header(0, 9), header(1, 100)).map(forward)))
         now <- millis
       yield (r.isLeft, now)
-    }.assertEquals((true, 8000L))
+    }.assertEquals((true, 9000L))
   }
 
   test("each batch is judged at its own arrival, so a header that waited does not shift the next") {
@@ -204,7 +204,7 @@ class HeaderClockSuite extends CatsEffectSuite with ScalaCheckSuite:
     }.assertEquals((Right(()), true, Vector(10000L, 12000L)))
   }
 
-  test("a clock that steps back while a header waits is waited out") {
+  test("a clock step back does not extend the native single synthetic delay") {
     run {
       for
         clock <- stepped
@@ -217,7 +217,7 @@ class HeaderClockSuite extends CatsEffectSuite with ScalaCheckSuite:
         _ <- waiting.join
         seen <- rec.reached.get
       yield seen.map(_._1)
-    }.assertEquals(Vector(11000L))
+    }.assertEquals(Vector(10000L))
   }
 
   test("a clock that steps forward while a header waits releases it when the sleep ends") {
