@@ -306,11 +306,25 @@ object Codec:
       out.bytes(w.result)
 
   /** `{ * k => v }`: all pairs, in wire order (duplicates kept). */
-  def pairs[K, V](key: => Codec[K], value: => Codec[V]): Codec[Vector[(K, V)]] =
+  def pairs[K, V](
+      key: => Codec[K],
+      value: => Codec[V],
+      min: Int = 0,
+      max: Int = Int.MaxValue
+  ): Codec[Vector[(K, V)]] =
     new Codec[Vector[(K, V)]]:
       private lazy val kc = key
       private lazy val vc = value
-      def decode(n: Node) = Maps.pairs(n).flatMap(Maps.decodePairs(_, kc, vc))
+      def decode(n: Node) = Maps.pairs(n).flatMap { ps =>
+        if ps.size < min || ps.size > max then
+          Left(
+            DecodeError.at(
+              n,
+              Kind.BadArity(s"$min..${if max == Int.MaxValue then "*" else max.toString}", ps.size)
+            )
+          )
+        else Maps.decodePairs(ps, kc, vc)
+      }
       def encode(a: Vector[(K, V)], out: Writer) =
         out.mapHead(a.size)
         a.foreach { (k, v) =>

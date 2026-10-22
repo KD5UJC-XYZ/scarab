@@ -116,6 +116,19 @@ class GeneratorSuite extends munit.FunSuite:
     assert(text.contains("rt.Codec.bytesSized(32, 32)"), text)
   }
 
+  test(
+    "a map's entry bounds reach the generated pairs codec; `lenient-maps` drops them for its module"
+  ) {
+    val cddl = "plus = { + bytes => uint }\nstar = { * bytes => uint }\nr = [plus, star]\n"
+    val strict = generateFrom(cddl, "root t:r\n").fold(e => fail(e.message), identity)
+    val text = strict.values.mkString
+    assert(text.contains("rt.Codec.pairs(rt.Codec.bytes, rt.Codec.uint, 1, Int.MaxValue)"), text)
+    assert(text.contains("rt.Codec.pairs(rt.Codec.bytes, rt.Codec.uint)"), text)
+    val lenient =
+      generateFrom(cddl, "root t:r\nlenient-maps t\n").fold(e => fail(e.message), identity)
+    assert(!lenient.values.mkString.contains("Int.MaxValue"), lenient.values.mkString)
+  }
+
   test("generation errors are typed, not strings") {
     assertEquals(
       generateFrom("a = missing\n", "root t:a\n").left.toOption,

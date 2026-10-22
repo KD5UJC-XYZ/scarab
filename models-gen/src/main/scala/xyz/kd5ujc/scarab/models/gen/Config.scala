@@ -14,6 +14,7 @@ package xyz.kd5ujc.scarab.models.gen
   * strip     handshake:msg_x Msg              prefix removed from the names of alternatives
   * field     conway:transaction_body 0 inputs name of an integer-keyed map entry
   * external  base:tip                         not generated: a raw `Node` (hand-written boundary)
+  * lenient-maps mary                            module whose generated `{ + k => v }` maps accept any entry count
   * }}}
   */
 final case class Config(
@@ -26,7 +27,8 @@ final case class Config(
     strip: Map[QName, Vector[String]],
     fields: Map[(QName, String), String],
     external: Set[QName],
-    chunks: Map[QName, Int] = Map.empty
+    chunks: Map[QName, Int] = Map.empty,
+    lenientMaps: Set[String] = Set.empty
 )
 
 object Config:
@@ -71,6 +73,7 @@ object Config:
             case Vector("external", r) => q(r).map(r => cfg.copy(external = cfg.external + r))
             case Vector("chunks", r, size) if size.toIntOption.exists(_ > 0) =>
               q(r).map(r => cfg.copy(chunks = cfg.chunks.updated(r, size.toInt)))
+            case Vector("lenient-maps", m) => Right(cfg.copy(lenientMaps = cfg.lenientMaps + m))
             case other => Left(GenError.BadConfig(line, ConfigProblem.Directive(other)))
         }
       }

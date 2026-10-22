@@ -206,6 +206,11 @@ private final class PreparedEmitter(cfg: Config, schema: Schema, reached: Emitte
         )
       case RT.MapT(es) if isPairs(es) =>
         val e = es.head
+        // `{ + k => v }` and `{ n*m k => v }` bound the entry count as `[+ x]` bounds the items, except in a module
+        // declared `lenient-maps`, whose reference decoder accepts any count (docs/models.md section 2)
+        val bounds =
+          if (e.occ.min == 0 && e.occ.max.isEmpty) || cfg.lenientMaps(o.module) then ""
+          else s", ${e.occ.min}, ${e.occ.max.fold("Int.MaxValue")(_.toString)}"
         e.key match
           case Some(RKey.OfType(k, _)) =>
             for
@@ -213,7 +218,7 @@ private final class PreparedEmitter(cfg: Config, schema: Schema, reached: Emitte
               vt <- tc(e.value, hint + "Value", o, ctx)
               r <- inlineCodec(
                 s"Vector[(${kt.tpe}, ${vt.tpe})]",
-                s"rt.Codec.pairs(${kt.codec}, ${vt.codec})",
+                s"rt.Codec.pairs(${kt.codec}, ${vt.codec}$bounds)",
                 o
               )
             yield r
