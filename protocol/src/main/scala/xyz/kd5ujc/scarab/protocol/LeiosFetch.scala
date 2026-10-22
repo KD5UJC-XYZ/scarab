@@ -35,7 +35,10 @@ import LeiosWire.*
   *
   * The Blueprint draws `bitmaps` as an indefinite-length map. The reference decoder
   * (`decodeBitmaps`, `decodeMapLenOrIndef`) accepts both, and its encoder always writes the
-  * indefinite one; this codec reads both and writes a definite one.
+  * indefinite one; this codec reads both and writes the indefinite one, for byte parity (a definite
+  * map would save one byte at most). The decoder applies the reference's checks, see
+  * `LeiosWire.checkBitmaps`: at most [[MaxBitmapEntries]] entries, no zero bitmap, windows below
+  * [[MaxBitmapEntries]] and strictly ascending; the encoder refuses what the decoder would.
   *
   * Agency: the client in `Idle`, the server in `Block` and `BlockTxs`.
   */
@@ -51,6 +54,11 @@ object LeiosFetch:
     * the least item is a 32-byte hash (34 bytes with its head) and a size of one byte.
     */
   val MaxTxsPerEb: Int = (MaxEbBytes - 5) / (34 + 1)
+
+  /** The most windows of 64 transactions a request can name: `maxBitmapEntries maxTxsPerEb` of
+    * `Type.hs` (ouroboros-consensus `7b239a16`, line 396), 268.
+    */
+  val MaxBitmapEntries: Int = (MaxTxsPerEb + 63) / 64
 
   /** The tag of a CBOR item embedded as bytes (RFC 8949 section 3.4.5.1). */
   private val EmbeddedCbor = BigInt(24)
@@ -99,7 +107,9 @@ object LeiosFetch:
           )
         )
     case Message.BlockTxsRequest(p, b) =>
-      LeiosWire.encode(tagged(3, pointValue(p), bitmapsValue(b)))
+      bitmapsBytes(b).flatMap(bytes =>
+        arrayWithVerbatim(Vector(Value.UInt(BigInt(3)), pointValue(p)), Vector(bytes))
+      )
     case Message.BlockTxs(txs) =>
       if txs.size > MaxTxsPerEb then Left(LeiosWireError.Unencodable)
       else
@@ -113,12 +123,14 @@ object LeiosFetch:
         )
     case Message.LegacyBlockTxs(p, b, txs) =>
       // the transactions go out as the bytes they came with
-      arrayWithVerbatim(Vector.empty, txs).flatMap(list =>
-        arrayWithVerbatim(
-          Vector(Value.UInt(BigInt(4)), pointValue(p), bitmapsValue(b)),
-          Vector(list)
+      for
+        list <- arrayWithVerbatim(Vector.empty, txs)
+        bm <- bitmapsBytes(b)
+        out <- arrayWithVerbatim(
+          Vector(Value.UInt(BigInt(4)), pointValue(p)),
+          Vector(bm, list)
         )
-      )
+      yield out
 
   /** The client's check of an answer against its own request: one transaction for each bit the
     * request's bitmaps set. (The answer does not say which; the order is the bitmaps'.)

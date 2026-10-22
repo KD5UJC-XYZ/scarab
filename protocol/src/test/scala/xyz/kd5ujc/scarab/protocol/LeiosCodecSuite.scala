@@ -37,10 +37,15 @@ class LeiosCodecSuite extends ScalaCheckSuite:
       slot <- Gen.choose(0L, Long.MaxValue)
       h <- Gen.choose(0, 255)
     yield EbPoint(slot, hash(h))
+  // what the reference accepts: ascending windows below 268, none of them zero
   private val genBitmaps: Gen[TxBitmaps] =
-    Gen.listOf(Gen.zip(Gen.choose(0, 0xffff), Gen.choose(0L, Long.MaxValue))).map { xs =>
-      TxBitmaps(xs.map { case (w, b) => w -> BigInt(b) }.toVector)
-    }
+    Gen
+      .listOf(
+        Gen.zip(Gen.choose(0, LeiosFetch.MaxBitmapEntries - 1), Gen.choose(1L, Long.MaxValue))
+      )
+      .map { xs =>
+        TxBitmaps(xs.sortBy(_._1).distinctBy(_._1).map((w, b) => w -> BigInt(b)).toVector)
+      }
 
   private def notifyRoundTrip(state: LeiosNotify.State, m: LeiosNotify.Message): Unit =
     val bytes = ok(LeiosNotify.encode(m))
@@ -339,6 +344,92 @@ class LeiosCodecSuite extends ScalaCheckSuite:
     assertEquals(
       decodePrefix(State.BlockTxs, bs(0x83, 0x04) ++ pt ++ bs(0xa0)),
       Left(LeiosWireError.WrongArity(4, 1, 2))
+    )
+  }
+
+  test("LeiosFetch: bitmaps are written as the indefinite-length map the reference writes") {
+    import LeiosFetch.*
+    val m = Message.BlockTxsRequest(p0, TxBitmaps(Vector(0 -> BigInt(1), 3 -> (BigInt(1) << 63))))
+    val bytes = ok(encode(m))
+    val entries = bs(0x00, 0x01, 0x03, 0x1b, 0x80, 0, 0, 0, 0, 0, 0, 0)
+    assertEquals(bytes.drop(bytes.size - entries.size - 2), bs(0xbf) ++ entries ++ bs(0xff))
+    assertEquals(decodePrefix(State.Idle, bytes), Right((m, bytes.size)))
+    // the empty request is the empty indefinite map
+    val none = ok(encode(Message.BlockTxsRequest(p0, TxBitmaps(Vector.empty))))
+    assertEquals(none.drop(none.size - 2), bs(0xbf, 0xff))
+  }
+
+  test("LeiosFetch: the reference's bitmap checks, each refused with its own error") {
+    import LeiosFetch.*
+    val pt = ok(encode(Message.BlockRequest(p0))).drop(2)
+    def request(entries: Bytes, indefinite: Boolean = false, pairs: Int = 2): Bytes =
+      bs(0x83, 0x03) ++ pt ++ (if indefinite then bs(0xbf) ++ entries ++ bs(0xff)
+                               else bs(0xa0 | pairs) ++ entries)
+    def windowEntry(w: Int, bits: Int = 1): Bytes = bs(0x19, w >> 8, w & 0xff, bits)
+    // a zero bitmap, in either map form
+    assertEquals(
+      decodePrefix(State.Idle, request(bs(0x05, 0x00), pairs = 1)),
+      Left(LeiosWireError.ZeroBitmap(3, 5))
+    )
+    assertEquals(
+      decodePrefix(State.Idle, request(bs(0x05, 0x00), indefinite = true)),
+      Left(LeiosWireError.ZeroBitmap(3, 5))
+    )
+    // a window at the limit is refused, the one below is read
+    assertEquals(
+      decodePrefix(State.Idle, request(windowEntry(MaxBitmapEntries), pairs = 1)),
+      Left(LeiosWireError.BitmapWindowOutOfRange(3, MaxBitmapEntries, MaxBitmapEntries))
+    )
+    assert(decodePrefix(State.Idle, request(windowEntry(MaxBitmapEntries - 1), pairs = 1)).isRight)
+    assertEquals(MaxBitmapEntries, 268)
+    // equal and descending windows
+    assertEquals(
+      decodePrefix(State.Idle, request(bs(0x02, 0x01, 0x02, 0x01))),
+      Left(LeiosWireError.BitmapWindowsNotAscending(3, 2))
+    )
+    assertEquals(
+      decodePrefix(State.Idle, request(bs(0x03, 0x01, 0x02, 0x01), indefinite = true)),
+      Left(LeiosWireError.BitmapWindowsNotAscending(3, 2))
+    )
+    // a zero bitmap is reported before an out-of-range window of the same entry, as in the reference
+    assertEquals(
+      decodePrefix(State.Idle, request(windowEntry(1000, 0), pairs = 1)),
+      Left(LeiosWireError.ZeroBitmap(3, 1000))
+    )
+    // at most 268 entries, definite or indefinite; 268 windows 0 to 267 are read
+    def many(n: Int): Bytes =
+      Bytes.wrap((0 until n).flatMap(w => windowEntry(w % 268).toArray).toArray)
+    val full = bs(0x83, 0x03) ++ pt ++ bs(0xb9, 268 >> 8, 268 & 0xff) ++ many(268)
+    assert(decodePrefix(State.Idle, full).isRight)
+    val over = bs(0x83, 0x03) ++ pt ++ bs(0xb9, 269 >> 8, 269 & 0xff) ++ many(269)
+    assertEquals(
+      decodePrefix(State.Idle, over),
+      Left(LeiosWireError.TooMany(3, LeiosField.Bitmaps, 268, 269))
+    )
+    val overIndef = bs(0x83, 0x03) ++ pt ++ bs(0xbf) ++ many(269) ++ bs(0xff)
+    assertEquals(
+      decodePrefix(State.Idle, overIndef),
+      Left(LeiosWireError.TooMany(3, LeiosField.Bitmaps, 268, 269))
+    )
+    // the encoder refuses what the decoder refuses
+    Vector(
+      Vector(5 -> BigInt(0)),
+      Vector(268 -> BigInt(1)),
+      Vector(2 -> BigInt(1), 2 -> BigInt(1)),
+      Vector(3 -> BigInt(1), 2 -> BigInt(1)),
+      (0 to 268).map(_ -> BigInt(1)).toVector
+    ).foreach { w =>
+      assertEquals(
+        encode(Message.BlockTxsRequest(p0, TxBitmaps(w))),
+        Left(LeiosWireError.Unencodable),
+        w.take(3).toString
+      )
+    }
+    // the older form carries the same bitmaps and the same checks
+    val legacy = bs(0x84, 0x04) ++ pt ++ bs(0xa1, 0x05, 0x00, 0x80)
+    assertEquals(
+      decodePrefix(State.BlockTxs, legacy),
+      Left(LeiosWireError.ZeroBitmap(4, 5))
     )
   }
 

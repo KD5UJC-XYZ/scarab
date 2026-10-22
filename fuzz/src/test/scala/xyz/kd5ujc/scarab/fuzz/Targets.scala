@@ -192,7 +192,27 @@ object Targets:
         Corpus.transactions.take(3).map(Bytes.fromArray)
       )
     )
-    seeds.flatMap(LeiosFetch.encode(_).toOption.map(_.toArray)) ++
+    // requests at and past each bitmap rule of the reference decoder (zero bitmap, window 268, windows
+    // that do not ascend, 269 entries, definite and indefinite), which the decoder refuses
+    def b(xs: Int*): Array[Byte] = xs.map(_.toByte).toArray
+    val header =
+      LeiosFetch
+        .encode(LeiosFetch.Message.BlockRequest(point))
+        .toOption
+        .fold(Array.emptyByteArray)(_.drop(2).toArray)
+    def request(map: Array[Byte]): Array[Byte] = b(0x83, 0x03) ++ header ++ map
+    def entry(w: Int): Array[Byte] = b(0x19, w >> 8, w & 0xff, 0x01)
+    def entries(n: Int): Array[Byte] = (0 until n).toArray.flatMap(entry)
+    val bitmapRules = Vector(
+      b(0xa1, 0x05, 0x00),
+      b(0xbf, 0x05, 0x00, 0xff),
+      b(0xa1) ++ entry(268),
+      b(0xa2, 0x03, 0x01, 0x02, 0x01),
+      b(0xbf, 0x03, 0x01, 0x03, 0x01, 0xff),
+      b(0xb9, 269 >> 8, 269 & 0xff) ++ entries(269),
+      b(0xbf) ++ entries(269) ++ b(0xff)
+    ).map(request)
+    seeds.flatMap(LeiosFetch.encode(_).toOption.map(_.toArray)) ++ bitmapRules ++
       netCorpus("leios-fetch:leiosBlockFetchMessage")()
 
   private val leiosNotifySeeds: () => Vector[Array[Byte]] = () =>
