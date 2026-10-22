@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.network
 
 import cats.effect.syntax.all.*
-import cats.effect.{Ref, Resource, Temporal}
+import cats.effect.{Async, Ref, Resource, Temporal}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -18,11 +18,25 @@ import NetworkError.RuntimeViolation
   * tip, and payload values remain codec-owned.
   */
 object ChainSyncRuntime:
+  /** Both intersection outcomes retain the advertised server tip (Client.hs:1310–1341). */
+  enum Intersection[+Q, +T]:
+    case Found(point: Q, remoteTip: T)
+    case NotFound(remoteTip: T)
+
+    def tip: T = this match
+      case Found(_, remoteTip) => remoteTip
+      case NotFound(remoteTip) => remoteTip
+
+    def toOption: Option[(Q, T)] = this match
+      case Found(point, remoteTip) => Some(point -> remoteTip)
+      case NotFound(_)             => None
+
   enum Update[+Q, +T, +P]:
     case RollForward(payload: P, tip: T)
     case RollBackward(point: Q, tip: T)
 
   trait Client[F[_], Q, T, P]:
+    def findIntersectResult(points: Vector[Q])(using Raise[F, NetworkError]): F[Intersection[Q, T]]
     def findIntersect(points: Vector[Q])(using Raise[F, NetworkError]): F[Option[(Q, T)]]
     def requestNext(using Raise[F, NetworkError]): F[Update[Q, T, P]]
     def requestNextBatch(n: Int)(using Raise[F, NetworkError]): F[Vector[Update[Q, T, P]]]
@@ -33,6 +47,39 @@ object ChainSyncRuntime:
     def idle: F[Boolean]
     def idling: F[Boolean]
     def observe(observer: ChainSyncClient.Observer[F]): Resource[F, Unit]
+
+  /** Single-caller rolling client. Outstanding requests include completed, uncollected replies.
+    * Production submits per-request receiver hooks: AwaitReply runs immediately in the receiver,
+    * even while the sender handles an earlier reply. Raw submission and caller Await callbacks
+    * retain the legacy collector API; registered observers belong to legacy methods. Resource
+    * cancellation with outstanding work terminates the connection rather than exposing an unaligned
+    * reusable channel.
+    */
+  trait Pipeline[F[_], Q, T, P] extends Client[F, Q, T, P]:
+    def submit(using Raise[F, NetworkError]): F[Unit]
+    def submitObserved(hook: ChainSyncClient.ReceiverHook[F])(using Raise[F, NetworkError]): F[Unit]
+    def tryCollect(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Option[Update[Q, T, P]]]
+    def collect(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Update[Q, T, P]]
+    def serviceAwait(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Unit]
+    def outstanding: F[Int]
+
+    /** Collect outstanding replies without legacy reply observers; the callback accounts for each
+      * discarded final reply (for example, retiring its captured request context).
+      */
+    def drain(onAwait: F[Unit])(onUpdate: Update[Q, T, P] => F[Unit])(using
+        Raise[F, NetworkError]
+    ): F[Unit]
+
+  def resource[F[_]: Async, Q, T, P](
+      channel: MuxChannel[F],
+      point: ChainSyncEngine.PointCodec[Q],
+      tip: ChainSyncEngine.TipCodec[T],
+      payload: ChainSyncEngine.PayloadCodec[P],
+      abort: NetworkError => F[Unit],
+      settings: ClientSettings = ClientSettings(),
+      maxOutstanding: Int = 300
+  )(using Raise[F, NetworkError]): Resource[F, Pipeline[F, Q, T, P]] =
+    ChainSyncPipeline.resource(channel, point, tip, payload, abort, settings, maxOutstanding)
 
   trait Source[F[_], Q, T, P]:
     def intersect(points: Vector[Q]): F[Either[T, (Q, T)]]
@@ -153,14 +200,19 @@ object ChainSyncRuntime:
 
       new Client[F, Q, T, P]:
         def findIntersect(points: Vector[Q])(using Raise[F, NetworkError]) =
+          findIntersectResult(points).map(_.toOption)
+
+        def findIntersectResult(points: Vector[Q])(using
+            Raise[F, NetworkError]
+        ): F[Intersection[Q, T]] =
           flight {
             send(Message.FindIntersect(points)) *> receive.flatMap {
               case Message.IntersectFound(point, tip) if points.contains(point) =>
-                F.pure(Some(point -> tip))
+                F.pure(Intersection.Found(point, tip))
               case Message.IntersectFound(_, _) =>
                 illegal(RuntimeViolation.IntersectionNotOffered)
-              case Message.IntersectNotFound(_) => F.pure(None)
-              case other                        => unexpected(other)
+              case Message.IntersectNotFound(tip) => F.pure(Intersection.NotFound(tip))
+              case other                          => unexpected(other)
             }
           }
 

@@ -28,7 +28,7 @@ import UpstreamGenesisCases.{Component, End, PeerId, Scenario}
   * protocol engines. Virtual nanoseconds represent native picoseconds; policy clocks retain the
   * original units, including the native microsecond bucket timer rounding.
   */
-object UpstreamGenesisReplay:
+object UpstreamGenesisReplay extends munit.Assertions:
   enum Problem extends DomainError:
     case Storage(cause: StorageError)
     case Journal(cause: UpstreamGenesisStorage.Problem)
@@ -470,29 +470,29 @@ object UpstreamGenesisReplay:
                                                     )
                                                     .start
                                                 )(_.cancel)
-                                                chainSync <- Resource.eval(
-                                                  ChainSyncClient(
-                                                    clientCS,
-                                                    NtNHeader.codec,
-                                                    ChainSyncClient.Settings(timeouts =
-                                                      Some(
-                                                        ChainSyncRuntime.Timeouts(
-                                                          deadline(
-                                                            scenario.config.chainSyncTimeouts,
-                                                            scenario.chainSync.intersect
-                                                          ),
-                                                          deadline(
-                                                            scenario.config.chainSyncTimeouts,
-                                                            scenario.chainSync.canAwait
-                                                          ),
-                                                          deadline(
-                                                            scenario.config.chainSyncTimeouts,
-                                                            scenario.chainSync.mustReply
-                                                          )
+                                                chainSync <- ChainSyncClient.resource(
+                                                  clientCS,
+                                                  NtNHeader.codec,
+                                                  clientMux.abort,
+                                                  ChainSyncClient.Settings(timeouts =
+                                                    Some(
+                                                      ChainSyncRuntime.Timeouts(
+                                                        deadline(
+                                                          scenario.config.chainSyncTimeouts,
+                                                          scenario.chainSync.intersect
+                                                        ),
+                                                        deadline(
+                                                          scenario.config.chainSyncTimeouts,
+                                                          scenario.chainSync.canAwait
+                                                        ),
+                                                        deadline(
+                                                          scenario.config.chainSyncTimeouts,
+                                                          scenario.chainSync.mustReply
                                                         )
                                                       )
                                                     )
-                                                  )
+                                                  ),
+                                                  maxOutstanding = 20
                                                 )
                                                 blockFetch <- BlockFetchClient.resource(
                                                   clientBF,
@@ -540,14 +540,19 @@ object UpstreamGenesisReplay:
                                                   15,
                                                   chainSync,
                                                   blockFetch,
-                                                  clientMux
+                                                  clientMux,
+                                                  chainSyncPipeline = Some(chainSync)
                                                 )
                                                 peer <- Peer.over(
                                                   connection,
                                                   Peer.Settings(
                                                     SocketAddress[Host](ip"10.1.1.1", port"3001"),
                                                     42L,
-                                                    byronEpochSlots = 1
+                                                    byronEpochSlots = 1,
+                                                    pipelineWindow =
+                                                      xyz.kd5ujc.scarab.network.ChainSyncPipelineDecision.Window
+                                                        .checked(10, 20)
+                                                        .fold(e => fail(e.toString), identity)
                                                   ),
                                                   _ => IO.unit,
                                                   headers = Some(
@@ -616,7 +621,9 @@ object UpstreamGenesisReplay:
                                                           IO.pure
                                                         )
                                                       )
-                                                  )
+                                                  ),
+                                                  heightSnapshot =
+                                                    xyz.kd5ujc.scarab.node.ChainSyncHeights.origin
                                                 )
                                               yield peer -> servingChainSync
                                             }

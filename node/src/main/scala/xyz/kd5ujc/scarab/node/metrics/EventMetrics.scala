@@ -273,6 +273,7 @@ final class EventMetrics[F[_]: Sync] private (
       metrics.inc(chainSyncRounds) *>
         metrics.inc(chainSyncHeaders, (), received.toDouble) *>
         metrics.observe(chainSyncRoundSeconds, millis / 1000.0)
+    case Peer.Observation.HeaderReceived => metrics.inc(chainSyncHeaders)
     case Peer.Observation.Fetched(millis) =>
       metrics.observe(blockFetchSeconds, millis / 1000.0)
     case Peer.Observation.Announced(_) => Sync[F].unit

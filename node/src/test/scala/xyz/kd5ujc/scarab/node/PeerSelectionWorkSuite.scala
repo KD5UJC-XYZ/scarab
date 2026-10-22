@@ -41,6 +41,12 @@ class PeerSelectionWorkSuite extends FailsOnUncaught:
               ChainSync.Point.Origin -> ChainSync.Tip.Origin
             )
           )
+        def findIntersectResult(points: Vector[ChainSync.Point])(using Raise[IO, NetworkError]) =
+          findIntersect(points).map(
+            _.fold[ChainSyncClient.Intersection](
+              ChainSyncRuntime.Intersection.NotFound(ChainSync.Tip.Origin)
+            ) { (point, remoteTip) => ChainSyncRuntime.Intersection.Found(point, remoteTip) }
+          )
         def requestNext(using Raise[IO, NetworkError]) =
           IO.raiseError[ChainSyncClient.Update[NtNHeader]](new AssertionError("batch expected"))
         def requestNextBatch(@scala.annotation.unused count: Int)(using Raise[IO, NetworkError]) =
@@ -98,7 +104,8 @@ class PeerSelectionWorkSuite extends FailsOnUncaught:
                   ),
                   _ => IO(fail("active worker owns preparation")),
                   pool = Some(pool),
-                  selectionWork = Some(bodyWork)
+                  selectionWork = Some(bodyWork),
+                  heightSnapshot = xyz.kd5ujc.scarab.node.ChainSyncHeights.origin
                 )
               }
             }

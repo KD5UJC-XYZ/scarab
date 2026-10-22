@@ -59,6 +59,12 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
                   )
                 )
             }
+          def findIntersectResult(points: Vector[ChainSync.Point])(using Raise[IO, NetworkError]) =
+            findIntersect(points).map(
+              _.fold[ChainSyncClient.Intersection](
+                ChainSyncRuntime.Intersection.NotFound(ChainSync.Tip.Origin)
+              ) { (point, remoteTip) => ChainSyncRuntime.Intersection.Found(point, remoteTip) }
+            )
           def requestNext(using Raise[IO, NetworkError]) =
             IO.raiseError[ChainSyncClient.Update[NtNHeader]](new AssertionError("CSJ is waiting"))
           def requestNextBatch(@scala.annotation.unused n: Int)(using Raise[IO, NetworkError]) =
@@ -169,7 +175,8 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
                         }
                       else IO.pure(HeaderGate.Acceptance.End(ChainSync.Point.Origin))
                     def counts = IO.pure(HeaderGate.Counts(0, 0, 0)))
-            )
+            ),
+            heightSnapshot = xyz.kd5ujc.scarab.node.ChainSyncHeights.origin
           )
           .use { peer =>
             if operation != Operation.Waiting && operation != Operation.DrainBatch then

@@ -53,6 +53,7 @@ def sources(root: Path) -> list[Source]:
                 "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/")),
         Source("network", "IntersectMBO/ouroboros-network", network["sourceCommit"],
                ("cabal.project", "ouroboros-network/protocols/tests/", "ouroboros-network/protocols/tests-lib/",
+                "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/",
                 "ouroboros-network/tests/", "network-mux/test/", "network-mux/src/Network/Mux.hs",
                 "network-mux/src/Network/Mux/",
                 "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake.hs",

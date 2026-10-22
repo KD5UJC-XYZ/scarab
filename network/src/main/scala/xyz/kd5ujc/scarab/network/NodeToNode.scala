@@ -19,6 +19,9 @@ import scala.concurrent.duration.*
   * @param blockFetchEnded
   *   Retire attribution to the adding BlockFetch client after its successful MsgClientDone, before
   *   another hot protocol can wait while finishing (consensus ClientInterface.hs:193).
+  * @param chainSyncPipeline
+  *   The owned rolling pipeline supplied by production hot activations. Test connections can retain
+  *   their explicitly scripted fixed-batch client.
   */
 final class NodeToNodeConnection[F[_], P](
     val version: Int,
@@ -27,7 +30,8 @@ final class NodeToNodeConnection[F[_], P](
     val mux: Mux[F],
     val transactions: Option[TxSubmissionClient.Running[F]] = None,
     val fetchPerformance: Option[F[FetchGsv.PeerGsv]] = None,
-    blockFetchEnded: Option[F[Unit]] = None
+    blockFetchEnded: Option[F[Unit]] = None,
+    val chainSyncPipeline: Option[ChainSyncClient.Pipeline[F, P]] = None
 ):
   /** End the hot protocols on the wire, so the connection can carry a new activation: ChainSync and
     * BlockFetch say `MsgDone` where they are idle, TxSubmission2 at the peer's next blocking
@@ -95,7 +99,13 @@ final class WarmConnection[F[_], P] private[network] (
       )
       chainSyncChannel <- Resource.eval(mux.channel(Protocols.ChainSync, role))
       blockFetchChannel <- Resource.eval(mux.channel(Protocols.BlockFetch, role))
-      chainSync <- Resource.eval(ChainSyncClient(chainSyncChannel, codec, settings.chainSync))
+      chainSync <- ChainSyncClient.resource(
+        chainSyncChannel,
+        codec,
+        mux.abort,
+        settings.chainSync,
+        maxOutstanding = settings.chainSync.pipelineCapacity
+      )
       blockFetch <- BlockFetchClient.resource(blockFetchChannel, mux.abort, settings.blockFetch)
     yield NodeToNodeConnection(
       version,
@@ -104,7 +114,8 @@ final class WarmConnection[F[_], P] private[network] (
       mux,
       running,
       fetchPerformance,
-      blockFetchEnded
+      blockFetchEnded,
+      Some(chainSync)
     )
 
 object NodeToNode:
@@ -131,8 +142,9 @@ object NodeToNode:
       * of the ChainSync queue is derived from how many replies a peer may have in flight.
       */
     def pipelining(requests: Int): Settings =
-      copy(mux =
-        mux.copy(ingressLimit =
+      copy(
+        chainSync = chainSync.copy(pipelineCapacity = requests.max(1)),
+        mux = mux.copy(ingressLimit =
           IngressLimits.nodeToNode(
             IngressLimits.Parameters(chainSyncPipeliningHighMark = requests.max(300))
           )

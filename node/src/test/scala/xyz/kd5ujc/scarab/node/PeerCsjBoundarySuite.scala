@@ -34,6 +34,12 @@ class PeerCsjBoundarySuite extends FailsOnUncaught:
         chainSync = new ChainSyncClient[IO, NtNHeader]:
           def findIntersect(points: Vector[ChainSync.Point])(using Raise[IO, NetworkError]) =
             intersections.update(_ + 1).as(points.headOption.map(_ -> ChainSync.Tip.Origin))
+          def findIntersectResult(points: Vector[ChainSync.Point])(using Raise[IO, NetworkError]) =
+            findIntersect(points).map(
+              _.fold[ChainSyncClient.Intersection](
+                ChainSyncRuntime.Intersection.NotFound(ChainSync.Tip.Origin)
+              ) { (point, remoteTip) => ChainSyncRuntime.Intersection.Found(point, remoteTip) }
+            )
           def requestNext(using Raise[IO, NetworkError]) =
             IO.raiseError[ChainSyncClient.Update[NtNHeader]](new AssertionError("batch required"))
           def requestNextBatch(@scala.annotation.unused n: Int)(using Raise[IO, NetworkError]) =
@@ -112,7 +118,8 @@ class PeerCsjBoundarySuite extends FailsOnUncaught:
             Peer
               .Settings(SocketAddress[Host](ip"10.5.0.1", port"3001"), 42, byronEpochSlots = 21600),
             _ => IO.unit,
-            genesis = Some(control)
+            genesis = Some(control),
+            heightSnapshot = xyz.kd5ujc.scarab.node.ChainSyncHeights.origin
           )
           .use { peer =>
             Resource

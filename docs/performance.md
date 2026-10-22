@@ -303,6 +303,12 @@ starvation warnings are lines containing `starvation-and-tuning`. `python3 scrip
 
 ## 7. ChainSync pipelining depth (D3) and header-first validation (G6)
 
+These measurements describe the historical round-based client. The rolling implementation in
+[#310](https://github.com/KD5UJC-XYZ/scarab/issues/310) uses independent low/high request marks
+200/300; `--read-ahead` bounds body-publication chunks. Its private relay observations are recorded
+in [compatibility.md](compatibility.md) and do not establish a controlled throughput improvement
+over these earlier measurements. See the [rolling contract](design/chainsync-pipeline.md).
+
 ### What limits the depth
 
 The note that 256 pipelined ChainSync requests timed out against the public relay (while 64 to 128

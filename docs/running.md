@@ -92,7 +92,9 @@ value except `--forge` and `--dump-state-full`. An unknown flag, a repeated flag
 | `--stall-minutes N` | `10` (`0`: off) | log a `stalled` event, once, when no block has been extended for N minutes while a peer announced a longer chain than ours; `scarab_follower_stalled` is 1 for as long as it lasts and `scarab_follower_stalls_total` counts them, so Grafana can alert on a node that is up but not following. See "Stall watchdog" |
 | `--stall-exit-after <Ns\|Nm\|Nh>` | off | end the node when a stall (see `--stall-minutes`) has lasted this long: it logs `stallExit`, closes down like on a signal (the shutdown snapshot is taken) and exits with code 4, so a supervisor that restarts it (Docker `unless-stopped`) brings it back from the newest snapshot. Needs `--stall-minutes` and a longer time than it. See "Stall watchdog" |
 | `--churn-interval <Ns\|Nm>` | off (test only) | the churn governor's rounds follow each other this often (with a tenth of it as fuzz) and the waits for connecting and for the known set are at most that long, instead of 3300 s plus up to 600 s in the fetch mode deadline and 900 s plus up to 60 s in bulk sync, with waits of up to 300 s. The `governor` devnet scenario uses it; a real node does not |
-| `--read-ahead N` | `128` | ChainSync requests pipelined per round, and the blocks of a round fetched in ranges of at most 100, while far behind. 64, 128, 200 and 256 were each run for 15 minutes against the public Preview relay without a timeout (the relay answers a 256-header round in 0.26 s on average); 128 and above are about 6 to 10% faster than 64, see [performance.md](performance.md) section 7 (D3) |
+| `--read-ahead N` | `128` | Maximum headers in an ordered body-publication chunk. This does not change the ChainSync request window. Historical fixed-batch measurements remain in [performance.md](performance.md), section 7 (D3) |
+| `--chain-sync-low N` | `200` | Native rolling ChainSync low watermark; zero is allowed, and it must not exceed the high watermark |
+| `--chain-sync-high N` | `300` | Native rolling ChainSync high watermark and maximum outstanding requests; 1 to 65,535 |
 | `--plutus-workers N` | min(4, available CPUs), at least 1 | node-wide bound for dependency-batched Plutus transaction jobs; `1` uses exact serial block validation; ledger application stays ordered; see [design](design/parallel-plutus.md) |
 | `--cpu-threads N` | one per available CPU | workers of the pool the follower runs on (`scarab-cpu-N`: header handling, chain selection, the rules, persisting), apart from the pool that serves the network, timers and the forger; `0` runs everything on the cats-effect compute pool, as before D8 (still measured) |
 | `--dump-state <dir>` | off | write a ledger-state digest (`<slot>-<hash>.json`) at the points of `--dump-state-at`, for the db-analyser comparison below |
@@ -1003,7 +1005,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `stalled` | `Chain.Stalled` | Warning | `idleSeconds`, `ourBlock`, `peerBlock` |
 | `stallExit` | `Chain.StallExit` | Error | `idleSeconds`, `ourBlock`, `peerBlock` |
 | `headersChecked` | `Chain.HeadersChecked` | Info | `validated`, `unchecked`, `waited` |
-| `chainSyncRounds` | `Chain.ChainSyncRounds` | Info | `rounds`, `headers`, `avgMs`, `maxMs`, `maxDepth` |
+| `chainSyncRounds` | `Chain.ChainSyncRounds` | Info | `rounds`, `headers`, `avgMs`, `maxMs`, `maxDepth`; legacy batch facade only; production rolling sessions retain the per-reply header counter and do not emit round aggregates |
 | `slowFetch` | `Chain.SlowFetch` | Info | `millis` |
 | `ledgerEpoch` | `Ledger.LedgerEpoch` | Info | `epoch`, `utxo`, `accounts`, `pools`, `treasury`, `reserves`, `protocolVersion`, `phase2`, `scriptIntegrityHashChecked`, `scheduling` |
 | `connection` | `Net.Connection` | Info (Warning when `what` is `refused`) | `remote`, `what`, `provenance`, `from`, `to`, `reason` |
@@ -1433,7 +1435,7 @@ recoverable connection closures; unexpected network exceptions stop with exit 7.
 The multiplexer's ingress limits are the reference's and are not configurable
 (`IngressLimits`, ouroboros-network 1.2.0.0, network-mux 0.11.0.0): ChainSync 462,000 bytes, BlockFetch
 23,068,694, TxSubmission2 721,424, KeepAlive 1,408, Handshake/PeerSharing 5,760; each node-to-client queue has the reference local-interface ceiling of 4,294,967,295 bytes. A
-`--read-ahead` above the reference's pipelining high mark of 300 raises the ChainSync limit with it.
+`--chain-sync-high` above the reference's pipelining high mark of 300 raises the ChainSync ingress limit with it.
 
 An established connection may wait indefinitely between mux SDUs. Once header bytes arrive, that SDU
 must complete within 30 s; trickled bytes do not restart the timer. A write gets 30 s per SDU in its batch,
@@ -1622,9 +1624,10 @@ skips the fuzz steps and passes. It can be started by hand from the Actions tab,
 
 ```sh
 java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.tools.CaptureMain capture \
-  --peer <host>:<port> --magic M --blocks N|all --out <file> [--from <slot>.<hashhex>]
+  --peer <host>:<port> --magic M --blocks N|all --out <file> [--from <slot>.<hashhex> --from-block-no N]
 ```
 
+A non-genesis `--from` requires its exact `--from-block-no` for the native ChainSync policy.
 It starts at genesis (or after `--from`) and keeps going until the recorded blocks are 10 deep, so
 none is rolled back; `--blocks all` records up to 10 blocks behind the tip. The fixtures under
 `fixtures/preview`, `fixtures/mainnet` and `fixtures/eras` were captured with it.
@@ -1808,5 +1811,7 @@ Conway starts at 9). The Conway versions are governance: a HardFork action per v
 Recorded results and the commits they were obtained on are in
 [compatibility.md](compatibility.md) (evidence log).
 
-BlockFetch coordination retains bounded candidate histories: individual ChainSync batches
-use at most 2048 requests even when `--read-ahead` is larger. The default 128 is unchanged.
+BlockFetch coordination retains bounded candidate histories. ChainSync uses the pinned reference's
+rolling low/high policy, collecting and refilling after handled replies rather than waiting for a
+fixed batch. Its default watermarks are 200/300. `--read-ahead` bounds ordered body-publication
+chunks independently and retains its default of 128.

@@ -65,6 +65,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
                 ),
               (_, _) => (entered.offer(()) *> IO.never[Unit]).guarantee(finalized.update(_ + 1)),
               _ => IO.unit,
+              ChainSyncHeights.origin,
               None,
               None,
               None,
@@ -171,148 +172,206 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
     import cats.mtl.Raise
     import xyz.kd5ujc.scarab.node.forge.ForgedChain
     import xyz.kd5ujc.scarab.protocol.ChainSync.Point
-    NodeScope.resource.use { node =>
-      given Handle[IO, NodeError] = node
-      Supervisor[IO](await = false).use { supervisor =>
-        for
-          chain <- ForgedChain.forge(5000 until 5008)
-          header = chain.headers.head
-          tip = ChainSync.Tip(
-            chain.headers(Peer.Depth).point,
-            ChainSync.UInt64.saturating(chain.headers(Peer.Depth).blockNo)
-          )
-          delivered <- Deferred[IO, Unit]
-          filled <- Deferred[IO, Unit]
-          finishFirst <- Deferred[IO, Unit]
-          firstEnded <- Deferred[IO, Unit]
-          secondStarted <- Deferred[IO, Unit]
-          activations <- Ref.of[IO, Int](0)
-          pool <- BlockPool.create[IO]
-          events <- Ref.of[IO, Vector[Event[PeerNetwork.Addr]]](Vector.empty)
-          cursor = Resource.eval(Ref.of[IO, Int](0)).map { position =>
-            new ChainSyncServer.Source[IO, NtNHeader]:
-              def intersect(points: Vector[Point]) =
-                if points.contains(Point.Origin) then position.set(0).as(Right(Point.Origin -> tip))
-                else IO.pure(Left(tip))
-              def poll = position.getAndUpdate(_ + 1).map { i =>
-                chain.headers
-                  .take(Peer.Depth + 1)
-                  .lift(i)
-                  .map(h => ChainSyncServer.Update.RollForward(NtNHeader(h.era, h.raw, None), tip))
+    ForgedChain.forge(5000 until 5030).flatMap { chain =>
+      cats.effect.testkit.TestControl.executeEmbed {
+        NodeScope.resource.use { node =>
+          given Handle[IO, NodeError] = node
+          Supervisor[IO](await = false).use { supervisor =>
+            for
+              available <- fs2.concurrent.SignallingRef[IO, Int](Peer.Depth + 1)
+              offered <- Ref.of[IO, Vector[Point]](Vector(Point.Origin))
+              awaiting <- Deferred[IO, Unit]
+              _ <- IO(assert(chain.headers.size > Peer.Depth + 2))
+              header = chain.headers.head
+              tipOf = (count: Int) =>
+                val last = chain.headers(count - 1)
+                ChainSync.Tip(
+                  last.point,
+                  ChainSync.UInt64.from(last.blockNo).fold(error => fail(error.toString), identity)
+                )
+              heights = new Peer.HeightSnapshot[IO]:
+                def capture = offered.get.map(points =>
+                  Peer.HeightSnapshot.Captured(
+                    points,
+                    chain.headers
+                      .map(h => h.point -> Option(h.blockNo))
+                      .toMap
+                      .updated(Point.Origin, None)
+                  )
+                )
+                def unavailable[A](
+                    cause: xyz.kd5ujc.scarab.ledger.ChainSyncInternalProblem
+                ): IO[A] = IO(fail(cause.message))
+              delivered <- Deferred[IO, Unit]
+              filled <- Deferred[IO, Unit]
+              finishFirst <- Deferred[IO, Unit]
+              firstEnded <- Deferred[IO, Unit]
+              secondStarted <- Deferred[IO, Unit]
+              activations <- Ref.of[IO, Int](0)
+              pool <- BlockPool.create[IO]
+              events <- Ref.of[IO, Vector[Event[PeerNetwork.Addr]]](Vector.empty)
+              cursor = Resource.eval(Ref.of[IO, Int](0)).map { position =>
+                new ChainSyncServer.Source[IO, NtNHeader]:
+                  def intersect(points: Vector[Point]) = available.get.flatMap { count =>
+                    val selected = chain.headers.take(count)
+                    val common = points
+                      .find(point => point == Point.Origin || selected.exists(_.point == point))
+                    common.fold(
+                      IO.pure(Left(tipOf(count)): Either[ChainSync.Tip, (Point, ChainSync.Tip)])
+                    ) { point =>
+                      val next =
+                        if point == Point.Origin then 0
+                        else selected.indexWhere(_.point == point) + 1
+                      position.set(next).as(Right(point -> tipOf(count)))
+                    }
+                  }
+                  def poll = available.get.flatMap { count =>
+                    position.modify { i =>
+                      if i >= count then i -> None
+                      else
+                        (i + 1) -> Some(
+                          ChainSyncServer.Update.RollForward(
+                            NtNHeader(chain.headers(i).era, chain.headers(i).raw, None),
+                            tipOf(count)
+                          )
+                        )
+                    }
+                  }
+                  def await = awaiting
+                    .complete(())
+                    .void *> available.discrete.evalMap(_ => poll).unNone.head.compile.lastOrError
               }
-              def await = IO.never[ChainSyncServer.Update[NtNHeader]]
-          }
-          blocks = new BlockFetchServer.Blocks[IO]:
-            def range(from: Point, to: Point, max: Int) =
-              val at = chain.headers.indexWhere(_.point == from)
-              val raw = Option.when(at >= 0 && from == to)(
-                fs2.Stream.emit(chain.raws(at.max(0))).covary[IO]
+              blocks = new BlockFetchServer.Blocks[IO]:
+                def range(from: Point, to: Point, max: Int) =
+                  val at = chain.headers.indexWhere(_.point == from)
+                  val raw = Option.when(at >= 0 && from == to)(
+                    fs2.Stream.emit(chain.raws(at.max(0))).covary[IO]
+                  )
+                  filled.complete(()).void.whenA(to == chain.headers(Peer.Depth).point).as(raw)
+              servers = ServerHandlers(NtNHeader.codec, cursor, blocks, handlers.transactions)
+              transport <- InMemoryPeers.create(magic)
+              peer = InMemoryPeers.address(1)
+              _ <- transport.serve(peer, servers)
+              manager <- ConnectionManager.create[IO]()
+              metrics <- Ref.of[IO, PeerMetrics[PeerNetwork.Addr]](PeerMetrics.empty())
+              follow: OutboundPeers.Follow[IO] = (over, _) =>
+                (caller: Raise[IO, NodeError]) ?=>
+                  Handle
+                    .allow[xyz.kd5ujc.scarab.ledger.PeerError] {
+                      for
+                        activation <- activations.getAndUpdate(_ + 1)
+                        intersection <- over.intersect(Vector(Point.Origin))
+                        _ <- IO(
+                          assertEquals(
+                            intersection,
+                            Some(if activation == 0 then Point.Origin else chain.headers.last.point)
+                          )
+                        )
+                        _ <-
+                          if activation == 0 then
+                            for
+                              next <- over.next
+                              h <- next match
+                                case SyncEvent.RollForward(h, _) => IO.pure(h)
+                                case other => IO(fail(s"expected actual header, got $other"))
+                              raw <- over.fetch(h)
+                              _ <- IO(assertEquals(raw, chain.raws.head))
+                              _ <- delivered.complete(()) *> finishFirst.get
+                              missing <- over.intersect(Vector(chain.headers.last.point))
+                              _ <- IO(assertEquals(missing, None))
+                              _ <- Raise[IO, xyz.kd5ujc.scarab.ledger.PeerError]
+                                .raise[xyz.kd5ujc.scarab.ledger.PeerError, Unit](
+                                  xyz.kd5ujc.scarab.ledger.PeerError.NoIntersection
+                                )
+                            yield ()
+                          else secondStarted.complete(()).void *> IO.never[Unit]
+                      yield ()
+                    }
+                    .rescue(e => caller.raise[NodeError, Unit](e))
+              hot = OutboundPeers.Hot[IO](
+                magic,
+                NodeToNode.Settings(),
+                Peer.Settings(
+                  SocketAddress(host"127.0.0.1", port"3001"),
+                  magic,
+                  readAhead = 1,
+                  byronEpochSlots = 21600
+                ),
+                follow,
+                _ => IO.unit,
+                heights,
+                None,
+                None,
+                None,
+                pool,
+                _ => IO.pure(Gsm.Candidate.DoesNotIntersect),
+                _ => IO.unit,
+                _ => IO.unit
               )
-              filled.complete(()).void.whenA(to == chain.headers(Peer.Depth).point).as(raw)
-          servers = ServerHandlers(NtNHeader.codec, cursor, blocks, handlers.transactions)
-          transport <- InMemoryPeers.create(magic)
-          peer = InMemoryPeers.address(1)
-          _ <- transport.serve(peer, servers)
-          manager <- ConnectionManager.create[IO]()
-          metrics <- Ref.of[IO, PeerMetrics[PeerNetwork.Addr]](PeerMetrics.empty())
-          follow: OutboundPeers.Follow[IO] = (over, _) =>
-            (caller: Raise[IO, NodeError]) ?=>
-              Handle
-                .allow[xyz.kd5ujc.scarab.ledger.PeerError] {
-                  for
-                    activation <- activations.getAndUpdate(_ + 1)
-                    intersection <- over.intersect(Vector(Point.Origin))
-                    _ <- IO(assertEquals(intersection, Some(Point.Origin)))
-                    _ <-
-                      if activation == 0 then
-                        for
-                          next <- over.next
-                          h <- next match
-                            case SyncEvent.RollForward(h, _) => IO.pure(h)
-                            case other => IO(fail(s"expected actual header, got $other"))
-                          raw <- over.fetch(h)
-                          _ <- IO(assertEquals(raw, chain.raws.head))
-                          _ <- delivered.complete(()) *> finishFirst.get
-                          missing <- over.intersect(Vector(chain.headers.last.point))
-                          _ <- IO(assertEquals(missing, None))
-                          _ <- Raise[IO, xyz.kd5ujc.scarab.ledger.PeerError]
-                            .raise[xyz.kd5ujc.scarab.ledger.PeerError, Unit](
-                              xyz.kd5ujc.scarab.ledger.PeerError.NoIntersection
-                            )
-                        yield ()
-                      else secondStarted.complete(()).void *> IO.never[Unit]
-                  yield ()
-                }
-                .rescue(e => caller.raise[NodeError, Unit](e))
-          hot = OutboundPeers.Hot[IO](
-            magic,
-            NodeToNode.Settings(),
-            Peer.Settings(
-              SocketAddress(host"127.0.0.1", port"3001"),
-              magic,
-              readAhead = 1,
-              byronEpochSlots = 21600
-            ),
-            follow,
-            _ => IO.unit,
-            None,
-            None,
-            None,
-            pool,
-            _ => IO.pure(Gsm.Candidate.DoesNotIntersect),
-            _ => IO.unit,
-            _ => IO.unit
-          )
-          outbound <- OutboundPeers.create(
-            transport,
-            manager,
-            OutboundPeers.Config(),
-            hot,
-            supervisor,
-            e =>
-              events.update(_ :+ e) *> (e match
-                case Event.Observed(_, Observation.HotEnded(_), _) => firstEnded.complete(()).void
-                case _                                             => IO.unit),
-            RefStateful(metrics)
-          )
-          _ <- outbound.establish(peer, DiffusionMode.InitiatorAndResponder, Provenance.Outbound)
-          _ <- outbound.activate(peer)
-          _ <- (delivered.get *> filled.get).timeout(5.seconds)
-          old <- outbound
-            .cachedSource(peer)
-            .flatMap(IO.fromOption(_)(new AssertionError("no delivering source")))
-          taken <- pool.session
-            .use(_.take(header.hash))
-            .flatMap(IO.fromOption(_)(new AssertionError("no actual cached original")))
-          _ <- finishFirst.complete(())
-          _ <- firstEnded.get.timeout(5.seconds)
-          warmSource <- outbound.cachedSource(peer)
-          _ <- IO(assertEquals(warmSource, None))
-          _ <- outbound.activate(peer)
-          _ <- secondStarted.get.timeout(5.seconds)
-          successor <- outbound
-            .cachedSource(peer)
-            .flatMap(IO.fromOption(_)(new AssertionError("no successor source")))
-          refusal = ValidationError(header.point, BlockFailure.HeaderDiffers)
-          _ <- pool.session.use(_.distrust(taken.origin, refusal))
-          opened <- transport.connections
-          observed <- events.get
-          remote <- transport
-            .resolve(peer)
-            .flatMap(e => IO.fromOption(e.toOption)(new AssertionError("source address")))
-          connected <- manager.lookup(remote)
-          active <- outbound.cachedSource(peer)
-          _ <- outbound.close(peer)
-        yield
-          assert(successor.activationGeneration > old.activationGeneration)
-          assertEquals(opened.getOrElse(peer, 0), 1)
-          assert(connected.exists(_.state.isLive))
-          assertEquals(active, Some(successor))
-          assert(observed.exists {
-            case Event.Observed(p, Observation.CachedBlockRejected(cause, generation, false), _) =>
-              p == peer && cause.cause == refusal && generation == old.activationGeneration
-            case _ => false
-          })
+              outbound <- OutboundPeers.create(
+                transport,
+                manager,
+                OutboundPeers.Config(),
+                hot,
+                supervisor,
+                e =>
+                  events.update(_ :+ e) *> (e match
+                    case Event.Observed(_, Observation.HotEnded(_), _) =>
+                      firstEnded.complete(()).void
+                    case _ => IO.unit),
+                RefStateful(metrics)
+              )
+              _ <- outbound.establish(
+                peer,
+                DiffusionMode.InitiatorAndResponder,
+                Provenance.Outbound
+              )
+              _ <- outbound.activate(peer)
+              _ <- (delivered.get *> filled.get).timeout(5.seconds)
+              old <- outbound
+                .cachedSource(peer)
+                .flatMap(IO.fromOption(_)(new AssertionError("no delivering source")))
+              taken <- pool.session
+                .use(_.take(header.hash))
+                .flatMap(IO.fromOption(_)(new AssertionError("no actual cached original")))
+              _ <- awaiting.get
+              _ <- offered.set(Vector(chain.headers.last.point))
+              _ <- finishFirst.complete(())
+              // Virtual time advances after drain has stopped submissions and awaits the real reply.
+              _ <- IO.sleep(1.second)
+              _ <- available.set(Peer.Depth + 2)
+              _ <- firstEnded.get.timeout(5.seconds)
+              warmSource <- outbound.cachedSource(peer)
+              _ <- IO(assertEquals(warmSource, None))
+              _ <- available.set(chain.headers.size)
+              _ <- outbound.activate(peer)
+              _ <- secondStarted.get.timeout(5.seconds)
+              successor <- outbound
+                .cachedSource(peer)
+                .flatMap(IO.fromOption(_)(new AssertionError("no successor source")))
+              refusal = ValidationError(header.point, BlockFailure.HeaderDiffers)
+              _ <- pool.session.use(_.distrust(taken.origin, refusal))
+              opened <- transport.connections
+              observed <- events.get
+              remote <- transport
+                .resolve(peer)
+                .flatMap(e => IO.fromOption(e.toOption)(new AssertionError("source address")))
+              connected <- manager.lookup(remote)
+              active <- outbound.cachedSource(peer)
+              _ <- outbound.close(peer)
+            yield
+              assert(successor.activationGeneration > old.activationGeneration)
+              assertEquals(opened.getOrElse(peer, 0), 1)
+              assert(connected.exists(_.state.isLive))
+              assertEquals(active, Some(successor))
+              assert(observed.exists {
+                case Event
+                      .Observed(p, Observation.CachedBlockRejected(cause, generation, false), _) =>
+                  p == peer && cause.cause == refusal && generation == old.activationGeneration
+                case _ => false
+              })
+          }
+        }
       }
     }
   }

@@ -4,6 +4,20 @@ package xyz.kd5ujc.scarab.node
 class MainArgsSuite extends munit.FunSuite:
   private val base = List("follow", "--genesis-dir", "/g", "--peer", "127.0.0.1:3001")
 
+  test("native request windows are independent of body-publication chunks") {
+    val defaults = Main.parse(base).fold(e => fail(e.message), identity)
+    assertEquals((defaults.chainSyncWindow.low, defaults.chainSyncWindow.high), (200, 300))
+    assertEquals(defaults.readAhead, 128)
+    val custom = Main
+      .parse(base ++ List("--read-ahead", "2", "--chain-sync-low", "3", "--chain-sync-high", "5"))
+      .fold(e => fail(e.message), identity)
+    assertEquals((custom.chainSyncWindow.low, custom.chainSyncWindow.high), (3, 5))
+    assertEquals(custom.readAhead, 2)
+    List(("-1", "300"), ("301", "300"), ("0", "0"), ("200", "65536")).foreach { (low, high) =>
+      assert(Main.parse(base ++ List("--chain-sync-low", low, "--chain-sync-high", high)).isLeft)
+    }
+  }
+
   test("known flags parse with their defaults") {
     val options = Main.parse(base).toOption.get
     assertEquals(options.queryPort, 7071)

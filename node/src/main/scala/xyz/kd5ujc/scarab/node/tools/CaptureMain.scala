@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.tools
 
-import cats.effect.{ExitCode, IO, IOApp}
+import cats.effect.{Deferred, ExitCode, IO, IOApp}
 import cats.mtl.{Handle, Raise}
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
-import xyz.kd5ujc.scarab.ledger.{ByronSpan, ChainError, Header, NodeError}
+import xyz.kd5ujc.scarab.ledger.{ByronSpan, ChainError, ChainSyncInternalProblem, Header, NodeError}
 import xyz.kd5ujc.scarab.node.{Peer, SyncEvent}
 
 /** Development tool, not part of the node: `xyz.kd5ujc.scarab.node.tools.CaptureMain`.
@@ -32,25 +32,53 @@ object CaptureMain extends IOApp:
       blocks <- flags.get("blocks").flatMap(b => if b == "all" then Some(All) else b.toIntOption)
       out <- flags.get("out").map(Path.of(_))
       from <- flags.get("from").fold(Option(ChainSync.Point.Origin))(parsePoint)
+      fromBlockNo <- from match
+        case ChainSync.Point.Origin => Some(None)
+        case _ =>
+          flags
+            .get("from-block-no")
+            .flatMap(value => scala.util.Try(BigInt(value)).toOption)
+            .flatMap(ChainSync.UInt64.from(_).toOption)
+            .map(Some(_))
       epochSlots = flags
         .get("byron-epoch-slots")
         .flatMap(_.toLongOption)
         .fold(ByronSpan.Absent.epochSlots)(BigInt(_))
-    yield (peer, magic, blocks, out, from, epochSlots)
+    yield (peer, magic, blocks, out, from, fromBlockNo, epochSlots)
     parsed match
       case None =>
         IO.println(
-          "usage: capture --peer <host>:<port> --magic M --blocks N|all --out <file> [--from <slot>.<hash>] [--byron-epoch-slots N]"
+          "usage: capture --peer <host>:<port> --magic M --blocks N|all --out <file> [--from <slot>.<hash> --from-block-no N] [--byron-epoch-slots N]"
         ).as(ExitCode(2))
-      case Some((peer, magic, n, out, from, epochSlots)) =>
+      case Some((peer, magic, n, out, from, fromBlockNo, epochSlots)) =>
         Handle
           .allow[NodeError] {
-            Peer
-              .nodeToNode[IO](
-                Peer.Settings(peer, magic, byronEpochSlots = epochSlots),
-                _ => IO.unit
-              )
-              .use(capture(_, n, from))
+            Deferred[IO, ChainSyncInternalProblem]
+              .flatMap { failures =>
+                val heights = new Peer.HeightSnapshot[IO]:
+                  def capture = IO.pure(
+                    Peer.HeightSnapshot.Captured(
+                      Vector(from),
+                      Map[ChainSync.Point, Option[BigInt]](ChainSync.Point.Origin -> None)
+                        .updated(from, fromBlockNo.map(_.value))
+                    )
+                  )
+                  def unavailable[A](cause: ChainSyncInternalProblem): IO[A] =
+                    failures.complete(cause) *> IO.never[A]
+                Peer
+                  .nodeToNode[IO](
+                    Peer.Settings(peer, magic, byronEpochSlots = epochSlots),
+                    _ => IO.unit,
+                    heights
+                  )
+                  .use(peer =>
+                    IO.race(capture(peer, n, from), failures.get).flatMap {
+                      case Left(blocks) => IO.pure(blocks)
+                      case Right(cause) =>
+                        Raise[IO, NodeError].raise[ChainSyncInternalProblem, Vector[Bytes]](cause)
+                    }
+                  )
+              }
               .flatMap(blocks =>
                 IO.blocking(Files.writeString(out, blocks.map(_.hex).mkString("", "\n", "\n")))
               )

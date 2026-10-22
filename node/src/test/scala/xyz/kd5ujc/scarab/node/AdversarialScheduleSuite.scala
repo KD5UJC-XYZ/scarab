@@ -14,7 +14,7 @@ import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, FollowerEvent, FollowerEvents, VolatileChain}
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
-import xyz.kd5ujc.scarab.ledger.{Block, ChainError, NodeError}
+import xyz.kd5ujc.scarab.ledger.{Block, ChainError, ChainSyncInternalProblem, NodeError}
 import xyz.kd5ujc.scarab.network.*
 import xyz.kd5ujc.scarab.network.selection.{
   DiffusionMode,
@@ -185,6 +185,19 @@ class AdversarialScheduleSuite extends FailsOnUncaught:
             .flatTap(now => clockReads.update(_ :+ now))
         def geometry = IO.pure(ForgedChain.geometry)
       headerCheck = HeaderClock.clocked[IO](clock, HeaderCheck.none[IO])
+      heights = new Peer.HeightSnapshot[IO]:
+        def capture = chain.get.map { current =>
+          val refs = current.anchor.block.toVector ++ current.blocks.map(_._1)
+          Peer.HeightSnapshot.Captured(
+            current.candidates,
+            refs
+              .map(block => block.point -> Option(block.blockNo))
+              .toMap
+              .updated(ChainSync.Point.Origin, None)
+          )
+        }
+        def unavailable[A](cause: ChainSyncInternalProblem): IO[A] =
+          fatalSink(fatals)(Fatal.Internal(cause)) *> IO.never[A]
       hot = OutboundPeers.Hot[IO](
         magic = magic,
         network = NodeToNode.Settings(),
@@ -196,6 +209,7 @@ class AdversarialScheduleSuite extends FailsOnUncaught:
         ),
         follow = (peer, track) => follower.session(peer, track),
         prepare = _ => IO.unit,
+        heightSnapshot = heights,
         headers = Some(headerCheck),
         transactions = None,
         observe = None,
