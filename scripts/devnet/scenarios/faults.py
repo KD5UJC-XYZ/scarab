@@ -60,6 +60,7 @@ class Run:
         self.crashed = set()          # nodes down by the schedule (a node exiting otherwise is a failure)
         self.restarts = []            # the Scala restarts, for the rejoin check
         self.executed = []            # what actually ran, with the time
+        self.problems = []            # a schedule action that could not be carried out
 
     # ------------------------------------------------------------ nodes
     def start_haskell(self, node, append=False):
@@ -68,8 +69,9 @@ class Run:
         docker("exec", "-d", ref(self.name), "/bin/sh", "-c", node_script(self.name, n, self.ports[n], append))
 
     def haskell_alive(self, node):
-        n = HASKELL[node]
-        return in_ref(self.name, f"kill -0 $(cat /work/node{n}.pid)").returncode == 0
+        """Whether the pool's recorded pid is a live process (`kill -0`; a failure answers False, it does not raise)."""
+        done = docker("exec", ref(self.name), "/bin/sh", "-c", f"kill -0 $(cat /work/node{HASKELL[node]}.pid)", check=False)
+        return done.returncode == 0
 
     def start_scala(self):
         log = (self.root / "follower.jsonl").open("a")
@@ -93,7 +95,9 @@ class Run:
             self.scala.wait()
         elif op == "kill":
             self.crashed.add(action["node"])
-            in_ref(self.name, f"kill -9 $(cat /work/node{HASKELL[action['node']]}.pid)")
+            done = docker("exec", ref(self.name), "/bin/sh", "-c", f"kill -9 $(cat /work/node{HASKELL[action['node']]}.pid)", check=False)
+            if done.returncode != 0:
+                self.problems.append(f"the crash of {action['node']} at {round(t, 1)} s found no live process: {done.stderr.strip()[:200]}")
         elif op == "start" and action["node"] == "scala":
             self.restarts.append({"at": round(t, 1), "eventsBefore": len(read_log(self.root / "follower.jsonl")[0])})
             docker("rm", "-f", f"{self.name}-scala", check=False)
@@ -239,6 +243,7 @@ def faults(args):
         text = (root / "follower.jsonl").read_text(errors="replace")
         logs = {n: in_ref(args.name, f"cat /work/node{HASKELL[n]}.log").stdout for n in HASKELL}
         k = plan["inputs"]["k"]
+        failures += run.problems
         failures += faultplan.growth_failures(samples, plan["quiet"])
         failures += faultplan.convergence_failures(final)
         failures += faultplan.rollback_failures(events, k)

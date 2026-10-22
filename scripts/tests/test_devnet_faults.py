@@ -2,12 +2,18 @@
 """The seeded fault schedule, its replay, the tc commands and the verdicts of the `faults` scenario (issue 224)."""
 import json
 import pathlib
+import socket
+import subprocess
 import sys
+import threading
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from devnet import faultplan, netfaults
+from devnet.scenarios import faults
 
 PARAMS = (5, 0.05, 0.1)   # k, active slot coefficient, slot length of a cardano-testnet environment
 
@@ -203,6 +209,103 @@ class ShapingTests(unittest.TestCase):
     def test_peer_ports_cover_the_other_two(self):
         for node in faultplan.NODES:
             self.assertEqual(sorted(netfaults.peer_ports(node)), sorted(n for n in faultplan.NODES if n != node))
+
+
+class ScenarioTests(unittest.TestCase):
+    def test_topology_names_the_proxy_ports_only(self):
+        ports = netfaults.peer_ports("p2")
+        topology = faults.topology(ports)
+        points = topology["localRoots"][0]["accessPoints"]
+        self.assertEqual(sorted(p["port"] for p in points), sorted(ports.values()))
+        self.assertEqual(topology["localRoots"][0]["hotValency"], 2)
+
+    def test_pool_script_records_its_pid_and_appends_on_restart(self):
+        first = faults.node_script("n", 2, 4002)
+        again = faults.node_script("n", 2, 4002, append=True)
+        self.assertIn("echo $$ > /work/node2.pid && exec cardano-node run", first)
+        self.assertIn("--port 4002", first)
+        self.assertTrue(first.endswith("> /work/node2.log 2>&1"))
+        self.assertTrue(again.endswith(">> /work/node2.log 2>&1"))
+
+    def test_a_dead_pool_is_reported_not_raised(self):
+        run = faults.Run(SimpleNamespace(name="n"), pathlib.Path("/nonexistent"))
+        with patch.object(faults, "docker", return_value=SimpleNamespace(returncode=1, stderr="no such process")) as docker:
+            self.assertFalse(run.haskell_alive("p2"))
+            self.assertEqual(docker.call_args.kwargs, {"check": False})
+            run.crashed.clear()
+            run.apply({"at": 5, "op": "kill", "node": "p3"}, 5.0)
+        self.assertEqual(len(run.problems), 1)
+        self.assertIn("p3", run.problems[0])
+        with patch.object(faults, "docker", return_value=SimpleNamespace(returncode=0, stderr="")):
+            self.assertTrue(run.haskell_alive("p2"))
+
+
+class ProxyTests(unittest.TestCase):
+    """lagproxy.py forwards through both the `--listen/--upstream` pair of peercut and repeated `--route`."""
+    LAGPROXY = pathlib.Path(__file__).resolve().parents[1] / "devnet" / "lagproxy.py"
+
+    def free_port(self):
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            return s.getsockname()[1]
+
+    def echo_server(self):
+        server = socket.socket()
+        server.bind(("127.0.0.1", 0))
+        server.listen()
+
+        def serve():
+            while True:
+                try:
+                    conn, _ = server.accept()
+                except OSError:
+                    return
+                with conn:
+                    data = conn.recv(64)
+                    conn.sendall(data.upper())
+        threading.Thread(target=serve, daemon=True).start()
+        return server
+
+    def ask(self, port, text):
+        import time
+        deadline = time.monotonic() + 10
+        while True:
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=5) as c:
+                    c.sendall(text)
+                    return c.recv(64)
+            except OSError:
+                if time.monotonic() > deadline:
+                    raise
+                time.sleep(0.1)
+
+    def run_proxy(self, *arguments):
+        control = "/nonexistent/freeze"   # never exists: the proxy never freezes
+        process = subprocess.Popen([sys.executable, "-I", str(self.LAGPROXY), "--delay", "0", "--control", control, *arguments])
+        self.addCleanup(process.wait)
+        self.addCleanup(process.terminate)
+        return process
+
+    def test_listen_and_upstream(self):
+        upstream = self.echo_server()
+        self.addCleanup(upstream.close)
+        listen = self.free_port()
+        self.run_proxy("--listen", str(listen), "--upstream", str(upstream.getsockname()[1]))
+        self.assertEqual(self.ask(listen, b"abc"), b"ABC")
+
+    def test_routes(self):
+        first, second = self.echo_server(), self.echo_server()
+        self.addCleanup(first.close)
+        self.addCleanup(second.close)
+        a, b = self.free_port(), self.free_port()
+        self.run_proxy("--route", f"{a}:{first.getsockname()[1]}", "--route", f"{b}:{second.getsockname()[1]}")
+        self.assertEqual(self.ask(a, b"one"), b"ONE")
+        self.assertEqual(self.ask(b, b"two"), b"TWO")
+
+    def test_no_route_is_refused(self):
+        done = subprocess.run([sys.executable, "-I", str(self.LAGPROXY), "--control", "x"], capture_output=True, text=True)
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("--route", done.stderr)
 
 
 if __name__ == "__main__":

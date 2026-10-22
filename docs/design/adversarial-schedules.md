@@ -53,7 +53,7 @@ the reproducible gate.
 
 `python3 scripts/devnet.py --name <name> faults --seed N --duration S` and
 [`.github/workflows/faults.yml`](../../.github/workflows/faults.yml) (own workflow, so it neither slows nor disturbs the
-`e2e` jobs; 45 minute hard limit, the run itself takes the schedule length plus about two minutes) run the Scala node as pool 1 of a three-pool cluster next to
+`e2e` jobs; 45 minute hard limit, the run itself takes the schedule length plus 20 to 30 seconds) run the Scala node as pool 1 of a three-pool cluster next to
 two Haskell reference pools (`cardano-node` 11.1.3) as in the `pool` scenario. The Scala node forges, listens and keeps a
 database. There is no transaction load; the chain is blocks only.
 
