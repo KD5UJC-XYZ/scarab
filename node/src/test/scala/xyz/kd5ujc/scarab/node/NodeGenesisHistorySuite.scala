@@ -96,6 +96,35 @@ class NodeGenesisHistorySuite extends FailsOnUncaught:
       count <- reads.get
     yield assertEquals(count, 0)
   }
+  test("production lazy entry point skips header resolution when disabled or caught up") {
+    for
+      reads <- Ref.of[IO, Int](0)
+      header = reads.update(_ + 1).as(HeaderTime(Point.Origin, 0))
+      clock = reads.update(_ + 1).as(DefaultCutoffPicos + 1)
+      disabled <- typed(
+        runtime(false, IO.pure(Gsm.Phase.Syncing), clock).at(Message.AwaitReply, header)
+      )
+      caughtUp <- typed(
+        runtime(true, IO.pure(Gsm.Phase.CaughtUp), clock).at(Message.RollBackward, header)
+      )
+      count <- reads.get
+      active <- typed(
+        runtime(true, IO.pure(Gsm.Phase.Syncing), clock).at(Message.AwaitReply, header)
+      )
+    yield
+      assertEquals(disabled, Right(()))
+      assertEquals(caughtUp, Right(()))
+      assertEquals(count, 0)
+      assertEquals(
+        active,
+        Left(
+          PeerError.Genesis(
+            PeerError.GenesisProblem
+              .HistoricalAwait(Point.Origin, 0, DefaultCutoffPicos + 1, DefaultCutoffPicos)
+          )
+        )
+      )
+  }
   test("history checks use each caller's error capability") {
     val check = runtime(true, IO.pure(Gsm.Phase.Syncing), IO.pure(DefaultCutoffPicos + 1))
     for

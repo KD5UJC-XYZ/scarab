@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.node
 
 import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.effect.std.Mutex
-import cats.effect.syntax.all.*
 import cats.syntax.all.*
 import scala.collection.immutable.SortedMap
 import scala.concurrent.duration.*
@@ -341,15 +340,3 @@ object GenesisGovernor:
       )
       lock <- Mutex[F]
     yield new GenesisGovernor(state, lock, view, config, observe)
-
-  def resource[F[_]: Async](
-      view: F[View],
-      defect: Throwable => F[Unit],
-      config: Config = Config()
-  ): Resource[F, GenesisGovernor[F]] =
-    Resource.eval(create(view, config)).flatMap { governor =>
-      Async[F]
-        .handleErrorWith(governor.run)(cause => defect(cause) *> Async[F].never[Nothing])
-        .background
-        .as(governor)
-    }

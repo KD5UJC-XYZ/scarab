@@ -167,6 +167,7 @@ enum BlockPoolProblem extends NodeError:
       "follower sessions do not share the same invalid-block registry"
 
 enum GenesisInternalProblem extends NodeError:
+  case PatienceWatcherFailed(cause: NetworkError)
   case MissingSharedBlockPool, UnsupportedHeaderFamily, MissingConnectionIdentity
   case InvalidConnectionIdentity(cause: xyz.kd5ujc.scarab.protocol.ConnectionIdentityError)
   case MissingDynamoJumpInfo, UnexpectedIntersection
@@ -175,7 +176,8 @@ enum GenesisInternalProblem extends NodeError:
   case HeaderSelectionUnavailable(point: ChainSync.Point)
   case HeaderStateUnavailable(point: ChainSync.Point)
   def message: String = this match
-    case MissingDynamoJumpInfo => "Genesis dynamo has no validated jump snapshot"
+    case PatienceWatcherFailed(cause) => s"Genesis patience watcher failed: ${cause.message}"
+    case MissingDynamoJumpInfo        => "Genesis dynamo has no validated jump snapshot"
     case UnexpectedIntersection =>
       "Genesis jumper with a settled intersection received another jump result"
     case UnsupportedHeaderFamily =>

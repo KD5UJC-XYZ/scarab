@@ -28,7 +28,6 @@ final case class GenesisSettings(
 
 object GenesisSettings:
   val PicosPerSecond: BigInt = BigInt(10).pow(12)
-  val HistoricityCutoffPicos: BigInt = BigInt(3 * 2160 * 20 + 3600) * PicosPerSecond
 
   def parse(value: Option[Json]): Either[ConfigError, GenesisSettings] =
     value match

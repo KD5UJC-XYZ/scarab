@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.effect.{Async, Ref, Resource}
+import cats.mtl.Handle
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.consensus.{ChainSelection, HeaderChain}
 import xyz.kd5ujc.scarab.consensus.genesis.GenesisDensity.{Fragment, LatestSlot}
@@ -67,6 +68,7 @@ final class GenesisRuntime[F[_]: Async] private (
         readings.update(_ - identity)
       )
       history <- Resource.eval(geometry)
+      historicity = NodeGenesisHistory.runtime[F](true, governor.phase, elapsed)
       ready <- work.session
       gateRef <- Resource.eval(Ref.of[F, Option[HeaderGate[F]]](None))
       requestHistory <- Resource.eval(Ref.of[F, Option[HeaderChain[NodeHeaderState]]](None))
@@ -75,6 +77,7 @@ final class GenesisRuntime[F[_]: Async] private (
       patience <- LimitOnPatience.resource[F](
         LeakyBucket.Config.disabled,
         disconnect(PeerError.Genesis(PeerError.GenesisProblem.LoPExpired)),
+        cause => fatal(GenesisInternalProblem.PatienceWatcherFailed(cause)),
         clock
       )
       peer <- governor.session(
@@ -134,15 +137,9 @@ final class GenesisRuntime[F[_]: Async] private (
           point: Point,
           known: Option[HeaderChain[NodeHeaderState]]
       ): F[Unit] =
-        governor.phase.flatMap {
-          case Gsm.Phase.CaughtUp => F.unit
-          case current =>
-            (headerTime(point, known), elapsed).tupled.flatMap { (header, now) =>
-              NodeGenesisHistory
-                .judge(message, header, current, now)
-                .fold(problem => refused(problem).void, _ => F.unit)
-            }
-        }
+        Handle
+          .allow[PeerError](historicity.at(message, headerTime(point, known)))
+          .rescue(error => disconnect(error) *> F.never[Unit])
       val observer = new ChainSyncClient.Observer[F]:
         def awaitReply: F[Unit] =
           requestHistory.get.flatMap(

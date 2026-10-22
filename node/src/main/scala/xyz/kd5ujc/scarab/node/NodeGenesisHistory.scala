@@ -42,14 +42,18 @@ object NodeGenesisHistory:
       cutoffPicos: BigInt
   ):
     def awaitReply(tip: HeaderTime)(using Raise[F, PeerError]): F[Unit] =
-      check(Message.AwaitReply, Some(tip))
+      at(Message.AwaitReply, Monad[F].pure(tip))
+
+    /** Resolve validated header time only when historicity applies to this message. */
+    def at(message: Message, header: F[HeaderTime])(using Raise[F, PeerError]): F[Unit] =
+      check(message, Some(header))
 
     /** Native rewind returns the oldest state removed, not the state at the rollback target. A
       * zero-depth rollback has no removed state and performs no historicity check.
       */
     def rollBackward(oldestRewound: Option[HeaderTime])(using Raise[F, PeerError]): F[Unit] =
-      check(Message.RollBackward, oldestRewound)
-    private def check(message: Message, header: Option[HeaderTime])(using
+      check(Message.RollBackward, oldestRewound.map(Monad[F].pure))
+    private def check(message: Message, header: Option[F[HeaderTime]])(using
         raise: Raise[F, PeerError]
     ): F[Unit] =
       if !enabled then Monad[F].unit
@@ -58,8 +62,8 @@ object NodeGenesisHistory:
           phase.flatMap {
             case Gsm.Phase.CaughtUp => Monad[F].unit
             case current =>
-              systemTime.flatMap { arrival =>
-                judge(message, time, current, arrival, cutoffPicos)
+              (time, systemTime).tupled.flatMap { (resolved, arrival) =>
+                judge(message, resolved, current, arrival, cutoffPicos)
                   .fold(problem => raise.raise(PeerError.Genesis(problem)), _ => Monad[F].unit)
               }
           }
