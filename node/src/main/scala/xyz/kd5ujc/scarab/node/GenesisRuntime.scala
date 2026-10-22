@@ -139,7 +139,9 @@ final class GenesisRuntime[F[_]: Async] private (
         Handle
           .allow[PeerError](historicity.at(message, headerTime(point, known)))
           .rescue(error => disconnect(error) *> F.never[Unit])
-      def observeRequest(history: F[Option[HeaderChain[NodeHeaderState]]]): ChainSyncClient.Observer[F] =
+      def observeRequest(
+          history: F[Option[HeaderChain[NodeHeaderState]]]
+      ): ChainSyncClient.Observer[F] =
         new ChainSyncClient.Observer[F]:
           override def capture(using cats.Applicative[F]): F[ChainSyncClient.Observer[F]] =
             history.map(known => observeRequest(F.pure(known)))
