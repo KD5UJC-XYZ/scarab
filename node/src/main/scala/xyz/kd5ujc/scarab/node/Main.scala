@@ -1092,7 +1092,7 @@ object Main extends IOApp:
             syncTargets <- setup.config.settings
               .syncTargets(Targets.sync)
               .fold(e => fail[Targets](e), IO.pure)
-            losses <- Ref.of[IO, Int](0)
+            lost <- Reconnects.create[IO](followerEvents)
             chainView = new PeerNetwork.ChainView[IO]:
               def tip = ref.get.map(c => c.tipRef.map(t => (t.slot, t.hash.hashCode.toLong)))
               def geometry = ref.get.map(_.state.geometry(genesis.geometry))
@@ -1123,10 +1123,7 @@ object Main extends IOApp:
               observe = Some(observePeer),
               pool = blockPool,
               versus = candidate => follower.versus(candidate),
-              lost = error =>
-                losses
-                  .updateAndGet(_ + 1)
-                  .flatMap(n => events.emit(FollowerEvent.Reconnecting(error, n))),
+              lost = lost,
               fatal = fatalSink,
               fetchMode = Some(fetchModeRef.get),
               serve = Some(handlers),
