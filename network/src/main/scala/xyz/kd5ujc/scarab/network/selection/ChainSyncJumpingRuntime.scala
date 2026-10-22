@@ -46,19 +46,21 @@ final class ChainSyncJumpingRuntime[F[_]: Async, P, J] private (
     def next: F[Instruction[J]] =
       F.tailRecM(()) { _ =>
         Deferred[F, Unit].flatMap { signal =>
-          state
-            .modify { (before, previous) =>
-              val result = ChainSyncJumping.next(before, id)
-              result.instruction match
-                case Instruction.Wait => ((before, previous), Left(previous))
-                case instruction if result.state == before =>
-                  ((before, previous), Right((Option.empty[Deferred[F, Unit]], instruction)))
-                case instruction => ((result.state, signal), Right((Some(previous), instruction)))
-            }
+          ChainSyncJumpingRuntime
+            .publish[F, Either[Deferred[F, Unit], Instruction[J]]](
+              state.modify { (before, previous) =>
+                val result = ChainSyncJumping.next(before, id)
+                result.instruction match
+                  case Instruction.Wait => ((before, previous), (Left(previous), None))
+                  case instruction if result.state == before =>
+                    ((before, previous), (Right(instruction), None))
+                  case instruction => ((result.state, signal), (Right(instruction), Some(previous)))
+              },
+              changed
+            )
             .flatMap {
-              case Left(wait) => wait.get.as(Left(()))
-              case Right((previous, instruction)) =>
-                previous.traverse_(p => p.complete(()).void *> changed).as(Right(instruction))
+              case Left(wait)         => wait.get.as(Left(()))
+              case Right(instruction) => F.pure(Right(instruction))
             }
         }
       }
@@ -79,6 +81,18 @@ final class ChainSyncJumpingRuntime[F[_]: Async, P, J] private (
       }
 
 object ChainSyncJumpingRuntime:
+  /** Installing a replacement wakeup and completing the old one are one cancellation boundary. The
+    * returned wait is consumed outside this boundary, so parked jumpers remain cancelable.
+    */
+  private[selection] def publish[F[_]: Async, A](
+      change: F[(A, Option[Deferred[F, Unit]])],
+      changed: F[Unit]
+  ): F[A] =
+    Async[F].uncancelable { _ =>
+      change.flatMap((value, previous) =>
+        previous.traverse_(p => p.complete(()).void *> changed).as(value)
+      )
+    }
   def create[F[_]: Async, P, J](
       jumpSize: BigInt = 4320,
       changed: Option[F[Unit]] = None

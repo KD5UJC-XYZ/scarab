@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network.selection
 
-import cats.effect.{IO, Ref}
+import cats.effect.{Deferred, IO, Ref, Resource}
+import cats.effect.testkit.TestControl
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, UInt64}
@@ -84,4 +85,29 @@ class ChainSyncJumpingRuntimeSuite extends FailsOnUncaught:
         }
       }
     yield ()
+  }
+
+  test("canceling a committed next transition cannot strand its previous wakeup") {
+    TestControl.executeEmbed {
+      for
+        committed <- Deferred[IO, Unit]
+        release <- Deferred[IO, Unit]
+        previous <- Deferred[IO, Unit]
+        transition = ChainSyncJumpingRuntime.publish[IO, Unit](
+          committed.complete(()).void *> release.get.as(() -> Some(previous)),
+          IO.unit
+        )
+        _ <- Resource
+          .make(transition.start)(fiber => release.complete(()).void *> fiber.cancel)
+          .use { fiber =>
+            for
+              _ <- committed.get
+              _ <- Resource.make(fiber.cancel.start)(_.cancel).use { cancelled =>
+                IO.sleep(1.second) *> release.complete(()).void *> cancelled.join
+              }
+              notified <- previous.tryGet
+            yield assertEquals(notified, Some(()))
+          }
+      yield ()
+    }
   }

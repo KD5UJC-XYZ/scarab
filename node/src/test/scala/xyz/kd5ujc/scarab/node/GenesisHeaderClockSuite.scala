@@ -145,7 +145,7 @@ class GenesisHeaderClockSuite extends FailsOnUncaught:
     "native checkTime pauses forecasts, delays once across a wall-clock step, then resumes before validation"
   ) {
     TestControl.executeEmbed {
-      LimitOnPatience.resource[IO](LeakyBucket.Config.disabled, IO.unit).use { patience =>
+      LimitOnPatience.resource[IO](LeakyBucket.Config.disabled, IO.unit, error => IO(fail(error.message))).use { patience =>
         for
           offset <- Ref.of[IO, FiniteDuration](Duration.Zero)
           accepted <- Ref.of[IO, Option[FiniteDuration]](None)
@@ -193,7 +193,7 @@ class GenesisHeaderClockSuite extends FailsOnUncaught:
 
   test("canceling canonical ledger forecast preparation resumes the patience bucket") {
     TestControl.executeEmbed {
-      LimitOnPatience.resource[IO](LeakyBucket.Config.disabled, IO.unit).use { patience =>
+      LimitOnPatience.resource[IO](LeakyBucket.Config.disabled, IO.unit, error => IO(fail(error.message))).use { patience =>
         for
           waiting <- Deferred[IO, Unit]
           checker = new HeaderCheck[IO]:

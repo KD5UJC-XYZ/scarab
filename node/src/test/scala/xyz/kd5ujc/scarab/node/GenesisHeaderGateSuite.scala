@@ -146,7 +146,7 @@ class GenesisHeaderGateSuite extends FailsOnUncaught:
           state,
           headers ++ Fixtures.chain(5, salt = 9)
         )
-        _ <- LimitOnPatience.resource[IO](LeakyBucket.Config.disabled, IO.unit).use { patience =>
+        _ <- LimitOnPatience.resource[IO](LeakyBucket.Config.disabled, IO.unit, error => IO(fail(error.message))).use { patience =>
           val check = HeaderCheck
             .forGenesisChain[IO, BigInt](model(1), Compute.inline[IO], 100, poll = 1.millis)
             .withPatience(patience)

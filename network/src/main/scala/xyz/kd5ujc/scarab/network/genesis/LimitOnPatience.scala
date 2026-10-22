@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network.genesis
 
-import cats.effect.{Deferred, Ref, Resource, Temporal}
+import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.effect.syntax.all.*
+import cats.mtl.Raise
+import xyz.kd5ujc.scarab.network.{Fibers, NetworkError}
 import cats.effect.std.Mutex
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Rational
@@ -32,12 +34,13 @@ object LimitOnPatience:
       pauses: Set[PauseReason]
   )
 
-  def resource[F[_]: Temporal](
+  def resource[F[_]: Async](
       initial: LeakyBucket.Config,
-      onEmpty: F[Unit],
+      onEmpty: Raise[F, NetworkError] ?=> F[Unit],
+      onFailure: NetworkError => F[Unit],
       clock: Option[PicosClock[F]] = None
   ): Resource[F, LimitOnPatience[F]] =
-    val F = Temporal[F]
+    val F = Async[F]
     val thisTime = clock.getOrElse(PicosClock.system[F])
     def now: F[BigInt] = thisTime.now
     Resource
@@ -81,7 +84,7 @@ object LimitOnPatience:
             )
           })
 
-        def step(watch: Watch): F[Either[Watch, Unit]] =
+        def step(watch: Watch)(using Raise[F, NetworkError]): F[Either[Watch, Unit]] =
           lock.lock
             .surround((now, live.get).mapN { (time, s) =>
               (time, s.bucket.snapshot(time), s.changed)
@@ -107,5 +110,11 @@ object LimitOnPatience:
                   }
             }
 
-        F.tailRecM(Watch(None, None))(step).background.as(controls)
+        Fibers
+          .scoped[F, NetworkError, Unit](NetworkError.Defect(_))(
+            F.tailRecM(Watch(None, None))(step)
+          )
+          .flatMap(_.fold(onFailure, _ => F.unit))
+          .background
+          .as(controls)
       }

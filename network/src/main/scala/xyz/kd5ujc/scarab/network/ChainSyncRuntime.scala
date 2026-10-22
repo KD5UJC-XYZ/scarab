@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import cats.effect.syntax.all.*
 import cats.effect.{Ref, Resource, Temporal}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -147,7 +148,8 @@ object ChainSyncRuntime:
           )
         )
 
-      def flight[A](operation: F[A]): F[A] = busy.set(true) *> operation <* busy.set(false)
+      def flight[A](operation: F[A]): F[A] =
+        F.uncancelable(poll => busy.set(true) *> poll(operation).guarantee(busy.set(false)))
 
       new Client[F, Q, T, P]:
         def findIntersect(points: Vector[Q])(using Raise[F, NetworkError]) =
