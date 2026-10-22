@@ -20,6 +20,15 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
     Point.Block(UInt64.saturating(n), Bytes(Vector.fill(32)(n.toByte)))
   private def item(n: Int): Bytes = Bytes(Vector(0x18, n.toByte))
 
+  /** A `GetCBOR` answer (`#6.24(bytes)`) over the 2.5 MB bound of a node-to-node message. */
+  private val large: Bytes =
+    val size = 4 * 1024 * 1024
+    val out = new Array[Byte](7 + size)
+    Array(0xd8, 0x18, 0x5a, size >>> 24, (size >>> 16) & 255, (size >>> 8) & 255, size & 255)
+      .map(_.toByte)
+      .copyToArray(out)
+    Bytes.wrap(out)
+
   /** The chain `point(1)`, `point(2)`, `point(3)` (tip); the immutable tip is `point(1)`; the state
     * at a point is its number. `acquired` records the targets asked for.
     */
@@ -52,6 +61,7 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
                   def answer(query: Bytes) =
                     IO.pure(
                       if query == Bytes(Vector(0x01)) then Right(Right(item(state)))
+                      else if query == Bytes(Vector(0x03)) then Right(Right(large))
                       else Right(Left(LocalStateQueryServer.Refusal.Unsupported("unknown query")))
                     )
               }
@@ -193,6 +203,23 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
           assert(ended.nonEmpty)
         }
       }
+    }
+  }
+
+  test("an answer over 2.5 MB reaches the client through the node-to-client mux (#353)") {
+    toy.flatMap { t =>
+      session(t) { (ch, _) =>
+        for
+          _ <- send(ch, State.Idle, Message.Acquire(Target.VolatileTip))
+          _ <- receive(ch, State.Acquiring)
+          _ <- send(ch, State.Acquired, Message.Query(Bytes(Vector(0x03))))
+          answer <- ch.recv(LocalStateQuery.MaxResultBytes)(
+            LocalStateQuery.decodePrefix(State.Querying, Role.Server, _)
+          )
+          _ <- send(ch, State.Acquired, Message.Release)
+          _ <- send(ch, State.Idle, Message.Done)
+        yield answer
+      }.map { case (answer, _) => assertEquals(answer, Message.Result(large)) }
     }
   }
 

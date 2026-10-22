@@ -115,6 +115,18 @@ object Mux:
       handshakeSduTimeout: FiniteDuration = 10.seconds
   )
 
+  object Config:
+    /** The responder of a node-to-client connection. The reference gives every node-to-client
+      * mini-protocol `maximumMiniProtocolLimits` and runs its codecs without byte limits, so a
+      * message is bounded only by what a byte array can hold: a LocalStateQuery answer may be tens
+      * of megabytes (`GetCBOR DebugEpochState` on preprod).
+      */
+    val nodeToClient: Config = Config(
+      role = Role.Responder,
+      ingressLimit = IngressLimits.nodeToClient,
+      maxMessageBytes = xyz.kd5ujc.scarab.protocol.LocalStateQuery.MaxResultBytes
+    )
+
   /** The unread bytes of one mini-protocol and side: the payloads the reader has queued and the
     * channel has not taken, and how many bytes they are.
     */

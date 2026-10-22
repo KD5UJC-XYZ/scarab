@@ -125,3 +125,53 @@ class LocalStateQuerySuite extends ScalaCheckSuite:
       )
     )
   }
+
+  /** `#6.24(bytes)` of `size` bytes: the shape of a `GetCBOR` answer (`wrapCBORinCBOR`). */
+  private def wrapped(size: Int): Bytes =
+    val head = Array(0xd8, 0x18, 0x5a, size >>> 24, (size >>> 16) & 255, (size >>> 8) & 255)
+      .map(_.toByte) :+ (size & 255).toByte
+    val out = new Array[Byte](head.length + size)
+    System.arraycopy(head, 0, out, 0, head.length)
+    Bytes.wrap(out)
+
+  test("an answer the size of a preprod epoch state is sent and read whole (#353)") {
+    // `cardano-cli query leadership-schedule --next` asks `GetCBOR DebugEpochState`; the epoch state
+    // of preprod (its `state` file is 32,511,416 bytes) is one byte string of tens of megabytes,
+    // which the reference sends without a limit and the 2.5 MB bound refused.
+    val answer = wrapped(32 * 1024 * 1024)
+    val wire = encode(State.Querying, Role.Server, Message.Result(answer))
+      .fold(e => fail(e.message), identity)
+    assertEquals(
+      decodePrefix(State.Querying, Role.Server, wire),
+      DecodeResult.Decoded(Message.Result(answer), wire.size)
+    )
+    assertEquals(
+      decodePrefix(State.Querying, Role.Server, wire.slice(0, wire.size - 1)),
+      DecodeResult.NeedMore
+    )
+  }
+
+  test("an answer of more than 65535 items is sent, as the reference sends it") {
+    val count = 100000
+    val items = Bytes.wrap(
+      Array(0x9a, count >>> 24, (count >>> 16) & 255, (count >>> 8) & 255, count & 255)
+        .map(_.toByte) ++ Array.fill(count)(0.toByte)
+    )
+    val wire = encode(State.Querying, Role.Server, Message.Result(items))
+      .fold(e => fail(e.message), identity)
+    assertEquals(
+      decodePrefix(State.Querying, Role.Server, wire),
+      DecodeResult.Decoded(Message.Result(items), wire.size)
+    )
+  }
+
+  test("a client's query keeps the bound of a node-to-node message") {
+    assertEquals(
+      encode(State.Acquired, Role.Client, Message.Query(wrapped(MaxMessageBytes + 1))),
+      Left(ProtocolError.StringLimitExceeded)
+    )
+    assertEquals(
+      encode(State.Querying, Role.Server, Message.Result(wrapped(MaxMessageBytes))).map(_.size),
+      Right(MaxMessageBytes + 9)
+    )
+  }

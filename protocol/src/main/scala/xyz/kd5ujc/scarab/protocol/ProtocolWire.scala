@@ -13,19 +13,35 @@ import ChainSync.{Point, Tip, UInt64}
 private[protocol] object ProtocolWire:
   // Extraction of existing ChainSyncWire mechanics; independent protocol policy.
   // Mini-protocol limits are checked before entering this shared framing layer.
+
+  /** The largest limits a protocol may configure. `Network` is the bound of every node-to-node
+    * message. `Local` is that of a node-to-client answer: the reference reads it with no byte or
+    * item limit (`codecLocalStateQuery` is `mkCodecCborLazyBS`, run with `Stateful.runPeer`), so
+    * only its mux ingress queue bounds it (`maximumMiniProtocolLimits`, `0xffffffff`), and here the
+    * largest array the JVM can index.
+    */
+  enum Bound(val bytes: Int, val items: Int):
+    case Network extends Bound(2500000, 65535)
+    case Local extends Bound(Int.MaxValue, Int.MaxValue)
+
+  /** @param bound
+    *   the ceiling the other limits are checked against ([[Bound.Network]] unless a protocol says
+    *   otherwise).
+    */
   final case class Limits(
       maxMessageBytes: Int,
       maxStringBytes: Int,
       maxHashBytes: Int = 64,
       maxDepth: Int = 24,
       maxItems: Int = 8192,
-      maxCandidates: Int = 64
+      maxCandidates: Int = 64,
+      bound: Bound = Bound.Network
   ):
     def valid: Boolean =
-      maxMessageBytes > 0 && maxMessageBytes <= 2500000 &&
-        maxStringBytes >= 0 && maxStringBytes <= 2500000 &&
-        maxHashBytes >= 0 && maxHashBytes <= 2500000 &&
-        maxDepth >= 0 && maxItems > 0 && maxItems <= 65535 &&
+      maxMessageBytes > 0 && maxMessageBytes <= bound.bytes &&
+        maxStringBytes >= 0 && maxStringBytes <= bound.bytes &&
+        maxHashBytes >= 0 && maxHashBytes <= bound.bytes &&
+        maxDepth >= 0 && maxItems > 0 && maxItems <= bound.items &&
         maxCandidates >= 0 && maxCandidates <= 1024
   type Scope = boundary.Label[Either[ProtocolError, Nothing]]
 

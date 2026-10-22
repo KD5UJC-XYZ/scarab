@@ -83,7 +83,7 @@ object LocalTxSubmissionServer:
       .resource(
         bearer,
         Set(Protocols.Handshake, Protocols.LocalTxSubmission),
-        Mux.Config(role = Mux.Role.Responder, ingressLimit = IngressLimits.nodeToClient)
+        Mux.Config.nodeToClient
       )
       .use { mux =>
         for
