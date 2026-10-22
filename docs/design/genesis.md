@@ -45,9 +45,21 @@ selection is retriggered, and how upstream work and disconnections are coordinat
 - **Restart retention:** persist received original bodies before exposing them to selection,
   including forks and LoE-postponed blocks. A separate `received/` log reuses the existing
   volatile-record encoding; the adopted-chain log records the previously adopted suffix.
-  Startup reconstructs selection from the immutable anchor and the complete received forest. Older databases populate this store from their known selected suffix without
-  manufacturing missing fork history. Recovered bodies have their own source case, rather
-  than borrowing a live session identity. Collection follows a durable immutable boundary.
+  Startup ranks the complete received forest from the immutable anchor, preserving the native
+  initial `k`-block cap when LoE is enabled (`ChainSel.hs:115–211`). It reuses the selected
+  suffix already validated by storage resume when that suffix wins; it does not persist a
+  temporary rollback or apply those blocks twice. A different winner reuses the validated
+  common prefix before switching. Older databases populate this store from their known
+  selected suffix without manufacturing missing fork history. Validated selected originals
+  repair inconsistent cache entries before recovered extras are checked. Malformed extras
+  are logged with their typed cause and excluded from cache lookup, permitting a later valid
+  receipt; their journal bytes are checked again at reopen until replacement or collection.
+  Selected-journal validation keeps its valid-prefix recovery policy; storage IO failures
+  still propagate. Recovered bodies have their
+  own source case, rather than borrowing a live session identity. Collection follows a durable
+  immutable boundary; an LoE stall can retain a growing forest, including raw bodies in memory.
+  [Measured scan and idle-decision costs](../performance.md#39-received-forest-selection-and-idle-decisions-309-review)
+  state the scope of this retention policy.
 - **Source attribution:** an original body's punishment belongs to its adding BlockFetch run,
   not a peer address or the lifetime of its TCP connection. The native client captures its
   thread at `ClientInterface.hs:192–193`; BlockFetch is a hot protocol and each activation
