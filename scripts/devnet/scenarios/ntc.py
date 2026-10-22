@@ -79,10 +79,12 @@ CLI_QUERIES = [
     ("leadership-schedule --next", "leadership-schedule {leader} --next --output-json"),
 ]
 
-# what `leadership-schedule` reads besides the socket: the Shelley genesis and pool 1's cold and VRF keys
+# what `leadership-schedule` reads besides the socket: the Shelley genesis and pool 1's cold and VRF keys, copied
+# to one directory both CLI containers can write
+LEADER_DIR = "/tmp/leader"
 LEADER_FILES = [f"{ENV}/shelley-genesis.json", f"{ENV}/pools-keys/pool1/cold.vkey", f"{ENV}/pools-keys/pool1/vrf.skey"]
-LEADER_ARGUMENTS = (f"--genesis {LEADER_FILES[0]} --stake-pool-verification-key-file {LEADER_FILES[1]} "
-                    f"--vrf-signing-key-file {LEADER_FILES[2]}")
+LEADER_ARGUMENTS = (f"--genesis {LEADER_DIR}/shelley-genesis.json --stake-pool-verification-key-file "
+                    f"{LEADER_DIR}/cold.vkey --vrf-signing-key-file {LEADER_DIR}/vrf.skey")
 
 # The same-point raw protocol battery checks ledger-state byte-exactly. CLI output also
 # participates whenever its reference-before/after bracket establishes comparable state.
@@ -120,12 +122,14 @@ def start_cli_container(args, root):
 
 
 def share_leader_files(args):
-    """Copy the files `leadership-schedule` reads from the reference container into the CLI container, at the same
-    paths, so that one command text runs against both sockets."""
+    """Copy the files `leadership-schedule` reads from the reference container to `LEADER_DIR` in it and in the CLI
+    container, so that one command text runs against both sockets."""
     for path in LEADER_FILES:
         text = docker("exec", ref(args.name), "cat", path).stdout
-        subprocess.run(["docker", "exec", "-i", f"{args.name}-cli", "/bin/sh", "-c",
-                        f"mkdir -p {os.path.dirname(path)} && cat > {path}"], input=text, text=True, check=True)
+        target = f"{LEADER_DIR}/{os.path.basename(path)}"
+        for container in (ref(args.name), f"{args.name}-cli"):
+            subprocess.run(["docker", "exec", "-i", container, "/bin/sh", "-c",
+                            f"mkdir -p {LEADER_DIR} && cat > {target}"], input=text, text=True, check=True)
 
 
 def cli(args, which, text, timeout=90):
