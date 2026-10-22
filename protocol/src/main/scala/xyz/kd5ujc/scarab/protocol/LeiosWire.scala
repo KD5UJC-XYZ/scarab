@@ -40,6 +40,16 @@ enum LeiosWireError:
   /** Transaction `index` of `MsgLeiosBlockTxs` is not `#6.24(bytes)`. */
   case BadTransaction(index: Int)
 
+  /** A bitmap of window `window` is zero: a window that names no transaction is not sent. */
+  case ZeroBitmap(tag: Int, window: Int)
+
+  /** Window `window` is at or above `limit`, the number of windows `maxTxsPerEb` transactions need.
+    */
+  case BitmapWindowOutOfRange(tag: Int, window: Int, limit: Int)
+
+  /** Window `window` does not come after the window before it. */
+  case BitmapWindowsNotAscending(tag: Int, window: Int)
+
   /** The answer carries `actual` transactions where the request's bitmaps name `expected`. */
   case TransactionCountMismatch(expected: Long, actual: Int)
 
@@ -125,18 +135,45 @@ private[protocol] object LeiosWire:
       yield EbPoint(slot.toLong, hash)
     case _ => Left(LeiosWireError.BadField(tag, LeiosField.Point))
 
+  /** The checks of `decodeBitmaps` in ouroboros-consensus `MiniProtocol/LeiosFetch/Type.hs`
+    * (revision `7b239a16`, lines 407 to 435), in its order: at most `MaxBitmapEntries` entries
+    * (lines 410 to 413), then for each entry a 16-bit window and a 64-bit bitmap, a bitmap that is
+    * not zero (427), a window below `MaxBitmapEntries` (430) and strictly above the window before
+    * it (433).
+    */
+  def checkBitmaps(tag: Int, windows: Vector[(Int, BigInt)]): Either[LeiosWireError, Unit] =
+    val limit = LeiosFetch.MaxBitmapEntries
+    if windows.size > limit then
+      Left(LeiosWireError.TooMany(tag, LeiosField.Bitmaps, limit, windows.size))
+    else
+      windows.zipWithIndex.foldLeft[Either[LeiosWireError, Unit]](Right(())) {
+        case (acc, ((window, bits), i)) =>
+          acc.flatMap { _ =>
+            if bits.signum == 0 then Left(LeiosWireError.ZeroBitmap(tag, window))
+            else if window >= limit then
+              Left(LeiosWireError.BitmapWindowOutOfRange(tag, window, limit))
+            else if i > 0 && window <= windows(i - 1)._1 then
+              Left(LeiosWireError.BitmapWindowsNotAscending(tag, window))
+            else Right(())
+          }
+      }
+
   def bitmaps(tag: Int, n: Node): Either[LeiosWireError, TxBitmaps] = n.value match
     case Value.Map(entries) =>
-      entries
-        .foldLeft[Either[LeiosWireError, Vector[(Int, BigInt)]]](Right(Vector.empty)) {
-          case (acc, (k, v)) =>
-            for
-              xs <- acc
-              window <- uint(tag, k, BigInt(0xffff), LeiosField.Word16)
-              bits <- uint(tag, v, (BigInt(1) << 64) - 1, LeiosField.Word64)
-            yield xs :+ (window.toInt -> bits)
+      for
+        _ <- Either.cond(
+          entries.size <= LeiosFetch.MaxBitmapEntries,
+          (),
+          LeiosWireError.TooMany(tag, LeiosField.Bitmaps, LeiosFetch.MaxBitmapEntries, entries.size)
+        )
+        windows <- all(entries) { case (k, v) =>
+          for
+            window <- uint(tag, k, BigInt(0xffff), LeiosField.Word16)
+            bits <- uint(tag, v, (BigInt(1) << 64) - 1, LeiosField.Word64)
+          yield window.toInt -> bits
         }
-        .map(TxBitmaps(_))
+        _ <- checkBitmaps(tag, windows)
+      yield TxBitmaps(windows)
     case _ => Left(LeiosWireError.BadField(tag, LeiosField.Bitmaps))
 
   // --- encoding (requests are small and bounded) ---
@@ -180,9 +217,23 @@ private[protocol] object LeiosWire:
     Value.Arr((Value.UInt(BigInt(tag)) +: rest.toVector).map(nodeOf))
   def pointValue(p: EbPoint): Value =
     Value.Arr(Vector(nodeOf(Value.UInt(BigInt(p.slot))), nodeOf(Value.ByteString(p.hash.bytes))))
-  def bitmapsValue(b: TxBitmaps): Value =
-    Value.Map(b.windows.map { case (w, bits) =>
-      (nodeOf(Value.UInt(BigInt(w))), nodeOf(Value.UInt(bits)))
-    })
+
+  /** The bitmaps as the reference writes them, an indefinite-length map (`encodeBitmaps`, `Type.hs`
+    * of ouroboros-consensus `7b239a16`, lines 387 to 393; the Blueprint draws the same). Refused
+    * unless they pass the checks the reference decoder applies.
+    */
+  def bitmapsBytes(b: TxBitmaps): Either[LeiosWireError, Bytes] =
+    for
+      _ <- checkBitmaps(-1, b.windows).left.map(_ => LeiosWireError.Unencodable)
+      entries <- all(b.windows) { case (w, bits) =>
+        for
+          k <- encode(Value.UInt(BigInt(w)))
+          v <- encode(Value.UInt(bits))
+        yield k ++ v
+      }
+    yield entries.foldLeft(Bytes.fromArray(Array(0xbf.toByte)))(_ ++ _) ++ Bytes.fromArray(
+      Array(0xff.toByte)
+    )
+
   def encode(v: Value): Either[LeiosWireError, Bytes] =
     Cbor.encode(v).left.map(_ => LeiosWireError.Unencodable)
