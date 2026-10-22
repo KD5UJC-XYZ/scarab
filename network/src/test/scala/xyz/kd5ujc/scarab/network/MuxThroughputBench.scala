@@ -21,6 +21,9 @@ object MuxThroughputBench extends IOApp.Simple:
     if bytes.size >= n then DecodeResult.Decoded(Bytes(bytes.value.take(n)), n)
     else DecodeResult.NeedMore
 
+  private def whole(n: Int)(bytes: Bytes): DecodeResult[Bytes] =
+    if bytes.size >= n then DecodeResult.Decoded(bytes.take(n), n) else DecodeResult.NeedMore
+
   private def payload(n: Int): Bytes = Bytes.wrap(Array.tabulate(n)(i => (i * 31).toByte))
 
   private def round(protocol: Int, size: Int, window: Int, messages: Int): IO[Double] =
@@ -50,9 +53,47 @@ object MuxThroughputBench extends IOApp.Simple:
       }
       .rescue(e => IO.raiseError(new RuntimeException(e.message)))
 
+  /** One message of `size` bytes, as a node-to-client answer: the receiver's buffer grows with
+    * every SDU until the message is complete. Milliseconds from send to decoded.
+    */
+  private def large(size: Int): IO[Double] =
+    val config = Mux.Config.nodeToClient.copy(role = Mux.Role.Initiator)
+    Handle
+      .allow[NetworkError] {
+        Bearer.inMemory[IO](256).flatMap { (a, b) =>
+          (
+            Mux.resource(a, Set(2), config),
+            Mux.resource(b, Set(2), Mux.Config.nodeToClient)
+          ).tupled.use { (client, server) =>
+            for
+              c <- client.channel(2)
+              s <- server.channel(2)
+              message = payload(size)
+              began <- IO.monotonic
+              producer <- c.send(message).start
+              _ <- s.recv(size + 16)(whole(size))
+              _ <- producer.joinWithNever
+              took <- IO.monotonic.map(_ - began)
+            yield took.toNanos.toDouble / 1000000.0
+          }
+        }
+      }
+      .rescue(e => IO.raiseError(new RuntimeException(e.message)))
+
   private def median(xs: List[Double]): Double = xs.sorted.apply(xs.size / 2)
 
-  def run: IO[Unit] =
+  private def runLarge: IO[Unit] =
+    List(4, 16, 32, 64).traverse_ { mib =>
+      for
+        _ <- large(mib * 1024 * 1024) // warm-up
+        samples <- List.fill(5)(()).traverse(_ => large(mib * 1024 * 1024))
+        _ <- IO.println(f"BENCH mux, one message of $mib%3d MiB: ${median(samples)}%9.1f ms")
+      yield ()
+    }
+
+  def run: IO[Unit] = runSmall *> runLarge
+
+  private def runSmall: IO[Unit] =
     // (protocol, message size, credit window in messages, messages per round)
     val cases = List((2, 1400, 64, 40000), (2, 400, 64, 40000), (3, 65000, 8, 2000))
     cases.traverse_ { (protocol, size, window, messages) =>

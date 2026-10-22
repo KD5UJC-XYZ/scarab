@@ -569,7 +569,7 @@ object Mux:
           inbound.toList
             .traverse { case (key @ (protocol, role), ingress) =>
               for
-                buffer <- Ref.of[F, Bytes](Bytes.empty)
+                buffer <- Async[F].delay(new ReceiveBuffer)
                 lock <- Mutex[F]
               yield key -> (
                 channel(
@@ -603,8 +603,7 @@ object Mux:
           val handshakePending = inbound.toVector
             .filter(_._1._1 == Protocols.Handshake)
             .traverse { (key, ingress) =>
-              (ingress.pendingFrames, channels(key)._2.get)
-                .mapN((pending, buffer) => pending || buffer.size > 0)
+              ingress.pendingFrames.map(_ || channels(key)._2.size > 0)
             }
             .map(_.contains(true))
           val validation = invalid.fold(dispatch.install(allowed, handshakePending)) { (p, role) =>
@@ -657,7 +656,7 @@ object Mux:
       ingress: Ingress[F],
       outbound: MuxEgress.Outbox[F],
       closed: Deferred[F, NetworkError],
-      buffer: Ref[F, Bytes],
+      buffer: ReceiveBuffer,
       lock: Mutex[F],
       config: Config,
       dispatch: Dispatch[F],
@@ -711,23 +710,46 @@ object Mux:
         Raise[F, NetworkError]
     ): F[A] =
       lock.lock.surround {
-        def loop: F[A] = permitted *>
-          buffer.get.flatMap { held =>
+        def decodeNow: F[A] = permitted *>
+          F.delay(buffer.view).flatMap { held =>
             decode(held) match
               case DecodeResult.Decoded(value, consumed) =>
                 if consumed > maxBytes then NetworkError.IngressLimit(id, consumed).raise[F, A]
                 else
-                  handshakeInput
-                    .fold(buffer.set(held.drop(consumed)))(input =>
-                      buffer.set(Bytes.empty) *> input.complete
-                    )
-                    .as(value)
+                  F.delay(buffer.consume(consumed)) *>
+                    handshakeInput
+                      .traverse_(input => F.delay(buffer.clear()) *> input.complete)
+                      .as(value)
               case DecodeResult.Failed(reason) => NetworkError.Decode(id, reason).raise[F, A]
               case DecodeResult.NeedMore =>
                 if held.size > maxBytes then NetworkError.IngressLimit(id, held.size).raise[F, A]
-                else
-                  handshakeInput.traverse_(_.continue) *>
-                    nextPayload.flatMap(more => buffer.set(held ++ more) *> loop)
+                else handshakeInput.traverse_(_.continue) *> await(held.size)
           }
-        loop
+
+        // Wait for an SDU, then take all that are already queued before decoding again, unless
+        // the buffer has doubled since the last attempt: a decoder that rereads the buffer from
+        // its start (a long array of items) is then run a logarithmic number of times for a
+        // message that arrives in many SDUs, and in time proportional to its size overall.
+        def await(attempted: Int): F[A] =
+          nextPayload.flatMap(append(_) *> more(attempted))
+
+        def more(attempted: Int): F[A] =
+          F.delay(buffer.size).flatMap { held =>
+            // The handshake mux decodes after every SDU: it must not read ahead into SDUs that
+            // belong to the application protocols.
+            if handshakeInput.isDefined || held > maxBytes || held >= 2L * attempted then decodeNow
+            else
+              permitted *> ingress.tryTake.flatMap {
+                case None       => decodeNow
+                case Some(next) => append(next) *> more(attempted)
+              }
+          }
+
+        def append(payload: Bytes): F[Unit] =
+          F.delay(buffer.append(payload)).flatMap { fits =>
+            if fits then F.unit
+            else NetworkError.IngressLimit(id, Int.MaxValue).raise[F, Unit]
+          }
+
+        decodeNow
       }
