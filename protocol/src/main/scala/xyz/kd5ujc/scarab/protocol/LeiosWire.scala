@@ -7,7 +7,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 /** What a field of a Leios message should have been. */
 enum LeiosField:
   case Point, Slot, Hash, Word32, Word16, Word64, Header, Votes, EndorserBlock, Bitmaps,
-    Transactions
+    Transactions, Transaction
 
 /** Closed set of codec failures of the Leios mini-protocols (18 and 19). */
 enum LeiosWireError:
@@ -31,13 +31,28 @@ enum LeiosWireError:
   /** A message that cannot be encoded within the encoder's bounds. */
   case Unencodable
 
+  /** An endorser block that names no transaction: `{ + hash => word32 }` needs at least one. */
+  case EmptyEndorserBlock
+
+  /** A list or map of `actual` entries where the message admits at most `limit`. */
+  case TooMany(tag: Int, field: LeiosField, limit: Int, actual: Int)
+
+  /** Transaction `index` of `MsgLeiosBlockTxs` is not `#6.24(bytes)`. */
+  case BadTransaction(index: Int)
+
+  /** The answer carries `actual` transactions where the request's bitmaps name `expected`. */
+  case TransactionCountMismatch(expected: Long, actual: Int)
+
 /** A point on the Leios protocols: `[slot, eb_hash]`. */
 final case class EbPoint(slot: Long, hash: EbHash)
 
 /** The window bitmaps of a transaction request or answer: 64-transaction window index (16 bits) to
   * a 64-bit presence bitmap, in wire order.
   */
-final case class TxBitmaps(windows: Vector[(Int, BigInt)])
+final case class TxBitmaps(windows: Vector[(Int, BigInt)]):
+
+  /** The number of transactions the bitmaps name: the set bits of all windows. */
+  def count: Long = windows.foldLeft(0L)((n, w) => n + w._2.bitCount)
 
 private[protocol] object LeiosWire:
   /** Local policy: the CIP bounds an endorser block by 600 kB, a transaction list by the same

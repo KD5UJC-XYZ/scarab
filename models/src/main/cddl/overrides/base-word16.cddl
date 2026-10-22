@@ -1,4 +1,4 @@
 ; Local refinement of the consensus `base` module. The Blueprint's copy of base.cddl (cardano-blueprint
-; src/codecs/base.cddl, fe4cceb9) has this rule and is otherwise identical to ouroboros-consensus'; the
+; src/codecs/base.cddl, the same at fe4cceb9 and 0460c5a6) has this rule and is otherwise identical to ouroboros-consensus'; the
 ; Blueprint's LeiosFetch `bitmaps = { * base.word16 => base.word64 }` needs it.
 word16 = uint .size 2

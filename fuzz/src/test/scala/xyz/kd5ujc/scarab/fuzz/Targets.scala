@@ -184,7 +184,13 @@ object Targets:
       LeiosFetch.Message.BlockRequest(point),
       LeiosFetch.Message.Block(Vector(point.hash -> 100L, point.hash -> 0xffffffffL)),
       LeiosFetch.Message.BlockTxsRequest(point, bitmaps),
-      LeiosFetch.Message.BlockTxs(point, bitmaps, Corpus.transactions.take(3).map(Bytes.fromArray))
+      LeiosFetch.Message.BlockTxs(Corpus.transactions.take(3).map(Bytes.fromArray)),
+      // the older form of Blueprint fe4cceb9, which the decoder still reads (docs/leios.md 11.6, X12)
+      LeiosFetch.Message.LegacyBlockTxs(
+        point,
+        bitmaps,
+        Corpus.transactions.take(3).map(Bytes.fromArray)
+      )
     )
     seeds.flatMap(LeiosFetch.encode(_).toOption.map(_.toArray)) ++
       netCorpus("leios-fetch:leiosBlockFetchMessage")()

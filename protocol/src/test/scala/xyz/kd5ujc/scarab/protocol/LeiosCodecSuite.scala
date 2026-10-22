@@ -168,10 +168,15 @@ class LeiosCodecSuite extends ScalaCheckSuite:
       Message.BlockTxsRequest(p, TxBitmaps(Vector(0 -> BigInt(1), 3 -> (BigInt(1) << 63))))
     )
     rt(State.Block, Message.Block(Vector(hash(1) -> 100L, hash(2) -> 0xffffffffL)))
-    rt(State.Block, Message.Block(Vector.empty))
+    rt(State.BlockTxs, Message.BlockTxs(Vector(bs(0x81, 0x01), bs(0x01))))
+    rt(State.BlockTxs, Message.BlockTxs(Vector.empty))
     rt(
       State.BlockTxs,
-      Message.BlockTxs(p, TxBitmaps(Vector(1 -> BigInt(5))), Vector(bs(0x81, 0x01), bs(0x01)))
+      Message.LegacyBlockTxs(
+        p,
+        TxBitmaps(Vector(1 -> BigInt(5))),
+        Vector(bs(0x81, 0x01), bs(0x01))
+      )
     )
   }
 
@@ -195,7 +200,7 @@ class LeiosCodecSuite extends ScalaCheckSuite:
 
   test("LeiosFetch: agency and malformed input") {
     import LeiosFetch.*
-    val block = ok(encode(Message.Block(Vector.empty)))
+    val block = ok(encode(Message.Block(Vector(hash(1) -> 1L))))
     assertEquals(decodePrefix(State.Idle, block), Left(LeiosWireError.NotAdmitted(2)))
     assertEquals(
       decodePrefix(State.Block, bs(0x82, 0x02, 0x01)),
@@ -208,38 +213,144 @@ class LeiosCodecSuite extends ScalaCheckSuite:
     assertEquals(next(State.Block, Message.Done), None)
     assertEquals(decodePrefix(State.Idle, bs(0x82, 0x01)), Left(LeiosWireError.Incomplete))
   }
-  test("LeiosFetch: transactions are written as the bytes they came with, never re-encoded") {
+  private val p0 = EbPoint(5, hash(3))
+  private def tag24(payload: Bytes): Bytes = // d8 18 and the byte string head of payload
+    val n = payload.size
+    val h =
+      if n < 24 then bs(0x40 | n) else if n < 256 then bs(0x58, n) else bs(0x59, n >> 8, n & 0xff)
+    bs(0xd8, 0x18) ++ h ++ payload
+
+  test("LeiosFetch: a transaction is #6.24(bytes) and its payload is kept as it came") {
     import LeiosFetch.*
-    // a non-shortest integer (`18 02`), an indefinite-length array, and a tagged byte string: a hash
-    // over the re-encoded bytes would differ from the hash over these
+    // the payload holds a non-shortest integer (`18 02`), an indefinite-length array and a nested
+    // tag: a hash over re-encoded bytes would differ from the hash over these
     val txs = Vector(bs(0x82, 0x18, 0x02, 0x01), bs(0x9f, 0x01, 0xff), bs(0xd8, 0x18, 0x41, 0x00))
-    val m = Message.BlockTxs(EbPoint(5, hash(3)), TxBitmaps(Vector(0 -> BigInt(7))), txs)
-    val bytes = ok(encode(m))
-    assert(bytes.hex.contains(txs.map(_.hex).mkString), bytes.hex)
-    assertEquals(decodePrefix(State.BlockTxs, bytes), Right((m, bytes.size)))
+    val bytes = ok(encode(Message.BlockTxs(txs)))
+    assertEquals(bytes, bs(0x82, 0x04, 0x83) ++ txs.map(tag24).foldLeft(Bytes.empty)(_ ++ _))
+    assertEquals(decodePrefix(State.BlockTxs, bytes), Right((Message.BlockTxs(txs), bytes.size)))
+    // any payload is carried: the reference decoder checks the framing, not the CBOR inside
+    val opaque = Vector(bs(0xff, 0xff), Bytes.empty)
+    val enc = ok(encode(Message.BlockTxs(opaque)))
+    assertEquals(decodePrefix(State.BlockTxs, enc), Right((Message.BlockTxs(opaque), enc.size)))
     // the list head is right for every width of the count
     Vector(0, 1, 23, 24, 255, 256, 1000).foreach { n =>
-      val many =
-        Message.BlockTxs(EbPoint(5, hash(3)), TxBitmaps(Vector.empty), Vector.fill(n)(bs(0xf6)))
-      val enc = ok(encode(many))
-      assertEquals(decodePrefix(State.BlockTxs, enc), Right((many, enc.size)))
+      val many = Message.BlockTxs(Vector.fill(n)(bs(0xf6)))
+      val e = ok(encode(many))
+      assertEquals(decodePrefix(State.BlockTxs, e), Right((many, e.size)))
     }
-    // something that is not exactly one item is refused, not spliced into the message
+  }
+
+  test("LeiosFetch: an indefinite-length transaction list and byte string are read") {
+    import LeiosFetch.*
+    val msg =
+      bs(0x82, 0x04, 0x9f) ++ tag24(bs(0xa0)) ++ bs(0xd8, 0x18, 0x5f, 0x41, 0xa0, 0xff, 0xff)
     assertEquals(
-      encode(
-        Message.BlockTxs(EbPoint(5, hash(3)), TxBitmaps(Vector.empty), Vector(bs(0x01, 0x02)))
-      ),
-      Left(
-        LeiosWireError.Syntax(ProtocolError.Codec(xyz.kd5ujc.scarab.codec.Cbor.Error.TrailingBytes))
+      decodePrefix(State.BlockTxs, msg).map(_._1),
+      Right(Message.BlockTxs(Vector(bs(0xa0), bs(0xa0))))
+    )
+  }
+
+  test("LeiosFetch: a transaction without tag 24, or with another tag, is refused with its index") {
+    import LeiosFetch.*
+    val good = tag24(bs(0xa0))
+    // an untagged byte string, a plain map, tag 24 around a non-bytes item, tag 25 around bytes
+    Vector(bs(0x41, 0xa0), bs(0xa0), bs(0xd8, 0x18, 0xa0), bs(0xd8, 0x19, 0x41, 0xa0)).foreach {
+      bad =>
+        val msg = bs(0x82, 0x04, 0x82) ++ good ++ bad
+        assertEquals(
+          decodePrefix(State.BlockTxs, msg),
+          Left(LeiosWireError.BadTransaction(1)),
+          bad.hex
+        )
+    }
+    assertEquals(
+      decodePrefix(State.BlockTxs, bs(0x82, 0x04, 0xa0)),
+      Left(LeiosWireError.BadField(4, LeiosField.Transactions))
+    )
+  }
+
+  test("LeiosFetch: at most maxTxsPerEb transactions, in a definite or an indefinite list") {
+    import LeiosFetch.*
+    assertEquals(MaxTxsPerEb, 17142) // (600000 - 5) / 35, Ouroboros.Consensus.Leios.Types
+    val one = tag24(bs(0xa0))
+    def definite(n: Int) =
+      bs(0x82, 0x04) ++ bs(0x99, n >> 8, n & 0xff) ++ Bytes.wrap(Array.fill(n)(one.toArray).flatten)
+    def indefinite(n: Int) =
+      bs(0x82, 0x04, 0x9f) ++ Bytes.wrap(Array.fill(n)(one.toArray).flatten) ++ bs(0xff)
+    Vector(definite, indefinite).foreach { form =>
+      assert(decodePrefix(State.BlockTxs, form(MaxTxsPerEb)).isRight)
+      assertEquals(
+        decodePrefix(State.BlockTxs, form(MaxTxsPerEb + 1)),
+        Left(LeiosWireError.TooMany(4, LeiosField.Transactions, MaxTxsPerEb, MaxTxsPerEb + 1))
       )
+    }
+    assertEquals(
+      encode(Message.BlockTxs(Vector.fill(MaxTxsPerEb + 1)(bs(0xa0)))),
+      Left(LeiosWireError.Unencodable)
+    )
+  }
+
+  test("LeiosFetch: an endorser block names at least one and at most maxTxsPerEb transactions") {
+    import LeiosFetch.*
+    val entry = bs(0x58, 0x20) ++ Bytes.wrap(Array.fill[Byte](32)(1)) ++ bs(0x01)
+    assertEquals(
+      decodePrefix(State.Block, bs(0x82, 0x02, 0xa0)),
+      Left(LeiosWireError.EmptyEndorserBlock)
     )
     assertEquals(
-      encode(
-        Message.BlockTxs(EbPoint(5, hash(3)), TxBitmaps(Vector.empty), Vector(bs(0x82, 0x01)))
-      ),
-      Left(
-        LeiosWireError.Syntax(ProtocolError.Codec(xyz.kd5ujc.scarab.codec.Cbor.Error.UnexpectedEnd))
-      )
+      decodePrefix(State.Block, bs(0x82, 0x02, 0xbf, 0xff)),
+      Left(LeiosWireError.EmptyEndorserBlock)
+    )
+    assertEquals(encode(Message.Block(Vector.empty)), Left(LeiosWireError.Unencodable))
+    // an indefinite map of one entry is read; the keys here repeat, which the codec does not judge
+    assert(decodePrefix(State.Block, bs(0x82, 0x02, 0xbf) ++ entry ++ bs(0xff)).isRight)
+    def eb(n: Int) =
+      bs(0x82, 0x02, 0xb9, n >> 8, n & 0xff) ++ Bytes.wrap(Array.fill(n)(entry.toArray).flatten)
+    assert(decodePrefix(State.Block, eb(MaxTxsPerEb)).isRight)
+    assertEquals(
+      decodePrefix(State.Block, eb(MaxTxsPerEb + 1)),
+      Left(LeiosWireError.TooMany(2, LeiosField.EndorserBlock, MaxTxsPerEb, MaxTxsPerEb + 1))
+    )
+  }
+
+  test("LeiosFetch: the form of Blueprint fe4cceb9 is still read, as LegacyBlockTxs") {
+    import LeiosFetch.*
+    // [4, point, bitmaps, [tx...]] with each transaction any item, kept as the item's own bytes
+    val txs = Vector(bs(0x82, 0x18, 0x02, 0x01), bs(0x41, 0xa0), bs(0xd8, 0x18, 0x41, 0x00))
+    val m = Message.LegacyBlockTxs(p0, TxBitmaps(Vector(0 -> BigInt(7))), txs)
+    val bytes = ok(encode(m))
+    assert(bytes.hex.contains(txs.map(_.hex).mkString), bytes.hex)
+    assertEquals(bytes.take(2), bs(0x84, 0x04))
+    assertEquals(decodePrefix(State.BlockTxs, bytes), Right((m, bytes.size)))
+    assertEquals(next(State.BlockTxs, m), Some(State.Idle))
+    // indefinite bitmaps and list, as the Blueprint draws them
+    val pt = ok(encode(Message.BlockRequest(p0))).drop(2)
+    val old = bs(0x84, 0x04) ++ pt ++ bs(0xbf, 0x00, 0x07, 0xff, 0x9f, 0xa0, 0xff)
+    assertEquals(
+      decodePrefix(State.BlockTxs, old).map(_._1),
+      Right(Message.LegacyBlockTxs(p0, TxBitmaps(Vector(0 -> BigInt(7))), Vector(bs(0xa0))))
+    )
+    // a transaction list that is not a list
+    assertEquals(
+      decodePrefix(State.BlockTxs, bs(0x84, 0x04) ++ pt ++ bs(0xa0, 0xa0)),
+      Left(LeiosWireError.BadField(4, LeiosField.Transactions))
+    )
+    // neither one nor three fields is a form
+    assertEquals(
+      decodePrefix(State.BlockTxs, bs(0x83, 0x04) ++ pt ++ bs(0xa0)),
+      Left(LeiosWireError.WrongArity(4, 1, 2))
+    )
+  }
+
+  test("LeiosFetch: the client checks an answer against its own request") {
+    import LeiosFetch.*
+    val request = TxBitmaps(Vector(0 -> BigInt(5), 3 -> (BigInt(1) << 63)))
+    assertEquals(request.count, 3L)
+    val txs = Vector.fill(3)(bs(0xa0))
+    assertEquals(answers(request, txs), Right(txs))
+    assertEquals(
+      answers(request, txs.take(2)),
+      Left(LeiosWireError.TransactionCountMismatch(3L, 2))
     )
   }
 
