@@ -368,7 +368,11 @@ object TxBody:
       )
       treasury <- f.get(21).traverse(CborRead.uint(_, "current treasury value"))
       donation <- f.get(22).traverse(CborRead.uint(_, "donation"))
-      _ <- Either.cond(!(conway && donation.contains(BigInt(0))), (), LedgerDecodeError.Zero("donation"))
+      _ <- Either.cond(
+        !(conway && donation.contains(BigInt(0))),
+        (),
+        LedgerDecodeError.Zero("donation")
+      )
     yield TxBody(
       raw,
       inputs,
@@ -444,8 +448,7 @@ object Witnesses:
     * tagged and must not be empty, the redeemers must not be empty, and a Plutus script listed
     * twice fails; duplicate vkeys, native scripts, datums and redeemer keys are tolerated
     * (cardano-ledger `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs` at f649f975,
-    * `addrWitsSetDecoder`, `nativeScriptsDecoder`, `scriptDecoderV9`, `TxDatsRaw`,
-    * `RedeemersRaw`).
+    * `addrWitsSetDecoder`, `nativeScriptsDecoder`, `scriptDecoderV9`, `TxDatsRaw`, `RedeemersRaw`).
     */
   def decode(raw: Bytes, era: Era): Either[LedgerDecodeError, Witnesses] =
     val version = DecoderVersion.of(era)
@@ -612,7 +615,9 @@ object Tx:
     for
       body <- TxBody.decode(t.body, era)
       witnesses <- Witnesses.decode(t.witnesses, era)
-      _ <- t.auxiliaryData.traverse_(bytes => AuxiliaryScripts.read(bytes, DecoderVersion.of(era).value))
+      _ <- t.auxiliaryData.traverse_(bytes =>
+        AuxiliaryScripts.read(bytes, DecoderVersion.of(era).value)
+      )
     yield
       // The fee size is the array header, body, witnesses and auxiliary data (`null` is one byte);
       // the `is_valid` flag is not counted (checked against Preview transactions).

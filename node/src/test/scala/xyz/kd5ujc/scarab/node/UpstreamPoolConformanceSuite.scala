@@ -8,7 +8,15 @@ import io.circe.Json
 import io.circe.parser.parse
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational, Value}
-import xyz.kd5ujc.scarab.ledger.{Block, Certificate, DecoderVersion, EpochGeometry, LedgerGlobals, PoolParams, Tx}
+import xyz.kd5ujc.scarab.ledger.{
+  Block,
+  Certificate,
+  DecoderVersion,
+  EpochGeometry,
+  LedgerGlobals,
+  PoolParams,
+  Tx
+}
 import xyz.kd5ujc.scarab.ledger.rules.{Globals, Pool, PoolCert, Sts}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.Codec

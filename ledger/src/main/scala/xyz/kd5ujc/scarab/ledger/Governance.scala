@@ -149,7 +149,9 @@ object Proposal:
           case (4, 5) =>
             (
               GovActionId.optional(xs(1)),
-              CborRead.set(xs(2), "removed members", version)(Credential.decode(_, "committee member")),
+              CborRead.set(xs(2), "removed members", version)(
+                Credential.decode(_, "committee member")
+              ),
               CborRead
                 .map(xs(3), "added members")
                 .flatMap(_.traverse { case (k, v) =>
@@ -220,8 +222,8 @@ object VotingProcedures:
       .flatMap(checked)
 
   /** Voting procedures exist only in Conway, whose decoder version (9) refuses a map with a
-    * repeated key (`decodeMapByKey`, Decoder.hs) and a voter without votes
-    * (`DecCBOR VotingProcedures`, `Conway/Governance/Procedures.hs` at cardano-ledger f649f975).
+    * repeated key (`decodeMapByKey`, Decoder.hs) and a voter without votes (`DecCBOR
+    * VotingProcedures`, `Conway/Governance/Procedures.hs` at cardano-ledger f649f975).
     */
   private def checked(
       all: Vector[(Voter, Vector[(GovActionId, VotingProcedure)])]
@@ -229,9 +231,9 @@ object VotingProcedures:
     val structure = for
       _ <- CborRead.unique(all.map(_._1), "voters")
       _ <- all.traverse { case (_, votes) =>
-        CborRead.nonEmpty(votes, "votes of a voter", required = true).flatMap(vs =>
-          CborRead.unique(vs.map(_._1), "governance action ids")
-        )
+        CborRead
+          .nonEmpty(votes, "votes of a voter", required = true)
+          .flatMap(vs => CborRead.unique(vs.map(_._1), "governance action ids"))
       }
     yield all
     structure.leftMap(DecodeError.InvalidStructure(_))

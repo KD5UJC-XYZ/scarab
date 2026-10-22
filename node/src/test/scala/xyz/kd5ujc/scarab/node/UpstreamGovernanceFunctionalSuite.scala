@@ -171,7 +171,11 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
       val props = read(proposalNodes, Wire.seqOf(summon[Codec[Proposal]]))
       val certs = certificates.value match
         case Value.Arr(xs) =>
-          xs.map(n => Certificate.decode(n, DecoderVersion.of(Era.Conway)).fold(e => fail(e.message), identity))
+          xs.map(n =>
+            Certificate
+              .decode(n, DecoderVersion.of(Era.Conway))
+              .fold(e => fail(e.message), identity)
+          )
         case other => fail(s"expected original GOV certificates, got $other")
       GovSignal(
         voting.map((voter, entries) => voter -> entries.map((id, p) => id -> p.vote)),

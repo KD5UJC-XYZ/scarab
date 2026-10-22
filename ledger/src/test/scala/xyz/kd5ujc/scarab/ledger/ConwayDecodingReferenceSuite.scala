@@ -72,11 +72,20 @@ class ConwayDecodingReferenceSuite extends FunSuite:
     assertEquals(rows.map(_.name).distinct.size, rows.size)
   }
 
-  test("every case agrees with its recorded reference verdict, and was recorded for the rule it breaks") {
+  test(
+    "every case agrees with its recorded reference verdict, and was recorded for the rule it breaks"
+  ) {
     for row <- rows do
-      assertEquals(row.accepted, row.expect.isEmpty, s"${row.name}: case metadata and reference verdict")
+      assertEquals(
+        row.accepted,
+        row.expect.isEmpty,
+        s"${row.name}: case metadata and reference verdict"
+      )
       row.rule.foreach(rule =>
-        assert(row.failure.exists(_.contains(rule)), s"${row.name}: reference failure ${row.failure}")
+        assert(
+          row.failure.exists(_.contains(rule)),
+          s"${row.name}: reference failure ${row.failure}"
+        )
       )
   }
 
@@ -87,11 +96,16 @@ class ConwayDecodingReferenceSuite extends FunSuite:
         case None =>
           assertEquals(result, Right(()), s"the reference accepts this encoding")
         case Some(error) =>
-          val message = result.fold(_.toString, _ => fail(s"the reference refuses this encoding: ${row.failure}"))
+          val message = result.fold(
+            _.toString,
+            _ => fail(s"the reference refuses this encoding: ${row.failure}")
+          )
           assert(message.contains(error), s"expected $error, got $message")
     }
 
-  test("the decoder version comes from the era: a repeated input is a refusal in Conway and one input in Babbage") {
+  test(
+    "the decoder version comes from the era: a repeated input is a refusal in Conway and one input in Babbage"
+  ) {
     val repeated = rows.find(_.name == "inputs: duplicate input").getOrElse(fail("case"))
     assert(TxBody.decode(repeated.raw, Era.Conway).isLeft)
     val babbage = TxBody.decode(repeated.raw, Era.Babbage).fold(e => fail(e.toString), identity)
@@ -103,7 +117,8 @@ class ConwayDecodingReferenceSuite extends FunSuite:
     val body = TxBody.decode(twoInputs.raw, Era.Conway).fold(e => fail(e.toString), identity)
     assertEquals(body.raw, twoInputs.raw)
     assertEquals(body.inputs.size, 2)
-    val witnesses = rows.find(_.name == "vkey witnesses: duplicate is tolerated").getOrElse(fail("case"))
+    val witnesses =
+      rows.find(_.name == "vkey witnesses: duplicate is tolerated").getOrElse(fail("case"))
     assertEquals(
       Witnesses.decode(witnesses.raw, Era.Conway).map(_.vkeys.size),
       Right(1)
