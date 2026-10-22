@@ -94,9 +94,24 @@ folded into the enum case (`msgRollForward` is a case, not a class).
 | `strip <module>:<rule> p1 p2 …` | prefixes removed from derived case names (`msgRollForward` becomes `RollForward`) |
 | `field <module>:<rule> <key or index> <name>` | name of an integer-keyed map entry or an anonymous array member |
 | `chunks <module>:<rule> <positive limit>` | byte-string runtime refinement: bound each original definite chunk; write long values as bounded indefinite chunks |
+| `lenient-maps <module>` | the generated `{ + k => v }` and `{ n*m k => v }` maps of this module accept any entry count; every other module enforces the bounds (below) |
 | `rename`, `external` | Scala type name; or "not generated, a raw `Node`" (the hand-written boundary) |
 
 A directive naming a rule that no root reaches is an error, so a typo cannot silently stop a property being declared.
+
+**Map entry bounds.** A map whose body is one repeated entry (`{ + k => v }`, `{ n*m k => v }`) is decoded by `Codec.pairs`
+with the entry count bounds, as `Codec.vec` bounds `[+ x]`, and a count outside them is a `BadArity` refusal. The CDDL alone is
+not the reference, so each place this refuses what the previous generator accepted was read against cardano-ledger at the
+pinned commit of `upstream/SOURCES`: Conway `withdrawals`, `mint`, `voting_procedures` and the map form of `redeemers`, and
+Dijkstra's `withdrawals`, `mint`, `multiasset`, `voting_procedures`, `redeemers`, `required_top_level_guards`,
+`direct_deposits`, `account_balance_intervals` and `starting_account_balance_intervals`, are refused empty by the reference
+(`Conway/TxBody.hs` field guards for keys 5, 9 and 19, `Dijkstra/TxBody.hs` `decoderByKey` for keys 5, 9, 19 and 24 to 27,
+`Mary/Value.hs` `decodeMultiAsset` with `decodeConway` and `decodeDijkstra`, `Conway/Governance/Procedures.hs`
+`DecCBOR VotingProcedures`, `Alonzo/TxWits.hs` `DecCBOR (Annotator (RedeemersRaw era))`). Mary, Alonzo and Babbage are the
+exception: below decoder version 9 the reference reads `multiasset` and `mint` with a plain `decodeMap` and prunes the empty
+inner maps (`decodeWithPrunning`), so it accepts `{ policy => {} }` where the CDDL says `{ + asset_name => a }`. Those three
+modules are declared `lenient-maps` in `models.conf` and keep the previous, reference-conforming behaviour (their generated
+sources are unchanged). `MapBoundsSuite` pins both sides.
 
 **Local refinements of the CDDL** live in `overrides/` as real CDDL, never as edits to the pinned files:
 `network-base.cddl` instantiates the `any` slots of ChainSync (`header`, `point`, `tip`) the way Cardano does;
