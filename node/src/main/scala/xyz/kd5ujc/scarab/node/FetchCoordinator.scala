@@ -81,6 +81,33 @@ final class FetchCoordinator[F[_]: Async] private (
           }
       }
     }
+
+  /** What each session holds, read from the state without the decision lock: a stall report must
+    * not wait behind the very transaction that may be stuck. Each session's own pipeline probe (set
+    * by [[Session.observed]]) is read after the state, outside it.
+    */
+  private[node] def diagnostics: F[Vector[SessionDiagnostic]] =
+    state.get.flatMap(s =>
+      s.peers.toVector.sortBy(_._1).traverse { (id, peer) =>
+        peer.probe.sequence.map(pipeline =>
+          SessionDiagnostic(
+            session = id,
+            busy = peer.busy,
+            pendingOffers = peer.pending.size,
+            pendingHeaders = peer.pending.map(_.headers.size).sum,
+            active = peer.active.toVector.sortBy(_._1).map { (token, a) =>
+              ActiveFetch(token, a.requests, a.remaining.size)
+            },
+            candidateHeaders = peer.candidate.map(_.headers.size),
+            pipeline = pipeline
+          )
+        )
+      }
+    )
+
+  private def observe(id: Long, probe: F[Peer.PipelineState]): F[Unit] =
+    state.update(s => s.copy(peers = s.peers.updatedWith(id)(_.map(_.copy(probe = Some(probe))))))
+
   private[node] def inFlight: F[Map[Long, BlockFetchPolicy.InFlight]] = state.get.map { s =>
     s.peers.map { (id, p) =>
       val active = p.active.values.toVector
@@ -479,6 +506,26 @@ object FetchCoordinator:
       result: Deferred[F, Allocation],
       candidate: Option[ChainSelection.Candidate]
   )
+
+  /** One reservation of a session that has not completed: `requests` BlockFetch requests were
+    * granted and `headers` of its headers are still to arrive.
+    */
+  private[node] final case class ActiveFetch(token: Long, requests: Int, headers: Int)
+
+  /** A session as a stall report sees it: what the coordinator holds for it (`busy`, the offers
+    * waiting for a decision and their headers, the reservations in flight, the headers of its
+    * candidate) and, for a pipelined session, its [[Peer.PipelineState]].
+    */
+  private[node] final case class SessionDiagnostic(
+      session: Long,
+      busy: Boolean,
+      pendingOffers: Int,
+      pendingHeaders: Int,
+      active: Vector[ActiveFetch],
+      candidateHeaders: Option[Int],
+      pipeline: Option[Peer.PipelineState]
+  )
+
   private final case class Active(remaining: Vector[Header], requests: Int, claimed: Set[Bytes])
   private final case class PeerState[F[_]](
       identity: Long,
@@ -487,7 +534,8 @@ object FetchCoordinator:
       performance: FetchGsv.PeerGsv = FetchGsv.default,
       pending: Vector[Offer[F]] = Vector.empty,
       active: Map[Long, Active] = Map.empty,
-      busy: Boolean = false
+      busy: Boolean = false,
+      probe: Option[F[Peer.PipelineState]] = None
   )
   private final case class State[F[_]](
       signal: Deferred[F, Unit],
@@ -521,6 +569,9 @@ object FetchCoordinator:
     ): F[Unit] =
       owner.announce(id, tip, performance, hints, candidate)
     def identity: Long = id
+
+    /** Let [[diagnostics]] read this session's pipeline through `probe`, which must not block. */
+    private[node] def observed(probe: F[Peer.PipelineState]): F[Unit] = owner.observe(id, probe)
     private[node] def updatePerformance(performance: FetchGsv.PeerGsv): F[Unit] =
       owner.updatePerformance(id, performance)
     private[node] def reserve(

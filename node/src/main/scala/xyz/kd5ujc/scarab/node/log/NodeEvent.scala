@@ -16,6 +16,7 @@ import xyz.kd5ujc.scarab.node.{
   LedgerPeersTrace,
   Main,
   NodeConfig,
+  StallDiagnostics,
   Topology
 }
 import xyz.kd5ujc.scarab.network.selection.{
@@ -65,6 +66,12 @@ enum NodeEvent:
     * [[xyz.kd5ujc.scarab.node.StallWatchdog]]).
     */
   case Stalled(idle: FiniteDuration, ours: BigInt, peers: BigInt)
+
+  /** The state of every session's pipeline when the stall of the [[Stalled]] event began, and what
+    * became of the fiber dump (issue 371, [[xyz.kd5ujc.scarab.node.StallDiagnostics]]). One per
+    * stall, logged right after it.
+    */
+  case StallState(report: StallDiagnostics.Report, dump: StallDiagnostics.Dump)
 
   /** The stall went on for `--stall-exit-after`: the node ends (after its shutdown snapshot, exit
     * code 4) so that its supervisor restarts it from the newest snapshot.
@@ -136,6 +143,40 @@ enum NodeEvent:
   case Library(logger: String, severity: Severity, message: String, thrown: Option[String])
 
 object NodeEvent:
+  /** One session of a stall report: the coordinator's view and, when pipelined, the session's. */
+  private def session(d: xyz.kd5ujc.scarab.node.FetchCoordinator.SessionDiagnostic): Json =
+    Json.obj(
+      "session" -> d.session.asJson,
+      "busy" -> d.busy.asJson,
+      "pendingOffers" -> d.pendingOffers.asJson,
+      "pendingHeaders" -> d.pendingHeaders.asJson,
+      "active" -> d.active
+        .map(a =>
+          Json.obj(
+            "token" -> a.token.asJson,
+            "requests" -> a.requests.asJson,
+            "headers" -> a.headers.asJson
+          )
+        )
+        .asJson,
+      "candidateHeaders" -> d.candidateHeaders.asJson,
+      "pipeline" -> d.pipeline.fold(Json.Null)(p =>
+        Json.obj(
+          "peer" -> p.peer.asJson,
+          "permitsFree" -> p.permitsFree.asJson,
+          "permits" -> p.permits.asJson,
+          "queued" -> p.queued.asJson,
+          "candidateHeaders" -> p.candidateHeaders.asJson,
+          "unpublishedHeaders" -> p.unpublishedHeaders.asJson,
+          "capacityRoom" -> p.capacityRoom.asJson,
+          "candidateTipSlot" -> p.candidateTipSlot.asJson,
+          "publishedTipSlot" -> p.publishedTipSlot.asJson,
+          "lastReplyReceivedAgoMs" -> p.lastReplyReceivedAgo.map(_.toMillis).asJson,
+          "lastReplyHandledAgoMs" -> p.lastReplyHandledAgo.map(_.toMillis).asJson
+        )
+      )
+    )
+
   /** What is running: the build of this jar (sbt-buildinfo). */
   final case class Build(
       version: String,
@@ -238,6 +279,28 @@ object NodeEvent:
         "idleSeconds" -> idle.toSeconds.asJson,
         "ourBlock" -> ours.asJson,
         "peerBlock" -> peers.asJson
+      )
+    case StallState(report, dump) =>
+      EventKind.StallState.line(
+        "sessions" -> report.sessions.map(NodeEvent.session).asJson,
+        "admissions" -> Json.obj(
+          "capacity" -> report.admissions.capacity.asJson,
+          "held" -> report.admissions.held.asJson,
+          "queued" -> report.admissions.queued.asJson
+        ),
+        "fiberDump" -> (dump match
+          case StallDiagnostics.Dump.Off => Json.Null
+          case StallDiagnostics.Dump.Written(path) =>
+            Json.obj("path" -> path.toString.asJson)
+          case StallDiagnostics.Dump.Failed(StallDiagnostics.DumpError.NoMonitor) =>
+            Json.obj("failed" -> "noMonitor".asJson)
+          case StallDiagnostics.Dump.Failed(StallDiagnostics.DumpError.Io(cause)) =>
+            Json.obj("failed" -> "io".asJson, "message" -> String.valueOf(cause.getMessage).asJson)
+          case StallDiagnostics.Dump.Failed(StallDiagnostics.DumpError.Defect(cause)) =>
+            Json.obj(
+              "failed" -> "defect".asJson,
+              "message" -> s"${cause.getClass.getName}: ${cause.getMessage}".asJson
+            ))
       )
     case StallExit(idle, ours, peers) =>
       EventKind.StallExit.line(

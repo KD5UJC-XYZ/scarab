@@ -314,6 +314,55 @@ object Peer:
       */
     case BlocksArrived(blocks: Vector[(Long, Long)], at: Time)
 
+  /** One pipelined session as a stall report reads it (issue 371): the state of the machinery
+    * `streaming` waits on, taken in non-blocking reads. A session with no pipeline reports none.
+    *
+    * @param peer
+    *   The session's peer address.
+    * @param permitsFree
+    *   Batch permits not taken, of `permits`: a permit is held from a batch's publication until the
+    *   consumer takes the batch, so 0 free with an empty queue is a publisher waiting for itself.
+    * @param queued
+    *   Events in the batch queue, which the consumer takes.
+    * @param candidateHeaders
+    *   Headers of the validated candidate.
+    * @param unpublishedHeaders
+    *   Headers of the candidate beyond the published cursor: what an `advance` is still to publish,
+    *   and what the ChainSync capacity wait is held by.
+    * @param capacityRoom
+    *   [[publicationRoom]]: false while the candidate is at its retained size and the published
+    *   cursor has not caught up, which is when a ChainSync reply waits for an `advance`.
+    * @param candidateTipSlot
+    *   Slot of the candidate's last header.
+    * @param publishedTipSlot
+    *   Slot of the published cursor's last header.
+    * @param lastReplyReceivedAgo
+    *   Time since the last ChainSync reply batch arrived, if any did.
+    * @param lastReplyHandledAgo
+    *   Time since the last such batch was fully handled (decoded, checked, recorded).
+    */
+  final case class PipelineState(
+      peer: String,
+      permitsFree: Long,
+      permits: Int,
+      queued: Int,
+      candidateHeaders: Int,
+      unpublishedHeaders: Int,
+      capacityRoom: Boolean,
+      candidateTipSlot: Option[Long],
+      publishedTipSlot: Option[Long],
+      lastReplyReceivedAgo: Option[FiniteDuration],
+      lastReplyHandledAgo: Option[FiniteDuration]
+  )
+
+  /** When the session last received and last finished handling a ChainSync reply batch, on the
+    * monotonic clock; the two counters behind [[PipelineState]].
+    */
+  private[node] final case class Replies(
+      received: Option[FiniteDuration] = None,
+      handled: Option[FiniteDuration] = None
+  )
+
   /** @param readAhead
     *   Maximum headers per ordered body-publication chunk. The rolling request window is set
     *   independently by `pipelineWindow`.
@@ -588,7 +637,8 @@ object Peer:
         Ref.of[F, Option[PeerError.RolledBackPastIntersection]](None),
         Ref.of[F, Boolean](false),
         Ref.of[F, Option[ValidationError]](None),
-        Ref.of[F, Option[ChainSyncJumping.Instruction[GenesisPeer.Checkpoint]]](None)
+        Ref.of[F, Option[ChainSyncJumping.Instruction[GenesisPeer.Checkpoint]]](None),
+        Ref.of[F, Peer.Replies](Peer.Replies())
       ).mapN {
         (
             queue,
@@ -609,7 +659,8 @@ object Peer:
             pendingEnd,
             chainSyncFinished,
             handledSemantic,
-            pendingJump
+            pendingJump,
+            replies
         ) =>
           def finishChainSync(using Raise[F, PeerError]): F[Unit] =
             connection.chainSync.done *> chainSyncFinished.set(true)
@@ -1070,6 +1121,7 @@ object Peer:
           ): F[Vector[SyncEvent]] =
             for
               arrived <- F.monotonic
+              _ <- replies.update(_.copy(received = Some(arrived)))
               batch <- updates.traverse(decode)
               _ <- batch.traverse_ {
                 case SyncEvent.RollForward(header, _) => checkKnownInvalid(header)
@@ -1127,6 +1179,8 @@ object Peer:
                 val slots = result.collect { case SyncEvent.RollForward(h, _) => h.slot.toLong }
                 report(Peer.Observation.HeadersArrived(slots, arrived)).whenA(slots.nonEmpty)
               }
+              handled <- F.monotonic
+              _ <- replies.update(_.copy(handled = Some(handled)))
             yield result
 
           def recordUpdates(
@@ -1371,6 +1425,31 @@ object Peer:
               publicationChanged <- Deferred[F, Unit]
               publishedCursor <- Ref.of[F, (ChainSelection.Candidate, Deferred[F, Unit])](
                 (initial, publicationChanged)
+              )
+              _ <- fetcher.observed(
+                (
+                  F.monotonic,
+                  replies.get,
+                  permits.available,
+                  queue.size,
+                  candidateHeaders.get,
+                  publishedCursor.get
+                ).mapN { (now, seen, free, queued, candidate, published) =>
+                  Peer.PipelineState(
+                    peer = settings.address.toString,
+                    permitsFree = free,
+                    permits = Depth,
+                    queued = queued,
+                    candidateHeaders = candidate.headers.size,
+                    unpublishedHeaders =
+                      (candidate.headers.size - published._1.headers.size).max(0),
+                    capacityRoom = publicationRoom(published._1, candidate, retainedHeaders),
+                    candidateTipSlot = candidate.headers.lastOption.map(_.slot.toLong),
+                    publishedTipSlot = published._1.headers.lastOption.map(_.slot.toLong),
+                    lastReplyReceivedAgo = seen.received.map(now - _),
+                    lastReplyHandledAgo = seen.handled.map(now - _)
+                  )
+                }
               )
               advance = (candidate: ChainSelection.Candidate) =>
                 Deferred[F, Unit].flatMap { fresh =>

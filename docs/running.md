@@ -91,6 +91,7 @@ value except `--forge` and `--dump-state-full`. An unknown flag, a repeated flag
 | `--memory-report-seconds N` | `0` (off) | log a `memory` event every N seconds: heap, non-heap, buffer pools, `/proc/self/status` (`RssAnon`, `RssFile`), the cgroup's `memory.current` and its `anon`/`file`, and the RocksDB properties (block cache usage, memtables). Use it with `-XX:NativeMemoryTracking=summary` and `jcmd <pid> VM.native_memory` to see where memory is |
 | `--stall-minutes N` | `10` (`0`: off) | log a `stalled` event, once, when no block has been extended for N minutes while a peer announced a longer chain than ours; `scarab_follower_stalled` is 1 for as long as it lasts and `scarab_follower_stalls_total` counts them, so Grafana can alert on a node that is up but not following. See "Stall watchdog" |
 | `--stall-exit-after <Ns\|Nm\|Nh>` | off | end the node when a stall (see `--stall-minutes`) has lasted this long: it logs `stallExit`, closes down like on a signal (the shutdown snapshot is taken) and exits with code 4, so a supervisor that restarts it (Docker `unless-stopped`) brings it back from the newest snapshot. Needs `--stall-minutes` and a longer time than it. See "Stall watchdog" |
+| `--stall-dump <dir>` | off | when a stall begins, also write the runtime's live-fiber snapshot (what `kill -USR1` prints for an `IOApp`) to `<dir>/fiber-dump-<epoch ms>-<n>.txt`, one file per stall (the time keeps a restart from overwriting it), and name the file in the `stallState` event. The devnet scenarios that start the follower turn it on (the files are in the run directory's `stall/`). See "Stall watchdog" |
 | `--churn-interval <Ns\|Nm>` | off (test only) | the churn governor's rounds follow each other this often (with a tenth of it as fuzz) and the waits for connecting and for the known set are at most that long, instead of 3300 s plus up to 600 s in the fetch mode deadline and 900 s plus up to 60 s in bulk sync, with waits of up to 300 s. The `governor` devnet scenario uses it; a real node does not |
 | `--read-ahead N` | `128` | Maximum headers in an ordered body-publication chunk. This does not change the ChainSync request window. Historical fixed-batch measurements remain in [performance.md](performance.md), section 7 (D3) |
 | `--chain-sync-low N` | `200` | Native rolling ChainSync low watermark; zero is allowed, and it must not exceed the high watermark |
@@ -1006,6 +1007,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `epochValidated` | `Chain.EpochValidated` | Info | `era`, `epoch`, `headers`, `thresholdChecked`, `overlay`, `leaderUnchecked`, `scheduling`, `boundary`, `signatureVerified`, `offSchedule`, `transactions` |
 | `reconnecting` | `Chain.Reconnecting` | Warning | `reason`, `attempt` |
 | `stalled` | `Chain.Stalled` | Warning | `idleSeconds`, `ourBlock`, `peerBlock` |
+| `stallState` | `Chain.StallState` | Warning | `sessions` (per session: `session`, `busy`, `pendingOffers`, `pendingHeaders`, `active`, `candidateHeaders`, `pipeline`: `peer`, `permitsFree`, `permits`, `queued`, `candidateHeaders`, `unpublishedHeaders`, `capacityRoom`, `candidateTipSlot`, `publishedTipSlot`, `lastReplyReceivedAgoMs`, `lastReplyHandledAgoMs`), `admissions` (`capacity`, `held`, `queued`), `fiberDump` (`path`, or `failed`, or null) |
 | `stallExit` | `Chain.StallExit` | Error | `idleSeconds`, `ourBlock`, `peerBlock` |
 | `headersChecked` | `Chain.HeadersChecked` | Info | `validated`, `unchecked`, `waited` |
 | `chainSyncRounds` | `Chain.ChainSyncRounds` | Info | `rounds`, `headers`, `avgMs`, `maxMs`, `maxDepth`; legacy batch facade only; production rolling sessions retain the per-reply header counter and do not emit round aggregates |
@@ -1402,6 +1404,19 @@ and inbound session reports its peer's tip). When no block has been extended for
 `scarab_follower_stalled` to 1 until the next block is extended. A node at the tip of every peer never
 stalls however long the network takes to produce a block. Alert on
 `scarab_follower_stalled == 1`, or on `increase(scarab_follower_stalls_total[1h]) > 0`.
+
+A stall that cannot be reproduced on demand leaves its evidence (issue 371). Right after `stalled` the node
+logs one `stallState` event with every session's pipeline: the coordinator's view (`busy`, the offers waiting for
+a decision, the reservations in flight, the headers of its candidate) and, for a pipelined session, its batch
+permits free of `permits`, the events queued for the consumer, the candidate's headers and those beyond the
+published cursor, and the time since the last ChainSync reply batch arrived and was handled; and the shared block
+admissions (`held` of `capacity` permits, `queued` works). The reads are `Ref` values and queue sizes behind
+probes that do not block and are taken once per stall; on the block path a session only stores two timestamps per
+ChainSync reply batch. `--stall-dump <dir>` adds the runtime's fiber dump, written through the runtime's
+`LiveFiberSnapshotTrigger` MBean (cats-effect 3.7.1 keeps `IORuntime.fiberMonitor` private); it lists the fibers
+the runtime traces (`cats.effect.tracing.mode`, `cached` by default). `devnet.py e2e` passes the flag, and its
+`e2e-summary.json` carries the `stalled` and `stallState` events and the dump files under `stallDiagnostics` when
+the follower stalled. Copy `<run>/stall/` out before `down` removes the run directory.
 
 A stalled process is alive, so a supervisor never restarts it. `--stall-exit-after 30m` (a number and `s`,
 `m` or `h`; off by default) ends the node when the stall has lasted that long: one `stallExit` event, then the

@@ -70,9 +70,23 @@ private[node] final class BlockAdmissions[F[_]: Async] private (
       enqueue(F.pure(Some(Work.Reprocess(complete)))) *> complete.get
     }
 
+  /** Two non-blocking reads for a stall report: the permits taken (a submitter holds one from
+    * reservation until the worker takes its work) and the work waiting in the queue.
+    */
+  def occupancy: F[Occupancy] =
+    (capacity.available, queue.size).mapN((free, queued) =>
+      Occupancy(Capacity, (Capacity - free).toInt.max(0), queued)
+    )
+
   def next: F[Work[F]] = queue.take.flatTap(_ => capacity.release)
 
 object BlockAdmissions:
+  /** The ChainDB queue's waiting messages (Args.hs:122). */
+  private[node] val Capacity = 10
+
+  /** `held` of `capacity` permits are taken; `queued` works wait for the worker. */
+  private[node] final case class Occupancy(capacity: Int, held: Int, queued: Int)
+
   private[node] enum Work[F[_]]:
     case Add(taken: BlockPool.Admission)
     case Reprocess(complete: Deferred[F, Unit])
@@ -80,7 +94,7 @@ object BlockAdmissions:
   private[node] def create[F[_]: Async]: F[BlockAdmissions[F]] =
     (
       Queue.unbounded[F, Work[F]],
-      Semaphore[F](10),
+      Semaphore[F](Capacity.toLong),
       Mutex[F],
       Ref.of[F, Boolean](false),
       Deferred[F, Unit],

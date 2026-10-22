@@ -67,6 +67,41 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- node(NodeEvent.ChainSyncRounds(200L, 25600L, 120L, 900L, 128))
         _ <- node(NodeEvent.SlowFetch(300L))
         _ <- node(NodeEvent.Stalled(10.minutes, BigInt(6809207), BigInt(10200000)))
+        _ <- node(
+          NodeEvent.StallState(
+            xyz.kd5ujc.scarab.node.StallDiagnostics.Report(
+              Vector(
+                xyz.kd5ujc.scarab.node.FetchCoordinator.SessionDiagnostic(
+                  session = 3L,
+                  busy = true,
+                  pendingOffers = 1,
+                  pendingHeaders = 20,
+                  active = Vector(xyz.kd5ujc.scarab.node.FetchCoordinator.ActiveFetch(5L, 2, 40)),
+                  candidateHeaders = Some(100),
+                  pipeline = Some(
+                    xyz.kd5ujc.scarab.node.Peer.PipelineState(
+                      peer = "10.0.0.1:3001",
+                      permitsFree = 0,
+                      permits = 3,
+                      queued = 3,
+                      candidateHeaders = 100,
+                      unpublishedHeaders = 60,
+                      capacityRoom = false,
+                      candidateTipSlot = Some(900L),
+                      publishedTipSlot = Some(840L),
+                      lastReplyReceivedAgo = Some(600.seconds),
+                      lastReplyHandledAgo = None
+                    )
+                  )
+                )
+              ),
+              xyz.kd5ujc.scarab.node.BlockAdmissions.Occupancy(10, 10, 4)
+            ),
+            xyz.kd5ujc.scarab.node.StallDiagnostics.Dump.Written(
+              Path.of("/stall/fiber-dump-1.txt")
+            )
+          )
+        )
         _ <- node(NodeEvent.StallExit(30.minutes, BigInt(6809207), BigInt(10200000)))
         _ <- node(
           NodeEvent.Faulted(
