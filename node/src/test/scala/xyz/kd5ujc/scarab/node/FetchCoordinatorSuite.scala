@@ -475,3 +475,89 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
         yield ()
       }
     }
+
+  test("idle retries retain their notification instead of waking every fetching waiter") {
+    import xyz.kd5ujc.scarab.network.genesis.PicosClock
+    TestControl.executeEmbed {
+      for
+        observations <- Ref.of[IO, Int](0)
+        sleeping <- Deferred[IO, Unit]
+        clock = new PicosClock[IO]:
+          def now = observations.update(_ + 1).as(BigInt(0))
+          def sleep(@scala.annotation.unused delayPicos: BigInt) =
+            sleeping.complete(()).void *> IO.never[Unit]
+        coordinator <- FetchCoordinator.create[IO]()
+        _ <- coordinator.watchDecisions(0, Some(clock)).background.use { _ =>
+          for
+            _ <- sleeping.get
+            _ <- coordinator.refreshGenesis.replicateA_(100)
+            _ <- IO.sleep(1.nano)
+            count <- observations.get
+          yield assertEquals(count, 1)
+        }
+      yield ()
+    }
+  }
+
+  test("a caught-up transition cannot overtake an already sampled dynamo demotion") {
+    import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
+    import xyz.kd5ujc.scarab.ledger.Fixtures
+    import xyz.kd5ujc.scarab.network.selection.{GenesisBlockFetch, Gsm}
+    import xyz.kd5ujc.scarab.protocol.ChainSync.Point
+    enum Event:
+      case Demoting, Demoted, CaughtUp
+    val headers = Fixtures.chain(2)
+    val candidate = ChainSelection.Candidate(Point.Origin, headers)
+    val local = ChainSelection.Local(Point.Origin, SelectView(-1, 0, None, 0, None), Vector.empty)
+    TestControl.executeEmbed {
+      for
+        phase <- Ref.of[IO, Gsm.Phase](Gsm.Phase.Syncing)
+        now <- Ref.of[IO, BigInt](0)
+        events <- Ref.of[IO, Vector[Event]](Vector.empty)
+        entered <- Deferred[IO, Unit]
+        release <- Deferred[IO, Unit]
+        coordinator <- FetchCoordinator.create[IO](selection = Some(IO.pure(local)))
+        _ <- coordinator.installGenesis(
+          FetchCoordinator.GenesisControl(
+            (phase.get, now.get).mapN((p, time) =>
+              FetchCoordinator.GenesisContext(p, time, GenesisBlockFetch.Starvation.Ongoing)
+            ),
+            _ =>
+              events.update(_ :+ Event.Demoting) *> entered.complete(()).void *>
+                release.get *> events.update(_ :+ Event.Demoted)
+          )
+        )
+        _ <- coordinator.session(0).use { session =>
+          session.announce(headers.lastOption, FetchGsv.default, candidate = Some(candidate)) *>
+            session.reserve(headers, FetchMode.BulkSync, Some(candidate)).use { _ =>
+              (for
+                _ <- now.set(GenesisBlockFetch.DefaultGracePicos)
+                _ <- coordinator.refreshGenesis.background.use { _ =>
+                  entered.get *> coordinator
+                    .transitionGenesis(
+                      phase.set(Gsm.Phase.CaughtUp) *> events.update(_ :+ Event.CaughtUp)
+                    )
+                    .start
+                    .flatMap { transition =>
+                      (for
+                        _ <- IO.sleep(1.nano)
+                        before <- phase.get
+                        _ <- IO(assertEquals(before, Gsm.Phase.Syncing))
+                        _ <- release.complete(()).void
+                        _ <- transition.joinWithNever
+                      yield ()).guarantee(release.complete(()).void *> transition.cancel)
+                    }
+                }
+                observed <- events.get
+                _ <- IO(
+                  assertEquals(observed, Vector(Event.Demoting, Event.Demoted, Event.CaughtUp))
+                )
+                _ <- coordinator.refreshGenesis
+                after <- events.get
+                _ <- IO(assertEquals(after, observed))
+              yield ()).guarantee(release.complete(()).void)
+            }
+        }
+      yield ()
+    }
+  }

@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.effect.{Async, Deferred, Ref, Resource}
+import cats.effect.std.Mutex
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.network.genesis.PicosClock
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -25,7 +26,8 @@ final class FetchCoordinator[F[_]: Async] private (
     selection: Option[F[ChainSelection.Local]],
     fetched: Option[F[Set[Bytes]]],
     salt: Long,
-    genesis: Ref[F, Option[FetchCoordinator.GenesisControl[F]]]
+    genesis: Ref[F, Option[FetchCoordinator.GenesisControl[F]]],
+    decisions: Mutex[F]
 ):
   import FetchCoordinator.*
   private val F = Async[F]
@@ -34,8 +36,14 @@ final class FetchCoordinator[F[_]: Async] private (
 
   /** Installed once by the Genesis governor; phase and starvation are live observations. */
   def installGenesis(control: GenesisControl[F]): F[Unit] =
-    genesis.set(Some(control)) *> refreshGenesis
+    decisions.lock.surround(genesis.set(Some(control)) *> changeLocked(identity))
   def refreshGenesis: F[Unit] = change(identity)
+
+  /** Publish a GSM transition and its decision as one transaction. A previously sampled Genesis
+    * decision cannot demote the dynamo after this transition has completed.
+    */
+  def transitionGenesis(update: F[Unit]): F[Unit] =
+    decisions.lock.surround(F.uncancelable(_ => update *> changeLocked(identity)))
 
   /** State.hs:100–107,150: grace expiry retriggers decisions in both modes. Node/Genesis.hs:114
     * configures zero grace without Genesis, so the Praos loop instead runs at its 10ms rate limit.
@@ -103,13 +111,18 @@ final class FetchCoordinator[F[_]: Async] private (
       .map(id => new Session(this, id))
 
   private def change(f: State[F] => State[F]): F[Unit] =
-    F.uncancelable { _ =>
-      (
-        Deferred[F, Unit],
-        selection.sequence,
-        fetched.sequence,
-        genesis.get.flatMap(_.traverse(c => c.context.map(c -> _)))
-      ).tupled.flatMap { (signal, local, cached, control) =>
+    decisions.lock.surround(changeLocked(f))
+
+  private def changeLocked(f: State[F] => State[F]): F[Unit] =
+    F.uncancelable { poll =>
+      poll(
+        (
+          Deferred[F, Unit],
+          selection.sequence,
+          fetched.sequence,
+          genesis.get.flatMap(_.traverse(c => c.context.map(c -> _)))
+        ).tupled
+      ).flatMap { (signal, local, cached, control) =>
         state
           .modify { before =>
             val input = f(before).copy(
@@ -120,11 +133,18 @@ final class FetchCoordinator[F[_]: Async] private (
               demotions = Vector.empty
             )
             val (after, grants) = dispatch(input)
-            (after, (before.signal, grants, after.demotions))
+            // Time advances on idle retries without changing the work a waiter can observe.
+            // Keep the same signal in that case; completing it wakes every fetching session.
+            val changed = before.peers != after.peers || before.mode != after.mode ||
+              before.selected != after.selected || before.fetched != after.fetched ||
+              before.genesisContext.map(_.phase) != after.genesisContext.map(_.phase) ||
+              before.genesisState != after.genesisState
+            val committed = if changed then after else after.copy(signal = before.signal)
+            (committed, (Option.when(changed)(before.signal), grants, after.demotions))
           }
           .flatMap { (previous, grants, demotions) =>
             grants.traverse_((promise, allocation) => promise.complete(allocation).void) *>
-              previous.complete(()).void *>
+              previous.traverse_(_.complete(()).void) *>
               control.traverse_((owner, _) => demotions.traverse_(owner.demoteDynamo))
           }
       }
@@ -197,7 +217,7 @@ final class FetchCoordinator[F[_]: Async] private (
   ): Resource[F, Allocation] =
     Resource
       .make(
-        Deferred[F, Allocation].flatMap { result =>
+        decisions.lock.surround(Deferred[F, Allocation].flatMap { result =>
           state
             .modify { s =>
               val token = s.next
@@ -213,10 +233,10 @@ final class FetchCoordinator[F[_]: Async] private (
               (next, (token, peer.isDefined))
             }
             .flatMap { (token, live) =>
-              (if live then change(_.copy(mode = mode)) else result.complete(Allocation.empty).void)
+              (if live then changeLocked(_.copy(mode = mode)) else result.complete(Allocation.empty).void)
                 .as(token -> result)
             }
-        }
+        })
       ) { (token, _) =>
         change(s =>
           s.copy(peers =
@@ -554,7 +574,8 @@ object FetchCoordinator:
   ): F[FetchCoordinator[F]] =
     (
       Deferred[F, Unit].flatMap(signal => Ref.of[F, State[F]](State[F](signal, 0, Map.empty))),
-      Ref.of[F, Option[GenesisControl[F]]](None)
-    ).mapN { (state, genesis) =>
-      new FetchCoordinator(state, config, selection, fetched, salt, genesis)
+      Ref.of[F, Option[GenesisControl[F]]](None),
+      Mutex[F]
+    ).mapN { (state, genesis, decisions) =>
+      new FetchCoordinator(state, config, selection, fetched, salt, genesis, decisions)
     }
