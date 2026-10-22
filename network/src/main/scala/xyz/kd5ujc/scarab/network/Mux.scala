@@ -403,6 +403,8 @@ object Mux:
         case Some(input) =>
           input.finished.tryGet.flatMap {
             case None =>
+              // Native network-mux Types.hs:305–308 bearerAsChannel receives msBlob only;
+              // protocol and direction checks begin with the negotiated application.
               input.feed(sdu.payload)(
                 inbound((Protocols.Handshake, config.role)).offer(sdu.payload)
               )
