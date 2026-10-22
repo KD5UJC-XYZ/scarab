@@ -108,6 +108,12 @@ class Run:
             self.crashed.discard(action["node"])
         self.executed.append({"t": round(t, 1), **action})
 
+    def scala_lost(self):
+        """The exit status of the Scala node if it ended without the schedule's crash, else None; its log outlives it."""
+        if self.scala is None or "scala" in self.crashed:
+            return None
+        return self.scala.poll()
+
     def tips(self):
         """(block number, hash) of every node's tip, or None for a node that does not answer."""
         events, _ = read_log(self.root / "follower.jsonl")
@@ -143,12 +149,14 @@ def load_plan(args, shelley):
 
 
 def settle(run, seconds):
-    """Poll until every node reports the same tip hash, at most `seconds`; returns the last tips."""
+    """Poll until every node reports the same tip hash, at most `seconds`; returns the last tips. The Scala node
+    must stay alive: its tip is read from its log, which a dead process leaves behind, so an exit ends the wait
+    (the caller reports it)."""
     deadline = time.monotonic() + seconds
     tips = run.tips()
     while time.monotonic() < deadline:
         tips = run.tips()
-        if not faultplan.convergence_failures(tips):
+        if run.scala_lost() is not None or not faultplan.convergence_failures(tips):
             break
         time.sleep(SETTLE_POLL)
     return tips
@@ -166,6 +174,7 @@ def faults(args):
     (root / "tc").mkdir()
     run = Run(args, root)
     failures, summary, plan = [], {}, None
+    completed = False    # set only after every check has run; an aborted run never reports `passed`
     started = None
     try:
         start_reference(args.name)
@@ -238,6 +247,9 @@ def faults(args):
             time.sleep(1)
         run.shaper.heal()
         final = settle(run, args.settle)
+        lost = run.scala_lost()
+        if lost is not None and not any(f.startswith("the Scala node exited") for f in failures):
+            failures.append(f"the Scala node exited with {lost} while the cluster settled or at the end of the run")
         died = [n for n in HASKELL if n not in run.crashed and not run.haskell_alive(n)]
         events, other = read_log(root / "follower.jsonl")
         text = (root / "follower.jsonl").read_text(errors="replace")
@@ -265,8 +277,13 @@ def faults(args):
                                                                 "forged", "adopted", "lost")},
             "samples": len(samples),
         }
+        completed = True
     except SystemExit as e:
         failures.append(str(e))
+    except BaseException as e:
+        # a timeout, a failed copy or a bug: the receipt records it and the exception still propagates
+        failures.append(f"the run aborted before its checks finished: {type(e).__name__}: {e}")
+        raise
     finally:
         # guaranteed cleanup: the qdiscs first (a fault must not outlive its run), then the containers
         try:
@@ -281,7 +298,8 @@ def faults(args):
             for n in HASKELL.values():
                 (root / f"node{n}.log").write_text(in_ref(args.name, f"tail -c 200000 /work/node{n}.log").stdout)
         summary["failures"] = failures
-        summary["passed"] = not failures
+        summary["completed"] = completed
+        summary["passed"] = completed and not failures
         if plan is not None:
             summary["replay"] = faultplan.replay_command(args.name, plan, args.schedule)
         (root / "faults-summary.json").write_text(json.dumps(summary, indent=2))

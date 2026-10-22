@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 """The seeded fault schedule, its replay, the tc commands and the verdicts of the `faults` scenario (issue 224)."""
+import hashlib
 import json
 import pathlib
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import unittest
 from types import SimpleNamespace
@@ -25,11 +27,16 @@ class ScheduleTests(unittest.TestCase):
         self.assertEqual(a, b)
 
     def test_stream_is_pinned(self):
-        # a change of the generator changes what a recorded seed replays; this fails when it does
+        # a change of the generator changes what a recorded seed replays; the literals below were taken from the
+        # generator once and this fails when it drifts
         plan = faultplan.generate(1, 600, *PARAMS)
         self.assertEqual([(e["kind"], e["start"], e["end"]) for e in plan["episodes"]][:3],
-                         [(e["kind"], e["start"], e["end"]) for e in faultplan.generate(1, 600, *PARAMS)["episodes"]][:3])
-        self.assertEqual(plan["episodes"][0]["start"], faultplan.Draw(1).integer(*faultplan.FIRST_START))
+                         [("crash", 32, 49), ("loss", 124, 154), ("partition", 208, 214)])
+        self.assertEqual(plan["actions"][:3],
+                         [{"at": 32, "op": "kill", "node": "scala"}, {"at": 49, "op": "start", "node": "scala"},
+                          {"at": 124, "op": "shape", "link": "s-p3", "delayMs": 0, "jitterMs": 0, "lossPercent": 20}])
+        self.assertEqual(hashlib.sha256(faultplan.render(plan).encode()).hexdigest(),
+                         "1b1bd37381e3e724095c1f7f559ddcbf4d194671f7997ad40099edf81b03484c")
 
     def test_seeds_differ(self):
         plans = {faultplan.render(faultplan.generate(s, 600, *PARAMS)) for s in range(20)}
@@ -238,6 +245,97 @@ class ScenarioTests(unittest.TestCase):
         self.assertIn("p3", run.problems[0])
         with patch.object(faults, "docker", return_value=SimpleNamespace(returncode=0, stderr="")):
             self.assertTrue(run.haskell_alive("p2"))
+
+
+class FakeScala:
+    """A Scala process that answers `poll()` with None for `alive` calls and then with an exit status."""
+
+    def __init__(self, alive, status=137):
+        self.alive, self.returncode, self.calls = alive, status, 0
+
+    def poll(self):
+        self.calls += 1
+        return None if self.calls <= self.alive else self.returncode
+
+    def wait(self):
+        return self.returncode
+
+
+class ExecutionTests(unittest.TestCase):
+    """`faults()` itself, with the cluster, Docker and the proxies stubbed out."""
+
+    def execute(self, scala, start_reference=None):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = pathlib.Path(tmp.name) / "run"
+        plan = {"seed": 1, "duration": 0, "episodes": [], "actions": [], "quiet": [], "inputs": {"k": 5}}
+        args = SimpleNamespace(name="n", schedule=None, seed=1, duration=0, settle=5, keep=True)
+
+        def started(name):
+            (root / "follower.jsonl").write_text("")
+
+        def start_scala(run):
+            run.scala = scala
+
+        events = [{"event": "extended", "block": {"blockNo": 3}}]
+        tip = {"block": 3, "hash": "h"}
+        stubs = [patch.object(faults, "data_root", return_value=root),
+                 patch.object(faults, "start_reference", side_effect=start_reference or started),
+                 patch.object(faults, "pool_environment", return_value=({2: 4002, 3: 4003}, {})),
+                 patch.object(faults, "load_plan", return_value=plan),
+                 patch.object(faults, "put_file"),
+                 patch.object(faults.subprocess, "run", return_value=SimpleNamespace(stdout=b"")),
+                 patch.object(faults, "write_keys"),
+                 patch.object(faults.netfaults, "Shaper"),
+                 patch.object(faults.netfaults, "start_proxies"),
+                 patch.object(faults, "freeze_classes"),
+                 patch.object(faults, "database_mounts", return_value=[]),
+                 patch.object(faults, "scala_container", return_value=[]),
+                 patch.object(faults.Run, "start_scala", start_scala),
+                 patch.object(faults.Run, "haskell_alive", return_value=True),
+                 patch.object(faults, "tip_at", return_value=tip),
+                 patch.object(faults, "log_counts", return_value=({"forgeStarted": 1, "extended": 1}, 0, 0)),
+                 patch.object(faults, "read_log", return_value=(events, [])),
+                 patch.object(faults, "pool_chain", return_value=["h"]),
+                 patch.object(faults, "in_ref", return_value=SimpleNamespace(stdout="")),
+                 patch.object(faults, "docker", return_value=SimpleNamespace(returncode=0, stdout="", stderr="")),
+                 patch.object(faults.time, "sleep"),
+                 patch("sys.stdout"), patch("sys.stderr")]
+        for stub in stubs:
+            stub.start()
+            self.addCleanup(stub.stop)
+        return args, root
+
+    def summary(self, root):
+        return json.loads((root / "faults-summary.json").read_text())
+
+    def test_a_live_run_passes(self):
+        args, root = self.execute(FakeScala(alive=10**6))
+        with self.assertRaises(SystemExit) as raised:
+            faults.faults(args)
+        self.assertEqual(raised.exception.code, 0)
+        self.assertEqual(self.summary(root)["failures"], [])
+        self.assertTrue(self.summary(root)["passed"])
+
+    def test_scala_exiting_after_the_last_action_fails_the_run(self):
+        # alive through the schedule loop, gone when the cluster settles; its logged tip still matches the others
+        args, root = self.execute(FakeScala(alive=1))
+        with self.assertRaises(SystemExit) as raised:
+            faults.faults(args)
+        self.assertEqual(raised.exception.code, 1)
+        summary = self.summary(root)
+        self.assertFalse(summary["passed"])
+        self.assertTrue(any("Scala node exited with 137" in f for f in summary["failures"]), summary["failures"])
+
+    def test_an_aborted_run_does_not_report_passed(self):
+        args, root = self.execute(FakeScala(alive=10**6),
+                                  start_reference=subprocess.TimeoutExpired(["docker"], 60))
+        with self.assertRaises(subprocess.TimeoutExpired):
+            faults.faults(args)
+        summary = self.summary(root)
+        self.assertFalse(summary["passed"])
+        self.assertFalse(summary["completed"])
+        self.assertTrue(any("TimeoutExpired" in f for f in summary["failures"]), summary["failures"])
 
 
 class ProxyTests(unittest.TestCase):
