@@ -405,12 +405,13 @@ object Utxow
     val referenced = (ann.spent ++ ann.referenced).flatMap(_.scriptRef).map(_.hash).toSet
     val neededNonRef = needed.keySet -- referenced
     val received = wits.scripts.map(_.hash).toSet
-    // the outputs the collateral inputs hold, whose key witnesses the transaction needs
-    val collateral = TxChecks.Collateral(
-      if pp.protocolMajor < 5 || wits.redeemers.isEmpty then Vector.empty
-      else body.collateral.flatMap(ann.utxo.get),
-      BigInt(0)
-    )
+    // The outputs the collateral inputs hold, whose key witnesses the transaction needs whether or
+    // not it has redeemers: `spendableInputsTxBodyF` is the inputs and the collateral inputs from
+    // Alonzo on (cardano-ledger f649f975, `Alonzo/TxBody.hs` `allInputsTxBodyF` and
+    // `spendableInputsTxBodyF`; `Babbage/TxBody.hs` `babbageSpendableInputsTxBodyF`; Conway uses
+    // the Babbage getter), and `getShelleyWitsVKeyNeededNoGov` (`Shelley/UTxO.hs`) takes the
+    // payment key of each. An earlier era has no collateral field, so its set is empty.
+    val collateral = TxChecks.Collateral(body.collateral.flatMap(ann.utxo.get), BigInt(0))
     for
       _ <- check(
         received.subsetOf(neededNonRef),
