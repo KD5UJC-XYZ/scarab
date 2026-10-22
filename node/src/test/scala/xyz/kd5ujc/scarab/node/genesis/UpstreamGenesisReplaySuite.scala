@@ -129,29 +129,21 @@ class UpstreamGenesisReplaySuite extends FailsOnUncaught:
                 case (label, Right(actual)) =>
                   val scenario = scenarios(label)
                   val laws = UpstreamGenesisLaws.evaluate(scenario, actual)
-                  val causal = actual.terminals.zipWithIndex.forall { (terminal, at) =>
-                    terminal.end != End.Cancelled || terminal.component == Component.ChainSyncClient || actual.terminals
-                      .exists(t =>
-                        t.peer == terminal.peer && t.component == Component.ChainSyncClient && t.end == End.Success
-                      ) || actual.terminals
-                      .take(at)
-                      .exists(t =>
-                        t.peer == terminal.peer && t.component == Component.ChainSyncClient
-                      )
-                  }
+                  val terminals = UpstreamGenesisTerminals.evaluate(scenario, actual)
                   Vector(
                     Option.when(laws.nonEmpty)(s"$label original laws: $laws"),
                     Option.when(actual.selection != scenario.expected.selection)(
                       s"$label selection: actual=${actual.selection} expected=${scenario.expected.selection}"
                     ),
-                    Option.when(!causal)(s"$label cleanup preceded refusal: ${actual.terminals}"),
+                    Option.when(terminals.nonEmpty)(s"$label terminal contract: $terminals"),
                     Option.when(
                       actual.closures.exists(c =>
                         c.problem match
                           case _: UpstreamGenesisReplay.Problem.Worker |
                               _: UpstreamGenesisReplay.Problem.Invariant |
                               _: UpstreamGenesisReplay.Problem.Defect |
-                              _: UpstreamGenesisReplay.Problem.Blocks =>
+                              _: UpstreamGenesisReplay.Problem.Blocks |
+                              _: UpstreamGenesisReplay.Problem.MissingDensityPeer =>
                             true
                           case _ => false
                       )

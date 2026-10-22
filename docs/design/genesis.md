@@ -156,8 +156,14 @@ not identical thread schedules.
    starvation and published-body handover races with controlled observations.
 4. Replay original upstream Genesis scenario families through Scarab using the
    exported inputs and schedules, comparing complete selected fragments and every
-   original native termination predicate. The native properties allow several terminal
-   outcomes; they do not require identical chronological worker transcripts. Run Docker `check`, private Genesis sync/restart,
+   original native termination predicate. Assert every native peer/component multiplicity,
+   exact typed cause attribution, production refusal-before-termination and per-peer cleanup
+   causality, plus the complete ordered GDD callback batches. The original DensityDisconnect
+   property permits either density or sparse-candidate refusal; CSJ/Uniform retain their original
+   trace/safety properties and closed exception set. Independent per-peer registries do not impose
+   a cross-peer finalizer schedule. Preserve both full transcripts for diagnosis; wrong causes or
+   required causal orders fail the gate. See the [native contract](../../fixtures/reference/genesis-density/README.md).
+   Run Docker `check`, private Genesis sync/restart,
    relay and the issue's soak gate. Record performance and cleanup receipts.
 5. Preserve the reference's invalid-block punishment boundary: reject transport/body-hash
    mismatches immediately, retain semantic-invalidity attribution, apply the native

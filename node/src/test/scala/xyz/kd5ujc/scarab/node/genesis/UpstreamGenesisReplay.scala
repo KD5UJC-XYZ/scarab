@@ -39,6 +39,7 @@ object UpstreamGenesisReplay:
     case Invariant(cause: GenesisInternalProblem)
     case Worker(cause: Fatal)
     case Defect(cause: Throwable)
+    case MissingDensityPeer(session: Long)
   final case class Ledger(point: ChainSync.Point, blockNo: BigInt, slot: BigInt):
     def previous: Option[BlockRef] = point match
       case ChainSync.Point.Origin         => None
@@ -46,16 +47,21 @@ object UpstreamGenesisReplay:
   final case class Closure(peer: Option[PeerId], problem: Problem)
   final case class Terminal(peer: PeerId, component: Component, end: End, cause: Option[Problem])
   final case class Downloaded(peer: PeerId, header: ChainSync.Point.Block)
+  enum Lifecycle:
+    case DensityBatch(peers: Vector[PeerId])
+    case Refused(peer: PeerId, cause: Problem)
+    case Ended(terminal: Terminal)
   final case class GddDecision(atPicos: BigInt, value: GenesisGovernor.Observation)
   final case class Result(
       selection: Fragment,
       closures: Vector[Closure],
       terminals: Vector[Terminal],
       gdd: Vector[GddDecision],
-      downloaded: Vector[Downloaded]
+      downloaded: Vector[Downloaded],
+      lifecycle: Vector[Lifecycle] = Vector.empty
   )
 
-  private def end(problem: Problem): End = problem match
+  private[genesis] def end(problem: Problem): End = problem match
     case Problem.Node(PeerError.Genesis(PeerError.GenesisProblem.LoPExpired)) => End.PatienceExpired
     case Problem.Node(PeerError.Genesis(PeerError.GenesisProblem.DensityTooLow)) =>
       End.DensityTooLow
@@ -155,20 +161,22 @@ object UpstreamGenesisReplay:
               VolatileChain.genesis(scenario.k, Ledger(ChainSync.Point.Origin, 0, -1))
             )
             closed <- Ref.of[IO, Vector[Closure]](Vector.empty)
-            terminals <- Ref.of[IO, Vector[Terminal]](Vector.empty)
+            lifecycle <- Ref.of[IO, Vector[Lifecycle]](Vector.empty)
             gdd <- Ref.of[IO, Vector[GddDecision]](Vector.empty)
             downloaded <- Ref.of[IO, Vector[Downloaded]](Vector.empty)
             record = (peer: PeerId, component: Component, outcome: Either[Problem, Unit]) =>
-              terminals.update(
-                _ :+ Terminal(
-                  peer,
-                  component,
-                  outcome.fold(end, _ => End.Success),
-                  outcome.left.toOption
+              lifecycle.update(
+                _ :+ Lifecycle.Ended(
+                  Terminal(
+                    peer,
+                    component,
+                    outcome.fold(end, _ => End.Success),
+                    outcome.left.toOption
+                  )
                 )
               )
             cancelled = (peer: PeerId, component: Component) =>
-              terminals.update(_ :+ Terminal(peer, component, End.Cancelled, None))
+              lifecycle.update(_ :+ Lifecycle.Ended(Terminal(peer, component, End.Cancelled, None)))
             outcome <- {
               given Stateful[IO, VolatileChain[Ledger]] = RefStateful(chain)
               val rules = BlockRules.from[IO, Ledger] { (_, header, bytes) =>
@@ -247,8 +255,28 @@ object UpstreamGenesisReplay:
                               follower.genesisView((_, _, _) => Some(scenario.genesisWindow)),
                               GenesisGovernor.Config(scenario.config.loe, Duration.Zero),
                               Some(observation =>
-                                clock.now
-                                  .flatMap(now => gdd.update(_ :+ GddDecision(now, observation)))
+                                val peers =
+                                  observation.result.toVector.flatMap(_.losingPeers).traverse {
+                                    session =>
+                                      observation.peers
+                                        .find(_.session == session)
+                                        .flatMap(entry =>
+                                          scenario.schedules.find(s =>
+                                            entry.orderKey == GenesisGovernor.OrderKey
+                                              .Model(densityKey(s.peer))
+                                          )
+                                        )
+                                        .map(_.peer)
+                                        .toRight(Problem.MissingDensityPeer(session))
+                                  }
+                                peers.fold(
+                                  problem => closed.update(_ :+ Closure(None, problem)),
+                                  ids =>
+                                    clock.now.flatMap(now =>
+                                      gdd.update(_ :+ GddDecision(now, observation)) *>
+                                        lifecycle.update(_ :+ Lifecycle.DensityBatch(ids))
+                                    )
+                                )
                               )
                             )
                             settings = GenesisSettings(
@@ -446,7 +474,10 @@ object UpstreamGenesisReplay:
                                                   e =>
                                                     closed.update(
                                                       _ :+ Closure(Some(id), Problem.Node(e))
-                                                    ) *> refused.complete(Problem.Node(e)).void,
+                                                    ) *> lifecycle.update(
+                                                      _ :+ Lifecycle.Refused(id, Problem.Node(e))
+                                                    ) *>
+                                                      refused.complete(Problem.Node(e)).void,
                                                   p =>
                                                     closed.update(
                                                       _ :+ Closure(Some(id), Problem.Invariant(p))
@@ -587,11 +618,13 @@ object UpstreamGenesisReplay:
                           clock.sleep(duration).as(false)
                         else
                           for
-                            before <- terminals.get
-                            ended = before.map(_.peer).toSet
+                            before <- lifecycle.get
+                            ended = before.collect { case Lifecycle.Ended(terminal) =>
+                              terminal.peer
+                            }.toSet
                             close <- release.getAndSet(IO.unit)
                             _ <- close
-                            _ <- terminals.set(before)
+                            _ <- lifecycle.set(before)
                             _ <- clock.sleep(duration)
                             _ <- launch(order.filterNot(ended).toSet)
                           yield true
@@ -606,8 +639,16 @@ object UpstreamGenesisReplay:
                             .fold(BigInt(0))(_.atPicos)).max(0)
                         )
                         _ <- clock.sleep(scenario.minEndTimePicos).whenA(restarted)
-                        result <- (chain.get, closed.get, terminals.get, gdd.get, downloaded.get)
-                          .mapN { (selected, failures, ended, decisions, headers) =>
+                        result <- (
+                          chain.get,
+                          closed.get,
+                          gdd.get,
+                          downloaded.get,
+                          lifecycle.get
+                        )
+                          .mapN { (selected, failures, decisions, headers, events) =>
+                            val ended =
+                              events.collect { case Lifecycle.Ended(terminal) => terminal }
                             Result(
                               Fragment(
                                 selected.anchor.point,
@@ -618,7 +659,8 @@ object UpstreamGenesisReplay:
                               failures,
                               ended,
                               decisions,
-                              headers
+                              headers,
+                              events
                             )
                           }
                       yield result

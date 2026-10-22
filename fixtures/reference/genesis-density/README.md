@@ -46,8 +46,26 @@ The separate `UpstreamGenesisReplaySuite` feeds the original schedules into Scar
 engines, header admission, fetch coordination, Genesis controls and chain selection. Its restart
 interpreter writes received original bodies and selected-chain updates through the production
 `ReceivedBlocks` and `VolatileStore` journals, closes them during native downtime, and validates
-persisted bytes when reopening. It compares complete selected fragments and typed component
-outcomes, retaining failures for integration review.
+persisted bytes when reopening. It compares complete selected fragments and every native
+peer/component multiplicity. A single typed lifecycle stream also asserts exact cause-to-tag
+attribution, actual production refusal callbacks before policy termination, cleanup after that
+peer's termination, and complete ordered GDD callback-batch consumption. Negative controls
+reject omitted/duplicate/misattributed components, fabricated causes and reversed causal orders.
+
+The terminal assertion follows the unchanged upstream contract, rather than promoting one
+IOSim finalizer transcript into an extra law. `Genesis/Setup.hs:279–296` admits only the closed
+expected exception set; all 21 `ctProperty` branches add their original constraints. In particular,
+`Tests/DensityDisconnect.hs:580–591` explicitly permits either `DensityTooLow` or
+`CandidateTooSparse`. CSJ constrains downloaded headers and Uniform constrains honest-peer
+survival and immutable-chain safety. Neither imposes an additional adversarial refusal sequence.
+`PeerSimulator/Run.hs:438–474` gives each peer an independent registry and waits for any of its
+four components; cross-peer finalizer interleavings therefore are not a shared protocol ordering
+contract. Full original terminal causes and chronology remain retained and printed for comparison.
+This does not erase differences: a typed refusal without its actual production callback, a
+wrong component, wrong enabled mechanism, early cleanup or a reordered GDD callback batch fails.
+Normal no-intersection completion during downtime and a competing GDD refusal are distinguished,
+not normalized into one generic failure. Native GDD decisions and their callback order remain
+compared exactly in the separate trace replay.
 
 The runtime adapter maps every original mock point bijectively to a Babbage CBOR envelope. The
 native mock ledger has no transaction or signature predicates: its identity is committed through
