@@ -78,13 +78,12 @@ jobs:
           PROPOSAL_HEAD: ${{ github.event.pull_request.head.sha }}
           PROPOSAL_BASE: ${{ github.event.pull_request.base.sha }}
           PROPOSAL_BRANCH: ${{ github.head_ref }}
-          PROPOSAL_TARGET: ${{ github.base_ref }}
           SAME_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
           args=()
           if [ "$SAME_REPOSITORY" = true ]; then args+=(--same-repo); fi
           "$RUNNER_TEMP/release-python/bin/python" scripts/release_proposal.py --repo "$PWD" --cut "$PROPOSAL_HEAD" \
-            --branch="$PROPOSAL_BRANCH" --base "$PROPOSAL_BASE" --target="$PROPOSAL_TARGET" "${args[@]}"
+            --branch="$PROPOSAL_BRANCH" --base "$PROPOSAL_BASE" "${args[@]}"
       - name: Actual release-please lifecycle and Git lease controls
         env:
           SCARAB_RELEASE_PYTHON: ${{ runner.temp }}/release-python/bin/python

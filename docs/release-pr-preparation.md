@@ -169,13 +169,18 @@ the receipt's source (and the file to be unchanged at the cut), so a self-consis
 names a different baseline is refused. The pull-request control step runs `release_proposal.py
 --branch --base` on every pull request: a head named `release-please--branches--*` must be in this
 repository and gets the full check; any other branch is refused if it adds or changes
-`.release/proposal.json` or `.release/proposals/*`, except a reviewed promotion. A promotion is a
-same-repository head that [pr_policy.py](../scripts/pr_policy.py) names as the source for the target
-branch (`dev` for `main`, `release/alpha`, `release/beta`; `main` for `release/preprod`, `release/prod`,
-per the [branch table](design/releases.md#branches-and-protected-promotion)); it may carry receipts only for
-one proposal, byte-identical to those of the last first-parent commit that changed them, and that commit
-gets the full proposal verification. An edited, unmerged or extra receipt is refused. The workflow
-passes the target with `--target`; without it nothing is a promotion. An unrelated change
+`.release/proposal.json` or `.release/proposals/*` unless the head is in this repository and the receipts verify
+by content. That covers `dev` to `main` promotion and propagation into release branches; the branch name decides
+nothing, as the design table leaves release targets open to any source. Each new `.release/proposals/<version>.json`
+must be byte-identical to the file at a non-merge commit that added it and whose own cut passes the full check
+(found by the file's addition, so merge commits, later work and several proposals in one promotion are fine).
+A versioned receipt the merge base already has may not change, and `.release/proposal.json` must equal the latest
+one. `load_proposal` also recomputes the receipt's commit list from Git, requires exactly the coordinator's
+fields, and checks `target`, `maintenance` and the version override for shape. The receipt's `target` (set from the
+promotion policy variable when it was generated) and the pull-request title and body hash cannot be recomputed from
+the tree and carry no file content. What a verifier cannot prove without branch protection (#161) is that a
+carried proposal really entered through a reviewed pull request: a same-repository writer can still commit a
+self-consistent proposal, so this check does not replace the protected-branch review. An unrelated change
 after preparation requires regeneration. A later trusted coordinator must independently approve
 the merged cut, authenticate baseline/publication authority, and bind the exact selected tag,
 artifact inputs and receipts. It cannot treat the proposal's parent source as the released cut.

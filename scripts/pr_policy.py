@@ -13,15 +13,6 @@ MODES = ("transition", "dev-only-main")
 TITLE = re.compile(r"(?:build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(?:\([^\s():!]+\))?!?: \S[^\r\n]*")
 COMMIT = re.compile(r"[0-9a-f]{40}")
 REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
-# Source branches of the reviewed promotion path in docs/design/releases.md ("Branches and protected promotion"):
-# dev -> main, then the selected source into the channel branches. Only `main` is enforced here (dev-only-main).
-PROMOTION_SOURCES = {"main": ("dev",), "release/alpha": ("dev",), "release/beta": ("dev",),
-                     "release/preprod": ("main",), "release/prod": ("main",)}
-
-
-def is_promotion(target, head_ref, same_repository):
-    """A same-repository head that the release design names as the promotion source of this target."""
-    return bool(same_repository) and head_ref in PROMOTION_SOURCES.get(target, ())
 
 
 class PolicyError(ValueError):

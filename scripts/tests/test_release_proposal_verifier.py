@@ -101,7 +101,7 @@ class VerifierTests(unittest.TestCase):
         for files in ({'.release/proposal.json': {'x': 1}}, {'.release/proposals/0.1.1.json': {'x': 1}}):
             self.fixture.git('checkout', '-q', '-B', 'work', self.source)
             cut = self.fixture.commit(files)
-            with self.assertRaisesRegex(ValueError, 'proposal receipts changed'):
+            with self.assertRaises(ValueError):
                 verifier.check_branch(self.fixture.repo, 'feat/anything', self.source, cut, True)
 
     def test_other_branch_without_proposal_changes_passes_unverified(self):
@@ -120,96 +120,124 @@ class VerifierTests(unittest.TestCase):
 
 
 class PromotionTests(unittest.TestCase):
-    """A real generated alpha proposal merged into dev, then promoted; nothing here stubs the verifier."""
-    VERSION = '0.2.0-alpha.0'
-    NOTES = f'.release/notes/{VERSION}.md'
-    RECEIPT = f'.release/proposals/{VERSION}.json'
+    """Real generated alpha/beta proposals merged into dev, then carried by other heads; nothing stubs the verifier."""
+    CONFIG = '{"release-type": "simple"}\n'
 
     def setUp(self):
         scratch = tempfile.TemporaryDirectory()
         self.addCleanup(scratch.cleanup)
         self.fixture = fx = Fixture(scratch.name)
         self.repo = fx.repo
-        config = '{"release-type": "simple"}\n'
-        base = fx.commit({'CHANGELOG.md': '# Changelog\n\n## [Unreleased]\n\nFragments supply new entries.\n\n## [0.1.0] - 2026-10-11\n\n### Added\n\n- Earlier.\n',
-                          'changes/README.md': 'Keep.\n', 'release-please-config.json': config,
-                          '.release-please-manifest.json': {'.': '0.1.0'}})
-        authority = dict(AUTHORITY, source=base)
-        self.source = fx.commit({'release-please-authority.json': authority, 'changes/7-a.md': '### Added (#7)\n\n- Entry.\n'})
-        plan, notes, _ = fragments.build(self.repo, self.source, base, self.VERSION, '2026-10-21')
-        manifest = fragments.json_bytes({'.': self.VERSION})
-        receipt = {'schemaVersion': 1, 'state': 'proposed', 'repository': 'KD5UJC-XYZ/scarab', 'tool': 'release-please-17.11.2',
-                   'source': self.source, 'authority': authority, 'version': self.VERSION, 'channel': 'alpha', 'date': '2026-10-21',
-                   'fragmentPlan': plan, 'fragmentPlanSha256': fragments.digest(fragments.json_bytes(plan)),
-                   'notesSha256': fragments.digest(notes), 'notesPath': self.NOTES,
-                   'configSha256': fragments.digest(config.encode()),
-                   'generatedFiles': {self.NOTES: fragments.identity(notes), '.release-please-manifest.json': fragments.identity(manifest)}}
-        self.main = self.source
-        fx.git('checkout', '-q', '-B', 'dev', self.source)
-        self.proposal = fx.commit({self.NOTES: notes.decode(), '.release-please-manifest.json': manifest.decode(),
-                                   '.release/proposal.json': receipt, self.RECEIPT: receipt}, 'proposal')
-        self.receipt = receipt
+        self.base0 = fx.commit({'CHANGELOG.md': '# Changelog\n\n## [Unreleased]\n\nFragments supply new entries.\n\n## [0.1.0] - 2026-10-11\n\n### Added\n\n- Earlier.\n',
+                                'changes/README.md': 'Keep.\n', 'release-please-config.json': self.CONFIG,
+                                '.release-please-manifest.json': {'.': '0.1.0'}})
+        self.authority = dict(AUTHORITY, source=self.base0)
+        self.main = fx.commit({'release-please-authority.json': self.authority, 'changes/7-a.md': '### Added (#7)\n\n- Entry.\n'})
+        fx.git('checkout', '-q', '-B', 'dev', self.main)
+        self.alpha, self.alpha_receipt = self.propose('0.2.0-alpha.0', 'alpha', self.main)
 
-    def check(self, branch, cut, target, same_repo=True):
-        return verifier.check_branch(self.repo, branch, self.main, cut, same_repo, target)
+    def propose(self, version, channel, source):
+        """Commit a generated proposal for `source` on the current branch."""
+        fx = self.fixture
+        notes_path = f'.release/notes/{version}.md'
+        plan, notes, _ = fragments.build(self.repo, source, self.base0, version, '2026-10-21')
+        manifest = fragments.json_bytes({'.': version})
+        history = fx.git('rev-list', '--first-parent', f'{self.base0}..{source}').split()
+        receipt = {'schemaVersion': 1, 'state': 'proposed', 'repository': 'KD5UJC-XYZ/scarab', 'tool': 'release-please-17.11.2',
+                   'target': 'main', 'source': source, 'authority': self.authority, 'version': version, 'channel': channel,
+                   'date': '2026-10-21', 'maintenance': False, 'nextVersion': None, 'overrideReason': None,
+                   'configSha256': fragments.digest(self.CONFIG.encode()),
+                   'commits': [{'sha': sha, 'messageSha256': fragments.digest(fx.git('show', '-s', '--format=%B', sha).rstrip().encode())}
+                               for sha in history],
+                   'fragmentPlan': plan, 'fragmentPlanSha256': fragments.digest(fragments.json_bytes(plan)),
+                   'notesPath': notes_path, 'notesSha256': fragments.digest(notes),
+                   'generatedFiles': {notes_path: fragments.identity(notes), '.release-please-manifest.json': fragments.identity(manifest)},
+                   'pullRequestTitle': f'chore: release {version}', 'pullRequestBodySha256': '0' * 64}
+        cut = fx.commit({notes_path: notes.decode(), '.release-please-manifest.json': manifest.decode(),
+                         '.release/proposal.json': receipt, f'.release/proposals/{version}.json': receipt}, 'proposal ' + version)
+        return cut, receipt
+
+    def check(self, branch, cut, base=None, same_repo=True):
+        return verifier.check_branch(self.repo, branch, base or self.main, cut, same_repo)
+
+    def edit_on(self, parent, receipt, **changes):
+        self.fixture.git('checkout', '-q', '-B', 'edit', parent)
+        edited = dict(receipt, **changes)
+        version = receipt['version']
+        return self.fixture.commit({'.release/proposal.json': edited, f'.release/proposals/{version}.json': edited}, 'edit')
 
     def test_the_fixture_is_a_valid_proposal(self):
-        self.assertEqual(verifier.load_proposal(self.repo, self.proposal)['receipt']['version'], self.VERSION)
+        self.assertEqual(verifier.load_proposal(self.repo, self.alpha)['receipt']['version'], '0.2.0-alpha.0')
 
-    def test_valid_dev_to_main_promotion_of_a_merged_proposal_passes(self):
+    def test_valid_dev_to_main_promotion_after_later_dev_work_passes(self):
         later = self.fixture.commit({'docs/later.md': 'unrelated dev work after the proposal merged\n'})
-        self.assertTrue(self.check('dev', later, 'main'))
+        self.assertTrue(self.check('dev', later))
 
-    def test_promotion_keeps_passing_through_a_merge_commit_of_the_proposal(self):
-        self.fixture.git('checkout', '-q', '-B', 'integrate', self.main)
-        self.fixture.git('merge', '-q', '--no-ff', '-m', 'merge proposal', self.proposal)
-        self.assertTrue(self.check('dev', self.fixture.git('rev-parse', 'HEAD'), 'main'))
+    def test_normal_merge_commit_with_later_dev_work_can_be_propagated_to_a_release_branch(self):
+        later = self.fixture.commit({'docs/later.md': 'unrelated dev work after the proposal merged\n'})
+        self.fixture.git('checkout', '-q', '-B', 'main', self.main)
+        self.fixture.git('merge', '-q', '--no-ff', '-m', 'promote dev', later)
+        merged = self.fixture.git('rev-parse', 'HEAD')
+        self.assertTrue(self.check('main', merged))
+        with self.assertRaisesRegex(ValueError, 'selected cut contains changes outside'):
+            verifier.load_proposal(self.repo, merged)
 
-    def test_main_to_release_prod_propagation_is_accepted_but_not_from_dev(self):
-        self.assertTrue(self.check('main', self.proposal, 'release/prod'))
-        with self.assertRaisesRegex(ValueError, 'neither named'):
-            self.check('dev', self.proposal, 'release/prod')
-
-    def test_edited_receipt_in_a_promotion_is_refused(self):
-        edited = dict(self.receipt, date='2026-10-22')
-        for files in ({self.RECEIPT: edited}, {'.release/proposal.json': edited},
-                      {'.release/proposal.json': edited, self.RECEIPT: edited}):
-            self.fixture.git('checkout', '-q', '-B', 'dev', self.proposal)
-            cut = self.fixture.commit(files, 'edit receipt')
-            with self.subTest(files=sorted(files)), self.assertRaises(ValueError):
-                self.check('dev', cut, 'main')
-
-    def test_receipt_that_never_merged_as_a_verified_proposal_is_refused(self):
-        self.fixture.git('checkout', '-q', '-B', 'dev', self.main)
-        cut = self.fixture.commit({'.release/proposal.json': self.receipt, self.RECEIPT: self.receipt})
+    def test_two_proposals_travel_in_one_promotion(self):
+        source = self.fixture.commit({'changes/8-b.md': '### Fixed (#8)\n\n- More.\n'})
+        beta, _ = self.propose('0.2.0-beta.0', 'beta', source)
+        self.assertTrue(self.check('dev', beta))
+        stale = self.fixture.commit({'.release/proposal.json': self.alpha_receipt})
         with self.assertRaises(ValueError):
-            self.check('dev', cut, 'main')
+            self.check('dev', stale)
 
-    def test_promotion_carrying_another_receipt_file_is_refused(self):
-        cut = self.fixture.commit({'.release/proposals/9.9.9.json': {'x': 1}})
-        with self.assertRaisesRegex(ValueError, 'other than the one merged proposal'):
-            self.check('dev', cut, 'main')
+    def test_edited_receipt_with_unchecked_fields_is_refused(self):
+        for changes in ({'target': 'unapproved-target', 'commits': []}, {'commits': []}, {'target': 'elsewhere'},
+                        {'maintenance': 'yes'}, {'nextVersion': '9.9.9'}, {'extra': 1}, {'pullRequestBodySha256': 'x'}):
+            cut = self.edit_on(self.alpha, self.alpha_receipt, **changes)
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                self.check('dev', cut)
 
-    def test_deleted_receipt_is_refused(self):
-        self.fixture.git('rm', '-q', self.RECEIPT)
+    def test_edited_receipt_committed_directly_with_a_valid_looking_cut_is_refused(self):
+        self.fixture.git('checkout', '-q', '-B', 'forged', self.main)
+        edited = dict(self.alpha_receipt, target='unapproved-target', commits=[])
+        files = {'.release/proposal.json': edited, '.release/proposals/0.2.0-alpha.0.json': edited}
+        for path in ('.release/notes/0.2.0-alpha.0.md', '.release-please-manifest.json'):
+            files[path] = self.fixture.git('show', f'{self.alpha}:{path}') + '\n'
+        cut = self.fixture.commit(files)
+        with self.assertRaises(ValueError):
+            self.check('dev', cut)
+
+    def test_edit_of_an_already_merged_versioned_receipt_is_refused(self):
+        cut = self.edit_on(self.alpha, self.alpha_receipt, date='2026-10-22')
+        with self.assertRaisesRegex(ValueError, 'already-merged versioned receipt'):
+            self.check('dev', cut, base=self.alpha)
+
+    def test_receipt_that_was_never_a_verified_proposal_is_refused(self):
+        self.fixture.git('checkout', '-q', '-B', 'dev', self.main)
+        cut = self.fixture.commit({'.release/proposal.json': self.alpha_receipt, '.release/proposals/0.2.0-alpha.0.json': self.alpha_receipt})
+        with self.assertRaisesRegex(ValueError, 'matches no verified merged proposal'):
+            self.check('dev', cut)
+
+    def test_proposal_json_must_equal_its_versioned_receipt_and_deleted_receipts_are_refused(self):
+        cut = self.fixture.commit({'.release/proposal.json': {'x': 1}})
+        with self.assertRaises(ValueError):
+            self.check('dev', cut)
+        self.fixture.git('checkout', '-q', '-B', 'dev', self.alpha)
+        self.fixture.git('rm', '-q', '.release/proposals/0.2.0-alpha.0.json')
         self.fixture.git('commit', '-qm', 'drop')
         with self.assertRaises(ValueError):
-            self.check('dev', self.fixture.git('rev-parse', 'HEAD'), 'main')
+            self.check('dev', self.fixture.git('rev-parse', 'HEAD'))
 
-    def test_feature_branch_or_fork_dev_with_the_same_valid_receipts_is_refused(self):
-        with self.assertRaisesRegex(ValueError, 'neither named'):
-            self.check('feat/stray', self.proposal, 'main')
-        with self.assertRaisesRegex(ValueError, 'neither named'):
-            self.check('dev', self.proposal, 'main', same_repo=False)
-        with self.assertRaisesRegex(ValueError, 'neither named'):
-            self.check('dev', self.proposal, 'dev')
-        with self.assertRaisesRegex(ValueError, 'neither named'):
-            verifier.check_branch(self.repo, 'dev', self.main, self.proposal, True)
+    def test_any_same_repository_head_may_carry_verified_receipts_but_not_a_fork(self):
+        self.assertTrue(self.check('feat/reconcile', self.alpha))
+        self.assertTrue(self.check('main', self.alpha))
+        with self.assertRaisesRegex(ValueError, 'fork'):
+            self.check('dev', self.alpha, same_repo=False)
 
-    def test_command_line_accepts_the_promotion_only_with_a_target(self):
-        base = [sys.executable, str(Path(verifier.__file__)), '--repo', str(self.repo), '--cut', self.proposal,
-                '--branch', 'dev', '--base', self.main, '--same-repo']
-        self.assertEqual(subprocess.run(base + ['--target', 'main'], capture_output=True).returncode, 0)
+    def test_command_line_checks_carried_receipts(self):
+        base = [sys.executable, str(Path(verifier.__file__)), '--repo', str(self.repo), '--cut', self.alpha,
+                '--branch', 'dev', '--base', self.main]
+        self.assertEqual(subprocess.run(base + ['--same-repo'], capture_output=True).returncode, 0)
         self.assertNotEqual(subprocess.run(base, capture_output=True).returncode, 0)
 
 
