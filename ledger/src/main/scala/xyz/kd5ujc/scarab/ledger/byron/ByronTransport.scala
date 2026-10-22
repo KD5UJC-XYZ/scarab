@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.byron
 
+import ByronInteger.decode as integer
+
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{CborRead, LedgerDecodeError}
@@ -304,16 +306,6 @@ object ByronTransport:
           .Expected(s"$context (canonical)", LedgerDecodeError.Shape.Bytes, node.value)
       )
     }
-
-  private def integer(node: Node, context: String): Result[BigInt] = node.value match
-    case Value.UInt(n) => Right(n)
-    case Value.NInt(n) => Right(n)
-    case Value.Tag(tag, inner) if tag == 2 || tag == 3 =>
-      bytes(inner) *> CborRead.bytes(inner, context).map { value =>
-        val magnitude = if value.size == 0 then BigInt(0) else BigInt(1, value.toArray)
-        if tag == 2 then magnitude else -magnitude - 1
-      }
-    case _ => Left(LedgerDecodeError.Expected(context, LedgerDecodeError.Shape.Integer, node.value))
 
   private def nonempty(node: Node, context: String)(element: Node => Result[Unit]): Result[Unit] =
     CborRead

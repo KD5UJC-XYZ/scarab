@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.byron
 
+import ByronInteger.decode as integer
+
 import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
 import cats.syntax.all.*
 import io.circe.ACursor
@@ -178,16 +180,6 @@ object ByronParamsUpdate:
     }
 
   private def uint(what: String)(n: Node) = CborRead.uint(n, what)
-
-  private def integer(n: Node, what: String): Either[LedgerDecodeError, BigInt] = n.value match
-    case Value.UInt(v) => Right(v)
-    case Value.NInt(v) => Right(v)
-    case Value.Tag(tag, inner) if tag == 2 || tag == 3 =>
-      CborRead.bytes(inner, what).map { bytes =>
-        val magnitude = if bytes.size == 0 then BigInt(0) else BigInt(1, bytes.toArray)
-        if tag == 2 then magnitude else -magnitude - 1
-      }
-    case _ => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Integer, n.value))
 
   private def natural(what: String)(n: Node): Either[LedgerDecodeError, BigInt] =
     integer(n, what).flatMap(v =>
