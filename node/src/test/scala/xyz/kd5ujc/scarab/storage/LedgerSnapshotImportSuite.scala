@@ -248,11 +248,15 @@ class LedgerSnapshotImportSuite extends CatsEffectSuite:
           })
           assertEquals(fingerprint(db), before)
         }
-        _ <- IO.blocking(JFiles.createDirectories((db / "snapshots").toNioPath))
+        _ <- IO.blocking(JFiles.createDirectories((db / "received").toNioPath))
+        _ <- IO.blocking(
+          JFiles.write((db / "received" / "original").toNioPath, Array[Byte](1, 2, 3))
+        )
+        withReceived <- IO(fingerprint(db))
         collided <- attempt(LedgerSnapshotImport.run[IO](config(ledger, db)))
         _ <- IO {
-          assertEquals(collided, Left(Error.Collision("snapshots")))
-          assertEquals(fingerprint(db), before)
+          assertEquals(collided, Left(Error.Collision("received")))
+          assertEquals(fingerprint(db), withReceived)
         }
       yield ()
     }

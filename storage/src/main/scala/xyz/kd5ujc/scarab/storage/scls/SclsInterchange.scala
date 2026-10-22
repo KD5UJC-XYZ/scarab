@@ -189,7 +189,7 @@ object SclsInterchange:
         _ <- lift(Either.cond(inputRegular, (), Error.SourceNotRegular(config.input)))
         report <- DatabaseOwnership.resource[F](config.db).use { _ =>
           for
-            _ <- Vector("utxo", "snapshots", "volatile", "ledger")
+            _ <- Vector("utxo", "snapshots", "volatile", "received", "ledger")
               .traverse_(name => fresh(config.db / name))
             _ <- SnapshotPoint.check[F](
               config.db,

@@ -117,3 +117,53 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
       }
     }
   }
+
+  test("validated selected originals repair an inconsistent cache across reopen") {
+    tempDir.use { dir =>
+      ok {
+        val selected = block(1)
+        val corrupt = selected._1 -> block(100)._2
+        val fork = block(2)
+        for
+          _ <- ReceivedBlocks.open[IO](dir).use { store =>
+            for
+              _ <- store.put(corrupt._1, corrupt._2)
+              _ <- store.put(fork._1, fork._2)
+              _ <- store.put(selected._1, selected._2)
+              firstReceipt <- store.get(selected._1.hash)
+              _ <- IO(assertEquals(firstReceipt, Some(corrupt)))
+              _ <- store.restoreSelected(selected._1, selected._2)
+              repaired <- store.get(selected._1.hash)
+              _ <- IO(assertEquals(repaired, Some(selected)))
+            yield ()
+          }
+          _ <- ReceivedBlocks.open[IO](dir).use { store =>
+            store.entries.map(found => assertEquals(found.toSet, Set(selected, fork)))
+          }
+        yield ()
+      }
+    }
+  }
+
+  test("discarding a malformed recovered extra permits a later valid receipt of that hash") {
+    tempDir.use { dir =>
+      ok {
+        val selected = block(1)
+        val corrupt = selected._1 -> block(100)._2
+        for
+          _ <- ReceivedBlocks.open[IO](dir).use(_.put(corrupt._1, corrupt._2))
+          _ <- ReceivedBlocks.open[IO](dir).use { store =>
+            for
+              _ <- store.discardRecovered(selected._1.hash)
+              excluded <- store.get(selected._1.hash)
+              _ <- IO(assertEquals(excluded, None))
+              _ <- store.put(selected._1, selected._2)
+            yield ()
+          }
+          _ <- ReceivedBlocks.open[IO](dir).use { store =>
+            store.entries.map(found => assertEquals(found, Vector(selected)))
+          }
+        yield ()
+      }
+    }
+  }

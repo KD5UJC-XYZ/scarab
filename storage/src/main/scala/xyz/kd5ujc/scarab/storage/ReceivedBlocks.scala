@@ -15,10 +15,25 @@ import xyz.kd5ujc.scarab.ledger.StorageError
   * ChainDB writes to VolatileDB before selection (the pinned consensus ChainSel.hs `addBlockSync`).
   * The selected-chain log cannot serve this purpose: appending a postponed fork there would change
   * the chain recovered on restart. This separate log uses the existing VolatileStore record format
-  * unchanged and never writes rollback records.
+  * unchanged and never writes rollback records. Collection is driven by a durable immutable slot,
+  * rather than the adoption of an individual receipt. As in native VolatileDB, an LoE stall can
+  * retain a growing fork forest until immutable progress permits collection. Scarab additionally
+  * retains raw originals in its in-memory index; this is not a bounded-memory cache guarantee.
   */
 trait ReceivedBlocks[F[_]]:
   def put(ref: BlockRef, raw: Bytes)(using Raise[F, StorageError]): F[Unit]
+
+  /** Repair this cache from originals already validated by selected-chain resume. Unlike put, this
+    * may replace an inconsistent record; network receipts must continue to use put.
+    */
+  def restoreSelected(ref: BlockRef, raw: Bytes)(using Raise[F, StorageError]): F[Unit]
+
+  /** Exclude a structurally malformed recovered record before live admissions begin. Removing its
+    * lookup entry permits a subsequent genuine receipt to append a replacement. On-disk bytes
+    * remain subject to validation at reopen until replaced or collected at the durable boundary.
+    */
+  def discardRecovered(hash: Bytes): F[Unit]
+
   def get(hash: Bytes): F[Option[(BlockRef, Bytes)]]
   def entries: F[Vector[(BlockRef, Bytes)]]
   def hashes: F[Set[Bytes]]
@@ -59,6 +74,21 @@ object ReceivedBlocks:
             }
           }
         }
+
+      def restoreSelected(ref: BlockRef, raw: Bytes)(using Raise[F, StorageError]): F[Unit] =
+        lock.lock.surround {
+          blocks.get.flatMap { known =>
+            Async[F].uncancelable { _ =>
+              Async[F].unlessA(known.get(ref.hash).contains(ref -> raw))(
+                log.append(ref, raw) *> blocks.update(_.updated(ref.hash, ref -> raw))
+              ) *> invalid.update(_ - ref.hash)
+            }
+          }
+        }
+
+      def discardRecovered(hash: Bytes): F[Unit] = lock.lock.surround {
+        Async[F].uncancelable(_ => blocks.update(_ - hash) *> invalid.update(_ - hash))
+      }
 
       def get(hash: Bytes): F[Option[(BlockRef, Bytes)]] =
         invalid.get.flatMap(refused =>

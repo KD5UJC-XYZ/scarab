@@ -31,7 +31,9 @@ import scala.concurrent.duration.*
   * VolatileDB forest are separate: all processed originals, including invalid ones, remain readable
   * until immutable-slot GC. Their raw bytes and metadata remain in memory even with a durable
   * received journal; pruning at the native strict slot cutoff releases that forest and invalid
-  * pins.
+  * pins. Retention follows durable immutable progress, rather than receipt/adoption count: an LoE
+  * stall can grow the forest. This preserves later fork selection; it does not promise the native
+  * disk-backed VolatileDB's memory footprint.
   *
   * Claims are made through a [[BlockPool.Claims]] that belongs to one session ([[session]]). It is
   * a resource: when the session ends, however it ends (a failure, a cancellation), every claim it

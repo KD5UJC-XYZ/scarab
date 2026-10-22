@@ -88,12 +88,13 @@ object LedgerSnapshotImport:
       def raise[E <: SnapshotTables.Error, A](error: E): F[A] = outer.raise(Error.Tables(error))
     def lift[A](value: Either[Error, A]): F[A] = value.fold(_.raise[F, A], F.pure)
     def guard[A](what: String)(value: => A): F[A] = AtomicFile.guard[F, A](what)(value)
-    def collision: F[Unit] = Vector("utxo", "snapshots", "volatile", "ledger").traverse_ { name =>
-      guard(config.db.toString)(
-        JFiles.exists((config.db / name).toNioPath, LinkOption.NOFOLLOW_LINKS)
-      )
-        .flatMap(exists => F.whenA(exists)(Error.Collision(name).raise[F, Unit]))
-    }
+    def collision: F[Unit] =
+      Vector("utxo", "snapshots", "volatile", "received", "ledger").traverse_ { name =>
+        guard(config.db.toString)(
+          JFiles.exists((config.db / name).toNioPath, LinkOption.NOFOLLOW_LINKS)
+        )
+          .flatMap(exists => F.whenA(exists)(Error.Collision(name).raise[F, Unit]))
+      }
     val stage = Resource.make(
       guard(config.db.toString) {
         val db = config.db.toNioPath.toAbsolutePath.normalize()
@@ -320,9 +321,10 @@ object LedgerSnapshotImport:
       errors.handleWith(action)(error =>
         errors.handleWith(remove(artifact))(_ => F.unit) *> errors.raise[Error, Unit](error)
       )
-    def fresh: F[Unit] = Vector("utxo", "snapshots", "volatile", "ledger").traverse_ { name =>
-      guard(db.toString)(JFiles.exists((db / name).toNioPath, LinkOption.NOFOLLOW_LINKS))
-        .flatMap(exists => F.whenA(exists)(errors.raise[Error, Unit](Error.Collision(name))))
+    def fresh: F[Unit] = Vector("utxo", "snapshots", "volatile", "received", "ledger").traverse_ {
+      name =>
+        guard(db.toString)(JFiles.exists((db / name).toNioPath, LinkOption.NOFOLLOW_LINKS))
+          .flatMap(exists => F.whenA(exists)(errors.raise[Error, Unit](Error.Collision(name))))
     }
     val utxo = db / "utxo"
     val snapshots = db / "snapshots"
