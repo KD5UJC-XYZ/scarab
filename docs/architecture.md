@@ -298,7 +298,7 @@ major version of the parameters in force (Allegra 3, Mary 4, Alonzo 5, Babbage 7
   `is_valid` flag must equal the verdict, in both directions (`ValidationTagMismatch`); a valid
   transaction is applied and an invalid one consumes its collateral. See "Plutus evaluation" below.
   The script data hash is recomputed (`ledger/ScriptIntegrity.scala`) and a mismatch is a hard
-  error (`PPViewHashesDontMatch`).
+  error (`PPViewHashesDontMatch`, and `ScriptIntegrityHashMismatch` from protocol version 11).
 - **Conway** continues from the Babbage state through `Translate.toConway` (Conway parameters,
   committee and constitution from the Conway genesis, empty DRep state, pre-Conway update/MIR/pointer
   state dropped). The Conway rules are described in "Conway" below.

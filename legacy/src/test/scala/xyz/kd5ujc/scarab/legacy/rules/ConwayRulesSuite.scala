@@ -232,9 +232,14 @@ class ConwayRulesSuite extends FunSuite:
       Set(ScriptKind.PlutusV3)
     )
     val b = bodyWith(hash)
-    def run(succeeds: Boolean, isValid: Boolean, body: TxBody = b) =
+    def run(
+        succeeds: Boolean,
+        isValid: Boolean,
+        body: TxBody = b,
+        state: LedgerState = s
+    ) =
       rs.tx(
-        s,
+        state,
         tx(body, Vector(alice), wits, isValid = isValid),
         env.copy(
           evaluator = scripted(succeeds),
@@ -255,6 +260,32 @@ class ConwayRulesSuite extends FunSuite:
         run(succeeds = true, isValid = true, bodyWith(Some(Blake2b.hash256.hash(Bytes(Vector(1))))))
       ),
       "PPViewHashesDontMatch"
+    )
+    // from protocol version 11 the mismatch is ScriptIntegrityHashMismatch with the same pair and
+    // the bytes the expected hash is taken over (Alonzo/Rules/Utxow.hs, checkScriptIntegrityHash)
+    val at11 = s.copy(params = s.params.copy(protocolMajor = 11))
+    val wrong = Blake2b.hash256.hash(Bytes(Vector(1)))
+    val preimage = ScriptIntegrity.preimage(
+      tx(bodyWith(None), Vector(alice), wits),
+      at11.params,
+      Set(ScriptKind.PlutusV3)
+    )
+    val expected = ScriptIntegrity.hash(
+      tx(bodyWith(None), Vector(alice), wits),
+      at11.params,
+      Set(ScriptKind.PlutusV3)
+    )
+    assert(preimage.isDefined)
+    assertEquals(
+      run(succeeds = true, isValid = true, bodyWith(Some(wrong)), at11).left.map {
+        case LedgerFailure.Rejected(_, f) => f
+        case other                        => fail(other.message)
+      },
+      Left(
+        PredicateFailure.utxow(
+          UtxowFailure.ScriptIntegrityHashMismatch(Mismatch(Some(wrong), expected), preimage)
+        )
+      )
     )
     // a script without collateral
     assertEquals(

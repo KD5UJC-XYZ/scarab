@@ -70,11 +70,15 @@ FAILS = {"type": "PlutusScriptV3", "description": "",
          "cborHex": eratx.enc(eratx.enc(bytes.fromhex("0101002601"))).hex()}
 
 
-def script_tx(b, w, collateral, script, account="testnet", invalid=False, fee=1500000):
+def script_tx(b, w, collateral, script, account="testnet", invalid=False, fee=1500000, skew_cost_model=False,
+               withdraw=True):
     """A transaction that mints one token under the Plutus policy `script`, with a withdrawal of nothing
     from the reward account of the delegator `delegator1` on the network `account` ("testnet" or
     "mainnet"); `collateral` (a wallet other than `w`) pays the collateral. `invalid` sets the validity
-    flag of the transaction. Returns the signed bytes and the collateral input."""
+    flag of the transaction. `skew_cost_model` builds the transaction against parameters whose Plutus V3 cost
+    model differs by one in its first value, so that its script data hash is not the ledger's. Returns the
+    signed bytes and the collateral input. `withdraw` False leaves out the withdrawal, so that the transaction
+    breaks no rule but the one `skew_cost_model` provokes."""
     b.n += 1
     n = b.n
     d1 = f"{ENV}/stake-delegators/delegator1"
@@ -85,6 +89,10 @@ def script_tx(b, w, collateral, script, account="testnet", invalid=False, fee=15
     token = f"1 {policy}.746f6b656e"
     b.sh(f"{CLI} query protocol-parameters --testnet-magic {MAGIC} --socket-path {b.socket} "
          f"--out-file /work/pp{n}.json")
+    if skew_cost_model:
+        params = json.loads(b.sh(f"cat /work/pp{n}.json"))
+        params["costModels"]["PlutusV3"][0] += 1
+        b.sh(f"echo '{json.dumps(params)}' > /work/pp{n}.json")
     held, kept = 3000000, collateral["lovelace"] - 3000000
     base = f"/work/case{n}"
     # cardano-cli expects mint execution units in (steps, memory) order.
@@ -93,9 +101,10 @@ def script_tx(b, w, collateral, script, account="testnet", invalid=False, fee=15
          f"--fee {fee} --mint '{token}' --mint-script-file /work/script{n}.plutus --mint-redeemer-value 0 "
          f"--mint-execution-units '(1000000000,2000000)' --tx-in-collateral {collateral['txin']} "
          f"--tx-total-collateral {held} --tx-out-return-collateral {collateral['addr']}+{kept} "
-         f"--withdrawal {stake}+0 --protocol-params-file /work/pp{n}.json "
+         f"{f'--withdrawal {stake}+0 ' if withdraw else ''}--protocol-params-file /work/pp{n}.json "
          f"{'--script-invalid' if invalid else ''} --out-file {base}.body")
-    keys = " ".join(f"--signing-key-file {k}" for k in (w["skey"], collateral["skey"], f"{d1}/staking.skey"))
+    signers = (w["skey"], collateral["skey"], f"{d1}/staking.skey") if withdraw else (w["skey"], collateral["skey"])
+    keys = " ".join(f"--signing-key-file {k}" for k in signers)
     b.sh(f"{CLI} transaction sign --tx-body-file {base}.body {keys} --out-file {base}.signed")
     return bytes.fromhex(json.loads(b.sh(f"cat {base}.signed"))["cborHex"]), collateral["txin"]
 
@@ -172,6 +181,13 @@ def corpus(name, socket):
         b.tx(w, ins=["0000000000000000000000000000000000000000000000000000000000000000#0"],
              extra="--metadata-json-file /work/big.json"))
     # the network of a withdrawal, under each value of the validity flag
+    # Alonzo/Rules/Utxow.hs `checkScriptIntegrityHash`: PPViewHashesDontMatch below protocol version 11,
+    # ScriptIntegrityHashMismatch (UTXOW tag 18, with the expected preimage) from 11
+    major = json.loads(b.sh(f"{CLI} query protocol-parameters --testnet-magic {MAGIC} "
+                            f"--socket-path {socket}"))["protocolVersion"]["major"]
+    add("script-integrity-hash-mismatch",
+        "ScriptIntegrityHashMismatch" if major >= 11 else "PPViewHashesDontMatch",
+        script_tx(b, w, other, SUCCEEDS, skew_cost_model=True, withdraw=False)[0])
     add("withdrawal-network-flag-false", "WrongNetworkWithdrawal",
         script_tx(b, w, other, FAILS, account="mainnet", invalid=True)[0])
     add("withdrawal-network-flag-true", "Withdrawals",
