@@ -43,7 +43,7 @@ class SoakTranscriptTests(unittest.TestCase):
                         patch.object(soak.subprocess, "Popen", side_effect=launch), \
                         patch.object(soak.time, "monotonic", side_effect=[0, 0, 2]), \
                         patch.object(soak.time, "sleep"), \
-                        patch.object(soak, "compare_once", return_value={"matched": True}), \
+                        patch.object(soak, "compare_or_error", return_value={"matched": True}), \
                         redirect_stdout(output):
                     with self.assertRaises(SystemExit) as exit_:
                         soak.soak(SimpleNamespace(name="test", seconds=1, every=1, seed=0))

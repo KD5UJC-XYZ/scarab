@@ -104,7 +104,8 @@ def query_bundle(name):
     once; the queries of BUNDLE then run in parallel through `pinnedquery.Pin`, which makes each
     `cardano-cli` connection acquire that block instead of the tip of the moment. Returns
     (bundle, None) with the parsed JSON of every key of BUNDLE and the block read under 'tip', or
-    (None, why): the query that failed, with its exit status, stderr tail and wall time, or the keys that
+    (None, why): the query that failed (a missing, malformed or nonzero exit status fails it even if
+    its output parses), with its exit status, stderr tail, wall time and acquire count, or the keys that
     were never pinned. A block that has left the node's volatile window by then is refused by the node,
     which is a failed query."""
     pin = pinnedquery.Pin(ref(name), reference_socket(), [k for k, _ in BUNDLE])
@@ -132,12 +133,16 @@ def query_bundle(name):
         parts[key.strip()] = body
     bundle = {"tip": tip}
     for k in keys:
+        status = parts.get(f"{k}.rc", "").strip()
+        record = {"query": k, "exit": status or None, "stderr": parts.get(f"{k}.err", "").strip()[-400:],
+                  "ms": parts.get(f"{k}.ms", "").strip() or None, "slot": tip["slot"], "acquires": acquires.get(k)}
+        # fail closed: only a recorded exit status of 0 accepts the output, however well it parses
+        if status != "0":
+            return None, {**record, "failed": "exit status " + ("missing" if not status else "not zero" if status.isdigit() else "malformed")}
         try:
             bundle[k] = json.loads(parts[k])
         except (KeyError, json.JSONDecodeError) as e:
-            return None, {"query": k, "exit": parts.get(f"{k}.rc", "").strip() or None,
-                          "stderr": parts.get(f"{k}.err", "").strip()[-400:], "unparsable": type(e).__name__,
-                          "ms": parts.get(f"{k}.ms", "").strip() or None, "slot": tip["slot"]}
+            return None, {**record, "unparsable": type(e).__name__}
     unpinned = sorted(k for k, n in acquires.items() if n == 0)
     if unpinned:
         return None, {"unpinned": unpinned, "slot": tip["slot"]}
@@ -190,6 +195,14 @@ def compare_once_detailed(name, attempts=10, scala_wait=30):
 def compare_once(name, attempts=10, scala_wait=30):
     """`compare_once_detailed` without the failure records: the result, or None if the reference could not be read at a chosen block."""
     return compare_once_detailed(name, attempts, scala_wait)[0]
+
+
+def compare_or_error(name, attempts=10, scala_wait=30):
+    """`compare_once_detailed` for the long scenarios: always a result dict, so a comparison that could not be taken
+    is an `error` their gates count, never a silently skipped sample."""
+    result, failures = compare_once_detailed(name, attempts, scala_wait)
+    return result or {"error": "reference queries failed at the chosen block", "queryFailures": failures[-3:],
+                      "queryFailureCount": len(failures)}
 
 
 def compare(args):

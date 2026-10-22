@@ -11,7 +11,7 @@ import time
 from .. import metrics as node_metrics
 from . import kes_rotate
 from ..cluster import database_mounts, freeze_classes, scala_container, start_nodes, start_reference
-from ..compare import compare_once
+from ..compare import compare_or_error
 from ..scenarios.relay import SCALA_PORT, log_counts, tip_at
 from .. import util
 from ..util import CLI, ENTRY, ENV, MAGIC, QUERY_PORT, data_root, docker, in_ref, put_file, read_json, read_log, ref, scheduling_summary
@@ -313,10 +313,9 @@ def pool(args):
                               **{k: counts.get(k, 0) for k in ("forged", "adopted", "lost")}}), flush=True)
             if time.monotonic() >= next_compare:
                 next_compare = time.monotonic() + args.compare_every
-                r = compare_once(args.name)
-                if r is not None:
-                    comparisons.append(r)
-                    print(json.dumps({k: r.get(k) for k in ("tip", "matched", "differenceCount", "error")}), flush=True)
+                r = compare_or_error(args.name)
+                comparisons.append(r)
+                print(json.dumps({k: r.get(k) for k in ("tip", "matched", "differenceCount", "error")}), flush=True)
         loader.terminate()
         loader.wait()
         loader = None
@@ -334,9 +333,9 @@ def pool(args):
             return tips
 
         final = settled_tips()
-        for _ in range(3):  # one last bracketed comparison at the settled tip
-            r = compare_once(args.name)
-            if r is not None:
+        for _ in range(3):  # one last comparison at the settled tip; the last failed attempt is recorded
+            r = compare_or_error(args.name)
+            if "error" not in r or _ == 2:
                 comparisons.append(r)
                 print(json.dumps({k: r.get(k) for k in ("tip", "matched", "differenceCount", "error")}), flush=True)
                 break
@@ -361,9 +360,10 @@ def pool(args):
         lost = [e for e in events if e["event"] == "lost"]
         chain = pool_chain(events)
         on_chain = [e for e in forged if e["hash"] in set(chain)]
-        per_epoch = pool_blocks_made(comparisons, pool_id)
+        taken = [c for c in comparisons if "matched" in c]  # an error record has no reference view to count from
+        per_epoch = pool_blocks_made(taken, pool_id)
         haskell_count = sum(per_epoch.values())
-        last_compared = comparisons[-1]["tip"]["hash"] if comparisons else None
+        last_compared = taken[-1]["tip"]["hash"] if taken else None
         forged_hashes = {e["hash"] for e in forged}
         upto_compared = (len([h for h in chain[:chain.index(last_compared) + 1] if h in forged_hashes])
                          if last_compared in chain else None)
@@ -375,7 +375,7 @@ def pool(args):
         started_event = next(e for e in events if e["event"] == "forgeStarted")
         system_start = calendar.timegm(time.strptime(shelley["systemStart"], "%Y-%m-%dT%H:%M:%SZ"))
         started_at = datetime.datetime.fromisoformat(started_event["at"].replace("Z", "+00:00")).timestamp()
-        tip_slot = max((c["tip"]["slot"] for c in comparisons), default=0)
+        tip_slot = max((c["tip"]["slot"] for c in taken), default=0)
         active_slots = max(0, tip_slot - max(0, int((started_at - system_start) / shelley["slotLength"])))
         expected = active_slots * (1 - (1 - f) ** sigma)
         tolerance = 4 * expected ** 0.5 + 2

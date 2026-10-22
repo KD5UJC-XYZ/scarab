@@ -8,4 +8,7 @@
   a socket in the reference container and rewrites only its `MsgAcquireVolatileTip` to `MsgAcquire` at the tip read once for the
   comparison, so every query reads the same block. A block that has left the node's volatile window is refused by the node and
   recorded as a failed query with its stderr and wall time; a query that was never pinned fails the attempt. A comparison
-  that cannot be taken is still an error, and the number of attempts is unchanged.
+  that cannot be taken is still an error, and the number of attempts is unchanged. Only a recorded exit status of 0 accepts a
+  query's output: valid JSON from a query that exited nonzero, or with no recorded status, fails the attempt with its status,
+  stderr tail, wall time and acquire count. The `soak` and `pool` scenarios record a comparison that could not be taken as an
+  `error` entry that their gates already count, instead of dropping it.

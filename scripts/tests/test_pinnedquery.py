@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 """The acquire rewrite that makes every query of a comparison read one ledger block (#355)."""
+import json
 import pathlib
 import struct
 import sys
 import unittest
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from devnet import compare, util  # noqa: E402
@@ -96,3 +98,73 @@ class ReferenceSocketTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class QueryBundleVerdictTest(unittest.TestCase):
+    """`query_bundle` accepts a query only on a recorded exit status of 0 (#355)."""
+    KEYS = [k for k, _ in compare.BUNDLE]
+
+    def run_bundle(self, rc, acquires=None, json_body="{}"):
+        """The bundle verdict when every query prints `json_body`; `rc(key)` is its recorded status (None records none)."""
+        out = ""
+        for key in self.KEYS:
+            status = rc(key)
+            out += f"@@{key}\n{json_body}\n@@{key}.err\nboom\n"
+            if status is not None:
+                out += f"@@{key}.rc\n{status}\n"
+            out += f"@@{key}.ms\n12\n"
+        pin = Mock()
+        pin.ready_script.return_value = "true"
+        pin.path.side_effect = lambda key: f"/p/{key}"
+        pin.acquires.return_value = acquires if acquires is not None else {k: 1 for k in self.KEYS}
+        tip = json.dumps({"slot": 5, "hash": bytes(32).hex(), "block": 1, "epoch": 0})
+        with patch.object(compare.pinnedquery, "Pin", return_value=pin), \
+                patch.object(compare, "in_ref", side_effect=[Mock(stdout=tip), Mock(stdout=out)]), \
+                patch.object(compare, "ref", return_value="ref"), \
+                patch.object(compare, "reference_socket", return_value="/s"):
+            return compare.query_bundle("n")
+
+    def test_zero_exit_with_json_is_accepted(self):
+        bundle, why = self.run_bundle(lambda k: "0")
+        self.assertIsNone(why)
+        self.assertEqual(bundle["ls"], {})
+
+    def test_valid_json_with_nonzero_exit_fails_with_its_record(self):
+        bundle, why = self.run_bundle(lambda k: "1" if k == "gov" else "0")
+        self.assertIsNone(bundle)
+        self.assertEqual(why, {"query": "gov", "exit": "1", "stderr": "boom", "ms": "12", "slot": 5, "acquires": 1,
+                               "failed": "exit status not zero"})
+
+    def test_missing_exit_status_fails(self):
+        bundle, why = self.run_bundle(lambda k: None if k == "utxo" else "0")
+        self.assertIsNone(bundle)
+        self.assertEqual((why["query"], why["exit"], why["failed"]), ("utxo", None, "exit status missing"))
+
+    def test_malformed_exit_status_fails(self):
+        bundle, why = self.run_bundle(lambda k: "x" if k == "ls" else "0")
+        self.assertIsNone(bundle)
+        self.assertEqual((why["query"], why["exit"], why["failed"]), ("ls", "x", "exit status malformed"))
+
+    def test_unparsable_output_with_zero_exit_fails(self):
+        bundle, why = self.run_bundle(lambda k: "0", json_body="not json")
+        self.assertIsNone(bundle)
+        self.assertEqual(why["unparsable"], "JSONDecodeError")
+
+    def test_unpinned_query_fails_even_when_every_query_succeeded(self):
+        bundle, why = self.run_bundle(lambda k: "0", acquires={**{k: 1 for k in self.KEYS}, "drep": 0})
+        self.assertIsNone(bundle)
+        self.assertEqual(why["unpinned"], ["drep"])
+
+
+class CompareOrErrorTest(unittest.TestCase):
+    def test_a_comparison_that_could_not_be_taken_is_an_error_record(self):
+        failures = [{"query": "ls", "exit": "1"}] * 4
+        with patch.object(compare, "compare_once_detailed", return_value=(None, failures)):
+            result = compare.compare_or_error("n")
+        self.assertEqual(result["queryFailureCount"], 4)
+        self.assertEqual(len(result["queryFailures"]), 3)
+        self.assertIn("error", result)
+
+    def test_a_taken_comparison_passes_through(self):
+        with patch.object(compare, "compare_once_detailed", return_value=({"matched": True}, None)):
+            self.assertEqual(compare.compare_or_error("n"), {"matched": True})

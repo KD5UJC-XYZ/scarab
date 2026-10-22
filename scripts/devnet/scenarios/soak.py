@@ -7,7 +7,7 @@ import sys
 import time
 from .. import metrics as node_metrics
 from ..cluster import up
-from ..compare import compare_once
+from ..compare import compare_or_error
 from ..consensus import arguments
 from ..follower import own_build
 from ..util import ENTRY, QUERY_PORT, data_root, docker, read_log
@@ -79,12 +79,11 @@ def soak(args):
             if follower.poll() is not None:
                 results.append({"error": f"follower exited with {follower.returncode}"})
                 break
-            r = compare_once(args.name)
-            if r is not None:
-                results.append(r)
-                print(json.dumps({k: r.get(k) for k in ("tip", "matched", "differenceCount", "error")}), flush=True)
-                with (root / "compare.jsonl").open("a") as f:
-                    f.write(json.dumps(r) + "\n")
+            r = compare_or_error(args.name)
+            results.append(r)
+            print(json.dumps({k: r.get(k) for k in ("tip", "matched", "differenceCount", "error")}), flush=True)
+            with (root / "compare.jsonl").open("a") as f:
+                f.write(json.dumps(r) + "\n")
     finally:
         loader.terminate()
         loader.wait()
