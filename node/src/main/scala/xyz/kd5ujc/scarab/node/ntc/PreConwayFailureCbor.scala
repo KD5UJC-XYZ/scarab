@@ -148,7 +148,7 @@ object PreConwayFailureCbor:
     // Alonzo's and Babbage's
     case UtxowFailure.MissingRedeemers(_) | UtxowFailure.MissingRequiredDatums(_, _) |
         UtxowFailure.NotAllowedSupplementalDatums(_, _) | UtxowFailure.PPViewHashesDontMatch(_) |
-        UtxowFailure.UnspendableUTxONoDatumHash(_) | UtxowFailure.ExtraRedeemers(_) |
+        UtxowFailure.ScriptIntegrityHashMismatch(_, _) | UtxowFailure.UnspendableUTxONoDatumHash(_) | UtxowFailure.ExtraRedeemers(_) |
         UtxowFailure.MalformedScriptWitnesses(_) | UtxowFailure.MalformedReferenceScripts(_) =>
       None
 
@@ -180,7 +180,8 @@ object PreConwayFailureCbor:
       Some(sum(6)(set(_, ins)(txIn)))
     case UtxowFailure.ExtraRedeemers(ps) =>
       Some(sum(7)(w => list(w, ps) { case (k, (tag, ix)) => k.array(2).uint(tag).uint(ix) }))
-    case UtxowFailure.MalformedScriptWitnesses(_) | UtxowFailure.MalformedReferenceScripts(_) =>
+    case UtxowFailure.MalformedScriptWitnesses(_) | UtxowFailure.MalformedReferenceScripts(_) |
+        UtxowFailure.ScriptIntegrityHashMismatch(_, _) =>
       None
     case shelley @ (UtxowFailure.InvalidWitnesses(_) | UtxowFailure.MissingVKeyWitnesses(_) |
         UtxowFailure.MissingScriptWitnesses(_) | UtxowFailure.ScriptWitnessNotValidating(_) |

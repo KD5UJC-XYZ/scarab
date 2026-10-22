@@ -29,6 +29,12 @@ import xyz.kd5ujc.scarab.codec.Bytes
   */
 object ScriptIntegrity:
   def hash(tx: Tx, pp: ProtocolParams, languages: Set[ScriptKind]): Option[Bytes] =
+    preimage(tx, pp, languages).map(Blake2b.hash256.hash(_))
+
+  /** The bytes the integrity hash is taken over (`originalBytes` of the ledger's `ScriptIntegrity`),
+    * or None for a transaction that has none.
+    */
+  def preimage(tx: Tx, pp: ProtocolParams, languages: Set[ScriptKind]): Option[Bytes] =
     val wits = tx.witnesses
     if wits.redeemers.isEmpty && wits.datums.isEmpty && languages.forall(!_.isPlutus) then None
     else
@@ -36,7 +42,22 @@ object ScriptIntegrity:
       val redeemers = wits.redeemersRaw.getOrElse(emptyRedeemers)
       val datums =
         if wits.datums.isEmpty then Bytes.empty else wits.datumsRaw.getOrElse(Bytes.empty)
-      Some(Blake2b.hash256.hash(redeemers ++ datums ++ viewsOf(pp, languages)))
+      Some(redeemers ++ datums ++ viewsOf(pp, languages))
+
+  /** The first protocol major version that reports an integrity-hash mismatch as
+    * `ScriptIntegrityHashMismatch` (`natVersion @11` in `checkScriptIntegrityHash`, cardano-ledger
+    * `f649f975`, `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxow.hs:286-292`).
+    */
+  private val mismatchFrom = 11
+
+  /** The UTXOW failure for a supplied hash that is not the recomputed one: below protocol version
+    * 11 `PPViewHashesDontMatch` with the two hashes, from 11 `ScriptIntegrityHashMismatch` with
+    * the same pair and the bytes the expected hash is taken over.
+    */
+  def mismatch(tx: Tx, pp: ProtocolParams, languages: Set[ScriptKind]): UtxowFailure =
+    val pair = Mismatch(tx.body.scriptDataHash, hash(tx, pp, languages))
+    if pp.protocolMajor < mismatchFrom then UtxowFailure.PPViewHashesDontMatch(pair)
+    else UtxowFailure.ScriptIntegrityHashMismatch(pair, preimage(tx, pp, languages))
 
   /** The cost models in force and the encoded views computed for them, by language set. The
     * parameters change once an epoch at most and a block has dozens of transactions that need the

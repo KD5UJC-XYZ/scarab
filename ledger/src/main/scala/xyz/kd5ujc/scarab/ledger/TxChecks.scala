@@ -48,9 +48,7 @@ object TxChecks:
         Left(
           LedgerFailure.Rejected(
             id,
-            PredicateFailure.utxow(
-              UtxowFailure.PPViewHashesDontMatch(Mismatch(body.scriptDataHash, recomputed))
-            )
+            PredicateFailure.utxow(ScriptIntegrity.mismatch(tx, pp, languages))
           )
         )
       else if plutusPurposes.isEmpty then Right(stats)
@@ -445,9 +443,7 @@ object TxChecks:
         languages = scriptsNeeded(body, spent).keys.flatMap(scripts.get).map(_.kind).toSet
         _ <- checkWith(
           body.scriptDataHash.isDefined == needsHash,
-          UtxowFailure.PPViewHashesDontMatch(
-            Mismatch(body.scriptDataHash, ScriptIntegrity.hash(tx, pp, languages))
-          )
+          ScriptIntegrity.mismatch(tx, pp, languages)
         )
       yield ()
 

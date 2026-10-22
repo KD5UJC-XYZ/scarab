@@ -110,6 +110,11 @@ enum UtxowFailure:
   case MissingRequiredDatums(missing: Set[Bytes], received: Set[Bytes])
   case NotAllowedSupplementalDatums(unallowed: Set[Bytes], acceptable: Set[Bytes])
   case PPViewHashesDontMatch(mismatch: Mismatch[Option[Bytes]])
+
+  /** The integrity hash from protocol version 11 (`ScriptIntegrityHashMismatch`, tag 18): the
+    * supplied and the recomputed hash, and the bytes the recomputed one is taken over.
+    */
+  case ScriptIntegrityHashMismatch(mismatch: Mismatch[Option[Bytes]], expected: Option[Bytes])
   case UnspendableUTxONoDatumHash(inputs: Set[TxIn])
   case MalformedScriptWitnesses(hashes: Set[Bytes])
   case MalformedReferenceScripts(hashes: Set[Bytes])

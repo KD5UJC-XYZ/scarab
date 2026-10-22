@@ -202,6 +202,9 @@ class PredicateFailureCborSuite extends FunSuite:
       PredicateFailure.utxo(UtxoFailure.InsufficientCollateral(10, 20)),
       PredicateFailure.utxow(UtxowFailure.ExtraneousScriptWitnesses(Set(keyHash))),
       PredicateFailure.utxow(UtxowFailure.PPViewHashesDontMatch(Mismatch(None, Some(keyHash)))),
+      PredicateFailure.utxow(
+        UtxowFailure.ScriptIntegrityHashMismatch(Mismatch(None, Some(keyHash)), Some(keyHash))
+      ),
       PredicateFailure.WdrlNotDelegatedToDRep(Vector(keyHash)),
       PredicateFailure.TxRefScriptsSizeTooBig(Mismatch(300000, 204800)),
       PredicateFailure.deleg(DelegFailure.DepositIncorrect(Mismatch(1, 2))),
@@ -219,6 +222,30 @@ class PredicateFailureCborSuite extends FunSuite:
             case other                         => fail(s"$f: $other")
         case other => fail(s"$f: $other")
     }
+  }
+
+  test("Conway: the integrity hash mismatch from protocol 11 is tag 18 with the preimage") {
+    // [18 ScriptIntegrityHashMismatch, [supplied, expected], expected preimage] with StrictMaybe
+    // as an empty or one-element list (Conway/Rules/Utxow.hs, the Sum encoder).
+    val h = keyHash.hex
+    assertEquals(
+      PredicateFailureCbor
+        .applyTxError(
+          Era.Conway,
+          Vector(
+            PredicateFailure.utxow(
+              UtxowFailure.ScriptIntegrityHashMismatch(
+                Mismatch(None, Some(keyHash)),
+                Some(Bytes(Vector(0xa0.toByte)))
+              )
+            )
+          )
+        )
+        .map(_.hex),
+      Some(
+        "81" + "8206" + "81" + "8201" + "83" + "12" + "82" + "80" + "81" + "581c" + h + "81" + "41a0"
+      )
+    )
   }
 
   test("Conway: a missing redeemer of a certifying purpose carries its certificate, not null") {
