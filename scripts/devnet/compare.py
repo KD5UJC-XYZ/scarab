@@ -95,37 +95,46 @@ BUNDLE = [("ls", "query ledger-state"), ("utxo", "query utxo --whole-utxo"), ("p
 
 def query_bundle(name):
     """The reference queries of one comparison, run in parallel in one shell between two tip reads (so a
-    block arriving meanwhile is detected). Returns {key: parsed JSON} for the keys of BUNDLE, 'before'
-    and 'after', or None if a query failed."""
+    block arriving meanwhile is detected). Returns ({key: parsed JSON} for the keys of BUNDLE, 'before' and
+    'after', None), or (None, why) where `why` names the failed query with its exit status and stderr."""
     q = "/work/q"
-    lines = [f"mkdir -p {q}", f"{CLI} query tip {util.SOCKET} > {q}/before"]
+    lines = [f"mkdir -p {q}", f"{CLI} query tip {util.SOCKET} > {q}/before 2> {q}/before.err; echo $? > {q}/before.rc"]
     for key, command in BUNDLE:
         extra = " --output-json" if key == "utxo" else ""
-        lines.append(f"{CLI} {command} {util.SOCKET}{extra} > {q}/{key} 2> {q}/{key}.err &")
-    lines += ["wait", f"{CLI} query tip {util.SOCKET} > {q}/after"]
+        lines.append(f"({CLI} {command} {util.SOCKET}{extra} > {q}/{key} 2> {q}/{key}.err; echo $? > {q}/{key}.rc) &")
+    lines += ["wait", f"{CLI} query tip {util.SOCKET} > {q}/after 2> {q}/after.err; echo $? > {q}/after.rc"]
     keys = ["before", "after"] + [k for k, _ in BUNDLE]
-    lines.append(f"for f in {' '.join(keys)}; do echo \"@@$f\"; cat {q}/$f; done")
+    lines.append(f"for f in {' '.join(keys)}; do for s in '' .err .rc; do echo \"@@$f$s\"; cat {q}/$f$s; done; done")
     out = in_ref(name, "\n".join(lines), timeout=180).stdout
     parts = {}
     for chunk in out.split("@@")[1:]:
         key, _, body = chunk.partition("\n")
         parts[key.strip()] = body
-    try:
-        return {k: json.loads(parts[k]) for k in keys}
-    except (KeyError, json.JSONDecodeError):
-        return None
+    bundle = {}
+    for k in keys:
+        rc = parts.get(f"{k}.rc", "").strip()
+        try:
+            bundle[k] = json.loads(parts[k])
+        except (KeyError, json.JSONDecodeError) as e:
+            return None, {"query": k, "exit": rc or None, "stderr": parts.get(f"{k}.err", "").strip()[-400:],
+                          "unparsable": type(e).__name__}
+    return bundle, None
 
 
-def compare_once(name, attempts=10, scala_wait=30):
-    """One bracketed comparison. Returns a result dict, or None if no stable bracket was found."""
+def compare_once_detailed(name, attempts=10, scala_wait=30):
+    """One bracketed comparison. Returns (result dict, None), or (None, failures) with one record per
+    attempt that could not be bracketed: a failed reference query (with its stderr) or a moving tip."""
+    failures = []
     for attempt in range(attempts):
-        bundle = query_bundle(name)
+        bundle, why = query_bundle(name)
         if bundle is None:
+            failures.append(why)
             continue
         before, after = bundle["before"], bundle["after"]
         ls, utxo, protocol = bundle["ls"], bundle["utxo"], bundle["protocol"]
         gov = (bundle["gov"], bundle["committee"], bundle["drep"])
         if before["hash"] != after["hash"]:
+            failures.append({"tipMoved": {"from": before["slot"], "to": after["slot"]}})
             continue
         scala = None
         for _ in range(scala_wait):
@@ -136,7 +145,7 @@ def compare_once(name, attempts=10, scala_wait=30):
         if scala is None:
             if attempt + 1 < attempts:
                 continue  # the node may have moved past the retained window while the queries ran
-            return {"tip": after, "error": "scala node never reached the reference tip"}
+            return {"tip": after, "error": "scala node never reached the reference tip"}, None
         reference = reference_view(ls, utxo)
         reference["gov"] = govview.reference_gov(*gov)
         reference["protocolState"] = {k: protocol[k] for k in (
@@ -154,8 +163,13 @@ def compare_once(name, attempts=10, scala_wait=30):
                 "poolStake": reference["stakeDistrib"],
                 "matched": not differences, "differences": [
                     {"path": p, "reference": str(a)[:200], "scala": str(b)[:200]} for p, a, b in differences[:25]],
-                "differenceCount": len(differences)}
-    return None
+                "differenceCount": len(differences)}, None
+    return None, failures
+
+
+def compare_once(name, attempts=10, scala_wait=30):
+    """`compare_once_detailed` without the failure records: the result, or None if no stable bracket was found."""
+    return compare_once_detailed(name, attempts, scala_wait)[0]
 
 
 def compare(args):
@@ -248,14 +262,17 @@ class Comparisons:
         print(json.dumps({"compare": era, "label": label, "matched": result.get("matched"),
                           "slot": (result.get("tip") or {}).get("slot"),
                           "differences": result.get("differenceCount"),
-                          "note": result.get("skipped") or result.get("error")}), flush=True)
+                          "note": result.get("skipped") or result.get("error"),
+                          "bracketFailures": result.get("bracketFailures")}), flush=True)
 
 
 def compare_era(name, era, label, comparisons):
     """Compare the Scala ledger with the reference in `era`; never raises."""
     try:
         if era == "conway":
-            result = compare_once(name, attempts=12, scala_wait=3) or {"error": "no stable bracket"}
+            result, failures = compare_once_detailed(name, attempts=12, scala_wait=3)
+            result = result or {"error": "no stable bracket", "bracketFailures": failures[-3:],
+                                "bracketFailureCount": len(failures)}
         else:
             result = compare_pre_conway(name, era)
     except Exception as e:  # a comparison problem must not stop the cluster walk
