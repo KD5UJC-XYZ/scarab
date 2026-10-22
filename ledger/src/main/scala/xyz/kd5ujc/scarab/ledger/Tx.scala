@@ -360,7 +360,12 @@ object TxBody:
       )
       votes <- present("voting procedures")(
         f.get(19)
-          .traverse(VotingProcedures.decode(_).leftMap(LedgerDecodeError.Voting(_)))
+          .traverse(
+            VotingProcedures
+              .decode(_)
+              .flatMap(v => if conway then VotingProcedures.requireBodyDecodable(v) else Right(v))
+              .leftMap(LedgerDecodeError.Voting(_))
+          )
       )
       proposals <- present("proposal procedures")(
         f.get(20)

@@ -219,13 +219,13 @@ object VotingProcedures:
             })
         yield v -> votes
       })
-      .flatMap(checked)
 
-  /** Voting procedures exist only in Conway, whose decoder version (9) refuses a map with a
-    * repeated key (`decodeMapByKey`, Decoder.hs) and a voter without votes (`DecCBOR
-    * VotingProcedures`, `Conway/Governance/Procedures.hs` at cardano-ledger f649f975).
+  /** What the transaction-body decoder of Conway (decoder version 9) refuses in the voting
+    * procedures: a map with a repeated key (`decodeMapByKey`, Decoder.hs) and a voter without votes
+    * (`DecCBOR VotingProcedures`, `Conway/Governance/Procedures.hs` at cardano-ledger f649f975).
+    * Signals of the GOV rule are not read from a body, so [[decode]] does not apply it.
     */
-  private def checked(
+  def requireBodyDecodable(
       all: Vector[(Voter, Vector[(GovActionId, VotingProcedure)])]
   ): Either[DecodeError, Vector[(Voter, Vector[(GovActionId, VotingProcedure)])]] =
     val structure = for
