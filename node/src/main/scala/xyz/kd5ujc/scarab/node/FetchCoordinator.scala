@@ -233,7 +233,8 @@ final class FetchCoordinator[F[_]: Async] private (
               (next, (token, peer.isDefined))
             }
             .flatMap { (token, live) =>
-              (if live then changeLocked(_.copy(mode = mode)) else result.complete(Allocation.empty).void)
+              (if live then changeLocked(_.copy(mode = mode))
+               else result.complete(Allocation.empty).void)
                 .as(token -> result)
             }
         })
