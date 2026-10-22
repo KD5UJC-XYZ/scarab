@@ -101,3 +101,33 @@ class InstantStakeArithmeticSuite extends FunSuite:
     assertEquals(next.instantStake, cache(Some(2)))
     assertEquals(next.utxo.utxo.count, 0L)
   }
+
+  test("a phase 2 failure deletes its collateral in TxIn map order, not body order") {
+    val first = TxIn(Bytes(Vector.fill(32)(1.toByte)), 0)
+    val second = TxIn(Bytes(Vector.fill(32)(2.toByte)), 0)
+    val held = NodeUtxo.fromMap(Map(first -> output(3), second -> output(2)))
+    val initial = Empty
+      .ledgerState[Conway](TestLedger.params(10))
+      .utxo
+      .copy[Conway](utxo = UtxoTables(held), instantStake = cache(Some(3)))
+    val body = TestLedger
+      .body("cache-collateral-order", Vector.empty, Vector.empty, 0)
+      .copy(collateral = Vector(second, first))
+    val transaction = TestLedger.tx(body, Vector.empty).copy(isValid = false)
+    // TxIn order deletes 3 (the entry reaches zero and is removed) and then 2 (absent, so it is
+    // inserted as 2). Body order deletes 2 and then 3 and wraps to 2^64 - 2.
+    val next = Utxo
+      .update(
+        initial,
+        StAnnTx(transaction, held),
+        xyz.kd5ujc.scarab.ledger.TxChecks.Collateral.none,
+        0,
+        0
+      )
+      .fold(e => fail(e.toString), identity)
+    assertEquals(next.instantStake, cache(Some(2)))
+    assertEquals(
+      InstantStakeOps.update(cache(Some(3)), Vector.empty, Vector(output(2), output(3))),
+      Right(cache(Some(modulus - 2)))
+    )
+  }

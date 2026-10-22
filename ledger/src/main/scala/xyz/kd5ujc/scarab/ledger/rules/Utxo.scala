@@ -309,13 +309,16 @@ object Utxo
     val body = tx.body
     val id = ann.id
     val utxo = s.utxo.utxo
+    // `extractKeys` yields the deleted outputs in `TxIn` map order, whatever order the body lists
+    // its inputs in (`Shelley/Rules/Utxo.hs:613-624`, `Babbage/Rules/Utxo.hs:474-487` at f649f975).
+    def inOrder(inputs: Vector[TxIn]): Vector[TxOut] = inputs.distinct.sorted.flatMap(utxo.get)
     if tx.isValid then
       val created = body.outputs.zipWithIndex.map { (out, i) => TxIn(id, i) -> out }
       for
         stake <- InstantStakeOps.update(
           s.instantStake,
           body.outputs,
-          body.inputs.distinct.sorted.flatMap(utxo.get)
+          inOrder(body.inputs)
         )
         deposited <- Coin.fromBigInt(s.deposited.value + deposits - refunds)
         fees <- Coin.fromBigInt(s.fees.value + body.fee)
@@ -333,7 +336,7 @@ object Utxo
         stake <- InstantStakeOps.update(
           s.instantStake,
           returned.map(_._2),
-          collateral.outputs
+          inOrder(body.collateral)
         )
         fees <- Coin.fromBigInt(s.fees.value + collateral.fee)
       yield s.copy(
