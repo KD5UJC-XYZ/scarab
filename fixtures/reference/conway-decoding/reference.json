@@ -1,0 +1,1120 @@
+[
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "body baseline",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "inputs: empty set is accepted",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "inputs: two distinct inputs",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "inputs: tag 258 is accepted",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "inputs: indefinite length is accepted",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "inputs: duplicate input",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 75 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "inputs: duplicate input under tag 258",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 114 \"Final number of elements: 2 does not match the total count that was decoded: 3\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "inputs: duplicate input, indefinite length",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 76 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "inputs: duplicate input written with a wide array header",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 76 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "inputs: duplicate input written with a wide index",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 76 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "inputs: same id, different index",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "inputs: unknown tag",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 5 \"Expecteg tag 258 but got tag 259\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "collateral: two distinct inputs",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "collateral: tag 258",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "collateral: empty set",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 86 \"TxBody: 'Collateral Inputs' must be non-empty when supplied\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "collateral: empty set under tag 258",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 89 \"TxBody: 'Collateral Inputs' must be non-empty when supplied\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "collateral: duplicate input",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 158 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "collateral: duplicate input written with a wide index",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 159 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "reference inputs: two distinct inputs",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "reference inputs: tag 258",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "reference inputs: empty set",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 86 \"TxBody: 'Reference Inputs' must be non-empty when supplied\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "reference inputs: empty set under tag 258",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 89 \"TxBody: 'Reference Inputs' must be non-empty when supplied\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "reference inputs: duplicate input",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 158 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "reference inputs: duplicate input written with a wide index",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 159 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "required signers: two distinct",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "required signers: empty",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 86 \"TxBody: 'Required Signer Hashes' must be non-empty when supplied\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "required signers: duplicate",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 146 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "certificates: one",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "certificates: two distinct",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "certificates: tag 258",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "certificates: empty",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 86 \"TxBody: 'Certificates' must be non-empty when supplied\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "certificates: empty under tag 258",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 89 \"TxBody: 'Certificates' must be non-empty when supplied\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "certificates: duplicate",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 154 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "certificates: duplicate under tag 258",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 191 \"Final number of elements: 2 does not match the total count that was decoded: 3\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "proposals: one",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "proposals: two distinct",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "proposals: tag 258",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "proposals: empty",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 86 \"TxBody: 'ProposalProcedures' must be non-empty when supplied\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "proposals: duplicate",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 290 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "withdrawals: one",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "withdrawals: empty",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 86 \"TxBody: 'Withdrawals' must be non-empty when supplied\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "withdrawals: repeated account",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 150 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "withdrawals: repeated account, indefinite length",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 151 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "votes: one voter, one vote",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "votes: two voters, two actions",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "votes: empty",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 86 \"TxBody: 'VotingProcedures' must be non-empty when supplied\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "votes: repeated voter",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 230 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "votes: repeated action",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 197 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "votes: voter without votes",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 119 \"VotingProcedures require votes, but Voter: DRepVoter (KeyHashObj (KeyHash {unKeyHash = \\\"33333333333333333333333333333333333333333333333333333333\\\"})) didn't have any\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "mint: one asset",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "mint: empty",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 86 \"TxBody: 'Mint' must be non-empty when supplied\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "donation: positive",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "donation: zero",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 86 \"TxBody: 'Treasury Donation' must be non-zero when supplied: Expected a positive Coin. Got 0 (zero).\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "treasury value: zero is accepted",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "update (key 6): not a field of Conway",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 85 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 6\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "unknown key 10",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 85 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 10\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "unknown key 12",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 85 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 12\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body baseline",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage inputs: duplicate input is collapsed",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage inputs: empty collateral is accepted",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage certificates: duplicate is kept",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage update (key 6) is a field",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage inputs: tag 258 is not read",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 2 \"expected list len or indef\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "witnesses: empty set",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "vkey witnesses: one",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "vkey witnesses: tag 258",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "vkey witnesses: indefinite length",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "vkey witnesses: duplicate is tolerated",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "vkey witnesses: duplicate under tag 258 is tolerated",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "vkey witnesses: empty list",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 3 \"Empty list found, expected non-empty\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "vkey witnesses: empty set under tag 258",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 6 \"Empty list found, expected non-empty\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "bootstrap witnesses: one",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "bootstrap witnesses: tag 258",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "bootstrap witnesses: indefinite length",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "bootstrap witnesses: duplicate is tolerated",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "bootstrap witnesses: duplicate under tag 258 is tolerated",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "bootstrap witnesses: empty list",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 3 \"Empty list found, expected non-empty\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "bootstrap witnesses: empty set under tag 258",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 6 \"Empty list found, expected non-empty\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "native scripts: one",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "native scripts: tag 258",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "native scripts: indefinite length",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "native scripts: duplicate is tolerated",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "native scripts: duplicate under tag 258 is tolerated",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "native scripts: empty list",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 3 \"Empty list found, expected non-empty\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "native scripts: empty set under tag 258",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 6 \"Empty list found, expected non-empty\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "datums: one",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "datums: tag 258",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "datums: indefinite length",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "datums: duplicate is tolerated",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "datums: duplicate under tag 258 is tolerated",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "datums: empty list",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 3 \"Empty list found, expected non-empty\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "datums: empty set under tag 258",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 6 \"Empty list found, expected non-empty\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "vkey witnesses: duplicate vkey with another signature is a second element",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "Plutus V1 scripts: one",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "Plutus V1 scripts: tag 258",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "Plutus V1 scripts: indefinite length",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "Plutus V1 scripts: empty list",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 3 \"Empty list of scripts is not allowed\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "Plutus V1 scripts: empty set under tag 258",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 6 \"Empty list of scripts is not allowed\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "Plutus V1 scripts: duplicate script",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 23 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "Plutus V1 scripts: duplicate script under tag 258",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 36 \"Final number of elements: 2 does not match the total count that was decoded: 3\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "Plutus V2 scripts: one",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "Plutus V2 scripts: tag 258",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "Plutus V2 scripts: indefinite length",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "Plutus V2 scripts: empty list",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 3 \"Empty list of scripts is not allowed\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "Plutus V2 scripts: empty set under tag 258",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 6 \"Empty list of scripts is not allowed\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "Plutus V2 scripts: duplicate script",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 23 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "Plutus V2 scripts: duplicate script under tag 258",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 36 \"Final number of elements: 2 does not match the total count that was decoded: 3\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "Plutus V3 scripts: one",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "Plutus V3 scripts: tag 258",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "Plutus V3 scripts: indefinite length",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "Plutus V3 scripts: empty list",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 3 \"Empty list of scripts is not allowed\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "Plutus V3 scripts: empty set under tag 258",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 6 \"Empty list of scripts is not allowed\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "Plutus V3 scripts: duplicate script",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 23 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "Plutus V3 scripts: duplicate script under tag 258",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 36 \"Final number of elements: 2 does not match the total count that was decoded: 3\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "Plutus scripts: the same bytes under V1 and V2 are two scripts",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "Plutus scripts: the same bytes under V1, V2 and V3 are three scripts",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "Plutus scripts: a V1 script and a V2 script",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "redeemers: list",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "redeemers: map",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "redeemers: indefinite list",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "redeemers: indefinite map",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "redeemers: repeated key in a list is tolerated",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "redeemers: repeated key in a map is tolerated",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "redeemers: empty list",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 3 \"Empty list found, expected non-empty\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "redeemers: empty map",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 3 \"Expected redeemers map to be non-empty\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "redeemers: tagged list",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 2 \"expected list len or indef\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "witnesses: unknown key 8",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 2 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 8\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "witnesses: a populated set",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "transaction",
+  "name": "transaction baseline",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "transaction",
+  "name": "transaction: duplicate input in the body",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway Tx\" (DeserialiseFailure 76 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "transaction",
+  "name": "transaction: empty vkey witness list in the witness set",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway Tx\" (DeserialiseFailure 88 \"Empty list found, expected non-empty\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "transaction",
+  "name": "transaction: duplicate Plutus script in the witness set",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway Tx\" (DeserialiseFailure 108 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ }
+]
