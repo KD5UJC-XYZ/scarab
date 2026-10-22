@@ -13,6 +13,10 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from repo_paths import relative_argv, repo_relative  # noqa: E402
 
 PIN = "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776"
 HERE = Path(__file__).resolve().parent
@@ -89,12 +93,12 @@ def main() -> None:
 
     def run(argv: list[str]) -> str:
         ordinal = len(commands)
-        entry = {"argv": argv, "startedAt": datetime.now(timezone.utc).isoformat()}
+        entry = {"argv": relative_argv(argv), "startedAt": datetime.now(timezone.utc).isoformat()}
         commands.append(entry)
         log = probe / f"command-{ordinal}.log"
         with log.open("w") as stream:
             result = subprocess.run(argv, stdout=stream, stderr=subprocess.STDOUT, text=True)
-        entry.update(returncode=result.returncode, log=str(log),
+        entry.update(returncode=result.returncode, log=repo_relative(str(log)),
                      endedAt=datetime.now(timezone.utc).isoformat(), logSha256=sha(log))
         (probe / "commands.json").write_text(json.dumps(commands, indent=2) + "\n")
         if result.returncode:

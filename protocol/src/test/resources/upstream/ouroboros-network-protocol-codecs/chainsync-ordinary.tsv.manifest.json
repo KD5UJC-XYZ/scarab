@@ -74,7 +74,7 @@
       "argv": [
         "git",
         "-C",
-        "/home/euler/repos/cardano-scala-lab/.workspace/data/2026-10-14-upstream/ouroboros-network",
+        ".workspace/data/2026-10-14-upstream/ouroboros-network",
         "rev-parse",
         "HEAD"
       ],
@@ -88,7 +88,7 @@
       "argv": [
         "git",
         "-C",
-        "/home/euler/repos/cardano-scala-lab/.workspace/data/2026-10-14-upstream/ouroboros-network",
+        ".workspace/data/2026-10-14-upstream/ouroboros-network",
         "archive",
         "--format=tar",
         "-o",
@@ -123,7 +123,7 @@
         "-d",
         "/tmp/scarab/issue-49-wrapped-codecs/reference-3/source",
         "-i",
-        "/home/euler/repos/cardano-scala-lab/.workspace/worktrees/v02-49-wrapped-codecs/scripts/oracle/network-protocols/ordinary-codecs-observer.patch"
+        ".workspace/worktrees/v02-49-wrapped-codecs/scripts/oracle/network-protocols/ordinary-codecs-observer.patch"
       ],
       "startedAt": "2026-10-19T21:49:52.079800+00:00",
       "returncode": 0,
@@ -260,7 +260,7 @@
     {
       "argv": [
         "python3",
-        "/home/euler/repos/cardano-scala-lab/.workspace/worktrees/v02-49-wrapped-codecs/scripts/oracle/network-protocols/compare_cabal_plans.py",
+        ".workspace/worktrees/v02-49-wrapped-codecs/scripts/oracle/network-protocols/compare_cabal_plans.py",
         "/tmp/scarab/v02-49-protocol-probe/builddir/cache/plan.json",
         "/tmp/scarab/issue-49-wrapped-codecs/reference-3/narrow-builddir/cache/plan.json",
         "--output",

@@ -8,6 +8,10 @@ import json
 from pathlib import Path
 import subprocess
 import shutil
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from repo_paths import relative_argv  # noqa: E402
 
 PIN = "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776"
 HERE = Path(__file__).resolve().parent
@@ -48,7 +52,7 @@ def main():
         log = probe / f"command-{len(commands)}.log"
         with log.open("w") as output:
             result = subprocess.run(argv, stdout=output, stderr=subprocess.STDOUT, text=True)
-        commands.append({"argv": argv, "returncode": result.returncode, "logSha256": sha(log)})
+        commands.append({"argv": relative_argv(argv), "returncode": result.returncode, "logSha256": sha(log)})
         (probe / "commands.json").write_text(json.dumps(commands, indent=2) + "\n")
         if result.returncode:
             raise RuntimeError(f"command failed: {log}")

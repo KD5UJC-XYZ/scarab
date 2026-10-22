@@ -37,7 +37,7 @@
       "argv": [
         "git",
         "-C",
-        "/home/euler/repos/cardano-scala-lab/.workspace/data/2026-10-14-upstream/ouroboros-network",
+        ".workspace/data/2026-10-14-upstream/ouroboros-network",
         "rev-parse",
         "HEAD"
       ],

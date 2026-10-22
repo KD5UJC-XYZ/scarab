@@ -12,7 +12,11 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 from datetime import datetime, timezone
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from repo_paths import relative_argv, repo_relative  # noqa: E402
 
 UPSTREAM_COMMIT = "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776"
 IMAGE = os.environ.get("SCARAB_PROTOCOL_REFERENCE_IMAGE", "scarab-pre-conway178-oracle:local")
@@ -235,9 +239,9 @@ def checked(command: list[str], **kwargs: object) -> str:
     started = datetime.now(timezone.utc).isoformat()
     log_path = COMMAND_LOG.parent / (str(len(COMMAND_RESULTS)) + ".log") if COMMAND_LOG is not None else None
     record: dict[str, object] = {
-        "argv": command, "startedAt": started, "endedAt": None,
+        "argv": relative_argv(command), "startedAt": started, "endedAt": None,
         "returncode": None, "status": "running",
-        "log": str(log_path) if log_path is not None else None,
+        "log": repo_relative(str(log_path)) if log_path is not None else None,
     }
     if COMMAND_LOG is not None:
         COMMAND_RESULTS.append(record)

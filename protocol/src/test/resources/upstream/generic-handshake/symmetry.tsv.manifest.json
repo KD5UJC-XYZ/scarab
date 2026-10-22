@@ -53,7 +53,7 @@
           "--batch",
           "-p1",
           "-i",
-          "/home/euler/repos/cardano-scala-lab/.workspace/worktrees/v02-49-generic-handshake/scripts/oracle/network-protocols/generic-handshake/observer.patch"
+          ".workspace/worktrees/v02-49-generic-handshake/scripts/oracle/network-protocols/generic-handshake/observer.patch"
         ],
         "returncode": 0,
         "logSha256": "3a45f12a145e08e329102b8bf1bccdafd7858031c989c337c56a7b7fdfa7675e"
@@ -128,8 +128,8 @@
       },
       {
         "argv": [
-          "/home/linuxbrew/.linuxbrew/opt/python@3.14/bin/python3.14",
-          "/home/euler/repos/cardano-scala-lab/.workspace/worktrees/v02-49-generic-handshake/scripts/oracle/network-protocols/compare_cabal_plans.py",
+          "python3.14",
+          ".workspace/worktrees/v02-49-generic-handshake/scripts/oracle/network-protocols/compare_cabal_plans.py",
           "/tmp/scarab/issue-49-handshake-reproduction-final/full-plan/cache/plan.json",
           "/tmp/scarab/issue-49-handshake-reproduction-final/narrow-builddir/cache/plan.json",
           "--output",
