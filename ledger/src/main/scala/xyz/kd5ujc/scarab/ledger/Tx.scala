@@ -272,12 +272,9 @@ object TxBody:
       proposals <- kvs.traverse { case (k, v) =>
         for
           key <- CborRead.bytesN(k, 28, "genesis key hash")
-          fs <- CborRead
-            .map(v, "parameter update")
-            .flatMap(_.traverse { case (fk, fv) =>
-              CborRead.uint(fk, "parameter index").map(_.toInt -> fv.original)
-            })
-        yield key -> ParamUpdate(fs.toMap)
+          fs <- CborRead.map(v, "parameter update")
+          update <- ParamUpdate.read(fs, CostModelDecode.Format.Legacy)
+        yield key -> update
       }
       epoch <- CborRead.uint(xs(1), "update epoch")
     yield Update(proposals.toMap, epoch)
