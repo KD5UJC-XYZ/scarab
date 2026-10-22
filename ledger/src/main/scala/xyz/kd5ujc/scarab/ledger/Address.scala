@@ -154,22 +154,23 @@ object Address:
     * after the address are dropped (`fromCborBackwardsBothAddr`, 489-503); from 7 (Babbage) the
     * address must take every byte (`fromCborRigorousBothAddr`, 479-487). A pointer that does not
     * fit its fields is normalised to `Ptr 0 0 0` before version 9 and refused from it
-    * (`Ptr.Policy`). In every version a pointer address is kept as the pointer is written again
+    * (`Ptr.Policy`). Multi-asset values follow the same version: pruned below 9, strict from 9
+    * (`Value.Decoding`). In every version a pointer address is kept as the pointer is written again
     * (`cAddrNormalized`, 470-476, `putPtr`): the bytes that were read are not kept.
     */
-  enum Mode(val pointers: Ptr.Policy):
+  enum Mode(val pointers: Ptr.Policy, val values: Value.Decoding):
     /** Shelley to Alonzo: bytes after a Shelley address are ignored and not kept. */
-    case Backwards extends Mode(Ptr.Policy.Normalise)
+    case Backwards extends Mode(Ptr.Policy.Normalise, Value.Decoding.Pruning)
 
     /** Babbage: the address is the whole byte string; a pointer that does not fit is normalised. It
       * is also the mode for what the node itself wrote (the stores, the state codecs, the genesis):
       * those addresses are already normalised, and an output an earlier build stored with the
       * pointer as it came is read as the reference reads it.
       */
-    case Rigorous extends Mode(Ptr.Policy.Normalise)
+    case Rigorous extends Mode(Ptr.Policy.Normalise, Value.Decoding.Pruning)
 
     /** Conway: the address is the whole byte string and a pointer that does not fit is refused. */
-    case Strict extends Mode(Ptr.Policy.Refuse)
+    case Strict extends Mode(Ptr.Policy.Refuse, Value.Decoding.Rejecting)
 
   object Mode:
     def of(era: Era): Mode =
@@ -351,40 +352,119 @@ object Value:
         .filter(_._2.nonEmpty)
         .toMap
 
-  /** `coin / [coin, multiasset<uint>]`; zero quantities are rejected as in Conway. */
-  def decode(n: Node, what: String): Either[LedgerDecodeError, Value] = n.value match
+  /** How a multi-asset map is read, by the decoder version of the era (`decodeMultiAsset`,
+    * cardano-ledger `eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs`).
+    */
+  enum Decoding:
+    /** Decoder version below 9 (Mary to Babbage): duplicate keys are silently merged, the last
+      * entry wins (`decodeMap` below version 9, `Binary/Decoding/Decoder.hs`), then zero quantities
+      * and policies left empty are pruned (`decodeWithPrunning`, `pruneZeroMultiAsset`).
+      */
+    case Pruning
+
+    /** Decoder version 9 and above (Conway): a duplicate policy or asset name, a zero quantity and
+      * an empty asset map are decode failures (`decodeConway`, `decodeNonEmptyMap`,
+      * `decodeNonZeroAmount`).
+      */
+    case Rejecting
+
+  private val Int64Min = -(BigInt(1) << 63)
+  private val Int64Max = (BigInt(1) << 63) - 1
+
+  /** The most the compact form holds: `44 * assets + 28 * policies <= 65535`
+    * (`isMultiAssetSmallEnough`, checked after the maps are read in every decoder version).
+    */
+  private val CompactLimit = 65535
+
+  private def int64(what: String, q: BigInt) =
+    Either.cond(
+      q >= Int64Min && q <= Int64Max,
+      q,
+      LedgerDecodeError.NumberOutOfRange(what, q, Int64Min, Int64Max)
+    )
+
+  /** `coin / [coin, multiasset<uint>]`. Coin and quantities are `Word64` (`decodeWord64`): an
+    * unsigned integer item holds no more, and a bignum is not one.
+    */
+  def decode(
+      n: Node,
+      what: String,
+      decoding: Decoding
+  ): Either[LedgerDecodeError, Value] = n.value match
     case xyz.kd5ujc.scarab.codec.Value.UInt(c) => Right(coin(c))
     case _ =>
       for
         xs <- CborRead.arrayN(n, 2, what)
         c <- CborRead.uint(xs(0), what)
-        assets <- multiasset(xs(1), what, signed = false)
+        assets <- multiasset(xs(1), what, signed = false, decoding)
       yield Value(c, assets)
 
+  /** A multi-asset map: output quantities are `Word64` (`decodeWord64`; the unsigned integer item
+    * already holds no more), mint quantities `Int64` (`decodeIntegerBounded64`), under the rules of
+    * `decoding`.
+    */
   def multiasset(
       n: Node,
       what: String,
-      signed: Boolean
+      signed: Boolean,
+      decoding: Decoding
   ): Either[LedgerDecodeError, Map[Bytes, Map[Bytes, BigInt]]] =
-    CborRead
-      .map(n, what)
-      .flatMap(_.traverse { case (p, inner) =>
+    for
+      policies <- CborRead
+        .map(n, what)
+        .flatMap(_.traverse { case (p, inner) =>
+          for
+            policy <- CborRead.bytesN(p, 28, s"$what policy")
+            names <- CborRead.map(inner, what)
+            quantities <- names.traverse { case (name, q) =>
+              for
+                assetName <- CborRead.bytes(name, s"$what asset name")
+                _ <- Either.cond(
+                  assetName.size <= 32,
+                  (),
+                  LedgerDecodeError.AssetNameLength(what, assetName.size)
+                )
+                quantity <-
+                  if signed then CborRead.int(q, what).flatMap(int64(what, _))
+                  else CborRead.uint(q, what)
+              yield assetName -> quantity
+            }
+          yield policy -> quantities
+        })
+      assets <- decoding match
+        case Decoding.Pruning =>
+          Right(normal(policies.map((p, qs) => p -> qs.toMap).toMap))
+        case Decoding.Rejecting => rejecting(policies, what)
+      count = assets.valuesIterator.map(_.size).sum
+      _ <- Either.cond(
+        44 * count + 28 * assets.size <= CompactLimit,
+        (),
+        LedgerDecodeError.MultiAssetTooBig(what, count, assets.size)
+      )
+    yield assets
+
+  private def rejecting(
+      policies: Vector[(Bytes, Vector[(Bytes, BigInt)])],
+      what: String
+  ): Either[LedgerDecodeError, Map[Bytes, Map[Bytes, BigInt]]] =
+    for
+      _ <- Either.cond(
+        policies.map(_._1).distinct.size == policies.size,
+        (),
+        LedgerDecodeError.DuplicateKey(s"$what policy")
+      )
+      checked <- policies.traverse { case (policy, qs) =>
         for
-          policy <- CborRead.bytesN(p, 28, s"$what policy")
-          names <- CborRead.map(inner, what)
-          quantities <- names.traverse { case (name, q) =>
-            for
-              assetName <- CborRead.bytes(name, s"$what asset name")
-              _ <- Either.cond(
-                assetName.size <= 32,
-                (),
-                LedgerDecodeError.AssetNameLength(what, assetName.size)
-              )
-              quantity <- if signed then CborRead.int(q, what) else CborRead.uint(q, what)
-            yield assetName -> quantity
-          }
-        yield policy -> quantities.filter(_._2 != 0).toMap
-      }.map(_.filter(_._2.nonEmpty).toMap))
+          _ <- Either.cond(qs.nonEmpty, (), LedgerDecodeError.Empty(s"$what assets"))
+          _ <- Either.cond(
+            qs.map(_._1).distinct.size == qs.size,
+            (),
+            LedgerDecodeError.DuplicateKey(s"$what asset name")
+          )
+          _ <- Either.cond(qs.forall(_._2.signum != 0), (), LedgerDecodeError.ZeroQuantity(what))
+        yield policy -> qs.toMap
+      }
+    yield checked.toMap
 
 /** The datum of an output. */
 enum Datum:
@@ -489,7 +569,7 @@ object TxOut:
       case xyz.kd5ujc.scarab.codec.Value.Arr(xs) if xs.size == 2 || xs.size == 3 =>
         for
           a <- CborRead.bytes(xs(0), "output address").flatMap(Address.decode(_, mode))
-          v <- Value.decode(xs(1), "output value")
+          v <- Value.decode(xs(1), "output value", mode.values)
           d <-
             if xs.size == 3 then CborRead.bytesN(xs(2), 32, "datum hash").map(Datum.Hash(_))
             else Right(Datum.NoDatum)
@@ -503,7 +583,7 @@ object TxOut:
             .flatMap(CborRead.bytes(_, "output address"))
             .flatMap(Address.decode(_, mode))
           vn <- f.get(1).toRight(LedgerDecodeError.MissingField("output", "value"))
-          v <- Value.decode(vn, "output value")
+          v <- Value.decode(vn, "output value", mode.values)
           _ <- Either.cond(
             f.keySet.subsetOf(Set(0, 1, 2, 3)),
             (),
