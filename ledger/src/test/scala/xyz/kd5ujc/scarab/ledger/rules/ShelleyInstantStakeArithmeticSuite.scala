@@ -4,8 +4,9 @@ package xyz.kd5ujc.scarab.ledger.rules
 import munit.FunSuite
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Address, TestLedger, TxChecks, TxIn, TxOut, Utxo as NodeUtxo}
+import xyz.kd5ujc.scarab.ledger.{Address, Ptr, TestLedger, TxChecks, TxIn, TxOut, Utxo as NodeUtxo}
 import xyz.kd5ujc.scarab.ledger.state.*
+import xyz.kd5ujc.scarab.ledger.state.given
 
 /** The pre-Conway instant stake at its Word64 boundaries, for the credential map and the pointer
   * map. At cardano-ledger f649f975, `Shelley/State/Stake.hs:108-145` adds and subtracts

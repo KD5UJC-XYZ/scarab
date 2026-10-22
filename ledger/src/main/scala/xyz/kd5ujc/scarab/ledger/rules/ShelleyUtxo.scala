@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.rules
 
-import cats.{Monad, Order}
+import cats.Monad
 import cats.mtl.{Ask, Raise, Stateful}
 import cats.syntax.all.*
 import scala.collection.immutable.SortedMap
@@ -29,7 +29,6 @@ import xyz.kd5ujc.scarab.ledger.{
   VotingPeriod
 }
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.ledger.state.given
 
 // UTXOW, UTXO, UTXOS and PPUP for Shelley, Allegra, Mary, Alonzo and Babbage: one rule of each,
 // over the witness of the era (`Shelley/Rules/Utxow.hs`, `Utxo.hs`, `Ppup.hs`, with the rules that
