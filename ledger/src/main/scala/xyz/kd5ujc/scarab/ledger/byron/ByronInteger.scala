@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.byron
 
-import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Node, Value}
 import xyz.kd5ujc.scarab.ledger.{CborRead, LedgerDecodeError}
 
