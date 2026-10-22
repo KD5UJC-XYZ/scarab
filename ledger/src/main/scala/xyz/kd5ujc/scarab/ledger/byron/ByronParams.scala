@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.byron
 
-import ByronInteger.decode as integer
-
 import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
 import cats.syntax.all.*
 import io.circe.ACursor
 import xyz.kd5ujc.scarab.codec.{Node, Value}
 import xyz.kd5ujc.scarab.ledger.CborRead
+
+import ByronInteger.decode as integer
 
 /** Byron's `ProtocolVersion`: `Word16`, `Word16`, `Word8`, ordered lexicographically.
   * `Cardano/Chain/Update/ProtocolVersion.hs:27-32,65-68` (ledger f649f97), `byron.cddl:126`.

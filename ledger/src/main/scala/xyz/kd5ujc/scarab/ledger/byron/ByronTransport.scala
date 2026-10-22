@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.byron
 
-import ByronInteger.decode as integer
-
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{CborRead, LedgerDecodeError}
+
+import ByronInteger.decode as integer
 
 /** Deprecated Byron components still have a wire grammar. Mirror cardano-ledger f649f975
   * Block/Boundary.hs:73–83, Block/Block.hs:327–334,446–451 and Ssc.hs:76–95,193–253;

@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.node
 
 import fs2.concurrent.SignallingRef
-
 import xyz.kd5ujc.scarab.consensus.{
   BlockRef,
   BlockRules,
