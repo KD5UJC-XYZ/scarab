@@ -145,7 +145,14 @@ class SpendingDatumSuite extends FunSuite:
         Right(1)
       )
       assertEquals(
-        TxChecks.alonzoChecks(c.params, c.tx, r.spent, r.scripts, r.needed),
+        TxChecks.alonzoChecks(
+          c.params,
+          c.tx,
+          r.spent,
+          c.references.values.toVector,
+          r.scripts,
+          r.needed
+        ),
         r.phase1
           .toLeft(())
           .left
@@ -163,6 +170,7 @@ class SpendingDatumSuite extends FunSuite:
               c.params.copy(protocolMajor = protocol),
               c.tx,
               r.spent,
+              c.references.values.toVector,
               r.scripts,
               r.needed
             ),

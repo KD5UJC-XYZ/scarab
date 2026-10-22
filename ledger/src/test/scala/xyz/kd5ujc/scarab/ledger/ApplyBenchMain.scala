@@ -188,7 +188,9 @@ object ApplyBenchMain:
           .collect { case (h, ps) if scripts.get(h).exists(_.kind.isPlutus) => ps }
           .flatten
           .toSet
-        ns("alonzoChecks") += time(TxChecks.alonzoChecks(pp, tx, spent, scripts, purposes))._2
+        ns("alonzoChecks") += time(
+          TxChecks.alonzoChecks(pp, tx, spent, refOuts, scripts, purposes)
+        )._2
         ns("auxiliaryChecks") += time(TxChecks.auxiliaryChecks(pp, tx, e))._2
         ns("witnessChecks") += time(
           TxChecks.witnessChecks(

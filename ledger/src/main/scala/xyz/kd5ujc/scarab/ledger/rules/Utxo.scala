@@ -424,7 +424,7 @@ object Utxow
         needed.keySet.subsetOf(scripts.keySet),
         UtxowFailure.MissingScriptWitnesses(needed.keySet -- scripts.keySet)
       )
-      _ <- TxChecks.alonzoChecks(pp, tx, ann.spent, scripts, ann.plutusPurposes)
+      _ <- TxChecks.alonzoChecks(pp, tx, ann.spent, ann.referenced, scripts, ann.plutusPurposes)
       _ <- TxChecks.auxiliaryChecks(pp, tx, env.ctx)
       // a transaction flagged invalid has a Plutus script to fail (`validationTagMismatch`, which
       // Haskell's UTXOS makes; the node makes it here, where its own rules do)

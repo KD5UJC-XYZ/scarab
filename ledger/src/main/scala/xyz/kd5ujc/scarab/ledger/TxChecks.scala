@@ -373,11 +373,94 @@ object TxChecks:
       .mapValues(_.toSet)
       .toMap
 
-  /** Alonzo UTXOW: redeemers match the Plutus purposes, datums, script data hash presence. */
+  /** Datum hashes a witness set may carry without a spent input asking for them: those of the
+    * outputs (the collateral return too, from Babbage) and of the reference inputs (Babbage
+    * onward). `getAlonzoSupplementalDataHashes` reads the outputs only
+    * (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs`); `getBabbageSupplementalDataHashes`
+    * adds `allSizedOutputsTxBodyF` (the collateral return) and the resolved reference inputs
+    * (`eras/babbage/impl/src/Cardano/Ledger/Babbage/UTxO.hs`), and Conway uses it unchanged
+    * (`eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs`, `getSupplementalDataHashes`). An inline
+    * datum has no hash (`dataHashTxOutL`).
+    */
+  private[ledger] def supplementalDatumHashes(
+      pp: ProtocolParams,
+      body: TxBody,
+      referenced: Vector[TxOut]
+  ): Set[Bytes] =
+    val outs =
+      if pp.protocolMajor < 7 then body.outputs
+      else body.outputs ++ body.collateralReturn ++ referenced
+    outs.map(_.datum).collect { case Datum.Hash(h) => h }.toSet
+
+  /** The datum rules of UTXOW in the order of `missingRequiredDatums` (reference:
+    * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxow.hs`, `missingRequiredDatums`, reached
+    * from `babbageUtxowTransition` and Conway through `Babbage/Rules/Utxow.hs`): a spent Plutus
+    * output without a usable datum hash (`UnspendableUTxONoDatumHash`), a required datum the
+    * witnesses lack (`MissingRequiredDatums`), and a witness datum that is neither required nor
+    * allowed as supplemental (`NotAllowedSupplementalDatums`: the unallowed hashes and the
+    * acceptable ones).
+    */
+  private[ledger] def datumChecks(
+      pp: ProtocolParams,
+      tx: Tx,
+      spent: Vector[TxOut],
+      referenced: Vector[TxOut],
+      scripts: Map[Bytes, Script]
+  ): Result[Unit] =
+    val pv = pp.protocolMajor
+    val body = tx.body
+    val wits = tx.witnesses
+    def checkWith(ok: Boolean, failure: => UtxowFailure): Result[Unit] =
+      if ok then Right(())
+      else Left(LedgerFailure.Rejected(body.id, PredicateFailure.utxow(failure)))
+    // Spent outputs locked with a Plutus script
+    val plutusLocked = spent.zip(body.inputs).flatMap { case (out, in) =>
+      out.address.kind match
+        case Address.Kind.Shelley(_, Credential.Script(h), _, _)
+            if scripts.get(h).exists(_.kind.isPlutus) =>
+          Some((in, out.datum, scripts(h).kind))
+        case _ => None
+    }
+    // Outputs locked by a Plutus script without a usable datum hash
+    val unspendable = plutusLocked.flatMap { case (in, datum, kind) =>
+      datum match
+        case Datum.Hash(_)   => None
+        case Datum.Inline(_) => Option.when(pv < 7)(in)
+        // Plutus V3 scripts need no datum (CIP-69)
+        case Datum.NoDatum => Option.when(kind != ScriptKind.PlutusV3)(in)
+    }
+    // Datum hashes the spent outputs ask for
+    val requiredHashes = plutusLocked.collect { case (_, Datum.Hash(h), _) => h }.toSet
+    val supplemental = wits.datumHashes -- requiredHashes
+    val allowed = supplementalDatumHashes(pp, body, referenced)
+    for
+      _ <- checkWith(
+        unspendable.isEmpty,
+        UtxowFailure.UnspendableUTxONoDatumHash(unspendable.toSet)
+      )
+      _ <- checkWith(
+        requiredHashes.subsetOf(wits.datumHashes),
+        UtxowFailure.MissingRequiredDatums(requiredHashes -- wits.datumHashes, wits.datumHashes)
+      )
+      _ <- checkWith(
+        supplemental.subsetOf(allowed),
+        UtxowFailure.NotAllowedSupplementalDatums(
+          supplemental -- allowed,
+          supplemental.intersect(allowed)
+        )
+      )
+    yield ()
+
+  /** Alonzo UTXOW: redeemers match the Plutus purposes, datums, script data hash presence.
+    *
+    * @param referenced
+    *   the resolved reference inputs, whose datum hashes a witness set may carry from Babbage on
+    */
   private[ledger] def alonzoChecks(
       pp: ProtocolParams,
       tx: Tx,
       spent: Vector[TxOut],
+      referenced: Vector[TxOut],
       scripts: Map[Bytes, Script],
       plutusPurposes: Set[Pointer]
   ): Result[Unit] =
@@ -396,14 +479,6 @@ object TxChecks:
       )
     else
       val provided = wits.redeemers.map(r => (r.tag, r.index)).toSet
-      // Datums required by spent outputs locked with a Plutus script.
-      val required = spent.flatMap { out =>
-        out.address.kind match
-          case Address.Kind.Shelley(_, Credential.Script(h), _, _)
-              if scripts.get(h).exists(_.kind.isPlutus) =>
-            Some(out.datum -> scripts(h).kind)
-          case _ => None
-      }
       // Plutus purposes without a redeemer, with the script each one needs
       val unredeemed = Purpose
         .all(body, body.inputs.zip(spent).toMap)
@@ -419,28 +494,7 @@ object TxChecks:
           provided.subsetOf(plutusPurposes),
           UtxowFailure.ExtraRedeemers((provided -- plutusPurposes).toVector.sorted)
         )
-        // Datum hashes the spent outputs ask for and the witnesses do not carry
-        requiredHashes = required.collect { case (Datum.Hash(h), _) => h }.toSet
-        _ <- checkWith(
-          requiredHashes.subsetOf(wits.datumHashes),
-          UtxowFailure.MissingRequiredDatums(requiredHashes -- wits.datumHashes, wits.datumHashes)
-        )
-        // Outputs locked by a Plutus script without a usable datum hash
-        unspendable = spent.zip(body.inputs).flatMap { case (out, in) =>
-          out.address.kind match
-            case Address.Kind.Shelley(_, Credential.Script(h), _, _)
-                if scripts.get(h).exists(_.kind.isPlutus) =>
-              out.datum match
-                case Datum.Hash(_)   => None
-                case Datum.Inline(_) => Option.when(pv < 7)(in)
-                // Plutus V3 scripts need no datum (CIP-69)
-                case Datum.NoDatum => Option.when(scripts(h).kind != ScriptKind.PlutusV3)(in)
-            case _ => None
-        }
-        _ <- checkWith(
-          unspendable.isEmpty,
-          UtxowFailure.UnspendableUTxONoDatumHash(unspendable.toSet)
-        )
+        _ <- datumChecks(pp, tx, spent, referenced, scripts)
         needsHash = wits.redeemers.nonEmpty || wits.datums.nonEmpty
         languages = scriptsNeeded(body, spent).keys.flatMap(scripts.get).map(_.kind).toSet
         _ <- checkWith(
