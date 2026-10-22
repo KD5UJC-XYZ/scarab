@@ -84,6 +84,29 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
   private def add(claims: BlockPool.Claims[IO], bodies: Vector[BlockPool.Delivered]): IO[Unit] =
     claims.claim(bodies.map(_.header.hash)) *> claims.fillDelivered(bodies)
 
+  test("committed header revisions survive late subscription and ignore unchanged reprocessing") {
+    for
+      chain <- ForgedChain.forge(5000 until 5060)
+      bodies <- checked(chain, 2)
+      _ <- node(Set.empty) { n =>
+        n.pool.session.use { sender =>
+          for
+            initial <- n.follower.headerChanges.revision
+            _ <- add(sender, bodies.take(1)) *> n.pool.admissions.reprocess
+            first <- n.follower.headerChanges.changed(initial)
+            _ <- n.pool.admissions.reprocess
+            unchanged <- n.follower.headerChanges.revision
+            _ <- add(sender, bodies.drop(1)) *> n.pool.admissions.reprocess
+            second <- n.follower.headerChanges.changed(first)
+          yield
+            assertEquals(first, initial + 1)
+            assertEquals(unchanged, first)
+            assertEquals(second, first + 1)
+        }
+      }
+    yield ()
+  }
+
   test("FIFO processing excludes later queued bodies and retains the same-hot issuer trap") {
     for
       forks <- ForgedChain.sameIssuerForks(5000 until 5060, 5060 until 5120)
@@ -278,7 +301,7 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
   }
 
   test(
-    "startup selects the complete recovered forest from the immutable state, not the resumed volatile winner"
+    "startup preserves the recovered winner without replaying or publishing a rollback"
   ) {
     for
       forks <- ForgedChain.sameIssuerForks(5000 until 5060, 5060 until 5120)
@@ -298,17 +321,19 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
             .fold(fail("missing VRF"))(_.value.map(_ & 255))
         )
       )
-      previous = ranked.last.header
+      previous = ranked.head.header
       resumed = VolatileChain
         .genesis[BigInt](5, 42)
         .extend(previous, 99)
         .fold(e => fail(e.message), _._1)
+      validations <- Ref.of[IO, Int](0)
       published <- Ref
         .of[IO, Vector[(xyz.kd5ujc.scarab.protocol.ChainSync.Point, BigInt, Int)]](Vector.empty)
       _ <- node(
         Set.empty,
         initial = Some(resumed),
         recovered = originals,
+        beforeRule = _ => validations.update(_ + 1),
         onTip = Some(
           Follower.OnTip[IO, BigInt]((chain, raws) =>
             published.update(_ :+ ((chain.tip, chain.state, raws.size)))
@@ -319,18 +344,50 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
           _ <- n.pool.admissions.reprocess
           selected <- n.state.get
           tips <- published.get
+          applied <- validations.get
           fatals <- n.fatals.get
           _ <- IO {
             assertEquals(selected.tip, ranked.head.header.point)
             assertEquals(selected.anchor.state, BigInt(42))
-            assertEquals(
-              tips.headOption,
-              Some((xyz.kd5ujc.scarab.protocol.ChainSync.Point.Origin, BigInt(42), 0))
-            )
-            assertEquals(tips.lastOption.map(_._1), Some(ranked.head.header.point))
+            assertEquals(selected, resumed)
+            assertEquals(applied, 0)
+            assertEquals(tips, Vector.empty)
             assertEquals(fatals, Vector.empty)
           }
         yield ()
+      }
+    yield ()
+  }
+
+  test("startup still selects the native recovered winner when the resumed branch differs") {
+    for
+      forks <- ForgedChain.sameIssuerForks(5000 until 5060, 5060 until 5120)
+      left <- checked(forks._1, 1)
+      right <- checked(forks._2, 1)
+      ranked = (left ++ right).sortWith((a, b) =>
+        CandidateSelection.compareTips(a.header, b.header) < 0
+      )
+      resumed = VolatileChain
+        .genesis[BigInt](5, 42)
+        .extend(ranked.last.header, 99)
+        .fold(e => fail(e.message), _._1)
+      validations <- Ref.of[IO, Vector[Bytes]](Vector.empty)
+      tips <- Ref.of[IO, Vector[xyz.kd5ujc.scarab.protocol.ChainSync.Point]](Vector.empty)
+      _ <- node(
+        Set.empty,
+        initial = Some(resumed),
+        recovered = left ++ right,
+        beforeRule = h => validations.update(_ :+ h.hash),
+        onTip = Some(Follower.OnTip[IO, BigInt]((chain, _) => tips.update(_ :+ chain.tip)))
+      ) { n =>
+        for
+          selected <- n.state.get
+          applied <- validations.get
+          published <- tips.get
+        yield
+          assertEquals(selected.tip, ranked.head.header.point)
+          assertEquals(applied, Vector(ranked.head.header.hash))
+          assertEquals(published, Vector(ranked.head.header.point))
       }
     yield ()
   }

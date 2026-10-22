@@ -23,6 +23,7 @@ private[node] final class BlockSelection[F[_]: Async] private (
     before: BlockSelection.Before[F]
 ):
   private val F = Async[F]
+  import BlockSelection.Phase
 
   private def reader(
       candidate: ChainSelection.Candidate,
@@ -56,7 +57,8 @@ private[node] final class BlockSelection[F[_]: Async] private (
     application.locked(selectLocked(adding))
 
   private def selectLocked(
-      adding: Option[BlockPool.Admission]
+      adding: Option[BlockPool.Admission],
+      phase: Phase = Phase.Admission
   )(using Raise[F, NodeError]): F[Unit] =
     for
       current <- application.local
@@ -64,7 +66,7 @@ private[node] final class BlockSelection[F[_]: Async] private (
       known <- pool.invalidBlocks.snapshot
       original <- AvailableBlocks
         .candidates(
-          current,
+          if phase == Phase.Startup then current.copy(blocks = Vector.empty) else current,
           bodies.view.mapValues(_.delivered.header).toMap,
           known.entries.keySet,
           adding.map(_.delivered.header.hash),
@@ -86,12 +88,13 @@ private[node] final class BlockSelection[F[_]: Async] private (
               candidate.headers.takeWhile(h => !before.entries.contains(h.hash))
             )
           )
-          ordered <- application.project(truncated)
+          ordered <- application.project(truncated, phase)
           _ <- ordered.headOption.traverse_(candidate =>
             application.apply(
               reader(candidate, bodies),
               candidate,
-              adding.fold(Peer.Validation.none[F])(Peer.Validation.admission(pool, _))
+              adding.fold(Peer.Validation.none[F])(Peer.Validation.admission(pool, _)),
+              phase
             )
           )
           after <- pool.invalidBlocks.snapshot
@@ -140,7 +143,7 @@ private[node] final class BlockSelection[F[_]: Async] private (
             case _                             => Fatal.Internal(error)
         )
         application
-          .locked(application.reset *> selectLocked(None)) *> ready.complete(Right(())).void *>
+          .locked(selectLocked(None, Phase.Startup)) *> ready.complete(Right(())).void *>
           F.both(consume, reselect).void
       }
       .guarantee(pool.admissions.close)
@@ -150,6 +153,9 @@ private[node] final class BlockSelection[F[_]: Async] private (
       }
 
 private[node] object BlockSelection:
+  enum Phase:
+    case Startup, Admission
+
   trait Before[F[_]]:
     def prepare(header: Header, raw: Bytes)(using Raise[F, NodeError]): F[Unit]
 
@@ -162,12 +168,19 @@ private[node] object BlockSelection:
   trait Application[F[_]]:
     def local: F[ChainSelection.Local]
     def admits(header: Header): F[Boolean]
-    def reset(using Raise[F, NodeError]): F[Unit]
     def governor: F[Option[GenesisGovernor[F]]]
     def locked[A](body: F[A]): F[A]
-    def project(candidates: Vector[ChainSelection.Candidate]): F[Vector[ChainSelection.Candidate]]
-    def apply(peer: Peer[F], candidate: ChainSelection.Candidate, validation: Peer.Validation[F])(
-        using Raise[F, NodeError]
+    def project(
+        candidates: Vector[ChainSelection.Candidate],
+        phase: Phase
+    ): F[Vector[ChainSelection.Candidate]]
+    def apply(
+        peer: Peer[F],
+        candidate: ChainSelection.Candidate,
+        validation: Peer.Validation[F],
+        phase: Phase
+    )(using
+        Raise[F, NodeError]
     ): F[Unit]
 
   def resource[F[_]: Async](

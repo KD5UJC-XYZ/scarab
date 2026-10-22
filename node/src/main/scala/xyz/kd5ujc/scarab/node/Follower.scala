@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import fs2.concurrent.SignallingRef
+
 import xyz.kd5ujc.scarab.consensus.{
   BlockRef,
   BlockRules,
@@ -83,7 +85,7 @@ final class Follower[F[_]: Async, S] private (
     views: SelectViews[F],
     lock: Mutex[F],
     cpu: Compute[F],
-    window: Ref[F, Follower.Committed[S]],
+    window: SignallingRef[F, Follower.Committed[S]],
     genesis: Ref[F, Option[GenesisGovernor[F]]],
     selectionChanged: Ref[F, F[Unit]],
     invalidBlocks: Ref[F, Option[InvalidBlocks[F]]]
@@ -91,6 +93,17 @@ final class Follower[F[_]: Async, S] private (
     chain: Stateful[F, VolatileChain[S]]
 ):
   private val F = Async[F]
+
+  /** The revision and committed window share one cell. Subscribing after a publication observes its
+    * new revision immediately, without depending on when a waiting fiber is scheduled.
+    */
+  private[node] def headerChanges: HeaderCheck.Changes[F] = new HeaderCheck.Changes[F]:
+    def revision: F[Long] = window.get.map(_.revision)
+    def changed(after: Long): F[Long] =
+      window.discrete.map(_.revision).filter(_ != after).take(1).compile.lastOrError
+
+  private def publishWindow(current: VolatileChain[S], selected: ChainSelection.Local): F[Unit] =
+    window.update(previous => Follower.Committed(current, selected, previous.revision + 1))
 
   /** Installed once by the node before any peer sessions are started. */
   private[node] def installGenesis(governor: GenesisGovernor[F]): F[Unit] =
@@ -117,27 +130,11 @@ final class Follower[F[_]: Async, S] private (
           header.blockNo > anchor.blockNo || (header.isBoundary && header.blockNo == anchor.blockNo)
         )
       )
-      def reset(using Raise[F, NodeError]): F[Unit] =
-        for
-          current <- chain.get
-          _ <- (for
-            _ <- persistence.traverse_(_.rolledBack(current.anchor.point))
-            cached <- window.get
-            anchored = current.copy(blocks = Vector.empty)
-            _ <- F.uncancelable(_ =>
-              chain.set(anchored) *>
-                window.set(
-                  Follower.Committed(anchored, cached.selection.copy(blocks = Vector.empty))
-                )
-            )
-            _ <- selectionChanged.get.flatten
-            _ <- onTip.traverse_(_(anchored, Vector.empty))
-          yield ()).whenA(current.blocks.nonEmpty)
-        yield ()
       def governor = genesis.get
       def locked[A](body: F[A]): F[A] = lock.lock.surround(body)
       def project(
-          candidates: Vector[ChainSelection.Candidate]
+          candidates: Vector[ChainSelection.Candidate],
+          phase: BlockSelection.Phase
       ): F[Vector[ChainSelection.Candidate]] =
         for
           current <- chain.get
@@ -150,18 +147,46 @@ final class Follower[F[_]: Async, S] private (
             }
           )
           limit <- control.traverse(_.limitAt(fragment)).map(_.flatten)
-        yield CandidateSelection.project(current.k, selected, candidates, limit, tiebreaker)
-      def apply(peer: Peer[F], candidate: ChainSelection.Candidate, validation: Peer.Validation[F])(
-          using Raise[F, NodeError]
+        yield CandidateSelection.project(
+          current.k,
+          if phase == BlockSelection.Phase.Startup then selected.copy(blocks = Vector.empty)
+          else selected,
+          candidates,
+          limit,
+          tiebreaker
+        )
+      def apply(
+          peer: Peer[F],
+          candidate: ChainSelection.Candidate,
+          validation: Peer.Validation[F],
+          phase: BlockSelection.Phase
+      )(using
+          Raise[F, NodeError]
       ): F[Unit] =
         local.flatMap { selected =>
-          ChainSelection.decide(tiebreaker(candidate.headers.last.era), selected, candidate) match
+          val decision =
+            if phase != BlockSelection.Phase.Startup then
+              ChainSelection.decide(tiebreaker(candidate.headers.last.era), selected, candidate)
+            else if candidate.tip == selected.blocks.lastOption.fold(selected.anchor)(_.point) then
+              ChainSelection.Decision.Keep
+            else
+              // Native initialChainSelection ranks from the immutable anchor. Reuse the already
+              // validated selected prefix rather than persisting a temporary rollback to it.
+              val common = candidate.headers.lastIndexWhere(h => selected.contains(h.point))
+              val at = candidate.headers.lift(common).fold(candidate.base)(_.point)
+              ChainSelection.Decision.Switch(
+                at,
+                selected.depthTo(at),
+                candidate.headers.drop(common + 1)
+              )
+          decision match
             case ChainSelection.Decision.Switch(to, depth, take) =>
               val causal =
                 if validation.addedPoint.exists(point => take.exists(_.point == point)) then
                   validation
                 else Peer.Validation.none[F]
               switchTo(peer, to, depth, take, ChainSync.Tip.Origin, pool.invalidBlocks, causal).void
+            case ChainSelection.Decision.Keep if phase == BlockSelection.Phase.Startup => F.unit
             case _ => BlockPoolProblem.SelectionProjectionChanged(candidate.tip).raise[F, Unit]
         }
     BlockSelection.resource(pool, work, fatal, application, originPredecessor)
@@ -400,7 +425,7 @@ final class Follower[F[_]: Async, S] private (
         else
           views.get.flatMap { known =>
             val rebuilt = ChainSelection.Local.of(current, viewOf(known))
-            window.set(Follower.Committed(current, rebuilt)).as(rebuilt)
+            publishWindow(current, rebuilt).as(rebuilt)
           }
     yield result
 
@@ -642,9 +667,7 @@ final class Follower[F[_]: Async, S] private (
           ChainSelection.Local.of(finalChain, viewOf(known ++ steps.map(a => a.ref.hash -> a.view)))
         )
       )(F.pure)
-      _ <- F.uncancelable(_ =>
-        chain.set(finalChain) *> window.set(Follower.Committed(finalChain, selected))
-      )
+      _ <- F.uncancelable(_ => chain.set(finalChain) *> publishWindow(finalChain, selected))
       _ <- invalidBlocks.get.flatMap(
         _.traverse_(registry =>
           finalChain.anchor.block.traverse_(anchor => registry.pruneBefore(anchor.slot))
@@ -763,7 +786,11 @@ object Follower:
   /** Publish chain state and its selection window atomically for GDD readers. Capturing the
     * immutable ledger and fragment never waits for a block fetch or a running ledger check.
     */
-  private final case class Committed[S](chain: VolatileChain[S], selection: ChainSelection.Local):
+  private final case class Committed[S](
+      chain: VolatileChain[S],
+      selection: ChainSelection.Local,
+      revision: Long = 0L
+  ):
     val points: Set[ChainSync.Point] =
       selection.blocks.iterator.map(_.point).toSet + selection.anchor
     val fragment: Fragment = Fragment(
@@ -862,7 +889,7 @@ object Follower:
       (
         SelectViews.create[F](initialViews),
         chainGate.fold(Mutex[F])(_.pure[F]),
-        Ref.of[F, Committed[S]](Committed(initial, selected)),
+        SignallingRef[F, Committed[S]](Committed(initial, selected)),
         Ref.of[F, Option[GenesisGovernor[F]]](None),
         Ref.of[F, F[Unit]](Async[F].unit),
         Ref.of[F, Option[InvalidBlocks[F]]](None)
