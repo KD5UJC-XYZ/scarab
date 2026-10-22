@@ -1057,7 +1057,7 @@ current era (`EraHistory`); a version-triggered hard fork that happened before t
 placed and is assumed to start with the previous era. As on the reference, a result has no byte or item
 limit beyond what a byte array holds (`maximumMiniProtocolLimits`, codec run without limits; #353): a
 `GetCBOR DebugEpochState` answer of preprod, which `leadership-schedule --next` asks, is tens of megabytes.
-A client's query keeps the 2.5 MB bound of a node-to-node message. Queries the node does not answer end the connection with
+A client's query has the same absence of a byte or item bound (#356); only its nesting is bounded (32,767 levels, `LocalStateQuery.MaxQueryDepth`), because the node reads queries on the heap with stack-safe walkers. Queries the node does not answer end the connection with
 a protocol error that names the query (`inbound ... closed` in the log), where the reference would
 answer.
 

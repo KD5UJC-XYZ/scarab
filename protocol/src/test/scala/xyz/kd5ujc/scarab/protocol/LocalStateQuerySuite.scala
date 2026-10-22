@@ -165,13 +165,36 @@ class LocalStateQuerySuite extends ScalaCheckSuite:
     )
   }
 
-  test("a client's query keeps the bound of a node-to-node message") {
+  test("a client's query has no byte or item bound of a node-to-node message (#356)") {
+    val size = 2500000 + 1
+    val query = wrapped(size)
+    val wire = encode(State.Acquired, Role.Client, Message.Query(query))
+      .fold(e => fail(e.message), identity)
+    assertEquals(wire.size, size + 9)
     assertEquals(
-      encode(State.Acquired, Role.Client, Message.Query(wrapped(MaxMessageBytes + 1))),
-      Left(ProtocolError.StringLimitExceeded)
+      decodePrefix(State.Acquired, Role.Client, wire),
+      DecodeResult.Decoded(Message.Query(query), wire.size)
     )
+    val count = 100000
+    val items = Bytes.wrap(
+      Array(0x9a, count >>> 24, (count >>> 16) & 255, (count >>> 8) & 255, count & 255)
+        .map(_.toByte) ++ Array.fill(count)(0.toByte)
+    )
+    val itemsWire = encode(State.Acquired, Role.Client, Message.Query(items))
+      .fold(e => fail(e.message), identity)
     assertEquals(
-      encode(State.Querying, Role.Server, Message.Result(wrapped(MaxMessageBytes))).map(_.size),
-      Right(MaxMessageBytes + 9)
+      decodePrefix(State.Acquired, Role.Client, itemsWire),
+      DecodeResult.Decoded(Message.Query(items), itemsWire.size)
+    )
+  }
+
+  test("a client's query keeps a bound on nesting (#356)") {
+    def nested(depth: Int): Bytes =
+      Bytes.wrap(Array.fill(depth)(0x81.toByte) :+ 0.toByte)
+    val legal = encode(State.Acquired, Role.Client, Message.Query(nested(MaxQueryDepth - 4)))
+    assert(legal.isRight, legal)
+    assertEquals(
+      encode(State.Acquired, Role.Client, Message.Query(nested(MaxQueryDepth + 1))),
+      Left(ProtocolError.CBORDepthLimitExceeded)
     )
   }

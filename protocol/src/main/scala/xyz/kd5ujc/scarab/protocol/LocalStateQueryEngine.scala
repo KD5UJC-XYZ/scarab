@@ -11,13 +11,17 @@ import ProtocolWire.{attempt, bad, get}
   * upstream point-domain conversations. Point values occupy one codec-owned CBOR item.
   */
 object LocalStateQueryEngine:
-  /** What a client sends: the bounds of a node-to-node message. */
+  /** What a client sends. As for an answer, the reference has no byte or item limit on a query
+    * ([[LocalStateQuery.MaxQueryBytes]]); only the nesting is bounded
+    * ([[LocalStateQuery.MaxQueryDepth]]).
+    */
   private val queries = ProtocolWire.Limits(
-    LocalStateQuery.MaxMessageBytes,
-    LocalStateQuery.MaxMessageBytes,
+    LocalStateQuery.MaxQueryBytes,
+    LocalStateQuery.MaxQueryBytes,
     32,
-    ProtocolWire.MaxItems,
-    ProtocolWire.MaxItems
+    LocalStateQuery.MaxQueryDepth,
+    LocalStateQuery.MaxQueryBytes,
+    bound = ProtocolWire.Bound.Local
   )
 
   /** What the server sends. The reference bounds an answer only by the mux ingress queue
