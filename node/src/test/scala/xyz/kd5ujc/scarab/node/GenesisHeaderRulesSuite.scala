@@ -45,7 +45,7 @@ class GenesisHeaderRulesSuite extends FunSuite:
   private lazy val preprod = capture("fixtures/preprod")
   private def rules(c: Capture) =
     given HeaderTimeRead[MirrorState] = HeaderTimeRead.mirror(c.setup.byronHistory)
-    new GenesisHeaderRules[MirrorState](
+    new NodeHeaderRules[MirrorState](
       c.setup.praos,
       c.setup.globals,
       c.setup.byronRules,
@@ -215,7 +215,7 @@ class GenesisHeaderRulesSuite extends FunSuite:
       val anchor = c.states(i)
       val tip = c.blocks.take(i).lastOption.map(b => ref(b.header))
       val wrong = Bytes(Vector.fill(32)(42.toByte))
-      val configured = new GenesisHeaderRules[MirrorState](
+      val configured = new NodeHeaderRules[MirrorState](
         c.setup.praos.copy(checkpoints =
           xyz.kd5ujc.scarab.consensus.HeaderCheckpoints(Map(header.blockNo -> wrong))
         ),

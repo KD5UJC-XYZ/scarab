@@ -127,11 +127,12 @@ object HeaderCheck:
   def none[F[_]: Applicative]: HeaderCheck[F] = new HeaderCheck[F]:
     def start(intersection: ChainSync.Point) = Applicative[F].pure(HeaderGate.none[F])
 
-  /** The production Genesis family shares canonical header states across accepted CSJ jumps. The
-    * equality witness is supplied by the compiler; arbitrary test state types cannot be recovered
-    * with an erased cast or installed as a different protocol's state.
+  /** Every production header-first session uses the same canonical all-era state. Genesis also
+    * shares these states across accepted CSJ jumps. The equality witness is supplied by the
+    * compiler; arbitrary test state types cannot be recovered with an erased cast or installed as a
+    * different protocol's state.
     */
-  def forGenesisChain[F[_]: Async, S](
+  def forNodeChain[F[_]: Async, S](
       rules: HeaderRules[S, NodeHeaderState] & HeaderRules.Timing[S, NodeHeaderState],
       compute: Compute[F],
       retained: Int,
@@ -165,6 +166,24 @@ object HeaderCheck:
         )
       )
     )
+
+  /** Canonical Genesis sessions use the same header rules and forecast as Praos sessions. */
+  def forGenesisChain[F[_]: Async, S](
+      rules: HeaderRules[S, NodeHeaderState] & HeaderRules.Timing[S, NodeHeaderState],
+      compute: Compute[F],
+      retained: Int,
+      stall: FiniteDuration = 120.seconds,
+      poll: FiniteDuration = 20.millis,
+      warm: Option[(Vector[Header], NodeHeaderState) => F[Unit]] = None,
+      observe: Option[HeaderGate.Counts => F[Unit]] = None,
+      added: Option[HeaderGate.Counts => F[Unit]] = None,
+      changes: Option[Changes[F]] = None
+  )(using
+      Stateful[F, VolatileChain[S]],
+      Ask[F, ChainSelection.Local],
+      Tell[F, GenesisInternalProblem]
+  ): HeaderCheck[F] =
+    forNodeChain(rules, compute, retained, stall, poll, warm, observe, added, changes)
 
   /** Header-first validation against the node's own chain.
     *

@@ -293,7 +293,7 @@ final class OutboundPeers[F[_]: Async, A] private (
 
   // ------------------------------------------------------------------ hot
 
-  def activate(peer: A): F[Option[FailureClass]] =
+  override def activate(peer: A, trust: ChainSyncTimeouts.PeerTrust): F[Option[FailureClass]] =
     table.get.map(_.get(peer)).flatMap {
       case None => F.pure(Some(FailureClass.Transient))
       case Some(link) =>
@@ -308,7 +308,7 @@ final class OutboundPeers[F[_]: Async, A] private (
               case true =>
                 for
                   started <- Deferred[F, Option[FailureClass]]
-                  _ <- link.children.supervise(hotSession(peer, link, session, started))
+                  _ <- link.children.supervise(hotSession(peer, link, session, started, trust))
                   result <- started.get
                   // a hot session that did not start leaves no half-open connection behind
                   _ <- result.traverse_(_ => close(link))
@@ -321,13 +321,9 @@ final class OutboundPeers[F[_]: Async, A] private (
     * first with a header and a block), one update of the shared board per batch of headers and per
     * range of blocks.
     */
-  private def metered(peer: A): Peer.Observation => F[Unit] = {
-    case o @ Peer.Observation.HeadersArrived(slots, at) =>
-      hot.observe.traverse_(_(o)) *> metrics.modify(_.reportHeaders(peer, slots, at))
-    case o @ Peer.Observation.BlocksArrived(blocks, at) =>
-      hot.observe.traverse_(_(o)) *> metrics.modify(_.reportFetches(peer, blocks, at))
-    case other => hot.observe.traverse_(_(other))
-  }
+  private def metered(peer: A): Peer.Observation => F[Unit] =
+    given Stateful[F, PeerMetrics[A]] = metrics
+    PeerMetricsObserver(peer, hot.observe)
 
   /** The hot protocols and the session over them, for as long as the session lasts. The session
     * runs in an error scope of its own and ends with a [[SessionEnd]], a value: what the peer does,
@@ -338,7 +334,8 @@ final class OutboundPeers[F[_]: Async, A] private (
       peer: A,
       link: Link[F],
       session: Session[F],
-      started: Deferred[F, Option[FailureClass]]
+      started: Deferred[F, Option[FailureClass]],
+      trust: ChainSyncTimeouts.PeerTrust
   ): F[Unit] =
     def asked: F[Boolean] = session.asked.get
 
@@ -383,7 +380,9 @@ final class OutboundPeers[F[_]: Async, A] private (
             link.warm.mux.abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error)))
         ).evalTap(key => session.source.set(Some(key.activationGeneration)))
           .onFinalize(session.source.set(None))
-          .flatMap(key => link.warm.activate(hot.transactions, Some(retire(key))).map(_ -> key))
+          .flatMap(key =>
+            link.warm.activate(hot.transactions, Some(retire(key)), trust).map(_ -> key)
+          )
           .use { (connection, sourceKey) =>
             GenesisRuntime
               .controls(

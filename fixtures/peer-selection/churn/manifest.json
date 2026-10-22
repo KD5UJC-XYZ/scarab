@@ -1,0 +1,51 @@
+{
+  "schema": "scarab-native-churn-v1",
+  "sourceCommit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+  "sourceFiles": {
+    "cardano-diffusion/lib/Cardano/Network/PeerSelection/Churn.hs": "9f67aa647ed9c3fb1117598fd4298f55917d475ccd6987bcc7d708bb69cdac5c",
+    "cardano-diffusion/lib/Cardano/Network/LedgerPeerConsensusInterface.hs": "6d736e8d54836050bfd5d48ce80f263ab7a9a824b1c42e7002acc13128493f45",
+    "cardano-diffusion/api/lib/Cardano/Network/ConsensusMode.hs": "5276f02e6178dd2ef237049d4325230a1aad8b052e7ed680dd0be4bf0b8cf268",
+    "cardano-diffusion/api/lib/Cardano/Network/LedgerStateJudgement.hs": "330b7f5fe339bf60166d32925e42eea92db57de2b11157524539df55b3164656",
+    "cardano-diffusion/api/lib/Cardano/Network/PeerSelection/Bootstrap.hs": "7e87700127d56960436c7439690eaaee19fc945915001348e69d8cb01ea6c184",
+    "cardano-diffusion/api/lib/Cardano/Network/PeerSelection/LocalRootPeers.hs": "56dbd9209dd8909f6738193bb39d8bbde9548c22f12ce034196d45c3a815f4c4"
+  },
+  "observerSha256": "582953285719da7e2c064154f64cecbccf40db73d8ae6ad23333142e2660e6be",
+  "exporterSha256": "77f6231042453cdadb8fa03bc9cc65b4dfb4d477b507954c9c70b86fb08e1f40",
+  "sha256": "d093b953a6cb6ffcf2d5e6e84ba368dd9bc91c42454e3926152efc16dcb48deb",
+  "cases": 1152,
+  "generatedCases": 0,
+  "boundaryCases": 1152,
+  "inputs": "explicit lawful native mode pairs; both ledger judgements/bootstrap configurations; four local valencies/seeds; three lawful target bases; static or startup-transition inputs",
+  "boundary": "unchanged peerChurnGovernor under IOSim: initial/after-head targets, all first-cycle raw proposals, injected counter inputs, signed achieved changes, sanity flags, required success/timeout outcomes, both exact native DiffTime waits and binary-rational fuzz",
+  "image": "sha256:1c7a67a73a5e2faa71f25a961e9e56f159696a15e6da574fe13432de983b8349",
+  "executableSha256": "11df2490b091bcaceba71108935d83b678ba54f562723e9a8cf1f8fb9a47a322",
+  "planSha256": "eb26a2792ee3f095c2586fa3da915d9a3fc4803cd2e24a6b85343f227b2c48b3",
+  "packageIds": [
+    "aeson-2.2.5.0-e1b275ce1b1bb82fc5b92edfc0b257272f0bab3f3562d042f5c7807be2bf93fe",
+    "contra-tracer-0.2.1.0-2bf491b9d4bab34147cbbe69bf5b0f426e60fa2bd09ddb675bf3bcc5097cc8ba",
+    "ouroboros-network-1.3.0.0-inplace",
+    "ouroboros-network-1.3.0.0-inplace-api",
+    "io-classes-1.8.0.1-81db6f9dc4fa77b4eca2c3d0a055628e2f895bdba382956ab58a9877640ca2d0",
+    "io-classes-1.8.0.1-l-si-timers-5e6d1bd5dca51400e474c18cd34c890c14330fb1007bfbbdcc06f7bb7760619e",
+    "io-classes-1.8.0.1-l-strict-stm-df137760a3eaf3e7e1983b3b8d55deca78a4a9cd1c1de4b61964654e219d232c",
+    "io-sim-1.8.0.1-a0a0aa3c1d5bb8336aad7ae1a5674c39757b3a9b88cfc561e8b8fa91c67d5f82"
+  ],
+  "command": [
+    "docker",
+    "run",
+    "--rm",
+    "--name",
+    "scarab-network-gap-churn-verified",
+    "--network",
+    "none",
+    "--entrypoint",
+    "bash",
+    "-v",
+    "/tmp/scarab/148-fetch-oracle-final-2:/probe:ro",
+    "-v",
+    "/tmp/scarab/network-gap-churn-verified:/observer",
+    "scarab-148-fetch-reference-cache:local",
+    "-c",
+    "ghc -package-db /root/.local/state/cabal/store/ghc-9.10.3-1be3/package.db -package-db /probe/builddir/packagedb/ghc-9.10.3 -hide-all-packages -package base -package-id aeson-2.2.5.0-e1b275ce1b1bb82fc5b92edfc0b257272f0bab3f3562d042f5c7807be2bf93fe -package bytestring -package containers -package random -package quiet -package nothunks -package-id contra-tracer-0.2.1.0-2bf491b9d4bab34147cbbe69bf5b0f426e60fa2bd09ddb675bf3bcc5097cc8ba -package monoidal-synchronisation -package-id ouroboros-network-1.3.0.0-inplace -package-id ouroboros-network-1.3.0.0-inplace-api -package-id io-classes-1.8.0.1-81db6f9dc4fa77b4eca2c3d0a055628e2f895bdba382956ab58a9877640ca2d0 -package-id io-classes-1.8.0.1-l-si-timers-5e6d1bd5dca51400e474c18cd34c890c14330fb1007bfbbdcc06f7bb7760619e -package-id io-classes-1.8.0.1-l-strict-stm-df137760a3eaf3e7e1983b3b8d55deca78a4a9cd1c1de4b61964654e219d232c -package-id io-sim-1.8.0.1-a0a0aa3c1d5bb8336aad7ae1a5674c39757b3a9b88cfc561e8b8fa91c67d5f82 -i/probe/source/cardano-diffusion/lib -i/probe/source/cardano-diffusion/api/lib -XImportQualifiedPost -odir /observer -hidir /observer /observer/Main.hs -o /observer/churn-observer && /observer/churn-observer > /observer/decisions.jsonl; code=$?; chown -R 1000:1000 /observer; exit $code"
+  ]
+}

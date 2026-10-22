@@ -8,6 +8,7 @@ import cats.mtl.{Ask, Raise, Stateful, Tell}
 import cats.syntax.all.*
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.selection.*
+import xyz.kd5ujc.scarab.network.ChainSyncTimeouts.PeerTrust
 import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 
 /** What the governor asks of the world to move a peer between temperatures (the reference's
@@ -29,7 +30,10 @@ trait PeerStateActions[F[_], A]:
   ): F[Option[FailureClass]]
 
   /** Start the hot protocols on an established connection; none when it worked. */
-  def activate(peer: A): F[Option[FailureClass]]
+  def activate(peer: A): F[Option[FailureClass]] = activate(peer, PeerTrust.Untrustable)
+
+  /** Activate with the trust flags captured when the governor selected this job. */
+  def activate(peer: A, trust: PeerTrust): F[Option[FailureClass]]
 
   /** End the hot protocols and keep the connection. */
   def deactivate(peer: A): F[PeerStateActions.Deactivation]
@@ -62,7 +66,7 @@ trait RootProvider[F[_], A]:
   def request(max: Int, bootstrap: Boolean): F[Option[(PublicRoots[A], FiniteDuration)]]
 
   /** Ask for up to `max` big ledger peers (`requestPublicRootPeers` for `SingBigLedgerPeers`). */
-  def requestBigLedger(max: Int): F[Option[(Set[A], FiniteDuration)]]
+  def requestBigLedger(max: Int): F[Option[(BigLedgerRoots[A], FiniteDuration)]]
 
 /** What the governor tells the world besides its traces. */
 enum Output[A]:
@@ -126,6 +130,9 @@ object PeerGovernor:
       connections: Option[OutboundConnectionsState]
   )
 
+  /** A validated observation of the churn target TVar, including its topology generation. */
+  final case class RequestedTargets(targets: Targets, generation: BigInt)
+
   def run[F[_]: Temporal, A](
       actions: PeerStateActions[F, A],
       roots: RootProvider[F, A],
@@ -133,7 +140,8 @@ object PeerGovernor:
       supervisor: Supervisor[F],
       sharing: Option[PeerSharingActions[F, A]] = None,
       beforeEventApplied: Option[Event[A] => F[Unit]] = None,
-      onEventApplied: Option[Event[A] => F[Unit]] = None
+      onEventApplied: Option[Event[A] => F[Unit]] = None,
+      readRequestedTargets: Option[F[Option[RequestedTargets]]] = None
   )(using
       state: Stateful[F, GovernorState[A]],
       config: Ask[F, GovernorConfig],
@@ -152,7 +160,8 @@ object PeerGovernor:
           scheduled,
           sharing,
           beforeEventApplied,
-          onEventApplied
+          onEventApplied,
+          readRequestedTargets
         )
       )
 
@@ -167,7 +176,8 @@ object PeerGovernor:
       scheduled: Ref[F, Set[Time]],
       sharing: Option[PeerSharingActions[F, A]],
       beforeEventApplied: Option[Event[A] => F[Unit]],
-      onEventApplied: Option[Event[A] => F[Unit]]
+      onEventApplied: Option[Event[A] => F[Unit]],
+      readRequestedTargets: Option[F[Option[RequestedTargets]]]
   )(using
       state: Stateful[F, GovernorState[A]],
       config: Ask[F, GovernorConfig],
@@ -256,9 +266,9 @@ object PeerGovernor:
               )
             )
         )
-      case Job.Activate(peer) =>
+      case Job.Activate(peer, trust) =>
         complete(
-          actions.activate(peer).flatMap {
+          actions.activate(peer, trust).flatMap {
             case None => F.pure[Outcome[A]](Outcome.Activated(peer))
             case Some(failure) =>
               config.reader(_.activationPause).flatMap(F.sleep) *>
@@ -326,7 +336,7 @@ object PeerGovernor:
           .whenA(violations.nonEmpty)
       yield ()
 
-    def apply(event: Event[A]): F[Unit] =
+    def applySnapshot(event: Event[A]): F[Unit] =
       for
         at <- now
         _ <- beforeEventApplied.traverse_(_(event))
@@ -335,6 +345,17 @@ object PeerGovernor:
         _ <- commit(PeerSelection.apply(st, event, at, policy))
         _ <- onEventApplied.traverse_(_(event))
       yield ()
+
+    def apply(event: Event[A]): F[Unit] = event match
+      case Event.ChurnTargetsChanged(generation) =>
+        readRequestedTargets.traverse_(
+          _.flatMap(
+            _.filter(_.generation == generation).traverse_(current =>
+              applySnapshot(Event.TargetsRequested(current.targets, Some(current.generation)))
+            )
+          )
+        )
+      case _ => applySnapshot(event)
 
     /** Apply the events that are waiting. */
     val drain: F[Unit] =

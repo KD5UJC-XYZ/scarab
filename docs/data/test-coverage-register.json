@@ -480,6 +480,65 @@
         "docs/design/chainsync-pipeline.md"
       ],
       "candidateRequired": true
+    },
+    {
+      "id": "native-churn-decisions",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "1,152 explicit native IOSim cases invoking the unchanged pinned peerChurnGovernor, including 13,824 first-cycle actions.",
+      "assertion": "Compare complete initial and post-head-start targets, every raw target proposal, sanity flags, signed achieved changes, timeout outcomes and native picosecond wait values for every retained case.",
+      "rationale": "Genesis and Praos choose different startup targets, regimes and intervals. Raw invalid targets remain observable churn inputs even when the peer governor ignores them. These are explicit boundary cases, not an upstream generator corpus.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/311",
+      "resolution": "Production decision helpers and notification-driven runtime tests retain all native outputs, including negative active targets and root/known mismatches. Native PRNG streams and wall-clock thread schedules are not equated.",
+      "evidence": [
+        "fixtures/peer-selection/churn/manifest.json",
+        "fixtures/peer-selection/churn/README.md",
+        "scripts/oracle/churn/Main.hs",
+        "network/src/test/scala/xyz/kd5ujc/scarab/network/selection/NativeChurnPolicySuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/governor/ChurnLoopSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/governor/ChurnTargetWakeSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "native-big-ledger-root-fallback",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "Nine explicit native BigLedgerPeers requests, with absent, empty or nonempty ledger answers and requested counts 0, 1 and 4.",
+      "assertion": "Compare the production BigLedgerRoots.fromLedger adapter against complete native offered partitions, origins and configured advertisement flags for every captured case.",
+      "rationale": "Configured fallback peers belong to ordinary public roots; only actual ledger answers belong to the big-ledger partition. Empty and absent ledger answers are different values.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/311",
+      "resolution": "All nine directly generated native Big-request cases are retained. Actual static/dynamic provider and governor tests separately verify TTLs, root-generation behavior and initial known-peer advertisement flags. The unchanged All-request classifier is outside this adapter boundary.",
+      "evidence": [
+        "fixtures/peer-selection/root-fallback/manifest.json",
+        "fixtures/peer-selection/root-fallback/README.md",
+        "scripts/oracle/root-fallback/Main.hs",
+        "network/src/test/scala/xyz/kd5ujc/scarab/network/selection/NativeRootFallbackSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/LedgerPeersWiringSuite.scala",
+        "network/src/test/scala/xyz/kd5ujc/scarab/network/selection/BigLedgerSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "native-chainsync-timeouts",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "384 unchanged native active-state observations across eight seeds, both peer trust values and both idle settings, plus seven unsigned Word64 boundaries.",
+      "assertion": "Compare every captured deadline using the production client receive-state selector or effective server idle setting, exact binary timeout samples and picoseconds; verify complete retained RNG advancement and random scaling boundaries.",
+      "rationale": "Untrustable MustReply deadlines are freshly randomized601\u2013911seconds. Trustable local-root clients are unbounded, other states do not consume random input, and partial reads retain a single state budget.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/35",
+      "resolution": "Every native output is retained without masks or exceptions. Native and JVM PRNG seed streams are not equated; actual native Word64 samples drive identical production scaling. Runtime tests independently exercise hook ordering, trust, fresh state draws and fragmented reads.",
+      "evidence": [
+        "fixtures/chainsync-timeouts/manifest.json",
+        "fixtures/chainsync-timeouts/README.md",
+        "scripts/oracle/chainsync-timeouts/Main.hs",
+        "network/src/test/scala/xyz/kd5ujc/scarab/network/NativeChainSyncTimeoutsSuite.scala",
+        "network/src/test/scala/xyz/kd5ujc/scarab/network/ChainSyncTimeoutsSuite.scala"
+      ],
+      "candidateRequired": true
     }
   ]
 }

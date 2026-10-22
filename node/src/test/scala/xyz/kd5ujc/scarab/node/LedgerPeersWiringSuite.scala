@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.data.NonEmptyVector
-import cats.effect.{IO, Ref}
+import cats.effect.{Deferred, IO, Ref}
 import cats.effect.testkit.TestControl
 import cats.mtl.Tell
 import cats.syntax.all.*
@@ -350,6 +350,7 @@ class LedgerPeersWiringSuite extends CatsEffectSuite:
       sensitive <- on.request(5, true)
       ledger <- on.request(5, false)
       big <- on.requestBigLedger(5)
+      emptyBig <- on.requestBigLedger(0)
       off <- provider(UseLedgerPeers.Disabled, two)
       fallback <- off.request(5, false)
       noBig <- off.requestBigLedger(5)
@@ -369,7 +370,61 @@ class LedgerPeersWiringSuite extends CatsEffectSuite:
           )
           assertEquals(ttl, LedgerPeerStake.ReRequestInterval)
         case None => fail("no answer")
-      assert(big.exists(_._1.nonEmpty))
+      assert(big.exists {
+        case (BigLedgerRoots.Ledger(peers), _) => peers.nonEmpty; case _ => false
+      })
+      assertEquals(
+        emptyBig,
+        Some(BigLedgerRoots.Ledger(Set.empty[Addr]) -> LedgerPeerStake.ReRequestInterval)
+      )
       assertEquals(fallback.map(_._1), Some(PublicRoots(Set(configured), Set.empty[Addr])))
-      assertEquals(noBig.map(_._1), Some(Set.empty[Addr]))
+      assertEquals(
+        noBig,
+        Some(
+          BigLedgerRoots.Fallback(
+            PublicRoots(Set(configured), Set.empty[Addr])
+          ) -> 60.seconds
+        )
+      )
+  }
+
+  test("the dynamic provider preserves ordinary fallback classification and advertisement") {
+    val literal: Addr = SocketAddress[Host](ip"192.0.2.41", port"3001")
+    for
+      built <- worker(UseLedgerPeers.Disabled, WithOrigin.At(BigInt(10)), two)
+      (w, _, _) = built
+      canceled <- Deferred[IO, Unit]
+      runtime <- Ref.of[IO, PeerNetwork.Runtime[IO]](
+        PeerNetwork.Runtime(
+          generation = BigInt(0),
+          roots = PeerNetwork.Roots(
+            Nil,
+            Set(literal),
+            None,
+            UseLedgerPeers.Disabled,
+            advertise = Map(literal -> true)
+          ),
+          resolvedLocalRoots = Nil,
+          localDnsCache = LocalRootDnsCache.empty[NodeRootProvider.LocalDnsKey, Addr],
+          worker = w,
+          association = AssociationMode.Unrestricted,
+          churn = ChurnLoop.Config(Targets.relay, Regime.kind(_, false)),
+          snapshotCheckStarted = false,
+          snapshotCheckCanceled = canceled
+        )
+      )
+      rng <- Ref.of[IO, Rng](Rng(1L))
+      dns = new PeerDns[IO]:
+        def addresses(name: DnsName) =
+          IO.raiseError(new AssertionError("literal roots must not resolve DNS"))
+        def services(name: DnsName) = IO.raiseError(new AssertionError("no SRV roots configured"))
+      result <- NodeRootProvider.dynamic(runtime, dns, rng).requestBigLedger(5)
+    yield assertEquals(
+      result,
+      Some(
+        BigLedgerRoots.Fallback(
+          PublicRoots(Set(literal), Set.empty[Addr], advertise = Map(literal -> true))
+        ) -> 60.seconds
+      )
+    )
   }

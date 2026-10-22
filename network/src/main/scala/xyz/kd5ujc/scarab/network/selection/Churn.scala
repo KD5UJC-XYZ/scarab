@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.network.selection
 
 import scala.concurrent.duration.*
+import xyz.kd5ujc.scarab.codec.Rational
 
 /** The churn governor's arithmetic: which targets each step of a round asks for, how long it waits
   * for the counters to meet them, and how long the round sleeps. Pure; the effect that runs it is
@@ -15,16 +16,10 @@ import scala.concurrent.duration.*
   * [[PeerMetrics]]), increase them again so that it promotes others, then refresh the established
   * and known sets (`Churn.hs` 117-123, 561-654).
   *
-  * Differences from the reference are recorded in docs/design/peer-selection.md section 7b:
-  *   - a target that would be insane (the reference's Monitor silently ignores an insane update,
-  *     `Monitor.hs` 68-69) is clamped instead, so the round is not wasted: the root target is kept
-  *     within the known target, a negative active target is 0, the established target never below
-  *     the active one (the reference's update is ignored when the base established target equals
-  *     the active one in the bootstrap regime); with the clamps no step yields an insane set for
-  *     any sane base (a property test), and at the defaults none is needed;
-  *   - the six big-ledger steps are left out of a round while the node has no big ledger peers
-  *     ([[round]] with `bigLedger = false`): their counters are zero, so each increase would only
-  *     wait out its timeout (200 s) with nothing to wait for.
+  * The pinned policy retains all twelve actions, including disabled-ledger configurations. Raw
+  * proposals can be insane; the independent peer governor ignores them while churn retains them for
+  * its next calculation and counter predicate. Genesis always uses the default regime and long
+  * interval. Native comparison provenance is in fixtures/peer-selection/churn/README.md.
   */
 object Churn:
 
@@ -79,7 +74,9 @@ object Churn:
       case _ => false
 
     /** The check of `updateTargets` (`checkCounters`): have the counters met the targets? */
-    def reached(c: GovernorState.Counters, t: Targets): Boolean = this match
+    def reached(c: GovernorState.Counters, t: Targets): Boolean = reached(c, Proposal.from(t))
+
+    def reached(c: GovernorState.Counters, t: Proposal): Boolean = this match
       case DecreaseActiveBig      => c.activeBigLedger <= t.activeBig
       case IncreaseActiveBig      => c.activeBigLedger >= t.activeBig
       case DecreaseEstablishedBig => c.establishedBigLedger <= t.establishedBig
@@ -94,10 +91,9 @@ object Churn:
       case DecreaseKnown => c.known <= t.known
       case IncreaseKnown => c.root >= t.root && c.known >= t.known
 
-  /** The twelve steps, or the six that concern ordinary peers while there are no big ledger peers.
-    */
-  def round(bigLedger: Boolean): List[Step] =
-    Step.values.toList.filter(s => bigLedger || !s.bigLedger)
+  /** All twelve native steps, including big-ledger targets when ledger queries are disabled. */
+  def round: List[Step] =
+    Step.values.toList
 
   /** The timeouts of a step (`Policies.hs` 31, 41, 49 and `Churn.hs` 688-689, 599): the reference's
     * `deactivateTimeout`, `closeConnectionTimeout`, `churnEstablishConnectionTimeout`,
@@ -125,7 +121,32 @@ object Churn:
   /** What a step reads besides the targets in force: the regime, the hot valency of the local roots
     * (`getLocalRootHotTarget`) and the targets of the regime (the reference's `base`).
     */
-  final case class Context(kind: Regime.Kind, localHot: Int, base: Targets)
+  final case class Context(
+      kind: Regime.Kind,
+      localHot: Int,
+      base: Targets,
+      consensusMode: ConsensusMode = ConsensusMode.PraosMode
+  )
+
+  /** The reference target TVar can contain an insane intermediate churn proposal. The peer governor
+    * rejects that update, but churn still waits against it and uses it in the next step. Keeping
+    * the proposal distinct preserves the invariant of validated configuration targets.
+    */
+  final case class Proposal(
+      root: Int,
+      known: Int,
+      established: Int,
+      active: Int,
+      knownBig: Int,
+      establishedBig: Int,
+      activeBig: Int
+  ):
+    def validated: Either[Targets.Problem, Targets] =
+      Targets.validated(root, known, established, active, knownBig, establishedBig, activeBig)
+
+  object Proposal:
+    def from(t: Targets): Proposal =
+      Proposal(t.root, t.known, t.established, t.active, t.knownBig, t.establishedBig, t.activeBig)
 
   /** `getPeerSelectionTargets` (`Cardano/Network/PeerSelection/Churn.hs` 98-107): Genesis uses its
     * sync targets only while the ledger judgement is too old.
@@ -155,15 +176,24 @@ object Churn:
   def apply(step: Step, ctx: Context, current: Targets, achieved: Step => Int): Targets =
     plan(step, ctx, current, achieved).getOrElse(current)
 
-  /** [[apply]] without the fallback: the targets the step asks for, or why they are not sane. For
-    * sane base targets it is always a `Right` (a property of the tests).
-    */
+  /** Validate a raw proposal for consumers that require accepted governor targets. */
   def plan(
       step: Step,
       ctx: Context,
       current: Targets,
       achieved: Step => Int
   ): Either[Targets.Problem, Targets] =
+    planRaw(step, ctx, Proposal.from(current), achieved).validated
+
+  /** `updateTargets` writes these raw records; `sanePeerSelectionTargets` is checked by the
+    * independent peer governor, not by the churn writer.
+    */
+  def planRaw(
+      step: Step,
+      ctx: Context,
+      current: Proposal,
+      achieved: Step => Int
+  ): Proposal =
     import Step.*
     val base = ctx.base
     val least = step.minimumFrom.fold(1)(achieved)
@@ -172,51 +202,50 @@ object Churn:
     step match
       // 285-294, 303-312: in the sync regimes the active target stays near the local roots' valency
       case DecreaseActive =>
-        current.revised(active =
-          if sync then ctx.localHot.max(1).min(base.active - 1).max(0) else decrease(base.active)
+        current.copy(active =
+          if sync then ctx.localHot.max(1).min(base.active - 1) else decrease(base.active)
         )
       case IncreaseActive =>
-        current.revised(active = if sync then hotPlusOne else base.active)
+        current.copy(active = if sync then hotPlusOne else base.active)
       // 322-336, 364-385: the bootstrap regime keeps the established target at the active one
       case IncreaseEstablished =>
-        current.revised(established =
+        current.copy(established =
           if ctx.kind == Regime.Kind.BootstrapPraosSync then
             (current.active + 1).min(base.established)
           else base.established
         )
       case DecreaseEstablished =>
-        current.revised(established =
+        current.copy(established =
           if ctx.kind == Regime.Kind.BootstrapPraosSync then
-            current.active.min(base.established - 1).max(current.active)
+            current.active.min(base.established - 1)
           else decreaseWithMin(least)(base.established - base.active) + base.active
         )
       // 396-428: the sync regimes ask for at most one active big ledger peer
       case DecreaseActiveBig =>
-        current.revised(activeBig =
-          if sync then 1.min(base.activeBig) else decrease(base.activeBig)
-        )
+        current.copy(activeBig = if sync then 1.min(base.activeBig) else decrease(base.activeBig))
       case IncreaseActiveBig =>
-        current.revised(activeBig = if sync then 1.min(base.activeBig) else base.activeBig)
-      case IncreaseEstablishedBig => current.revised(establishedBig = base.establishedBig)
+        current.copy(activeBig = if sync then 1.min(base.activeBig) else base.activeBig)
+      case IncreaseEstablishedBig => current.copy(establishedBig = base.establishedBig)
       case DecreaseEstablishedBig =>
-        current.revised(establishedBig =
+        current.copy(establishedBig =
           decreaseWithMin(least)(base.establishedBig - base.activeBig) + base.activeBig
         )
-      case IncreaseKnownBig => current.revised(knownBig = base.knownBig)
+      case IncreaseKnownBig => current.copy(knownBig = base.knownBig)
       case DecreaseKnownBig =>
-        current.revised(knownBig =
+        current.copy(knownBig =
           decreaseWithMin(least)(base.knownBig - base.establishedBig) + base.establishedBig
         )
-      // 463-480: the root target is clamped from above so that it never grows, and here also to
-      // the known target it must stay within
+      // The root target never grows; native churn does not clamp it to the new known target.
+      // Monitor.hs independently ignores proposals that fail sanePeerSelectionTargets.
       case DecreaseKnown =>
         val known = decreaseWithMin(least)(base.known - base.established) + base.established
         val root = base.root.min(decrease(base.root - base.established) + base.established)
-        current.revised(root = root.min(known), known = known)
-      case IncreaseKnown => current.revised(root = base.root, known = base.known)
+        current.copy(root = root, known = known)
+      case IncreaseKnown => current.copy(root = base.root, known = base.known)
 
   /** The first targets (`Churn.hs` 176-196): see [[Regime.initial]]. */
-  def head(ctx: Context): Targets = Regime.initial(ctx.kind, ctx.base, ctx.localHot)
+  def head(ctx: Context): Targets =
+    Regime.initial(ctx.consensusMode, ctx.kind, ctx.base, ctx.localHot)
 
   /** The targets after the head start (`Churn.hs` 200-211): see [[Regime.steady]]. */
   def steady(ctx: Context): Targets = Regime.steady(ctx.kind, ctx.base, ctx.localHot)
@@ -231,6 +260,9 @@ object Churn:
       bulkSync: FiniteDuration = 900.seconds,
       bulkSyncFuzz: FiniteDuration = 60.seconds
   ):
+    def of(consensusMode: ConsensusMode, mode: FetchMode): (FiniteDuration, FiniteDuration) =
+      if consensusMode == ConsensusMode.GenesisMode then (deadline, deadlineFuzz) else of(mode)
+
     def of(mode: FetchMode): (FiniteDuration, FiniteDuration) = mode match
       case FetchMode.Deadline => (deadline, deadlineFuzz)
       case FetchMode.BulkSync => (bulkSync, bulkSyncFuzz)
@@ -240,18 +272,64 @@ object Churn:
     def every(interval: FiniteDuration): Intervals =
       Intervals(interval, interval / 10, interval, interval / 10)
 
-  /** The wait before the next round, from the generator. The fuzz has a resolution of a
-    * millisecond; a round that took longer than its interval waits not at all.
-    */
+  /** Nanosecond presentation of the exact policy wait, for existing duration consumers. */
   def delay(
       mode: FetchMode,
       intervals: Intervals,
       elapsed: FiniteDuration,
       rng: Rng
   ): (FiniteDuration, Rng) =
-    val (interval, fuzz) = intervals.of(mode)
-    val (millis, next) = rng.between(0L, fuzz.toMillis)
-    ((interval + millis.millis - elapsed).max(Duration.Zero), next)
+    delay(ConsensusMode.PraosMode, mode, intervals, elapsed, rng)
+
+  def delay(
+      consensusMode: ConsensusMode,
+      mode: FetchMode,
+      intervals: Intervals,
+      elapsed: FiniteDuration,
+      rng: Rng
+  ): (FiniteDuration, Rng) =
+    val (picos, next) =
+      drawDelay(consensusMode, mode, intervals, BigInt(elapsed.toNanos) * 1000, rng)
+    (Rational(picos, 1000).floor.toLong.nanos, next)
+
+  /** The native `realToFrac Double :: DiffTime` floors the exact binary rational at picoseconds.
+    * Keep signed waits: an overlong round traces a negative wait and sleeps immediately.
+    */
+  def delayWithFuzz(
+      consensusMode: ConsensusMode,
+      mode: FetchMode,
+      intervals: Intervals,
+      elapsedPicos: BigInt,
+      fuzzSeconds: Rational
+  ): BigInt =
+    val (interval, _) = intervals.of(consensusMode, mode)
+    BigInt(interval.toNanos) * 1000 + (fuzzSeconds * Rational(
+      BigInt(10).pow(12)
+    )).floor - elapsedPicos
+
+  /** Random streams are interpreter inputs; native fixtures supply the actual native Double draws
+    * to [[delayWithFuzz]] rather than assuming equal PRNG seeds imply equal streams.
+    */
+  def drawDelay(
+      consensusMode: ConsensusMode,
+      mode: FetchMode,
+      intervals: Intervals,
+      elapsedPicos: BigInt,
+      rng: Rng
+  ): (BigInt, Rng) =
+    val (_, fuzz) = intervals.of(consensusMode, mode)
+    val (bits, next) = rng.nextLong
+    val seconds = ((bits >>> 11).toDouble / 9007199254740991.0) * (fuzz.toNanos.toDouble / 1e9)
+    val raw = java.lang.Double.doubleToRawLongBits(seconds)
+    val mantissa = raw & 0x000fffffffffffffL
+    val exponent = ((raw >>> 52) & 0x7ff).toInt
+    val significand =
+      if exponent == 0 then BigInt(mantissa) else BigInt(mantissa) + (BigInt(1) << 52)
+    val shift = if exponent == 0 then -1074 else exponent - 1075
+    val exact =
+      if shift >= 0 then Rational(significand << shift)
+      else Rational(significand, BigInt(1) << -shift)
+    (delayWithFuzz(consensusMode, mode, intervals, elapsedPicos, exact), next)
 
   /** What the churn governor tells (`TraceChurnMode`, `TraceChurnAction`, `TraceChurnTimeout`,
     * `TraceChurnWait`; `Types.hs` 1843-1855, `Churn.hs` 269-276, 566): the step, how long it took

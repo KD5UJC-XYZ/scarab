@@ -355,7 +355,7 @@ class UpstreamPipeBehaviorSuite extends FailsOnUncaught:
                   ChainSyncRuntime.ClientSettings(
                     intersectTimeout = 5.seconds,
                     canAwaitTimeout = 5.seconds,
-                    mustReplyTimeout = 5.seconds
+                    mustReply = ChainSyncTimeouts.Policy.Fixed(ProtocolDeadline.After(5.seconds))
                   )
                 )
                 result <- replay(client, testCase).timeout(20.seconds)
@@ -409,7 +409,7 @@ class UpstreamPipeBehaviorSuite extends FailsOnUncaught:
                   ChainSyncRuntime.ClientSettings(
                     intersectTimeout = 5.seconds,
                     canAwaitTimeout = 5.seconds,
-                    mustReplyTimeout = 5.seconds
+                    mustReply = ChainSyncTimeouts.Policy.Fixed(ProtocolDeadline.After(5.seconds))
                   )
                 )
                 replayed <- Resource

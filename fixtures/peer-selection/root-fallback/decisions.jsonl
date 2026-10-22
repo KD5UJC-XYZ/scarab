@@ -1,0 +1,9 @@
+{"big":true,"bigLedger":[],"extra":[{"advertise":true,"peer":3011},{"advertise":false,"peer":3012}],"ledger":[],"ledgerState":0,"requested":0,"ttlPicos":60000000000000}
+{"big":true,"bigLedger":[],"extra":[{"advertise":true,"peer":3011},{"advertise":false,"peer":3012}],"ledger":[],"ledgerState":0,"requested":1,"ttlPicos":60000000000000}
+{"big":true,"bigLedger":[],"extra":[{"advertise":true,"peer":3011},{"advertise":false,"peer":3012}],"ledger":[],"ledgerState":0,"requested":4,"ttlPicos":60000000000000}
+{"big":true,"bigLedger":[],"extra":[],"ledger":[],"ledgerState":1,"requested":0,"ttlPicos":30000000000000}
+{"big":true,"bigLedger":[],"extra":[],"ledger":[],"ledgerState":1,"requested":1,"ttlPicos":30000000000000}
+{"big":true,"bigLedger":[],"extra":[],"ledger":[],"ledgerState":1,"requested":4,"ttlPicos":30000000000000}
+{"big":true,"bigLedger":[1,2],"extra":[],"ledger":[],"ledgerState":2,"requested":0,"ttlPicos":30000000000000}
+{"big":true,"bigLedger":[1,2],"extra":[],"ledger":[],"ledgerState":2,"requested":1,"ttlPicos":30000000000000}
+{"big":true,"bigLedger":[1,2],"extra":[],"ledger":[],"ledgerState":2,"requested":4,"ttlPicos":30000000000000}

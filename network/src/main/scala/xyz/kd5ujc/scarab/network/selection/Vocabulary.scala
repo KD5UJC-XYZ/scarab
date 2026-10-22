@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.network.selection
 import cats.Show
 import scala.concurrent.duration.FiniteDuration
 import xyz.kd5ujc.scarab.codec.DomainError
+import xyz.kd5ujc.scarab.network.ChainSyncTimeouts.PeerTrust
 import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 
 /** How a peer failed, as far as the governor cares (owner decision 8, docs/design/
@@ -65,6 +66,30 @@ final case class PublicRoots[A](
 ):
   def isEmpty: Boolean = ordinary.isEmpty && bootstrap.isEmpty && ledger.isEmpty
 
+/** A big-ledger request can fall back to configured public roots. The fallback is ordinary
+  * extra-peer discovery, not evidence that the addresses belong to the big-ledger population
+  * (`requestPublicRootPeersImpl`, PeerSelectionActions.hs; `jobReqBigLedgerPeers`).
+  */
+enum BigLedgerRoots[A]:
+  case Ledger(peers: Set[A])
+  case Fallback(roots: PublicRoots[A])
+
+  def offered: Set[A] = this match
+    case Ledger(peers)   => peers
+    case Fallback(roots) => roots.ordinary ++ roots.bootstrap ++ roots.ledger
+
+  def origin(peer: A): Origin = this match
+    case Ledger(_) => Origin.BigLedger
+    case Fallback(roots) =>
+      if roots.bootstrap(peer) then Origin.Bootstrap
+      else if roots.ledger(peer) then Origin.Ledger
+      else Origin.Public
+
+object BigLedgerRoots:
+  /** Native `Nothing` falls back; `Just empty` remains an empty ledger response. */
+  def fromLedger[A](ledger: Option[Set[A]], configured: PublicRoots[A]): BigLedgerRoots[A] =
+    ledger.fold[BigLedgerRoots[A]](Fallback(configured))(Ledger(_))
+
 /** What a job reports when it ends: the governor applies it to the state *as it is then*, so a job
   * that finished after the world moved on (the peer was lost, the targets changed) is detected and
   * traced as aborted (the reference's `Completion`, `Types.hs` 1613-1644, as a closed value).
@@ -88,7 +113,7 @@ enum Outcome[A]:
   case RootsFailed(generation: BigInt = BigInt(0))
 
   /** The request for big ledger peers answered, with the time its answer is good for. */
-  case BigLedgerFound(found: Set[A], ttl: FiniteDuration, generation: BigInt = BigInt(0))
+  case BigLedgerFound(found: BigLedgerRoots[A], ttl: FiniteDuration, generation: BigInt = BigInt(0))
   case BigLedgerFailed(generation: BigInt = BigInt(0))
 
   /** One completed phase of a peer-sharing batch. */
@@ -97,7 +122,7 @@ enum Outcome[A]:
 /** A piece of work for the effect layer (a job of the reference's `JobPool`). */
 enum Job[A]:
   case Connect(peer: A, mode: DiffusionMode, provenance: Provenance, generation: BigInt = BigInt(0))
-  case Activate(peer: A)
+  case Activate(peer: A, trust: PeerTrust = PeerTrust.Untrustable)
   case Deactivate(peer: A)
   case Close(peer: A, generation: Option[BigInt] = None)
 
@@ -215,6 +240,7 @@ enum Event[A]:
 
   /** The churn governor's variable changed (here the regime's targets). */
   case TargetsRequested(targets: Targets, generation: Option[BigInt] = None)
+  case ChurnTargetsChanged(generation: BigInt)
 
   /** The Genesis State Machine's judgement of the ledger changed. */
   case JudgementReported(judgement: LedgerStateJudgement)

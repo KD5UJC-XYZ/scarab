@@ -27,13 +27,21 @@ import org.scalacheck.Prop.*
 class HeaderRulesSuite extends ScalaCheckSuite:
   private val rules = NodeHeaderRules[MirrorState](ForgedChain.config, ForgedChain.globals)
 
-  private lazy val forged: ForgedChain = ForgedChain.forge(5000 until 5090).unsafeRunSync()
+  private lazy val forged: ForgedChain = ForgedChain.forge(0 until 90, epoch = 0).unsafeRunSync()
 
   private def ref(h: Header.Shelley) = BlockRef(h.slot, h.hash, h.blockNo)
 
   /** The header state before block `i`. */
-  private def before(i: Int): ProtocolState =
-    if i == 0 then forged.genesis.protocol else forged.states(i - 1).protocol
+  private def before(i: Int): NodeHeaderState.Shelley =
+    NodeHeaderState.Shelley(
+      if i == 0 then forged.genesis.protocol else forged.states(i - 1).protocol,
+      forged.headers.take(i).lastOption.map(ref),
+      forged.genesis.consensus.byron.firstShelleyEpoch,
+      None
+    )
+
+  private def expected(i: Int): NodeHeaderState.Shelley =
+    before(i).copy(state = forged.states(i).protocol, previous = Some(ref(forged.headers(i))))
 
   /** The state and tip of the chain after block `i - 1 - lag` (the genesis for a negative index).
     */
@@ -51,7 +59,7 @@ class HeaderRulesSuite extends ScalaCheckSuite:
     forged.headers.zipWithIndex.foreach { case (h, i) =>
       val (state, tip) = anchor(i, 0)
       rules.validate(state, tip, before(i), h) match
-        case Outcome.Valid(next) => assertEquals(next, forged.states(i).protocol, s"block $i")
+        case Outcome.Valid(next) => assertEquals(next, expected(i), s"block $i")
         case other               => fail(s"block $i: $other")
     }
   }
@@ -60,7 +68,7 @@ class HeaderRulesSuite extends ScalaCheckSuite:
     forAll(Gen.choose(0, forged.headers.size - 1), Gen.choose(0, 3)) { (i, lag) =>
       val (state, tip) = anchor(i, lag)
       rules.validate(state, tip, before(i), forged.headers(i)) ==
-        Outcome.Valid(forged.states(i).protocol)
+        Outcome.Valid(expected(i))
     }
   }
 
@@ -118,9 +126,9 @@ class HeaderRulesSuite extends ScalaCheckSuite:
   test("an operational certificate counter that went backwards is refused") {
     val i = 12
     val (state, tip) = anchor(i, 0)
-    val ahead = before(i).dep match
+    val ahead = before(i).state.dep match
       case ChainDepState.Praos(p) =>
-        before(i).copy(dep =
+        before(i).state.copy(dep =
           ChainDepState.Praos(
             p.copy(ocertCounters =
               p.ocertCounters.transform((_, v) => Word64.fromUnsigned(v.bits + 5))
@@ -128,8 +136,8 @@ class HeaderRulesSuite extends ScalaCheckSuite:
           )
         )
       case other => fail(s"not a Praos state: $other")
-    assert(before(i).counters.nonEmpty)
-    rules.validate(state, tip, ahead, forged.headers(i)) match
+    assert(before(i).state.counters.nonEmpty)
+    rules.validate(state, tip, before(i).copy(state = ahead), forged.headers(i)) match
       case Outcome.Invalid(
             HeaderError.Praos(PraosError.OCert(OCertError.CounterOutOfRange(current, got)))
           ) =>
@@ -139,7 +147,9 @@ class HeaderRulesSuite extends ScalaCheckSuite:
   }
 
   test("a header beyond the stability window of the anchor has to wait for the chain to advance") {
-    val i = forged.headers.indexWhere(_.slot > 5000 + ForgedChain.geometry.stabilityWindow + 5)
+    val i = forged.headers.indexWhere(
+      _.slot > forged.headers.head.slot + ForgedChain.geometry.stabilityWindow + 5
+    )
     assert(i > 3)
     val laterTip = Some(ref(forged.headers(0)))
     val later = forged.states(0)
@@ -150,7 +160,26 @@ class HeaderRulesSuite extends ScalaCheckSuite:
     val (near, nearTip) = anchor(i, 2)
     assertEquals(
       rules.validate(near, nearTip, before(i), forged.headers(i)),
-      Outcome.Valid(forged.states(i).protocol)
+      Outcome.Valid(expected(i))
+    )
+  }
+
+  test("an Origin ledger forecast excludes its native stability-window endpoint") {
+    val limit = ForgedChain.geometry.stabilityWindow
+    val header = forged.headers.head.copy(slot = limit)
+    assertEquals(
+      rules.validate(forged.genesis, None, rules.at(forged.genesis), header),
+      Outcome.Later(xyz.kd5ujc.scarab.consensus.HeaderRules.ForecastReason.Horizon(limit, 0))
+    )
+  }
+
+  test("the former far-slot Origin bypass now waits for a ledger forecast") {
+    val original = ForgedChain.forge(5000 until 5008).unsafeRunSync()
+    val header = original.headers.head
+    assert(header.slot >= 5000)
+    assertEquals(
+      rules.validate(original.genesis, None, rules.at(original.genesis), header),
+      Outcome.Later(xyz.kd5ujc.scarab.consensus.HeaderRules.ForecastReason.Horizon(header.slot, 0))
     )
   }
 
@@ -184,7 +213,7 @@ class HeaderRulesSuite extends ScalaCheckSuite:
     )
   }
 
-  test("Byron headers are not checked header-first and leave the state as it is") {
+  test("a Shelley header state cannot accept a Byron header") {
     val h = Header.Byron(
       Bytes.empty,
       Bytes.empty,
@@ -196,10 +225,9 @@ class HeaderRulesSuite extends ScalaCheckSuite:
       prevHash = None
     )
     assertEquals(
-      rules.validate(forged.genesis, None, forged.genesis.protocol, h),
-      Outcome.Unchecked(
-        xyz.kd5ujc.scarab.consensus.HeaderRules.UncheckedReason.Byron,
-        Some(forged.genesis.protocol)
+      rules.validate(forged.genesis, None, rules.at(forged.genesis), h),
+      Outcome.Invalid(
+        HeaderError.Structure(xyz.kd5ujc.scarab.ledger.HeaderStructureProblem.MissingByronLedger)
       )
     )
   }
@@ -221,7 +249,7 @@ class HeaderRulesSuite extends ScalaCheckSuite:
       )
     )
     val anchorState = crossing.states(last)
-    var prev = crossing.states(last).protocol
+    var prev = rules.at(crossing.states(last))
     val window = (firstOfNext until crossing.headers.size)
       .takeWhile(i =>
         crossing.headers(i).slot <= crossing.headers(last).slot + geometry.stabilityWindow
@@ -230,15 +258,30 @@ class HeaderRulesSuite extends ScalaCheckSuite:
     window.foreach { i =>
       rules.validate(anchorState, anchorTip, prev, crossing.headers(i)) match
         case Outcome.Valid(next) =>
-          assertEquals(next, crossing.states(i).protocol, s"block $i")
+          assertEquals(next.protocol, Some(crossing.states(i).protocol), s"block $i")
           prev = next
         case other => fail(s"block $i: $other")
     }
   }
 
+  test("the next epoch's parameter-dependent envelope is checked before its body arrives") {
+    val first = crossing.headers.indexWhere(h => ForgedChain.geometry.epochOf(h.slot) == 6)
+    assert(first > 0)
+    val last = first - 1
+    val state = crossing.states(last)
+    val tip = Some(ref(crossing.headers(last)))
+    val tooLarge = crossing.headers(first).copy(bodySize = BigInt(1) << 40)
+    rules.validate(state, tip, rules.at(state), tooLarge) match
+      case Outcome.Invalid(
+            HeaderError.Envelope(_: xyz.kd5ujc.scarab.ledger.EnvelopeError.BlockSizeTooLarge)
+          ) =>
+        ()
+      case other => fail(other.toString)
+  }
+
   test("Praos preserves threshold, registration, vocabulary and certificate causes") {
     val h = forged.headers.head
-    val state = before(0)
+    val state = before(0).state
     val pool = Blake2b.hash224.hash(h.issuerVkey)
     val vrf = Blake2b.hash256.hash(h.vrfVkey)
     val known = PoolDistribution(Map(pool -> BigInt(1)), Map(pool -> vrf))

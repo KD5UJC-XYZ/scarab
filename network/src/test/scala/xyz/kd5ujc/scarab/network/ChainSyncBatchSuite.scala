@@ -71,7 +71,10 @@ class ChainSyncBatchSuite extends FailsOnUncaught:
                     clientChannel,
                     ChainSyncFixtures.rawItem,
                     ChainSyncClient
-                      .Settings(canAwaitTimeout = 1.second, mustReplyTimeout = 1.second)
+                      .Settings(
+                        canAwaitTimeout = 1.second,
+                        mustReply = ChainSyncTimeouts.Policy.Fixed(ProtocolDeadline.After(1.second))
+                      )
                   )
                   result <- Resource
                     .make(Peers.typed(serve(serverChannel)).start)(_.cancel)

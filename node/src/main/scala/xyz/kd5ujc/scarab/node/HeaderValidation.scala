@@ -1,119 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.consensus.BlockRef
-import xyz.kd5ujc.scarab.ledger.state.EraTag
-import xyz.kd5ujc.scarab.node.read.{ChainRead, EraRead, InEra}
-import xyz.kd5ujc.scarab.ledger.Header
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.consensus.*
-import xyz.kd5ujc.scarab.consensus.state.ProtocolState
-import xyz.kd5ujc.scarab.ledger.HeaderError
-import xyz.kd5ujc.scarab.ledger.LedgerView
-import xyz.kd5ujc.scarab.ledger.StakeView
 import xyz.kd5ujc.scarab.consensus.HeaderRules.Outcome
+import xyz.kd5ujc.scarab.consensus.state.ProtocolState
 import xyz.kd5ujc.scarab.ledger.*
+import xyz.kd5ujc.scarab.ledger.state.EraTag
+import xyz.kd5ujc.scarab.node.read.{ChainRead, EraRead}
+import xyz.kd5ujc.scarab.protocol.Era
 
-/** Header-first validation for the node's full ledger (G6): the checks [[NodeRules]] makes on a
-  * header when it applies the block, made against a forecast of the ledger view instead of the
-  * state after the block's parent, so they can run before the block is fetched.
-  *
-  * The forecast from a ledger state `anchor` is exact for any header up to the stability window
-  * (3k/f slots) after the anchor's tip, the horizon within which the ledger view cannot be changed
-  * by blocks not yet seen (the same bound as upstream's `forecastFor`):
-  *
-  *   - in the anchor's epoch the pool distribution, protocol parameters and genesis delegations are
-  *     those of the anchor (a genesis delegation that becomes due on the way is adopted, as the
-  *     ledger's TICK does);
-  *   - in the next epoch the pool distribution is the anchor's newest stake snapshot (`mark`),
-  *     which the boundary only rotates into place, and the epoch nonce follows from the header
-  *     state. The TPraos parameters (`d`, extra entropy) are those the pending update proposals
-  *     adopt at the boundary. The envelope checks that depend on the protocol parameters are left
-  *     to the block's own validation for a header of a later epoch, because the boundary (which can
-  *     enact a protocol-version change) is not run for a forecast.
-  *
-  * Byron headers and the first Shelley header after a Byron prefix are reported
-  * [[Outcome.Unchecked]]: the Byron rules are applied with the block, and the Shelley ledger does
-  * not exist before that block is applied.
-  *
-  * Verdicts of the signature checks come from `config.verdicts`; the node gives it a view that
-  * keeps them for the block's own validation ([[VerificationCache.forHeaders]]), so nothing is
-  * verified twice.
+/** The Shelley ledger forecast shared by every header-validation mode. Parameters and envelope
+  * checks come from the same forecast ledger view, including at an epoch boundary. The native
+  * forecast horizon is exclusive; a missing forecast waits for ledger progress rather than
+  * accepting an unchecked header.
   */
-final class NodeHeaderRules[S](config: PraosConfig, globals: LedgerGlobals)(using
-    read: ChainRead[S]
-) extends HeaderRules[S, ProtocolState]:
-
-  def at(state: S): ProtocolState = state.protocol
-
-  def validate(
-      anchor: S,
-      tip: Option[BlockRef],
-      prev: ProtocolState,
-      header: Header
-  ): Outcome[ProtocolState] =
-    config.checkpoints
-      .validate(header)
-      .fold(
-        error => Outcome.Invalid(HeaderError.Envelope(error)),
-        _ => validateUnchecked(anchor, tip, prev, header)
-      )
-
-  private def validateUnchecked(
-      anchor: S,
-      tip: Option[BlockRef],
-      prev: ProtocolState,
-      header: Header
-  ): Outcome[ProtocolState] = header match
-    case _: Header.Byron =>
-      Outcome.Unchecked(HeaderRules.UncheckedReason.Byron, Some(prev))
-    case h: Header.Shelley =>
-      val byron = anchor.consensus.byron
-      if byron.ledger.isDefined && byron.firstShelleyEpoch.isEmpty then
-        // the anchor is a Byron state: no Shelley ledger to forecast from
-        if tip.exists(t => h.prevHash.contains(t.hash)) then
-          Outcome.Unchecked(
-            HeaderRules.UncheckedReason.FirstShelley,
-            None
-          )
-        else Outcome.Later(HeaderRules.ForecastReason.ShelleyLedgerNotReady)
-      else
-        anchor.ledger(tip) match
-          case Left(refused) =>
-            Outcome.Invalid(HeaderError.Structure(HeaderStructureProblem.LedgerRead(refused)))
-          case Right(None) =>
-            Outcome.Later(HeaderRules.ForecastReason.ShelleyLedgerNotReady)
-          case Right(Some(InEra.Of(_, ledger))) => shelley(anchor, ledger, tip, prev, h)
-
-  private[node] def shelley[E <: EraTag](
-      anchor: S,
-      ledger: EraRead[E],
-      tip: Option[BlockRef],
-      prev: ProtocolState,
-      h: Header.Shelley,
-      strictEnvelope: Boolean = false,
-      forecastLimit: Option[BigInt] = None,
-      genericEnvelope: Either[HeaderError, Unit] = Right(())
-  ): Outcome[ProtocolState] =
-    prepareShelley(
-      anchor,
-      ledger,
-      tip,
-      prev,
-      h,
-      strictEnvelope,
-      forecastLimit,
-      genericEnvelope
-    ).result
-
+private[node] final class ShelleyHeaderForecast[S](config: PraosConfig, globals: LedgerGlobals)(
+    using read: ChainRead[S]
+):
   private[node] def prepareShelley[E <: EraTag](
       anchor: S,
       ledger: EraRead[E],
       tip: Option[BlockRef],
       prev: ProtocolState,
       h: Header.Shelley,
-      strictEnvelope: Boolean = false,
       forecastLimit: Option[BigInt] = None,
       genericEnvelope: Either[HeaderError, Unit] = Right(())
   ): HeaderRules.Prepared[ProtocolState] =
@@ -130,10 +40,9 @@ final class NodeHeaderRules[S](config: PraosConfig, globals: LedgerGlobals)(usin
       HeaderRules.Prepared.Invalid(
         HeaderError.Structure(HeaderStructureProblem.EpochPrecedes(epoch, ledgerEpoch))
       )
-    else if (strictEnvelope && h.slot >= forecastLimit.getOrElse(
+    else if h.slot >= forecastLimit.getOrElse(
         tip.fold(geometry.stabilityWindow)(t => t.slot + 1 + geometry.stabilityWindow)
-      )) || (!strictEnvelope && tip.isDefined && h.slot > tipSlot + geometry.stabilityWindow) ||
-      epoch > ledgerEpoch + 1
+      ) || epoch > ledgerEpoch + 1
     then
       HeaderRules.Prepared.Unknown(
         HeaderRules.ForecastReason.Horizon(h.slot, tipSlot)
@@ -141,25 +50,23 @@ final class NodeHeaderRules[S](config: PraosConfig, globals: LedgerGlobals)(usin
     else
       val sameEpoch = epoch == ledgerEpoch
       val params =
-        if sameEpoch || (!strictEnvelope && ledgerParams.protocolMajor >= 9) then ledgerParams
+        if sameEpoch then ledgerParams
         else ledger.paramsNextEpoch(glob)
       val pools = ledger.leaderPools(nextEpoch = !sameEpoch)
       val envelope =
-        if sameEpoch || strictEnvelope then
-          cfg.forks
-            .check(
-              h.era,
-              epoch,
-              h.protocolVersion._1,
-              params.protocolMajor,
-              h.raw.size,
-              params.maxBlockHeaderSize,
-              h.bodySize,
-              params.maxBlockBodySize,
-              mainnet = glob.network == 1
-            )
-            .leftMap(HeaderError.Envelope(_))
-        else Right(())
+        cfg.forks
+          .check(
+            h.era,
+            epoch,
+            h.protocolVersion._1,
+            params.protocolMajor,
+            h.raw.size,
+            params.maxBlockHeaderSize,
+            h.bodySize,
+            params.maxBlockBodySize,
+            mainnet = glob.network == 1
+          )
+          .leftMap(HeaderError.Envelope(_))
       val nonceWindow =
         if h.era.ordinal >= Era.Conway.ordinal then geometry.randomnessStabilisationWindow
         else geometry.stabilityWindow
@@ -192,7 +99,3 @@ final class NodeHeaderRules[S](config: PraosConfig, globals: LedgerGlobals)(usin
           }
         checked.fold(Outcome.Invalid(_), Outcome.Valid(_))
       )
-
-object NodeHeaderRules:
-  def apply[S: ChainRead](config: PraosConfig, globals: LedgerGlobals): NodeHeaderRules[S] =
-    new NodeHeaderRules[S](config, globals)

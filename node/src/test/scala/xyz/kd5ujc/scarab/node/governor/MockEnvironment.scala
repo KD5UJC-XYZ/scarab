@@ -259,7 +259,7 @@ object MockEnvironment:
             generation match
               case _ => establish(peer, mode, provenance)
 
-          def activate(peer: Peer) =
+          def activate(peer: Peer, trust: xyz.kd5ujc.scarab.network.ChainSyncTimeouts.PeerTrust) =
             note(Seen.Env(EnvEvent.Activate(peer))) *> IO.sleep(1.second) *>
               statuses.get.map(_.get(peer)).flatMap {
                 case None => IO.pure(Some(FailureClass.Transient))
@@ -314,7 +314,7 @@ object MockEnvironment:
             note(Seen.Env(EnvEvent.BigLedgerResult(env.bigLedgerPeers))) *>
               supervisor
                 .supervise(IO.sleep(60.seconds) *> note(Seen.Env(EnvEvent.BigLedgerTtl)))
-                .as(Some(env.bigLedgerPeers -> 60.seconds))
+                .as(Some(BigLedgerRoots.Ledger(env.bigLedgerPeers) -> 60.seconds))
 
         given Stateful[IO, GovernorState[Peer]] = new Stateful[IO, GovernorState[Peer]]:
           def monad = cats.Monad[IO]

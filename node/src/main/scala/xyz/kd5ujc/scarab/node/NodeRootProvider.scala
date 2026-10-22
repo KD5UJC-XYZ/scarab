@@ -19,8 +19,9 @@ import xyz.kd5ujc.scarab.network.selection.Rng
   *   - otherwise the ledger peers the worker draws ([[LedgerPeersWorker]]); when the ledger gives
   *     none (ledger peers off, the ledger not yet at the `useLedgerAfterSlot` slot, or no pool with
   *     a relay) the public roots of the topology;
-  *   - the request for big ledger peers is answered from the big ledger map only, and with nothing
-  *     when there is none (the reference then offers the public roots, which are known already).
+  *   - a big-ledger request returns the big-ledger map, or configured public roots classified as
+  *     ordinary extras when the worker falls back. Fallback discovery never increases big-ledger
+  *     counts.
   *
   * A ledger relay is a peer address: an IP address, host name, or SRV name resolved by [[PeerDns]].
   * The answer of the ledger is good for [[LedgerPeerStake.ReRequestInterval]], the time the
@@ -47,8 +48,8 @@ object NodeRootProvider:
     case Host(peer: Addr)
     case Service(domain: DnsName, advertise: Boolean)
 
-  /** Haskell clips positive DNS answers to this upper bound. */
-  val ConfiguredTtl: FiniteDuration = 900.seconds
+  /** Roots supplied without DNS records use native `ttlForResults []`. */
+  val ConfiguredTtl: FiniteDuration = PeerDns.ttlForResults(Vector.empty)
 
   /** The peer address of a ledger relay, none for one this node does not connect to: an SRV domain,
     * a name that is not a host name, the unspecified address.
@@ -93,9 +94,19 @@ object NodeRootProvider:
     def requestBigLedger(max: Int) =
       worker.request[LedgerKind.Big](max).map {
         case LedgerAnswer.FallBackToPublicRoots() =>
-          Some(Set.empty[Addr] -> LedgerPeerStake.ReRequestInterval)
+          Some(
+            BigLedgerRoots.fromLedger(
+              None,
+              PublicRoots(public, Set.empty[Addr], advertise = advertise)
+            ) -> ConfiguredTtl
+          )
         case LedgerAnswer.Picked(relays, _) =>
-          Some(relays.flatMap(address).toSet -> LedgerPeerStake.ReRequestInterval)
+          Some(
+            BigLedgerRoots.fromLedger(
+              Some(relays.flatMap(address).toSet),
+              PublicRoots(Set.empty[Addr], Set.empty[Addr])
+            ) -> LedgerPeerStake.ReRequestInterval
+          )
       }
 
   /** Read one complete topology/worker snapshot for each request. Reload swaps this pair only after
@@ -144,9 +155,25 @@ object NodeRootProvider:
         runtime.worker.request[LedgerKind.Big](max).flatMap {
           case LedgerAnswer.FallBackToPublicRoots() =>
             resolveRoots(runtime.roots.public, runtime.roots.publicSrv, dns, rng)
-              .map { case (addresses, ttl, _) => Some(addresses -> ttl) }
+              .map { case (addresses, ttl, source) =>
+                Some(
+                  BigLedgerRoots.fromLedger(
+                    None,
+                    PublicRoots(
+                      addresses,
+                      Set.empty[Addr],
+                      advertise = advertiseFromSources(source, runtime.roots.advertise)
+                    )
+                  ) -> ttl
+                )
+              }
           case LedgerAnswer.Picked(relays, _) =>
-            resolveLedger(relays, dns, rng).map(Some(_))
+            resolveLedger(relays, dns, rng).map { case (addresses, ttl) =>
+              Some(
+                BigLedgerRoots
+                  .fromLedger(Some(addresses), PublicRoots(Set.empty[Addr], Set.empty[Addr])) -> ttl
+              )
+            }
         }
       }
 

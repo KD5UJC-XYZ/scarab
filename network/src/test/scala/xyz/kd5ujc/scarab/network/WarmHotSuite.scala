@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.network
 
 import cats.effect.{Deferred, IO, Ref, Resource}
+import cats.effect.testkit.TestControl
 import cats.syntax.all.*
 import fs2.Stream
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -53,7 +54,9 @@ class WarmHotSuite extends FailsOnUncaught:
     def awaitAfter(ticket: Long) = IO.never
     def body(id: Bytes) = IO.pure(None)
 
-  private def warm(duplex: Boolean = false)(using Net): Resource[IO, WarmConnection[IO, Bytes]] =
+  private def warm(duplex: Boolean = false, settings: NodeToNode.Settings = NodeToNode.Settings())(
+      using Net
+  ): Resource[IO, WarmConnection[IO, Bytes]] =
     Resource
       .eval(Bearer.inMemory[IO]())
       .flatMap { (ours, theirs) =>
@@ -63,6 +66,7 @@ class WarmHotSuite extends FailsOnUncaught:
               ours,
               magic,
               ChainSyncFixtures.rawItem,
+              settings = settings,
               serve = Option.when(duplex)(handlers)
             )
           )
@@ -216,3 +220,67 @@ class WarmHotSuite extends FailsOnUncaught:
         }
       )
     ).map(r => assertEquals(r, Right(false)))
+
+  for (name, policy, trust, horizon, timesOut) <- List(
+      (
+        "local trustable activation",
+        ChainSyncTimeouts.Policy.Reference(ChainSyncTimeouts.PeerTrust.Untrustable),
+        Some(ChainSyncTimeouts.PeerTrust.Trustable),
+        912.seconds,
+        false
+      ),
+      (
+        "untrustable activation clears a reused trustable profile",
+        ChainSyncTimeouts.Policy.Reference(ChainSyncTimeouts.PeerTrust.Trustable),
+        None,
+        912.seconds,
+        true
+      ),
+      (
+        "explicit fixed profile survives trustable activation",
+        ChainSyncTimeouts.Policy.Fixed(ProtocolDeadline.After(2.seconds)),
+        Some(ChainSyncTimeouts.PeerTrust.Trustable),
+        3.seconds,
+        true
+      )
+    )
+  do
+    test(s"warm ChainSync deadline routing: $name") {
+      TestControl.executeEmbed {
+        for
+          awaiting <- Deferred[IO, Unit]
+          exercise = typed {
+            warm(settings =
+              NodeToNode.Settings(chainSync = ChainSyncClient.Settings(mustReply = policy))
+            ).use { connection =>
+              trust.fold(connection.activate())(peer => connection.activate(peerTrust = peer)).use {
+                active =>
+                  active.chainSync
+                    .observe(new ChainSyncClient.Observer[IO]:
+                      def awaitReply = awaiting.complete(()).void
+                      def reply = IO.unit)
+                    .use { _ =>
+                      active.chainSync.findIntersect(Vector(Point.Origin)) *>
+                        List.fill(3)(()).traverse_(_ => active.chainSync.requestNext) *>
+                        active.chainSync.requestNext
+                    }
+              }
+            }
+          }
+          outcome <- IO.race(exercise, awaiting.get *> IO.sleep(horizon))
+        yield
+          if timesOut then
+            assertEquals(
+              outcome,
+              Left(
+                Left(
+                  NetworkError.Timeout(
+                    Protocols.ChainSync,
+                    xyz.kd5ujc.scarab.protocol.ChainSync.State.NextMustReply.toString
+                  )
+                )
+              )
+            )
+          else assertEquals(outcome, Right(()))
+      }
+    }

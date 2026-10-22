@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.network
 
 import cats.effect.syntax.all.*
 import cats.effect.{Async, Ref, Resource, Temporal}
+import cats.effect.std.Random
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -96,7 +97,8 @@ object ChainSyncRuntime:
       limits: ChainSync.Limits = ChainSync.Limits(),
       intersectTimeout: FiniteDuration = 10.seconds,
       canAwaitTimeout: FiniteDuration = 10.seconds,
-      mustReplyTimeout: FiniteDuration = 300.seconds,
+      mustReply: ChainSyncTimeouts.Policy =
+        ChainSyncTimeouts.Policy.Reference(ChainSyncTimeouts.PeerTrust.Untrustable),
       timeouts: Option[Timeouts] = None
   )
 
@@ -110,14 +112,14 @@ object ChainSyncRuntime:
   val NodeToClient: ServerSettings =
     ServerSettings(ChainSync.Limits.NodeToClient, protocol = Protocols.LocalChainSync)
 
-  def client[F[_]: Temporal, Q, T, P](
+  def client[F[_]: Async, Q, T, P](
       channel: MuxChannel[F],
       point: ChainSyncEngine.PointCodec[Q],
       tip: ChainSyncEngine.TipCodec[T],
       payload: ChainSyncEngine.PayloadCodec[P],
       settings: ClientSettings = ClientSettings()
   ): F[Client[F, Q, T, P]] =
-    val F = Temporal[F]
+    val F = Async[F]
     val id = Protocols.ChainSync
     def illegal[A](detail: NetworkError.Violation)(using Raise[F, NetworkError]): F[A] =
       NetworkError.IllegalTransition(id, detail).raise[F, A]
@@ -128,8 +130,9 @@ object ChainSyncRuntime:
       Ref.of[F, State](State.Idle),
       Ref.of[F, Boolean](false),
       Ref.of[F, Boolean](false),
-      Ref.of[F, Option[ChainSyncClient.Observer[F]]](None)
-    ).mapN { (state, awaiting, busy, observer) =>
+      Ref.of[F, Option[ChainSyncClient.Observer[F]]](None),
+      Random.scalaUtilRandom[F]
+    ).mapN { (state, awaiting, busy, observer, random) =>
       def send(message: Message[Q, T, P])(using Raise[F, NetworkError]): F[Unit] =
         state.get.flatMap { current =>
           val next = ChainSyncEngine.transition(current, Role.Client, message)
@@ -141,23 +144,9 @@ object ChainSyncRuntime:
 
       def receiveAt(current: State)(using Raise[F, NetworkError]): F[Message[Q, T, P]] =
         val limit = current match
-          case State.Intersect =>
-            F.pure(
-              settings.timeouts.fold[ProtocolDeadline](
-                ProtocolDeadline.After(settings.intersectTimeout)
-              )(_.intersect)
-            )
-          case State.NextCanAwait =>
-            F.pure(
-              settings.timeouts.fold[ProtocolDeadline](
-                ProtocolDeadline.After(settings.canAwaitTimeout)
-              )(_.canAwait)
-            )
-          case State.NextMustReply =>
-            F.pure(
-              settings.timeouts.fold[ProtocolDeadline](
-                ProtocolDeadline.After(settings.mustReplyTimeout)
-              )(_.mustReply)
+          case State.Intersect | State.NextCanAwait | State.NextMustReply =>
+            ChainSyncTimeouts.next(current, settings)(
+              random.nextLong.map(ChainSyncTimeouts.sampledSeconds)
             )
           case other => illegal[ProtocolDeadline](RuntimeViolation.ReplyNotExpected(other))
         limit.flatMap { wait =>

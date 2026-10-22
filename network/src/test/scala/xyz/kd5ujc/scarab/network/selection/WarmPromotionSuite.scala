@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.network.selection
 
 import munit.FunSuite
+import xyz.kd5ujc.scarab.network.ChainSyncTimeouts.PeerTrust
 import scala.collection.immutable.SortedSet
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
@@ -18,11 +19,28 @@ class WarmPromotionSuite extends FunSuite:
   private def warm(origin: Origin, tepid: Boolean): PeerRecord =
     PeerRecord.cold(origin).copy(status = Status.Warm(now), tepid = tepid)
 
-  for local <- List(false, true); big <- List(false, true) if !local || !big do
-    test(s"warm activation weights just-demoted peers: local=$local bigLedger=$big") {
+  for
+    local <- List(false, true)
+    big <- List(false, true) if !local || !big
+    trustable <- (if local then List(false, true) else List(false))
+  do
+    test(
+      s"warm activation weights just-demoted peers: local=$local bigLedger=$big trustable=$trustable"
+    ) {
       val roots =
         if local then
-          LocalRoots.fromGroups(List(RootGroupSpec(1, 2, List(1 -> config, 2 -> config))))
+          LocalRoots.fromGroups(
+            List(
+              RootGroupSpec(
+                1,
+                2,
+                List(
+                  1 -> config.copy(trustable = trustable),
+                  2 -> config.copy(trustable = trustable)
+                )
+              )
+            )
+          )
         else LocalRoots.empty[Int]
       val origin = if local then Origin.Local else if big then Origin.BigLedger else Origin.Other
       val ts = targets(big)
@@ -34,7 +52,10 @@ class WarmPromotionSuite extends FunSuite:
       )
       PeerSelection.decide(st, now) match
         case Step.Act(d) =>
-          assertEquals(d.jobs, List(Job.Activate(2)))
+          assertEquals(
+            d.jobs,
+            List(Job.Activate(2, if trustable then PeerTrust.Trustable else PeerTrust.Untrustable))
+          )
           assertEquals(d.state.peers(1).status, Status.Warm(now))
           assertEquals(d.state.peers(2).status, Status.Activating)
           assertEquals(GovernorState.invariant(d.state), Nil)
@@ -73,4 +94,28 @@ class WarmPromotionSuite extends FunSuite:
     PeerSelection.decide(completed, now) match
       case Step.Act(d) => assertEquals(d.jobs, List(Job.Activate(2)))
       case other       => fail(s"expected reactivation after churn, got $other")
+  }
+
+  test(
+    "activation captures current local-root trust without freezing it at connection establishment"
+  ) {
+    def activation(trustable: Boolean): Job[Int] =
+      val roots = LocalRoots.fromGroups(
+        List(RootGroupSpec(1, 1, List(1 -> config.copy(trustable = trustable))))
+      )
+      val ts = targets(false)
+      val initial = GovernorState.initial[Int](1L, roots, ts, Sensitivity.initial(false))
+      val state = initial.copy(
+        targets = ts,
+        localRoots = roots,
+        peers = initial.peers.updated(1, warm(Origin.Local, false))
+      )
+      PeerSelection.decide(state, now) match
+        case Step.Act(decision) => decision.jobs.headOption.getOrElse(fail("activation job"))
+        case other              => fail(s"expected activation, got $other")
+    val queued = activation(true)
+    val afterReload = activation(false)
+    assertEquals(queued, Job.Activate(1, PeerTrust.Trustable))
+    assertEquals(afterReload, Job.Activate(1, PeerTrust.Untrustable))
+    assertEquals(queued, Job.Activate(1, PeerTrust.Trustable))
   }

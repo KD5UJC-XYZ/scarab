@@ -12,6 +12,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ConnectionState, NtNHeader}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.network.*
+import xyz.kd5ujc.scarab.network.selection.PeerMetrics
 import xyz.kd5ujc.scarab.node.forge.ForgedChain
 import xyz.kd5ujc.scarab.node.relay.ChainServer
 import scala.concurrent.duration.*
@@ -27,7 +28,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
   private val remote: SocketAddress[IpAddress] =
     SocketAddress(ip"10.1.2.3", port"3001")
 
-  private lazy val forged: ForgedChain = ForgedChain.forge(5000 until 5060).unsafeRunSync()
+  private lazy val forged: ForgedChain = ForgedChain.forge(0 until 60, epoch = 0).unsafeRunSync()
 
   private def flipInside(raw: Bytes, header: Header.Shelley): Bytes =
     // the KES signature is a 448-byte string that appears verbatim in the block
@@ -102,7 +103,8 @@ class InboundGovernorSuite extends FailsOnUncaught:
       val chain: Ref[IO, VolatileChain[MirrorState]],
       val manager: ConnectionManager[IO],
       val governor: InboundGovernor[IO],
-      val applied: Ref[IO, Vector[Bytes]]
+      val applied: Ref[IO, Vector[Bytes]],
+      val metrics: Ref[IO, PeerMetrics[PeerNetwork.Addr]]
   )
 
   private def local(
@@ -149,8 +151,9 @@ class InboundGovernorSuite extends FailsOnUncaught:
         }
         .rescue(e => IO(fail(e.message)))
       manager <- ConnectionManager.create[IO](ConnectionManager.Limits(maxInbound = 4))
+      metrics <- Ref.of[IO, PeerMetrics[PeerNetwork.Addr]](PeerMetrics.empty())
       validating = Option.when(headerFirst)(
-        HeaderCheck.forChain[IO, MirrorState, xyz.kd5ujc.scarab.consensus.state.ProtocolState](
+        HeaderCheck.forChain[IO, MirrorState, NodeHeaderState](
           NodeHeaderRules[MirrorState](ForgedChain.config, ForgedChain.globals),
           Compute.inline[IO]
         )
@@ -207,9 +210,10 @@ class InboundGovernorSuite extends FailsOnUncaught:
         transactions = transactions,
         events = events,
         pool = pool,
-        heightSnapshot = heights
+        heightSnapshot = heights,
+        peerMetrics = Some(metrics)
       )
-    yield new Local(ref, manager, governor, applied)
+    yield new Local(ref, manager, governor, applied, metrics)
 
   /** The remote peer dials `us` (duplex when it serves `remoteNode` 's chain, else initiator-only);
     * `during` runs while the connection is up and is given the time at which our side ended. When
@@ -313,7 +317,11 @@ class InboundGovernorSuite extends FailsOnUncaught:
       ranges <- remoteNode.ranges.get
       applied <- us.applied.get
       after <- us.manager.snapshot
+      metrics <- us.metrics.get
     yield
+      assertEquals(metrics.upstreamness.get(remote), Some(forged.headers.size))
+      assertEquals(metrics.fetchynessBlocks.get(remote), Some(forged.headers.size))
+      assertEquals(metrics.fetchynessBytes.get(remote), Some(forged.raws.map(_.size.toLong).sum))
       assertEquals(tip, last.point)
       assertEquals(table.counters, ConnectionState.Counters(1, 0, 1, 1))
       assertEquals(
@@ -345,10 +353,12 @@ class InboundGovernorSuite extends FailsOnUncaught:
       chain <- us.chain.get
       sessions <- us.governor.sessions
       table <- us.manager.snapshot
+      metrics <- us.metrics.get
     yield
       val failure = peerFailure(outcome._2)
       assert(failure.isInstanceOf[PeerError.InvalidHeader])
       assertEquals(ranges, Vector.empty[(Point, Point)])
+      assertEquals(metrics.sizes, (0, 0))
       assertEquals(chain.tip, ChainSync.Point.Origin)
       sessions.head.ended match
         case Some(InboundGovernor.SessionFailure.Peer(error)) => assert(error eq failure)
@@ -439,9 +449,11 @@ class InboundGovernorSuite extends FailsOnUncaught:
       }
       sessions <- us.governor.sessions
       chain <- us.chain.get
+      metrics <- us.metrics.get
     yield
       assertEquals(outcome._1.counters, ConnectionState.Counters(1, 0, 0, 1))
       assertEquals(sessions, Vector.empty)
+      assertEquals(metrics.sizes, (0, 0))
       assertEquals(chain.tip, ChainSync.Point.Origin)
   }
 

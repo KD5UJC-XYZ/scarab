@@ -5,12 +5,13 @@ import xyz.kd5ujc.scarab.ledger.{Header, NodeError, PeerError, Points, Validatio
 import cats.effect.{Async, Ref, Resource}
 import cats.effect.syntax.all.*
 import cats.effect.std.Mutex
-import cats.mtl.{Handle, Raise}
+import cats.mtl.{Handle, Raise, Stateful}
 import cats.syntax.all.*
 import scala.concurrent.duration.*
 import com.comcast.ip4s.{IpAddress, SocketAddress}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ConnectionState, NtNHeader}
 import xyz.kd5ujc.scarab.network.*
+import xyz.kd5ujc.scarab.network.selection.PeerMetrics
 
 /** What happened on an inbound connection, for the log. */
 enum InboundEvent:
@@ -70,6 +71,7 @@ final class InboundGovernor[F[_]: Async] private (
     transactions: Option[TxSubmissionClient.Source[F]],
     events: Option[InboundEvents[F]],
     observe: Option[Peer.Observation => F[Unit]],
+    peerMetrics: Option[Ref[F, PeerMetrics[PeerNetwork.Addr]]],
     sharing: Option[PeerSharingRuntime[F]],
     pool: Option[BlockPool[F]],
     fetchMode: Option[F[xyz.kd5ujc.scarab.network.selection.FetchMode]],
@@ -85,6 +87,12 @@ final class InboundGovernor[F[_]: Async] private (
   import Peer.networkAsPeer
   private def emit(remote: SocketAddress[IpAddress], event: InboundEvent): F[Unit] =
     events.traverse_(_.emit(remote.toString, event))
+
+  private def metered(remote: SocketAddress[IpAddress]): Option[Peer.Observation => F[Unit]] =
+    peerMetrics.fold(observe) { board =>
+      given Stateful[F, PeerMetrics[PeerNetwork.Addr]] = RefStateful(board)
+      Some(PeerMetricsObserver[F, PeerNetwork.Addr](remote, observe))
+    }
 
   /** Sessions of the connections accepted so far (the newest ones, ended or not). */
   def sessions: F[Vector[InboundGovernor.Session]] =
@@ -364,7 +372,7 @@ final class InboundGovernor[F[_]: Async] private (
                 prepare,
                 heightSnapshot,
                 bound.fold(headers)(value => headers.map(_.withPatience(value.patience))),
-                observe,
+                metered(remote),
                 pool,
                 fetchMode,
                 invalidCachedBlock = Some(rejectedCachedBlock(source, _)),
@@ -576,7 +584,8 @@ object InboundGovernor:
       pool: Option[BlockPool[F]] = None,
       fetchMode: Option[F[xyz.kd5ujc.scarab.network.selection.FetchMode]] = None,
       genesis: Option[GenesisRuntime[F]] = None,
-      receivedBody: Option[Peer.BodySink[F]] = None
+      receivedBody: Option[Peer.BodySink[F]] = None,
+      peerMetrics: Option[Ref[F, PeerMetrics[PeerNetwork.Addr]]] = None
   )(using node: Handle[F, NodeError], repromotion: RepromotionWait[F]): F[InboundGovernor[F]] =
     (
       Ref.of[F, Map[String, Session]](Map.empty),
@@ -598,6 +607,7 @@ object InboundGovernor:
         transactions,
         events,
         observe,
+        peerMetrics,
         sharing,
         Some(sharedPool),
         fetchMode,

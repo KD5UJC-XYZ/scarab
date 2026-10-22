@@ -43,9 +43,9 @@ class ChurnSuite extends ScalaCheckSuite:
 
   // ------------------------------------------------------------------ the round
 
-  test("a round has twelve steps in the reference's order, six without big ledger peers") {
+  test("a round has twelve steps regardless of ledger peer source configuration") {
     assertEquals(
-      Churn.round(bigLedger = true),
+      Churn.round,
       List(
         DecreaseActiveBig,
         IncreaseActiveBig,
@@ -61,25 +61,14 @@ class ChurnSuite extends ScalaCheckSuite:
         IncreaseEstablished
       )
     )
-    assertEquals(
-      Churn.round(bigLedger = false),
-      List(
-        DecreaseActive,
-        IncreaseActive,
-        DecreaseEstablished,
-        DecreaseKnown,
-        IncreaseKnown,
-        IncreaseEstablished
-      )
-    )
-    assertEquals(Churn.round(true).map(_.number), (1 to 12).toList)
+    assertEquals(Churn.round.map(_.number), (1 to 12).toList)
   }
 
   test("the timeouts of the steps (Churn.hs 568-650, Policies.hs 31-50)") {
     val t = Churn.Timeouts()
     // Each half-round uses: deactivate, short, 1s + close, short, 2 * peerRequest + short, establish.
     assertEquals(
-      Churn.round(true).map(_.timeout(t).toSeconds),
+      Churn.round.map(_.timeout(t).toSeconds),
       List(300L, 60, 121, 60, 80, 60, 300, 60, 121, 60, 80, 60)
     )
   }
@@ -95,11 +84,9 @@ class ChurnSuite extends ScalaCheckSuite:
   /** Run a round: every step achieves `achieved` peers. */
   private def walk(
       c: Churn.Context,
-      achieved: Int,
-      bigLedger: Boolean = true
+      achieved: Int
   ): List[(Churn.Step, Targets)] =
-    Churn
-      .round(bigLedger)
+    Churn.round
       .foldLeft((List.empty[(Churn.Step, Targets)], Churn.steady(c))) {
         case ((done, current), step) =>
           val next = Churn.apply(step, c, current, _ => achieved)
@@ -218,19 +205,22 @@ class ChurnSuite extends ScalaCheckSuite:
 
   private val kinds = Gen.oneOf(Regime.Kind.values.toList)
 
-  property(
-    "every step of a round yields sane targets, for any sane base and any amounts achieved"
-  ) {
-    forAll(saneTargets, kinds, Gen.choose(0, 40), Gen.listOfN(12, Gen.choose(0, 60))) {
-      (base, kind, localHot, amounts) =>
-        val c = Churn.Context(kind, localHot, base)
-        val achieved = Churn.round(true).zip(amounts).toMap
-        val sane =
-          Churn.round(true).foldLeft(Right(Churn.steady(c)): Either[Targets.Problem, Targets]) {
-            (acc, step) => acc.flatMap(current => Churn.plan(step, c, current, achieved))
-          }
-        sane.isRight :| s"$sane"
-    }
+  test("native raw proposals preserve invalid targets rather than clamping them") {
+    val zero = Churn.Proposal.from(Targets.zero)
+    val sync = ctx(Regime.Kind.PraosSync, base = Targets.zero)
+    val decreased = Churn.planRaw(DecreaseActive, sync, zero, _ => 0)
+    assertEquals(decreased.active, -1)
+    assertEquals(decreased.validated, Left(Targets.Problem.Negative(Targets.Kind.Ordinary)))
+    val rootBase = Targets.validated(100, 100, 30, 20, 0, 0, 0).toOption.get
+    val root = Churn.planRaw(
+      DecreaseKnown,
+      ctx(Regime.Kind.Default, base = rootBase),
+      Churn.Proposal.from(rootBase),
+      _ => 70
+    )
+    assertEquals(root.root, 86)
+    assertEquals(root.known, 30)
+    assertEquals(root.validated, Left(Targets.Problem.NotNested(Targets.Kind.Ordinary)))
   }
 
   property("a round ends at the targets it began with (after the head start), in every regime") {
@@ -276,14 +266,14 @@ class ChurnSuite extends ScalaCheckSuite:
   }
 
   property(
-    "the sleep subtracts the time the round took, never goes negative, and is a function of the seed"
+    "the sleep subtracts the time the round took, retains signed waits, and is a function of the seed"
   ) {
     forAll(Gen.choose(0L, 10000L), Gen.choose(0L, 7200L), Gen.oneOf(FetchMode.values.toList)) {
       (seed, took, mode) =>
         val (a, next) = Churn.delay(mode, Churn.Intervals(), took.seconds, Rng(seed))
         val (b, _) = Churn.delay(mode, Churn.Intervals(), took.seconds, Rng(seed))
         val (whole, _) = Churn.delay(mode, Churn.Intervals(), Duration.Zero, Rng(seed))
-        a == b && a >= Duration.Zero && a == (whole - took.seconds).max(Duration.Zero) &&
+        a == b && a == whole - took.seconds &&
         next != Rng(seed)
     }
   }

@@ -64,7 +64,7 @@ class ChainSyncRuntimeSuite extends FailsOnUncaught:
             ChainSyncRuntime.ClientSettings(
               intersectTimeout = 1.second,
               canAwaitTimeout = 1.second,
-              mustReplyTimeout = 1.second
+              mustReply = ChainSyncTimeouts.Policy.Fixed(ProtocolDeadline.After(1.second))
             )
           )
           intersection <- client.findIntersect(Vector(chainPoint))
