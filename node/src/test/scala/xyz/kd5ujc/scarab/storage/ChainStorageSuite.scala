@@ -832,6 +832,50 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
+  test(
+    "resume drops selected volatile records whose slot, height or boundary metadata disagrees with originals"
+  ) {
+    enum Field:
+      case Slot, Height, Boundary
+    tempDir.use { root =>
+      Field.values.toVector.traverse_ { field =>
+        val dir = root / field.toString
+        for
+          _ <- files.createDirectories(dir)
+          first <- session(dir, 500)
+          original = first.chain.blocks.lastOption.getOrElse(fail("expected a volatile suffix"))._1
+          prefix = first.chain.blocks
+            .dropRight(1)
+            .lastOption
+            .fold(first.chain.anchor.point)(_._1.point)
+          inconsistent = field match
+            case Field.Slot     => original.copy(slot = original.slot + 1)
+            case Field.Height   => original.copy(blockNo = original.blockNo + 1)
+            case Field.Boundary => original.copy(boundary = !original.boundary)
+          _ <- Handle
+            .allow[StorageError] {
+              VolatileStore.open[IO](dir / "volatile", 8).use { (store, _) =>
+                store.rollback(prefix) *> store.append(inconsistent, raws(499))
+              }
+            }
+            .rescue(error => IO.raiseError(new AssertionError(error.message)))
+          restarted <- session(dir, 500, selectionOnStartup = true)
+          again <- session(dir, 500, selectionOnStartup = true)
+          _ <- IO {
+            assertEquals(restarted.resumed, k - 1, field.toString)
+            assertEquals(restarted.dropped, 1, field.toString)
+            assertEquals(restarted.startupReplayed, 0, field.toString)
+            assertEquals(restarted.chain, first.chain, field.toString)
+            assertEquals(again.resumed, k, field.toString)
+            assertEquals(again.dropped, 0, field.toString)
+            assertEquals(again.startupReplayed, 0, field.toString)
+            assertEquals(again.chain, first.chain, field.toString)
+          }
+        yield ()
+      }
+    }
+  }
+
   test("network identity: recorded at creation, accepted on reopen, refused on mismatch") {
     tempDir.use { dir =>
       val id = setup.identity

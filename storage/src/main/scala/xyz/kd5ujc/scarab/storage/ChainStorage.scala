@@ -412,7 +412,10 @@ object ChainStorage:
           case Left(_) => F.pure(done)
           case Right(block) =>
             val header = block.header
-            if header.hash != ref.hash then F.pure(done)
+            // The selected journal is a recovery hint. Its complete identity must agree with the
+            // original header before its metadata can become the resumed public chain.
+            val actual = BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary)
+            if actual != ref then F.pure(done)
             else
               handle.attempt(rules(chain.state, header, raw)).flatMap {
                 case Left(_) => F.pure(done)
