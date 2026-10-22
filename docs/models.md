@@ -74,7 +74,6 @@ One file comes from a fourth repository: the Blueprint's `leios-fetch/messages.c
 LeiosFetch CDDL since #2416, merged 2026-10-20, not pinned: it says `tx = #6.24(bytes)`); its `base` import is the consensus module
 plus `word16` (`overrides/base-word16.cddl`) and its `dijkstra` include is the era module, so the generated reader decodes each
 transaction as `dijkstra.block_transaction`. The hand-written codec carries the bytes inside the tag without reading them.
-The map occurrence `{ + k => v }` is enforced (`Codec.pairs` takes the bounds, as `Codec.vec` does).
 
 **Modules and pragmas.** The ouroboros specs use `;# import <module> as <alias>` and `;# include …` to bind the prefix
 (`base.point`, `v14.nodeToNodeVersionData`, `conway.header`). `models.conf` names each CDDL *module*, its Scala
