@@ -31,7 +31,7 @@
       "argv": [
         "git",
         "-C",
-        "/home/euler/repos/cardano-scala-lab/.workspace/data/2026-10-15-upstream-pinned/ouroboros-consensus",
+        ".workspace/data/2026-10-15-upstream-pinned/ouroboros-consensus",
         "rev-parse",
         "HEAD"
       ],
@@ -42,7 +42,7 @@
       "argv": [
         "git",
         "-C",
-        "/home/euler/repos/cardano-scala-lab/.workspace/data/2026-10-15-upstream-pinned/ouroboros-consensus",
+        ".workspace/data/2026-10-15-upstream-pinned/ouroboros-consensus",
         "archive",
         "--format=tar",
         "-o",

@@ -421,7 +421,7 @@
     "fixtures/reference/byron-params/manifest.json": "1360b6bca7b6054b4bebb5f4e73cf13c6ac6c0f793b988537c63171326c7845b",
     "fixtures/reference/byron-params/native.jsonl": "6b119e7ea07de4f72027c2d199263bedc81d15d13092006afb020b497914f2ba",
     "fixtures/reference/candidate-order/hfc.jsonl": "7b5ce8d37deb3b22aae16c859e75db153af08b8df59e6cdd14489db92a18afd5",
-    "fixtures/reference/candidate-order/manifest.json": "22d154d3cc3d3c1fa89ddb6ce4323c440ee1d4e13a768afa09004e0eab6c278e",
+    "fixtures/reference/candidate-order/manifest.json": "336d1df29c20ecc45793dd23e829612fb6fab2c799359b8726a69b09ff783544",
     "fixtures/reference/candidate-order/native.jsonl": "8767caeb587c50b58c4d793168911a5392d71f85ee5f82d62140a5a7c97ade51",
     "fixtures/reference/candidate-order/sort.jsonl": "2fd2d058d9430e2ea0142b8ef076d5bfad8a7ce61a5533079915a271c6b921fc",
     "fixtures/reference/checkpoints/manifest.json": "7bb2a7abc99f529d2eb46c335612940bbc3fb0ddc8d242e2264d72701464cef0",
