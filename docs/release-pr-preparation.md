@@ -160,7 +160,13 @@ are excluded from their own hash map.
 Production notes are `.release/changelog/<version>.md`; prerelease notes are
 `.release/notes/<version>.md`. `scripts/release_proposal.py:load_proposal(repo, cut)` returns
 `receipt`, literal `notes` bytes and `fragmentPlan` only after regenerating the original plan,
-checking same-cut manifest/notes/files, source ancestry and exact final diff. An unrelated change
+checking same-cut manifest/notes/files, source ancestry and exact final diff. It also requires the
+receipt's `authority` to equal [release-please-authority.json](../release-please-authority.json) at
+the receipt's source (and the file to be unchanged at the cut), so a self-consistent receipt that
+names a different baseline is refused. The pull-request control step runs `release_proposal.py
+--branch --base` on every pull request: a head named `release-please--branches--*` must be in this
+repository and gets the full check; any other branch is refused if it adds or changes
+`.release/proposal.json` or `.release/proposals/*`. An unrelated change
 after preparation requires regeneration. A later trusted coordinator must independently approve
 the merged cut, authenticate baseline/publication authority, and bind the exact selected tag,
 artifact inputs and receipts. It cannot treat the proposal's parent source as the released cut.
@@ -170,7 +176,9 @@ artifact inputs and receipts. It cannot treat the proposal's parent source as th
 Tests use the actual pinned library to prove two consecutive stable proposals, a fragment arriving
 while one PR is open, idempotency, all four channels, pre/post 1.0 policy, pending/RC recovery,
 restoration/version reservation and explicit overrides. Real disposable bare Git repositories prove
-lease refusal on concurrent updates. Collector, original-byte pin and same-cut checks have negative
+lease refusal on concurrent updates. The PR writer runs against a stubbed GitHub API and a local bare
+remote (`github-pr-writer.test.cjs`): create, update, idempotent re-run, and refusal of reserved tags, an
+advanced target, a missing lease, edited PRs, forks, manual commits and API failures. Collector, original-byte pin and same-cut checks have negative
 controls. Published-baseline test seams exercise comparison mechanisms; they do not perform or
 assert real Scarab publication/signing.
 
