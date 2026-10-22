@@ -97,7 +97,7 @@ object PeerError:
       case LoPExpired    => "ChainSync patience bucket exhausted"
       case DensityTooLow => "candidate density cannot compete with another peer"
       case InvalidJumpResponse(requested, actual) =>
-        s"intersection response $actual does not match requested jump ${Points.show(requested)}"
+        s"intersection response ${actual.fold("no intersection")(Points.show)} does not match requested jump ${Points.show(requested)}"
   type ProtocolFailure = ProtocolError | ProtocolProblem | NetworkError.IngressLimit |
     NetworkError.Decode | NetworkError.IllegalTransition | NetworkError.QueryRefused |
     NetworkError.TxSubmission
@@ -109,9 +109,10 @@ object PeerError:
     case HeaderValidationDidNotSettle
     case BlockCount(expected: Int, actual: Int)
     def message: String = this match
-      case HeaderDecode(cause)            => cause.message
-      case FetchedBlockIntegrity(cause)   => cause.message
-      case InvalidPunishmentHeader(cause) => s"invalid tentative-header vocabulary: $cause"
+      case HeaderDecode(cause)          => cause.message
+      case FetchedBlockIntegrity(cause) => cause.message
+      case InvalidPunishmentHeader(cause) =>
+        s"invalid tentative-header vocabulary: ${cause.message}"
       case HeaderDoesNotExtend(point, _) =>
         s"header ${Points.show(point)} does not extend the peer's chain"
       case HeaderValidationDidNotSettle => "header validation did not settle"

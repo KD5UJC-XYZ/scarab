@@ -4,6 +4,10 @@ Status: current implementation; local stage acceptance passed on `43d940871` (20
 Main integration and CI remain the definition-of-done boundary for #33. See the
 [acceptance evidence](../compatibility.md#evidence-log).
 
+The separate network follow-ups remain [rolling ChainSync pipelining (#310)](https://github.com/KD5UJC-XYZ/scarab/issues/310)
+and [Genesis churn regimes and targets (#311)](https://github.com/KD5UJC-XYZ/scarab/issues/311).
+The Genesis scenario acceptance here does not establish those separate scheduler policies.
+
 ## Reference and scope
 
 The behavioral reference is consensus `82ecba329d7d054340bf707d44fe6e9ac27cec40`

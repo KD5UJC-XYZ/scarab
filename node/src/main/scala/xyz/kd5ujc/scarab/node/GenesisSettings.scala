@@ -54,6 +54,8 @@ object GenesisSettings:
           density <- optional[Boolean]("EnableLoEAndGDD")
           patience <- optional[Boolean]("EnableLoP")
           grace <- picos("BlockFetchGracePeriod", 10 * PicosPerSecond)
+          // Node/Genesis.hs:81–82,187–188 uses signed Integer fields. LeakyBucket.hs:319–326
+          // explicitly permits zero and negative rates; do not add a stricter parser domain.
           capacity <- optional[BigInt]("BucketCapacity")
           rate <- optional[BigInt]("BucketRate")
           jump <- optional[BigInt]("CSJJumpSize")

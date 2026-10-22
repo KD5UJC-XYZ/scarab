@@ -196,7 +196,8 @@ object NodeSetup:
   /** Check every hash the configuration lists against the genesis file it names: the Byron one is
     * the hash of the canonical JSON, the Shelley, Alonzo, Conway, Dijkstra and checkpoints ones the
     * blake2b-256 of the file's bytes. A mismatch is a `GenesisHashMismatch`. The four genesis files
-    * the node needs must exist; the Dijkstra and checkpoints files are checked when present.
+    * the node needs must exist. A configured checkpoints file is also required; an optional
+    * Dijkstra file is hash-checked when present.
     */
   def verifyHashes(
       config: NodeConfig,

@@ -228,6 +228,38 @@ class ConfigSuite extends FunSuite:
     assertEquals(config.settings.lastKnownBlockVersion, Some((3, 0, 0)))
   }
 
+  test("Genesis bucket settings preserve the reference signed-integer domain") {
+    val base = parser.parse(text("preview", "config.json")).fold(e => fail(e.message), identity)
+    for
+      capacity <- Vector(BigInt(-1), BigInt(0), BigInt(100000))
+      rate <- Vector(BigInt(-500), BigInt(0), BigInt(500))
+    do
+      val json = base.deepMerge(
+        Json.obj(
+          "LowLevelGenesisOptions" -> Json.obj(
+            "BucketCapacity" -> Json.fromBigInt(capacity),
+            "BucketRate" -> Json.fromBigInt(rate)
+          )
+        )
+      )
+      val config =
+        NodeConfig.parse(json.noSpaces, strict = true).fold(e => fail(e.message), identity)
+      assertEquals(config.settings.genesis.bucketCapacity, capacity)
+      assertEquals(config.settings.genesis.bucketRate, xyz.kd5ujc.scarab.codec.Rational(rate))
+    Vector("BucketCapacity", "BucketRate").foreach { field =>
+      val fractional = base.deepMerge(
+        Json.obj(
+          "LowLevelGenesisOptions" ->
+            Json.obj(field -> Json.fromBigDecimal(BigDecimal("0.5")))
+        )
+      )
+      NodeConfig.parse(fractional.noSpaces).left.map(_.problem) match
+        case Left(ConfigProblem.JsonField("LowLevelGenesisOptions", key, _)) =>
+          assertEquals(key, field)
+        case other => fail(s"fractional $field was not rejected as an integer field: $other")
+    }
+  }
+
   test("other protocols, unknown modes, a renamed key and experimental forks are handled") {
     val base = parser.parse(text("preview", "config.json")).toOption.get
     def with_(key: String, value: Json) = base.deepMerge(Json.obj(key -> value)).noSpaces
@@ -253,7 +285,7 @@ class ConfigSuite extends FunSuite:
       .noSpaces
     val config = NodeConfig.parse(dijkstra, strict = true).fold(e => fail(e.message), identity)
     assert(config.settings.unsupported.exists(_.contains("Dijkstra")))
-    assert(!parsed("preview").settings.unsupported.exists(_.contains("GenesisMode")))
+    assertEquals(parsed("preview").settings.consensusMode, ConsensusMode.GenesisMode)
     // settings the node acts on when started from a configuration file
     val settings = NodeConfig
       .parse(

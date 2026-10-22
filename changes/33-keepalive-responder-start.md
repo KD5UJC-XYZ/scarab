@@ -7,6 +7,3 @@
   activation, rejecting disabled PeerSharing and late handshake traffic. Preserve
   the reference raw handshake SDU boundary, ignored final decoder trailing bytes,
   and distinct handshake/application SDU deadlines.
-- Install the negotiated mini-protocols and directions after the native raw
-  handshake boundary; preserve valid following frames and reject absent protocols
-  before they can activate a responder.

@@ -8,7 +8,8 @@
   journal reuses the existing volatile record encoding; native V5 snapshots
   retain their format.
 - Enforce configured lightweight checkpoints during header and block validation,
-  including Byron, and verify checkpoint file hashes before parsing.
+  including Byron, and verify checkpoint file hashes before parsing. A named
+  checkpoint file must exist; a missing file is a typed startup error.
 - Add original native decision corpora, simulator schedules and concrete TCP
   ordering observations, plus explicit Genesis-mode devnet gates.
 
@@ -19,8 +20,13 @@
   activation. Preserve typed cached-block attribution through inbound validation
   failures instead of blaming the current requesting peer for recovered bytes.
 
+### Fixed (invalid-block attribution, #33)
+
 - Preserve native tentative-tip forgiveness by block number, issuer and operational
   certificate, resetting its state for each BlockFetch activation. Reject malformed
   transported bodies before this semantic-invalidity policy.
+
+### Fixed (Byron ledger, #33)
+
 - Match Byron's native arbitrary-natural parameter decoding, signed Nano rounding,
   Word64 fee conversions and checked fee arithmetic; retain typed fee failures.
