@@ -8,6 +8,7 @@ import time
 from .. import metrics as node_metrics
 from ..cluster import up
 from ..compare import compare_once
+from ..consensus import arguments
 from ..follower import own_build
 from ..util import ENTRY, QUERY_PORT, data_root, docker, read_log
 
@@ -61,6 +62,7 @@ def soak(args):
     root = data_root(args.name)
     up(args)
     follower = subprocess.Popen([sys.executable, str(ENTRY), "--name", args.name, "follow",
+                                 *arguments(args),
                                  *(["--dump-state"] if getattr(args, "oracle", False) else [])],
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     loader = subprocess.Popen([sys.executable, str(ENTRY), "--name", args.name, "load", "--seed", str(args.seed)],
@@ -93,7 +95,7 @@ def soak(args):
             scraped = scrape_metrics(args.name, root)
         docker("rm", "-f", f"{args.name}-scala", check=False)
         follower.wait()
-    log = [json.loads(l) for l in (root / "follower.jsonl").read_text().splitlines() if l.startswith("{")]
+    log, other = read_log(root / "follower.jsonl")
     summary = {
         "comparisons": len([r for r in results if "matched" in r]),
         "matched": len([r for r in results if r.get("matched")]),
@@ -104,6 +106,7 @@ def soak(args):
         "rollbacks": [e for e in log if e.get("event") == "rolledBack"],
         "reconnects": sum(1 for e in log if e.get("event") == "reconnecting"),
         "errors": [e for e in log if e.get("event") == "error"],
+        "unparsedFollowerOutput": other[:10],
         "load": (root / "load.log").read_text().strip().splitlines()[-1:],
     }
     if scraped:
@@ -126,6 +129,8 @@ def soak(args):
         failures.append("ledger mismatch or comparison error")
     if summary["errors"]:
         failures.append("follower logged errors")
+    if other:
+        failures.append(f"unexpected follower output: {other[0][:200]}")
     if scraped:
         for label in ("queryServer", "listener"):
             failures += [f"metrics ({label}): {f}" for f in scraped.get(label, {}).get("failures", ["not scraped"])]

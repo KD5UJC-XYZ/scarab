@@ -494,7 +494,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       anchor: Option[BlockRef],
       chain: VolatileChain[MirrorState],
       offered: Vector[Vector[ChainSync.Point]],
-      events: Vector[StorageEvent]
+      events: Vector[StorageEvent],
+      startupReplayed: Int
   )
 
   /** Open the database as `Main` does (storage, then resume the volatile chain), follow the blocks
@@ -508,7 +509,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       every: Int = 120,
       identity: Option[NetworkIdentity] = Some(setup.identity),
       tap: Int => IO[Unit] = _ => IO.unit,
-      adoptLegacy: Boolean = false
+      adoptLegacy: Boolean = false,
+      selectionOnStartup: Boolean = false
   ): IO[Session] =
     Ref.of[IO, Vector[StorageEvent]](Vector.empty).flatMap { log =>
       Handle
@@ -572,19 +574,37 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                     }
                   def fetch(header: Header)(using Raise[IO, PeerError]) =
                     IO.pure(bodies(header.hash))
+                startupApplications <- Ref.of[IO, Int](0)
                 follower <- Follower.create[IO, MirrorState](
-                  nodeRules,
+                  BlockRules.from((state, header, raw) =>
+                    startupApplications.update(_ + 1) *> nodeRules(state, header, raw)
+                  ),
                   noEvents,
                   geometry,
                   persistence = Some(recovered.persistence),
                   initialViews = resumed.map(r => r.ref.hash -> r.view).toMap
                 )
+                startupReplayed <-
+                  (if selectionOnStartup then
+                     xyz.kd5ujc.scarab.node.RestartSelectionControl
+                       .resource(
+                         follower,
+                         resumed.map(r =>
+                           headers
+                             .find(_.hash == r.ref.hash)
+                             .getOrElse(
+                               fail("resumed block missing its original fixture header")
+                             ) -> bodies(r.ref.hash)
+                         )
+                       )
+                       .use(_ => startupApplications.get)
+                   else startupApplications.get)
                 _ <- IO.race(follower.session(peer), done.get.timeout(60.seconds))
                 chain <- chainRef.get
                 offers <- offered.get
-              yield (resumed, recovered.anchor, chain, offers)
+              yield (resumed, recovered.anchor, chain, offers, startupReplayed)
             }
-            .flatMap { (resumed, anchor, chain, offers) =>
+            .flatMap { (resumed, anchor, chain, offers, startupReplayed) =>
               // the storage is released by now: the shutdown snapshot has been taken
               log.get.map { events =>
                 Session(
@@ -599,7 +619,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                   anchor,
                   chain,
                   offers,
-                  events
+                  events,
+                  startupReplayed
                 ).asRight[NodeError]
               }
             }
@@ -626,6 +647,24 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         else JFiles.copy(p, target)
       }
     finally walk.close()
+  }
+
+  test(
+    "selection startup after real storage resume neither rolls back nor revalidates the suffix"
+  ) {
+    tempDir.use { dir =>
+      for
+        first <- session(dir, 500)
+        second <- session(dir, 500, selectionOnStartup = true)
+        third <- session(dir, 500, selectionOnStartup = true)
+      yield
+        assertEquals(second.resumed, k)
+        assertEquals(second.startupReplayed, 0)
+        assertEquals(second.chain, first.chain)
+        assertEquals(third.resumed, k)
+        assertEquals(third.startupReplayed, 0)
+        assertEquals(third.chain, first.chain)
+    }
   }
 
   test("restart resumes at the previous tip: the volatile blocks are not fetched again") {
@@ -790,6 +829,50 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         _ <- IO(assertEquals(third.dropped, 0))
         _ <- IO(assertState(third.chain.state, states(520)))
       yield ()
+    }
+  }
+
+  test(
+    "resume drops selected volatile records whose slot, height or boundary metadata disagrees with originals"
+  ) {
+    enum Field:
+      case Slot, Height, Boundary
+    tempDir.use { root =>
+      Field.values.toVector.traverse_ { field =>
+        val dir = root / field.toString
+        for
+          _ <- files.createDirectories(dir)
+          first <- session(dir, 500)
+          original = first.chain.blocks.lastOption.getOrElse(fail("expected a volatile suffix"))._1
+          prefix = first.chain.blocks
+            .dropRight(1)
+            .lastOption
+            .fold(first.chain.anchor.point)(_._1.point)
+          inconsistent = field match
+            case Field.Slot     => original.copy(slot = original.slot + 1)
+            case Field.Height   => original.copy(blockNo = original.blockNo + 1)
+            case Field.Boundary => original.copy(boundary = !original.boundary)
+          _ <- Handle
+            .allow[StorageError] {
+              VolatileStore.open[IO](dir / "volatile", 8).use { (store, _) =>
+                store.rollback(prefix) *> store.append(inconsistent, raws(499))
+              }
+            }
+            .rescue(error => IO.raiseError(new AssertionError(error.message)))
+          restarted <- session(dir, 500, selectionOnStartup = true)
+          again <- session(dir, 500, selectionOnStartup = true)
+          _ <- IO {
+            assertEquals(restarted.resumed, k - 1, field.toString)
+            assertEquals(restarted.dropped, 1, field.toString)
+            assertEquals(restarted.startupReplayed, 0, field.toString)
+            assertEquals(restarted.chain, first.chain, field.toString)
+            assertEquals(again.resumed, k, field.toString)
+            assertEquals(again.dropped, 0, field.toString)
+            assertEquals(again.startupReplayed, 0, field.toString)
+            assertEquals(again.chain, first.chain, field.toString)
+          }
+        yield ()
+      }
     }
   }
 

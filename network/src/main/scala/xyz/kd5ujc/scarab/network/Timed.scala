@@ -13,3 +13,9 @@ private[network] object Timed:
       Raise[F, NetworkError]
   ): F[A] =
     fa.timeoutTo(limit, NetworkError.Timeout(protocol, state).raise[F, A])
+
+  def within[F[_]: Temporal, A](limit: ProtocolDeadline, protocol: Int, state: String)(fa: F[A])(
+      using Raise[F, NetworkError]
+  ): F[A] = limit match
+    case ProtocolDeadline.After(delay) => within(delay, protocol, state)(fa)
+    case ProtocolDeadline.Unbounded    => fa

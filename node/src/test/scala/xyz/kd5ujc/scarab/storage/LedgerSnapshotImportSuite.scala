@@ -248,11 +248,15 @@ class LedgerSnapshotImportSuite extends CatsEffectSuite:
           })
           assertEquals(fingerprint(db), before)
         }
-        _ <- IO.blocking(JFiles.createDirectories((db / "snapshots").toNioPath))
+        _ <- IO.blocking(JFiles.createDirectories((db / "received").toNioPath))
+        _ <- IO.blocking(
+          JFiles.write((db / "received" / "original").toNioPath, Array[Byte](1, 2, 3))
+        )
+        withReceived <- IO(fingerprint(db))
         collided <- attempt(LedgerSnapshotImport.run[IO](config(ledger, db)))
         _ <- IO {
-          assertEquals(collided, Left(Error.Collision("snapshots")))
-          assertEquals(fingerprint(db), before)
+          assertEquals(collided, Left(Error.Collision("received")))
+          assertEquals(fingerprint(db), withReceived)
         }
       yield ()
     }
@@ -537,6 +541,33 @@ class LedgerSnapshotImportSuite extends CatsEffectSuite:
             }
         }
         immutable <- IO(fingerprint(target / "immutable"))
+        _ <- IO.blocking(JFiles.createDirectories((target / "received").toNioPath))
+        _ <- IO.blocking(
+          JFiles.write((target / "received" / "original").toNioPath, Array[Byte](4, 5))
+        )
+        preexisting <- IO(fingerprint(target))
+        receivedCollision <- interchange(
+          SclsInterchange.importFile[IO](
+            SclsInterchange.ImportConfig(
+              base,
+              artifact,
+              target,
+              setup.geometry.byron.epochSlots,
+              SclsImport.Config(codec)
+            )
+          )
+        )
+        _ <- IO {
+          assertEquals(
+            receivedCollision,
+            Left(SclsInterchange.Error.Collision(target / "received"))
+          )
+          assertEquals(fingerprint(target), preexisting)
+        }
+        _ <- IO.blocking {
+          JFiles.delete((target / "received" / "original").toNioPath)
+          JFiles.delete((target / "received").toNioPath)
+        }
         imported <- interchange(
           SclsInterchange.importFile[IO](
             SclsInterchange.ImportConfig(

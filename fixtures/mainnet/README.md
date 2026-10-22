@@ -39,9 +39,13 @@ protocol magic, address roots, value conservation and the minimum fee.
 
 `genesis/` holds the public mainnet node configuration from
 https://book.play.dev.cardano.org/environments/mainnet/ unchanged, downloaded 2026-10-14: `config.json`,
-`topology.json`, `shelley-genesis.json`, `alonzo-genesis.json` and `conway-genesis.json`. The Byron genesis file
-(1 MB) is not kept: `ConfigSuite` checks the Shelley, Alonzo and Conway hashes against the files, and the
-Byron hash against the full file when one is present at .workspace/data/2026-10-14-configs/mainnet.
+`topology.json`, `shelley-genesis.json`, `alonzo-genesis.json` and `conway-genesis.json`.
+The complete `byron-genesis.json` is pinned from cardano-node
+`938cba990357ae7c4b7f95c8f75dd9d31174bbeb`,
+`bench/cardano-profile/data/genesis/mainnet/byron-genesis.json`; `ConfigSuite` always
+verifies its canonical hash. `checkpoints.json` is the unchanged checkpoint file from
+that same pin and matches the hash already listed by `config.json`; its provenance is
+recorded in [the checkpoint manifest](../reference/checkpoints/manifest.json).
 
 ## Provenance and licence
 

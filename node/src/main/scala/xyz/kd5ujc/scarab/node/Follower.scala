@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.consensus.{
   BlockRef,
   BlockRules,
@@ -11,6 +12,7 @@ import xyz.kd5ujc.scarab.consensus.{
 }
 import xyz.kd5ujc.scarab.ledger.{
   EpochGeometry,
+  BlockPoolProblem,
   Header,
   NodeError,
   PeerError,
@@ -18,7 +20,7 @@ import xyz.kd5ujc.scarab.ledger.{
   ValidationError
 }
 import cats.Monad
-import cats.effect.{Async, Ref}
+import cats.effect.{Async, Ref, Resource}
 import cats.effect.std.Mutex
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.mtl.syntax.all.*
@@ -28,6 +30,8 @@ import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
 import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
 import xyz.kd5ujc.scarab.storage.ChainPersistence
 import xyz.kd5ujc.scarab.network.selection.Gsm
+import xyz.kd5ujc.scarab.consensus.genesis.GenesisDensity
+import xyz.kd5ujc.scarab.consensus.genesis.GenesisDensity.Fragment
 
 /** Select views of the blocks of the volatile chain, by block hash. Chain selection compares the
   * tip of a candidate with ours, and the volatile chain itself keeps only identities and ledger
@@ -80,11 +84,119 @@ final class Follower[F[_]: Async, S] private (
     views: SelectViews[F],
     lock: Mutex[F],
     cpu: Compute[F],
-    window: Ref[F, Option[ChainSelection.Local]]
+    window: SignallingRef[F, Follower.Committed[S]],
+    genesis: Ref[F, Option[GenesisGovernor[F]]],
+    selectionChanged: Ref[F, F[Unit]],
+    invalidBlocks: Ref[F, Option[InvalidBlocks[F]]]
 )(using
     chain: Stateful[F, VolatileChain[S]]
 ):
   private val F = Async[F]
+
+  /** The revision and committed window share one cell. Subscribing after a publication observes its
+    * new revision immediately, without depending on when a waiting fiber is scheduled.
+    */
+  private[node] def headerChanges: HeaderCheck.Changes[F] = new HeaderCheck.Changes[F]:
+    def revision: F[Long] = window.get.map(_.revision)
+    def changed(after: Long): F[Long] =
+      window.discrete.map(_.revision).filter(_ != after).take(1).compile.lastOrError
+
+  private def publishWindow(current: VolatileChain[S], selected: ChainSelection.Local): F[Unit] =
+    window.update(previous => Follower.Committed(current, selected, previous.revision + 1))
+
+  /** Installed once by the node before any peer sessions are started. */
+  private[node] def installGenesis(governor: GenesisGovernor[F]): F[Unit] =
+    genesis.set(Some(governor))
+
+  private[node] def installFetchCoordinator(coordinator: FetchCoordinator[F]): F[Unit] =
+    selectionChanged.set(coordinator.refreshGenesis)
+
+  /** Installed before sessions start: every body producer and chain selector shares this map. */
+  private[node] def installInvalidBlocks(registry: InvalidBlocks[F]): F[Unit] =
+    invalidBlocks.set(Some(registry))
+
+  /** The node owns the bounded add-block runner, independently of every announcing session. */
+  private[node] def blockSelection(
+      pool: BlockPool[F],
+      work: SelectionWork[F],
+      fatal: Fatal => F[Unit],
+      originPredecessor: Option[Bytes] = None
+  )(using BlockSelection.Before[F], Raise[F, NodeError]): Resource[F, Unit] =
+    val application = new BlockSelection.Application[F]:
+      def local = fetchSelection
+      def admits(header: Header) = chain.get.map(
+        _.anchor.block.forall(anchor =>
+          header.blockNo > anchor.blockNo || (header.isBoundary && header.blockNo == anchor.blockNo)
+        )
+      )
+      def governor = genesis.get
+      def locked[A](body: F[A]): F[A] = lock.lock.surround(body)
+      def project(
+          candidates: Vector[ChainSelection.Candidate],
+          phase: BlockSelection.Phase
+      ): F[Vector[ChainSelection.Candidate]] =
+        for
+          current <- chain.get
+          selected <- local
+          control <- genesis.get
+          fragment = Fragment(
+            selected.anchor,
+            selected.blocks.map(_.point).collect { case block: ChainSync.Point.Block =>
+              block
+            }
+          )
+          limit <- control.traverse(_.limitAt(fragment)).map(_.flatten)
+        yield
+          if phase == BlockSelection.Phase.Startup then
+            CandidateSelection.startup(current.k, selected, candidates, limit, tiebreaker)
+          else CandidateSelection.project(current.k, selected, candidates, limit, tiebreaker)
+      def apply(
+          peer: Peer[F],
+          candidate: ChainSelection.Candidate,
+          validation: Peer.Validation[F],
+          phase: BlockSelection.Phase
+      )(using
+          Raise[F, NodeError]
+      ): F[Unit] =
+        local.flatMap { selected =>
+          val decision =
+            if phase != BlockSelection.Phase.Startup then
+              ChainSelection.decide(tiebreaker(candidate.headers.last.era), selected, candidate)
+            else if candidate.tip == selected.blocks.lastOption.fold(selected.anchor)(_.point) then
+              ChainSelection.Decision.Keep
+            else
+              // Native initialChainSelection ranks from the immutable anchor. Reuse the already
+              // validated selected prefix rather than persisting a temporary rollback to it.
+              val common = candidate.headers.lastIndexWhere(h => selected.contains(h.point))
+              val at = candidate.headers.lift(common).fold(candidate.base)(_.point)
+              ChainSelection.Decision.Switch(
+                at,
+                selected.depthTo(at),
+                candidate.headers.drop(common + 1)
+              )
+          decision match
+            case ChainSelection.Decision.Switch(to, depth, take) =>
+              val causal =
+                if validation.addedPoint.exists(point => take.exists(_.point == point)) then
+                  validation
+                else Peer.Validation.none[F]
+              switchTo(peer, to, depth, take, ChainSync.Tip.Origin, pool.invalidBlocks, causal).void
+            case ChainSelection.Decision.Keep if phase == BlockSelection.Phase.Startup => F.unit
+            case _ => BlockPoolProblem.SelectionProjectionChanged(candidate.tip).raise[F, Unit]
+        }
+    BlockSelection.resource(pool, work, fatal, application, originPredecessor)
+
+  private def registryFor(peer: Peer[F])(using Raise[F, NodeError]): F[InvalidBlocks[F]] =
+    for
+      proposed <- peer.invalidBlocks.fold(InvalidBlocks.create[F])(F.pure)
+      selected <- invalidBlocks.modify {
+        case None                     => Some(proposed) -> proposed
+        case current @ Some(existing) => current -> existing
+      }
+      _ <- BlockPoolProblem.DifferentInvalidRegistry
+        .raise[F, Unit]
+        .whenA(peer.invalidBlocks.exists(_ ne selected))
+    yield selected
 
   private def protocol[A](reason: PeerError.ProtocolFailure)(using Raise[F, PeerError]): F[A] =
     PeerError.Protocol(reason).raise[F, A]
@@ -92,19 +204,93 @@ final class Follower[F[_]: Async, S] private (
   private def diverged[A](reason: PeerError.Divergence)(using Raise[F, PeerError]): F[A] =
     PeerError.Diverged(reason).raise[F, A]
 
+  private[node] def genesisView(
+      windowAt: (S, BigInt, BigInt) => Option[BigInt]
+  ): F[GenesisGovernor.View] = window.get.map { snapshot =>
+    val current = snapshot.chain
+    val tipSlot = current.anchor.block.fold(BigInt(-1))(_.slot)
+    GenesisGovernor.View(
+      snapshot.fragment,
+      current.k,
+      slot => windowAt(current.anchor.state, tipSlot, slot)
+    )
+  }
+
   /** Run one peer session until the peer fails (a raised [[PeerError]]) or forever. `track` is
-    * handed the session's candidate chain once it exists, for whoever compares it with the
-    * selection ([[versus]]).
+    * handed the validated header candidate when the node-owned body selector is active; this may be
+    * ahead of body delivery. Direct domain sessions expose their own selection candidate. The two
+    * conversations are independent upstream: consensus 82ecba329 ChainSync/Client.hs retains the
+    * validated candidate, while BlockFetch/ClientInterface.hs:192–225 queues actual originals
+    * through addBlockAsync. Body delivery never reconstructs that header candidate.
     */
   def session(
       peer: Peer[F],
       track: Ref[F, ChainSelection.Candidate] => F[Unit] = _ => Async[F].unit
   )(using Raise[F, NodeError]): F[Unit] =
     for
+      registry <- registryFor(peer)
       initial <- intersect(peer)
       candidate <- Ref.of[F, ChainSelection.Candidate](initial)
-      _ <- track(candidate)
-      _ <- Monad[F].foreverM(peer.next.flatMap(step(peer, candidate, _)))
+      delegated <- registry.selectionActive
+      _ <- track(if delegated then peer.headerCandidate.getOrElse(candidate) else candidate)
+      control <- genesis.get
+      _ <- control.fold(
+        Monad[F].foreverM(
+          peer.next.flatMap(event => step(peer, candidate, event, intersect(peer), registry))
+        )
+      ) { governor =>
+        SessionInput.resource(peer).use { input =>
+          for
+            serial <- Mutex[F]
+            lastTip <- Ref.of[F, ChainSync.Tip](ChainSync.Tip.Origin)
+            consume = Monad[F].foreverM(input.next.flatMap { read =>
+              serial.lock.surround {
+                input.current(read).flatMap { current =>
+                  if !current then F.unit
+                  else
+                    val tip = read.event match
+                      case SyncEvent.RollForward(_, value)  => value
+                      case SyncEvent.RollBackward(_, value) => value
+                    lastTip.set(tip) *> step(
+                      peer,
+                      candidate,
+                      read.event,
+                      input.reintersect(intersect(peer)),
+                      registry
+                    )
+                }
+              }
+            })
+            reselect = registry.selectionActive.flatMap {
+              case true => F.never[Unit]
+              case false =>
+                F.tailRecM[Long, Unit](-1L) { previous =>
+                  governor.selectionChanged(previous).flatMap { revision =>
+                    serial.lock
+                      .surround {
+                        (candidate.get, lastTip.get).tupled.flatMap { (known, tip) =>
+                          if known.headers.isEmpty then F.unit
+                          else
+                            registry.selectionActive
+                              .flatMap {
+                                case true  => F.pure(Some(known))
+                                case false => adopt(peer, known, tip, registry)
+                              }
+                              .flatMap {
+                                case Some(kept) => candidate.set(kept)
+                                case None =>
+                                  input.reintersect(intersect(peer)).flatMap(candidate.set)
+                              }
+                        }
+                      }
+                      .as(Left(revision))
+                  }
+                }
+            }
+            _ <- F.both(consume, reselect).void
+          yield ()
+        }
+      }
     yield ()
 
   private def intersect(peer: Peer[F])(using Raise[F, NodeError]): F[ChainSelection.Candidate] =
@@ -129,10 +315,56 @@ final class Follower[F[_]: Async, S] private (
           case ChainSelection.Decision.Switch(_, _, _) => Gsm.Candidate.Better(true)
       }
 
+  /** GSM compares the full captured candidate, including the validated local prefix before its
+    * original intersection. It must not apply LoE to this preference comparison.
+    */
+  private[node] def versusHeaders(
+      history: xyz.kd5ujc.scarab.consensus.HeaderChain[NodeHeaderState]
+  ): F[Gsm.Candidate] =
+    val candidateView = history.entries.lastOption
+      .map(e =>
+        xyz.kd5ujc.scarab.consensus.HeaderChain
+          .TipView(SelectView.of(e.header), tiebreaker(e.header.era))
+      )
+      .orElse(history.baseView)
+    candidateView.fold(F.pure[Gsm.Candidate](Gsm.Candidate.Better(false))) { tip =>
+      window.get.map { snapshot =>
+        val points = history.entries.reverseIterator.map(_.header.point) ++
+          Iterator.single(history.base) ++ history.prefix.reverseIterator.map(_.point)
+        if !points.exists(snapshot.points) then Gsm.Candidate.DoesNotIntersect
+        else
+          Gsm.Candidate.Better(
+            ChainSelection.prefersCandidate(tip.tiebreaker, snapshot.selection.tipView, tip.value)
+          )
+      }
+    }
+
   private def step(
       peer: Peer[F],
       candidate: Ref[F, ChainSelection.Candidate],
-      event: SyncEvent
+      event: SyncEvent,
+      reintersect: F[ChainSelection.Candidate],
+      registry: InvalidBlocks[F]
+  )(using Raise[F, NodeError]): F[Unit] =
+    registry.selectionActive.flatMap {
+      // ChainSync validates and retains the header fragment; ChainDB independently selects actual
+      // body admissions (consensus 82ecba329 BlockFetch/ClientInterface.hs:192–225).
+      // The body journal may lag that fragment and must not validate an older rollback again.
+      case true =>
+        event match
+          case SyncEvent.RollForward(header, _) =>
+            candidate.set(ChainSelection.Candidate(header.point, Vector.empty))
+          case SyncEvent.RollBackward(point, _) =>
+            candidate.set(ChainSelection.Candidate(point, Vector.empty))
+      case false => directStep(peer, candidate, event, reintersect, registry)
+    }
+
+  private def directStep(
+      peer: Peer[F],
+      candidate: Ref[F, ChainSelection.Candidate],
+      event: SyncEvent,
+      reintersect: F[ChainSelection.Candidate],
+      registry: InvalidBlocks[F]
   )(using Raise[F, NodeError]): F[Unit] = event match
     case SyncEvent.RollBackward(point, _) =>
       candidate.get.flatMap { c =>
@@ -155,13 +387,18 @@ final class Follower[F[_]: Async, S] private (
           case None =>
             protocol(PeerError.ProtocolProblem.HeaderDoesNotExtend(header.point, c.tip))
           case Some(grown) =>
-            candidate.set(grown) *> adopt(peer, grown, tip).flatMap {
-              case Some(kept) => candidate.set(kept)
-              // NoLongerIntersects: drain the pipeline and find a new intersection on this
-              // connection (consensus 82ecba329, ChainSync/Client.hs:1499–1511). Another session
-              // may have advanced the retained window while this candidate was catching up.
-              case None => intersect(peer).flatMap(candidate.set)
-            }
+            peer
+              .validation(header)
+              .flatMap(_.fold(_.raise[F, Peer.Validation[F]], F.pure))
+              .flatMap { validation =>
+                candidate.set(grown) *> adopt(peer, grown, tip, registry, validation).flatMap {
+                  case Some(kept) => candidate.set(kept)
+                  // NoLongerIntersects: drain the pipeline and find a new intersection on this
+                  // connection (consensus 82ecba329, ChainSync/Client.hs:1499–1511). Another session
+                  // may have advanced the retained window while this candidate was catching up.
+                  case None => reintersect.flatMap(candidate.set)
+                }
+              }
       }
 
   /** Our chain as chain selection sees it. The window is kept between calls and updated by
@@ -172,31 +409,24 @@ final class Follower[F[_]: Async, S] private (
   /** A committed selection snapshot for fetch decisions. This does not acquire the application
     * lock: an applying session may be waiting for a scheduled block while holding that lock.
     */
-  private[node] def fetchSelection: F[ChainSelection.Local] =
-    window.get.flatMap {
-      case Some(snapshot) => F.pure(snapshot)
-      case None =>
-        (chain.get, views.get).mapN((current, known) =>
-          ChainSelection.Local.of(current, viewOf(known))
-        )
-    }
+  private[node] def fetchSelection: F[ChainSelection.Local] = window.get.map(_.selection)
 
   private def local: F[ChainSelection.Local] =
     for
       current <- chain.get
       cached <- window.get
-      result <- cached.filter(describes(_, current)) match
-        case Some(l) => F.pure(l)
-        case None =>
+      result <-
+        if describes(cached.selection, current) then F.pure(cached.selection)
+        else
           views.get.flatMap { known =>
             val rebuilt = ChainSelection.Local.of(current, viewOf(known))
-            window.set(Some(rebuilt)).as(rebuilt)
+            publishWindow(current, rebuilt).as(rebuilt)
           }
     yield result
 
   /** The select view of a block; a block without a recorded one gets its position only. */
   private def viewOf(known: Map[Bytes, SelectView])(ref: BlockRef): SelectView =
-    known.getOrElse(ref.hash, SelectView(ref.blockNo, ref.slot, None, 0, None))
+    known.getOrElse(ref.hash, SelectView(ref.blockNo, ref.slot, None, 0, None, ref.boundary))
 
   /** A cheap check that the kept window is the chain's: anchor, length and tip. */
   private def describes(l: ChainSelection.Local, current: VolatileChain[S]): Boolean =
@@ -214,59 +444,187 @@ final class Follower[F[_]: Async, S] private (
       era: Era
   )
 
+  private final case class Refused(
+      header: Header,
+      error: ValidationError,
+      before: VolatileChain[S],
+      valid: Vector[Applied]
+  )
+
   /** Switch if preferred; no candidate means its intersection left our retained window. */
   private def adopt(
       peer: Peer[F],
       candidate: ChainSelection.Candidate,
-      peerTip: ChainSync.Tip
+      peerTip: ChainSync.Tip,
+      registry: InvalidBlocks[F],
+      validation: Peer.Validation[F] = Peer.Validation.none[F]
   )(using Raise[F, NodeError]): F[Option[ChainSelection.Candidate]] =
-    lock.lock.surround {
-      for
-        l <- local
-        result <- ChainSelection.decide(tiebreaker(candidate.headers.last.era), l, candidate) match
-          case ChainSelection.Decision.Keep     => F.pure(Some(candidate))
-          case ChainSelection.Decision.Detached => F.pure(None)
-          case ChainSelection.Decision.Switch(to, depth, take) =>
-            switchTo(peer, to, depth, take, peerTip).as(Some(candidate.rebase(take.last.point)))
-      yield result
-    }
+    lock.lock.surround(adoptLocked(peer, candidate, peerTip, registry, validation))
+
+  private def adoptLocked(
+      peer: Peer[F],
+      candidate: ChainSelection.Candidate,
+      peerTip: ChainSync.Tip,
+      registry: InvalidBlocks[F],
+      validation: Peer.Validation[F]
+  )(using Raise[F, NodeError]): F[Option[ChainSelection.Candidate]] = {
+    for
+      l <- local
+      control <- genesis.get
+      selected = Fragment(
+        l.anchor,
+        l.blocks.map(_.point).collect { case block: ChainSync.Point.Block =>
+          block
+        }
+      )
+      limit <- control.traverse(_.limitAt(selected)).map(_.flatten)
+      current <- chain.get
+      invalid <- registry.snapshot
+      validPrefix = candidate.copy(headers =
+        candidate.headers.takeWhile(h => !invalid.entries.contains(h.hash))
+      )
+      bounded = Follower.limitCandidate(current.k, l, validPrefix, limit)
+      result <- bounded match
+        case None => considered(peer, candidate).as(Some(candidate))
+        case Some(eligible) =>
+          ChainSelection.decide(
+            tiebreaker(eligible.headers.lastOption.fold(candidate.headers.last.era)(_.era)),
+            l,
+            eligible
+          ) match
+            case ChainSelection.Decision.Keep =>
+              considered(peer, candidate).as(Some(candidate.rebase(eligible.base)))
+            case ChainSelection.Decision.Detached => considered(peer, candidate).as(None)
+            case ChainSelection.Decision.Switch(to, depth, take) =>
+              val causal =
+                if validation.addedPoint.exists(point => take.exists(_.point == point)) then
+                  validation
+                else Peer.Validation.none[F]
+              switchTo(peer, to, depth, take, peerTip, registry, causal).flatMap { committed =>
+                considered(peer, candidate).as(Some(committed.fold(candidate)(candidate.rebase)))
+              }
+    yield result
+  }
+
+  private def considered(peer: Peer[F], candidate: ChainSelection.Candidate): F[Unit] =
+    peer.selectionWork.traverse_(work =>
+      candidate.headers.traverse_(h => work.processing(h.hash).use(_ => F.unit))
+    )
 
   private def switchTo(
       peer: Peer[F],
       to: ChainSync.Point,
       depth: Int,
       take: Vector[Header],
-      peerTip: ChainSync.Tip
-  )(using Raise[F, NodeError]): F[Unit] =
+      peerTip: ChainSync.Tip,
+      registry: InvalidBlocks[F],
+      validation: Peer.Validation[F]
+  )(using Raise[F, NodeError]): F[Option[ChainSync.Point]] =
     for
       original <- chain.get
       rolled <- original.rollback(to).fold(_.raise[F, VolatileChain[S]], _.pure[F])
-      steps <- take
-        .foldLeftM((rolled, Vector.empty[Applied])) { case ((before, done), header) =>
-          for
-            block <- peer.fetch(header)
-            next <- rules(before.state, header, block)
-            extended <- before
-              .extend(header, next)
-              .fold(_.raise[F, (VolatileChain[S], Vector[BlockRef])], _.pure[F])
-            ref = BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary)
-          yield (
-            extended._1,
-            done :+ Applied(
-              ref,
-              block,
-              extended._2,
-              extended._1,
-              before,
-              next,
-              SelectView.of(header),
-              header.era
-            )
-          )
+      causal <- Ref.of[F, Peer.Validation[F]](validation)
+      outcome <- F
+        .tailRecM[(VolatileChain[S], Vector[Applied], Int), Either[Refused, Vector[Applied]]](
+          (rolled, Vector.empty, 0)
+        ) { (before, done, index) =>
+          take.lift(index) match
+            case None => F.pure(Right(Right(done)))
+            case Some(header) =>
+              for
+                block <- peer.fetch(header)
+                previous <- causal.get
+                _ <- peer
+                  .validation(header)
+                  .flatMap(_.fold(_.raise[F, Peer.Validation[F]], F.pure))
+                  .flatMap(next =>
+                    causal.update { current =>
+                      if next.admissionOrder
+                          .exists(order => current.admissionOrder.forall(_ < order))
+                      then next
+                      else current
+                    }
+                  )
+                  .unlessA(previous.addedPoint.contains(header.point))
+                checked = Handle
+                  .allow[NodeError](
+                    rules(before.state, header, block)
+                      .map(state => Right(state): Either[ValidationError, S])
+                  )
+                  .rescue {
+                    case refused: ValidationError => F.pure(Left(refused))
+                    case other                    => other.raise[F, Either[ValidationError, S]]
+                  }
+                verdict <- peer.selectionWork.fold(checked)(work =>
+                  work.processing(header.hash).surround(checked)
+                )
+                result <- verdict match
+                  case Left(refused) => F.pure(Right(Left(Refused(header, refused, before, done))))
+                  case Right(next) =>
+                    before
+                      .extend(header, next)
+                      .fold(
+                        _.raise[F, Either[
+                          (VolatileChain[S], Vector[Applied], Int),
+                          Either[Refused, Vector[Applied]]
+                        ]],
+                        extended =>
+                          val ref =
+                            BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary)
+                          F.pure(
+                            Left(
+                              (
+                                extended._1,
+                                done :+ Applied(
+                                  ref,
+                                  block,
+                                  extended._2,
+                                  extended._1,
+                                  before,
+                                  next,
+                                  SelectView.of(header),
+                                  header.era
+                                ),
+                                index + 1
+                              )
+                            )
+                          )
+                      )
+              yield result
         }
-        .map(_._2)
-      _ <- commit(original, to, depth, steps, peerTip)
-    yield ()
+      committed <- outcome match
+        case Right(steps)  => commit(original, to, depth, steps, peerTip).as(Some(take.last.point))
+        case Left(refused) =>
+          // Native validation records invalidity and punishes first (ChainSel.hs:1315–1344),
+          // then reconsiders a preferred valid prefix (1147–1186). The ChainDB worker survives
+          // sender-thread cancellation, so this local commit boundary must survive it too.
+          F.uncancelable { _ =>
+            for
+              _ <- peer
+                .invalidated(refused.header, refused.error)
+                .flatMap(_.fold(_.raise[F, Unit], F.pure))
+              _ <- registry.record(refused.header, refused.error).whenA(peer.invalidBlocks.isEmpty)
+              adding <- causal.get
+              decision <- adding
+                .rejected(refused.error, refused.before.tip)
+                .flatMap(_.fold(_.raise[F, Peer.Rejection], F.pure))
+              localNow <- local
+              prefix = take.take(refused.valid.size)
+              preferred = prefix.lastOption.exists(h =>
+                ChainSelection.prefersCandidate(
+                  tiebreaker(h.era),
+                  localNow.tipView,
+                  SelectView.of(h)
+                )
+              )
+              delegated <- registry.selectionActive
+              _ <- commit(original, to, depth, refused.valid, peerTip).whenA(
+                preferred && !delegated
+              )
+              _ <- refused.error.raise[F, Unit].whenA(decision == Peer.Rejection.PunishedCurrent)
+            yield Option.when(preferred && !delegated)(refused.before.tip)
+          }
+    yield committed
 
   /** Everything applied: persist, replace the chain, announce and tell the mempool.
     *
@@ -292,14 +650,25 @@ final class Follower[F[_]: Async, S] private (
       _ <- steps.traverse_(a =>
         persistence.traverse_(_.extended(a.ref, a.raw, a.immutable, a.after.anchor))
       )
-      _ <- chain.set(steps.last.after)
-      _ <- window.update(
-        _.flatMap(l =>
-          steps.foldLeft(if depth > 0 then l.rolledBackTo(to) else Some(l))((acc, a) =>
-            acc.map(_.extended(ChainSelection.LocalBlock(a.ref.point, a.view), a.immutable.size))
-          )
+      finalChain = steps.last.after
+      cached <- window.get
+      updated = steps.foldLeft(
+        if depth > 0 then cached.selection.rolledBackTo(to) else Some(cached.selection)
+      )((acc, a) =>
+        acc.map(_.extended(ChainSelection.LocalBlock(a.ref.point, a.view), a.immutable.size))
+      )
+      selected <- updated.fold(
+        views.get.map(known =>
+          ChainSelection.Local.of(finalChain, viewOf(known ++ steps.map(a => a.ref.hash -> a.view)))
+        )
+      )(F.pure)
+      _ <- F.uncancelable(_ => chain.set(finalChain) *> publishWindow(finalChain, selected))
+      _ <- invalidBlocks.get.flatMap(
+        _.traverse_(registry =>
+          finalChain.anchor.block.traverse_(anchor => registry.pruneBefore(anchor.slot))
         )
       )
+      _ <- selectionChanged.get.flatten
       _ <- events
         .emit(FollowerEvent.RolledBack(original.tip, to, depth))
         .whenA(depth > 0)
@@ -406,7 +775,63 @@ object Follower:
       new OnTip[F, S]:
         def apply(chain: VolatileChain[S], raws: Vector[Bytes])(using
             Raise[F, NodeError]
-        ): F[Unit] = run(chain, raws)
+        ): F[Unit] =
+          run(chain, raws)
+
+  /** Publish chain state and its selection window atomically for GDD readers. Capturing the
+    * immutable ledger and fragment never waits for a block fetch or a running ledger check.
+    */
+  private final case class Committed[S](
+      chain: VolatileChain[S],
+      selection: ChainSelection.Local,
+      revision: Long = 0L
+  ):
+    val points: Set[ChainSync.Point] =
+      selection.blocks.iterator.map(_.point).toSet + selection.anchor
+    val fragment: Fragment = Fragment(
+      selection.anchor,
+      selection.blocks.map(_.point).collect { case block: ChainSync.Point.Block => block }
+    )
+
+  /** Preserve the full candidate outside selection: advancing or disabling LoE must reconsider
+    * headers already downloaded, without requiring another peer announcement.
+    */
+  private[node] def limitCandidate(
+      k: Int,
+      current: ChainSelection.Local,
+      candidate: ChainSelection.Candidate,
+      limit: Option[Fragment]
+  ): Option[ChainSelection.Candidate] =
+    val selected = Fragment(
+      current.anchor,
+      current.blocks.map(_.point).collect { case block: ChainSync.Point.Block =>
+        block
+      }
+    )
+    val localPoints = current.anchor +: current.blocks.map(_.point)
+    val localPositions = localPoints.zipWithIndex.toMap
+    val candidatePoints = candidate.base +: candidate.headers.map(_.point)
+    val common = candidatePoints.lastIndexWhere(localPositions.contains)
+    if common < 0 then Some(candidate)
+    else
+      val intersection = candidatePoints(common)
+      val before =
+        current.blocks.take(localPositions.getOrElse(intersection, 0)).map(_.point).collect {
+          case block: ChainSync.Point.Block => block
+        }
+      val extension = candidate.headers.drop(common)
+      val proposed = Fragment(
+        current.anchor,
+        before ++ extension.map(_.point).collect { case block: ChainSync.Point.Block =>
+          block
+        }
+      )
+      GenesisDensity.trim(k, selected, proposed, limit).toOption.map { allowed =>
+        ChainSelection.Candidate(
+          intersection,
+          extension.take((allowed.headers.size - before.size).max(0))
+        )
+      }
 
   /** What happened to a forged block offered to [[Follower.adoptForged]]. */
   enum AdoptionLoss:
@@ -447,22 +872,38 @@ object Follower:
   )(using
       Stateful[F, VolatileChain[S]]
   ): F[Follower[F, S]] =
-    (
-      SelectViews.create[F](initialViews),
-      chainGate.fold(Mutex[F])(_.pure[F]),
-      Ref.of[F, Option[ChainSelection.Local]](None)
-    ).mapN { (views, lock, window) =>
-      new Follower[F, S](
-        rules,
-        events,
-        epochOf.getOrElse((_: S, slot: BigInt) => geometry.epochOf(slot)),
-        observe,
-        persistence,
-        onTip,
-        tiebreaker,
-        views,
-        lock,
-        compute.getOrElse(Compute.inline[F]),
-        window
+    Stateful[F, VolatileChain[S]].get.flatMap { initial =>
+      val selected = ChainSelection.Local.of(
+        initial,
+        ref =>
+          initialViews.getOrElse(
+            ref.hash,
+            SelectView(ref.blockNo, ref.slot, None, 0, None, ref.boundary)
+          )
       )
+      (
+        SelectViews.create[F](initialViews),
+        chainGate.fold(Mutex[F])(_.pure[F]),
+        SignallingRef[F, Committed[S]](Committed(initial, selected)),
+        Ref.of[F, Option[GenesisGovernor[F]]](None),
+        Ref.of[F, F[Unit]](Async[F].unit),
+        Ref.of[F, Option[InvalidBlocks[F]]](None)
+      ).mapN { (views, lock, window, genesis, selectionChanged, invalidBlocks) =>
+        new Follower[F, S](
+          rules,
+          events,
+          epochOf.getOrElse((_: S, slot: BigInt) => geometry.epochOf(slot)),
+          observe,
+          persistence,
+          onTip,
+          tiebreaker,
+          views,
+          lock,
+          compute.getOrElse(Compute.inline[F]),
+          window,
+          genesis,
+          selectionChanged,
+          invalidBlocks
+        )
+      }
     }

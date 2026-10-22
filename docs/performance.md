@@ -2786,3 +2786,82 @@ peak lag seven, equal final tips and transaction inclusion. Twelve reconnects
 were observed (eleven KeepAlive client-idle timeouts and one no intersection);
 [#292](https://github.com/KD5UJC-XYZ/scarab/issues/292) tracks classification.
 This finite passing gate is not a zero-reconnect or old/new throughput comparison.
+
+
+## 38. Genesis integration observations (#33)
+
+The private stage runs on Euler (2026-10-21 UTC) used frozen runtime `3819a43af`,
+Docker JDK21 and cardano-node 11.1.3. These are bounded compatibility and lifecycle
+observations, not a production sync-throughput benchmark or a comparison with an
+older Scarab build.
+
+| Scenario | Observed result |
+|---|---|
+| Genesis trusted-local-root relay, 300 seconds of load | All 59 tip samples within one block; equal final tips, 266 transaction inclusions and reverse duplex headers 1→148; zero errors or reconnects. Initial observation also permits the native 120-second no-intersection repromotion delay. |
+| Genesis soak, 600 seconds | 318 block applications across epochs 0–12; 30/30 ledger comparisons matched, zero errors/reconnects; 231 metric series validated on both endpoints. |
+| Genesis V5 restart | Both processes stopped in 0.7 and 0.6 seconds; snapshot restoration passed. |
+| Genesis seven-era e2e | 1,706 block applications, 66/66 Shelley–Conway ledger comparisons matched, zero validation/fatal errors or reconnects. Byron UTxO is checked at handover because the reference CLI cannot query a Byron ledger directly. |
+
+Commands and association requirements are in the [Genesis design](design/genesis.md).
+The local-root relay disables peer sharing to match native `LocalRootsOnly` honest
+availability; it does not change production thresholds. Earlier unrestricted-HAA
+and premature-observation failures remain failed observations. The relay’s strict
+final-tip, lag, transaction inclusion and continued inbound-following assertions
+are unchanged. Completed run databases and owned containers were removed after
+retaining compact source, input and result receipts. The subsequent negotiated-Mux correction on `43d940871` passed independent source
+review, 8,379 standard tests (16 existing optional-input skips), extended fuzz and
+two corrected-build 300-second relays: Genesis/no peer sharing and Praos/peer sharing.
+Both had 59/59 samples within one block, equal final tips, 270 transaction inclusions,
+zero errors/reconnects and continuing reverse sessions (headers 1→160 and 2→168).
+These later runs use the same assertions; the earlier observations above remain
+bound to `3819a43af`.
+
+
+## 39. Received-forest selection and idle decisions (#309 review)
+
+Measured on Euler on 2026-10-22 UTC, Docker JDK 21.0.11 / Scala 3.3.8 / sbt 1.10.7,
+using [SelectionReviewBenchmark](../node/src/test/scala/xyz/kd5ujc/scarab/node/SelectionReviewBenchmark.scala)
+at `b507f895b`. Reproduce with
+`bash scripts/sbtw "node/Test/runMain xyz.kd5ujc.scarab.node.SelectionReviewBenchmark"`
+in the repository's JDK container. These are synthetic header forests: a linear
+path or independent one-header forks. Each condition has 20 warmup and 100 measured
+calls to production `AvailableBlocks.candidates` and `CandidateSelection.project`.
+Admission keeps paths containing the last hash; full rescans model startup or LoE
+reconsideration. Neither condition runs ledger checks, body IO or network traffic.
+
+| Forest | Originals | Mean admission elapsed / thread CPU | Mean full rescan elapsed / thread CPU |
+|---|---:|---:|---:|
+| Linear | 128 | 0.398 / 0.399 ms | 0.803 / 0.756 ms |
+| Independent forks | 128 | 0.674 / 0.670 ms | 0.612 / 0.613 ms |
+| Linear | 1,024 | 1.885 / 1.878 ms | 3.706 / 3.710 ms |
+| Independent forks | 1,024 | 2.017 / 1.996 ms | 4.796 / 4.778 ms |
+| Linear | 4,096 | 10.055 / 10.015 ms | 10.117 / 10.085 ms |
+| Independent forks | 4,096 | 11.895 / 11.855 ms | 16.620 / 16.564 ms |
+
+The scan has measurable cost and grows with the retained forest. These observations
+cover the stated input sizes, not a latency bound, whole-node throughput, production
+memory use or a speed comparison with Haskell. JVM compilation and collection can
+influence this single-process microbenchmark. Native consensus `82ecba329`
+`ChainSel.hs:115–211` starts selection from the immutable-root forest, caps initial
+paths at `k` with LoE enabled, and sorts eligible differences at line 1143. Receipt
+caps would discard still-selectable postponed forks, so this review introduces none.
+The received index and processed forest retain raw originals in memory until durable
+immutable progress permits collection; this does not promise a disk-only body index's
+memory footprint or bounded memory during a long LoE stall.
+
+A separate real-storage control opens and resumes a selected suffix, acquires the
+production selector, then reopens it again. The selected suffix stays unchanged and
+selection performs zero additional ledger applications when it is already the native
+winner. A different recovered winner still switches through its validated common
+prefix. The control's 1.099-second test duration includes initial fixture/database
+work and is not a restart-only latency measurement.
+
+The native decision cadence remains 10 ms for Praos and 40 ms for Genesis. A controlled
+test establishes that 100 unchanged refreshes do not wake the decision watcher.
+Forced-refresh measurements, after 1,000 warmup and over 10,000 measured refreshes,
+were 88.92 ms elapsed / 390 ms process CPU with zero peers and 367.04 ms elapsed /
+940 ms process CPU with 32 peers. Process CPU includes parallel JVM compilation and
+collection; these batches do not measure whole-node steady-state idle CPU. The
+coordinator serializes input observations, reservations and dynamo demotion with GSM
+phase publication. A controlled test blocks demotion, requests CaughtUp, and requires
+demotion completion before the phase write can proceed.

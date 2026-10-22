@@ -25,6 +25,7 @@ object BlockFetchPolicy:
     case BytesInFlight(bytes: Long, low: Long, high: Long)
     case PeerBusy(bytes: Long, low: Long, high: Long)
     case Concurrency(mode: FetchMode, limit: Int)
+    case GenesisConcurrency(limit: Int)
     case InvalidConfiguration, InvalidCandidate
   final case class Candidate[P](
       peer: P,
@@ -166,7 +167,7 @@ object BlockFetchPolicy:
     results
 
   /** Splitting retains each hole's preceding header as the next fragment's anchor. */
-  private def filterFragments(
+  private[selection] def filterFragments(
       fragments: Vector[Fragment],
       keep: Header => Boolean
   ): Vector[Fragment] =
@@ -185,7 +186,7 @@ object BlockFetchPolicy:
       if current.nonEmpty then completed :+ Fragment(anchor, current) else completed
     }
 
-  private def select[P](
+  private[selection] def select[P](
       config: Config,
       mode: FetchMode,
       concurrent: Int,

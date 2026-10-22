@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 from .cluster import database_mounts, freeze_classes, scala_container
+from .consensus import configuration
 from .metrics import METRICS_PORT
 from .util import ENTRY, QUERY_PORT, data_root, read_log
 
@@ -20,8 +21,12 @@ def follow(args):
     ports = json.loads((root / "ports.json").read_text())
     classpath = freeze_classes(root, getattr(args, "classes", None) or os.environ.get("SCARAB_FOLLOW_CLASSES"))
     log = root / "follower.jsonl"
-    program = ["follow", "--genesis-dir", "/genesis", "--peer", f"127.0.0.1:{ports[str(args.node)]}",
-               "--query-port", str(QUERY_PORT)]
+    mode = getattr(args, "consensus_mode", None)
+    port = ports[str(args.node)]
+    program = ["follow", "--genesis-dir", "/genesis", "--query-port", str(QUERY_PORT)]
+    if mode != "GenesisMode":
+        program += ["--peer", f"127.0.0.1:{port}"]
+    program += configuration(root, mode, [port])
     if own_build(args):
         # the Prometheus endpoint on a listener of its own (an older build, run for a baseline, has no such flag)
         program += ["--metrics-listen", f"127.0.0.1:{METRICS_PORT}"]
@@ -49,8 +54,9 @@ def follow(args):
         sys.exit(proc.wait())
 
 
-def start_follower(name, root, oracle=False, scala_cpus=None):
+def start_follower(name, root, oracle=False, scala_cpus=None, consensus_mode=None):
     return subprocess.Popen([sys.executable, str(ENTRY), "--name", name, "follow",
+                             *(["--consensus-mode", consensus_mode] if consensus_mode is not None else []),
                              *(["--dump-state"] if oracle else []),
                              *(["--scala-cpus", str(scala_cpus)] if scala_cpus is not None else [])],
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

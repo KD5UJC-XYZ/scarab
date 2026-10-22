@@ -173,6 +173,16 @@ object ForgedChain:
       .fold(e => throw new AssertionError(e.toString), _.value)
     forgeFrom(start, p, slots, None)
 
+  /** Distinct signed forks from one pool and one genesis, for the diffusion tentative-header
+    * criterion's repeated issuer/opcert identity at the same height.
+    */
+  def sameIssuerForks(leftSlots: Range, rightSlots: Range): IO[(ForgedChain, ForgedChain)] =
+    val p = pool(kesStart = (leftSlots.head / 100).toInt - 1, seed = 1)
+    val start = Mirroring
+      .toMirror(mirrorEnv, None, nodeState(ledgerWith(p, epoch = 5)))
+      .fold(e => throw new AssertionError(e.toString), _.value)
+    (forgeFrom(start, p, leftSlots, None), forgeFrom(start, p, rightSlots, None)).tupled
+
   /** Two valid chains with a shared generated prefix and independently forged suffixes. Both pool
     * identities are registered in the same genesis ledger, so either branch can be checked by the
     * real mirror rules. The bounded suffix is useful for chain-selection tests that must switch

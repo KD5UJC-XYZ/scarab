@@ -332,6 +332,134 @@
         "network/src/test/scala/xyz/kd5ujc/scarab/network/selection/WarmPromotionSuite.scala"
       ],
       "candidateRequired": true
+    },
+    {
+      "id": "genesis-original-conformance",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "All 84 retained original Genesis scenarios, every one of the 21 native property branches, and their complete typed runtime observations.",
+      "assertion": "Execute every original property and allowed-exception constraint; compare complete selected fragments and every native peer/component multiplicity exactly; enforce every original CSJ download bound, typed cause attribution, production refusal-decision-before-termination, per-peer cleanup causality, complete ordered GDD callback consumption and absence of defects/invariants. Compare all 1,304 native GDD decisions and 45 ordered callback batches exactly.",
+      "rationale": "The original DensityDisconnect property explicitly permits DensityTooLow or CandidateTooSparse. CSJ and Uniform constrain their original trace/safety properties plus the shared closed expected-exception set, rather than a cross-peer finalizer schedule. Complete native and Scarab observations remain retained; concrete component counts, typed causes and required causal orders are asserted without exclusions or tolerance.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/33",
+      "resolution": "Retain the pinned finite corpus, closed exhaustive scenario-law evaluator, negative controls and original native inputs; source freshness watches generators, properties and production mechanisms.",
+      "evidence": [
+        "fixtures/reference/genesis-density/README.md",
+        "fixtures/reference/genesis-density/manifest.json",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/genesis/UpstreamGenesisReplaySuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/genesis/UpstreamGenesisLawsSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/genesis/UpstreamGddTraceSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/genesis/UpstreamGenesisTerminals.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/genesis/UpstreamGenesisTerminalsSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "genesis-checkpoint-inputs",
+      "classification": "input-boundary",
+      "status": "covered",
+      "scope": "Complete pinned public mainnet Byron genesis and mainnet/Preview lightweight checkpoint inputs.",
+      "assertion": "Verify original public input hashes; reject malformed, duplicate or out-of-range checkpoint entries; enforce configured checkpoint hashes in canonical header and full block paths across eras.",
+      "rationale": "These are original public configuration inputs and boundary regressions, not exported native checkpoint-rejection verdicts. The complete mainnet genesis check always executes without an environmental skip.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/33",
+      "resolution": "Preserve exact public payloads and pinned provenance; keep typed hash/parser/enforcement regressions and the always-running complete-genesis check.",
+      "evidence": [
+        "fixtures/reference/checkpoints/README.md",
+        "fixtures/reference/checkpoints/manifest.json",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/CheckpointsSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ConfigSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/GenesisHeaderRulesSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "genesis-invalid-block-punishment",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "All 72 native tentative-header traces (4,178 transitions), original signed Conway header projection, opaque punishment DSL and four actual ChainDB classifications.",
+      "assertion": "Compare complete typed state and every outcome without filtering; preserve invalid-prefix punishment, repeated-identity rejection and client reset.",
+      "rationale": "Native CardanoBlock instances and ChainDB callbacks provide independent observations; deterministic supplementary traces are not claimed as upstream-generated inputs or exhaustive coverage.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/33",
+      "resolution": "Retain original native observations, source and exporter identities, and strict comparisons across every currently supported era.",
+      "evidence": [
+        "fixtures/reference/genesis-punishment/README.md",
+        "fixtures/reference/genesis-punishment/manifest.json",
+        "consensus/src/test/scala/xyz/kd5ujc/scarab/consensus/genesis/UpstreamDiffusionPunishmentSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "byron-native-parameters-and-fees",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "All 29 pinned native parameter and fee-policy decoder cases, including 21 accepted states and 66 exact fee outcomes.",
+      "assertion": "Compare complete decoded parameter state, signed Nano normalization, arbitrary Natural values and every native fee result or typed arithmetic error with operands; retain all rejected decoder rows.",
+      "rationale": "The actual pinned Byron and binary packages supply the oracle. These finite boundary cases and separate JSON-source regressions do not claim exhaustive wire-decoder coverage.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/33",
+      "resolution": "Preserve all native inputs and outcomes, checked original mainnet transaction regressions and unchanged persisted field layout.",
+      "evidence": [
+        "fixtures/reference/byron-params/README.md",
+        "fixtures/reference/byron-params/manifest.json",
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/byron/ByronParamsNativeSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "classification": "native-parity",
+      "status": "covered",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/33",
+      "candidateRequired": true,
+      "id": "candidate-protocol-view-order",
+      "scope": "All 24 constructed homogeneous PBFT or Praos view cases, including every input permutation, eligibility decision, complete sorted order and pairwise Ord result.",
+      "assertion": "Compare native configured preferCandidate independently of unrestricted global Ord; retain every candidate, stable tie, EBB distinction and certificate comparison.",
+      "rationale": "Actual pinned SelectView instances and Data.List.sortBy provide the oracle. These finite protocol-view examples are not upstream-generated schedules, signed-header validity cases or cross-era HFC coverage.",
+      "resolution": "Preserve all 24 original inputs and outputs, pinned observer provenance and strict complete-field comparisons; project every runtime path through LoE and eligibility before ranking.",
+      "evidence": [
+        "fixtures/reference/candidate-order/README.md",
+        "fixtures/reference/candidate-order/manifest.json",
+        "fixtures/reference/candidate-order/native.jsonl",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/CandidateSelectionSuite.scala"
+      ]
+    },
+    {
+      "classification": "native-parity",
+      "status": "covered",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/33",
+      "candidateRequired": true,
+      "id": "candidate-native-list-sort",
+      "scope": "All seven explicitly constructed synthetic comparator cases observed through the recorded native Data.List.sortBy executable.",
+      "assertion": "Compare every complete sorted vector and every pairwise comparison, including six input permutations and the mixed seven-element case; preserve stable ties and native run boundaries.",
+      "rationale": "This separately observes the native sorting mechanism under a synthetic nontransitive comparator. It does not claim Praos global Ord is restricted or nontransitive, lawful signed-header inputs, upstream-generated vectors or exhaustive sorting coverage.",
+      "resolution": "Retain all seven independent native observations and compiler/executable provenance, plus small-stack width regressions; keep protocol-view eligibility coverage in its separate contract.",
+      "evidence": [
+        "fixtures/reference/candidate-order/README.md",
+        "fixtures/reference/candidate-order/manifest.json",
+        "fixtures/reference/candidate-order/sort.jsonl",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/CandidateSelectionSuite.scala"
+      ]
+    },
+    {
+      "id": "candidate-hard-fork-selection",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "All 55 constructed actual Cardano HFC view comparisons: all 42 ordered cross-era pairs from Byron through Conway, seven same-era controls and six near-slot, chain-length or certificate-boundary cases.",
+      "assertion": "Compare every native Ord result, both configured preferCandidate directions and the complete sorted identity vector; require all 42 ordered cross-era pairs and preserve every original row.",
+      "rationale": "The actual pinned HardForkProtocol Cardano instances supply independent observations. These finite differential examples are separate from the homogeneous protocol-view and synthetic sort corpora; they are not upstream-generated or signed-header validity cases.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/33",
+      "resolution": "Preserve the complete native HFC payload and provenance, enforce later-era shared eligibility configuration and retain no cross-era tie-breaker between Byron and Shelley-based eras.",
+      "evidence": [
+        "fixtures/reference/candidate-order/README.md",
+        "fixtures/reference/candidate-order/manifest.json",
+        "fixtures/reference/candidate-order/hfc.jsonl",
+        "consensus/src/test/scala/xyz/kd5ujc/scarab/consensus/genesis/UpstreamHfcSelectionSuite.scala"
+      ],
+      "candidateRequired": true
     }
   ]
 }

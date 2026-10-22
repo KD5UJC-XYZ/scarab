@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 from ..cluster import database_mounts, freeze_classes, scala_container, up
+from ..consensus import trusted_pools
 from ..util import (CLI, ENTRY, ENV, MAGIC, QUERY_PORT, REFERENCE_IMAGE, USER, data_root, docker, in_ref, put_file,
                     read_json, read_log, ref)
 
@@ -31,8 +32,11 @@ def start_scala_relay(args, root, peers):
     sock.chmod(0o777)
     program = ["follow", "--genesis-dir", "/genesis", "--query-port", str(QUERY_PORT),
                "--listen", f"127.0.0.1:{SCALA_PORT}", "--db", "/db", "--local-socket", "/sock/node.socket"]
-    for port in peers:
-        program += ["--peer", f"127.0.0.1:{port}"]
+    if getattr(args, "consensus_mode", None) == "GenesisMode":
+        program += trusted_pools(root, peers)
+    else:
+        for port in peers:
+            program += ["--peer", f"127.0.0.1:{port}"]
     # The Scala node takes part in peer sharing, as the Haskell relay does by default (a node without producer
     # credentials), and reads ExperimentalProtocolsEnabled, which decides the highest node-to-node version it
     # offers: cardano-testnet writes `true`, so the key is set from --max-ntn-version either way (15, the
@@ -40,6 +44,8 @@ def start_scala_relay(args, root, peers):
     config = json.loads((root / "genesis" / "configuration.yaml").read_text())
     config["PeerSharing"] = bool(getattr(args, "peer_sharing", True))
     config["ExperimentalProtocolsEnabled"] = getattr(args, "max_ntn_version", 15) > 15
+    if getattr(args, "consensus_mode", None) is not None:
+        config["ConsensusMode"] = args.consensus_mode
     (root / "genesis" / "scala-configuration.json").write_text(json.dumps(config, indent=2))
     program += ["--config", "/genesis/scala-configuration.json"]
     command = scala_container(args, root, classpath, "xyz.kd5ujc.scarab.node.Main", program,
@@ -106,10 +112,15 @@ def inbound_session(connections):
     return sessions[0] if sessions else None
 
 
-def wait_inbound_session(args, timeout):
+def wait_inbound_session(args):
     """Wait for the Scala node's own ChainSync client to follow the Haskell relay over the relay's
-    inbound duplex connection: an intersection found and headers received."""
-    deadline = time.monotonic() + timeout
+    inbound duplex connection: an intersection found and headers received.
+
+    A relay initially behind our immutable anchor can return NoMoreIntersection normally.
+    The pinned consensus Node/ExitPolicy.hs29-30 waits 120 seconds before repromotion;
+    reuse the configured sync budget rather than imposing a shorter duplex-only deadline.
+    """
+    deadline = time.monotonic() + args.sync_timeout
     seen = None
     while time.monotonic() < deadline:
         seen = scala_connections(args)
@@ -227,7 +238,7 @@ def relay(args):
         print(json.dumps({"relaySynced": tip_at(args.name, RELAY_SOCKET)}), flush=True)
         # G2: the Haskell relay connected to us; our own clients follow it over that same connection
         duplex = args.relay_mode == "InitiatorAndResponder"
-        at_sync = wait_inbound_session(args, 90) if duplex else scala_connections(args)
+        at_sync = wait_inbound_session(args) if duplex else scala_connections(args)
         print(json.dumps({"connectionsAtSync": at_sync}), flush=True)
         local = submit_through_local_socket(args, root)
         print(json.dumps({"localSubmit": local}), flush=True)

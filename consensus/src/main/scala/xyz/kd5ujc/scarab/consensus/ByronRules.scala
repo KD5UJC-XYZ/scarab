@@ -122,30 +122,7 @@ object ByronRules:
     val ticked = ByronLedger.tick(config.ledger, state.ledger, header.slot)
     for
       main <- header.main.toRight(ByronChainError.MissingConsensusData)
-      delegated <- main.signature match
-        case d: ByronSignature.Delegated => Right(d)
-      _ <- verifySignature(main, delegated, config)
-      delegate = ByronCbor.keyHash(delegated.delegate)
-      genesisKey <- ticked.delegation
-        .delegatorOf(delegate)
-        .toRight(ByronChainError.UnknownDelegate(delegate))
-      slot <- SlotNo.fromBigInt(header.slot).leftMap(ByronChainError.Vocabulary(_))
-      signer <- KeyHash.fromBytes[Genesis](genesisKey).leftMap(ByronChainError.Vocabulary(_))
-      lastSigned = state.pbft.lastSignedSlot.map(_.toBigInt)
-      _ <- Either.cond(
-        lastSigned.forall(_ <= header.slot),
-        (),
-        ByronChainError.SlotBeforeLastSigned(header.slot, lastSigned.getOrElse(0))
-      )
-      k = config.ledger.genesis.securityParam
-      pbft = state.pbft.append(PBftSigner(slot, signer), k)
-      threshold = math.floor(config.signatureThreshold * k.toDouble).toLong
-      signed = pbft.countSignedBy(signer).toBigInt
-      _ <- Either.cond(
-        signed <= threshold,
-        (),
-        ByronChainError.SignatureThreshold(genesisKey, signed, k, threshold)
-      )
+      pbft <- validateHeader(header, state.pbft, ticked.delegation, config)
       body <- ByronBody.decode(block.body).leftMap(ByronChainError.Body(_))
       ledger <- ByronLedger
         .applyMain(config.ledger, ticked, header, block.size, body)
@@ -153,6 +130,46 @@ object ByronRules:
     yield
       val onSchedule = ByronCbor.keyHash(main.leader) == scheduledLeader(genesis, header.slot)
       State(Some(tipOf(header)), ledger, pbft) -> ByronCheck.Verified(onSchedule, body.txs.size)
+
+  /** Header-only PBFT validation against a forecast delegation view. Body rules and the ledger tick
+    * belong to the caller; the same signature/window code is used by complete block validation.
+    * Consensus 82ecba329, Byron/Ledger/PBFT.hs and Protocol/PBFT.hs.
+    */
+  def validateHeader(
+      header: Header.Byron,
+      previous: PBftState,
+      delegation: DelegationState,
+      config: Config
+  ): Either[ByronChainError, PBftState] =
+    if header.boundary then Right(previous)
+    else
+      for
+        main <- header.main.toRight(ByronChainError.MissingConsensusData)
+        delegated <- main.signature match
+          case d: ByronSignature.Delegated => Right(d)
+        _ <- verifySignature(main, delegated, config)
+        slot <- SlotNo.fromBigInt(header.slot).leftMap(ByronChainError.Vocabulary(_))
+        lastSigned = previous.lastSignedSlot.map(_.toBigInt)
+        _ <- Either.cond(
+          lastSigned.forall(_ <= header.slot),
+          (),
+          ByronChainError.SlotBeforeLastSigned(header.slot, lastSigned.getOrElse(0))
+        )
+        delegate = ByronCbor.keyHash(delegated.delegate)
+        genesisKey <- delegation
+          .delegatorOf(delegate)
+          .toRight(ByronChainError.UnknownDelegate(delegate))
+        signer <- KeyHash.fromBytes[Genesis](genesisKey).leftMap(ByronChainError.Vocabulary(_))
+        k = config.ledger.genesis.securityParam
+        pbft = previous.append(PBftSigner(slot, signer), k)
+        threshold = math.floor(config.signatureThreshold * k.toDouble).toLong
+        signed = pbft.countSignedBy(signer).toBigInt
+        _ <- Either.cond(
+          signed <= threshold,
+          (),
+          ByronChainError.SignatureThreshold(genesisKey, signed, k, threshold)
+        )
+      yield pbft
 
   private def orderOk(tip: Option[ByronTip], h: Header.Byron): Either[ByronChainError, Unit] =
     tip match

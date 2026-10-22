@@ -29,9 +29,13 @@ enum PeerError extends NodeError:
   case MuxSetup(cause: WireMux.Error)
   case MuxWrite(cause: WireMux.Error)
   case Unavailable(cause: PeerError.Unavailability)
+  case Genesis(cause: PeerError.GenesisProblem)
 
   /** The peer's chain shares no point with ours (it is behind, or on another network). */
   case NoIntersection
+
+  /** Native normal ChainSync termination after draining (`Client.hs` 1555–1585). */
+  case RolledBackPastIntersection(point: ChainSync.Point)
 
   /** The peer's chain and ours part ways in a way that is nobody's fault: it rolled back beyond
     * what we keep, or our chain moved on so that its candidate no longer joins it. The session
@@ -48,28 +52,67 @@ enum PeerError extends NodeError:
   case InvalidBlock(error: ValidationError)
 
   def message: String = this match
-    case Handshake(r)        => s"handshake: ${r.message}"
-    case Protocol(r)         => s"protocol: ${PeerError.protocolMessage(r)}"
-    case Framing(e)          => s"protocol: multiplexer framing: ${e.message}"
-    case MuxSetup(e)         => s"multiplexer setup: ${e.message}"
-    case MuxWrite(e)         => s"multiplexer write: ${e.message}"
-    case Unavailable(r)      => s"unavailable: ${r.message}"
-    case NoIntersection      => "the peer's chain shares no point with ours"
+    case Handshake(r)   => s"handshake: ${r.message}"
+    case Protocol(r)    => s"protocol: ${PeerError.protocolMessage(r)}"
+    case Framing(e)     => s"protocol: multiplexer framing: ${e.message}"
+    case MuxSetup(e)    => s"multiplexer setup: ${e.message}"
+    case MuxWrite(e)    => s"multiplexer write: ${e.message}"
+    case Unavailable(r) => s"unavailable: ${r.message}"
+    case Genesis(cause) => s"Genesis: ${cause.message}"
+    case NoIntersection => "the peer's chain shares no point with ours"
+    case RolledBackPastIntersection(point) =>
+      s"the peer rolled back beyond the captured intersection fragment to ${Points.show(point)}"
     case Diverged(r)         => s"diverged: ${r.message}"
     case InvalidHeader(p, e) => s"invalid header ${Points.show(p)}: ${e.message}"
     case InvalidBlock(e)     => s"invalid block ${e.message}"
 
 object PeerError:
+  enum GenesisProblem:
+    case HistoricalAwait(
+        point: ChainSync.Point,
+        slotTimePicos: BigInt,
+        arrivalTimePicos: BigInt,
+        cutoffPicos: BigInt
+    )
+    case HistoricalRollback(
+        point: ChainSync.Point,
+        slotTimePicos: BigInt,
+        arrivalTimePicos: BigInt,
+        cutoffPicos: BigInt
+    )
+    case LoPExpired, DensityTooLow
+    case CandidateTooSparse(
+        intersection: ChainSync.Point,
+        ourTip: ChainSync.Point,
+        theirTip: ChainSync.Point
+    )
+    case InvalidJumpResponse(requested: ChainSync.Point, actual: Option[ChainSync.Point])
+    def message: String = this match
+      case HistoricalAwait(point, slot, arrival, cutoff) =>
+        s"historical AwaitReply at ${Points.show(point)}: age ${arrival - slot} ps exceeds $cutoff ps"
+      case HistoricalRollback(point, slot, arrival, cutoff) =>
+        s"historical rollback rewinds ${Points.show(point)}: age ${arrival - slot} ps exceeds $cutoff ps"
+      case CandidateTooSparse(intersection, ourTip, theirTip) =>
+        s"candidate at ${Points.show(theirTip)} is not preferred to ${Points.show(ourTip)} beyond the forecast at ${Points.show(intersection)}"
+      case LoPExpired    => "ChainSync patience bucket exhausted"
+      case DensityTooLow => "candidate density cannot compete with another peer"
+      case InvalidJumpResponse(requested, actual) =>
+        s"intersection response ${actual.fold("no intersection")(Points.show)} does not match requested jump ${Points.show(requested)}"
   type ProtocolFailure = ProtocolError | ProtocolProblem | NetworkError.IngressLimit |
     NetworkError.Decode | NetworkError.IllegalTransition | NetworkError.QueryRefused |
     NetworkError.TxSubmission
   enum ProtocolProblem:
     case HeaderDecode(cause: ChainError)
+    case FetchedBlockIntegrity(cause: BlockTransportError)
+    case InvalidPunishmentHeader(cause: TentativeHeaderError)
     case HeaderDoesNotExtend(point: ChainSync.Point, tip: ChainSync.Point)
     case HeaderValidationDidNotSettle
     case BlockCount(expected: Int, actual: Int)
     def message: String = this match
-      case HeaderDecode(cause) => cause.message
+      case HeaderDecode(cause)          => cause.message
+      case FetchedBlockIntegrity(cause) => cause.message
+      case InvalidPunishmentHeader(cause) =>
+        s"invalid tentative-header vocabulary: ${cause.message}"
       case HeaderDoesNotExtend(point, _) =>
         s"header ${Points.show(point)} does not extend the peer's chain"
       case HeaderValidationDidNotSettle => "header validation did not settle"
@@ -104,6 +147,53 @@ object PeerError:
     case error: ProtocolProblem => error.message
     case error: NetworkError    => error.message
 
+/** Violated local Genesis invariants; reconnecting or blaming the remote peer cannot repair them.
+  */
+enum BlockPoolProblem extends NodeError:
+  case MissingDeliveredHeader(point: ChainSync.Point)
+  case DifferentInvalidRegistry
+  case AvailableHashMismatch(key: Bytes, actual: Bytes)
+  case SelectionProjectionChanged(point: ChainSync.Point)
+  case AvailableCycle(hash: Bytes)
+
+  def message: String = this match
+    case MissingDeliveredHeader(point) =>
+      s"received block ${Points.show(point)} has no original adding-header context"
+    case AvailableHashMismatch(key, actual) =>
+      s"available block key ${key.hex} differs from header hash ${actual.hex}"
+    case SelectionProjectionChanged(point) =>
+      s"candidate projection changed under selection lock at $point"
+    case AvailableCycle(hash) => s"available block ancestry contains a cycle at ${hash.hex}"
+    case DifferentInvalidRegistry =>
+      "follower sessions do not share the same invalid-block registry"
+
+enum GenesisInternalProblem extends NodeError:
+  case PatienceWatcherFailed(cause: NetworkError)
+  case MissingSharedBlockPool, UnsupportedHeaderFamily, MissingConnectionIdentity
+  case InvalidConnectionIdentity(cause: xyz.kd5ujc.scarab.protocol.ConnectionIdentityError)
+  case MissingDynamoJumpInfo, UnexpectedIntersection
+  case GraftMissingPoint(point: ChainSync.Point)
+  case HeaderTimeUnavailable(point: ChainSync.Point)
+  case HeaderSelectionUnavailable(point: ChainSync.Point)
+  case HeaderStateUnavailable(point: ChainSync.Point)
+  def message: String = this match
+    case PatienceWatcherFailed(cause) => s"Genesis patience watcher failed: ${cause.message}"
+    case MissingDynamoJumpInfo        => "Genesis dynamo has no validated jump snapshot"
+    case UnexpectedIntersection =>
+      "Genesis jumper with a settled intersection received another jump result"
+    case UnsupportedHeaderFamily =>
+      "Genesis requires a header gate supporting typed snapshot grafts"
+    case MissingSharedBlockPool    => "Genesis requires the shared block pool"
+    case MissingConnectionIdentity => "Genesis requires the established TCP connection identity"
+    case InvalidConnectionIdentity(cause) => s"Genesis TCP connection identity: ${cause.message}"
+    case GraftMissingPoint(point)         => s"Genesis jump snapshot lacks ${Points.show(point)}"
+    case HeaderSelectionUnavailable(point) =>
+      s"Genesis validated header lacks a selection view at ${Points.show(point)}"
+    case HeaderStateUnavailable(point) =>
+      s"Genesis validated header lacks state at ${Points.show(point)}"
+    case HeaderTimeUnavailable(point) =>
+      s"Genesis validated header lacks slot time at ${Points.show(point)}"
+
 /** Failures of the local chain model. These are not recoverable by reconnecting. */
 enum ChainError extends NodeError:
   /** The retained ledger point and pinned backing generation do not describe one state. */
@@ -130,6 +220,9 @@ final case class ValidationError(point: ChainSync.Point, failure: BlockFailure) 
   def rule: String = failure.rule.name
   def reason: String = failure.reason
   def message: String = s"${Points.show(point)} rejected by $rule: $reason"
+
+object ValidationError:
+  given cats.Show[ValidationError] = cats.Show.show(_.message)
 
 /** The implementation cannot evaluate this block. It is no verdict on the block or its peer. */
 final case class EvaluationUnavailable(point: ChainSync.Point, failure: LedgerFailure.Unavailable)

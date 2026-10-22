@@ -304,7 +304,8 @@ object PeerNetwork:
       marker: GsmRunner.Marker[F],
       ledgerSource: LedgerPeersSource[F],
       sharing: Option[PeerSharingRuntime[F]] = None,
-      immutable: Option[ImmutableStore[F]] = None
+      immutable: Option[ImmutableStore[F]] = None,
+      genesisReadings: Option[F[Vector[Gsm.PeerReading]]] = None
   )(using
       node: Handle[F, NodeError],
       dnsResource: Resource[F, PeerDns[F]]
@@ -583,7 +584,7 @@ object PeerNetwork:
       val gsmLoop: F[Nothing] =
         GsmRunner.run[F](
           GsmRunner.Env[F](
-            reading = gsmReading(outbound, connections, chain),
+            reading = gsmReading(outbound, connections, chain, genesisReadings),
             marker = marker,
             publish = j =>
               judgement.set(j) *> events.offer(Event.JudgementReported(j)) *> verifySnapshot(j),
@@ -857,10 +858,11 @@ object PeerNetwork:
   private def gsmReading[F[_]: Async](
       outbound: OutboundPeers[F, Addr],
       connections: Ref[F, OutboundConnectionsState],
-      chain: ChainView[F]
+      chain: ChainView[F],
+      genesisReadings: Option[F[Vector[Gsm.PeerReading]]]
   ): F[Gsm.Reading] =
     for
-      peers <- outbound.readings
+      peers <- genesisReadings.getOrElse(outbound.readings)
       assumption <- connections.get.map(_ == OutboundConnectionsState.TrustedStateWithExternalPeers)
       tip <- chain.tip
       geometry <- chain.geometry

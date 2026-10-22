@@ -126,7 +126,7 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             Follower.OnTip((chain, _) =>
               chain.tipRef.fold(IO.unit)(tipRef =>
                 published.update(_ :+ headers.find(_.hash == tipRef.hash).get) *>
-                  summon[Raise[IO, NodeError]]
+                  Raise[IO, NodeError]
                     .raise[NodeError, Unit](ChainError.NoIntersection)
                     .whenA(
                       breakTip.contains(tipRef.blockNo.toInt)
@@ -238,6 +238,25 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertEquals(FailurePolicy.disposition(broken.end), Disposition.Forget)
       assertEquals(FailurePolicy.disposition(lost.end), Disposition.Backoff)
       assertEquals(broken.chain.tip, headers(0).point)
+  }
+
+  test("no intersection is the reference normal ChainSync result, not a failed connection") {
+    session(script = List(Left(PeerError.NoIntersection))).map { result =>
+      assertEquals(result.end, SessionEnd.NoMoreIntersection)
+      assertEquals(FailurePolicy.disposition(result.end), Disposition.Settled)
+      assertEquals(SessionEnd.peerError(result.end), None)
+      assertEquals(SessionEnd.networkFailure(result.end), None)
+    }
+  }
+
+  test("rollback before the intersection is a normal result with the native 180-second delay") {
+    val point = ChainSync.Point.Origin
+    session(script = List(Left(PeerError.RolledBackPastIntersection(point)))).map { result =>
+      assertEquals(result.end, SessionEnd.RolledBackPastIntersection(point))
+      assertEquals(FailurePolicy.disposition(result.end), Disposition.Settled)
+      assertEquals(SessionEnd.returnDelay(result.end), Some(180.seconds))
+      assertEquals(SessionEnd.networkFailure(result.end), None)
+    }
   }
 
   test("an implementation limit stops without a ledger verdict or peer failure, exit eight") {

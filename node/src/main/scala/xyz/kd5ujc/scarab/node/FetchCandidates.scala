@@ -53,7 +53,7 @@ private[node] object FetchCandidates:
   ): Boolean =
     intersection(local, candidate).isDefined && candidate.headers.lastOption.exists { tip =>
       if local.blocks.isEmpty then tip.point != local.anchor
-      else ChainSelection.prefers(tiebreaker, local.tipView, SelectView.of(tip))
+      else ChainSelection.prefersCandidate(tiebreaker, local.tipView, SelectView.of(tip))
     }
 
   /** Latest common point, bounded by the selected immutable anchor. */

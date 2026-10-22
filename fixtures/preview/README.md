@@ -66,7 +66,9 @@ contain data from the Koios public API (https://koios.rest: `proposal_list`, `vo
 Koios is credited as the source and is not affiliated with this project. `genesis/` is the public Preview network configuration from
 https://book.play.dev.cardano.org/environments/preview/ unchanged (`config.json`, `topology.json`,
 `byron-genesis.json`, `shelley-genesis.json`, `alonzo-genesis.json`, `conway-genesis.json`, downloaded
-2026-10-14); `ConfigSuite` reads them with `--config`/`--topology` and verifies every hash. No private data and no third-party code is included. The repository's
+2026-10-14); `checkpoints.json` is the matching published 11.1 file, pinned and hash-bound
+as recorded in [the checkpoint manifest](../reference/checkpoints/manifest.json).
+`ConfigSuite` reads them with `--config`/`--topology` and verifies every hash. No private data and no third-party code is included. The repository's
 Apache-2.0 applies to our own selection, re-encoding and packaging. See `../../NOTICE`.
 
 ## Generated-model and generic-CBOR comparisons

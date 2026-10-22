@@ -55,6 +55,14 @@ enum SessionEnd:
   /** The session returned (the follower never does). */
   case Returned
 
+  /** ChainSync sent MsgDone after finding no intersection. This is a normal return, with the
+    * reference's 120-second repromotion delay (consensus Node/ExitPolicy.hs:30).
+    */
+  case NoMoreIntersection
+
+  /** The peer rolled back before our captured intersection (native return delay: 180 seconds). */
+  case RolledBackPastIntersection(point: xyz.kd5ujc.scarab.protocol.ChainSync.Point)
+
   /** The peer or the connection failed: [[FailurePolicy.classify]] says whether the peer is
     * forgotten (it broke the protocol or sent an invalid header) or tried again after a delay.
     */
@@ -105,11 +113,13 @@ object SessionEnd:
       Unavailable(EvaluationUnavailable(point, failure))
     case ValidationError(point, BlockFailure.Tx(failure: LedgerFailure.Unavailable)) =>
       Unavailable(EvaluationUnavailable(point, failure))
-    case e: EvaluationUnavailable => Unavailable(e)
-    case e: PeerError             => Failed(e)
-    case e: ValidationError       => Rejected(e)
-    case e: StorageError          => Storage(e)
-    case other                    => Internal(other)
+    case e: EvaluationUnavailable                    => Unavailable(e)
+    case PeerError.NoIntersection                    => NoMoreIntersection
+    case PeerError.RolledBackPastIntersection(point) => RolledBackPastIntersection(point)
+    case e: PeerError                                => Failed(e)
+    case e: ValidationError                          => Rejected(e)
+    case e: StorageError                             => Storage(e)
+    case other                                       => Internal(other)
 
   /** The session owns a fresh node-error scope for its rule/store operations. The enclosing `node`
     * scope remains live for compatibility with other enclosing services; its errors are caught in
@@ -154,12 +164,21 @@ object SessionEnd:
       Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(Fatal.Storage(error))))
     case Internal(error) =>
       Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(Fatal.Internal(error))))
-    case Defect(cause)                     => Some(NetworkError.Defect(cause))
-    case Returned | Cancelled | Stopped(_) => None
+    case Defect(cause) => Some(NetworkError.Defect(cause))
+    case Returned | NoMoreIntersection | RolledBackPastIntersection(_) | Cancelled | Stopped(_) =>
+      None
+
+  /** Consensus 82ecba329 Node/ExitPolicy.hs:29–35: successful ChainSync return delays. */
+  def returnDelay(result: SessionEnd): Option[scala.concurrent.duration.FiniteDuration] =
+    import scala.concurrent.duration.*
+    result match
+      case NoMoreIntersection            => Some(120.seconds)
+      case RolledBackPastIntersection(_) => Some(180.seconds)
+      case _                             => None
 
   /** The scope of a session's fiber has the outcome as its error. */
   def raiseOf[F[_]](scope: Raise[F, SessionEnd]): Raise[F, PeerError] =
-    Peer.contramapped[F, SessionEnd, PeerError](scope)(Failed(_))
+    Peer.contramapped[F, SessionEnd, PeerError](scope)(of)
 
 /** What the node must do about an outcome that no peer-selection policy can handle. */
 enum Fatal extends DomainError:

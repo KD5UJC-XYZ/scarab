@@ -4,8 +4,10 @@ package xyz.kd5ujc.scarab.ledger.byron
 import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
 import cats.syntax.all.*
 import io.circe.ACursor
-import xyz.kd5ujc.scarab.codec.{Cbor, Node, Value}
+import xyz.kd5ujc.scarab.codec.{Node, Value}
 import xyz.kd5ujc.scarab.ledger.CborRead
+
+import ByronInteger.decode as integer
 
 /** Byron's `ProtocolVersion`: `Word16`, `Word16`, `Word8`, ordered lexicographically.
   * `Cardano/Chain/Update/ProtocolVersion.hs:27-32,65-68` (ledger f649f97), `byron.cddl:126`.
@@ -57,17 +59,57 @@ object ByronVersion:
 /** The soft-fork rule: the share of stake that must endorse a version (parts per 10^15). */
 final case class SoftforkRule(initThd: BigInt, minThd: BigInt, thdDecrement: BigInt)
 
-/** The Byron fee policy `a + b * size`, both in 10^-9 lovelace (`Nano`). */
+/** Byron's linear fee, stored in Nano for compatibility with native snapshot fields. */
 final case class TxFeePolicy(summandNano: BigInt, multiplierNano: BigInt):
-  private val Nano = BigInt(1000000000)
-
-  /** `calculateTxSizeLinear`: the summand in whole lovelace (rounded) plus the size-scaled
-    * multiplier rounded up.
+  /** Common/TxSizeLinear.hs:82–88 and Lovelace.hs:216–221,246–248: scale with signed ceiling,
+    * convert to Word64, then checked addition. The intermediate conversion deliberately wraps.
     */
-  def minimumFee(size: Long): BigInt =
-    val a = (summandNano * 2 + Nano) / (Nano * 2)
+  def minimumFee(size: BigInt): Either[TxFeePolicy.Error, BigInt] =
+    import TxFeePolicy.*
+    val a = roundedSummand(summandNano)
     val scaled = multiplierNano * size
-    a + (scaled + Nano - 1) / Nano
+    val ceiling = scaled / Nano + (if scaled % Nano > 0 then 1 else 0)
+    val b = ceiling.mod(Word64Modulus)
+    val result = (a + b).mod(Word64Modulus)
+    if size < 0 then Left(Error.SizeTooSmall(size))
+    else if size > ByronLedger.MaxLovelace then Left(Error.SizeTooLarge(size))
+    else if a > ByronLedger.MaxLovelace then Left(Error.SummandOutOfRange(a))
+    else if result < a || result < b || result > ByronLedger.MaxLovelace then
+      Left(Error.Overflow(result))
+    else Right(result)
+
+object TxFeePolicy:
+  private[byron] val Nano: BigInt = BigInt(1000000000)
+  private val Word64Modulus = BigInt(1) << 64
+
+  enum Error:
+    case SizeTooSmall(value: BigInt)
+    case SizeTooLarge(value: BigInt)
+    case SummandOutOfRange(value: BigInt)
+    case Overflow(value: BigInt)
+
+    def message: String = this match
+      case SizeTooSmall(n)      => s"negative transaction size $n"
+      case SizeTooLarge(n)      => s"transaction size $n exceeds lovelace bounds"
+      case SummandOutOfRange(n) => s"fee summand $n exceeds lovelace bounds"
+      case Overflow(n)          => s"linear fee addition overflowed to $n"
+
+  private[byron] def roundedSummand(value: BigInt): BigInt =
+    val quotient = value / Nano
+    val remainder = (value % Nano).abs * 2
+    val rounded = quotient + (if remainder > Nano || (remainder == Nano && quotient % 2 != 0) then
+                                BigInt(value.signum)
+                              else BigInt(0))
+    rounded.mod(Word64Modulus)
+
+  /** The native decoder rounds Nano to Word64 before mkLovelace; preserve that value in Nano. */
+  private[byron] def fromNano(a: BigInt, b: BigInt): Either[LedgerDecodeError, TxFeePolicy] =
+    val rounded = roundedSummand(a)
+    Either.cond(
+      rounded <= ByronLedger.MaxLovelace,
+      TxFeePolicy(rounded * Nano, b),
+      LedgerDecodeError.NumberOutOfRange("fee summand", rounded, 0, ByronLedger.MaxLovelace)
+    )
 
 /** The Byron protocol parameters (`blockVersionData` of the genesis file). */
 final case class ByronParams(
@@ -126,7 +168,6 @@ final case class ByronParamsUpdate(
     )
 
 object ByronParamsUpdate:
-  private val limits = Cbor.Limits(4096, 16, 256, 4096)
 
   /** A `Maybe` is a list of zero or one element. */
   private def maybe[A](n: Node, what: String)(
@@ -139,6 +180,15 @@ object ByronParamsUpdate:
     }
 
   private def uint(what: String)(n: Node) = CborRead.uint(n, what)
+
+  private def natural(what: String)(n: Node): Either[LedgerDecodeError, BigInt] =
+    integer(n, what).flatMap(v =>
+      Either.cond(
+        v >= 0,
+        v,
+        LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Unsigned, n.value)
+      )
+    )
 
   private def softfork(n: Node): Either[LedgerDecodeError, SoftforkRule] =
     CborRead.arrayN(n, 3, "softfork rule").flatMap { xs =>
@@ -157,31 +207,33 @@ object ByronParamsUpdate:
       _ <- Either.cond(tag == 0, (), LedgerDecodeError.UnknownTag("tx fee policy", tag))
       inner <- xs(1).value match
         case Value.Tag(t, i) if t == 24 =>
-          CborRead.bytes(i, "tx fee policy").flatMap(CborRead.decode(_, limits))
+          CborRead.bytes(i, "tx fee policy").flatMap(CborRead.decode(_, ByronCbor.BodyLimits))
         case _ => Left(LedgerDecodeError.ExpectedTag("tx fee policy", 24, xs(1).value))
       ys <- CborRead.arrayN(inner, 2, "tx size linear")
-      a <- CborRead.uint(ys(0), "summand")
-      b <- CborRead.uint(ys(1), "multiplier")
-    yield TxFeePolicy(a, b)
+      a <- integer(ys(0), "summand")
+      b <- integer(ys(1), "multiplier")
+      policy <- TxFeePolicy.fromNano(a, b)
+    yield policy
 
   def decode(n: Node): Either[LedgerDecodeError, ByronParamsUpdate] =
-    CborRead.arrayN(n, 14, "protocol parameters update").flatMap { x =>
-      (
-        maybe(x(0), "scriptVersion")(uint("scriptVersion")),
-        maybe(x(1), "slotDuration")(uint("slotDuration")),
-        maybe(x(2), "maxBlockSize")(uint("maxBlockSize")),
-        maybe(x(3), "maxHeaderSize")(uint("maxHeaderSize")),
-        maybe(x(4), "maxTxSize")(uint("maxTxSize")),
-        maybe(x(5), "maxProposalSize")(uint("maxProposalSize")),
-        maybe(x(6), "mpcThd")(uint("mpcThd")),
-        maybe(x(7), "heavyDelThd")(uint("heavyDelThd")),
-        maybe(x(8), "updateVoteThd")(uint("updateVoteThd")),
-        maybe(x(9), "updateProposalThd")(uint("updateProposalThd")),
-        maybe(x(10), "updateProposalTTL")(uint("updateProposalTTL")),
-        maybe(x(11), "softforkRule")(softfork),
-        maybe(x(12), "txFeePolicy")(feePolicy),
-        maybe(x(13), "unlockStakeEpoch")(uint("unlockStakeEpoch"))
-      ).mapN(ByronParamsUpdate.apply)
+    (ByronTransport.parameters(n) *> CborRead.arrayN(n, 14, "protocol parameters update")).flatMap {
+      x =>
+        (
+          maybe(x(0), "scriptVersion")(uint("scriptVersion")),
+          maybe(x(1), "slotDuration")(natural("slotDuration")),
+          maybe(x(2), "maxBlockSize")(natural("maxBlockSize")),
+          maybe(x(3), "maxHeaderSize")(natural("maxHeaderSize")),
+          maybe(x(4), "maxTxSize")(natural("maxTxSize")),
+          maybe(x(5), "maxProposalSize")(natural("maxProposalSize")),
+          maybe(x(6), "mpcThd")(uint("mpcThd")),
+          maybe(x(7), "heavyDelThd")(uint("heavyDelThd")),
+          maybe(x(8), "updateVoteThd")(uint("updateVoteThd")),
+          maybe(x(9), "updateProposalThd")(uint("updateProposalThd")),
+          maybe(x(10), "updateProposalTTL")(uint("updateProposalTTL")),
+          maybe(x(11), "softforkRule")(softfork),
+          maybe(x(12), "txFeePolicy")(feePolicy),
+          maybe(x(13), "unlockStakeEpoch")(uint("unlockStakeEpoch"))
+        ).mapN(ByronParamsUpdate.apply)
     }
 
 object ByronParams:
@@ -211,6 +263,13 @@ object ByronParams:
       (num("initThd", soft), num("minThd", soft), num("thdDecrement", soft)).mapN(
         SoftforkRule(_, _, _)
       ),
-      (num("summand", fee), num("multiplier", fee)).mapN(TxFeePolicy(_, _)),
+      (num("summand", fee), num("multiplier", fee)).tupled.flatMap { (a, b) =>
+        // Common/TxFeePolicy.hs:122–136: genesis JSON uses Word64 div, not the CBOR Nano round.
+        Either.cond(
+          a >= 0 && a < (BigInt(1) << 64),
+          TxFeePolicy((a / TxFeePolicy.Nano) * TxFeePolicy.Nano, b),
+          LedgerDecodeError.NumberOutOfRange("genesis fee summand", a, 0, (BigInt(1) << 64) - 1)
+        )
+      },
       num("unlockStakeEpoch")
     ).mapN(ByronParams.apply)

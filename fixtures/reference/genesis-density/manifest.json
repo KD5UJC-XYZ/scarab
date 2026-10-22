@@ -1,0 +1,80 @@
+{
+  "schema": "scarab-native-genesis-v1",
+  "sourceCommit": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+  "sourceFiles": {
+    "ouroboros-consensus-diffusion/test/consensus-test/Test/Consensus/PeerSimulator/Trace.hs": "5515b2d8afed472eee89e82c9ab45cc13b33919c3ed34fa772644d6cba4ce533",
+    "ouroboros-consensus-diffusion/test/consensus-test/Test/Consensus/PointSchedule/Peers.hs": "0d4b1eb34e28c41c96c043861d176f30e369707c45c551b82e7edff05def8d94",
+    "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Genesis/Governor.hs": "9a24d955535f4d977dbe010f8b8f8be5d8f6cc158bf0177f344c7ca2476cae23",
+    "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/ChainSync/Client/HistoricityCheck.hs": "0818c07b673e0b1a4f7e30653bd207fdfa38432b5f3fc90290519639837f4b6d",
+    "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Node/RethrowPolicy.hs": "152cf1c397b5d25cdb0835182a59c1ed47f7d9896f2af2479298c5bbec02e297",
+    "ouroboros-consensus/test/consensus-test/Test/Consensus/MiniProtocol/ChainSync/CSJ.hs": "f65498d7c7d9fad71089c8b906783e621a8031a70e1a1fc1edcf9d2e2412d800",
+    "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/ChainSel.hs": "63e377f2f5d75a8bb99b29337050e354f1b8f2a082adae38d26e102360f88973",
+    "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Util/LeakyBucket.hs": "c318f9a1aecbe37f712ad76b9534096c8390c54636f27227c38826c97f7c50d1",
+    "ouroboros-consensus/src/unstable-consensus-testlib/Test/Util/TestBlock.hs": "7133e69a65511d40a438e8bcb1005a2985795a98ffce541d6d129f8d7a4540af",
+    "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/ChainSync/Client/Jumping.hs": "a898477ebff4ccf311a562d3fe55dc82c0a4d263b15b12f9f928701e0644dd05",
+    "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/ChainSync/Client/State.hs": "19d7496717bb256e0f4ce7db9fb87142b10126a02be179385f633f04320db2e6",
+    "ouroboros-consensus-diffusion/test/consensus-test/Test/Consensus/Genesis/Tests/LoE.hs": "3d1af78c773875c884db306633305667cf16e85ae577050d0062d7b9a6a88fa5",
+    "ouroboros-consensus-diffusion/test/consensus-test/Test/Consensus/Genesis/Tests/DensityDisconnect.hs": "b8abffa2de3f2d652b926eb65e00d47f9f5406c1b62249b7bbc6409ed90d0093",
+    "ouroboros-consensus-diffusion/test/consensus-test/Test/Consensus/Genesis/Tests/LoP.hs": "a8df5f7d070b176c5b3f33dac5126f1500f21b0785e6a11376b5050783520892",
+    "ouroboros-consensus-diffusion/test/consensus-test/Test/Consensus/Genesis/Tests/CSJ.hs": "b51c3e8d52e351fbaa82bc09ab92018bc213fbab3c5222f6b3374573869aa0f0",
+    "ouroboros-consensus-diffusion/test/consensus-test/Test/Consensus/Genesis/Tests/Uniform.hs": "b88a3f937b454483cf9ec2c49b83b04f7f76ea90b00bfffe04260a6f1dbc0804",
+    "ouroboros-consensus-diffusion/test/consensus-test/Test/Consensus/Genesis/Tests/LongRangeAttack.hs": "70214a2a1c314d1009b5bd851f2e8a38f751580a6674863db228585e0ce5a61e",
+    "ouroboros-consensus-diffusion/test/consensus-test/Test/Consensus/Genesis/Setup/GenChains.hs": "3b3972c02842f05282df33c2633a291bfa0bbcbcc369424e5aa160d068bd924c"
+  },
+  "observers": {
+    "Main.hs": "34d8c97314fb24e48abfb38c8e27d9541fd9723ca87b61acea23ea5da07236b4",
+    "MainLoE.hs": "4a5b9df930a3d73a010e6f089a80232046b9061ef5db83a12751f045ad8bcdac",
+    "MainHistoryWindow.hs": "07388930f5e1494b5488df0db341479df86e959086b3509f40bcb78d115ce099",
+    "MainBucket.hs": "73604cc7ffa601d068043b90254d4a6c01a2b3476fe69c4793df8d1874336fdc"
+  },
+  "csjObserverSha256": "1d9e5d89be5b0bcc84a76d707c1697c6d95afa5af4ae0f0f430adce6f6e2b0df",
+  "historicityObserverSha256": "068488712bc0b8da18e760523ebe89ea95424d4e19a0ef83c40e95cb71af8adf",
+  "exporterSha256": "88085170742deddf126d545fc8f8c91ebfd2c9f9141b0723d1a3065138e05670",
+  "buildProjectSha256": "f9c5f7e0ed14360dce074c170a48b630f2e247619ba05d30ddf855a545cbc7b3",
+  "planSha256": "7f1416e0423b18a439e83eeab16e8569060e9cacb24e0dcadb856b1705074ddb",
+  "image": "sha256:10d59164dce6b49fbeafdc520c1a29d3e4024a5859a3c41bb6181b2e627bebc7",
+  "executables": {
+    "density": "1e1dfd66be0de2be41e349fa05bbc7baae53f75a5b2e8f544ced76dd78788227",
+    "bucket": "e064ae2d29ad5cef05f6a2c9b28489a244e6f95677d4bbcd98330f57f70010ce",
+    "loe": "e1dc66f8d6817450e91470e794928949fafe68a83d2f52e21aa0245205bc22df",
+    "csj": "78eceed82e02b51ea1b516c7b2271e5c3dcba27b8aa36e5a8b88bf476d01d442",
+    "historicity": "9c71e6b4ac9bef36a90d4282738a3ae876a32b2727e6eacab55befecaf408488",
+    "history-window": "367b757b385b2600c1f7c1af97033a7eb2b506792c70c3cc23ebea7cc5e7c9e5"
+  },
+  "corpora": {
+    "density.jsonl": {
+      "sha256": "cd8d70768ee6eebd74871ecaeed893bb702c8e3768c0060d6e67436a40e61aca",
+      "cases": 136
+    },
+    "bucket.jsonl": {
+      "sha256": "4e6ab83ac17c629c17fc2c6143d636801f4fd8f5cccdff1b3914c6cbb9c08389",
+      "cases": 44
+    },
+    "loe.jsonl.gz": {
+      "sha256": "69807a9b07335f98ff12b007463a911e8f3b1c3fbacbb68b1f73d86e0cd06081",
+      "cases": 84,
+      "uncompressedSha256": "91a6086a4f7e03536428bcd9937c425bb1cdbb360e17a681dab087683a391eaf",
+      "familyCases": {
+        "CSJ": 16,
+        "DensityDisconnect": 4,
+        "LoE": 8,
+        "LoP": 28,
+        "LongRangeAttack": 4,
+        "Uniform": 24
+      },
+      "allPropertiesPassed": true
+    },
+    "../genesis-chain-sync/csj.jsonl": {
+      "sha256": "9cdb6d19988246bccb418c3f51a3c5a8a3e1fb2f5f702a0245757ec43edaefc5",
+      "cases": 76
+    },
+    "../genesis-historicity/historicity.jsonl": {
+      "sha256": "399cc227d7eca059a6db48af67a8899bb90066d98f589ca2e5203fbf2c2a8f09",
+      "cases": 72
+    },
+    "history-window.jsonl": {
+      "sha256": "4b3a4fa9ef7ae2441770895ccfa1b4085d961edc78ca10ca253acdd02a34afe4",
+      "cases": 250
+    }
+  }
+}

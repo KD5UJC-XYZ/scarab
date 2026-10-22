@@ -718,6 +718,10 @@ object PeerSelection:
           Nil
         )
       case Event.Wake(_) => Decision(st, Nil, Nil)
+      // Retained attribution is immutable evidence, not a command against the current peer. Keep
+      // it observable across root reloads while stale connection outcomes remain filtered below.
+      case Event.Observed(peer, evidence: Observation.CachedBlockRejected, _) =>
+        Events.observed(st, peer, evidence, now, policy)
       case Event.Observed(peer, _, generation) if generation.exists(_ != st.rootsGeneration) =>
         Decision(st, Nil, Nil)
       case Event.Observed(peer, observation, _) =>

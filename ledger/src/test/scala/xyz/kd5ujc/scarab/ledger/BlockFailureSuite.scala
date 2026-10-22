@@ -13,6 +13,15 @@ import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
 class BlockFailureSuite extends FunSuite:
   private def rendered(f: BlockFailure): (String, String) = (f.rule.name, f.reason)
 
+  test("cached transport failures retain their typed cause through validation") {
+    val cause = BlockTransportError.WrongEra(Era.Conway, Era.Babbage)
+    val failure = BlockFailure.Transport(cause)
+    val error = ValidationError(ChainSync.Point.Origin, failure)
+    assertEquals(error.failure, failure)
+    assertEquals(failure.rule, BlockRule.Structure)
+    assertEquals(failure.reason, cause.message)
+  }
+
   test("the structure failures render as they did") {
     assertEquals(
       rendered(BlockFailure.HeaderDiffers),

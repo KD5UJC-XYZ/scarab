@@ -26,6 +26,47 @@ trait HeaderRules[S, H]:
   def validate(anchor: S, tip: Option[BlockRef], prev: H, header: Header): HeaderRules.Outcome[H]
 
 object HeaderRules:
+  enum TimeForecast:
+    case Known(onsetPicos: BigInt)
+    case Unknown(reason: ForecastReason)
+    case Invalid(error: HeaderError)
+
+  /** A forecast ledger view is captured before resuming the patience bucket; header predicates and
+    * cryptographic verification run afterwards (`ChainSync/Client.hs` 1881–1889).
+    */
+  enum Prepared[+H]:
+    case Check(run: () => Outcome[H])
+    case Unknown(reason: ForecastReason)
+    case Invalid(error: HeaderError)
+
+    def result: Outcome[H] = this match
+      case Check(run)      => run()
+      case Unknown(reason) => Outcome.Later(reason)
+      case Invalid(error)  => Outcome.Invalid(error)
+
+    def map[J](f: H => J): Prepared[J] = this match
+      case Check(run) =>
+        Check(() =>
+          run() match
+            case Outcome.Valid(next)             => Outcome.Valid(f(next))
+            case Outcome.Invalid(error)          => Outcome.Invalid(error)
+            case Outcome.Later(reason)           => Outcome.Later(reason)
+            case Outcome.Unchecked(reason, next) => Outcome.Unchecked(reason, next.map(f))
+        )
+      case Unknown(reason) => Unknown(reason)
+      case Invalid(error)  => Invalid(error)
+
+  /** The reference time query uses the same intersection ledger as header validation. */
+  trait Timing[S, H]:
+    def tiebreaker(anchor: S): ChainSelection.Tiebreaker
+    def forecastTime(anchor: S, tip: Option[BlockRef], previous: H, header: Header): TimeForecast
+    def prepareValidation(
+        anchor: S,
+        tip: Option[BlockRef],
+        previous: H,
+        header: Header
+    ): Prepared[H]
+
   enum ForecastReason:
     case ShelleyLedgerNotReady
     case Horizon(slot: BigInt, tipSlot: BigInt)
@@ -71,8 +112,24 @@ object HeaderRules:
 final case class HeaderChain[H](
     base: ChainSync.Point,
     baseState: Option[H],
-    entries: Vector[HeaderChain.Entry[H]]
+    entries: Vector[HeaderChain.Entry[H]],
+    prefix: Vector[HeaderChain.Known[H]] = Vector.empty,
+    baseView: Option[HeaderChain.TipView] = None
 ):
+  def map[J](f: H => J): HeaderChain[J] =
+    HeaderChain(
+      base,
+      baseState.map(f),
+      entries.map(e => HeaderChain.Entry(e.header, e.state.map(f))),
+      prefix.map(p => HeaderChain.Known(p.point, p.state.map(f), p.view)),
+      baseView
+    )
+
+  /** The local immutable-to-intersection prefix needs points and validated states, never
+    * synthesized headers. Accepted CSJ searches may rewind into this captured local prefix.
+    */
+  def points: Vector[ChainSync.Point] = prefix.map(_.point) ++ (base +: entries.map(_.header.point))
+
   def tipHash: Option[Bytes] = entries.lastOption.map(_.header.hash).orElse(baseHash)
 
   private def baseHash: Option[Bytes] = base match
@@ -89,7 +146,17 @@ final case class HeaderChain[H](
     */
   def stateAfter(hash: Bytes): Option[Option[H]] =
     if baseHash.contains(hash) then Some(baseState)
-    else entries.findLast(_.header.hash == hash).map(_.state)
+    else
+      entries
+        .findLast(_.header.hash == hash)
+        .map(_.state)
+        .orElse(
+          prefix
+            .findLast(_.point match
+              case ChainSync.Point.Block(_, h) => h == hash
+              case ChainSync.Point.Origin      => false)
+            .map(_.state)
+        )
 
   def contains(hash: Bytes): Boolean = stateAfter(hash).isDefined
 
@@ -113,14 +180,36 @@ final case class HeaderChain[H](
     if point == base then Some(copy(entries = Vector.empty))
     else
       val index = entries.indexWhere(_.header.point == point)
-      Option.when(index >= 0)(copy(entries = entries.take(index + 1)))
+      if index >= 0 then Some(copy(entries = entries.take(index + 1)))
+      else
+        val known = prefix.indexWhere(_.point == point)
+        Option.when(known >= 0)(
+          HeaderChain(
+            point,
+            prefix(known).state,
+            Vector.empty,
+            prefix.take(known),
+            prefix(known).view
+          )
+        )
 
   /** At most `max` of the newest headers: the oldest are folded into the base. */
   def pruned(max: Int): HeaderChain[H] =
     if entries.size <= max then this
     else
       val (dropped, kept) = entries.splitAt(entries.size - max)
-      copy(base = dropped.last.header.point, baseState = dropped.last.state, entries = kept)
+      copy(
+        base = dropped.last.header.point,
+        baseState = dropped.last.state,
+        entries = kept,
+        prefix = Vector.empty,
+        baseView = Some(
+          HeaderChain.TipView(
+            SelectView.of(dropped.last.header),
+            ChainSelection.tiebreakerFor(dropped.last.header.era)
+          )
+        )
+      )
 
 object HeaderChain:
   enum Error:
@@ -129,6 +218,8 @@ object HeaderChain:
       case DoesNotExtend(h, _) => s"header ${h.hex.take(16)} does not extend the candidate chain"
 
   final case class Entry[H](header: Header, state: Option[H])
+  final case class TipView(value: SelectView, tiebreaker: ChainSelection.Tiebreaker)
+  final case class Known[+H](point: ChainSync.Point, state: Option[H], view: Option[TipView] = None)
 
   def at[H](base: ChainSync.Point, state: Option[H]): HeaderChain[H] =
     HeaderChain(base, state, Vector.empty)

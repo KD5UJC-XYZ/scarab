@@ -15,6 +15,24 @@ class BlockPoolSuite extends CatsEffectSuite:
   private def hash(n: Int): Bytes = Bytes.wrap(Array.fill(32)(n.toByte))
   private def block(n: Int): Bytes = Bytes.wrap(Array.fill(10)((n + 100).toByte))
 
+  test("Genesis handover retries a stalled claim and retains the winning source") {
+    for
+      pool <- BlockPool.create[IO]
+      result <- (pool.session, pool.session).tupled.use { (slow, replacement) =>
+        for
+          first <- slow.claim(Vector(hash(1)))
+          duplicate <- replacement.claim(Vector(hash(1)), allowOverlap = true)
+          _ <- replacement.fill(Vector(hash(1) -> block(1)))
+          _ <- slow.fill(Vector(hash(1) -> block(2)))
+          taken <- replacement.take(hash(1))
+        yield (first, duplicate, taken)
+      }
+    yield
+      assertEquals(result._1, Vector(true))
+      assertEquals(result._2, Vector(true))
+      assertEquals(result._3.map(t => (t.block, t.own)), Some((block(1), true)))
+  }
+
   test("a second claim on the same hashes owns nothing, and the rest is split") {
     for
       pool <- BlockPool.create[IO]
@@ -27,7 +45,7 @@ class BlockPoolSuite extends CatsEffectSuite:
       assertEquals(second, Vector(false, false, true))
   }
 
-  test("a filled block is taken once, a block nobody claimed is not there") {
+  test("a received body remains readable, a block nobody claimed is not there") {
     for
       pool <- BlockPool.create[IO]
       claims <- pool.session.allocated.map(_._1)
@@ -39,9 +57,9 @@ class BlockPoolSuite extends CatsEffectSuite:
       held <- pool.size
     yield
       assertEquals(got, Some(block(1)))
-      assertEquals(again, None)
+      assertEquals(again, Some(block(1)))
       assertEquals(never, None)
-      assertEquals(held, 0)
+      assertEquals(held, 1)
   }
 
   test("a session waiting for a block that another one is fetching gets it") {
@@ -121,7 +139,7 @@ class BlockPoolSuite extends CatsEffectSuite:
       assertEquals(cachedCount, 1)
       // what the session had filled stays for whoever applies it
       assertEquals(filled, Some(block(2)))
-      assertEquals(held, 0)
+      assertEquals(held, 1)
   }
 
   test("a session that is cancelled while it holds claims gives them up") {
@@ -193,13 +211,13 @@ class BlockPoolSuite extends CatsEffectSuite:
       _ <- IO.sleep(20.millis)
       _ <- second.fill(Vector(hash(1) -> block(2)))
       got <- waiting.joinWithNever
-      // the slower delivery finds the block taken and changes nothing
+      // the slower delivery cannot replace the retained original body
       _ <- first.fill(Vector(hash(1) -> block(1)))
       held <- pool.size
     yield
       assertEquals((a, again, b, c), (Vector(true), Vector(false), Vector(true), Vector(true)))
       assertEquals(got, Some(block(2)))
-      assertEquals(held, 0)
+      assertEquals(held, 1)
   }
 
   test(
@@ -254,4 +272,121 @@ class BlockPoolSuite extends CatsEffectSuite:
       assertEquals(blamed, refusal)
       assertEquals(dropped, None)
       assertEquals(held, 0)
+  }
+
+  test("recovered original bytes remain readable and invalidation has no live peer attribution") {
+    import cats.effect.Ref
+    import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
+    import xyz.kd5ujc.scarab.ledger.{BlockFailure, ValidationError}
+    import xyz.kd5ujc.scarab.protocol.ChainSync.Point
+    val local = ChainSelection.Local(Point.Origin, SelectView(-1, 0, None, 0, None), Vector.empty)
+    val refusal = ValidationError(
+      Point.Block(xyz.kd5ujc.scarab.protocol.ChainSync.UInt64.saturating(1), hash(1)),
+      BlockFailure.HeaderDiffers
+    )
+    for
+      persisted <- Ref.of[IO, Map[Bytes, Bytes]](Map(hash(1) -> block(1), hash(2) -> block(2)))
+      pool <- BlockPool.create[IO](
+        BlockPool.FetchPolicy(),
+        IO.pure(local),
+        BlockPool.Recovered(
+          persisted.get.map(_.keySet),
+          h => persisted.get.map(_.get(h)),
+          h => persisted.update(_ - h)
+        )
+      )
+      _ <- pool.session.use { session =>
+        for
+          first <- session.take(hash(1))
+          again <- session.take(hash(1))
+          _ <- IO(assertEquals(first.map(_.origin), Some(BlockPool.Source.Recovered)))
+          _ <- IO(assertEquals(first.map(_.block), again.map(_.block)))
+          _ <- session.distrust(BlockPool.Source.Recovered, refusal)
+          missing <- session.take(hash(1))
+          other <- session.take(hash(2))
+          blame <- IO.race(session.blamed, IO.sleep(1.millis))
+          _ <- IO(assertEquals(missing, None))
+          _ <- IO(assertEquals(other.map(_.block), Some(block(2))))
+          _ <- IO(assertEquals(blame, Right(())))
+        yield ()
+      }
+    yield ()
+  }
+
+  test("a rejected own-source body is invalidated after reads and reported only once") {
+    import cats.effect.Ref
+    import xyz.kd5ujc.scarab.ledger.{BlockFailure, ValidationError}
+    import xyz.kd5ujc.scarab.protocol.ChainSync
+    val refusal = ValidationError(
+      ChainSync.Point.Block(ChainSync.UInt64.saturating(1), hash(1)),
+      BlockFailure.HeaderDiffers
+    )
+    for
+      reports <- Ref.of[IO, Vector[ValidationError]](Vector.empty)
+      pool <- BlockPool.create[IO]
+      _ <- pool.session(Some(e => reports.update(_ :+ e))).use { session =>
+        for
+          _ <- session.claim(Vector(hash(1))) *> session.fill(Vector(hash(1) -> block(1)))
+          taken <- session.take(hash(1))
+          origin <- taken.fold(IO(fail("original body absent")))(IO.pure)
+          _ <- IO(assert(origin.own))
+          _ <- session.distrust(origin.origin, refusal) *> session.distrust(origin.origin, refusal)
+          missing <- session.take(hash(1))
+          retained <- session.retained(origin.origin, hash(1))
+          _ <- IO(assertEquals(missing, None))
+          _ <- IO(assertEquals(retained, false))
+        yield ()
+      }
+      observed <- reports.get
+    yield assertEquals(observed, Vector(refusal))
+  }
+
+  test("fetch decisions use actual readable recovered bodies and invalidate the refused hash") {
+    import cats.effect.Ref
+    import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
+    import xyz.kd5ujc.scarab.ledger.{BlockFailure, Fixtures, ValidationError}
+    import xyz.kd5ujc.scarab.network.selection.{FetchGsv, GenesisBlockFetch, Gsm}
+    import xyz.kd5ujc.scarab.protocol.ChainSync.Point
+    val headers = Fixtures.chain(1)
+    val h = headers.head
+    val local = ChainSelection.Local(Point.Origin, SelectView(-1, 0, None, 0, None), Vector.empty)
+    val candidate = ChainSelection.Candidate(Point.Origin, headers)
+    for
+      durable <- Ref.of[IO, Map[Bytes, Bytes]](Map(h.hash -> block(1)))
+      pool <- BlockPool.create[IO](
+        BlockPool.FetchPolicy(),
+        IO.pure(local),
+        BlockPool.Recovered(
+          durable.get.map(_.keySet),
+          h => durable.get.map(_.get(h)),
+          h => durable.update(_ - h)
+        )
+      )
+      _ <- pool.fetchCoordinator.installGenesis(
+        FetchCoordinator.GenesisControl(
+          IO.pure(
+            FetchCoordinator
+              .GenesisContext(Gsm.Phase.Syncing, 0, GenesisBlockFetch.Starvation.Ongoing)
+          ),
+          _ => IO.unit
+        )
+      )
+      _ <- (pool.session, pool.fetchCoordinator.session(0)).tupled.use { (claims, fetcher) =>
+        for
+          _ <- fetcher.announce(Some(h), FetchGsv.default, candidate = Some(candidate))
+          _ <- fetcher.reserve(headers, FetchMode.BulkSync, Some(candidate)).use { allocation =>
+            IO(assertEquals(allocation.headers, Vector.empty))
+          }
+          first <- claims.take(h.hash)
+          _ <- IO(assertEquals(first.map(_.origin), Some(BlockPool.Source.Recovered)))
+          _ <- claims.distrust(
+            BlockPool.Source.Recovered,
+            ValidationError(h.point, BlockFailure.HeaderDiffers)
+          )
+          _ <- fetcher.reserve(headers, FetchMode.BulkSync, Some(candidate)).use { allocation =>
+            IO(assertEquals(allocation.headers, headers))
+          }
+        yield ()
+      }
+    yield ()
   }

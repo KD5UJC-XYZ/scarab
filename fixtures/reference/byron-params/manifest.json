@@ -1,0 +1,21 @@
+{
+  "schema": "scarab-native-byron-params-v1",
+  "sourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "sourceFiles": {
+    "eras/byron/ledger/impl/src/Cardano/Chain/Update/ProtocolParametersUpdate.hs": "ee028bb4f81d09b5a34eeb9145dbbc699ca23515ba1dcdb272a1910313e29cc1",
+    "eras/byron/ledger/impl/src/Cardano/Chain/Common/TxFeePolicy.hs": "92d9a7dfc085d3df1f99bd630549dcfd2cea728b36910208f86a98e2edac286b",
+    "eras/byron/ledger/impl/src/Cardano/Chain/Common/TxSizeLinear.hs": "7a7eb317f832ec3575d90c8ef690f430cc27c92e101a5fa04d66391c013edd7c",
+    "eras/byron/ledger/impl/src/Cardano/Chain/Common/Lovelace.hs": "ef5e81d943f419475e08e2179ac9a913944a215ecdfaeb5c41f7e45f25258f30",
+    "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs": "fc3976b22364883b70f785be75c63dd586e3b3c68ee67178fc3b5be128f19e6d",
+    "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs": "3ff3541b2900ceaab9bda26f633d7ea5118a49f5faab3936d036cfe9b49f94cc"
+  },
+  "observerSha256": "4b1503eece13dbbfee57c082bc6b67acc7d7a213abd4b727c6706b944a2c2ae2",
+  "exporterSha256": "3e239a8b8860290f25502408fa68e417a906a8648ad6ddb0c3cf24204e0d2a33",
+  "inputsSha256": "6a9012d6381034cca904274309067a132077ad1e1baf68ee45ae16c26ad7b860",
+  "corpusSha256": "6b119e7ea07de4f72027c2d199263bedc81d15d13092006afb020b497914f2ba",
+  "rows": 29,
+  "feeOutcomes": 66,
+  "image": "sha256:10d59164dce6b49fbeafdc520c1a29d3e4024a5859a3c41bb6181b2e627bebc7",
+  "executableSha256": "bf8817a18ea48e955b0bbf0b7fc64edcae459d300e5316a6bfc540a737718d7b",
+  "planSha256": "b25df1601ea5d0b772fe28a4d36bbcd666df4dc9204f6c74ed9c768dfb299775"
+}

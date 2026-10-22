@@ -267,7 +267,7 @@ class AdversarialScheduleSuite extends FailsOnUncaught:
       hashes: Vector[Bytes]
   ): IO[Unit] =
     for
-      _ <- hashes.traverse_ { hash =>
+      originals <- hashes.traverse { hash =>
         pool
           .take(hash)
           .timeoutTo(
@@ -277,10 +277,14 @@ class AdversarialScheduleSuite extends FailsOnUncaught:
             )
           )
       }
+      // Received originals survive their delivering session, as in VolatileDB. They remain
+      // readable and suppress duplicate fetches; only missing bodies become claimable again.
+      retained <- hashes.traverse(pool.takeFilled)
+      _ <- IO(assertEquals(retained.map(_.map(_.block)), originals))
       claimable <- pool.session.use(_.claim(hashes))
     yield assertEquals(
       claimable,
-      hashes.map(_ => true),
+      retained.map(_.isEmpty),
       s"node $nodeIndex fixture hashes remained claimed after peer-network resources closed"
     )
 

@@ -8,7 +8,7 @@ import com.comcast.ip4s.{Host, SocketAddress}
 import xyz.kd5ujc.scarab.blst.{BlstReport, CpuSupport, LibraryBuild}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.VolatileChain
-import xyz.kd5ujc.scarab.ledger.{NodeError, Points, ShelleyGenesis}
+import xyz.kd5ujc.scarab.ledger.{NodeError, Points, ShelleyGenesis, StorageError}
 import xyz.kd5ujc.scarab.node.{
   BuildInfo,
   Fatal,
@@ -81,6 +81,9 @@ enum NodeEvent:
 
   /** The verification verdicts found ahead of the rules so far (every 20,000 blocks). */
   case VerificationCache(summary: String)
+
+  /** A malformed unselected cached original was discarded during startup recovery. */
+  case ReceivedBlockDiscarded(hash: Bytes, cause: StorageError)
 
   /** The run stops on an error. */
   case Failed(error: NodeError)
@@ -258,6 +261,11 @@ object NodeEvent:
       )
     case VerificationCache(summary) =>
       EventKind.VerificationCache.line("summary" -> summary.asJson)
+    case ReceivedBlockDiscarded(hash, cause) =>
+      EventKind.ReceivedBlockDiscarded.line(
+        "hash" -> hash.hex.asJson,
+        "reason" -> cause.message.asJson
+      )
     case Failed(e) =>
       EventKind.Error.line("kind" -> e.productPrefix.asJson, "message" -> e.message.asJson)
     case Faulted(fault) =>
@@ -300,6 +308,18 @@ object NodeEvent:
             if dropped then "sessionDropped" else "sessionEnded",
             Some(reason.message)
           )
+        case InboundEvent.SessionReturned(reason, delay) =>
+          inbound(
+            remote,
+            "sessionReturned",
+            Some(s"${reason.message}; repromote after ${delay.toSeconds}s")
+          )
+        case InboundEvent.CachedBlockRejected(refusal, generation, sourceLive) =>
+          inbound(
+            remote,
+            "cachedBlockRejected",
+            Some(s"${refusal.message}; source generation $generation; live=$sourceLive")
+          ).at(Severity.Warning)
         case InboundEvent.Closed(reason) => inbound(remote, "closed", Some(reason.message))
         case InboundEvent.Refused(reason) =>
           inbound(remote, "refused", Some(reason.message)).at(Severity.Warning)

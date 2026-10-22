@@ -288,6 +288,9 @@ def main():
     sub.add_parser("oracle", help="compare Scala state digests with db-analyser states of the reference node"
                    ).set_defaults(run=oracle)
     sub.add_parser("down", help="remove the containers and the run directory").set_defaults(run=down)
+    for scenario in (f, sk, rl, e2, sub.choices["restart"]):
+        scenario.add_argument("--consensus-mode", choices=["PraosMode", "GenesisMode"],
+                              help="Scala consensus mode; reference pools retain their original configuration")
     args = p.parse_args()
     args.name = args.name or ("scarab-eras" if args.command in ("up-eras", "capture-eras", "e2e", "sample-chain-dep", "assemble-chain-dep") else "scarab-pool" if args.command == "pool" else "scarab-kes-rotate" if args.command == "kes-rotate" else "scarab-devnet")
     args.run(args)

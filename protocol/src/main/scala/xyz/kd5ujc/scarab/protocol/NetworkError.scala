@@ -99,6 +99,7 @@ object NetworkError:
     case UnofferedLocalVersion(version: Int)
     case UnexpectedProtocol(protocol: Int)
     case WrongModeBit
+    case ApplicationAlreadyInstalled
     case OutgoingMessageSize(actual: Int, maximum: Int)
     case IntersectionNotOffered
     case PipelinedRequest(state: ChainSync.State)

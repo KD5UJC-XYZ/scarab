@@ -6,6 +6,7 @@
 {"event":"error","at":"2026-10-16T12:00:00Z","kind":"NoIntersection","message":"the peer's chain shares no point with ours"}
 {"event":"error","at":"2026-10-16T12:00:00Z","kind":"Decode","message":"decode block: Syntax(UnexpectedEnd)"}
 {"event":"error","at":"2026-10-16T12:00:00Z","kind":"Missing","message":"missing immutable/format"}
+{"event":"receivedBlockDiscarded","at":"2026-10-16T12:00:00Z","hash":"abababababababababababababababababababababababababababababababab","reason":"corrupt received block: UnexpectedEnd"}
 {"event":"memory","at":"2026-10-16T12:00:00Z","sample":{"heapUsed":1024,"rssAnon":null}}
 {"event":"cpuStarvation","at":"2026-10-16T12:00:00Z","clockDriftMs":250,"threshold":0.1,"intervalMs":1000}
 {"event":"listening","at":"2026-10-16T12:00:00Z","address":"0.0.0.0:3001"}
@@ -24,6 +25,10 @@
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"following","reason":"4200@abababababababab"}
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"sessionEnded","reason":"the peer's chain shares no point with ours"}
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"sessionDropped","reason":"the peer's chain shares no point with ours"}
+{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"sessionReturned","reason":"no more intersection; repromote after 120s"}
+{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"sessionReturned","reason":"rolled back past intersection: 4200@abababababababab; repromote after 180s"}
+{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"cachedBlockRejected","reason":"4200@abababababababab rejected by structure: block header differs from announced header; source generation 7; live=true"}
+{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"cachedBlockRejected","reason":"4200@abababababababab rejected by structure: block header differs from announced header; source generation 8; live=false"}
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"closed","reason":"connection closed: closed by peer"}
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"refused","reason":"refused inbound connection from 10.0.0.2:4000: 64 connections accepted already"}
 {"event":"peerSelectionTargets","at":"2026-10-16T12:00:00Z","root":60,"known":150,"established":30,"active":20,"knownBigLedger":15,"establishedBigLedger":10,"activeBigLedger":5}
@@ -43,6 +48,8 @@
 {"event":"peerSelectionDemote","at":"2026-10-16T12:00:00Z","action":"failed","from":"hot","peer":"relay.example.org:3001","timedOut":true}
 {"event":"peerSelectionDemote","at":"2026-10-16T12:00:00Z","action":"asynchronous","to":"warm","peer":"10.0.0.1:3001","failure":null,"reason":null}
 {"event":"peerSelectionDemote","at":"2026-10-16T12:00:00Z","action":"asynchronous","to":"cold","peer":"relay.example.org:3001","failure":"Transient","reason":"unavailable: connection closed"}
+{"event":"peerSelectionSource","at":"2026-10-16T12:00:00Z","action":"cachedBlockRejected","peer":"10.0.0.1:3001","reason":"4200@abababababababab rejected by structure: block header differs from announced header","sourceGeneration":7,"sourceLive":true}
+{"event":"peerSelectionSource","at":"2026-10-16T12:00:00Z","action":"cachedBlockRejected","peer":"10.0.0.1:3001","reason":"4200@abababababababab rejected by structure: block header differs from announced header","sourceGeneration":8,"sourceLive":false}
 {"event":"peerSelectionForget","at":"2026-10-16T12:00:00Z","action":"cold","target":150,"known":160,"peers":["relay.example.org:3001"]}
 {"event":"peerSelectionForget","at":"2026-10-16T12:00:00Z","action":"forgotten","peers":["10.0.0.1:3001"]}
 {"event":"peerSelectionRoots","at":"2026-10-16T12:00:00Z","action":"request","bigLedger":true,"target":15,"current":3}

@@ -52,6 +52,19 @@ final class NodeHeaderRules[S](config: PraosConfig, globals: LedgerGlobals)(usin
       tip: Option[BlockRef],
       prev: ProtocolState,
       header: Header
+  ): Outcome[ProtocolState] =
+    config.checkpoints
+      .validate(header)
+      .fold(
+        error => Outcome.Invalid(HeaderError.Envelope(error)),
+        _ => validateUnchecked(anchor, tip, prev, header)
+      )
+
+  private def validateUnchecked(
+      anchor: S,
+      tip: Option[BlockRef],
+      prev: ProtocolState,
+      header: Header
   ): Outcome[ProtocolState] = header match
     case _: Header.Byron =>
       Outcome.Unchecked(HeaderRules.UncheckedReason.Byron, Some(prev))
@@ -73,13 +86,37 @@ final class NodeHeaderRules[S](config: PraosConfig, globals: LedgerGlobals)(usin
             Outcome.Later(HeaderRules.ForecastReason.ShelleyLedgerNotReady)
           case Right(Some(InEra.Of(_, ledger))) => shelley(anchor, ledger, tip, prev, h)
 
-  private def shelley[E <: EraTag](
+  private[node] def shelley[E <: EraTag](
       anchor: S,
       ledger: EraRead[E],
       tip: Option[BlockRef],
       prev: ProtocolState,
-      h: Header.Shelley
+      h: Header.Shelley,
+      strictEnvelope: Boolean = false,
+      forecastLimit: Option[BigInt] = None,
+      genericEnvelope: Either[HeaderError, Unit] = Right(())
   ): Outcome[ProtocolState] =
+    prepareShelley(
+      anchor,
+      ledger,
+      tip,
+      prev,
+      h,
+      strictEnvelope,
+      forecastLimit,
+      genericEnvelope
+    ).result
+
+  private[node] def prepareShelley[E <: EraTag](
+      anchor: S,
+      ledger: EraRead[E],
+      tip: Option[BlockRef],
+      prev: ProtocolState,
+      h: Header.Shelley,
+      strictEnvelope: Boolean = false,
+      forecastLimit: Option[BigInt] = None,
+      genericEnvelope: Either[HeaderError, Unit] = Right(())
+  ): HeaderRules.Prepared[ProtocolState] =
     val firstShelley = anchor.consensus.byron.firstShelleyEpoch
     val cfg =
       firstShelley.fold(config)(first => config.copy(geometry = config.geometry.resolved(first)))
@@ -90,23 +127,25 @@ final class NodeHeaderRules[S](config: PraosConfig, globals: LedgerGlobals)(usin
     val epoch = geometry.epochOf(h.slot)
     val tipSlot = tip.fold(BigInt(0))(_.slot)
     if epoch < ledgerEpoch then
-      Outcome.Invalid(
+      HeaderRules.Prepared.Invalid(
         HeaderError.Structure(HeaderStructureProblem.EpochPrecedes(epoch, ledgerEpoch))
       )
-    else if (tip.isDefined && h.slot > tipSlot + geometry.stabilityWindow) ||
+    else if (strictEnvelope && h.slot >= forecastLimit.getOrElse(
+        tip.fold(geometry.stabilityWindow)(t => t.slot + 1 + geometry.stabilityWindow)
+      )) || (!strictEnvelope && tip.isDefined && h.slot > tipSlot + geometry.stabilityWindow) ||
       epoch > ledgerEpoch + 1
     then
-      Outcome.Later(
+      HeaderRules.Prepared.Unknown(
         HeaderRules.ForecastReason.Horizon(h.slot, tipSlot)
       )
     else
       val sameEpoch = epoch == ledgerEpoch
       val params =
-        if sameEpoch || ledgerParams.protocolMajor >= 9 then ledgerParams
+        if sameEpoch || (!strictEnvelope && ledgerParams.protocolMajor >= 9) then ledgerParams
         else ledger.paramsNextEpoch(glob)
       val pools = ledger.leaderPools(nextEpoch = !sameEpoch)
       val envelope =
-        if sameEpoch then
+        if sameEpoch || strictEnvelope then
           cfg.forks
             .check(
               h.era,
@@ -124,26 +163,35 @@ final class NodeHeaderRules[S](config: PraosConfig, globals: LedgerGlobals)(usin
       val nonceWindow =
         if h.era.ordinal >= Era.Conway.ordinal then geometry.randomnessStabilisationWindow
         else geometry.stabilityWindow
-      val checked: Either[HeaderError, ProtocolState] =
-        envelope.flatMap { _ =>
-          if h.era.usesTPraos then
-            val view = LedgerView(
-              params.effectiveD,
-              params.extraEntropy,
-              ledger.genDelegsAt(h.slot),
-              StakeView.Known(pools)
-            )
-            TPraos
-              .update(Praos.tick(prev, h.era, epoch, params.extraEntropy), h, view, cfg)
-              .map(_.state)
-              .leftMap(HeaderError.TPraos(_))
-          else
-            Praos
-              .validate(Praos.tick(prev, h.era, epoch), h, StakeView.Known(pools), cfg, nonceWindow)
-              .map(_._1)
-              .leftMap(HeaderError.Praos(_))
-        }
-      checked.fold(Outcome.Invalid(_), Outcome.Valid(_))
+      val delegations = ledger.genDelegsAt(h.slot)
+      HeaderRules.Prepared.Check(() =>
+        val checked: Either[HeaderError, ProtocolState] =
+          genericEnvelope.flatMap(_ => envelope).flatMap { _ =>
+            if h.era.usesTPraos then
+              val view = LedgerView(
+                params.effectiveD,
+                params.extraEntropy,
+                delegations,
+                StakeView.Known(pools)
+              )
+              TPraos
+                .update(Praos.tick(prev, h.era, epoch, params.extraEntropy), h, view, cfg)
+                .map(_.state)
+                .leftMap(HeaderError.TPraos(_))
+            else
+              Praos
+                .validate(
+                  Praos.tick(prev, h.era, epoch),
+                  h,
+                  StakeView.Known(pools),
+                  cfg,
+                  nonceWindow
+                )
+                .map(_._1)
+                .leftMap(HeaderError.Praos(_))
+          }
+        checked.fold(Outcome.Invalid(_), Outcome.Valid(_))
+      )
 
 object NodeHeaderRules:
   def apply[S: ChainRead](config: PraosConfig, globals: LedgerGlobals): NodeHeaderRules[S] =

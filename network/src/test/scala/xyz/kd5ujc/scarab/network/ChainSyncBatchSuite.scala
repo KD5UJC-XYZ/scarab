@@ -107,3 +107,59 @@ class ChainSyncBatchSuite extends FailsOnUncaught:
             )
           )
         )
+
+  test("streaming callbacks publish a prefix and pause on AwaitReply before the batch completes"):
+    TestControl.executeEmbed {
+      Peers
+        .typed {
+          Peers.linked(protocols = Set(protocol)).use { (clientMux, serverMux) =>
+            for
+              clientChannel <- clientMux.channel(protocol)
+              serverChannel <- serverMux.channel(protocol)
+              client <- ChainSyncClient(clientChannel, ChainSyncFixtures.rawItem)
+              prefix <- cats.effect.Deferred[IO, Unit]
+              waiting <- cats.effect.Deferred[IO, Unit]
+              events <- cats.effect.Ref.of[IO, Vector[String]](Vector.empty)
+              result <- client
+                .observe(new ChainSyncClient.Observer[IO]:
+                  def awaitReply = events.update(_ :+ "await") *> waiting.complete(()).void
+                  def reply = events.update(_ :+ "reply"))
+                .use { _ =>
+                  val server = for
+                    requests <- Vector.fill(2)(()).traverse(_ => receive(serverChannel))
+                    _ <- IO(assertEquals(requests, Vector.fill(2)(Message.RequestNext)))
+                    _ <- send(
+                      serverChannel,
+                      State.NextCanAwait,
+                      Message.RollForward(Peers.header(1), Peers.tip(1))
+                    )
+                    _ <- prefix.get
+                    _ <- send(serverChannel, State.NextCanAwait, Message.AwaitReply)
+                    _ <- waiting.get
+                    _ <- send(
+                      serverChannel,
+                      State.NextMustReply,
+                      Message.RollBackward(ChainSync.Point.Origin, Peers.tip(2))
+                    )
+                  yield ()
+                  Resource.make(Peers.typed(server).start)(_.cancel).use { serving =>
+                    for
+                      batch <- client.requestNextBatchObserved(2) {
+                        case ChainSyncClient.Update.RollForward(_, _) =>
+                          events.update(_ :+ "forward") *> prefix.complete(()).void
+                        case ChainSyncClient.Update.RollBackward(_, _) =>
+                          events.update(_ :+ "backward")
+                      }
+                      completed <- serving.joinWithNever
+                      _ <- Fibers.land[IO, NetworkError, Unit](completed)
+                      recorded <- events.get
+                    yield (batch.size, recorded)
+                  }
+                }
+            yield result
+          }
+        }
+        .map(result =>
+          assertEquals(result, Right((2, Vector("reply", "forward", "await", "reply", "backward"))))
+        )
+    }

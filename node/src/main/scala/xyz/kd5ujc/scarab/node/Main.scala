@@ -32,6 +32,7 @@ import xyz.kd5ujc.scarab.storage.{
   NetworkIdentityFile,
   MemoryUtxoStore,
   RocksUtxoStore,
+  ReceivedBlocks,
   SnapshotFormat,
   SnapshotCheck,
   SnapshotMigration,
@@ -42,7 +43,7 @@ import xyz.kd5ujc.scarab.storage.{
   UtxoHandle,
   UtxoStore
 }
-import cats.mtl.{Ask, Handle, Raise, Stateful}
+import cats.mtl.{Ask, Handle, Raise, Stateful, Tell}
 import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorState, ProtocolState}
 import cats.syntax.all.*
 import java.nio.file.Path
@@ -121,6 +122,158 @@ object Main extends IOApp:
       case Left(error) => fatalSink(Fatal.Storage(error)).as(InboundEnd.Storage(error))
       case Right(end)  => IO.pure(InboundEnd.Local(end))
     }
+
+  private[node] def synchronizeMempool(
+      mempool: Mempool[IO],
+      scheduling: Scheduling[IO],
+      epochSlots: BigInt
+  )(
+      chain: VolatileChain[MirrorState],
+      raws: Vector[xyz.kd5ujc.scarab.codec.Bytes]
+  )(using Ask[IO, MempoolEnv], Raise[IO, NodeError]): IO[Unit] =
+    for
+      decoded <- scheduling.compute.within(IO.delay(raws.traverse(Block.decode(_, epochSlots))))
+      blocks <- decoded.fold(error => summon[Raise[IO, NodeError]].raise(error), IO.pure)
+      adopted = blocks.flatMap {
+        case block: Block.Shelley => block.transactions.map(_.id)
+        case _                    => Vector.empty
+      }.toSet
+      environment <- Ask[IO, MempoolEnv].ask
+      ledger <- scheduling.compute
+        .within(
+          IO.delay(
+            MempoolLedger
+              .at(
+                chain.state,
+                chain.tipRef,
+                environment.copy(geometry = chain.state.geometry(environment.geometry))
+              )
+              .left
+              .map(ChainError.MempoolTick(chain.tipRef.fold(BigInt(0))(_.slot + 1), _))
+          )
+        )
+        .flatMap(Raise[IO, NodeError].fromEither(_))
+      _ <- mempool.sync(
+        ledger,
+        chain.tipRef.fold(BigInt(-1))(_.slot),
+        adopted
+      )
+    yield ()
+
+  private def seedReceived(
+      pool: BlockPool[IO],
+      received: Option[ReceivedBlocks[IO]],
+      epochSlots: BigInt
+  )(using Raise[IO, NodeError], Log[IO]): IO[Unit] =
+    received.traverse_(cache =>
+      cache.entries.flatMap { entries =>
+        entries
+          .traverse { (ref, raw) =>
+            ReceivedBlockRecovery.checked(ref, raw, epochSlots) match
+              case Right(delivered) => IO.pure(Some(delivered))
+              case Left(error) =>
+                Log[IO].emit(NodeEvent.ReceivedBlockDiscarded(ref.hash, error)) *>
+                  cache.discardRecovered(ref.hash).as(None)
+          }
+          .flatMap(items => pool.seedRecoveredHeaders(items.flatten))
+      }
+    )
+
+  private def selectionWorker(
+      follower: Follower[IO, MirrorState],
+      pool: BlockPool[IO],
+      work: Option[SelectionWork[IO]],
+      received: Option[ReceivedBlocks[IO]],
+      preverify: Peer.Prepare[IO],
+      fatal: Fatal => IO[Unit],
+      origin: Option[xyz.kd5ujc.scarab.codec.Bytes]
+  )(using Raise[IO, NodeError]): Resource[IO, Unit] =
+    given BlockSelection.Before[IO] with
+      def prepare(header: Header, raw: xyz.kd5ujc.scarab.codec.Bytes)(using
+          Raise[IO, NodeError]
+      ): IO[Unit] =
+        received.traverse_(
+          _.put(
+            BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary),
+            raw
+          )
+        ) *> preverify(Vector(raw))
+    Resource
+      .eval(work.fold(SelectionWork.create[IO](pool.fetchCoordinator.refreshGenesis))(IO.pure))
+      .flatMap(shared => follower.blockSelection(pool, shared, fatal, origin))
+
+  private def createGenesisRuntime(
+      setup: NodeSetup,
+      follower: Follower[IO, MirrorState],
+      blockPool: BlockPool[IO],
+      geometry: IO[xyz.kd5ujc.scarab.ledger.EpochGeometry]
+  ): IO[Option[GenesisRuntime[IO]]] =
+    for
+      governor <- Option
+        .when(
+          setup.config.settings.consensusMode ==
+            xyz.kd5ujc.scarab.network.selection.ConsensusMode.GenesisMode
+        )(
+          GenesisGovernor.create[IO](
+            follower
+              .genesisView((state, tip, slot) => GenesisHistory.window(state, tip, slot, setup)),
+            GenesisGovernor.Config(
+              setup.config.settings.genesis.enableLoEAndGDD,
+              ((setup.config.settings.genesis.gddIntervalPicos.max(0) + 999) / 1000)
+                .min(BigInt(Long.MaxValue))
+                .toLong
+                .nanos
+            )
+          )
+        )
+        .sequence
+      runtime <- governor.traverse(g =>
+        GenesisRuntime.create[IO](
+          g,
+          setup.config.settings.genesis,
+          follower.fetchSelection,
+          geometry,
+          IO.realTime.map(now =>
+            BigInt(now.toNanos) * 1000 -
+              (BigInt(setup.geometry.systemStart.getEpochSecond) * 1000000000000L +
+                BigInt(setup.geometry.systemStart.getNano) * 1000)
+          ),
+          blockPool.fetchCoordinator.refreshGenesis
+        )
+      )
+      _ <- runtime.traverse_ { runtime =>
+        follower.installGenesis(runtime.governor) *>
+          blockPool.fetchCoordinator.installGenesis(
+            FetchCoordinator.GenesisControl(
+              (runtime.governor.phase, IO.monotonic, runtime.work.snapshot).mapN {
+                (phase, now, starvation) =>
+                  FetchCoordinator.GenesisContext(
+                    phase,
+                    BigInt(now.toNanos) * 1000,
+                    starvation,
+                    setup.config.settings.genesis.blockFetchGracePicos
+                  )
+              },
+              runtime.demoteDynamo
+            )
+          )
+      }
+    yield runtime
+
+  private def maintainDecisions(
+      runtime: Option[GenesisRuntime[IO]],
+      pool: BlockPool[IO],
+      settings: GenesisSettings,
+      fatal: Fatal => IO[Unit]
+  ): Resource[IO, Unit] =
+    IO.both(
+      runtime.fold(IO.never[Unit])(_.governor.run.void),
+      pool.fetchCoordinator.watchDecisions(
+        if runtime.nonEmpty then settings.blockFetchGracePicos else BigInt(0)
+      )
+    ).handleErrorWith(cause => fatal(Fatal.Defect(cause)) *> IO.never)
+      .background
+      .void
 
   /** @param metricsListen
     *   `--metrics-listen host:port`: where the Prometheus endpoint (and nothing else) listens.
@@ -214,7 +367,8 @@ object Main extends IOApp:
       state: S,
       resumed: Vector[ChainStorage.Resumed[S]],
       persistence: Option[ChainPersistence[IO, S]],
-      immutable: Option[ImmutableStore[IO]]
+      immutable: Option[ImmutableStore[IO]],
+      received: Option[ReceivedBlocks[IO]]
   )
 
   /** `--forge --vrf-skey <file> --kes-skey <file> --opcert <file>`: the pool's key files. */
@@ -580,6 +734,7 @@ object Main extends IOApp:
             setup.mirrorStart,
             Vector.empty,
             Some(ChainPersistence.backingOnly[IO, MirrorState](backing)),
+            None,
             None
           )
         )
@@ -620,12 +775,19 @@ object Main extends IOApp:
                 Some(scheduling.compute)
               )
               .map(resumed =>
-                Storage(r.anchor, r.state, resumed, Some(r.persistence), Some(r.store))
+                Storage(
+                  r.anchor,
+                  r.state,
+                  resumed,
+                  Some(r.persistence),
+                  Some(r.store),
+                  Some(r.received)
+                )
               )
           }
       }
       ended <- exposed.surround(storage.use {
-        case Storage(anchor, state, resumed, persistence, immutable) =>
+        case Storage(anchor, state, resumed, persistence, immutable, receivedBlocks) =>
           // A chain whose Byron span is derived learns the first Shelley epoch when it enters
           // Shelley; a restored state past that point knows it, a fresh sync learns it on the way
           // (the forger still needs a restart after that, see docs/compatibility.md).
@@ -635,6 +797,28 @@ object Main extends IOApp:
               setup.globals.copy(firstEpoch = e)
             )
           for
+            // Older databases have only the selected-chain log. Preserve those known originals
+            // without inventing downloaded fork history that the old writer never recorded.
+            _ <- receivedBlocks.traverse_(received =>
+              resumed.traverse_(block => received.restoreSelected(block.ref, block.raw))
+            )
+            receivedBody: Option[Peer.BodySink[IO]] = receivedBlocks.map {
+              received => (header, raw) =>
+                Handle
+                  .allow[StorageError] {
+                    received
+                      .put(
+                        BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary),
+                        raw
+                      )
+                      .as(Option.empty[StorageError])
+                  }
+                  .rescue(error => IO.pure(Some(error)))
+                  .flatMap {
+                    case None        => IO.unit
+                    case Some(error) => fatalSink(Fatal.Storage(error)) *> IO.never[Unit]
+                  }
+            }
             // the stores are open and the stored blocks applied
             _ <- measured.phase(PhaseLabel.Following)
             _ <- praosConfig.update(c => c.copy(geometry = state.geometry(c.geometry)))
@@ -692,47 +876,36 @@ object Main extends IOApp:
               NodeRules.observe(genesis.geometry),
               Some(persistence.fold(served)(Persistence.both(_, served))),
               Some(
-                Follower.OnTip((chain, added) =>
-                  // decoding the added blocks is CPU-bound: off the compute pool like the rules
-                  scheduling.compute
-                    .within(IO.delay {
-                      added.flatMap { raw =>
-                        Block
-                          .decode(raw, genesis.geometry.byron.epochSlots)
-                          .toOption
-                          .toVector
-                          .flatMap {
-                            case b: Block.Shelley => b.transactions.map(_.id)
-                            case _                => Vector.empty
-                          }
-                      }.toSet
-                    })
-                    .flatMap { adopted =>
-                      val slot = chain.tipRef.fold(BigInt(-1))(_.slot)
-                      scheduling.compute
-                        .within(IO.delay {
-                          MempoolLedger
-                            .at(
-                              chain.state,
-                              chain.tipRef,
-                              MempoolEnv(globals, chain.state.geometry(genesis.geometry))
-                            )
-                            .left
-                            .map(
-                              ChainError.MempoolTick(chain.tipRef.fold(BigInt(0))(_.slot + 1), _)
-                            )
-                        })
-                        .flatMap(cats.mtl.Raise[IO, NodeError].fromEither(_))
-                        .flatMap(mempool.sync(_, slot, adopted))
-                        .void
-                    }
-                )
+                new Follower.OnTip[IO, MirrorState]:
+                  def apply(
+                      chain: VolatileChain[MirrorState],
+                      added: Vector[xyz.kd5ujc.scarab.codec.Bytes]
+                  )(using
+                      Raise[IO, NodeError]
+                  ): IO[Unit] =
+                    given Ask[IO, MempoolEnv] = mempoolEnvironment
+                    synchronizeMempool(mempool, scheduling, genesis.geometry.byron.epochSlots)(
+                      chain,
+                      added
+                    )
               ),
               epochOf = Some((s, slot) => s.geometry(genesis.geometry).epochOf(slot)),
               initialViews = resumed.map(r => r.ref.hash -> r.view).toMap,
               compute = Some(scheduling.compute),
               chainGate = Some(chainGate)
             )
+            given Ask[IO, consensus.ChainSelection.Local] = new Ask[
+              IO,
+              consensus.ChainSelection.Local
+            ]:
+              val applicative: cats.Applicative[IO] = cats.Applicative[IO]
+              def ask[E2 >: consensus.ChainSelection.Local]: IO[E2] =
+                follower.fetchSelection.widen[E2]
+            given Tell[IO, xyz.kd5ujc.scarab.ledger.GenesisInternalProblem] =
+              new Tell[IO, xyz.kd5ujc.scarab.ledger.GenesisInternalProblem]:
+                val functor: cats.Functor[IO] = cats.Functor[IO]
+                def tell(problem: xyz.kd5ujc.scarab.ledger.GenesisInternalProblem): IO[Unit] =
+                  fatalSink(Fatal.Internal(problem))
             seed <- IO.delay(java.util.concurrent.ThreadLocalRandom.current().nextLong())
             sharing <- PeerSharingRuntime.create[IO](seed)
             peerSharing = setup.config.settings.peerSharingEnabled(options.forge.isDefined)
@@ -749,7 +922,30 @@ object Main extends IOApp:
             headerCheck = Some(
               HeaderClock.clocked[IO](
                 SlotClock.system[IO](ref.get.map(_.state.geometry(genesis.geometry))),
-                if options.headerFirst then
+                if setup.config.settings.consensusMode ==
+                    xyz.kd5ujc.scarab.network.selection.ConsensusMode.GenesisMode
+                then
+                  HeaderCheck.forGenesisChain[IO, MirrorState](
+                    {
+                      given HeaderTimeRead[MirrorState] = HeaderTimeRead.mirror(setup.byronHistory)
+                      GenesisHeaderRules(
+                        setup.praos.copy(verdicts = cache.forHeaders),
+                        setup.globals,
+                        setup.byronRules,
+                        setup.handOver
+                      )
+                    },
+                    scheduling.compute,
+                    GenesisRuntime.retainedHeaders(genesis.geometry),
+                    warm = Some((headers, state) =>
+                      state.protocol.traverse_(protocol =>
+                        praosConfig.get.flatMap(cache.warmHeaders[IO](headers, protocol, _))
+                      )
+                    ),
+                    added = Some(measured.headers),
+                    changes = Some(follower.headerChanges)
+                  )
+                else if options.headerFirst then
                   HeaderCheck.forChain[IO, MirrorState, ProtocolState](
                     NodeHeaderRules(setup.praos.copy(verdicts = cache.forHeaders), setup.globals),
                     scheduling.compute,
@@ -801,13 +997,39 @@ object Main extends IOApp:
                   IO.unit)
             // blocks fetched ahead, shared by the sessions of all peers: one peer fetches each block
             fetchSalt <- cats.effect.std.Random.scalaUtilRandom[IO].flatMap(_.nextLong)
-            blockPool <- BlockPool.create[IO](
-              BlockPool.FetchPolicy(
-                deadlineConcurrency = setup.config.settings.maxConcurrencyDeadline.getOrElse(1),
-                bulkConcurrency = setup.config.settings.maxConcurrencyBulkSync.getOrElse(1),
-                peerSalt = fetchSalt
-              ),
-              follower.fetchSelection
+            fetchPolicy = BlockPool.FetchPolicy(
+              deadlineConcurrency = setup.config.settings.maxConcurrencyDeadline.getOrElse(1),
+              bulkConcurrency = setup.config.settings.maxConcurrencyBulkSync.getOrElse(1),
+              peerSalt = fetchSalt
+            )
+            blockPool <- receivedBlocks.fold(
+              BlockPool.create[IO](fetchPolicy, follower.fetchSelection)
+            )(received =>
+              BlockPool.create[IO](
+                fetchPolicy,
+                follower.fetchSelection,
+                BlockPool.Recovered[IO](
+                  received.hashes,
+                  hash => received.get(hash).map(_.map(_._2)),
+                  received.invalidate
+                )
+              )
+            )
+            _ <- seedReceived(blockPool, receivedBlocks, genesis.geometry.byron.epochSlots) *>
+              follower.installFetchCoordinator(blockPool.fetchCoordinator) *>
+              follower.installInvalidBlocks(blockPool.invalidBlocks)
+            genesisRuntime <- createGenesisRuntime(
+              setup,
+              follower,
+              blockPool,
+              ref.get.map(_.state.geometry(genesis.geometry))
+            )
+            genesisGovernor = genesisRuntime.map(_.governor)
+            decisionMaintenance = maintainDecisions(
+              genesisRuntime,
+              blockPool,
+              setup.config.settings.genesis,
+              fatalSink
             )
             // the connection manager (G2): one connection per peer address, limits, accounting
             manager <- ConnectionManager.create[IO](
@@ -844,7 +1066,9 @@ object Main extends IOApp:
               observe = Some(observePeer),
               sharing = Some(sharing),
               pool = Some(blockPool),
-              fetchMode = Some(fetchModeRef.get)
+              fetchMode = Some(fetchModeRef.get),
+              genesis = genesisRuntime,
+              receivedBody = receivedBody
             )
             // The outbound peer network (G1): the governor chooses the peers, moves them between
             // temperatures and replaces the ones that fail; the Genesis State Machine tells it
@@ -891,7 +1115,9 @@ object Main extends IOApp:
                   .flatMap(n => events.emit(FollowerEvent.Reconnecting(error, n))),
               fatal = fatalSink,
               fetchMode = Some(fetchModeRef.get),
-              serve = Some(handlers)
+              serve = Some(handlers),
+              genesis = genesisRuntime,
+              receivedBody = receivedBody
             )
             emitOutput = (out: Output[PeerNetwork.Addr]) =>
               measured.peerSelection(out) *> (out match
@@ -923,15 +1149,21 @@ object Main extends IOApp:
               fetchModeRef,
               emitOutput,
               (phase, event) =>
-                measured.gsm(phase) *> logged(NodeEvent.GsmTransition(phase, event)),
-              phase => measured.gsm(phase),
+                blockPool.fetchCoordinator.transitionGenesis(
+                  genesisGovernor.traverse_(_.setPhase(phase))
+                ) *> measured.gsm(phase) *> logged(NodeEvent.GsmTransition(phase, event)),
+              phase =>
+                blockPool.fetchCoordinator.transitionGenesis(
+                  genesisGovernor.traverse_(_.setPhase(phase))
+                ) *> measured.gsm(phase),
               mode =>
                 blockPool.fetchCoordinator.setMode(mode) *>
                   measured.fetchMode(mode) *> logged(NodeEvent.FetchModeChanged(mode)),
               marker,
               LedgerPeersSource.fromChain[IO, MirrorState](ref.get),
               sharing = Some(sharing),
-              immutable = immutable
+              immutable = immutable,
+              genesisReadings = genesisRuntime.map(_.gsmReadings(follower.versusHeaders))
             )
             relay = options.listen.fold(Resource.unit[IO])(address =>
               BearerServer
@@ -1035,67 +1267,80 @@ object Main extends IOApp:
                   MemoryReport
                     .sample(stores)
                     .flatMap(sample => logged(NodeEvent.Memory(sample)))).foreverM.background.void
-            run = blockPool.maintenance.surround(network.use { net =>
-              val reloadTopology: IO[Unit] = options.topologyFile.traverse_ { _ =>
-                // `options.peers` includes the topology loaded at startup. Keep reload roots tied
-                // to the original CLI peers so a removed topology peer cannot become permanent.
-                IO.blocking(topologyRoots(options.copy(peers = cliPeers), loaded)).flatMap {
-                  case Left(error) =>
-                    logged(
-                      NodeEvent.Library(
-                        "scarab.topology",
-                        Severity.Warning,
-                        s"topology reload refused: ${error.message}",
-                        None
+            run = decisionMaintenance
+              .flatMap(_ => blockPool.maintenance)
+              .flatMap(_ =>
+                selectionWorker(
+                  follower,
+                  blockPool,
+                  genesisRuntime.map(_.work),
+                  receivedBlocks,
+                  warm,
+                  fatalSink,
+                  setup.origin
+                )
+              )
+              .surround(network.use { net =>
+                val reloadTopology: IO[Unit] = options.topologyFile.traverse_ { _ =>
+                  // `options.peers` includes the topology loaded at startup. Keep reload roots tied
+                  // to the original CLI peers so a removed topology peer cannot become permanent.
+                  IO.blocking(topologyRoots(options.copy(peers = cliPeers), loaded)).flatMap {
+                    case Left(error) =>
+                      logged(
+                        NodeEvent.Library(
+                          "scarab.topology",
+                          Severity.Warning,
+                          s"topology reload refused: ${error.message}",
+                          None
+                        )
                       )
-                    )
-                  case Right((_, nextRoots)) => net.reloadRoots(nextRoots)
-                }
-              }
-              val reload =
-                forging.traverse_(f => f.reload.flatMap(_.fold(fatalSink, _ => IO.unit))) *>
-                  reloadTopology
-              val signals =
-                if options.topologyFile.isDefined || forging.isDefined then
-                  Signals.hangup[IO](reload)
-                else Resource.unit[IO]
-              // the governor ends the node only by a fault (an invariant, the bootstrap timeout)
-              val sync: IO[Unit] =
-                collectors.add(Collectors.peerMetrics(net.metrics)) *>
-                  IO.race(net.run, net.fatal.get).flatMap {
-                    case Left(done) => done
-                    case Right(fault) =>
-                      PeerNetwork.fatalForGovernor(fault) match
-                        case Some(nodeFault) => fatalSink(nodeFault) *> IO.never
-                        case None            => fail[Unit](fault)
+                    case Right((_, nextRoots)) => net.reloadRoots(nextRoots)
                   }
-              QueryServer
-                .resource[IO, MirrorState](
-                  ChainView.fromRef(ref),
-                  options.queryPort,
-                  Some(store),
-                  Some(scheduling.stats.total.map(Reports.schedulingTotal)),
-                  Some(
-                    (manager.snapshot, governor.sessions, net.state.get, IO.monotonic).mapN {
-                      (connections, sessions, selection, now) =>
-                        InboundGovernor
-                          .json(connections, sessions)
-                          .deepMerge(
-                            io.circe.Json.obj("peerSelection" -> PeerNetwork.json(selection, now))
-                          )
+                }
+                val reload =
+                  forging.traverse_(f => f.reload.flatMap(_.fold(fatalSink, _ => IO.unit))) *>
+                    reloadTopology
+                val signals =
+                  if options.topologyFile.isDefined || forging.isDefined then
+                    Signals.hangup[IO](reload)
+                  else Resource.unit[IO]
+                // the governor ends the node only by a fault (an invariant, the bootstrap timeout)
+                val sync: IO[Unit] =
+                  collectors.add(Collectors.peerMetrics(net.metrics)) *>
+                    IO.race(net.run, net.fatal.get).flatMap {
+                      case Left(done) => done
+                      case Right(fault) =>
+                        PeerNetwork.fatalForGovernor(fault) match
+                          case Some(nodeFault) => fatalSink(nodeFault) *> IO.never
+                          case None            => fail[Unit](fault)
                     }
-                  ),
-                  forging.map(_.stats.byEpoch.map(Reports.forgeReport)),
-                  Some(scrape)
-                )(fatalSink)
-                .flatMap(_ => relay)
-                .flatMap(_ => local)
-                .flatMap(_ => signals)
-                .flatMap(_ => production)
-                .flatMap(_ => reporting)
-                .flatMap(_ => watching)
-                .surround(sync)
-            })
+                QueryServer
+                  .resource[IO, MirrorState](
+                    ChainView.fromRef(ref),
+                    options.queryPort,
+                    Some(store),
+                    Some(scheduling.stats.total.map(Reports.schedulingTotal)),
+                    Some(
+                      (manager.snapshot, governor.sessions, net.state.get, IO.monotonic).mapN {
+                        (connections, sessions, selection, now) =>
+                          InboundGovernor
+                            .json(connections, sessions)
+                            .deepMerge(
+                              io.circe.Json.obj("peerSelection" -> PeerNetwork.json(selection, now))
+                            )
+                      }
+                    ),
+                    forging.map(_.stats.byEpoch.map(Reports.forgeReport)),
+                    Some(scrape)
+                  )(fatalSink)
+                  .flatMap(_ => relay)
+                  .flatMap(_ => local)
+                  .flatMap(_ => signals)
+                  .flatMap(_ => production)
+                  .flatMap(_ => reporting)
+                  .flatMap(_ => watching)
+                  .surround(sync)
+              })
             _ <- metrics.set(
               Catalogue.buildInfo,
               (BuildInfo.version, BuildInfo.scalaVersion, BuildInfo.gitCommit),

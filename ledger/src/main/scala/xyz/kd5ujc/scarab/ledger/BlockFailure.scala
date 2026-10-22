@@ -37,6 +37,9 @@ enum BlockFailure:
   /** The decoded block's header is not the announced one. */
   case HeaderDiffers
 
+  /** A cached body fails the transport predicate; retain the exact typed cause. */
+  case Transport(cause: BlockTransportError)
+
   /** The body does not match the size and hash the header commits to. */
   case BodyCommitment
 
@@ -123,8 +126,8 @@ enum BlockFailure:
 
   /** The rule family, as the log names it. */
   def rule: BlockRule = this match
-    case HeaderDiffers | BodyCommitment | EraAnnounced(_, _) | EpochPrecedesLedger(_) |
-        LedgerEra(_, _) | ByronAfterShelley | ByronAfterTransition(_, _) =>
+    case HeaderDiffers | Transport(_) | BodyCommitment | EraAnnounced(_, _) |
+        EpochPrecedesLedger(_) | LedgerEra(_, _) | ByronAfterShelley | ByronAfterTransition(_, _) =>
       BlockRule.Structure
     case Decode(_) | TxDecode(_, _) => BlockRule.Decode
     case NoByronGenesis | TransitionUndecided(_) | ShelleyBeforeTransition(_, _, _) | Byron(_) =>
@@ -139,6 +142,7 @@ enum BlockFailure:
   /** The reason, as the log renders it (the text of the old `(rule, reason)` pair, unchanged). */
   def reason: String = this match
     case HeaderDiffers                   => "block header differs from announced header"
+    case Transport(cause)                => cause.message
     case BodyCommitment                  => "body does not match the header commitment"
     case EraAnnounced(actual, announced) => s"$actual block announced as $announced"
     case EpochPrecedesLedger(epoch)      => s"block epoch $epoch precedes ledger epoch"

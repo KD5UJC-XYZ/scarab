@@ -27,7 +27,8 @@ final case class PraosConfig(
     maxKesEvolutions: BigInt,
     activeSlotsCoeff: Leader.Fraction,
     forks: HardForkConfig = HardForkConfig.default,
-    verdicts: xyz.kd5ujc.scarab.ledger.Verdicts = xyz.kd5ujc.scarab.ledger.Verdicts.Direct
+    verdicts: xyz.kd5ujc.scarab.ledger.Verdicts = xyz.kd5ujc.scarab.ledger.Verdicts.Direct,
+    checkpoints: HeaderCheckpoints = HeaderCheckpoints.empty
 )
 
 /** Praos header validation and chain-dependent state evolution. */

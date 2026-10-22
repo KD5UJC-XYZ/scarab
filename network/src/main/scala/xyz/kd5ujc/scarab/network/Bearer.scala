@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import cats.Applicative
 import cats.effect.{Async, Concurrent, Resource}
 import cats.effect.std.Queue
 import cats.effect.syntax.all.*
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
-import com.comcast.ip4s.{Host, SocketAddress}
+import com.comcast.ip4s.{Host, IpAddress, SocketAddress}
+import xyz.kd5ujc.scarab.protocol.ConnectionIdentityError
 import fs2.{Chunk, Stream}
 import fs2.io.net.{Network, Socket}
 import scala.concurrent.duration.*
@@ -16,6 +18,9 @@ import scala.concurrent.duration.*
   * Throwables; the multiplexer is the single place that turns them into [[NetworkError]].
   */
 trait Bearer[F[_]]:
+  /** Socket metadata is acquired once by Mux, outside every mini-protocol error scope. */
+  def connectionId: Option[F[Either[ConnectionIdentityError, ConnectionId]]] = None
+
   /** Bytes from the peer; the stream ends when the peer closes its side. Consume it once. */
   def reads: Stream[F, Byte]
 
@@ -25,7 +30,25 @@ trait Bearer[F[_]]:
   def close: F[Unit]
 
 object Bearer:
-  def fromSocket[F[_]](socket: Socket[F]): Bearer[F] = new Bearer[F]:
+  private def numeric(host: Host): Either[ConnectionIdentityError, IpAddress] = host match
+    case ip: IpAddress => Right(ip)
+    case other         => Left(ConnectionIdentityError.UnresolvedAddress(other.toString))
+
+  def fromSocket[F[_]: Applicative](socket: Socket[F]): Bearer[F] = new Bearer[F]:
+    override def connectionId: Option[F[Either[ConnectionIdentityError, ConnectionId]]] =
+      (socket.address, socket.peerAddress) match
+        case (local: SocketAddress[?], remote: SocketAddress[?]) =>
+          Some(
+            Applicative[F].pure(
+              (numeric(local.host), numeric(remote.host)).tupled.flatMap { (a, b) =>
+                ConnectionId.fromSocketAddresses(
+                  SocketAddress(a, local.port),
+                  SocketAddress(b, remote.port)
+                )
+              }
+            )
+          )
+        case _ => None
     def reads = socket.reads
     def write(bytes: Chunk[Byte]) = socket.write(bytes)
     def close = socket.endOfOutput

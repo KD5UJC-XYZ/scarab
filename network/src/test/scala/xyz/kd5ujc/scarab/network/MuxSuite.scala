@@ -401,3 +401,35 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
           case other => fail(s"unexpected $other")
         }
     }
+
+  for
+    protocol <- Vector(Protocols.Handshake, 99)
+    direction <- Vector(WireMux.Direction.Initiator, WireMux.Direction.Responder)
+  do
+    test(
+      s"raw handshake input ignores incoming SDU protocol=$protocol and direction=$direction only before activation"
+    ) {
+      typed {
+        Bearer.inMemory[IO]().flatMap { (ours, raw) =>
+          Mux.handshakeResource(ours, Set(Protocols.Handshake, 2), Mux.Config()).use { mux =>
+            val input = payload(3)
+            def sdu(id: Int, dir: WireMux.Direction) = WireMux
+              .encode(WireMux.Sdu(0, id, dir, input))
+              .fold(error => fail(error.message), identity)
+            for
+              channel <- mux.channel(Protocols.Handshake)
+              _ <- raw.write(Chunk.array(sdu(protocol, direction).toArray))
+              decoded <- channel.recv(3)(exactly(3))
+              _ <- mux.installApplication(Set(2), Set.empty)
+              _ <- raw.write(Chunk.array(sdu(2, WireMux.Direction.Initiator).toArray))
+              closed <- mux.closed
+            yield
+              assertEquals(decoded, input)
+              assertEquals(
+                closed,
+                NetworkError.IllegalTransition(2, NetworkError.RuntimeViolation.WrongModeBit)
+              )
+          }
+        }
+      }.map(result => assertEquals(result, Right(())))
+    }

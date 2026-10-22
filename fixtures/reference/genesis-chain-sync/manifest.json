@@ -1,0 +1,21 @@
+{
+  "schema": "scarab-native-chain-sync-jumping-v1",
+  "sourceCommit": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+  "sourceFiles": {
+    "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/ChainSync/Client/Jumping.hs": "a898477ebff4ccf311a562d3fe55dc82c0a4d263b15b12f9f928701e0644dd05",
+    "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/ChainSync/Client/State.hs": "19d7496717bb256e0f4ce7db9fb87142b10126a02be179385f633f04320db2e6",
+    "ouroboros-consensus/test/consensus-test/Test/Consensus/MiniProtocol/ChainSync/CSJ.hs": "f65498d7c7d9fad71089c8b906783e621a8031a70e1a1fc1edcf9d2e2412d800"
+  },
+  "observerSha256": "1d9e5d89be5b0bcc84a76d707c1697c6d95afa5af4ae0f0f430adce6f6e2b0df",
+  "exporterSha256": "0749e390f2d7e8a687693ea73d2989e1990070b4141224cf6bc11bf088a64f74",
+  "sha256": "9cdb6d19988246bccb418c3f51a3c5a8a3e1fb2f5f702a0245757ec43edaefc5",
+  "traces": 76,
+  "steps": 1046,
+  "originalProperty": "Test.Consensus.MiniProtocol.ChainSync.CSJ.prop_CaughtUpCsj; original Arbitrary TestSetup is constant",
+  "additionalGeneration": "64 QuickCheck Int-vector seeds 331001..331064; complete event traces, no filtered outcomes",
+  "image": "sha256:10d59164dce6b49fbeafdc520c1a29d3e4024a5859a3c41bb6181b2e627bebc7",
+  "executableSha256": "78eceed82e02b51ea1b516c7b2271e5c3dcba27b8aa36e5a8b88bf476d01d442",
+  "planSha256": "7f1416e0423b18a439e83eeab16e8569060e9cacb24e0dcadb856b1705074ddb",
+  "observerCabalSha256": "93a034c7fdcca3903e070c3095f25728d75c3b031ba30961013991b6700f87fe",
+  "nativeSodiumSha256": "ba24828b9bd23f19457f5ccac052b278a0443a1c29a4ab148eba997ed37d5d1b"
+}

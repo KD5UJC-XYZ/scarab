@@ -167,7 +167,8 @@ object ChainStorage:
       persistence: ChainPersistence[F, S],
       store: ImmutableStore[F],
       volatile: Vector[(BlockRef, Bytes)],
-      adopt: Vector[(BlockRef, Bytes)] => F[Unit]
+      adopt: Vector[(BlockRef, Bytes)] => F[Unit],
+      received: ReceivedBlocks[F]
   )
 
   /** A volatile block rebuilt by [[resume]]. */
@@ -288,6 +289,7 @@ object ChainStorage:
       )
       volatileOpened <- VolatileStore.open[F](dir / "volatile", config.volatileFileBlocks)
       (volatile, logged) = volatileOpened
+      received <- ReceivedBlocks.open[F](dir / "received", config.volatileFileBlocks)
       _ <- Resource.eval(events.emit(StorageEvent.VolatileOpened(logged.report)))
       migratedSnapshots <- Resource.eval(
         snapshotMigration.fold(F.pure(SnapshotMigration.Report.empty))(_.run(dir / "snapshots"))
@@ -338,6 +340,7 @@ object ChainStorage:
         store,
         snapshots,
         volatile,
+        received,
         supervisor,
         events,
         config,
@@ -369,7 +372,8 @@ object ChainStorage:
       persistence,
       store,
       logged.chain,
-      persistence.adopt
+      persistence.adopt,
+      received
     )
 
   /** Rebuild the volatile chain from the log: apply the logged blocks after the immutable tip, in
@@ -408,7 +412,10 @@ object ChainStorage:
           case Left(_) => F.pure(done)
           case Right(block) =>
             val header = block.header
-            if header.hash != ref.hash then F.pure(done)
+            // The selected journal is a recovery hint. Its complete identity must agree with the
+            // original header before its metadata can become the resumed public chain.
+            val actual = BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary)
+            if actual != ref then F.pure(done)
             else
               handle.attempt(rules(chain.state, header, raw)).flatMap {
                 case Left(_) => F.pure(done)
@@ -504,6 +511,7 @@ object ChainStorage:
       store: ImmutableStore[F],
       snapshots: LedgerSnapshots[F, S],
       volatile: VolatileStore[F],
+      received: ReceivedBlocks[F],
       supervisor: Supervisor[F],
       events: StorageEvents[F],
       config: Config,
@@ -558,7 +566,8 @@ object ChainStorage:
     ): F[Unit] =
       sinceCollect.updateAndGet(_ + added).flatMap { n =>
         F.whenA(n >= config.volatileCollectBlocks) {
-          tip.traverse_(t => store.sync *> volatile.gc(t.slot)) *> sinceCollect.set(0)
+          tip.traverse_(t => store.sync *> volatile.gc(t.slot) *> received.collect(t.slot)) *>
+            sinceCollect.set(0)
         }
       }
 

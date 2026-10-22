@@ -6,6 +6,7 @@ decisions they rest on are [ADRs](../adr/README.md).
 
 | Document | Status | Issue |
 |---|---|---|
+| [Ouroboros Genesis](genesis.md) | Implemented; local stage acceptance passed, review/main integration pending | [#33](https://github.com/KD5UJC-XYZ/scarab/issues/33) |
 | [Upstream conformance adapters](upstream-conformance.md) | As built for bounded adapters; remaining coverage tracked | [#49](https://github.com/KD5UJC-XYZ/scarab/issues/49) |
 | [Releases and repository hardening](releases.md) | Owner decisions accepted; implementation staged | [#161](https://github.com/KD5UJC-XYZ/scarab/issues/161), [#75](https://github.com/KD5UJC-XYZ/scarab/issues/75), [#76](https://github.com/KD5UJC-XYZ/scarab/issues/76) |
 | [SCLS binary interchange](scls-interchange.md) | Current; pinned profile, complete-base offline import/export and CLI implemented; full check, extended fuzz and restart passed | [#77](https://github.com/KD5UJC-XYZ/scarab/issues/77) |

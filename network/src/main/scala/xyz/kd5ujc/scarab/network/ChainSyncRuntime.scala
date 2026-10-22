@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.effect.{Ref, Temporal}
+import cats.effect.syntax.all.*
+import cats.effect.{Ref, Resource, Temporal}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -25,26 +26,38 @@ object ChainSyncRuntime:
     def findIntersect(points: Vector[Q])(using Raise[F, NetworkError]): F[Option[(Q, T)]]
     def requestNext(using Raise[F, NetworkError]): F[Update[Q, T, P]]
     def requestNextBatch(n: Int)(using Raise[F, NetworkError]): F[Vector[Update[Q, T, P]]]
+    def requestNextBatchObserved(n: Int)(onUpdate: Update[Q, T, P] => F[Unit])(using
+        Raise[F, NetworkError]
+    ): F[Vector[Update[Q, T, P]]]
     def done(using Raise[F, NetworkError]): F[Unit]
     def idle: F[Boolean]
     def idling: F[Boolean]
+    def observe(observer: ChainSyncClient.Observer[F]): Resource[F, Unit]
 
   trait Source[F[_], Q, T, P]:
     def intersect(points: Vector[Q]): F[Either[T, (Q, T)]]
     def poll: F[Option[Update[Q, T, P]]]
     def await: F[Update[Q, T, P]]
 
+  final case class Timeouts(
+      intersect: ProtocolDeadline,
+      canAwait: ProtocolDeadline,
+      mustReply: ProtocolDeadline
+  )
+
   final case class ClientSettings(
       limits: ChainSync.Limits = ChainSync.Limits(),
       intersectTimeout: FiniteDuration = 10.seconds,
       canAwaitTimeout: FiniteDuration = 10.seconds,
-      mustReplyTimeout: FiniteDuration = 300.seconds
+      mustReplyTimeout: FiniteDuration = 300.seconds,
+      timeouts: Option[Timeouts] = None
   )
 
   final case class ServerSettings(
       limits: ChainSync.Limits = ChainSync.Limits(),
       idleTimeout: FiniteDuration = 3373.seconds,
-      protocol: Int = Protocols.ChainSync
+      protocol: Int = Protocols.ChainSync,
+      idleDeadline: Option[ProtocolDeadline] = None
   )
 
   val NodeToClient: ServerSettings =
@@ -64,126 +77,155 @@ object ChainSyncRuntime:
     def unexpected[A](message: Message[Q, T, P])(using Raise[F, NetworkError]): F[A] =
       illegal(RuntimeViolation.ChainSyncEngineUnexpected(message))
 
-    (Ref.of[F, State](State.Idle), Ref.of[F, Boolean](false), Ref.of[F, Boolean](false)).mapN {
-      (state, awaiting, busy) =>
-        def send(message: Message[Q, T, P])(using Raise[F, NetworkError]): F[Unit] =
-          state.get.flatMap { current =>
-            val next = ChainSyncEngine.transition(current, Role.Client, message)
-            ChainSyncEngine
-              .encode(current, Role.Client, message, point, tip, payload, settings.limits)
-              .fold(illegal(_), bytes => channel.send(bytes))
-              .productR(next.fold(illegal(_), state.set))
-          }
+    (
+      Ref.of[F, State](State.Idle),
+      Ref.of[F, Boolean](false),
+      Ref.of[F, Boolean](false),
+      Ref.of[F, Option[ChainSyncClient.Observer[F]]](None)
+    ).mapN { (state, awaiting, busy, observer) =>
+      def send(message: Message[Q, T, P])(using Raise[F, NetworkError]): F[Unit] =
+        state.get.flatMap { current =>
+          val next = ChainSyncEngine.transition(current, Role.Client, message)
+          ChainSyncEngine
+            .encode(current, Role.Client, message, point, tip, payload, settings.limits)
+            .fold(illegal(_), bytes => channel.send(bytes))
+            .productR(next.fold(illegal(_), state.set))
+        }
 
-        def receiveAt(current: State)(using Raise[F, NetworkError]): F[Message[Q, T, P]] =
-          val limit = current match
-            case State.Intersect     => F.pure(settings.intersectTimeout)
-            case State.NextCanAwait  => F.pure(settings.canAwaitTimeout)
-            case State.NextMustReply => F.pure(settings.mustReplyTimeout)
-            case other => illegal[FiniteDuration](RuntimeViolation.ReplyNotExpected(other))
-          limit.flatMap { wait =>
-            Timed.within(wait, id, current.toString)(
-              channel.recv(settings.limits.maxMessageBytes)(
-                ChainSyncEngine.decodePrefix(
-                  current,
-                  Role.Server,
-                  _,
-                  point,
-                  tip,
-                  payload,
-                  settings.limits
-                )
+      def receiveAt(current: State)(using Raise[F, NetworkError]): F[Message[Q, T, P]] =
+        val limit = current match
+          case State.Intersect =>
+            F.pure(
+              settings.timeouts.fold[ProtocolDeadline](
+                ProtocolDeadline.After(settings.intersectTimeout)
+              )(_.intersect)
+            )
+          case State.NextCanAwait =>
+            F.pure(
+              settings.timeouts.fold[ProtocolDeadline](
+                ProtocolDeadline.After(settings.canAwaitTimeout)
+              )(_.canAwait)
+            )
+          case State.NextMustReply =>
+            F.pure(
+              settings.timeouts.fold[ProtocolDeadline](
+                ProtocolDeadline.After(settings.mustReplyTimeout)
+              )(_.mustReply)
+            )
+          case other => illegal[ProtocolDeadline](RuntimeViolation.ReplyNotExpected(other))
+        limit.flatMap { wait =>
+          Timed.within(wait, id, current.toString)(
+            channel.recv(settings.limits.maxMessageBytes)(
+              ChainSyncEngine.decodePrefix(
+                current,
+                Role.Server,
+                _,
+                point,
+                tip,
+                payload,
+                settings.limits
               )
             )
-          }
-
-        def advance(current: State, message: Message[Q, T, P])(using
-            Raise[F, NetworkError]
-        ): F[State] =
-          ChainSyncEngine.transition(current, Role.Server, message).fold(illegal(_), F.pure)
-
-        def noted(message: Message[Q, T, P]): F[Unit] = message match
-          case Message.AwaitReply => awaiting.set(true)
-          case _                  => awaiting.set(false)
-
-        def receive(using Raise[F, NetworkError]): F[Message[Q, T, P]] =
-          state.get.flatMap(current =>
-            receiveAt(current).flatMap(message =>
-              advance(current, message).flatMap(state.set) *> noted(message).as(message)
-            )
           )
+        }
 
-        def flight[A](operation: F[A]): F[A] = busy.set(true) *> operation <* busy.set(false)
+      def advance(current: State, message: Message[Q, T, P])(using
+          Raise[F, NetworkError]
+      ): F[State] =
+        ChainSyncEngine.transition(current, Role.Server, message).fold(illegal(_), F.pure)
 
-        new Client[F, Q, T, P]:
-          def findIntersect(points: Vector[Q])(using Raise[F, NetworkError]) =
-            flight {
-              send(Message.FindIntersect(points)) *> receive.flatMap {
-                case Message.IntersectFound(point, tip) if points.contains(point) =>
-                  F.pure(Some(point -> tip))
-                case Message.IntersectFound(_, _) =>
-                  illegal(RuntimeViolation.IntersectionNotOffered)
-                case Message.IntersectNotFound(_) => F.pure(None)
-                case other                        => unexpected(other)
-              }
+      def noted(message: Message[Q, T, P]): F[Unit] = message match
+        case Message.AwaitReply =>
+          awaiting.set(true) *> observer.get.flatMap(_.traverse_(_.awaitReply))
+        case Message.RollForward(_, _) | Message.RollBackward(_, _) =>
+          awaiting.set(false) *> observer.get.flatMap(_.traverse_(_.reply))
+        case _ => awaiting.set(false)
+
+      def receive(using Raise[F, NetworkError]): F[Message[Q, T, P]] =
+        state.get.flatMap(current =>
+          receiveAt(current).flatMap(message =>
+            advance(current, message).flatMap(state.set) *> noted(message).as(message)
+          )
+        )
+
+      def flight[A](operation: F[A]): F[A] =
+        F.uncancelable(poll => busy.set(true) *> poll(operation).guarantee(busy.set(false)))
+
+      new Client[F, Q, T, P]:
+        def findIntersect(points: Vector[Q])(using Raise[F, NetworkError]) =
+          flight {
+            send(Message.FindIntersect(points)) *> receive.flatMap {
+              case Message.IntersectFound(point, tip) if points.contains(point) =>
+                F.pure(Some(point -> tip))
+              case Message.IntersectFound(_, _) =>
+                illegal(RuntimeViolation.IntersectionNotOffered)
+              case Message.IntersectNotFound(_) => F.pure(None)
+              case other                        => unexpected(other)
             }
-
-          def requestNext(using Raise[F, NetworkError]): F[Update[Q, T, P]] =
-            flight(send(Message.RequestNext) *> collect)
-
-          def requestNextBatch(n: Int)(using
-              Raise[F, NetworkError]
-          ): F[Vector[Update[Q, T, P]]] = flight {
-            if n <= 1 then send(Message.RequestNext) *> collect.map(Vector(_))
-            else
-              state.get.flatMap {
-                case State.Idle =>
-                  ChainSyncEngine
-                    .encode(
-                      State.Idle,
-                      Role.Client,
-                      Message.RequestNext,
-                      point,
-                      tip,
-                      payload,
-                      settings.limits
-                    )
-                    .fold(illegal(_), bytes => List.fill(n)(bytes).traverse_(channel.send))
-                    .productR(List.fill(n)(()).traverse(_ => collectOne))
-                    .map(_.toVector)
-                case other => illegal(RuntimeViolation.PipelinedRequest(other))
-              }
           }
 
-          private def collectOne(using Raise[F, NetworkError]): F[Update[Q, T, P]] =
-            def go(current: State)(using Raise[F, NetworkError]): F[Update[Q, T, P]] =
-              receiveAt(current).flatMap { message =>
-                noted(message) *> advance(current, message).flatMap { next =>
-                  message match
-                    case Message.AwaitReply => go(next)
-                    case Message.RollForward(value, serverTip) =>
-                      F.pure(Update.RollForward(value, serverTip))
-                    case Message.RollBackward(serverPoint, serverTip) =>
-                      F.pure(Update.RollBackward(serverPoint, serverTip))
-                    case other => unexpected(other)
-                }
-              }
-            go(State.NextCanAwait)
+        def requestNext(using Raise[F, NetworkError]): F[Update[Q, T, P]] =
+          flight(send(Message.RequestNext) *> collect)
 
-          private def collect(using Raise[F, NetworkError]): F[Update[Q, T, P]] =
-            receive.flatMap {
-              case Message.AwaitReply => collect
-              case Message.RollForward(value, serverTip) =>
-                F.pure(Update.RollForward(value, serverTip))
-              case Message.RollBackward(serverPoint, serverTip) =>
-                F.pure(Update.RollBackward(serverPoint, serverTip))
-              case other => unexpected(other)
+        def requestNextBatch(n: Int)(using
+            Raise[F, NetworkError]
+        ): F[Vector[Update[Q, T, P]]] = requestNextBatchObserved(n)(_ => F.unit)
+
+        def requestNextBatchObserved(n: Int)(onUpdate: Update[Q, T, P] => F[Unit])(using
+            Raise[F, NetworkError]
+        ): F[Vector[Update[Q, T, P]]] = flight {
+          if n <= 1 then send(Message.RequestNext) *> collect.flatTap(onUpdate).map(Vector(_))
+          else
+            state.get.flatMap {
+              case State.Idle =>
+                ChainSyncEngine
+                  .encode(
+                    State.Idle,
+                    Role.Client,
+                    Message.RequestNext,
+                    point,
+                    tip,
+                    payload,
+                    settings.limits
+                  )
+                  .fold(illegal(_), bytes => List.fill(n)(bytes).traverse_(channel.send))
+                  .productR(List.fill(n)(()).traverse(_ => collectOne.flatTap(onUpdate)))
+                  .map(_.toVector)
+              case other => illegal(RuntimeViolation.PipelinedRequest(other))
             }
+        }
 
-          def done(using Raise[F, NetworkError]): F[Unit] = send(Message.Done)
-          def idle: F[Boolean] =
-            (state.get, busy.get).mapN((current, inFlight) => current == State.Idle && !inFlight)
-          def idling: F[Boolean] = awaiting.get
+        private def collectOne(using Raise[F, NetworkError]): F[Update[Q, T, P]] =
+          def go(current: State)(using Raise[F, NetworkError]): F[Update[Q, T, P]] =
+            receiveAt(current).flatMap { message =>
+              noted(message) *> advance(current, message).flatMap { next =>
+                message match
+                  case Message.AwaitReply => go(next)
+                  case Message.RollForward(value, serverTip) =>
+                    F.pure(Update.RollForward(value, serverTip))
+                  case Message.RollBackward(serverPoint, serverTip) =>
+                    F.pure(Update.RollBackward(serverPoint, serverTip))
+                  case other => unexpected(other)
+              }
+            }
+          go(State.NextCanAwait)
+
+        private def collect(using Raise[F, NetworkError]): F[Update[Q, T, P]] =
+          receive.flatMap {
+            case Message.AwaitReply => collect
+            case Message.RollForward(value, serverTip) =>
+              F.pure(Update.RollForward(value, serverTip))
+            case Message.RollBackward(serverPoint, serverTip) =>
+              F.pure(Update.RollBackward(serverPoint, serverTip))
+            case other => unexpected(other)
+          }
+
+        def done(using Raise[F, NetworkError]): F[Unit] = send(Message.Done)
+        def idle: F[Boolean] =
+          (state.get, busy.get).mapN((current, inFlight) => current == State.Idle && !inFlight)
+        def idling: F[Boolean] = awaiting.get
+        def observe(next: ChainSyncClient.Observer[F]): Resource[F, Unit] =
+          Resource.make(observer.getAndSet(Some(next)))(observer.set).void
     }
 
   def run[F[_]: Temporal, Q, T, P](
@@ -212,7 +254,11 @@ object ChainSyncRuntime:
 
     val step: F[Boolean] =
       Timed
-        .within(settings.idleTimeout, id, "idle")(
+        .within(
+          settings.idleDeadline.getOrElse(ProtocolDeadline.After(settings.idleTimeout)),
+          id,
+          "idle"
+        )(
           channel.recv(settings.limits.maxMessageBytes)(
             ChainSyncEngine
               .decodePrefix(State.Idle, Role.Client, _, point, tip, payload, settings.limits)

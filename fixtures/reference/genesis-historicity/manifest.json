@@ -1,0 +1,21 @@
+{
+  "schema": "scarab-native-historicity-v1",
+  "sourceCommit": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+  "sourceFiles": {
+    "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/ChainSync/Client/HistoricityCheck.hs": "0818c07b673e0b1a4f7e30653bd207fdfa38432b5f3fc90290519639837f4b6d",
+    "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/ChainSync/Client.hs": "f4a6f6aa19de258be090837f60684f11f5e23206a55eaa3f1c37238607242081",
+    "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Node/RethrowPolicy.hs": "152cf1c397b5d25cdb0835182a59c1ed47f7d9896f2af2479298c5bbec02e297",
+    "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Node/Genesis.hs": "f0a703b0f06dbcc94ac62722d44bc282ab4e7222c9c15f3dfd2cf68d751c7619"
+  },
+  "observerSha256": "068488712bc0b8da18e760523ebe89ea95424d4e19a0ef83c40e95cb71af8adf",
+  "exporterSha256": "e994518ad5d33563cb96f5a5f6c91a73b6fb6d9707d8bfe553a1e1b5a7940aa5",
+  "sha256": "399cc227d7eca059a6db48af67a8899bb90066d98f589ca2e5203fbf2c2a8f09",
+  "cases": 72,
+  "errorsSha256": "b6efc4cae54870432710f3de5e3e98eb227d05dc842d813d1a7adfef8db69048",
+  "coverage": "all 3 GSM states, both messages, genesis and applied header state, 37h cutoff -1/0/+1ps, future time; all native outcomes retained",
+  "image": "sha256:10d59164dce6b49fbeafdc520c1a29d3e4024a5859a3c41bb6181b2e627bebc7",
+  "executableSha256": "9c71e6b4ac9bef36a90d4282738a3ae876a32b2727e6eacab55befecaf408488",
+  "planSha256": "7f1416e0423b18a439e83eeab16e8569060e9cacb24e0dcadb856b1705074ddb",
+  "observerCabalSha256": "93a034c7fdcca3903e070c3095f25728d75c3b031ba30961013991b6700f87fe",
+  "nativeSodiumSha256": "ba24828b9bd23f19457f5ccac052b278a0443a1c29a4ab148eba997ed37d5d1b"
+}

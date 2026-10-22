@@ -22,7 +22,8 @@ object ChainSyncServer:
   final case class Settings(
       limits: ChainSync.Limits = ChainSync.Limits(),
       idleTimeout: FiniteDuration = 3373.seconds,
-      protocol: Int = Protocols.ChainSync
+      protocol: Int = Protocols.ChainSync,
+      idleDeadline: Option[ProtocolDeadline] = None
   )
 
   val NodeToClient: Settings =
@@ -55,5 +56,10 @@ object ChainSyncServer:
       ChainSync.engineTipCodec,
       ChainSync.enginePayloadCodec(codec),
       genericSource,
-      ChainSyncRuntime.ServerSettings(settings.limits, settings.idleTimeout, settings.protocol)
+      ChainSyncRuntime.ServerSettings(
+        settings.limits,
+        settings.idleTimeout,
+        settings.protocol,
+        settings.idleDeadline
+      )
     )

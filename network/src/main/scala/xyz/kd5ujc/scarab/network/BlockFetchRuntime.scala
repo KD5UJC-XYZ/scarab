@@ -33,6 +33,10 @@ object BlockFetchRuntime:
     def requestRangeObserved(from: P, to: P)(observe: Event => F[Unit])(using
         Raise[F, NetworkError]
     ): F[Option[Vector[B]]]
+    def requestRangeStreaming(from: P, to: P)(
+        onBlock: B => F[Either[NetworkError, Unit]],
+        observe: Event => F[Unit]
+    )(using Raise[F, NetworkError]): F[Option[Vector[B]]]
     def done(using Raise[F, NetworkError]): F[Unit]
     def idle: F[Boolean]
 
@@ -43,17 +47,25 @@ object BlockFetchRuntime:
       */
     def range(from: P, to: P, maxBlocks: Int): F[Option[Stream[F, B]]]
 
+  final case class Timeouts(
+      busy: ProtocolDeadline,
+      streaming: ProtocolDeadline,
+      wholeRequest: ProtocolDeadline
+  )
+
   final case class ClientSettings(
       limits: BlockFetchEngine.Limits = BlockFetchEngine.Limits(),
       timeLimits: BlockFetchEngine.TimeLimits = BlockFetchEngine.TimeLimits(),
       request: BlockFetchEngine.RequestLimits = BlockFetchEngine.RequestLimits(maxBlocks = 128),
-      maxInFlightRequests: Int = 100
+      maxInFlightRequests: Int = 100,
+      timeouts: Option[Timeouts] = None
   )
 
   final case class ServerSettings(
       limits: BlockFetchEngine.Limits = BlockFetchEngine.Limits(),
       maxBlocks: Int = 2160,
-      idleTimeout: FiniteDuration = 3373.seconds
+      idleTimeout: FiniteDuration = 3373.seconds,
+      idleDeadline: Option[ProtocolDeadline] = None
   )
 
   def client[F[_]: Temporal, P, B](
@@ -68,7 +80,7 @@ object BlockFetchRuntime:
     def illegal[A](detail: NetworkError.Violation)(using Raise[F, NetworkError]): F[A] =
       NetworkError.IllegalTransition(id, detail).raise[F, A]
 
-    (Ref.of[F, State](State.Idle), Mutex[F]).mapN { (state, lock) =>
+    (Ref.of[F, State](State.Idle), Mutex[F], PeerTime.create[F]).mapN { (state, lock, peerTime) =>
       def send(message: Message[P, B])(using Raise[F, NetworkError]): F[Unit] =
         state.get.flatMap { current =>
           BlockFetchEngine
@@ -84,9 +96,19 @@ object BlockFetchRuntime:
       def receive(using Raise[F, NetworkError]): F[Message[P, B]] =
         state.get.flatMap { current =>
           val wait = current match
-            case State.Busy      => F.pure(settings.timeLimits.busy)
-            case State.Streaming => F.pure(settings.timeLimits.streaming)
-            case other => illegal[FiniteDuration](RuntimeViolation.ReplyNotExpected(other))
+            case State.Busy =>
+              F.pure(
+                settings.timeouts.fold[ProtocolDeadline](
+                  ProtocolDeadline.After(settings.timeLimits.busy)
+                )(_.busy)
+              )
+            case State.Streaming =>
+              F.pure(
+                settings.timeouts.fold[ProtocolDeadline](
+                  ProtocolDeadline.After(settings.timeLimits.streaming)
+                )(_.streaming)
+              )
+            case other => illegal[ProtocolDeadline](RuntimeViolation.ReplyNotExpected(other))
           wait.flatMap { limit =>
             Timed
               .within(limit, id, current.toString)(
@@ -110,9 +132,15 @@ object BlockFetchRuntime:
           }
         }
 
-      def stream(observe: Event => F[Unit])(using Raise[F, NetworkError]): F[Vector[B]] =
+      def stream(
+          onBlock: B => F[Either[NetworkError, Unit]],
+          observe: Event => F[Unit],
+          began: FiniteDuration
+      )(using
+          Raise[F, NetworkError]
+      ): F[Vector[B]] =
         F.tailRecM((BlockFetchEngine.Received.Empty, Vector.empty[B])) { case (received, blocks) =>
-          receive.flatMap {
+          withinRequest(peerTime, settings, began)(receive).flatMap {
             case Message.Block(block) =>
               BlockFetchEngine.Received.add(received, sizeOf(block), settings.request) match
                 case Left(_) =>
@@ -120,8 +148,11 @@ object BlockFetchRuntime:
                     .IngressLimit(id, blocks.size + 1)
                     .raise[F, Either[(BlockFetchEngine.Received, Vector[B]), Vector[B]]]
                 case Right(next) =>
-                  F.monotonic
-                    .flatMap(at => observe(Event.Block(sizeOf(block), at)))
+                  peerTime
+                    .local(
+                      F.monotonic.flatMap(at => observe(Event.Block(sizeOf(block), at))) *>
+                        onBlock(block).flatMap(_.fold(_.raise[F, Unit], F.pure))
+                    )
                     .as(Left((next, blocks :+ block)))
             case Message.BatchDone => F.pure(Right(blocks))
             case other             => illegal(RuntimeViolation.BlockFetchEngineUnexpected(other))
@@ -140,19 +171,37 @@ object BlockFetchRuntime:
 
         def requestRangeObserved(from: P, to: P)(observe: Event => F[Unit])(using
             Raise[F, NetworkError]
-        ): F[Option[Vector[B]]] = lock.lock.surround {
-          Timed
-            .within(settings.timeLimits.wholeRequest, id, "request")(
-              send(Message.RequestRange(from, to)) *>
-                F.monotonic.flatMap(at => observe(Event.Sent(at))) *> receive.flatMap {
+        ): F[Option[Vector[B]]] = requestRangeStreaming(from, to)(_ => F.pure(Right(())), observe)
+
+        def requestRangeStreaming(from: P, to: P)(
+            onBlock: B => F[Either[NetworkError, Unit]],
+            observe: Event => F[Unit]
+        )(using Raise[F, NetworkError]): F[Option[Vector[B]]] = lock.lock.surround {
+          peerTime.now
+            .flatMap { began =>
+              withinRequest(peerTime, settings, began)(send(Message.RequestRange(from, to))) *>
+                peerTime.local(F.monotonic.flatMap(at => observe(Event.Sent(at)))) *>
+                withinRequest(peerTime, settings, began)(receive).flatMap {
                   case Message.NoBlocks   => F.pure(None)
-                  case Message.StartBatch => stream(observe).map(Some(_))
+                  case Message.StartBatch => stream(onBlock, observe, began).map(Some(_))
                   case other => illegal(RuntimeViolation.BlockFetchEngineUnexpected(other))
                 }
-            )
-            .flatTap(_ => F.monotonic.flatMap(at => observe(Event.Completed(at))))
+            }
+            .flatTap(_ => peerTime.local(F.monotonic.flatMap(at => observe(Event.Completed(at)))))
         }
     }
+
+  private def withinRequest[F[_]: Temporal, A](
+      clock: PeerTime[F],
+      settings: ClientSettings,
+      began: FiniteDuration
+  )(wire: F[A])(using Raise[F, NetworkError]): F[A] =
+    val limit = settings.timeouts.fold[ProtocolDeadline](
+      ProtocolDeadline.After(settings.timeLimits.wholeRequest)
+    )(_.wholeRequest)
+    clock.within(limit, began)(wire)(
+      NetworkError.Timeout(Protocols.BlockFetch, "request").raise[F, A]
+    )
 
   /** A bounded FIFO client. Requests are submitted independently of reply collection, as in the
     * reference BlockFetch client pipeline (ouroboros-network 2fb69829,
@@ -175,7 +224,8 @@ object BlockFetchRuntime:
     final case class Job(
         result: Deferred[F, Result],
         ready: Deferred[F, FiniteDuration],
-        observe: Event => F[Unit]
+        observe: Event => F[Unit],
+        onBlock: B => F[Either[NetworkError, Unit]]
     )
     def illegal[A](cause: NetworkError.Violation)(using Raise[F, NetworkError]): F[A] =
       NetworkError.IllegalTransition(id, cause).raise[F, A]
@@ -187,6 +237,7 @@ object BlockFetchRuntime:
       )
       queue <- Resource.eval(Queue.bounded[F, Job](settings.maxInFlightRequests))
       credits <- Resource.eval(Semaphore[F](settings.maxInFlightRequests.toLong))
+      peerTime <- Resource.eval(PeerTime.create[F])
       submitting <- Resource.eval(Mutex[F])
       pending <- Resource.eval(Ref.of[F, Set[Deferred[F, Result]]](Set.empty))
       failed <- Resource.eval(Deferred[F, NetworkError])
@@ -213,8 +264,14 @@ object BlockFetchRuntime:
             .fold(illegal(_), channel.send)
         def receive(state: State)(using Raise[F, NetworkError]): F[Message[P, B]] =
           val limit =
-            if state == State.Busy then settings.timeLimits.busy
-            else settings.timeLimits.streaming
+            if state == State.Busy then
+              settings.timeouts.fold[ProtocolDeadline](
+                ProtocolDeadline.After(settings.timeLimits.busy)
+              )(_.busy)
+            else
+              settings.timeouts.fold[ProtocolDeadline](
+                ProtocolDeadline.After(settings.timeLimits.streaming)
+              )(_.streaming)
           Timed.within(limit, id, state.toString)(
             channel.recv(settings.limits.messageBytes(state))(
               BlockFetchEngine.decodePrefix(
@@ -227,13 +284,15 @@ object BlockFetchRuntime:
               )
             )
           )
-        def collect(job: Job)(using Raise[F, NetworkError]): F[Option[Vector[B]]] =
-          receive(State.Busy).flatMap {
+        def collect(job: Job, began: FiniteDuration)(using
+            Raise[F, NetworkError]
+        ): F[Option[Vector[B]]] =
+          withinRequest(peerTime, settings, began)(receive(State.Busy)).flatMap {
             case Message.NoBlocks => F.pure(None)
             case Message.StartBatch =>
               F.tailRecM((BlockFetchEngine.Received.Empty, Vector.empty[B])) {
                 case (received, blocks) =>
-                  receive(State.Streaming).flatMap {
+                  withinRequest(peerTime, settings, began)(receive(State.Streaming)).flatMap {
                     case Message.Block(block) =>
                       BlockFetchEngine.Received.add(received, sizeOf(block), settings.request) match
                         case Left(_) =>
@@ -241,8 +300,12 @@ object BlockFetchRuntime:
                             .IngressLimit(id, blocks.size + 1)
                             .raise[F, Either[(BlockFetchEngine.Received, Vector[B]), Vector[B]]]
                         case Right(next) =>
-                          F.monotonic
-                            .flatMap(at => job.observe(Event.Block(sizeOf(block), at)))
+                          peerTime
+                            .local(
+                              F.monotonic
+                                .flatMap(at => job.observe(Event.Block(sizeOf(block), at))) *>
+                                job.onBlock(block).flatMap(_.fold(_.raise[F, Unit], F.pure))
+                            )
                             .as(Left((next, blocks :+ block)))
                     case Message.BatchDone => F.pure(Right(blocks))
                     case other => illegal(RuntimeViolation.BlockFetchEngineUnexpected(other))
@@ -255,15 +318,10 @@ object BlockFetchRuntime:
             .flatMap { sentAt =>
               Fibers
                 .scoped[F, NetworkError, Option[Vector[B]]](NetworkError.Defect(_)) {
-                  F.monotonic
-                    .flatMap { now =>
-                      Timed.within(
-                        settings.timeLimits.wholeRequest - (now - sentAt),
-                        id,
-                        "request"
-                      )(collect(job))
-                    }
-                    .flatTap(_ => F.monotonic.flatMap(at => job.observe(Event.Completed(at))))
+                  collect(job, sentAt)
+                    .flatTap(_ =>
+                      peerTime.local(F.monotonic.flatMap(at => job.observe(Event.Completed(at))))
+                    )
                 }
             }
             .flatMap {
@@ -300,9 +358,15 @@ object BlockFetchRuntime:
             def requestRangeObserved(from: P, to: P)(observe: Event => F[Unit])(using
                 Raise[F, NetworkError]
             ): F[Option[Vector[B]]] =
+              requestRangeStreaming(from, to)(_ => F.pure(Right(())), observe)
+
+            def requestRangeStreaming(from: P, to: P)(
+                onBlock: B => F[Either[NetworkError, Unit]],
+                observe: Event => F[Unit]
+            )(using Raise[F, NetworkError]): F[Option[Vector[B]]] =
               credits.permit.use { _ =>
                 (Deferred[F, Result], Deferred[F, FiniteDuration])
-                  .mapN(Job(_, _, observe))
+                  .mapN(Job(_, _, observe, onBlock))
                   .flatMap { job =>
                     val submitted = Fibers
                       .scoped[F, NetworkError, Unit](NetworkError.Defect(_)) {
@@ -313,8 +377,9 @@ object BlockFetchRuntime:
                               pending.update(_ + job.result) *> healthy *>
                                 send(Message.RequestRange(from, to)) *> queue.offer(job)
                           }
-                        } *> F.monotonic.flatMap { at =>
-                          observe(Event.Sent(at)) *> job.ready.complete(at).void
+                        } *> peerTime.now.flatMap { began =>
+                          peerTime.local(F.monotonic.flatMap(at => observe(Event.Sent(at)))) *>
+                            job.ready.complete(began).void
                         }
                       }
                       .flatMap {
@@ -354,7 +419,11 @@ object BlockFetchRuntime:
 
     val step: F[Boolean] =
       Timed
-        .within(settings.idleTimeout, id, "idle")(
+        .within(
+          settings.idleDeadline.getOrElse(ProtocolDeadline.After(settings.idleTimeout)),
+          id,
+          "idle"
+        )(
           channel.recv(settings.limits.messageBytes(State.Idle))(
             BlockFetchEngine.decodePrefix(
               State.Idle,

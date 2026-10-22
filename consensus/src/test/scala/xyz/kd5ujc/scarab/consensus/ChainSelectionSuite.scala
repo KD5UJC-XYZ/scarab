@@ -143,6 +143,72 @@ class ChainSelectionSuite extends ScalaCheckSuite:
     assert(!prefers(Tiebreaker.Unrestricted, view(3, vrf = 9), byron))
   }
 
+  test("Byron EBB projection and preference retain the native equal-difficulty tie-break") {
+    val regular = Header.Byron(Bytes.empty, bytes(1, 32), false, 0, 49, 50, 10, None)
+    val boundary = Header.Byron(Bytes.empty, bytes(2, 32), true, 1, 0, 50, 10, Some(regular.hash))
+    val regularView = SelectView.of(regular)
+    val boundaryView = SelectView.of(boundary)
+    assert(!regularView.boundary)
+    assert(boundaryView.boundary)
+    assert(prefers(Tiebreaker.Unrestricted, regularView, boundaryView))
+    assert(!prefers(Tiebreaker.Unrestricted, boundaryView, regularView))
+    val candidate = Candidate(regular.point, Vector(boundary))
+    val anchored = Local(regular.point, regularView, Vector.empty)
+    assertEquals(
+      decide(Tiebreaker.Unrestricted, anchored, candidate),
+      Decision.Switch(regular.point, 0, Vector(boundary))
+    )
+    val volatile = Local(
+      Point.Origin,
+      SelectView(-1, 0, None, 0, None),
+      Vector(LocalBlock(regular.point, regularView))
+    )
+    assertEquals(
+      decide(Tiebreaker.Unrestricted, volatile, candidate),
+      Decision.Switch(regular.point, 0, Vector(boundary))
+    )
+  }
+
+  test("an empty selected fragment uses the candidate point before comparing selection views") {
+    val anchor = Fixtures.header(10, 50, None, 1)
+    val next = Fixtures.header(10, 51, Some(anchor.hash), 2)
+    val anchored = Local(anchor.point, SelectView.of(anchor), Vector.empty)
+    assert(!prefers(Tiebreaker.Unrestricted, anchored.tipView, SelectView.of(next)))
+    assertEquals(
+      decide(Tiebreaker.Unrestricted, anchored, Candidate(anchor.point, Vector(next))),
+      Decision.Switch(anchor.point, 0, Vector(next))
+    )
+    assertEquals(
+      decide(Tiebreaker.Unrestricted, anchored, Candidate(anchor.point, Vector.empty)),
+      Decision.Keep
+    )
+  }
+
+  test("cross-era eligibility uses the later era configuration in either direction") {
+    import xyz.kd5ujc.scarab.protocol.Era
+    val older = view(3, slot = 100, issuer = 1, vrf = 200).copy(era = Some(Era.Babbage))
+    val later = view(3, slot = 106, issuer = 2, vrf = 10).copy(era = Some(Era.Conway))
+    assert(prefers(Tiebreaker.Unrestricted, older, later))
+    assert(!prefersCandidate(Tiebreaker.Unrestricted, older, later))
+    val reverse = older.copy(tieBreak = Some(bytes(1)))
+    assert(!prefersCandidate(Tiebreaker.Unrestricted, later, reverse))
+    assert(prefersCandidate(Tiebreaker.Unrestricted, older, later.copy(slot = 105)))
+    assert(prefersCandidate(Tiebreaker.Unrestricted, later, reverse.copy(slot = 101)))
+    assert(prefersCandidate(Tiebreaker.Unrestricted, older, later.copy(blockNo = 4)))
+  }
+
+  test("Byron and Shelley have no equal-height cross-era tie-breaker in either ordering") {
+    import xyz.kd5ujc.scarab.protocol.Era
+    val byron = SelectView(3, 100, None, 0, None, boundary = true, era = Some(Era.Byron))
+    val shelley = view(3, vrf = 0).copy(era = Some(Era.Shelley))
+    for f <- Seq(Tiebreaker.Unrestricted, Tiebreaker.Restricted(5)) do
+      assert(!prefers(f, byron, shelley))
+      assert(!prefers(f, shelley, byron))
+      assert(!prefersCandidate(f, byron, shelley))
+      assert(!prefersCandidate(f, shelley, byron))
+      assert(prefersCandidate(f, byron, shelley.copy(blockNo = 4)))
+  }
+
   // ---- decisions over chains
 
   /** Headers with the given block numbers on top of `from`, issuer/vrf as chosen. */

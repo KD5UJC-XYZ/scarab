@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.effect.{Deferred, IO, Resource}
+import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.syntax.all.*
 import fs2.Stream
 import munit.CatsEffectSuite
@@ -190,6 +190,7 @@ class UpstreamBlockFetchBehaviorSuite extends FailsOnUncaught:
                     )
                     .use { client =>
                       for
+                        streamed <- Ref.of[IO, Map[Int, Vector[Bytes]]](Map.empty)
                         responses <- caseRanges
                           .traverse { range =>
                             for
@@ -199,10 +200,21 @@ class UpstreamBlockFetchBehaviorSuite extends FailsOnUncaught:
                                   .scoped[IO, NetworkError, Option[Vector[Bytes]]](
                                     NetworkError.Defect(_)
                                   ) {
-                                    client.requestRangeObserved(range.from, range.to) {
-                                      case _: BlockFetchRuntime.Event.Sent => sent.complete(()).void
-                                      case _                               => IO.unit
-                                    }
+                                    client.requestRangeStreaming(range.from, range.to)(
+                                      body =>
+                                        streamed
+                                          .update(
+                                            _.updatedWith(range.rangeOrdinal)(previous =>
+                                              Some(previous.getOrElse(Vector.empty) :+ body)
+                                            )
+                                          )
+                                          .as(Right(())),
+                                      {
+                                        case _: BlockFetchRuntime.Event.Sent =>
+                                          sent.complete(()).void
+                                        case _ => IO.unit
+                                      }
+                                    )
                                   }
                                   .start
                               )(_.cancel)
@@ -217,12 +229,18 @@ class UpstreamBlockFetchBehaviorSuite extends FailsOnUncaught:
                           .use(_.traverse { (range, reply) =>
                             reply.joinWithNever.flatMap(Fibers.land(_)).map(range -> _)
                           })
+                        delivered <- streamed.get
                         _ <- client.done
                         serverResult <- serverFiber.joinWithNever
                         _ <- Fibers.land[IO, NetworkError, Unit](serverResult)
                         _ <- IO {
                           responses.foreach { case (range, actual) =>
                             val expected = Option.when(range.bodies.nonEmpty)(range.bodies)
+                            assertEquals(
+                              delivered.getOrElse(range.rangeOrdinal, Vector.empty),
+                              range.bodies,
+                              s"seed ${testCase.seed}, streamed bodies of range ${range.rangeOrdinal}"
+                            )
                             assertEquals(
                               actual,
                               expected,

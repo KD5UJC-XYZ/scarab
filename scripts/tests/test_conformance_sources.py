@@ -109,7 +109,7 @@ class ConformanceSourcesTest(unittest.TestCase):
         rows = MODULE.sources(SCRIPT.parent.parent)
         self.assertEqual({row.name for row in rows},
                          {"ledger", "network", "rewards", "wallet-queries", "peer-snapshot-queries",
-                          "formal", "constrained", "plutus"})
+                          "consensus", "formal", "constrained", "plutus"})
         for row in rows:
             self.assertRegex(row.commit, r"^[0-9a-f]{40}$")
 
@@ -160,6 +160,63 @@ class ConformanceSourcesTest(unittest.TestCase):
         self.assertEqual(rows["peer-snapshot-queries"].commit, "b" * 40)
         self.assertEqual(rows["peer-snapshot-queries"].prefixes,
                          ("ouroboros-network/api/lib/New/PeerType.hs",))
+    def test_consensus_watch_covers_every_recorded_genesis_source(self):
+        import json
+        root = SCRIPT.parent.parent
+        rows = MODULE.sources(root)
+        consensus = next(row for row in rows if row.name == "consensus")
+        for name in ("genesis-density", "genesis-historicity", "genesis-chain-sync", "genesis-punishment"):
+            manifest = json.loads((root / "fixtures/reference" / name / "manifest.json").read_text())
+            self.assertEqual(consensus.commit, manifest["sourceCommit"])
+            for path in manifest["sourceFiles"]:
+                self.assertTrue(path.startswith(consensus.prefixes), path)
+        network = next(row for row in rows if row.name == "network")
+        manifest = json.loads((root / "fixtures/reference/genesis-block-fetch/manifest.json").read_text())
+        for path in manifest["sourceFiles"]:
+            self.assertTrue(path.startswith(network.prefixes), path)
+
+    def test_candidate_order_watch_covers_the_recorded_native_mechanisms(self):
+        root = SCRIPT.parent.parent
+        consensus = next(row for row in MODULE.sources(root) if row.name == "consensus")
+        manifest = json.loads((root / "fixtures/reference/candidate-order/manifest.json").read_text())
+        self.assertEqual(consensus.commit, manifest["sourceCommit"])
+        self.assertEqual(manifest["caseCount"], 24)
+        self.assertEqual(manifest["syntheticSortCaseCount"], 7)
+        for path in manifest["sourceFiles"]:
+            self.assertTrue(path.startswith(consensus.prefixes), path)
+        # Eligibility, unrestricted Ord and across-era configuration are distinct mechanisms.
+        # A runtime change must be visible even when the finite input examples do not change.
+        mechanisms = (
+            "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Protocol/Abstract.hs",
+            "ouroboros-consensus-protocol/src/ouroboros-consensus-protocol/Ouroboros/Consensus/Protocol/Praos/Common.hs",
+            "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Util/AnchoredFragment.hs",
+            "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/Protocol.hs",
+            "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/Protocol/ChainSel.hs",
+            "ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/CanHardFork.hs",
+        )
+        for path in mechanisms:
+            self.assertTrue(path.startswith(consensus.prefixes), path)
+        # Give every watched root a concrete representative; an unwatched mechanism would
+        # otherwise disappear from both trees and falsely look unchanged.
+        before = {prefix + "Example.hs" if prefix.endswith("/") else prefix: "same"
+                  for prefix in consensus.prefixes}
+        before.update({path: "before" for path in mechanisms})
+        source = MODULE.Source(consensus.name, consensus.repository, self.pin, consensus.prefixes)
+        for path in mechanisms:
+            after = dict(before)
+            after[path] = "after"
+            result = MODULE.inspect(source, self.fetcher(before, after))
+            self.assertEqual(result["status"], "changed")
+            self.assertEqual(result["changed"], [path])
+
+    def test_ledger_watch_covers_recorded_byron_decoder_and_fee_sources(self):
+        import json
+        root = SCRIPT.parent.parent
+        ledger = next(row for row in MODULE.sources(root) if row.name == "ledger")
+        manifest = json.loads((root / "fixtures/reference/byron-params/manifest.json").read_text())
+        self.assertEqual(ledger.commit, manifest["sourceCommit"])
+        for path in manifest["sourceFiles"]:
+            self.assertTrue(path.startswith(ledger.prefixes), path)
 
     def test_branch_names_cannot_replace_pins(self):
         source = MODULE.Source("sample", "example/repo", "main", ("tests/",))

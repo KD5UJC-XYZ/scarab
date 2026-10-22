@@ -63,14 +63,8 @@ class ConfigSuite extends FunSuite:
   test("every hash of every public configuration equals the file it names") {
     networks.foreach { network =>
       val config = parsed(network)
-      // mainnet's 1 MB Byron genesis file is not kept; the other three are
       val result = NodeSetup.verifyHashes(config, read(network))
-      if network == "mainnet" then
-        assertEquals(
-          result.left.map(_.problem.getClass.getSimpleName).left.toOption,
-          Some("FileMissing")
-        )
-      else assertEquals(result, Right(()), network)
+      assertEquals(result, Right(()), network)
       List(
         config.files.shelley -> config.hashes.shelley,
         config.files.alonzo -> config.hashes.alonzo,
@@ -82,18 +76,8 @@ class ConfigSuite extends FunSuite:
     }
   }
 
-  test("the mainnet Byron hash is verified against the full file when it is at hand") {
-    val configured = sys.env.get("SCARAB_MAINNET_GENESIS_DIR").map(Path.of(_))
-    assume(
-      configured.exists(path => Files.isRegularFile(path.resolve("byron-genesis.json"))),
-      "SCARAB_MAINNET_GENESIS_DIR names the full mainnet genesis directory"
-    )
-    val full = configured.getOrElse(fail("mainnet genesis directory was not configured"))
-    val readFull: String => Option[Array[Byte]] = name =>
-      read("mainnet")(name).orElse(
-        Option.when(Files.exists(full.resolve(name)))(Files.readAllBytes(full.resolve(name)))
-      )
-    assertEquals(NodeSetup.verifyHashes(parsed("mainnet"), readFull), Right(()))
+  test("the mainnet Byron hash is verified against the complete pinned public file") {
+    assertEquals(NodeSetup.verifyHashes(parsed("mainnet"), read("mainnet")), Right(()))
   }
 
   test("a genesis file that differs from its listed hash is a typed GenesisHashMismatch") {
@@ -244,6 +228,38 @@ class ConfigSuite extends FunSuite:
     assertEquals(config.settings.lastKnownBlockVersion, Some((3, 0, 0)))
   }
 
+  test("Genesis bucket settings preserve the reference signed-integer domain") {
+    val base = parser.parse(text("preview", "config.json")).fold(e => fail(e.message), identity)
+    for
+      capacity <- Vector(BigInt(-1), BigInt(0), BigInt(100000))
+      rate <- Vector(BigInt(-500), BigInt(0), BigInt(500))
+    do
+      val json = base.deepMerge(
+        Json.obj(
+          "LowLevelGenesisOptions" -> Json.obj(
+            "BucketCapacity" -> Json.fromBigInt(capacity),
+            "BucketRate" -> Json.fromBigInt(rate)
+          )
+        )
+      )
+      val config =
+        NodeConfig.parse(json.noSpaces, strict = true).fold(e => fail(e.message), identity)
+      assertEquals(config.settings.genesis.bucketCapacity, capacity)
+      assertEquals(config.settings.genesis.bucketRate, xyz.kd5ujc.scarab.codec.Rational(rate))
+    Vector("BucketCapacity", "BucketRate").foreach { field =>
+      val fractional = base.deepMerge(
+        Json.obj(
+          "LowLevelGenesisOptions" ->
+            Json.obj(field -> Json.fromBigDecimal(BigDecimal("0.5")))
+        )
+      )
+      NodeConfig.parse(fractional.noSpaces).left.map(_.problem) match
+        case Left(ConfigProblem.JsonField("LowLevelGenesisOptions", key, _)) =>
+          assertEquals(key, field)
+        case other => fail(s"fractional $field was not rejected as an integer field: $other")
+    }
+  }
+
   test("other protocols, unknown modes, a renamed key and experimental forks are handled") {
     val base = parser.parse(text("preview", "config.json")).toOption.get
     def with_(key: String, value: Json) = base.deepMerge(Json.obj(key -> value)).noSpaces
@@ -269,7 +285,7 @@ class ConfigSuite extends FunSuite:
       .noSpaces
     val config = NodeConfig.parse(dijkstra, strict = true).fold(e => fail(e.message), identity)
     assert(config.settings.unsupported.exists(_.contains("Dijkstra")))
-    assert(parsed("preview").settings.unsupported.exists(_.contains("GenesisMode")))
+    assertEquals(parsed("preview").settings.consensusMode, ConsensusMode.GenesisMode)
     // settings the node acts on when started from a configuration file
     val settings = NodeConfig
       .parse(
@@ -508,6 +524,7 @@ class ConfigSuite extends FunSuite:
     List("byron", "shelley", "alonzo", "conway").foreach { n =>
       Files.copy(dir("preview").resolve(s"$n-genesis.json"), praos.resolve(s"$n-genesis.json"))
     }
+    Files.copy(dir("preview").resolve("checkpoints.json"), praos.resolve("checkpoints.json"))
     val preview = parser
       .parse(text("preview", "config.json"))
       .fold(error => fail(error.toString), identity)
@@ -565,6 +582,7 @@ class ConfigSuite extends FunSuite:
     )
     // the file's defaults for the flags (here none are set), and a flag wins over the file
     val withSettings = Files.createTempDirectory("config-suite-settings")
+    Files.copy(dir("preview").resolve("checkpoints.json"), withSettings.resolve("checkpoints.json"))
     List("byron", "shelley", "alonzo", "conway").foreach { n =>
       Files.copy(
         dir("preview").resolve(s"$n-genesis.json"),
