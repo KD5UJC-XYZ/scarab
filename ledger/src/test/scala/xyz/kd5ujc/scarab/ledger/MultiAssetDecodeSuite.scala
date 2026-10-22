@@ -265,3 +265,71 @@ class MultiAssetDecodeSuite extends FunSuite:
       assert(TxBody.decode(bytes(big), Address.Mode.of(era)).isLeft, era.toString)
     }
   }
+
+  private val coinOnly = List(Era.Shelley, Era.Allegra)
+
+  test("Shelley and Allegra read a coin only; Mary onward is unchanged") {
+    coinOnly.foreach(e =>
+      assertEquals(Address.Mode.of(e).values, Value.Decoding.CoinOnly, e.toString)
+    )
+    assertEquals(Address.Mode.of(Era.Mary).values, Pruning)
+    // a multi-asset value is no `Coin` (`ShelleyTxOut`, cardano-ledger f649f975)
+    val refused = Left(LedgerDecodeError.MultiAssetNotAllowed("value"))
+    val CoinOnly = Value.Decoding.CoinOnly
+    assertEquals(read(uint(5), CoinOnly), Right(Value.coin(5)))
+    assertEquals(read(value(5, assets(1 -> Seq("01" -> uint(3)))), CoinOnly), refused)
+    // an empty multi-asset map is still not a coin
+    assertEquals(read(value(5, "a0"), CoinOnly), refused)
+    assertEquals(read(value(5, assets(1 -> Seq("01" -> uint(0)))), CoinOnly), refused)
+    assertEquals(
+      Value.multiasset(node(assets(1 -> Seq("01" -> int(-1)))), "mint", signed = true, CoinOnly),
+      Left(LedgerDecodeError.MultiAssetNotAllowed("mint"))
+    )
+  }
+
+  test("a Shelley or Allegra output refuses a multi-asset value, in both output forms") {
+    val adaOnly = "82" + enterprise + uint(2000000)
+    val multi = output(assets(1 -> Seq("01" -> uint(3))))
+    val emptyMulti = output("a0")
+    val mapForm =
+      "a2" + "00" + enterprise + "01" + value(2000000, assets(1 -> Seq("01" -> uint(3))))
+    coinOnly.foreach { era =>
+      val mode = Address.Mode.of(era)
+      assertEquals(
+        TxOut.decode(node(adaOnly), mode).map(_.value),
+        Right(Value.coin(2000000)),
+        era.toString
+      )
+      List(multi, emptyMulti, mapForm).foreach { hex =>
+        assertEquals(
+          TxOut.decode(node(hex), mode).map(_ => ()),
+          Left(LedgerDecodeError.MultiAssetNotAllowed("output value")),
+          s"$era $hex"
+        )
+      }
+    }
+    // the same bytes are an output from Mary
+    List(Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway).foreach { era =>
+      assert(TxOut.decode(node(multi), Address.Mode.of(era)).isRight, era.toString)
+    }
+  }
+
+  test("a Shelley or Allegra body refuses an output with a multi-asset value") {
+    def withOutput(out: String) =
+      "a3" + "00" + "81" + "82" + bstr("22" * 32) + "00" + "01" + "81" + out + "02" + uint(170000)
+    val multi = withOutput(output(assets(1 -> Seq("01" -> uint(3)))))
+    val adaOnly = withOutput("82" + enterprise + uint(2000000))
+    coinOnly.foreach { era =>
+      val mode = Address.Mode.of(era)
+      assertEquals(
+        TxBody.decode(bytes(multi), mode).map(_ => ()),
+        Left(LedgerDecodeError.MultiAssetNotAllowed("output value")),
+        era.toString
+      )
+      assertEquals(
+        TxBody.decode(bytes(adaOnly), mode).map(_.outputs.map(_.value)),
+        Right(Vector(Value.coin(2000000)))
+      )
+    }
+    assert(TxBody.decode(bytes(multi), Address.Mode.of(Era.Mary)).isRight)
+  }
