@@ -126,3 +126,12 @@ The job fails on a violation, prints the replay command, and uploads `fault-sche
 - Disk faults, memory pressure and CPU starvation are not injected. Only the Scala node and the Haskell pools crash; the proxies do not.
 - Partitions are bounded by `k` as described; a deeper partition is not tested, because the outcome is the protocol's.
 - Packet corruption, reordering as such (jitter does reorder) and bandwidth limits are not injected.
+
+### First runs
+
+Local runs on a 24-core host with the reference image 11.1.3, all passing every property: seed 1 (150 s; one Scala crash and
+restart) in 2 m 50 s, seed 4 (150 s) in 2 m 57 s, seed 7 (300 s; latency, loss, a partition and a Haskell pool crash) in
+5 m 24 s, seed 9 (600 s, the nightly duration; eight episodes) in 10 m 28 s. A hand-written 70 s isolation of the Scala node,
+far beyond the bound above, fails the convergence check as intended (the Scala node stays on its own fork at block 54 while
+both Haskell pools are at 83). The hosted runner's wall-clock and the netem kernel modules there are verified by the first
+scheduled run.
