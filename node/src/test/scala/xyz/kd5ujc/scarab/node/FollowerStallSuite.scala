@@ -37,6 +37,8 @@ import xyz.kd5ujc.scarab.network.selection.{
 }
 import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 import xyz.kd5ujc.scarab.node.forge.ForgedChain
+import xyz.kd5ujc.scarab.node.metrics.{Catalogue, EventMetrics, Family, Metrics}
+import xyz.kd5ujc.scarab.node.metrics.EventSink.alongside
 import xyz.kd5ujc.scarab.node.relay.ChainServer
 import scala.concurrent.duration.*
 
@@ -350,6 +352,9 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             events,
             ForgedChain.geometry
           )
+          metrics <- Metrics.create[IO](Catalogue.all)
+          measured <- EventMetrics.create[IO](using summon, metrics)
+          lost <- Reconnects.create[IO](events.alongside(measured.follower))
           fatals <- Ref.of[IO, Vector[Fatal]](Vector.empty)
           pool <- BlockPool.create[IO]
           garbled <- serving(forged.raws).flatMap(garbling)
@@ -384,7 +389,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             observe = None,
             pool = pool,
             versus = follower.versus,
-            lost = error => events.emit(FollowerEvent.Reconnecting(error, 1)),
+            lost = lost,
             fatal = f => fatals.update(_ :+ f)
           )
           view = new PeerNetwork.ChainView[IO]:
@@ -435,10 +440,19 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           served <- malformed.tryGet
           stopped <- fatals.get
           invalid <- pool.invalidBlocks.snapshot
+          logged <- seen.get.map(_.count(_.isInstanceOf[FollowerEvent.Reconnecting]))
+          counted <- metrics.snapshot.map(
+            _.families
+              .get(Catalogue.peerReconnects.name)
+              .collect { case f: Family.Counter => f.series.values.sum }
+          )
         yield
           assertEquals(served, Some(Bytes(Vector(0xff.toByte))))
           assertEquals(stopped, Vector.empty[Fatal])
           assertEquals(invalid.entries, Map.empty)
+          // every logged reconnect is counted (issue 351)
+          assert(logged >= 1)
+          assertEquals(counted, Some(logged.toDouble))
       },
       seed = Some("MTM=")
     )

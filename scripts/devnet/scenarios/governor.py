@@ -19,7 +19,7 @@ import subprocess
 import sys
 import time
 from ..cluster import freeze_classes, scala_container, up
-from ..metrics import parse, scrape, value
+from ..metrics import parse, scrape, total, value
 from ..util import ENV, QUERY_PORT, data_root, docker, read_log, ref
 from .peercut import PROXY_PORT, last_block, start_proxy
 from .relay import tip_at
@@ -246,12 +246,21 @@ def governor(args):
         summary["afterRelease"] = returned
 
         # 5. the exported metrics agree with the log
+        reconnects_before = sum(1 for e in events() if e.get("event") == "reconnecting")
         got = scrape(args.name, QUERY_PORT)
         samples = parse(got[1]) if got else {}
+        reconnects_after = sum(1 for e in events() if e.get("event") == "reconnecting")
         rounds_logged = sum(1 for e in events() if e.get("event") == "peerSelectionChurn" and e["action"] == "round")
         exported = value(samples, "scarab_peer_selection_churn_rounds_total")
         if exported is None or not (rounds_logged - 1 <= exported <= rounds_logged + 1):
             failures.append(f"scarab_peer_selection_churn_rounds_total {exported} against {rounds_logged} rounds in the log")
+        # every logged reconnect is counted (issue 351): the scrape lies between the two log readings
+        reconnects = total(samples, "scarab_peer_reconnects_total")
+        summary["reconnects"] = {"loggedBeforeScrape": reconnects_before, "exported": reconnects,
+                                 "loggedAfterScrape": reconnects_after}
+        if reconnects_before < 1 or not reconnects_before <= reconnects <= reconnects_after:
+            failures.append(f"scarab_peer_reconnects_total {reconnects} against {reconnects_before} to "
+                            f"{reconnects_after} reconnecting events in the log (the silent peer was lost)")
         steps = sum(v for (n, _), v in samples.items() if n == "scarab_peer_selection_churn_steps_total")
         if steps < len(STEPS):
             failures.append(f"scarab_peer_selection_churn_steps_total is {steps}")
