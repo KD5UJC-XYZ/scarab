@@ -28,6 +28,7 @@ Three comparisons on one cluster, the Scala node following it with `--local-sock
      is compared as text on both sockets, and AwaitAcquire must wake on both.
 """
 import json
+import os
 import re
 import subprocess
 import sys
@@ -72,7 +73,16 @@ CLI_QUERIES = [
     ("slot-number", "slot-number 2026-01-01T00:00:00Z"),
     ("protocol-state", "protocol-state"),
     ("ledger-state", "ledger-state"),
+    # `--current` asks `GetCBOR (GetPoolDistr2 {pool})`, `--next` the whole `GetCBOR DebugEpochState`, an answer
+    # that on preprod is tens of megabytes (#353); the devnet's is small, so this checks the path and the output
+    ("leadership-schedule --current", "leadership-schedule {leader} --current --output-json"),
+    ("leadership-schedule --next", "leadership-schedule {leader} --next --output-json"),
 ]
+
+# what `leadership-schedule` reads besides the socket: the Shelley genesis and pool 1's cold and VRF keys
+LEADER_FILES = [f"{ENV}/shelley-genesis.json", f"{ENV}/pools-keys/pool1/cold.vkey", f"{ENV}/pools-keys/pool1/vrf.skey"]
+LEADER_ARGUMENTS = (f"--genesis {LEADER_FILES[0]} --stake-pool-verification-key-file {LEADER_FILES[1]} "
+                    f"--vrf-signing-key-file {LEADER_FILES[2]}")
 
 # The same-point raw protocol battery checks ledger-state byte-exactly. CLI output also
 # participates whenever its reference-before/after bracket establishes comparable state.
@@ -107,6 +117,15 @@ def start_cli_container(args, root):
     """A long-lived reference-image container with the Scala socket mounted, to run `cardano-cli` in."""
     docker("run", "-d", "--name", f"{args.name}-cli", "--pull=never", "--user", USER,
            "-v", f"{root / 'scala-sock'}:/sock", "--entrypoint", "/bin/sh", REFERENCE_IMAGE, "-c", "sleep infinity")
+
+
+def share_leader_files(args):
+    """Copy the files `leadership-schedule` reads from the reference container into the CLI container, at the same
+    paths, so that one command text runs against both sockets."""
+    for path in LEADER_FILES:
+        text = docker("exec", ref(args.name), "cat", path).stdout
+        subprocess.run(["docker", "exec", "-i", f"{args.name}-cli", "/bin/sh", "-c",
+                        f"mkdir -p {os.path.dirname(path)} && cat > {path}"], input=text, text=True, check=True)
 
 
 def cli(args, which, text, timeout=90):
@@ -535,6 +554,8 @@ def ntc(args):
         delegator = f"{ENV}/stake-delegators/delegator1/staking.vkey"
         info["stake"] = in_ref(args.name, f"{CLI} stake-address build --stake-verification-key-file {delegator} "
                                           f"--testnet-magic {MAGIC}").stdout.strip()
+        info["leader"] = LEADER_ARGUMENTS
+        share_leader_files(args)
         commands = [(label, "query " + text.format(**info)) for label, text in CLI_QUERIES]
         cli_results = cli_comparison(args, root, commands)
         sub_results = submissions(args, root)
