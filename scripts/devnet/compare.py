@@ -94,6 +94,11 @@ BUNDLE = [("ls", "query ledger-state"), ("utxo", "query utxo --whole-utxo"), ("p
           ("drep", "query drep-stake-distribution --all-dreps")]
 
 
+def reference_socket():
+    """The socket the reference queries use: the one `util.SOCKET` names (a scenario may point it at another pool)."""
+    return util.SOCKET.split("--socket-path ", 1)[1].split()[0]
+
+
 def query_bundle(name):
     """The reference queries of one comparison, all reading the ledger state at one block. The tip is read
     once; the queries of BUNDLE then run in parallel through `pinnedquery.Pin`, which makes each
@@ -102,7 +107,7 @@ def query_bundle(name):
     (None, why): the query that failed, with its exit status, stderr tail and wall time, or the keys that
     were never pinned. A block that has left the node's volatile window by then is refused by the node,
     which is a failed query."""
-    pin = pinnedquery.Pin(ref(name), f"{ENV}/socket/node1/sock", [k for k, _ in BUNDLE])
+    pin = pinnedquery.Pin(ref(name), reference_socket(), [k for k, _ in BUNDLE])
     keys = [k for k, _ in BUNDLE]
     try:
         pin.start()

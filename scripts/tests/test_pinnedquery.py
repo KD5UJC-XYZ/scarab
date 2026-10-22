@@ -6,6 +6,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+from devnet import compare, util  # noqa: E402
 from devnet import pinnedquery as pq  # noqa: E402
 from devnet.cbor import enc  # noqa: E402
 
@@ -83,6 +84,14 @@ class SegmentsTest(unittest.TestCase):
         parts = stream.feed(framed)
         self.assertEqual([len(p) for _, _, p in parts], [pq.MAX_PAYLOAD, len(message) - pq.MAX_PAYLOAD])
         self.assertEqual(b"".join(p for _, _, p in parts), message)
+
+
+class ReferenceSocketTest(unittest.TestCase):
+    def test_the_pinned_queries_use_the_socket_the_scenario_selected(self):
+        saved = util.SOCKET
+        self.addCleanup(setattr, util, "SOCKET", saved)
+        util.SOCKET = f"--testnet-magic {util.MAGIC} --socket-path {util.ENV}/socket/node2/sock"
+        self.assertEqual(compare.reference_socket(), f"{util.ENV}/socket/node2/sock")
 
 
 if __name__ == "__main__":
