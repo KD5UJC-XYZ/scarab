@@ -148,7 +148,8 @@ object PreConwayFailureCbor:
     // Alonzo's and Babbage's
     case UtxowFailure.MissingRedeemers(_) | UtxowFailure.MissingRequiredDatums(_, _) |
         UtxowFailure.NotAllowedSupplementalDatums(_, _) | UtxowFailure.PPViewHashesDontMatch(_) |
-        UtxowFailure.ScriptIntegrityHashMismatch(_, _) | UtxowFailure.UnspendableUTxONoDatumHash(_) | UtxowFailure.ExtraRedeemers(_) |
+        UtxowFailure.ScriptIntegrityHashMismatch(_, _) |
+        UtxowFailure.UnspendableUTxONoDatumHash(_) | UtxowFailure.ExtraRedeemers(_) |
         UtxowFailure.MalformedScriptWitnesses(_) | UtxowFailure.MalformedReferenceScripts(_) =>
       None
 

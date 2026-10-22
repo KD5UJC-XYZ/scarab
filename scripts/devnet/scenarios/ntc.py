@@ -303,7 +303,7 @@ def submissions(args, root):
         named = case.ledger_rule in text["h"][1]
         row = {"case": case.label, "rule": case.ledger_rule, "referenceNamesRule": named, "rawEqual": same_raw,
                "textEqual": same_text}
-        if case.label.startswith("withdrawal-network"):
+        if case.label.startswith(("withdrawal-network", "script-integrity")):
             row["referenceRaw"] = raw["h"].hex()  # kept as a test vector of the failure encoding
         if not (same_raw and same_text):
             row["reference"] = rendered(text["h"][1])[:500]
