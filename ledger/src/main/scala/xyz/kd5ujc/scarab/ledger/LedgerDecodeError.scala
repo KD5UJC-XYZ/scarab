@@ -30,6 +30,7 @@ enum LedgerDecodeError extends DomainError:
   case Pointer(cause: Ptr.Failure)
   case AssetNameLength(context: String, actual: Int)
   case ZeroQuantity(context: String)
+  case MultiAssetNotAllowed(context: String)
   case MultiAssetTooBig(context: String, assets: Int, policies: Int)
   case NativeScript(cause: xyz.kd5ujc.scarab.ledger.NativeScript.DecodeError)
   case Voting(cause: VotingProcedures.DecodeError)

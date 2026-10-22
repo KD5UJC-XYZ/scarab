@@ -161,8 +161,8 @@ class MainnetGarbageAddressSuite extends FunSuite:
     assertEquals(
       Era.values.toList.filter(_ != Era.Byron).map(e => e -> Address.Mode.of(e)),
       List(
-        Era.Shelley -> Address.Mode.Backwards,
-        Era.Allegra -> Address.Mode.Backwards,
+        Era.Shelley -> Address.Mode.CoinOnly,
+        Era.Allegra -> Address.Mode.CoinOnly,
         Era.Mary -> Address.Mode.Backwards,
         Era.Alonzo -> Address.Mode.Backwards,
         Era.Babbage -> Address.Mode.Rigorous,

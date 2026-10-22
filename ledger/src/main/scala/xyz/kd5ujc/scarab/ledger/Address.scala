@@ -155,33 +155,43 @@ object Address:
     * address must take every byte (`fromCborRigorousBothAddr`, 479-487). A pointer that does not
     * fit its fields is normalised to `Ptr 0 0 0` before version 9 and refused from it
     * (`Ptr.Policy`). Multi-asset values follow the same version: pruned below 9, strict from 9
-    * (`Value.Decoding`). In every version a pointer address is kept as the pointer is written again
-    * (`cAddrNormalized`, 470-476, `putPtr`): the bytes that were read are not kept.
+    * (`Value.Decoding`); in Shelley and Allegra the value is a coin and nothing else. In every
+    * version a pointer address is kept as the pointer is written again (`cAddrNormalized`, 470-476,
+    * `putPtr`): the bytes that were read are not kept.
     */
-  enum Mode(val pointers: Ptr.Policy, val values: Value.Decoding):
-    /** Shelley to Alonzo: bytes after a Shelley address are ignored and not kept. */
-    case Backwards extends Mode(Ptr.Policy.Normalise, Value.Decoding.Pruning)
+  enum Mode(val pointers: Ptr.Policy, val values: Value.Decoding, val dropsTrailing: Boolean):
+    /** Shelley and Allegra: bytes after a Shelley address are ignored and not kept, and an output
+      * value is a coin: the era's `Value` is `Coin` (`type instance Value ShelleyEra = Coin`,
+      * `eras/shelley/impl/src/Cardano/Ledger/Shelley/Era.hs`, and the same for `AllegraEra` in
+      * `eras/allegra/impl/src/Cardano/Ledger/Allegra/Era.hs`, cardano-ledger f649f975).
+      */
+    case CoinOnly extends Mode(Ptr.Policy.Normalise, Value.Decoding.CoinOnly, true)
+
+    /** Mary and Alonzo: bytes after a Shelley address are ignored and not kept. */
+    case Backwards extends Mode(Ptr.Policy.Normalise, Value.Decoding.Pruning, true)
 
     /** Babbage: the address is the whole byte string; a pointer that does not fit is normalised. It
       * is also the mode for what the node itself wrote (the stores, the state codecs, the genesis):
       * those addresses are already normalised, and an output an earlier build stored with the
       * pointer as it came is read as the reference reads it.
       */
-    case Rigorous extends Mode(Ptr.Policy.Normalise, Value.Decoding.Pruning)
+    case Rigorous extends Mode(Ptr.Policy.Normalise, Value.Decoding.Pruning, false)
 
     /** Conway: the address is the whole byte string and a pointer that does not fit is refused. */
-    case Strict extends Mode(Ptr.Policy.Refuse, Value.Decoding.Rejecting)
+    case Strict extends Mode(Ptr.Policy.Refuse, Value.Decoding.Rejecting, false)
 
   object Mode:
     def of(era: Era): Mode =
-      if era.ordinal < Era.Babbage.ordinal then Backwards
+      if era.ordinal < Era.Mary.ordinal then CoinOnly
+      else if era.ordinal < Era.Babbage.ordinal then Backwards
       else if era.ordinal < Era.Conway.ordinal then Rigorous
       else Strict
 
-  /** The address in `raw`. A Shelley address of an era that reads [[Mode.Backwards]] is cut where
-    * the reference cuts it: [[Address.raw]] is the address without the bytes after it, as the
-    * reference keeps it in the UTxO (`UnsafeCompactAddr sbsCropped`); the output that carried it
-    * keeps its own bytes. A pointer address is kept as the normalised pointer, written again.
+  /** The address in `raw`. A Shelley address of an era that drops trailing bytes
+    * ([[Mode.CoinOnly]], [[Mode.Backwards]]) is cut where the reference cuts it: [[Address.raw]] is
+    * the address without the bytes after it, as the reference keeps it in the UTxO
+    * (`UnsafeCompactAddr sbsCropped`); the output that carried it keeps its own bytes. A pointer
+    * address is kept as the normalised pointer, written again.
     */
   def decode(raw: Bytes, mode: Mode = Mode.Rigorous): Either[LedgerDecodeError, Address] =
     if raw.size == 0 then Left(LedgerDecodeError.Empty("address"))
@@ -200,7 +210,7 @@ object Address:
       // The address of `length` bytes; the bytes after it are dropped if the era allows them.
       def own(length: Int, context: String): Either[LedgerDecodeError, Bytes] =
         if raw.size == length then Right(raw)
-        else if raw.size > length && mode == Mode.Backwards then Right(raw.take(length))
+        else if raw.size > length && mode.dropsTrailing then Right(raw.take(length))
         else Left(LedgerDecodeError.AddressLength(context, length, raw.size))
       kind match
         case 0 | 1 | 2 | 3 =>
@@ -356,6 +366,13 @@ object Value:
     * cardano-ledger `eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs`).
     */
   enum Decoding:
+    /** Shelley and Allegra: the era's value is a `Coin` and nothing else (`ShelleyTxOut`,
+      * `decCBOR`, `eras/shelley/impl/src/Cardano/Ledger/Shelley/TxOut.hs` lines 156-160, over
+      * `type instance Value ShelleyEra = Coin` and `Value AllegraEra = Coin`, cardano-ledger
+      * f649f975), so a value that carries a multi-asset part does not decode.
+      */
+    case CoinOnly
+
     /** Decoder version below 9 (Mary to Babbage): duplicate keys are silently merged, the last
       * entry wins (`decodeMap` below version 9, `Binary/Decoding/Decoder.hs`), then zero quantities
       * and policies left empty are pruned (`decodeWithPrunning`, `pruneZeroMultiAsset`).
@@ -392,6 +409,7 @@ object Value:
       decoding: Decoding
   ): Either[LedgerDecodeError, Value] = n.value match
     case xyz.kd5ujc.scarab.codec.Value.UInt(c) => Right(coin(c))
+    case _ if decoding == Decoding.CoinOnly    => Left(LedgerDecodeError.MultiAssetNotAllowed(what))
     case _ =>
       for
         xs <- CborRead.arrayN(n, 2, what)
@@ -435,6 +453,7 @@ object Value:
         case Decoding.Pruning =>
           Right(normal(policies.map((p, qs) => p -> qs.toMap).toMap))
         case Decoding.Rejecting => rejecting(policies, what)
+        case Decoding.CoinOnly  => Left(LedgerDecodeError.MultiAssetNotAllowed(what))
       count = assets.valuesIterator.map(_.size).sum
       _ <- Either.cond(
         44 * count + 28 * assets.size <= CompactLimit,
