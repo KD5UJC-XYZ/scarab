@@ -9,7 +9,8 @@ import LeiosWire.*
   * `network/node-to-node/leios-fetch/messages.cddl` (cardano-blueprint `0460c5a6`, 2026-10-16:
   * "LeiosFetch transactions are CBOR-in-CBOR, endorser blocks non-empty") and the consensus
   * `leiosFetch.cddl` of ouroboros-consensus#2416 (merged to `main` as `e71a27fc`, 2026-10-20),
-  * whose codec is `Ouroboros.Consensus.MiniProtocol.LeiosFetch.Type`.
+  * whose codec is `Ouroboros.Consensus.MiniProtocol.LeiosFetch.Type` (ouroboros-consensus `main`
+  * `7b239a16`, 2026-10-22).
   *
   * The current wire form:
   *
@@ -45,9 +46,9 @@ object LeiosFetch:
   private val MaxEbBytes = 600000
 
   /** The most transactions an endorser block may name: `maxTxsPerEb` of
-    * `Ouroboros.Consensus.Leios.Types`, `(maxLeiosEbBytesSize - framing) / minItemSize`. The
-    * framing is the widest map head (5 bytes); the least item is a 32-byte hash (34 bytes with its
-    * head) and a size of one byte.
+    * `Ouroboros.Consensus.Leios.Types` (ouroboros-consensus `7b239a16`),
+    * `(maxLeiosEbBytesSize - framing) / minItemSize`. The framing is the widest map head (5 bytes);
+    * the least item is a 32-byte hash (34 bytes with its head) and a size of one byte.
     */
   val MaxTxsPerEb: Int = (MaxEbBytes - 5) / (34 + 1)
 

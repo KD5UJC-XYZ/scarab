@@ -161,7 +161,7 @@
       "rationale": "Optional partial-module fallbacks previously converted unsupported or unresolved batches into empty vectors; restored imports supply the intended configured schemas.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
-      "resolution": "Retain strict batch counts and negative controls; 360 actual samples passed independent Cuddle 1.8.1 validation against the composed schemas, including existing base.word16 and tx=any adapters; that run was at Blueprint fe4cceb9 and is not repeated here for 0460c5a6, where a transaction is #6.24(bytes .cbor dijkstra.block_transaction) and the tx adapter is gone. This is schema membership, not signed Cardano transaction admission.",
+      "resolution": "Retain strict batch counts and negative controls; 360 actual samples passed independent Cuddle 1.8.1 validation against the composed schemas, including the existing base.word16 adapter (the tx=any adapter is gone since Blueprint 0460c5a6, where a transaction is #6.24(bytes .cbor dijkstra.block_transaction)); re-run for 0460c5a6 on 2026-10-22: leios-fetch 40/40 both directions, no exemptions. This is schema membership, not signed Cardano transaction admission.",
       "evidence": [
         "fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/Corpus.scala",
         "fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/GuardSuite.scala",
