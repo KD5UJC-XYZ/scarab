@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "enabled": false,
+  "repository": "KD5UJC-XYZ/scarab",
+  "promotionAppId": null,
+  "releaseAppId": null,
+  "rulesetAudit": null,
+  "imageRepository": "ghcr.io/kd5ujc-xyz/scarab",
+  "bootstrap": null,
+  "publishedBaselines": {},
+  "environments": {}
+}

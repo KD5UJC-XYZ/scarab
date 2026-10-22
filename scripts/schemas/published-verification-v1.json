@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/KD5UJC-XYZ/scarab/published-verification-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "status",
+    "phase",
+    "repository",
+    "tag",
+    "sourceCommit",
+    "version",
+    "channel",
+    "candidateSha256",
+    "subjects",
+    "publisher",
+    "checks"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "status": {
+      "const": "verified"
+    },
+    "phase": {
+      "const": "public"
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+    },
+    "tag": {
+      "type": "string",
+      "pattern": "^v(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)(?:-(?:alpha|beta|rc)\\.(?:0|[1-9][0-9]*))?$",
+      "not": {
+        "pattern": "[\\r\\n]"
+      }
+    },
+    "sourceCommit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)(?:-(?:alpha|beta|rc)\\.(?:0|[1-9][0-9]*))?$",
+      "not": {
+        "pattern": "[\\r\\n]"
+      }
+    },
+    "channel": {
+      "enum": [
+        "alpha",
+        "beta",
+        "preprod",
+        "prod"
+      ]
+    },
+    "candidateSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "subjects": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "jarSha256",
+        "imageDigest",
+        "bomSha256"
+      ],
+      "properties": {
+        "jarSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "imageDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "bomSha256": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    "publisher": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workflow",
+        "workflowCommit",
+        "runId"
+      ],
+      "properties": {
+        "workflow": {
+          "const": ".github/workflows/release-publication.yml"
+        },
+        "workflowCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "runId": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hashes",
+        "attestations",
+        "sourceBinding",
+        "bomBinding",
+        "jarRuntime",
+        "imageRuntime",
+        "anonymousDownloads"
+      ],
+      "properties": {
+        "hashes": {
+          "const": true
+        },
+        "attestations": {
+          "const": true
+        },
+        "sourceBinding": {
+          "const": true
+        },
+        "bomBinding": {
+          "const": true
+        },
+        "jarRuntime": {
+          "const": true
+        },
+        "imageRuntime": {
+          "const": true
+        },
+        "anonymousDownloads": {
+          "const": true
+        }
+      }
+    }
+  }
+}

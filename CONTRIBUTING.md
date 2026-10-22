@@ -219,7 +219,9 @@ Each piece of work lives in its own git worktree (`git worktree add`) with its o
 devnet name and sbt server socket. Work branches from and targets `main` for now; run the
 change-level gates and rebase onto the intended target before reporting. The owner will activate
 `feat/*` -> `dev` -> `main` promotion separately. After that cutover, only the same repository's
-`dev` branch may open a PR into `main`; all other PR targets accept any source branch.
+`dev` branch may be promoted into `main`; all other PR targets accept any source branch.
+The [promotion workflow](docs/promotion-cutover.md) replaces main's merge button at cutover,
+because a commit-bound status check alone cannot distinguish PRs sharing the same commit.
 `release/alpha`, `release/beta`, `release/preprod` and `release/prod` also require reviewed PRs
 after cutover. Their planned tag suffixes are `-alpha.N`, `-beta.N`, `-rc.N` and no suffix,
 respectively; environment creation and protection setup remain deferred.

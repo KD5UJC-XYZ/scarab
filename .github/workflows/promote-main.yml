@@ -1,0 +1,139 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Promote dev to main
+
+on:
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Reviewed same-repository dev to main PR number
+        required: true
+        type: number
+      expected_head:
+        description: Approved full dev commit
+        required: true
+        type: string
+      expected_base:
+        description: Approved full main commit (also the controller source)
+        required: true
+        type: string
+      ruleset_audit:
+        description: Optional full owner-audited JSON snapshot for initial cutover or settings recovery; approval binds its retained digest
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: promote-main
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      environment: ${{ steps.policy.outputs.environment }}
+      artifact-id: ${{ steps.receipt.outputs.artifact-id }}
+      audit-sha256: ${{ steps.audit.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require the reviewed cutover
+        env:
+          SCARAB_PROMOTION_POLICY: ${{ vars.SCARAB_PROMOTION_POLICY }}
+        run: test "$SCARAB_PROMOTION_POLICY" = dev-only-main
+      - name: Inspect existing protected environment without creating it
+        id: policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/publication_policy.py --repository "$GITHUB_REPOSITORY"
+          --environment promotion-main --expected-ref refs/heads/main
+          --policy release/promotion-policy.json --output preflight.json
+      - name: Prepare exact owner audit for protected approval
+        id: audit
+        env:
+          RULESET_AUDIT: ${{ inputs.ruleset_audit }}
+          PROMOTION_APP_ID: ${{ vars.SCARAB_PROMOTION_APP_ID }}
+          RELEASE_APP_ID: ${{ vars.SCARAB_RELEASE_APP_ID }}
+        run: >-
+          python3 scripts/promotion_audit.py --repository "$GITHUB_REPOSITORY"
+          --promotion-app-id "$PROMOTION_APP_ID" --release-app-id "$RELEASE_APP_ID"
+          --output ruleset-audit.json
+      - name: Retain exact environment and ruleset audit for approval
+        id: receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: promotion-preflight-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            preflight.json
+            ruleset-audit.json
+          if-no-files-found: error
+
+  merge:
+    needs: preflight
+    if: github.ref == 'refs/heads/main'
+    environment: ${{ needs.preflight.outputs.environment }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.preflight.outputs.artifact-id }}
+          path: previous-policy
+          merge-multiple: true
+      - name: Recheck policy after approval
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/publication_policy.py --repository "$GITHUB_REPOSITORY"
+          --environment promotion-main --expected-ref refs/heads/main
+          --policy release/promotion-policy.json --previous previous-policy/preflight.json --output approved-policy.json
+      - name: Recheck exact approved audit data before obtaining the App key
+        env:
+          PROMOTION_APP_ID: ${{ vars.SCARAB_PROMOTION_APP_ID }}
+          RELEASE_APP_ID: ${{ vars.SCARAB_RELEASE_APP_ID }}
+          EXPECTED_AUDIT: ${{ needs.preflight.outputs.audit-sha256 }}
+        run: >-
+          python3 scripts/promotion_audit.py --repository "$GITHUB_REPOSITORY"
+          --promotion-app-id "$PROMOTION_APP_ID" --release-app-id "$RELEASE_APP_ID"
+          --input previous-policy/ruleset-audit.json --expected-sha256 "$EXPECTED_AUDIT"
+      - name: Mint repository-scoped promotion token
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.SCARAB_PROMOTION_APP_ID }}
+          private-key: ${{ secrets.SCARAB_PROMOTION_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: read
+      - name: Merge only the approved dev PR with required checks and reviews
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          SCARAB_PROMOTION_POLICY: ${{ vars.SCARAB_PROMOTION_POLICY }}
+          PROMOTION_APP_ID: ${{ vars.SCARAB_PROMOTION_APP_ID }}
+          RELEASE_APP_ID: ${{ vars.SCARAB_RELEASE_APP_ID }}
+          PR_NUMBER: ${{ inputs.pull_request }}
+          EXPECTED_HEAD: ${{ inputs.expected_head }}
+          EXPECTED_BASE: ${{ inputs.expected_base }}
+        run: >-
+          python3 scripts/promote_main.py --pull-request "$PR_NUMBER"
+          --expected-head "$EXPECTED_HEAD" --expected-base "$EXPECTED_BASE"
+          --ruleset-audit previous-policy/ruleset-audit.json
+          --promotion-app-id "$PROMOTION_APP_ID" --release-app-id "$RELEASE_APP_ID" > promotion.json
+      - name: Retain promotion result
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: main-promotion-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            approved-policy.json
+            previous-policy/ruleset-audit.json
+            promotion.json
+          if-no-files-found: error
