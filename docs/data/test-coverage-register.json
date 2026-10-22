@@ -304,13 +304,14 @@
       "classification": "known-divergence",
       "status": "open",
       "scope": "Pre-Conway ShelleyInstantStakeOps credential and pointer caches, separately from the nine corrected Conway cases.",
-      "assertion": "Source inspection shows checked signed updates and input-order deletion where the pinned native updater uses modular Word64 operations, missing-entry insertion and ordered UTxO traversal. New arbitrary-cache native API captures have not been executed.",
+      "assertion": "The production updater now uses modular Word64 operations, missing-entry insertion, zero removal and TxIn-ordered input and collateral deletion for both maps, as the pinned native updater does; ShelleyInstantStakeArithmeticSuite pins the boundaries from the pinned source. New arbitrary-cache native API captures have not been executed, so no native parity is claimed.",
       "rationale": "Correcting the Conway corpus does not establish parity for the analogous earlier-era updater; no cache-coherence precondition justifies ignoring these source differences.",
       "owner": "Scarab ledger maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/299",
-      "resolution": "Capture actual pinned native API boundary results for both maps, align arithmetic and traversal order while preserving checked input conversion, and retain focused/full/scenario receipts.",
+      "resolution": "Capture actual pinned native API boundary results for both maps and replay them against the aligned updater; the arithmetic and traversal order are aligned and checked input conversion is preserved.",
       "evidence": [
-        "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/ShelleyUtxo.scala"
+        "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/ShelleyUtxo.scala",
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/rules/ShelleyInstantStakeArithmeticSuite.scala"
       ],
       "candidateRequired": true
     },
