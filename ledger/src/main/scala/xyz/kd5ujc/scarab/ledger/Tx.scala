@@ -40,6 +40,15 @@ object DRep:
       case _ => Left(LedgerDecodeError.Expected("drep", LedgerDecodeError.Shape.Array, n.value))
     }
 
+/** The comparison key of a pool registration: the parameters without the fields Scarab keeps as
+  * their original encodings, and the meaning of those.
+  */
+private[ledger] final case class PoolIdentity(
+    fixed: PoolParams,
+    relays: Semantic,
+    metadata: Option[Semantic]
+)
+
 final case class PoolParams(
     operator: Bytes,
     vrfKeyHash: Bytes,
@@ -64,6 +73,18 @@ object PoolParams:
       _ <- CborRead.text(fields(0), "pool metadata URL")
       hash <- CborRead.bytes(fields(1), "pool metadata hash")
     yield hash
+
+  /** The values the reference's derived `Ord StakePoolParams` compares
+    * (`State/StakePool.hs:424-435`, f649f975): the relays (`StrictSeq StakePoolRelay`) and the
+    * metadata (`PoolMetadata`, derived `Ord`, `State/StakePool.hs:293-297`) as what they mean, not
+    * as their original encodings.
+    */
+  private[ledger] def identity(p: PoolParams): PoolIdentity =
+    PoolIdentity(
+      p.copy(relays = Bytes.empty, metadata = None),
+      Semantic.ofBytes(p.relays),
+      p.metadata.map(Semantic.ofBytes)
+    )
 
   extension (p: PoolParams)
     /** The parameters of a registered pool as the reference reads them back: `StakePoolState` and
@@ -107,6 +128,13 @@ enum Pot:
   case Treasury
 
 object Certificate:
+  /** What `Ord (ConwayTxCert era)` compares (`Conway/TxCert.hs:473-486, 568-574, 643-647`,
+    * f649f975): the decoded fields, so a registration is its pool parameters by meaning.
+    */
+  private[ledger] def identity(c: Certificate): Either[PoolIdentity, Certificate] = c match
+    case RegisterPool(params) => Left(PoolParams.identity(params))
+    case other                => Right(other)
+
   def decode(n: Node, version: DecoderVersion): Either[LedgerDecodeError, Certificate] =
     def cred(i: Int, xs: Vector[Node]) = Credential.decode(xs(i), "certificate credential")
     def pool(i: Int, xs: Vector[Node]) = CborRead.bytesN(xs(i), 28, "pool id")
@@ -321,7 +349,12 @@ object TxBody:
       ttl <- f.get(3).traverse(CborRead.uint(_, "ttl"))
       start <- f.get(8).traverse(CborRead.uint(_, "validity start"))
       certs <- present("certificates")(
-        f.get(4).traverse(CborRead.oset(_, "certificates", version)(Certificate.decode(_, version)))
+        f.get(4)
+          .traverse(
+            CborRead.oset(_, "certificates", version)(Certificate.decode(_, version))(
+              Certificate.identity
+            )
+          )
       )
       withdrawals <- present("withdrawals")(
         f.get(5)
@@ -369,7 +402,11 @@ object TxBody:
       )
       proposals <- present("proposal procedures")(
         f.get(20)
-          .traverse(CborRead.oset(_, "proposal procedures", version)(Proposal.decode(_, version)))
+          .traverse(
+            CborRead.oset(_, "proposal procedures", version)(Proposal.decode(_, version))(
+              Proposal.identity
+            )
+          )
       )
       treasury <- f.get(21).traverse(CborRead.uint(_, "current treasury value"))
       donation <- f.get(22).traverse(CborRead.uint(_, "donation"))

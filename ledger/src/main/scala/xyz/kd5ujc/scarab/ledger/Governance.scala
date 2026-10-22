@@ -88,7 +88,45 @@ final case class Proposal(
     anchor: Anchor = ConwayGenesis.noAnchor
 )
 
+/** The comparison key of a proposal procedure: what `Ord (ProposalProcedure era)` compares
+  * (`Governance/Procedures.hs:498-504`, f649f975), with the action as [[ActionIdentity]].
+  */
+private[ledger] final case class ProposalIdentity(
+    deposit: BigInt,
+    returnAccount: RewardAccount,
+    action: ActionIdentity,
+    anchor: Anchor
+)
+
+/** A governance action by meaning (`Governance/Procedures.hs:815-848`, `deriving Ord`): a parameter
+  * update by the meaning of each field (`PParamsUpdate`), and treasury withdrawals as the `Map
+  * AccountAddress Coin` they are, whatever the order of the entries; any other action is its
+  * decoded value.
+  */
+private[ledger] enum ActionIdentity:
+  case Update(previous: Option[GovActionId], fields: Map[Int, Semantic], policy: Option[Bytes])
+  case Withdrawals(withdrawals: Map[RewardAccount, BigInt], policy: Option[Bytes])
+  case Other(action: GovAction)
+
 object Proposal:
+  private[ledger] def identity(p: Proposal): ProposalIdentity =
+    ProposalIdentity(
+      p.deposit,
+      p.returnAccount,
+      p.action match
+        case GovAction.ParameterChange(previous, update, policy) =>
+          ActionIdentity.Update(
+            previous,
+            update.fields.view.mapValues(Semantic.ofBytes).toMap,
+            policy
+          )
+        case GovAction.TreasuryWithdrawals(ws, policy) =>
+          ActionIdentity.Withdrawals(ws.toMap, policy)
+        case other => ActionIdentity.Other(other)
+      ,
+      p.anchor
+    )
+
   private def optionalHash(n: Node): Either[LedgerDecodeError, Option[Bytes]] = n.value match
     case CborValue.Null => Right(None)
     case _              => CborRead.bytesN(n, 28, "policy hash").map(Some(_))

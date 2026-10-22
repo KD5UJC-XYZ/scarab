@@ -2,14 +2,29 @@
 
 Status: Current. Evidence for [AUD3-01/#327](https://github.com/KD5UJC-XYZ/scarab/issues/327).
 
-`cases.json` holds 132 original encodings written by `scripts/oracle/conway-decoding/cases.py`:
-57 Conway transaction bodies, 65 Conway witness sets, 4 whole Conway transactions and 6 Babbage
+`cases.json` holds 179 original encodings written by `scripts/oracle/conway-decoding/cases.py`:
+104 Conway transaction bodies, 65 Conway witness sets, 4 whole Conway transactions and 6 Babbage
 bodies. Each case breaks one rule of the reference decoders or keeps a rule the reference tolerates,
 and most sit next to a twin that keeps the rule: repeated or empty sets, ordered sets, maps and
 voting procedures; the tag 258 wrapper; indefinite-length containers; two encodings of one input;
 a zero donation; key 6; empty witness lists; a Plutus script listed twice, and the same script under
 two languages; repeated vkeys, native scripts, datums and redeemer keys, which the reference keeps
 accepting.
+
+The ordered sets are judged on the decoded elements under the reference's derived `Ord` (`OSet`,
+`Data/OSet/Strict.hs:71-75, 109-116`; `StakePoolParams` and `PoolMetadata`, `State/StakePool.hs:293-297,
+424-435`; `ConwayTxCert`, `Conway/TxCert.hs:473-486, 568-574, 643-647`; `ProposalProcedure` and
+`GovAction`, `Conway/Governance/Procedures.hs:498-504, 815-848`; all f649f975). Scarab keeps a pool's
+relays and metadata and a parameter update's fields as their original encodings, so the cases
+repeat each constructor that keeps encoded data (pool registration, parameter change, treasury
+withdrawals) and a sample of the others (stake delegation, DRep registration, hard fork, committee
+update, constitution, information action, no confidence) in a second encoding of the same value (relays and
+metadata written indefinite or with wide headers, a margin or rational not in lowest terms, a
+parameter update or committee update with its entries in another order, treasury withdrawals
+reordered) and each is next to a twin with a different value that both accept. An indefinite
+byte or text string, and an indefinite array where the reference reads a fixed record (a price
+pair, execution units, a proposal), are refusals of other rules (see "Not covered") and are
+not used as repeats.
 
 `reference.json` is what the unchanged released decoders of cardano-ledger
 `f649f9751074d2ab3de033fc3912f29c9862c1f5` (the libraries of node 11.1.3) did with each encoding:

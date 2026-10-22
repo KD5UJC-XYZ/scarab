@@ -229,6 +229,277 @@ conway_body("proposals: tag 258", body({20: sset([PROPOSAL], tagged=True)}))
 conway_body("proposals: empty", body({20: array([])}), EMPTY_RULE, "Empty")
 conway_body("proposals: duplicate", body({20: array([PROPOSAL, PROPOSAL])}), DUP_RULE, "DuplicateElement")
 
+# --- bodies: ordered sets of elements whose decoded value is not its encoding ------------------
+# The reference compares the decoded elements under their derived `Ord` (OSet, Strict.hs), so two
+# encodings of one pool registration or one governance action are one element and a repeat fails.
+
+
+HALF = tag(30, array([uint(1), uint(2)]))
+HALF_UNREDUCED = tag(30, array([uint(2), uint(4)]))
+POOL_ID = h(0x61, 28)
+RELAY_ADDRESS = array([uint(0), uint(3001), bstr(b"\x7f\x00\x00\x01"), NULL])
+RELAY_ADDRESS_WIDE = array([uint(0), uint(3001, 4), bstr(b"\x7f\x00\x00\x01"), NULL], width=2)
+RELAY_NAME = array([uint(1), NULL, text("relay.example.invalid")])
+RELAY_MULTI = array([uint(2), text("srv.example.invalid")])
+METADATA_URL = "https://example.invalid/pool.json"
+METADATA = array([text(METADATA_URL), bstr(h(0x65, 32))])
+
+
+def pool_cert(
+    operator=POOL_ID,
+    pledge=uint(1),
+    margin=HALF,
+    owners=None,
+    relays=None,
+    metadata=NULL,
+):
+    return array(
+        [
+            uint(3),
+            bstr(operator),
+            bstr(h(0x63, 32)),
+            pledge,
+            uint(340_000_000),
+            margin,
+            bstr(b"\xe0" + h(0x64, 28)),
+            owners if owners is not None else sset([bstr(h(0x62, 28))]),
+            relays if relays is not None else array([]),
+            metadata,
+        ]
+    )
+
+
+def certs(*items, tagged=False):
+    return body({4: sset(list(items), tagged=tagged)})
+
+
+def repeat(name, raw):
+    conway_body(name, raw, DUP_RULE, "DuplicateElement")
+
+
+POOL = pool_cert()
+conway_body("pool registrations: one", certs(POOL))
+conway_body("pool registrations: distinct operators", certs(POOL, pool_cert(operator=h(0x66, 28))))
+conway_body("pool registrations: distinct pledge", certs(POOL, pool_cert(pledge=uint(2))))
+conway_body(
+    "pool registrations: distinct relays",
+    certs(pool_cert(relays=array([RELAY_ADDRESS])), pool_cert(relays=array([RELAY_NAME]))),
+)
+conway_body(
+    "pool registrations: the same relays in another order",
+    certs(
+        pool_cert(relays=array([RELAY_ADDRESS, RELAY_NAME])),
+        pool_cert(relays=array([RELAY_NAME, RELAY_ADDRESS])),
+    ),
+)
+conway_body(
+    "pool registrations: distinct metadata",
+    certs(
+        pool_cert(metadata=METADATA),
+        pool_cert(metadata=array([text("https://example.invalid/other.json"), bstr(h(0x65, 32))])),
+    ),
+)
+conway_body("pool registrations: with and without metadata", certs(pool_cert(metadata=METADATA), POOL))
+repeat("pool registrations: exact repeat", certs(POOL, POOL))
+repeat(
+    "pool registrations: repeat with the empty relay sequence written indefinite",
+    certs(POOL, pool_cert(relays=b"\x9f\xff")),
+)
+repeat(
+    "pool registrations: repeat with the relays written indefinite",
+    certs(
+        pool_cert(relays=array([RELAY_ADDRESS, RELAY_NAME])),
+        pool_cert(relays=array([RELAY_ADDRESS, RELAY_NAME], indef=True)),
+    ),
+)
+repeat(
+    "pool registrations: repeat with a relay written with wide headers",
+    certs(pool_cert(relays=array([RELAY_ADDRESS])), pool_cert(relays=array([RELAY_ADDRESS_WIDE]))),
+)
+repeat(
+    "pool registrations: repeat with a relay array written indefinite",
+    certs(
+        pool_cert(relays=array([RELAY_MULTI])),
+        pool_cert(relays=array([array([uint(2), text("srv.example.invalid")], indef=True)])),
+    ),
+)
+repeat(
+    "pool registrations: repeat with the metadata written indefinite",
+    certs(
+        pool_cert(metadata=METADATA),
+        pool_cert(metadata=array([text(METADATA_URL), bstr(h(0x65, 32))], indef=True)),
+    ),
+)
+repeat(
+    "pool registrations: repeat with the margin not in lowest terms",
+    certs(POOL, pool_cert(margin=HALF_UNREDUCED)),
+)
+repeat(
+    "pool registrations: repeat with the owners under tag 258",
+    certs(POOL, pool_cert(owners=sset([bstr(h(0x62, 28))], tagged=True))),
+)
+repeat("pool registrations: repeat with a wide pledge", certs(POOL, pool_cert(pledge=uint(1, 8))))
+
+# Certificates whose fields are all decoded values: repeats are found whatever the encoding.
+CRED = array([uint(0), bstr(KEY_HASH)])
+DREP_REGISTRATION = array([uint(16), CRED, uint(500_000_000), ANCHOR])
+conway_body(
+    "drep registrations: distinct deposits",
+    certs(DREP_REGISTRATION, array([uint(16), CRED, uint(500_000_001), ANCHOR])),
+)
+conway_body(
+    "stake delegations: distinct pools",
+    certs(array([uint(2), CRED, bstr(POOL_ID)]), array([uint(2), CRED, bstr(h(0x67, 28))])),
+)
+repeat(
+    "stake delegations: repeat with an indefinite array",
+    certs(array([uint(2), CRED, bstr(POOL_ID)]), array([uint(2), CRED, bstr(POOL_ID)], indef=True)),
+)
+
+# Proposal procedures: the reference's `Ord GovAction` compares a parameter update field by field
+# (a `PParamsUpdate`) and treasury withdrawals as a `Map`.
+
+
+def proposal(action, deposit=1_000_000, anchor=ANCHOR):
+    return array([uint(deposit), bstr(b"\xe1" + h(0x55, 28)), action, anchor])
+
+
+def proposals(*items, tagged=False):
+    return body({20: sset(list(items), tagged=tagged)})
+
+
+def param_change(fields, indef=False, previous=NULL, policy=NULL):
+    return array([uint(0), previous, cmap(fields, indef=indef), policy])
+
+
+ACCOUNT_1 = bstr(b"\xe1" + h(0x71, 28))
+ACCOUNT_2 = bstr(b"\xe0" + h(0x72, 28))
+FIELDS = [(uint(0), uint(44)), (uint(1), uint(155_381))]
+CHANGE = param_change(FIELDS)
+conway_body("parameter changes: one", proposals(proposal(CHANGE)))
+conway_body(
+    "parameter changes: distinct values",
+    proposals(proposal(CHANGE), proposal(param_change([(uint(0), uint(45)), (uint(1), uint(155_381))]))),
+)
+conway_body(
+    "parameter changes: distinct fields",
+    proposals(proposal(CHANGE), proposal(param_change([(uint(0), uint(44))]))),
+)
+conway_body(
+    "parameter changes: distinct guardrails script",
+    proposals(proposal(CHANGE), proposal(param_change(FIELDS, policy=bstr(h(0x73, 28))))),
+)
+repeat("parameter changes: exact repeat", proposals(proposal(CHANGE), proposal(CHANGE)))
+repeat(
+    "parameter changes: repeat with the fields in another order",
+    proposals(proposal(CHANGE), proposal(param_change(list(reversed(FIELDS))))),
+)
+repeat(
+    "parameter changes: repeat with the update written indefinite",
+    proposals(proposal(CHANGE), proposal(param_change(FIELDS, indef=True))),
+)
+repeat(
+    "parameter changes: repeat with wide arguments",
+    proposals(
+        proposal(CHANGE),
+        proposal(param_change([(uint(0, 4), uint(44, 2)), (uint(1, 1), uint(155_381, 8))])),
+    ),
+)
+RATIONAL_CHANGE = param_change([(uint(9), HALF)])
+conway_body("parameter changes: a rational field", proposals(proposal(RATIONAL_CHANGE)))
+repeat(
+    "parameter changes: repeat with a rational not in lowest terms",
+    proposals(proposal(RATIONAL_CHANGE), proposal(param_change([(uint(9), HALF_UNREDUCED)]))),
+)
+PRICE_ITEMS = [tag(30, array([uint(577), uint(10_000)])), tag(30, array([uint(721), uint(10_000_000)]))]
+COST_MODEL = [(uint(0), array([uint(1), uint(2), uint(3)])), (uint(1), array([uint(4), uint(5)]))]
+conway_body("parameter changes: a cost model", proposals(proposal(param_change([(uint(18), cmap(COST_MODEL))]))))
+repeat(
+    "parameter changes: repeat with the cost models in another order",
+    proposals(
+        proposal(param_change([(uint(18), cmap(COST_MODEL))])),
+        proposal(param_change([(uint(18), cmap(list(reversed(COST_MODEL))))])),
+    ),
+)
+
+WITHDRAWALS = [(ACCOUNT_1, uint(5)), (ACCOUNT_2, uint(6))]
+
+
+def treasury(pairs, indef=False, policy=NULL):
+    return array([uint(2), cmap(pairs, indef=indef), policy])
+
+
+conway_body("treasury withdrawals: one", proposals(proposal(treasury(WITHDRAWALS))))
+conway_body(
+    "treasury withdrawals: distinct amounts",
+    proposals(proposal(treasury(WITHDRAWALS)), proposal(treasury([(ACCOUNT_1, uint(5)), (ACCOUNT_2, uint(7))]))),
+)
+conway_body(
+    "treasury withdrawals: distinct accounts",
+    proposals(proposal(treasury(WITHDRAWALS)), proposal(treasury([(ACCOUNT_1, uint(5))]))),
+)
+repeat(
+    "treasury withdrawals: exact repeat",
+    proposals(proposal(treasury(WITHDRAWALS)), proposal(treasury(WITHDRAWALS))),
+)
+repeat(
+    "treasury withdrawals: repeat with the entries in another order",
+    proposals(proposal(treasury(WITHDRAWALS)), proposal(treasury(list(reversed(WITHDRAWALS))))),
+)
+repeat(
+    "treasury withdrawals: repeat with the map written indefinite",
+    proposals(proposal(treasury(WITHDRAWALS)), proposal(treasury(WITHDRAWALS, indef=True))),
+)
+
+# The other constructors keep decoded values only; their repeats are found under any encoding.
+PREVIOUS = array([bstr(h(0x66, 32)), uint(0)])
+FORK = array([uint(1), NULL, array([uint(10), uint(0)])])
+conway_body(
+    "hard forks: distinct versions",
+    proposals(proposal(FORK), proposal(array([uint(1), NULL, array([uint(10), uint(1)])]))),
+)
+repeat(
+    "hard forks: repeat with the version written indefinite",
+    proposals(proposal(FORK), proposal(array([uint(1), NULL, array([uint(10), uint(0)], indef=True)]))),
+)
+MEMBERS = [array([uint(0), bstr(h(0x74, 28))]), array([uint(0), bstr(h(0x75, 28))])]
+ADDED = [(array([uint(0), bstr(h(0x76, 28))]), uint(100)), (array([uint(1), bstr(h(0x77, 28))]), uint(200))]
+COMMITTEE = array([uint(4), NULL, sset(MEMBERS), cmap(ADDED), HALF])
+COMMITTEE_REWRITTEN = array(
+    [
+        uint(4),
+        NULL,
+        sset(list(reversed(MEMBERS)), tagged=True),
+        cmap(list(reversed(ADDED)), indef=True),
+        HALF_UNREDUCED,
+    ]
+)
+conway_body("committee updates: one", proposals(proposal(COMMITTEE)))
+repeat(
+    "committee updates: repeat with every collection written another way",
+    proposals(proposal(COMMITTEE), proposal(COMMITTEE_REWRITTEN)),
+)
+CONSTITUTION = array([uint(5), NULL, array([ANCHOR, NULL])])
+conway_body("constitutions: one", proposals(proposal(CONSTITUTION)))
+conway_body(
+    "constitutions: distinct guardrails script",
+    proposals(proposal(CONSTITUTION), proposal(array([uint(5), NULL, array([ANCHOR, bstr(h(0x78, 28))])]))),
+)
+INFO = array([uint(6)])
+conway_body("information actions: one", proposals(proposal(INFO)))
+conway_body("information actions: distinct deposits", proposals(proposal(INFO), proposal(INFO, deposit=2_000_000)))
+conway_body(
+    "no confidence: distinct previous action ids",
+    proposals(proposal(array([uint(3), PREVIOUS])), proposal(array([uint(3), array([bstr(h(0x66, 32)), uint(1)])]))),
+)
+repeat(
+    "no confidence: repeat with the previous action id written wide",
+    proposals(
+        proposal(array([uint(3), PREVIOUS])),
+        proposal(array([uint(3), array([bstr(h(0x66, 32)), uint(0, 2)])])),
+    ),
+)
+
 # --- bodies: maps -----------------------------------------------------------------------------
 conway_body("withdrawals: one", body({5: cmap([(WITHDRAWAL, uint(5))])}))
 conway_body("withdrawals: empty", body({5: cmap([])}), EMPTY_RULE, "Empty")

@@ -72,12 +72,18 @@ private[ledger] object CborRead:
     }
 
   /** A sequence the reference decodes with `decodeStrictSeq` before version 9 (duplicates kept) and
-    * as an `OSet` from it.
+    * as an `OSet` from it. From version 9 duplicates fail the decode (`decodeOSet`,
+    * `Data/OSet/Strict.hs:109-116`, f649f975): the set is the elements under the reference's
+    * derived `Ord`, so `identity` maps an element to the value that `Ord` compares, which for a
+    * field Scarab keeps as its original encoding is the meaning of the encoding ([[Semantic]]).
     */
-  def oset[A](n: Node, what: String, version: DecoderVersion)(
+  def oset[A, K](n: Node, what: String, version: DecoderVersion)(
       elem: Node => Result[A]
-  ): Result[Vector[A]] =
-    if version.atLeast(9) then set(n, what, version)(elem)
+  )(identity: A => K): Result[Vector[A]] =
+    if version.atLeast(9) then
+      list(n, what, version)
+        .flatMap(_.traverse(elem))
+        .flatMap(xs => unique(xs.map(identity), what).as(xs))
     else list(n, what, version).flatMap(_.traverse(elem))
 
   /** The elements of a list the reference reads into a `Set` and silently collapses duplicates of
