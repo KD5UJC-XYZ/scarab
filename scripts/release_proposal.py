@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import release_fragments as fragments
+from pr_policy import is_promotion
 from publication_common import require
 from release_identity import channel_for_version
 
@@ -27,11 +28,39 @@ def require_authority(repo, source, receipt):
     require(receipt["authority"] == reviewed, "proposal receipt authority differs from the reviewed authority file")
 
 
-def check_branch(repo, branch, base, cut, same_repo):
-    """Refuse proposal state on any branch that is not a same-repository proposal branch.
+def touched_receipts(repo, base, cut):
+    origin = fragments.git(repo, "merge-base", base, cut).decode().strip()
+    changed = fragments.git(repo, "diff", "--name-only", origin, cut).decode().splitlines()
+    return [path for path in changed if path == PROPOSAL_PATHS[0] or path.startswith(PROPOSAL_PATHS[1])]
 
-    A proposal branch gets the full verification; any other branch must leave the proposal receipts alone.
-    Returns True when the branch is a proposal branch that was verified.
+
+def verify_promoted_receipts(repo, cut, touched):
+    """Receipts carried by a promotion must be exactly those of a proposal that was verified when it merged.
+
+    The merged proposal is the last first-parent commit that changed the receipt; its own cut gets the full
+    verification, and the promoted head must carry the same two receipt files byte for byte.
+    """
+    receipt = json.loads(fragments.blob(repo, cut, PROPOSAL), object_pairs_hook=fragments.unique_object)
+    require(isinstance(receipt, dict) and isinstance(receipt.get("version"), str), "unrecognized promoted receipt")
+    channel_for_version(receipt["version"])
+    owned = (PROPOSAL, f".release/proposals/{receipt['version']}.json")
+    extra = sorted(set(touched) - set(owned))
+    require(not extra, "promotion carries receipts other than the one merged proposal: " + ", ".join(extra))
+    merged = fragments.git(repo, "log", "--first-parent", "-n1", "--format=%H", cut, "--", PROPOSAL).decode().strip()
+    require(merged, "promoted receipts have no merged proposal")
+    load_proposal(repo, merged)
+    for path in owned:
+        require(fragments.blob(repo, cut, path) == fragments.blob(repo, merged, path),
+                "promoted receipt differs from the verified merged proposal: " + path)
+
+
+def check_branch(repo, branch, base, cut, same_repo, target=None):
+    """Refuse proposal state except on a verified proposal branch or an authenticated promotion.
+
+    A proposal branch gets the full verification. A same-repository head that is the reviewed promotion source
+    of the target (`pr_policy.PROMOTION_SOURCES`) may carry receipts only when they verify as a proposal merged
+    earlier. Any other branch must leave the proposal receipts alone.
+    Returns True when a proposal was verified, whether on a proposal branch or carried by a promotion.
     """
     fragments.commit(repo, base)
     fragments.commit(repo, cut)
@@ -39,10 +68,12 @@ def check_branch(repo, branch, base, cut, same_repo):
         require(same_repo, "proposal branch must be in this repository")
         load_proposal(repo, cut)
         return True
-    origin = fragments.git(repo, "merge-base", base, cut).decode().strip()
-    changed = fragments.git(repo, "diff", "--name-only", origin, cut).decode().splitlines()
-    touched = [path for path in changed if path == PROPOSAL_PATHS[0] or path.startswith(PROPOSAL_PATHS[1])]
-    require(not touched, "proposal receipts changed on a branch not named " + PROPOSAL_BRANCH_PREFIX + "*: " + ", ".join(touched))
+    touched = touched_receipts(repo, base, cut)
+    if touched and target is not None and is_promotion(target, branch, same_repo):
+        verify_promoted_receipts(repo, cut, touched)
+        return True
+    require(not touched, "proposal receipts changed on a branch that is neither named " + PROPOSAL_BRANCH_PREFIX
+            + "* nor a reviewed promotion: " + ", ".join(touched))
     return False
 
 
@@ -98,11 +129,12 @@ def main():
     parser.add_argument("--cut", required=True)
     parser.add_argument("--branch", help="pull request head branch; with --base, applies the branch rule")
     parser.add_argument("--base", help="pull request base commit")
+    parser.add_argument("--target", help="pull request target branch; identifies a reviewed promotion with --same-repo")
     parser.add_argument("--same-repo", action="store_true", help="the pull request head is in this repository")
     args = parser.parse_args()
     if args.branch is not None or args.base is not None:
         require(args.branch is not None and args.base is not None, "--branch and --base go together")
-        verified = check_branch(args.repo, args.branch, args.base, args.cut, args.same_repo)
+        verified = check_branch(args.repo, args.branch, args.base, args.cut, args.same_repo, args.target)
         print(json.dumps({"branch": args.branch, "proposalVerified": verified}))
         return
     result = load_proposal(args.repo, args.cut)

@@ -22,7 +22,7 @@ async function main() {
   }
   if ((!values.output && !values.validate) || !/^(?:0|[1-9][0-9]*)$/.test(values.ordinal || '0')) throw new Error('require new output directory and canonical ordinal');
   if (path.isAbsolute(values.authority) || values.authority.split('/').some(part => part === '..') ||
-    !/^(release-please-authority\.json|\.release\/baselines\/[A-Za-z0-9_.-]+\.json)$/.test(values.authority)) throw new Error('unapproved authority path');
+    values.authority !== 'release-please-authority.json') throw new Error('unapproved authority path');
   const authorityPath = path.join(ROOT, values.authority);
   if (fs.lstatSync(authorityPath).isSymbolicLink()) throw new Error('authority cannot be a symlink');
   const authority = JSON.parse(fs.readFileSync(authorityPath));

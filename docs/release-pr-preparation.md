@@ -58,7 +58,10 @@ look published.
 Later authority uses `kind: "published-stable"`, exact published source/version, and a `verification`
 object containing `receiptPath` and `receiptSha256`. Retain the **original** independently produced
 verification JSON under `.release/baselines/` in a subsequent reviewed preparation-control commit;
-it cannot be retroactively added to the published source it verifies. The wrapper pins those exact
+it cannot be retroactively added to the published source it verifies. Files under `.release/baselines/`
+are therefore evidence that the authority names, never an authority themselves: the only accepted authority
+is `release-please-authority.json`, because the proposal verifier compares a receipt's authority with that
+file at the proposal source and a baseline file cannot exist at the source it verifies. The wrapper pins those exact
 bytes, then invokes the shared [published receipt verifier](../scripts/published_receipt.py) using
 the checksum-pinned GitHub CLI. That verifier requires completed public checks and authenticates
 an attestation online against the expected repository, workflow, tag ref and source/signer commits.
@@ -166,7 +169,13 @@ the receipt's source (and the file to be unchanged at the cut), so a self-consis
 names a different baseline is refused. The pull-request control step runs `release_proposal.py
 --branch --base` on every pull request: a head named `release-please--branches--*` must be in this
 repository and gets the full check; any other branch is refused if it adds or changes
-`.release/proposal.json` or `.release/proposals/*`. An unrelated change
+`.release/proposal.json` or `.release/proposals/*`, except a reviewed promotion. A promotion is a
+same-repository head that [pr_policy.py](../scripts/pr_policy.py) names as the source for the target
+branch (`dev` for `main`, `release/alpha`, `release/beta`; `main` for `release/preprod`, `release/prod`,
+per the [branch table](design/releases.md#branches-and-protected-promotion)); it may carry receipts only for
+one proposal, byte-identical to those of the last first-parent commit that changed them, and that commit
+gets the full proposal verification. An edited, unmerged or extra receipt is refused. The workflow
+passes the target with `--target`; without it nothing is a promotion. An unrelated change
 after preparation requires regeneration. A later trusted coordinator must independently approve
 the merged cut, authenticate baseline/publication authority, and bind the exact selected tag,
 artifact inputs and receipts. It cannot treat the proposal's parent source as the released cut.
