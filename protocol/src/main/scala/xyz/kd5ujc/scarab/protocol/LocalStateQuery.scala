@@ -17,6 +17,7 @@ import ChainSync.{DecodeResult, Point, Role}
   */
 object LocalStateQuery:
   val MiniProtocolId = 7
+
   /** The most a client message (`Acquire`, `Query`, ...) may take. */
   val MaxMessageBytes = 2500000
 
