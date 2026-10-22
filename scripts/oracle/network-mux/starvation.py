@@ -11,7 +11,7 @@ from pathlib import Path
 import shutil
 import subprocess
 
-from lifecycle import PIN, SOURCE, SOURCE_SHA, HERE, sha, replace_once
+from lifecycle import relative_argv, PIN, SOURCE, SOURCE_SHA, HERE, sha, replace_once
 
 
 def instrument(original: str) -> str:
@@ -92,7 +92,7 @@ def main() -> None:
         log = probe / f"command-{len(commands)}.log"
         with log.open("w") as out:
             result = subprocess.run(argv, stdout=out, stderr=subprocess.STDOUT, text=True)
-        commands.append({"argv": argv, "returncode": result.returncode, "logSha256": sha(log)})
+        commands.append({"argv": relative_argv(argv), "returncode": result.returncode, "logSha256": sha(log)})
         (probe / "commands.json").write_text(json.dumps(commands, indent=2) + "\n")
         if result.returncode:
             raise RuntimeError(f"command failed ({result.returncode}); see {log}")

@@ -11,6 +11,9 @@ import shutil
 import subprocess
 import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+from repo_paths import relative_argv  # noqa: E402
+
 PIN = "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776"
 MODULE = "ouroboros-network/protocols/tests-lib/Ouroboros/Network/Protocol/Handshake/Test.hs"
 HERE = Path(__file__).resolve().parent
@@ -111,7 +114,7 @@ def main() -> None:
         log = args.work / f"command-{len(commands)}.log"
         with log.open("w") as stream:
             result = subprocess.run(argv, cwd=cwd, stdout=stream, stderr=subprocess.STDOUT, check=False)
-        commands.append({"argv": argv, "returncode": result.returncode, "logSha256": sha(log)})
+        commands.append({"argv": relative_argv(argv), "returncode": result.returncode, "logSha256": sha(log)})
         if result.returncode:
             raise RuntimeError(f"reference command failed ({result.returncode}); see {log}")
         return log.read_text().strip()

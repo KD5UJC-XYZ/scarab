@@ -17,7 +17,7 @@
     "check": "docker exec scarab-plutus-parity-build bash scripts/sbtw check",
     "extendedFuzz": "docker exec scarab-plutus-parity-build bash scripts/sbtw 'fuzz 100000 1 4'",
     "python": "python3 -m unittest discover -s scripts/tests",
-    "scenario": "SCARAB_DATA_DIR=/tmp/scarab SCARAB_CACHE_DIR=/home/euler/repos/cardano-scala-lab/.cache python3 scripts/devnet.py --name scarab-plutus-parity-rebased e2e"
+    "scenario": "SCARAB_DATA_DIR=/tmp/scarab SCARAB_CACHE_DIR=.cache python3 scripts/devnet.py --name scarab-plutus-parity-rebased e2e"
   },
   "dateUtc": "2026-10-21",
   "extendedFuzz": {
