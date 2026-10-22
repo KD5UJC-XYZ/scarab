@@ -89,6 +89,13 @@ trait HeaderCheck[F[_]]:
   def observed(observer: HeaderCheck.Event => F[Unit]): HeaderCheck[F] = this
 
 object HeaderCheck:
+  /** Version and wait share the selected-chain publication cell; changes between sampling and
+    * waiting remain observable even when a forecast waits without a patience deadline.
+    */
+  trait Changes[F[_]]:
+    def revision: F[Long]
+    def changed(after: Long): F[Long]
+
   final case class Captured[F[_]](
       points: Vector[ChainSync.Point],
       start: ChainSync.Point => F[HeaderGate[F]]
@@ -97,7 +104,8 @@ object HeaderCheck:
   private[node] final case class Canonical[F[_], S, H](
       timing: HeaderRules.Timing[S, H],
       selection: F[ChainSelection.Local],
-      invariant: GenesisInternalProblem => F[Unit]
+      invariant: GenesisInternalProblem => F[Unit],
+      changes: Option[Changes[F]] = None
   )
 
   private enum Reintersection:
@@ -130,7 +138,8 @@ object HeaderCheck:
       poll: FiniteDuration = 20.millis,
       warm: Option[(Vector[Header], NodeHeaderState) => F[Unit]] = None,
       observe: Option[HeaderGate.Counts => F[Unit]] = None,
-      added: Option[HeaderGate.Counts => F[Unit]] = None
+      added: Option[HeaderGate.Counts => F[Unit]] = None,
+      changes: Option[Changes[F]] = None
   )(using
       Stateful[F, VolatileChain[S]],
       Ask[F, ChainSelection.Local],
@@ -150,7 +159,8 @@ object HeaderCheck:
         Canonical(
           rules,
           Ask[F, ChainSelection.Local].ask,
-          problem => Tell[F, GenesisInternalProblem].tell(problem)
+          problem => Tell[F, GenesisInternalProblem].tell(problem),
+          changes
         )
       )
     )
