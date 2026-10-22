@@ -1,0 +1,154 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Nightly fault injection
+
+# Issue 224: the Scala node as a block-producing pool next to two Haskell reference pools in Docker, under a
+# seeded, randomized schedule of network faults (tc netem latency and loss, partitions and heals, node crashes
+# and restarts). It is a separate workflow so that it neither lengthens nor disturbs the `e2e` jobs. Each night
+# draws a fresh seed from the run number; `workflow_dispatch` reruns any seed. The schedule file is the replay:
+# see docs/design/adversarial-schedules.md.
+on:
+  schedule:
+    - cron: '29 5 * * *'
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: 'Seed of the fault schedule (an integer); empty draws one from the run number'
+        required: false
+        default: ''
+      duration:
+        description: 'Seconds of the fault schedule (150 to 1800)'
+        required: false
+        default: '600'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: faults
+  cancel-in-progress: false
+
+jobs:
+  faults:
+    name: faults
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      SCARAB_DATA_DIR: ${{ github.workspace }}/../scarab-data
+      DEVNET_NAME: scarab-ci-faults
+      SEED_INPUT: ${{ inputs.seed }}
+      DURATION_INPUT: ${{ inputs.duration }}
+      RUN_NUMBER: ${{ github.run_number }}
+    steps:
+      - name: Choose and validate the seed and the duration
+        run: |
+          seed="${SEED_INPUT:-$RUN_NUMBER}"
+          duration="${DURATION_INPUT:-600}"
+          if ! [[ "$seed" =~ ^[0-9]{1,18}$ ]]; then echo "seed must be an integer, got '$seed'" >&2; exit 1; fi
+          if ! [[ "$duration" =~ ^[0-9]{3,4}$ ]] || [ "$duration" -lt 150 ] || [ "$duration" -gt 1800 ]; then
+            echo "duration must be 150 to 1800 seconds, got '$duration'" >&2; exit 1
+          fi
+          echo "FAULT_SEED=$seed" >> "$GITHUB_ENV"
+          echo "FAULT_DURATION=$duration" >> "$GITHUB_ENV"
+          {
+            echo "### Fault injection"
+            echo "- seed: \`$seed\`, duration: ${duration} s"
+            echo "- replay: \`python3 scripts/devnet.py --name scarab-faults faults --seed $seed --duration $duration\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Cache sbt launcher, boot, ivy and coursier
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: .cache/scarab
+          key: sbt-faults-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/build.properties', 'project/repositories', 'scripts/sbtw') }}
+          restore-keys: |
+            sbt-faults-${{ runner.os }}-
+
+      - name: Build the JDK image (digest-pinned Temurin)
+        run: docker build -f docker/jdk.Dockerfile -t scarab-jdk:local .
+
+      - name: Compile the node in the JDK image
+        run: |
+          mkdir -p .cache/home
+          docker run --rm -v "$PWD":/work -w /work --user "$(id -u):$(id -g)" \
+            -e HOME=/work/.cache/home scarab-jdk:local \
+            bash scripts/sbtw node/compile node/runtimeClasspathFile
+
+      - name: Build the reference image from the downloaded, verified official release
+        run: python3 scripts/prepare_reference_image.py --download --download-dir "$RUNNER_TEMP/release" --pull-base
+
+      - name: Load the kernel's traffic-shaping modules (tc netem)
+        run: |
+          modules="sch_netem sch_prio cls_u32"
+          # shellcheck disable=SC2086 # the module names are words on purpose
+          if ! sudo modprobe -a $modules; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq "linux-modules-extra-$(uname -r)"
+            # shellcheck disable=SC2086
+            sudo modprobe -a $modules
+          fi
+          lsmod | grep -E 'sch_netem|sch_prio|cls_u32'
+
+      - name: Prepare the run directory
+        run: mkdir -p "$SCARAB_DATA_DIR" "$RUNNER_TEMP/logs"
+
+      - name: Run the seeded fault schedule
+        run: |
+          set -o pipefail
+          python3 scripts/devnet.py --name "$DEVNET_NAME" faults --seed "$FAULT_SEED" --duration "$FAULT_DURATION" 2>&1 \
+            | tee "$RUNNER_TEMP/logs/faults.log"
+
+      - name: Collect the schedule and the result summary
+        if: ${{ always() }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/summary" "$RUNNER_TEMP/failure"
+          run_dir="$SCARAB_DATA_DIR/$DEVNET_NAME"
+          for f in fault-schedule.json faults-summary.json; do
+            cp "$run_dir/$f" "$RUNNER_TEMP/summary/" 2>/dev/null || true
+          done
+          echo "$FAULT_SEED" > "$RUNNER_TEMP/summary/seed.txt"
+          cp "$RUNNER_TEMP/logs/faults.log" "$RUNNER_TEMP/failure/" 2>/dev/null || true
+          # the logs that explain a failure: the Scala node's events, the Haskell pools' tails, container output
+          for f in follower.jsonl node2.log node3.log; do
+            cp "$run_dir/$f" "$RUNNER_TEMP/failure/" 2>/dev/null || true
+          done
+          docker logs "$DEVNET_NAME-scala" > "$RUNNER_TEMP/failure/scala.docker.log" 2>&1 || true
+          docker logs "$DEVNET_NAME-proxy" > "$RUNNER_TEMP/failure/proxy.docker.log" 2>&1 || true
+          du -sh "$RUNNER_TEMP/summary" "$RUNNER_TEMP/failure"
+          if [ -f "$RUNNER_TEMP/summary/faults-summary.json" ]; then
+            python3 -I -c "import json,sys; s=json.load(open(sys.argv[1])); print('passed' if s.get('passed') else 'FAILED: ' + '; '.join(s.get('failures', [])[:5]))" \
+              "$RUNNER_TEMP/summary/faults-summary.json" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload the schedule and the summary
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: faults-summary-seed-${{ env.FAULT_SEED }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/summary
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload the logs of a failed run
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: faults-logs-seed-${{ env.FAULT_SEED }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/failure
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Tear down
+        if: ${{ always() }}
+        run: |
+          python3 scripts/devnet.py --name "$DEVNET_NAME" down > /dev/null 2>&1 || true
+          docker ps -aq | xargs -r docker rm -f > /dev/null 2>&1 || true
+          rm -rf "$SCARAB_DATA_DIR"
