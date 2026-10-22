@@ -12,6 +12,24 @@ import xyz.kd5ujc.scarab.protocol.Era
   * unrestricted (Praos/Common.hs:180–185); the configured restriction governs eligibility only.
   */
 private[node] object CandidateSelection:
+  /** ChainSel.hs:159–211 initialChainSelection ranks from the immutable anchor and caps paths at k
+    * when LoE is enabled. A live nonempty limit must not expand that initial bound.
+    */
+  def startup(
+      k: Int,
+      local: ChainSelection.Local,
+      candidates: Vector[ChainSelection.Candidate],
+      limit: Option[Fragment],
+      tiebreaker: Era => ChainSelection.Tiebreaker
+  ): Vector[ChainSelection.Candidate] =
+    project(
+      k,
+      local.copy(blocks = Vector.empty),
+      candidates,
+      limit.map(_ => Fragment(local.anchor, Vector.empty)),
+      tiebreaker
+    )
+
   def project(
       k: Int,
       local: ChainSelection.Local,

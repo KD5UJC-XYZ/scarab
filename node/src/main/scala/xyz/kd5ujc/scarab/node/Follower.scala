@@ -147,14 +147,10 @@ final class Follower[F[_]: Async, S] private (
             }
           )
           limit <- control.traverse(_.limitAt(fragment)).map(_.flatten)
-        yield CandidateSelection.project(
-          current.k,
-          if phase == BlockSelection.Phase.Startup then selected.copy(blocks = Vector.empty)
-          else selected,
-          candidates,
-          limit,
-          tiebreaker
-        )
+        yield
+          if phase == BlockSelection.Phase.Startup then
+            CandidateSelection.startup(current.k, selected, candidates, limit, tiebreaker)
+          else CandidateSelection.project(current.k, selected, candidates, limit, tiebreaker)
       def apply(
           peer: Peer[F],
           candidate: ChainSelection.Candidate,

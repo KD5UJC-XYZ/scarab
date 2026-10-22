@@ -197,3 +197,28 @@ class CandidateSelectionSuite extends FunSuite:
       assertEquals(matrix, field[Vector[Vector[String]]](row, "pairwiseOrd"))
     }
   }
+
+  test("initial selection caps active LoE paths at k even when a live limit has advanced") {
+    val headers = (1 to 8).toVector.map(n => header(n, n, n, 0, Option.when(n > 1)(bytes(n - 1))))
+    val resumed = origin.copy(blocks =
+      headers.take(3).map(h => ChainSelection.LocalBlock(h.point, SelectView.of(h)))
+    )
+    val advanced = Fragment(
+      ChainSync.Point.Origin,
+      headers.take(3).map(_.point).collect { case point: ChainSync.Point.Block =>
+        point
+      }
+    )
+    val candidates = Vector(ChainSelection.Candidate(ChainSync.Point.Origin, headers))
+    val bounded = CandidateSelection.startup(
+      3,
+      resumed,
+      candidates,
+      Some(advanced),
+      ChainSelection.tiebreakerFor
+    )
+    val unbounded =
+      CandidateSelection.startup(3, resumed, candidates, None, ChainSelection.tiebreakerFor)
+    assertEquals(bounded.map(_.headers), Vector(headers.take(3)))
+    assertEquals(unbounded.map(_.headers), Vector(headers))
+  }
