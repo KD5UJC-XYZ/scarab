@@ -10,6 +10,7 @@ import json
 from dataclasses import dataclass
 
 from . import eratx
+from .eraplutus import DATUM
 from .util import ENV, MAGIC, in_ref
 
 CLI = "cardano-cli conway"
@@ -175,4 +176,14 @@ def corpus(name, socket):
         script_tx(b, w, other, FAILS, account="mainnet", invalid=True)[0])
     add("withdrawal-network-flag-true", "Withdrawals",
         script_tx(b, w, other, SUCCEEDS, account="mainnet")[0], first_only=True)
+    # a datum in the witnesses that no spent Plutus input requires and no output carries (#330): a key-only
+    # spend with the right script data hash, so that `NotAllowedSupplementalDatums` is its only failure
+    key = eratx.Key(b.sh(f"cat {w['skey']}"))
+    fee = 300000
+    datum_tx, _ = eratx.build_tx(
+        "conway", [(w["txin"].split("#")[0], int(w["txin"].split("#")[1]))],
+        [eratx.tx_out("conway", eratx.enterprise_address(key.hash), w["lovelace"] - fee)], fee, [key],
+        datums=[DATUM],
+        script_data=eratx.script_data_hash(eratx.enc(eratx.redeemers_cbor("conway", [])), eratx.enc([DATUM]), {}))
+    add("supplemental-datum", "NotAllowedSupplementalDatums", datum_tx)
     return cases
