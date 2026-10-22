@@ -7,8 +7,17 @@ import xyz.kd5ujc.scarab.codec.Bytes
 /** Field 18 of a protocol-parameter update, decoded by the rule of the era's decoder version
   * (`CostModels.hs:302-337,426-440`, cardano-ledger `f649f975`). The cases are derived from those
   * lines, entering through the transaction body (Alonzo and Babbage, decoder version below 9) and
-  * the Conway parameter-change proposal (version 9 and above). They have not been run against the
-  * Haskell decoder.
+  * the Conway parameter-change proposal (version 9 and above).
+  *
+  * Conway ("open") cases were run against the reference: each Conway transaction body wrapped as
+  * `[body, {}, true, null]` in a `Tx ConwayEra` envelope and read by `cardano-cli debug transaction
+  * view` of the cardano-reference-11.1.3 image (cardano-cli 11.2.3.0). It accepted a short PlutusV1
+  * list, a 300-entry PlutusV2 list, a short PlutusV3 list, unknown languages 4 and 255 (also an
+  * empty one) and the `Int64` bounds. It refused language 256 and -1 ("expected word8"), a value of
+  * 2^63 or -2^63-1 in a known and in an unknown language ("expected int"), and a repeated language
+  * ("Final number of elements: 1 does not match the total count that was decoded: 2"). The
+  * pre-Conway ("legacy") cases are derived from `CostModels.hs:306-337` and were not run against
+  * the reference.
   */
 class CostModelDecodeSuite extends FunSuite:
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
