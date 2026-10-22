@@ -70,9 +70,11 @@ hand-written runtime (rt): Codec, Writer, DecodeError, Alternatives, Maps, Lit  
 
 Pinned sources (the commit of each is in `SOURCES`): ouroboros-network `2fb6982`, ouroboros-consensus `8f56bc8`,
 cardano-ledger `a51efc7`. (`Handshake.scala` cites network commit `c45735a`; the CDDL used here is newer.)
-One file comes from a fourth repository: the Blueprint's `leios-fetch/messages.cddl` at `fe4cceb9` (LeiosFetch has no CDDL in the
-consensus or network repositories); its `base` import is the consensus module plus `word16` (`overrides/base-word16.cddl`) and its
-`tx` import is a module of ours, `overrides/leios-fetch-tx.cddl` (`tx = any`: the codec keeps each transaction as its bytes).
+One file comes from a fourth repository: the Blueprint's `leios-fetch/messages.cddl` at `0460c5a6` (consensus `main` has its own
+LeiosFetch CDDL since #2416, merged 2026-10-20, not pinned: it says `tx = #6.24(bytes)`); its `base` import is the consensus module
+plus `word16` (`overrides/base-word16.cddl`) and its `dijkstra` include is the era module, so the generated reader decodes each
+transaction as `dijkstra.block_transaction`. The hand-written codec carries the bytes inside the tag without reading them.
+The map occurrence `{ + k => v }` is enforced (`Codec.pairs` takes the bounds, as `Codec.vec` does).
 
 **Modules and pragmas.** The ouroboros specs use `;# import <module> as <alias>` and `;# include …` to bind the prefix
 (`base.point`, `v14.nodeToNodeVersionData`, `conway.header`). `models.conf` names each CDDL *module*, its Scala
@@ -339,9 +341,8 @@ whose canonical encoding is a fixed point. For every root, 1,200 mutated (bit fl
 random-byte inputs produce a value or a typed error, and never `Kind.Internal`; offsets stay inside the input.
 
 The fuzz corpus loads the header schema's Byron dependency and the LeiosFetch/LeiosNotify modules,
-including their existing `base.word16`, transaction-item and header imports from `models.conf`.
-The LeiosFetch transaction adapter remains `tx = any` because the Blueprint leaves that type
-underspecified; samples are members of this configured, composed schema. Every requested sample
+including their existing `base.word16` and header imports and the LeiosFetch `dijkstra` include from `models.conf`.
+Samples are members of this configured, composed schema. Every requested sample
 must be generated; unresolved names, unsupported grammar and sampling cycles fail the seed gate
 instead of supplying an empty batch. A deterministic guard requires all eight header-envelope,
 five LeiosFetch and eight LeiosNotify constructors across 120 samples per rule. These are schema
