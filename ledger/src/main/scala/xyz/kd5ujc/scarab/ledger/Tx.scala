@@ -324,7 +324,7 @@ object TxBody:
         )
       upd <- f.get(6).traverse(update)
       auxHash <- f.get(7).traverse(CborRead.bytesN(_, 32, "auxiliary data hash"))
-      mint <- f.get(9).traverse(Value.multiasset(_, "mint", signed = true))
+      mint <- f.get(9).traverse(Value.multiasset(_, "mint", signed = true, mode.values))
       dataHash <- f.get(11).traverse(CborRead.bytesN(_, 32, "script data hash"))
       collateral <- f
         .get(13)
