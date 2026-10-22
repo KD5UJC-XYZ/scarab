@@ -56,7 +56,7 @@ object NodeToClientServer:
       .resource(
         bearer,
         protocols,
-        Mux.Config(role = Mux.Role.Responder, ingressLimit = IngressLimits.nodeToClient)
+        Mux.Config.nodeToClient
       )
       .use { mux =>
         for

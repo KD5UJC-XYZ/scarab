@@ -1054,8 +1054,10 @@ in the retained state from the backing store (`UtxoNeeds`). Only the current era
 answered; a query for another era gets the combinator's mismatch reply. The era history is built
 from the configured hard-fork epochs, the transitions this run observed and the safe zone of the
 current era (`EraHistory`); a version-triggered hard fork that happened before this run cannot be
-placed and is assumed to start with the previous era. The result size is bounded by the mux message
-limit (2.5 MB, about 25,000 UTxO entries). Queries the node does not answer end the connection with
+placed and is assumed to start with the previous era. As on the reference, a result has no byte or item
+limit beyond what a byte array holds (`maximumMiniProtocolLimits`, codec run without limits; #353): a
+`GetCBOR DebugEpochState` answer of preprod, which `leadership-schedule --next` asks, is tens of megabytes.
+A client's query keeps the 2.5 MB bound of a node-to-node message. Queries the node does not answer end the connection with
 a protocol error that names the query (`inbound ... closed` in the log), where the reference would
 answer.
 

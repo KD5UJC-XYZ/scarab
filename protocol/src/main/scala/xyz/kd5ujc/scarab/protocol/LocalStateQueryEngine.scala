@@ -11,13 +11,32 @@ import ProtocolWire.{attempt, bad, get}
   * upstream point-domain conversations. Point values occupy one codec-owned CBOR item.
   */
 object LocalStateQueryEngine:
-  private val wire = ProtocolWire.Limits(
+  /** What a client sends: the bounds of a node-to-node message. */
+  private val queries = ProtocolWire.Limits(
     LocalStateQuery.MaxMessageBytes,
     LocalStateQuery.MaxMessageBytes,
     32,
     ProtocolWire.MaxItems,
     ProtocolWire.MaxItems
   )
+
+  /** What the server sends. The reference bounds an answer only by the mux ingress queue
+    * ([[ProtocolWire.Bound.Local]]): a `GetCBOR DebugEpochState` answer of preprod, which
+    * `cardano-cli query leadership-schedule --next` asks, is tens of megabytes in one byte string.
+    * The nesting keeps its bound; an answer is written by our own codecs.
+    */
+  private val answers = ProtocolWire.Limits(
+    LocalStateQuery.MaxResultBytes,
+    LocalStateQuery.MaxResultBytes,
+    32,
+    ProtocolWire.MaxItems,
+    LocalStateQuery.MaxResultBytes,
+    bound = ProtocolWire.Bound.Local
+  )
+
+  private def limits(sender: Role): ProtocolWire.Limits = sender match
+    case Role.Client => queries
+    case Role.Server => answers
 
   /** What a client asks to acquire. The immutable tip exists from node-to-client version 16. */
   enum Target[+P]:
@@ -54,6 +73,7 @@ object LocalStateQueryEngine:
       point: ChainSyncEngine.PointCodec[P]
   ): Either[ProtocolError, Bytes] = attempt {
     get(transition(state, sender, message))
+    val wire = limits(sender)
     val w = new ProtocolWire.Writer(wire)
     def outer(n: Int, tag: Int): Unit = { w.head(4, n); w.head(0, tag) }
     def target(t: Target[P], specific: Int, volatile: Int, immutable: Int): Unit = t match
@@ -92,6 +112,7 @@ object LocalStateQueryEngine:
       val clientTurn = state == State.Idle || state == State.Acquired
       if state == State.Done || clientTurn != (sender == Role.Client) then
         bad(ProtocolError.WrongLocalStateQueryAgency)
+      val wire = limits(sender)
       val r = new ProtocolWire.Reader(bytes, wire)
       val arity = r.arrayLength()
       val tag = r.uint().value
