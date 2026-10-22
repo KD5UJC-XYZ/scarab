@@ -173,7 +173,7 @@ not identical thread schedules.
 4. Replay original upstream Genesis scenario families through Scarab using the
    exported inputs and schedules, comparing complete selected fragments and every
    original native termination predicate. Assert every native peer/component multiplicity,
-   exact typed cause attribution, production refusal-before-termination and per-peer cleanup
+   exact typed cause attribution, production refusal-decision-before-termination and per-peer cleanup
    causality, plus the complete ordered GDD callback batches. The original DensityDisconnect
    property permits either density or sparse-candidate refusal; CSJ/Uniform retain their original
    trace/safety properties and closed exception set. Independent per-peer registries do not impose

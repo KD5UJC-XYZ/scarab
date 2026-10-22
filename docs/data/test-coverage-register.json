@@ -338,7 +338,7 @@
       "classification": "native-parity",
       "status": "covered",
       "scope": "All 84 retained original Genesis scenarios, every one of the 21 native property branches, and their complete typed runtime observations.",
-      "assertion": "Execute every original property and allowed-exception constraint; compare complete selected fragments and every native peer/component multiplicity exactly; enforce every original CSJ download bound, typed cause attribution, production refusal-before-termination, per-peer cleanup causality, complete ordered GDD callback consumption and absence of defects/invariants. Compare all 1,304 native GDD decisions and 45 ordered callback batches exactly.",
+      "assertion": "Execute every original property and allowed-exception constraint; compare complete selected fragments and every native peer/component multiplicity exactly; enforce every original CSJ download bound, typed cause attribution, production refusal-decision-before-termination, per-peer cleanup causality, complete ordered GDD callback consumption and absence of defects/invariants. Compare all 1,304 native GDD decisions and 45 ordered callback batches exactly.",
       "rationale": "The original DensityDisconnect property explicitly permits DensityTooLow or CandidateTooSparse. CSJ and Uniform constrain their original trace/safety properties plus the shared closed expected-exception set, rather than a cross-peer finalizer schedule. Complete native and Scarab observations remain retained; concrete component counts, typed causes and required causal orders are asserted without exclusions or tolerance.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/33",

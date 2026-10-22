@@ -22,6 +22,7 @@ object UpstreamGenesisTerminals:
     case PolicyComponent(terminal: Terminal)
     case DisabledPolicy(terminal: Terminal)
     case MissingRefusal(terminal: Terminal)
+    case DirectRefusalCause(peer: PeerId, cause: Problem)
     case CleanupBeforeTermination(terminal: Terminal)
     case DensityCallbacks(expected: Vector[PeerId], actual: Vector[PeerId])
 
@@ -54,6 +55,9 @@ object UpstreamGenesisTerminals:
         val refusal = prior.exists {
           case Lifecycle.Refused(peer, cause) =>
             peer == terminal.peer && terminal.cause.contains(cause)
+          case Lifecycle.DirectRefusal(peer, cause) =>
+            terminal.end == End.CandidateTooSparse && peer == terminal.peer && terminal.cause
+              .contains(cause)
           case _ => false
         }
         val startedCleanup = prior.exists {
@@ -94,4 +98,9 @@ object UpstreamGenesisTerminals:
         Option.when(expected != observed)(Violation.DensityCallbacks(expected, observed)).toVector
       case _ => Vector.empty
     }
-    shape ++ causes ++ callbacks
+    val direct = actual.lifecycle.collect {
+      case Lifecycle.DirectRefusal(peer, cause)
+          if UpstreamGenesisReplay.end(cause) != End.CandidateTooSparse =>
+        Violation.DirectRefusalCause(peer, cause)
+    }
+    shape ++ causes ++ callbacks ++ direct

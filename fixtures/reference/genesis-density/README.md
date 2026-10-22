@@ -48,7 +48,7 @@ interpreter writes received original bodies and selected-chain updates through t
 `ReceivedBlocks` and `VolatileStore` journals, closes them during native downtime, and validates
 persisted bytes when reopening. It compares complete selected fragments and every native
 peer/component multiplicity. A single typed lifecycle stream also asserts exact cause-to-tag
-attribution, actual production refusal callbacks before policy termination, cleanup after that
+attribution, actual production refusal decisions before policy termination, cleanup after that
 peer's termination, and complete ordered GDD callback-batch consumption. Negative controls
 reject omitted/duplicate/misattributed components, fabricated causes and reversed causal orders.
 
@@ -150,3 +150,12 @@ The CSJ observation point is the normal received-header callback before validati
 boundary uses `headerSlot + jumpSize < succWithOrigin(trunkTipSlot)`, including the original Word64
 addition. Uniform accounting preserves Word64 subtraction and the original single honest peer with
 id 1 required by `Test/Util/PartialAccessors.hs36–42`.
+
+Direct sparse-candidate refusal is a distinct observation from the asynchronous GDD/LoP
+connection callback: native `MiniProtocol/ChainSync/Client.hs:1848` raises `CandidateTooSparse`
+at the header gate. The test interpreter observes typed raises and `TimeForecast.Refused` at
+that gate, before the owner's terminal result, preserving capture, graft and forecast semantics.
+A direct refusal cannot impersonate another mechanism's callback. Negative controls reject
+missing, late, misattributed and wrong-mechanism direct decisions. The retained rolling replay
+first exposed this previously unexercised observer path at DensityDisconnect seed332002; the
+original native property and selected chain passed, and its strong terminal assertion was retained.

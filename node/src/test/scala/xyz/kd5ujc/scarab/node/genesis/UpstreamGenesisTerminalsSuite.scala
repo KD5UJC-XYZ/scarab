@@ -171,6 +171,60 @@ class UpstreamGenesisTerminalsSuite extends FailsOnUncaught:
     }
   }
 
+  test(
+    "a direct sparse-candidate decision must precede its terminal and cannot impersonate a callback"
+  ) {
+    cases.map { scenarios =>
+      val scenario = scenarios
+        .find(s =>
+          s.law == UpstreamGenesisLaws.Law.DensityDisconnect &&
+            s.expected.peers.exists(_.component == Component.ChainSyncClient)
+        )
+        .fold(fail("density refusal case missing"))(identity)
+      val actual = reference(scenario)
+      val previous = actual.terminals
+        .find(_.component == Component.ChainSyncClient)
+        .fold(fail("ChainSync terminal missing"))(identity)
+      val sparse =
+        previous.copy(end = End.CandidateTooSparse, cause = cause(End.CandidateTooSparse))
+      val problem = sparse.cause.fold(fail("sparse cause missing"))(identity)
+      val event = Lifecycle.DirectRefusal(sparse.peer, problem)
+      val events = actual.lifecycle
+        .filterNot {
+          case _: Lifecycle.Refused | _: Lifecycle.DensityBatch => true
+          case _                                                => false
+        }
+        .map {
+          case Lifecycle.Ended(t) if t == previous => Lifecycle.Ended(sparse)
+          case other                               => other
+        }
+      val direct = actual.copy(
+        terminals = actual.terminals.map(t => if t == previous then sparse else t),
+        lifecycle = event +: events
+      )
+      assertEquals(evaluate(scenario, direct), Vector.empty)
+      assertEquals(UpstreamGenesisLaws.evaluate(scenario, direct), Vector.empty)
+      Vector(
+        events,
+        events :+ event,
+        Lifecycle.DirectRefusal(PeerId.Adversarial(99), problem) +: events
+      ).foreach { lifecycle =>
+        assert(
+          evaluate(scenario, direct.copy(lifecycle = lifecycle))
+            .exists(_.isInstanceOf[Violation.MissingRefusal])
+        )
+      }
+      val patience = cause(End.PatienceExpired).fold(fail("patience cause missing"))(identity)
+      assert(
+        evaluate(
+          scenario,
+          direct.copy(lifecycle = Lifecycle.DirectRefusal(sparse.peer, patience) +: events)
+        )
+          .exists(_.isInstanceOf[Violation.DirectRefusalCause])
+      )
+    }
+  }
+
   test("GDD callbacks preserve the complete losing-peer batch and its order") {
     cases.map { scenarios =>
       val scenario = scenarios

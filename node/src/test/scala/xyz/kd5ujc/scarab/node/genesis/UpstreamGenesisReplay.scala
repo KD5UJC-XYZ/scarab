@@ -50,6 +50,7 @@ object UpstreamGenesisReplay:
   enum Lifecycle:
     case DensityBatch(peers: Vector[PeerId])
     case Refused(peer: PeerId, cause: Problem)
+    case DirectRefusal(peer: PeerId, cause: Problem)
     case Ended(terminal: Terminal)
   final case class GddDecision(atPicos: BigInt, value: GenesisGovernor.Observation)
   final case class Result(
@@ -77,6 +78,53 @@ object UpstreamGenesisReplay:
         case SessionEnd.NoMoreIntersection | SessionEnd.RolledBackPastIntersection(_) => End.Success
         case _ => End.Unexpected
     case _ => End.Unexpected
+
+  /** Client.hs:1848 raises CandidateTooSparse at the header gate; unlike GDD/LoP this is not an
+    * asynchronous connection callback. Observe the typed decision at that boundary, before the
+    * owner can record its terminal outcome, preserving every delegated gate capability.
+    */
+  private def observeDirectRefusals(
+      check: HeaderCheck[IO],
+      note: PeerError => IO[Unit]
+  ): HeaderCheck[IO] =
+    def wrap(gate: HeaderGate[IO]): HeaderGate[IO] = new HeaderGate[IO]:
+      private def observe[A](body: Raise[IO, PeerError] ?=> IO[A])(using
+          errors: Raise[IO, PeerError]
+      ): IO[A] =
+        Handle.allow[PeerError](body).rescue(error => note(error) *> errors.raise(error))
+      def counts = gate.counts
+      override def canonicalTiming = gate.canonicalTiming
+      def accept(batch: Vector[SyncEvent])(using Raise[IO, PeerError]) = observe(gate.accept(batch))
+      override def acceptOrRestart(batch: Vector[SyncEvent])(using
+          Raise[IO, PeerError],
+          cats.Functor[IO]
+      ) = observe(gate.acceptOrRestart(batch))
+      override def prepareHeader(header: Header)(using
+          cats.Applicative[IO],
+          Raise[IO, PeerError]
+      ) = observe(gate.prepareHeader(header))
+      override def forecastTime(header: Header)(using cats.Applicative[IO]) =
+        gate.forecastTime(header).flatTap {
+          case Some(HeaderGate.TimeForecast.Refused(problem)) => note(PeerError.Genesis(problem))
+          case _                                              => IO.unit
+        }
+      override def snapshot(using cats.Applicative[IO]) = gate.snapshot
+      override def intersectionSelection(using cats.Applicative[IO]) = gate.intersectionSelection
+      override def graft(
+          snapshot: HeaderChain[NodeHeaderState],
+          point: ChainSync.Point,
+          selection: ChainSelection.Local
+      )(using cats.Applicative[IO]) = gate.graft(snapshot, point, selection)
+    new HeaderCheck[IO]:
+      def start(point: ChainSync.Point) = check.start(point).map(wrap)
+      override def capture(using cats.Applicative[IO]) =
+        check.capture.map(
+          _.map(captured => captured.copy(start = point => captured.start(point).map(wrap)))
+        )
+      override def withPatience(patience: xyz.kd5ujc.scarab.network.genesis.LimitOnPatience[IO]) =
+        observeDirectRefusals(check.withPatience(patience), note)
+      override def observed(observer: HeaderCheck.Event => IO[Unit]) =
+        observeDirectRefusals(check.observed(observer), note)
 
   private def densityKey(peer: PeerId): Long = peer match
     case PeerId.Honest(index)      => index.toLong - Int.MinValue.toLong
@@ -503,15 +551,22 @@ object UpstreamGenesisReplay:
                                                   ),
                                                   _ => IO.unit,
                                                   headers = Some(
-                                                    HeaderCheck
-                                                      .forGenesisChain(
-                                                        headerRules,
-                                                        Compute.inline[IO],
-                                                        controls.retainedHeaders,
-                                                        stall = 120000000000000L.nanos,
-                                                        poll = 20000000000L.nanos
-                                                      )
-                                                      .withPatience(controls.patience)
+                                                    observeDirectRefusals(
+                                                      HeaderCheck
+                                                        .forGenesisChain(
+                                                          headerRules,
+                                                          Compute.inline[IO],
+                                                          controls.retainedHeaders,
+                                                          stall = 120000000000000L.nanos,
+                                                          poll = 20000000000L.nanos
+                                                        )
+                                                        .withPatience(controls.patience),
+                                                      error =>
+                                                        lifecycle.update(
+                                                          _ :+ Lifecycle
+                                                            .DirectRefusal(id, Problem.Node(error))
+                                                        )
+                                                    )
                                                   ),
                                                   pool = Some(pool),
                                                   patience = Some(controls.patience),
