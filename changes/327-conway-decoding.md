@@ -1,0 +1,3 @@
+### Fixed (ledger decoding, #327)
+
+- Decode Conway transaction bodies and witness sets at the era's decoder version, as the reference does. From version 9 a repeated element of an input, collateral, required-signer, reference-input, certificate or proposal set, a repeated withdrawal account or voter, an empty optional collection (certificates, withdrawals, mint, collateral, required signers, reference inputs, votes, proposals), a zero donation, key 6, an empty witness list and a Plutus script listed twice are refused at decoding. Repeated vkeys, native scripts, datums and redeemer keys stay accepted, as in the reference. Tag 258 and the map form of redeemers are read only from the versions that read them.

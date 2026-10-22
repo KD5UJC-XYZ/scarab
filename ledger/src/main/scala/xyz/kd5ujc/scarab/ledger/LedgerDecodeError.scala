@@ -20,6 +20,8 @@ enum LedgerDecodeError extends DomainError:
   case DuplicateKey(context: String)
   case UnsupportedCostModelLanguage(language: Int)
   case CostModelLength(language: Int, expected: Int, actual: Int)
+  case DuplicateElement(context: String)
+  case Zero(context: String)
   case IndefiniteLength(context: String)
   case ZeroDenominator(context: String)
   case UnknownTag(context: String, tag: BigInt)

@@ -964,14 +964,14 @@ object Targets:
           s"tx-body-$tag",
           eraSeeds(Corpus.txBodies, "transaction_body")(era),
           probe(s"tx-body-$tag") { b =>
-            seen(s"tx-body-$tag", TxBody.decode(b, Address.Mode.of(era)).isRight)
+            seen(s"tx-body-$tag", TxBody.decode(b, era).isRight)
           }
         ),
         Target(
           s"tx-witnesses-$tag",
           eraSeeds(Corpus.txWitnesses, "transaction_witness_set")(era),
           probe(s"tx-witnesses-$tag") { b =>
-            seen(s"tx-witnesses-$tag", Witnesses.decode(b).isRight)
+            seen(s"tx-witnesses-$tag", Witnesses.decode(b, era).isRight)
           }
         ),
         Target(

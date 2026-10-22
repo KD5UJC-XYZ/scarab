@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.fuzz
 
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
-import xyz.kd5ujc.scarab.ledger.{Address, Certificate, Tx, TxBody}
+import xyz.kd5ujc.scarab.ledger.{Certificate, Tx, TxBody}
 import xyz.kd5ujc.scarab.protocol.Era
 import munit.FunSuite
 
@@ -38,7 +38,7 @@ class GuardSuite extends FunSuite:
       val sizes = Corpus
         .txBodies(era)
         .flatMap { raw =>
-          TxBody.decode(Bytes.fromArray(raw), Address.Mode.of(era)).toOption.toVector.flatMap {
+          TxBody.decode(Bytes.fromArray(raw), era).toOption.toVector.flatMap {
             _.certificates.collect { case Certificate.RegisterPool(p) => p }.flatMap { p =>
               p.metadata.toVector.flatMap { encoded =>
                 Cbor

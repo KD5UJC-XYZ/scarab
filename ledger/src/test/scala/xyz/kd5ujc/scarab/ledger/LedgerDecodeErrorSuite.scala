@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as CborValue}
+import xyz.kd5ujc.scarab.protocol.Era
 
 class LedgerDecodeErrorSuite extends FunSuite:
   private def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(e => fail(e.toString), identity)
@@ -42,7 +43,7 @@ class LedgerDecodeErrorSuite extends FunSuite:
 
   test("a missing transaction field is retained without parsing error text") {
     assertEquals(
-      TxBody.decode(bytes("a0"), Address.Mode.Rigorous).map(_ => ()),
+      TxBody.decode(bytes("a0"), Era.Babbage).map(_ => ()),
       Left(LedgerDecodeError.MissingField("transaction body", "inputs"))
     )
   }
@@ -54,7 +55,7 @@ class LedgerDecodeErrorSuite extends FunSuite:
 
   test("unknown certificate and script tags preserve the numeric tag") {
     assertEquals(
-      Certificate.decode(node("811863")),
+      Certificate.decode(node("811863"), DecoderVersion.of(Era.Conway)),
       Left(LedgerDecodeError.TaggedArity("certificate", 99, 1))
     )
     assertEquals(

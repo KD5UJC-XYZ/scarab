@@ -7,6 +7,7 @@ import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
 import xyz.kd5ujc.scarab.ledger.Block
+import xyz.kd5ujc.scarab.protocol.Era
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 
@@ -62,7 +63,8 @@ class TxDecodingSuite extends FunSuite:
   test("genesis delegation and instantaneous reward certificates decode") {
     def cert(hex: String) =
       Certificate.decode(
-        CborRead.decode(Bytes.fromHex(hex).toOption.get).toOption.get
+        CborRead.decode(Bytes.fromHex(hex).toOption.get).toOption.get,
+        DecoderVersion.of(Era.Shelley)
       )
     val g = "a" * 56
     val d = "b" * 56

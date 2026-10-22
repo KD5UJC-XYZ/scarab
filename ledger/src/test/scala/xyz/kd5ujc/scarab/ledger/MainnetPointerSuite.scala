@@ -35,7 +35,7 @@ class MainnetPointerSuite extends FunSuite:
     tx.head.original
 
   private def decoded(era: Era): Either[LedgerDecodeError, TxBody] =
-    TxBody.decode(body, Address.Mode.of(era))
+    TxBody.decode(body, era)
 
   private val mary: TxBody = decoded(Era.Mary).fold(e => fail(e.toString), identity)
   private val output: TxOut = mary.outputs.head

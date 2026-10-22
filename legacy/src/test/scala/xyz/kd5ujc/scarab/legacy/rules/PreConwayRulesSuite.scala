@@ -787,7 +787,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val body = tx.value match
       case C.Arr(items) =>
         TxBody
-          .decode(items.head.original, Address.Mode.Rigorous)
+          .decode(items.head.original, xyz.kd5ujc.scarab.protocol.Era.Babbage)
           .fold(e => fail(e.toString), identity)
       case other => fail(s"not a transaction: $other")
     assertEquals(
