@@ -12,7 +12,7 @@ from ..cluster import down, freeze_classes, scala_container, up_eras
 from ..compare import Comparisons, compare_era, comparison_table, judge_comparisons, lsq
 from ..follower import follower_problem, start_follower
 from ..load import start_conway_load
-from ..util import ERAS, MAGIC, TAG_ERA, data_root, docker, read_log, ref, starvation_warnings
+from ..util import ERAS, MAGIC, TAG_ERA, data_root, docker, read_log, ref, stall_evidence, starvation_warnings
 
 
 EXTENDED_WAIT = 600  # seconds the run waits past its target epoch for extended stages that apply but are not done
@@ -298,6 +298,10 @@ def e2e(args):
             summary["legacyPlutus"] = loader.plutus_evidence
             summary["auxiliaryPlutus"] = loader.auxiliary_evidence
             summary["refusals"] = loader.refusal_evidence
+        # the follower's stall evidence (state events, fiber dumps) stays with the run's summary
+        evidence = stall_evidence(root) if root.exists() else None
+        if evidence is not None:
+            summary["stallDiagnostics"] = evidence
         summary["failures"] = failures
         summary["passed"] = not failures
         root.mkdir(parents=True, exist_ok=True)

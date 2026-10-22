@@ -182,3 +182,25 @@ def read_log(path):
             if line.strip() and not line.startswith("SLF4J") and not is_starvation_warning(line):
                 other.append(line)
     return events, other
+
+
+def stall_dump_arguments(root):
+    """(node arguments, volume) that turn on the node's stall diagnostics (`--stall-dump`, issue
+    371): a stall of the follower writes the runtime's fiber dump into `<run>/stall`, next to its
+    `stallState` event in the follower log."""
+    directory = root / "stall"
+    directory.mkdir(exist_ok=True)
+    directory.chmod(0o777)
+    return ["--stall-dump", "/stall"], f"{directory}:/stall"
+
+
+def stall_evidence(root):
+    """What a run keeps of a follower stall: its `stalled` and `stallState` events and the fiber
+    dumps (name and size; the files stay in `<run>/stall`), or None when the follower never stalled."""
+    events, _ = read_log(root / "follower.jsonl")
+    kept = [e for e in events if e.get("event") in ("stalled", "stallState")]
+    dumps = sorted((root / "stall").glob("fiber-dump-*.txt")) if (root / "stall").is_dir() else []
+    if not kept and not dumps:
+        return None
+    return {"events": kept, "fiberDumps": [{"file": str(d.relative_to(root)), "bytes": d.stat().st_size}
+                                           for d in dumps]}

@@ -405,6 +405,23 @@ class RelayHandshakeTest(unittest.TestCase):
         self.assertEqual(got["accepted"], ["MsgAcceptVersion NodeToNodeV_15 (TList [])"])
 
 
+class StallEvidenceTest(unittest.TestCase):
+    def test_stall_evidence_collects_events_and_dumps(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            self.assertIsNone(util.stall_evidence(root))
+            flags, volume = util.stall_dump_arguments(root)
+            self.assertEqual(flags, ["--stall-dump", "/stall"])
+            self.assertEqual(volume, f"{root / 'stall'}:/stall")
+            (root / "follower.jsonl").write_text(
+                json.dumps({"event": "extended"}) + "\n" + json.dumps({"event": "stalled", "peerBlock": 9}) + "\n"
+                + json.dumps({"event": "stallState", "sessions": []}) + "\n")
+            (root / "stall" / "fiber-dump-1.txt").write_text("fibers")
+            evidence = util.stall_evidence(root)
+            self.assertEqual([e["event"] for e in evidence["events"]], ["stalled", "stallState"])
+            self.assertEqual(evidence["fiberDumps"], [{"file": "stall/fiber-dump-1.txt", "bytes": 6}])
+
+
 if __name__ == "__main__":
     unittest.main()
 
