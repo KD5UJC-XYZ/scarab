@@ -1,6 +1,7 @@
 # Ouroboros Genesis (#33)
 
-Status: current implementation; local stage acceptance passed on `43d940871` (2026-10-21).
+Status: current implementation; review corrections rebased onto current main in `1399b69a5`
+(2026-10-22). The original stage acceptance at `43d940871` remains separately recorded.
 Main integration and CI remain the definition-of-done boundary for #33. See the
 [acceptance evidence](../compatibility.md#evidence-log).
 
