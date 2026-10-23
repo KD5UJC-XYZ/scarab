@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.mempack
 
+import xyz.kd5ujc.scarab.ledger.DecodeField
 import io.circe.{Json, parser}
 import java.nio.file.{Files, Path}
 import munit.ScalaCheckSuite
@@ -180,13 +181,14 @@ class TxOutMemPackSuite extends ScalaCheckSuite:
     val node = CborRead
       .decode(Bytes.fromArray(Files.readAllBytes(path)))
       .fold(e => fail(e.toString), identity)
-    val items = CborRead.array(node, "tables").fold(e => fail(e.toString), identity)
+    val items = CborRead.array(node, DecodeField.Output).fold(e => fail(e.toString), identity)
     assertEquals(items.size, 1)
-    CborRead.map(items.head, "tables").fold(e => fail(e.toString), identity).map { (k, v) =>
-      (
-        CborRead.bytes(k, "key").fold(e => fail(e.toString), identity),
-        CborRead.bytes(v, "value").fold(e => fail(e.toString), identity)
-      )
+    CborRead.map(items.head, DecodeField.Output).fold(e => fail(e.toString), identity).map {
+      (k, v) =>
+        (
+          CborRead.bytes(k, DecodeField.Input).fold(e => fail(e.toString), identity),
+          CborRead.bytes(v, DecodeField.Output).fold(e => fail(e.toString), identity)
+        )
     }
 
   /** A packed output is canonical when packing what it decodes to gives the same bytes. The

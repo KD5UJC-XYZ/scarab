@@ -87,7 +87,7 @@ class MainnetGarbageAddressSuite extends FunSuite:
     List(Era.Babbage, Era.Conway).foreach { era =>
       assertEquals(
         tx(era).map(_ => ()),
-        Left(LedgerDecodeError.AddressLength("base address length", 57, 78)),
+        Left(LedgerDecodeError.AddressLength(DecodeField.BaseAddressLength, 57, 78)),
         era.toString
       )
     }
@@ -99,7 +99,7 @@ class MainnetGarbageAddressSuite extends FunSuite:
     Address.Mode.values.foreach { mode =>
       assertEquals(
         Address.decode(short, mode).map(_ => ()),
-        Left(LedgerDecodeError.AddressLength("payment credential", 57, short.size)),
+        Left(LedgerDecodeError.AddressLength(DecodeField.PaymentCredential, 57, short.size)),
         mode.toString
       )
     }
@@ -123,7 +123,11 @@ class MainnetGarbageAddressSuite extends FunSuite:
     assertEquals(
       Address.decode(tail, Address.Mode.Rigorous).map(_ => ()),
       Left(
-        LedgerDecodeError.AddressLength("pointer address: trailing bytes", pointer.size, tail.size)
+        LedgerDecodeError.AddressLength(
+          DecodeField.PointerAddressTrailingBytes,
+          pointer.size,
+          tail.size
+        )
       )
     )
   }
@@ -136,7 +140,9 @@ class MainnetGarbageAddressSuite extends FunSuite:
     )
     assertEquals(
       Address.decode(enterprise, Address.Mode.Rigorous).map(_ => ()),
-      Left(LedgerDecodeError.AddressLength("enterprise address length", 29, enterprise.size))
+      Left(
+        LedgerDecodeError.AddressLength(DecodeField.EnterpriseAddressLength, 29, enterprise.size)
+      )
     )
   }
 

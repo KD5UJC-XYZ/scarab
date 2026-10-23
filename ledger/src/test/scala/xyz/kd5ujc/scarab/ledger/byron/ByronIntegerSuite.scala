@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.byron
 
+import xyz.kd5ujc.scarab.ledger.DecodeField
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
 
@@ -24,7 +25,7 @@ class ByronIntegerSuite extends FunSuite:
 
   cases.foreach { (label, encoded, expected) =>
     test(s"shared Byron integer decoder matches native $label") {
-      val decoded = ByronInteger.decode(node(encoded), "native integer")
+      val decoded = ByronInteger.decode(node(encoded), DecodeField.Summand)
       expected match
         case Some(value) => assertEquals(decoded, Right(value))
         case None        => assert(decoded.isLeft)

@@ -11,11 +11,11 @@ final case class GovActionId(txId: Bytes, index: BigInt)
 object GovActionId:
   def decode(n: Node): Either[LedgerDecodeError, GovActionId] =
     CborRead
-      .arrayN(n, 2, "governance action id")
+      .arrayN(n, 2, DecodeField.GovernanceActionId)
       .flatMap(xs =>
         (
-          CborRead.bytesN(xs(0), 32, "governance action tx id"),
-          CborRead.uint(xs(1), "action index")
+          CborRead.bytesN(xs(0), 32, DecodeField.GovernanceActionTxId),
+          CborRead.uint(xs(1), DecodeField.ActionIndex)
         )
           .mapN(GovActionId(_, _))
       )
@@ -41,10 +41,10 @@ object Voter:
 
   /** `[0, keyhash] / [1, scripthash]` (committee), `[2, ..] / [3, ..]` (DRep), `[4, keyhash]`. */
   def decode(n: Node): Either[LedgerDecodeError, Voter] =
-    CborRead.arrayN(n, 2, "voter").flatMap { xs =>
+    CborRead.arrayN(n, 2, DecodeField.Voter).flatMap { xs =>
       (
-        CborRead.uint(xs(0), "voter tag").map(_.toInt),
-        CborRead.bytesN(xs(1), 28, "voter hash")
+        CborRead.uint(xs(0), DecodeField.VoterTag).map(_.toInt),
+        CborRead.bytesN(xs(1), 28, DecodeField.VoterHash)
       ).tupled
         .flatMap {
           case (0, h) => Right(CommitteeHot(Credential.Key(h)))
@@ -52,7 +52,7 @@ object Voter:
           case (2, h) => Right(DRepVoter(Credential.Key(h)))
           case (3, h) => Right(DRepVoter(Credential.Script(h)))
           case (4, h) => Right(Pool(h))
-          case (t, _) => Left(LedgerDecodeError.UnknownTag("voter", t))
+          case (t, _) => Left(LedgerDecodeError.UnknownTag(DecodeField.Voter, t))
         }
     }
 
@@ -129,13 +129,15 @@ object Proposal:
 
   private def optionalHash(n: Node): Either[LedgerDecodeError, Option[Bytes]] = n.value match
     case CborValue.Null => Right(None)
-    case _              => CborRead.bytesN(n, 28, "policy hash").map(Some(_))
+    case _              => CborRead.bytesN(n, 28, DecodeField.PolicyHash).map(Some(_))
 
   def decode(n: Node, version: DecoderVersion): Either[LedgerDecodeError, Proposal] =
     for
-      xs <- CborRead.arrayN(n, 4, "proposal procedure")
-      deposit <- CborRead.uint(xs(0), "proposal deposit")
-      account <- CborRead.bytes(xs(1), "proposal reward account").flatMap(RewardAccount.decode)
+      xs <- CborRead.arrayN(n, 4, DecodeField.ProposalProcedure)
+      deposit <- CborRead.uint(xs(0), DecodeField.ProposalDeposit)
+      account <- CborRead
+        .bytes(xs(1), DecodeField.ProposalRewardAccount)
+        .flatMap(RewardAccount.decode)
       action <- action(xs(2), version)
       anchor <- Anchor.decode(xs(3))
     yield Proposal(deposit, account, action, anchor)
@@ -143,23 +145,23 @@ object Proposal:
   /** A map whose repeated key fails from decoder version 9 (`decodeMap`, Decoder.hs). */
   private def keysUnique[K, V](
       kvs: Vector[(K, V)],
-      what: String,
+      what: DecodeSite,
       version: DecoderVersion
   ): Either[LedgerDecodeError, Vector[(K, V)]] =
     if version.atLeast(9) then CborRead.unique(kvs.map(_._1), what).as(kvs) else Right(kvs)
 
   private def action(n: Node, version: DecoderVersion): Either[LedgerDecodeError, GovAction] =
-    CborRead.array(n, "governance action").flatMap { xs =>
+    CborRead.array(n, DecodeField.GovernanceAction).flatMap { xs =>
       for
         tag <- xs.headOption
-          .toRight(LedgerDecodeError.Empty("governance action"))
-          .flatMap(CborRead.uint(_, "action tag"))
+          .toRight(LedgerDecodeError.Empty(DecodeField.GovernanceAction))
+          .flatMap(CborRead.uint(_, DecodeField.ActionTag))
         a <- (tag.toInt, xs.size) match
           case (0, 4) =>
             (
               GovActionId.optional(xs(1)),
               CborRead
-                .map(xs(2), "parameter update")
+                .map(xs(2), DecodeField.ParameterUpdate)
                 .flatMap(ParamUpdate.read(_, CostModelDecode.Format.Open)),
               optionalHash(xs(3))
             ).mapN(GovAction.ParameterChange(_, _, _))
@@ -167,46 +169,54 @@ object Proposal:
             (
               GovActionId.optional(xs(1)),
               CborRead
-                .arrayN(xs(2), 2, "protocol version")
-                .flatMap(v => (CborRead.uint(v(0), "major"), CborRead.uint(v(1), "minor")).tupled)
+                .arrayN(xs(2), 2, DecodeField.ProtocolVersion)
+                .flatMap(v =>
+                  (
+                    CborRead.uint(v(0), DecodeField.Major),
+                    CborRead.uint(v(1), DecodeField.Minor)
+                  ).tupled
+                )
             ).mapN((p, v) => GovAction.HardFork(p, v._1, v._2))
           case (2, 3) =>
             (
               CborRead
-                .map(xs(1), "treasury withdrawals")
+                .map(xs(1), DecodeField.TreasuryWithdrawals)
                 .flatMap(_.traverse { case (k, v) =>
                   (
-                    CborRead.bytes(k, "withdrawal account").flatMap(RewardAccount.decode),
-                    CborRead.uint(v, "withdrawal amount")
+                    CborRead.bytes(k, DecodeField.WithdrawalAccount).flatMap(RewardAccount.decode),
+                    CborRead.uint(v, DecodeField.WithdrawalAmount)
                   ).tupled
                 })
-                .flatMap(ws => keysUnique(ws, "treasury withdrawals", version)),
+                .flatMap(ws => keysUnique(ws, DecodeField.TreasuryWithdrawals, version)),
               optionalHash(xs(2))
             ).mapN(GovAction.TreasuryWithdrawals(_, _))
           case (3, 2) => GovActionId.optional(xs(1)).map(GovAction.NoConfidence(_))
           case (4, 5) =>
             (
               GovActionId.optional(xs(1)),
-              CborRead.set(xs(2), "removed members", version)(
-                Credential.decode(_, "committee member")
+              CborRead.set(xs(2), DecodeField.RemovedMembers, version)(
+                Credential.decode(_, DecodeField.CommitteeMember)
               ),
               CborRead
-                .map(xs(3), "added members")
+                .map(xs(3), DecodeField.AddedMembers)
                 .flatMap(_.traverse { case (k, v) =>
-                  (Credential.decode(k, "committee member"), CborRead.uint(v, "member term")).tupled
+                  (
+                    Credential.decode(k, DecodeField.CommitteeMember),
+                    CborRead.uint(v, DecodeField.MemberTerm)
+                  ).tupled
                 })
-                .flatMap(ms => keysUnique(ms, "added members", version)),
-              CborRead.rational(xs(4), "quorum", CborRead.Bound.Unit)
+                .flatMap(ms => keysUnique(ms, DecodeField.AddedMembers, version)),
+              CborRead.rational(xs(4), DecodeField.Quorum, CborRead.Bound.Unit)
             ).mapN((p, r, a, q) => GovAction.UpdateCommittee(p, r.toSet, a.toMap, q))
           case (5, 3) =>
             (
               GovActionId.optional(xs(1)),
               CborRead
-                .arrayN(xs(2), 2, "constitution")
+                .arrayN(xs(2), 2, DecodeField.Constitution)
                 .flatMap(c => (optionalHash(c(1)), Anchor.decode(c(0))).tupled)
             ).mapN((p, c) => GovAction.NewConstitution(p, c._1, c._2))
           case (6, 1) => Right(GovAction.Info)
-          case (t, k) => Left(LedgerDecodeError.TaggedArity("governance action", t, k))
+          case (t, k) => Left(LedgerDecodeError.TaggedArity(DecodeField.GovernanceAction, t, k))
       yield a
     }
 
@@ -226,22 +236,22 @@ object VotingProcedures:
       n: Node
   ): Either[DecodeError, Vector[(Voter, Vector[(GovActionId, VotingProcedure)])]] =
     CborRead
-      .map(n, "voting procedures")
+      .map(n, DecodeField.VotingProcedures)
       .leftMap(DecodeError.InvalidStructure(_))
       .flatMap(_.traverse { case (voter, inner) =>
         for
           v <- Voter.decode(voter).leftMap(DecodeError.InvalidStructure(_))
           votes <- CborRead
-            .map(inner, "votes")
+            .map(inner, DecodeField.Votes)
             .leftMap(DecodeError.InvalidStructure(_))
             .flatMap(_.traverse { case (id, procedure) =>
               for
                 actionId <- GovActionId.decode(id).leftMap(DecodeError.InvalidStructure(_))
                 p <- CborRead
-                  .arrayN(procedure, 2, "voting procedure")
+                  .arrayN(procedure, 2, DecodeField.VotingProcedure)
                   .leftMap(DecodeError.InvalidStructure(_))
                 vote <- CborRead
-                  .uint(p(0), "vote")
+                  .uint(p(0), DecodeField.Vote)
                   .leftMap(DecodeError.InvalidStructure(_))
                   .flatMap {
                     case x if x == 0 => Right(Vote.No)
@@ -267,11 +277,11 @@ object VotingProcedures:
       all: Vector[(Voter, Vector[(GovActionId, VotingProcedure)])]
   ): Either[DecodeError, Vector[(Voter, Vector[(GovActionId, VotingProcedure)])]] =
     val structure = for
-      _ <- CborRead.unique(all.map(_._1), "voters")
+      _ <- CborRead.unique(all.map(_._1), DecodeField.Voters)
       _ <- all.traverse { case (_, votes) =>
         CborRead
-          .nonEmpty(votes, "votes of a voter", required = true)
-          .flatMap(vs => CborRead.unique(vs.map(_._1), "governance action ids"))
+          .nonEmpty(votes, DecodeField.VotesOfAVoter, required = true)
+          .flatMap(vs => CborRead.unique(vs.map(_._1), DecodeField.GovernanceActionIds))
       }
     yield all
     structure.leftMap(DecodeError.InvalidStructure(_))

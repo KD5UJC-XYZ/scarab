@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import munit.FunSuite
+import xyz.kd5ujc.scarab.ledger.DecodeSite.Qualifier
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as CborValue}
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -11,10 +12,10 @@ class LedgerDecodeErrorSuite extends FunSuite:
 
   test("a primitive reader retains the expected type, field and actual value") {
     assertEquals(
-      CborRead.uint(node("f5"), "transaction fee"),
+      CborRead.uint(node("f5"), DecodeField.Fee),
       Left(
         LedgerDecodeError.Expected(
-          "transaction fee",
+          DecodeField.Fee,
           LedgerDecodeError.Shape.Unsigned,
           CborValue.Bool(true)
         )
@@ -24,12 +25,12 @@ class LedgerDecodeErrorSuite extends FunSuite:
 
   test("byte length and array arity are separate cases with their measured sizes") {
     assertEquals(
-      CborRead.bytesN(node("4100"), 28, "credential"),
-      Left(LedgerDecodeError.ByteLength("credential", 28, 1))
+      CborRead.bytesN(node("4100"), 28, DecodeField.PoolId),
+      Left(LedgerDecodeError.ByteLength(DecodeField.PoolId, 28, 1))
     )
     assertEquals(
-      CborRead.arrayN(node("80"), 2, "credential"),
-      Left(LedgerDecodeError.ArrayLength("credential", 2, 0))
+      CborRead.arrayN(node("80"), 2, DecodeField.PoolId),
+      Left(LedgerDecodeError.ArrayLength(DecodeField.PoolId, 2, 0))
     )
   }
 
@@ -44,41 +45,45 @@ class LedgerDecodeErrorSuite extends FunSuite:
   test("a missing transaction field is retained without parsing error text") {
     assertEquals(
       TxBody.decode(bytes("a0"), Era.Babbage).map(_ => ()),
-      Left(LedgerDecodeError.MissingField("transaction body", "inputs"))
+      Left(LedgerDecodeError.MissingField(DecodeField.TransactionBody, DecodeField.Inputs))
     )
   }
 
   test("address absence and invalid header remain distinguishable") {
-    assertEquals(Address.decode(Bytes.empty), Left(LedgerDecodeError.Empty("address")))
+    assertEquals(Address.decode(Bytes.empty), Left(LedgerDecodeError.Empty(DecodeField.Address)))
     assertEquals(Address.decode(bytes("f0")), Left(LedgerDecodeError.AddressHeader(240)))
   }
 
   test("unknown certificate and script tags preserve the numeric tag") {
     assertEquals(
       Certificate.decode(node("811863"), DecoderVersion.of(Era.Conway)),
-      Left(LedgerDecodeError.TaggedArity("certificate", 99, 1))
+      Left(LedgerDecodeError.TaggedArity(DecodeField.Certificate, 99, 1))
     )
     assertEquals(
       Script.decode(node("82186300")),
-      Left(LedgerDecodeError.UnknownTag("script type", 99))
+      Left(LedgerDecodeError.UnknownTag(DecodeField.ScriptType, 99))
     )
   }
 
   test("native script shape failures retain their structured ledger cause") {
     assertEquals(
       NativeScript.decode(node("8100")),
-      Left(NativeScript.DecodeError.Malformed(LedgerDecodeError.TaggedArity("native script", 0, 1)))
+      Left(
+        NativeScript.DecodeError.Malformed(
+          LedgerDecodeError.TaggedArity(DecodeField.NativeScript, 0, 1)
+        )
+      )
     )
   }
 
   test("voting threshold arities are specific and carry actual counts") {
     assertEquals(
       PoolVotingThresholds.fromVector(Vector.empty),
-      Left(LedgerDecodeError.ArrayLength("pool voting thresholds", 5, 0))
+      Left(LedgerDecodeError.ArrayLength(DecodeField.PoolVotingThresholds, 5, 0))
     )
     assertEquals(
       DRepVotingThresholds.fromVector(Vector.empty),
-      Left(LedgerDecodeError.ArrayLength("DRep voting thresholds", 10, 0))
+      Left(LedgerDecodeError.ArrayLength(DecodeField.DRepVotingThresholds, 10, 0))
     )
   }
 
@@ -92,7 +97,40 @@ class LedgerDecodeErrorSuite extends FunSuite:
       assertEquals(
         NativeScript.decode(node("82" + encodedTag + "581c" + "00" * 28)),
         Left(
-          NativeScript.DecodeError.Malformed(LedgerDecodeError.TaggedArity("native script", tag, 2))
+          NativeScript.DecodeError.Malformed(
+            LedgerDecodeError.TaggedArity(DecodeField.NativeScript, tag, 2)
+          )
         )
       )
+  }
+
+  test("a site renders as the label the decoders reported before sites were typed") {
+    assertEquals(
+      LedgerDecodeError.DuplicateKey(DecodeField.CostModels).toString,
+      "DuplicateKey(cost models)"
+    )
+    assertEquals(
+      LedgerDecodeError.Empty(DecodeField.Value / Qualifier.Assets).message,
+      "Empty(value assets)"
+    )
+    assertEquals(
+      LedgerDecodeError
+        .Expected(DecodeField.Fee, LedgerDecodeError.Shape.Unsigned, CborValue.Null)
+        .message,
+      "fee: expected Unsigned"
+    )
+    assertEquals(
+      LedgerDecodeError.MissingField(DecodeField.NativeScript, DecodeSite.Index(1)).toString,
+      "MissingField(native script,1)"
+    )
+    assertEquals(
+      LedgerDecodeError.ByteLength(DecodeField.PoolId, 28, 1).toString,
+      "ByteLength(pool id,28,1)"
+    )
+    assertEquals(
+      ChainError
+        .Decode(DecodeField.Block, LedgerDecodeError.Syntax(Cbor.Error.UnexpectedEnd))
+        .message,
+      "decode block: Syntax(UnexpectedEnd)"
+    )
   }

@@ -316,20 +316,20 @@ object ScriptContexts:
   def changedParameters(update: ParamUpdate): Result[PlutusData] =
     def rational(bound: CborRead.Bound)(n: xyz.kd5ujc.scarab.codec.Node): Result[PlutusData] =
       CborRead
-        .rational(n, "rational", bound)
+        .rational(n, DecodeField.Rational, bound)
         .bimap(
           _ => TranslationError.Undecodable(DataSite.ParameterUpdate),
           r => PlutusData.List(Vector(I(r.numerator), I(r.denominator)))
         )
     def uint(n: xyz.kd5ujc.scarab.codec.Node): Result[PlutusData] =
       CborRead
-        .int(n, "integer")
+        .int(n, DecodeField.Integer)
         .bimap(_ => TranslationError.Undecodable(DataSite.ParameterUpdate), I(_))
     def list(
         f: xyz.kd5ujc.scarab.codec.Node => Result[PlutusData]
     )(n: xyz.kd5ujc.scarab.codec.Node): Result[PlutusData] =
       CborRead
-        .array(n, "list")
+        .array(n, DecodeField.List)
         .leftMap(_ => TranslationError.Undecodable(DataSite.ParameterUpdate))
         .flatMap(_.traverse(f))
         .map(PlutusData.List(_))
@@ -341,7 +341,7 @@ object ScriptContexts:
       case 25 | 26 => list(rational(CborRead.Bound.Unit))(n)
       case 18 =>
         CborRead
-          .map(n, "cost models")
+          .map(n, DecodeField.CostModels)
           .leftMap(_ => TranslationError.Undecodable(DataSite.ParameterUpdate))
           .flatMap(_.traverse { case (k, v) =>
             (uint(k), list(uint)(v)).tupled

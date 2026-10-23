@@ -32,7 +32,7 @@ object PoolVotingThresholds:
   def fromVector(xs: Vector[Rational]): Either[LedgerDecodeError, PoolVotingThresholds] =
     xs match
       case Vector(a, b, c, d, e) => Right(PoolVotingThresholds(a, b, c, d, e))
-      case _ => Left(LedgerDecodeError.ArrayLength("pool voting thresholds", 5, xs.size))
+      case _ => Left(LedgerDecodeError.ArrayLength(DecodeField.PoolVotingThresholds, 5, xs.size))
 
 /** Conway DRep voting thresholds, in the order of the protocol-parameter encoding. */
 final case class DRepVotingThresholds(
@@ -78,7 +78,7 @@ object DRepVotingThresholds:
     xs match
       case Vector(a, b, c, d, e, f, g, h, i, j) =>
         Right(DRepVotingThresholds(a, b, c, d, e, f, g, h, i, j))
-      case _ => Left(LedgerDecodeError.ArrayLength("DRep voting thresholds", 10, xs.size))
+      case _ => Left(LedgerDecodeError.ArrayLength(DecodeField.DRepVotingThresholds, 10, xs.size))
 
 /** The protocol parameters the implemented ledger rules consult, for every era. Fields an era does
   * not have keep their genesis or zero value and are not consulted.
@@ -350,13 +350,13 @@ object ProtocolParams:
         p: ProtocolParams
     ): Either[LedgerDecodeError, ProtocolParams] =
       u.fields.get(key).fold(Right(p))(raw => CborRead.decode(raw).flatMap(f(p, _)))
-    def uint(name: String)(set: (ProtocolParams, BigInt) => ProtocolParams) =
+    def uint(name: DecodeSite)(set: (ProtocolParams, BigInt) => ProtocolParams) =
       (p: ProtocolParams, n: Node) => CborRead.uint(n, name).map(set(p, _))
-    def rat(name: String, bound: CborRead.Bound)(
+    def rat(name: DecodeSite, bound: CborRead.Bound)(
         set: (ProtocolParams, Rational) => ProtocolParams
     ) =
       (p: ProtocolParams, n: Node) => CborRead.rational(n, name, bound).map(set(p, _))
-    def exUnits(name: String)(set: (ProtocolParams, ExUnits) => ProtocolParams) =
+    def exUnits(name: DecodeSite)(set: (ProtocolParams, ExUnits) => ProtocolParams) =
       (p: ProtocolParams, n: Node) =>
         CborRead
           .arrayN(n, 2, name)
@@ -365,32 +365,32 @@ object ProtocolParams:
           )
           .map(set(p, _))
     val steps: Vector[ProtocolParams => Either[LedgerDecodeError, ProtocolParams]] = Vector(
-      field(0)(uint("minFeeA")((p, v) => p.copy(minFeeA = v))),
-      field(1)(uint("minFeeB")((p, v) => p.copy(minFeeB = v))),
-      field(2)(uint("maxBlockBodySize")((p, v) => p.copy(maxBlockBodySize = v))),
-      field(3)(uint("maxTxSize")((p, v) => p.copy(maxTxSize = v))),
-      field(4)(uint("maxBlockHeaderSize")((p, v) => p.copy(maxBlockHeaderSize = v))),
-      field(5)(uint("keyDeposit")((p, v) => p.copy(keyDeposit = v))),
-      field(6)(uint("poolDeposit")((p, v) => p.copy(poolDeposit = v))),
-      field(7)(uint("eMax")((p, v) => p.copy(eMax = v))),
-      field(8)(uint("nOpt")((p, v) => p.copy(nOpt = v))),
-      field(9)(rat("a0", CborRead.Bound.NonNegative)((p, v) => p.copy(a0 = v))),
-      field(10)(rat("rho", CborRead.Bound.Unit)((p, v) => p.copy(rho = v))),
-      field(11)(rat("tau", CborRead.Bound.Unit)((p, v) => p.copy(tau = v))),
-      field(12)(rat("d", CborRead.Bound.Unit)((p, v) => p.copy(d = v))),
+      field(0)(uint(DecodeField.MinFeeA)((p, v) => p.copy(minFeeA = v))),
+      field(1)(uint(DecodeField.MinFeeB)((p, v) => p.copy(minFeeB = v))),
+      field(2)(uint(DecodeField.MaxBlockBodySize)((p, v) => p.copy(maxBlockBodySize = v))),
+      field(3)(uint(DecodeField.MaxTxSize)((p, v) => p.copy(maxTxSize = v))),
+      field(4)(uint(DecodeField.MaxBlockHeaderSize)((p, v) => p.copy(maxBlockHeaderSize = v))),
+      field(5)(uint(DecodeField.KeyDeposit)((p, v) => p.copy(keyDeposit = v))),
+      field(6)(uint(DecodeField.PoolDeposit)((p, v) => p.copy(poolDeposit = v))),
+      field(7)(uint(DecodeField.EMax)((p, v) => p.copy(eMax = v))),
+      field(8)(uint(DecodeField.NOpt)((p, v) => p.copy(nOpt = v))),
+      field(9)(rat(DecodeField.A0, CborRead.Bound.NonNegative)((p, v) => p.copy(a0 = v))),
+      field(10)(rat(DecodeField.Rho, CborRead.Bound.Unit)((p, v) => p.copy(rho = v))),
+      field(11)(rat(DecodeField.Tau, CborRead.Bound.Unit)((p, v) => p.copy(tau = v))),
+      field(12)(rat(DecodeField.D, CborRead.Bound.Unit)((p, v) => p.copy(d = v))),
       field(13)((p, n) => nonce(n).map(v => p.copy(extraEntropy = v))),
       field(14)((p, n) =>
         CborRead
-          .arrayN(n, 2, "protocol version")
+          .arrayN(n, 2, DecodeField.ProtocolVersion)
           .flatMap(xs =>
-            (CborRead.uint(xs(0), "major"), CborRead.uint(xs(1), "minor"))
+            (CborRead.uint(xs(0), DecodeField.Major), CborRead.uint(xs(1), DecodeField.Minor))
               .mapN((a, b) => p.copy(protocolMajor = a, protocolMinor = b))
           )
       ),
-      field(15)(uint("minUTxOValue")((p, v) => p.copy(minUTxOValue = v))),
-      field(16)(uint("minPoolCost")((p, v) => p.copy(minPoolCost = v))),
+      field(15)(uint(DecodeField.MinUTxOValue)((p, v) => p.copy(minUTxOValue = v))),
+      field(16)(uint(DecodeField.MinPoolCost)((p, v) => p.copy(minPoolCost = v))),
       field(17)(
-        uint("coinsPerUTxO")((acc, v) =>
+        uint(DecodeField.CoinsPerUTxO)((acc, v) =>
           if p.protocolMajor >= 7 then acc.copy(coinsPerUTxOByte = v)
           else acc.copy(coinsPerUTxOWord = v)
         )
@@ -398,38 +398,40 @@ object ProtocolParams:
       field(18)((p, n) => costModels(n).map(m => p.copy(costModels = p.costModels ++ m))),
       field(19)((p, n) =>
         CborRead
-          .arrayN(n, 2, "prices")
+          .arrayN(n, 2, DecodeField.Prices)
           .flatMap(xs =>
             (
-              CborRead.rational(xs(0), "price mem", CborRead.Bound.NonNegative),
-              CborRead.rational(xs(1), "price steps", CborRead.Bound.NonNegative)
+              CborRead.rational(xs(0), DecodeField.PriceMem, CborRead.Bound.NonNegative),
+              CborRead.rational(xs(1), DecodeField.PriceSteps, CborRead.Bound.NonNegative)
             )
               .mapN((m, s) => p.copy(priceMem = m, priceSteps = s))
           )
       ),
-      field(20)(exUnits("maxTxExUnits")((p, v) => p.copy(maxTxExUnits = v))),
-      field(21)(exUnits("maxBlockExUnits")((p, v) => p.copy(maxBlockExUnits = v))),
-      field(22)(uint("maxValueSize")((p, v) => p.copy(maxValueSize = v))),
-      field(23)(uint("collateralPercentage")((p, v) => p.copy(collateralPercentage = v))),
-      field(24)(uint("maxCollateralInputs")((p, v) => p.copy(maxCollateralInputs = v))),
+      field(20)(exUnits(DecodeField.MaxTxExUnits)((p, v) => p.copy(maxTxExUnits = v))),
+      field(21)(exUnits(DecodeField.MaxBlockExUnits)((p, v) => p.copy(maxBlockExUnits = v))),
+      field(22)(uint(DecodeField.MaxValueSize)((p, v) => p.copy(maxValueSize = v))),
+      field(23)(uint(DecodeField.CollateralPercentage)((p, v) => p.copy(collateralPercentage = v))),
+      field(24)(uint(DecodeField.MaxCollateralInputs)((p, v) => p.copy(maxCollateralInputs = v))),
       field(25)((p, n) =>
-        rationals(n, "pool voting thresholds")
+        rationals(n, DecodeField.PoolVotingThresholds)
           .flatMap(PoolVotingThresholds.fromVector)
           .map(v => p.copy(poolVotingThresholds = v))
       ),
       field(26)((p, n) =>
-        rationals(n, "DRep voting thresholds")
+        rationals(n, DecodeField.DRepVotingThresholds)
           .flatMap(DRepVotingThresholds.fromVector)
           .map(v => p.copy(drepVotingThresholds = v))
       ),
-      field(27)(uint("committeeMinSize")((p, v) => p.copy(committeeMinSize = v))),
-      field(28)(uint("committeeMaxTermLength")((p, v) => p.copy(committeeMaxTermLength = v))),
-      field(29)(uint("govActionLifetime")((p, v) => p.copy(govActionLifetime = v))),
-      field(30)(uint("govActionDeposit")((p, v) => p.copy(govActionDeposit = v))),
-      field(31)(uint("drepDeposit")((p, v) => p.copy(drepDeposit = v))),
-      field(32)(uint("drepActivity")((p, v) => p.copy(drepActivity = v))),
+      field(27)(uint(DecodeField.CommitteeMinSize)((p, v) => p.copy(committeeMinSize = v))),
+      field(28)(
+        uint(DecodeField.CommitteeMaxTermLength)((p, v) => p.copy(committeeMaxTermLength = v))
+      ),
+      field(29)(uint(DecodeField.GovActionLifetime)((p, v) => p.copy(govActionLifetime = v))),
+      field(30)(uint(DecodeField.GovActionDeposit)((p, v) => p.copy(govActionDeposit = v))),
+      field(31)(uint(DecodeField.DrepDeposit)((p, v) => p.copy(drepDeposit = v))),
+      field(32)(uint(DecodeField.DrepActivity)((p, v) => p.copy(drepActivity = v))),
       field(33)(
-        rat("minFeeRefScriptCostPerByte", CborRead.Bound.NonNegative)((p, v) =>
+        rat(DecodeField.MinFeeRefScriptCostPerByte, CborRead.Bound.NonNegative)((p, v) =>
           p.copy(minFeeRefScriptCostPerByte = v)
         )
       )
@@ -440,28 +442,31 @@ object ProtocolParams:
         updated.copy(coinsPerUTxOByte = updated.coinsPerUTxOWord / 8)
       else updated
 
-  private def rationals(n: Node, what: String): Either[LedgerDecodeError, Vector[Rational]] =
+  private def rationals(n: Node, what: DecodeSite): Either[LedgerDecodeError, Vector[Rational]] =
     CborRead.array(n, what).flatMap(_.traverse(CborRead.rational(_, what, CborRead.Bound.Unit)))
 
   private def costModels(n: Node): Either[LedgerDecodeError, Map[Int, Vector[BigInt]]] =
     CborRead
-      .map(n, "cost models")
+      .map(n, DecodeField.CostModels)
       .flatMap(_.traverse { case (k, v) =>
         (
-          CborRead.uint(k, "language").map(_.toInt),
-          CborRead.array(v, "cost model").flatMap(_.traverse(CborRead.int(_, "cost")))
+          CborRead.uint(k, DecodeField.Language).map(_.toInt),
+          CborRead
+            .array(v, DecodeField.CostModel)
+            .flatMap(_.traverse(CborRead.int(_, DecodeField.Cost)))
         ).tupled
       }.map(_.toMap))
 
   private def nonce(n: Node): Either[LedgerDecodeError, Nonce] =
-    CborRead.array(n, "nonce").flatMap { xs =>
+    CborRead.array(n, DecodeField.Nonce).flatMap { xs =>
       xs.headOption
-        .toRight(LedgerDecodeError.Empty("nonce"))
-        .flatMap(CborRead.uint(_, "nonce tag"))
+        .toRight(LedgerDecodeError.Empty(DecodeField.Nonce))
+        .flatMap(CborRead.uint(_, DecodeField.NonceTag))
         .flatMap {
-          case t if t == 0                 => Right(Nonce.Neutral)
-          case t if t == 1 && xs.size == 2 => CborRead.bytesN(xs(1), 32, "nonce").map(Nonce.Hash(_))
-          case t => Left(LedgerDecodeError.TaggedArity("nonce", t, xs.size))
+          case t if t == 0 => Right(Nonce.Neutral)
+          case t if t == 1 && xs.size == 2 =>
+            CborRead.bytesN(xs(1), 32, DecodeField.Nonce).map(Nonce.Hash(_))
+          case t => Left(LedgerDecodeError.TaggedArity(DecodeField.Nonce, t, xs.size))
         }
     }
 

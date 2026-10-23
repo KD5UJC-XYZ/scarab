@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.byron
 
+import xyz.kd5ujc.scarab.ledger.DecodeField
 import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Node}
@@ -56,12 +57,12 @@ final case class ByronCert(
 
 object ByronCert:
   def decode(n: Node): Either[LedgerDecodeError, ByronCert] =
-    CborRead.arrayN(n, 4, "delegation certificate").flatMap { xs =>
+    CborRead.arrayN(n, 4, DecodeField.DelegationCertificate).flatMap { xs =>
       (
-        CborRead.uint(xs(0), "certificate epoch"),
-        CborRead.bytesN(xs(1), 64, "certificate issuer"),
-        CborRead.bytesN(xs(2), 64, "certificate delegate"),
-        CborRead.bytesN(xs(3), 64, "certificate signature")
+        CborRead.uint(xs(0), DecodeField.CertificateEpoch),
+        CborRead.bytesN(xs(1), 64, DecodeField.CertificateIssuer),
+        CborRead.bytesN(xs(2), 64, DecodeField.CertificateDelegate),
+        CborRead.bytesN(xs(3), 64, DecodeField.CertificateSignature)
       ).mapN(ByronCert(n.original, _, xs(0).original, _, _, _))
     }
 

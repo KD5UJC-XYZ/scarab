@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.mempack
 
+import xyz.kd5ujc.scarab.ledger.DecodeField
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Value as CborValue}
 import xyz.kd5ujc.scarab.ledger.{
@@ -85,19 +86,19 @@ object TxOutMemPack:
     else
       for
         node <- CborRead.decode(raw).leftMap(Failure.ScriptRefused(_))
-        fields <- CborRead.fields(node, "output").leftMap(Failure.ScriptRefused(_))
+        fields <- CborRead.fields(node, DecodeField.Output).leftMap(Failure.ScriptRefused(_))
         wrapped <- fields.get(3).toRight(Failure.ReferenceScriptMissing)
         inner <- wrapped.value match
           case CborValue.Tag(t, i) if t == 24 =>
-            CborRead.bytes(i, "reference script").leftMap(Failure.ScriptRefused(_))
+            CborRead.bytes(i, DecodeField.ReferenceScript).leftMap(Failure.ScriptRefused(_))
           case _ => Left(Failure.ReferenceScriptWrapper)
         script <- CborRead.decode(inner).leftMap(Failure.ScriptRefused(_))
-        two <- CborRead.arrayN(script, 2, "script").leftMap(Failure.ScriptRefused(_))
-        tag <- CborRead.uint(two(0), "script type").leftMap(Failure.ScriptRefused(_))
+        two <- CborRead.arrayN(script, 2, DecodeField.Script).leftMap(Failure.ScriptRefused(_))
+        tag <- CborRead.uint(two(0), DecodeField.ScriptType).leftMap(Failure.ScriptRefused(_))
         kind <- ScriptKind.values.find(_.tag == tag).toRight(Failure.UnknownScriptKind(tag))
         bytes <-
           if kind == ScriptKind.Native then Right(two(1).original)
-          else CborRead.bytes(two(1), "plutus script").leftMap(Failure.ScriptRefused(_))
+          else CborRead.bytes(two(1), DecodeField.PlutusScript).leftMap(Failure.ScriptRefused(_))
       yield RefScript(kind, bytes)
 
   /** The node's output for `p`, with the canonical encoding (the legacy array without an inline

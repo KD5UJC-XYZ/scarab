@@ -48,7 +48,7 @@ object CostModelDecode:
 
   def decode(n: Node, format: Format): Either[LedgerDecodeError, Map[Int, Vector[BigInt]]] =
     for
-      pairs <- CborRead.map(n, "cost models")
+      pairs <- CborRead.map(n, DecodeField.CostModels)
       models <- pairs.traverse { case (k, v) =>
         language(k, format).flatMap(l => parameters(l, v, format).tupleLeft(l))
       }
@@ -56,7 +56,7 @@ object CostModelDecode:
       _ <- Either.cond(
         format == Format.Legacy || distinct.size == models.size,
         (),
-        LedgerDecodeError.DuplicateKey("cost models")
+        LedgerDecodeError.DuplicateKey(DecodeField.CostModels)
       )
     yield distinct
 
@@ -64,16 +64,16 @@ object CostModelDecode:
     * refused above PlutusV2 (`CostModels.hs:319-323`); a `Word8` from version 9.
     */
   private def language(k: Node, format: Format): Either[LedgerDecodeError, Int] =
-    CborRead.int(k, "cost model language").flatMap { l =>
+    CborRead.int(k, DecodeField.CostModelLanguage).flatMap { l =>
       format match
         case Format.Open =>
           Either.cond(
             l >= 0 && l <= 255,
             l.toInt,
-            LedgerDecodeError.NumberOutOfRange("cost model language", l, 0, 255)
+            LedgerDecodeError.NumberOutOfRange(DecodeField.CostModelLanguage, l, 0, 255)
           )
         case Format.Legacy if l < 0 || l > 3 =>
-          Left(LedgerDecodeError.UnknownTag("cost model language", l))
+          Left(LedgerDecodeError.UnknownTag(DecodeField.CostModelLanguage, l))
         case Format.Legacy if l > 1 =>
           Left(LedgerDecodeError.UnsupportedCostModelLanguage(l.toInt))
         case Format.Legacy => Right(l.toInt)
@@ -85,7 +85,7 @@ object CostModelDecode:
       format: Format
   ): Either[LedgerDecodeError, Vector[BigInt]] =
     CborRead
-      .array(v, "cost model")
+      .array(v, DecodeField.CostModel)
       .flatMap(_.traverse(int64))
       .flatMap { values =>
         format match
@@ -101,11 +101,11 @@ object CostModelDecode:
 
   private def int64(n: Node): Either[LedgerDecodeError, BigInt] =
     CborRead
-      .int(n, "cost")
+      .int(n, DecodeField.Cost)
       .flatMap(c =>
         Either.cond(
           c >= int64Min && c <= int64Max,
           c,
-          LedgerDecodeError.NumberOutOfRange("cost", c, int64Min, int64Max)
+          LedgerDecodeError.NumberOutOfRange(DecodeField.Cost, c, int64Min, int64Max)
         )
       )

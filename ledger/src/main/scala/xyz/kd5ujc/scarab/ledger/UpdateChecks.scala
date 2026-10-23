@@ -29,9 +29,9 @@ object UpdateChecks:
       case Some(raw) =>
         for
           n <- CborRead.decode(raw).leftMap(_ => Refusal.Unreadable)
-          xs <- CborRead.arrayN(n, 2, "protocol version").leftMap(_ => Refusal.Unreadable)
-          major <- CborRead.uint(xs(0), "major").leftMap(_ => Refusal.Unreadable)
-          minor <- CborRead.uint(xs(1), "minor").leftMap(_ => Refusal.Unreadable)
+          xs <- CborRead.arrayN(n, 2, DecodeField.ProtocolVersion).leftMap(_ => Refusal.Unreadable)
+          major <- CborRead.uint(xs(0), DecodeField.Major).leftMap(_ => Refusal.Unreadable)
+          minor <- CborRead.uint(xs(1), DecodeField.Minor).leftMap(_ => Refusal.Unreadable)
           _ <- Either.cond(
             (major == params.protocolMajor + 1 && minor == 0) ||
               (major == params.protocolMajor && minor == params.protocolMinor + 1),

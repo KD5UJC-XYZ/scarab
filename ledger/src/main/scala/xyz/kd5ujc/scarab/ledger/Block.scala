@@ -67,13 +67,15 @@ object Block:
           Left(
             fail(
               LedgerDecodeError.Expected(
-                "block era",
+                DecodeField.BlockEra,
                 LedgerDecodeError.Shape.Unsigned,
                 outer(0).value
               )
             )
           )
-      era <- Era.fromBlockTag(tag).toRight(fail(LedgerDecodeError.UnknownTag("block era", tag)))
+      era <- Era
+        .fromBlockTag(tag)
+        .toRight(fail(LedgerDecodeError.UnknownTag(DecodeField.BlockEra, tag)))
       block <-
         if era == Era.Byron then
           byronEpochSlots
@@ -130,7 +132,7 @@ object Block:
           Left(
             fail(
               LedgerDecodeError.Expected(
-                "auxiliary data",
+                DecodeField.AuxiliaryData,
                 LedgerDecodeError.Shape.Map,
                 parts(3).value
               )
@@ -148,13 +150,16 @@ object Block:
       Blake2b.hash256.hash(Bytes(components.flatMap(c => Blake2b.hash256.hash(c).value)))
     )
 
-  private def fail(reason: LedgerDecodeError): ChainError = ChainError.Decode("block", reason)
+  private def fail(reason: LedgerDecodeError): ChainError =
+    ChainError.Decode(DecodeField.Block, reason)
   private def array(n: Node, size: Int): Either[ChainError, Vector[Node]] =
-    CborRead.arrayN(n, size, "block").leftMap(fail)
+    CborRead.arrayN(n, size, DecodeField.Block).leftMap(fail)
   private def list(n: Node): Either[ChainError, Vector[Node]] = n.value match
     case Value.Arr(xs) => Right(xs)
     case _ =>
-      Left(fail(LedgerDecodeError.Expected("block", LedgerDecodeError.Shape.Array, n.value)))
+      Left(
+        fail(LedgerDecodeError.Expected(DecodeField.Block, LedgerDecodeError.Shape.Array, n.value))
+      )
   private def index(n: Node, bound: Int): Either[ChainError, Int] = n.value match
     case Value.UInt(i) if i < bound => Right(i.toInt)
     case _ => Left(fail(LedgerDecodeError.TransactionIndex(n.value, bound)))

@@ -30,7 +30,7 @@ class MainnetPointerSuite extends FunSuite:
     val tx =
       CborRead
         .decode(bytes(hex))
-        .flatMap(CborRead.array(_, "transaction"))
+        .flatMap(CborRead.array(_, DecodeField.Transaction))
         .fold(e => fail(e.toString), identity)
     tx.head.original
 
@@ -200,7 +200,7 @@ class MainnetPointerSuite extends FunSuite:
     List(Address.Mode.Rigorous, Address.Mode.Strict).foreach { mode =>
       assertEquals(
         read("81010203ff", mode).map(_ => ()),
-        Left(LedgerDecodeError.AddressLength("pointer address: trailing bytes", 33, 34))
+        Left(LedgerDecodeError.AddressLength(DecodeField.PointerAddressTrailingBytes, 33, 34))
       )
     }
   }

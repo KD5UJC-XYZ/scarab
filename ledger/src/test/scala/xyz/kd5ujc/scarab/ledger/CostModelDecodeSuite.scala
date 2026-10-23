@@ -59,7 +59,7 @@ class CostModelDecodeSuite extends FunSuite:
   private val int64 = (BigInt(Long.MinValue), BigInt(Long.MaxValue))
 
   private def valueOutOfRange(v: BigInt) =
-    LedgerDecodeError.NumberOutOfRange("cost", v, int64._1, int64._2)
+    LedgerDecodeError.NumberOutOfRange(DecodeField.Cost, v, int64._1, int64._2)
 
   private def withValue(language: Int, v: BigInt, size: Int): String =
     models(BigInt(language) -> array(int(v) +: Seq.fill(size - 1)(int(1))))
@@ -234,7 +234,7 @@ class CostModelDecodeSuite extends FunSuite:
     forRows("unknownTag") { row =>
       assertEquals(
         replay(row).map(_ => ()),
-        Left(LedgerDecodeError.UnknownTag("cost model language", detailBig(row, "tag"))),
+        Left(LedgerDecodeError.UnknownTag(DecodeField.CostModelLanguage, detailBig(row, "tag"))),
         row.name
       )
     }
@@ -270,7 +270,7 @@ class CostModelDecodeSuite extends FunSuite:
     for l <- Seq(BigInt(256), BigInt(65536), BigInt(-1)) do
       assertEquals(
         proposal(models(l -> model(2))).map(_ => ()),
-        Left(LedgerDecodeError.NumberOutOfRange("cost model language", l, 0, 255))
+        Left(LedgerDecodeError.NumberOutOfRange(DecodeField.CostModelLanguage, l, 0, 255))
       )
   }
 
@@ -290,7 +290,7 @@ class CostModelDecodeSuite extends FunSuite:
   test("open: a repeated language is refused (decodeMapByKey enforces no duplicates)") {
     assertEquals(
       proposal(models(BigInt(0) -> model(2), BigInt(0) -> model(3))).map(_ => ()),
-      Left(LedgerDecodeError.DuplicateKey("cost models"))
+      Left(LedgerDecodeError.DuplicateKey(DecodeField.CostModels))
     )
   }
 

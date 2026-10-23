@@ -2,14 +2,14 @@
 package xyz.kd5ujc.scarab.ledger.byron
 
 import xyz.kd5ujc.scarab.codec.{Node, Value}
-import xyz.kd5ujc.scarab.ledger.{CborRead, LedgerDecodeError}
+import xyz.kd5ujc.scarab.ledger.{CborRead, DecodeSite, LedgerDecodeError}
 
 /** Byron decodeInteger delegates to cborg's ConsumeInteger (ledger f649f975, Decoder.hs:1523).
   * cborg 0.2.10 accepts definite noncanonical magnitudes, but its integer token parser requires the
   * one-byte tag2/tag3 header and a definite bytestring (Read.hs:1758–1850,2645–2646).
   */
 private[byron] object ByronInteger:
-  def decode(node: Node, context: String): Either[LedgerDecodeError, BigInt] = node.value match
+  def decode(node: Node, context: DecodeSite): Either[LedgerDecodeError, BigInt] = node.value match
     case Value.UInt(value) => Right(value)
     case Value.NInt(value) => Right(value)
     case Value.Tag(tag, inner) if tag == 2 || tag == 3 =>

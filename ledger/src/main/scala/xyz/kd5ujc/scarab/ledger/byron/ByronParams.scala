@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.byron
 
-import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
+import xyz.kd5ujc.scarab.ledger.{DecodeField, DecodeSite, LedgerDecodeError}
 import cats.syntax.all.*
 import io.circe.ACursor
 import xyz.kd5ujc.scarab.codec.{Node, Value}
@@ -108,7 +108,12 @@ object TxFeePolicy:
     Either.cond(
       rounded <= ByronLedger.MaxLovelace,
       TxFeePolicy(rounded * Nano, b),
-      LedgerDecodeError.NumberOutOfRange("fee summand", rounded, 0, ByronLedger.MaxLovelace)
+      LedgerDecodeError.NumberOutOfRange(
+        DecodeField.FeeSummand,
+        rounded,
+        0,
+        ByronLedger.MaxLovelace
+      )
     )
 
 /** The Byron protocol parameters (`blockVersionData` of the genesis file). */
@@ -170,7 +175,7 @@ final case class ByronParamsUpdate(
 object ByronParamsUpdate:
 
   /** A `Maybe` is a list of zero or one element. */
-  private def maybe[A](n: Node, what: String)(
+  private def maybe[A](n: Node, what: DecodeSite)(
       f: Node => Either[LedgerDecodeError, A]
   ): Either[LedgerDecodeError, Option[A]] =
     CborRead.array(n, what).flatMap {
@@ -179,9 +184,9 @@ object ByronParamsUpdate:
       case xs        => Left(LedgerDecodeError.AtMostOne(what, xs.size))
     }
 
-  private def uint(what: String)(n: Node) = CborRead.uint(n, what)
+  private def uint(what: DecodeSite)(n: Node) = CborRead.uint(n, what)
 
-  private def natural(what: String)(n: Node): Either[LedgerDecodeError, BigInt] =
+  private def natural(what: DecodeSite)(n: Node): Either[LedgerDecodeError, BigInt] =
     integer(n, what).flatMap(v =>
       Either.cond(
         v >= 0,
@@ -191,85 +196,100 @@ object ByronParamsUpdate:
     )
 
   private def softfork(n: Node): Either[LedgerDecodeError, SoftforkRule] =
-    CborRead.arrayN(n, 3, "softfork rule").flatMap { xs =>
+    CborRead.arrayN(n, 3, DecodeField.SoftforkRule).flatMap { xs =>
       (
-        CborRead.uint(xs(0), "initThd"),
-        CborRead.uint(xs(1), "minThd"),
-        CborRead.uint(xs(2), "thdDecrement")
+        CborRead.uint(xs(0), DecodeField.InitThd),
+        CborRead.uint(xs(1), DecodeField.MinThd),
+        CborRead.uint(xs(2), DecodeField.ThdDecrement)
       ).mapN(SoftforkRule(_, _, _))
     }
 
   /** `[0, tag24(bytes([summand, multiplier]))]`. */
   private def feePolicy(n: Node): Either[LedgerDecodeError, TxFeePolicy] =
     for
-      xs <- CborRead.arrayN(n, 2, "tx fee policy")
-      tag <- CborRead.uint(xs(0), "tx fee policy tag")
-      _ <- Either.cond(tag == 0, (), LedgerDecodeError.UnknownTag("tx fee policy", tag))
+      xs <- CborRead.arrayN(n, 2, DecodeField.TxFeePolicy)
+      tag <- CborRead.uint(xs(0), DecodeField.TxFeePolicyTag)
+      _ <- Either.cond(tag == 0, (), LedgerDecodeError.UnknownTag(DecodeField.TxFeePolicy, tag))
       inner <- xs(1).value match
         case Value.Tag(t, i) if t == 24 =>
-          CborRead.bytes(i, "tx fee policy").flatMap(CborRead.decode(_, ByronCbor.BodyLimits))
-        case _ => Left(LedgerDecodeError.ExpectedTag("tx fee policy", 24, xs(1).value))
-      ys <- CborRead.arrayN(inner, 2, "tx size linear")
-      a <- integer(ys(0), "summand")
-      b <- integer(ys(1), "multiplier")
+          CborRead
+            .bytes(i, DecodeField.TxFeePolicy)
+            .flatMap(CborRead.decode(_, ByronCbor.BodyLimits))
+        case _ => Left(LedgerDecodeError.ExpectedTag(DecodeField.TxFeePolicy, 24, xs(1).value))
+      ys <- CborRead.arrayN(inner, 2, DecodeField.TxSizeLinear)
+      a <- integer(ys(0), DecodeField.Summand)
+      b <- integer(ys(1), DecodeField.Multiplier)
       policy <- TxFeePolicy.fromNano(a, b)
     yield policy
 
   def decode(n: Node): Either[LedgerDecodeError, ByronParamsUpdate] =
-    (ByronTransport.parameters(n) *> CborRead.arrayN(n, 14, "protocol parameters update")).flatMap {
-      x =>
+    (ByronTransport.parameters(n) *> CborRead.arrayN(n, 14, DecodeField.ProtocolParametersUpdate))
+      .flatMap { x =>
         (
-          maybe(x(0), "scriptVersion")(uint("scriptVersion")),
-          maybe(x(1), "slotDuration")(natural("slotDuration")),
-          maybe(x(2), "maxBlockSize")(natural("maxBlockSize")),
-          maybe(x(3), "maxHeaderSize")(natural("maxHeaderSize")),
-          maybe(x(4), "maxTxSize")(natural("maxTxSize")),
-          maybe(x(5), "maxProposalSize")(natural("maxProposalSize")),
-          maybe(x(6), "mpcThd")(uint("mpcThd")),
-          maybe(x(7), "heavyDelThd")(uint("heavyDelThd")),
-          maybe(x(8), "updateVoteThd")(uint("updateVoteThd")),
-          maybe(x(9), "updateProposalThd")(uint("updateProposalThd")),
-          maybe(x(10), "updateProposalTTL")(uint("updateProposalTTL")),
-          maybe(x(11), "softforkRule")(softfork),
-          maybe(x(12), "txFeePolicy")(feePolicy),
-          maybe(x(13), "unlockStakeEpoch")(uint("unlockStakeEpoch"))
+          maybe(x(0), DecodeField.ScriptVersion)(uint(DecodeField.ScriptVersion)),
+          maybe(x(1), DecodeField.SlotDuration)(natural(DecodeField.SlotDuration)),
+          maybe(x(2), DecodeField.MaxBlockSize)(natural(DecodeField.MaxBlockSize)),
+          maybe(x(3), DecodeField.MaxHeaderSize)(natural(DecodeField.MaxHeaderSize)),
+          maybe(x(4), DecodeField.MaxTxSize)(natural(DecodeField.MaxTxSize)),
+          maybe(x(5), DecodeField.MaxProposalSize)(natural(DecodeField.MaxProposalSize)),
+          maybe(x(6), DecodeField.MpcThd)(uint(DecodeField.MpcThd)),
+          maybe(x(7), DecodeField.HeavyDelThd)(uint(DecodeField.HeavyDelThd)),
+          maybe(x(8), DecodeField.UpdateVoteThd)(uint(DecodeField.UpdateVoteThd)),
+          maybe(x(9), DecodeField.UpdateProposalThd)(uint(DecodeField.UpdateProposalThd)),
+          maybe(x(10), DecodeField.UpdateProposalTTL)(uint(DecodeField.UpdateProposalTTL)),
+          maybe(x(11), DecodeField.SoftforkRuleParam)(softfork),
+          maybe(x(12), DecodeField.TxFeePolicyParam)(feePolicy),
+          maybe(x(13), DecodeField.UnlockStakeEpoch)(uint(DecodeField.UnlockStakeEpoch))
         ).mapN(ByronParamsUpdate.apply)
-    }
+      }
 
 object ByronParams:
   /** `blockVersionData` of the Byron genesis file; numbers are decimal strings (or numbers). */
   def fromGenesis(c: ACursor): Either[LedgerDecodeError, ByronParams] =
-    def num(name: String, from: ACursor = c): Either[LedgerDecodeError, BigInt] =
-      from.downField(name).focus.toRight(LedgerDecodeError.GenesisMissingField(name)).flatMap { j =>
-        j.asString
-          .flatMap(s => Either.catchNonFatal(BigInt(s)).toOption)
-          .orElse(j.asNumber.flatMap(_.toBigInt))
-          .toRight(LedgerDecodeError.GenesisExpectedNumber(name))
-      }
-    val soft = c.downField("softforkRule")
-    val fee = c.downField("txFeePolicy")
+    def num(name: DecodeField, from: ACursor = c): Either[LedgerDecodeError, BigInt] =
+      from
+        .downField(name.label)
+        .focus
+        .toRight(LedgerDecodeError.GenesisMissingField(name))
+        .flatMap { j =>
+          j.asString
+            .flatMap(s => Either.catchNonFatal(BigInt(s)).toOption)
+            .orElse(j.asNumber.flatMap(_.toBigInt))
+            .toRight(LedgerDecodeError.GenesisExpectedNumber(name))
+        }
+    val soft = c.downField(DecodeField.SoftforkRuleParam.label)
+    val fee = c.downField(DecodeField.TxFeePolicyParam.label)
     (
-      num("scriptVersion"),
-      num("slotDuration"),
-      num("maxBlockSize"),
-      num("maxHeaderSize"),
-      num("maxTxSize"),
-      num("maxProposalSize"),
-      num("mpcThd"),
-      num("heavyDelThd"),
-      num("updateVoteThd"),
-      num("updateProposalThd"),
-      num("updateImplicit"),
-      (num("initThd", soft), num("minThd", soft), num("thdDecrement", soft)).mapN(
+      num(DecodeField.ScriptVersion),
+      num(DecodeField.SlotDuration),
+      num(DecodeField.MaxBlockSize),
+      num(DecodeField.MaxHeaderSize),
+      num(DecodeField.MaxTxSize),
+      num(DecodeField.MaxProposalSize),
+      num(DecodeField.MpcThd),
+      num(DecodeField.HeavyDelThd),
+      num(DecodeField.UpdateVoteThd),
+      num(DecodeField.UpdateProposalThd),
+      num(DecodeField.UpdateImplicit),
+      (
+        num(DecodeField.InitThd, soft),
+        num(DecodeField.MinThd, soft),
+        num(DecodeField.ThdDecrement, soft)
+      ).mapN(
         SoftforkRule(_, _, _)
       ),
-      (num("summand", fee), num("multiplier", fee)).tupled.flatMap { (a, b) =>
+      (num(DecodeField.Summand, fee), num(DecodeField.Multiplier, fee)).tupled.flatMap { (a, b) =>
         // Common/TxFeePolicy.hs:122–136: genesis JSON uses Word64 div, not the CBOR Nano round.
         Either.cond(
           a >= 0 && a < (BigInt(1) << 64),
           TxFeePolicy((a / TxFeePolicy.Nano) * TxFeePolicy.Nano, b),
-          LedgerDecodeError.NumberOutOfRange("genesis fee summand", a, 0, (BigInt(1) << 64) - 1)
+          LedgerDecodeError.NumberOutOfRange(
+            DecodeField.GenesisFeeSummand,
+            a,
+            0,
+            (BigInt(1) << 64) - 1
+          )
         )
       },
-      num("unlockStakeEpoch")
+      num(DecodeField.UnlockStakeEpoch)
     ).mapN(ByronParams.apply)

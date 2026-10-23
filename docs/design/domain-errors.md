@@ -18,7 +18,7 @@ cause and storing the resulting message in another error loses the contract.
 | Codec and crypto | `Cbor.Error`, `Bytes.HexError`, `BinaryError`; typed KES, VRF, verifier-contract and transaction-envelope failures |
 | Plutus | Typed data decoding, `ScriptProblem`, `BackendFailure`, `EvalFailure`; script rejection and evaluator unavailability remain distinct |
 | Protocol and network | Typed wire, framing, agency, handshake and payload failures; pure `NetworkError` vocabulary in `protocol`, aliased by `network` |
-| Ledger and consensus | `LedgerDecodeError` and domain-specific Byron, parameter and bootstrap failures; closed header forecast, unchecked and chain-extension reasons |
+| Ledger and consensus | `LedgerDecodeError`, whose places are the closed `DecodeField` and `DecodeSite` values rendered only in its messages, and domain-specific Byron, parameter and bootstrap failures; closed header forecast, unchecked and chain-extension reasons |
 | Storage and legacy | Typed binary and metadata decoding, snapshot differences and import causes; `StorageError.Corrupt` retains its cause and `Io` retains the exception |
 | Node and adapters | Configuration, CLI, peer, query, validation, mempool and forging errors retain the originating cases; fixtures and fuzz adapters use the same contracts |
 

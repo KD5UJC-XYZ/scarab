@@ -214,7 +214,7 @@ enum ChainError extends NodeError:
   /** The retained ledger point and pinned backing generation do not describe one state. */
   case StateAcquire(cause: NetworkError.StateAcquireFailure)
 
-  case Decode(what: String, cause: LedgerDecodeError)
+  case Decode(what: DecodeSite, cause: LedgerDecodeError)
   case NotConnected(point: ChainSync.Point, tip: ChainSync.Point)
   case RollbackBeyondAnchor(target: ChainSync.Point, anchor: ChainSync.Point)
   case NoIntersection

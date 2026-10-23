@@ -3,7 +3,8 @@ package xyz.kd5ujc.scarab.ledger.byron
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value}
-import xyz.kd5ujc.scarab.ledger.{CborRead, LedgerDecodeError}
+import xyz.kd5ujc.scarab.ledger.{CborRead, DecodeField, DecodeSite, LedgerDecodeError}
+import xyz.kd5ujc.scarab.ledger.DecodeSite.Qualifier
 
 import ByronInteger.decode as integer
 
@@ -20,22 +21,22 @@ object ByronTransport:
     for
       decoded <- CborRead.decode(body, ByronCbor.BodyLimits)
       _ <-
-        if boundary then list(decoded, "boundary body")(bytes)
+        if boundary then list(decoded, DecodeField.BoundaryBody)(bytes)
         else main(decoded)
       trailing <- CborRead.decode(extra, ByronCbor.BodyLimits)
-      fields <- tuple(trailing, 1, "extra body data")
-      attrs <- map(fields(0), "extra attributes")
+      fields <- tuple(trailing, 1, DecodeField.ExtraBodyData)
+      attrs <- map(fields(0), DecodeField.ExtraAttributes)
       _ <-
         if boundary then
           attrs.traverse_ { (key, value) =>
-            word(key, 8, "extra attribute key") *> bytes(value)
+            word(key, 8, DecodeField.ExtraAttributeKey) *> bytes(value)
           }
         else
           Either.cond(
             attrs.isEmpty,
             (),
             LedgerDecodeError.NumberOutOfRange(
-              "main extra attribute count",
+              DecodeField.MainExtraAttributeCount,
               BigInt(attrs.size),
               0,
               0
@@ -45,10 +46,10 @@ object ByronTransport:
 
   private def main(node: Node): Result[Unit] =
     for
-      fields <- tuple(node, 4, "body")
-      _ <- list(fields(0), "transaction payload")(transaction)
+      fields <- tuple(node, 4, DecodeField.Body)
+      _ <- list(fields(0), DecodeField.TransactionPayload)(transaction)
       _ <- ssc(fields(1))
-      _ <- list(fields(2), "delegation payload")(delegation)
+      _ <- list(fields(2), DecodeField.DelegationPayload)(delegation)
       _ <- update(fields(3))
     yield ()
 
@@ -56,170 +57,190 @@ object ByronTransport:
   // UTxO/Tx.hs:110–113,171–177,214–217; TxAux.hs:108–115; TxWitness.hs:118–128.
   private def transaction(node: Node): Result[Unit] =
     for
-      aux <- tuple(node, 2, "TxAux")
-      tx <- tuple(aux(0), 3, "transaction")
-      _ <- nonempty(tx(0), "transaction inputs")(input)
-      _ <- nonempty(tx(1), "transaction outputs")(output)
-      _ <- attributes(tx(2), "transaction attributes")
-      witnesses <- definite(aux(1), "witness vector") *> CborRead.array(aux(1), "witness vector")
+      aux <- tuple(node, 2, DecodeField.TxAux)
+      tx <- tuple(aux(0), 3, DecodeField.Transaction)
+      _ <- nonempty(tx(0), DecodeField.TransactionInputs)(input)
+      _ <- nonempty(tx(1), DecodeField.TransactionOutputs)(output)
+      _ <- attributes(tx(2), DecodeField.TransactionAttributes)
+      witnesses <- definite(aux(1), DecodeField.WitnessVector) *> CborRead.array(
+        aux(1),
+        DecodeField.WitnessVector
+      )
       _ <- witnesses.traverse_(witness)
     yield ()
 
   private def input(node: Node): Result[Unit] =
     for
-      fields <- tuple(node, 2, "input")
-      tag <- word(fields(0), 8, "input tag")
-      _ <- Either.cond(tag == 0, (), LedgerDecodeError.UnknownTag("input", tag))
-      inner <- nested(fields(1), "input")
-      value <- tuple(inner, 2, "input reference")
-      _ <- fixedBytes(value(0), 32, "input hash")
-      _ <- word(value(1), 16, "input index")
+      fields <- tuple(node, 2, DecodeField.Input)
+      tag <- word(fields(0), 8, DecodeField.InputTag)
+      _ <- Either.cond(tag == 0, (), LedgerDecodeError.UnknownTag(DecodeField.Input, tag))
+      inner <- nested(fields(1), DecodeField.Input)
+      value <- tuple(inner, 2, DecodeField.InputReference)
+      _ <- fixedBytes(value(0), 32, DecodeField.InputHash)
+      _ <- word(value(1), 16, DecodeField.InputIndex)
     yield ()
 
   private def witness(node: Node): Result[Unit] =
     for
-      fields <- tuple(node, 2, "witness")
-      tag <- word(fields(0), 8, "witness tag")
+      fields <- tuple(node, 2, DecodeField.Witness)
+      tag <- word(fields(0), 8, DecodeField.WitnessTag)
       keySize <- tag match
         case n if n == 0 => Right(64)
         case n if n == 2 => Right(32)
-        case n           => Left(LedgerDecodeError.UnknownTag("witness", n))
-      inner <- nested(fields(1), "witness")
-      value <- tuple(inner, 2, "witness value")
-      _ <- fixedBytes(value(0), keySize, "witness key")
-      _ <- fixedBytes(value(1), 64, "witness signature")
+        case n           => Left(LedgerDecodeError.UnknownTag(DecodeField.Witness, n))
+      inner <- nested(fields(1), DecodeField.Witness)
+      value <- tuple(inner, 2, DecodeField.WitnessValue)
+      _ <- fixedBytes(value(0), keySize, DecodeField.WitnessKey)
+      _ <- fixedBytes(value(1), 64, DecodeField.WitnessSignature)
     yield ()
 
   private def output(node: Node): Result[Unit] =
     for
-      fields <- tuple(node, 2, "output")
+      fields <- tuple(node, 2, DecodeField.Output)
       _ <- address(fields(0))
-      amount <- word(fields(1), 64, "lovelace")
+      amount <- word(fields(1), 64, DecodeField.Lovelace)
       _ <- lovelace(amount)
     yield ()
 
   private def address(node: Node): Result[Unit] =
     for
-      outer <- tuple(node, 2, "address")
-      inner <- nested(outer(0), "address")
-      _ <- word(outer(1), 32, "address CRC")
-      fields <- tuple(inner, 3, "address payload")
-      _ <- fixedBytes(fields(0), 28, "address root")
-      attrs <- attributes(fields(1), "address attributes")
+      outer <- tuple(node, 2, DecodeField.Address)
+      inner <- nested(outer(0), DecodeField.Address)
+      _ <- word(outer(1), 32, DecodeField.AddressCRC)
+      fields <- tuple(inner, 3, DecodeField.AddressPayload)
+      _ <- fixedBytes(fields(0), 28, DecodeField.AddressRoot)
+      attrs <- attributes(fields(1), DecodeField.AddressAttributes)
       _ <- attrs.traverse_ { (key, value) =>
         if key == 1 || key == 2 then
           CborRead
-            .bytes(value, "address attribute")
+            .bytes(value, DecodeField.AddressAttribute)
             .flatMap(CborRead.decode(_, ByronCbor.BodyLimits))
             .flatMap { payload =>
-              if key == 1 then canonicalBytes(payload, "derivation path")
-              else canonicalWord(payload, 32, "network magic").void
+              if key == 1 then canonicalBytes(payload, DecodeField.DerivationPath)
+              else canonicalWord(payload, 32, DecodeField.NetworkMagic).void
             }
         else Right(())
       }
-      tag <- canonicalWord(fields(2), 8, "address type")
-      _ <- Either.cond(tag == 0 || tag == 2, (), LedgerDecodeError.UnknownTag("address", tag))
+      tag <- canonicalWord(fields(2), 8, DecodeField.AddressType)
+      _ <- Either.cond(
+        tag == 0 || tag == 2,
+        (),
+        LedgerDecodeError.UnknownTag(DecodeField.Address, tag)
+      )
       _ <- ByronAddress.decode(node.original).void
     yield ()
 
   private def delegation(node: Node): Result[Unit] =
     for
-      fields <- tuple(node, 4, "delegation certificate")
-      _ <- word(fields(0), 64, "delegation epoch")
-      _ <- fields.drop(1).traverse_(fixedBytes(_, 64, "delegation key/signature"))
+      fields <- tuple(node, 4, DecodeField.DelegationCertificate)
+      _ <- word(fields(0), 64, DecodeField.DelegationEpoch)
+      _ <- fields.drop(1).traverse_(fixedBytes(_, 64, DecodeField.DelegationKeySignature))
     yield ()
 
   // Update/Payload.hs:93–98, Proposal.hs:157–172 and Vote.hs:198–209.
   private def update(node: Node): Result[Unit] =
     for
-      fields <- tuple(node, 2, "update payload")
-      _ <- maybe(fields(0), "update proposal")(proposal)
-      _ <- list(fields(1), "update votes")(vote)
+      fields <- tuple(node, 2, DecodeField.UpdatePayload)
+      _ <- maybe(fields(0), DecodeField.UpdateProposal)(proposal)
+      _ <- list(fields(1), DecodeField.UpdateVotes)(vote)
     yield ()
 
   private def proposal(node: Node): Result[Unit] =
     for
-      fields <- tuple(node, 7, "update proposal")
-      version <- tuple(fields(0), 3, "protocol version")
-      _ <- word(version(0), 16, "protocol major") *> word(version(1), 16, "protocol minor") *> word(
+      fields <- tuple(node, 7, DecodeField.UpdateProposal)
+      version <- tuple(fields(0), 3, DecodeField.ProtocolVersion)
+      _ <- word(version(0), 16, DecodeField.ProtocolMajor) *> word(
+        version(1),
+        16,
+        DecodeField.ProtocolMinor
+      ) *> word(
         version(2),
         8,
-        "protocol alternative"
+        DecodeField.ProtocolAlternative
       )
       _ <- parameters(fields(1))
-      software <- tuple(fields(2), 2, "software version")
-      _ <- text(software(0), "application name") *> word(software(1), 32, "software number")
-      metadata <- map(fields(3), "installer metadata")
+      software <- tuple(fields(2), 2, DecodeField.SoftwareVersion)
+      _ <- text(software(0), DecodeField.ApplicationName) *> word(
+        software(1),
+        32,
+        DecodeField.SoftwareNumber
+      )
+      metadata <- map(fields(3), DecodeField.InstallerMetadata)
       names <- metadata.traverse { (key, value) =>
         for
-          name <- text(key, "system tag")
-          hashes <- tuple(value, 4, "installer hashes")
-          _ <- bytes(hashes(0)) *> fixedBytes(hashes(1), 32, "installer hash") *> bytes(
+          name <- text(key, DecodeField.SystemTag)
+          hashes <- tuple(value, 4, DecodeField.InstallerHashes)
+          _ <- bytes(hashes(0)) *> fixedBytes(hashes(1), 32, DecodeField.InstallerHash) *> bytes(
             hashes(2)
           ) *> bytes(hashes(3))
         yield name.codePoints().toArray.toVector
       }
-      _ <- ascending(names, fields(3), "installer metadata")((a, b) =>
+      _ <- ascending(names, fields(3), DecodeField.InstallerMetadata)((a, b) =>
         a.zip(b).collectFirst { case (x, y) if x != y => x < y }.getOrElse(a.size < b.size)
       )
-      _ <- emptyAttributes(fields(4), "proposal attributes")
-      _ <- fixedBytes(fields(5), 64, "proposal issuer") *> fixedBytes(
+      _ <- emptyAttributes(fields(4), DecodeField.ProposalAttributes)
+      _ <- fixedBytes(fields(5), 64, DecodeField.ProposalIssuer) *> fixedBytes(
         fields(6),
         64,
-        "proposal signature"
+        DecodeField.ProposalSignature
       )
     yield ()
 
   private def vote(node: Node): Result[Unit] =
     for
-      fields <- tuple(node, 4, "update vote")
-      _ <- fixedBytes(fields(0), 64, "voter") *> fixedBytes(fields(1), 32, "proposal ID")
-      _ <- CborRead.bool(fields(2), "vote decision")
-      _ <- fixedBytes(fields(3), 64, "vote signature")
+      fields <- tuple(node, 4, DecodeField.UpdateVote)
+      _ <- fixedBytes(fields(0), 64, DecodeField.Voter) *> fixedBytes(
+        fields(1),
+        32,
+        DecodeField.ProposalID
+      )
+      _ <- CborRead.bool(fields(2), DecodeField.VoteDecision)
+      _ <- fixedBytes(fields(3), 64, DecodeField.VoteSignature)
     yield ()
 
   private[byron] def parameters(node: Node): Result[Unit] =
-    tuple(node, 14, "protocol parameters").flatMap(_.zipWithIndex.traverse_ { (value, index) =>
-      maybe(value, "parameter update") { item =>
-        index match
-          case 0 => word(item, 16, "script version").void
-          case i if i >= 1 && i <= 5 =>
-            integer(item, "natural parameter").flatMap(n =>
-              Either.cond(
-                n >= 0,
-                (),
-                LedgerDecodeError.Expected(
-                  "natural parameter",
-                  LedgerDecodeError.Shape.Unsigned,
-                  item.value
+    tuple(node, 14, DecodeField.ProtocolParameters).flatMap(_.zipWithIndex.traverse_ {
+      (value, index) =>
+        maybe(value, DecodeField.ParameterUpdate) { item =>
+          index match
+            case 0 => word(item, 16, DecodeField.ProtocolScriptVersion).void
+            case i if i >= 1 && i <= 5 =>
+              integer(item, DecodeField.NaturalParameter).flatMap(n =>
+                Either.cond(
+                  n >= 0,
+                  (),
+                  LedgerDecodeError.Expected(
+                    DecodeField.NaturalParameter,
+                    LedgerDecodeError.Shape.Unsigned,
+                    item.value
+                  )
                 )
               )
-            )
-          case i if i >= 6 && i <= 9 => portion(item)
-          case 10 | 13               => word(item, 64, "slot/epoch parameter").void
-          case 11 => tuple(item, 3, "softfork rule").flatMap(_.traverse_(portion))
-          case _  => feePolicy(item)
-      }
+            case i if i >= 6 && i <= 9 => portion(item)
+            case 10 | 13               => word(item, 64, DecodeField.SlotEpochParameter).void
+            case 11 => tuple(item, 3, DecodeField.SoftforkRule).flatMap(_.traverse_(portion))
+            case _  => feePolicy(item)
+        }
     })
 
   private def feePolicy(node: Node): Result[Unit] =
     for
-      fields <- tuple(node, 2, "fee policy")
-      tag <- word(fields(0), 8, "fee policy tag")
-      _ <- Either.cond(tag == 0, (), LedgerDecodeError.UnknownTag("fee policy", tag))
-      inner <- nested(fields(1), "linear fee")
-      coefficients <- tuple(inner, 2, "linear fee")
-      a <- integer(coefficients(0), "fee summand Nano")
-      b <- integer(coefficients(1), "fee multiplier Nano")
+      fields <- tuple(node, 2, DecodeField.FeePolicy)
+      tag <- word(fields(0), 8, DecodeField.FeePolicyTag)
+      _ <- Either.cond(tag == 0, (), LedgerDecodeError.UnknownTag(DecodeField.FeePolicy, tag))
+      inner <- nested(fields(1), DecodeField.LinearFee)
+      coefficients <- tuple(inner, 2, DecodeField.LinearFee)
+      a <- integer(coefficients(0), DecodeField.FeeSummandNano)
+      b <- integer(coefficients(1), DecodeField.FeeMultiplierNano)
       _ <- TxFeePolicy.fromNano(a, b)
     yield ()
 
   private def portion(node: Node): Result[Unit] =
-    word(node, 64, "lovelace portion").flatMap(n =>
+    word(node, 64, DecodeField.LovelacePortion).flatMap(n =>
       Either.cond(
         n <= BigInt(10).pow(15),
         (),
-        LedgerDecodeError.NumberOutOfRange("lovelace portion", n, 0, BigInt(10).pow(15))
+        LedgerDecodeError.NumberOutOfRange(DecodeField.LovelacePortion, n, 0, BigInt(10).pow(15))
       )
     )
 
@@ -227,17 +248,17 @@ object ByronTransport:
     Either.cond(
       value <= ByronLedger.MaxLovelace,
       (),
-      LedgerDecodeError.NumberOutOfRange("lovelace", value, 0, ByronLedger.MaxLovelace)
+      LedgerDecodeError.NumberOutOfRange(DecodeField.Lovelace, value, 0, ByronLedger.MaxLovelace)
     )
 
-  private def maybe(node: Node, context: String)(element: Node => Result[Unit]): Result[Unit] =
+  private def maybe(node: Node, context: DecodeSite)(element: Node => Result[Unit]): Result[Unit] =
     (definite(node, context) *> CborRead.array(node, context)).flatMap {
       case Vector()      => Right(())
       case Vector(value) => element(value)
       case values        => Left(LedgerDecodeError.AtMostOne(context, values.size))
     }
 
-  private def attributes(node: Node, context: String): Result[Vector[(BigInt, Node)]] =
+  private def attributes(node: Node, context: DecodeSite): Result[Vector[(BigInt, Node)]] =
     for
       entries <- map(node, context)
       values <- entries.traverse { (key, value) =>
@@ -246,7 +267,7 @@ object ByronTransport:
       _ <- ascending(values.map(_._1), node, context)(_ < _)
     yield values
 
-  private def emptyAttributes(node: Node, context: String): Result[Unit] =
+  private def emptyAttributes(node: Node, context: DecodeSite): Result[Unit] =
     map(node, context).flatMap(values =>
       Either.cond(
         values.isEmpty,
@@ -255,46 +276,46 @@ object ByronTransport:
       )
     )
 
-  private def ascending[A](keys: Vector[A], node: Node, context: String)(
+  private def ascending[A](keys: Vector[A], node: Node, context: DecodeSite)(
       less: (A, A) => Boolean
   ): Result[Unit] =
     Either.cond(
       keys.zip(keys.drop(1)).forall((a, b) => less(a, b)),
       (),
       LedgerDecodeError.Expected(
-        s"$context (ascending unique keys)",
+        context / Qualifier.AscendingUniqueKeys,
         LedgerDecodeError.Shape.Map,
         node.value
       )
     )
 
-  private def nested(node: Node, context: String): Result[Node] = node.value match
+  private def nested(node: Node, context: DecodeSite): Result[Node] = node.value match
     case Value.Tag(tag, inner) if tag == 24 =>
       bytes(inner) *> CborRead
         .bytes(inner, context)
         .flatMap(CborRead.decode(_, ByronCbor.BodyLimits))
     case _ => Left(LedgerDecodeError.ExpectedTag(context, 24, node.value))
 
-  private def fixedBytes(node: Node, size: Int, context: String): Result[Unit] =
+  private def fixedBytes(node: Node, size: Int, context: DecodeSite): Result[Unit] =
     bytes(node) *> CborRead.bytesN(node, size, context).void
 
-  private def text(node: Node, context: String): Result[String] =
+  private def text(node: Node, context: DecodeSite): Result[String] =
     definite(node, context) *> CborRead.text(node, context)
 
-  private def canonicalWord(node: Node, bits: Int, context: String): Result[BigInt] =
+  private def canonicalWord(node: Node, bits: Int, context: DecodeSite): Result[BigInt] =
     word(node, bits, context).flatMap(n =>
       Either.cond(
         node.original == ByronCbor.uint(n),
         n,
         LedgerDecodeError.Expected(
-          s"$context (canonical)",
+          context / Qualifier.Canonical,
           LedgerDecodeError.Shape.Unsigned,
           node.value
         )
       )
     )
 
-  private def canonicalBytes(node: Node, context: String): Result[Unit] =
+  private def canonicalBytes(node: Node, context: DecodeSite): Result[Unit] =
     bytes(node) *> CborRead.bytes(node, context).flatMap { value =>
       val size = value.size
       val expected =
@@ -303,11 +324,13 @@ object ByronTransport:
         (node.original(0) & 31) == expected,
         (),
         LedgerDecodeError
-          .Expected(s"$context (canonical)", LedgerDecodeError.Shape.Bytes, node.value)
+          .Expected(context / Qualifier.Canonical, LedgerDecodeError.Shape.Bytes, node.value)
       )
     }
 
-  private def nonempty(node: Node, context: String)(element: Node => Result[Unit]): Result[Unit] =
+  private def nonempty(node: Node, context: DecodeSite)(
+      element: Node => Result[Unit]
+  ): Result[Unit] =
     CborRead
       .array(node, context)
       .flatMap(values =>
@@ -319,55 +342,61 @@ object ByronTransport:
 
   private def ssc(node: Node): Result[Unit] =
     for
-      fields <- definite(node, "SSC payload") *> CborRead.array(node, "SSC payload")
+      fields <- definite(node, DecodeField.SSCPayload) *> CborRead.array(
+        node,
+        DecodeField.SSCPayload
+      )
       tag <- fields.headOption
-        .toRight(LedgerDecodeError.Empty("SSC payload"))
-        .flatMap(word(_, 8, "SSC tag"))
+        .toRight(LedgerDecodeError.Empty(DecodeField.SSCPayload))
+        .flatMap(word(_, 8, DecodeField.SSCTag))
       size <- tag match
         case t if t >= 0 && t <= 2 => Right(3)
         case t if t == 3           => Right(2)
-        case t                     => Left(LedgerDecodeError.UnknownTag("SSC payload", t))
+        case t                     => Left(LedgerDecodeError.UnknownTag(DecodeField.SSCPayload, t))
       _ <- Either.cond(
         fields.size == size,
         (),
-        LedgerDecodeError.ArrayLength("SSC payload", size, fields.size)
+        LedgerDecodeError.ArrayLength(DecodeField.SSCPayload, size, fields.size)
       )
       _ <- tag.toInt match
-        case 0 => set(fields(1), "commitments")(signedCommitment) *> certificates(fields(2))
-        case 1 => byteMap(fields(1), "openings")(bytes) *> certificates(fields(2))
+        case 0 =>
+          set(fields(1), DecodeField.Commitments)(signedCommitment) *> certificates(fields(2))
+        case 1 => byteMap(fields(1), DecodeField.Openings)(bytes) *> certificates(fields(2))
         case 2 =>
-          byteMap(fields(1), "shares")(n =>
-            byteMap(n, "inner shares")(v => list(v, "shares")(bytes))
+          byteMap(fields(1), DecodeField.Shares)(n =>
+            byteMap(n, DecodeField.InnerShares)(v => list(v, DecodeField.Shares)(bytes))
           ) *> certificates(fields(2))
         case _ => certificates(fields(1))
     yield ()
 
   private def signedCommitment(node: Node): Result[Unit] =
     for
-      fields <- tuple(node, 3, "signed commitment")
+      fields <- tuple(node, 3, DecodeField.SignedCommitment)
       _ <- bytes(fields(0))
-      commitment <- tuple(fields(1), 2, "commitment")
-      _ <- byteMap(commitment(0), "commitment shares")(list(_, "encrypted shares")(bytes))
-      proof <- tuple(commitment(1), 4, "secret proof")
+      commitment <- tuple(fields(1), 2, DecodeField.Commitment)
+      _ <- byteMap(commitment(0), DecodeField.CommitmentShares)(
+        list(_, DecodeField.EncryptedShares)(bytes)
+      )
+      proof <- tuple(commitment(1), 4, DecodeField.SecretProof)
       _ <- proof.take(3).traverse_(bytes)
-      _ <- list(proof(3), "secret commitments")(bytes)
+      _ <- list(proof(3), DecodeField.SecretCommitments)(bytes)
       _ <- bytes(fields(2))
     yield ()
 
   private def certificates(node: Node): Result[Unit] =
-    set(node, "VSS certificates") { certificate =>
+    set(node, DecodeField.VSSCertificates) { certificate =>
       for
-        fields <- tuple(certificate, 4, "VSS certificate")
+        fields <- tuple(certificate, 4, DecodeField.VSSCertificate)
         _ <- bytes(fields(0))
-        _ <- word(fields(1), 64, "VSS epoch")
+        _ <- word(fields(1), 64, DecodeField.VSSEpoch)
         _ <- bytes(fields(2)) *> bytes(fields(3))
       yield ()
     }
 
-  private def byteMap(node: Node, context: String)(value: Node => Result[Unit]): Result[Unit] =
+  private def byteMap(node: Node, context: DecodeSite)(value: Node => Result[Unit]): Result[Unit] =
     map(node, context).flatMap(_.traverse_ { (key, item) => bytes(key) *> value(item) })
 
-  private def set(node: Node, context: String)(element: Node => Result[Unit]): Result[Unit] =
+  private def set(node: Node, context: DecodeSite)(element: Node => Result[Unit]): Result[Unit] =
     node.value match
       // The native dropSet discards decodeTag, without requiring tag 258.
       case Value.Tag(_, inner) =>
@@ -375,33 +404,33 @@ object ByronTransport:
       case _ =>
         Left(
           LedgerDecodeError.Expected(
-            s"$context (tagged array)",
+            context / Qualifier.TaggedArray,
             LedgerDecodeError.Shape.Array,
             node.value
           )
         )
 
-  private def list(node: Node, context: String)(element: Node => Result[Unit]): Result[Unit] =
+  private def list(node: Node, context: DecodeSite)(element: Node => Result[Unit]): Result[Unit] =
     CborRead.array(node, context).flatMap { values =>
       Either.cond(
         node.original.size > 0 && node.original(0) == 0x9f.toByte,
         (),
         LedgerDecodeError
-          .Expected(s"$context (indefinite)", LedgerDecodeError.Shape.Array, node.value)
+          .Expected(context / Qualifier.Indefinite, LedgerDecodeError.Shape.Array, node.value)
       ) *>
         values.traverse_(element)
     }
 
-  private def tuple(node: Node, size: Int, context: String): Result[Vector[Node]] =
+  private def tuple(node: Node, size: Int, context: DecodeSite): Result[Vector[Node]] =
     definite(node, context) *> CborRead.arrayN(node, size, context)
 
-  private def map(node: Node, context: String): Result[Vector[(Node, Node)]] =
+  private def map(node: Node, context: DecodeSite): Result[Vector[(Node, Node)]] =
     definite(node, context) *> CborRead.map(node, context)
 
   private def bytes(node: Node): Result[Unit] =
-    definite(node, "Byron bytes") *> CborRead.bytes(node, "Byron bytes").void
+    definite(node, DecodeField.ByronBytes) *> CborRead.bytes(node, DecodeField.ByronBytes).void
 
-  private def word(node: Node, bits: Int, context: String): Result[BigInt] =
+  private def word(node: Node, bits: Int, context: DecodeSite): Result[BigInt] =
     CborRead.uint(node, context).flatMap { value =>
       val maximum = (BigInt(1) << bits) - 1
       Either.cond(
@@ -411,7 +440,7 @@ object ByronTransport:
       )
     }
 
-  private def definite(node: Node, context: String): Result[Unit] =
+  private def definite(node: Node, context: DecodeSite): Result[Unit] =
     Either.cond(
       node.original.size > 0 && (node.original(0) & 31) != 31,
       (),

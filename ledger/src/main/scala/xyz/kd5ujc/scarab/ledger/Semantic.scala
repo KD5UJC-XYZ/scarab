@@ -71,7 +71,7 @@ private[ledger] object Semantic:
     */
   private def ratio(n: Node): Semantic =
     CborRead
-      .ratio(n, "rational")
+      .ratio(n, DecodeField.Rational)
       .toOption
       .filter(CborRead.fits(_, CborRead.Bound.NonNegative))
       .fold(Opaque(n.original))(Ratio(_))

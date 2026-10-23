@@ -13,9 +13,12 @@ final case class Anchor(url: String, hash: Bytes)
 object Anchor:
   def decode(n: Node): Either[LedgerDecodeError, Anchor] =
     CborRead
-      .arrayN(n, 2, "anchor")
+      .arrayN(n, 2, DecodeField.Anchor)
       .flatMap(xs =>
-        (CborRead.text(xs(0), "anchor url"), CborRead.bytesN(xs(1), 32, "anchor hash"))
+        (
+          CborRead.text(xs(0), DecodeField.AnchorUrl),
+          CborRead.bytesN(xs(1), 32, DecodeField.AnchorHash)
+        )
           .mapN(Anchor(_, _))
       )
 
