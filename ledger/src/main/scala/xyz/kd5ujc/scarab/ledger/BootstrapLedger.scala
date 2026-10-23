@@ -14,6 +14,28 @@ import xyz.kd5ujc.scarab.ledger.{GenDelegPair, LedgerView, Nonce, StakeView}
   */
 final case class ParamUpdate(fields: Map[Int, Bytes])
 
+object ParamUpdate:
+  private val CostModelsField = 18
+
+  /** The update of a transaction or proposal from its map of field index to value. The cost models
+    * of field 18 are checked by the rule of the decoder version of the era ([[CostModelDecode]]);
+    * the other fields are kept as they are and read when the update is applied.
+    */
+  def read(
+      fields: Vector[(Node, Node)],
+      costModels: CostModelDecode.Format
+  ): Either[LedgerDecodeError, ParamUpdate] =
+    fields
+      .traverse { case (k, v) =>
+        for
+          index <- CborRead.uint(k, "parameter index").map(_.toInt)
+          _ <-
+            if index == CostModelsField then CostModelDecode.decode(v, costModels).void
+            else Right(())
+        yield index -> v.original
+      }
+      .map(kvs => ParamUpdate(kvs.toMap))
+
 /** The protocol parameters the bootstrap ledger tracks: those that header validation reads. */
 final case class LiteParams(
     protocolVersion: (BigInt, BigInt),
@@ -269,12 +291,9 @@ object LiteLedger:
       updates <- kvs.traverse { case (k, v) =>
         for
           key <- CborRead.bytesN(k, 28, "genesis key hash")
-          fs <- CborRead
-            .map(v, "parameter update")
-            .flatMap(_.traverse { case (fk, fv) =>
-              CborRead.uint(fk, "parameter index").map(_.toInt -> fv.original)
-            })
-        yield key -> ParamUpdate(fs.toMap)
+          fs <- CborRead.map(v, "parameter update")
+          update <- ParamUpdate.read(fs, CostModelDecode.Format.Legacy)
+        yield key -> update
       }
       epoch <- CborRead.uint(xs(1), "update epoch")
     yield Effect.Proposal(updates.toMap, epoch)

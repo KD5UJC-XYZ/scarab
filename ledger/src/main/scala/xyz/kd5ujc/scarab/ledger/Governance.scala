@@ -114,12 +114,7 @@ object Proposal:
               GovActionId.optional(xs(1)),
               CborRead
                 .map(xs(2), "parameter update")
-                .flatMap(
-                  _.traverse { case (k, v) =>
-                    CborRead.uint(k, "parameter index").map(_.toInt -> v.original)
-                  }
-                )
-                .map(kvs => ParamUpdate(kvs.toMap)),
+                .flatMap(ParamUpdate.read(_, CostModelDecode.Format.Open)),
               optionalHash(xs(3))
             ).mapN(GovAction.ParameterChange(_, _, _))
           case (1, 3) =>
