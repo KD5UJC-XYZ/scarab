@@ -51,7 +51,7 @@ object MuxThroughputBench extends IOApp.Simple:
           }
         }
       }
-      .rescue(e => IO.raiseError(new RuntimeException(e.message)))
+      .rescue(e => IO.raiseError(NetworkError.InternalFailure(e)))
 
   /** One message of `size` bytes, as a node-to-client answer: the receiver's buffer grows with
     * every SDU until the message is complete. Milliseconds from send to decoded.
@@ -78,7 +78,7 @@ object MuxThroughputBench extends IOApp.Simple:
           }
         }
       }
-      .rescue(e => IO.raiseError(new RuntimeException(e.message)))
+      .rescue(e => IO.raiseError(NetworkError.InternalFailure(e)))
 
   private def median(xs: List[Double]): Double = xs.sorted.apply(xs.size / 2)
 

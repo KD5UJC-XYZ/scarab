@@ -11,11 +11,29 @@ import xyz.kd5ujc.scarab.protocol.LocalStateQuery.{Failure, Message, State, Targ
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
 
+/** How the server side of a test connection ended: with the end it reported, with the network error
+  * it raised, or because the test canceled its fiber.
+  */
+private enum ServerEnd:
+  case Finished(end: LocalTxSubmissionServer.End)
+  case Failed(cause: NetworkError)
+  case Canceled
+
+  /** The network error that ended the server, whether it was raised or reported as the end. */
+  def networkError: Option[NetworkError] = this match
+    case Finished(LocalTxSubmissionServer.End.ConnectionClosed(cause)) => Some(cause)
+    case Failed(cause)                                                 => Some(cause)
+    case _                                                             => None
+
 /** A node-to-client LocalStateQuery client against the server over an in-memory bearer, with a toy
   * ledger: the "state" is a number, a query answers with it, and the chain has three points.
   */
 class LocalStateQueryServerSuite extends FailsOnUncaught:
   private val magic = 42L
+
+  /** The query the toy source does not answer. */
+  private val unknownQuery = "unknown query"
+
   private def point(n: Int): Point =
     Point.Block(UInt64.saturating(n), Bytes(Vector.fill(32)(n.toByte)))
   private def item(n: Int): Bytes = Bytes(Vector(0x18, n.toByte))
@@ -68,7 +86,7 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
                       if query == Bytes(Vector(0x01)) then Right(Right(item(state)))
                       else if query == Bytes(Vector(0x03)) then Right(Right(large))
                       else if query == largeQuery then Right(Right(item(state)))
-                      else Right(Left(LocalStateQueryServer.Refusal.Unsupported("unknown query")))
+                      else Right(Left(LocalStateQueryServer.Refusal.Unsupported(unknownQuery)))
                     )
               }
             })
@@ -101,19 +119,22 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
   private def send(ch: MuxChannel[IO], state: State, m: Message)(using
       Handle[IO, NetworkError]
   ): IO[Unit] =
-    IO.fromEither(
-      LocalStateQuery
-        .encode(state, Role.Client, m)
-        .left
-        .map(error => RuntimeException(error.message))
-    ).flatMap(ch.send)
+    LocalStateQuery
+      .encode(state, Role.Client, m)
+      .fold(
+        error =>
+          Handle[IO, NetworkError].raise(
+            NetworkError.IllegalTransition(Protocols.LocalStateQuery, error)
+          ),
+        ch.send
+      )
 
   private def receive(ch: MuxChannel[IO], state: State)(using Handle[IO, NetworkError]) =
     ch.recv(LocalStateQuery.MaxResultBytes)(LocalStateQuery.decodePrefix(state, Role.Server, _))
 
   private def session[A](t: Toy, versions: Vector[Int] = Vector(16, 23))(
       body: (MuxChannel[IO], MuxChannel[IO]) => Handle[IO, NetworkError] ?=> IO[A]
-  ): IO[(A, String)] =
+  ): IO[(A, ServerEnd)] =
     Resource.eval(Bearer.inMemory[IO]()).use { (clientEnd, serverEnd) =>
       Handle
         .allow[NetworkError](
@@ -124,9 +145,9 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
               _ => IO.pure(LocalTxSubmissionServer.Response.Accepted),
               Some(t.source)
             )
-            .map(_.message)
+            .map(ServerEnd.Finished(_))
         )
-        .rescue(e => IO.pure(e.message))
+        .rescue(e => IO.pure(ServerEnd.Failed(e)))
         .start
         .flatMap { server =>
           t.cancelServer.set(Some(server.cancel)) *>
@@ -150,28 +171,31 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
                       tx <- mux.channel(6)
                       out <- body(lsq, tx)
                       // finish the submission protocol too, so the server ends by itself
-                      done <- IO.fromEither(
-                        LocalTxSubmission
-                          .encode(
-                            LocalTxSubmission.State.Idle,
-                            Role.Client,
-                            LocalTxSubmission.Message.Done
-                          )
-                          .left
-                          .map(error => RuntimeException(error.message))
-                      )
+                      done <- LocalTxSubmission
+                        .encode(
+                          LocalTxSubmission.State.Idle,
+                          Role.Client,
+                          LocalTxSubmission.Message.Done
+                        )
+                        .fold(
+                          error =>
+                            Handle[IO, NetworkError].raise(
+                              NetworkError.IllegalTransition(Protocols.LocalTxSubmission, error)
+                            ),
+                          IO.pure
+                        )
                       _ <- tx.send(done)
                       _ <- lsq.flush
                       _ <- tx.flush
                     yield out
                   }
               }
-              .rescue(e => IO.raiseError[A](RuntimeException(e.message)))
+              .rescue(e => IO.raiseError[A](NetworkError.InternalFailure(e)))
               .flatMap(out =>
                 server.join.flatMap {
                   case Outcome.Succeeded(result) => result.map(out -> _)
                   case Outcome.Errored(error)    => IO.raiseError(error)
-                  case Outcome.Canceled()        => IO.pure(out -> "server canceled")
+                  case Outcome.Canceled()        => IO.pure(out -> ServerEnd.Canceled)
                 }
               )
         }
@@ -212,7 +236,7 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
           assertEquals(r3, Message.Result(item(1)))
           assertEquals(f2, Message.Failed(Failure.PointTooOld))
           assertEquals(released, 3)
-          assert(ended.nonEmpty)
+          assertEquals(ended, ServerEnd.Finished(LocalTxSubmissionServer.End.ClientFinished))
         }
       }
     }
@@ -253,7 +277,7 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
           yield answer
         }.map { case (answer, ended) =>
           assertEquals(answer, Message.Result(item(3)))
-          assert(!ended.contains("limit"), ended)
+          assertEquals(ended, ServerEnd.Finished(LocalTxSubmissionServer.End.ClientFinished))
         }
       }
       .timeout(60.seconds)
@@ -292,7 +316,10 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
         yield ()
       }.flatMap { case (_, ended) =>
         t.released.get.map { releases =>
-          assert(ended.contains("query not answered: unsupported query unknown query"), ended)
+          assertEquals(
+            ended.networkError,
+            Some(NetworkError.QueryRefused(LocalStateQueryServer.Refusal.Unsupported(unknownQuery)))
+          )
           assertEquals(releases, 1)
         }
       }
@@ -310,7 +337,7 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
           // the release is recorded by the cancelled fiber, so wait for the record, not for 20 ms
           released <- Wait.until(t.released.get)(_ == 1)
         yield assertEquals(released, 1)
-      }.map { case (_, ended) => assertEquals(ended, "server canceled") }
+      }.map { case (_, ended) => assertEquals(ended, ServerEnd.Canceled) }
     }
   }
 
