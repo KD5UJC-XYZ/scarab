@@ -136,7 +136,7 @@ class PromotionTests(unittest.TestCase):
         fx.git('checkout', '-q', '-B', 'dev', self.main)
         self.alpha, self.alpha_receipt = self.propose('0.2.0-alpha.0', 'alpha', self.main)
 
-    def propose(self, version, channel, source):
+    def propose(self, version, channel, source, extra=None):
         """Commit a generated proposal for `source` on the current branch."""
         fx = self.fixture
         notes_path = f'.release/notes/{version}.md'
@@ -154,7 +154,7 @@ class PromotionTests(unittest.TestCase):
                    'generatedFiles': {notes_path: fragments.identity(notes), '.release-please-manifest.json': fragments.identity(manifest)},
                    'pullRequestTitle': f'chore: release {version}', 'pullRequestBodySha256': '0' * 64}
         cut = fx.commit({notes_path: notes.decode(), '.release-please-manifest.json': manifest.decode(),
-                         '.release/proposal.json': receipt, f'.release/proposals/{version}.json': receipt}, 'proposal ' + version)
+                         '.release/proposal.json': receipt, f'.release/proposals/{version}.json': receipt, **(extra or {})}, 'proposal ' + version)
         return cut, receipt
 
     def check(self, branch, cut, base=None, same_repo=True):
@@ -233,6 +233,32 @@ class PromotionTests(unittest.TestCase):
         self.assertTrue(self.check('main', self.alpha))
         with self.assertRaisesRegex(ValueError, 'fork'):
             self.check('dev', self.alpha, same_repo=False)
+
+    def test_junk_receipt_restored_by_a_valid_proposal_commit_is_refused(self):
+        junk = '.release/proposals/9.9.9.json'
+        self.fixture.git('checkout', '-q', '-B', 'junk', self.main)
+        source = self.fixture.commit({junk: {'x': 1}})
+        self.fixture.git('rm', '-q', junk)
+        self.fixture.git('commit', '-qm', 'drop junk')
+        cut, _ = self.propose('0.2.0-alpha.0', 'alpha', source, extra={junk: {'x': 1}})
+        with self.assertRaises(ValueError):
+            self.check('dev', cut)
+
+    def test_resetting_proposal_json_to_an_older_retained_receipt_is_refused(self):
+        source = self.fixture.commit({'changes/8-b.md': '### Fixed (#8)\n\n- More.\n'})
+        beta, _ = self.propose('0.2.0-beta.0', 'beta', source)
+        self.assertTrue(self.check('dev', beta, base=self.alpha))
+        cut = self.fixture.commit({'.release/proposal.json': self.alpha_receipt})
+        with self.assertRaisesRegex(ValueError, 'not the highest'):
+            self.check('dev', cut, base=beta)
+
+    def test_moving_a_receipt_out_of_the_protected_paths_is_seen(self):
+        self.fixture.git('checkout', '-q', '-B', 'moved', self.alpha)
+        (self.repo / 'docs').mkdir()
+        self.fixture.git('mv', '.release/proposals/0.2.0-alpha.0.json', 'docs/old-receipt.json')
+        self.fixture.git('commit', '-qm', 'move')
+        with self.assertRaises(ValueError):
+            self.check('dev', self.fixture.git('rev-parse', 'HEAD'), base=self.alpha)
 
     def test_command_line_checks_carried_receipts(self):
         base = [sys.executable, str(Path(verifier.__file__)), '--repo', str(self.repo), '--cut', self.alpha,
