@@ -48,11 +48,22 @@ private[network] object ChainSyncPipeline:
       awaiting <- Resource.eval(Ref.of[F, Boolean](false))
       observer <- Resource.eval(Ref.of[F, Option[ChainSyncClient.Observer[F]]](None))
       terminal <- Resource.eval(Ref.of[F, Boolean](false))
+      claimed <- Resource.eval(Ref.of[F, Boolean](false))
       failed <- Resource.eval(Deferred[F, NetworkError])
       sending <- Resource.eval(Mutex[F])
       pipeline <-
+        // The first failure is claimed, the bearer is aborted, and only then is the failure
+        // published through `failed`: no caller (collector, later call, `idle`) observes a failure
+        // whose abort has not completed, so the multiplexer is already aborted when the typed
+        // cause reaches a caller. Publication is guaranteed even if the abort callback is defective.
         def terminate(error: NetworkError): F[Unit] =
-          F.uncancelable(_ => failed.complete(error).flatMap(first => abort(error).whenA(first)))
+          F.uncancelable(_ =>
+            claimed
+              .getAndSet(true)
+              .flatMap(already =>
+                abort(error).guarantee(failed.complete(error).void).unlessA(already)
+              )
+          )
         def wire[A](body: Raise[F, NetworkError] ?=> F[A])(using Raise[F, NetworkError]): F[A] =
           Fibers.scoped[F, NetworkError, A](NetworkError.Defect(_))(body).flatMap {
             case Left(error)  => terminate(error) *> error.raise[F, A]
