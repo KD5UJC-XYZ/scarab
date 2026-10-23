@@ -7,7 +7,7 @@ import sys
 import time
 from .. import metrics as node_metrics
 from ..cluster import up
-from ..compare import compare_once
+from ..compare import compare_or_error
 from ..consensus import arguments
 from ..follower import own_build
 from ..util import ENTRY, QUERY_PORT, data_root, docker, read_log
@@ -79,12 +79,11 @@ def soak(args):
             if follower.poll() is not None:
                 results.append({"error": f"follower exited with {follower.returncode}"})
                 break
-            r = compare_once(args.name)
-            if r is not None:
-                results.append(r)
-                print(json.dumps({k: r.get(k) for k in ("tip", "matched", "differenceCount", "error")}), flush=True)
-                with (root / "compare.jsonl").open("a") as f:
-                    f.write(json.dumps(r) + "\n")
+            r = compare_or_error(args.name)
+            results.append(r)
+            print(json.dumps({k: r.get(k) for k in ("tip", "matched", "differenceCount", "error")}), flush=True)
+            with (root / "compare.jsonl").open("a") as f:
+                f.write(json.dumps(r) + "\n")
     finally:
         loader.terminate()
         loader.wait()
@@ -99,6 +98,7 @@ def soak(args):
     summary = {
         "comparisons": len([r for r in results if "matched" in r]),
         "matched": len([r for r in results if r.get("matched")]),
+        "comparisonErrors": len([r for r in results if "error" in r]),
         "firstMismatch": next((r for r in results if r.get("matched") is False or "error" in r), None),
         "followerAliveAtEnd": follower_alive,
         "epochsEntered": [e["epoch"] for e in log if e.get("event") == "epoch"],
@@ -125,6 +125,8 @@ def soak(args):
     print(json.dumps(summary, indent=2))
     if not summary["comparisons"]:
         failures.append("no ledger comparison completed")
+    if summary["comparisonErrors"]:
+        failures.append(f"{summary['comparisonErrors']} ledger comparison errors")
     if summary["matched"] != summary["comparisons"]:
         failures.append("ledger mismatch or comparison error")
     if summary["errors"]:
