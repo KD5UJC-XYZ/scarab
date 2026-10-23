@@ -1,23 +1,33 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import io.circe.{Decoder, Json}
+import io.circe.parser.parse
+import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.protocol.Era
 
 /** Field 18 of a protocol-parameter update, decoded by the rule of the era's decoder version
-  * (`CostModels.hs:302-337,426-440`, cardano-ledger `f649f975`). The cases are derived from those
-  * lines, entering through the transaction body (Alonzo and Babbage, decoder version below 9) and
-  * the Conway parameter-change proposal (version 9 and above).
+  * (`CostModels.hs:302-337,426-440`, cardano-ledger `f649f975`). The pre-Conway cases enter through
+  * the transaction (Alonzo, decoder version 5, and Babbage, decoder version 7); the Conway cases
+  * through the parameter-change proposal (version 9 and above).
   *
-  * Conway ("open") cases were run against the reference: each Conway transaction body wrapped as
-  * `[body, {}, true, null]` in a `Tx ConwayEra` envelope and read by `cardano-cli debug transaction
-  * view` of the cardano-reference-11.1.3 image (cardano-cli 11.2.3.0). It accepted a short PlutusV1
-  * list, a 300-entry PlutusV2 list, a short PlutusV3 list, unknown languages 4 and 255 (also an
-  * empty one) and the `Int64` bounds. It refused language 256 and -1 ("expected word8"), a value of
-  * 2^63 or -2^63-1 in a known and in an unknown language ("expected int"), and a repeated language
-  * ("Final number of elements: 1 does not match the total count that was decoded: 2"). The
-  * pre-Conway ("legacy") cases are derived from `CostModels.hs:306-337` and were not run against
-  * the reference.
+  * The pre-Conway ("legacy") cases replay `fixtures/reference/cost-models/legacy-update.json`: 49
+  * whole transactions, each measured in the Alonzo and in the Babbage era against the unchanged
+  * released ledger decoders at those decoder versions (`scripts/oracle/cost-models`, provenance in
+  * the fixture directory). Every row is decoded here through `Tx.fromEnvelope` for both eras and
+  * must agree with the retained verdict, with the typed error its `expect` category and `detail`
+  * name, and, when accepted, with the cost models the reference kept.
+  *
+  * The Conway ("open") cases were run against the reference: each Conway transaction body wrapped
+  * as `[body, {}, true, null]` in a `Tx ConwayEra` envelope and read by `cardano-cli debug
+  * transaction view` of the cardano-reference-11.1.3 image (cardano-cli 11.2.3.0). It accepted a
+  * short PlutusV1 list, a 300-entry PlutusV2 list, a short PlutusV3 list, unknown languages 4 and
+  * 255 (also an empty one) and the `Int64` bounds. It refused language 256 and -1 ("expected
+  * word8"), a value of 2^63 or -2^63-1 in a known and in an unknown language ("expected int"), and
+  * a repeated language ("Final number of elements: 1 does not match the total count that was
+  * decoded: 2").
   */
 class CostModelDecodeSuite extends FunSuite:
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
@@ -35,18 +45,6 @@ class CostModelDecodeSuite extends FunSuite:
   private def model(size: Int): String = array(Seq.fill(size)(int(1)))
   private def models(entries: (BigInt, String)*): String =
     head(5, entries.size) + entries.map((k, m) => int(k) + m).mkString
-
-  private val genesisKey = "581c" + "11" * 28
-
-  /** A transaction body whose update proposal sets only the cost models. */
-  private def body(costModels: String): Bytes =
-    hex(
-      "a4" + "00" + "80" + "01" + "80" + "02" + "00" +
-        "06" + "82" + "a1" + genesisKey + "a1" + "12" + costModels + "01"
-    )
-
-  private def decodedLegacy(costModels: String) =
-    TxBody.decode(body(costModels), Address.Mode.Rigorous).map(_.update)
 
   private val account = "581d" + "e0" + "22" * 28
   private val anchor = "82" + "6161" + "5820" + "33" * 32
@@ -66,64 +64,182 @@ class CostModelDecodeSuite extends FunSuite:
   private def withValue(language: Int, v: BigInt, size: Int): String =
     models(BigInt(language) -> array(int(v) +: Seq.fill(size - 1)(int(1))))
 
-  private def appliedFields(costModels: String) =
-    decodedLegacy(costModels).map(_.map(_.proposals.values.head.fields))
+  /** One retained transaction: the original bytes, the typed refusal Scarab must give (`expect`
+    * names the case, `detail` its fields) and the reference verdict, which is either accepted with
+    * the cost models it kept or its diagnostic.
+    */
+  private final case class Row(
+      name: String,
+      era: Era,
+      expect: String,
+      detail: Json,
+      tx: Bytes,
+      reference: Json
+  ):
+    def accepted: Boolean =
+      reference.hcursor.get[Boolean]("accepted").fold(e => fail(e.message), identity)
 
-  // Before decoder version 9 (Alonzo, Babbage): CostModels.hs:306-337.
-
-  test("legacy: exactly 166 PlutusV1 and 175 PlutusV2 parameters are accepted") {
-    val both = models(BigInt(0) -> model(166), BigInt(1) -> model(175))
-    val read = appliedFields(both).fold(e => fail(e.message), identity)
-    assertEquals(read.map(_.keySet), Some(Set(18)))
-  }
-
-  test("legacy: a PlutusV1 list of another length is refused") {
-    for n <- Seq(0, 165, 167) do
-      assertEquals(
-        decodedLegacy(models(BigInt(0) -> model(n))).map(_ => ()),
-        Left(LedgerDecodeError.CostModelLength(0, 166, n)),
-        s"V1 with $n"
+  private lazy val rows: Vector[Row] =
+    val parsed =
+      parse(Files.readString(Path.of("fixtures/reference/cost-models/legacy-update.json")))
+        .fold(e => fail(e.message), identity)
+    parsed.asArray.getOrElse(fail("the fixture is not an array")).map { row =>
+      val c = row.hcursor
+      def field[A: Decoder](name: String): A = c.get[A](name).fold(e => fail(e.message), identity)
+      Row(
+        field[String]("name"),
+        field[String]("era") match
+          case "alonzo"  => Era.Alonzo
+          case "babbage" => Era.Babbage
+          case other     => fail(s"unknown era $other"),
+        field[String]("expect"),
+        field[Json]("detail"),
+        hex(field[String]("tx")),
+        field[Json]("reference")
       )
+    }
+
+  private def forRows(expect: String)(check: Row => Unit): Unit =
+    val selected = rows.filter(_.expect == expect)
+    assert(selected.nonEmpty, s"no $expect rows")
+    assertEquals(selected.count(_.era == Era.Alonzo), selected.count(_.era == Era.Babbage), expect)
+    selected.foreach(check)
+
+  private def detailInt(row: Row, field: String): Int =
+    row.detail.hcursor.get[Int](field).fold(e => fail(s"${row.name}: ${e.message}"), identity)
+
+  private def detailBig(row: Row, field: String): BigInt =
+    row.detail.hcursor.get[String](field).fold(e => fail(s"${row.name}: ${e.message}"), BigInt(_))
+
+  private def replay(row: Row): Either[LedgerDecodeError, Tx] = Tx.fromEnvelope(row.tx, row.era)
+
+  private def accepted(row: Row): Tx =
+    replay(row).fold(e => fail(s"${row.name}: ${e.message}"), identity)
+
+  /** The cost models the reference kept, by language id (PlutusV1 0, PlutusV2 1). */
+  private def referenceModels(row: Row): Map[Int, Vector[BigInt]] =
+    val proposals = row.reference.hcursor.downField("proposals").values.toVector.flatten
+    assertEquals(proposals.size, 1, row.name)
+    val models = proposals.head.hcursor.downField("costModels")
+    assert(models.downField("unknown").values.forall(_.isEmpty), s"${row.name}: unknown languages")
+    models
+      .downField("known")
+      .values
+      .toVector
+      .flatten
+      .map { m =>
+        val language = m.hcursor.get[String]("language").fold(e => fail(e.message), identity) match
+          case "PlutusV1" => 0
+          case "PlutusV2" => 1
+          case other      => fail(s"${row.name}: $other")
+        val values = m.hcursor
+          .downField("values")
+          .values
+          .toVector
+          .flatten
+          .map(_.asNumber.flatMap(_.toBigInt).getOrElse(fail(s"${row.name}: parameter")))
+        language -> values
+      }
+      .toMap
+
+  /** The field 18 bytes of the only proposal of the decoded transaction. */
+  private def field18(tx: Tx, name: String): Bytes =
+    val fields = tx.body.update.toVector.flatMap(_.proposals.values).map(_.fields)
+    assertEquals(fields.size, 1, name)
+    fields.head.getOrElse(18, fail(s"$name: no field 18"))
+
+  /** The cost models Scarab reads from those bytes by the legacy rule. */
+  private def keptModels(tx: Tx, name: String): Map[Int, Vector[BigInt]] =
+    CborRead
+      .decode(field18(tx, name))
+      .flatMap(CostModelDecode.decode(_, CostModelDecode.Format.Legacy))
+      .fold(e => fail(s"$name: ${e.message}"), identity)
+
+  // Before decoder version 9 (Alonzo, Babbage): CostModels.hs:306-337, replayed from the reference.
+
+  test(
+    "legacy: the corpus has the same cases in both eras, each with a retained reference verdict"
+  ) {
+    assertEquals(rows.size, 98)
+    val named = rows.groupBy(_.era).view.mapValues(_.map(_.name.split('/').last).toSet).toMap
+    assertEquals(named(Era.Alonzo), named(Era.Babbage))
+    assertEquals(rows.map(_.expect).toSet.size, 6)
+    rows.foreach(row => assertEquals(row.accepted, row.expect == "accepted", row.name))
   }
 
-  test("legacy: a PlutusV2 list of another length is refused") {
-    for n <- Seq(0, 174, 176) do
-      assertEquals(
-        decodedLegacy(models(BigInt(1) -> model(n))).map(_ => ()),
-        Left(LedgerDecodeError.CostModelLength(1, 175, n)),
-        s"V2 with $n"
+  test(
+    "legacy: exactly 166 PlutusV1 and 175 PlutusV2 parameters are accepted and kept as the reference keeps them"
+  ) {
+    forRows("accepted") { row =>
+      val tx = accepted(row)
+      assertEquals(keptModels(tx, row.name), referenceModels(row), row.name)
+      assert(
+        row.tx.hex.contains(field18(tx, row.name).hex),
+        s"${row.name}: field 18 is not the original"
       )
+    }
   }
 
-  test("legacy: PlutusV3 and PlutusV4 are not read before version 9") {
-    for l <- Seq(2, 3) do
+  test("legacy: a repeated language keeps its last entry, as the reference does before version 9") {
+    val repeated =
+      rows.filter(r => r.name.contains("duplicate-distinct") || r.name.contains("interleaved"))
+    assertEquals(repeated.size, 6)
+    repeated.foreach { row =>
+      val kept = keptModels(accepted(row), row.name)
+      assertEquals(kept, referenceModels(row), row.name)
+      val language = if row.name.contains("v2-duplicate") then 1 else 0
+      assertEquals(kept(language).head, BigInt(2), s"${row.name}: the first entry survived")
+    }
+  }
+
+  test("legacy: a PlutusV1 or PlutusV2 list of another length is refused, in both eras") {
+    forRows("length") { row =>
       assertEquals(
-        decodedLegacy(models(BigInt(l) -> model(251))).map(_ => ()),
-        Left(LedgerDecodeError.UnsupportedCostModelLanguage(l))
+        replay(row).map(_ => ()),
+        Left(
+          LedgerDecodeError.CostModelLength(
+            detailInt(row, "language"),
+            detailInt(row, "expected"),
+            detailInt(row, "actual")
+          )
+        ),
+        row.name
       )
+    }
   }
 
-  test("legacy: a language that is not a Language is refused, an unknown one is not kept") {
-    for l <- Seq(BigInt(4), BigInt(255), BigInt(-1)) do
+  test("legacy: PlutusV3 and PlutusV4 are not read before version 9, whatever follows the key") {
+    forRows("unsupportedLanguage") { row =>
       assertEquals(
-        decodedLegacy(models(l -> model(10))).map(_ => ()),
-        Left(LedgerDecodeError.UnknownTag("cost model language", l))
+        replay(row).map(_ => ()),
+        Left(LedgerDecodeError.UnsupportedCostModelLanguage(detailInt(row, "language"))),
+        row.name
       )
+    }
   }
 
-  test("legacy: a parameter outside Int64 is refused, the bounds are accepted") {
-    for v <- Seq(BigInt(2).pow(63), -BigInt(2).pow(63) - 1) do
+  test("legacy: a number that is not a Language is refused, an unknown language is not kept") {
+    forRows("unknownTag") { row =>
       assertEquals(
-        decodedLegacy(withValue(0, v, 166)).map(_ => ()),
-        Left(valueOutOfRange(v))
+        replay(row).map(_ => ()),
+        Left(LedgerDecodeError.UnknownTag("cost model language", detailBig(row, "tag"))),
+        row.name
       )
-    for v <- Seq(int64._1, int64._2) do
-      assert(decodedLegacy(withValue(1, v, 175)).isRight, s"bound $v")
+    }
   }
 
-  test("legacy: a repeated language is read once, as the reference does before version 9") {
-    val twice = models(BigInt(0) -> model(166), BigInt(0) -> model(166))
-    assert(decodedLegacy(twice).isRight)
+  test("legacy: a parameter outside Int64 is refused, before the length is counted") {
+    forRows("outOfRange") { row =>
+      assertEquals(
+        replay(row).map(_ => ()),
+        Left(valueOutOfRange(detailBig(row, "value"))),
+        row.name
+      )
+    }
+  }
+
+  test("legacy: a text key, an entry that is not an array or a bignum parameter is refused") {
+    forRows("malformed")(row => assert(replay(row).isLeft, row.name))
   }
 
   // From decoder version 9 (Conway): CostModels.hs:302-304,426-440.
@@ -166,15 +282,7 @@ class CostModelDecodeSuite extends FunSuite:
     )
   }
 
-  test("a cost-model entry that is not an array of integers is refused by both rules") {
-    val text = models(BigInt(0) -> array(Seq("6161")))
-    assert(decodedLegacy(text).isLeft)
-    assert(proposal(text).isLeft)
-  }
-
-  test("the update keeps the original bytes of field 18") {
-    val read = models(BigInt(0) -> model(166))
-    val fields = appliedFields(read).fold(e => fail(e.message), identity).get
-    assertEquals(fields(18), hex(read))
+  test("open: a cost-model entry that is not an array of integers is refused") {
+    assert(proposal(models(BigInt(0) -> array(Seq("6161")))).isLeft)
   }
 end CostModelDecodeSuite
