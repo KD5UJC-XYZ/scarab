@@ -24,9 +24,9 @@ class MapBoundsSuite extends FunSuite:
     */
   private def refused[A](result: Decoded[A])(using munit.Location): Unit =
     def arity(e: DecodeError): Boolean = e.kind match
-      case DecodeError.Kind.BadArity("1..*", 0)  => true
-      case DecodeError.Kind.NoAlternative(cause) => cause.exists(arity)
-      case _                                     => false
+      case DecodeError.Kind.BadArity(DecodeError.Arity.Range(1, None), 0) => true
+      case DecodeError.Kind.NoAlternative(cause)                          => cause.exists(arity)
+      case _                                                              => false
     result match
       case Left(e) if arity(e) => ()
       case other               => fail(s"expected an arity refusal, got $other")
@@ -93,4 +93,15 @@ class MapBoundsSuite extends FunSuite:
     refused(dijkstra.Value.decodeBytes(bytes(noAssets)))
     assert(conway.Value.decodeBytes(bytes(noPolicies)).isRight)
     refused(dijkstra.Value.decodeBytes(bytes(noPolicies)))
+  }
+
+  test("an expected arity renders as the message always did") {
+    import DecodeError.Arity
+    def message(expected: Arity): String =
+      DecodeError.describe(DecodeError.Kind.BadArity(expected, 7))
+    assertEquals(message(Arity.Exactly(2)), "expected 2 elements, got 7")
+    assertEquals(message(Arity.AtLeast(1)), "expected at least 1 elements, got 7")
+    assertEquals(message(Arity.Range(1, None)), "expected 1..* elements, got 7")
+    assertEquals(message(Arity.Range(2, Some(4))), "expected 2..4 elements, got 7")
+    assertEquals(message(Arity.OneOf(0, 1)), "expected 0 or 1 elements, got 7")
   }

@@ -53,7 +53,7 @@ object DecodeError:
     case BadSize(expected: String, actual: Long)
     case OutOfRange(expected: String, actual: BigInt)
     case LiteralMismatch(expected: String, actual: String)
-    case BadArity(expected: String, actual: Int)
+    case BadArity(expected: Arity, actual: Int)
     case BadTag(expected: BigInt, actual: BigInt)
     case MissingKey(key: String)
     case DuplicateKey(key: String)
@@ -72,6 +72,26 @@ object DecodeError:
     /** A decoder threw. This is a bug in a decoder, reported rather than propagated. */
     case Internal(cause: Throwable)
 
+  /** The element count an array or map is required to have. Rendered only by [[describe]]. */
+  enum Arity:
+    /** Exactly `n` elements. */
+    case Exactly(n: Int)
+
+    /** `n` or more elements. */
+    case AtLeast(n: Int)
+
+    /** Between `min` and `max` elements; `max` is absent when the occurrence is unbounded. */
+    case Range(min: Int, max: Option[Int])
+
+    /** Either `first` or `second` elements. */
+    case OneOf(first: Int, second: Int)
+
+  def describe(arity: Arity): String = arity match
+    case Arity.Exactly(n)           => n.toString
+    case Arity.AtLeast(n)           => s"at least $n"
+    case Arity.Range(min, max)      => s"$min..${max.fold("*")(_.toString)}"
+    case Arity.OneOf(first, second) => s"$first or $second"
+
   def describe(kind: Kind): String = kind match
     case Kind.Domain(cause)         => cause.toString
     case Kind.Syntax(m)             => s"malformed CBOR: ${m.message}"
@@ -79,7 +99,7 @@ object DecodeError:
     case Kind.BadSize(e, a)         => s"expected size $e, got $a"
     case Kind.OutOfRange(e, a)      => s"expected $e, got $a"
     case Kind.LiteralMismatch(e, a) => s"expected literal $e, got $a"
-    case Kind.BadArity(e, a)        => s"expected $e elements, got $a"
+    case Kind.BadArity(e, a)        => s"expected ${describe(e)} elements, got $a"
     case Kind.BadTag(e, a)          => s"expected tag $e, got $a"
     case Kind.MissingKey(k)         => s"missing key $k"
     case Kind.DuplicateKey(k)       => s"duplicate key $k"

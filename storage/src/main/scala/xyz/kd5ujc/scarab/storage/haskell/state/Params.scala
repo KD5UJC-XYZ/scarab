@@ -25,7 +25,7 @@ import xyz.kd5ujc.scarab.models.runtime.{
 }
 import xyz.kd5ujc.scarab.plutus.ExUnits
 
-import DecodeError.Kind
+import DecodeError.{Arity, Kind}
 import Wire.*
 
 /** The protocol parameters as each era's `PParams` encodes them (`EncCBOR (PParams era)`,
@@ -438,7 +438,7 @@ object Params:
         val parsedKeys = pairs.traverse { case (key, _) => Codec.uint.decode(key) }
         parsedKeys.flatMap { keys =>
           if pairs.size != conwayMapFields.size then
-            Left(DecodeError.at(n, Kind.BadArity(conwayMapFields.size.toString, pairs.size)))
+            Left(DecodeError.at(n, Kind.BadArity(Arity.Exactly(conwayMapFields.size), pairs.size)))
           else if keys.distinct.size != keys.size then
             Left(DecodeError.at(n, Kind.DuplicateKey("a Conway PParams field")))
           else

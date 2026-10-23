@@ -16,7 +16,7 @@ import xyz.kd5ujc.scarab.models.runtime.{
   at
 }
 
-import DecodeError.Kind
+import DecodeError.{Arity, Kind}
 
 /** The encoding version the Haskell ledger's binary layer runs at
   * (`Cardano.Ledger.Binary.Version`): `ProtVer` of the mirror, whose major number is what the
@@ -120,7 +120,7 @@ object Wire:
           DecodeError.at(xs(1), Kind.OutOfRange("a non-zero denominator", den)).at("denominator")
         )
       yield (num, den)
-    case Value.Arr(xs) => Left(DecodeError.at(n, Kind.BadArity("2", xs.size)))
+    case Value.Arr(xs) => Left(DecodeError.at(n, Kind.BadArity(Arity.Exactly(2), xs.size)))
     case _             => Left(Codec.mismatch("array", n))
 
   /** A plain `Ratio Integer` (`encodeRatio`, `Encoder.hs:301-306`): tag 30 from version 9, absent
@@ -183,7 +183,7 @@ object Wire:
     def decode(n: Node): Decoded[Option[A]] = n.value match
       case Value.Arr(xs) if xs.isEmpty   => Right(None)
       case Value.Arr(xs) if xs.size == 1 => inner.decode(xs(0)).map(Some(_))
-      case Value.Arr(xs) => Left(DecodeError.at(n, Kind.BadArity("0 or 1", xs.size)))
+      case Value.Arr(xs) => Left(DecodeError.at(n, Kind.BadArity(Arity.OneOf(0, 1), xs.size)))
       case _             => Left(Codec.mismatch("array", n))
     def encode(a: Option[A], out: Writer): Unit = a match
       case None => out.arrayHead(0)
@@ -356,7 +356,7 @@ object Wire:
       xs.head.value match
         case Value.UInt(tag) => Right((tag, xs.tail))
         case _               => Left(Codec.mismatch("unsigned integer", xs.head))
-    case Value.Arr(_) => Left(DecodeError.at(n, Kind.BadArity("at least 1", 0)))
+    case Value.Arr(_) => Left(DecodeError.at(n, Kind.BadArity(Arity.AtLeast(1), 0)))
     case _            => Left(Codec.mismatch("array", n))
 
   /** An alternative with a tag or arity the sum does not have. */

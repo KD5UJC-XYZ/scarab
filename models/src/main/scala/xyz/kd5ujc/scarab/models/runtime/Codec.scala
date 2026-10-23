@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.models.runtime
 import xyz.kd5ujc.scarab.codec.{Cbor, Value}
 import scala.util.control.NonFatal
 
-import DecodeError.Kind
+import DecodeError.{Arity, Kind}
 
 /** A CBOR codec for one model type. Decoding works on the byte-preserving `Node` tree of
   * `xyz.kd5ujc.scarab.codec` and reports typed, located errors. Structured writers use shortest
@@ -232,10 +232,7 @@ object Codec:
             Left(
               DecodeError.at(
                 n,
-                Kind.BadArity(
-                  s"$min..${if max == Int.MaxValue then "*" else max.toString}",
-                  items.size
-                )
+                Kind.BadArity(Arity.Range(min, Option.when(max != Int.MaxValue)(max)), items.size)
               )
             )
           else
@@ -320,7 +317,7 @@ object Codec:
           Left(
             DecodeError.at(
               n,
-              Kind.BadArity(s"$min..${if max == Int.MaxValue then "*" else max.toString}", ps.size)
+              Kind.BadArity(Arity.Range(min, Option.when(max != Int.MaxValue)(max)), ps.size)
             )
           )
         else Maps.decodePairs(ps, kc, vc)
@@ -356,7 +353,7 @@ object Arr:
     xs.lift(position)
       .toRight(
         DecodeError(
-          Kind.BadArity(s"at least ${position + 1}", xs.size),
+          Kind.BadArity(Arity.AtLeast(position + 1), xs.size),
           Nil,
           xs.lastOption.fold(0)(_.offset)
         )
@@ -367,7 +364,11 @@ object Arr:
     Either.cond(
       position == xs.size,
       (),
-      DecodeError(Kind.BadArity(position.toString, xs.size), Nil, xs.lastOption.fold(0)(_.offset))
+      DecodeError(
+        Kind.BadArity(Arity.Exactly(position), xs.size),
+        Nil,
+        xs.lastOption.fold(0)(_.offset)
+      )
     )
 
   /** CDDL occurrences are greedy (RFC 8610, Appendix A): a matching member is consumed even when
@@ -384,12 +385,13 @@ object Arr:
 
   def exact(n: Node, size: Int): Decoded[Vector[Node]] = n.value match
     case Value.Arr(xs) if xs.size == size => Right(xs)
-    case Value.Arr(xs) => Left(DecodeError.at(n, Kind.BadArity(size.toString, xs.size)))
+    case Value.Arr(xs) => Left(DecodeError.at(n, Kind.BadArity(Arity.Exactly(size), xs.size)))
     case _             => Left(Codec.mismatch("array", n))
   def between(n: Node, min: Int, max: Int): Decoded[Vector[Node]] = n.value match
     case Value.Arr(xs) if xs.size >= min && xs.size <= max => Right(xs)
-    case Value.Arr(xs) => Left(DecodeError.at(n, Kind.BadArity(s"$min..$max", xs.size)))
-    case _             => Left(Codec.mismatch("array", n))
+    case Value.Arr(xs) =>
+      Left(DecodeError.at(n, Kind.BadArity(Arity.Range(min, Some(max)), xs.size)))
+    case _ => Left(Codec.mismatch("array", n))
 
 sealed trait MapKey
 object MapKey:
