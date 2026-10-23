@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.log
 
-import io.circe.Json
+import io.circe.{Encoder, Json}
 import io.circe.syntax.*
 import scala.concurrent.duration.FiniteDuration
 import com.comcast.ip4s.{Host, SocketAddress}
@@ -16,6 +16,7 @@ import xyz.kd5ujc.scarab.node.{
   LedgerPeersTrace,
   Main,
   NodeConfig,
+  StallDiagnostics,
   Topology
 }
 import xyz.kd5ujc.scarab.network.selection.{
@@ -65,6 +66,18 @@ enum NodeEvent:
     * [[xyz.kd5ujc.scarab.node.StallWatchdog]]).
     */
   case Stalled(idle: FiniteDuration, ours: BigInt, peers: BigInt)
+
+  /** The state of every session's pipeline when the stall of the [[Stalled]] event began, and what
+    * became of the fiber dump (issue 371, [[xyz.kd5ujc.scarab.node.StallDiagnostics]]). One per
+    * stall, logged right after it.
+    */
+  case StallState(report: StallDiagnostics.Report, dump: StallDiagnostics.Dump)
+
+  /** What became of the files a stall asked for (`--stall-dump`): the `stallState` report written
+    * directly beside the fiber dump, which does not depend on this log, and the fiber dump itself.
+    * Logged when both have ended, after [[StallState]].
+    */
+  case StallDumped(state: StallDiagnostics.Dump, fibers: StallDiagnostics.Dump)
 
   /** The stall went on for `--stall-exit-after`: the node ends (after its shutdown snapshot, exit
     * code 4) so that its supervisor restarts it from the newest snapshot.
@@ -136,6 +149,107 @@ enum NodeEvent:
   case Library(logger: String, severity: Severity, message: String, thrown: Option[String])
 
 object NodeEvent:
+  /** One session of a stall report: the coordinator's view and, when pipelined, the session's. */
+  // The only place these are rendered as text: a stall report's typed values as the log shows
+  // them (`slot:hash`, `origin` at genesis; the lower-camel names of the cases).
+  private given Encoder[ChainSync.Point] =
+    Encoder.instance {
+      case ChainSync.Point.Origin            => Json.fromString("origin")
+      case ChainSync.Point.Block(slot, hash) => Json.fromString(s"${slot.value}:${hash.hex}")
+    }
+
+  private given Encoder[xyz.kd5ujc.scarab.node.FetchCoordinator.Phase] =
+    Encoder.instance {
+      case xyz.kd5ujc.scarab.node.FetchCoordinator.Phase.LockWait  => Json.fromString("LockWait")
+      case xyz.kd5ujc.scarab.node.FetchCoordinator.Phase.LockHeld  => Json.fromString("LockHeld")
+      case xyz.kd5ujc.scarab.node.FetchCoordinator.Phase.GrantWait => Json.fromString("GrantWait")
+    }
+
+  private given Encoder[xyz.kd5ujc.scarab.node.FetchCoordinator.DecisionHolder] =
+    Encoder.instance {
+      case xyz.kd5ujc.scarab.node.FetchCoordinator.DecisionHolder.InstallGenesis =>
+        Json.fromString("installGenesis")
+      case xyz.kd5ujc.scarab.node.FetchCoordinator.DecisionHolder.TransitionGenesis =>
+        Json.fromString("transitionGenesis")
+      case xyz.kd5ujc.scarab.node.FetchCoordinator.DecisionHolder.Change =>
+        Json.fromString("change")
+      case xyz.kd5ujc.scarab.node.FetchCoordinator.DecisionHolder.Reserve =>
+        Json.fromString("reserve")
+    }
+
+  private given Encoder[xyz.kd5ujc.scarab.node.BlockAdmissions.WorkKind] =
+    Encoder.instance {
+      case xyz.kd5ujc.scarab.node.BlockAdmissions.WorkKind.Add       => Json.fromString("add")
+      case xyz.kd5ujc.scarab.node.BlockAdmissions.WorkKind.Reprocess => Json.fromString("reprocess")
+    }
+
+  private given Encoder[xyz.kd5ujc.scarab.node.BlockAdmissions.AdmissionStage] =
+    Encoder.instance {
+      case xyz.kd5ujc.scarab.node.BlockAdmissions.AdmissionStage.WaitingForApplication =>
+        Json.fromString("waitingForApplication")
+      case xyz.kd5ujc.scarab.node.BlockAdmissions.AdmissionStage.Applying =>
+        Json.fromString("applying")
+      case xyz.kd5ujc.scarab.node.BlockAdmissions.AdmissionStage.Selecting =>
+        Json.fromString("selecting")
+    }
+
+  private def dumpJson(dump: StallDiagnostics.Dump): Json = dump match
+    case StallDiagnostics.Dump.Off       => Json.Null
+    case StallDiagnostics.Dump.Requested => Json.obj("requested" -> true.asJson)
+    case StallDiagnostics.Dump.Skipped =>
+      Json.obj("skipped" -> "an earlier dump is still running".asJson)
+    case StallDiagnostics.Dump.Written(path) => Json.obj("path" -> path.toString.asJson)
+    case StallDiagnostics.Dump.Failed(StallDiagnostics.DumpError.NoMonitor) =>
+      Json.obj("failed" -> "noMonitor".asJson)
+    case StallDiagnostics.Dump.Failed(StallDiagnostics.DumpError.Io(cause)) =>
+      Json.obj("failed" -> "io".asJson, "message" -> String.valueOf(cause.getMessage).asJson)
+    case StallDiagnostics.Dump.Failed(StallDiagnostics.DumpError.Defect(cause)) =>
+      Json.obj(
+        "failed" -> "defect".asJson,
+        "message" -> s"${cause.getClass.getName}: ${cause.getMessage}".asJson
+      )
+
+  private def session(d: xyz.kd5ujc.scarab.node.FetchCoordinator.SessionDiagnostic): Json =
+    Json.obj(
+      "session" -> d.session.asJson,
+      "busy" -> d.busy.asJson,
+      "pendingOffers" -> d.pendingOffers.asJson,
+      "pendingHeaders" -> d.pendingHeaders.asJson,
+      "active" -> d.active
+        .map(a =>
+          Json.obj(
+            "token" -> a.token.asJson,
+            "requests" -> a.requests.asJson,
+            "headers" -> a.headers.asJson
+          )
+        )
+        .asJson,
+      "candidateHeaders" -> d.candidateHeaders.asJson,
+      "reserving" -> d.reserving.fold(Json.Null)(r =>
+        Json.obj("phase" -> r.phase.asJson, "runningMs" -> r.running.toMillis.asJson)
+      ),
+      "pipeline" -> d.pipeline.fold(Json.Null)(p =>
+        Json.obj(
+          "peer" -> p.peer.toString.asJson,
+          "permitsFree" -> p.permitsFree.asJson,
+          "permits" -> p.permits.asJson,
+          "queued" -> p.queued.asJson,
+          "candidateHeaders" -> p.candidateHeaders.asJson,
+          "unpublishedHeaders" -> p.unpublishedHeaders.asJson,
+          "capacityRoom" -> p.capacityRoom.asJson,
+          "candidateBase" -> p.candidateBase.asJson,
+          "candidateTip" -> p.candidateTip.asJson,
+          "publishedBase" -> p.publishedBase.asJson,
+          "publishedTip" -> p.publishedTip.asJson,
+          "candidateTipSlot" -> p.candidateTipSlot.asJson,
+          "publishedTipSlot" -> p.publishedTipSlot.asJson,
+          "lastReplyCollectedAgoMs" -> p.lastReplyCollectedAgo.map(_.toMillis).asJson,
+          "lastReplyAcceptedAgoMs" -> p.lastReplyAcceptedAgo.map(_.toMillis).asJson,
+          "lastReplyHandledAgoMs" -> p.lastReplyHandledAgo.map(_.toMillis).asJson
+        )
+      )
+    )
+
   /** What is running: the build of this jar (sbt-buildinfo). */
   final case class Build(
       version: String,
@@ -239,6 +353,32 @@ object NodeEvent:
         "ourBlock" -> ours.asJson,
         "peerBlock" -> peers.asJson
       )
+    case StallState(report, dump) =>
+      EventKind.StallState.line(
+        "sessions" -> report.sessions.map(NodeEvent.session).asJson,
+        "admissions" -> Json.obj(
+          "capacity" -> report.admissions.capacity.asJson,
+          "held" -> report.admissions.held.asJson,
+          "queued" -> report.admissions.queued.asJson,
+          "worker" -> report.admissions.worker.fold(Json.Null)(w =>
+            Json.obj(
+              "work" -> w.work.asJson,
+              "stage" -> w.stage.asJson,
+              "inStageMs" -> w.inStage.toMillis.asJson,
+              "runningMs" -> w.running.toMillis.asJson
+            )
+          ),
+          "publishWaiting" -> report.admissions.publishWaiting.asJson,
+          "oldestPublishWaitMs" -> report.admissions.oldestPublishWait.map(_.toMillis).asJson
+        ),
+        "droppedReports" -> report.droppedReports.asJson,
+        "decisionLock" -> report.decisionLock.fold(Json.Null)(h =>
+          Json.obj("heldBy" -> h.by.asJson, "runningMs" -> h.running.toMillis.asJson)
+        ),
+        "fiberDump" -> dumpJson(dump)
+      )
+    case StallDumped(state, fibers) =>
+      EventKind.StallDump.line("stateFile" -> dumpJson(state), "fiberDump" -> dumpJson(fibers))
     case StallExit(idle, ours, peers) =>
       EventKind.StallExit.line(
         "idleSeconds" -> idle.toSeconds.asJson,

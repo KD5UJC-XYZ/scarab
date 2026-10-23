@@ -14,7 +14,9 @@ import cats.syntax.all.*
 import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.consensus.{FollowerEvent, SchedulingStats, VolatileChain}
 import xyz.kd5ujc.scarab.network.{ConnectionEvent, ConnectionEvents}
-import com.comcast.ip4s.{Host, SocketAddress}
+import com.comcast.ip4s.{host, port, Host, SocketAddress}
+import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.network.selection.{FetchMode, Gsm, Trace}
 import xyz.kd5ujc.scarab.ledger.{ChainError, StorageError}
 import xyz.kd5ujc.scarab.node.{Fatal, InboundEvent, LedgerPeersTrace}
@@ -31,6 +33,9 @@ class LogGoldenSuite extends CatsEffectSuite:
 
   private val golden = Path.of("fixtures/log/golden.jsonl")
   private val at = Instant.parse("2026-10-16T12:00:00Z")
+
+  private def point(slot: Long, hash: Int): ChainSync.Point =
+    ChainSync.Point.Block(ChainSync.UInt64.saturating(slot), Bytes.wrap(Array(hash.toByte)))
 
   /** A `Log` that keeps every line. */
   private def collecting(lines: Ref[IO, Vector[Line]]): Log[IO] = new Tell[IO, Line]:
@@ -67,6 +72,91 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- node(NodeEvent.ChainSyncRounds(200L, 25600L, 120L, 900L, 128))
         _ <- node(NodeEvent.SlowFetch(300L))
         _ <- node(NodeEvent.Stalled(10.minutes, BigInt(6809207), BigInt(10200000)))
+        _ <- node(
+          NodeEvent.StallState(
+            xyz.kd5ujc.scarab.node.StallDiagnostics.Report(
+              Vector(
+                xyz.kd5ujc.scarab.node.FetchCoordinator.SessionDiagnostic(
+                  session = 3L,
+                  busy = true,
+                  pendingOffers = 1,
+                  pendingHeaders = 20,
+                  active = Vector(xyz.kd5ujc.scarab.node.FetchCoordinator.ActiveFetch(5L, 2, 40)),
+                  candidateHeaders = Some(100),
+                  reserving = Some(
+                    xyz.kd5ujc.scarab.node.FetchCoordinator
+                      .Reserving(
+                        xyz.kd5ujc.scarab.node.FetchCoordinator.Phase.LockWait,
+                        570.seconds
+                      )
+                  ),
+                  pipeline = Some(
+                    xyz.kd5ujc.scarab.node.Peer.PipelineState(
+                      peer = SocketAddress(host"10.0.0.1", port"3001"),
+                      permitsFree = 0,
+                      permits = 3,
+                      queued = 3,
+                      candidateHeaders = 100,
+                      unpublishedHeaders = Some(60),
+                      capacityRoom = false,
+                      candidateBase = point(800, 0xaa),
+                      candidateTip = point(900, 0xbb),
+                      publishedBase = point(800, 0xaa),
+                      publishedTip = point(840, 0xcc),
+                      candidateTipSlot = Some(900L),
+                      publishedTipSlot = Some(840L),
+                      lastReplyCollectedAgo = Some(601.seconds),
+                      lastReplyAcceptedAgo = Some(600.seconds),
+                      lastReplyHandledAgo = None
+                    )
+                  )
+                )
+              ),
+              xyz.kd5ujc.scarab.node.BlockAdmissions.Occupancy(
+                10,
+                10,
+                4,
+                Some(
+                  xyz.kd5ujc.scarab.node.BlockAdmissions
+                    .Worker(
+                      xyz.kd5ujc.scarab.node.BlockAdmissions.WorkKind.Add,
+                      xyz.kd5ujc.scarab.node.BlockAdmissions.AdmissionStage.Applying,
+                      12.seconds,
+                      590.seconds
+                    )
+                ),
+                2,
+                Some(30.seconds)
+              ),
+              Some(
+                xyz.kd5ujc.scarab.node.FetchCoordinator.LockHolder(
+                  xyz.kd5ujc.scarab.node.FetchCoordinator.DecisionHolder.Reserve,
+                  580.seconds
+                )
+              ),
+              3L
+            ),
+            xyz.kd5ujc.scarab.node.StallDiagnostics.Dump.Written(
+              Path.of("/stall/fiber-dump-1.txt")
+            )
+          )
+        )
+        _ <- node(
+          NodeEvent.StallDumped(
+            xyz.kd5ujc.scarab.node.StallDiagnostics.Dump.Written(
+              Path.of("/stall/stall-state-1.json")
+            ),
+            xyz.kd5ujc.scarab.node.StallDiagnostics.Dump.Failed(
+              xyz.kd5ujc.scarab.node.StallDiagnostics.DumpError.NoMonitor
+            )
+          )
+        )
+        _ <- node(
+          NodeEvent.StallDumped(
+            xyz.kd5ujc.scarab.node.StallDiagnostics.Dump.Skipped,
+            xyz.kd5ujc.scarab.node.StallDiagnostics.Dump.Skipped
+          )
+        )
         _ <- node(NodeEvent.StallExit(30.minutes, BigInt(6809207), BigInt(10200000)))
         _ <- node(
           NodeEvent.Faulted(

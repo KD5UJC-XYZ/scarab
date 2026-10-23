@@ -23,7 +23,7 @@ import xyz.kd5ujc.scarab.ledger.{
   StorageError
 }
 import cats.effect.{Deferred, ExitCode, IO, IOApp, Ref, Resource}
-import cats.effect.std.Mutex
+import cats.effect.std.{Mutex, Supervisor}
 import cats.effect.metrics.CpuStarvationWarningMetrics
 import xyz.kd5ujc.scarab.storage.{
   ChainPersistence,
@@ -296,6 +296,10 @@ object Main extends IOApp:
     * @param stallMinutes
     *   Log a `stalled` event (and count it) when no block was extended for N minutes while a peer
     *   announced a longer chain ([[StallWatchdog]]); 0: off.
+    * @param stallDump
+    *   `--stall-dump <dir>`: when a stall begins, also write the runtime's live-fiber snapshot to
+    *   `<dir>/fiber-dump-<epoch ms>-<n>.txt` ([[StallDiagnostics.fiberDump]]); the `stallState`
+    *   event is logged either way. Off by default; the devnet scenarios turn it on.
     * @param stallExitAfter
     *   End the node (exit code [[StallExitCode]], after the shutdown snapshot) when a stall has
     *   lasted this long; needs `--stall-minutes` and is longer than it. Off by default.
@@ -361,7 +365,8 @@ object Main extends IOApp:
       adoptLegacyNetworkIdentity: Boolean = false,
       plutusWorkers: ParallelPlutus.Workers = ParallelPlutus.Workers.default,
       chainSyncWindow: xyz.kd5ujc.scarab.network.ChainSyncPipelineDecision.Window =
-        xyz.kd5ujc.scarab.network.ChainSyncPipelineDecision.Window.Default
+        xyz.kd5ujc.scarab.network.ChainSyncPipelineDecision.Window.Default,
+      stallDump: Option[Path] = None
   )
 
   /** What the chain database (or its absence) hands the node at start. */
@@ -594,8 +599,9 @@ object Main extends IOApp:
         (ownership *> compatible *> (
           utxoBacking(options),
           VerificationCache.resource[IO](),
-          Scheduling.resource[IO](options.cpuThreads)
-        ).tupled).use { case ((store, checkpoints), cache, scheduling) =>
+          Scheduling.resource[IO](options.cpuThreads),
+          Supervisor[IO](await = false)
+        ).tupled).use { case ((store, checkpoints), cache, scheduling, supervisor) =>
           followWith(
             options,
             requested.peers,
@@ -604,7 +610,8 @@ object Main extends IOApp:
             store,
             backing(store, checkpoints),
             cache,
-            scheduling
+            scheduling,
+            StallDiagnostics.abandoning(supervisor)
           )
         }
       }
@@ -617,7 +624,8 @@ object Main extends IOApp:
       store: UtxoStore[IO],
       backing: StateBacking[IO, MirrorState],
       cache: VerificationCache,
-      scheduling: Scheduling[IO]
+      scheduling: Scheduling[IO],
+      background: IO[Unit] => IO[Unit]
   )(using
       handle: Handle[IO, NodeError],
       log: Log[IO]
@@ -642,7 +650,8 @@ object Main extends IOApp:
       given Metrics[IO] = metrics
       measured <- EventMetrics.create[IO]
       // a follower that stops extending its chain while a peer has more says so (issue 130)
-      stallExit <- Deferred[IO, Unit]
+      // (and, from issue 371, where its report reads from once the block pool exists)
+      stall <- StallDiagnostics.Watch.create[IO](options.stallDump, e => logged(e), background)
       // a session that ends in a way no peer policy handles stops the node ([[Fatal]]): the event
       // is logged where it happens, and the run ends like a signal does (the stores close, the
       // shutdown snapshot is taken) with an exit code of its own
@@ -656,13 +665,7 @@ object Main extends IOApp:
         BigInt(0),
         options.stallMinutes.minutes,
         options.stallExitAfter,
-        change =>
-          measured.stall(change) *> (change match
-            case StallWatchdog.Change.Began(idle, ours, peers) =>
-              logged(NodeEvent.Stalled(idle, ours, peers))
-            case StallWatchdog.Change.Ended => IO.unit
-            case StallWatchdog.Change.ExitDue(idle, ours, peers) =>
-              logged(NodeEvent.StallExit(idle, ours, peers)) *> stallExit.complete(()).void)
+        stall.react(measured.stall)
       )
       // What a scrape reads besides the counters the events keep: each source answers for itself
       // and is added when it exists, so the endpoint can listen before the stores are opened (a
@@ -1010,7 +1013,9 @@ object Main extends IOApp:
                 )
               )
             )
-            _ <- seedReceived(blockPool, receivedBlocks, genesis.geometry.byron.epochSlots) *>
+            _ <- stall.reporter.install(
+              StallDiagnostics.Sources(blockPool.fetchCoordinator, blockPool.admissions)
+            ) *> seedReceived(blockPool, receivedBlocks, genesis.geometry.byron.epochSlots) *>
               follower.installFetchCoordinator(blockPool.fetchCoordinator) *>
               follower.installInvalidBlocks(blockPool.invalidBlocks)
             genesisRuntime <- createGenesisRuntime(
@@ -1364,7 +1369,7 @@ object Main extends IOApp:
             ended <- IO
               .race(
                 options.seconds.fold(run)(s => run.timeoutTo(s.seconds, IO.unit)),
-                IO.race(stallExit.get, faulted.get)
+                IO.race(stall.exit.get, faulted.get)
               )
               .map {
                 case Left(_)               => RunEnd.Finished
@@ -1372,10 +1377,17 @@ object Main extends IOApp:
                 case Right(Right(failure)) => RunEnd.Faulted(failure)
               }
             last <- ref.get
-            _ <- logged(NodeEvent.finished(last))
+            _ <- finishedLine(ended, logged(NodeEvent.finished(last)))
           yield ended
       })
     yield exitCode(ended)
+
+  /** The `finished` line. After a stall exit the log may be the very thing that is stuck, and the
+    * exit code must not wait for its last line.
+    */
+  private def finishedLine(ended: RunEnd, line: IO[Unit]): IO[Unit] = ended match
+    case RunEnd.Stalled => StallDiagnostics.bounded[IO](5.seconds)(line)
+    case _              => line
 
   /** How a run ended. */
   private enum RunEnd:
@@ -1444,7 +1456,7 @@ object Main extends IOApp:
       values.find(r => argument == s"--${r.flag}")
 
   private val Usage =
-    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>] " + LogSettings.Usage
+    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--stall-dump <dir>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>] " + LogSettings.Usage
 
   /** Flags that take a value and may repeat. */
   private val RepeatedFlags = Set("peer") ++ LogSettings.RepeatedFlags
@@ -1469,6 +1481,7 @@ object Main extends IOApp:
     "memory-report-seconds",
     "stall-minutes",
     "stall-exit-after",
+    "stall-dump",
     "churn-interval",
     "read-ahead",
     "chain-sync-low",
@@ -1707,6 +1720,7 @@ object Main extends IOApp:
           log
         ).copy(
           churnInterval = churnInterval,
+          stallDump = flags.get("stall-dump").map(Path.of(_)),
           plutusWorkers = plutusWorkers,
           chainSyncWindow = chainSyncWindow,
           adoptLegacyNetworkIdentity = flags.contains("adopt-legacy-network-identity")

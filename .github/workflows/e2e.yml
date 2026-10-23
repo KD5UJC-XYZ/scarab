@@ -89,8 +89,8 @@ jobs:
             [ -d "$dir" ] || continue
             name=$(basename "$dir")
             mkdir -p "$RUNNER_TEMP/artifact/$name"
-            # run summaries, comparisons and node logs; never the frozen classes or generated keys
-            find "$dir" -maxdepth 2 -type f \( -name '*.json' -o -name '*.jsonl' -o -name '*.log' \) \
+            # run summaries, comparisons, node logs and the follower's stall fiber dumps; never the frozen classes or generated keys
+            find "$dir" -maxdepth 2 -type f \( -name '*.json' -o -name '*.jsonl' -o -name '*.log' -o -name 'fiber-dump-*.txt' \) \
               -not -path '*/classes/*' -not -path '*/genesis/*' -not -path '*/keys/*' \
               -exec cp --parents {} "$RUNNER_TEMP/artifact/$name" \; 2>/dev/null || true
           done

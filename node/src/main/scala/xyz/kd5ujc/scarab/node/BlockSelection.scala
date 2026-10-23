@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.ChainSelection
 import xyz.kd5ujc.scarab.ledger.{BlockPoolProblem, Header, NodeError, PeerError, ValidationError}
 import xyz.kd5ujc.scarab.network.Fibers
+import xyz.kd5ujc.scarab.node.BlockAdmissions.{AdmissionStage, WorkKind}
 import xyz.kd5ujc.scarab.protocol.ChainSync
 
 /** The single ChainDB add-block runner (consensus 82ecba329, Background.hs:658–708). Its forest
@@ -52,9 +53,6 @@ private[node] final class BlockSelection[F[_]: Async] private (
             Left(BlockPoolProblem.MissingDeliveredHeader(header.point))
           )
         )(a => pool.invalidated(a.taken, header, error))
-
-  private def select(adding: Option[BlockPool.Admission])(using Raise[F, NodeError]): F[Unit] =
-    application.locked(selectLocked(adding))
 
   private def selectLocked(
       adding: Option[BlockPool.Admission],
@@ -106,22 +104,29 @@ private[node] final class BlockSelection[F[_]: Async] private (
     F.foreverM(pool.admissions.next.flatMap {
       case BlockAdmissions.Work.Add(admission) =>
         val header = admission.delivered.header
-        work
-          .processing(header.hash)
-          .surround(application.locked {
-            application.admits(header).flatMap {
-              case false => F.unit
-              case true =>
-                pool.processedSnapshot.flatMap { processed =>
-                  if processed.contains(header.hash) then F.unit
-                  else
-                    before.prepare(header, admission.taken.block) *> pool
-                      .processAdmission(admission) *>
-                      selectLocked(Some(admission))
-                }
-            }
-          }) *> pool.completeAdmission(header.hash)
-      case BlockAdmissions.Work.Reprocess(done) => select(None).guarantee(done.complete(()).void)
+        pool.admissions.processing(WorkKind.Add, AdmissionStage.WaitingForApplication)(
+          work
+            .processing(header.hash)
+            .surround(application.locked {
+              pool.admissions.stage(AdmissionStage.Applying) *> application.admits(header).flatMap {
+                case false => F.unit
+                case true =>
+                  pool.processedSnapshot.flatMap { processed =>
+                    if processed.contains(header.hash) then F.unit
+                    else
+                      before.prepare(header, admission.taken.block) *> pool
+                        .processAdmission(admission) *>
+                        selectLocked(Some(admission))
+                  }
+              }
+            }) *> pool.completeAdmission(header.hash)
+        )
+      case BlockAdmissions.Work.Reprocess(done) =>
+        pool.admissions.processing(WorkKind.Reprocess, AdmissionStage.WaitingForApplication)(
+          application
+            .locked(pool.admissions.stage(AdmissionStage.Selecting) *> selectLocked(None))
+            .guarantee(done.complete(()).void)
+        )
     })
 
   private def reselect: F[Unit] = application.governor.flatMap(_.fold(F.never[Unit]) { governor =>

@@ -314,6 +314,88 @@ object Peer:
       */
     case BlocksArrived(blocks: Vector[(Long, Long)], at: Time)
 
+  /** One pipelined session as a stall report reads it (issue 371): the state of the machinery
+    * `streaming` waits on, taken in non-blocking reads. A session with no pipeline reports none.
+    *
+    * @param peer
+    *   The session's peer address.
+    * @param permitsFree
+    *   Batch permits not taken, of `permits`: a permit is held from a batch's publication until the
+    *   consumer takes the batch, so 0 free with an empty queue is a publisher waiting for itself.
+    * @param queued
+    *   Events in the batch queue, which the consumer takes.
+    * @param candidateHeaders
+    *   Headers of the validated candidate.
+    * @param unpublishedHeaders
+    *   Headers of the candidate beyond the newest point it shares with the published cursor
+    *   ([[unpublished]]): what an `advance` is still to publish, and what the ChainSync capacity
+    *   wait is held by. None when the two share no point: a candidate that diverged from what was
+    *   published, which the base and tip points tell from lag.
+    * @param capacityRoom
+    *   [[publicationRoom]]: false while the candidate is at its retained size and the published
+    *   cursor has not caught up, which is when a ChainSync reply waits for an `advance`.
+    * @param candidateBase
+    *   The candidate's base point, as `slot:hash` (`origin` at genesis).
+    * @param candidateTip
+    *   The candidate's last point, in the same form.
+    * @param publishedBase
+    *   The published cursor's base point.
+    * @param publishedTip
+    *   The published cursor's last point.
+    * @param candidateTipSlot
+    *   Slot of the candidate's last header.
+    * @param publishedTipSlot
+    *   Slot of the published cursor's last header.
+    * @param lastReplyCollectedAgo
+    *   Time since a ChainSync reply was last taken from the wire and handed to the capacity wait,
+    *   if any was. A reply blocked in that wait shows here and not in `lastReplyAcceptedAgo`.
+    * @param lastReplyAcceptedAgo
+    *   Time since the last reply passed the capacity wait and was accepted for decoding.
+    * @param lastReplyHandledAgo
+    *   Time since the last such batch was fully handled (decoded, checked, recorded).
+    */
+  final case class PipelineState(
+      peer: SocketAddress[Host],
+      permitsFree: Long,
+      permits: Int,
+      queued: Int,
+      candidateHeaders: Int,
+      unpublishedHeaders: Option[Int],
+      capacityRoom: Boolean,
+      candidateBase: ChainSync.Point,
+      candidateTip: ChainSync.Point,
+      publishedBase: ChainSync.Point,
+      publishedTip: ChainSync.Point,
+      candidateTipSlot: Option[Long],
+      publishedTipSlot: Option[Long],
+      lastReplyCollectedAgo: Option[FiniteDuration],
+      lastReplyAcceptedAgo: Option[FiniteDuration],
+      lastReplyHandledAgo: Option[FiniteDuration]
+  )
+
+  /** When the session last collected a ChainSync reply (before the capacity wait), accepted one
+    * (after it) and finished handling one, on the monotonic clock; the counters behind
+    * [[PipelineState]].
+    */
+  private[node] final case class Replies(
+      collected: Option[FiniteDuration] = None,
+      accepted: Option[FiniteDuration] = None,
+      handled: Option[FiniteDuration] = None
+  )
+
+  /** The headers of `candidate` after its newest point that `published` also has (`publication`
+    * finds the same common point); none when they share no point, which is a divergence and not a
+    * lag. Counting by size would be wrong when the two retained windows start at different bases.
+    */
+  private[node] def unpublished(
+      published: ChainSelection.Candidate,
+      candidate: ChainSelection.Candidate
+  ): Option[Int] =
+    val positions = (candidate.base +: candidate.headers.map(_.point)).zipWithIndex.toMap
+    (published.base +: published.headers.map(_.point)).reverseIterator
+      .find(positions.contains)
+      .map(point => candidate.headers.size - positions.getOrElse(point, 0))
+
   /** @param readAhead
     *   Maximum headers per ordered body-publication chunk. The rolling request window is set
     *   independently by `pipelineWindow`.
@@ -588,7 +670,8 @@ object Peer:
         Ref.of[F, Option[PeerError.RolledBackPastIntersection]](None),
         Ref.of[F, Boolean](false),
         Ref.of[F, Option[ValidationError]](None),
-        Ref.of[F, Option[ChainSyncJumping.Instruction[GenesisPeer.Checkpoint]]](None)
+        Ref.of[F, Option[ChainSyncJumping.Instruction[GenesisPeer.Checkpoint]]](None),
+        Ref.of[F, Peer.Replies](Peer.Replies())
       ).mapN {
         (
             queue,
@@ -609,7 +692,8 @@ object Peer:
             pendingEnd,
             chainSyncFinished,
             handledSemantic,
-            pendingJump
+            pendingJump,
+            replies
         ) =>
           def finishChainSync(using Raise[F, PeerError]): F[Unit] =
             connection.chainSync.done *> chainSyncFinished.set(true)
@@ -903,7 +987,9 @@ object Peer:
                 }
                 def headerReceived: F[Unit] = observe.traverse_(_(Observation.HeaderReceived))
                 def handled(update: ChainSyncClient.Update[NtNHeader]): F[Unit] =
-                  headerReceived *> stopping.flatMap {
+                  headerReceived *> F.monotonic.flatMap(at =>
+                    replies.update(_.copy(collected = Some(at)))
+                  ) *> stopping.flatMap {
                     case true => pop
                     case false =>
                       head.flatMap(_.reply) *> capacity(update) *>
@@ -1070,6 +1156,7 @@ object Peer:
           ): F[Vector[SyncEvent]] =
             for
               arrived <- F.monotonic
+              _ <- replies.update(_.copy(accepted = Some(arrived)))
               batch <- updates.traverse(decode)
               _ <- batch.traverse_ {
                 case SyncEvent.RollForward(header, _) => checkKnownInvalid(header)
@@ -1127,6 +1214,8 @@ object Peer:
                 val slots = result.collect { case SyncEvent.RollForward(h, _) => h.slot.toLong }
                 report(Peer.Observation.HeadersArrived(slots, arrived)).whenA(slots.nonEmpty)
               }
+              handled <- F.monotonic
+              _ <- replies.update(_.copy(handled = Some(handled)))
             yield result
 
           def recordUpdates(
@@ -1371,6 +1460,35 @@ object Peer:
               publicationChanged <- Deferred[F, Unit]
               publishedCursor <- Ref.of[F, (ChainSelection.Candidate, Deferred[F, Unit])](
                 (initial, publicationChanged)
+              )
+              _ <- fetcher.observed(
+                (
+                  F.monotonic,
+                  replies.get,
+                  permits.available,
+                  queue.size,
+                  candidateHeaders.get,
+                  publishedCursor.get
+                ).mapN { (now, seen, free, queued, candidate, published) =>
+                  Peer.PipelineState(
+                    peer = settings.address,
+                    permitsFree = free,
+                    permits = Depth,
+                    queued = queued,
+                    candidateHeaders = candidate.headers.size,
+                    unpublishedHeaders = unpublished(published._1, candidate),
+                    capacityRoom = publicationRoom(published._1, candidate, retainedHeaders),
+                    candidateBase = candidate.base,
+                    candidateTip = candidate.tip,
+                    publishedBase = published._1.base,
+                    publishedTip = published._1.tip,
+                    candidateTipSlot = candidate.headers.lastOption.map(_.slot.toLong),
+                    publishedTipSlot = published._1.headers.lastOption.map(_.slot.toLong),
+                    lastReplyCollectedAgo = seen.collected.map(now - _),
+                    lastReplyAcceptedAgo = seen.accepted.map(now - _),
+                    lastReplyHandledAgo = seen.handled.map(now - _)
+                  )
+                }
               )
               advance = (candidate: ChainSelection.Candidate) =>
                 Deferred[F, Unit].flatMap { fresh =>

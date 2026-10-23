@@ -80,12 +80,63 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
     }
   }
 
+  test(
+    "a stalled consumer leaves its permit, queue and reply readings in the stall report (#371)"
+  ) {
+    IO(forged).flatMap { chain =>
+      val pulls = 5
+      FetchCoordinator
+        .create[IO]()
+        .flatMap { coordinator =>
+          BlockAdmissions.create[IO].flatMap { admissions =>
+            coordinator.session(11L).use { session =>
+              TestControl.executeEmbed {
+                connected(finish = false, fetchSession = Some(session)) { (peer, _) =>
+                  for
+                    _ <- peer.intersect(Vector(ChainSync.Point.Origin))
+                    _ <- (1 to pulls).toList.traverse_(_ => peer.next)
+                    // The consumer stops pulling; the virtual clock advances once every runnable
+                    // publication has used its credit, as in the bounded-publication test above.
+                    _ <- IO.sleep(10.minutes)
+                    report <- StallDiagnostics.capture(
+                      StallDiagnostics.Sources(coordinator, admissions)
+                    )
+                  yield report
+                }
+              }
+            }
+          }
+        }
+        .map { report =>
+          assert(chain.headers.size > pulls)
+          val pipeline = report.sessions.flatMap(_.pipeline)
+          assertEquals(pipeline.size, 1, report.toString)
+          val p = pipeline.head
+          assertEquals(p.permits, Peer.Depth)
+          assertEquals(p.peer, SocketAddress(host"127.0.0.1", port"3001"))
+          // the publisher has taken every permit and the consumer has taken none back
+          assertEquals(p.permitsFree, 0L, p.toString)
+          assert(p.queued > 0, p.toString)
+          // the candidate is ahead of what was published and capacity room is gone
+          assert(p.unpublishedHeaders.exists(n => n > 0 && n <= p.candidateHeaders), p.toString)
+          assertEquals(p.candidateBase, p.publishedTip, p.toString)
+          assert(p.candidateTipSlot.exists(c => p.publishedTipSlot.forall(_ <= c)), p.toString)
+          // nothing arrived for the whole stall, and the last batch was handled after it arrived
+          assert(p.lastReplyAcceptedAgo.exists(_ >= 10.minutes), p.toString)
+          assert(p.lastReplyCollectedAgo.exists(_ >= 10.minutes), p.toString)
+          assert(p.lastReplyHandledAgo.exists(_ >= 10.minutes), p.toString)
+          assertEquals(report.admissions, BlockAdmissions.Occupancy(10, 0, 0))
+        }
+    }
+  }
+
   private def connected[A](
       check: Option[HeaderCheck[IO]] = None,
       finish: Boolean = true,
       prepare: Peer.Prepare[IO] = _ => IO.unit,
       heightSnapshot: Peer.HeightSnapshot[IO] = ChainSyncHeights.origin,
-      pipelineFailed: Option[Fault => IO[Unit]] = None
+      pipelineFailed: Option[Fault => IO[Unit]] = None,
+      fetchSession: Option[FetchCoordinator.Session[IO]] = None
   )(
       body: (Peer.Controlled[IO], Ref[IO, Int]) => Raise[IO, PeerError] ?=> IO[A]
   ): IO[A] =
@@ -135,7 +186,8 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
                       headers = check,
                       pipelineFailed = pipelineFailed,
                       heightSnapshot = heightSnapshot,
-                      retainedHeaders = journalCapacity
+                      retainedHeaders = journalCapacity,
+                      fetchSession = fetchSession
                     )
                     .use { peer =>
                       Handle

@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.node
 import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.effect.std.Mutex
 import cats.syntax.all.*
+import scala.concurrent.duration.FiniteDuration
 import xyz.kd5ujc.scarab.network.genesis.PicosClock
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.ChainSelection
@@ -27,7 +28,9 @@ final class FetchCoordinator[F[_]: Async] private (
     fetched: Option[F[Set[Bytes]]],
     salt: Long,
     genesis: Ref[F, Option[FetchCoordinator.GenesisControl[F]]],
-    decisions: Mutex[F]
+    decisions: Mutex[F],
+    holder: Ref[F, Option[FetchCoordinator.Holding]],
+    waits: Ref[F, Map[Long, FetchCoordinator.Waiting]]
 ):
   import FetchCoordinator.*
   private val F = Async[F]
@@ -36,14 +39,14 @@ final class FetchCoordinator[F[_]: Async] private (
 
   /** Installed once by the Genesis governor; phase and starvation are live observations. */
   def installGenesis(control: GenesisControl[F]): F[Unit] =
-    decisions.lock.surround(genesis.set(Some(control)) *> changeLocked(identity))
+    locked(DecisionHolder.InstallGenesis)(genesis.set(Some(control)) *> changeLocked(identity))
   def refreshGenesis: F[Unit] = change(identity)
 
   /** Publish a GSM transition and its decision as one transaction. A previously sampled Genesis
     * decision cannot demote the dynamo after this transition has completed.
     */
   def transitionGenesis(update: F[Unit]): F[Unit] =
-    decisions.lock.surround(F.uncancelable(_ => update *> changeLocked(identity)))
+    locked(DecisionHolder.TransitionGenesis)(F.uncancelable(_ => update *> changeLocked(identity)))
 
   /** State.hs:100–107,150: grace expiry retriggers decisions in both modes. Node/Genesis.hs:114
     * configures zero grace without Genesis, so the Praos loop instead runs at its 10ms rate limit.
@@ -81,6 +84,39 @@ final class FetchCoordinator[F[_]: Async] private (
           }
       }
     }
+
+  /** What each session holds, read from the state without the decision lock: a stall report must
+    * not wait behind the very transaction that may be stuck. Each session's own pipeline probe (set
+    * by [[Session.observed]]) is read after the state, outside it.
+    */
+  private[node] def diagnostics: F[Vector[SessionDiagnostic]] =
+    (state.get, waits.get, F.monotonic).tupled.flatMap { (s, waiting, now) =>
+      s.peers.toVector.sortBy(_._1).traverse { (id, peer) =>
+        peer.probe.sequence.map(pipeline =>
+          SessionDiagnostic(
+            session = id,
+            busy = peer.busy,
+            pendingOffers = peer.pending.size,
+            pendingHeaders = peer.pending.map(_.headers.size).sum,
+            active = peer.active.toVector.sortBy(_._1).map { (token, a) =>
+              ActiveFetch(token, a.requests, a.remaining.size)
+            },
+            candidateHeaders = peer.candidate.map(_.headers.size),
+            pipeline = pipeline,
+            reserving = waiting.get(id).map(w => Reserving(w.phase, now - w.at))
+          )
+        )
+      }
+    }
+
+  /** Who holds the decision lock and for how long, if anyone does; a plain read, without the lock.
+    */
+  private[node] def lockHolder: F[Option[LockHolder]] =
+    (holder.get, F.monotonic).mapN((held, now) => held.map(h => LockHolder(h.who, now - h.at)))
+
+  private def observe(id: Long, probe: F[Peer.PipelineState]): F[Unit] =
+    state.update(s => s.copy(peers = s.peers.updatedWith(id)(_.map(_.copy(probe = Some(probe))))))
+
   private[node] def inFlight: F[Map[Long, BlockFetchPolicy.InFlight]] = state.get.map { s =>
     s.peers.map { (id, p) =>
       val active = p.active.values.toVector
@@ -111,7 +147,25 @@ final class FetchCoordinator[F[_]: Async] private (
       .map(id => new Session(this, id))
 
   private def change(f: State[F] => State[F]): F[Unit] =
-    decisions.lock.surround(changeLocked(f))
+    locked(DecisionHolder.Change)(changeLocked(f))
+
+  /** `fa` under the decision lock, noting who holds it and since when: one clock read and one `Ref`
+    * write on entry and one on exit, and no lock of its own, so that a stall report can say what
+    * the lock is held by without taking it.
+    */
+  private def locked[A](who: DecisionHolder)(fa: F[A]): F[A] =
+    decisions.lock.surround(
+      F.uncancelable(poll =>
+        F.monotonic.flatMap(at => holder.set(Some(Holding(who, at)))) *>
+          F.guarantee(poll(fa), holder.set(None))
+      )
+    )
+
+  /** Note that session `id` is in `phase` of a reservation from now on. */
+  private def mark(id: Long, phase: Phase): F[Unit] =
+    F.monotonic.flatMap(at => waits.update(_.updated(id, Waiting(phase, at))))
+
+  private def unmark(id: Long): F[Unit] = waits.update(_ - id)
 
   private def changeLocked(f: State[F] => State[F]): F[Unit] =
     F.uncancelable { poll =>
@@ -217,29 +271,32 @@ final class FetchCoordinator[F[_]: Async] private (
   ): Resource[F, Allocation] =
     Resource
       .make(
-        decisions.lock.surround(Deferred[F, Allocation].flatMap { result =>
-          state
-            .modify { s =>
-              val token = s.next
-              val peer = s.peers.get(id)
-              val next = s.copy(
-                next = token + 1,
-                peers = s.peers.updatedWith(id)(
-                  _.map(p =>
-                    p.copy(pending = p.pending :+ Offer(token, headers, result, candidate))
+        (mark(id, Phase.LockWait) *> locked(DecisionHolder.Reserve)(
+          Deferred[F, Allocation].flatMap { result =>
+            mark(id, Phase.LockHeld) *>
+              state
+                .modify { s =>
+                  val token = s.next
+                  val peer = s.peers.get(id)
+                  val next = s.copy(
+                    next = token + 1,
+                    peers = s.peers.updatedWith(id)(
+                      _.map(p =>
+                        p.copy(pending = p.pending :+ Offer(token, headers, result, candidate))
+                      )
+                    )
                   )
-                )
-              )
-              (next, (token, peer.isDefined))
-            }
-            .flatMap { (token, live) =>
-              (if live then changeLocked(_.copy(mode = mode))
-               else result.complete(Allocation.empty).void)
-                .as(token -> result)
-            }
-        })
+                  (next, (token, peer.isDefined))
+                }
+                .flatMap { (token, live) =>
+                  (if live then changeLocked(_.copy(mode = mode))
+                   else result.complete(Allocation.empty).void)
+                    .as(token -> result)
+                }
+          }
+        )).onError(_ => unmark(id))
       ) { (token, _) =>
-        change(s =>
+        unmark(id) *> change(s =>
           s.copy(peers =
             s.peers.updatedWith(id)(
               _.map(p =>
@@ -249,7 +306,11 @@ final class FetchCoordinator[F[_]: Async] private (
           )
         )
       }
-      .evalMap((_, result) => result.get)
+      .evalMap((_, result) =>
+        F.uncancelable(poll =>
+          mark(id, Phase.GrantWait) *> F.guarantee(poll(result.get), unmark(id))
+        )
+      )
 
   private def received(id: Long, token: Long, hash: Bytes): F[Unit] =
     change(s =>
@@ -479,6 +540,51 @@ object FetchCoordinator:
       result: Deferred[F, Allocation],
       candidate: Option[ChainSelection.Candidate]
   )
+
+  /** One reservation of a session that has not completed: `requests` BlockFetch requests were
+    * granted and `headers` of its headers are still to arrive.
+    */
+  private[node] final case class ActiveFetch(token: Long, requests: Int, headers: Int)
+
+  /** A session as a stall report sees it: what the coordinator holds for it (`busy`, the offers
+    * waiting for a decision and their headers, the reservations in flight, the headers of its
+    * candidate) and, for a pipelined session, its [[Peer.PipelineState]].
+    */
+  private[node] final case class SessionDiagnostic(
+      session: Long,
+      busy: Boolean,
+      pendingOffers: Int,
+      pendingHeaders: Int,
+      active: Vector[ActiveFetch],
+      candidateHeaders: Option[Int],
+      pipeline: Option[Peer.PipelineState],
+      reserving: Option[Reserving] = None
+  )
+
+  /** Where in a BlockFetch reservation a session is. */
+  private[node] enum Phase:
+    /** Waiting for the decision lock. */
+    case LockWait
+
+    /** Holding the decision lock, queueing the offer and deciding. */
+    case LockHeld
+
+    /** Offer queued; waiting for the decision that grants it. */
+    case GrantWait
+
+  /** A session's reservation is in `phase` for `running`. */
+  private[node] final case class Reserving(phase: Phase, running: FiniteDuration)
+
+  /** The decision lock is held by `by` for `running`. */
+  private[node] final case class LockHolder(by: DecisionHolder, running: FiniteDuration)
+
+  /** What takes the decision lock. */
+  private[node] enum DecisionHolder:
+    case InstallGenesis, TransitionGenesis, Change, Reserve
+
+  private[node] final case class Waiting(phase: Phase, at: FiniteDuration)
+  private[node] final case class Holding(who: DecisionHolder, at: FiniteDuration)
+
   private final case class Active(remaining: Vector[Header], requests: Int, claimed: Set[Bytes])
   private final case class PeerState[F[_]](
       identity: Long,
@@ -487,7 +593,8 @@ object FetchCoordinator:
       performance: FetchGsv.PeerGsv = FetchGsv.default,
       pending: Vector[Offer[F]] = Vector.empty,
       active: Map[Long, Active] = Map.empty,
-      busy: Boolean = false
+      busy: Boolean = false,
+      probe: Option[F[Peer.PipelineState]] = None
   )
   private final case class State[F[_]](
       signal: Deferred[F, Unit],
@@ -521,6 +628,9 @@ object FetchCoordinator:
     ): F[Unit] =
       owner.announce(id, tip, performance, hints, candidate)
     def identity: Long = id
+
+    /** Let [[diagnostics]] read this session's pipeline through `probe`, which must not block. */
+    private[node] def observed(probe: F[Peer.PipelineState]): F[Unit] = owner.observe(id, probe)
     private[node] def updatePerformance(performance: FetchGsv.PeerGsv): F[Unit] =
       owner.updatePerformance(id, performance)
     private[node] def reserve(
@@ -576,7 +686,19 @@ object FetchCoordinator:
     (
       Deferred[F, Unit].flatMap(signal => Ref.of[F, State[F]](State[F](signal, 0, Map.empty))),
       Ref.of[F, Option[GenesisControl[F]]](None),
-      Mutex[F]
-    ).mapN { (state, genesis, decisions) =>
-      new FetchCoordinator(state, config, selection, fetched, salt, genesis, decisions)
+      Mutex[F],
+      Ref.of[F, Option[Holding]](None),
+      Ref.of[F, Map[Long, Waiting]](Map.empty)
+    ).mapN { (state, genesis, decisions, holder, waits) =>
+      new FetchCoordinator(
+        state,
+        config,
+        selection,
+        fetched,
+        salt,
+        genesis,
+        decisions,
+        holder,
+        waits
+      )
     }

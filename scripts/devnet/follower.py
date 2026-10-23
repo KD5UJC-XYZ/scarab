@@ -7,7 +7,7 @@ import sys
 from .cluster import database_mounts, freeze_classes, scala_container
 from .consensus import configuration
 from .metrics import METRICS_PORT
-from .util import ENTRY, QUERY_PORT, data_root, read_log
+from .util import ENTRY, QUERY_PORT, data_root, read_log, stall_dump_arguments
 
 
 def own_build(args):
@@ -30,9 +30,14 @@ def follow(args):
     if own_build(args):
         # the Prometheus endpoint on a listener of its own (an older build, run for a baseline, has no such flag)
         program += ["--metrics-listen", f"127.0.0.1:{METRICS_PORT}"]
+        # a stall leaves its pipeline state and a fiber dump in the run directory (issue 371)
+        stall_flags, stall_mount = stall_dump_arguments(root)
+        program += stall_flags
     if args.seconds:
         program += ["--seconds", str(args.seconds)]
     mounts = [f"{root / 'genesis'}:/genesis:ro"]
+    if own_build(args):
+        mounts.append(stall_mount)
     if getattr(args, "db", False):
         # the chain database lives in the run directory, so a later `follow --db` restarts from its snapshot
         (root / "db").mkdir(exist_ok=True)
