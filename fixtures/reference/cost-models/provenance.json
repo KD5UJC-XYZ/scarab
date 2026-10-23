@@ -1,0 +1,50 @@
+{
+ "schemaVersion": 1,
+ "scope": "Unchanged released Alonzo and Babbage transaction decoders at protocol versions 5 and 7, update proposals that set only cost models; not UTXO/LEDGER admission, genesis or Plutus evaluation",
+ "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+ "compiler": "GHC 9.10.3",
+ "referenceNode": "11.1.3 (matching embedded ledger package versions, not a bit-identical node release build)",
+ "packages": {
+  "cardano-ledger-alonzo": "1.16.0.0",
+  "cardano-ledger-babbage": "1.14.0.0",
+  "cardano-ledger-shelley": "1.19.0.1",
+  "cardano-ledger-core": "1.21.0.0",
+  "cardano-ledger-binary": "1.9.1.0"
+ },
+ "sourceFiles": {
+  "costModels": {
+   "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/CostModels.hs",
+   "sourceSha256": "5fd2ab01dabc4a7998b46f1bce8a8db2ddd89912fc6d680416d5f9d5a1becf47",
+   "matchesPin": true,
+   "archiveSha256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a"
+  },
+  "alonzoPParams": {
+   "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+   "sourceSha256": "5c494a8339bacbbc3ca0537b7f31527074afdad64f6743a19386158caaa307f1",
+   "matchesPin": true,
+   "archiveSha256": "195f1b9dac59bcdd8d4f499275f450bc37ee57169efee0fadf0d1676bc37cae5"
+  },
+  "babbagePParams": {
+   "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+   "sourceSha256": "dd631dc8a2771d0c259e2c1d41edeacb45fae270530a983924ba1b17abe4a862",
+   "matchesPin": true,
+   "archiveSha256": "8a0466673e9de9f0a2375cd137fb1b6368c901929865b0def41abd83a200730d"
+  },
+  "binaryDecoder": {
+   "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+   "sourceSha256": "cf8c16d44c36d7e3fb288028a9742d406c6042bec0f6fc75be566be2d319019a",
+   "matchesPin": false,
+   "difference": "two lines, the IPv4 octet order (`getWord32be` against `getWord32le`, lines 266 and 1363); `decodeMapByKey` (lines 806-830) is identical",
+   "archiveSha256": "05d59229edffc94b8f61273117456601532e23d8656f3076775bbf38e600bb8a"
+  }
+ },
+ "originalBodyBytesRetained": true,
+ "network": "none",
+ "keysRetained": false,
+ "fixtureSha256": "3e6ac83e4804025a6e8d3b3b0a22a7c90ea15cfd84ef257438a7212e33dc6550",
+ "harnessSha256": "c960e20fc7211dff56003a18d8939ed670a2ddb3f35ff79c52018a7b5789c7c2",
+ "originalStdoutSha256": "4bf3ea250278c06cdcd255ae6c87f3da51148a0d1dd718ae3b8edef24e4422ac",
+ "imageId": "sha256:841e256cd4cbfd3a929b94b07d7bf75c34f46f6589767edf71963d6c50a55ebf",
+ "baseImageId": "sha256:66c862cc374749f3631e91114358f3c063a7b0ec144163e501f3d22ca47821ef",
+ "cases": 98
+}

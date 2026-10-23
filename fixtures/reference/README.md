@@ -38,3 +38,5 @@ python3 scripts/devnet.py --name <yours> down
 [Context collection and failure payloads](context-errors/README.md) (#176) retain 24 actual signed
 submissions and 145 unchanged-reference API cases. Derived probes, direct constructor encodings and
 whole-transaction admission evidence have separate provenance and assertions.
+
+[Pre-Conway cost-model decoding](cost-models/README.md) (#332) retains 98 transactions (49 cases in each of the Alonzo and Babbage eras) measured against the unchanged released ledger decoders at decoder versions 5 and 7.
