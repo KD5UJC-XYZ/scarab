@@ -301,16 +301,21 @@
     },
     {
       "id": "pre-conway-instant-stake-arithmetic",
-      "classification": "known-divergence",
-      "status": "open",
-      "scope": "Pre-Conway ShelleyInstantStakeOps credential and pointer caches, separately from the nine corrected Conway cases.",
-      "assertion": "Source inspection shows checked signed updates and input-order deletion where the pinned native updater uses modular Word64 operations, missing-entry insertion and ordered UTxO traversal. New arbitrary-cache native API captures have not been executed.",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "Pre-Conway ShelleyInstantStakeOps credential and pointer caches, separately from the nine corrected Conway cases: 32 native cases (16 per map) run under the Shelley and the Babbage TxOut, and 6 toCompact bounds. Not the full UTXO transition, the Alonzo/Babbage collateral path as a transition, or any other era.",
+      "assertion": "The production updater matches the results of the actual released addShelleyInstantStake and deleteShelleyInstantStake (cardano-ledger f649f975, Shelley/State/Stake.hs:108-145; the released source file is byte-identical to the pin), run in the order of updateUTxOAndInstantStake, for underflow, overflow to zero, missing-entry insertion for both operations, zero suppression, zero removal and reinsertion, addition before deletion and TxIn map order, in both maps. ShelleyInstantStakeReferenceSuite replays every case through the updater and through ShelleyUtxo.update with inputs in signed order; ShelleyInstantStakeArithmeticSuite keeps the checked output-coin bounds.",
       "rationale": "Correcting the Conway corpus does not establish parity for the analogous earlier-era updater; no cache-coherence precondition justifies ignoring these source differences.",
       "owner": "Scarab ledger maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/299",
-      "resolution": "Capture actual pinned native API boundary results for both maps, align arithmetic and traversal order while preserving checked input conversion, and retain focused/full/scenario receipts.",
+      "resolution": "Native results captured with scripts/oracle/instant-stake in the pinned reference image (provenance in fixtures/reference/instant-stake/provenance.json) and replayed; the arithmetic and traversal order are aligned and checked input conversion is preserved.",
       "evidence": [
-        "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/ShelleyUtxo.scala"
+        "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/ShelleyUtxo.scala",
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/rules/ShelleyInstantStakeArithmeticSuite.scala",
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/rules/ShelleyInstantStakeReferenceSuite.scala",
+        "fixtures/reference/instant-stake/results.json",
+        "fixtures/reference/instant-stake/README.md",
+        "scripts/oracle/instant-stake/README.md"
       ],
       "candidateRequired": true
     },

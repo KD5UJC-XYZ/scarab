@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.rules
 
-import cats.{Monad, Order}
+import cats.Monad
 import cats.mtl.{Ask, Raise, Stateful}
 import cats.syntax.all.*
 import scala.collection.immutable.SortedMap
@@ -29,7 +29,6 @@ import xyz.kd5ujc.scarab.ledger.{
   VotingPeriod
 }
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.ledger.state.given
 
 // UTXOW, UTXO, UTXOS and PPUP for Shelley, Allegra, Mary, Alonzo and Babbage: one rule of each,
 // over the witness of the era (`Shelley/Rules/Utxow.hs`, `Utxo.hs`, `Ppup.hs`, with the rules that
@@ -125,19 +124,27 @@ object ShelleyPpup extends Sts[PpupEnv, ShelleyGovState, Option[Update], LedgerF
     }
 
 /** What the instant stake becomes as outputs are created and spent (`addShelleyInstantStake`,
-  * `deleteShelleyInstantStake`, `Shelley/State/Stake.hs:108-146`): the lovelace of an output goes
-  * to the entry of the credential of a base address or of the pointer of a pointer address, and an
-  * entry that reaches zero is removed. An enterprise address and a Byron address have none.
+  * `deleteShelleyInstantStake`, `applyUTxOShelleyInstantStake`, `Shelley/State/Stake.hs:108-145` at
+  * f649f975): the lovelace of an output goes to the entry of the credential of a base address or of
+  * the pointer of a pointer address. The arithmetic is native Word64 (`CompactForm Coin`), so a
+  * deletion can wrap below zero and an addition past 2^64, and an entry that reaches zero is
+  * removed. An absent entry receives the output amount for either operation, as native `Map.alter`
+  * specifies. An enterprise address and a Byron address have none.
   */
 object ShelleyInstantStakeOps:
   private def adjust[K](
       m: SortedMap[K, CompactCoin],
       key: K,
-      coin: BigInt
-  )(using Order[K]): Either[VocabError, SortedMap[K, CompactCoin]] =
-    CompactCoin.fromBigInt(m.get(key).fold(BigInt(0))(_.toBigInt) + coin).map { next =>
-      if next.word.isZero then m.removed(key) else m.updated(key, next)
+      amount: CompactCoin,
+      sign: Int
+  ): SortedMap[K, CompactCoin] =
+    val next = m.get(key).fold(amount) { old =>
+      val word =
+        if sign > 0 then Word64.wrappingAdd(old.word, amount.word)
+        else Word64.wrappingSubtract(old.word, amount.word)
+      CompactCoin.fromUnsigned(word.bits)
     }
+    if next.word.isZero then m.removed(key) else m.updated(key, next)
 
   private def step(
       is: ShelleyInstantStake,
@@ -148,10 +155,12 @@ object ShelleyInstantStakeOps:
       case Address.Kind.Shelley(_, _, Some(credential), _) =>
         for
           c <- Convert.credential[Staking](credential)
-          next <- adjust(is.credentialStake, c, sign * out.value.coin)
-        yield is.copy(credentialStake = next)
+          amount <- CompactCoin.fromBigInt(out.value.coin)
+        yield is.copy(credentialStake = adjust(is.credentialStake, c, amount, sign))
       case Address.Kind.Shelley(_, _, None, Some(ptr)) =>
-        adjust(is.ptrStake, ptr, sign * out.value.coin).map(next => is.copy(ptrStake = next))
+        CompactCoin
+          .fromBigInt(out.value.coin)
+          .map(amount => is.copy(ptrStake = adjust(is.ptrStake, ptr, amount, sign)))
       case _ => Right(is)
 
   /** The instant stake with the outputs `added` in it and the outputs `deleted` out of it. */
@@ -352,10 +361,12 @@ object ShelleyUtxo:
     val id = ann.id
     val utxo = s.utxo.utxo
     val stake = pre.instantStake.get(s)
+    // `extractKeys` deletes in `TxIn` map order, whatever the order the body lists its inputs in.
+    def inOrder(inputs: Vector[TxIn]): Vector[TxOut] = inputs.distinct.sorted.flatMap(utxo.get)
     if tx.isValid then
       val created = body.outputs.zipWithIndex.map { (out, i) => TxIn(id, i) -> out }
       for
-        next <- ShelleyInstantStakeOps.update(stake, body.outputs, ann.spent)
+        next <- ShelleyInstantStakeOps.update(stake, body.outputs, inOrder(body.inputs))
         deposited <- Coin.fromBigInt(s.deposited.value + deposits - refunds)
         fees <- Coin.fromBigInt(s.fees.value + body.fee)
       yield pre.instantStake.replace(next)(
@@ -371,7 +382,7 @@ object ShelleyUtxo:
         next <- ShelleyInstantStakeOps.update(
           stake,
           returned.map(_._2),
-          collateral.outputs
+          inOrder(body.collateral)
         )
         fees <- Coin.fromBigInt(s.fees.value + collateral.fee)
       yield pre.instantStake.replace(next)(

@@ -1,0 +1,7 @@
+*
+!scripts/
+scripts/*
+!scripts/oracle/
+scripts/oracle/*
+!scripts/oracle/instant-stake/
+!scripts/oracle/instant-stake/Main.hs
