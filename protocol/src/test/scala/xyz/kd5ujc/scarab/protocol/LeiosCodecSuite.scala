@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.protocol
 
 import xyz.kd5ujc.scarab.crypto.bls.{BlsError, SeatId, Seed, SecretKey, Vote}
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
 import munit.ScalaCheckSuite
 import org.scalacheck.Prop.forAll
 import org.scalacheck.Gen
@@ -291,7 +291,7 @@ class LeiosCodecSuite extends ScalaCheckSuite:
     }
     assertEquals(
       encode(Message.BlockTxs(Vector.fill(MaxTxsPerEb + 1)(bs(0xa0)))),
-      Left(LeiosWireError.Unencodable)
+      Left(LeiosWireError.TooMany(4, LeiosField.Transactions, MaxTxsPerEb, MaxTxsPerEb + 1))
     )
   }
 
@@ -308,7 +308,7 @@ class LeiosCodecSuite extends ScalaCheckSuite:
       assertEquals(decodePrefix(State.BlockTxs, bytes), Right((atBound, bytes.size)))
       assertEquals(
         encode(form(Vector.fill(MaxTxsPerEb + 1)(bs(0xa0)))),
-        Left(LeiosWireError.Unencodable)
+        Left(LeiosWireError.TooMany(4, LeiosField.Transactions, MaxTxsPerEb, MaxTxsPerEb + 1))
       )
     }
   }
@@ -324,7 +324,7 @@ class LeiosCodecSuite extends ScalaCheckSuite:
       decodePrefix(State.Block, bs(0x82, 0x02, 0xbf, 0xff)),
       Left(LeiosWireError.EmptyEndorserBlock)
     )
-    assertEquals(encode(Message.Block(Vector.empty)), Left(LeiosWireError.Unencodable))
+    assertEquals(encode(Message.Block(Vector.empty)), Left(LeiosWireError.EmptyEndorserBlock))
     // an indefinite map of one entry is read; the keys here repeat, which the codec does not judge
     assert(decodePrefix(State.Block, bs(0x82, 0x02, 0xbf) ++ entry ++ bs(0xff)).isRight)
     def eb(n: Int) =
@@ -342,7 +342,7 @@ class LeiosCodecSuite extends ScalaCheckSuite:
     val txs = Vector(bs(0x82, 0x18, 0x02, 0x01), bs(0x41, 0xa0), bs(0xd8, 0x18, 0x41, 0x00))
     val m = Message.LegacyBlockTxs(p0, TxBitmaps(Vector(0 -> BigInt(7))), txs)
     val bytes = ok(encode(m))
-    assert(bytes.hex.contains(txs.map(_.hex).mkString), bytes.hex)
+    assert(bytes.toArray.indexOfSlice(txs.flatMap(_.toArray)) >= 0, bytes.hex)
     assertEquals(bytes.take(2), bs(0x84, 0x04))
     assertEquals(decodePrefix(State.BlockTxs, bytes), Right((m, bytes.size)))
     assertEquals(next(State.BlockTxs, m), Some(State.Idle))
@@ -429,20 +429,34 @@ class LeiosCodecSuite extends ScalaCheckSuite:
       decodePrefix(State.Idle, overIndef),
       Left(LeiosWireError.TooMany(3, LeiosField.Bitmaps, 268, 269))
     )
-    // the encoder refuses what the decoder refuses
+    // the encoder refuses what the decoder refuses, with the decoder's own error
     Vector(
-      Vector(5 -> BigInt(0)),
-      Vector(268 -> BigInt(1)),
-      Vector(2 -> BigInt(1), 2 -> BigInt(1)),
-      Vector(3 -> BigInt(1), 2 -> BigInt(1)),
-      (0 to 268).map(_ -> BigInt(1)).toVector
-    ).foreach { w =>
+      Vector(5 -> BigInt(0)) -> LeiosWireError.ZeroBitmap(3, 5),
+      Vector(268 -> BigInt(1)) -> LeiosWireError.BitmapWindowOutOfRange(3, 268, 268),
+      Vector(2 -> BigInt(1), 2 -> BigInt(1)) -> LeiosWireError.BitmapWindowsNotAscending(3, 2),
+      Vector(3 -> BigInt(1), 2 -> BigInt(1)) -> LeiosWireError.BitmapWindowsNotAscending(3, 2),
+      (0 to 268).map(_ -> BigInt(1)).toVector -> LeiosWireError.TooMany(
+        3,
+        LeiosField.Bitmaps,
+        268,
+        269
+      )
+    ).foreach { case (w, error) =>
       assertEquals(
         encode(Message.BlockTxsRequest(p0, TxBitmaps(w))),
-        Left(LeiosWireError.Unencodable),
+        Left(error),
         w.take(3).toString
       )
     }
+    assertEquals(
+      encode(Message.LegacyBlockTxs(p0, TxBitmaps(Vector(5 -> BigInt(0))), Vector.empty)),
+      Left(LeiosWireError.ZeroBitmap(4, 5))
+    )
+    // a value the CBOR encoder cannot write keeps the encoder's reason
+    assertEquals(
+      encode(Message.BlockRequest(EbPoint(-1, hash(3)))),
+      Left(LeiosWireError.Unencodable(Cbor.Error.ArgumentOutOfRange(BigInt(-1))))
+    )
     // the older form carries the same bitmaps and the same checks
     val legacy = bs(0x84, 0x04) ++ pt ++ bs(0xa1, 0x05, 0x00, 0x80)
     assertEquals(

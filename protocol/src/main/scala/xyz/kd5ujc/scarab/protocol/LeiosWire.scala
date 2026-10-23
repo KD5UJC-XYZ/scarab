@@ -28,8 +28,12 @@ enum LeiosWireError:
   /** A vote inside `MsgLeiosVotes` failed strict decoding. */
   case BadVote(index: Int, error: BlsError)
 
-  /** A message that cannot be encoded within the encoder's bounds. */
-  case Unencodable
+  /** The CBOR encoder refused the value of the message; `cause` is its reason. The encoder's own
+    * bounds are reported as the case the decoder reports for the same input (`EmptyEndorserBlock`,
+    * `TooMany`, `ZeroBitmap` and the other bitmap cases), so an encoder and a decoder that refuse
+    * the same message say the same thing.
+    */
+  case Unencodable(cause: Cbor.Error)
 
   /** An endorser block that names no transaction: `{ + hash => word32 }` needs at least one. */
   case EmptyEndorserBlock
@@ -219,12 +223,13 @@ private[protocol] object LeiosWire:
     Value.Arr(Vector(nodeOf(Value.UInt(BigInt(p.slot))), nodeOf(Value.ByteString(p.hash.bytes))))
 
   /** The bitmaps as the reference writes them, an indefinite-length map (`encodeBitmaps`, `Type.hs`
-    * of ouroboros-consensus `7b239a16`, lines 387 to 393; the Blueprint draws the same). Refused
-    * unless they pass the checks the reference decoder applies.
+    * of ouroboros-consensus `7b239a16`, lines 387 to 393; the Blueprint draws the same). Refused,
+    * with the decoder's own error for `tag`, unless they pass the checks the reference decoder
+    * applies.
     */
-  def bitmapsBytes(b: TxBitmaps): Either[LeiosWireError, Bytes] =
+  def bitmapsBytes(tag: Int, b: TxBitmaps): Either[LeiosWireError, Bytes] =
     for
-      _ <- checkBitmaps(-1, b.windows).left.map(_ => LeiosWireError.Unencodable)
+      _ <- checkBitmaps(tag, b.windows)
       entries <- all(b.windows) { case (w, bits) =>
         for
           k <- encode(Value.UInt(BigInt(w)))
@@ -236,4 +241,4 @@ private[protocol] object LeiosWire:
     )
 
   def encode(v: Value): Either[LeiosWireError, Bytes] =
-    Cbor.encode(v).left.map(_ => LeiosWireError.Unencodable)
+    Cbor.encode(v).left.map(LeiosWireError.Unencodable(_))
