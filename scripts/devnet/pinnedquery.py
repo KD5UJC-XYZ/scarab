@@ -27,6 +27,7 @@ from .ntcquery import Incomplete, decode
 LOCAL_STATE_QUERY = 7
 ACQUIRE_VOLATILE_TIP, REACQUIRE_VOLATILE_TIP = 8, 9
 ACQUIRE_POINT, REACQUIRE_POINT = 0, 6
+ACQUIRE_IMMUTABLE_TIP, REACQUIRE_IMMUTABLE_TIP = 10, 11
 HEADER = struct.Struct(">IHH")
 MAX_PAYLOAD = 12288
 
@@ -36,11 +37,11 @@ class AcquirePin:
 
     `feed` takes the payload bytes of the client's protocol-7 mux segments in order and returns the
     complete messages that can be sent on, re-encoded only when they are acquire or reacquire messages
-    (volatile tip or explicit point): every one is sent as an acquisition of `point`.
+    (volatile tip, immutable tip or explicit point): every one is sent as an acquisition of `point`.
     `point` is a function, so the point can be chosen after the connections are prepared.
     `acquires` counts the acquisitions, so a caller can tell a pinned connection from one that
     never asked for a state. `foreign` counts the explicit points that differed from `point`, which
-    the client asked for itself and which were replaced; a comparison with any is refused."""
+    the client asked for itself (an explicit point, or the immutable tip) and which were replaced; a comparison with any is refused."""
 
     def __init__(self, point):
         self.point = point  # a function: the [slot, hash bytes] to acquire, read when an acquire arrives
@@ -68,6 +69,12 @@ class AcquirePin:
                 if message[1] != pinned:
                     self.foreign += 1
                 raw = enc([message[0], pinned])
+                self.acquires += 1
+            elif isinstance(message, list) and message in ([ACQUIRE_IMMUTABLE_TIP], [REACQUIRE_IMMUTABLE_TIP]):
+                # the immutable tip is another state than the pinned block: the client asked for something this
+                # comparison does not read, so it is replaced like a foreign point and the comparison is refused
+                raw = enc([ACQUIRE_POINT if message[0] == ACQUIRE_IMMUTABLE_TIP else REACQUIRE_POINT, self.point()])
+                self.foreign += 1
                 self.acquires += 1
             out.append(raw)
         return out

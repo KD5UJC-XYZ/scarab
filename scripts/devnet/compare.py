@@ -132,6 +132,9 @@ def query_bundle(name):
     for chunk in out.split("@@")[1:]:
         key, _, body = chunk.partition("\n")
         parts[key.strip()] = body
+    other = {k: n for k, n in foreign.items() if n}
+    if other:
+        return None, {"foreignAcquires": other, "slot": tip["slot"]}
     bundle = {"tip": tip}
     for k in keys:
         status = parts.get(f"{k}.rc", "").strip()
@@ -144,9 +147,6 @@ def query_bundle(name):
             bundle[k] = json.loads(parts[k])
         except (KeyError, json.JSONDecodeError) as e:
             return None, {**record, "unparsable": type(e).__name__}
-    other = {k: n for k, n in foreign.items() if n}
-    if other:
-        return None, {"foreignAcquires": other, "slot": tip["slot"]}
     unpinned = sorted(k for k, n in acquires.items() if n == 0)
     if unpinned:
         return None, {"unpinned": unpinned, "slot": tip["slot"]}
@@ -161,6 +161,8 @@ def compare_once_detailed(name, attempts=10, scala_wait=30):
         bundle, why = query_bundle(name)
         if bundle is None:
             failures.append(why)
+            if "foreignAcquires" in why:
+                return None, failures  # the harness asked the node for another state: not a retryable failure
             continue
         after = bundle["tip"]
         ls, utxo, protocol = bundle["ls"], bundle["utxo"], bundle["protocol"]

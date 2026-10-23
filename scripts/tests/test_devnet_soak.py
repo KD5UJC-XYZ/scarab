@@ -16,7 +16,7 @@ from devnet.scenarios import soak
 
 
 class SoakTranscriptTests(unittest.TestCase):
-    def run_gate(self, diagnostics, comparison=None):
+    def run_gate(self, diagnostics, comparison=None, comparisons=None):
         with tempfile.TemporaryDirectory(prefix="scarab-soak-transcript-") as temporary:
             root = pathlib.Path(temporary)
             transcript = root / "follower.jsonl"
@@ -41,9 +41,9 @@ class SoakTranscriptTests(unittest.TestCase):
                         patch.object(soak, "docker"), \
                         patch.object(soak, "own_build", return_value=False), \
                         patch.object(soak.subprocess, "Popen", side_effect=launch), \
-                        patch.object(soak.time, "monotonic", side_effect=[0, 0, 2]), \
+                        patch.object(soak.time, "monotonic", side_effect=[0] * (1 + len(comparisons or [0])) + [2]), \
                         patch.object(soak.time, "sleep"), \
-                        patch.object(soak, "compare_or_error", return_value=comparison or {"matched": True}), \
+                        patch.object(soak, "compare_or_error", side_effect=comparisons or None, return_value=comparison or {"matched": True}), \
                         redirect_stdout(output):
                     with self.assertRaises(SystemExit) as exit_:
                         soak.soak(SimpleNamespace(name="test", seconds=1, every=1, seed=0))
@@ -52,7 +52,7 @@ class SoakTranscriptTests(unittest.TestCase):
                     stream.close()
             summary = json.loads((root / "summary.json").read_text())
             self.assertEqual(transcript.read_text(), original)
-            if comparison is None:
+            if comparison is None and comparisons is None:
                 self.assertEqual(summary["comparisons"], 1)
                 self.assertEqual(summary["matched"], 1)
             self.assertEqual(summary["blocksApplied"], 1)
@@ -73,10 +73,11 @@ class SoakTranscriptTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(summary["unparsedFollowerOutput"], [])
 
-    def test_a_comparison_error_fails_the_gate(self):
-        code, summary, output = self.run_gate([], comparison={"error": "reference queries failed at the chosen block"})
+    def test_a_comparison_error_beside_a_matched_one_fails_the_gate(self):
+        error = {"error": "reference queries failed at the chosen block"}
+        code, summary, output = self.run_gate([], comparisons=[{"matched": True}, error])
+        self.assertEqual((summary["comparisons"], summary["matched"], summary["comparisonErrors"]), (1, 1, 1))
         self.assertEqual(code, 1)
-        self.assertEqual(summary["comparisonErrors"], 1)
         self.assertIn("1 ledger comparison errors", output)
 
 

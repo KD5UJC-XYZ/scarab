@@ -35,7 +35,7 @@ class AcquirePinTest(unittest.TestCase):
 
     def test_other_messages_pass_byte_identical(self):
         pin = self.pin()
-        messages = [enc([3, [0, [2, [1]]]]), enc([5]), enc([7]), enc([10]), enc([1]), enc([2])]
+        messages = [enc([3, [0, [2, [1]]]]), enc([5]), enc([7]), enc([1]), enc([2])]
         self.assertEqual(pin.feed(b"".join(messages)), messages)
         self.assertEqual(pin.acquires, 0)
 
@@ -47,6 +47,11 @@ class AcquirePinTest(unittest.TestCase):
         self.assertEqual(pin.feed(enc([0, other]) + enc([6, other]) + enc([0, []])),
                          [enc([0, POINT]), enc([6, POINT]), enc([0, POINT])])
         self.assertEqual((pin.acquires, pin.foreign), (5, 3))
+
+    def test_immutable_tip_acquire_and_reacquire_are_pinned_and_counted_as_foreign(self):
+        pin = self.pin()
+        self.assertEqual(pin.feed(enc([10]) + enc([11])), [enc([0, POINT]), enc([6, POINT])])
+        self.assertEqual((pin.acquires, pin.foreign), (2, 2))
 
     def test_messages_split_across_segments_are_found(self):
         pin = self.pin()
@@ -195,3 +200,17 @@ class FinalComparisonsTest(unittest.TestCase):
     def test_every_failed_try_is_kept_when_all_fail(self):
         from devnet.scenarios import pool
         self.assertEqual(len(pool.final_comparisons(lambda: {"error": "x"})), 3)
+
+
+class CompareOnceForeignTest(unittest.TestCase):
+    def test_a_foreign_acquire_is_not_retried_away_by_a_clean_attempt(self):
+        clean = ({"tip": {}}, None)
+        foreign = (None, {"foreignAcquires": {"utxo": 1}, "slot": 5})
+        calls = iter([foreign, clean])
+        with patch.object(compare, "query_bundle", side_effect=lambda name: next(calls)):
+            result, failures = compare.compare_once_detailed("n")
+        self.assertIsNone(result)
+        self.assertEqual(failures, [foreign[1]])
+        calls = iter([foreign, clean])
+        with patch.object(compare, "query_bundle", side_effect=lambda name: next(calls)):
+            self.assertIn("error", compare.compare_or_error("n"))
