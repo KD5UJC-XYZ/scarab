@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import cats.syntax.show.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Node, Tree, TreeFold, Value}
 import xyz.kd5ujc.scarab.codec.Tree.{treeEquals, treeHash, treeString}
@@ -127,7 +128,7 @@ object NativeScript:
     def message: String = this match
       case Malformed(r)            => r.message
       case RequiredOutOfRange(v)   => s"script n: $v does not fit a signed 64-bit integer"
-      case SlotOutOfRange(what, v) => s"$what: $v does not fit an unsigned 64-bit integer"
+      case SlotOutOfRange(what, v) => s"${what.show}: $v does not fit an unsigned 64-bit integer"
 
   private val MinInt64 = -(BigInt(1) << 63)
   private val MaxInt64 = (BigInt(1) << 63) - 1

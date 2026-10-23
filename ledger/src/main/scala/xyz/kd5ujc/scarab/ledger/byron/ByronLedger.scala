@@ -35,7 +35,7 @@ enum ByronError:
     case ProtocolMagicMismatch(b, g) => s"block protocol magic $b differs from the genesis $g"
     case HeaderTooLarge(m, a)        => s"header of $a bytes exceeds $m"
     case BlockTooLarge(m, a)         => s"block of $a bytes exceeds $m"
-    case Decode(r)                   => s"block body does not decode: $r"
+    case Decode(r)                   => s"block body does not decode: ${r.show}"
     case ProofMismatch(w)            => s"${w.label} payload does not match the header's proof"
     case Delegation(e)               => s"delegation: ${e.message}"
     case Update(e)                   => s"update: ${e.message}"

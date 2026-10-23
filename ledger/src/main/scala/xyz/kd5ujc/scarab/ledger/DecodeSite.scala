@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import cats.Show
+import cats.syntax.show.*
+
 /** Where in a ledger value a decoder was reading when it failed: a named [[DecodeField]], a
   * [[DecodeSite.Within]] of one narrowed by a [[DecodeSite.Qualifier]], or the [[DecodeSite.Index]]
   * of an array element. The closed set replaces free-text labels, so a test states the site as a
@@ -26,13 +29,24 @@ object DecodeSite:
     case TaggedArray extends Qualifier("(tagged array)")
     case AscendingUniqueKeys extends Qualifier("(ascending unique keys)")
 
+  object Qualifier:
+    given Show[Qualifier] = Show.show(_.label)
+
   /** `parent` narrowed by `qualifier`, rendered as the parent and the qualifier's label. */
-  final case class Within(parent: DecodeSite, qualifier: Qualifier) extends DecodeSite:
-    override def toString: String = s"$parent ${qualifier.label}"
+  final case class Within(parent: DecodeSite, qualifier: Qualifier) extends DecodeSite
 
   /** The element at `position` of an array. */
-  final case class Index(position: Int) extends DecodeSite:
-    override def toString: String = position.toString
+  final case class Index(position: Int) extends DecodeSite
+
+  /** A field as its label, a narrowed site as the site and the qualifier's label, an index as its
+    * number.
+    */
+  given Show[DecodeSite] = Show.show(render)
+
+  private def render(site: DecodeSite): String = site match
+    case field: DecodeField => field.label
+    case Within(parent, q)  => s"${render(parent)} ${q.show}"
+    case Index(position)    => position.toString
 
 /** The named places a ledger decoder reads. A label keeps the wording the decoders reported while
   * places were free text, so an error renders as it always did. Some labels are the reference's own
@@ -397,7 +411,6 @@ enum DecodeField(val label: String) extends DecodeSite:
   case TxRoot extends DecodeField("tx root")
   case TxSizeLinear extends DecodeField("tx size linear")
   case UnlockStakeEpoch extends DecodeField("unlockStakeEpoch")
-  case UpdateImplicit extends DecodeField("updateImplicit")
   case UpdatePayload extends DecodeField("update payload")
   case UpdateProof extends DecodeField("update proof")
   case UpdateProposal extends DecodeField("update proposal")
@@ -421,4 +434,5 @@ enum DecodeField(val label: String) extends DecodeSite:
   case WitnessValue extends DecodeField("witness value")
   case WitnessVector extends DecodeField("witness vector")
 
-  override def toString: String = label
+object DecodeField:
+  given Show[DecodeField] = Show.show(_.label)

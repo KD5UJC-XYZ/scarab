@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.mempack
 
+import cats.syntax.show.*
 import cats.Show
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.Era
@@ -102,8 +103,8 @@ object MemPack:
       case Failure.OutOfRange(q)       => s"MemPack: $q outside [0, 2^64 - 1]"
       case Failure.MultiAssetTooLarge(a, p) =>
         s"MemPack: $a assets of $p policies are too many to compact"
-      case Failure.AddressRefused(r)      => s"MemPack: address: $r"
-      case Failure.ScriptRefused(r)       => s"MemPack: script: $r"
+      case Failure.AddressRefused(r)      => s"MemPack: address: ${r.show}"
+      case Failure.ScriptRefused(r)       => s"MemPack: script: ${r.show}"
       case Failure.ReferenceScriptMissing => "MemPack: output has no reference-script field"
       case Failure.ReferenceScriptWrapper => "MemPack: reference script requires tag 24"
       case Failure.UnknownScriptKind(t)   => s"MemPack: unknown reference-script kind $t"

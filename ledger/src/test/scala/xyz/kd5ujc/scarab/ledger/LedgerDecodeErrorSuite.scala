@@ -128,6 +128,20 @@ class LedgerDecodeErrorSuite extends FunSuite:
       "ByteLength(pool id,28,1)"
     )
     assertEquals(
+      LedgerDecodeError.GenesisMissingField(byron.ByronGenesisKey.MaxTxSize).toString,
+      "GenesisMissingField(maxTxSize)"
+    )
+    assertEquals(
+      LedgerDecodeError
+        .NativeScript(
+          NativeScript.DecodeError.Malformed(
+            LedgerDecodeError.TaggedArity(DecodeField.NativeScript, 0, 1)
+          )
+        )
+        .toString,
+      "NativeScript(Malformed(TaggedArity(native script,0,1)))"
+    )
+    assertEquals(
       ChainError
         .Decode(DecodeField.Block, LedgerDecodeError.Syntax(Cbor.Error.UnexpectedEnd))
         .message,

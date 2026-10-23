@@ -244,52 +244,55 @@ object ByronParamsUpdate:
       }
 
 object ByronParams:
-  /** `blockVersionData` of the Byron genesis file; numbers are decimal strings (or numbers). */
+  /** `blockVersionData` of the Byron genesis file, read under the keys of [[ByronGenesisKey]];
+    * numbers are decimal strings (or numbers).
+    */
   def fromGenesis(c: ACursor): Either[LedgerDecodeError, ByronParams] =
-    def num(name: DecodeField, from: ACursor = c): Either[LedgerDecodeError, BigInt] =
+    def num(key: ByronGenesisKey, from: ACursor = c): Either[LedgerDecodeError, BigInt] =
       from
-        .downField(name.label)
+        .downField(key.json)
         .focus
-        .toRight(LedgerDecodeError.GenesisMissingField(name))
+        .toRight(LedgerDecodeError.GenesisMissingField(key))
         .flatMap { j =>
           j.asString
             .flatMap(s => Either.catchNonFatal(BigInt(s)).toOption)
             .orElse(j.asNumber.flatMap(_.toBigInt))
-            .toRight(LedgerDecodeError.GenesisExpectedNumber(name))
+            .toRight(LedgerDecodeError.GenesisExpectedNumber(key))
         }
-    val soft = c.downField(DecodeField.SoftforkRuleParam.label)
-    val fee = c.downField(DecodeField.TxFeePolicyParam.label)
+    val soft = c.downField(ByronGenesisKey.SoftforkRule.json)
+    val fee = c.downField(ByronGenesisKey.TxFeePolicy.json)
     (
-      num(DecodeField.ScriptVersion),
-      num(DecodeField.SlotDuration),
-      num(DecodeField.MaxBlockSize),
-      num(DecodeField.MaxHeaderSize),
-      num(DecodeField.MaxTxSize),
-      num(DecodeField.MaxProposalSize),
-      num(DecodeField.MpcThd),
-      num(DecodeField.HeavyDelThd),
-      num(DecodeField.UpdateVoteThd),
-      num(DecodeField.UpdateProposalThd),
-      num(DecodeField.UpdateImplicit),
+      num(ByronGenesisKey.ScriptVersion),
+      num(ByronGenesisKey.SlotDuration),
+      num(ByronGenesisKey.MaxBlockSize),
+      num(ByronGenesisKey.MaxHeaderSize),
+      num(ByronGenesisKey.MaxTxSize),
+      num(ByronGenesisKey.MaxProposalSize),
+      num(ByronGenesisKey.MpcThd),
+      num(ByronGenesisKey.HeavyDelThd),
+      num(ByronGenesisKey.UpdateVoteThd),
+      num(ByronGenesisKey.UpdateProposalThd),
+      num(ByronGenesisKey.UpdateImplicit),
       (
-        num(DecodeField.InitThd, soft),
-        num(DecodeField.MinThd, soft),
-        num(DecodeField.ThdDecrement, soft)
+        num(ByronGenesisKey.InitThd, soft),
+        num(ByronGenesisKey.MinThd, soft),
+        num(ByronGenesisKey.ThdDecrement, soft)
       ).mapN(
         SoftforkRule(_, _, _)
       ),
-      (num(DecodeField.Summand, fee), num(DecodeField.Multiplier, fee)).tupled.flatMap { (a, b) =>
-        // Common/TxFeePolicy.hs:122–136: genesis JSON uses Word64 div, not the CBOR Nano round.
-        Either.cond(
-          a >= 0 && a < (BigInt(1) << 64),
-          TxFeePolicy((a / TxFeePolicy.Nano) * TxFeePolicy.Nano, b),
-          LedgerDecodeError.NumberOutOfRange(
-            DecodeField.GenesisFeeSummand,
-            a,
-            0,
-            (BigInt(1) << 64) - 1
+      (num(ByronGenesisKey.Summand, fee), num(ByronGenesisKey.Multiplier, fee)).tupled.flatMap {
+        (a, b) =>
+          // Common/TxFeePolicy.hs:122–136: genesis JSON uses Word64 div, not the CBOR Nano round.
+          Either.cond(
+            a >= 0 && a < (BigInt(1) << 64),
+            TxFeePolicy((a / TxFeePolicy.Nano) * TxFeePolicy.Nano, b),
+            LedgerDecodeError.NumberOutOfRange(
+              DecodeField.GenesisFeeSummand,
+              a,
+              0,
+              (BigInt(1) << 64) - 1
+            )
           )
-        )
       },
-      num(DecodeField.UnlockStakeEpoch)
+      num(ByronGenesisKey.UnlockStakeEpoch)
     ).mapN(ByronParams.apply)
