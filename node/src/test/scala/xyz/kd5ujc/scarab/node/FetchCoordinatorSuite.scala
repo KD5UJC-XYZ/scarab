@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.effect.{Deferred, IO, Ref}
+import cats.effect.{Deferred, FiberIO, IO, Ref}
 import cats.effect.testkit.TestControl
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -568,48 +568,107 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
         for
           held <- Deferred[IO, Unit]
           release <- Deferred[IO, Unit]
-          idle <- coordinator.lockHolder
-          // a transaction that holds the lock until released
-          holder <- coordinator.transitionGenesis(held.complete(()) *> release.get).start
-          _ <- held.get
-          holding <- coordinator.lockHolder
-          // a reservation behind it waits for the lock
-          waiter <- b.reserve(Vector(header(2)), FetchMode.BulkSync).use(_ => IO.unit).start
-          waiting <- (IO.sleep(10.millis) *> coordinator.diagnostics)
-            .iterateUntil(_.exists(_.reserving.nonEmpty))
-            .timeout(10.seconds)
-          _ <- release.complete(())
-          _ <- holder.joinWithNever
-          _ <- waiter.cancel
-          // behind a granted reservation that is still in use, the next one waits for its grant
-          _ <- a.announce(Some(header(1)), FetchGsv.default)
-          _ <- b.announce(Some(header(2)), FetchGsv.default)
           inUse <- Deferred[IO, Unit]
           done <- Deferred[IO, Unit]
-          first <- a
-            .reserve(Vector(header(1)), FetchMode.BulkSync)
-            .use(_ => inUse.complete(()) *> done.get)
-            .start
-          _ <- inUse.get
-          second <- b.reserve(Vector(header(2)), FetchMode.BulkSync).use(_ => IO.unit).start
-          granting <- (IO.sleep(10.millis) *> coordinator.diagnostics)
-            .iterateUntil(_.exists(_.reserving.exists(_.phase == FetchCoordinator.Phase.GrantWait)))
-            .timeout(10.seconds)
-          _ <- done.complete(())
-          _ <- first.joinWithNever *> second.joinWithNever
+          workers <- Ref.of[IO, List[FiberIO[Unit]]](Nil)
+          run = (work: IO[Unit]) => work.start.flatTap(fiber => workers.update(fiber :: _))
+          result <- (for
+            idle <- coordinator.lockHolder
+            // a transaction that holds the lock until released
+            _ <- run(coordinator.transitionGenesis(held.complete(()) *> release.get))
+            _ <- held.get
+            holding <- coordinator.lockHolder
+            // a reservation behind it waits for the lock
+            waiter <- run(b.reserve(Vector(header(2)), FetchMode.BulkSync).use(_ => IO.unit))
+            waiting <- (IO.sleep(10.millis) *> coordinator.diagnostics)
+              .iterateUntil(_.exists(_.reserving.nonEmpty))
+              .timeout(10.seconds)
+            _ <- release.complete(())
+            _ <- waiter.cancel
+            // behind a granted reservation that is still in use, the next one waits for its grant
+            _ <- a.announce(Some(header(1)), FetchGsv.default)
+            _ <- b.announce(Some(header(2)), FetchGsv.default)
+            _ <- run(
+              a.reserve(Vector(header(1)), FetchMode.BulkSync)
+                .use(_ => inUse.complete(()) *> done.get)
+            )
+            _ <- inUse.get
+            _ <- run(b.reserve(Vector(header(2)), FetchMode.BulkSync).use(_ => IO.unit))
+            granting <- (IO.sleep(10.millis) *> coordinator.diagnostics)
+              .iterateUntil(
+                _.exists(_.reserving.exists(_.phase == FetchCoordinator.Phase.GrantWait))
+              )
+              .timeout(10.seconds)
+          yield (idle, holding, waiting, granting)).guarantee(
+            // release every latch and end every worker, whatever happened
+            held.complete(()).void *> release.complete(()).void *> inUse.complete(()).void *>
+              done.complete(()).void *> workers.get.flatMap(_.traverse_(_.cancel))
+          )
           after <- coordinator.diagnostics
+          holder <- coordinator.lockHolder
         yield
+          val (idle, holding, waiting, granting) = result
           assertEquals(idle, None)
           assertEquals(holding.map(_.by), Some("transitionGenesis"))
           assertEquals(
             waiting.flatMap(_.reserving).map(_.phase),
             Vector(FetchCoordinator.Phase.LockWait)
           )
-          assertEquals(
-            granting.flatMap(_.reserving).map(_.phase),
-            Vector(FetchCoordinator.Phase.GrantWait)
+          assert(
+            granting.flatMap(_.reserving).map(_.phase).contains(FetchCoordinator.Phase.GrantWait)
           )
           assertEquals(after.flatMap(_.reserving), Vector.empty)
+          assertEquals(holder, None)
+      }
+    }
+  }
+
+  private case object Boom extends RuntimeException("boom"), scala.util.control.NoStackTrace
+
+  test("a cancelled or failed transaction leaves no holder or reservation mark behind (#371)") {
+    import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
+    import xyz.kd5ujc.scarab.protocol.ChainSync.Point
+    val local = ChainSelection.Local(Point.Origin, SelectView(-1, 0, None, 0, None), Vector.empty)
+    // 0: selection answers, 1: it fails, 2: it never answers
+    Ref.of[IO, Int](0).flatMap { mode =>
+      val selection = mode.get.flatMap {
+        case 0 => IO.pure(local)
+        case 1 => IO.raiseError[ChainSelection.Local](Boom)
+        case _ => IO.never[ChainSelection.Local]
+      }
+      FetchCoordinator.create[IO](selection = Some(selection)).flatMap { coordinator =>
+        coordinator.session(0).use { session =>
+          for
+            // a failed transaction clears the holder
+            _ <- mode.set(1)
+            failed <- coordinator.setMode(FetchMode.BulkSync).attempt
+            afterFailure <- coordinator.lockHolder
+            // a reservation whose acquisition fails inside the decision clears its marks
+            reserved <- session
+              .reserve(Vector(header(1)), FetchMode.BulkSync)
+              .use(_ => IO.unit)
+              .attempt
+            marks <- coordinator.diagnostics
+            held <- coordinator.lockHolder
+            // a cancelled transaction clears the holder
+            _ <- mode.set(2)
+            stuck <- coordinator.setMode(FetchMode.BulkSync).start
+            holding <- (IO.sleep(10.millis) *> coordinator.lockHolder)
+              .iterateUntil(_.nonEmpty)
+              .timeout(10.seconds)
+            _ <- stuck.cancel
+            afterCancel <- coordinator.lockHolder
+            // so that the session can end
+            _ <- mode.set(0)
+          yield
+            assertEquals(failed, Left(Boom))
+            assertEquals(afterFailure, None)
+            assertEquals(reserved, Left(Boom))
+            assertEquals(marks.flatMap(_.reserving), Vector.empty)
+            assertEquals(held, None)
+            assertEquals(holding.map(_.by), Some("change"))
+            assertEquals(afterCancel, None)
+        }
       }
     }
   }

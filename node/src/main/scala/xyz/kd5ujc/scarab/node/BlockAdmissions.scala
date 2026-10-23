@@ -99,8 +99,10 @@ private[node] final class BlockAdmissions[F[_]: Async] private (
     * [[occupancy]] until it ends.
     */
   def processing[A](work: String, stage: String)(body: F[A]): F[A] =
-    F.monotonic.flatMap(at => working.set(Some(Started(work, stage, at, at)))) *>
-      F.guarantee(body, working.set(None))
+    F.uncancelable(poll =>
+      F.monotonic.flatMap(at => working.set(Some(Started(work, stage, at, at)))) *>
+        F.guarantee(poll(body), working.set(None))
+    )
 
   /** Note that the work [[processing]] runs has moved on to `stage`: one clock read and one `Ref`
     * write per stage.

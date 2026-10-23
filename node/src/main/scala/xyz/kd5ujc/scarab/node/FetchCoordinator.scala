@@ -155,8 +155,10 @@ final class FetchCoordinator[F[_]: Async] private (
     */
   private def locked[A](who: String)(fa: F[A]): F[A] =
     decisions.lock.surround(
-      F.monotonic.flatMap(at => holder.set(Some(Holding(who, at)))) *>
-        F.guarantee(fa, holder.set(None))
+      F.uncancelable(poll =>
+        F.monotonic.flatMap(at => holder.set(Some(Holding(who, at)))) *>
+          F.guarantee(poll(fa), holder.set(None))
+      )
     )
 
   /** Note that session `id` is in `phase` of a reservation from now on. */
@@ -269,7 +271,7 @@ final class FetchCoordinator[F[_]: Async] private (
   ): Resource[F, Allocation] =
     Resource
       .make(
-        mark(id, Phase.LockWait) *> locked("reserve")(Deferred[F, Allocation].flatMap { result =>
+        (mark(id, Phase.LockWait) *> locked("reserve")(Deferred[F, Allocation].flatMap { result =>
           mark(id, Phase.LockHeld) *>
             state
               .modify { s =>
@@ -290,7 +292,7 @@ final class FetchCoordinator[F[_]: Async] private (
                  else result.complete(Allocation.empty).void)
                   .as(token -> result)
               }
-        })
+        })).onError(_ => unmark(id))
       ) { (token, _) =>
         unmark(id) *> change(s =>
           s.copy(peers =
@@ -302,7 +304,11 @@ final class FetchCoordinator[F[_]: Async] private (
           )
         )
       }
-      .evalMap((_, result) => mark(id, Phase.GrantWait) *> F.guarantee(result.get, unmark(id)))
+      .evalMap((_, result) =>
+        F.uncancelable(poll =>
+          mark(id, Phase.GrantWait) *> F.guarantee(poll(result.get), unmark(id))
+        )
+      )
 
   private def received(id: Long, token: Long, hash: Bytes): F[Unit] =
     change(s =>

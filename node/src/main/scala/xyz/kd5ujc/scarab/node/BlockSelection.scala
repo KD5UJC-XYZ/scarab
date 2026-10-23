@@ -53,9 +53,6 @@ private[node] final class BlockSelection[F[_]: Async] private (
           )
         )(a => pool.invalidated(a.taken, header, error))
 
-  private def select(adding: Option[BlockPool.Admission])(using Raise[F, NodeError]): F[Unit] =
-    application.locked(selectLocked(adding))
-
   private def selectLocked(
       adding: Option[BlockPool.Admission],
       phase: Phase = Phase.Admission
@@ -124,8 +121,10 @@ private[node] final class BlockSelection[F[_]: Async] private (
             }) *> pool.completeAdmission(header.hash)
         )
       case BlockAdmissions.Work.Reprocess(done) =>
-        pool.admissions.processing("reprocess", "selecting")(
-          select(None).guarantee(done.complete(()).void)
+        pool.admissions.processing("reprocess", "waitingForApplication")(
+          application
+            .locked(pool.admissions.stage("selecting") *> selectLocked(None))
+            .guarantee(done.complete(()).void)
         )
     })
 

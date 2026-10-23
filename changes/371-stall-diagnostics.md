@@ -10,6 +10,6 @@
   (no log lock) and the runtime's live-fiber snapshot to `<dir>/fiber-dump-<epoch ms>-<n>.txt` when a stall begins,
   from fibers of their own; a `stallDump` event tells how they ended. The report is read before any line is
   logged and every log call and dump runs in a fiber the watchdog does not await, so a wedged log or a hung dump keeps
-  neither a later check, the stall exit nor shutdown from happening; one dump runs at a time. The devnet scenarios that start the follower pass it, and
+  neither a later check, the stall exit nor shutdown from happening; one dump runs at a time, the report lines go through a single-slot queue that never waits, and the final `finished` line of a stall exit is bounded to 5 seconds. The devnet scenarios that start the follower pass it, and
   `e2e-summary.json` records the events and dump files as `stallDiagnostics`.
 - No behaviour changes without a stall, and no reconnect on stall.

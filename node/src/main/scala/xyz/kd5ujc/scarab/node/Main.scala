@@ -1377,10 +1377,17 @@ object Main extends IOApp:
                 case Right(Right(failure)) => RunEnd.Faulted(failure)
               }
             last <- ref.get
-            _ <- logged(NodeEvent.finished(last))
+            _ <- finishedLine(ended, logged(NodeEvent.finished(last)))
           yield ended
       })
     yield exitCode(ended)
+
+  /** The `finished` line. After a stall exit the log may be the very thing that is stuck, and the
+    * exit code must not wait for its last line.
+    */
+  private def finishedLine(ended: RunEnd, line: IO[Unit]): IO[Unit] = ended match
+    case RunEnd.Stalled => StallDiagnostics.bounded[IO](5.seconds)(line)
+    case _              => line
 
   /** How a run ended. */
   private enum RunEnd:
