@@ -10,3 +10,6 @@
 - **The buffer's growth decision cannot overflow.** After partial consumption `end + incoming` could wrap negative
   near the 2 GiB array limit and skip the growth; the decision is now a pure function in `Long` arithmetic that
   compacts into a fresh array or refuses with the ingress limit.
+- **A complete message is delivered even when the next queued SDU would overflow the buffer.** While batching, an
+  SDU that does not fit beside the buffered bytes is held for the next round instead of failing with the ingress
+  limit; only a buffer that cannot make progress on its own fails.

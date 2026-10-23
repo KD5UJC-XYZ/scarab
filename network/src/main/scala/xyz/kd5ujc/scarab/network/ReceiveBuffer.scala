@@ -16,7 +16,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
   * again, and the array is dropped (not reused) when the buffer empties or grows, so a decoded
   * value may keep a slice of it.
   */
-private[network] final class ReceiveBuffer:
+private[network] final class ReceiveBuffer(limit: Long = ReceiveBuffer.MaxArray):
   private var array: Array[Byte] = ReceiveBuffer.NoBytes
   private var start = 0
   private var end = 0
@@ -30,7 +30,7 @@ private[network] final class ReceiveBuffer:
 
   /** Add `more`; false, with the buffer unchanged, when the total would not fit in one array. */
   def append(more: Bytes): Boolean =
-    ReceiveBuffer.room(live, end, array.length, more.size) match
+    ReceiveBuffer.room(live, end, array.length, more.size, limit) match
       case ReceiveBuffer.Room.TooLarge => false
       case room =>
         room match
@@ -82,10 +82,10 @@ private object ReceiveBuffer:
     * @param incoming
     *   the size of the bytes to add
     */
-  def room(live: Int, end: Int, length: Int, incoming: Int): Room =
+  def room(live: Int, end: Int, length: Int, incoming: Int, limit: Long = MaxArray): Room =
     val needed = live.toLong + incoming.toLong
-    if needed > MaxArray then Room.TooLarge
+    if needed > limit then Room.TooLarge
     else if end.toLong + incoming.toLong <= length.toLong then Room.Fits
     else
       val wanted = math.max(math.max(needed, 2L * live), MinCapacity.toLong)
-      Room.Grow(math.min(MaxArray, wanted).toInt)
+      Room.Grow(math.min(limit, wanted).toInt)

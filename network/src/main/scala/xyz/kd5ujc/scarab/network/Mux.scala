@@ -112,7 +112,8 @@ object Mux:
       egressQueueMessages: Int = 64,
       maxMessageBytes: Int = 2500000,
       sduTimeout: FiniteDuration = 30.seconds,
-      handshakeSduTimeout: FiniteDuration = 10.seconds
+      handshakeSduTimeout: FiniteDuration = 10.seconds,
+      receiveBufferLimit: Long = ReceiveBuffer.MaxArray
   )
 
   object Config:
@@ -569,7 +570,7 @@ object Mux:
           inbound.toList
             .traverse { case (key @ (protocol, role), ingress) =>
               for
-                buffer <- Async[F].delay(new ReceiveBuffer)
+                buffer <- Async[F].delay(new ReceiveBuffer(config.receiveBufferLimit))
                 lock <- Mutex[F]
               yield key -> (
                 channel(
@@ -706,6 +707,10 @@ object Mux:
           }
       }
 
+    // An SDU that did not fit beside the buffered bytes while batching: held for the next round,
+    // after the buffered message has been decoded and consumed. Used only under `lock`.
+    private var pending: Option[Bytes] = None
+
     def recv[A](maxBytes: Int)(decode: Bytes => DecodeResult[A])(using
         Raise[F, NetworkError]
     ): F[A] =
@@ -729,9 +734,14 @@ object Mux:
         // Wait for an SDU, then take all that are already queued before decoding again, unless
         // the buffer has doubled since the last attempt: a decoder that rereads the buffer from
         // its start (a long array of items) is then run a logarithmic number of times for a
-        // message that arrives in many SDUs, and in time proportional to its size overall.
+        // message that arrives in many SDUs, and in time proportional to its size overall (when
+        // the queue runs dry after every SDU the decoder runs after each, so one that rescans its
+        // prefix is quadratic: the batching bounds only SDUs that are already queued).
         def await(attempted: Int): F[A] =
-          nextPayload.flatMap(append(_) *> more(attempted))
+          F.delay { val held = pending; pending = None; held }.flatMap {
+            case Some(payload) => append(payload) *> more(attempted)
+            case None          => nextPayload.flatMap(append(_) *> more(attempted))
+          }
 
         def more(attempted: Int): F[A] =
           F.delay(buffer.size).flatMap { held =>
@@ -741,7 +751,13 @@ object Mux:
             else
               permitted *> ingress.tryTake.flatMap {
                 case None       => decodeNow
-                case Some(next) => append(next) *> more(attempted)
+                case Some(next) =>
+                  // Batching is an optimisation: an SDU that would overflow the buffer waits until
+                  // the complete message already held has been decoded.
+                  F.delay(buffer.append(next)).flatMap { fits =>
+                    if fits then more(attempted)
+                    else F.delay { pending = Some(next) } *> decodeNow
+                  }
               }
           }
 

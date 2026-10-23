@@ -91,3 +91,13 @@ class ReceiveBufferSuite extends FunSuite:
     assertEquals(ReceiveBuffer.room(0, 0, 0, 0), Room.Fits)
     assertEquals(ReceiveBuffer.room(limit - 1, limit - 1, limit, 1), Room.Fits)
   }
+
+  test("a refused append leaves the buffer unchanged and fits once bytes are consumed") {
+    val buffer = new ReceiveBuffer(1500)
+    assert(buffer.append(bytes(0, 1000)))
+    assert(!buffer.append(bytes(0, 600)))
+    assertEquals(buffer.view, bytes(0, 1000))
+    buffer.consume(1000)
+    assert(buffer.append(bytes(0, 600)))
+    assertEquals(buffer.view, bytes(0, 600))
+  }

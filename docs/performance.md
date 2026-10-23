@@ -2908,3 +2908,8 @@ as an `Int` near the 2 GiB array limit). On the same loaded host the two builds 
 45), baseline then change: 4 MiB 85.7 / 73.5 ms, 16 MiB 351 / 258 ms, 32 MiB 587 / 660 ms, 64 MiB 1,240 / 1,484 ms,
 65,000 bytes 1,349 / 1,287 us; differences are within this host's run-to-run spread. The decision allocates nothing
 unless the array grows.
+
+Batching only covers SDUs that are already queued. When the queue runs dry after every SDU the decoder runs after
+each, so a decoder that rescans its prefix still does quadratic work overall; the buffer removes the copying, not
+that cost. An SDU that would overflow the buffer while batching is held until the complete message already buffered
+has been decoded (`Mux.Config.receiveBufferLimit` lets a test use a small limit).
