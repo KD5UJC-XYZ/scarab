@@ -436,6 +436,26 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
     }
   }
 
+  test("the next stallState says how many reports were replaced while the log was stuck") {
+    oneSession.flatMap { sources =>
+      for
+        gate <- Deferred[IO, Unit]
+        logged <- Ref.of[IO, Vector[NodeEvent]](Vector.empty)
+        wedged = (e: NodeEvent) => gate.get *> logged.update(_ :+ e)
+        reporter <- StallDiagnostics.Reporter.create[IO](None, wedged, _.start.void)
+        _ <- reporter.install(sources)
+        counts <- (
+          (1 to 50).toList.traverse_(_ => reporter.onStall(stalledLine)) *>
+            gate.complete(()) *>
+            (IO.sleep(10.millis) *> logged.get)
+              .iterateUntil(_.exists(_.isInstanceOf[NodeEvent.StallState]))
+              .timeout(10.seconds)
+              .map(_.collect { case s: NodeEvent.StallState => s.report.droppedReports })
+        ).guarantee(gate.complete(()).void)
+      yield assertEquals(counts.head, 48L)
+    }
+  }
+
   test("the last line of a stalled run is bounded when the log is stuck") {
     StallDiagnostics.bounded[IO](100.millis)(IO.never[Unit]).timeout(5.seconds)
   }

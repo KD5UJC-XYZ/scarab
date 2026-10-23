@@ -328,6 +328,7 @@ object NodeEvent:
           "publishWaiting" -> report.admissions.publishWaiting.asJson,
           "oldestPublishWaitMs" -> report.admissions.oldestPublishWait.map(_.toMillis).asJson
         ),
+        "droppedReports" -> report.droppedReports.asJson,
         "decisionLock" -> report.decisionLock.fold(Json.Null)(h =>
           Json.obj("heldBy" -> h.by.asJson, "runningMs" -> h.running.toMillis.asJson)
         ),

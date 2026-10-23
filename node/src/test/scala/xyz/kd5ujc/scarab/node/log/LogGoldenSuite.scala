@@ -118,7 +118,8 @@ class LogGoldenSuite extends CatsEffectSuite:
                 2,
                 Some(30.seconds)
               ),
-              Some(xyz.kd5ujc.scarab.node.FetchCoordinator.LockHolder("reserve", 580.seconds))
+              Some(xyz.kd5ujc.scarab.node.FetchCoordinator.LockHolder("reserve", 580.seconds)),
+              3L
             ),
             xyz.kd5ujc.scarab.node.StallDiagnostics.Dump.Written(
               Path.of("/stall/fiber-dump-1.txt")

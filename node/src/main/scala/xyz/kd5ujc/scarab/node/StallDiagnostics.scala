@@ -31,7 +31,8 @@ object StallDiagnostics:
   private[node] final case class Report(
       sessions: Vector[SessionDiagnostic],
       admissions: BlockAdmissions.Occupancy,
-      decisionLock: Option[FetchCoordinator.LockHolder] = None
+      decisionLock: Option[FetchCoordinator.LockHolder] = None,
+      droppedReports: Long = 0L
   )
 
   /** Where the report reads from. */
@@ -237,7 +238,11 @@ object StallDiagnostics:
         case None => logged(log(first))
         case Some(s) =>
           capture(s).flatMap { report =>
-            def state(shown: Dump): F[Unit] = log(first) *> log(NodeEvent.StallState(report, shown))
+            // the count is read when the job runs, so it covers the reports replaced before it
+            def state(shown: Dump): F[Unit] =
+              log(first) *> dropped.flatMap(n =>
+                log(NodeEvent.StallState(report.copy(droppedReports = n), shown))
+              )
             dump match
               case None => logged(state(Dump.Off))
               case Some(dir) =>
