@@ -106,12 +106,10 @@ class RationalFieldsSuite extends FunSuite:
   test("LiteLedger.applyUpdate reads d as a unit-interval rational") {
     for form <- Seq(half, halfSigned, halfBig) do
       assertEquals(LiteLedger.applyUpdate(lite, update(12 -> form)).map(_.d), Right(Rational(1, 2)))
-    for form <- Seq(threeHalves, threeHalvesSigned, minusHalf) do
+    for (form, numerator) <- Seq(threeHalves -> 3, threeHalvesSigned -> 3, minusHalf -> -1) do
       assertEquals(
         LiteLedger.applyUpdate(lite, update(12 -> form)),
-        Left(
-          LedgerDecodeError.RationalOutOfBounds("d", BigInt(if form == minusHalf then -1 else 3), 2)
-        )
+        Left(LedgerDecodeError.RationalOutOfBounds("d", BigInt(numerator), 2))
       )
     assertEquals(
       LiteLedger.applyUpdate(lite, update(12 -> zeroDenominator)),

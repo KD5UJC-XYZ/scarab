@@ -11,6 +11,7 @@ checks that Scarab does the same.
 """
 import argparse
 import json
+import re
 
 
 def head(major, n, width=None):
@@ -134,10 +135,32 @@ def wits(key, value):
 CASES = []
 
 
+# The cases a test names directly keep an id that a rewording of their name does not change; every
+# other case is identified by its name, lower-cased with runs of other characters as one "-".
+STABLE_IDS = {
+    "inputs: duplicate input": "inputs-duplicate",
+    "inputs: tag 258 is accepted": "inputs-tag-258",
+    "vkey witnesses: duplicate is tolerated": "vkeys-duplicate-tolerated",
+    "Plutus scripts: the same bytes under V1 and V2 are two scripts": "plutus-same-bytes-two-languages",
+}
+
+
+def case_id(name):
+    return STABLE_IDS.get(name) or re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+
+
 def case(name, era, kind, raw, rule=None, expect=None):
     """`rule` is a fragment of the reference's failure text, `expect` the Scarab error case."""
     CASES.append(
-        {"name": name, "era": era, "kind": kind, "rule": rule, "expect": expect, "bytes": raw.hex()}
+        {
+            "id": case_id(name),
+            "name": name,
+            "era": era,
+            "kind": kind,
+            "rule": rule,
+            "expect": expect,
+            "bytes": raw.hex(),
+        }
     )
 
 
@@ -879,6 +902,8 @@ def main():
     args = parser.parse_args()
     names = [c["name"] for c in CASES]
     assert len(names) == len(set(names)), "case names must be unique"
+    ids = [c["id"] for c in CASES]
+    assert len(ids) == len(set(ids)), "case ids must be unique"
     with open(args.out, "w") as f:
         json.dump(CASES, f, indent=1)
         f.write("\n")
