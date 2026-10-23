@@ -117,8 +117,9 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
       val body = TxBody
         .decode(raw, if major == 5 then Era.Alonzo else Era.Babbage)
         .fold(e => fail(e.toString), identity)
-      assertEquals(body.collateral.size, 4)
-      assertEquals(body.collateral.toSet.size, read[Int]("collateralCount"))
+      // The four encodings of one input are one element once decoded, as in the reference's Set.
+      assertEquals(body.collateral.size, read[Int]("collateralCount"))
+      assertEquals(body.raw, raw)
       val out = body.outputs.head.copy(address = alice.baseAddress(alice))
       val inputs = Utxo.fromMap(body.collateral.map(_ -> out).toMap)
       val witnesses =
