@@ -6,6 +6,7 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import cats.syntax.order.*
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.{Bytes, Node}
+import xyz.kd5ujc.scarab.ledger.DecodeSite.Qualifier
 import xyz.kd5ujc.scarab.ledger.state.Word64
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -30,7 +31,7 @@ object Credential:
     if kinds != 0 then kinds else a.hash.compareTo(b.hash)
 
   /** Conway credential encoding `[0, keyhash] / [1, scripthash]`. */
-  def decode(n: Node, what: String): Either[LedgerDecodeError, Credential] =
+  def decode(n: Node, what: DecodeSite): Either[LedgerDecodeError, Credential] =
     CborRead.arrayN(n, 2, what).flatMap { xs =>
       (CborRead.uint(xs(0), what).map(_.toInt), CborRead.bytesN(xs(1), 28, what)).tupled.flatMap {
         case (0, h) => Right(Key(h))
@@ -194,7 +195,7 @@ object Address:
     * address is kept as the normalised pointer, written again.
     */
   def decode(raw: Bytes, mode: Mode = Mode.Rigorous): Either[LedgerDecodeError, Address] =
-    if raw.size == 0 then Left(LedgerDecodeError.Empty("address"))
+    if raw.size == 0 then Left(LedgerDecodeError.Empty(DecodeField.Address))
     else
       val header = raw.value(0) & 0xff
       val kind = header >> 4
@@ -203,12 +204,12 @@ object Address:
         Either.cond(
           raw.size >= offset + 28,
           Bytes(raw.value.slice(offset, offset + 28)),
-          LedgerDecodeError.AddressLength("payment credential", offset + 28, raw.size)
+          LedgerDecodeError.AddressLength(DecodeField.PaymentCredential, offset + 28, raw.size)
         )
       def payment =
         hash(1).map(h => if (kind & 1) == 0 then Credential.Key(h) else Credential.Script(h))
       // The address of `length` bytes; the bytes after it are dropped if the era allows them.
-      def own(length: Int, context: String): Either[LedgerDecodeError, Bytes] =
+      def own(length: Int, context: DecodeSite): Either[LedgerDecodeError, Bytes] =
         if raw.size == length then Right(raw)
         else if raw.size > length && mode.dropsTrailing then Right(raw.take(length))
         else Left(LedgerDecodeError.AddressLength(context, length, raw.size))
@@ -217,7 +218,7 @@ object Address:
           for
             p <- payment
             s <- hash(29)
-            kept <- own(57, "base address length")
+            kept <- own(57, DecodeField.BaseAddressLength)
           yield Address(
             kept,
             Kind.Shelley(
@@ -234,7 +235,7 @@ object Address:
               .read(raw.value.drop(29), mode.pointers)
               .left
               .map(LedgerDecodeError.Pointer(_))
-            _ <- own(29 + read._2, "pointer address: trailing bytes")
+            _ <- own(29 + read._2, DecodeField.PointerAddressTrailingBytes)
           yield
             // `putAddr`: the header from its fields, the payment credential, the pointer written again
             val head = Bytes.fromArray(Array((header & 0xf1).toByte))
@@ -244,7 +245,7 @@ object Address:
             )
         case 6 | 7 =>
           for
-            kept <- own(29, "enterprise address length")
+            kept <- own(29, DecodeField.EnterpriseAddressLength)
             p <- payment
           yield Address(kept, Kind.Shelley(network, p, None, None))
         case 8 => Right(Address(raw, Kind.Byron(byronRoot(raw))))
@@ -254,16 +255,17 @@ object Address:
   private def byronRoot(raw: Bytes): Bytes =
     val parsed = for
       outer <- CborRead.decode(raw)
-      parts <- CborRead.arrayN(outer, 2, "byron address")
+      parts <- CborRead.arrayN(outer, 2, DecodeField.BootstrapAddress)
       payload <- parts(0).value match
         case xyz.kd5ujc.scarab.codec.Value.Tag(t, inner) if t == 24 =>
-          CborRead.bytes(inner, "byron payload")
-        case _ => Left(LedgerDecodeError.ExpectedTag("byron payload", 24, parts(0).value))
+          CborRead.bytes(inner, DecodeField.BootstrapPayload)
+        case _ =>
+          Left(LedgerDecodeError.ExpectedTag(DecodeField.BootstrapPayload, 24, parts(0).value))
       body <- CborRead.decode(payload)
-      fields <- CborRead.array(body, "byron address payload")
+      fields <- CborRead.array(body, DecodeField.BootstrapAddressPayload)
       root <- fields.headOption
-        .toRight(LedgerDecodeError.Empty("byron address payload"))
-        .flatMap(CborRead.bytesN(_, 28, "byron root"))
+        .toRight(LedgerDecodeError.Empty(DecodeField.BootstrapAddressPayload))
+        .flatMap(CborRead.bytesN(_, 28, DecodeField.BootstrapRoot))
     yield root
     parsed.getOrElse(Bytes.empty)
 
@@ -275,7 +277,8 @@ final case class RewardAccount(network: Int, credential: Credential)
 
 object RewardAccount:
   def decode(raw: Bytes): Either[LedgerDecodeError, RewardAccount] =
-    if raw.size != 29 then Left(LedgerDecodeError.AddressLength("reward account", 29, raw.size))
+    if raw.size != 29 then
+      Left(LedgerDecodeError.AddressLength(DecodeField.RewardAccount, 29, raw.size))
     else
       val header = raw.value(0) & 0xff
       val h = Bytes(raw.value.drop(1))
@@ -393,7 +396,7 @@ object Value:
     */
   private val CompactLimit = 65535
 
-  private def int64(what: String, q: BigInt) =
+  private def int64(what: DecodeSite, q: BigInt) =
     Either.cond(
       q >= Int64Min && q <= Int64Max,
       q,
@@ -405,7 +408,7 @@ object Value:
     */
   def decode(
       n: Node,
-      what: String,
+      what: DecodeSite,
       decoding: Decoding
   ): Either[LedgerDecodeError, Value] = n.value match
     case xyz.kd5ujc.scarab.codec.Value.UInt(c) => Right(coin(c))
@@ -423,7 +426,7 @@ object Value:
     */
   def multiasset(
       n: Node,
-      what: String,
+      what: DecodeSite,
       signed: Boolean,
       decoding: Decoding
   ): Either[LedgerDecodeError, Map[Bytes, Map[Bytes, BigInt]]] =
@@ -432,11 +435,11 @@ object Value:
         .map(n, what)
         .flatMap(_.traverse { case (p, inner) =>
           for
-            policy <- CborRead.bytesN(p, 28, s"$what policy")
+            policy <- CborRead.bytesN(p, 28, what / Qualifier.Policy)
             names <- CborRead.map(inner, what)
             quantities <- names.traverse { case (name, q) =>
               for
-                assetName <- CborRead.bytes(name, s"$what asset name")
+                assetName <- CborRead.bytes(name, what / Qualifier.AssetName)
                 _ <- Either.cond(
                   assetName.size <= 32,
                   (),
@@ -464,21 +467,21 @@ object Value:
 
   private def rejecting(
       policies: Vector[(Bytes, Vector[(Bytes, BigInt)])],
-      what: String
+      what: DecodeSite
   ): Either[LedgerDecodeError, Map[Bytes, Map[Bytes, BigInt]]] =
     for
       _ <- Either.cond(
         policies.map(_._1).distinct.size == policies.size,
         (),
-        LedgerDecodeError.DuplicateKey(s"$what policy")
+        LedgerDecodeError.DuplicateKey(what / Qualifier.Policy)
       )
       checked <- policies.traverse { case (policy, qs) =>
         for
-          _ <- Either.cond(qs.nonEmpty, (), LedgerDecodeError.Empty(s"$what assets"))
+          _ <- Either.cond(qs.nonEmpty, (), LedgerDecodeError.Empty(what / Qualifier.Assets))
           _ <- Either.cond(
             qs.map(_._1).distinct.size == qs.size,
             (),
-            LedgerDecodeError.DuplicateKey(s"$what asset name")
+            LedgerDecodeError.DuplicateKey(what / Qualifier.AssetName)
           )
           _ <- Either.cond(qs.forall(_._2.signum != 0), (), LedgerDecodeError.ZeroQuantity(what))
         yield policy -> qs.toMap
@@ -515,8 +518,10 @@ final case class TxOut(
     scriptRef.flatMap { kept =>
       val reread = for
         node <- CborRead.decode(raw)
-        f <- CborRead.fields(node, "output")
-        field <- f.get(3).toRight(LedgerDecodeError.MissingField("output", "reference script"))
+        f <- CborRead.fields(node, DecodeField.Output)
+        field <- f
+          .get(3)
+          .toRight(LedgerDecodeError.MissingField(DecodeField.Output, DecodeField.ReferenceScript))
         script <- Script.decodeWrappedWithBytes(field)
       yield script
       reread.toOption.orElse(Some(kept))
@@ -530,18 +535,21 @@ final case class TxOut(
     else
       val size = for
         node <- CborRead.decode(raw)
-        f <- CborRead.fields(node, "output")
-        field <- f.get(3).toRight(LedgerDecodeError.MissingField("output", "reference script"))
+        f <- CborRead.fields(node, DecodeField.Output)
+        field <- f
+          .get(3)
+          .toRight(LedgerDecodeError.MissingField(DecodeField.Output, DecodeField.ReferenceScript))
         inner <- field.value match
           case xyz.kd5ujc.scarab.codec.Value.Tag(t, i) if t == 24 =>
-            CborRead.bytes(i, "reference script")
-          case _ => Left(LedgerDecodeError.ExpectedTag("reference script", 24, field.value))
+            CborRead.bytes(i, DecodeField.ReferenceScript)
+          case _ =>
+            Left(LedgerDecodeError.ExpectedTag(DecodeField.ReferenceScript, 24, field.value))
         script <- CborRead.decode(inner)
-        parts <- CborRead.arrayN(script, 2, "script")
-        tag <- CborRead.uint(parts(0), "script type")
+        parts <- CborRead.arrayN(script, 2, DecodeField.Script)
+        tag <- CborRead.uint(parts(0), DecodeField.ScriptType)
         payload <-
           if tag == 0 then Right(parts(1).original.size)
-          else CborRead.bytes(parts(1), "plutus script").map(_.size)
+          else CborRead.bytes(parts(1), DecodeField.PlutusScript).map(_.size)
       yield payload
       size.getOrElse(0)
 
@@ -570,8 +578,8 @@ final case class TxOut(
           node <- CborRead.decode(raw).toOption
           field <- node.value match
             case xyz.kd5ujc.scarab.codec.Value.Arr(xs) => xs.headOption
-            case _ => CborRead.fields(node, "output").toOption.flatMap(_.get(0))
-          bytes <- CborRead.bytes(field, "output address").toOption
+            case _ => CborRead.fields(node, DecodeField.Output).toOption.flatMap(_.get(0))
+          bytes <- CborRead.bytes(field, DecodeField.OutputAddress).toOption
         yield encoded(bytes.size) - encoded(address.raw.size)
         came.getOrElse(0)
       case _ => 0
@@ -587,44 +595,53 @@ object TxOut:
     n.value match
       case xyz.kd5ujc.scarab.codec.Value.Arr(xs) if xs.size == 2 || xs.size == 3 =>
         for
-          a <- CborRead.bytes(xs(0), "output address").flatMap(Address.decode(_, mode))
-          v <- Value.decode(xs(1), "output value", mode.values)
+          a <- CborRead.bytes(xs(0), DecodeField.OutputAddress).flatMap(Address.decode(_, mode))
+          v <- Value.decode(xs(1), DecodeField.OutputValue, mode.values)
           d <-
-            if xs.size == 3 then CborRead.bytesN(xs(2), 32, "datum hash").map(Datum.Hash(_))
+            if xs.size == 3 then
+              CborRead.bytesN(xs(2), 32, DecodeField.DatumHash).map(Datum.Hash(_))
             else Right(Datum.NoDatum)
         yield TxOut(n.original, a, v, d, None, xs(1).original.size)
       case xyz.kd5ujc.scarab.codec.Value.Map(_) =>
         for
-          f <- CborRead.fields(n, "output")
+          f <- CborRead.fields(n, DecodeField.Output)
           a <- f
             .get(0)
-            .toRight(LedgerDecodeError.MissingField("output", "address"))
-            .flatMap(CborRead.bytes(_, "output address"))
+            .toRight(LedgerDecodeError.MissingField(DecodeField.Output, DecodeField.Address))
+            .flatMap(CborRead.bytes(_, DecodeField.OutputAddress))
             .flatMap(Address.decode(_, mode))
-          vn <- f.get(1).toRight(LedgerDecodeError.MissingField("output", "value"))
-          v <- Value.decode(vn, "output value", mode.values)
+          vn <- f
+            .get(1)
+            .toRight(LedgerDecodeError.MissingField(DecodeField.Output, DecodeField.Value))
+          v <- Value.decode(vn, DecodeField.OutputValue, mode.values)
           _ <- Either.cond(
             f.keySet.subsetOf(Set(0, 1, 2, 3)),
             (),
-            LedgerDecodeError.UnknownFields("output", f.keySet -- Set(0, 1, 2, 3))
+            LedgerDecodeError.UnknownFields(DecodeField.Output, f.keySet -- Set(0, 1, 2, 3))
           )
           d <- f.get(2).traverse(datumOption)
           s <- f.get(3).traverse(Script.decodeWrapped)
         yield TxOut(n.original, a, v, d.getOrElse(Datum.NoDatum), s, vn.original.size)
       case _ =>
-        Left(LedgerDecodeError.Expected("output", LedgerDecodeError.Shape.ArrayOrMap, n.value))
+        Left(
+          LedgerDecodeError.Expected(
+            DecodeField.Output,
+            LedgerDecodeError.Shape.ArrayOrMap,
+            n.value
+          )
+        )
 
   /** `datum_option = [0, hash] / [1, #6.24(bytes .cbor plutus_data)]` */
   private def datumOption(n: Node): Either[LedgerDecodeError, Datum] =
-    CborRead.arrayN(n, 2, "datum option").flatMap { xs =>
-      CborRead.uint(xs(0), "datum option tag").flatMap {
-        case t if t == 0 => CborRead.bytesN(xs(1), 32, "datum hash").map(Datum.Hash(_))
+    CborRead.arrayN(n, 2, DecodeField.DatumOption).flatMap { xs =>
+      CborRead.uint(xs(0), DecodeField.DatumOptionTag).flatMap {
+        case t if t == 0 => CborRead.bytesN(xs(1), 32, DecodeField.DatumHash).map(Datum.Hash(_))
         case t if t == 1 =>
           xs(1).value match
             case xyz.kd5ujc.scarab.codec.Value.Tag(g, inner) if g == 24 =>
-              CborRead.bytes(inner, "inline datum").map(Datum.Inline(_))
-            case _ => Left(LedgerDecodeError.ExpectedTag("inline datum", 24, xs(1).value))
-        case t => Left(LedgerDecodeError.UnknownTag("datum option", t))
+              CborRead.bytes(inner, DecodeField.InlineDatum).map(Datum.Inline(_))
+            case _ => Left(LedgerDecodeError.ExpectedTag(DecodeField.InlineDatum, 24, xs(1).value))
+        case t => Left(LedgerDecodeError.UnknownTag(DecodeField.DatumOption, t))
       }
     }
 
@@ -648,8 +665,11 @@ object TxIn:
     if ids != 0 then ids else a.index.compare(b.index)
   def decode(n: Node): Either[LedgerDecodeError, TxIn] =
     CborRead
-      .arrayN(n, 2, "input")
+      .arrayN(n, 2, DecodeField.Input)
       .flatMap(xs =>
-        (CborRead.bytesN(xs(0), 32, "input id"), CborRead.uint(xs(1), "input index"))
+        (
+          CborRead.bytesN(xs(0), 32, DecodeField.InputId),
+          CborRead.uint(xs(1), DecodeField.InputIndex)
+        )
           .mapN(TxIn.apply)
       )

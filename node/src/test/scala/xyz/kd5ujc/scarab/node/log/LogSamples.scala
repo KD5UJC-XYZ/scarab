@@ -442,7 +442,7 @@ object LogSamples:
   val errors: List[xyz.kd5ujc.scarab.ledger.NodeError] = List(
     PeerError.NoIntersection,
     ChainError.Decode(
-      "block",
+      xyz.kd5ujc.scarab.ledger.DecodeField.Block,
       xyz.kd5ujc.scarab.ledger.LedgerDecodeError
         .Syntax(xyz.kd5ujc.scarab.codec.Cbor.Error.UnexpectedEnd)
     ),

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.byron
 
+import xyz.kd5ujc.scarab.ledger.DecodeField
 import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -34,7 +35,7 @@ enum ByronError:
     case ProtocolMagicMismatch(b, g) => s"block protocol magic $b differs from the genesis $g"
     case HeaderTooLarge(m, a)        => s"header of $a bytes exceeds $m"
     case BlockTooLarge(m, a)         => s"block of $a bytes exceeds $m"
-    case Decode(r)                   => s"block body does not decode: $r"
+    case Decode(r)                   => s"block body does not decode: ${r.show}"
     case ProofMismatch(w)            => s"${w.label} payload does not match the header's proof"
     case Delegation(e)               => s"delegation: ${e.message}"
     case Update(e)                   => s"update: ${e.message}"
@@ -89,10 +90,12 @@ object ByronBody:
   def decode(body: Bytes): Either[LedgerDecodeError, ByronBody] =
     for
       root <- CborRead.decode(body, ByronCbor.BodyLimits)
-      xs <- CborRead.arrayN(root, 4, "Byron body")
-      txs <- CborRead.array(xs(0), "Byron tx payload").flatMap(_.traverse(ByronTx.decodeAux))
+      xs <- CborRead.arrayN(root, 4, DecodeField.ByronBody)
+      txs <- CborRead
+        .array(xs(0), DecodeField.ByronTxPayload)
+        .flatMap(_.traverse(ByronTx.decodeAux))
       certs <- CborRead
-        .array(xs(2), "Byron delegation payload")
+        .array(xs(2), DecodeField.ByronDelegationPayload)
         .flatMap(_.traverse(ByronCert.decode))
       update <- UpdatePayload.decode(xs(3))
       raw = xs(2).original
@@ -289,13 +292,13 @@ object ByronLedger:
   private[scarab] def checkProofs(header: Header.Byron, body: ByronBody): Either[ByronError, Unit] =
     val expected = for
       root <- CborRead.decode(header.bodyProof)
-      xs <- CborRead.arrayN(root, 4, "body proof")
-      tx <- CborRead.arrayN(xs(0), 3, "tx proof")
-      count <- CborRead.uint(tx(0), "tx count")
-      merkle <- CborRead.bytes(tx(1), "tx root")
-      witnesses <- CborRead.bytes(tx(2), "witnesses hash")
-      dlg <- CborRead.bytes(xs(2), "delegation proof")
-      upd <- CborRead.bytes(xs(3), "update proof")
+      xs <- CborRead.arrayN(root, 4, DecodeField.BodyProof)
+      tx <- CborRead.arrayN(xs(0), 3, DecodeField.TxProof)
+      count <- CborRead.uint(tx(0), DecodeField.TxCount)
+      merkle <- CborRead.bytes(tx(1), DecodeField.TxRoot)
+      witnesses <- CborRead.bytes(tx(2), DecodeField.WitnessesHash)
+      dlg <- CborRead.bytes(xs(2), DecodeField.DelegationProof)
+      upd <- CborRead.bytes(xs(3), DecodeField.UpdateProof)
     yield (count, merkle, witnesses, dlg, upd)
     expected.leftMap(ByronError.Decode(_)).flatMap { (count, merkle, witnesses, dlg, upd) =>
       val witnessBytes =

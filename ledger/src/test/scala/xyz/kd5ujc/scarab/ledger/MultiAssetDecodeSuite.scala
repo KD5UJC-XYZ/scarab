@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import munit.FunSuite
+import xyz.kd5ujc.scarab.ledger.DecodeSite.Qualifier
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -48,13 +49,13 @@ class MultiAssetDecodeSuite extends FunSuite:
   private def read(
       hex: String,
       decoding: Value.Decoding
-  ): Either[LedgerDecodeError, Value] = Value.decode(node(hex), "value", decoding)
+  ): Either[LedgerDecodeError, Value] = Value.decode(node(hex), DecodeField.Value, decoding)
 
   private def mint(
       hex: String,
       decoding: Value.Decoding
   ): Either[LedgerDecodeError, Map[Bytes, Map[Bytes, BigInt]]] =
-    Value.multiasset(node(hex), "mint", signed = true, decoding)
+    Value.multiasset(node(hex), DecodeField.Mint, signed = true, decoding)
 
   private val Pruning = Value.Decoding.Pruning
   private val Rejecting = Value.Decoding.Rejecting
@@ -87,19 +88,22 @@ class MultiAssetDecodeSuite extends FunSuite:
 
   test("a zero quantity fails from version 9 and is pruned below it") {
     val hex = value(1, assets(1 -> Seq("01" -> uint(0), "02" -> uint(3))))
-    assertEquals(read(hex, Rejecting), Left(LedgerDecodeError.ZeroQuantity("value")))
+    assertEquals(read(hex, Rejecting), Left(LedgerDecodeError.ZeroQuantity(DecodeField.Value)))
     assertEquals(pruned(hex), Right(Map(key(1) -> Map(bytes("02") -> BigInt(3)))))
   }
 
   test("a policy whose quantities are all zero disappears below version 9") {
     val hex = value(1, assets(1 -> Seq("01" -> uint(0))))
-    assertEquals(read(hex, Rejecting), Left(LedgerDecodeError.ZeroQuantity("value")))
+    assertEquals(read(hex, Rejecting), Left(LedgerDecodeError.ZeroQuantity(DecodeField.Value)))
     assertEquals(pruned(hex), Right(Map.empty))
   }
 
   test("an empty asset map fails from version 9 and is dropped below it") {
     val hex = value(1, assets(1 -> Seq.empty, 2 -> Seq("01" -> uint(4))))
-    assertEquals(read(hex, Rejecting), Left(LedgerDecodeError.Empty("value assets")))
+    assertEquals(
+      read(hex, Rejecting),
+      Left(LedgerDecodeError.Empty(DecodeField.Value / Qualifier.Assets))
+    )
     assertEquals(pruned(hex), Right(Map(key(2) -> Map(bytes("01") -> BigInt(4)))))
   }
 
@@ -110,7 +114,10 @@ class MultiAssetDecodeSuite extends FunSuite:
 
   test("a duplicate asset name fails from version 9 and the last entry wins below it") {
     val twice = value(1, assets(1 -> Seq("01" -> uint(5), "01" -> uint(6))))
-    assertEquals(read(twice, Rejecting), Left(LedgerDecodeError.DuplicateKey("value asset name")))
+    assertEquals(
+      read(twice, Rejecting),
+      Left(LedgerDecodeError.DuplicateKey(DecodeField.Value / Qualifier.AssetName))
+    )
     assertEquals(pruned(twice), Right(Map(key(1) -> Map(bytes("01") -> BigInt(6)))))
     // the last entry is the one kept, so a trailing zero removes the asset
     val zeroLast = value(1, assets(1 -> Seq("01" -> uint(5), "01" -> uint(0))))
@@ -124,19 +131,25 @@ class MultiAssetDecodeSuite extends FunSuite:
       1,
       assets(1 -> Seq("01" -> uint(5)), 1 -> Seq("02" -> uint(6)))
     )
-    assertEquals(read(hex, Rejecting), Left(LedgerDecodeError.DuplicateKey("value policy")))
+    assertEquals(
+      read(hex, Rejecting),
+      Left(LedgerDecodeError.DuplicateKey(DecodeField.Value / Qualifier.Policy))
+    )
     assertEquals(pruned(hex), Right(Map(key(1) -> Map(bytes("02") -> BigInt(6)))))
   }
 
   test("a duplicate in the mint map fails from version 9 and merges below it") {
     val hex = assets(1 -> Seq("01" -> int(-5), "01" -> int(-6)))
-    assertEquals(mint(hex, Rejecting), Left(LedgerDecodeError.DuplicateKey("mint asset name")))
+    assertEquals(
+      mint(hex, Rejecting),
+      Left(LedgerDecodeError.DuplicateKey(DecodeField.Mint / Qualifier.AssetName))
+    )
     assertEquals(mint(hex, Pruning), Right(Map(key(1) -> Map(bytes("01") -> BigInt(-6)))))
   }
 
   test("a zero mint quantity fails from version 9 and is pruned below it") {
     val hex = assets(1 -> Seq("01" -> uint(0)), 2 -> Seq("01" -> int(-1)))
-    assertEquals(mint(hex, Rejecting), Left(LedgerDecodeError.ZeroQuantity("mint")))
+    assertEquals(mint(hex, Rejecting), Left(LedgerDecodeError.ZeroQuantity(DecodeField.Mint)))
     assertEquals(mint(hex, Pruning), Right(Map(key(2) -> Map(bytes("01") -> BigInt(-1)))))
   }
 
@@ -169,11 +182,13 @@ class MultiAssetDecodeSuite extends FunSuite:
       )
       assertEquals(
         mint(assets(1 -> Seq("01" -> int(TwoTo63))), d).map(_ => ()),
-        Left(LedgerDecodeError.NumberOutOfRange("mint", TwoTo63, -TwoTo63, TwoTo63 - 1))
+        Left(LedgerDecodeError.NumberOutOfRange(DecodeField.Mint, TwoTo63, -TwoTo63, TwoTo63 - 1))
       )
       assertEquals(
         mint(assets(1 -> Seq("01" -> int(-TwoTo63 - 1))), d).map(_ => ()),
-        Left(LedgerDecodeError.NumberOutOfRange("mint", -TwoTo63 - 1, -TwoTo63, TwoTo63 - 1))
+        Left(
+          LedgerDecodeError.NumberOutOfRange(DecodeField.Mint, -TwoTo63 - 1, -TwoTo63, TwoTo63 - 1)
+        )
       )
     }
   }
@@ -186,11 +201,11 @@ class MultiAssetDecodeSuite extends FunSuite:
       assert(read(value(1, assets(1 -> names(1488))), d).isRight)
       assertEquals(
         read(value(1, assets(1 -> names(1489))), d).map(_ => ()),
-        Left(LedgerDecodeError.MultiAssetTooBig("value", 1489, 1))
+        Left(LedgerDecodeError.MultiAssetTooBig(DecodeField.Value, 1489, 1))
       )
       assertEquals(
         mint(assets(1 -> names(1489)), d).map(_ => ()),
-        Left(LedgerDecodeError.MultiAssetTooBig("mint", 1489, 1))
+        Left(LedgerDecodeError.MultiAssetTooBig(DecodeField.Mint, 1489, 1))
       )
     }
   }
@@ -203,7 +218,7 @@ class MultiAssetDecodeSuite extends FunSuite:
     // 255 policies, 6 assets each: 44 * 1530 + 28 * 255 = 74460 does not
     assertEquals(
       read(value(1, spread(255, 6)), Rejecting).map(_ => ()),
-      Left(LedgerDecodeError.MultiAssetTooBig("value", 1530, 255))
+      Left(LedgerDecodeError.MultiAssetTooBig(DecodeField.Value, 1530, 255))
     )
   }
 
@@ -218,7 +233,7 @@ class MultiAssetDecodeSuite extends FunSuite:
     both.foreach { d =>
       assertEquals(
         read(value(1, assets(1 -> Seq("00" * 33 -> uint(1)))), d).map(_ => ()),
-        Left(LedgerDecodeError.AssetNameLength("value", 33))
+        Left(LedgerDecodeError.AssetNameLength(DecodeField.Value, 33))
       )
     }
   }
@@ -235,14 +250,14 @@ class MultiAssetDecodeSuite extends FunSuite:
     )
     assertEquals(
       TxOut.decode(node(zero), Address.Mode.of(Era.Conway)).map(_ => ()),
-      Left(LedgerDecodeError.ZeroQuantity("output value"))
+      Left(LedgerDecodeError.ZeroQuantity(DecodeField.OutputValue))
     )
     // the post-Alonzo map form takes the same path
     val mapForm = "a2" + "00" + enterprise + "01" + value(2000000, assets(1 -> Seq.empty))
     assert(TxOut.decode(node(mapForm), Address.Mode.of(Era.Babbage)).isRight)
     assertEquals(
       TxOut.decode(node(mapForm), Address.Mode.of(Era.Conway)).map(_ => ()),
-      Left(LedgerDecodeError.Empty("output value assets"))
+      Left(LedgerDecodeError.Empty(DecodeField.OutputValue / Qualifier.Assets))
     )
   }
 
@@ -258,7 +273,7 @@ class MultiAssetDecodeSuite extends FunSuite:
     )
     assertEquals(
       TxBody.decode(bytes(zero), Era.Conway).map(_ => ()),
-      Left(LedgerDecodeError.ZeroQuantity("mint"))
+      Left(LedgerDecodeError.ZeroQuantity(DecodeField.Mint))
     )
     val big = body(assets(1 -> Seq("01" -> uint(TwoTo63))))
     Era.values.filter(_.ordinal >= Era.Mary.ordinal).foreach { era =>
@@ -274,7 +289,7 @@ class MultiAssetDecodeSuite extends FunSuite:
     )
     assertEquals(Address.Mode.of(Era.Mary).values, Pruning)
     // a multi-asset value is no `Coin` (`ShelleyTxOut`, cardano-ledger f649f975)
-    val refused = Left(LedgerDecodeError.MultiAssetNotAllowed("value"))
+    val refused = Left(LedgerDecodeError.MultiAssetNotAllowed(DecodeField.Value))
     val CoinOnly = Value.Decoding.CoinOnly
     assertEquals(read(uint(5), CoinOnly), Right(Value.coin(5)))
     assertEquals(read(value(5, assets(1 -> Seq("01" -> uint(3)))), CoinOnly), refused)
@@ -282,8 +297,13 @@ class MultiAssetDecodeSuite extends FunSuite:
     assertEquals(read(value(5, "a0"), CoinOnly), refused)
     assertEquals(read(value(5, assets(1 -> Seq("01" -> uint(0)))), CoinOnly), refused)
     assertEquals(
-      Value.multiasset(node(assets(1 -> Seq("01" -> int(-1)))), "mint", signed = true, CoinOnly),
-      Left(LedgerDecodeError.MultiAssetNotAllowed("mint"))
+      Value.multiasset(
+        node(assets(1 -> Seq("01" -> int(-1)))),
+        DecodeField.Mint,
+        signed = true,
+        CoinOnly
+      ),
+      Left(LedgerDecodeError.MultiAssetNotAllowed(DecodeField.Mint))
     )
   }
 
@@ -303,7 +323,7 @@ class MultiAssetDecodeSuite extends FunSuite:
       List(multi, emptyMulti, mapForm).foreach { hex =>
         assertEquals(
           TxOut.decode(node(hex), mode).map(_ => ()),
-          Left(LedgerDecodeError.MultiAssetNotAllowed("output value")),
+          Left(LedgerDecodeError.MultiAssetNotAllowed(DecodeField.OutputValue)),
           s"$era $hex"
         )
       }
@@ -322,7 +342,7 @@ class MultiAssetDecodeSuite extends FunSuite:
     coinOnly.foreach { era =>
       assertEquals(
         TxBody.decode(bytes(multi), era).map(_ => ()),
-        Left(LedgerDecodeError.MultiAssetNotAllowed("output value")),
+        Left(LedgerDecodeError.MultiAssetNotAllowed(DecodeField.OutputValue)),
         era.toString
       )
       assertEquals(

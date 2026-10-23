@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import cats.syntax.show.*
 import xyz.kd5ujc.scarab.codec.DomainError
 import cats.{Eq, Show}
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -151,7 +152,7 @@ enum BlockFailure:
     case ByronAfterTransition(epoch, first) =>
       s"Byron block in epoch $epoch, the chain enters Shelley in epoch $first"
     case Decode(error)      => error.message
-    case TxDecode(id, text) => s"tx ${id.hex.take(16)}: $text"
+    case TxDecode(id, text) => s"tx ${id.hex.take(16)}: ${text.show}"
     case NoByronGenesis     => "no Byron genesis configured"
     case TransitionUndecided(era) =>
       s"$era block, but the Byron ledger has not decided on the transition to Shelley"

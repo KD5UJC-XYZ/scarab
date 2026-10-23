@@ -28,7 +28,7 @@ object ParamUpdate:
     fields
       .traverse { case (k, v) =>
         for
-          index <- CborRead.uint(k, "parameter index").map(_.toInt)
+          index <- CborRead.uint(k, DecodeField.ParameterIndex).map(_.toInt)
           _ <-
             if index == CostModelsField then CostModelDecode.decode(v, costModels).void
             else Right(())
@@ -211,8 +211,10 @@ object LiteLedger:
 
   private def parseVersion(n: Node): Either[LedgerDecodeError, (BigInt, BigInt)] =
     CborRead
-      .arrayN(n, 2, "protocol version")
-      .flatMap(xs => (CborRead.uint(xs(0), "major"), CborRead.uint(xs(1), "minor")).tupled)
+      .arrayN(n, 2, DecodeField.ProtocolVersion)
+      .flatMap(xs =>
+        (CborRead.uint(xs(0), DecodeField.Major), CborRead.uint(xs(1), DecodeField.Minor)).tupled
+      )
 
   private def legalProtocolVersion(
       params: LiteParams,
@@ -237,32 +239,39 @@ object LiteLedger:
       p1 <- field(
         2,
         params,
-        (p, n) => CborRead.uint(n, "maxBlockBodySize").map(v => p.copy(maxBlockBodySize = v))
+        (p, n) =>
+          CborRead.uint(n, DecodeField.MaxBlockBodySize).map(v => p.copy(maxBlockBodySize = v))
       )
-      p2 <- field(3, p1, (p, n) => CborRead.uint(n, "maxTxSize").map(v => p.copy(maxTxSize = v)))
+      p2 <- field(
+        3,
+        p1,
+        (p, n) => CborRead.uint(n, DecodeField.MaxTxSize).map(v => p.copy(maxTxSize = v))
+      )
       p3 <- field(
         4,
         p2,
-        (p, n) => CborRead.uint(n, "maxBlockHeaderSize").map(v => p.copy(maxBlockHeaderSize = v))
+        (p, n) =>
+          CborRead.uint(n, DecodeField.MaxBlockHeaderSize).map(v => p.copy(maxBlockHeaderSize = v))
       )
       p4 <- field(
         12,
         p3,
-        (p, n) => CborRead.rational(n, "d", CborRead.Bound.Unit).map(v => p.copy(d = v))
+        (p, n) => CborRead.rational(n, DecodeField.D, CborRead.Bound.Unit).map(v => p.copy(d = v))
       )
       p5 <- field(13, p4, (p, n) => nonce(n).map(v => p.copy(extraEntropy = v)))
       p6 <- field(14, p5, (p, n) => parseVersion(n).map(v => p.copy(protocolVersion = v)))
     yield p6
 
   private def nonce(n: Node): Either[LedgerDecodeError, Nonce] =
-    CborRead.array(n, "nonce").flatMap { xs =>
+    CborRead.array(n, DecodeField.Nonce).flatMap { xs =>
       xs.headOption
-        .toRight(LedgerDecodeError.Empty("nonce"))
-        .flatMap(CborRead.uint(_, "nonce tag"))
+        .toRight(LedgerDecodeError.Empty(DecodeField.Nonce))
+        .flatMap(CborRead.uint(_, DecodeField.NonceTag))
         .flatMap {
-          case t if t == 0                 => Right(Nonce.Neutral)
-          case t if t == 1 && xs.size == 2 => CborRead.bytesN(xs(1), 32, "nonce").map(Nonce.Hash(_))
-          case t => Left(LedgerDecodeError.TaggedArity("nonce", t, xs.size))
+          case t if t == 0 => Right(Nonce.Neutral)
+          case t if t == 1 && xs.size == 2 =>
+            CborRead.bytesN(xs(1), 32, DecodeField.Nonce).map(Nonce.Hash(_))
+          case t => Left(LedgerDecodeError.TaggedArity(DecodeField.Nonce, t, xs.size))
         }
     }
 
@@ -279,46 +288,52 @@ object LiteLedger:
   def effects(body: Bytes, era: Era): Either[LedgerDecodeError, Vector[Effect]] =
     for
       root <- CborRead.decode(body, bodyLimits)
-      fields <- CborRead.fields(root, "transaction body")
+      fields <- CborRead.fields(root, DecodeField.TransactionBody)
       proposal <- fields.get(6).filter(_ => era.ordinal <= Era.Babbage.ordinal).traverse(proposal)
       certs <- fields.get(4).traverse(n => certificates(n).flatMap(_.flatTraverse(cert)))
     yield proposal.toVector ++ certs.getOrElse(Vector.empty)
 
   private def certificates(n: Node): Either[LedgerDecodeError, Vector[Node]] = n.value match
-    case Value.Tag(t, inner) if t == 258 => CborRead.array(inner, "certificates")
-    case _                               => CborRead.array(n, "certificates")
+    case Value.Tag(t, inner) if t == 258 => CborRead.array(inner, DecodeField.Certificates)
+    case _                               => CborRead.array(n, DecodeField.Certificates)
 
   private def proposal(n: Node): Either[LedgerDecodeError, Effect] =
     for
-      xs <- CborRead.arrayN(n, 2, "update")
-      kvs <- CborRead.map(xs(0), "proposed updates")
+      xs <- CborRead.arrayN(n, 2, DecodeField.Update)
+      kvs <- CborRead.map(xs(0), DecodeField.ProposedUpdates)
       updates <- kvs.traverse { case (k, v) =>
         for
-          key <- CborRead.bytesN(k, 28, "genesis key hash")
-          fs <- CborRead.map(v, "parameter update")
+          key <- CborRead.bytesN(k, 28, DecodeField.GenesisKeyHash)
+          fs <- CborRead.map(v, DecodeField.ParameterUpdate)
           update <- ParamUpdate.read(fs, CostModelDecode.Format.Legacy)
         yield key -> update
       }
-      epoch <- CborRead.uint(xs(1), "update epoch")
+      epoch <- CborRead.uint(xs(1), DecodeField.UpdateEpoch)
     yield Effect.Proposal(updates.toMap, epoch)
 
   private def cert(n: Node): Either[LedgerDecodeError, Vector[Effect]] =
-    CborRead.array(n, "certificate").flatMap { xs =>
+    CborRead.array(n, DecodeField.Certificate).flatMap { xs =>
       xs.headOption
-        .toRight(LedgerDecodeError.Empty("certificate"))
-        .flatMap(CborRead.uint(_, "certificate tag"))
+        .toRight(LedgerDecodeError.Empty(DecodeField.Certificate))
+        .flatMap(CborRead.uint(_, DecodeField.CertificateTag))
         .flatMap {
           case t if t == 3 && xs.size >= 3 =>
-            (CborRead.bytesN(xs(1), 28, "pool operator"), CborRead.bytesN(xs(2), 32, "pool vrf"))
+            (
+              CborRead.bytesN(xs(1), 28, DecodeField.PoolOperator),
+              CborRead.bytesN(xs(2), 32, DecodeField.PoolVrf)
+            )
               .mapN((p, v) => Vector(Effect.PoolRegistered(p, v)))
           case t if t == 4 && xs.size == 3 =>
-            (CborRead.bytesN(xs(1), 28, "pool"), CborRead.uint(xs(2), "retirement epoch"))
+            (
+              CborRead.bytesN(xs(1), 28, DecodeField.Pool),
+              CborRead.uint(xs(2), DecodeField.RetirementEpoch)
+            )
               .mapN((p, e) => Vector(Effect.PoolRetiring(p, e)))
           case t if t == 5 && xs.size == 4 =>
             (
-              CborRead.bytesN(xs(1), 28, "genesis key"),
-              CborRead.bytesN(xs(2), 28, "genesis delegate"),
-              CborRead.bytesN(xs(3), 32, "genesis vrf")
+              CborRead.bytesN(xs(1), 28, DecodeField.GenesisKey),
+              CborRead.bytesN(xs(2), 28, DecodeField.GenesisDelegate),
+              CborRead.bytesN(xs(3), 32, DecodeField.GenesisVrf)
             ).mapN((g, d, v) => Vector(Effect.GenesisDelegation(g, GenDelegPair(d, v))))
           case _ => Right(Vector.empty)
         }

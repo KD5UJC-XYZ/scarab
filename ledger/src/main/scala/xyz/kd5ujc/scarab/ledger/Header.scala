@@ -275,7 +275,7 @@ object Header:
       _ <- Either.cond(
         kind == 2,
         (),
-        fail(LedgerDecodeError.UnknownTag("Byron block signature", kind))
+        fail(LedgerDecodeError.UnknownTag(DecodeField.ByronBlockSignature, kind))
       )
       proxy <- array(outer(1), 2)
       psk <- array(proxy(0), 4)
@@ -291,12 +291,16 @@ object Header:
     case _          => bytes(n, 32).map(Some(_))
 
   private[ledger] def fail(reason: LedgerDecodeError): ChainError =
-    ChainError.Decode("header", reason)
+    ChainError.Decode(DecodeField.Header, reason)
   private[ledger] def array(n: Node, size: Int): Either[ChainError, Vector[Node]] =
-    CborRead.arrayN(n, size, "header").leftMap(fail)
+    CborRead.arrayN(n, size, DecodeField.Header).leftMap(fail)
   private[ledger] def uint(n: Node): Either[ChainError, BigInt] = n.value match
     case Value.UInt(v) => Right(v)
     case _ =>
-      Left(fail(LedgerDecodeError.Expected("header", LedgerDecodeError.Shape.Unsigned, n.value)))
+      Left(
+        fail(
+          LedgerDecodeError.Expected(DecodeField.Header, LedgerDecodeError.Shape.Unsigned, n.value)
+        )
+      )
   private[ledger] def bytes(n: Node, size: Int): Either[ChainError, Bytes] =
-    CborRead.bytesN(n, size, "header").leftMap(fail)
+    CborRead.bytesN(n, size, DecodeField.Header).leftMap(fail)

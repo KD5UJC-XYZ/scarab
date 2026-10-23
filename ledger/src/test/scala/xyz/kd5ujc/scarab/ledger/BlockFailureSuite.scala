@@ -77,8 +77,8 @@ class BlockFailureSuite extends FunSuite:
       "praos" -> "issuer not elected for slot 42: Ineligible"
     )
     assertEquals(
-      rendered(BlockFailure.Lite(LedgerDecodeError.Empty("z"))),
-      "ledger" -> LedgerDecodeError.Empty("z").message
+      rendered(BlockFailure.Lite(LedgerDecodeError.Empty(DecodeField.Value))),
+      "ledger" -> LedgerDecodeError.Empty(DecodeField.Value).message
     )
     assertEquals(
       rendered(BlockFailure.Handover(HandoverProblem.MissingByronRules)),
@@ -86,8 +86,10 @@ class BlockFailureSuite extends FunSuite:
     )
     val id = Bytes.fromHex("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")
     assertEquals(
-      id.map(i => rendered(BlockFailure.TxDecode(i, LedgerDecodeError.Empty("bad")))),
-      Right("decode" -> s"tx 0011223344556677: ${LedgerDecodeError.Empty("bad").message}")
+      id.map(i => rendered(BlockFailure.TxDecode(i, LedgerDecodeError.Empty(DecodeField.Value)))),
+      Right(
+        "decode" -> s"tx 0011223344556677: ${LedgerDecodeError.Empty(DecodeField.Value).message}"
+      )
     )
     assertEquals(
       rendered(BlockFailure.SupplyInvariant(BigInt(5), BigInt(10), BigInt(11))),

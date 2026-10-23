@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import cats.syntax.show.*
 import xyz.kd5ujc.scarab.codec.DomainError
 import cats.Id
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -45,7 +46,7 @@ enum TxDefect:
     case ConwayCertificate(c)         => s"certificate $c before Conway"
     case GovernanceFieldsBeforeConway => "governance fields before Conway"
     case PlutusFieldsBeforeAlonzo     => "Plutus fields before Alonzo"
-    case AuxiliaryData(cause)         => s"malformed auxiliary data: $cause"
+    case AuxiliaryData(cause)         => s"malformed auxiliary data: ${cause.show}"
     case UnreadableProtocolVersion    => "an update with an unreadable protocol version"
     case PoolMetadata(cause)          => s"invalid pool metadata: ${cause.message}"
 

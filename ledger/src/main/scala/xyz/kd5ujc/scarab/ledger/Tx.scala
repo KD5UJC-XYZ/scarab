@@ -23,21 +23,25 @@ enum DRep:
 
 object DRep:
   def decode(n: Node): Either[LedgerDecodeError, DRep] =
-    CborRead.array(n, "drep").flatMap {
+    CborRead.array(n, DecodeField.Drep).flatMap {
       case Vector(t, h) =>
-        (CborRead.uint(t, "drep").map(_.toInt), CborRead.bytesN(h, 28, "drep hash")).tupled
+        (
+          CborRead.uint(t, DecodeField.Drep).map(_.toInt),
+          CborRead.bytesN(h, 28, DecodeField.DrepHash)
+        ).tupled
           .flatMap {
             case (0, hash) => Right(Registered(Credential.Key(hash)))
             case (1, hash) => Right(Registered(Credential.Script(hash)))
-            case (tag, _)  => Left(LedgerDecodeError.UnknownTag("drep", tag))
+            case (tag, _)  => Left(LedgerDecodeError.UnknownTag(DecodeField.Drep, tag))
           }
       case Vector(t) =>
-        CborRead.uint(t, "drep").map(_.toInt).flatMap {
+        CborRead.uint(t, DecodeField.Drep).map(_.toInt).flatMap {
           case 2   => Right(AlwaysAbstain)
           case 3   => Right(AlwaysNoConfidence)
-          case tag => Left(LedgerDecodeError.UnknownTag("drep", tag))
+          case tag => Left(LedgerDecodeError.UnknownTag(DecodeField.Drep, tag))
         }
-      case _ => Left(LedgerDecodeError.Expected("drep", LedgerDecodeError.Shape.Array, n.value))
+      case _ =>
+        Left(LedgerDecodeError.Expected(DecodeField.Drep, LedgerDecodeError.Shape.Array, n.value))
     }
 
 /** The comparison key of a pool registration: the parameters without the fields Scarab keeps as
@@ -69,9 +73,9 @@ object PoolParams:
   private[ledger] def metadataHash(raw: Bytes): Either[LedgerDecodeError, Bytes] =
     for
       node <- CborRead.decode(raw)
-      fields <- CborRead.arrayN(node, 2, "pool metadata")
-      _ <- CborRead.text(fields(0), "pool metadata URL")
-      hash <- CborRead.bytes(fields(1), "pool metadata hash")
+      fields <- CborRead.arrayN(node, 2, DecodeField.PoolMetadata)
+      _ <- CborRead.text(fields(0), DecodeField.PoolMetadataURL)
+      hash <- CborRead.bytes(fields(1), DecodeField.PoolMetadataHash)
     yield hash
 
   /** The values the reference's derived `Ord StakePoolParams` compares
@@ -136,15 +140,15 @@ object Certificate:
     case other                => Right(other)
 
   def decode(n: Node, version: DecoderVersion): Either[LedgerDecodeError, Certificate] =
-    def cred(i: Int, xs: Vector[Node]) = Credential.decode(xs(i), "certificate credential")
-    def pool(i: Int, xs: Vector[Node]) = CborRead.bytesN(xs(i), 28, "pool id")
-    def coin(i: Int, xs: Vector[Node]) = CborRead.uint(xs(i), "certificate coin")
+    def cred(i: Int, xs: Vector[Node]) = Credential.decode(xs(i), DecodeField.CertificateCredential)
+    def pool(i: Int, xs: Vector[Node]) = CborRead.bytesN(xs(i), 28, DecodeField.PoolId)
+    def coin(i: Int, xs: Vector[Node]) = CborRead.uint(xs(i), DecodeField.CertificateCoin)
     def drep(i: Int, xs: Vector[Node]) = DRep.decode(xs(i))
-    CborRead.array(n, "certificate").flatMap { xs =>
+    CborRead.array(n, DecodeField.Certificate).flatMap { xs =>
       for
         tag <- xs.headOption
-          .toRight(LedgerDecodeError.Empty("certificate"))
-          .flatMap(CborRead.uint(_, "certificate tag"))
+          .toRight(LedgerDecodeError.Empty(DecodeField.Certificate))
+          .flatMap(CborRead.uint(_, DecodeField.CertificateTag))
         arity = Map(
           0 -> 2,
           1 -> 2,
@@ -169,18 +173,19 @@ object Certificate:
         _ <- arity
           .get(tag.toInt)
           .filter(_ == xs.size)
-          .toRight(LedgerDecodeError.TaggedArity("certificate", tag, xs.size))
+          .toRight(LedgerDecodeError.TaggedArity(DecodeField.Certificate, tag, xs.size))
         cert <- tag.toInt match
           case 0 => cred(1, xs).map(Register(_, None))
           case 1 => cred(1, xs).map(Unregister(_, None))
           case 2 => (cred(1, xs), pool(2, xs)).mapN((c, p) => Delegate(c, Some(p), None, None))
           case 3 => poolParams(xs.drop(1), version).map(RegisterPool(_))
-          case 4 => (pool(1, xs), CborRead.uint(xs(2), "retirement epoch")).mapN(RetirePool(_, _))
+          case 4 =>
+            (pool(1, xs), CborRead.uint(xs(2), DecodeField.RetirementEpoch)).mapN(RetirePool(_, _))
           case 5 =>
             (
-              CborRead.bytesN(xs(1), 28, "genesis key"),
-              CborRead.bytesN(xs(2), 28, "genesis delegate"),
-              CborRead.bytesN(xs(3), 32, "genesis vrf")
+              CborRead.bytesN(xs(1), 28, DecodeField.GenesisKey),
+              CborRead.bytesN(xs(2), 28, DecodeField.GenesisDelegate),
+              CborRead.bytesN(xs(3), 32, DecodeField.GenesisVrf)
             ).mapN(GenesisDelegate(_, _, _))
           case 6 => moveRewards(xs(1))
           case 7 => (cred(1, xs), coin(2, xs)).mapN((c, d) => Register(c, Some(d)))
@@ -204,27 +209,30 @@ object Certificate:
             (cred(1, xs), coin(2, xs), Anchor.optional(xs(3))).mapN(RegisterDRep(_, _, _))
           case 17 => (cred(1, xs), coin(2, xs)).mapN(UnregisterDRep(_, _))
           case 18 => (cred(1, xs), Anchor.optional(xs(2))).mapN(UpdateDRep(_, _))
-          case t  => Left(LedgerDecodeError.UnknownTag("certificate", t))
+          case t  => Left(LedgerDecodeError.UnknownTag(DecodeField.Certificate, t))
       yield cert
     }
 
   private def moveRewards(n: Node): Either[LedgerDecodeError, Certificate] =
-    CborRead.arrayN(n, 2, "move instantaneous rewards").flatMap { xs =>
+    CborRead.arrayN(n, 2, DecodeField.MoveInstantaneousRewards).flatMap { xs =>
       for
-        pot <- CborRead.uint(xs(0), "MIR pot").flatMap {
+        pot <- CborRead.uint(xs(0), DecodeField.MIRPot).flatMap {
           case p if p == 0 => Right(Pot.Reserves)
           case p if p == 1 => Right(Pot.Treasury)
-          case p           => Left(LedgerDecodeError.UnknownTag("MIR pot", p))
+          case p           => Left(LedgerDecodeError.UnknownTag(DecodeField.MIRPot, p))
         }
         transfer <- xs(1).value match
           case xyz.kd5ujc.scarab.codec.Value.Map(_) =>
             CborRead
-              .map(xs(1), "MIR map")
+              .map(xs(1), DecodeField.MIRMap)
               .flatMap(_.traverse { case (k, v) =>
-                (Credential.decode(k, "MIR credential"), CborRead.int(v, "MIR amount")).tupled
+                (
+                  Credential.decode(k, DecodeField.MIRCredential),
+                  CborRead.int(v, DecodeField.MIRAmount)
+                ).tupled
               })
               .map(kvs => Right(kvs.toMap))
-          case _ => CborRead.uint(xs(1), "MIR transfer").map(Left(_))
+          case _ => CborRead.uint(xs(1), DecodeField.MIRTransfer).map(Left(_))
       yield MoveRewards(pot, transfer)
     }
 
@@ -233,13 +241,15 @@ object Certificate:
       version: DecoderVersion
   ): Either[LedgerDecodeError, PoolParams] =
     for
-      operator <- CborRead.bytesN(xs(0), 28, "pool operator")
-      vrf <- CborRead.bytesN(xs(1), 32, "pool vrf")
-      pledge <- CborRead.uint(xs(2), "pool pledge")
-      cost <- CborRead.uint(xs(3), "pool cost")
-      margin <- CborRead.rational(xs(4), "pool margin", CborRead.Bound.Unit)
-      account <- CborRead.bytes(xs(5), "pool reward account").flatMap(RewardAccount.decode)
-      owners <- CborRead.set(xs(6), "pool owners", version)(CborRead.bytesN(_, 28, "pool owner"))
+      operator <- CborRead.bytesN(xs(0), 28, DecodeField.PoolOperator)
+      vrf <- CborRead.bytesN(xs(1), 32, DecodeField.PoolVrf)
+      pledge <- CborRead.uint(xs(2), DecodeField.PoolPledge)
+      cost <- CborRead.uint(xs(3), DecodeField.PoolCost)
+      margin <- CborRead.rational(xs(4), DecodeField.PoolMargin, CborRead.Bound.Unit)
+      account <- CborRead.bytes(xs(5), DecodeField.PoolRewardAccount).flatMap(RewardAccount.decode)
+      owners <- CborRead.set(xs(6), DecodeField.PoolOwners, version)(
+        CborRead.bytesN(_, 28, DecodeField.PoolOwner)
+      )
       metadata <- xs(8).value match
         case xyz.kd5ujc.scarab.codec.Value.Null => Right(None)
         case _ => PoolParams.metadataHash(xs(8).original).map(_ => Some(xs(8).original))
@@ -296,16 +306,16 @@ object TxBody:
 
   private def update(n: Node): Either[LedgerDecodeError, Update] =
     for
-      xs <- CborRead.arrayN(n, 2, "update")
-      kvs <- CborRead.map(xs(0), "proposed updates")
+      xs <- CborRead.arrayN(n, 2, DecodeField.Update)
+      kvs <- CborRead.map(xs(0), DecodeField.ProposedUpdates)
       proposals <- kvs.traverse { case (k, v) =>
         for
-          key <- CborRead.bytesN(k, 28, "genesis key hash")
-          fs <- CborRead.map(v, "parameter update")
+          key <- CborRead.bytesN(k, 28, DecodeField.GenesisKeyHash)
+          fs <- CborRead.map(v, DecodeField.ParameterUpdate)
           update <- ParamUpdate.read(fs, CostModelDecode.Format.Legacy)
         yield key -> update
       }
-      epoch <- CborRead.uint(xs(1), "update epoch")
+      epoch <- CborRead.uint(xs(1), DecodeField.UpdateEpoch)
     yield Update(proposals.toMap, epoch)
 
   /** A body of a block of `era`, read at the era's decoder version ([[DecoderVersion]]). Conway's
@@ -321,77 +331,86 @@ object TxBody:
     val conway = era.ordinal >= Era.Conway.ordinal
     val known = if conway then Known - 6 else Known
     // `fieldGuarded`: Conway fails a key that is present with an empty value.
-    def present[A](what: String)(
+    def present[A](what: DecodeSite)(
         r: Either[LedgerDecodeError, Option[Vector[A]]]
     ): Either[LedgerDecodeError, Option[Vector[A]]] =
       r.flatMap(_.traverse(CborRead.nonEmpty(_, what, conway)))
     for
       root <- CborRead.decode(raw)
-      f <- CborRead.fields(root, "transaction body")
+      f <- CborRead.fields(root, DecodeField.TransactionBody)
       _ <- Either.cond(
         f.keySet.subsetOf(known),
         (),
-        LedgerDecodeError.UnknownFields("transaction body", f.keySet -- known)
+        LedgerDecodeError.UnknownFields(DecodeField.TransactionBody, f.keySet -- known)
       )
       inputs <- f
         .get(0)
-        .toRight(LedgerDecodeError.MissingField("transaction body", "inputs"))
-        .flatMap(CborRead.set(_, "inputs", version)(TxIn.decode))
+        .toRight(LedgerDecodeError.MissingField(DecodeField.TransactionBody, DecodeField.Inputs))
+        .flatMap(CborRead.set(_, DecodeField.Inputs, version)(TxIn.decode))
       outputs <- f
         .get(1)
-        .toRight(LedgerDecodeError.MissingField("transaction body", "outputs"))
-        .flatMap(CborRead.array(_, "outputs"))
+        .toRight(LedgerDecodeError.MissingField(DecodeField.TransactionBody, DecodeField.Outputs))
+        .flatMap(CborRead.array(_, DecodeField.Outputs))
         .flatMap(_.traverse(TxOut.decode(_, mode)))
       fee <- f
         .get(2)
-        .toRight(LedgerDecodeError.MissingField("transaction body", "fee"))
-        .flatMap(CborRead.uint(_, "fee"))
-      ttl <- f.get(3).traverse(CborRead.uint(_, "ttl"))
-      start <- f.get(8).traverse(CborRead.uint(_, "validity start"))
-      certs <- present("certificates")(
+        .toRight(LedgerDecodeError.MissingField(DecodeField.TransactionBody, DecodeField.Fee))
+        .flatMap(CborRead.uint(_, DecodeField.Fee))
+      ttl <- f.get(3).traverse(CborRead.uint(_, DecodeField.Ttl))
+      start <- f.get(8).traverse(CborRead.uint(_, DecodeField.ValidityStart))
+      certs <- present(DecodeField.Certificates)(
         f.get(4)
           .traverse(
-            CborRead.oset(_, "certificates", version)(Certificate.decode(_, version))(
+            CborRead.oset(_, DecodeField.Certificates, version)(Certificate.decode(_, version))(
               Certificate.identity
             )
           )
       )
-      withdrawals <- present("withdrawals")(
+      withdrawals <- present(DecodeField.Withdrawals)(
         f.get(5)
           .traverse(
             CborRead
-              .map(_, "withdrawals")
+              .map(_, DecodeField.Withdrawals)
               .flatMap(_.traverse { case (k, v) =>
                 (
-                  CborRead.bytes(k, "withdrawal account").flatMap(RewardAccount.decode),
-                  CborRead.uint(v, "withdrawal")
+                  CborRead.bytes(k, DecodeField.WithdrawalAccount).flatMap(RewardAccount.decode),
+                  CborRead.uint(v, DecodeField.Withdrawal)
                 ).tupled
               })
               .flatMap(ws =>
-                if version.atLeast(9) then CborRead.unique(ws.map(_._1), "withdrawals").as(ws)
+                if version.atLeast(9) then
+                  CborRead.unique(ws.map(_._1), DecodeField.Withdrawals).as(ws)
                 else Right(ws)
               )
           )
       )
       upd <- f.get(6).traverse(update)
-      auxHash <- f.get(7).traverse(CborRead.bytesN(_, 32, "auxiliary data hash"))
-      mint <- f.get(9).traverse(Value.multiasset(_, "mint", signed = true, mode.values))
-      _ <- Either.cond(!(conway && mint.exists(_.isEmpty)), (), LedgerDecodeError.Empty("mint"))
-      dataHash <- f.get(11).traverse(CborRead.bytesN(_, 32, "script data hash"))
-      collateral <- present("collateral")(
-        f.get(13).traverse(CborRead.set(_, "collateral", version)(TxIn.decode))
+      auxHash <- f.get(7).traverse(CborRead.bytesN(_, 32, DecodeField.AuxiliaryDataHash))
+      mint <- f.get(9).traverse(Value.multiasset(_, DecodeField.Mint, signed = true, mode.values))
+      _ <- Either.cond(
+        !(conway && mint.exists(_.isEmpty)),
+        (),
+        LedgerDecodeError.Empty(DecodeField.Mint)
       )
-      signers <- present("required signers")(
+      dataHash <- f.get(11).traverse(CborRead.bytesN(_, 32, DecodeField.ScriptDataHash))
+      collateral <- present(DecodeField.Collateral)(
+        f.get(13).traverse(CborRead.set(_, DecodeField.Collateral, version)(TxIn.decode))
+      )
+      signers <- present(DecodeField.RequiredSigners)(
         f.get(14)
-          .traverse(CborRead.set(_, "required signers", version)(CborRead.bytesN(_, 28, "signer")))
+          .traverse(
+            CborRead.set(_, DecodeField.RequiredSigners, version)(
+              CborRead.bytesN(_, 28, DecodeField.Signer)
+            )
+          )
       )
-      network <- f.get(15).traverse(CborRead.uint(_, "network id"))
+      network <- f.get(15).traverse(CborRead.uint(_, DecodeField.NetworkId))
       collateralReturn <- f.get(16).traverse(TxOut.decode(_, mode))
-      totalCollateral <- f.get(17).traverse(CborRead.uint(_, "total collateral"))
-      refs <- present("reference inputs")(
-        f.get(18).traverse(CborRead.set(_, "reference inputs", version)(TxIn.decode))
+      totalCollateral <- f.get(17).traverse(CborRead.uint(_, DecodeField.TotalCollateral))
+      refs <- present(DecodeField.ReferenceInputs)(
+        f.get(18).traverse(CborRead.set(_, DecodeField.ReferenceInputs, version)(TxIn.decode))
       )
-      votes <- present("voting procedures")(
+      votes <- present(DecodeField.VotingProcedures)(
         f.get(19)
           .traverse(
             VotingProcedures
@@ -400,20 +419,20 @@ object TxBody:
               .leftMap(LedgerDecodeError.Voting(_))
           )
       )
-      proposals <- present("proposal procedures")(
+      proposals <- present(DecodeField.ProposalProcedures)(
         f.get(20)
           .traverse(
-            CborRead.oset(_, "proposal procedures", version)(Proposal.decode(_, version))(
+            CborRead.oset(_, DecodeField.ProposalProcedures, version)(Proposal.decode(_, version))(
               Proposal.identity
             )
           )
       )
-      treasury <- f.get(21).traverse(CborRead.uint(_, "current treasury value"))
-      donation <- f.get(22).traverse(CborRead.uint(_, "donation"))
+      treasury <- f.get(21).traverse(CborRead.uint(_, DecodeField.CurrentTreasuryValue))
+      donation <- f.get(22).traverse(CborRead.uint(_, DecodeField.Donation))
       _ <- Either.cond(
         !(conway && donation.contains(BigInt(0))),
         (),
-        LedgerDecodeError.Zero("donation")
+        LedgerDecodeError.Zero(DecodeField.Donation)
       )
     yield TxBody(
       raw,
@@ -497,22 +516,25 @@ object Witnesses:
     val strict = version.atLeast(9)
     for
       root <- CborRead.decode(raw)
-      f <- CborRead.fields(root, "witness set")
+      f <- CborRead.fields(root, DecodeField.WitnessSet)
       _ <- Either.cond(
         f.keySet.subsetOf(Set(0, 1, 2, 3, 4, 5, 6, 7)),
         (),
-        LedgerDecodeError.UnknownFields("witness set", f.keySet -- Set(0, 1, 2, 3, 4, 5, 6, 7))
+        LedgerDecodeError.UnknownFields(
+          DecodeField.WitnessSet,
+          f.keySet -- Set(0, 1, 2, 3, 4, 5, 6, 7)
+        )
       )
       vkeys <- f
         .get(0)
         .traverse(
-          CborRead.tolerantSet(_, "vkey witnesses", version) { w =>
+          CborRead.tolerantSet(_, DecodeField.VkeyWitnesses, version) { w =>
             CborRead
-              .arrayN(w, 2, "vkey witness")
+              .arrayN(w, 2, DecodeField.VkeyWitness)
               .flatMap(xs =>
                 (
-                  CborRead.bytesN(xs(0), 32, "vkey"),
-                  CborRead.bytesN(xs(1), 64, "signature")
+                  CborRead.bytesN(xs(0), 32, DecodeField.Vkey),
+                  CborRead.bytesN(xs(1), 64, DecodeField.Signature)
                 ).tupled
               )
           }
@@ -521,19 +543,19 @@ object Witnesses:
         .get(1)
         .traverse(
           CborRead
-            .tolerantSet(_, "native scripts", version)(Script.native)
+            .tolerantSet(_, DecodeField.NativeScripts, version)(Script.native)
             .map(_.distinctBy(_.hash))
         )
       bootstrap <- f
         .get(2)
         .traverse(
-          CborRead.tolerantSet(_, "bootstrap witnesses", version) { w =>
-            CborRead.arrayN(w, 4, "bootstrap witness").flatMap { xs =>
+          CborRead.tolerantSet(_, DecodeField.BootstrapWitnesses, version) { w =>
+            CborRead.arrayN(w, 4, DecodeField.BootstrapWitness).flatMap { xs =>
               (
-                CborRead.bytesN(xs(0), 32, "bootstrap vkey"),
-                CborRead.bytesN(xs(1), 64, "bootstrap signature"),
-                CborRead.bytesN(xs(2), 32, "chain code"),
-                CborRead.bytes(xs(3), "attributes")
+                CborRead.bytesN(xs(0), 32, DecodeField.BootstrapVkey),
+                CborRead.bytesN(xs(1), 64, DecodeField.BootstrapSignature),
+                CborRead.bytesN(xs(2), 32, DecodeField.ChainCode),
+                CborRead.bytes(xs(3), DecodeField.Attributes)
               ).mapN(BootstrapWitness(_, _, _, _))
             }
           }
@@ -542,8 +564,10 @@ object Witnesses:
         f.get(tag)
           .traverse(n =>
             CborRead
-              .set(n, "plutus scripts", version)(CborRead.bytes(_, "plutus script"))
-              .flatMap(CborRead.nonEmpty(_, "plutus scripts", strict))
+              .set(n, DecodeField.PlutusScripts, version)(
+                CborRead.bytes(_, DecodeField.PlutusScript)
+              )
+              .flatMap(CborRead.nonEmpty(_, DecodeField.PlutusScripts, strict))
               .map(_.map(Script.plutus(kind, _)))
           )
       v1 <- plutus(3, ScriptKind.PlutusV1)
@@ -552,7 +576,9 @@ object Witnesses:
       datums <- f
         .get(4)
         .traverse(
-          CborRead.tolerantSet(_, "datums", version)(n => Right(n.original)).map(_.distinct)
+          CborRead
+            .tolerantSet(_, DecodeField.Datums, version)(n => Right(n.original))
+            .map(_.distinct)
         )
       redeemers <- f.get(5).traverse(redeemerList(_, version))
     yield Witnesses(
@@ -569,9 +595,10 @@ object Witnesses:
 
   private def exUnits(n: Node): Either[LedgerDecodeError, ExUnits] =
     CborRead
-      .arrayN(n, 2, "ex units")
+      .arrayN(n, 2, DecodeField.ExUnits)
       .flatMap(xs =>
-        (CborRead.uint(xs(0), "mem"), CborRead.uint(xs(1), "steps")).mapN(ExUnits(_, _))
+        (CborRead.uint(xs(0), DecodeField.Mem), CborRead.uint(xs(1), DecodeField.Steps))
+          .mapN(ExUnits(_, _))
       )
 
   /** `[* [tag, index, data, ex_units]]`, or (Conway) `{[tag, index] => [data, ex_units]}`. The
@@ -589,25 +616,25 @@ object Witnesses:
       case xyz.kd5ujc.scarab.codec.Value.Map(kvs) if version.atLeast(9) =>
         kvs.traverse { case (k, v) =>
           for
-            key <- CborRead.arrayN(k, 2, "redeemer key")
-            tag <- CborRead.uint(key(0), "redeemer tag")
-            index <- CborRead.uint(key(1), "redeemer index")
-            value <- CborRead.arrayN(v, 2, "redeemer value")
+            key <- CborRead.arrayN(k, 2, DecodeField.RedeemerKey)
+            tag <- CborRead.uint(key(0), DecodeField.RedeemerTag)
+            index <- CborRead.uint(key(1), DecodeField.RedeemerIndex)
+            value <- CborRead.arrayN(v, 2, DecodeField.RedeemerValue)
             units <- exUnits(value(1))
           yield Redeemer(tag.toInt, index, value(0).original, units)
         }
       case _ =>
         CborRead
-          .array(n, "redeemers")
+          .array(n, DecodeField.Redeemers)
           .flatMap(_.traverse { r =>
             for
-              xs <- CborRead.arrayN(r, 4, "redeemer")
-              tag <- CborRead.uint(xs(0), "redeemer tag")
-              index <- CborRead.uint(xs(1), "redeemer index")
+              xs <- CborRead.arrayN(r, 4, DecodeField.Redeemer)
+              tag <- CborRead.uint(xs(0), DecodeField.RedeemerTag)
+              index <- CborRead.uint(xs(1), DecodeField.RedeemerIndex)
               units <- exUnits(xs(3))
             yield Redeemer(tag.toInt, index, xs(2).original, units)
           })
-    all.flatMap(CborRead.nonEmpty(_, "redeemers", version.atLeast(9))).map { rs =>
+    all.flatMap(CborRead.nonEmpty(_, DecodeField.Redeemers, version.atLeast(9))).map { rs =>
       val last = rs.zipWithIndex.map((r, i) => (r.tag, r.index) -> i).toMap
       rs.zipWithIndex.collect { case (r, i) if last((r.tag, r.index)) == i => r }
     }
@@ -630,14 +657,15 @@ object Tx:
   def fromEnvelope(bytes: Bytes, era: Era): Either[LedgerDecodeError, Tx] =
     CborRead.decode(bytes).flatMap { node =>
       val withFlag = era.ordinal >= Era.Alonzo.ordinal
-      CborRead.arrayN(node, if withFlag then 4 else 3, "transaction").flatMap { xs =>
+      CborRead.arrayN(node, if withFlag then 4 else 3, DecodeField.Transaction).flatMap { xs =>
         val valid =
           if withFlag then
             xs(2).value match
               case xyz.kd5ujc.scarab.codec.Value.Bool(flag) => Right(flag)
               case other =>
                 Left(
-                  LedgerDecodeError.Expected("is_valid", LedgerDecodeError.Shape.Boolean, other)
+                  LedgerDecodeError
+                    .Expected(DecodeField.IsValid, LedgerDecodeError.Shape.Boolean, other)
                 )
           else Right(true)
         val aux = xs.last

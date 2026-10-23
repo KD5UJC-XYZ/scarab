@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import cats.syntax.show.*
 import xyz.kd5ujc.scarab.blst.BlstProblem
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.codec.DomainError
@@ -214,7 +215,7 @@ enum ChainError extends NodeError:
   /** The retained ledger point and pinned backing generation do not describe one state. */
   case StateAcquire(cause: NetworkError.StateAcquireFailure)
 
-  case Decode(what: String, cause: LedgerDecodeError)
+  case Decode(what: DecodeSite, cause: LedgerDecodeError)
   case NotConnected(point: ChainSync.Point, tip: ChainSync.Point)
   case RollbackBeyondAnchor(target: ChainSync.Point, anchor: ChainSync.Point)
   case NoIntersection
@@ -223,7 +224,7 @@ enum ChainError extends NodeError:
   def message: String = this match
     case MempoolTick(slot, cause) => s"cannot tick mempool ledger to slot $slot: $cause"
     case StateAcquire(cause)      => cause.message
-    case Decode(w, r)             => s"decode $w: $r"
+    case Decode(w, r)             => s"decode ${w.show}: ${r.show}"
     case NotConnected(p, t)       => s"${Points.show(p)} does not extend tip ${Points.show(t)}"
     case RollbackBeyondAnchor(t, a) =>
       s"rollback to ${Points.show(t)} beyond anchor ${Points.show(a)}"

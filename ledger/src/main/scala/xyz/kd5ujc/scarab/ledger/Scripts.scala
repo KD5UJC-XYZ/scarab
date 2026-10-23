@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import cats.syntax.show.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Node, Tree, TreeFold, Value}
 import xyz.kd5ujc.scarab.codec.Tree.{treeEquals, treeHash, treeString}
@@ -122,12 +123,12 @@ object NativeScript:
     case RequiredOutOfRange(value: BigInt)
 
     /** A slot is a `Word64` in the reference. */
-    case SlotOutOfRange(what: String, value: BigInt)
+    case SlotOutOfRange(what: DecodeSite, value: BigInt)
 
     def message: String = this match
       case Malformed(r)            => r.message
       case RequiredOutOfRange(v)   => s"script n: $v does not fit a signed 64-bit integer"
-      case SlotOutOfRange(what, v) => s"$what: $v does not fit an unsigned 64-bit integer"
+      case SlotOutOfRange(what, v) => s"${what.show}: $v does not fit an unsigned 64-bit integer"
 
   private val MinInt64 = -(BigInt(1) << 63)
   private val MaxInt64 = (BigInt(1) << 63) - 1
@@ -136,42 +137,50 @@ object NativeScript:
   private def malformed[A](r: Either[LedgerDecodeError, A]): Either[DecodeError, A] =
     r.left.map(DecodeError.Malformed(_))
 
-  private def slot(n: Node, what: String): Either[DecodeError, BigInt] =
+  private def slot(n: Node, what: DecodeSite): Either[DecodeError, BigInt] =
     malformed(CborRead.uint(n, what)).flatMap(v =>
       Either.cond(v <= MaxWord64, v, DecodeError.SlotOutOfRange(what, v))
     )
 
   private def required(n: Node): Either[DecodeError, BigInt] =
-    malformed(CborRead.int(n, "script n")).flatMap(v =>
+    malformed(CborRead.int(n, DecodeField.ScriptN)).flatMap(v =>
       Either.cond(v >= MinInt64 && v <= MaxInt64, v, DecodeError.RequiredOutOfRange(v))
     )
 
   private def open(n: Node): Either[DecodeError, TreeFold.Step[Node, NativeScript, DecodeError]] =
     import TreeFold.Step
-    malformed(CborRead.array(n, "native script")).flatMap { xs =>
+    malformed(CborRead.array(n, DecodeField.NativeScript)).flatMap { xs =>
       malformed(
         xs.headOption
-          .toRight(LedgerDecodeError.Empty("native script"))
-          .flatMap(CborRead.uint(_, "script tag"))
+          .toRight(LedgerDecodeError.Empty(DecodeField.NativeScript))
+          .flatMap(CborRead.uint(_, DecodeField.ScriptTag))
       ).flatMap { tag =>
         def list(i: Int): Either[DecodeError, Vector[Node]] =
           malformed(
             xs.lift(i)
-              .toRight(LedgerDecodeError.MissingField("native script", i.toString))
-              .flatMap(CborRead.array(_, "scripts"))
+              .toRight(
+                LedgerDecodeError.MissingField(DecodeField.NativeScript, DecodeSite.Index(i))
+              )
+              .flatMap(CborRead.array(_, DecodeField.Scripts))
           )
         val boundedTag = if tag <= Int.MaxValue then tag.toInt else -1
         (boundedTag, xs.size) match
           case (0, 2) =>
-            malformed(CborRead.bytesN(xs(1), 28, "script key hash")).map(h => Step.Leaf(Sig(h)))
+            malformed(CborRead.bytesN(xs(1), 28, DecodeField.ScriptKeyHash)).map(h =>
+              Step.Leaf(Sig(h))
+            )
           case (1, 2) => list(1).map(Step.Branch(_, ss => Right(AllOf(ss))))
           case (2, 2) => list(1).map(Step.Branch(_, ss => Right(AnyOf(ss))))
           case (3, 3) =>
             required(xs(1)).flatMap(k => list(2).map(Step.Branch(_, ss => Right(NOfK(k, ss)))))
-          case (4, 2) => slot(xs(1), "invalid before").map(s => Step.Leaf(InvalidBefore(s)))
-          case (5, 2) => slot(xs(1), "invalid hereafter").map(s => Step.Leaf(InvalidHereafter(s)))
+          case (4, 2) =>
+            slot(xs(1), DecodeField.InvalidBefore).map(s => Step.Leaf(InvalidBefore(s)))
+          case (5, 2) =>
+            slot(xs(1), DecodeField.InvalidHereafter).map(s => Step.Leaf(InvalidHereafter(s)))
           case (_, k) =>
-            Left(DecodeError.Malformed(LedgerDecodeError.TaggedArity("native script", tag, k)))
+            Left(
+              DecodeError.Malformed(LedgerDecodeError.TaggedArity(DecodeField.NativeScript, tag, k))
+            )
       }
     }
 
@@ -211,13 +220,16 @@ object Script:
 
   /** `script = [0, native_script] / [1, plutus_v1] / [2, plutus_v2] / [3, plutus_v3]`. */
   def decode(n: Node): Either[LedgerDecodeError, Script] =
-    CborRead.arrayN(n, 2, "script").flatMap { xs =>
-      CborRead.uint(xs(0), "script type").flatMap {
+    CborRead.arrayN(n, 2, DecodeField.Script).flatMap { xs =>
+      CborRead.uint(xs(0), DecodeField.ScriptType).flatMap {
         case t if t == 0 => native(xs(1))
-        case t if t == 1 => CborRead.bytes(xs(1), "plutus v1").map(plutus(ScriptKind.PlutusV1, _))
-        case t if t == 2 => CborRead.bytes(xs(1), "plutus v2").map(plutus(ScriptKind.PlutusV2, _))
-        case t if t == 3 => CborRead.bytes(xs(1), "plutus v3").map(plutus(ScriptKind.PlutusV3, _))
-        case t           => Left(LedgerDecodeError.UnknownTag("script type", t))
+        case t if t == 1 =>
+          CborRead.bytes(xs(1), DecodeField.PlutusV1).map(plutus(ScriptKind.PlutusV1, _))
+        case t if t == 2 =>
+          CborRead.bytes(xs(1), DecodeField.PlutusV2).map(plutus(ScriptKind.PlutusV2, _))
+        case t if t == 3 =>
+          CborRead.bytes(xs(1), DecodeField.PlutusV3).map(plutus(ScriptKind.PlutusV3, _))
+        case t => Left(LedgerDecodeError.UnknownTag(DecodeField.ScriptType, t))
       }
     }
 
@@ -230,5 +242,5 @@ object Script:
   /** As [[decodeWrapped]], keeping the Plutus bytes. */
   def decodeWrappedWithBytes(n: Node): Either[LedgerDecodeError, Script] = n.value match
     case Value.Tag(t, inner) if t == 24 =>
-      CborRead.bytes(inner, "reference script").flatMap(CborRead.decode(_)).flatMap(decode)
-    case _ => Left(LedgerDecodeError.ExpectedTag("reference script", 24, n.value))
+      CborRead.bytes(inner, DecodeField.ReferenceScript).flatMap(CborRead.decode(_)).flatMap(decode)
+    case _ => Left(LedgerDecodeError.ExpectedTag(DecodeField.ReferenceScript, 24, n.value))

@@ -60,7 +60,7 @@ class RationalFieldsSuite extends FunSuite:
 
   test("ProtocolParams.update refuses a unit-interval field outside 0 to 1, in any written form") {
     for
-      (key, name) <- Seq(10 -> "rho", 11 -> "tau", 12 -> "d");
+      (key, name) <- Seq(10 -> DecodeField.Rho, 11 -> DecodeField.Tau, 12 -> DecodeField.D);
       form <- Seq(threeHalves, threeHalvesSigned, minusHalf)
     do
       applied(key -> form) match
@@ -82,10 +82,14 @@ class RationalFieldsSuite extends FunSuite:
   test(
     "ProtocolParams.update refuses a zero denominator and the integer forms cborg does not read"
   ) {
-    assertEquals(applied(9 -> zeroDenominator), Left(LedgerDecodeError.ZeroDenominator("a0")))
+    assertEquals(
+      applied(9 -> zeroDenominator),
+      Left(LedgerDecodeError.ZeroDenominator(DecodeField.A0))
+    )
     for form <- Seq(indefiniteBignum, widenedTag) do
       applied(9 -> form) match
-        case Left(LedgerDecodeError.Expected("a0", LedgerDecodeError.Shape.Integer, _)) => ()
+        case Left(LedgerDecodeError.Expected(DecodeField.A0, LedgerDecodeError.Shape.Integer, _)) =>
+          ()
         case other => fail(s"$form: $other")
   }
 
@@ -109,11 +113,11 @@ class RationalFieldsSuite extends FunSuite:
     for (form, numerator) <- Seq(threeHalves -> 3, threeHalvesSigned -> 3, minusHalf -> -1) do
       assertEquals(
         LiteLedger.applyUpdate(lite, update(12 -> form)),
-        Left(LedgerDecodeError.RationalOutOfBounds("d", BigInt(numerator), 2))
+        Left(LedgerDecodeError.RationalOutOfBounds(DecodeField.D, BigInt(numerator), 2))
       )
     assertEquals(
       LiteLedger.applyUpdate(lite, update(12 -> zeroDenominator)),
-      Left(LedgerDecodeError.ZeroDenominator("d"))
+      Left(LedgerDecodeError.ZeroDenominator(DecodeField.D))
     )
   }
 

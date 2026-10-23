@@ -192,8 +192,8 @@ class LeiosBlockSuite extends munit.FunSuite:
     // tag 8 -> 9
     val otherTag = raw.take(1) ++ Bytes(Vector(0x09.toByte)) ++ raw.drop(2)
     assert(LeiosBlock.decode(otherTag).left.exists {
-      case ChainError.Decode(_, LedgerDecodeError.UnknownTag("Leios block tag", _)) => true
-      case _                                                                        => false
+      case ChainError.Decode(_, LedgerDecodeError.UnknownTag(DecodeField.LeiosBlockTag, _)) => true
+      case _                                                                                => false
     })
     (1 until raw.size by 13).foreach(n => assert(LeiosBlock.decode(raw.take(n)).isLeft, s"$n"))
   }

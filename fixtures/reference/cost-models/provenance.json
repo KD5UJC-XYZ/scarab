@@ -41,7 +41,7 @@
  "originalBodyBytesRetained": true,
  "network": "none",
  "keysRetained": false,
- "fixtureSha256": "3e6ac83e4804025a6e8d3b3b0a22a7c90ea15cfd84ef257438a7212e33dc6550",
+ "fixtureSha256": "694b4c7a190e6356ae4dd219613783ab64ca23f0262d0ba5897058754322672d",
  "harnessSha256": "c960e20fc7211dff56003a18d8939ed670a2ddb3f35ff79c52018a7b5789c7c2",
  "originalStdoutSha256": "4bf3ea250278c06cdcd255ae6c87f3da51148a0d1dd718ae3b8edef24e4422ac",
  "imageId": "sha256:841e256cd4cbfd3a929b94b07d7bf75c34f46f6589767edf71963d6c50a55ebf",

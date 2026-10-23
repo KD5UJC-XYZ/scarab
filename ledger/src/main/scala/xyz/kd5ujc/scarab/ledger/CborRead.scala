@@ -12,42 +12,42 @@ private[ledger] object CborRead:
 
   type Result[A] = Either[LedgerDecodeError, A]
 
-  def uint(n: Node, what: String): Result[BigInt] = n.value match
+  def uint(n: Node, what: DecodeSite): Result[BigInt] = n.value match
     case Value.UInt(v) => Right(v)
     case _ => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Unsigned, n.value))
 
-  def int(n: Node, what: String): Result[BigInt] = n.value match
+  def int(n: Node, what: DecodeSite): Result[BigInt] = n.value match
     case Value.UInt(v) => Right(v)
     case Value.NInt(v) => Right(v)
     case _ => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Integer, n.value))
 
-  def bytes(n: Node, what: String): Result[Bytes] = n.value match
+  def bytes(n: Node, what: DecodeSite): Result[Bytes] = n.value match
     case Value.ByteString(v) => Right(v)
     case _ => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Bytes, n.value))
 
-  def bytesN(n: Node, size: Int, what: String): Result[Bytes] =
+  def bytesN(n: Node, size: Int, what: DecodeSite): Result[Bytes] =
     bytes(n, what).flatMap(b =>
       Either.cond(b.size == size, b, LedgerDecodeError.ByteLength(what, size, b.size))
     )
 
-  def text(n: Node, what: String): Result[String] = n.value match
+  def text(n: Node, what: DecodeSite): Result[String] = n.value match
     case Value.Text(v) => Right(v)
     case _ => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Text, n.value))
 
-  def bool(n: Node, what: String): Result[Boolean] = n.value match
+  def bool(n: Node, what: DecodeSite): Result[Boolean] = n.value match
     case Value.Bool(v) => Right(v)
     case _ => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Boolean, n.value))
 
-  def array(n: Node, what: String): Result[Vector[Node]] = n.value match
+  def array(n: Node, what: DecodeSite): Result[Vector[Node]] = n.value match
     case Value.Arr(xs) => Right(xs)
     case _ => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Array, n.value))
 
-  def arrayN(n: Node, size: Int, what: String): Result[Vector[Node]] =
+  def arrayN(n: Node, size: Int, what: DecodeSite): Result[Vector[Node]] =
     array(n, what).flatMap(xs =>
       Either.cond(xs.size == size, xs, LedgerDecodeError.ArrayLength(what, size, xs.size))
     )
 
-  def map(n: Node, what: String): Result[Vector[(Node, Node)]] = n.value match
+  def map(n: Node, what: DecodeSite): Result[Vector[(Node, Node)]] = n.value match
     case Value.Map(kvs) => Right(kvs)
     case _ => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Map, n.value))
 
@@ -55,7 +55,7 @@ private[ledger] object CborRead:
     * does not require it (`allowTag setTag`, `decodeSetLikeEnforceNoDuplicates`, Decoder.hs); below
     * it no tag is read (`decodeSet`, `decodeList`), so a tagged list is not an array there.
     */
-  def list(n: Node, what: String, version: DecoderVersion): Result[Vector[Node]] = n.value match
+  def list(n: Node, what: DecodeSite, version: DecoderVersion): Result[Vector[Node]] = n.value match
     case Value.Tag(t, inner) if t == 258 && version.atLeast(9) => array(inner, what)
     case _                                                     => array(n, what)
 
@@ -65,7 +65,7 @@ private[ledger] object CborRead:
     * decodeCollection`, Decoder.hs). Only the decoded elements are collapsed: the caller keeps the
     * original bytes that are hashed or signed.
     */
-  def set[A](n: Node, what: String, version: DecoderVersion)(
+  def set[A](n: Node, what: DecodeSite, version: DecoderVersion)(
       elem: Node => Result[A]
   ): Result[Vector[A]] =
     list(n, what, version).flatMap(
@@ -80,7 +80,7 @@ private[ledger] object CborRead:
     * derived `Ord`, so `identity` maps an element to the value that `Ord` compares, which for a
     * field Scarab keeps as its original encoding is the meaning of the encoding ([[Semantic]]).
     */
-  def oset[A, K](n: Node, what: String, version: DecoderVersion)(
+  def oset[A, K](n: Node, what: DecodeSite, version: DecoderVersion)(
       elem: Node => Result[A]
   )(identity: A => K): Result[Vector[A]] =
     if version.atLeast(9) then
@@ -93,7 +93,7 @@ private[ledger] object CborRead:
     * (`Set.fromList <$> decodeList`), judged on the decoded elements. From version 9 the list must
     * not be empty (`decodeNonEmptyList`, TxWits.hs `addrWitsSetDecoder`).
     */
-  def tolerantSet[A](n: Node, what: String, version: DecoderVersion)(
+  def tolerantSet[A](n: Node, what: DecodeSite, version: DecoderVersion)(
       elem: Node => Result[A]
   ): Result[Vector[A]] =
     list(n, what, version)
@@ -102,18 +102,18 @@ private[ledger] object CborRead:
       .map(_.distinct)
 
   /** `xs` unless it is empty where the reference refuses an empty collection. */
-  def nonEmpty[A](xs: Vector[A], what: String, required: Boolean): Result[Vector[A]] =
+  def nonEmpty[A](xs: Vector[A], what: DecodeSite, required: Boolean): Result[Vector[A]] =
     Either.cond(!required || xs.nonEmpty, xs, LedgerDecodeError.Empty(what))
 
   /** `xs` unless an element occurs twice (a `Map` or `Set` whose size is below the count read). */
-  def unique[A](xs: Vector[A], what: String): Result[Vector[A]] =
+  def unique[A](xs: Vector[A], what: DecodeSite): Result[Vector[A]] =
     Either.cond(xs.distinct.size == xs.size, xs, LedgerDecodeError.DuplicateElement(what))
 
   /** Map with unsigned-integer keys, rejecting duplicate keys. */
-  def fields(n: Node, what: String): Result[Map[Int, Node]] =
+  def fields(n: Node, what: DecodeSite): Result[Map[Int, Node]] =
     map(n, what).flatMap { kvs =>
       kvs
-        .traverse { case (k, v) => uint(k, s"$what key").map(_.toInt -> v) }
+        .traverse { case (k, v) => uint(k, what / DecodeSite.Qualifier.Key).map(_.toInt -> v) }
         .flatMap(pairs =>
           Either
             .cond(
@@ -142,7 +142,7 @@ private[ledger] object CborRead:
     * denominator must fit the underlying `Word64`, and the value lie in the type's interval. Equal
     * rationals are one value whatever the signs, factors or integer forms they were written with.
     */
-  def rational(n: Node, what: String, bound: Bound): Result[Rational] =
+  def rational(n: Node, what: DecodeSite, bound: Bound): Result[Rational] =
     ratio(n, what).flatMap(r =>
       Either.cond(
         fits(r, bound),
@@ -152,7 +152,7 @@ private[ledger] object CborRead:
     )
 
   /** `decodeRationalWithTag`: the reduced rational, before any bound. */
-  private[ledger] def ratio(n: Node, what: String): Result[Rational] = n.value match
+  private[ledger] def ratio(n: Node, what: DecodeSite): Result[Rational] = n.value match
     case Value.Tag(t, inner) if t == 30 =>
       arrayN(inner, 2, what).flatMap(xs =>
         (integer(xs(0), what), integer(xs(1), what)).tupled.flatMap { case (num, den) =>
@@ -177,7 +177,7 @@ private[ledger] object CborRead:
     * is in the decoded tree, so they are read from the original bytes of the tag and its content; a
     * definite byte string of any length head or with leading zeros is still a bignum.
     */
-  private def integer(n: Node, what: String): Result[BigInt] = n.value match
+  private def integer(n: Node, what: DecodeSite): Result[BigInt] = n.value match
     case Value.UInt(v) => Right(v)
     case Value.NInt(v) => Right(v)
     case Value.Tag(t, inner) if (t == 2 || t == 3) && bignumHead(n, inner) =>

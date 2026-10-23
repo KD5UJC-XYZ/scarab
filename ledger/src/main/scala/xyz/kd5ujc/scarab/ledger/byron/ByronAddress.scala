@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.byron
 
-import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
+import xyz.kd5ujc.scarab.ledger.{DecodeField, DecodeSite, LedgerDecodeError}
+import xyz.kd5ujc.scarab.ledger.DecodeSite.Qualifier
 import cats.syntax.all.*
 import java.util.zip.CRC32
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -110,12 +111,14 @@ object ByronAddress:
   /** The attribute map of an address (or a transaction): numeric key to byte string. */
   private def attributeFields(
       n: Node,
-      what: String
+      what: DecodeSite
   ): Either[LedgerDecodeError, Vector[(BigInt, Bytes)]] =
     CborRead
       .map(n, what)
       .flatMap(
-        _.traverse((k, v) => (CborRead.uint(k, s"$what key"), CborRead.bytes(v, what)).tupled)
+        _.traverse((k, v) =>
+          (CborRead.uint(k, what / Qualifier.Key), CborRead.bytes(v, what)).tupled
+        )
       )
 
   /** The total length of the values of attributes the ledger does not interpret. */
@@ -123,47 +126,54 @@ object ByronAddress:
     fields.filterNot((k, _) => known.contains(k.toInt)).map(_._2.size).sum
 
   /** Length of the attribute values of a transaction (none of its attributes is interpreted). */
-  def attributesLength(n: Node, what: String): Either[LedgerDecodeError, Int] =
+  def attributesLength(n: Node, what: DecodeSite): Either[LedgerDecodeError, Int] =
     attributeFields(n, what).map(unknownLength(_, Set.empty))
 
   def decode(raw: Bytes): Either[LedgerDecodeError, ByronAddress] =
     for
       root <- CborRead.decode(raw, limits)
-      outer <- CborRead.arrayN(root, 2, "Byron address")
+      outer <- CborRead.arrayN(root, 2, DecodeField.ByronAddress)
       payload <- outer(0).value match
-        case Value.Tag(t, inner) if t == 24 => CborRead.bytes(inner, "Byron address payload")
-        case _ => Left(LedgerDecodeError.ExpectedTag("Byron address", 24, outer(0).value))
-      crc <- CborRead.uint(outer(1), "Byron address crc")
+        case Value.Tag(t, inner) if t == 24 =>
+          CborRead.bytes(inner, DecodeField.ByronAddressPayload)
+        case _ => Left(LedgerDecodeError.ExpectedTag(DecodeField.ByronAddress, 24, outer(0).value))
+      crc <- CborRead.uint(outer(1), DecodeField.ByronAddressCrc)
       _ <- Either.cond(
         crc == BigInt(ByronCbor.crc32(payload)),
         (),
         LedgerDecodeError.CrcMismatch(BigInt(ByronCbor.crc32(payload)), crc)
       )
-      parts <- CborRead.decode(payload, limits).flatMap(CborRead.arrayN(_, 3, "Byron address body"))
-      addrRoot <- CborRead.bytesN(parts(0), 28, "Byron address root")
-      fields <- attributeFields(parts(1), "Byron address attributes")
-      ty <- CborRead.uint(parts(2), "Byron address type").map(_.toInt)
+      parts <- CborRead
+        .decode(payload, limits)
+        .flatMap(CborRead.arrayN(_, 3, DecodeField.ByronAddressBody))
+      addrRoot <- CborRead.bytesN(parts(0), 28, DecodeField.ByronAddressRoot)
+      fields <- attributeFields(parts(1), DecodeField.ByronAddressAttributes)
+      ty <- CborRead.uint(parts(2), DecodeField.ByronAddressType).map(_.toInt)
       _ <- Either.cond(
         ty == VerKey || ty == Redeem,
         (),
-        LedgerDecodeError.UnknownTag("Byron address", ty)
+        LedgerDecodeError.UnknownTag(DecodeField.ByronAddress, ty)
       )
       magic <- fields.find(_._1 == 2).traverse { (_, v) =>
         CborRead
           .decode(v, limits)
-          .flatMap(CborRead.uint(_, "network magic"))
+          .flatMap(CborRead.uint(_, DecodeField.NetworkMagic))
           .flatMap(n =>
             Either.cond(
               n < (BigInt(1) << 32),
               n,
-              LedgerDecodeError.NumberOutOfRange("network magic", n, 0, (BigInt(1) << 32) - 1)
+              LedgerDecodeError
+                .NumberOutOfRange(DecodeField.NetworkMagic, n, 0, (BigInt(1) << 32) - 1)
             )
           )
           .map(_.toLong)
       }
       // the derivation path is a byte string, itself the content of the attribute's byte string
       derivationPath <- fields.find(_._1 == 1).traverse { (_, v) =>
-        CborRead.decode(v, limits).flatMap(CborRead.bytes(_, "derivation path")).map(_.size)
+        CborRead
+          .decode(v, limits)
+          .flatMap(CborRead.bytes(_, DecodeField.DerivationPath))
+          .map(_.size)
       }
     yield ByronAddress(
       raw,

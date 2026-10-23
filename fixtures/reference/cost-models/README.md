@@ -3,7 +3,8 @@
 Ninety-eight synthetic public transactions (49 cases, each in the Alonzo and in the Babbage era),
 measured on 2026-10-22 against the unchanged released Haskell ledger libraries used by node 11.1.3.
 `legacy-update.json` retains each original transaction as hex, the typed refusal Scarab must give
-(`expect` and `detail`) and the reference verdict: accepted with the cost models it kept, or the
+(`expect` and `detail`; an accepted row whose language repeats names it in `detail` as
+`repeatedLanguage`) and the reference verdict: accepted with the cost models it kept, or the
 original `DecoderError`. JSON whitespace was formatted for review; the transaction bytes are
 unchanged. The oracle source and [offline recipe](../../../scripts/oracle/cost-models/README.md)
 are committed; `provenance.json` records the base and measured image identities, the package

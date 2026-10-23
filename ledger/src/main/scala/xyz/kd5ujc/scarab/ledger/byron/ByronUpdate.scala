@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.byron
 
+import xyz.kd5ujc.scarab.ledger.DecodeField
 import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -36,17 +37,17 @@ object UpdatePayload:
   val empty: UpdatePayload = UpdatePayload(Bytes.empty, None, Vector.empty)
 
   private def proposal(n: Node): Either[LedgerDecodeError, ByronProposal] =
-    CborRead.arrayN(n, 7, "update proposal").flatMap { xs =>
+    CborRead.arrayN(n, 7, DecodeField.UpdateProposal).flatMap { xs =>
       for
         version <- ByronVersion.decode(xs(0)).leftMap(LedgerDecodeError.Version(_))
         update <- ByronParamsUpdate.decode(xs(1))
-        sv <- CborRead.arrayN(xs(2), 2, "software version")
-        name <- CborRead.text(sv(0), "software name")
-        number <- CborRead.uint(sv(1), "software number")
-        _ <- CborRead.map(xs(3), "proposal metadata")
-        _ <- CborRead.map(xs(4), "proposal attributes")
-        issuer <- CborRead.bytesN(xs(5), 64, "proposal issuer")
-        signature <- CborRead.bytesN(xs(6), 64, "proposal signature")
+        sv <- CborRead.arrayN(xs(2), 2, DecodeField.SoftwareVersion)
+        name <- CborRead.text(sv(0), DecodeField.SoftwareName)
+        number <- CborRead.uint(sv(1), DecodeField.SoftwareNumber)
+        _ <- CborRead.map(xs(3), DecodeField.ProposalMetadata)
+        _ <- CborRead.map(xs(4), DecodeField.ProposalAttributes)
+        issuer <- CborRead.bytesN(xs(5), 64, DecodeField.ProposalIssuer)
+        signature <- CborRead.bytesN(xs(6), 64, DecodeField.ProposalSignature)
       yield ByronProposal(
         n.original,
         Blake2b.hash256.hash(n.original),
@@ -61,24 +62,24 @@ object UpdatePayload:
     }
 
   private def vote(n: Node): Either[LedgerDecodeError, ByronVote] =
-    CborRead.arrayN(n, 4, "update vote").flatMap { xs =>
+    CborRead.arrayN(n, 4, DecodeField.UpdateVote).flatMap { xs =>
       (
-        CborRead.bytesN(xs(0), 64, "voter"),
-        CborRead.bytesN(xs(1), 32, "voted proposal"),
-        CborRead.bool(xs(2), "vote decision"),
-        CborRead.bytesN(xs(3), 64, "vote signature")
+        CborRead.bytesN(xs(0), 64, DecodeField.Voter),
+        CborRead.bytesN(xs(1), 32, DecodeField.VotedProposal),
+        CborRead.bool(xs(2), DecodeField.VoteDecision),
+        CborRead.bytesN(xs(3), 64, DecodeField.VoteSignature)
       ).mapN((voter, id, _, sig) => ByronVote(voter, id, xs(1).original, sig))
     }
 
   def decode(n: Node): Either[LedgerDecodeError, UpdatePayload] =
-    CborRead.arrayN(n, 2, "update payload").flatMap { xs =>
+    CborRead.arrayN(n, 2, DecodeField.UpdatePayload).flatMap { xs =>
       for
-        maybe <- CborRead.array(xs(0), "update proposal")
+        maybe <- CborRead.array(xs(0), DecodeField.UpdateProposal)
         p <- maybe match
           case Vector()  => Right(None)
           case Vector(x) => proposal(x).map(Some(_))
-          case _         => Left(LedgerDecodeError.AtMostOne("update proposals", maybe.size))
-        votes <- CborRead.array(xs(1), "update votes").flatMap(_.traverse(vote))
+          case _ => Left(LedgerDecodeError.AtMostOne(DecodeField.UpdateProposals, maybe.size))
+        votes <- CborRead.array(xs(1), DecodeField.UpdateVotes).flatMap(_.traverse(vote))
       yield UpdatePayload(n.original, p, votes)
     }
 

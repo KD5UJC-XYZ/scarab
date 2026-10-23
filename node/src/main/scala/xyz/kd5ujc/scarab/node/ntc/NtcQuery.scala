@@ -125,7 +125,7 @@ object NtcQuery:
       case InvalidHash(field)             => s"$field: expected 28 bytes"
       case InvalidCredential              => "credential: bad kind or hash"
       case InvalidDRep                    => "drep: bad kind or arity"
-      case InvalidTxIn(detail)            => s"input: $detail"
+      case InvalidTxIn(detail)            => s"input: ${detail.show}"
       case InvalidNonMyopicCredential     => "non-myopic credential: expected [tag, value]"
       case ExpectedCoin                   => "non-myopic coin: expected unsigned integer"
       case Empty(field)                   => s"$field: empty"

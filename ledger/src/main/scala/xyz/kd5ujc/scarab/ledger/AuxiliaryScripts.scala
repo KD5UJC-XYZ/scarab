@@ -23,7 +23,7 @@ private[ledger] object AuxiliaryScripts:
         Either.cond(
           !bounded || actual <= 64,
           Step.Leaf(()),
-          LedgerDecodeError.NumberOutOfRange("metadata byte length", actual, 0, 64)
+          LedgerDecodeError.NumberOutOfRange(DecodeField.MetadataByteLength, actual, 0, 64)
         )
       node.value match
         case _: Value.UInt | _: Value.NInt => Right(Step.Leaf(()))
@@ -34,7 +34,11 @@ private[ledger] object AuxiliaryScripts:
         case Value.Map(pairs)    => Right(Step.Branch(TreeFold.flatten(pairs), _ => Right(())))
         case other =>
           Left(
-            LedgerDecodeError.Expected("metadata value", LedgerDecodeError.Shape.Metadatum, other)
+            LedgerDecodeError.Expected(
+              DecodeField.MetadataValue,
+              LedgerDecodeError.Shape.Metadatum,
+              other
+            )
           )
     }
 
@@ -46,23 +50,23 @@ private[ledger] object AuxiliaryScripts:
       protocol: BigInt,
       bounded: Boolean
   ): Either[LedgerDecodeError, Unit] =
-    CborRead.map(node, "metadata").flatMap { pairs =>
+    CborRead.map(node, DecodeField.Metadata).flatMap { pairs =>
       pairs
         .traverse { case (label, value) =>
-          CborRead.uint(label, "metadata label").flatTap(_ => metadatum(value, bounded))
+          CborRead.uint(label, DecodeField.MetadataLabel).flatTap(_ => metadatum(value, bounded))
         }
         .flatMap(labels =>
           Either.cond(
             protocol < 9 || labels.distinct.size == labels.size,
             (),
-            LedgerDecodeError.DuplicateKey("metadata labels")
+            LedgerDecodeError.DuplicateKey(DecodeField.MetadataLabels)
           )
         )
     }
 
   private def native(node: Node): Either[LedgerDecodeError, Vector[Plutus]] =
     CborRead
-      .array(node, "auxiliary native scripts")
+      .array(node, DecodeField.AuxiliaryNativeScripts)
       .flatMap(_.traverse_(Script.native))
       .as(Vector.empty)
 
@@ -76,14 +80,17 @@ private[ledger] object AuxiliaryScripts:
       case PlutusLanguage.V2 => (ScriptKind.PlutusV2, 7)
       case PlutusLanguage.V3 => (ScriptKind.PlutusV3, 9)
     if protocol < minimum then
-      Left(LedgerDecodeError.NumberOutOfRange("auxiliary script protocol", protocol, minimum, 11))
+      Left(
+        LedgerDecodeError
+          .NumberOutOfRange(DecodeField.AuxiliaryScriptProtocol, protocol, minimum, 11)
+      )
     else
       CborRead
-        .array(node, "auxiliary Plutus scripts")
+        .array(node, DecodeField.AuxiliaryPlutusScripts)
         .flatMap(
           _.traverse(
             CborRead
-              .bytes(_, "auxiliary Plutus script")
+              .bytes(_, DecodeField.AuxiliaryPlutusScript)
               .map(code => Plutus(language, code, Script.plutus(kind, code).hash))
           )
         )
@@ -103,12 +110,12 @@ private[ledger] object AuxiliaryScripts:
       case _: Value.Map => metadata(node, protocol).as(Vector.empty)
       case Value.Arr(Vector(data, scripts)) if lists =>
         if node.original.value.headOption.contains(0x9f.toByte) then
-          Left(LedgerDecodeError.IndefiniteLength("auxiliary data"))
+          Left(LedgerDecodeError.IndefiniteLength(DecodeField.AuxiliaryData))
         else metadata(data, protocol) *> native(scripts)
       case other =>
         Left(
           LedgerDecodeError.Expected(
-            "auxiliary data",
+            DecodeField.AuxiliaryData,
             if lists then LedgerDecodeError.Shape.ArrayOrMap else LedgerDecodeError.Shape.Map,
             other
           )
@@ -129,14 +136,14 @@ private[ledger] object AuxiliaryScripts:
       case _: Value.Map                     => metadata(node, protocol).as(Vector.empty)
       case Value.Arr(Vector(data, scripts)) => metadata(data, protocol) *> native(scripts)
       case Value.Tag(tag, contents) if tag == 259 =>
-        CborRead.map(contents, "auxiliary data").flatMap { fields =>
+        CborRead.map(contents, DecodeField.AuxiliaryData).flatMap { fields =>
           fields
             .traverse { case (key, value) =>
-              CborRead.uint(key, "auxiliary field").map(_ -> value)
+              CborRead.uint(key, DecodeField.AuxiliaryField).map(_ -> value)
             }
             .flatMap { keyed =>
               if keyed.map(_._1).distinct.size != keyed.size then
-                Left(LedgerDecodeError.DuplicateKey("auxiliary data"))
+                Left(LedgerDecodeError.DuplicateKey(DecodeField.AuxiliaryData))
               else
                 keyed
                   .traverse {
@@ -146,7 +153,7 @@ private[ledger] object AuxiliaryScripts:
                     case (n, value) if n == 2 => plutus(PlutusLanguage.V1, protocol, value)
                     case (n, value) if n == 3 => plutus(PlutusLanguage.V2, protocol, value)
                     case (n, value) if n == 4 => plutus(PlutusLanguage.V3, protocol, value)
-                    case (n, _) => Left(LedgerDecodeError.UnknownTag("auxiliary field", n))
+                    case (n, _) => Left(LedgerDecodeError.UnknownTag(DecodeField.AuxiliaryField, n))
                   }
                   .map(_.flatten)
             }
@@ -154,5 +161,5 @@ private[ledger] object AuxiliaryScripts:
       case _ =>
         Left(
           LedgerDecodeError
-            .Expected("auxiliary data", LedgerDecodeError.Shape.ArrayOrMap, node.value)
+            .Expected(DecodeField.AuxiliaryData, LedgerDecodeError.Shape.ArrayOrMap, node.value)
         )

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.byron
 
+import xyz.kd5ujc.scarab.ledger.DecodeField
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -14,17 +15,17 @@ private[ledger] object ByronBodyProof:
   def check(header: Header.Byron, body: Bytes): Either[ByronError, Unit] =
     val decoded = for
       proof <- CborRead.decode(header.bodyProof)
-      fields <- CborRead.arrayN(proof, 4, "body proof")
-      txProof <- CborRead.arrayN(fields(0), 3, "tx proof")
-      count <- CborRead.uint(txProof(0), "tx count")
-      root <- CborRead.bytes(txProof(1), "tx root")
-      witnesses <- CborRead.bytes(txProof(2), "witnesses hash")
-      delegation <- CborRead.bytes(fields(2), "delegation proof")
-      update <- CborRead.bytes(fields(3), "update proof")
+      fields <- CborRead.arrayN(proof, 4, DecodeField.BodyProof)
+      txProof <- CborRead.arrayN(fields(0), 3, DecodeField.TxProof)
+      count <- CborRead.uint(txProof(0), DecodeField.TxCount)
+      root <- CborRead.bytes(txProof(1), DecodeField.TxRoot)
+      witnesses <- CborRead.bytes(txProof(2), DecodeField.WitnessesHash)
+      delegation <- CborRead.bytes(fields(2), DecodeField.DelegationProof)
+      update <- CborRead.bytes(fields(3), DecodeField.UpdateProof)
       node <- CborRead.decode(body, ByronCbor.BodyLimits)
-      payloads <- CborRead.arrayN(node, 4, "Byron body")
-      txs <- CborRead.array(payloads(0), "Byron tx payload")
-      pairs <- txs.traverse(CborRead.arrayN(_, 2, "Byron tx auxiliary"))
+      payloads <- CborRead.arrayN(node, 4, DecodeField.ByronBody)
+      txs <- CborRead.array(payloads(0), DecodeField.ByronTxPayload)
+      pairs <- txs.traverse(CborRead.arrayN(_, 2, DecodeField.ByronTxAuxiliary))
     yield (count, root, witnesses, delegation, update, payloads, pairs)
     decoded.leftMap(ByronError.Decode(_)).flatMap {
       (count, root, witnesses, delegation, update, payloads, pairs) =>

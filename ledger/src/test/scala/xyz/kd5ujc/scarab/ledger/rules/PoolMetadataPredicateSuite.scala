@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.rules
 
+import xyz.kd5ujc.scarab.ledger.DecodeField
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational, Value as CborValue}
 import xyz.kd5ujc.scarab.ledger.*
@@ -159,7 +160,7 @@ class PoolMetadataPredicateSuite extends FunSuite:
       Left(
         LedgerFailure.Undecodable(
           id,
-          TxDefect.PoolMetadata(LedgerDecodeError.ArrayLength("pool metadata", 2, 0))
+          TxDefect.PoolMetadata(LedgerDecodeError.ArrayLength(DecodeField.PoolMetadata, 2, 0))
         )
       )
     )

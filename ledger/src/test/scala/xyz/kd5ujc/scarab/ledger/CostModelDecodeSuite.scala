@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import io.circe.{Decoder, Json}
+import cats.syntax.all.*
+import io.circe.{Decoder, HCursor, Json}
 import io.circe.parser.parse
 import java.nio.file.{Files, Path}
 import munit.FunSuite
@@ -59,20 +60,69 @@ class CostModelDecodeSuite extends FunSuite:
   private val int64 = (BigInt(Long.MinValue), BigInt(Long.MaxValue))
 
   private def valueOutOfRange(v: BigInt) =
-    LedgerDecodeError.NumberOutOfRange("cost", v, int64._1, int64._2)
+    LedgerDecodeError.NumberOutOfRange(DecodeField.Cost, v, int64._1, int64._2)
 
   private def withValue(language: Int, v: BigInt, size: Int): String =
     models(BigInt(language) -> array(int(v) +: Seq.fill(size - 1)(int(1))))
 
-  /** One retained transaction: the original bytes, the typed refusal Scarab must give (`expect`
-    * names the case, `detail` its fields) and the reference verdict, which is either accepted with
-    * the cost models it kept or its diagnostic.
+  /** What the corpus says the decoder must do with a transaction, with the fields of the typed
+    * error it must refuse with.
+    */
+  private enum Verdict:
+    /** `repeated` is the language that occurs twice with different values, where one does. */
+    case Accepted(repeated: Option[Int])
+    case Length(language: Int, expected: Int, actual: Int)
+    case UnsupportedLanguage(language: Int)
+    case UnknownTag(tag: BigInt)
+    case OutOfRange(value: BigInt)
+    case Malformed
+
+    def isAccepted: Boolean = this match
+      case Accepted(_) => true
+      case _           => false
+
+  /** The `expect` vocabulary of the fixture, and how each category reads its `detail`. A name the
+    * fixture does not know fails the load.
+    */
+  private enum Category(val wire: String, val read: HCursor => Decoder.Result[Verdict]):
+    case Accepted
+        extends Category(
+          "accepted",
+          _.get[Option[Int]]("repeatedLanguage").map(Verdict.Accepted(_))
+        )
+    case Length
+        extends Category(
+          "length",
+          c =>
+            (c.get[Int]("language"), c.get[Int]("expected"), c.get[Int]("actual"))
+              .mapN(Verdict.Length(_, _, _))
+        )
+    case UnsupportedLanguage
+        extends Category(
+          "unsupportedLanguage",
+          _.get[Int]("language").map(Verdict.UnsupportedLanguage(_))
+        )
+    case UnknownTag
+        extends Category("unknownTag", _.get[String]("tag").map(t => Verdict.UnknownTag(BigInt(t))))
+    case OutOfRange
+        extends Category(
+          "outOfRange",
+          _.get[String]("value").map(v => Verdict.OutOfRange(BigInt(v)))
+        )
+    case Malformed extends Category("malformed", _ => Right(Verdict.Malformed))
+
+  /** The languages the reference names in a verdict, with the id the decoder keeps them under. */
+  private enum Language(val wire: String, val id: Int):
+    case PlutusV1 extends Language("PlutusV1", 0)
+    case PlutusV2 extends Language("PlutusV2", 1)
+
+  /** One retained transaction: the original bytes, the verdict Scarab must give and the reference
+    * verdict, which is either accepted with the cost models it kept or its diagnostic.
     */
   private final case class Row(
       name: String,
       era: Era,
-      expect: String,
-      detail: Json,
+      verdict: Verdict,
       tx: Bytes,
       reference: Json
   ):
@@ -86,30 +136,34 @@ class CostModelDecodeSuite extends FunSuite:
     parsed.asArray.getOrElse(fail("the fixture is not an array")).map { row =>
       val c = row.hcursor
       def field[A: Decoder](name: String): A = c.get[A](name).fold(e => fail(e.message), identity)
-      Row(
-        field[String]("name"),
-        field[String]("era") match
-          case "alonzo"  => Era.Alonzo
-          case "babbage" => Era.Babbage
-          case other     => fail(s"unknown era $other"),
-        field[String]("expect"),
-        field[Json]("detail"),
-        hex(field[String]("tx")),
-        field[Json]("reference")
-      )
+      val eraWire = field[String]("era")
+      val era = Era.values
+        .find(_.toString.toLowerCase == eraWire)
+        .getOrElse(fail(s"unknown era $eraWire"))
+      val expectWire = field[String]("expect")
+      val category = Category.values
+        .find(_.wire == expectWire)
+        .getOrElse(fail(s"unknown category $expectWire"))
+      val verdict = category
+        .read(c.downField("detail").success.getOrElse(fail("no detail")))
+        .fold(e => fail(e.message), identity)
+      Row(field[String]("name"), era, verdict, hex(field[String]("tx")), field[Json]("reference"))
     }
 
-  private def forRows(expect: String)(check: Row => Unit): Unit =
-    val selected = rows.filter(_.expect == expect)
-    assert(selected.nonEmpty, s"no $expect rows")
-    assertEquals(selected.count(_.era == Era.Alonzo), selected.count(_.era == Era.Babbage), expect)
-    selected.foreach(check)
-
-  private def detailInt(row: Row, field: String): Int =
-    row.detail.hcursor.get[Int](field).fold(e => fail(s"${row.name}: ${e.message}"), identity)
-
-  private def detailBig(row: Row, field: String): BigInt =
-    row.detail.hcursor.get[String](field).fold(e => fail(s"${row.name}: ${e.message}"), BigInt(_))
+  /** The rows `select` picks, each with what it extracts from the verdict: the same cases in both
+    * eras.
+    */
+  private def forRows[A](category: Category)(select: PartialFunction[Verdict, A])(
+      check: (Row, A) => Unit
+  ): Unit =
+    val selected = rows.flatMap(row => select.lift(row.verdict).map(row -> _))
+    assert(selected.nonEmpty, s"no $category rows")
+    assertEquals(
+      selected.count(_._1.era == Era.Alonzo),
+      selected.count(_._1.era == Era.Babbage),
+      category.toString
+    )
+    selected.foreach(check.tupled)
 
   private def replay(row: Row): Either[LedgerDecodeError, Tx] = Tx.fromEnvelope(row.tx, row.era)
 
@@ -128,10 +182,11 @@ class CostModelDecodeSuite extends FunSuite:
       .toVector
       .flatten
       .map { m =>
-        val language = m.hcursor.get[String]("language").fold(e => fail(e.message), identity) match
-          case "PlutusV1" => 0
-          case "PlutusV2" => 1
-          case other      => fail(s"${row.name}: $other")
+        val wire = m.hcursor.get[String]("language").fold(e => fail(e.message), identity)
+        val language = Language.values
+          .find(_.wire == wire)
+          .getOrElse(fail(s"${row.name}: $wire"))
+          .id
         val values = m.hcursor
           .downField("values")
           .values
@@ -175,14 +230,14 @@ class CostModelDecodeSuite extends FunSuite:
     assertEquals(rows.size, 98)
     val named = rows.groupBy(_.era).view.mapValues(_.map(_.name.split('/').last).toSet).toMap
     assertEquals(named(Era.Alonzo), named(Era.Babbage))
-    assertEquals(rows.map(_.expect).toSet.size, 6)
-    rows.foreach(row => assertEquals(row.accepted, row.expect == "accepted", row.name))
+    assertEquals(rows.map(_.verdict.ordinal).toSet.size, Category.values.length)
+    rows.foreach(row => assertEquals(row.accepted, row.verdict.isAccepted, row.name))
   }
 
   test(
     "legacy: exactly 166 PlutusV1 and 175 PlutusV2 parameters are accepted and kept as the reference keeps them"
   ) {
-    forRows("accepted") { row =>
+    forRows(Category.Accepted) { case Verdict.Accepted(repeated) => repeated } { (row, _) =>
       val tx = accepted(row)
       assertEquals(keptModels(tx, row), referenceModels(row), row.name)
       assert(
@@ -193,65 +248,61 @@ class CostModelDecodeSuite extends FunSuite:
   }
 
   test("legacy: a repeated language keeps its last entry, as the reference does before version 9") {
-    val repeated =
-      rows.filter(r => r.name.contains("duplicate-distinct") || r.name.contains("interleaved"))
+    val repeated = rows.flatMap(row =>
+      row.verdict match
+        case Verdict.Accepted(Some(language)) => Some(row -> language)
+        case _                                => None
+    )
     assertEquals(repeated.size, 6)
-    repeated.foreach { row =>
+    repeated.foreach { (row, language) =>
       val kept = keptModels(accepted(row), row)
       assertEquals(kept, referenceModels(row), row.name)
-      val language = if row.name.contains("v2-duplicate") then 1 else 0
       assertEquals(kept(language).head, BigInt(2), s"${row.name}: the first entry survived")
     }
   }
 
   test("legacy: a PlutusV1 or PlutusV2 list of another length is refused, in both eras") {
-    forRows("length") { row =>
+    forRows(Category.Length) { case v: Verdict.Length => v } { (row, v) =>
       assertEquals(
         replay(row).map(_ => ()),
-        Left(
-          LedgerDecodeError.CostModelLength(
-            detailInt(row, "language"),
-            detailInt(row, "expected"),
-            detailInt(row, "actual")
-          )
-        ),
+        Left(LedgerDecodeError.CostModelLength(v.language, v.expected, v.actual)),
         row.name
       )
     }
   }
 
   test("legacy: PlutusV3 and PlutusV4 are not read before version 9, whatever follows the key") {
-    forRows("unsupportedLanguage") { row =>
+    forRows(Category.UnsupportedLanguage) { case Verdict.UnsupportedLanguage(language) =>
+      language
+    } { (row, language) =>
       assertEquals(
         replay(row).map(_ => ()),
-        Left(LedgerDecodeError.UnsupportedCostModelLanguage(detailInt(row, "language"))),
+        Left(LedgerDecodeError.UnsupportedCostModelLanguage(language)),
         row.name
       )
     }
   }
 
   test("legacy: a number that is not a Language is refused, an unknown language is not kept") {
-    forRows("unknownTag") { row =>
+    forRows(Category.UnknownTag) { case Verdict.UnknownTag(tag) => tag } { (row, tag) =>
       assertEquals(
         replay(row).map(_ => ()),
-        Left(LedgerDecodeError.UnknownTag("cost model language", detailBig(row, "tag"))),
+        Left(LedgerDecodeError.UnknownTag(DecodeField.CostModelLanguage, tag)),
         row.name
       )
     }
   }
 
   test("legacy: a parameter outside Int64 is refused, before the length is counted") {
-    forRows("outOfRange") { row =>
-      assertEquals(
-        replay(row).map(_ => ()),
-        Left(valueOutOfRange(detailBig(row, "value"))),
-        row.name
-      )
+    forRows(Category.OutOfRange) { case Verdict.OutOfRange(value) => value } { (row, value) =>
+      assertEquals(replay(row).map(_ => ()), Left(valueOutOfRange(value)), row.name)
     }
   }
 
   test("legacy: a text key, an entry that is not an array or a bignum parameter is refused") {
-    forRows("malformed")(row => assert(replay(row).isLeft, row.name))
+    forRows(Category.Malformed) { case Verdict.Malformed => () }((row, _) =>
+      assert(replay(row).isLeft, row.name)
+    )
   }
 
   // From decoder version 9 (Conway): CostModels.hs:302-304,426-440.
@@ -270,7 +321,7 @@ class CostModelDecodeSuite extends FunSuite:
     for l <- Seq(BigInt(256), BigInt(65536), BigInt(-1)) do
       assertEquals(
         proposal(models(l -> model(2))).map(_ => ()),
-        Left(LedgerDecodeError.NumberOutOfRange("cost model language", l, 0, 255))
+        Left(LedgerDecodeError.NumberOutOfRange(DecodeField.CostModelLanguage, l, 0, 255))
       )
   }
 
@@ -290,7 +341,7 @@ class CostModelDecodeSuite extends FunSuite:
   test("open: a repeated language is refused (decodeMapByKey enforces no duplicates)") {
     assertEquals(
       proposal(models(BigInt(0) -> model(2), BigInt(0) -> model(3))).map(_ => ()),
-      Left(LedgerDecodeError.DuplicateKey("cost models"))
+      Left(LedgerDecodeError.DuplicateKey(DecodeField.CostModels))
     )
   }
 

@@ -127,14 +127,22 @@ object LeiosHeader:
       Either.cond(
         v <= Max32,
         v,
-        fail(LedgerDecodeError.NumberOutOfRange("Leios uint32", v, 0, Max32))
+        fail(LedgerDecodeError.NumberOutOfRange(DecodeField.LeiosUint32, v, 0, Max32))
       )
     )
 
   private def bool(n: Node): Either[ChainError, Boolean] = n.value match
     case Value.Bool(b) => Right(b)
     case _ =>
-      Left(fail(LedgerDecodeError.Expected("Leios flag", LedgerDecodeError.Shape.Boolean, n.value)))
+      Left(
+        fail(
+          LedgerDecodeError.Expected(
+            DecodeField.LeiosFlag,
+            LedgerDecodeError.Shape.Boolean,
+            n.value
+          )
+        )
+      )
 
   private def versionInfo(n: Node): Either[ChainError, HeaderVersionInfo] =
     for
@@ -151,7 +159,7 @@ object LeiosHeader:
         hash <- bytes(xs(0), 32)
         eb <- EbHash
           .fromBytes(hash)
-          .toRight(fail(LedgerDecodeError.ByteLength("endorser block hash", 32, hash.size)))
+          .toRight(fail(LedgerDecodeError.ByteLength(DecodeField.EndorserBlockHash, 32, hash.size)))
         size <- uint32(xs(1))
       yield Some(EbAnnouncement(eb, size.toLong))
 end LeiosHeader
@@ -239,7 +247,7 @@ object LeiosBlock:
       block <-
         if tag == ConwayTag then segregated(outer(1))
         else if tag == HfcHeader.DijkstraBlockTag then whole(outer(1))
-        else Left(fail(LedgerDecodeError.UnknownTag("Leios block tag", tag)))
+        else Left(fail(LedgerDecodeError.UnknownTag(DecodeField.LeiosBlockTag, tag)))
     yield block
 
   private def segregated(n: Node): Either[ChainError, LeiosBlock] =
@@ -271,7 +279,7 @@ object LeiosBlock:
             Left(
               fail(
                 LedgerDecodeError.Expected(
-                  "Peras certificate",
+                  DecodeField.PerasCertificate,
                   LedgerDecodeError.Shape.Bytes,
                   c.value
                 )
@@ -298,7 +306,11 @@ object LeiosBlock:
         case _ =>
           Left(
             fail(
-              LedgerDecodeError.Expected("is_valid", LedgerDecodeError.Shape.Boolean, xs(3).value)
+              LedgerDecodeError.Expected(
+                DecodeField.IsValid,
+                LedgerDecodeError.Shape.Boolean,
+                xs(3).value
+              )
             )
           )
       aux = xs(2).value match
@@ -321,5 +333,9 @@ object LeiosBlock:
   private def list(n: Node): Either[ChainError, Vector[Node]] = n.value match
     case Value.Arr(xs) => Right(xs)
     case _ =>
-      Left(fail(LedgerDecodeError.Expected("Leios block", LedgerDecodeError.Shape.Array, n.value)))
+      Left(
+        fail(
+          LedgerDecodeError.Expected(DecodeField.LeiosBlock, LedgerDecodeError.Shape.Array, n.value)
+        )
+      )
 end LeiosBlock
