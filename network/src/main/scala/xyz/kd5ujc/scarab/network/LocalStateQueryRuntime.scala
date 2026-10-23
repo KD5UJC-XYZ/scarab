@@ -55,7 +55,7 @@ object LocalStateQueryRuntime:
       LocalStateQueryEngine.encode(state, Role.Server, message, point).fold(illegal, channel.send)
     def receive(state: State, name: String)(using Raise[F, NetworkError]): F[Message[P]] =
       Timed.within(settings.idleTimeout, id, name)(
-        channel.recv(LocalStateQuery.MaxMessageBytes)(
+        channel.recv(LocalStateQuery.MaxQueryBytes)(
           LocalStateQueryEngine.decodePrefix(state, Role.Client, _, point)
         )
       )

@@ -188,7 +188,7 @@ class UpstreamLocalStateQueryBehaviorSuite extends FailsOnUncaught:
       .fold(error => IO.raiseError(new IllegalStateException(error.message)), channel.send)
 
   private def receive(channel: MuxChannel[IO], state: State)(using Handle[IO, NetworkError]) =
-    channel.recv(LocalStateQuery.MaxMessageBytes)(
+    channel.recv(LocalStateQuery.MaxResultBytes)(
       LocalStateQueryEngine.decodePrefix(state, Role.Server, _, point)
     )
 

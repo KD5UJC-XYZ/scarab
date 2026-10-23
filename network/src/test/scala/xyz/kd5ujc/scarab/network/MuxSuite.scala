@@ -223,6 +223,40 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
       }
     }.map(r => assertEquals(r, Right(true)))
 
+  test(
+    "a queued SDU that would overflow the receive buffer waits until the complete message is delivered"
+  ):
+    val config = Mux.Config.nodeToClient.copy(
+      role = Mux.Role.Initiator,
+      maxSduPayload = 1000,
+      receiveBufferLimit = 6500
+    )
+    typed {
+      Bearer.inMemory[IO]().flatMap { (a, b) =>
+        (
+          Mux.resource(a, Set(2), config),
+          Mux.resource(b, Set(2), config.copy(role = Mux.Role.Responder))
+        ).tupled.use { (client, server) =>
+          for
+            c <- client.channel(2)
+            s <- server.channel(2)
+            // Both messages are queued before the receiver reads: it holds the first complete
+            // (5000 bytes) and the next SDU (1000 bytes) would still fit, the one after would not.
+            _ <- c.send(payload(5000, 1))
+            _ <- c.send(payload(3000, 2))
+            _ <- IO.sleep(300.millis)
+            first <- s.recv(10000)(exactly(5000))
+            second <- s.recv(10000)(exactly(3000))
+          yield (first, second)
+        }
+      }
+    }.map {
+      case Right((first, second)) =>
+        assertEquals(first, payload(5000, 1))
+        assertEquals(second, payload(3000, 2))
+      case Left(e) => fail(s"unexpected $e")
+    }
+
   test("pending receives raise BearerClosed when the peer closes the bearer"):
     typed {
       Bearer.inMemory[IO]().flatMap { (ours, raw) =>

@@ -20,14 +20,19 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
     Point.Block(UInt64.saturating(n), Bytes(Vector.fill(32)(n.toByte)))
   private def item(n: Int): Bytes = Bytes(Vector(0x18, n.toByte))
 
-  /** A `GetCBOR` answer (`#6.24(bytes)`) over the 2.5 MB bound of a node-to-node message. */
-  private val large: Bytes =
-    val size = 4 * 1024 * 1024
+  /** A `#6.24(bytes)` item of `size` bytes: a `GetCBOR` answer, or a query that carries one. */
+  private def wrapped(size: Int): Bytes =
     val out = new Array[Byte](7 + size)
     Array(0xd8, 0x18, 0x5a, size >>> 24, (size >>> 16) & 255, (size >>> 8) & 255, size & 255)
       .map(_.toByte)
       .copyToArray(out)
     Bytes.wrap(out)
+
+  /** An answer of tens of megabytes, as `GetCBOR DebugEpochState` on preprod (32.5 MB). */
+  private val large: Bytes = wrapped(40 * 1024 * 1024)
+
+  /** A query over the 2.5 MB bound of a node-to-node message. */
+  private val largeQuery: Bytes = wrapped(3 * 1024 * 1024)
 
   /** The chain `point(1)`, `point(2)`, `point(3)` (tip); the immutable tip is `point(1)`; the state
     * at a point is its number. `acquired` records the targets asked for.
@@ -62,6 +67,7 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
                     IO.pure(
                       if query == Bytes(Vector(0x01)) then Right(Right(item(state)))
                       else if query == Bytes(Vector(0x03)) then Right(Right(large))
+                      else if query == largeQuery then Right(Right(item(state)))
                       else Right(Left(LocalStateQueryServer.Refusal.Unsupported("unknown query")))
                     )
               }
@@ -103,7 +109,7 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
     ).flatMap(ch.send)
 
   private def receive(ch: MuxChannel[IO], state: State)(using Handle[IO, NetworkError]) =
-    ch.recv(LocalStateQuery.MaxMessageBytes)(LocalStateQuery.decodePrefix(state, Role.Server, _))
+    ch.recv(LocalStateQuery.MaxResultBytes)(LocalStateQuery.decodePrefix(state, Role.Server, _))
 
   private def session[A](t: Toy, versions: Vector[Int] = Vector(16, 23))(
       body: (MuxChannel[IO], MuxChannel[IO]) => Handle[IO, NetworkError] ?=> IO[A]
@@ -126,33 +132,39 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
           t.cancelServer.set(Some(server.cancel)) *>
             Handle
               .allow[NetworkError] {
-                Mux.resource(clientEnd, Set(0, 6, 7), Mux.Config()).use { mux =>
-                  for
-                    hs <- mux.channel(0)
-                    _ <- HandshakeClient.run(
-                      hs,
-                      versions.map(v => v -> Handshake.Data(magic)),
-                      suite = Handshake.Suite.NodeToClient
-                    )
-                    lsq <- mux.channel(7)
-                    tx <- mux.channel(6)
-                    out <- body(lsq, tx)
-                    // finish the submission protocol too, so the server ends by itself
-                    done <- IO.fromEither(
-                      LocalTxSubmission
-                        .encode(
-                          LocalTxSubmission.State.Idle,
-                          Role.Client,
-                          LocalTxSubmission.Message.Done
-                        )
-                        .left
-                        .map(error => RuntimeException(error.message))
-                    )
-                    _ <- tx.send(done)
-                    _ <- lsq.flush
-                    _ <- tx.flush
-                  yield out
-                }
+                Mux
+                  .resource(
+                    clientEnd,
+                    Set(0, 6, 7),
+                    Mux.Config.nodeToClient.copy(role = Mux.Role.Initiator)
+                  )
+                  .use { mux =>
+                    for
+                      hs <- mux.channel(0)
+                      _ <- HandshakeClient.run(
+                        hs,
+                        versions.map(v => v -> Handshake.Data(magic)),
+                        suite = Handshake.Suite.NodeToClient
+                      )
+                      lsq <- mux.channel(7)
+                      tx <- mux.channel(6)
+                      out <- body(lsq, tx)
+                      // finish the submission protocol too, so the server ends by itself
+                      done <- IO.fromEither(
+                        LocalTxSubmission
+                          .encode(
+                            LocalTxSubmission.State.Idle,
+                            Role.Client,
+                            LocalTxSubmission.Message.Done
+                          )
+                          .left
+                          .map(error => RuntimeException(error.message))
+                      )
+                      _ <- tx.send(done)
+                      _ <- lsq.flush
+                      _ <- tx.flush
+                    yield out
+                  }
               }
               .rescue(e => IO.raiseError[A](RuntimeException(e.message)))
               .flatMap(out =>
@@ -206,21 +218,45 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
     }
   }
 
-  test("an answer over 2.5 MB reaches the client through the node-to-client mux (#353)") {
-    toy.flatMap { t =>
-      session(t) { (ch, _) =>
-        for
-          _ <- send(ch, State.Idle, Message.Acquire(Target.VolatileTip))
-          _ <- receive(ch, State.Acquiring)
-          _ <- send(ch, State.Acquired, Message.Query(Bytes(Vector(0x03))))
-          answer <- ch.recv(LocalStateQuery.MaxResultBytes)(
-            LocalStateQuery.decodePrefix(State.Querying, Role.Server, _)
-          )
-          _ <- send(ch, State.Acquired, Message.Release)
-          _ <- send(ch, State.Idle, Message.Done)
-        yield answer
-      }.map { case (answer, _) => assertEquals(answer, Message.Result(large)) }
-    }
+  test(
+    "a 40 MiB answer reaches the client through the node-to-client mux in bounded time (#353, #356)"
+  ) {
+    toy
+      .flatMap { t =>
+        session(t) { (ch, _) =>
+          for
+            _ <- send(ch, State.Idle, Message.Acquire(Target.VolatileTip))
+            _ <- receive(ch, State.Acquiring)
+            _ <- send(ch, State.Acquired, Message.Query(Bytes(Vector(0x03))))
+            answer <- ch.recv(LocalStateQuery.MaxResultBytes)(
+              LocalStateQuery.decodePrefix(State.Querying, Role.Server, _)
+            )
+            _ <- send(ch, State.Acquired, Message.Release)
+            _ <- send(ch, State.Idle, Message.Done)
+          yield answer
+        }.map { case (answer, _) => assertEquals(answer, Message.Result(large)) }
+      }
+      .timeout(60.seconds)
+  }
+
+  test("a client query over 2.5 MB reaches the server through the node-to-client mux (#356)") {
+    toy
+      .flatMap { t =>
+        session(t) { (ch, _) =>
+          for
+            _ <- send(ch, State.Idle, Message.Acquire(Target.VolatileTip))
+            _ <- receive(ch, State.Acquiring)
+            _ <- send(ch, State.Acquired, Message.Query(largeQuery))
+            answer <- receive(ch, State.Querying)
+            _ <- send(ch, State.Acquired, Message.Release)
+            _ <- send(ch, State.Idle, Message.Done)
+          yield answer
+        }.map { case (answer, ended) =>
+          assertEquals(answer, Message.Result(item(3)))
+          assert(!ended.contains("limit"), ended)
+        }
+      }
+      .timeout(60.seconds)
   }
 
   test("a state stays acquired while the chain moves on") {

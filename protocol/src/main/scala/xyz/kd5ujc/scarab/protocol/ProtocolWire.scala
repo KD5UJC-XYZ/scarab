@@ -15,7 +15,7 @@ private[protocol] object ProtocolWire:
   // Mini-protocol limits are checked before entering this shared framing layer.
 
   /** The largest limits a protocol may configure. `Network` is the bound of every node-to-node
-    * message. `Local` is that of a node-to-client answer: the reference reads it with no byte or
+    * message. `Local` is that of a node-to-client message: the reference reads it with no byte or
     * item limit (`codecLocalStateQuery` is `mkCodecCborLazyBS`, run with `Stateful.runPeer`), so
     * only its mux ingress queue bounds it (`maximumMiniProtocolLimits`, `0xffffffff`), and here the
     * largest array the JVM can index.

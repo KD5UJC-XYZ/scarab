@@ -2871,3 +2871,45 @@ collection; these batches do not measure whole-node steady-state idle CPU. The
 coordinator serializes input observations, reservations and dynamo demotion with GSM
 phase publication. A controlled test blocks demotion, requests CaughtUp, and requires
 demotion completion before the phase write can proceed.
+
+## 23. Mux receive buffer (#356)
+
+`Mux.channel.recv` kept the bytes of a message not yet decoded as one `Bytes` and appended every SDU with
+`held ++ more`, which copies the whole buffer each time: a message of n bytes arriving in 16 KiB reads costs
+about n squared / 32,768 byte copies. It is now a `ReceiveBuffer`: one array that doubles when full (amortised
+constant time per appended byte), shown to the decoder as a window without a copy. This is the
+performance-critical imperative exception of AGENTS.md: the mutation is local to one channel, whose `recv`
+holds the channel lock, behind `append`, `view`, `consume` and `clear`; bytes once shown are never written
+again. The decoder also runs once per doubling of the buffer (or when the queue is empty), not after each SDU,
+so a decoder that rereads a long array is also linear overall. The handshake channel still decodes after every SDU.
+
+`network/Test/runMain xyz.kd5ujc.scarab.network.MuxThroughputBench` gained `one message of N MiB`: one message
+sent through two node-to-client muxes over an in-memory bearer; milliseconds from send to decoded, median of five
+after a warm-up. Docker JDK 21.0.11, same container image and source for both builds, shared host with a load average
+of about 20 on 24 processors (October 22 2026), so the absolute figures are pessimistic and the small-message rows
+are noise of the same size as their difference.
+
+| message | before (`held ++ more`) | after (`ReceiveBuffer`) |
+|---|---:|---:|
+| 4 MiB | 52 ms | 69 ms |
+| 16 MiB | 507 ms | 210 ms |
+| 32 MiB | 1,877 ms | 420 ms |
+| 64 MiB | 10,109 ms | 882 ms |
+| 1,400 bytes / window 64 | 57.9 us | 65.7 us |
+| 400 bytes / window 64 | 43.5 us | 40.8 us |
+| 65,000 bytes / window 8 | 680 us | 925 us |
+
+Before, doubling the message size multiplied the time by 4 to 5 (quadratic); after, by 2 (about 13 ms a MiB).
+The small-message rows are within the spread this loaded host gave between runs of the unchanged code (the
+section 22 figures for the same rows were 5 to 8 us on an idle host).
+
+The capacity decision of `append` was then made a pure function in `Long` arithmetic (`end + incoming` could wrap
+as an `Int` near the 2 GiB array limit). On the same loaded host the two builds ran back to back (load average about
+45), baseline then change: 4 MiB 85.7 / 73.5 ms, 16 MiB 351 / 258 ms, 32 MiB 587 / 660 ms, 64 MiB 1,240 / 1,484 ms,
+65,000 bytes 1,349 / 1,287 us; differences are within this host's run-to-run spread. The decision allocates nothing
+unless the array grows.
+
+Batching only covers SDUs that are already queued. When the queue runs dry after every SDU the decoder runs after
+each, so a decoder that rescans its prefix still does quadratic work overall; the buffer removes the copying, not
+that cost. An SDU that would overflow the buffer while batching is held until the complete message already buffered
+has been decoded (`Mux.Config.receiveBufferLimit` lets a test use a small limit).

@@ -213,7 +213,7 @@ class DeepQuerySuite extends FunSuite:
     }
   }
 
-  test("the transport accepts 20000 wrappers and safely refuses input over its item bound") {
+  test("the transport accepts 20000 wrappers and safely refuses input over its depth bound") {
     onSmallStack {
       val legal = nested(7)
       val wire = LocalStateQuery
