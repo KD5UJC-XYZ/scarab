@@ -96,9 +96,10 @@ object LeiosFetch:
     case Message.Done            => LeiosWire.encode(tagged(0))
     case Message.BlockRequest(p) => LeiosWire.encode(tagged(1, pointValue(p)))
     case Message.Block(txs) =>
-      if txs.isEmpty || txs.size > MaxTxsPerEb then Left(LeiosWireError.Unencodable)
-      else
-        LeiosWire.encode(
+      for
+        _ <- Either.cond(txs.nonEmpty, (), LeiosWireError.EmptyEndorserBlock)
+        _ <- bounded(2, LeiosField.EndorserBlock, txs.size)
+        out <- LeiosWire.encode(
           tagged(
             2,
             Value.Map(txs.map { case (h, size) =>
@@ -106,14 +107,15 @@ object LeiosFetch:
             })
           )
         )
+      yield out
     case Message.BlockTxsRequest(p, b) =>
-      bitmapsBytes(b).flatMap(bytes =>
+      bitmapsBytes(3, b).flatMap(bytes =>
         arrayWithVerbatim(Vector(Value.UInt(BigInt(3)), pointValue(p)), Vector(bytes))
       )
     case Message.BlockTxs(txs) =>
-      if txs.size > MaxTxsPerEb then Left(LeiosWireError.Unencodable)
-      else
-        LeiosWire.encode(
+      for
+        _ <- bounded(4, LeiosField.Transactions, txs.size)
+        out <- LeiosWire.encode(
           tagged(
             4,
             Value.Arr(
@@ -121,13 +123,13 @@ object LeiosFetch:
             )
           )
         )
-    case Message.LegacyBlockTxs(_, _, txs) if txs.size > MaxTxsPerEb =>
-      Left(LeiosWireError.Unencodable)
+      yield out
     case Message.LegacyBlockTxs(p, b, txs) =>
       // the transactions go out as the bytes they came with
       for
+        _ <- bounded(4, LeiosField.Transactions, txs.size)
         list <- arrayWithVerbatim(Vector.empty, txs)
-        bm <- bitmapsBytes(b)
+        bm <- bitmapsBytes(4, b)
         out <- arrayWithVerbatim(
           Vector(Value.UInt(BigInt(4)), pointValue(p)),
           Vector(bm, list)
