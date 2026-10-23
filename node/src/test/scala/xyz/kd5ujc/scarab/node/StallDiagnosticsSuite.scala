@@ -7,10 +7,14 @@ import cats.effect.std.Supervisor
 import cats.syntax.all.*
 import scala.jdk.CollectionConverters.*
 import cats.effect.testkit.TestControl
+import com.comcast.ip4s.*
 import io.circe.Json
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
+import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.node.BlockAdmissions.{AdmissionStage, WorkKind}
 import xyz.kd5ujc.scarab.node.log.{NodeEvent, Traced}
+import xyz.kd5ujc.scarab.protocol.ChainSync
 
 /** The state a stall leaves in the log (issue 371): a simulated stall of a watchdog reads the
   * coordinator, a session's pipeline probe and the admissions, and the `stallState` event carries
@@ -19,18 +23,21 @@ import xyz.kd5ujc.scarab.node.log.{NodeEvent, Traced}
 class StallDiagnosticsSuite extends CatsEffectSuite:
   private val stalledLine = NodeEvent.Stalled(10.minutes, BigInt(100), BigInt(5000))
 
+  private def at(slot: Long, hash: Int): ChainSync.Point =
+    ChainSync.Point.Block(ChainSync.UInt64.saturating(slot), Bytes.wrap(Array(hash.toByte)))
+
   private val pipeline = Peer.PipelineState(
-    peer = "127.0.0.1:3001",
+    peer = SocketAddress(host"127.0.0.1", port"3001"),
     permitsFree = 1,
     permits = 3,
     queued = 2,
     candidateHeaders = 40,
     unpublishedHeaders = Some(7),
     capacityRoom = false,
-    candidateBase = "origin",
-    candidateTip = "900:cd",
-    publishedBase = "origin",
-    publishedTip = "840:ab",
+    candidateBase = ChainSync.Point.Origin,
+    candidateTip = at(900, 0xcd),
+    publishedBase = ChainSync.Point.Origin,
+    publishedTip = at(840, 0xab),
     candidateTipSlot = Some(900L),
     publishedTipSlot = Some(840L),
     lastReplyCollectedAgo = Some(9.minutes + 2.seconds),
@@ -69,7 +76,11 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
               events <- logged.get
             yield
               assertEquals(early, Vector.empty)
-              assertEquals(events.map(_.getClass.getSimpleName), Vector("Stalled", "StallState"))
+              assert(
+                events match
+                  case Vector(_: NodeEvent.Stalled, _: NodeEvent.StallState) => true
+                  case _                                                     => false
+              )
               val f = fields(events.last)
               val sessions = f("sessions").asArray.get
               assertEquals(sessions.size, 1)
@@ -402,11 +413,15 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
             // one state file, from the first stall
             assertEquals(files.count(_.startsWith("stall-state-")), 1, files.toString)
             // the first and the third stall dumped; only the second was skipped
-            val outcomes = all.map(_.state match
-              case StallDiagnostics.Dump.Skipped    => "skipped"
-              case StallDiagnostics.Dump.Written(_) => "written"
-              case other                            => other.toString)
-            assertEquals(outcomes.sorted, Vector("skipped", "written", "written"))
+            val outcomes = all.map(_.state)
+            assertEquals(outcomes.count(_ == StallDiagnostics.Dump.Skipped), 1)
+            assertEquals(
+              outcomes.count {
+                case StallDiagnostics.Dump.Written(_) => true
+                case _                                => false
+              },
+              2
+            )
         }
         .guarantee(IO.blocking {
           Files.list(dir).forEach(f => Files.deleteIfExists(f))
@@ -463,14 +478,16 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
   test("the worker's mark is cleared when its work is cancelled or fails") {
     BlockAdmissions.create[IO].flatMap { admissions =>
       for
-        fiber <- admissions.processing("add", "applying")(IO.never[Unit]).start
+        fiber <- admissions.processing(WorkKind.Add, AdmissionStage.Applying)(IO.never[Unit]).start
         during <- (IO.sleep(10.millis) *> admissions.occupancy)
           .iterateUntil(_.worker.nonEmpty)
           .timeout(10.seconds)
         _ <- fiber.cancel
         cancelled <- admissions.occupancy
         failed <- admissions
-          .processing("add", "applying")(IO.raiseError[Unit](new Exception("x")))
+          .processing(WorkKind.Add, AdmissionStage.Applying)(
+            IO.raiseError[Unit](new Exception("x"))
+          )
           .attempt
         after <- admissions.occupancy
       yield
@@ -485,18 +502,23 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
     BlockAdmissions.create[IO].flatMap { admissions =>
       for
         idle <- admissions.occupancy
-        inside <- admissions.processing("add", "waitingForApplication")(
+        inside <- admissions.processing(WorkKind.Add, AdmissionStage.WaitingForApplication)(
           admissions.occupancy
-            .flatMap(first => admissions.stage("applying") *> admissions.occupancy.map(first -> _))
+            .flatMap(first =>
+              admissions.stage(AdmissionStage.Applying) *> admissions.occupancy.map(first -> _)
+            )
         )
         after <- admissions.occupancy
       yield
         assertEquals(idle.worker, None)
         assertEquals(
           inside._1.worker.map(w => w.work -> w.stage),
-          Some("add" -> "waitingForApplication")
+          Some(WorkKind.Add -> AdmissionStage.WaitingForApplication)
         )
-        assertEquals(inside._2.worker.map(w => w.work -> w.stage), Some("add" -> "applying"))
+        assertEquals(
+          inside._2.worker.map(w => w.work -> w.stage),
+          Some(WorkKind.Add -> AdmissionStage.Applying)
+        )
         assertEquals(after.worker, None)
         assertEquals(after.publishWaiting, 0)
     }

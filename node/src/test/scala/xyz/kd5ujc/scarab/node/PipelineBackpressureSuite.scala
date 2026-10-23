@@ -113,7 +113,7 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
           assertEquals(pipeline.size, 1, report.toString)
           val p = pipeline.head
           assertEquals(p.permits, Peer.Depth)
-          assertEquals(p.peer, "127.0.0.1:3001")
+          assertEquals(p.peer, SocketAddress(host"127.0.0.1", port"3001"))
           // the publisher has taken every permit and the consumer has taken none back
           assertEquals(p.permitsFree, 0L, p.toString)
           assert(p.queued > 0, p.toString)

@@ -39,14 +39,14 @@ final class FetchCoordinator[F[_]: Async] private (
 
   /** Installed once by the Genesis governor; phase and starvation are live observations. */
   def installGenesis(control: GenesisControl[F]): F[Unit] =
-    locked("installGenesis")(genesis.set(Some(control)) *> changeLocked(identity))
+    locked(DecisionHolder.InstallGenesis)(genesis.set(Some(control)) *> changeLocked(identity))
   def refreshGenesis: F[Unit] = change(identity)
 
   /** Publish a GSM transition and its decision as one transaction. A previously sampled Genesis
     * decision cannot demote the dynamo after this transition has completed.
     */
   def transitionGenesis(update: F[Unit]): F[Unit] =
-    locked("transitionGenesis")(F.uncancelable(_ => update *> changeLocked(identity)))
+    locked(DecisionHolder.TransitionGenesis)(F.uncancelable(_ => update *> changeLocked(identity)))
 
   /** State.hs:100–107,150: grace expiry retriggers decisions in both modes. Node/Genesis.hs:114
     * configures zero grace without Genesis, so the Praos loop instead runs at its 10ms rate limit.
@@ -147,13 +147,13 @@ final class FetchCoordinator[F[_]: Async] private (
       .map(id => new Session(this, id))
 
   private def change(f: State[F] => State[F]): F[Unit] =
-    locked("change")(changeLocked(f))
+    locked(DecisionHolder.Change)(changeLocked(f))
 
   /** `fa` under the decision lock, noting who holds it and since when: one clock read and one `Ref`
     * write on entry and one on exit, and no lock of its own, so that a stall report can say what
     * the lock is held by without taking it.
     */
-  private def locked[A](who: String)(fa: F[A]): F[A] =
+  private def locked[A](who: DecisionHolder)(fa: F[A]): F[A] =
     decisions.lock.surround(
       F.uncancelable(poll =>
         F.monotonic.flatMap(at => holder.set(Some(Holding(who, at)))) *>
@@ -271,28 +271,30 @@ final class FetchCoordinator[F[_]: Async] private (
   ): Resource[F, Allocation] =
     Resource
       .make(
-        (mark(id, Phase.LockWait) *> locked("reserve")(Deferred[F, Allocation].flatMap { result =>
-          mark(id, Phase.LockHeld) *>
-            state
-              .modify { s =>
-                val token = s.next
-                val peer = s.peers.get(id)
-                val next = s.copy(
-                  next = token + 1,
-                  peers = s.peers.updatedWith(id)(
-                    _.map(p =>
-                      p.copy(pending = p.pending :+ Offer(token, headers, result, candidate))
+        (mark(id, Phase.LockWait) *> locked(DecisionHolder.Reserve)(
+          Deferred[F, Allocation].flatMap { result =>
+            mark(id, Phase.LockHeld) *>
+              state
+                .modify { s =>
+                  val token = s.next
+                  val peer = s.peers.get(id)
+                  val next = s.copy(
+                    next = token + 1,
+                    peers = s.peers.updatedWith(id)(
+                      _.map(p =>
+                        p.copy(pending = p.pending :+ Offer(token, headers, result, candidate))
+                      )
                     )
                   )
-                )
-                (next, (token, peer.isDefined))
-              }
-              .flatMap { (token, live) =>
-                (if live then changeLocked(_.copy(mode = mode))
-                 else result.complete(Allocation.empty).void)
-                  .as(token -> result)
-              }
-        })).onError(_ => unmark(id))
+                  (next, (token, peer.isDefined))
+                }
+                .flatMap { (token, live) =>
+                  (if live then changeLocked(_.copy(mode = mode))
+                   else result.complete(Allocation.empty).void)
+                    .as(token -> result)
+                }
+          }
+        )).onError(_ => unmark(id))
       ) { (token, _) =>
         unmark(id) *> change(s =>
           s.copy(peers =
@@ -574,10 +576,14 @@ object FetchCoordinator:
   private[node] final case class Reserving(phase: Phase, running: FiniteDuration)
 
   /** The decision lock is held by `by` for `running`. */
-  private[node] final case class LockHolder(by: String, running: FiniteDuration)
+  private[node] final case class LockHolder(by: DecisionHolder, running: FiniteDuration)
+
+  /** What takes the decision lock. */
+  private[node] enum DecisionHolder:
+    case InstallGenesis, TransitionGenesis, Change, Reserve
 
   private[node] final case class Waiting(phase: Phase, at: FiniteDuration)
-  private[node] final case class Holding(who: String, at: FiniteDuration)
+  private[node] final case class Holding(who: DecisionHolder, at: FiniteDuration)
 
   private final case class Active(remaining: Vector[Header], requests: Int, claimed: Set[Bytes])
   private final case class PeerState[F[_]](

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.log
 
-import io.circe.Json
+import io.circe.{Encoder, Json}
 import io.circe.syntax.*
 import scala.concurrent.duration.FiniteDuration
 import com.comcast.ip4s.{Host, SocketAddress}
@@ -150,6 +150,49 @@ enum NodeEvent:
 
 object NodeEvent:
   /** One session of a stall report: the coordinator's view and, when pipelined, the session's. */
+  // The only place these are rendered as text: a stall report's typed values as the log shows
+  // them (`slot:hash`, `origin` at genesis; the lower-camel names of the cases).
+  private given Encoder[ChainSync.Point] =
+    Encoder.instance {
+      case ChainSync.Point.Origin            => Json.fromString("origin")
+      case ChainSync.Point.Block(slot, hash) => Json.fromString(s"${slot.value}:${hash.hex}")
+    }
+
+  private given Encoder[xyz.kd5ujc.scarab.node.FetchCoordinator.Phase] =
+    Encoder.instance {
+      case xyz.kd5ujc.scarab.node.FetchCoordinator.Phase.LockWait  => Json.fromString("LockWait")
+      case xyz.kd5ujc.scarab.node.FetchCoordinator.Phase.LockHeld  => Json.fromString("LockHeld")
+      case xyz.kd5ujc.scarab.node.FetchCoordinator.Phase.GrantWait => Json.fromString("GrantWait")
+    }
+
+  private given Encoder[xyz.kd5ujc.scarab.node.FetchCoordinator.DecisionHolder] =
+    Encoder.instance {
+      case xyz.kd5ujc.scarab.node.FetchCoordinator.DecisionHolder.InstallGenesis =>
+        Json.fromString("installGenesis")
+      case xyz.kd5ujc.scarab.node.FetchCoordinator.DecisionHolder.TransitionGenesis =>
+        Json.fromString("transitionGenesis")
+      case xyz.kd5ujc.scarab.node.FetchCoordinator.DecisionHolder.Change =>
+        Json.fromString("change")
+      case xyz.kd5ujc.scarab.node.FetchCoordinator.DecisionHolder.Reserve =>
+        Json.fromString("reserve")
+    }
+
+  private given Encoder[xyz.kd5ujc.scarab.node.BlockAdmissions.WorkKind] =
+    Encoder.instance {
+      case xyz.kd5ujc.scarab.node.BlockAdmissions.WorkKind.Add       => Json.fromString("add")
+      case xyz.kd5ujc.scarab.node.BlockAdmissions.WorkKind.Reprocess => Json.fromString("reprocess")
+    }
+
+  private given Encoder[xyz.kd5ujc.scarab.node.BlockAdmissions.AdmissionStage] =
+    Encoder.instance {
+      case xyz.kd5ujc.scarab.node.BlockAdmissions.AdmissionStage.WaitingForApplication =>
+        Json.fromString("waitingForApplication")
+      case xyz.kd5ujc.scarab.node.BlockAdmissions.AdmissionStage.Applying =>
+        Json.fromString("applying")
+      case xyz.kd5ujc.scarab.node.BlockAdmissions.AdmissionStage.Selecting =>
+        Json.fromString("selecting")
+    }
+
   private def dumpJson(dump: StallDiagnostics.Dump): Json = dump match
     case StallDiagnostics.Dump.Off       => Json.Null
     case StallDiagnostics.Dump.Requested => Json.obj("requested" -> true.asJson)
@@ -183,11 +226,11 @@ object NodeEvent:
         .asJson,
       "candidateHeaders" -> d.candidateHeaders.asJson,
       "reserving" -> d.reserving.fold(Json.Null)(r =>
-        Json.obj("phase" -> r.phase.toString.asJson, "runningMs" -> r.running.toMillis.asJson)
+        Json.obj("phase" -> r.phase.asJson, "runningMs" -> r.running.toMillis.asJson)
       ),
       "pipeline" -> d.pipeline.fold(Json.Null)(p =>
         Json.obj(
-          "peer" -> p.peer.asJson,
+          "peer" -> p.peer.toString.asJson,
           "permitsFree" -> p.permitsFree.asJson,
           "permits" -> p.permits.asJson,
           "queued" -> p.queued.asJson,

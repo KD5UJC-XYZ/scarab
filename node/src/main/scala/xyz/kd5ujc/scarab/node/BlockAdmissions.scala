@@ -98,7 +98,7 @@ private[node] final class BlockAdmissions[F[_]: Async] private (
   /** Run `body`, the processing of one work of kind `work` that [[next]] gave, noting it for
     * [[occupancy]] until it ends.
     */
-  def processing[A](work: String, stage: String)(body: F[A]): F[A] =
+  def processing[A](work: WorkKind, stage: AdmissionStage)(body: F[A]): F[A] =
     F.uncancelable(poll =>
       F.monotonic.flatMap(at => working.set(Some(Started(work, stage, at, at)))) *>
         F.guarantee(poll(body), working.set(None))
@@ -107,7 +107,7 @@ private[node] final class BlockAdmissions[F[_]: Async] private (
   /** Note that the work [[processing]] runs has moved on to `stage`: one clock read and one `Ref`
     * write per stage.
     */
-  def stage(stage: String): F[Unit] =
+  def stage(stage: AdmissionStage): F[Unit] =
     F.monotonic.flatMap(at =>
       working.update(_.map(started => started.copy(stage = stage, stageAt = at)))
     )
@@ -140,20 +140,19 @@ object BlockAdmissions:
       oldestPublishWait: Option[FiniteDuration] = None
   )
 
-  /** The kind of work the worker is on (`add` or `reprocess`), the stage it is in (waiting for the
-    * application lock, applying, selecting) and for how long it has been in the stage and on the
-    * work.
+  /** The kind of work the worker is on, the stage it is in and for how long it has been in the
+    * stage and on the work.
     */
   private[node] final case class Worker(
-      work: String,
-      stage: String,
+      work: WorkKind,
+      stage: AdmissionStage,
       inStage: FiniteDuration,
       running: FiniteDuration
   )
 
   private final case class Started(
-      work: String,
-      stage: String,
+      work: WorkKind,
+      stage: AdmissionStage,
       workAt: FiniteDuration,
       stageAt: FiniteDuration
   )
@@ -164,6 +163,21 @@ object BlockAdmissions:
   private[node] enum Work[F[_]]:
     case Add(taken: BlockPool.Admission)
     case Reprocess(complete: Deferred[F, Unit])
+
+    /** The case without its payload. */
+    def kind: WorkKind = this match
+      case Add(_)       => WorkKind.Add
+      case Reprocess(_) => WorkKind.Reprocess
+
+  /** What the worker takes from the queue: a block to admit, or a reselection. */
+  private[node] enum WorkKind:
+    case Add, Reprocess
+
+  /** Where the worker is in one work: waiting for the application lock, then applying the block or
+    * selecting.
+    */
+  private[node] enum AdmissionStage:
+    case WaitingForApplication, Applying, Selecting
 
   private[node] def create[F[_]: Async]: F[BlockAdmissions[F]] =
     (

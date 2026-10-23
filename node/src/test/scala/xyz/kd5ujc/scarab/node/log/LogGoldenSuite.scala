@@ -14,7 +14,9 @@ import cats.syntax.all.*
 import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.consensus.{FollowerEvent, SchedulingStats, VolatileChain}
 import xyz.kd5ujc.scarab.network.{ConnectionEvent, ConnectionEvents}
-import com.comcast.ip4s.{Host, SocketAddress}
+import com.comcast.ip4s.{host, port, Host, SocketAddress}
+import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.network.selection.{FetchMode, Gsm, Trace}
 import xyz.kd5ujc.scarab.ledger.{ChainError, StorageError}
 import xyz.kd5ujc.scarab.node.{Fatal, InboundEvent, LedgerPeersTrace}
@@ -31,6 +33,9 @@ class LogGoldenSuite extends CatsEffectSuite:
 
   private val golden = Path.of("fixtures/log/golden.jsonl")
   private val at = Instant.parse("2026-10-16T12:00:00Z")
+
+  private def point(slot: Long, hash: Int): ChainSync.Point =
+    ChainSync.Point.Block(ChainSync.UInt64.saturating(slot), Bytes.wrap(Array(hash.toByte)))
 
   /** A `Log` that keeps every line. */
   private def collecting(lines: Ref[IO, Vector[Line]]): Log[IO] = new Tell[IO, Line]:
@@ -87,17 +92,17 @@ class LogGoldenSuite extends CatsEffectSuite:
                   ),
                   pipeline = Some(
                     xyz.kd5ujc.scarab.node.Peer.PipelineState(
-                      peer = "10.0.0.1:3001",
+                      peer = SocketAddress(host"10.0.0.1", port"3001"),
                       permitsFree = 0,
                       permits = 3,
                       queued = 3,
                       candidateHeaders = 100,
                       unpublishedHeaders = Some(60),
                       capacityRoom = false,
-                      candidateBase = "800:aa",
-                      candidateTip = "900:bb",
-                      publishedBase = "800:aa",
-                      publishedTip = "840:cc",
+                      candidateBase = point(800, 0xaa),
+                      candidateTip = point(900, 0xbb),
+                      publishedBase = point(800, 0xaa),
+                      publishedTip = point(840, 0xcc),
                       candidateTipSlot = Some(900L),
                       publishedTipSlot = Some(840L),
                       lastReplyCollectedAgo = Some(601.seconds),
@@ -113,12 +118,22 @@ class LogGoldenSuite extends CatsEffectSuite:
                 4,
                 Some(
                   xyz.kd5ujc.scarab.node.BlockAdmissions
-                    .Worker("add", "applying", 12.seconds, 590.seconds)
+                    .Worker(
+                      xyz.kd5ujc.scarab.node.BlockAdmissions.WorkKind.Add,
+                      xyz.kd5ujc.scarab.node.BlockAdmissions.AdmissionStage.Applying,
+                      12.seconds,
+                      590.seconds
+                    )
                 ),
                 2,
                 Some(30.seconds)
               ),
-              Some(xyz.kd5ujc.scarab.node.FetchCoordinator.LockHolder("reserve", 580.seconds)),
+              Some(
+                xyz.kd5ujc.scarab.node.FetchCoordinator.LockHolder(
+                  xyz.kd5ujc.scarab.node.FetchCoordinator.DecisionHolder.Reserve,
+                  580.seconds
+                )
+              ),
               3L
             ),
             xyz.kd5ujc.scarab.node.StallDiagnostics.Dump.Written(

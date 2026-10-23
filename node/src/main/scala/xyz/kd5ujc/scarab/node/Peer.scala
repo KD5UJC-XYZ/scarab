@@ -355,17 +355,17 @@ object Peer:
     *   Time since the last such batch was fully handled (decoded, checked, recorded).
     */
   final case class PipelineState(
-      peer: String,
+      peer: SocketAddress[Host],
       permitsFree: Long,
       permits: Int,
       queued: Int,
       candidateHeaders: Int,
       unpublishedHeaders: Option[Int],
       capacityRoom: Boolean,
-      candidateBase: String,
-      candidateTip: String,
-      publishedBase: String,
-      publishedTip: String,
+      candidateBase: ChainSync.Point,
+      candidateTip: ChainSync.Point,
+      publishedBase: ChainSync.Point,
+      publishedTip: ChainSync.Point,
       candidateTipSlot: Option[Long],
       publishedTipSlot: Option[Long],
       lastReplyCollectedAgo: Option[FiniteDuration],
@@ -395,10 +395,6 @@ object Peer:
     (published.base +: published.headers.map(_.point)).reverseIterator
       .find(positions.contains)
       .map(point => candidate.headers.size - positions.getOrElse(point, 0))
-
-  private def pointText(point: ChainSync.Point): String = point match
-    case ChainSync.Point.Origin            => "origin"
-    case ChainSync.Point.Block(slot, hash) => s"${slot.value}:${hash.hex}"
 
   /** @param readAhead
     *   Maximum headers per ordered body-publication chunk. The rolling request window is set
@@ -1475,17 +1471,17 @@ object Peer:
                   publishedCursor.get
                 ).mapN { (now, seen, free, queued, candidate, published) =>
                   Peer.PipelineState(
-                    peer = settings.address.toString,
+                    peer = settings.address,
                     permitsFree = free,
                     permits = Depth,
                     queued = queued,
                     candidateHeaders = candidate.headers.size,
                     unpublishedHeaders = unpublished(published._1, candidate),
                     capacityRoom = publicationRoom(published._1, candidate, retainedHeaders),
-                    candidateBase = pointText(candidate.base),
-                    candidateTip = pointText(candidate.tip),
-                    publishedBase = pointText(published._1.base),
-                    publishedTip = pointText(published._1.tip),
+                    candidateBase = candidate.base,
+                    candidateTip = candidate.tip,
+                    publishedBase = published._1.base,
+                    publishedTip = published._1.tip,
                     candidateTipSlot = candidate.headers.lastOption.map(_.slot.toLong),
                     publishedTipSlot = published._1.headers.lastOption.map(_.slot.toLong),
                     lastReplyCollectedAgo = seen.collected.map(now - _),

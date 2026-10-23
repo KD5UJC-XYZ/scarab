@@ -609,7 +609,7 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
         yield
           val (idle, holding, waiting, granting) = result
           assertEquals(idle, None)
-          assertEquals(holding.map(_.by), Some("transitionGenesis"))
+          assertEquals(holding.map(_.by), Some(FetchCoordinator.DecisionHolder.TransitionGenesis))
           assertEquals(
             waiting.flatMap(_.reserving).map(_.phase),
             Vector(FetchCoordinator.Phase.LockWait)
@@ -666,7 +666,7 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
             assertEquals(reserved, Left(Boom))
             assertEquals(marks.flatMap(_.reserving), Vector.empty)
             assertEquals(held, None)
-            assertEquals(holding.map(_.by), Some("change"))
+            assertEquals(holding.map(_.by), Some(FetchCoordinator.DecisionHolder.Change))
             assertEquals(afterCancel, None)
         }
       }

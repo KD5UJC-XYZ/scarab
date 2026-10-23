@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.ChainSelection
 import xyz.kd5ujc.scarab.ledger.{BlockPoolProblem, Header, NodeError, PeerError, ValidationError}
 import xyz.kd5ujc.scarab.network.Fibers
+import xyz.kd5ujc.scarab.node.BlockAdmissions.{AdmissionStage, WorkKind}
 import xyz.kd5ujc.scarab.protocol.ChainSync
 
 /** The single ChainDB add-block runner (consensus 82ecba329, Background.hs:658–708). Its forest
@@ -103,11 +104,11 @@ private[node] final class BlockSelection[F[_]: Async] private (
     F.foreverM(pool.admissions.next.flatMap {
       case BlockAdmissions.Work.Add(admission) =>
         val header = admission.delivered.header
-        pool.admissions.processing("add", "waitingForApplication")(
+        pool.admissions.processing(WorkKind.Add, AdmissionStage.WaitingForApplication)(
           work
             .processing(header.hash)
             .surround(application.locked {
-              pool.admissions.stage("applying") *> application.admits(header).flatMap {
+              pool.admissions.stage(AdmissionStage.Applying) *> application.admits(header).flatMap {
                 case false => F.unit
                 case true =>
                   pool.processedSnapshot.flatMap { processed =>
@@ -121,9 +122,9 @@ private[node] final class BlockSelection[F[_]: Async] private (
             }) *> pool.completeAdmission(header.hash)
         )
       case BlockAdmissions.Work.Reprocess(done) =>
-        pool.admissions.processing("reprocess", "waitingForApplication")(
+        pool.admissions.processing(WorkKind.Reprocess, AdmissionStage.WaitingForApplication)(
           application
-            .locked(pool.admissions.stage("selecting") *> selectLocked(None))
+            .locked(pool.admissions.stage(AdmissionStage.Selecting) *> selectLocked(None))
             .guarantee(done.complete(()).void)
         )
     })
