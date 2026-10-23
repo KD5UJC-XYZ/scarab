@@ -943,6 +943,118 @@
  {
   "era": "conway",
   "kind": "body",
+  "name": "pool margin: a bignum over an indefinite byte string",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 161 \"expected integer\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "pool margin: a bignum tag with a widened head",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 161 \"expected integer\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "pool margin: a negative bignum tag with a widened head",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 161 \"expected integer\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "pool margin: a negative bignum over an indefinite byte string",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 161 \"expected integer\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "pool margin: a denominator that is a bignum tag with a widened head",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 162 \"expected integer\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "committee quorum: a bignum over an indefinite byte string",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 131 \"expected integer\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "pool margin: a bignum with a wide length head",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "pool margin: a bignum with leading zeros",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "pool margin: a negative bignum for minus one over minus two",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "pool margin: integers written with wide heads",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "pool margin: negative integers written with wide heads",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter changes: repeat with a rational written as definite bignums with other heads",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 312 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter changes: repeat with a rational written with wide integer heads",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 322 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
   "name": "constitutions: one",
   "result": {
    "accepted": true

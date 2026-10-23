@@ -2,8 +2,8 @@
 
 Status: Current. Evidence for [AUD3-01/#327](https://github.com/KD5UJC-XYZ/scarab/issues/327).
 
-`cases.json` holds 209 original encodings written by `scripts/oracle/conway-decoding/cases.py`:
-134 Conway transaction bodies, 65 Conway witness sets, 4 whole Conway transactions and 6 Babbage
+`cases.json` holds 222 original encodings written by `scripts/oracle/conway-decoding/cases.py`:
+147 Conway transaction bodies, 65 Conway witness sets, 4 whole Conway transactions and 6 Babbage
 bodies. Each case breaks one rule of the reference decoders or keeps a rule the reference tolerates,
 and most sit next to a twin that keeps the rule: repeated or empty sets, ordered sets, maps and
 voting procedures; the tag 258 wrapper; indefinite-length containers; two encodings of one input;
@@ -24,7 +24,9 @@ parameter update or committee update with its entries in another order, treasury
 reordered) and each is next to a twin with a different value that both accept. Rationals (tag 30) are read as the reference does below decoder version 12 (`decodeRationalWithTag`,
 `Binary/Plain.hs:155-163`; `BoundedRatio` `decCBOR`, `BaseTypes.hs:416-430`; `boundRational`,
 `BaseTypes.hs:348-374`, f649f975): two `decodeInteger`s of any sign or size (bignums included), a
-zero denominator refused, then the reduced value bounded, so `30([1, 2])`, `30([-1, -2])` and
+zero denominator refused (bignums only from the one-byte heads `c2`/`c3` over a definite byte
+string, as cborg reads them: a widened tag head or an indefinite string is `expected integer`),
+then the reduced value bounded, so `30([1, 2])`, `30([-1, -2])` and
 `30([2^64, 2^65])` are one value in a proposal's parameter update (prices, thresholds), a pool margin
 and a committee quorum, and `[-1, 2]` or `[3, 2]` are refused where the interval is 0 to 1. An indefinite
 byte or text string, and an indefinite array where the reference reads a fixed record (a price

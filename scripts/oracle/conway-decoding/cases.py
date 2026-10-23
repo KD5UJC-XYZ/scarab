@@ -636,6 +636,66 @@ repeat(
     certs(POOL, pool_cert(margin=HALF_BIG)),
 )
 
+# cborg's `decodeInteger` takes a bignum only from the one-byte heads 0xc2 / 0xc3, over a definite
+# byte string (`readBigUInt` reads it with `tryConsumeBytes`); a widened tag head or an indefinite
+# string is not an integer. A definite string of any length head, with leading zeros, is one.
+BIGNUM_INDEFINITE = b"\xc2\x5f" + bstr(b"\x01") + b"\xff"
+BIGNUM_WIDE_TAG = b"\xd8\x02" + bstr(b"\x01")
+BIGNUM_WIDE_TAG_3 = b"\xd8\x03" + bstr(b"\x00")
+BIGNUM_NEGATIVE_INDEFINITE = b"\xc3\x5f" + bstr(b"\x00") + b"\xff"
+BIGNUM_WIDE_LENGTH = b"\xc2\x58\x01\x01"
+BIGNUM_LEADING_ZEROS = b"\xc2\x42\x00\x02"
+BIGNUM_MINUS_ONE = b"\xc3\x40"
+BIGNUM_TWO = b"\xc2" + bstr(b"\x02")
+
+for label, numerator in (
+    ("a bignum over an indefinite byte string", BIGNUM_INDEFINITE),
+    ("a bignum tag with a widened head", BIGNUM_WIDE_TAG),
+    ("a negative bignum tag with a widened head", BIGNUM_WIDE_TAG_3),
+    ("a negative bignum over an indefinite byte string", BIGNUM_NEGATIVE_INDEFINITE),
+):
+    denominator = nint(-2) if numerator in (BIGNUM_WIDE_TAG_3, BIGNUM_NEGATIVE_INDEFINITE) else uint(2)
+    conway_body(f"pool margin: {label}", certs(pool_cert(margin=ratio(numerator, denominator))), "expected integer", "Expected")
+conway_body(
+    "pool margin: a denominator that is a bignum tag with a widened head",
+    certs(pool_cert(margin=ratio(uint(1), BIGNUM_WIDE_TAG))),
+    "expected integer",
+    "Expected",
+)
+conway_body(
+    "committee quorum: a bignum over an indefinite byte string",
+    proposals(proposal(array([uint(4), NULL, sset([]), cmap([]), ratio(BIGNUM_INDEFINITE, uint(2))]))),
+    "expected integer",
+    "Expected",
+)
+conway_body("pool margin: a bignum with a wide length head", certs(pool_cert(margin=ratio(BIGNUM_WIDE_LENGTH, uint(2)))))
+conway_body("pool margin: a bignum with leading zeros", certs(pool_cert(margin=ratio(uint(1), BIGNUM_LEADING_ZEROS))))
+conway_body(
+    "pool margin: a negative bignum for minus one over minus two",
+    certs(pool_cert(margin=ratio(BIGNUM_MINUS_ONE, nint(-2)))),
+)
+conway_body(
+    "pool margin: integers written with wide heads",
+    certs(pool_cert(margin=tag(30, array([uint(1, 8), uint(2, 4)], width=4)))),
+)
+conway_body(
+    "pool margin: negative integers written with wide heads",
+    certs(pool_cert(margin=tag(30, array([head(1, 0, 8), head(1, 1, 2)])))),
+)
+repeat(
+    "parameter changes: repeat with a rational written as definite bignums with other heads",
+    proposals(
+        proposal(RATIONAL_CHANGE),
+        proposal(param_change([(uint(9), ratio(BIGNUM_WIDE_LENGTH, BIGNUM_LEADING_ZEROS))])),
+    ),
+)
+repeat(
+    "parameter changes: repeat with a rational written with wide integer heads",
+    proposals(
+        proposal(RATIONAL_CHANGE),
+        proposal(param_change([(uint(9), tag(30, array([uint(1, 8), uint(2, 4)], width=4))) ])),
+    ),
+)
 CONSTITUTION = array([uint(5), NULL, array([ANCHOR, NULL])])
 conway_body("constitutions: one", proposals(proposal(CONSTITUTION)))
 conway_body(
