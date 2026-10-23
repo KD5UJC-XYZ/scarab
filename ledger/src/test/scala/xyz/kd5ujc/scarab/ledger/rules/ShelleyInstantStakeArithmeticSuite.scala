@@ -13,8 +13,9 @@ import xyz.kd5ujc.scarab.ledger.state.given
   * `CompactForm Coin` as Word64, inserts the output amount when the entry is missing for either
   * operation, and removes an entry that is zero; `Shelley/Rules/Utxo.hs:613-624` adds the outputs
   * before deleting the extracted inputs, which `extractKeys` yields in `TxIn` map order, and
-  * `Babbage/Rules/Utxo.hs:477-486` does the same for collateral. The cases are derived from that
-  * source; they are not captures of the native API.
+  * `Babbage/Rules/Utxo.hs:477-486` does the same for collateral. These cases are derived from that
+  * source and keep the checked output-coin bounds; the captured results of the released native
+  * functions are replayed by `ShelleyInstantStakeReferenceSuite`.
   */
 class ShelleyInstantStakeArithmeticSuite extends FunSuite:
   private val stakeBytes = Bytes(Vector.fill(28)(2.toByte))
