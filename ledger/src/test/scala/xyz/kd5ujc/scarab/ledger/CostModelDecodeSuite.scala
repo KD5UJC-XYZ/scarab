@@ -54,7 +54,7 @@ class CostModelDecodeSuite extends FunSuite:
     val raw = hex(
       "84" + "00" + account + "84" + "00" + "f6" + "a1" + "12" + costModels + "f6" + anchor
     )
-    CborRead.decode(raw).flatMap(Proposal.decode).map(_.action)
+    CborRead.decode(raw).flatMap(Proposal.decode(_, DecoderVersion.of(Era.Conway))).map(_.action)
 
   private val int64 = (BigInt(Long.MinValue), BigInt(Long.MaxValue))
 
