@@ -148,12 +148,24 @@ class CostModelDecodeSuite extends FunSuite:
     assertEquals(fields.size, 1, name)
     fields.head.getOrElse(18, fail(s"$name: no field 18"))
 
-  /** The cost models Scarab reads from those bytes by the legacy rule. */
-  private def keptModels(tx: Tx, name: String): Map[Int, Vector[BigInt]] =
-    CborRead
-      .decode(field18(tx, name))
+  /** The cost models of the parameters after the update is applied (`ProtocolParams.update`, the
+    * reader of state), for the languages the reference kept; the legacy rule reads the same bytes
+    * to the same map.
+    */
+  private def keptModels(tx: Tx, row: Row): Map[Int, Vector[BigInt]] =
+    val bytes = field18(tx, row.name)
+    val decoded = CborRead
+      .decode(bytes)
       .flatMap(CostModelDecode.decode(_, CostModelDecode.Format.Legacy))
-      .fold(e => fail(s"$name: ${e.message}"), identity)
+      .fold(e => fail(s"${row.name}: ${e.message}"), identity)
+    val major = if row.era == Era.Alonzo then 5 else 7
+    val applied = ProtocolParams
+      .update(TestLedger.params(major), ParamUpdate(Map(18 -> bytes)))
+      .fold(e => fail(s"${row.name}: ${e.message}"), identity)
+    val languages = referenceModels(row).keySet
+    val inState = applied.costModels.view.filterKeys(languages).toMap
+    assertEquals(inState, decoded, s"${row.name}: the decoder and the applied parameters differ")
+    inState
 
   // Before decoder version 9 (Alonzo, Babbage): CostModels.hs:306-337, replayed from the reference.
 
@@ -172,7 +184,7 @@ class CostModelDecodeSuite extends FunSuite:
   ) {
     forRows("accepted") { row =>
       val tx = accepted(row)
-      assertEquals(keptModels(tx, row.name), referenceModels(row), row.name)
+      assertEquals(keptModels(tx, row), referenceModels(row), row.name)
       assert(
         row.tx.hex.contains(field18(tx, row.name).hex),
         s"${row.name}: field 18 is not the original"
@@ -185,7 +197,7 @@ class CostModelDecodeSuite extends FunSuite:
       rows.filter(r => r.name.contains("duplicate-distinct") || r.name.contains("interleaved"))
     assertEquals(repeated.size, 6)
     repeated.foreach { row =>
-      val kept = keptModels(accepted(row), row.name)
+      val kept = keptModels(accepted(row), row)
       assertEquals(kept, referenceModels(row), row.name)
       val language = if row.name.contains("v2-duplicate") then 1 else 0
       assertEquals(kept(language).head, BigInt(2), s"${row.name}: the first entry survived")
