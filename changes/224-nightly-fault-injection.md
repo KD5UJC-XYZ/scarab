@@ -4,3 +4,4 @@
 
 - The fault run now checks that the Scala node is still alive while the cluster settles and before it reports success, and its summary says `passed` only after every check has finished: an aborted run (a timeout, a failed copy) records the abort in `failures` with `completed: false`.
 - The fault run also fails when Scala had already exited before a scheduled crash (or the kill was refused), when a schedule file leaves a node killed or restarts one that is running, and when a node shows no new block after the faults are healed, so a stale or wedged node with a matching tip no longer passes.
+- The fault run reads the Scala node's tip height and hash from one replay of its log (rollbacks included), takes the first answer of a node that was silent at healing as its baseline (it must then advance), and checks every process again after the log collection, right before the teardown.

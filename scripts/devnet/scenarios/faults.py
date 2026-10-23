@@ -16,7 +16,7 @@ import time
 from .. import faultplan, netfaults
 from ..cluster import database_mounts, freeze_classes, scala_container, start_reference
 from ..util import ENV, QUERY_PORT, data_root, docker, in_ref, put_file, read_log, ref
-from .pool import pool_chain, pool_environment
+from .pool import pool_environment
 from .relay import SCALA_PORT, log_counts, tip_at
 
 POOL = 1                 # the number of the pool whose keys the Scala node takes
@@ -77,11 +77,6 @@ class Run:
         log = (self.root / "follower.jsonl").open("a")
         self.scala = subprocess.Popen(["docker", *self.scala_command], stdout=log, stderr=subprocess.STDOUT, text=True)
 
-    def scala_height(self):
-        events, _ = read_log(self.root / "follower.jsonl")
-        blocks = [e["block"]["blockNo"] for e in events if e["event"] == "extended"]
-        return blocks[-1] if blocks else None
-
     # ------------------------------------------------------------ faults
     def apply(self, action, t):
         op = action["op"]
@@ -122,13 +117,39 @@ class Run:
     def tips(self):
         """(block number, hash) of every node's tip, or None for a node that does not answer."""
         events, _ = read_log(self.root / "follower.jsonl")
-        chain = pool_chain(events)
-        scala = self.scala_height()
-        out = {"scala": (scala, chain[-1]) if chain and scala is not None else None}
+        out = {"scala": scala_tip(events)}
         for node, n in HASKELL.items():
             tip = tip_at(self.name, f"{ENV}/socket/node{n}/sock") if node not in self.crashed else None
             out[node] = (tip["block"], tip["hash"]) if tip else None
         return out
+
+
+def scala_tip(events):
+    """(block number, hash) of the Scala node's tip, replayed from one log snapshot with its rollbacks (the height
+    and the hash of the same block), or None while it has no chain."""
+    chain = []
+    for e in events:
+        if e["event"] == "extended":
+            chain.append((e["block"]["blockNo"], e["block"]["hash"]))
+        elif e["event"] == "rolledBack":
+            to = e["to"].get("hash")
+            if to is None:
+                chain = []
+            else:
+                kept = [i for i, (_, h) in enumerate(chain) if h == to]
+                if kept:
+                    chain = chain[:kept[0] + 1]
+    return chain[-1] if chain else None
+
+
+def liveness_failures(run):
+    """Failures of the processes that must be running: the Scala node and the Haskell pools the schedule did not crash."""
+    failures = []
+    lost = run.scala_lost()
+    if lost is not None:
+        failures.append(f"the Scala node exited with {lost} while the cluster settled or at the end of the run")
+    failures += [f"{n} exited without being crashed by the schedule" for n in HASKELL if n not in run.crashed and not run.haskell_alive(n)]
+    return failures
 
 
 def write_keys(root, name):
@@ -153,20 +174,23 @@ def load_plan(args, shelley):
     return faultplan.generate(args.seed, args.duration, *inputs)
 
 
-def settle(run, seconds, before=None):
-    """Poll until every node reports the same tip hash and, given the tips `before` (when the faults were
-    healed), a block newer than that, at most `seconds`; returns the last tips. The Scala node
-    must stay alive: its tip is read from its log, which a dead process leaves behind, so an exit ends the wait
-    (the caller reports it)."""
+def settle(run, seconds, before):
+    """Poll until every node reports the same tip hash and a block newer than its baseline, at most `seconds`;
+    returns the last tips and the baselines. `before` holds the tips when the faults were healed; a node that
+    had no answer then takes its first answer as the baseline, so it too must advance. The Scala node must stay
+    alive: its tip is read from its log, which a dead process leaves behind, so an exit ends the wait (the caller
+    reports it)."""
+    base = dict(before)
     deadline = time.monotonic() + seconds
     tips = run.tips()
-    while time.monotonic() < deadline:
-        tips = run.tips()
-        if run.scala_lost() is not None or not (faultplan.convergence_failures(tips)
-                                                or (before and faultplan.progress_failures(before, tips))):
-            break
+    while True:
+        base.update({n: t for n, t in tips.items() if base.get(n) is None and t is not None})
+        if (run.scala_lost() is not None
+                or not (faultplan.convergence_failures(tips) or faultplan.progress_failures(base, tips))
+                or time.monotonic() >= deadline):
+            return tips, base
         time.sleep(SETTLE_POLL)
-    return tips
+        tips = run.tips()
 
 
 def faults(args):
@@ -254,11 +278,7 @@ def faults(args):
             time.sleep(1)
         run.shaper.heal()
         healed = run.tips()
-        final = settle(run, args.settle, healed)
-        lost = run.scala_lost()
-        if lost is not None and not any(f.startswith("the Scala node exited") for f in failures):
-            failures.append(f"the Scala node exited with {lost} while the cluster settled or at the end of the run")
-        died = [n for n in HASKELL if n not in run.crashed and not run.haskell_alive(n)]
+        final, baseline = settle(run, args.settle, healed)
         events, other = read_log(root / "follower.jsonl")
         text = (root / "follower.jsonl").read_text(errors="replace")
         logs = {n: in_ref(args.name, f"cat /work/node{HASKELL[n]}.log").stdout for n in HASKELL}
@@ -266,11 +286,11 @@ def faults(args):
         failures += run.problems
         failures += faultplan.growth_failures(samples, plan["quiet"])
         failures += faultplan.convergence_failures(final)
-        failures += faultplan.progress_failures(healed, final)
+        failures += faultplan.progress_failures(baseline, final)
         failures += [f"{n} is still down at the end of the run" for n in sorted(run.crashed)]
         failures += faultplan.rollback_failures(events, k)
         failures += faultplan.scala_failures(events, other, text)
-        failures += faultplan.haskell_failures(logs, died)
+        failures += faultplan.haskell_failures(logs, [])
         failures += faultplan.rejoin_failures(run.restarts, events)
         counts = {}
         for e in events:
@@ -287,6 +307,8 @@ def faults(args):
                                                                 "forged", "adopted", "lost")},
             "samples": len(samples),
         }
+        # the log collection above took a while: every process must still be running right before the teardown
+        failures += [f for f in liveness_failures(run) if f not in failures]
         completed = True
     except SystemExit as e:
         failures.append(str(e))

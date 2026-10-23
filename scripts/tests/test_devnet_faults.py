@@ -273,11 +273,11 @@ class FakeScala:
     """A Scala process that answers `poll()` with None for `alive` calls and then with an exit status."""
 
     def __init__(self, alive, status=137):
-        self.alive, self.returncode, self.calls = alive, status, 0
+        self.alive, self.returncode, self.calls, self.dead = alive, status, 0, False
 
     def poll(self):
         self.calls += 1
-        return None if self.calls <= self.alive else self.returncode
+        return None if self.calls <= self.alive and not self.dead else self.returncode
 
     def wait(self):
         return self.returncode
@@ -286,7 +286,7 @@ class FakeScala:
 class ExecutionTests(unittest.TestCase):
     """`faults()` itself, with the cluster, Docker and the proxies stubbed out."""
 
-    def execute(self, scala, start_reference=None, actions=(), wedged=False, settle=5):
+    def execute(self, scala, start_reference=None, actions=(), wedged=False, settle=5, die_while_collecting=False):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         root = pathlib.Path(tmp.name) / "run"
@@ -301,12 +301,18 @@ class ExecutionTests(unittest.TestCase):
         def log(*_):
             # a growing log: the Scala node extends its chain at every reading unless it is wedged
             n = 3 if wedged else tick()
-            return [{"event": "extended", "block": {"blockNo": n}}] * (3 if wedged else n), []
+            return [{"event": "extended", "block": {"blockNo": i, "hash": "h"}} for i in range(1, n + 1)], []
 
         def started(name):
             (root / "follower.jsonl").write_text("")
 
         starts = []
+
+        def collect(_name, command):
+            # collecting the logs takes long; the Scala node dies meanwhile when the test says so
+            if die_while_collecting and command.startswith("cat /work/node"):
+                scala.dead = True
+            return SimpleNamespace(stdout="")
 
         def start_scala(run):
             # the first start is the given process, a restart by the schedule is a live one
@@ -330,8 +336,7 @@ class ExecutionTests(unittest.TestCase):
                  patch.object(faults, "tip_at", side_effect=lambda *_: {"block": tick(), "hash": "h"}),
                  patch.object(faults, "log_counts", return_value=({"forgeStarted": 1, "extended": 1}, 0, 0)),
                  patch.object(faults, "read_log", side_effect=log),
-                 patch.object(faults, "pool_chain", return_value=["h"]),
-                 patch.object(faults, "in_ref", return_value=SimpleNamespace(stdout="")),
+                 patch.object(faults, "in_ref", side_effect=collect),
                  patch.object(faults, "docker", return_value=SimpleNamespace(returncode=0, stdout="", stderr="")),
                  patch.object(faults.time, "sleep"),
                  patch("sys.stdout"), patch("sys.stderr")]
@@ -384,6 +389,37 @@ class ExecutionTests(unittest.TestCase):
             faults.faults(args)
         self.assertEqual(raised.exception.code, 1)
         self.assertTrue(any("scala: no new block after healing" in f for f in self.summary(root)["failures"]))
+
+    def test_scala_dying_during_log_collection_fails_the_run(self):
+        args, root = self.execute(FakeScala(alive=10**6), die_while_collecting=True)
+        with self.assertRaises(SystemExit) as raised:
+            faults.faults(args)
+        self.assertEqual(raised.exception.code, 1)
+        self.assertTrue(any("Scala node exited with 137" in f for f in self.summary(root)["failures"]))
+
+    def test_the_scala_tip_pairs_height_and_hash_across_a_rollback(self):
+        ext = lambda n: {"event": "extended", "block": {"blockNo": n, "hash": f"h{n}"}}
+        events = [ext(n) for n in range(97, 102)] + [{"event": "rolledBack", "to": {"hash": "h99"}, "depth": 2}]
+        self.assertEqual(faults.scala_tip(events), (99, "h99"))
+        self.assertIsNone(faults.scala_tip([]))
+        self.assertEqual(faults.scala_tip(events + [ext(100)]), (100, "h100"))
+
+    def test_a_node_without_a_baseline_must_still_advance(self):
+        class Silent:
+            def __init__(self):
+                self.readings = [{"scala": (5, "h"), "p2": None, "p3": (5, "h")}] + [{"scala": (5, "h"), "p2": (5, "h"), "p3": (5, "h")}] * 50
+
+            def tips(self):
+                return self.readings.pop(0) if len(self.readings) > 1 else self.readings[0]
+
+            def scala_lost(self):
+                return None
+
+        run = Silent()
+        with patch.object(faults.time, "sleep"):
+            tips, base = faults.settle(run, 0.2, run.tips())
+        self.assertEqual(base["p2"], (5, "h"))
+        self.assertEqual(len(faultplan.progress_failures(base, tips)), 3)
 
     def test_an_aborted_run_does_not_report_passed(self):
         args, root = self.execute(FakeScala(alive=10**6),
