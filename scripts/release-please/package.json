@@ -10,7 +10,7 @@
     "node": "24.22.1"
   },
   "scripts": {
-    "test": "node --test coordinator.test.cjs github-pr.test.cjs"
+    "test": "node --test coordinator.test.cjs github-pr.test.cjs github-pr-writer.test.cjs"
   },
   "packageManager": "npm@11.19.1",
   "license": "Apache-2.0"

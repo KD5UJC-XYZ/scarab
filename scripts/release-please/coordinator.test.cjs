@@ -19,9 +19,12 @@ function fixture(t, baselineVersion = '0.1.0') {
   put('changes/README.md', 'Fragment instructions.\n'); put(MANIFEST, json({'.': baselineVersion}));
   function save(message) {git(repo, 'add', '.'); git(repo, 'commit', '-qm', message); return git(repo, 'rev-parse', 'HEAD');}
   const base = save('chore: fixture baseline');
+  // The reviewed authority file is part of the source, so it can name the baseline commit before it.
+  const authority = {schemaVersion: 1, kind: 'bootstrap', source: base, version: baselineVersion, reason: 'Unpublished fixture planning baseline'};
+  put('release-please-authority.json', json(authority));
   put('changes/2-feature.md', '### Added (feature)\n\n- Exact feature prose.\n');
   const source = save('feat: add feature');
-  const request = {repo, source, authority: {kind: 'bootstrap', source: base, version: baselineVersion, reason: 'Unpublished fixture planning baseline'},
+  const request = {repo, source, authority,
     repository: REPOSITORY, target: TARGET, channel: 'prod', ordinal: null, date: '2026-10-21', expectedHead: null,
     python: process.env.SCARAB_RELEASE_PYTHON || 'python3'};
   return {repo, put, save, base, request};

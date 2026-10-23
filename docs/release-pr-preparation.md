@@ -58,7 +58,10 @@ look published.
 Later authority uses `kind: "published-stable"`, exact published source/version, and a `verification`
 object containing `receiptPath` and `receiptSha256`. Retain the **original** independently produced
 verification JSON under `.release/baselines/` in a subsequent reviewed preparation-control commit;
-it cannot be retroactively added to the published source it verifies. The wrapper pins those exact
+it cannot be retroactively added to the published source it verifies. Files under `.release/baselines/`
+are therefore evidence that the authority names, never an authority themselves: the only accepted authority
+is `release-please-authority.json`, because the proposal verifier compares a receipt's authority with that
+file at the proposal source and a baseline file cannot exist at the source it verifies. The wrapper pins those exact
 bytes, then invokes the shared [published receipt verifier](../scripts/published_receipt.py) using
 the checksum-pinned GitHub CLI. That verifier requires completed public checks and authenticates
 an attestation online against the expected repository, workflow, tag ref and source/signer commits.
@@ -160,7 +163,24 @@ are excluded from their own hash map.
 Production notes are `.release/changelog/<version>.md`; prerelease notes are
 `.release/notes/<version>.md`. `scripts/release_proposal.py:load_proposal(repo, cut)` returns
 `receipt`, literal `notes` bytes and `fragmentPlan` only after regenerating the original plan,
-checking same-cut manifest/notes/files, source ancestry and exact final diff. An unrelated change
+checking same-cut manifest/notes/files, source ancestry and exact final diff. It also requires the
+receipt's `authority` to equal [release-please-authority.json](../release-please-authority.json) at
+the receipt's source (and the file to be unchanged at the cut), so a self-consistent receipt that
+names a different baseline is refused. The pull-request control step runs `release_proposal.py
+--branch --base` on every pull request: a head named `release-please--branches--*` must be in this
+repository and gets the full check; any other branch is refused if it adds or changes
+`.release/proposal.json` or `.release/proposals/*` unless the head is in this repository and the receipts verify
+by content. That covers `dev` to `main` promotion and propagation into release branches; the branch name decides
+nothing, as the design table leaves release targets open to any source. Each new `.release/proposals/<version>.json`
+must be byte-identical to the file at a non-merge commit that added it and whose own cut passes the full check
+(found by the file's addition, so merge commits, later work and several proposals in one promotion are fine).
+A versioned receipt the merge base already has may not change, and `.release/proposal.json` must equal the latest
+one. `load_proposal` also recomputes the receipt's commit list from Git, requires exactly the coordinator's
+fields, and checks `target`, `maintenance` and the version override for shape. The receipt's `target` (set from the
+promotion policy variable when it was generated) and the pull-request title and body hash cannot be recomputed from
+the tree and carry no file content. What a verifier cannot prove without branch protection (#161) is that a
+carried proposal really entered through a reviewed pull request: a same-repository writer can still commit a
+self-consistent proposal, so this check does not replace the protected-branch review. An unrelated change
 after preparation requires regeneration. A later trusted coordinator must independently approve
 the merged cut, authenticate baseline/publication authority, and bind the exact selected tag,
 artifact inputs and receipts. It cannot treat the proposal's parent source as the released cut.
@@ -170,7 +190,9 @@ artifact inputs and receipts. It cannot treat the proposal's parent source as th
 Tests use the actual pinned library to prove two consecutive stable proposals, a fragment arriving
 while one PR is open, idempotency, all four channels, pre/post 1.0 policy, pending/RC recovery,
 restoration/version reservation and explicit overrides. Real disposable bare Git repositories prove
-lease refusal on concurrent updates. Collector, original-byte pin and same-cut checks have negative
+lease refusal on concurrent updates. The PR writer runs against a stubbed GitHub API and a local bare
+remote (`github-pr-writer.test.cjs`): create, update, idempotent re-run, and refusal of reserved tags, an
+advanced target, a missing lease, edited PRs, forks, manual commits and API failures. Collector, original-byte pin and same-cut checks have negative
 controls. Published-baseline test seams exercise comparison mechanisms; they do not perform or
 assert real Scarab publication/signing.
 

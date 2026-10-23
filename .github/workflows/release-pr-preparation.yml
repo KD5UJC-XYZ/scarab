@@ -72,11 +72,18 @@ jobs:
           npm ci --prefix scripts/release-please --ignore-scripts
           python3 -m venv "$RUNNER_TEMP/release-python"
           "$RUNNER_TEMP/release-python/bin/pip" install --require-hashes -r scripts/release/requirements.txt
-      - name: Verify generated proposal diff and same-cut receipt
-        if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--branches--') && github.event.pull_request.head.repo.full_name == github.repository
+      - name: Verify proposal branch rule, authority file and same-cut receipt
+        if: github.event_name == 'pull_request'
         env:
           PROPOSAL_HEAD: ${{ github.event.pull_request.head.sha }}
-        run: '"$RUNNER_TEMP/release-python/bin/python" scripts/release_proposal.py --repo "$PWD" --cut "$PROPOSAL_HEAD"'
+          PROPOSAL_BASE: ${{ github.event.pull_request.base.sha }}
+          PROPOSAL_BRANCH: ${{ github.head_ref }}
+          SAME_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          args=()
+          if [ "$SAME_REPOSITORY" = true ]; then args+=(--same-repo); fi
+          "$RUNNER_TEMP/release-python/bin/python" scripts/release_proposal.py --repo "$PWD" --cut "$PROPOSAL_HEAD" \
+            --branch="$PROPOSAL_BRANCH" --base "$PROPOSAL_BASE" "${args[@]}"
       - name: Actual release-please lifecycle and Git lease controls
         env:
           SCARAB_RELEASE_PYTHON: ${{ runner.temp }}/release-python/bin/python

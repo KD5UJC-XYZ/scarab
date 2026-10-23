@@ -20,9 +20,12 @@ test('real Git lease rejects a concurrently changed PR head and refuses manual e
   fs.writeFileSync(path.join(repo, '.release-please-manifest.json'), json({'.': '0.1.0'}));
   fs.writeFileSync(path.join(repo, 'release-please-config.json'), fs.readFileSync(path.join(__dirname, '../../release-please-config.json')));
   git(repo, 'add', '.');git(repo, 'commit', '-qm', 'chore: baseline');const base = git(repo, 'rev-parse', 'HEAD');
+  // The reviewed authority file lives in the source, so it names the baseline commit before it.
+  const authority = {schemaVersion: 1, kind: 'bootstrap', source: base, version: '0.1.0', reason: 'Unpublished test fixture'};
+  fs.writeFileSync(path.join(repo, 'release-please-authority.json'), json(authority));
   fs.writeFileSync(path.join(repo, 'changes/1-fix.md'), '### Fixed\n\n- A fix.\n');git(repo, 'add', '.');git(repo, 'commit', '-qm', 'fix: repaired');
   const source = git(repo, 'rev-parse', 'HEAD');
-  const request = {repo, source, authority: {kind: 'bootstrap', source: base, version: '0.1.0', reason: 'Unpublished test fixture'},
+  const request = {repo, source, authority,
     repository: REPOSITORY, target: TARGET, channel: 'prod', ordinal: null, date: '2026-10-21', expectedHead: null,
     python: process.env.SCARAB_RELEASE_PYTHON || 'python3'};
   const coordinator = await prepare(request, new HistoryScm(request));
