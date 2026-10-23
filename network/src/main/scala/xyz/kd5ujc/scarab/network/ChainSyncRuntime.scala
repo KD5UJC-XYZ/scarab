@@ -71,6 +71,10 @@ object ChainSyncRuntime:
         Raise[F, NetworkError]
     ): F[Unit]
 
+  /** @param abort
+    *   as for `ChainSyncClient.resource`: prompt termination signal, completes before the failure
+    *   is published, never waits for cleanup.
+    */
   def resource[F[_]: Async, Q, T, P](
       channel: MuxChannel[F],
       point: ChainSyncEngine.PointCodec[Q],

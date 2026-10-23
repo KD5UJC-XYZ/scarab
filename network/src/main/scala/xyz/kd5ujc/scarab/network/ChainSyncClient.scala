@@ -51,6 +51,11 @@ object ChainSyncClient:
         Raise[F, NetworkError]
     ): F[Unit]
 
+  /** @param abort
+    *   runs once, for the first failure, before that failure reaches a caller obtaining it from the
+    *   client. It must signal termination promptly and must not wait for cleanup: its completion
+    *   means the multiplexer is marked failed, not that the socket is closed.
+    */
   def resource[F[_]: Async, P](
       channel: MuxChannel[F],
       codec: ChainSync.PayloadCodec[P],

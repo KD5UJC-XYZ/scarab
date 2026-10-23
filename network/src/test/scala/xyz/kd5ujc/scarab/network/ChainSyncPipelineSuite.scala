@@ -408,6 +408,87 @@ class ChainSyncPipelineSuite extends FailsOnUncaught:
     }.map(result => assertEquals(result, Right(())))
   }
 
+  test("a receiver failure is not visible to callers until its abort callback has completed") {
+    typed {
+      script.flatMap { s =>
+        for
+          entered <- Deferred[IO, Unit]
+          gate <- Deferred[IO, Unit]
+          abort = (e: NetworkError) => entered.complete(()) *> gate.get *> s.aborts.update(_ :+ e)
+          _ <- ChainSyncClient
+            .resource(s.channel, ChainSyncFixtures.rawItem, abort, settings)
+            .use { client =>
+              for
+                _ <- s.input.offer(Bytes(Vector(0xff.toByte)))
+                _ <- client.submit
+                collecting <- typed(client.collect(IO.unit)).start
+                _ <- (for
+                  _ <- entered.get
+                  probe <- typed(client.tryCollect(IO.unit))
+                  idleDuring <- client.idle
+                  _ <- gate.complete(())
+                  first <- collecting.joinWithNever
+                  aborted <- s.aborts.get
+                yield first match
+                  case Left(error @ NetworkError.Decode(Protocols.ChainSync, _)) =>
+                    assertEquals(probe, Right(None))
+                    assert(!idleDuring)
+                    assertEquals(aborted, Vector(error))
+                  case other => fail(s"expected typed decoder failure, got $other")
+                ).guarantee(gate.complete(()).void *> collecting.cancel)
+              yield ()
+            }
+        yield ()
+      }
+    }.map(result => assertEquals(result, Right(())))
+  }
+
+  test("a sender that loses the failure claim raises its own error and the first abort stands") {
+    typed {
+      script.flatMap { s =>
+        for
+          entered <- Deferred[IO, Unit]
+          gate <- Deferred[IO, Unit]
+          failSend <- Ref.of[IO, Boolean](false)
+          senderError = NetworkError.BearerClosed(NetworkError.Closure.Aborted)
+          abort = (e: NetworkError) => entered.complete(()) *> gate.get *> s.aborts.update(_ :+ e)
+          channel = new MuxChannel[IO]:
+            val protocol = s.channel.protocol
+            def send(bytes: Bytes)(using Raise[IO, NetworkError]): IO[Unit] =
+              failSend.get.flatMap(if _ then senderError.raise[IO, Unit] else s.channel.send(bytes))
+            def flush: IO[Unit] = s.channel.flush
+            def recv[A](maxBytes: Int)(decode: Bytes => DecodeResult[A])(using
+                Raise[IO, NetworkError]
+            ): IO[A] = s.channel.recv(maxBytes)(decode)
+          _ <- ChainSyncClient
+            .resource(channel, ChainSyncFixtures.rawItem, abort, settings)
+            .use { client =>
+              for
+                _ <- s.input.offer(Bytes(Vector(0xff.toByte)))
+                _ <- client.submit
+                collecting <- typed(client.collect(IO.unit)).start
+                _ <- (for
+                  _ <- entered.get
+                  _ <- failSend.set(true)
+                  lost <- typed(client.submit)
+                  _ <- gate.complete(())
+                  first <- collecting.joinWithNever
+                  later <- typed(client.submit)
+                  aborted <- s.aborts.get
+                yield first match
+                  case Left(error @ NetworkError.Decode(Protocols.ChainSync, _)) =>
+                    assertEquals(lost, Left(senderError))
+                    assertEquals(later, Left(error))
+                    assertEquals(aborted, Vector(error))
+                  case other => fail(s"expected typed decoder failure, got $other")
+                ).guarantee(gate.complete(()).void *> collecting.cancel)
+              yield ()
+            }
+        yield ()
+      }
+    }.map(result => assertEquals(result, Right(())))
+  }
+
   test("a later request's AwaitReply runs while validation waits with an older rollback queued") {
     typed {
       script.flatMap { s =>

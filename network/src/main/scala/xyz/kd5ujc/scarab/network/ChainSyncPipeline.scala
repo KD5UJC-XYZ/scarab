@@ -13,6 +13,10 @@ import xyz.kd5ujc.scarab.protocol.ChainSyncEngine.Message
 
 /** One owned receiver and ordered complete replies. Observed AwaitReply callbacks execute
   * immediately in the receiver's error scope, independent of sender validation.
+  *
+  * `abort` runs once, for the first failure, before that failure is published to callers. It must
+  * signal termination promptly and must not wait for cleanup: its completion means the multiplexer
+  * is marked failed, not that the socket is closed.
   */
 private[network] object ChainSyncPipeline:
   def resource[F[_]: Async, Q, T, P](
@@ -48,11 +52,23 @@ private[network] object ChainSyncPipeline:
       awaiting <- Resource.eval(Ref.of[F, Boolean](false))
       observer <- Resource.eval(Ref.of[F, Option[ChainSyncClient.Observer[F]]](None))
       terminal <- Resource.eval(Ref.of[F, Boolean](false))
+      claimed <- Resource.eval(Ref.of[F, Boolean](false))
       failed <- Resource.eval(Deferred[F, NetworkError])
       sending <- Resource.eval(Mutex[F])
       pipeline <-
+        // The first failure is claimed, the bearer is aborted, and only then is the failure
+        // published through `failed`: a failure obtained through `failed` (a collector, a later
+        // call, `idle`) has its abort completed. A sender that loses the claim raises its own
+        // error at once, while the winner's abort may still be running. Publication is guaranteed
+        // even if the abort callback is defective.
         def terminate(error: NetworkError): F[Unit] =
-          F.uncancelable(_ => failed.complete(error).flatMap(first => abort(error).whenA(first)))
+          F.uncancelable(_ =>
+            claimed
+              .getAndSet(true)
+              .flatMap(already =>
+                abort(error).guarantee(failed.complete(error).void).unlessA(already)
+              )
+          )
         def wire[A](body: Raise[F, NetworkError] ?=> F[A])(using Raise[F, NetworkError]): F[A] =
           Fibers.scoped[F, NetworkError, A](NetworkError.Defect(_))(body).flatMap {
             case Left(error)  => terminate(error) *> error.raise[F, A]
