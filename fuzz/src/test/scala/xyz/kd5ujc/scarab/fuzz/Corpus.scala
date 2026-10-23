@@ -192,7 +192,6 @@ object Corpus extends munit.Assertions:
       "module base chain upstream/ouroboros-consensus/ouroboros-consensus-cardano/cddl/base.cddl overrides/base-word16.cddl",
       "module chainsync-header hfc upstream/ouroboros-consensus/ouroboros-consensus-cardano/cddl/node-to-node/chainsync/header.cddl",
       "module header leiosheader upstream/ouroboros-consensus/ouroboros-consensus-cardano/cddl/node-to-node/chainsync/header.cddl",
-      "module tx leiostx overrides/leios-fetch-tx.cddl",
       "module leios-fetch leiosfetch upstream/cardano-blueprint/src/network/node-to-node/leios-fetch/messages.cddl",
       "module leios-notify leiosnotify upstream/ouroboros-consensus/ouroboros-consensus-cardano/cddl/node-to-node/leiosnotify/leiosNotify.cddl",
       "module byron byron upstream/cardano-ledger/eras/byron/ledger/impl/cddl-spec/byron.cddl"
