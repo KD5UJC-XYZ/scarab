@@ -24,7 +24,16 @@ CASES = []
 def case(name, era, kind, raw, expect=None, rule=None, size=None):
     """`size` is the number of inputs (body) or vkey witnesses (witness set) Scarab must keep."""
     CASES.append(
-        {"name": name, "era": era, "kind": kind, "rule": rule, "expect": expect, "size": size, "bytes": raw.hex()}
+        {
+            "id": c.case_id(name),
+            "name": name,
+            "era": era,
+            "kind": kind,
+            "rule": rule,
+            "expect": expect,
+            "size": size,
+            "bytes": raw.hex(),
+        }
     )
 
 
@@ -105,6 +114,8 @@ def main():
     args = parser.parse_args()
     names = [x["name"] for x in CASES]
     assert len(names) == len(set(names)), "case names must be unique"
+    ids = [x["id"] for x in CASES]
+    assert len(ids) == len(set(ids)), "case ids must be unique"
     with open(args.out, "w") as f:
         json.dump(CASES, f, indent=1)
         f.write("\n")
