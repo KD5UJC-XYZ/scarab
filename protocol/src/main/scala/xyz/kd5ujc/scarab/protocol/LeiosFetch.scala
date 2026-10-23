@@ -121,6 +121,8 @@ object LeiosFetch:
             )
           )
         )
+    case Message.LegacyBlockTxs(_, _, txs) if txs.size > MaxTxsPerEb =>
+      Left(LeiosWireError.Unencodable)
     case Message.LegacyBlockTxs(p, b, txs) =>
       // the transactions go out as the bytes they came with
       for

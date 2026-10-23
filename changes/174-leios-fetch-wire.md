@@ -8,3 +8,4 @@
   `LeiosFetch.Message.LegacyBlockTxs` until a capture or a testnet release settles which form a relay speaks (#174).
 - LeiosFetch bitmaps follow the reference decoder: at most 268 entries, no zero bitmap, windows below 268 and strictly
   ascending, each a typed error; a request writes the indefinite-length map the reference writes.
+- The `LegacyBlockTxs` encoder refuses more than `maxTxsPerEb` transactions (`Unencodable`), as the current form does, so it cannot emit a message its own decoder rejects (#174).

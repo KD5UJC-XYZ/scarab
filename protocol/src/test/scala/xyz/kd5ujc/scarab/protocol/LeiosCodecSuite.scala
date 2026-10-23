@@ -295,6 +295,24 @@ class LeiosCodecSuite extends ScalaCheckSuite:
     )
   }
 
+  test(
+    "LeiosFetch: both forms of MsgLeiosBlockTxs encode at maxTxsPerEb and read back, and refuse one more"
+  ) {
+    import LeiosFetch.*
+    val bm = TxBitmaps(Vector.empty)
+    val forms: Vector[Vector[Bytes] => Message] =
+      Vector(Message.BlockTxs(_), Message.LegacyBlockTxs(p0, bm, _))
+    forms.foreach { form =>
+      val atBound = form(Vector.fill(MaxTxsPerEb)(bs(0xa0)))
+      val bytes = ok(encode(atBound))
+      assertEquals(decodePrefix(State.BlockTxs, bytes), Right((atBound, bytes.size)))
+      assertEquals(
+        encode(form(Vector.fill(MaxTxsPerEb + 1)(bs(0xa0)))),
+        Left(LeiosWireError.Unencodable)
+      )
+    }
+  }
+
   test("LeiosFetch: an endorser block names at least one and at most maxTxsPerEb transactions") {
     import LeiosFetch.*
     val entry = bs(0x58, 0x20) ++ Bytes.wrap(Array.fill[Byte](32)(1)) ++ bs(0x01)
