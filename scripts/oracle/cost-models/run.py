@@ -81,7 +81,11 @@ def transaction(cost_models):
 
 
 def corpus():
-    """Name, expected category of the typed Scarab refusal, its detail and the cost-model map of field 18."""
+    """Name, expected category of the typed Scarab refusal, its detail and the cost-model map of field 18.
+
+    The detail of an accepted case names `repeatedLanguage` when a language occurs twice with different
+    values (the last entry is the one kept); the detail of a refusal carries the fields of its typed error.
+    """
     v1, v2 = 166, 175
     ok = "accepted"
 
@@ -97,9 +101,9 @@ def corpus():
         ("v2-int64-min-first", ok, {}, models((lang(1), model(v2, INT64_MIN)))),
         ("v1-indefinite-array", ok, {}, models((lang(0), b"\x9f" + b"".join(values(v1)) + b"\xff"))),
         ("map-indefinite", ok, {}, indefinite_models((lang(0), model(v1)))),
-        ("v1-duplicate-distinct-values", ok, {}, models((lang(0), model(v1, start=1)), (lang(0), model(v1, start=2)))),
-        ("v2-duplicate-distinct-values", ok, {}, models((lang(1), model(v2, start=1)), (lang(1), model(v2, start=2)))),
-        ("v1-v2-v1-interleaved", ok, {},
+        ("v1-duplicate-distinct-values", ok, {"repeatedLanguage": 0}, models((lang(0), model(v1, start=1)), (lang(0), model(v1, start=2)))),
+        ("v2-duplicate-distinct-values", ok, {"repeatedLanguage": 1}, models((lang(1), model(v2, start=1)), (lang(1), model(v2, start=2)))),
+        ("v1-v2-v1-interleaved", ok, {"repeatedLanguage": 0},
          models((lang(0), model(v1, start=1)), (lang(1), model(v2, start=1000)), (lang(0), model(v1, start=2)))),
     ]
     short = models((lang(0), model(v1)), (lang(0), model(165)))
