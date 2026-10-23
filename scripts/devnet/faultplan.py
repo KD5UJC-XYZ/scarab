@@ -175,11 +175,32 @@ def validate(plan):
                 return f"unknown action {a['op']}"
         if last > plan["duration"]:
             return "an action lies after the end of the run"
+        problem = crash_pairing(plan["actions"])
+        if problem:
+            return problem
         for w in plan["quiet"]:
             if not 0 <= w["from"] < w["to"] <= plan["duration"]:
                 return f"bad quiet window {w}"
     except (KeyError, TypeError) as e:
         return f"malformed schedule: {e!r}"
+    return None
+
+
+def crash_pairing(actions):
+    """Why the kills and starts do not pair up, else None: a node is killed only while running, started only
+    while down, and every node runs again at the end (a node left dead would pass on its stale last tip)."""
+    down = set()
+    for a in actions:
+        if a["op"] == "kill":
+            if a["node"] in down:
+                return f"{a['node']} is killed at {a['at']} s while already down"
+            down.add(a["node"])
+        elif a["op"] == "start":
+            if a["node"] not in down:
+                return f"{a['node']} is started at {a['at']} s without a crash before it"
+            down.discard(a["node"])
+    if down:
+        return f"{', '.join(sorted(down))} not started again by the end of the schedule"
     return None
 
 
@@ -212,6 +233,13 @@ def convergence_failures(tips):
     if len({t[1] for t in tips.values()}) != 1:
         return [f"tips differ after healing and settling: {tips}"]
     return []
+
+
+def progress_failures(before, tips):
+    """Every node must have a block newer than the one it had when the faults were healed: matching tips alone
+    do not show a node that still runs (a wedged node can keep an old tip). Both maps are node -> (block, hash)."""
+    return [f"{n}: no new block after healing (block {before[n][0]}, now {tips[n][0]})"
+            for n in sorted(tips) if tips[n] is not None and before.get(n) is not None and tips[n][0] <= before[n][0]]
 
 
 def rollback_failures(events, k):

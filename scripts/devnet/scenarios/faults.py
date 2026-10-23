@@ -90,8 +90,13 @@ class Run:
         elif op == "heal":
             self.shaper.heal([action["link"]])
         elif op == "kill" and action["node"] == "scala":
+            gone = self.scala.poll()
+            if gone is not None:
+                self.problems.append(f"the Scala node had exited with {gone} before its scheduled crash at {round(t, 1)} s")
+            done = docker("kill", f"{self.name}-scala", check=False)
+            if gone is None and done.returncode != 0:
+                self.problems.append(f"the crash of the Scala node at {round(t, 1)} s was refused: {done.stderr.strip()[:200]}")
             self.crashed.add("scala")
-            docker("kill", f"{self.name}-scala", check=False)
             self.scala.wait()
         elif op == "kill":
             self.crashed.add(action["node"])
@@ -148,15 +153,17 @@ def load_plan(args, shelley):
     return faultplan.generate(args.seed, args.duration, *inputs)
 
 
-def settle(run, seconds):
-    """Poll until every node reports the same tip hash, at most `seconds`; returns the last tips. The Scala node
+def settle(run, seconds, before=None):
+    """Poll until every node reports the same tip hash and, given the tips `before` (when the faults were
+    healed), a block newer than that, at most `seconds`; returns the last tips. The Scala node
     must stay alive: its tip is read from its log, which a dead process leaves behind, so an exit ends the wait
     (the caller reports it)."""
     deadline = time.monotonic() + seconds
     tips = run.tips()
     while time.monotonic() < deadline:
         tips = run.tips()
-        if run.scala_lost() is not None or not faultplan.convergence_failures(tips):
+        if run.scala_lost() is not None or not (faultplan.convergence_failures(tips)
+                                                or (before and faultplan.progress_failures(before, tips))):
             break
         time.sleep(SETTLE_POLL)
     return tips
@@ -246,7 +253,8 @@ def faults(args):
                 break
             time.sleep(1)
         run.shaper.heal()
-        final = settle(run, args.settle)
+        healed = run.tips()
+        final = settle(run, args.settle, healed)
         lost = run.scala_lost()
         if lost is not None and not any(f.startswith("the Scala node exited") for f in failures):
             failures.append(f"the Scala node exited with {lost} while the cluster settled or at the end of the run")
@@ -258,6 +266,8 @@ def faults(args):
         failures += run.problems
         failures += faultplan.growth_failures(samples, plan["quiet"])
         failures += faultplan.convergence_failures(final)
+        failures += faultplan.progress_failures(healed, final)
+        failures += [f"{n} is still down at the end of the run" for n in sorted(run.crashed)]
         failures += faultplan.rollback_failures(events, k)
         failures += faultplan.scala_failures(events, other, text)
         failures += faultplan.haskell_failures(logs, died)

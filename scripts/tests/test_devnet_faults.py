@@ -182,6 +182,28 @@ class VerdictTests(unittest.TestCase):
         self.assertEqual(len(faultplan.rejoin_failures(restarts, [{"event": "extended"}] * 2 + [{"event": "reconnecting"}])), 1)
 
 
+class CrashPairingTests(unittest.TestCase):
+    def plan(self, *actions):
+        plan = faultplan.generate(3, 600, *PARAMS)
+        return {**plan, "actions": [{"at": at, "op": op, "node": node} for at, op, node in actions]}
+
+    def test_a_schedule_ending_in_a_kill_is_refused(self):
+        problem = faultplan.validate(self.plan((10, "kill", "scala")))
+        self.assertIn("not started again", problem)
+
+    def test_a_start_without_a_kill_and_a_double_kill_are_refused(self):
+        self.assertIn("without a crash", faultplan.validate(self.plan((10, "start", "p2"))))
+        self.assertIn("already down", faultplan.validate(self.plan((10, "kill", "p2"), (11, "kill", "p2"))))
+
+    def test_a_paired_schedule_is_accepted(self):
+        self.assertIsNone(faultplan.validate(self.plan((10, "kill", "p2"), (20, "start", "p2"))))
+
+    def test_progress_needs_a_newer_block_on_every_node(self):
+        before = {"scala": (5, "a"), "p2": (5, "a")}
+        self.assertEqual(faultplan.progress_failures(before, {"scala": (6, "b"), "p2": (6, "b")}), [])
+        self.assertEqual(len(faultplan.progress_failures(before, {"scala": (5, "a"), "p2": (6, "b")})), 1)
+
+
 class ShapingTests(unittest.TestCase):
     def test_every_link_has_a_band_and_ports(self):
         self.assertEqual(sorted(netfaults.band(l) for l in faultplan.LINKS), [2, 3, 4])
@@ -264,21 +286,33 @@ class FakeScala:
 class ExecutionTests(unittest.TestCase):
     """`faults()` itself, with the cluster, Docker and the proxies stubbed out."""
 
-    def execute(self, scala, start_reference=None):
+    def execute(self, scala, start_reference=None, actions=(), wedged=False, settle=5):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         root = pathlib.Path(tmp.name) / "run"
-        plan = {"seed": 1, "duration": 0, "episodes": [], "actions": [], "quiet": [], "inputs": {"k": 5}}
-        args = SimpleNamespace(name="n", schedule=None, seed=1, duration=0, settle=5, keep=True)
+        plan = {"seed": 1, "duration": 0, "episodes": [], "actions": list(actions), "quiet": [], "inputs": {"k": 5}}
+        args = SimpleNamespace(name="n", schedule=None, seed=1, duration=0, settle=settle, keep=True)
+        clock = [0]
+
+        def tick():
+            clock[0] += 1
+            return clock[0]
+
+        def log(*_):
+            # a growing log: the Scala node extends its chain at every reading unless it is wedged
+            n = 3 if wedged else tick()
+            return [{"event": "extended", "block": {"blockNo": n}}] * (3 if wedged else n), []
 
         def started(name):
             (root / "follower.jsonl").write_text("")
 
-        def start_scala(run):
-            run.scala = scala
+        starts = []
 
-        events = [{"event": "extended", "block": {"blockNo": 3}}]
-        tip = {"block": 3, "hash": "h"}
+        def start_scala(run):
+            # the first start is the given process, a restart by the schedule is a live one
+            starts.append(1)
+            run.scala = scala if len(starts) == 1 else FakeScala(alive=10**6)
+
         stubs = [patch.object(faults, "data_root", return_value=root),
                  patch.object(faults, "start_reference", side_effect=start_reference or started),
                  patch.object(faults, "pool_environment", return_value=({2: 4002, 3: 4003}, {})),
@@ -293,9 +327,9 @@ class ExecutionTests(unittest.TestCase):
                  patch.object(faults, "scala_container", return_value=[]),
                  patch.object(faults.Run, "start_scala", start_scala),
                  patch.object(faults.Run, "haskell_alive", return_value=True),
-                 patch.object(faults, "tip_at", return_value=tip),
+                 patch.object(faults, "tip_at", side_effect=lambda *_: {"block": tick(), "hash": "h"}),
                  patch.object(faults, "log_counts", return_value=({"forgeStarted": 1, "extended": 1}, 0, 0)),
-                 patch.object(faults, "read_log", return_value=(events, [])),
+                 patch.object(faults, "read_log", side_effect=log),
                  patch.object(faults, "pool_chain", return_value=["h"]),
                  patch.object(faults, "in_ref", return_value=SimpleNamespace(stdout="")),
                  patch.object(faults, "docker", return_value=SimpleNamespace(returncode=0, stdout="", stderr="")),
@@ -326,6 +360,30 @@ class ExecutionTests(unittest.TestCase):
         summary = self.summary(root)
         self.assertFalse(summary["passed"])
         self.assertTrue(any("Scala node exited with 137" in f for f in summary["failures"]), summary["failures"])
+
+    def test_scala_dead_before_its_scheduled_crash_fails_the_run(self):
+        # it died on its own just before the kill at 0 s; the restart then hides the death unless the kill checks
+        args, root = self.execute(FakeScala(alive=0),
+                                  actions=[{"at": 0, "op": "kill", "node": "scala"}, {"at": 0, "op": "start", "node": "scala"}])
+        with self.assertRaises(SystemExit) as raised:
+            faults.faults(args)
+        self.assertEqual(raised.exception.code, 1)
+        self.assertTrue(any("before its scheduled crash" in f for f in self.summary(root)["failures"]))
+
+    def test_a_refused_kill_is_a_problem(self):
+        run = faults.Run(SimpleNamespace(name="n"), pathlib.Path("/nonexistent"))
+        run.scala = FakeScala(alive=10**6)
+        with patch.object(faults, "docker", return_value=SimpleNamespace(returncode=1, stderr="no such container")):
+            run.apply({"at": 5, "op": "kill", "node": "scala"}, 5.0)
+        self.assertEqual(len(run.problems), 1)
+        self.assertIn("refused", run.problems[0])
+
+    def test_a_wedged_scala_node_with_a_matching_tip_fails_the_run(self):
+        args, root = self.execute(FakeScala(alive=10**6), wedged=True, settle=0.2)
+        with self.assertRaises(SystemExit) as raised:
+            faults.faults(args)
+        self.assertEqual(raised.exception.code, 1)
+        self.assertTrue(any("scala: no new block after healing" in f for f in self.summary(root)["failures"]))
 
     def test_an_aborted_run_does_not_report_passed(self):
         args, root = self.execute(FakeScala(alive=10**6),
