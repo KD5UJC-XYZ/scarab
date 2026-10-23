@@ -96,7 +96,7 @@ jobs:
       - name: Every devnet subcommand parses its flags
         run: |
           python3 scripts/devnet.py --help > /dev/null
-          for command in up up-eras capture-eras e2e tip follow load govload compare soak relay pool kes-rotate down; do
+          for command in up up-eras capture-eras e2e tip follow load govload compare soak relay pool kes-rotate faults down; do
             python3 scripts/devnet.py "$command" --help > /dev/null
           done
           python3 scripts/prepare_reference_image.py --help > /dev/null

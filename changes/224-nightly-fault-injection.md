@@ -1,0 +1,7 @@
+### Added (devnet fault injection, #224)
+
+- Add `devnet.py faults`, a seeded, randomized network-fault run of the Docker devnet: the Scala node as a pool next to two Haskell reference pools, with `tc netem` latency and loss on proxied links, partitions and heals, and crashes and restarts of the Scala node and the Haskell pools. The schedule is written before the run and replays by seed; convergence, chain growth, rollback depth, restarts and fatal outcomes are checked. A new `faults.yml` workflow runs it nightly with a fresh seed, or a given seed by hand, and uploads the schedule and a summary. The decision and its limits are in the adversarial-schedules design.
+
+- The fault run now checks that the Scala node is still alive while the cluster settles and before it reports success, and its summary says `passed` only after every check has finished: an aborted run (a timeout, a failed copy) records the abort in `failures` with `completed: false`.
+- The fault run also fails when Scala had already exited before a scheduled crash (or the kill was refused), when a schedule file leaves a node killed or restarts one that is running, and when a node shows no new block after the faults are healed, so a stale or wedged node with a matching tip no longer passes.
+- The fault run reads the Scala node's tip height and hash from one replay of its log (rollbacks included), takes the first answer of a node that was silent at healing as its baseline (it must then advance), and checks every process again after the log collection, right before the teardown.

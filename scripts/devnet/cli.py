@@ -35,6 +35,10 @@
                                    Haskell ledger state db-analyser stores in the reference container
     devnet.py restart              up + follow --db, stop it with SIGTERM (the JVM must exit within 30 s, issue 89),
                                    start it again (it must restore the snapshot, and the files are V5)
+    devnet.py faults --seed N      the Scala node as pool 1 next to two Haskell pools, under a seeded schedule of network faults
+                                   (tc netem latency and loss, partitions and heals, node crashes and restarts);
+                                   convergence, growth, no fatal outcome and rejoin are checked, and the schedule
+                                   is written to the run directory (issue 224; the nightly randomized run)
     devnet.py down                 remove containers and the run directory
 
 Run data lives in ${SCARAB_DATA_DIR:-/tmp/scarab}/<name>. The Scala node shares the
@@ -49,6 +53,7 @@ from .follower import follow
 from .load import govload, load
 from .oracle_cmd import oracle
 from .refused_fixture import DEFAULT_OUT, refused_fixture
+from .scenarios.faults import faults
 from .scenarios.e2e import CONWAY_EPOCHS, capture_eras, e2e
 from .scenarios.governor import governor
 from .scenarios.ntc import ntc
@@ -257,6 +262,17 @@ def main():
     kr.add_argument("--rotate-every", type=float, default=10, help="seconds between runs of the driver")
     kr.add_argument("--min-rotations", type=int, default=2, help="reloads the run must show")
     kr.set_defaults(run=kes_rotate_scenario, seconds=300)
+    fl = sub.add_parser("faults", parents=[scala_options],
+                        help="seeded network-fault run: tc netem latency and loss, partitions, crashes; checks convergence and growth (issue 224)")
+    fl.add_argument("--seed", type=int, default=1, help="seed of the fault schedule; the same seed over the same genesis gives the same schedule")
+    fl.add_argument("--duration", type=int, default=600, help="seconds of the schedule, from the moment the chain is running (at least 150)")
+    fl.add_argument("--settle", type=int, default=90, help="seconds after the last heal in which all tips must become equal")
+    fl.add_argument("--schedule", help="run this schedule file (the fault-schedule.json of an earlier run) instead of drawing one from the seed")
+    fl.add_argument("--epoch-length", type=int, default=500, help="slots per epoch")
+    fl.add_argument("--start-delay", type=int, default=15, help="seconds from now to the system start")
+    fl.add_argument("--byron-start-offset", type=int, default=0, help="seconds the Byron genesis' startTime is set off the Shelley systemStart")
+    fl.add_argument("--keep", action="store_true", help="leave the reference container running")
+    fl.set_defaults(run=faults)
     rf = sub.add_parser("refused-fixture", help="write fixtures/devnet/refused-txs.jsonl from the run directory of a "
                                                 "`soak --governance-extended`")
     rf.add_argument("--out", default=str(DEFAULT_OUT), help="fixture file")
