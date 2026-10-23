@@ -106,11 +106,11 @@ private[node] final class BlockSelection[F[_]: Async] private (
     F.foreverM(pool.admissions.next.flatMap {
       case BlockAdmissions.Work.Add(admission) =>
         val header = admission.delivered.header
-        pool.admissions.processing("add")(
+        pool.admissions.processing("add", "waitingForApplication")(
           work
             .processing(header.hash)
             .surround(application.locked {
-              application.admits(header).flatMap {
+              pool.admissions.stage("applying") *> application.admits(header).flatMap {
                 case false => F.unit
                 case true =>
                   pool.processedSnapshot.flatMap { processed =>
@@ -124,7 +124,9 @@ private[node] final class BlockSelection[F[_]: Async] private (
             }) *> pool.completeAdmission(header.hash)
         )
       case BlockAdmissions.Work.Reprocess(done) =>
-        pool.admissions.processing("reprocess")(select(None).guarantee(done.complete(()).void))
+        pool.admissions.processing("reprocess", "selecting")(
+          select(None).guarantee(done.complete(()).void)
+        )
     })
 
   private def reselect: F[Unit] = application.governor.flatMap(_.fold(F.never[Unit]) { governor =>

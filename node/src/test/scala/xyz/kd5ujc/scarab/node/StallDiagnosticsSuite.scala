@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.node
 
 import java.nio.file.Files
 import cats.effect.{Deferred, IO, Ref}
+import cats.effect.std.Supervisor
 import scala.jdk.CollectionConverters.*
 import cats.effect.testkit.TestControl
 import io.circe.Json
@@ -15,6 +16,8 @@ import xyz.kd5ujc.scarab.node.log.{NodeEvent, Traced}
   * what they held.
   */
 class StallDiagnosticsSuite extends CatsEffectSuite:
+  private val stalledLine = NodeEvent.Stalled(10.minutes, BigInt(100), BigInt(5000))
+
   private val pipeline = Peer.PipelineState(
     peer = "127.0.0.1:3001",
     permitsFree = 1,
@@ -54,7 +57,7 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
                 None,
                 {
                   case StallWatchdog.Change.Began(_, _, _) =>
-                    reporter.onStall
+                    reporter.onStall(stalledLine)
                   case _ => IO.unit
                 }
               )
@@ -65,8 +68,8 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
               events <- logged.get
             yield
               assertEquals(early, Vector.empty)
-              assertEquals(events.size, 1)
-              val f = fields(events.head)
+              assertEquals(events.map(_.getClass.getSimpleName), Vector("Stalled", "StallState"))
+              val f = fields(events.last)
               val sessions = f("sessions").asArray.get
               assertEquals(sessions.size, 1)
               val s = sessions.head.hcursor
@@ -96,10 +99,14 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
                   "capacity" -> Json.fromInt(10),
                   "held" -> Json.fromInt(0),
                   "queued" -> Json.fromInt(0),
-                  "worker" -> Json.Null
+                  "worker" -> Json.Null,
+                  "publishWaiting" -> Json.fromInt(0),
+                  "oldestPublishWaitMs" -> Json.Null
                 )
               )
               assertEquals(f("fiberDump"), Json.Null)
+              assertEquals(f("decisionLock"), Json.Null)
+              assertEquals(s.downField("reserving").focus, Some(Json.Null))
           )
         }
       }
@@ -212,7 +219,9 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
         reporter <- StallDiagnostics.Reporter.create[IO](None, wedged, _.start.void)
         _ <- reporter.install(sources)
         // onStall returns although the log never does
-        _ <- reporter.onStall.timeoutTo(2.seconds, IO.raiseError(new AssertionError("blocked")))
+        _ <- reporter
+          .onStall(stalledLine)
+          .timeoutTo(2.seconds, IO.raiseError(new AssertionError("blocked")))
         count <- (IO.sleep(10.millis) *> started.get).iterateUntil(_ >= 1).timeout(10.seconds)
         _ <- gate.complete(())
       yield assertEquals(count, 1)
@@ -243,7 +252,7 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
               100.millis,
               Some(200.millis),
               {
-                case StallWatchdog.Change.Began(_, _, _) => reporter.onStall
+                case StallWatchdog.Change.Began(_, _, _) => reporter.onStall(stalledLine)
                 case StallWatchdog.Change.ExitDue(_, _, _) =>
                   logged.update(_ :+ NodeEvent.StallExit(200.millis, BigInt(0), BigInt(100)))
                 case _ => IO.unit
@@ -272,5 +281,144 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
           Files.list(dir).forEach(f => Files.deleteIfExists(f))
           ()
         })
+    }
+  }
+
+  test("the real watchdog callback awaits no log, and a later or simultaneous exit still lands") {
+    oneSession.flatMap { sources =>
+      for
+        gate <- Deferred[IO, Unit]
+        started <- Ref.of[IO, Int](0)
+        wedged = (_: NodeEvent) => started.update(_ + 1) *> gate.get
+        watch <- StallDiagnostics.Watch.create[IO](None, wedged, _.start.void)
+        _ <- watch.reporter.install(sources)
+        dog <- StallWatchdog.create[IO](
+          BigInt(100),
+          50.millis,
+          Some(100.millis),
+          watch.react(_ => IO.unit)
+        )
+        _ <- dog.announced(BigInt(5000))
+        // Began and ExitDue fall in this one check; the log never returns
+        _ <- IO.sleep(200.millis) *> dog.check.timeout(5.seconds)
+        _ <- watch.exit.get.timeout(5.seconds)
+        _ <- (IO.sleep(10.millis) *> started.get).iterateUntil(_ >= 2).timeout(10.seconds)
+        _ <- gate.complete(())
+      yield ()
+    }
+  }
+
+  test("closing the scope while a dump hangs finalizes, and the hung dump is abandoned") {
+    inTempDir { dir =>
+      oneSession
+        .flatMap { sources =>
+          for
+            release <- IO(new java.util.concurrent.CountDownLatch(1))
+            entered <- Deferred[IO, Unit]
+            hung = () =>
+              // the dump is inside the uncancellable snapshot when the scope closes
+              entered.complete(()).unsafeRunAndForget()(using munitIORuntime)
+              release.await()
+              None
+            _ <- Supervisor[IO](await = false)
+              .use { supervisor =>
+                for
+                  reporter <- StallDiagnostics.Reporter.create[IO](
+                    Some(dir),
+                    _ => IO.unit,
+                    StallDiagnostics.abandoning(supervisor),
+                    hung
+                  )
+                  _ <- reporter.install(sources)
+                  _ <- reporter.onStall(stalledLine)
+                  _ <- entered.get.timeout(10.seconds)
+                yield ()
+              }
+              .timeout(10.seconds)
+            _ <- IO(release.countDown())
+          yield ()
+        }
+        .guarantee(IO.blocking {
+          Files.list(dir).forEach(f => Files.deleteIfExists(f))
+          ()
+        })
+    }
+  }
+
+  test("a second stall while the first dump hangs skips its dump, and still reports its state") {
+    inTempDir { dir =>
+      oneSession
+        .flatMap { sources =>
+          for
+            release <- IO(new java.util.concurrent.CountDownLatch(1))
+            logged <- Ref.of[IO, Vector[NodeEvent]](Vector.empty)
+            hung = () =>
+              release.await()
+              None
+            reporter <- StallDiagnostics.Reporter
+              .create[IO](Some(dir), e => logged.update(_ :+ e), _.start.void, hung)
+            _ <- reporter.install(sources)
+            _ <- reporter.onStall(stalledLine)
+            _ <- reporter.onStall(stalledLine)
+            events <- logged.get
+              .iterateUntil(_.collect { case s: NodeEvent.StallState => s }.size >= 2)
+              .timeout(10.seconds)
+            skipped <- logged.get
+              .iterateUntil(_.exists {
+                case NodeEvent.StallDumped(StallDiagnostics.Dump.Skipped, _) => true
+                case _                                                       => false
+              })
+              .timeout(10.seconds)
+            files <- IO.blocking(
+              Files.list(dir).iterator.asScala.toList.map(_.getFileName.toString)
+            )
+            _ <- IO(release.countDown())
+            // the first dump ends, and the next stall dumps again
+            _ <- logged.get
+              .iterateUntil(_.exists {
+                case NodeEvent.StallDumped(StallDiagnostics.Dump.Written(_), _) => true
+                case _                                                          => false
+              })
+              .timeout(10.seconds)
+            _ <- reporter.onStall(stalledLine)
+            third <- logged.get
+              .iterateUntil(_.collect { case s: NodeEvent.StallState => s }.size >= 3)
+              .timeout(10.seconds)
+          yield
+            val states = events.collect { case s: NodeEvent.StallState => s.dump }
+            assertEquals(
+              states.toSet.take(2),
+              Set(StallDiagnostics.Dump.Requested, StallDiagnostics.Dump.Skipped)
+            )
+            assert(skipped.nonEmpty)
+            // one state file, from the first stall
+            assertEquals(files.count(_.startsWith("stall-state-")), 1, files.toString)
+            assertEquals(third.collect { case s: NodeEvent.StallState => s }.size, 3)
+        }
+        .guarantee(IO.blocking {
+          Files.list(dir).forEach(f => Files.deleteIfExists(f))
+          ()
+        })
+    }
+  }
+
+  test("the admission worker's work and stage are reported while it runs, and cleared after") {
+    BlockAdmissions.create[IO].flatMap { admissions =>
+      for
+        idle <- admissions.occupancy
+        inside <- admissions.processing("add", "waitingForApplication")(
+          admissions.occupancy
+            .flatMap(first => admissions.stage("applying") *> admissions.occupancy.map(first -> _))
+        )
+        after <- admissions.occupancy
+      yield
+        assertEquals(idle.worker, None)
+        assertEquals(
+          inside._1.worker.map(w => w.work -> w.stage),
+          Some("add" -> "waitingForApplication")
+        )
+        assertEquals(inside._2.worker.map(w => w.work -> w.stage), Some("add" -> "applying"))
+        assertEquals(after.worker, None)
+        assertEquals(after.publishWaiting, 0)
     }
   }

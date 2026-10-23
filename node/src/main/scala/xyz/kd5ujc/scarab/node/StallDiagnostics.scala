@@ -5,7 +5,8 @@ import java.io.IOException
 import java.lang.management.ManagementFactory
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Path}
-import cats.effect.{Async, Deferred, Ref, Sync}
+import cats.effect.{Async, Concurrent, Deferred, Ref, Sync}
+import cats.effect.std.Supervisor
 import javax.management.ObjectName
 import cats.syntax.all.*
 import scala.jdk.CollectionConverters.*
@@ -17,8 +18,10 @@ import log.{NodeEvent, Render, Traced}
 
 /** What the node records when [[StallWatchdog]] reports a stall, so that a stall that cannot be
   * reproduced on demand leaves its evidence (issue 371). Reading it is a handful of `Ref` reads and
-  * queue sizes behind probes that never block, done once when the stall begins; nothing runs on the
-  * block path for it beyond the two timestamps a session keeps per ChainSync reply batch.
+  * queue sizes behind probes that never block, done once when the stall begins. What the block path
+  * pays for it is constant per item and takes no lock: a ChainSync reply writes three timestamps
+  * (one `Ref` write each), a BlockFetch reservation three phase marks and the decision lock two
+  * holder marks, an admission three marks (its publication wait, its work and its stage).
   */
 object StallDiagnostics:
   /** Every session's pipeline as the coordinator and the session see it, and the shared block
@@ -26,7 +29,8 @@ object StallDiagnostics:
     */
   private[node] final case class Report(
       sessions: Vector[SessionDiagnostic],
-      admissions: BlockAdmissions.Occupancy
+      admissions: BlockAdmissions.Occupancy,
+      decisionLock: Option[FetchCoordinator.LockHolder] = None
   )
 
   /** Where the report reads from. */
@@ -37,7 +41,11 @@ object StallDiagnostics:
 
   /** The report of `sources` now. */
   private[node] def capture[F[_]: cats.Monad](sources: Sources[F]): F[Report] =
-    (sources.coordinator.diagnostics, sources.admissions.occupancy).mapN(Report(_, _))
+    (
+      sources.coordinator.diagnostics,
+      sources.admissions.occupancy,
+      sources.coordinator.lockHolder
+    ).mapN(Report(_, _, _))
 
   /** What became of the fiber dump a stall asked for. */
   enum Dump:
@@ -46,6 +54,11 @@ object StallDiagnostics:
 
     /** The dump is under way in a fiber of its own; the `stallDumped` event tells its end. */
     case Requested
+
+    /** A dump of an earlier stall is still under way, so this stall asked for none: dumps do not
+      * pile up behind a hung operation.
+      */
+    case Skipped
 
     /** The dump is in this file. */
     case Written(path: Path)
@@ -139,15 +152,27 @@ object StallDiagnostics:
       written(dir, s"stall-state-${now.toMillis}-$number.json", () => Some(Array(text)))
     }
 
-  /** What the node does when a stall begins, after the `stalled` event: read the report from the
-    * sources (installed once the block pool exists; without them nothing is reported), then, each
-    * in a fiber of its own that `background` owns so that nothing waits for a log lock or a hung
-    * file or JMX operation: log the `stallState` event, and, when `dump` names a directory, write
-    * the report and the fiber dump there and log the `stallDumped` event. The report is read once
-    * per stall, before anything that can block.
+  /** `background` for a [[Reporter]] under `supervisor`: the body runs in a fiber of its own that
+    * the supervisor's finalization does not wait for. A dump blocked in JMX or a file operation
+    * cannot be cancelled, so waiting for it would keep the node from ending; the supervised fiber
+    * only joins it, which cancellation ends at once, and the abandoned fiber ends the process's
+    * way, with the process.
+    */
+  def abandoning[F[_]: Concurrent](supervisor: Supervisor[F]): F[Unit] => F[Unit] =
+    body => supervisor.supervise(Concurrent[F].start(body).flatMap(_.join).void).void
+
+  /** What the node does when a stall begins: read the report from the sources (installed once the
+    * block pool exists), then, each in a fiber of its own that `background` starts so that nothing
+    * waits for a log lock or a hung file or JMX operation: log the `first` line and the
+    * `stallState` event, and, when `dump` names a directory, write the report and the fiber dump
+    * there and log the `stallDumped` event. The report is read once per stall, before anything that
+    * can block. At most one dump is under way: a stall that begins while an earlier dump is still
+    * running asks for none and says so.
     *
+    * @param first
+    *   The line to log before `stallState`, in the same fiber, so that the two keep their order.
     * @param background
-    *   Starts its argument in a fiber the caller owns and returns at once.
+    *   Starts its argument in a fiber and returns at once.
     * @param snapshot
     *   The live-fiber snapshot source.
     */
@@ -155,6 +180,7 @@ object StallDiagnostics:
       sources: Ref[F, Option[Sources[F]]],
       dump: Option[Path],
       count: Ref[F, Int],
+      dumping: Ref[F, Boolean],
       log: NodeEvent => F[Unit],
       background: F[Unit] => F[Unit],
       snapshot: () => Option[Array[String]]
@@ -168,23 +194,37 @@ object StallDiagnostics:
     private def owned(body: F[Unit]): F[Unit] = background(body.attempt.void)
 
     /** The report and, when asked for, the files of a stall that has just begun. */
-    def onStall: F[Unit] =
-      sources.get.flatMap(_.traverse_ { s =>
-        capture(s).flatMap { report =>
-          owned(log(NodeEvent.StallState(report, dump.fold(Dump.Off)(_ => Dump.Requested)))) *>
-            dump.traverse_ { dir =>
-              count.updateAndGet(_ + 1).flatMap { number =>
-                owned(
-                  for
-                    state <- stateFile(dir, number, report)
-                    fibers <- fiberDump(dir, number, snapshot)
-                    _ <- log(NodeEvent.StallDumped(state, fibers))
-                  yield ()
-                )
-              }
-            }
-        }
-      })
+    def onStall(first: NodeEvent): F[Unit] =
+      sources.get.flatMap {
+        case None => owned(log(first))
+        case Some(s) =>
+          capture(s).flatMap { report =>
+            def state(shown: Dump): F[Unit] = log(first) *> log(NodeEvent.StallState(report, shown))
+            dump match
+              case None => owned(state(Dump.Off))
+              case Some(dir) =>
+                dumping.getAndSet(true).flatMap {
+                  case true =>
+                    owned(
+                      state(Dump.Skipped) *> log(NodeEvent.StallDumped(Dump.Skipped, Dump.Skipped))
+                    )
+                  case false =>
+                    owned(state(Dump.Requested)) *>
+                      count.updateAndGet(_ + 1).flatMap { number =>
+                        owned(
+                          Sync[F].guarantee(
+                            for
+                              file <- stateFile(dir, number, report)
+                              fibers <- fiberDump(dir, number, snapshot)
+                              _ <- log(NodeEvent.StallDumped(file, fibers))
+                            yield (),
+                            dumping.set(false)
+                          )
+                        )
+                      }
+                }
+          }
+      }
 
   private[node] object Reporter:
     def create[F[_]: Sync](
@@ -193,13 +233,31 @@ object StallDiagnostics:
         background: F[Unit] => F[Unit],
         snapshot: () => Option[Array[String]] = () => liveSnapshot
     ): F[Reporter[F]] =
-      (Ref.of[F, Option[Sources[F]]](None), Ref.of[F, Int](0))
-        .mapN(new Reporter(_, dump, _, log, background, snapshot))
+      (Ref.of[F, Option[Sources[F]]](None), Ref.of[F, Int](0), Ref.of[F, Boolean](false))
+        .mapN(new Reporter(_, dump, _, _, log, background, snapshot))
 
   /** What the stall watchdog's reports need: `exit`, completed when a stall has lasted
-    * `--stall-exit-after`, and the [[Reporter]] of the stall's state.
+    * `--stall-exit-after`, the [[Reporter]] of the stall's state, and the `log` and `background`
+    * with which [[react]] writes the watchdog's own lines.
     */
-  private[node] final case class Watch[F[_]](exit: Deferred[F, Unit], reporter: Reporter[F])
+  private[node] final case class Watch[F[_]: Sync](
+      exit: Deferred[F, Unit],
+      reporter: Reporter[F],
+      log: NodeEvent => F[Unit],
+      background: F[Unit] => F[Unit]
+  ):
+    /** The watchdog's callback. It awaits no log call: the lines go to `background`, and `exit` is
+      * completed before anything else, so that neither a wedged log nor a slow metric keeps a later
+      * check, or the exit, from happening. `measured` is the non-blocking metrics hook.
+      */
+    def react(measured: StallWatchdog.Change => F[Unit])(change: StallWatchdog.Change): F[Unit] =
+      change match
+        case StallWatchdog.Change.Began(idle, ours, peers) =>
+          measured(change) *> reporter.onStall(NodeEvent.Stalled(idle, ours, peers))
+        case StallWatchdog.Change.Ended => measured(change)
+        case StallWatchdog.Change.ExitDue(idle, ours, peers) =>
+          exit.complete(()) *> measured(change) *>
+            background(log(NodeEvent.StallExit(idle, ours, peers)).attempt.void)
 
   private[node] object Watch:
     def create[F[_]: Async](
@@ -207,4 +265,5 @@ object StallDiagnostics:
         log: NodeEvent => F[Unit],
         background: F[Unit] => F[Unit]
     ): F[Watch[F]] =
-      (Deferred[F, Unit], Reporter.create[F](dump, log, background)).mapN(Watch(_, _))
+      (Deferred[F, Unit], Reporter.create[F](dump, log, background))
+        .mapN(Watch(_, _, log, background))

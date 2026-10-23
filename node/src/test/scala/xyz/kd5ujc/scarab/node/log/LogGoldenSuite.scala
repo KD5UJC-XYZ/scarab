@@ -78,6 +78,13 @@ class LogGoldenSuite extends CatsEffectSuite:
                   pendingHeaders = 20,
                   active = Vector(xyz.kd5ujc.scarab.node.FetchCoordinator.ActiveFetch(5L, 2, 40)),
                   candidateHeaders = Some(100),
+                  reserving = Some(
+                    xyz.kd5ujc.scarab.node.FetchCoordinator
+                      .Reserving(
+                        xyz.kd5ujc.scarab.node.FetchCoordinator.Phase.LockWait,
+                        570.seconds
+                      )
+                  ),
                   pipeline = Some(
                     xyz.kd5ujc.scarab.node.Peer.PipelineState(
                       peer = "10.0.0.1:3001",
@@ -104,8 +111,14 @@ class LogGoldenSuite extends CatsEffectSuite:
                 10,
                 10,
                 4,
-                Some(xyz.kd5ujc.scarab.node.BlockAdmissions.Worker("add", 590.seconds))
-              )
+                Some(
+                  xyz.kd5ujc.scarab.node.BlockAdmissions
+                    .Worker("add", "applying", 12.seconds, 590.seconds)
+                ),
+                2,
+                Some(30.seconds)
+              ),
+              Some(xyz.kd5ujc.scarab.node.FetchCoordinator.LockHolder("reserve", 580.seconds))
             ),
             xyz.kd5ujc.scarab.node.StallDiagnostics.Dump.Written(
               Path.of("/stall/fiber-dump-1.txt")
@@ -120,6 +133,12 @@ class LogGoldenSuite extends CatsEffectSuite:
             xyz.kd5ujc.scarab.node.StallDiagnostics.Dump.Failed(
               xyz.kd5ujc.scarab.node.StallDiagnostics.DumpError.NoMonitor
             )
+          )
+        )
+        _ <- node(
+          NodeEvent.StallDumped(
+            xyz.kd5ujc.scarab.node.StallDiagnostics.Dump.Skipped,
+            xyz.kd5ujc.scarab.node.StallDiagnostics.Dump.Skipped
           )
         )
         _ <- node(NodeEvent.StallExit(30.minutes, BigInt(6809207), BigInt(10200000)))

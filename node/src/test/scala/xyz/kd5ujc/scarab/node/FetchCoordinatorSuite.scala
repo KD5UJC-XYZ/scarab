@@ -561,3 +561,55 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
       yield ()
     }
   }
+
+  test("a stall report names who holds the decision lock and where a reservation waits (#371)") {
+    FetchCoordinator.create[IO]().flatMap { coordinator =>
+      (coordinator.session(0), coordinator.session(1)).tupled.use { (a, b) =>
+        for
+          held <- Deferred[IO, Unit]
+          release <- Deferred[IO, Unit]
+          idle <- coordinator.lockHolder
+          // a transaction that holds the lock until released
+          holder <- coordinator.transitionGenesis(held.complete(()) *> release.get).start
+          _ <- held.get
+          holding <- coordinator.lockHolder
+          // a reservation behind it waits for the lock
+          waiter <- b.reserve(Vector(header(2)), FetchMode.BulkSync).use(_ => IO.unit).start
+          waiting <- (IO.sleep(10.millis) *> coordinator.diagnostics)
+            .iterateUntil(_.exists(_.reserving.nonEmpty))
+            .timeout(10.seconds)
+          _ <- release.complete(())
+          _ <- holder.joinWithNever
+          _ <- waiter.cancel
+          // behind a granted reservation that is still in use, the next one waits for its grant
+          _ <- a.announce(Some(header(1)), FetchGsv.default)
+          _ <- b.announce(Some(header(2)), FetchGsv.default)
+          inUse <- Deferred[IO, Unit]
+          done <- Deferred[IO, Unit]
+          first <- a
+            .reserve(Vector(header(1)), FetchMode.BulkSync)
+            .use(_ => inUse.complete(()) *> done.get)
+            .start
+          _ <- inUse.get
+          second <- b.reserve(Vector(header(2)), FetchMode.BulkSync).use(_ => IO.unit).start
+          granting <- (IO.sleep(10.millis) *> coordinator.diagnostics)
+            .iterateUntil(_.exists(_.reserving.exists(_.phase == FetchCoordinator.Phase.GrantWait)))
+            .timeout(10.seconds)
+          _ <- done.complete(())
+          _ <- first.joinWithNever *> second.joinWithNever
+          after <- coordinator.diagnostics
+        yield
+          assertEquals(idle, None)
+          assertEquals(holding.map(_.by), Some("transitionGenesis"))
+          assertEquals(
+            waiting.flatMap(_.reserving).map(_.phase),
+            Vector(FetchCoordinator.Phase.LockWait)
+          )
+          assertEquals(
+            granting.flatMap(_.reserving).map(_.phase),
+            Vector(FetchCoordinator.Phase.GrantWait)
+          )
+          assertEquals(after.flatMap(_.reserving), Vector.empty)
+      }
+    }
+  }

@@ -611,7 +611,7 @@ object Main extends IOApp:
             backing(store, checkpoints),
             cache,
             scheduling,
-            body => supervisor.supervise(body).void
+            StallDiagnostics.abandoning(supervisor)
           )
         }
       }
@@ -665,15 +665,7 @@ object Main extends IOApp:
         BigInt(0),
         options.stallMinutes.minutes,
         options.stallExitAfter,
-        change =>
-          measured.stall(change) *> (change match
-            case StallWatchdog.Change.Began(idle, ours, peers) =>
-              // The evidence is read first and written by fibers of their own, so that a wedged log
-              // lock cannot keep the watchdog from it (issue 371).
-              stall.reporter.onStall *> logged(NodeEvent.Stalled(idle, ours, peers))
-            case StallWatchdog.Change.Ended => IO.unit
-            case StallWatchdog.Change.ExitDue(idle, ours, peers) =>
-              stall.exit.complete(()) *> logged(NodeEvent.StallExit(idle, ours, peers)))
+        stall.react(measured.stall)
       )
       // What a scrape reads besides the counters the events keep: each source answers for itself
       // and is added when it exists, so the endpoint can listen before the stores are opened (a

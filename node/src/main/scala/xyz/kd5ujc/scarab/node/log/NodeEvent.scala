@@ -151,8 +151,10 @@ enum NodeEvent:
 object NodeEvent:
   /** One session of a stall report: the coordinator's view and, when pipelined, the session's. */
   private def dumpJson(dump: StallDiagnostics.Dump): Json = dump match
-    case StallDiagnostics.Dump.Off           => Json.Null
-    case StallDiagnostics.Dump.Requested     => Json.obj("requested" -> true.asJson)
+    case StallDiagnostics.Dump.Off       => Json.Null
+    case StallDiagnostics.Dump.Requested => Json.obj("requested" -> true.asJson)
+    case StallDiagnostics.Dump.Skipped =>
+      Json.obj("skipped" -> "an earlier dump is still running".asJson)
     case StallDiagnostics.Dump.Written(path) => Json.obj("path" -> path.toString.asJson)
     case StallDiagnostics.Dump.Failed(StallDiagnostics.DumpError.NoMonitor) =>
       Json.obj("failed" -> "noMonitor".asJson)
@@ -180,6 +182,9 @@ object NodeEvent:
         )
         .asJson,
       "candidateHeaders" -> d.candidateHeaders.asJson,
+      "reserving" -> d.reserving.fold(Json.Null)(r =>
+        Json.obj("phase" -> r.phase.toString.asJson, "runningMs" -> r.running.toMillis.asJson)
+      ),
       "pipeline" -> d.pipeline.fold(Json.Null)(p =>
         Json.obj(
           "peer" -> p.peer.asJson,
@@ -313,8 +318,18 @@ object NodeEvent:
           "held" -> report.admissions.held.asJson,
           "queued" -> report.admissions.queued.asJson,
           "worker" -> report.admissions.worker.fold(Json.Null)(w =>
-            Json.obj("work" -> w.work.asJson, "runningMs" -> w.running.toMillis.asJson)
-          )
+            Json.obj(
+              "work" -> w.work.asJson,
+              "stage" -> w.stage.asJson,
+              "inStageMs" -> w.inStage.toMillis.asJson,
+              "runningMs" -> w.running.toMillis.asJson
+            )
+          ),
+          "publishWaiting" -> report.admissions.publishWaiting.asJson,
+          "oldestPublishWaitMs" -> report.admissions.oldestPublishWait.map(_.toMillis).asJson
+        ),
+        "decisionLock" -> report.decisionLock.fold(Json.Null)(h =>
+          Json.obj("heldBy" -> h.by.asJson, "runningMs" -> h.running.toMillis.asJson)
         ),
         "fiberDump" -> dumpJson(dump)
       )
