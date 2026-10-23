@@ -126,3 +126,63 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
         })
     }
   }
+
+  private def inTempDir[A](use: java.nio.file.Path => IO[A]): IO[A] =
+    IO.blocking(Files.createTempDirectory("stall-dump")).flatMap { dir =>
+      use(dir).guarantee(IO.blocking {
+        Files.deleteIfExists(dir.resolve("blocker"))
+        Files.deleteIfExists(dir)
+        ()
+      })
+    }
+
+  private val noSessions = StallDiagnostics.Report(
+    Vector.empty,
+    BlockAdmissions.Occupancy(10, 0, 0)
+  )
+
+  test("a runtime with no live-fiber trigger reports NoMonitor and writes nothing") {
+    inTempDir { dir =>
+      StallDiagnostics.fiberDump[IO](dir, 1, () => None).flatMap { dump =>
+        IO.blocking(Files.list(dir).count()).map { files =>
+          assertEquals(files, 0L)
+          assertEquals(dump, StallDiagnostics.Dump.Failed(StallDiagnostics.DumpError.NoMonitor))
+          assertEquals(
+            fields(NodeEvent.StallState(noSessions, dump))("fiberDump"),
+            Json.obj("failed" -> Json.fromString("noMonitor"))
+          )
+        }
+      }
+    }
+  }
+
+  test("a directory that cannot be created reports Io with the cause") {
+    inTempDir { dir =>
+      // a regular file where the dump directory should be
+      val blocker = dir.resolve("blocker")
+      IO.blocking(Files.createFile(blocker)) *>
+        StallDiagnostics
+          .fiberDump[IO](blocker.resolve("nested"), 1, () => Some(Array("fiber")))
+          .map {
+            case failed @ StallDiagnostics.Dump.Failed(StallDiagnostics.DumpError.Io(_)) =>
+              val rendered = fields(NodeEvent.StallState(noSessions, failed))("fiberDump").hcursor
+              assertEquals(rendered.get[String]("failed"), Right("io"))
+              assert(rendered.get[String]("message").exists(_.nonEmpty))
+            case other => fail(s"not an I/O failure: $other")
+          }
+    }
+  }
+
+  test("a failing snapshot reports Defect, which the watchdog survives") {
+    inTempDir { dir =>
+      StallDiagnostics
+        .fiberDump[IO](dir, 1, () => throw new IllegalStateException("monitor failed"))
+        .map {
+          case failed @ StallDiagnostics.Dump.Failed(StallDiagnostics.DumpError.Defect(cause)) =>
+            assertEquals(cause.getMessage, "monitor failed")
+            val rendered = fields(NodeEvent.StallState(noSessions, failed))("fiberDump").hcursor
+            assertEquals(rendered.get[String]("failed"), Right("defect"))
+          case other => fail(s"not a defect: $other")
+        }
+    }
+  }

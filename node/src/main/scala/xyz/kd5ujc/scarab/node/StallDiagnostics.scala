@@ -73,17 +73,36 @@ object StallDiagnostics:
     * `cached` by default). The write is blocking and happens on the blocking pool, once per stall.
     */
   def fiberDump[F[_]: Sync](dir: Path, number: Int): F[Dump] =
+    fiberDump(dir, number, () => liveSnapshot)
+
+  /** The lines of the runtime's live-fiber snapshot, or none when no trigger is registered. */
+  private def liveSnapshot: Option[Array[String]] =
+    val server = ManagementFactory.getPlatformMBeanServer
+    server
+      .queryNames(TriggerPattern, null)
+      .asScala
+      .headOption
+      .map(trigger =>
+        server
+          .invoke(trigger, "liveFiberSnapshot", Array.empty[AnyRef], Array.empty[String])
+          .asInstanceOf[Array[String]]
+      )
+
+  /** [[fiberDump]] over `snapshot`, which runs on the blocking pool: none stands for a runtime that
+    * registered no trigger. The seam lets a test reach the failure cases a live runtime does not
+    * produce on demand.
+    */
+  private[node] def fiberDump[F[_]: Sync](
+      dir: Path,
+      number: Int,
+      snapshot: () => Option[Array[String]]
+  ): F[Dump] =
     Sync[F].realTime.flatMap(now =>
       Sync[F]
         .blocking {
-          val server = ManagementFactory.getPlatformMBeanServer
-          val triggers = server.queryNames(TriggerPattern, null).asScala.toList
-          triggers.headOption match
+          snapshot() match
             case None => Dump.Failed(DumpError.NoMonitor)
-            case Some(trigger) =>
-              val lines = server
-                .invoke(trigger, "liveFiberSnapshot", Array.empty[AnyRef], Array.empty[String])
-                .asInstanceOf[Array[String]]
+            case Some(lines) =>
               Files.createDirectories(dir)
               val file = dir.resolve(s"fiber-dump-${now.toMillis}-$number.txt")
               Files.write(file, lines.toList.asJava, UTF_8)
