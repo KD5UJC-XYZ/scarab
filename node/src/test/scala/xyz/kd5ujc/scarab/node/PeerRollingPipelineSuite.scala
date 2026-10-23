@@ -360,3 +360,19 @@ class PeerRollingPipelineSuite extends FailsOnUncaught:
     val fork = empty.copy(headers = Vector(chain.headers.last.copy(blockNo = 1)))
     assert(!Peer.publicationRoom(fork, candidate, retained))
   }
+
+  test("unpublished headers count from the common point, not from the window sizes") {
+    val hs = chain.headers.take(6)
+    val base = ChainSelection.Candidate(ChainSync.Point.Origin, Vector.empty)
+    // published 1..4, candidate 2..5 on a later base: one header beyond the common tip
+    val published = base.copy(headers = hs.slice(0, 4))
+    val candidate = ChainSelection.Candidate(hs(0).point, hs.slice(1, 5))
+    assertEquals(Peer.unpublished(published, candidate), Some(1))
+    // equal sizes and different bases: the subtraction of sizes would say 0
+    val caught = ChainSelection.Candidate(hs(0).point, hs.slice(1, 4))
+    assertEquals(Peer.unpublished(published.copy(headers = hs.slice(0, 3)), caught), Some(1))
+    // nothing in common: a divergence, not a lag
+    val fork = base.copy(headers = Vector(chain.headers.last))
+    assertEquals(Peer.unpublished(fork, candidate), None)
+    assertEquals(Peer.unpublished(candidate, candidate), Some(0))
+  }

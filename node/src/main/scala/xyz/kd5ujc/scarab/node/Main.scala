@@ -23,7 +23,7 @@ import xyz.kd5ujc.scarab.ledger.{
   StorageError
 }
 import cats.effect.{Deferred, ExitCode, IO, IOApp, Ref, Resource}
-import cats.effect.std.Mutex
+import cats.effect.std.{Mutex, Supervisor}
 import cats.effect.metrics.CpuStarvationWarningMetrics
 import xyz.kd5ujc.scarab.storage.{
   ChainPersistence,
@@ -599,8 +599,9 @@ object Main extends IOApp:
         (ownership *> compatible *> (
           utxoBacking(options),
           VerificationCache.resource[IO](),
-          Scheduling.resource[IO](options.cpuThreads)
-        ).tupled).use { case ((store, checkpoints), cache, scheduling) =>
+          Scheduling.resource[IO](options.cpuThreads),
+          Supervisor[IO](await = false)
+        ).tupled).use { case ((store, checkpoints), cache, scheduling, supervisor) =>
           followWith(
             options,
             requested.peers,
@@ -609,7 +610,8 @@ object Main extends IOApp:
             store,
             backing(store, checkpoints),
             cache,
-            scheduling
+            scheduling,
+            body => supervisor.supervise(body).void
           )
         }
       }
@@ -622,7 +624,8 @@ object Main extends IOApp:
       store: UtxoStore[IO],
       backing: StateBacking[IO, MirrorState],
       cache: VerificationCache,
-      scheduling: Scheduling[IO]
+      scheduling: Scheduling[IO],
+      background: IO[Unit] => IO[Unit]
   )(using
       handle: Handle[IO, NodeError],
       log: Log[IO]
@@ -648,7 +651,7 @@ object Main extends IOApp:
       measured <- EventMetrics.create[IO]
       // a follower that stops extending its chain while a peer has more says so (issue 130)
       // (and, from issue 371, where its report reads from once the block pool exists)
-      stall <- StallDiagnostics.Watch.create[IO](options.stallDump, e => logged(e))
+      stall <- StallDiagnostics.Watch.create[IO](options.stallDump, e => logged(e), background)
       // a session that ends in a way no peer policy handles stops the node ([[Fatal]]): the event
       // is logged where it happens, and the run ends like a signal does (the stores close, the
       // shutdown snapshot is taken) with an exit code of its own
@@ -665,10 +668,12 @@ object Main extends IOApp:
         change =>
           measured.stall(change) *> (change match
             case StallWatchdog.Change.Began(idle, ours, peers) =>
-              logged(NodeEvent.Stalled(idle, ours, peers)) *> stall.reporter.onStall
+              // The evidence is read first and written by fibers of their own, so that a wedged log
+              // lock cannot keep the watchdog from it (issue 371).
+              stall.reporter.onStall *> logged(NodeEvent.Stalled(idle, ours, peers))
             case StallWatchdog.Change.Ended => IO.unit
             case StallWatchdog.Change.ExitDue(idle, ours, peers) =>
-              logged(NodeEvent.StallExit(idle, ours, peers)) *> stall.exit.complete(()).void)
+              stall.exit.complete(()) *> logged(NodeEvent.StallExit(idle, ours, peers)))
       )
       // What a scrape reads besides the counters the events keep: each source answers for itself
       // and is added when it exists, so the endpoint can listen before the stores are opened (a

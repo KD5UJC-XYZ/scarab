@@ -327,17 +327,30 @@ object Peer:
     * @param candidateHeaders
     *   Headers of the validated candidate.
     * @param unpublishedHeaders
-    *   Headers of the candidate beyond the published cursor: what an `advance` is still to publish,
-    *   and what the ChainSync capacity wait is held by.
+    *   Headers of the candidate beyond the newest point it shares with the published cursor
+    *   ([[unpublished]]): what an `advance` is still to publish, and what the ChainSync capacity
+    *   wait is held by. None when the two share no point: a candidate that diverged from what was
+    *   published, which the base and tip points tell from lag.
     * @param capacityRoom
     *   [[publicationRoom]]: false while the candidate is at its retained size and the published
     *   cursor has not caught up, which is when a ChainSync reply waits for an `advance`.
+    * @param candidateBase
+    *   The candidate's base point, as `slot:hash` (`origin` at genesis).
+    * @param candidateTip
+    *   The candidate's last point, in the same form.
+    * @param publishedBase
+    *   The published cursor's base point.
+    * @param publishedTip
+    *   The published cursor's last point.
     * @param candidateTipSlot
     *   Slot of the candidate's last header.
     * @param publishedTipSlot
     *   Slot of the published cursor's last header.
-    * @param lastReplyReceivedAgo
-    *   Time since the last ChainSync reply batch arrived, if any did.
+    * @param lastReplyCollectedAgo
+    *   Time since a ChainSync reply was last taken from the wire and handed to the capacity wait,
+    *   if any was. A reply blocked in that wait shows here and not in `lastReplyAcceptedAgo`.
+    * @param lastReplyAcceptedAgo
+    *   Time since the last reply passed the capacity wait and was accepted for decoding.
     * @param lastReplyHandledAgo
     *   Time since the last such batch was fully handled (decoded, checked, recorded).
     */
@@ -347,21 +360,45 @@ object Peer:
       permits: Int,
       queued: Int,
       candidateHeaders: Int,
-      unpublishedHeaders: Int,
+      unpublishedHeaders: Option[Int],
       capacityRoom: Boolean,
+      candidateBase: String,
+      candidateTip: String,
+      publishedBase: String,
+      publishedTip: String,
       candidateTipSlot: Option[Long],
       publishedTipSlot: Option[Long],
-      lastReplyReceivedAgo: Option[FiniteDuration],
+      lastReplyCollectedAgo: Option[FiniteDuration],
+      lastReplyAcceptedAgo: Option[FiniteDuration],
       lastReplyHandledAgo: Option[FiniteDuration]
   )
 
-  /** When the session last received and last finished handling a ChainSync reply batch, on the
-    * monotonic clock; the two counters behind [[PipelineState]].
+  /** When the session last collected a ChainSync reply (before the capacity wait), accepted one
+    * (after it) and finished handling one, on the monotonic clock; the counters behind
+    * [[PipelineState]].
     */
   private[node] final case class Replies(
-      received: Option[FiniteDuration] = None,
+      collected: Option[FiniteDuration] = None,
+      accepted: Option[FiniteDuration] = None,
       handled: Option[FiniteDuration] = None
   )
+
+  /** The headers of `candidate` after its newest point that `published` also has (`publication`
+    * finds the same common point); none when they share no point, which is a divergence and not a
+    * lag. Counting by size would be wrong when the two retained windows start at different bases.
+    */
+  private[node] def unpublished(
+      published: ChainSelection.Candidate,
+      candidate: ChainSelection.Candidate
+  ): Option[Int] =
+    val positions = (candidate.base +: candidate.headers.map(_.point)).zipWithIndex.toMap
+    (published.base +: published.headers.map(_.point)).reverseIterator
+      .find(positions.contains)
+      .map(point => candidate.headers.size - positions.getOrElse(point, 0))
+
+  private def pointText(point: ChainSync.Point): String = point match
+    case ChainSync.Point.Origin            => "origin"
+    case ChainSync.Point.Block(slot, hash) => s"${slot.value}:${hash.hex}"
 
   /** @param readAhead
     *   Maximum headers per ordered body-publication chunk. The rolling request window is set
@@ -954,7 +991,9 @@ object Peer:
                 }
                 def headerReceived: F[Unit] = observe.traverse_(_(Observation.HeaderReceived))
                 def handled(update: ChainSyncClient.Update[NtNHeader]): F[Unit] =
-                  headerReceived *> stopping.flatMap {
+                  headerReceived *> F.monotonic.flatMap(at =>
+                    replies.update(_.copy(collected = Some(at)))
+                  ) *> stopping.flatMap {
                     case true => pop
                     case false =>
                       head.flatMap(_.reply) *> capacity(update) *>
@@ -1121,7 +1160,7 @@ object Peer:
           ): F[Vector[SyncEvent]] =
             for
               arrived <- F.monotonic
-              _ <- replies.update(_.copy(received = Some(arrived)))
+              _ <- replies.update(_.copy(accepted = Some(arrived)))
               batch <- updates.traverse(decode)
               _ <- batch.traverse_ {
                 case SyncEvent.RollForward(header, _) => checkKnownInvalid(header)
@@ -1441,12 +1480,16 @@ object Peer:
                     permits = Depth,
                     queued = queued,
                     candidateHeaders = candidate.headers.size,
-                    unpublishedHeaders =
-                      (candidate.headers.size - published._1.headers.size).max(0),
+                    unpublishedHeaders = unpublished(published._1, candidate),
                     capacityRoom = publicationRoom(published._1, candidate, retainedHeaders),
+                    candidateBase = pointText(candidate.base),
+                    candidateTip = pointText(candidate.tip),
+                    publishedBase = pointText(published._1.base),
+                    publishedTip = pointText(published._1.tip),
                     candidateTipSlot = candidate.headers.lastOption.map(_.slot.toLong),
                     publishedTipSlot = published._1.headers.lastOption.map(_.slot.toLong),
-                    lastReplyReceivedAgo = seen.received.map(now - _),
+                    lastReplyCollectedAgo = seen.collected.map(now - _),
+                    lastReplyAcceptedAgo = seen.accepted.map(now - _),
                     lastReplyHandledAgo = seen.handled.map(now - _)
                   )
                 }

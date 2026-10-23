@@ -73,6 +73,12 @@ enum NodeEvent:
     */
   case StallState(report: StallDiagnostics.Report, dump: StallDiagnostics.Dump)
 
+  /** What became of the files a stall asked for (`--stall-dump`): the `stallState` report written
+    * directly beside the fiber dump, which does not depend on this log, and the fiber dump itself.
+    * Logged when both have ended, after [[StallState]].
+    */
+  case StallDumped(state: StallDiagnostics.Dump, fibers: StallDiagnostics.Dump)
+
   /** The stall went on for `--stall-exit-after`: the node ends (after its shutdown snapshot, exit
     * code 4) so that its supervisor restarts it from the newest snapshot.
     */
@@ -144,6 +150,20 @@ enum NodeEvent:
 
 object NodeEvent:
   /** One session of a stall report: the coordinator's view and, when pipelined, the session's. */
+  private def dumpJson(dump: StallDiagnostics.Dump): Json = dump match
+    case StallDiagnostics.Dump.Off           => Json.Null
+    case StallDiagnostics.Dump.Requested     => Json.obj("requested" -> true.asJson)
+    case StallDiagnostics.Dump.Written(path) => Json.obj("path" -> path.toString.asJson)
+    case StallDiagnostics.Dump.Failed(StallDiagnostics.DumpError.NoMonitor) =>
+      Json.obj("failed" -> "noMonitor".asJson)
+    case StallDiagnostics.Dump.Failed(StallDiagnostics.DumpError.Io(cause)) =>
+      Json.obj("failed" -> "io".asJson, "message" -> String.valueOf(cause.getMessage).asJson)
+    case StallDiagnostics.Dump.Failed(StallDiagnostics.DumpError.Defect(cause)) =>
+      Json.obj(
+        "failed" -> "defect".asJson,
+        "message" -> s"${cause.getClass.getName}: ${cause.getMessage}".asJson
+      )
+
   private def session(d: xyz.kd5ujc.scarab.node.FetchCoordinator.SessionDiagnostic): Json =
     Json.obj(
       "session" -> d.session.asJson,
@@ -169,9 +189,14 @@ object NodeEvent:
           "candidateHeaders" -> p.candidateHeaders.asJson,
           "unpublishedHeaders" -> p.unpublishedHeaders.asJson,
           "capacityRoom" -> p.capacityRoom.asJson,
+          "candidateBase" -> p.candidateBase.asJson,
+          "candidateTip" -> p.candidateTip.asJson,
+          "publishedBase" -> p.publishedBase.asJson,
+          "publishedTip" -> p.publishedTip.asJson,
           "candidateTipSlot" -> p.candidateTipSlot.asJson,
           "publishedTipSlot" -> p.publishedTipSlot.asJson,
-          "lastReplyReceivedAgoMs" -> p.lastReplyReceivedAgo.map(_.toMillis).asJson,
+          "lastReplyCollectedAgoMs" -> p.lastReplyCollectedAgo.map(_.toMillis).asJson,
+          "lastReplyAcceptedAgoMs" -> p.lastReplyAcceptedAgo.map(_.toMillis).asJson,
           "lastReplyHandledAgoMs" -> p.lastReplyHandledAgo.map(_.toMillis).asJson
         )
       )
@@ -286,22 +311,15 @@ object NodeEvent:
         "admissions" -> Json.obj(
           "capacity" -> report.admissions.capacity.asJson,
           "held" -> report.admissions.held.asJson,
-          "queued" -> report.admissions.queued.asJson
+          "queued" -> report.admissions.queued.asJson,
+          "worker" -> report.admissions.worker.fold(Json.Null)(w =>
+            Json.obj("work" -> w.work.asJson, "runningMs" -> w.running.toMillis.asJson)
+          )
         ),
-        "fiberDump" -> (dump match
-          case StallDiagnostics.Dump.Off => Json.Null
-          case StallDiagnostics.Dump.Written(path) =>
-            Json.obj("path" -> path.toString.asJson)
-          case StallDiagnostics.Dump.Failed(StallDiagnostics.DumpError.NoMonitor) =>
-            Json.obj("failed" -> "noMonitor".asJson)
-          case StallDiagnostics.Dump.Failed(StallDiagnostics.DumpError.Io(cause)) =>
-            Json.obj("failed" -> "io".asJson, "message" -> String.valueOf(cause.getMessage).asJson)
-          case StallDiagnostics.Dump.Failed(StallDiagnostics.DumpError.Defect(cause)) =>
-            Json.obj(
-              "failed" -> "defect".asJson,
-              "message" -> s"${cause.getClass.getName}: ${cause.getMessage}".asJson
-            ))
+        "fiberDump" -> dumpJson(dump)
       )
+    case StallDumped(state, fibers) =>
+      EventKind.StallDump.line("stateFile" -> dumpJson(state), "fiberDump" -> dumpJson(fibers))
     case StallExit(idle, ours, peers) =>
       EventKind.StallExit.line(
         "idleSeconds" -> idle.toSeconds.asJson,

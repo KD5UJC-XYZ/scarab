@@ -82,6 +82,7 @@ enum EventKind(val area: Area, val severity: Severity):
   case Reconnecting extends EventKind(Area.Chain, Severity.Warning)
   case Stalled extends EventKind(Area.Chain, Severity.Warning)
   case StallState extends EventKind(Area.Chain, Severity.Warning)
+  case StallDump extends EventKind(Area.Chain, Severity.Warning)
   case StallExit extends EventKind(Area.Chain, Severity.Error)
   case HeadersChecked extends EventKind(Area.Chain, Severity.Info)
   case ChainSyncRounds extends EventKind(Area.Chain, Severity.Info)

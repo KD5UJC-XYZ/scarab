@@ -118,10 +118,12 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
           assertEquals(p.permitsFree, 0L, p.toString)
           assert(p.queued > 0, p.toString)
           // the candidate is ahead of what was published and capacity room is gone
-          assert(p.candidateHeaders > p.unpublishedHeaders, p.toString)
+          assert(p.unpublishedHeaders.exists(n => n > 0 && n <= p.candidateHeaders), p.toString)
+          assertEquals(p.candidateBase, p.publishedTip, p.toString)
           assert(p.candidateTipSlot.exists(c => p.publishedTipSlot.forall(_ <= c)), p.toString)
           // nothing arrived for the whole stall, and the last batch was handled after it arrived
-          assert(p.lastReplyReceivedAgo.exists(_ >= 10.minutes), p.toString)
+          assert(p.lastReplyAcceptedAgo.exists(_ >= 10.minutes), p.toString)
+          assert(p.lastReplyCollectedAgo.exists(_ >= 10.minutes), p.toString)
           assert(p.lastReplyHandledAgo.exists(_ >= 10.minutes), p.toString)
           assertEquals(report.admissions, BlockAdmissions.Occupancy(10, 0, 0))
         }

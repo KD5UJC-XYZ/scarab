@@ -85,20 +85,40 @@ class LogGoldenSuite extends CatsEffectSuite:
                       permits = 3,
                       queued = 3,
                       candidateHeaders = 100,
-                      unpublishedHeaders = 60,
+                      unpublishedHeaders = Some(60),
                       capacityRoom = false,
+                      candidateBase = "800:aa",
+                      candidateTip = "900:bb",
+                      publishedBase = "800:aa",
+                      publishedTip = "840:cc",
                       candidateTipSlot = Some(900L),
                       publishedTipSlot = Some(840L),
-                      lastReplyReceivedAgo = Some(600.seconds),
+                      lastReplyCollectedAgo = Some(601.seconds),
+                      lastReplyAcceptedAgo = Some(600.seconds),
                       lastReplyHandledAgo = None
                     )
                   )
                 )
               ),
-              xyz.kd5ujc.scarab.node.BlockAdmissions.Occupancy(10, 10, 4)
+              xyz.kd5ujc.scarab.node.BlockAdmissions.Occupancy(
+                10,
+                10,
+                4,
+                Some(xyz.kd5ujc.scarab.node.BlockAdmissions.Worker("add", 590.seconds))
+              )
             ),
             xyz.kd5ujc.scarab.node.StallDiagnostics.Dump.Written(
               Path.of("/stall/fiber-dump-1.txt")
+            )
+          )
+        )
+        _ <- node(
+          NodeEvent.StallDumped(
+            xyz.kd5ujc.scarab.node.StallDiagnostics.Dump.Written(
+              Path.of("/stall/stall-state-1.json")
+            ),
+            xyz.kd5ujc.scarab.node.StallDiagnostics.Dump.Failed(
+              xyz.kd5ujc.scarab.node.StallDiagnostics.DumpError.NoMonitor
             )
           )
         )

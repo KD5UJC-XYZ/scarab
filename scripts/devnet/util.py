@@ -195,10 +195,10 @@ def stall_dump_arguments(root):
 
 
 def stall_evidence(root):
-    """What a run keeps of a follower stall: its `stalled` and `stallState` events and the fiber
+    """What a run keeps of a follower stall: its `stalled`, `stallState` and `stallDump` events and the fiber
     dumps (name and size; the files stay in `<run>/stall`), or None when the follower never stalled."""
     events, _ = read_log(root / "follower.jsonl")
-    kept = [e for e in events if e.get("event") in ("stalled", "stallState")]
+    kept = [e for e in events if e.get("event") in ("stalled", "stallState", "stallDump")]
     dumps = sorted((root / "stall").glob("fiber-dump-*.txt")) if (root / "stall").is_dir() else []
     if not kept and not dumps:
         return None

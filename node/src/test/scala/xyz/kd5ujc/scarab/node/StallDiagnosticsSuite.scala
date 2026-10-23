@@ -2,7 +2,8 @@
 package xyz.kd5ujc.scarab.node
 
 import java.nio.file.Files
-import cats.effect.{IO, Ref}
+import cats.effect.{Deferred, IO, Ref}
+import scala.jdk.CollectionConverters.*
 import cats.effect.testkit.TestControl
 import io.circe.Json
 import munit.CatsEffectSuite
@@ -20,11 +21,16 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
     permits = 3,
     queued = 2,
     candidateHeaders = 40,
-    unpublishedHeaders = 7,
+    unpublishedHeaders = Some(7),
     capacityRoom = false,
+    candidateBase = "origin",
+    candidateTip = "900:cd",
+    publishedBase = "origin",
+    publishedTip = "840:ab",
     candidateTipSlot = Some(900L),
     publishedTipSlot = Some(840L),
-    lastReplyReceivedAgo = Some(9.minutes),
+    lastReplyCollectedAgo = Some(9.minutes + 2.seconds),
+    lastReplyAcceptedAgo = Some(9.minutes),
     lastReplyHandledAgo = Some(9.minutes + 1.second)
   )
 
@@ -39,7 +45,8 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
             for
               _ <- session.observed(IO.pure(pipeline))
               logged <- Ref.of[IO, Vector[NodeEvent]](Vector.empty)
-              reporter <- StallDiagnostics.Reporter.create[IO](None, e => logged.update(_ :+ e))
+              reporter <- StallDiagnostics.Reporter
+                .create[IO](None, e => logged.update(_ :+ e), identity)
               _ <- reporter.install(StallDiagnostics.Sources(coordinator, admissions))
               dog <- StallWatchdog.create[IO](
                 BigInt(100),
@@ -78,14 +85,18 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
               assertEquals(p.get[Boolean]("capacityRoom"), Right(false))
               assertEquals(p.get[Long]("candidateTipSlot"), Right(900L))
               assertEquals(p.get[Long]("publishedTipSlot"), Right(840L))
-              assertEquals(p.get[Long]("lastReplyReceivedAgoMs"), Right(540000L))
+              assertEquals(p.get[Long]("lastReplyCollectedAgoMs"), Right(542000L))
+              assertEquals(p.get[Long]("lastReplyAcceptedAgoMs"), Right(540000L))
+              assertEquals(p.get[String]("candidateTip"), Right("900:cd"))
+              assertEquals(p.get[String]("publishedTip"), Right("840:ab"))
               assertEquals(p.get[Long]("lastReplyHandledAgoMs"), Right(541000L))
               assertEquals(
                 f("admissions"),
                 Json.obj(
                   "capacity" -> Json.fromInt(10),
                   "held" -> Json.fromInt(0),
-                  "queued" -> Json.fromInt(0)
+                  "queued" -> Json.fromInt(0),
+                  "worker" -> Json.Null
                 )
               )
               assertEquals(f("fiberDump"), Json.Null)
@@ -184,5 +195,82 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
             assertEquals(rendered.get[String]("failed"), Right("defect"))
           case other => fail(s"not a defect: $other")
         }
+    }
+  }
+
+  private val oneSession = FetchCoordinator.create[IO]().flatMap { coordinator =>
+    BlockAdmissions.create[IO].map(StallDiagnostics.Sources(coordinator, _))
+  }
+
+  test("the report is read and the state emitted while the log is wedged") {
+    // a log whose lock is held: every write waits for a gate that is never opened
+    oneSession.flatMap { sources =>
+      for
+        gate <- Deferred[IO, Unit]
+        started <- Ref.of[IO, Int](0)
+        wedged = (_: NodeEvent) => started.update(_ + 1) *> gate.get
+        reporter <- StallDiagnostics.Reporter.create[IO](None, wedged, _.start.void)
+        _ <- reporter.install(sources)
+        // onStall returns although the log never does
+        _ <- reporter.onStall.timeoutTo(2.seconds, IO.raiseError(new AssertionError("blocked")))
+        count <- (IO.sleep(10.millis) *> started.get).iterateUntil(_ >= 1).timeout(10.seconds)
+        _ <- gate.complete(())
+      yield assertEquals(count, 1)
+    }
+  }
+
+  test(
+    "a hung dump neither delays the state nor blocks the watchdog, and the state file is written"
+  ) {
+    inTempDir { dir =>
+      oneSession
+        .flatMap { sources =>
+          for
+            release <- IO(new java.util.concurrent.CountDownLatch(1))
+            logged <- Ref.of[IO, Vector[NodeEvent]](Vector.empty)
+            stateLogged <- Deferred[IO, Unit]
+            log = (e: NodeEvent) =>
+              logged.update(_ :+ e) *> (e match
+                case _: NodeEvent.StallState => stateLogged.complete(()).void
+                case _                       => IO.unit)
+            hung = () =>
+              release.await()
+              None
+            reporter <- StallDiagnostics.Reporter.create[IO](Some(dir), log, _.start.void, hung)
+            _ <- reporter.install(sources)
+            dog <- StallWatchdog.create[IO](
+              BigInt(100),
+              100.millis,
+              Some(200.millis),
+              {
+                case StallWatchdog.Change.Began(_, _, _) => reporter.onStall
+                case StallWatchdog.Change.ExitDue(_, _, _) =>
+                  logged.update(_ :+ NodeEvent.StallExit(200.millis, BigInt(0), BigInt(100)))
+                case _ => IO.unit
+              }
+            )
+            _ <- dog.announced(BigInt(5000))
+            _ <- IO.sleep(150.millis) *> dog.check
+            _ <- stateLogged.get.timeout(10.seconds)
+            // the dump is still hanging; a later check still reaches the exit
+            _ <- IO.sleep(150.millis) *> dog.check
+            events <- logged.get
+            files <- IO.blocking(
+              Files.list(dir).iterator.asScala.toList.map(_.getFileName.toString)
+            )
+            _ <- IO(release.countDown())
+            _ <- logged.get
+              .iterateUntil(_.exists(_.isInstanceOf[NodeEvent.StallDumped]))
+              .timeout(10.seconds)
+          yield
+            assert(events.exists(_.isInstanceOf[NodeEvent.StallState]), events.toString)
+            assert(events.exists(_.isInstanceOf[NodeEvent.StallExit]), events.toString)
+            assert(!events.exists(_.isInstanceOf[NodeEvent.StallDumped]), events.toString)
+            assert(files.exists(_.matches("stall-state-\\d+-1\\.json")), files.toString)
+        }
+        .guarantee(IO.blocking {
+          Files.list(dir).forEach(f => Files.deleteIfExists(f))
+          ()
+        })
     }
   }

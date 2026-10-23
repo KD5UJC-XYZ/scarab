@@ -1007,7 +1007,8 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `epochValidated` | `Chain.EpochValidated` | Info | `era`, `epoch`, `headers`, `thresholdChecked`, `overlay`, `leaderUnchecked`, `scheduling`, `boundary`, `signatureVerified`, `offSchedule`, `transactions` |
 | `reconnecting` | `Chain.Reconnecting` | Warning | `reason`, `attempt` |
 | `stalled` | `Chain.Stalled` | Warning | `idleSeconds`, `ourBlock`, `peerBlock` |
-| `stallState` | `Chain.StallState` | Warning | `sessions` (per session: `session`, `busy`, `pendingOffers`, `pendingHeaders`, `active`, `candidateHeaders`, `pipeline`: `peer`, `permitsFree`, `permits`, `queued`, `candidateHeaders`, `unpublishedHeaders`, `capacityRoom`, `candidateTipSlot`, `publishedTipSlot`, `lastReplyReceivedAgoMs`, `lastReplyHandledAgoMs`), `admissions` (`capacity`, `held`, `queued`), `fiberDump` (`path`, or `failed`, or null) |
+| `stallState` | `Chain.StallState` | Warning | `sessions` (per session: `session`, `busy`, `pendingOffers`, `pendingHeaders`, `active`, `candidateHeaders`, `pipeline`: `peer`, `permitsFree`, `permits`, `queued`, `candidateHeaders`, `unpublishedHeaders`, `capacityRoom`, `candidateBase`, `candidateTip`, `publishedBase`, `publishedTip`, `candidateTipSlot`, `publishedTipSlot`, `lastReplyCollectedAgoMs`, `lastReplyAcceptedAgoMs`, `lastReplyHandledAgoMs`), `admissions` (`capacity`, `held`, `queued`, `worker`: `work`, `runningMs`, or null), `fiberDump` (`requested`, or null) |
+| `stallDump` | `Chain.StallDump` | Warning | `stateFile` and `fiberDump` (each `path`, or `failed` and `message`), logged when the files `--stall-dump` asked for have ended |
 | `stallExit` | `Chain.StallExit` | Error | `idleSeconds`, `ourBlock`, `peerBlock` |
 | `headersChecked` | `Chain.HeadersChecked` | Info | `validated`, `unchecked`, `waited` |
 | `chainSyncRounds` | `Chain.ChainSyncRounds` | Info | `rounds`, `headers`, `avgMs`, `maxMs`, `maxDepth`; legacy batch facade only; production rolling sessions retain the per-reply header counter and do not emit round aggregates |
@@ -1409,10 +1410,12 @@ A stall that cannot be reproduced on demand leaves its evidence (issue 371). Rig
 logs one `stallState` event with every session's pipeline: the coordinator's view (`busy`, the offers waiting for
 a decision, the reservations in flight, the headers of its candidate) and, for a pipelined session, its batch
 permits free of `permits`, the events queued for the consumer, the candidate's headers and those beyond the
-published cursor, and the time since the last ChainSync reply batch arrived and was handled; and the shared block
-admissions (`held` of `capacity` permits, `queued` works). The reads are `Ref` values and queue sizes behind
+newest point it shares with the published cursor (none when they share no point: a fork, told from lag by the
+base and tip points), and the time since the last ChainSync reply was collected (before the capacity wait),
+accepted (after it) and handled; and the shared block
+admissions (`held` of `capacity` permits, `queued` works, and the kind of work the worker is on and for how long). The reads are `Ref` values and queue sizes behind
 probes that do not block and are taken once per stall; on the block path a session only stores two timestamps per
-ChainSync reply batch. `--stall-dump <dir>` adds the runtime's fiber dump, written through the runtime's
+ChainSync reply batch. The report is read first and logged from a fiber of its own, so a wedged log lock cannot keep the watchdog from it. `--stall-dump <dir>` also writes the same line directly to `<dir>/stall-state-<epoch ms>-<n>.json` (no log lock involved) and adds the runtime's fiber dump, each in a fiber of its own so a hung file or JMX operation delays neither the `stallState` event nor later watchdog checks, written through the runtime's
 `LiveFiberSnapshotTrigger` MBean (cats-effect 3.7.1 keeps `IORuntime.fiberMonitor` private); it lists the fibers
 the runtime traces (`cats.effect.tracing.mode`, `cached` by default). `devnet.py e2e` passes the flag, and its
 `e2e-summary.json` carries the `stalled` and `stallState` events and the dump files under `stallDiagnostics` when
