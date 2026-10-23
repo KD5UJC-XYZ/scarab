@@ -309,12 +309,14 @@ object ScriptContexts:
   private def policy(h: Option[Bytes]): PlutusData = PlutusData.maybe(h.map(B(_)))
 
   /** `ChangedParameters`: the update as a map from parameter index to the value in Plutus data, in
-    * index order (the ledger's `ToPlutusData PParamsUpdate`).
+    * index order (the ledger's `ToPlutusData PParamsUpdate`). A rational is read in its field's
+    * interval: `UnitInterval` for rho, tau and the voting thresholds, `NonNegativeInterval` for a0,
+    * the prices and the reference-script fee.
     */
   def changedParameters(update: ParamUpdate): Result[PlutusData] =
-    def rational(n: xyz.kd5ujc.scarab.codec.Node): Result[PlutusData] =
+    def rational(bound: CborRead.Bound)(n: xyz.kd5ujc.scarab.codec.Node): Result[PlutusData] =
       CborRead
-        .rational(n, "rational", CborRead.Bound.NonNegative)
+        .rational(n, "rational", bound)
         .bimap(
           _ => TranslationError.Undecodable(DataSite.ParameterUpdate),
           r => PlutusData.List(Vector(I(r.numerator), I(r.denominator)))
@@ -332,10 +334,11 @@ object ScriptContexts:
         .flatMap(_.traverse(f))
         .map(PlutusData.List(_))
     def value(key: Int, n: xyz.kd5ujc.scarab.codec.Node): Result[PlutusData] = key match
-      case 9 | 10 | 11 | 33 => rational(n)
-      case 19               => list(rational)(n)
-      case 20 | 21          => list(uint)(n)
-      case 25 | 26          => list(rational)(n)
+      case 9 | 33  => rational(CborRead.Bound.NonNegative)(n)
+      case 10 | 11 => rational(CborRead.Bound.Unit)(n)
+      case 19      => list(rational(CborRead.Bound.NonNegative))(n)
+      case 20 | 21 => list(uint)(n)
+      case 25 | 26 => list(rational(CborRead.Bound.Unit))(n)
       case 18 =>
         CborRead
           .map(n, "cost models")

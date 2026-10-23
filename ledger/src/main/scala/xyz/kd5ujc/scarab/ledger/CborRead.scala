@@ -167,13 +167,25 @@ private[ledger] object CborRead:
         case Bound.Unit        => r <= Rational.one
         case Bound.NonNegative => true)
 
-  /** `decodeInteger`: an integer item or a bignum (tag 2 or 3 over a byte string). */
+  /** `decodeInteger` (cborg `Read.hs`, `peekTokenType` and `readBigUInt`): an integer item of any
+    * head width, or a bignum, which cborg recognizes only by the one-byte heads `0xc2` and `0xc3`
+    * and reads with `tryConsumeBytes`, a definite byte string. A tag 2 or 3 with a widened head
+    * (`0xd8 0x02`) or over an indefinite byte string is not an integer there. Neither distinction
+    * is in the decoded tree, so they are read from the original bytes of the tag and its content; a
+    * definite byte string of any length head or with leading zeros is still a bignum.
+    */
   private def integer(n: Node, what: String): Result[BigInt] = n.value match
     case Value.UInt(v) => Right(v)
     case Value.NInt(v) => Right(v)
-    case Value.Tag(t, inner) if t == 2 || t == 3 =>
+    case Value.Tag(t, inner) if (t == 2 || t == 3) && bignumHead(n, inner) =>
       bytes(inner, what).map { b =>
         val magnitude = BigInt(1, b.toArray)
         if t == 2 then magnitude else -1 - magnitude
       }
     case _ => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Integer, n.value))
+
+  /** The tag is the one-byte head `0xc2` / `0xc3` and its content a definite-length byte string. */
+  private def bignumHead(tag: Node, content: Node): Boolean =
+    val head = tag.original(0) & 0xff
+    val first = content.original(0) & 0xff
+    (head == 0xc2 || head == 0xc3) && (first >> 5) == 2 && (first & 0x1f) != 31
