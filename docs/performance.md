@@ -2902,3 +2902,9 @@ are noise of the same size as their difference.
 Before, doubling the message size multiplied the time by 4 to 5 (quadratic); after, by 2 (about 13 ms a MiB).
 The small-message rows are within the spread this loaded host gave between runs of the unchanged code (the
 section 22 figures for the same rows were 5 to 8 us on an idle host).
+
+The capacity decision of `append` was then made a pure function in `Long` arithmetic (`end + incoming` could wrap
+as an `Int` near the 2 GiB array limit). On the same loaded host the two builds ran back to back (load average about
+45), baseline then change: 4 MiB 85.7 / 73.5 ms, 16 MiB 351 / 258 ms, 32 MiB 587 / 660 ms, 64 MiB 1,240 / 1,484 ms,
+65,000 bytes 1,349 / 1,287 us; differences are within this host's run-to-run spread. The decision allocates nothing
+unless the array grows.

@@ -71,3 +71,23 @@ class ReceiveBufferSuite extends FunSuite:
     assertEquals(buffer.size, 0)
     assertEquals(buffer.view, Bytes.empty)
   }
+
+  test("the capacity decision does not overflow near the array limit after partial consumption") {
+    import ReceiveBuffer.Room
+    val max = Int.MaxValue
+    val limit = ReceiveBuffer.MaxArray.toInt
+    // end + incoming wraps negative as an Int, while the live bytes are few: it must compact into a fresh array.
+    assertEquals(ReceiveBuffer.room(100, max - 10, max - 8, 1000), Room.Grow(1100))
+    assertEquals(
+      ReceiveBuffer.room(1 << 20, max - 8, max - 8, max - 8 - (1 << 20)),
+      Room.Grow(limit)
+    )
+    // The live total itself over the limit is refused, whatever the tail room.
+    assertEquals(ReceiveBuffer.room(limit, limit, limit, 1), Room.TooLarge)
+    assertEquals(ReceiveBuffer.room(max, max, max, max), Room.TooLarge)
+    // Exactly the tail room fits; one more does not.
+    assertEquals(ReceiveBuffer.room(10, 100, 200, 100), Room.Fits)
+    assertEquals(ReceiveBuffer.room(10, 100, 200, 101), Room.Grow(1024))
+    assertEquals(ReceiveBuffer.room(0, 0, 0, 0), Room.Fits)
+    assertEquals(ReceiveBuffer.room(limit - 1, limit - 1, limit, 1), Room.Fits)
+  }

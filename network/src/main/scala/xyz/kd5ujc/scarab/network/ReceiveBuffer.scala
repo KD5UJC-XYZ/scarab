@@ -30,24 +30,25 @@ private[network] final class ReceiveBuffer:
 
   /** Add `more`; false, with the buffer unchanged, when the total would not fit in one array. */
   def append(more: Bytes): Boolean =
-    val needed = live.toLong + more.size.toLong
-    if needed > ReceiveBuffer.MaxArray then false
-    else
-      if end + more.size > array.length then
-        val wanted = math.max(math.max(needed, 2L * live), ReceiveBuffer.MinCapacity.toLong)
-        val grown = new Array[Byte](math.min(ReceiveBuffer.MaxArray, wanted).toInt)
-        System.arraycopy(array, start, grown, 0, live)
-        array = grown
-        start = 0
-        end = live
-      more.copyTo(array, end)
-      end += more.size
-      live = end - start
-      true
+    ReceiveBuffer.room(live, end, array.length, more.size) match
+      case ReceiveBuffer.Room.TooLarge => false
+      case room =>
+        room match
+          case ReceiveBuffer.Room.Grow(capacity) =>
+            val grown = new Array[Byte](capacity)
+            System.arraycopy(array, start, grown, 0, live)
+            array = grown
+            start = 0
+            end = live
+          case _ => ()
+        more.copyTo(array, end)
+        end += more.size
+        live = end - start
+        true
 
   /** Drop the first `n` bytes (at most [[size]]). */
   def consume(n: Int): Unit =
-    start += math.min(n, live)
+    start += math.max(0, math.min(n, live))
     live = end - start
     if live == 0 then clear()
 
@@ -61,3 +62,30 @@ private object ReceiveBuffer:
   val NoBytes: Array[Byte] = new Array[Byte](0)
   val MinCapacity = 1024
   val MaxArray: Long = Int.MaxValue.toLong - 8
+
+  /** What an append needs of the array. */
+  enum Room:
+    case Fits
+    case Grow(capacity: Int)
+    case TooLarge
+
+  /** The capacity decision of `append`, pure and in `Long` arithmetic: `end + incoming` can exceed
+    * `Int.MaxValue` after partial consumption (`end` far above `live`), where an `Int` sum wraps
+    * negative and would skip the growth.
+    *
+    * @param live
+    *   the bytes held
+    * @param end
+    *   the index after the last written byte
+    * @param length
+    *   the current array length
+    * @param incoming
+    *   the size of the bytes to add
+    */
+  def room(live: Int, end: Int, length: Int, incoming: Int): Room =
+    val needed = live.toLong + incoming.toLong
+    if needed > MaxArray then Room.TooLarge
+    else if end.toLong + incoming.toLong <= length.toLong then Room.Fits
+    else
+      val wanted = math.max(math.max(needed, 2L * live), MinCapacity.toLong)
+      Room.Grow(math.min(MaxArray, wanted).toInt)

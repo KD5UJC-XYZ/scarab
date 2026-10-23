@@ -7,3 +7,6 @@
   did in #353. The reference reads a query with the same limit-free codec and bounds it only by the mux ingress queue.
   The nesting of a query stays bounded (32,767 levels, as the item bound allowed before), which keeps the refusal of
   a 40,000-layer `GetCBOR` query.
+- **The buffer's growth decision cannot overflow.** After partial consumption `end + incoming` could wrap negative
+  near the 2 GiB array limit and skip the growth; the decision is now a pure function in `Long` arithmetic that
+  compacts into a fresh array or refuses with the ingress limit.
