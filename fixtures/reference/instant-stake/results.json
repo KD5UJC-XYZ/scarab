@@ -1,0 +1,1322 @@
+{
+ "cases": [
+  {
+   "babbage": {
+    "credentials": [
+     {
+      "coin": "18446744073709551614",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "pointers": []
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [
+     {
+      "address": "000101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202",
+      "coin": "3",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ],
+    "credentials": [
+     {
+      "coin": "1",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "name": "credential: deletion underflows modulo Word64",
+    "pointers": [],
+    "produce": []
+   },
+   "shelley": {
+    "credentials": [
+     {
+      "coin": "18446744073709551614",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "pointers": []
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [],
+    "pointers": []
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [],
+    "credentials": [
+     {
+      "coin": "18446744073709551615",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "name": "credential: addition overflow wraps to zero and removes the entry",
+    "pointers": [],
+    "produce": [
+     {
+      "address": "000101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202",
+      "coin": "1",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ]
+   },
+   "shelley": {
+    "credentials": [],
+    "pointers": []
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [
+     {
+      "coin": "2",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "pointers": []
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [],
+    "credentials": [
+     {
+      "coin": "18446744073709551615",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "name": "credential: addition overflow wraps past zero",
+    "pointers": [],
+    "produce": [
+     {
+      "address": "000101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202",
+      "coin": "3",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ]
+   },
+   "shelley": {
+    "credentials": [
+     {
+      "coin": "2",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "pointers": []
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [],
+    "pointers": []
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [
+     {
+      "address": "000101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202",
+      "coin": "3",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ],
+    "credentials": [
+     {
+      "coin": "3",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "name": "credential: deletion to exactly zero removes the entry",
+    "pointers": [],
+    "produce": []
+   },
+   "shelley": {
+    "credentials": [],
+    "pointers": []
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [
+     {
+      "coin": "3",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "pointers": []
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [],
+    "credentials": [],
+    "name": "credential: a missing entry inserts the amount for addition",
+    "pointers": [],
+    "produce": [
+     {
+      "address": "000101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202",
+      "coin": "3",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ]
+   },
+   "shelley": {
+    "credentials": [
+     {
+      "coin": "3",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "pointers": []
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [
+     {
+      "coin": "3",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "pointers": []
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [
+     {
+      "address": "000101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202",
+      "coin": "3",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ],
+    "credentials": [],
+    "name": "credential: a missing entry inserts the amount for deletion",
+    "pointers": [],
+    "produce": []
+   },
+   "shelley": {
+    "credentials": [
+     {
+      "coin": "3",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "pointers": []
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [],
+    "pointers": []
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [],
+    "credentials": [],
+    "name": "credential: a zero amount never creates an entry (addition)",
+    "pointers": [],
+    "produce": [
+     {
+      "address": "000101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202",
+      "coin": "0",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ]
+   },
+   "shelley": {
+    "credentials": [],
+    "pointers": []
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [],
+    "pointers": []
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [
+     {
+      "address": "000101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202",
+      "coin": "0",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ],
+    "credentials": [],
+    "name": "credential: a zero amount never creates an entry (deletion)",
+    "pointers": [],
+    "produce": []
+   },
+   "shelley": {
+    "credentials": [],
+    "pointers": []
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [
+     {
+      "coin": "5",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "pointers": []
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [
+     {
+      "address": "000101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202",
+      "coin": "0",
+      "index": 0,
+      "txId": "0202020202020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "credentials": [
+     {
+      "coin": "5",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "name": "credential: a zero amount leaves a held entry unchanged",
+    "pointers": [],
+    "produce": [
+     {
+      "address": "000101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202",
+      "coin": "0",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ]
+   },
+   "shelley": {
+    "credentials": [
+     {
+      "coin": "5",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "pointers": []
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [
+     {
+      "coin": "2",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "pointers": []
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [
+     {
+      "address": "000101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202",
+      "coin": "3",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     },
+     {
+      "address": "000101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202",
+      "coin": "2",
+      "index": 0,
+      "txId": "0202020202020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "credentials": [
+     {
+      "coin": "3",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "name": "credential: zero removal is observed by the next ordered deletion",
+    "pointers": [],
+    "produce": []
+   },
+   "shelley": {
+    "credentials": [
+     {
+      "coin": "2",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "pointers": []
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [
+     {
+      "coin": "18446744073709551614",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "pointers": []
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [
+     {
+      "address": "000101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202",
+      "coin": "3",
+      "index": 0,
+      "txId": "0202020202020202020202020202020202020202020202020202020202020202"
+     },
+     {
+      "address": "000101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202",
+      "coin": "2",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ],
+    "credentials": [
+     {
+      "coin": "3",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "name": "credential: deletion follows TxIn map order, not the order a body lists its inputs",
+    "pointers": [],
+    "produce": []
+   },
+   "shelley": {
+    "credentials": [
+     {
+      "coin": "18446744073709551614",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "pointers": []
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [],
+    "pointers": []
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [
+     {
+      "address": "000101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202",
+      "coin": "1",
+      "index": 0,
+      "txId": "0202020202020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "credentials": [
+     {
+      "coin": "18446744073709551614",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "name": "credential: several outputs of one transaction are all added",
+    "pointers": [],
+    "produce": [
+     {
+      "address": "000101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202",
+      "coin": "1",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     },
+     {
+      "address": "000101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202",
+      "coin": "2",
+      "index": 1,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ]
+   },
+   "shelley": {
+    "credentials": [],
+    "pointers": []
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [
+     {
+      "coin": "5",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "pointers": []
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [
+     {
+      "address": "000101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202",
+      "coin": "4",
+      "index": 1,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     },
+     {
+      "address": "000101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202",
+      "coin": "5",
+      "index": 0,
+      "txId": "0202020202020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "credentials": [
+     {
+      "coin": "3",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "name": "credential: zero removal then reinsertion within one update",
+    "pointers": [],
+    "produce": [
+     {
+      "address": "000101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202",
+      "coin": "1",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ]
+   },
+   "shelley": {
+    "credentials": [
+     {
+      "coin": "5",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "pointers": []
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [],
+    "pointers": []
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [
+     {
+      "address": "000101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202",
+      "coin": "1",
+      "index": 0,
+      "txId": "0202020202020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "credentials": [],
+    "name": "credential: outputs are added before consumed outputs are deleted (balanced)",
+    "pointers": [],
+    "produce": [
+     {
+      "address": "000101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202",
+      "coin": "1",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ]
+   },
+   "shelley": {
+    "credentials": [],
+    "pointers": []
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [
+     {
+      "coin": "18446744073709551615",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "pointers": []
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [
+     {
+      "address": "000101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202",
+      "coin": "2",
+      "index": 0,
+      "txId": "0202020202020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "credentials": [],
+    "name": "credential: outputs are added before consumed outputs are deleted (unbalanced)",
+    "pointers": [],
+    "produce": [
+     {
+      "address": "000101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202",
+      "coin": "1",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ]
+   },
+   "shelley": {
+    "credentials": [
+     {
+      "coin": "18446744073709551615",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "pointers": []
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [],
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "7",
+      "slot": 1,
+      "txIx": 2
+     }
+    ]
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [
+     {
+      "address": "6001010101010101010101010101010101010101010101010101010101",
+      "coin": "3",
+      "index": 0,
+      "txId": "0202020202020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "credentials": [],
+    "name": "credential: the other map and an address without stake leave the entry unchanged",
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "7",
+      "slot": 1,
+      "txIx": 2
+     }
+    ],
+    "produce": [
+     {
+      "address": "6001010101010101010101010101010101010101010101010101010101",
+      "coin": "3",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ]
+   },
+   "shelley": {
+    "credentials": [],
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "7",
+      "slot": 1,
+      "txIx": 2
+     }
+    ]
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [],
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "18446744073709551614",
+      "slot": 1,
+      "txIx": 2
+     }
+    ]
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [
+     {
+      "address": "4001010101010101010101010101010101010101010101010101010101010203",
+      "coin": "3",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ],
+    "credentials": [],
+    "name": "pointer: deletion underflows modulo Word64",
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "1",
+      "slot": 1,
+      "txIx": 2
+     }
+    ],
+    "produce": []
+   },
+   "shelley": {
+    "credentials": [],
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "18446744073709551614",
+      "slot": 1,
+      "txIx": 2
+     }
+    ]
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [],
+    "pointers": []
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [],
+    "credentials": [],
+    "name": "pointer: addition overflow wraps to zero and removes the entry",
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "18446744073709551615",
+      "slot": 1,
+      "txIx": 2
+     }
+    ],
+    "produce": [
+     {
+      "address": "4001010101010101010101010101010101010101010101010101010101010203",
+      "coin": "1",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ]
+   },
+   "shelley": {
+    "credentials": [],
+    "pointers": []
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [],
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "2",
+      "slot": 1,
+      "txIx": 2
+     }
+    ]
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [],
+    "credentials": [],
+    "name": "pointer: addition overflow wraps past zero",
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "18446744073709551615",
+      "slot": 1,
+      "txIx": 2
+     }
+    ],
+    "produce": [
+     {
+      "address": "4001010101010101010101010101010101010101010101010101010101010203",
+      "coin": "3",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ]
+   },
+   "shelley": {
+    "credentials": [],
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "2",
+      "slot": 1,
+      "txIx": 2
+     }
+    ]
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [],
+    "pointers": []
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [
+     {
+      "address": "4001010101010101010101010101010101010101010101010101010101010203",
+      "coin": "3",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ],
+    "credentials": [],
+    "name": "pointer: deletion to exactly zero removes the entry",
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "3",
+      "slot": 1,
+      "txIx": 2
+     }
+    ],
+    "produce": []
+   },
+   "shelley": {
+    "credentials": [],
+    "pointers": []
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [],
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "3",
+      "slot": 1,
+      "txIx": 2
+     }
+    ]
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [],
+    "credentials": [],
+    "name": "pointer: a missing entry inserts the amount for addition",
+    "pointers": [],
+    "produce": [
+     {
+      "address": "4001010101010101010101010101010101010101010101010101010101010203",
+      "coin": "3",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ]
+   },
+   "shelley": {
+    "credentials": [],
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "3",
+      "slot": 1,
+      "txIx": 2
+     }
+    ]
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [],
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "3",
+      "slot": 1,
+      "txIx": 2
+     }
+    ]
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [
+     {
+      "address": "4001010101010101010101010101010101010101010101010101010101010203",
+      "coin": "3",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ],
+    "credentials": [],
+    "name": "pointer: a missing entry inserts the amount for deletion",
+    "pointers": [],
+    "produce": []
+   },
+   "shelley": {
+    "credentials": [],
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "3",
+      "slot": 1,
+      "txIx": 2
+     }
+    ]
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [],
+    "pointers": []
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [],
+    "credentials": [],
+    "name": "pointer: a zero amount never creates an entry (addition)",
+    "pointers": [],
+    "produce": [
+     {
+      "address": "4001010101010101010101010101010101010101010101010101010101010203",
+      "coin": "0",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ]
+   },
+   "shelley": {
+    "credentials": [],
+    "pointers": []
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [],
+    "pointers": []
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [
+     {
+      "address": "4001010101010101010101010101010101010101010101010101010101010203",
+      "coin": "0",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ],
+    "credentials": [],
+    "name": "pointer: a zero amount never creates an entry (deletion)",
+    "pointers": [],
+    "produce": []
+   },
+   "shelley": {
+    "credentials": [],
+    "pointers": []
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [],
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "5",
+      "slot": 1,
+      "txIx": 2
+     }
+    ]
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [
+     {
+      "address": "4001010101010101010101010101010101010101010101010101010101010203",
+      "coin": "0",
+      "index": 0,
+      "txId": "0202020202020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "credentials": [],
+    "name": "pointer: a zero amount leaves a held entry unchanged",
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "5",
+      "slot": 1,
+      "txIx": 2
+     }
+    ],
+    "produce": [
+     {
+      "address": "4001010101010101010101010101010101010101010101010101010101010203",
+      "coin": "0",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ]
+   },
+   "shelley": {
+    "credentials": [],
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "5",
+      "slot": 1,
+      "txIx": 2
+     }
+    ]
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [],
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "2",
+      "slot": 1,
+      "txIx": 2
+     }
+    ]
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [
+     {
+      "address": "4001010101010101010101010101010101010101010101010101010101010203",
+      "coin": "3",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     },
+     {
+      "address": "4001010101010101010101010101010101010101010101010101010101010203",
+      "coin": "2",
+      "index": 0,
+      "txId": "0202020202020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "credentials": [],
+    "name": "pointer: zero removal is observed by the next ordered deletion",
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "3",
+      "slot": 1,
+      "txIx": 2
+     }
+    ],
+    "produce": []
+   },
+   "shelley": {
+    "credentials": [],
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "2",
+      "slot": 1,
+      "txIx": 2
+     }
+    ]
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [],
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "18446744073709551614",
+      "slot": 1,
+      "txIx": 2
+     }
+    ]
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [
+     {
+      "address": "4001010101010101010101010101010101010101010101010101010101010203",
+      "coin": "3",
+      "index": 0,
+      "txId": "0202020202020202020202020202020202020202020202020202020202020202"
+     },
+     {
+      "address": "4001010101010101010101010101010101010101010101010101010101010203",
+      "coin": "2",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ],
+    "credentials": [],
+    "name": "pointer: deletion follows TxIn map order, not the order a body lists its inputs",
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "3",
+      "slot": 1,
+      "txIx": 2
+     }
+    ],
+    "produce": []
+   },
+   "shelley": {
+    "credentials": [],
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "18446744073709551614",
+      "slot": 1,
+      "txIx": 2
+     }
+    ]
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [],
+    "pointers": []
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [
+     {
+      "address": "4001010101010101010101010101010101010101010101010101010101010203",
+      "coin": "1",
+      "index": 0,
+      "txId": "0202020202020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "credentials": [],
+    "name": "pointer: several outputs of one transaction are all added",
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "18446744073709551614",
+      "slot": 1,
+      "txIx": 2
+     }
+    ],
+    "produce": [
+     {
+      "address": "4001010101010101010101010101010101010101010101010101010101010203",
+      "coin": "1",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     },
+     {
+      "address": "4001010101010101010101010101010101010101010101010101010101010203",
+      "coin": "2",
+      "index": 1,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ]
+   },
+   "shelley": {
+    "credentials": [],
+    "pointers": []
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [],
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "5",
+      "slot": 1,
+      "txIx": 2
+     }
+    ]
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [
+     {
+      "address": "4001010101010101010101010101010101010101010101010101010101010203",
+      "coin": "4",
+      "index": 1,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     },
+     {
+      "address": "4001010101010101010101010101010101010101010101010101010101010203",
+      "coin": "5",
+      "index": 0,
+      "txId": "0202020202020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "credentials": [],
+    "name": "pointer: zero removal then reinsertion within one update",
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "3",
+      "slot": 1,
+      "txIx": 2
+     }
+    ],
+    "produce": [
+     {
+      "address": "4001010101010101010101010101010101010101010101010101010101010203",
+      "coin": "1",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ]
+   },
+   "shelley": {
+    "credentials": [],
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "5",
+      "slot": 1,
+      "txIx": 2
+     }
+    ]
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [],
+    "pointers": []
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [
+     {
+      "address": "4001010101010101010101010101010101010101010101010101010101010203",
+      "coin": "1",
+      "index": 0,
+      "txId": "0202020202020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "credentials": [],
+    "name": "pointer: outputs are added before consumed outputs are deleted (balanced)",
+    "pointers": [],
+    "produce": [
+     {
+      "address": "4001010101010101010101010101010101010101010101010101010101010203",
+      "coin": "1",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ]
+   },
+   "shelley": {
+    "credentials": [],
+    "pointers": []
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [],
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "18446744073709551615",
+      "slot": 1,
+      "txIx": 2
+     }
+    ]
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [
+     {
+      "address": "4001010101010101010101010101010101010101010101010101010101010203",
+      "coin": "2",
+      "index": 0,
+      "txId": "0202020202020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "credentials": [],
+    "name": "pointer: outputs are added before consumed outputs are deleted (unbalanced)",
+    "pointers": [],
+    "produce": [
+     {
+      "address": "4001010101010101010101010101010101010101010101010101010101010203",
+      "coin": "1",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ]
+   },
+   "shelley": {
+    "credentials": [],
+    "pointers": [
+     {
+      "certIx": 3,
+      "coin": "18446744073709551615",
+      "slot": 1,
+      "txIx": 2
+     }
+    ]
+   }
+  },
+  {
+   "babbage": {
+    "credentials": [
+     {
+      "coin": "7",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "pointers": []
+   },
+   "eraAgree": true,
+   "input": {
+    "consume": [
+     {
+      "address": "6001010101010101010101010101010101010101010101010101010101",
+      "coin": "3",
+      "index": 0,
+      "txId": "0202020202020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "credentials": [
+     {
+      "coin": "7",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "name": "pointer: the other map and an address without stake leave the entry unchanged",
+    "pointers": [],
+    "produce": [
+     {
+      "address": "6001010101010101010101010101010101010101010101010101010101",
+      "coin": "3",
+      "index": 0,
+      "txId": "0101010101010101010101010101010101010101010101010101010101010101"
+     }
+    ]
+   },
+   "shelley": {
+    "credentials": [
+     {
+      "coin": "7",
+      "keyHash": "02020202020202020202020202020202020202020202020202020202"
+     }
+    ],
+    "pointers": []
+   }
+  }
+ ],
+ "coinChecks": [
+  {
+   "coin": "-1",
+   "compact": null
+  },
+  {
+   "coin": "0",
+   "compact": "0"
+  },
+  {
+   "coin": "1",
+   "compact": "1"
+  },
+  {
+   "coin": "18446744073709551615",
+   "compact": "18446744073709551615"
+  },
+  {
+   "coin": "18446744073709551616",
+   "compact": null
+  },
+  {
+   "coin": "18446744073709551617",
+   "compact": null
+  }
+ ]
+}
