@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-10-22",
+  "scope": "Unchanged released decoders (decodeFullAnnotator) of a Conway transaction body, witness set and whole transaction at decoder version 9, and of a Babbage body at version 7; no ledger rule, signature or script is run",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "compiler": "GHC 9.10.3",
+  "referenceNode": "11.1.3 (matching embedded ledger package versions, not a bit-identical node release build)",
+  "packages": {
+    "cardano-ledger-binary": "1.9.1.0",
+    "cardano-ledger-alonzo": "1.16.0.0",
+    "cardano-ledger-babbage": "1.14.0.0",
+    "cardano-ledger-conway": "1.23.0.0",
+    "cardano-ledger-core": "1.21.0.0",
+    "cardano-data": "1.3.1.0"
+  },
+  "sourceFiles": {
+    "binaryDecoder": {
+      "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+      "sourceSha256": "3ff3541b2900ceaab9bda26f633d7ea5118a49f5faab3936d036cfe9b49f94cc",
+      "matchesPin": false,
+      "archiveSha256": "05d59229edffc94b8f61273117456601532e23d8656f3076775bbf38e600bb8a",
+      "difference": "two lines of decodeIPv4 (byte order of the address read); the set, map, list, tag and non-empty decoders are identical"
+    },
+    "alonzoTxWits": {
+      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+      "sourceSha256": "d905a1b5f7fbc11686b1efab5dbb76f9dc8462567959340a21d2611ad72ea2dc",
+      "matchesPin": true,
+      "archiveSha256": "195f1b9dac59bcdd8d4f499275f450bc37ee57169efee0fadf0d1676bc37cae5"
+    },
+    "conwayTxBody": {
+      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxBody.hs",
+      "sourceSha256": "112bedbf71f6f2a2f8ddf6eee44f9a781a994f37727b9d439821b482a32b5c0e",
+      "matchesPin": true,
+      "archiveSha256": "486831d3d94060fff90e5e85c74030c744008526aa83f4a18215da124720cf1a"
+    },
+    "conwayProcedures": {
+      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+      "sourceSha256": "63f843282e99a159044a8f439124f92698e0b7090884f336f783c930c9cc9c71",
+      "matchesPin": true,
+      "archiveSha256": "486831d3d94060fff90e5e85c74030c744008526aa83f4a18215da124720cf1a"
+    },
+    "orderedSet": {
+      "file": "libs/cardano-data/src/Data/OSet/Strict.hs",
+      "sourceSha256": "7d9a130c5621d63647fd00877ff8f7ce7b5b3d9d5a0d97ba5235698ba9818432",
+      "matchesPin": true,
+      "archiveSha256": "96ec1cba5c6a877e858317161356688efddf0b88da90fd622e7079bcc5400701"
+    }
+  },
+  "harnessSha256": "61cf63a7fcd14db4969a28fc677ee538c8c37435007b03529ccd6747fddc72c4",
+  "generatorSha256": "24bf714024bb7928e1354164086906263209d96715045b42d5c5738714b51db3",
+  "casesSha256": "2c92c9e9a105d80fb8dddd416578e216861f3d0c0f172d95bc51b10fb647694f",
+  "referenceSha256": "7f61d753263a3e60b164977cfe79b95a3151b5a9e2f83c0251aeff6e6f8e5a62",
+  "cases": 222,
+  "accepted": 112,
+  "refused": 110,
+  "originalBytesRetained": true,
+  "network": "none",
+  "keysRetained": false
+}

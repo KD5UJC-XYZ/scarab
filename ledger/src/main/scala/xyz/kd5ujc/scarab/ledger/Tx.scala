@@ -40,6 +40,15 @@ object DRep:
       case _ => Left(LedgerDecodeError.Expected("drep", LedgerDecodeError.Shape.Array, n.value))
     }
 
+/** The comparison key of a pool registration: the parameters without the fields Scarab keeps as
+  * their original encodings, and the meaning of those.
+  */
+private[ledger] final case class PoolIdentity(
+    fixed: PoolParams,
+    relays: Semantic,
+    metadata: Option[Semantic]
+)
+
 final case class PoolParams(
     operator: Bytes,
     vrfKeyHash: Bytes,
@@ -64,6 +73,18 @@ object PoolParams:
       _ <- CborRead.text(fields(0), "pool metadata URL")
       hash <- CborRead.bytes(fields(1), "pool metadata hash")
     yield hash
+
+  /** The values the reference's derived `Ord StakePoolParams` compares
+    * (`State/StakePool.hs:424-435`, f649f975): the relays (`StrictSeq StakePoolRelay`) and the
+    * metadata (`PoolMetadata`, derived `Ord`, `State/StakePool.hs:293-297`) as what they mean, not
+    * as their original encodings.
+    */
+  private[ledger] def identity(p: PoolParams): PoolIdentity =
+    PoolIdentity(
+      p.copy(relays = Bytes.empty, metadata = None),
+      Semantic.ofBytes(p.relays),
+      p.metadata.map(Semantic.ofBytes)
+    )
 
   extension (p: PoolParams)
     /** The parameters of a registered pool as the reference reads them back: `StakePoolState` and
@@ -107,7 +128,14 @@ enum Pot:
   case Treasury
 
 object Certificate:
-  def decode(n: Node): Either[LedgerDecodeError, Certificate] =
+  /** What `Ord (ConwayTxCert era)` compares (`Conway/TxCert.hs:473-486, 568-574, 643-647`,
+    * f649f975): the decoded fields, so a registration is its pool parameters by meaning.
+    */
+  private[ledger] def identity(c: Certificate): Either[PoolIdentity, Certificate] = c match
+    case RegisterPool(params) => Left(PoolParams.identity(params))
+    case other                => Right(other)
+
+  def decode(n: Node, version: DecoderVersion): Either[LedgerDecodeError, Certificate] =
     def cred(i: Int, xs: Vector[Node]) = Credential.decode(xs(i), "certificate credential")
     def pool(i: Int, xs: Vector[Node]) = CborRead.bytesN(xs(i), 28, "pool id")
     def coin(i: Int, xs: Vector[Node]) = CborRead.uint(xs(i), "certificate coin")
@@ -146,7 +174,7 @@ object Certificate:
           case 0 => cred(1, xs).map(Register(_, None))
           case 1 => cred(1, xs).map(Unregister(_, None))
           case 2 => (cred(1, xs), pool(2, xs)).mapN((c, p) => Delegate(c, Some(p), None, None))
-          case 3 => poolParams(xs.drop(1)).map(RegisterPool(_))
+          case 3 => poolParams(xs.drop(1), version).map(RegisterPool(_))
           case 4 => (pool(1, xs), CborRead.uint(xs(2), "retirement epoch")).mapN(RetirePool(_, _))
           case 5 =>
             (
@@ -200,17 +228,18 @@ object Certificate:
       yield MoveRewards(pot, transfer)
     }
 
-  private def poolParams(xs: Vector[Node]): Either[LedgerDecodeError, PoolParams] =
+  private def poolParams(
+      xs: Vector[Node],
+      version: DecoderVersion
+  ): Either[LedgerDecodeError, PoolParams] =
     for
       operator <- CborRead.bytesN(xs(0), 28, "pool operator")
       vrf <- CborRead.bytesN(xs(1), 32, "pool vrf")
       pledge <- CborRead.uint(xs(2), "pool pledge")
       cost <- CborRead.uint(xs(3), "pool cost")
-      margin <- CborRead.rational(xs(4), "pool margin")
+      margin <- CborRead.rational(xs(4), "pool margin", CborRead.Bound.Unit)
       account <- CborRead.bytes(xs(5), "pool reward account").flatMap(RewardAccount.decode)
-      owners <- CborRead
-        .set(xs(6), "pool owners")
-        .flatMap(_.traverse(CborRead.bytesN(_, 28, "pool owner")))
+      owners <- CborRead.set(xs(6), "pool owners", version)(CborRead.bytesN(_, 28, "pool owner"))
       metadata <- xs(8).value match
         case xyz.kd5ujc.scarab.codec.Value.Null => Right(None)
         case _ => PoolParams.metadataHash(xs(8).original).map(_ => Some(xs(8).original))
@@ -279,20 +308,35 @@ object TxBody:
       epoch <- CborRead.uint(xs(1), "update epoch")
     yield Update(proposals.toMap, epoch)
 
-  def decode(raw: Bytes, mode: Address.Mode): Either[LedgerDecodeError, TxBody] =
+  /** A body of a block of `era`, read at the era's decoder version ([[DecoderVersion]]). Conway's
+    * `bodyFields` (cardano-ledger `eras/conway/impl/src/Cardano/Ledger/Conway/TxBody.hs` at
+    * f649f975) has no key 6, refuses a present optional collection that is empty (`fieldGuarded`)
+    * and a donation of zero (`decodePositiveCoin`); its sets, ordered sets and maps refuse
+    * duplicates from version 9 (`Decoder.hs` `decodeSet`, `decodeMapByKey`; `Data/OSet/Strict.hs`
+    * `decodeOSet`).
+    */
+  def decode(raw: Bytes, era: Era): Either[LedgerDecodeError, TxBody] =
+    val mode = Address.Mode.of(era)
+    val version = DecoderVersion.of(era)
+    val conway = era.ordinal >= Era.Conway.ordinal
+    val known = if conway then Known - 6 else Known
+    // `fieldGuarded`: Conway fails a key that is present with an empty value.
+    def present[A](what: String)(
+        r: Either[LedgerDecodeError, Option[Vector[A]]]
+    ): Either[LedgerDecodeError, Option[Vector[A]]] =
+      r.flatMap(_.traverse(CborRead.nonEmpty(_, what, conway)))
     for
       root <- CborRead.decode(raw)
       f <- CborRead.fields(root, "transaction body")
       _ <- Either.cond(
-        f.keySet.subsetOf(Known),
+        f.keySet.subsetOf(known),
         (),
-        LedgerDecodeError.UnknownFields("transaction body", f.keySet -- Known)
+        LedgerDecodeError.UnknownFields("transaction body", f.keySet -- known)
       )
       inputs <- f
         .get(0)
         .toRight(LedgerDecodeError.MissingField("transaction body", "inputs"))
-        .flatMap(CborRead.set(_, "inputs"))
-        .flatMap(_.traverse(TxIn.decode))
+        .flatMap(CborRead.set(_, "inputs", version)(TxIn.decode))
       outputs <- f
         .get(1)
         .toRight(LedgerDecodeError.MissingField("transaction body", "outputs"))
@@ -304,45 +348,73 @@ object TxBody:
         .flatMap(CborRead.uint(_, "fee"))
       ttl <- f.get(3).traverse(CborRead.uint(_, "ttl"))
       start <- f.get(8).traverse(CborRead.uint(_, "validity start"))
-      certs <- f
-        .get(4)
-        .traverse(CborRead.list(_, "certificates").flatMap(_.traverse(Certificate.decode)))
-      withdrawals <- f
-        .get(5)
-        .traverse(
-          CborRead
-            .map(_, "withdrawals")
-            .flatMap(_.traverse { case (k, v) =>
-              (
-                CborRead.bytes(k, "withdrawal account").flatMap(RewardAccount.decode),
-                CborRead.uint(v, "withdrawal")
-              ).tupled
-            })
-        )
+      certs <- present("certificates")(
+        f.get(4)
+          .traverse(
+            CborRead.oset(_, "certificates", version)(Certificate.decode(_, version))(
+              Certificate.identity
+            )
+          )
+      )
+      withdrawals <- present("withdrawals")(
+        f.get(5)
+          .traverse(
+            CborRead
+              .map(_, "withdrawals")
+              .flatMap(_.traverse { case (k, v) =>
+                (
+                  CborRead.bytes(k, "withdrawal account").flatMap(RewardAccount.decode),
+                  CborRead.uint(v, "withdrawal")
+                ).tupled
+              })
+              .flatMap(ws =>
+                if version.atLeast(9) then CborRead.unique(ws.map(_._1), "withdrawals").as(ws)
+                else Right(ws)
+              )
+          )
+      )
       upd <- f.get(6).traverse(update)
       auxHash <- f.get(7).traverse(CborRead.bytesN(_, 32, "auxiliary data hash"))
       mint <- f.get(9).traverse(Value.multiasset(_, "mint", signed = true, mode.values))
+      _ <- Either.cond(!(conway && mint.exists(_.isEmpty)), (), LedgerDecodeError.Empty("mint"))
       dataHash <- f.get(11).traverse(CborRead.bytesN(_, 32, "script data hash"))
-      collateral <- f
-        .get(13)
-        .traverse(CborRead.set(_, "collateral").flatMap(_.traverse(TxIn.decode)))
-      signers <- f
-        .get(14)
-        .traverse(
-          CborRead.set(_, "required signers").flatMap(_.traverse(CborRead.bytesN(_, 28, "signer")))
-        )
+      collateral <- present("collateral")(
+        f.get(13).traverse(CborRead.set(_, "collateral", version)(TxIn.decode))
+      )
+      signers <- present("required signers")(
+        f.get(14)
+          .traverse(CborRead.set(_, "required signers", version)(CborRead.bytesN(_, 28, "signer")))
+      )
       network <- f.get(15).traverse(CborRead.uint(_, "network id"))
       collateralReturn <- f.get(16).traverse(TxOut.decode(_, mode))
       totalCollateral <- f.get(17).traverse(CborRead.uint(_, "total collateral"))
-      refs <- f
-        .get(18)
-        .traverse(CborRead.set(_, "reference inputs").flatMap(_.traverse(TxIn.decode)))
-      votes <- f.get(19).traverse(VotingProcedures.decode(_).leftMap(LedgerDecodeError.Voting(_)))
-      proposals <- f
-        .get(20)
-        .traverse(CborRead.list(_, "proposal procedures").flatMap(_.traverse(Proposal.decode)))
+      refs <- present("reference inputs")(
+        f.get(18).traverse(CborRead.set(_, "reference inputs", version)(TxIn.decode))
+      )
+      votes <- present("voting procedures")(
+        f.get(19)
+          .traverse(
+            VotingProcedures
+              .decode(_)
+              .flatMap(v => if conway then VotingProcedures.requireBodyDecodable(v) else Right(v))
+              .leftMap(LedgerDecodeError.Voting(_))
+          )
+      )
+      proposals <- present("proposal procedures")(
+        f.get(20)
+          .traverse(
+            CborRead.oset(_, "proposal procedures", version)(Proposal.decode(_, version))(
+              Proposal.identity
+            )
+          )
+      )
       treasury <- f.get(21).traverse(CborRead.uint(_, "current treasury value"))
       donation <- f.get(22).traverse(CborRead.uint(_, "donation"))
+      _ <- Either.cond(
+        !(conway && donation.contains(BigInt(0))),
+        (),
+        LedgerDecodeError.Zero("donation")
+      )
     yield TxBody(
       raw,
       inputs,
@@ -413,7 +485,16 @@ final case class Witnesses(
 object Witnesses:
   val empty: Witnesses = Witnesses(Vector.empty)
 
-  def decode(raw: Bytes): Either[LedgerDecodeError, Witnesses] =
+  /** A witness set of a block of `era`, read at the era's decoder version. From version 9 (below
+    * 12) each of the vkey, bootstrap, native script, Plutus script and datum lists is optionally
+    * tagged and must not be empty, the redeemers must not be empty, and a Plutus script listed
+    * twice fails; duplicate vkeys, native scripts, datums and redeemer keys are tolerated
+    * (cardano-ledger `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs` at f649f975,
+    * `addrWitsSetDecoder`, `nativeScriptsDecoder`, `scriptDecoderV9`, `TxDatsRaw`, `RedeemersRaw`).
+    */
+  def decode(raw: Bytes, era: Era): Either[LedgerDecodeError, Witnesses] =
+    val version = DecoderVersion.of(era)
+    val strict = version.atLeast(9)
     for
       root <- CborRead.decode(raw)
       f <- CborRead.fields(root, "witness set")
@@ -425,50 +506,55 @@ object Witnesses:
       vkeys <- f
         .get(0)
         .traverse(
-          CborRead
-            .set(_, "vkey witnesses")
-            .flatMap(_.traverse { w =>
-              CborRead
-                .arrayN(w, 2, "vkey witness")
-                .flatMap(xs =>
-                  (
-                    CborRead.bytesN(xs(0), 32, "vkey"),
-                    CborRead.bytesN(xs(1), 64, "signature")
-                  ).tupled
-                )
-            })
+          CborRead.tolerantSet(_, "vkey witnesses", version) { w =>
+            CborRead
+              .arrayN(w, 2, "vkey witness")
+              .flatMap(xs =>
+                (
+                  CborRead.bytesN(xs(0), 32, "vkey"),
+                  CborRead.bytesN(xs(1), 64, "signature")
+                ).tupled
+              )
+          }
         )
       native <- f
         .get(1)
-        .traverse(CborRead.set(_, "native scripts").flatMap(_.traverse(Script.native)))
+        .traverse(
+          CborRead
+            .tolerantSet(_, "native scripts", version)(Script.native)
+            .map(_.distinctBy(_.hash))
+        )
       bootstrap <- f
         .get(2)
         .traverse(
-          CborRead
-            .set(_, "bootstrap witnesses")
-            .flatMap(_.traverse { w =>
-              CborRead.arrayN(w, 4, "bootstrap witness").flatMap { xs =>
-                (
-                  CborRead.bytesN(xs(0), 32, "bootstrap vkey"),
-                  CborRead.bytesN(xs(1), 64, "bootstrap signature"),
-                  CborRead.bytesN(xs(2), 32, "chain code"),
-                  CborRead.bytes(xs(3), "attributes")
-                ).mapN(BootstrapWitness(_, _, _, _))
-              }
-            })
+          CborRead.tolerantSet(_, "bootstrap witnesses", version) { w =>
+            CborRead.arrayN(w, 4, "bootstrap witness").flatMap { xs =>
+              (
+                CborRead.bytesN(xs(0), 32, "bootstrap vkey"),
+                CborRead.bytesN(xs(1), 64, "bootstrap signature"),
+                CborRead.bytesN(xs(2), 32, "chain code"),
+                CborRead.bytes(xs(3), "attributes")
+              ).mapN(BootstrapWitness(_, _, _, _))
+            }
+          }
         )
       plutus = (tag: Int, kind: ScriptKind) =>
         f.get(tag)
-          .traverse(
+          .traverse(n =>
             CborRead
-              .set(_, "plutus scripts")
-              .flatMap(_.traverse(CborRead.bytes(_, "plutus script").map(Script.plutus(kind, _))))
+              .set(n, "plutus scripts", version)(CborRead.bytes(_, "plutus script"))
+              .flatMap(CborRead.nonEmpty(_, "plutus scripts", strict))
+              .map(_.map(Script.plutus(kind, _)))
           )
       v1 <- plutus(3, ScriptKind.PlutusV1)
       v2 <- plutus(6, ScriptKind.PlutusV2)
       v3 <- plutus(7, ScriptKind.PlutusV3)
-      datums <- f.get(4).traverse(CborRead.set(_, "datums").map(_.map(_.original)))
-      redeemers <- f.get(5).traverse(redeemerList)
+      datums <- f
+        .get(4)
+        .traverse(
+          CborRead.tolerantSet(_, "datums", version)(n => Right(n.original)).map(_.distinct)
+        )
+      redeemers <- f.get(5).traverse(redeemerList(_, version))
     yield Witnesses(
       vkeys.getOrElse(Vector.empty),
       bootstrap.getOrElse(Vector.empty),
@@ -491,11 +577,16 @@ object Witnesses:
   /** `[* [tag, index, data, ex_units]]`, or (Conway) `{[tag, index] => [data, ex_units]}`. The
     * ledger keeps redeemers in a map keyed by purpose, so of several entries for the same
     * `(tag, index)`, in either form, the last one counts (seen on Preview: slot 12924758, six
-    * entries for one mint with different data; slot 62567517, one entry twice).
+    * entries for one mint with different data; slot 62567517, one entry twice). From decoder
+    * version 9 either form must not be empty; below it only the list is read (`RedeemersRaw`,
+    * TxWits.hs).
     */
-  private def redeemerList(n: Node): Either[LedgerDecodeError, Vector[Redeemer]] =
+  private def redeemerList(
+      n: Node,
+      version: DecoderVersion
+  ): Either[LedgerDecodeError, Vector[Redeemer]] =
     val all: Either[LedgerDecodeError, Vector[Redeemer]] = n.value match
-      case xyz.kd5ujc.scarab.codec.Value.Map(kvs) =>
+      case xyz.kd5ujc.scarab.codec.Value.Map(kvs) if version.atLeast(9) =>
         kvs.traverse { case (k, v) =>
           for
             key <- CborRead.arrayN(k, 2, "redeemer key")
@@ -516,7 +607,7 @@ object Witnesses:
               units <- exUnits(xs(3))
             yield Redeemer(tag.toInt, index, xs(2).original, units)
           })
-    all.map { rs =>
+    all.flatMap(CborRead.nonEmpty(_, "redeemers", version.atLeast(9))).map { rs =>
       val last = rs.zipWithIndex.map((r, i) => (r.tag, r.index) -> i).toMap
       rs.zipWithIndex.collect { case (r, i) if last((r.tag, r.index)) == i => r }
     }
@@ -532,17 +623,6 @@ final case class Tx(
   def hasAuxiliaryData: Boolean = auxiliary.isDefined
 
 object Tx:
-  /** `eraProtVerLow`, the version a block of the era is decoded at (Core/Internal/Definition/Era.hs
-    * 95-132 at f649f975). Byron has no transactions of this shape and reads as Shelley.
-    */
-  private def decoderVersion(era: Era): Int = era match
-    case Era.Byron | Era.Shelley => 2
-    case Era.Allegra             => 3
-    case Era.Mary                => 4
-    case Era.Alonzo              => 5
-    case Era.Babbage             => 7
-    case Era.Conway              => 9
-
   /** A whole transaction as a client sends it: `[body, witnesses, auxiliary_data / nil]` before
     * Alonzo and `[body, witnesses, is_valid, auxiliary_data / nil]` from it, decoded exactly as a
     * block's parts are ([[fromBlock]]).
@@ -575,9 +655,11 @@ object Tx:
     */
   def fromBlock(t: Block.Transaction, era: Era): Either[LedgerDecodeError, Tx] =
     for
-      body <- TxBody.decode(t.body, Address.Mode.of(era))
-      witnesses <- Witnesses.decode(t.witnesses)
-      _ <- t.auxiliaryData.traverse_(bytes => AuxiliaryScripts.read(bytes, decoderVersion(era)))
+      body <- TxBody.decode(t.body, era)
+      witnesses <- Witnesses.decode(t.witnesses, era)
+      _ <- t.auxiliaryData.traverse_(bytes =>
+        AuxiliaryScripts.read(bytes, DecoderVersion.of(era).value)
+      )
     yield
       // The fee size is the array header, body, witnesses and auxiliary data (`null` is one byte);
       // the `is_valid` flag is not counted (checked against Preview transactions).

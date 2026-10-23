@@ -11,11 +11,13 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.{
   Certificate,
   Committee,
+  DecoderVersion,
   EpochGeometry,
   GovActionId,
   GovActionState,
   LedgerGlobals
 }
+import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.rules.{ConwayCert, Globals, Pool, PoolCert, Sts}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.Codec
@@ -116,7 +118,7 @@ class UpstreamCertConformanceSuite extends FunSuite:
     val before = state(dir.resolve("state.cbor"))
     val expected = state(dir.resolve("implementation-state.cbor"))
     val signal = Certificate
-      .decode(node(dir.resolve("signal.cbor")))
+      .decode(node(dir.resolve("signal.cbor")), DecoderVersion.of(Era.Conway))
       .fold(error => fail(s"generated CERT signal: $error"), identity)
     ConwayCert.of(Bytes.empty, signal).fold(e => fail(e.toString), identity) match
       case ConwayCert.OfPool(cert @ PoolCert.RegPool(_)) =>

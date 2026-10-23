@@ -125,7 +125,7 @@ class RemainingPredicateReferenceSuite extends FunSuite:
         case 4     => Era.Mary
         case other => fail(s"unsupported fixture era $other")
       val body = TxBody
-        .decode(hex(field[String](row, "body")), Address.Mode.of(era))
+        .decode(hex(field[String](row, "body")), era)
         .fold(e => fail(e.toString), identity)
       def validate[E <: EraTag](network: Int)(using ShelleyBasedEra[E], PreConway[E]) =
         val pp = TestLedger.params(major)

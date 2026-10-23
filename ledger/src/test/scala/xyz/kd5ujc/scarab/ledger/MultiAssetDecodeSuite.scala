@@ -253,16 +253,16 @@ class MultiAssetDecodeSuite extends FunSuite:
   test("the mint field of a body is read at the decoder version of its era") {
     val zero = body(assets(1 -> Seq("01" -> uint(0))))
     assertEquals(
-      TxBody.decode(bytes(zero), Address.Mode.of(Era.Mary)).map(_.mint),
+      TxBody.decode(bytes(zero), Era.Mary).map(_.mint),
       Right(Map.empty)
     )
     assertEquals(
-      TxBody.decode(bytes(zero), Address.Mode.of(Era.Conway)).map(_ => ()),
+      TxBody.decode(bytes(zero), Era.Conway).map(_ => ()),
       Left(LedgerDecodeError.ZeroQuantity("mint"))
     )
     val big = body(assets(1 -> Seq("01" -> uint(TwoTo63))))
     Era.values.filter(_.ordinal >= Era.Mary.ordinal).foreach { era =>
-      assert(TxBody.decode(bytes(big), Address.Mode.of(era)).isLeft, era.toString)
+      assert(TxBody.decode(bytes(big), era).isLeft, era.toString)
     }
   }
 
@@ -320,16 +320,15 @@ class MultiAssetDecodeSuite extends FunSuite:
     val multi = withOutput(output(assets(1 -> Seq("01" -> uint(3)))))
     val adaOnly = withOutput("82" + enterprise + uint(2000000))
     coinOnly.foreach { era =>
-      val mode = Address.Mode.of(era)
       assertEquals(
-        TxBody.decode(bytes(multi), mode).map(_ => ()),
+        TxBody.decode(bytes(multi), era).map(_ => ()),
         Left(LedgerDecodeError.MultiAssetNotAllowed("output value")),
         era.toString
       )
       assertEquals(
-        TxBody.decode(bytes(adaOnly), mode).map(_.outputs.map(_.value)),
+        TxBody.decode(bytes(adaOnly), era).map(_.outputs.map(_.value)),
         Right(Vector(Value.coin(2000000)))
       )
     }
-    assert(TxBody.decode(bytes(multi), Address.Mode.of(Era.Mary)).isRight)
+    assert(TxBody.decode(bytes(multi), Era.Mary).isRight)
   }

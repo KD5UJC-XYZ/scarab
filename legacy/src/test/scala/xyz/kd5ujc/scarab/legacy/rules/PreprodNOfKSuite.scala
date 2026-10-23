@@ -35,7 +35,7 @@ class PreprodNOfKSuite extends ScalaCheckSuite:
     root.value match
       case C.Arr(xs) =>
         val block = Block.Transaction(xs(0).original, xs(1).original, None, true)
-        Tx.fromBlock(block, Era.Babbage).fold(e => fail(e.toString), identity)
+        Tx.fromBlock(block, Era.Conway).fold(e => fail(e.toString), identity)
       case other => fail(s"not a transaction: $other")
 
   private val inputs: Map[TxIn, TxOut] =

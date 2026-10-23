@@ -8,10 +8,12 @@ import io.circe.Json
 import io.circe.parser.parse
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational, Value}
+import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.{
   Committee,
   CommitteeAuth,
   Certificate,
+  DecoderVersion,
   GovFailure,
   LedgerFailure,
   Mismatch,
@@ -169,7 +171,11 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
       val props = read(proposalNodes, Wire.seqOf(summon[Codec[Proposal]]))
       val certs = certificates.value match
         case Value.Arr(xs) =>
-          xs.map(n => Certificate.decode(n).fold(e => fail(e.message), identity))
+          xs.map(n =>
+            Certificate
+              .decode(n, DecoderVersion.of(Era.Conway))
+              .fold(e => fail(e.message), identity)
+          )
         case other => fail(s"expected original GOV certificates, got $other")
       GovSignal(
         voting.map((voter, entries) => voter -> entries.map((id, p) => id -> p.vote)),

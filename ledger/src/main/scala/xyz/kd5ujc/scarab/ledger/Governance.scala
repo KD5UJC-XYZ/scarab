@@ -88,21 +88,67 @@ final case class Proposal(
     anchor: Anchor = ConwayGenesis.noAnchor
 )
 
+/** The comparison key of a proposal procedure: what `Ord (ProposalProcedure era)` compares
+  * (`Governance/Procedures.hs:498-504`, f649f975), with the action as [[ActionIdentity]].
+  */
+private[ledger] final case class ProposalIdentity(
+    deposit: BigInt,
+    returnAccount: RewardAccount,
+    action: ActionIdentity,
+    anchor: Anchor
+)
+
+/** A governance action by meaning (`Governance/Procedures.hs:815-848`, `deriving Ord`): a parameter
+  * update by the meaning of each field (`PParamsUpdate`), and treasury withdrawals as the `Map
+  * AccountAddress Coin` they are, whatever the order of the entries; any other action is its
+  * decoded value.
+  */
+private[ledger] enum ActionIdentity:
+  case Update(previous: Option[GovActionId], fields: Map[Int, Semantic], policy: Option[Bytes])
+  case Withdrawals(withdrawals: Map[RewardAccount, BigInt], policy: Option[Bytes])
+  case Other(action: GovAction)
+
 object Proposal:
+  private[ledger] def identity(p: Proposal): ProposalIdentity =
+    ProposalIdentity(
+      p.deposit,
+      p.returnAccount,
+      p.action match
+        case GovAction.ParameterChange(previous, update, policy) =>
+          ActionIdentity.Update(
+            previous,
+            update.fields.view.mapValues(Semantic.ofBytes).toMap,
+            policy
+          )
+        case GovAction.TreasuryWithdrawals(ws, policy) =>
+          ActionIdentity.Withdrawals(ws.toMap, policy)
+        case other => ActionIdentity.Other(other)
+      ,
+      p.anchor
+    )
+
   private def optionalHash(n: Node): Either[LedgerDecodeError, Option[Bytes]] = n.value match
     case CborValue.Null => Right(None)
     case _              => CborRead.bytesN(n, 28, "policy hash").map(Some(_))
 
-  def decode(n: Node): Either[LedgerDecodeError, Proposal] =
+  def decode(n: Node, version: DecoderVersion): Either[LedgerDecodeError, Proposal] =
     for
       xs <- CborRead.arrayN(n, 4, "proposal procedure")
       deposit <- CborRead.uint(xs(0), "proposal deposit")
       account <- CborRead.bytes(xs(1), "proposal reward account").flatMap(RewardAccount.decode)
-      action <- action(xs(2))
+      action <- action(xs(2), version)
       anchor <- Anchor.decode(xs(3))
     yield Proposal(deposit, account, action, anchor)
 
-  private def action(n: Node): Either[LedgerDecodeError, GovAction] =
+  /** A map whose repeated key fails from decoder version 9 (`decodeMap`, Decoder.hs). */
+  private def keysUnique[K, V](
+      kvs: Vector[(K, V)],
+      what: String,
+      version: DecoderVersion
+  ): Either[LedgerDecodeError, Vector[(K, V)]] =
+    if version.atLeast(9) then CborRead.unique(kvs.map(_._1), what).as(kvs) else Right(kvs)
+
+  private def action(n: Node, version: DecoderVersion): Either[LedgerDecodeError, GovAction] =
     CborRead.array(n, "governance action").flatMap { xs =>
       for
         tag <- xs.headOption
@@ -133,22 +179,24 @@ object Proposal:
                     CborRead.bytes(k, "withdrawal account").flatMap(RewardAccount.decode),
                     CborRead.uint(v, "withdrawal amount")
                   ).tupled
-                }),
+                })
+                .flatMap(ws => keysUnique(ws, "treasury withdrawals", version)),
               optionalHash(xs(2))
             ).mapN(GovAction.TreasuryWithdrawals(_, _))
           case (3, 2) => GovActionId.optional(xs(1)).map(GovAction.NoConfidence(_))
           case (4, 5) =>
             (
               GovActionId.optional(xs(1)),
-              CborRead
-                .set(xs(2), "removed members")
-                .flatMap(_.traverse(Credential.decode(_, "committee member"))),
+              CborRead.set(xs(2), "removed members", version)(
+                Credential.decode(_, "committee member")
+              ),
               CborRead
                 .map(xs(3), "added members")
                 .flatMap(_.traverse { case (k, v) =>
                   (Credential.decode(k, "committee member"), CborRead.uint(v, "member term")).tupled
-                }),
-              CborRead.rational(xs(4), "quorum")
+                })
+                .flatMap(ms => keysUnique(ms, "added members", version)),
+              CborRead.rational(xs(4), "quorum", CborRead.Bound.Unit)
             ).mapN((p, r, a, q) => GovAction.UpdateCommittee(p, r.toSet, a.toMap, q))
           case (5, 3) =>
             (
@@ -209,3 +257,21 @@ object VotingProcedures:
             })
         yield v -> votes
       })
+
+  /** What the transaction-body decoder of Conway (decoder version 9) refuses in the voting
+    * procedures: a map with a repeated key (`decodeMapByKey`, Decoder.hs) and a voter without votes
+    * (`DecCBOR VotingProcedures`, `Conway/Governance/Procedures.hs` at cardano-ledger f649f975).
+    * Signals of the GOV rule are not read from a body, so [[decode]] does not apply it.
+    */
+  def requireBodyDecodable(
+      all: Vector[(Voter, Vector[(GovActionId, VotingProcedure)])]
+  ): Either[DecodeError, Vector[(Voter, Vector[(GovActionId, VotingProcedure)])]] =
+    val structure = for
+      _ <- CborRead.unique(all.map(_._1), "voters")
+      _ <- all.traverse { case (_, votes) =>
+        CborRead
+          .nonEmpty(votes, "votes of a voter", required = true)
+          .flatMap(vs => CborRead.unique(vs.map(_._1), "governance action ids"))
+      }
+    yield all
+    structure.leftMap(DecodeError.InvalidStructure(_))

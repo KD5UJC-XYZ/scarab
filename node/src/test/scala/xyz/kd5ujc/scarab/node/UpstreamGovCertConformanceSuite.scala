@@ -9,12 +9,14 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.{
   Committee,
+  DecoderVersion,
   EpochGeometry,
   GovActionId,
   GovActionState,
   LedgerGlobals,
   Certificate
 }
+import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.rules.{ConwayCert, ConwayGovCert, GovCert, Globals, Sts}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.Codec
@@ -121,7 +123,7 @@ class UpstreamGovCertConformanceSuite extends FunSuite:
       )
 
       val certificate = Certificate
-        .decode(node(dir.resolve("signal.cbor")))
+        .decode(node(dir.resolve("signal.cbor")), DecoderVersion.of(Era.Conway))
         .fold(e => fail(s"seed $seed certificate: $e"), identity)
       ConwayCert
         .of(Bytes.empty, certificate)

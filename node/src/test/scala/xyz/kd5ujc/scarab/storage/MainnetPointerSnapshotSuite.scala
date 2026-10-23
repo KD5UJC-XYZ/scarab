@@ -9,7 +9,7 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorState, MirrorStep}
-import xyz.kd5ujc.scarab.ledger.{Address, Block, Ptr, TxBody, TxIn}
+import xyz.kd5ujc.scarab.ledger.{Block, Ptr, TxBody, TxIn}
 import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -37,7 +37,7 @@ class MainnetPointerSnapshotSuite extends CatsEffectSuite:
       case Value.Arr(xs) => xs
       case other         => fail(s"unexpected $other")
     TxBody
-      .decode(parts.head.original, Address.Mode.of(Era.Mary))
+      .decode(parts.head.original, Era.Mary)
       .fold(e => fail(e.message), identity)
 
   private val fixtures = Path.of("fixtures/eras")

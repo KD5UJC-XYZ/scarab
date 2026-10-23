@@ -245,7 +245,11 @@ object LiteLedger:
         p2,
         (p, n) => CborRead.uint(n, "maxBlockHeaderSize").map(v => p.copy(maxBlockHeaderSize = v))
       )
-      p4 <- field(12, p3, (p, n) => CborRead.rational(n, "d").map(v => p.copy(d = v)))
+      p4 <- field(
+        12,
+        p3,
+        (p, n) => CborRead.rational(n, "d", CborRead.Bound.Unit).map(v => p.copy(d = v))
+      )
       p5 <- field(13, p4, (p, n) => nonce(n).map(v => p.copy(extraEntropy = v)))
       p6 <- field(14, p5, (p, n) => parseVersion(n).map(v => p.copy(protocolVersion = v)))
     yield p6

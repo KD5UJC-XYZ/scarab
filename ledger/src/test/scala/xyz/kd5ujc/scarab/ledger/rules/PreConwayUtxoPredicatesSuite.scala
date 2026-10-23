@@ -115,7 +115,7 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
         row.hcursor.get[A](field).fold(e => fail(e.message), identity)
       val raw = Bytes.fromHex(read[String]("body")).fold(e => fail(e.toString), identity)
       val body = TxBody
-        .decode(raw, Address.Mode.of(if major == 5 then Era.Alonzo else Era.Babbage))
+        .decode(raw, if major == 5 then Era.Alonzo else Era.Babbage)
         .fold(e => fail(e.toString), identity)
       assertEquals(body.collateral.size, 4)
       assertEquals(body.collateral.toSet.size, read[Int]("collateralCount"))
@@ -267,7 +267,7 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
     assertEquals(row.hcursor.downField("conwayCollateral").get[Boolean]("accepted"), Right(true))
     val raw = Bytes.fromHex(read[String]("body")).fold(e => fail(e.toString), identity)
     // The reference Conway API takes the same decoded Set, not these pre-Conway wire bytes.
-    val body = TxBody.decode(raw, Address.Mode.of(Era.Alonzo)).fold(e => fail(e.toString), identity)
+    val body = TxBody.decode(raw, Era.Alonzo).fold(e => fail(e.toString), identity)
     val pp = TestLedger.params(9)
     val empty = Empty.ledgerState[Conway](pp)
     val out = body.outputs.head.copy(address = alice.baseAddress(alice))
@@ -318,7 +318,7 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
       val major = read[Int]("protocolMajor")
       val raw = Bytes.fromHex(read[String]("body")).fold(e => fail(e.toString), identity)
       val body = TxBody
-        .decode(raw, Address.Mode.of(if major == 5 then Era.Alonzo else Era.Babbage))
+        .decode(raw, if major == 5 then Era.Alonzo else Era.Babbage)
         .fold(e => fail(e.toString), identity)
       val tx = Tx(body, Witnesses.empty, 100, isValid = true, auxiliary = None)
       val outputs = body.outputs ++ body.collateralReturn.toVector

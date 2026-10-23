@@ -153,6 +153,46 @@ class SnapshotV5Suite extends CatsEffectSuite:
     }
   }
 
+  /** The protocol parameters in force in the ledger state of a Shelley-based mirror. */
+  private def params(m: MirrorState): xyz.kd5ujc.scarab.ledger.ProtocolParams =
+    m.ledger(None).toOption.flatten.fold(fail("no Shelley-based ledger state")) {
+      case InEra.Of(_, l) => l.params
+    }
+
+  /** ADR 0006: a state written before rationals were bounded as the reference does (`BoundedRatio`,
+    * `BaseTypes.hs:348-374`) can carry a pending update the reference could not have decoded, here
+    * a decentralisation parameter of 3/2. It still loads and is written again byte for byte, with
+    * the update verbatim; the update is no longer adopted (`UpdateChecks.voted` gives none, as it
+    * does for any update that cannot be read), where the same update with d = 1/2 is.
+    */
+  test("a V5 state with a pending update outside its interval loads verbatim and is not adopted") {
+    val Some((_, base)) =
+      snapshots.find((era, s) => era == Era.Alonzo && proposals(s.state).nonEmpty): @unchecked
+    def update(d: String) =
+      ParamUpdate(Map(12 -> Bytes.fromHex(d).fold(e => fail(e.message), identity)))
+    val outside = update("d81e820302")
+    val inside = update("d81e820102")
+    List(outside, inside).traverse_ { u =>
+      val snapshot = base.copy(state = withProposals(base.state, u))
+      v5.encode(snapshot).flatMap {
+        case Right(bytes) =>
+          decoded(bytes).flatMap { back =>
+            sameState(back.state, snapshot.state, u.toString)
+            val pending = proposals(back.state)
+            assert(pending.nonEmpty && pending.values.forall(_ == u), "update changed on load")
+            v5.encode(back).map { again =>
+              assert(java.util.Arrays.equals(bytes, again.fold(r => fail(r.toString), identity)))
+              val adopted =
+                xyz.kd5ujc.scarab.ledger.UpdateChecks.voted(params(back.state), pending, 1)
+              if u == outside then assertEquals(adopted, None)
+              else assertEquals(adopted.map(_.d), Some(xyz.kd5ujc.scarab.codec.Rational(1, 2)))
+            }
+          }
+        case Left(r) => IO(fail(s"refused ${u.fields}: $r"))
+      }
+    }
+  }
+
   test("a Shelley-based snapshot has the Haskell state after the sidecar, Byron has none") {
     accepted.foreach { (era, _, bytes) =>
       val sidecar = java.nio.ByteBuffer.wrap(bytes, 8, 4).getInt

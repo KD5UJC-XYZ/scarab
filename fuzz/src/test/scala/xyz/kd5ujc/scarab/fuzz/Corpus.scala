@@ -7,7 +7,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.protocol.{Era, NtNHeader}
 import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.ledger.byron.ByronBody
-import xyz.kd5ujc.scarab.ledger.{Address, TxBody}
+import xyz.kd5ujc.scarab.ledger.TxBody
 import scala.jdk.CollectionConverters.*
 import scala.util.Random
 import xyz.kd5ujc.scarab.models.gen.{CddlSampler, Config, Generator, QName}
@@ -307,10 +307,8 @@ object Corpus extends munit.Assertions:
   /** Addresses of the outputs of the committed transactions (Shelley and Byron). */
   lazy val addresses: Vector[Array[Byte]] =
     shelleyBlocks
-      .flatMap(_.transactions)
-      .flatMap(t =>
-        TxBody.decode(t.body, Address.Mode.Backwards).toOption.toVector.flatMap(_.outputs)
-      )
+      .flatMap(b => b.transactions.map(t => (b.era, t)))
+      .flatMap((era, t) => TxBody.decode(t.body, era).toOption.toVector.flatMap(_.outputs))
       .map(_.address.raw.toArray)
       .distinct
       .take(200)

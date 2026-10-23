@@ -31,7 +31,7 @@ class MainnetPointerStoreSuite extends FunSuite:
       case Value.Arr(xs) => xs
       case other         => fail(s"unexpected $other")
     TxBody
-      .decode(parts.head.original, Address.Mode.of(Era.Mary))
+      .decode(parts.head.original, Era.Mary)
       .fold(e => fail(e.toString), identity)
 
   private val input = TxIn(body.id, 0)

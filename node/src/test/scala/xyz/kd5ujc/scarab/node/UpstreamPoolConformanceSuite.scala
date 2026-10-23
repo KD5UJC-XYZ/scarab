@@ -8,7 +8,15 @@ import io.circe.Json
 import io.circe.parser.parse
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational, Value}
-import xyz.kd5ujc.scarab.ledger.{Block, Certificate, EpochGeometry, LedgerGlobals, PoolParams, Tx}
+import xyz.kd5ujc.scarab.ledger.{
+  Block,
+  Certificate,
+  DecoderVersion,
+  EpochGeometry,
+  LedgerGlobals,
+  PoolParams,
+  Tx
+}
 import xyz.kd5ujc.scarab.ledger.rules.{Globals, Pool, PoolCert, Sts}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.Codec
@@ -105,7 +113,7 @@ class UpstreamPoolConformanceSuite extends FunSuite:
         "0000d81e820001581de0" + ("00" * 28) + "8080f6"
     val registration = hex(registrationHex)
     val original = Cbor.decode(registration).fold(error => fail(error.toString), identity)
-    val params = Certificate.decode(original) match
+    val params = Certificate.decode(original, DecoderVersion.of(Era.Conway)) match
       case Right(Certificate.RegisterPool(value)) => value
       case other                                  => fail(s"expected pool registration, got $other")
     assertEquals(params.relays, Bytes.empty)
