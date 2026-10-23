@@ -35,15 +35,18 @@ class AcquirePin:
     """Rewrites the acquire messages of a client's LocalStateQuery stream to acquire `point`.
 
     `feed` takes the payload bytes of the client's protocol-7 mux segments in order and returns the
-    complete messages that can be sent on, re-encoded only when they are acquire-volatile-tip messages.
+    complete messages that can be sent on, re-encoded only when they are acquire or reacquire messages
+    (volatile tip or explicit point): every one is sent as an acquisition of `point`.
     `point` is a function, so the point can be chosen after the connections are prepared.
-    `acquires` counts how many were rewritten, so a caller can tell a pinned connection from one that
-    never asked for a state."""
+    `acquires` counts the acquisitions, so a caller can tell a pinned connection from one that
+    never asked for a state. `foreign` counts the explicit points that differed from `point`, which
+    the client asked for itself and which were replaced; a comparison with any is refused."""
 
     def __init__(self, point):
         self.point = point  # a function: the [slot, hash bytes] to acquire, read when an acquire arrives
         self.buffer = b""
         self.acquires = 0
+        self.foreign = 0
 
     def feed(self, data):
         self.buffer += data
@@ -59,6 +62,12 @@ class AcquirePin:
                 self.acquires += 1
             elif isinstance(message, list) and message == [REACQUIRE_VOLATILE_TIP]:
                 raw = enc([REACQUIRE_POINT, self.point()])
+                self.acquires += 1
+            elif isinstance(message, list) and len(message) == 2 and message[0] in (ACQUIRE_POINT, REACQUIRE_POINT):
+                pinned = self.point()
+                if message[1] != pinned:
+                    self.foreign += 1
+                raw = enc([message[0], pinned])
                 self.acquires += 1
             out.append(raw)
         return out
@@ -214,6 +223,10 @@ class Pin:
 
     def acquires(self):
         return {n: sum(p.pin.acquires for p in self.pairs[n]) for n in self.names}
+
+    def foreign(self):
+        """Per name, the explicit acquire points that were not the pinned one (replaced, and a failure)."""
+        return {n: sum(p.pin.foreign for p in self.pairs[n]) for n in self.names}
 
     def connections(self):
         return {n: sum(1 for p in self.pairs[n] if p.used) for n in self.names}

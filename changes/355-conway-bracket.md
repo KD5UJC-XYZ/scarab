@@ -11,4 +11,7 @@
   that cannot be taken is still an error, and the number of attempts is unchanged. Only a recorded exit status of 0 accepts a
   query's output: valid JSON from a query that exited nonzero, or with no recorded status, fails the attempt with its status,
   stderr tail, wall time and acquire count. The `soak` and `pool` scenarios record a comparison that could not be taken as an
-  `error` entry that their gates already count, instead of dropping it.
+  `error` entry that their gates already count, instead of dropping it. Every acquire and reacquire of a pinned
+  connection, volatile tip or explicit point, is sent as an acquisition of the pinned block, and an explicit point
+  that differed fails the attempt. The `soak` gate fails on any comparison error, and the `pool` final comparison keeps
+  the failed tries it retried past.

@@ -125,6 +125,7 @@ def query_bundle(name):
         lines.append(f"for f in {' '.join(keys)}; do for s in '' .err .rc .ms; do echo \"@@$f$s\"; cat {q}/$f$s; done; done")
         out = in_ref(name, "\n".join(lines), timeout=180).stdout
         acquires = pin.acquires()
+        foreign = pin.foreign()
     finally:
         pin.close()
     parts = {}
@@ -143,6 +144,9 @@ def query_bundle(name):
             bundle[k] = json.loads(parts[k])
         except (KeyError, json.JSONDecodeError) as e:
             return None, {**record, "unparsable": type(e).__name__}
+    other = {k: n for k, n in foreign.items() if n}
+    if other:
+        return None, {"foreignAcquires": other, "slot": tip["slot"]}
     unpinned = sorted(k for k, n in acquires.items() if n == 0)
     if unpinned:
         return None, {"unpinned": unpinned, "slot": tip["slot"]}

@@ -121,6 +121,17 @@ def pool_blocks_made(comparisons, pool_id):
     return per_epoch
 
 
+def final_comparisons(compare, attempts=3):
+    """The records of the last comparison at the settled tip: up to `attempts` tries, stopping at the first that
+    took a comparison. Every failed try stays in the list, so a later success does not erase an incomplete one."""
+    records = []
+    for _ in range(attempts):
+        records.append(compare())
+        if "error" not in records[-1]:
+            break
+    return records
+
+
 def leadership_schedule(name, socket, pool_number):
     """The slots the pool leads in the epoch of `socket`'s node, from the reference node's own
     `query leadership-schedule --current` (the oracle for the Scala forger), or None when it cannot answer."""
@@ -333,12 +344,9 @@ def pool(args):
             return tips
 
         final = settled_tips()
-        for _ in range(3):  # one last comparison at the settled tip; the last failed attempt is recorded
-            r = compare_or_error(args.name)
-            if "error" not in r or _ == 2:
-                comparisons.append(r)
-                print(json.dumps({k: r.get(k) for k in ("tip", "matched", "differenceCount", "error")}), flush=True)
-                break
+        for r in final_comparisons(lambda: compare_or_error(args.name)):
+            comparisons.append(r)
+            print(json.dumps({k: r.get(k) for k in ("tip", "matched", "differenceCount", "error")}), flush=True)
         final = settled_tips()
         time.sleep(3)
         # the forger's own per-epoch counters (H5), from the query server (the Scala container's loopback)

@@ -35,9 +35,18 @@ class AcquirePinTest(unittest.TestCase):
 
     def test_other_messages_pass_byte_identical(self):
         pin = self.pin()
-        messages = [enc([3, [0, [2, [1]]]]), enc([5]), enc([7]), enc([10]), enc([0, [1, bytes(32)]])]
+        messages = [enc([3, [0, [2, [1]]]]), enc([5]), enc([7]), enc([10]), enc([1]), enc([2])]
         self.assertEqual(pin.feed(b"".join(messages)), messages)
         self.assertEqual(pin.acquires, 0)
+
+    def test_explicit_point_acquire_and_reacquire_are_pinned_and_a_foreign_point_is_counted(self):
+        pin = self.pin()
+        other = [1, bytes(32)]
+        self.assertEqual(pin.feed(enc([0, POINT]) + enc([6, POINT])), [enc([0, POINT]), enc([6, POINT])])
+        self.assertEqual((pin.acquires, pin.foreign), (2, 0))
+        self.assertEqual(pin.feed(enc([0, other]) + enc([6, other]) + enc([0, []])),
+                         [enc([0, POINT]), enc([6, POINT]), enc([0, POINT])])
+        self.assertEqual((pin.acquires, pin.foreign), (5, 3))
 
     def test_messages_split_across_segments_are_found(self):
         pin = self.pin()
@@ -104,7 +113,7 @@ class QueryBundleVerdictTest(unittest.TestCase):
     """`query_bundle` accepts a query only on a recorded exit status of 0 (#355)."""
     KEYS = [k for k, _ in compare.BUNDLE]
 
-    def run_bundle(self, rc, acquires=None, json_body="{}"):
+    def run_bundle(self, rc, acquires=None, json_body="{}", foreign=None):
         """The bundle verdict when every query prints `json_body`; `rc(key)` is its recorded status (None records none)."""
         out = ""
         for key in self.KEYS:
@@ -116,6 +125,7 @@ class QueryBundleVerdictTest(unittest.TestCase):
         pin = Mock()
         pin.ready_script.return_value = "true"
         pin.path.side_effect = lambda key: f"/p/{key}"
+        pin.foreign.return_value = foreign or {}
         pin.acquires.return_value = acquires if acquires is not None else {k: 1 for k in self.KEYS}
         tip = json.dumps({"slot": 5, "hash": bytes(32).hex(), "block": 1, "epoch": 0})
         with patch.object(compare.pinnedquery, "Pin", return_value=pin), \
@@ -150,6 +160,11 @@ class QueryBundleVerdictTest(unittest.TestCase):
         self.assertIsNone(bundle)
         self.assertEqual(why["unparsable"], "JSONDecodeError")
 
+    def test_a_foreign_explicit_point_fails_the_attempt(self):
+        bundle, why = self.run_bundle(lambda k: "0", foreign={"utxo": 1, "ls": 0})
+        self.assertIsNone(bundle)
+        self.assertEqual(why["foreignAcquires"], {"utxo": 1})
+
     def test_unpinned_query_fails_even_when_every_query_succeeded(self):
         bundle, why = self.run_bundle(lambda k: "0", acquires={**{k: 1 for k in self.KEYS}, "drep": 0})
         self.assertIsNone(bundle)
@@ -168,3 +183,15 @@ class CompareOrErrorTest(unittest.TestCase):
     def test_a_taken_comparison_passes_through(self):
         with patch.object(compare, "compare_once_detailed", return_value=({"matched": True}, None)):
             self.assertEqual(compare.compare_or_error("n"), {"matched": True})
+
+
+class FinalComparisonsTest(unittest.TestCase):
+    def test_a_failed_try_is_kept_when_a_later_try_succeeds(self):
+        from devnet.scenarios import pool
+        tries = iter([{"error": "scala node never reached the reference tip"}, {"matched": True}, {"matched": True}])
+        self.assertEqual(pool.final_comparisons(lambda: next(tries)),
+                         [{"error": "scala node never reached the reference tip"}, {"matched": True}])
+
+    def test_every_failed_try_is_kept_when_all_fail(self):
+        from devnet.scenarios import pool
+        self.assertEqual(len(pool.final_comparisons(lambda: {"error": "x"})), 3)

@@ -98,6 +98,7 @@ def soak(args):
     summary = {
         "comparisons": len([r for r in results if "matched" in r]),
         "matched": len([r for r in results if r.get("matched")]),
+        "comparisonErrors": len([r for r in results if "error" in r]),
         "firstMismatch": next((r for r in results if r.get("matched") is False or "error" in r), None),
         "followerAliveAtEnd": follower_alive,
         "epochsEntered": [e["epoch"] for e in log if e.get("event") == "epoch"],
@@ -124,6 +125,8 @@ def soak(args):
     print(json.dumps(summary, indent=2))
     if not summary["comparisons"]:
         failures.append("no ledger comparison completed")
+    if summary["comparisonErrors"]:
+        failures.append(f"{summary['comparisonErrors']} ledger comparison errors")
     if summary["matched"] != summary["comparisons"]:
         failures.append("ledger mismatch or comparison error")
     if summary["errors"]:
