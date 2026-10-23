@@ -137,8 +137,8 @@ def scala_tip(events):
                 chain = []
             else:
                 kept = [i for i, (_, h) in enumerate(chain) if h == to]
-                if kept:
-                    chain = chain[:kept[0] + 1]
+                # an unknown target leaves the tip unknown until later `extended` events rebuild a chain
+                chain = chain[:kept[0] + 1] if kept else []
     return chain[-1] if chain else None
 
 

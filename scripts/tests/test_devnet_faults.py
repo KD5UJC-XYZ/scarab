@@ -402,6 +402,9 @@ class ExecutionTests(unittest.TestCase):
         events = [ext(n) for n in range(97, 102)] + [{"event": "rolledBack", "to": {"hash": "h99"}, "depth": 2}]
         self.assertEqual(faults.scala_tip(events), (99, "h99"))
         self.assertIsNone(faults.scala_tip([]))
+        unknown = [ext(n) for n in range(97, 102)] + [{"event": "rolledBack", "to": {"hash": "elsewhere"}, "depth": 2}]
+        self.assertIsNone(faults.scala_tip(unknown))
+        self.assertEqual(faults.scala_tip(unknown + [ext(103)]), (103, "h103"))
         self.assertEqual(faults.scala_tip(events + [ext(100)]), (100, "h100"))
 
     def test_a_node_without_a_baseline_must_still_advance(self):
