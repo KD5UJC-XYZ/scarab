@@ -196,7 +196,7 @@ object Proposal:
                   (Credential.decode(k, "committee member"), CborRead.uint(v, "member term")).tupled
                 })
                 .flatMap(ms => keysUnique(ms, "added members", version)),
-              CborRead.rational(xs(4), "quorum")
+              CborRead.rational(xs(4), "quorum", CborRead.Bound.Unit)
             ).mapN((p, r, a, q) => GovAction.UpdateCommittee(p, r.toSet, a.toMap, q))
           case (5, 3) =>
             (

@@ -24,6 +24,7 @@ enum LedgerDecodeError extends DomainError:
   case Zero(context: String)
   case IndefiniteLength(context: String)
   case ZeroDenominator(context: String)
+  case RationalOutOfBounds(context: String, numerator: BigInt, denominator: BigInt)
   case UnknownTag(context: String, tag: BigInt)
   case TaggedArity(context: String, tag: BigInt, actual: Int)
   case AtMostOne(context: String, actual: Int)

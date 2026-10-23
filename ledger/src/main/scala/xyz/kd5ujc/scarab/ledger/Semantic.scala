@@ -60,14 +60,18 @@ private[ledger] object Semantic:
         case Value.Arr(xs)       => Items(xs.map(of(_, depth + 1)))
         case Value.Map(kvs) =>
           Entries(kvs.map((k, v) => (of(k, depth + 1), of(v, depth + 1))).toSet, kvs.size)
-        case Value.Tag(t, inner) if t == 30 =>
-          ratio(inner).getOrElse(Tagged(t, of(inner, depth + 1)))
-        case Value.Tag(t, inner) => Tagged(t, of(inner, depth + 1))
-        case _                   => Opaque(n.original)
+        case Value.Tag(t, _) if t == 30 => ratio(n)
+        case Value.Tag(t, inner)        => Tagged(t, of(inner, depth + 1))
+        case _                          => Opaque(n.original)
 
-  private def ratio(n: Node): Option[Semantic] = n.value match
-    case Value.Arr(Vector(a, b)) =>
-      (a.value, b.value) match
-        case (Value.UInt(num), Value.UInt(den)) if den > 0 => Some(Ratio(Rational(num, den)))
-        case _                                             => None
-    case _ => None
+  /** A tag 30 the reference decodes (`CborRead.rational`, any sign or integer form, reduced, within
+    * the `Word64` range of every `BoundedRatio`) is its reduced value, so `30([1, 2])`,
+    * `30([-1, -2])` and `30([2^64, 2^65])` are one key; any other is opaque, and the reference
+    * refuses it in every field.
+    */
+  private def ratio(n: Node): Semantic =
+    CborRead
+      .ratio(n, "rational")
+      .toOption
+      .filter(CborRead.fits(_, CborRead.Bound.NonNegative))
+      .fold(Opaque(n.original))(Ratio(_))

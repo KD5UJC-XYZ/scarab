@@ -479,6 +479,163 @@ repeat(
     "committee updates: repeat with every collection written another way",
     proposals(proposal(COMMITTEE), proposal(COMMITTEE_REWRITTEN)),
 )
+# --- rationals: the reference reads tag 30 as `n % d` over signed integers of any size ------------
+# At decoder version 9 `decodeRationalWithTag` (Plain.hs) reads two `decodeInteger`s, so 1/2 is
+# also [-1, -2] and [2^64, 2^65] (bignums), and the bound is checked on the reduced value.
+
+
+def nint(v):
+    """The negative integer v (< 0) in its shortest form."""
+    return head(1, -1 - v)
+
+
+def bignum(v):
+    raw = v.to_bytes((v.bit_length() + 7) // 8, "big")
+    return tag(2, bstr(raw))
+
+
+def ratio(n, d):
+    return tag(30, array([n, d]))
+
+
+HALF_SIGNED = ratio(nint(-1), nint(-2))
+HALF_BIG = ratio(bignum(2**64), bignum(2**65))
+HALF_MIXED = ratio(nint(-3), nint(-6))
+THIRD_SIGNED = ratio(nint(-1), nint(-3))
+
+
+def signed(n, d):
+    return ratio(nint(-n), nint(-d))
+
+
+repeat(
+    "parameter changes: repeat with a rational written with negative parts",
+    proposals(proposal(RATIONAL_CHANGE), proposal(param_change([(uint(9), HALF_SIGNED)]))),
+)
+repeat(
+    "parameter changes: repeat with a rational written as bignums",
+    proposals(proposal(RATIONAL_CHANGE), proposal(param_change([(uint(9), HALF_BIG)]))),
+)
+repeat(
+    "parameter changes: repeat with a rational written with negative parts not in lowest terms",
+    proposals(proposal(param_change([(uint(9), HALF_SIGNED)])), proposal(param_change([(uint(9), HALF_MIXED)]))),
+)
+conway_body(
+    "parameter changes: a rational and a different one with negative parts",
+    proposals(proposal(RATIONAL_CHANGE), proposal(param_change([(uint(9), THIRD_SIGNED)]))),
+)
+PRICES = array([ratio(uint(577), uint(10_000)), ratio(uint(721), uint(10_000_000))])
+PRICES_SIGNED = array([signed(577, 10_000), signed(721, 10_000_000)])
+PRICES_OTHER = array([signed(577, 10_000), signed(722, 10_000_000)])
+conway_body("parameter changes: prices", proposals(proposal(param_change([(uint(19), PRICES)]))))
+repeat(
+    "parameter changes: repeat with prices written with negative parts",
+    proposals(proposal(param_change([(uint(19), PRICES)])), proposal(param_change([(uint(19), PRICES_SIGNED)]))),
+)
+conway_body(
+    "parameter changes: prices that differ in one signed part",
+    proposals(proposal(param_change([(uint(19), PRICES)])), proposal(param_change([(uint(19), PRICES_OTHER)]))),
+)
+repeat(
+    "parameter changes: repeat with prices written as bignums",
+    proposals(
+        proposal(param_change([(uint(19), array([ratio(uint(1), uint(2)), ratio(uint(1), uint(3))]))])),
+        proposal(param_change([(uint(19), array([HALF_BIG, ratio(bignum(2**64), bignum(3 * 2**64))]))])),
+    ),
+)
+POOL_THRESHOLDS = array([ratio(uint(i), uint(10)) for i in range(1, 6)])
+POOL_THRESHOLDS_SIGNED = array([signed(i, 10) for i in range(1, 6)])
+POOL_THRESHOLDS_OTHER = array([signed(i, 10) for i in (1, 2, 3, 4, 6)])
+conway_body("parameter changes: pool voting thresholds", proposals(proposal(param_change([(uint(25), POOL_THRESHOLDS)]))))
+repeat(
+    "parameter changes: repeat with pool voting thresholds written with negative parts",
+    proposals(
+        proposal(param_change([(uint(25), POOL_THRESHOLDS)])),
+        proposal(param_change([(uint(25), POOL_THRESHOLDS_SIGNED)])),
+    ),
+)
+conway_body(
+    "parameter changes: pool voting thresholds that differ in one signed part",
+    proposals(
+        proposal(param_change([(uint(25), POOL_THRESHOLDS)])),
+        proposal(param_change([(uint(25), POOL_THRESHOLDS_OTHER)])),
+    ),
+)
+DREP_THRESHOLDS = array([ratio(uint(i), uint(20)) for i in range(1, 11)])
+DREP_THRESHOLDS_SIGNED = array([signed(i, 20) for i in range(1, 11)])
+repeat(
+    "parameter changes: repeat with DRep voting thresholds written with negative parts",
+    proposals(
+        proposal(param_change([(uint(26), DREP_THRESHOLDS)])),
+        proposal(param_change([(uint(26), DREP_THRESHOLDS_SIGNED)])),
+    ),
+)
+conway_body(
+    "parameter changes: the reference script fee",
+    proposals(proposal(param_change([(uint(33), ratio(uint(15), uint(1))), ]))),
+)
+repeat(
+    "parameter changes: repeat with the reference script fee written with negative parts",
+    proposals(
+        proposal(param_change([(uint(33), ratio(uint(15), uint(1))), ])),
+        proposal(param_change([(uint(33), signed(30, 2)), ])),
+    ),
+)
+
+# Pool margin and committee quorum are `UnitInterval`s: the reduced value must lie in [0, 1].
+conway_body("pool margin: signed parts that reduce to one half", certs(pool_cert(margin=HALF_SIGNED)))
+conway_body("pool margin: bignum parts that reduce to one half", certs(pool_cert(margin=HALF_BIG)))
+conway_body("pool margin: one", certs(pool_cert(margin=ratio(uint(3), uint(3)))))
+conway_body("pool margin: zero over a large denominator", certs(pool_cert(margin=ratio(uint(0), bignum(2**64 - 1)))))
+for label, margin, rule in (
+    ("a negative value", ratio(nint(-1), uint(2)), "BoundedRatio"),
+    ("a value above one", ratio(uint(3), uint(2)), "BoundedRatio"),
+    ("a value above one with negative parts", signed(3, 2), "BoundedRatio"),
+    ("a reduced numerator that does not fit 64 bits", ratio(bignum(2**64 + 1), uint(1)), "BoundedRatio"),
+):
+    conway_body(f"pool margin: {label}", certs(pool_cert(margin=margin)), rule, "RationalOutOfBounds")
+conway_body(
+    "pool margin: zero denominator",
+    certs(pool_cert(margin=ratio(uint(1), uint(0)))),
+    "Denominator cannot be zero",
+    "ZeroDenominator",
+)
+conway_body(
+    "pool margin: zero denominator written negative",
+    certs(pool_cert(margin=ratio(nint(-1), tag(2, bstr(b"")))) ),
+    "Denominator cannot be zero",
+    "ZeroDenominator",
+)
+conway_body(
+    "committee quorum: signed parts that reduce to one half",
+    proposals(proposal(array([uint(4), NULL, sset([]), cmap([]), HALF_SIGNED]))),
+)
+conway_body(
+    "committee quorum: bignum parts that reduce to one half",
+    proposals(proposal(array([uint(4), NULL, sset([]), cmap([]), HALF_BIG]))),
+)
+conway_body(
+    "committee quorum: a value above one with negative parts",
+    proposals(proposal(array([uint(4), NULL, sset([]), cmap([]), signed(3, 2)]))),
+    "BoundedRatio",
+    "RationalOutOfBounds",
+)
+repeat(
+    "committee updates: repeat with the quorum written with negative parts",
+    proposals(
+        proposal(array([uint(4), NULL, sset(MEMBERS), cmap(ADDED), HALF])),
+        proposal(array([uint(4), NULL, sset(MEMBERS), cmap(ADDED), HALF_SIGNED])),
+    ),
+)
+repeat(
+    "pool registrations: repeat with the margin written with negative parts",
+    certs(POOL, pool_cert(margin=HALF_SIGNED)),
+)
+repeat(
+    "pool registrations: repeat with the margin written as bignums",
+    certs(POOL, pool_cert(margin=HALF_BIG)),
+)
+
 CONSTITUTION = array([uint(5), NULL, array([ANCHOR, NULL])])
 conway_body("constitutions: one", proposals(proposal(CONSTITUTION)))
 conway_body(

@@ -685,6 +685,264 @@
  {
   "era": "conway",
   "kind": "body",
+  "name": "parameter changes: repeat with a rational written with negative parts",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 306 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter changes: repeat with a rational written as bignums",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 326 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter changes: repeat with a rational written with negative parts not in lowest terms",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 306 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter changes: a rational and a different one with negative parts",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter changes: prices",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter changes: repeat with prices written with negative parts",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 338 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter changes: prices that differ in one signed part",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter changes: repeat with prices written as bignums",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 358 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter changes: pool voting thresholds",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter changes: repeat with pool voting thresholds written with negative parts",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 350 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter changes: pool voting thresholds that differ in one signed part",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter changes: repeat with DRep voting thresholds written with negative parts",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 400 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter changes: the reference script fee",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter changes: repeat with the reference script fee written with negative parts",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 309 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "pool margin: signed parts that reduce to one half",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "pool margin: bignum parts that reduce to one half",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "pool margin: one",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "pool margin: zero over a large denominator",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "pool margin: a negative value",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 163 \"An error occured while decoding BoundedRatio.\\nError: (-1) % 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "pool margin: a value above one",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 163 \"An error occured while decoding BoundedRatio.\\nError: 3 % 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "pool margin: a value above one with negative parts",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 163 \"An error occured while decoding BoundedRatio.\\nError: 3 % 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "pool margin: a reduced numerator that does not fit 64 bits",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 173 \"An error occured while decoding BoundedRatio.\\nError: 18446744073709551617 % 1\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "pool margin: zero denominator",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 163 \"Denominator cannot be zero\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "pool margin: zero denominator written negative",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 164 \"Denominator cannot be zero\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "committee quorum: signed parts that reduce to one half",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "committee quorum: bignum parts that reduce to one half",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "committee quorum: a value above one with negative parts",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 133 \"An error occured while decoding BoundedRatio.\\nError: 3 % 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "committee updates: repeat with the quorum written with negative parts",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 568 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "pool registrations: repeat with the margin written with negative parts",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 368 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "pool registrations: repeat with the margin written as bignums",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 388 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
   "name": "constitutions: one",
   "result": {
    "accepted": true

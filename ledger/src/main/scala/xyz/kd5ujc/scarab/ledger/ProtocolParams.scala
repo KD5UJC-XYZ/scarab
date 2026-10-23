@@ -352,8 +352,10 @@ object ProtocolParams:
       u.fields.get(key).fold(Right(p))(raw => CborRead.decode(raw).flatMap(f(p, _)))
     def uint(name: String)(set: (ProtocolParams, BigInt) => ProtocolParams) =
       (p: ProtocolParams, n: Node) => CborRead.uint(n, name).map(set(p, _))
-    def rat(name: String)(set: (ProtocolParams, Rational) => ProtocolParams) =
-      (p: ProtocolParams, n: Node) => CborRead.rational(n, name).map(set(p, _))
+    def rat(name: String, bound: CborRead.Bound)(
+        set: (ProtocolParams, Rational) => ProtocolParams
+    ) =
+      (p: ProtocolParams, n: Node) => CborRead.rational(n, name, bound).map(set(p, _))
     def exUnits(name: String)(set: (ProtocolParams, ExUnits) => ProtocolParams) =
       (p: ProtocolParams, n: Node) =>
         CborRead
@@ -372,10 +374,10 @@ object ProtocolParams:
       field(6)(uint("poolDeposit")((p, v) => p.copy(poolDeposit = v))),
       field(7)(uint("eMax")((p, v) => p.copy(eMax = v))),
       field(8)(uint("nOpt")((p, v) => p.copy(nOpt = v))),
-      field(9)(rat("a0")((p, v) => p.copy(a0 = v))),
-      field(10)(rat("rho")((p, v) => p.copy(rho = v))),
-      field(11)(rat("tau")((p, v) => p.copy(tau = v))),
-      field(12)(rat("d")((p, v) => p.copy(d = v))),
+      field(9)(rat("a0", CborRead.Bound.NonNegative)((p, v) => p.copy(a0 = v))),
+      field(10)(rat("rho", CborRead.Bound.Unit)((p, v) => p.copy(rho = v))),
+      field(11)(rat("tau", CborRead.Bound.Unit)((p, v) => p.copy(tau = v))),
+      field(12)(rat("d", CborRead.Bound.Unit)((p, v) => p.copy(d = v))),
       field(13)((p, n) => nonce(n).map(v => p.copy(extraEntropy = v))),
       field(14)((p, n) =>
         CborRead
@@ -398,7 +400,10 @@ object ProtocolParams:
         CborRead
           .arrayN(n, 2, "prices")
           .flatMap(xs =>
-            (CborRead.rational(xs(0), "price mem"), CborRead.rational(xs(1), "price steps"))
+            (
+              CborRead.rational(xs(0), "price mem", CborRead.Bound.NonNegative),
+              CborRead.rational(xs(1), "price steps", CborRead.Bound.NonNegative)
+            )
               .mapN((m, s) => p.copy(priceMem = m, priceSteps = s))
           )
       ),
@@ -423,7 +428,11 @@ object ProtocolParams:
       field(30)(uint("govActionDeposit")((p, v) => p.copy(govActionDeposit = v))),
       field(31)(uint("drepDeposit")((p, v) => p.copy(drepDeposit = v))),
       field(32)(uint("drepActivity")((p, v) => p.copy(drepActivity = v))),
-      field(33)(rat("minFeeRefScriptCostPerByte")((p, v) => p.copy(minFeeRefScriptCostPerByte = v)))
+      field(33)(
+        rat("minFeeRefScriptCostPerByte", CborRead.Bound.NonNegative)((p, v) =>
+          p.copy(minFeeRefScriptCostPerByte = v)
+        )
+      )
     )
     for updated <- steps.foldLeftM(p)((acc, step) => step(acc))
     yield
@@ -432,7 +441,7 @@ object ProtocolParams:
       else updated
 
   private def rationals(n: Node, what: String): Either[LedgerDecodeError, Vector[Rational]] =
-    CborRead.array(n, what).flatMap(_.traverse(CborRead.rational(_, what)))
+    CborRead.array(n, what).flatMap(_.traverse(CborRead.rational(_, what, CborRead.Bound.Unit)))
 
   private def costModels(n: Node): Either[LedgerDecodeError, Map[Int, Vector[BigInt]]] =
     CborRead

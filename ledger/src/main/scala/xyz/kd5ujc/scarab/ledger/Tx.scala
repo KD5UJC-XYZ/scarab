@@ -237,7 +237,7 @@ object Certificate:
       vrf <- CborRead.bytesN(xs(1), 32, "pool vrf")
       pledge <- CborRead.uint(xs(2), "pool pledge")
       cost <- CborRead.uint(xs(3), "pool cost")
-      margin <- CborRead.rational(xs(4), "pool margin")
+      margin <- CborRead.rational(xs(4), "pool margin", CborRead.Bound.Unit)
       account <- CborRead.bytes(xs(5), "pool reward account").flatMap(RewardAccount.decode)
       owners <- CborRead.set(xs(6), "pool owners", version)(CborRead.bytesN(_, 28, "pool owner"))
       metadata <- xs(8).value match

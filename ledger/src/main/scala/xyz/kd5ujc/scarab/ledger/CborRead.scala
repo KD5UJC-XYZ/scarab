@@ -121,11 +121,59 @@ private[ledger] object CborRead:
         )
     }
 
-  def rational(n: Node, what: String): Result[Rational] = n.value match
+  /** The interval a rational field is bounded to (`BoundedRatio`, `BaseTypes.hs`, f649f975). */
+  enum Bound:
+    /** `UnitInterval`: 0 to 1 (a pool margin, a committee quorum, a voting threshold). */
+    case Unit
+
+    /** `NonNegativeInterval`: 0 up to the `Word64` maximum (a price, `a0`). */
+    case NonNegative
+
+  /** The value of tag 30 as the reference decodes it below decoder version 12, which covers every
+    * version this node reads (Conway is 9): `fromCBOR` of `BoundedRatio` reads
+    * `decodeRationalWithTag` (`Binary/Plain.hs:155-163`), a tag 30 over a definite or indefinite
+    * array of two `decodeInteger` s (any sign, bignum tags 2 and 3 included), refuses a zero
+    * denominator, and builds `n % d`; `decCBOR` dispatches to it for versions below 12 and to
+    * `decodeIntegralRational` from 12 (`BaseTypes.hs:416-430`), which this node does not read. The
+    * value is then bounded by `boundRational` (`BaseTypes.hs:348-374`): the reduced numerator and
+    * denominator must fit the underlying `Word64`, and the value lie in the type's interval. Equal
+    * rationals are one value whatever the signs, factors or integer forms they were written with.
+    */
+  def rational(n: Node, what: String, bound: Bound): Result[Rational] =
+    ratio(n, what).flatMap(r =>
+      Either.cond(
+        fits(r, bound),
+        r,
+        LedgerDecodeError.RationalOutOfBounds(what, r.numerator, r.denominator)
+      )
+    )
+
+  /** `decodeRationalWithTag`: the reduced rational, before any bound. */
+  private[ledger] def ratio(n: Node, what: String): Result[Rational] = n.value match
     case Value.Tag(t, inner) if t == 30 =>
       arrayN(inner, 2, what).flatMap(xs =>
-        (uint(xs(0), what), uint(xs(1), what)).tupled.flatMap { case (num, den) =>
-          Either.cond(den > 0, Rational(num, den), LedgerDecodeError.ZeroDenominator(what))
+        (integer(xs(0), what), integer(xs(1), what)).tupled.flatMap { case (num, den) =>
+          Either.cond(den != 0, Rational(num, den), LedgerDecodeError.ZeroDenominator(what))
         }
       )
     case _ => Left(LedgerDecodeError.ExpectedTag(what, 30, n.value))
+
+  private val Word64Max = (BigInt(1) << 64) - 1
+
+  /** `fromRationalBoundedRatio` over `Word64`. */
+  private[ledger] def fits(r: Rational, bound: Bound): Boolean =
+    r.numerator >= 0 && r.numerator <= Word64Max && r.denominator <= Word64Max &&
+      (bound match
+        case Bound.Unit        => r <= Rational.one
+        case Bound.NonNegative => true)
+
+  /** `decodeInteger`: an integer item or a bignum (tag 2 or 3 over a byte string). */
+  private def integer(n: Node, what: String): Result[BigInt] = n.value match
+    case Value.UInt(v) => Right(v)
+    case Value.NInt(v) => Right(v)
+    case Value.Tag(t, inner) if t == 2 || t == 3 =>
+      bytes(inner, what).map { b =>
+        val magnitude = BigInt(1, b.toArray)
+        if t == 2 then magnitude else -1 - magnitude
+      }
+    case _ => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Integer, n.value))

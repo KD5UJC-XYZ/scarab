@@ -314,7 +314,7 @@ object ScriptContexts:
   def changedParameters(update: ParamUpdate): Result[PlutusData] =
     def rational(n: xyz.kd5ujc.scarab.codec.Node): Result[PlutusData] =
       CborRead
-        .rational(n, "rational")
+        .rational(n, "rational", CborRead.Bound.NonNegative)
         .bimap(
           _ => TranslationError.Undecodable(DataSite.ParameterUpdate),
           r => PlutusData.List(Vector(I(r.numerator), I(r.denominator)))
