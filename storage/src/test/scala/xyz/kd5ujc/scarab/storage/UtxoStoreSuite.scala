@@ -400,6 +400,44 @@ class UtxoStoreSuite extends ScalaCheckSuite:
     }
   }
 
+  test("a memory checkpoint replaces its file atomically and leaves no temporary file") {
+    val dir = tempDir()
+    val cp = Path.fromNioPath(dir) / "cp"
+    val file = dir.resolve("cp").resolve("utxo.bin")
+    val tmp = dir.resolve("cp").resolve("utxo.bin.tmp")
+    val a = TxIn(Bytes.wrap(be(1, 32)), 0)
+    val b = TxIn(Bytes.wrap(be(2, 32)), 0)
+    try
+      orFail {
+        MemoryUtxoStore[IO].flatMap { store =>
+          for
+            _ <- store.write(Vector(a -> Some(output(0, 1, 1, 10))), 1)
+            _ <- StorageTestKit.ok(store.checkpoint(cp))
+            first <- IO.blocking(java.nio.file.Files.readAllBytes(file))
+            // a crash during an earlier attempt left a torn temporary file: it is no checkpoint,
+            // restore ignores it and the next checkpoint overwrites it
+            _ <- IO.blocking(java.nio.file.Files.write(tmp, Array[Byte](1, 2, 3)))
+            _ <- store.write(Vector(b -> Some(output(0, 2, 1, 20))), 2)
+            keptOld <- store.restore(cp)
+            afterRestore <- store.all
+            _ <- store.write(Vector(b -> Some(output(0, 2, 1, 20))), 2)
+            _ <- StorageTestKit.ok(store.checkpoint(cp))
+            second <- IO.blocking(java.nio.file.Files.readAllBytes(file))
+            _ <- store.reset
+            restored <- store.restore(cp)
+            all <- store.all
+          yield
+            assert(keptOld)
+            assertEquals(afterRestore.keySet, Set(a))
+            assert(!java.nio.file.Files.exists(tmp))
+            assert(!java.util.Arrays.equals(first, second))
+            assert(restored)
+            assertEquals(all.keySet, Set(a, b))
+        }
+      }
+    finally RocksUtxoStore.deleteTree(dir)
+  }
+
   test("a restored rocksdb checkpoint is independent of the live database") {
     val dir = tempDir()
     orFail {

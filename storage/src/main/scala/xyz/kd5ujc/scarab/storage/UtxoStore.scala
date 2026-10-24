@@ -340,20 +340,19 @@ final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.C
       case Left(e)  => StorageError.Io(what, e).raise[F, A]
     }
 
+  /** Written through [[AtomicFile.replaceStreaming]]: a temporary file, fsync, atomic rename and
+    * fsync of the directory, so a crash leaves the previous checkpoint or this one, never a prefix.
+    */
   def checkpoint(dir: Path)(using Raise[F, StorageError]): F[Unit] =
     state.get.flatMap { c =>
-      guard(dir.toString) {
-        java.nio.file.Files.createDirectories(dir.toNioPath)
-        val file = dir.toNioPath.resolve("utxo.bin")
-        val os = new java.io.BufferedOutputStream(java.nio.file.Files.newOutputStream(file))
-        try
+      guard(dir.toString)(java.nio.file.Files.createDirectories(dir.toNioPath)) *>
+        AtomicFile.replaceStreaming[F](dir / "utxo.bin") { os =>
           val out = Out(os)
           import NodeCodecs.given
           Codec[Map[TxIn, TxOut]].write(out, c.entries)
           out.fixed64(c.stamp)
           out.flush()
-        finally os.close()
-      }
+        }
     }
 
   def restore(dir: Path)(using cats.mtl.Raise[F, StorageError]): F[Boolean] =
