@@ -7,30 +7,6 @@
  "entries": [
   {
    "kind": "missing-path",
-   "path": "AGENTS.md",
-   "key": "release/alpha",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "AGENTS.md",
-   "key": "release/beta",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "AGENTS.md",
-   "key": "release/preprod",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "AGENTS.md",
-   "key": "release/prod",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
    "path": "CONTRIBUTING.md",
    "key": "node/assembly",
    "count": 1
@@ -45,30 +21,6 @@
    "kind": "missing-path",
    "path": "CONTRIBUTING.md",
    "key": "node/target/runtime-classpath.txt",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "CONTRIBUTING.md",
-   "key": "release/alpha",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "CONTRIBUTING.md",
-   "key": "release/beta",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "CONTRIBUTING.md",
-   "key": "release/preprod",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "CONTRIBUTING.md",
-   "key": "release/prod",
    "count": 1
   },
   {
@@ -2480,18 +2432,6 @@
   {
    "kind": "missing-path",
    "path": "docs/design/releases.md",
-   "key": "release/alpha",
-   "count": 3
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/design/releases.md",
-   "key": "release/beta",
-   "count": 3
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/design/releases.md",
    "key": "release/dev",
    "count": 1
   },
@@ -2500,18 +2440,6 @@
    "path": "docs/design/releases.md",
    "key": "release/mainnet",
    "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/design/releases.md",
-   "key": "release/preprod",
-   "count": 3
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/design/releases.md",
-   "key": "release/prod",
-   "count": 4
   },
   {
    "kind": "unregistered-pin",
@@ -3668,30 +3596,6 @@
    "count": 3
   },
   {
-   "kind": "missing-path",
-   "path": "docs/reproducible-builds.md",
-   "key": "release/alpha",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/reproducible-builds.md",
-   "key": "release/beta",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/reproducible-builds.md",
-   "key": "release/preprod",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/reproducible-builds.md",
-   "key": "release/prod",
-   "count": 1
-  },
-  {
    "kind": "file-size",
    "path": "docs/roadmap.md",
    "key": "",
@@ -3708,30 +3612,6 @@
    "kind": "missing-path",
    "path": "docs/roadmap.md",
    "key": "ledger/byron",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/roadmap.md",
-   "key": "release/alpha",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/roadmap.md",
-   "key": "release/beta",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/roadmap.md",
-   "key": "release/preprod",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/roadmap.md",
-   "key": "release/prod",
    "count": 1
   },
   {

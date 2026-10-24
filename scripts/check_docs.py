@@ -33,7 +33,8 @@ not part of an identity so that edits above a finding do not move it). The check
 
   * a violation is not in the baseline, occurs more often than baselined, or a measured one grew
     (a baselined file past its recorded size, a baselined cell past its recorded length), or
-  * the baseline holds an entry that no longer occurs, occurs less often, or recorded a larger measure.
+  * the baseline holds an entry that no longer occurs or occurs less often. A measured entry that merely shrinks
+    never fails (compaction PRs need not rewrite the baseline); `--write-baseline` tightens it.
 
 `--write-baseline` rewrites the baseline to the current state: that is how fixed violations leave it. It is also the
 only way to accept a new violation, which a reviewer sees as a baseline diff; do not do that to silence a check.
@@ -78,6 +79,15 @@ FILE_EXTENSIONS = frozenset({
     "patch", "log", "dot", "png", "svg", "java", "cbor", "csv", "html", "js", "tar", "gz", "sql", "properties",
     "dockerfile", "so", "jar", "nix", "cabal", "lagda", "gv", "proto", "xml", "pdf",
 })
+# Branch names (`release/alpha`, ...) share a first segment with the tracked `release/` directory but are not paths.
+class BranchName(str, Enum):
+    RELEASE_ALPHA = "release/alpha"
+    RELEASE_BETA = "release/beta"
+    RELEASE_PREPROD = "release/preprod"
+    RELEASE_PROD = "release/prod"
+
+
+BRANCH_NAMES = frozenset(b.value for b in BranchName)
 # Names whose cited versions must be registered. A registry entry adds its own name and aliases.
 WATCHED_VERSION_NAMES = ("cardano-node", "Scalus", "Mithril", "cuddle", "blst-java", "blst", "plutus-core")
 # Repository names that make a nearby bare commit id a citation of an upstream revision.
@@ -327,6 +337,8 @@ def check_paths(repo: Repo, doc: str, lines: Sequence[Line]) -> list[Violation]:
             if not relative and bare.split("/")[0] not in repo.top_level:
                 continue
             clean = bare.rstrip("/")
+            if clean in BRANCH_NAMES:
+                continue
             candidates = [posixpath.normpath(posixpath.join(posixpath.dirname(doc), clean))]
             if not relative:
                 candidates.insert(0, posixpath.normpath(clean))
@@ -602,8 +614,6 @@ def ratchet(current: Mapping[tuple[Kind, str, str], Entry], baseline: Mapping[tu
             stale.append(f"{label(ident)}: no longer occurs")
         elif now.count < was.count:
             stale.append(f"{label(ident)}: {now.count} occurrence(s), baseline records {was.count}")
-        elif now.measure is not None and was.measure is not None and now.measure < was.measure:
-            stale.append(f"{label(ident)}: shrank to {now.measure}, baseline records {was.measure}")
     return Ratchet(tuple(new), tuple(stale))
 
 
@@ -651,10 +661,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"docs check passes ({len(repo.doc_files())} files; baselined violations: {totals})")
         return 0
     if result.new:
-        print("new documentation violations (fix them; the baseline only shrinks):")
+        print("new documentation violations (fix them; the baseline only shrinks, so do not add entries with --write-baseline):")
         print("\n".join(f"  {row}" for row in result.new))
     if result.stale:
-        print(f"baseline entries that no longer occur or shrank (run `scripts/check_docs.py --write-baseline`):")
+        print("baseline entries that no longer occur (fixed violations: run `python3 scripts/check_docs.py --write-baseline`\n"
+              "and commit the shrunken baseline):")
         print("\n".join(f"  {row}" for row in result.stale))
     return 1
 
