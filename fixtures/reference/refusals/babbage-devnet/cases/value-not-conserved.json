@@ -1,0 +1,21 @@
+{
+  "label": "value-not-conserved",
+  "era": "babbage",
+  "families": [
+    "UTXO"
+  ],
+  "expect": [
+    "ValueNotConservedUTxO"
+  ],
+  "item": "8205d81858db84a30081825820b7de7c4fbda46d74d6f9c5cd2f69dc988af0077ec4e5a0f8e1971390c7a7e1d7010181825839006370e6118011c920b2f8d6430e9fde12a246153b2781ea0c619a8826a9e74726fc9cc561e8c7cf25efb886279689eb67e8b2fc2b7ab008951ab2c2a259021a00061a80a1008182582048de711c36c7c27696e37ac1f8de8f0c5c2d10d83ceb85c07f60decf225b9a61584030f5b47ffa2a9de69477b998137e3e65f18cdbb1990279232d5251ab3c7c09e184278c0e359d2897d50384efb5001f71e0de6e75cdefdb129abdb5778899da07f5f6",
+  "tip": {
+    "slot": 5043,
+    "hash": "e8df5e29f0ff74f2021ac0b2c0363ccea88f0c3b28b93c79fd3417920b1f90d8"
+  },
+  "mempoolSlot": 5044,
+  "state": "states/dc6cda1610ec4d0258c07d687d1c0747655ccc76f03765d2bf35a89999ca7564.cbor",
+  "utxo": "utxo/9c9fa6debc889fbbabc83fb0d6f33591022438168331017d66fd0bdc714cbcbe.cbor",
+  "reason": "818205818200820282018205821ab2c8bce01ab2c8bcd9",
+  "reasonSha256": "742f5299f5b1e764be4ff97064f2a88b091067e36a148b3e6003caf827992a66",
+  "rendered": "Error: Error while submitting tx: ShelleyTxValidationError ShelleyBasedEraBabbage (BabbageApplyTxError (UtxowFailure (UtxoFailure (AlonzoInBabbageUtxoPredFailure (ValueNotConservedUTxO Mismatch (RelEQ) {supplied: MaryValue (Coin 2999500000) (MultiAsset (fromList [])), expected: MaryValue (Coin 2999499993) (MultiAsset (fromList []))}))) :| []))"
+}

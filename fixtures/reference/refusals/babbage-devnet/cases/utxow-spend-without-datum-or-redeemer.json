@@ -1,0 +1,25 @@
+{
+  "label": "utxow-spend-without-datum-or-redeemer",
+  "era": "babbage",
+  "families": [
+    "UTXOW",
+    "UTXOW",
+    "UTXOW",
+    "UTXOS"
+  ],
+  "expect": [
+    "MissingRequiredDatums",
+    "MissingRedeemers"
+  ],
+  "item": "8205d81859019484a40082825820b7de7c4fbda46d74d6f9c5cd2f69dc988af0077ec4e5a0f8e1971390c7a7e1d701825820704b16a74a0b6c8d381a42558c45f8a2082043f779d7674e5e0cb42c74c59947000181825839006370e6118011c920b2f8d6430e9fde12a246153b2781ea0c619a8826a9e74726fc9cc561e8c7cf25efb886279689eb67e8b2fc2b7ab008951ab34a7000021a0016e3600d81825820b7de7c4fbda46d74d6f9c5cd2f69dc988af0077ec4e5a0f8e1971390c7a7e1d702a2008282582048de711c36c7c27696e37ac1f8de8f0c5c2d10d83ceb85c07f60decf225b9a615840e0093627c9ffa4ef03c48be89b1e07f00c8fd6a014608e147cde887834d2e33a8a80cf23863f983da4ad2738a41c8716b32f2557927856dc2dd8fa4deccfc801825820ab644b37f10e59a6a61e2ad7aa986e30f4479a05fb1b98c8d77a010400e3b0925840ffa93703fe27fae8d5a569ad790374a3fcb56cbc87f9517d4d2daf55b1725e03c937919c8963d99746811e8f65512cdb7a034990f32916c46af84933b019870f06814746010000222499f5f6",
+  "tip": {
+    "slot": 5047,
+    "hash": "ebfc4a75c999a55264c055729d7eee306b474b1947e237ad6eeee1cfd3f12e62"
+  },
+  "mempoolSlot": 5048,
+  "state": "states/c327509322a8afd5237bded2832c6561b0935d4c08a18798a54cd1e5cbef1e8f.cbor",
+  "utxo": "utxo/9c9fa6debc889fbbabc83fb0d6f33591022438168331017d66fd0bdc714cbcbe.cbor",
+  "reason": "818205848200820183028158209e1199a988ba72ffd6e9c269cadb3b53b5f360ff99f112d9b2ee30c4d74ad88b8082008201820181828200825820704b16a74a0b6c8d381a42558c45f8a2082043f779d7674e5e0cb42c74c5994700581c52c6af0c9b744b4eecce838538a52ceb155038b3de68e2bb2fa8fc3782008201820482808158208ee004f99373941d6cbee99aab615d0c7fbab451faa9f115ef4587d66d0a77b5820082028201820782018182008200825820704b16a74a0b6c8d381a42558c45f8a2082043f779d7674e5e0cb42c74c5994700",
+  "reasonSha256": "848430467c36cb284b0068e385ec9c7956093fef3967d366493b3a1cc12beaf2",
+  "rendered": "Error: Error while submitting tx: ShelleyTxValidationError ShelleyBasedEraBabbage (BabbageApplyTxError (UtxowFailure (AlonzoInBabbageUtxowPredFailure (MissingRequiredDatums (NonEmptySet (fromList [SafeHash \"9e1199a988ba72ffd6e9c269cadb3b53b5f360ff99f112d9b2ee30c4d74ad88b\"])) (fromList []))) :| [UtxowFailure (AlonzoInBabbageUtxowPredFailure (MissingRedeemers ((AlonzoSpending (AsItem {unAsItem = TxIn (TxId {unTxId = SafeHash \"704b16a74a0b6c8d381a42558c45f8a2082043f779d7674e5e0cb42c74c59947\"}) (TxIx {unTxIx = 0})}),ScriptHash \"52c6af0c9b744b4eecce838538a52ceb155038b3de68e2bb2fa8fc37\") :| []))),UtxowFailure (AlonzoInBabbageUtxowPredFailure (PPViewHashesDontMatch Mismatch (RelEQ) {supplied: SNothing, expected: SJust (SafeHash \"8ee004f99373941d6cbee99aab615d0c7fbab451faa9f115ef4587d66d0a77b5\")})),UtxowFailure (UtxoFailure (AlonzoInBabbageUtxoPredFailure (UtxosFailure (CollectErrors (NoRedeemer (AlonzoSpending (AsItem {unAsItem = TxIn (TxId {unTxId = SafeHash \"704b16a74a0b6c8d381a42558c45f8a2082043f779d7674e5e0cb42c74c59947\"}) (TxIx {unTxIx = 0})})) :| [])))))]))"
+}

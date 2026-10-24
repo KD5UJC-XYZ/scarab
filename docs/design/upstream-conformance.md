@@ -254,6 +254,9 @@ UTxO field, excluding only unavailable output-original bytes and Scala change-hi
 bookkeeping. Haskell accumulates failures while Scarab fails fast; Scarab's single complete
 structured failure payload must be a member of the native failure list.
 This does not check the full accumulated list, its order or multiplicity.
+The [reference-refusal corpus](../../fixtures/reference/refusals/README.md) (#401) compares
+complete refusals instead: the released node's whole LocalTxSubmission `ApplyTxErr`, every failure in
+its order, byte for byte against Scarab's.
 
 The [reward timing corpus](../../storage/src/test/resources/rewards-timing-1.19.0.1/README.md)
 uses the unchanged released `cardano-ledger-shelley 1.19.0.1` RUPD and `applyRUpd` APIs

@@ -1,0 +1,24 @@
+{
+  "label": "utxow-malformed-witness-and-reference-script",
+  "era": "babbage",
+  "families": [
+    "UTXOW",
+    "UTXOW",
+    "UTXOW"
+  ],
+  "expect": [
+    "MalformedScriptWitnesses",
+    "MalformedReferenceScripts"
+  ],
+  "item": "8205d81859012c84a30081825820b7de7c4fbda46d74d6f9c5cd2f69dc988af0077ec4e5a0f8e1971390c7a7e1d7010182a3005839006370e6118011c920b2f8d6430e9fde12a246153b2781ea0c619a8826a9e74726fc9cc561e8c7cf25efb886279689eb67e8b2fc2b7ab00895011a01312d0003d818458202424100825839006370e6118011c920b2f8d6430e9fde12a246153b2781ea0c619a8826a9e74726fc9cc561e8c7cf25efb886279689eb67e8b2fc2b7ab008951ab1917560021a00061a80a2008182582048de711c36c7c27696e37ac1f8de8f0c5c2d10d83ceb85c07f60decf225b9a615840daa8c37dd2e94c3fb6097e4e09124983aed9fe8be623479a5eff2cb9afff0a57eae00980bf55dbf5908faac1f0d6ee8db9ae3509b2ed7096458a3eab5967cc080681424100f5f6",
+  "tip": {
+    "slot": 5047,
+    "hash": "ebfc4a75c999a55264c055729d7eee306b474b1947e237ad6eeee1cfd3f12e62"
+  },
+  "mempoolSlot": 5048,
+  "state": "states/c327509322a8afd5237bded2832c6561b0935d4c08a18798a54cd1e5cbef1e8f.cbor",
+  "utxo": "utxo/9c9fa6debc889fbbabc83fb0d6f33591022438168331017d66fd0bdc714cbcbe.cbor",
+  "reason": "81820583820082018200820a81581ca42d4d8fc1582fd10dc8cc6606da4fa51ef785c1506b90cf748b5ae78200820381581ca42d4d8fc1582fd10dc8cc6606da4fa51ef785c1506b90cf748b5ae78200820481581ca42d4d8fc1582fd10dc8cc6606da4fa51ef785c1506b90cf748b5ae7",
+  "reasonSha256": "c78f168e29a18ef425631702296d745a0b48cdd4cd5eb6bd70873dd21e7ef44b",
+  "rendered": "Error: Error while submitting tx: ShelleyTxValidationError ShelleyBasedEraBabbage (BabbageApplyTxError (UtxowFailure (AlonzoInBabbageUtxowPredFailure (ShelleyInAlonzoUtxowPredFailure (ExtraneousScriptWitnessesUTXOW (NonEmptySet (fromList [ScriptHash \"a42d4d8fc1582fd10dc8cc6606da4fa51ef785c1506b90cf748b5ae7\"]))))) :| [UtxowFailure (MalformedScriptWitnesses (NonEmptySet (fromList [ScriptHash \"a42d4d8fc1582fd10dc8cc6606da4fa51ef785c1506b90cf748b5ae7\"]))),UtxowFailure (MalformedReferenceScripts (NonEmptySet (fromList [ScriptHash \"a42d4d8fc1582fd10dc8cc6606da4fa51ef785c1506b90cf748b5ae7\"])))]))"
+}

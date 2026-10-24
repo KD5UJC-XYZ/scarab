@@ -1,0 +1,21 @@
+{
+  "label": "expired",
+  "era": "conway",
+  "families": [
+    "UTXO"
+  ],
+  "expect": [
+    "OutsideValidityIntervalUTxO"
+  ],
+  "item": "8206d81858cb84a400d90102818258209c80ad47441d870b865fa9a77a2619159925ea84ba53435358c1f13c826b81c700018182581d604b41caf365a8888e5cec9bda4efcc41de135fb3627dd9d810678b9ee1b00000da475d6a980021a00030d400301a100d9010281825820d2ccb494116b235662aee7b637973782127b62d2411dfdb80ba652e4b81e171f5840302ccd0237d7f898e6760f1657d9c7c76fd01eeb1c96dc47de78b8204bb7b507248952a72f2fc08997bff48ec35e8d6f9dfdef031244e7d38993b0ab33c11807f5f6",
+  "tip": {
+    "slot": 8188,
+    "hash": "9baa5589dcb79404ed4fb31b97f7fba6b6d949b7df269b5e8b66846d59607261"
+  },
+  "mempoolSlot": 8189,
+  "state": "states/97bef32b6a540eaad8ba199dea44db9b07c23dd5ebe3f5949956f8d943c4e2be.cbor",
+  "utxo": "utxo/e005a87c6a411872191271f2a4c4db97ad5ea5213637ddd39e8b7414ad797177.cbor",
+  "reason": "8182068182018200830282808101191ffd",
+  "reasonSha256": "bf10f2274cdca1acfb9a8275656545d56ba1961d1464ee62437231135056e557",
+  "rendered": "Error: Error while submitting tx: ShelleyTxValidationError ShelleyBasedEraConway (ConwayApplyTxError (ConwayUtxowFailure (UtxoFailure (OutsideValidityIntervalUTxO (ValidityInterval {invalidBefore = SNothing, invalidHereafter = SJust (SlotNo 1)}) (SlotNo 8189))) :| []))"
+}

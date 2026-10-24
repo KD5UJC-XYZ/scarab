@@ -1,0 +1,21 @@
+{
+  "label": "govcert-committee-unknown",
+  "era": "conway",
+  "families": [
+    "GOVCERT"
+  ],
+  "expect": [
+    "ConwayCommitteeIsUnknown"
+  ],
+  "item": "8206d81859016c84a400818258209c80ad47441d870b865fa9a77a2619159925ea84ba53435358c1f13c826b81c700018182581d604b41caf365a8888e5cec9bda4efcc41de135fb3627dd9d810678b9ee1b00000da475d39c40021a00061a800481830e8200581c7ea8df9a171f276a3a9b645c088f50be6b79c52fbff03fce607283c68200581c5df0ae1e7ea42068c705977d8e4b01193cd7eaae3f3b017f7291a89da10082825820d2ccb494116b235662aee7b637973782127b62d2411dfdb80ba652e4b81e171f5840cb8994a5eb92b7bf094c72918a0d8f56f3e3bf7dc7a764d6d864bd86b0dfc5afa466037774ea5ec03959b1dfb97780209f9d28d2554ac62d4576d25c0c7588088258207295dda94df6f96928d9e36818063a13b6edc851388ee94a7ee334efbf13de70584051b2889f4ef4f7e9f76ce825e93e5280d7886b70b52ff69da63855c06d2455dcb410297ea8cefa1557b82c33affcacac8804f6bde77bcc84cafa57a284921d02f5f6",
+  "tip": {
+    "slot": 8188,
+    "hash": "9baa5589dcb79404ed4fb31b97f7fba6b6d949b7df269b5e8b66846d59607261"
+  },
+  "mempoolSlot": 8189,
+  "state": "states/97bef32b6a540eaad8ba199dea44db9b07c23dd5ebe3f5949956f8d943c4e2be.cbor",
+  "utxo": "utxo/e005a87c6a411872191271f2a4c4db97ad5ea5213637ddd39e8b7414ad797177.cbor",
+  "reason": "8182068182028201820382058200581c7ea8df9a171f276a3a9b645c088f50be6b79c52fbff03fce607283c6",
+  "reasonSha256": "cf81850359eaf63a7775709300a3c634f8468f51b08c7fb548f5fbbe89440cd7",
+  "rendered": "Error: Error while submitting tx: ShelleyTxValidationError ShelleyBasedEraConway (ConwayApplyTxError (ConwayCertsFailure (CertFailure (GovCertFailure (ConwayCommitteeIsUnknown (KeyHashObj (KeyHash {unKeyHash = \"7ea8df9a171f276a3a9b645c088f50be6b79c52fbff03fce607283c6\"}))))) :| []))"
+}

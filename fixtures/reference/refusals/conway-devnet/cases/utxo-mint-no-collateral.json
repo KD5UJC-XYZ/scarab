@@ -1,0 +1,22 @@
+{
+  "label": "utxo-mint-no-collateral",
+  "era": "conway",
+  "families": [
+    "UTXO",
+    "UTXO"
+  ],
+  "expect": [
+    "NoCollateralInputs"
+  ],
+  "item": "8206d81859017684a500818258209c80ad47441d870b865fa9a77a2619159925ea84ba53435358c1f13c826b81c700018282581d604b41caf365a8888e5cec9bda4efcc41de135fb3627dd9d810678b9ee821a002dc6c0a1581c186e32faa80a26810392fda6d559c7ed4721a65ce1c9d4ef3e1c87b4a145746f6b656e0182581d604b41caf365a8888e5cec9bda4efcc41de135fb3627dd9d810678b9ee1b00000da475950ca0021a0016e36009a1581c186e32faa80a26810392fda6d559c7ed4721a65ce1c9d4ef3e1c87b4a145746f6b656e010b58209de6e184c51178925c0ae6ac298d43ed140758b0380f55c5519cc164770b024da30081825820d2ccb494116b235662aee7b637973782127b62d2411dfdb80ba652e4b81e171f584041d64dae520c5f0407e2ebd2c117053cb231569aef81ab81ddc13a5a862a8bff0c426a15f9e9a494be9b58de9024e1fc46a3aaeb5362f12a40dd20ae0c58370f05a18201008200821a000f42401a1dcd6500078146450101002499f5f6",
+  "tip": {
+    "slot": 8188,
+    "hash": "9baa5589dcb79404ed4fb31b97f7fba6b6d949b7df269b5e8b66846d59607261"
+  },
+  "mempoolSlot": 8189,
+  "state": "states/97bef32b6a540eaad8ba199dea44db9b07c23dd5ebe3f5949956f8d943c4e2be.cbor",
+  "utxo": "utxo/e005a87c6a411872191271f2a4c4db97ad5ea5213637ddd39e8b7414ad797177.cbor",
+  "reason": "8182068282018200830c001a00225510820182008113",
+  "reasonSha256": "3cf214ea1126139866bf2b7b801acbf6bc579b97cb2dbbb2b43e03bce09f8b05",
+  "rendered": "Error: Error while submitting tx: ShelleyTxValidationError ShelleyBasedEraConway (ConwayApplyTxError (ConwayUtxowFailure (UtxoFailure (InsufficientCollateral (DeltaCoin 0) (Coin 2250000))) :| [ConwayUtxowFailure (UtxoFailure NoCollateralInputs)]))"
+}

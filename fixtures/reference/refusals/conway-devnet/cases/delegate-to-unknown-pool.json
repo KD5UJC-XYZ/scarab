@@ -1,0 +1,21 @@
+{
+  "label": "delegate-to-unknown-pool",
+  "era": "conway",
+  "families": [
+    "DELEG"
+  ],
+  "expect": [
+    "DelegateeStakePoolNotRegisteredDELEG"
+  ],
+  "item": "8206d81859017384a400d90102818258209c80ad47441d870b865fa9a77a2619159925ea84ba53435358c1f13c826b81c700018182581d604b41caf365a8888e5cec9bda4efcc41de135fb3627dd9d810678b9ee1b00000da475d6a980021a00030d4004d901028183028200581cbd882f9cf0bd409482d081486ad0806ac532b20ed73be3710ec5152c581c649fac8e1cf4f5ed9f15ca1f26067df84c1f516acc3f55dca403588fa100d9010282825820d2ccb494116b235662aee7b637973782127b62d2411dfdb80ba652e4b81e171f584057744926ad857f2846474160ca61fd961bf12a672ddcf2708b0675d09c6f9d27b6436e70c587c76fcb00aca525421ac4ec7a6022457f6271e3f0ef96814896088258207f2e19c37069ab02c8a56de3e6e23e61c1ac962551efa3af8bd25f5a3609efa5584072029301f7cfd1fee67ba27df39bb8704e020c3d4a3d16be2510cf6e06f421cea8aeab882d97da502226c1a8fa3d9e6f92b4f9a43f01712db4f33f9c8551ae0df5f6",
+  "tip": {
+    "slot": 8188,
+    "hash": "9baa5589dcb79404ed4fb31b97f7fba6b6d949b7df269b5e8b66846d59607261"
+  },
+  "mempoolSlot": 8189,
+  "state": "states/97bef32b6a540eaad8ba199dea44db9b07c23dd5ebe3f5949956f8d943c4e2be.cbor",
+  "utxo": "utxo/e005a87c6a411872191271f2a4c4db97ad5ea5213637ddd39e8b7414ad797177.cbor",
+  "reason": "818206818202820182018206581c649fac8e1cf4f5ed9f15ca1f26067df84c1f516acc3f55dca403588f",
+  "reasonSha256": "93a9d6bf0962e82c081b2ef095133084a47ce6dd65b7917b2db6cd16fbac6773",
+  "rendered": "Error: Error while submitting tx: ShelleyTxValidationError ShelleyBasedEraConway (ConwayApplyTxError (ConwayCertsFailure (CertFailure (DelegFailure (DelegateeStakePoolNotRegisteredDELEG (KeyHash {unKeyHash = \"649fac8e1cf4f5ed9f15ca1f26067df84c1f516acc3f55dca403588f\"})))) :| []))"
+}

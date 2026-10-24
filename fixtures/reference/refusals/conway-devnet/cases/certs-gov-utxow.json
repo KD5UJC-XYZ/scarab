@@ -1,0 +1,25 @@
+{
+  "label": "certs-gov-utxow",
+  "era": "conway",
+  "families": [
+    "DELEG",
+    "GOV",
+    "UTXOW"
+  ],
+  "expect": [
+    "DelegateeStakePoolNotRegisteredDELEG",
+    "GovActionsDoNotExist",
+    "MissingVKeyWitnessesUTXOW"
+  ],
+  "item": "8206d8185901b484a500818258209c80ad47441d870b865fa9a77a2619159925ea84ba53435358c1f13c826b81c700018182581d604b41caf365a8888e5cec9bda4efcc41de135fb3627dd9d810678b9ee1b00000da475d39c40021a00061a80048183028200581cbd882f9cf0bd409482d081486ad0806ac532b20ed73be3710ec5152c581cf92fa332dafc07b98f6a2692268a984fccf22fdc5df7df240fe4da8413a18202581c2c1a5ca94a6e44274304f6bbe01e8a7665c43ccc63f187866464b01ea18258201111111111111111111111111111111111111111111111111111111111111111008201f6a10082825820d2ccb494116b235662aee7b637973782127b62d2411dfdb80ba652e4b81e171f5840c627cb5b880cb27f6948be4c2ae1833641270045f134dcf13ab29d71d2a345e1e42d6d8e083d74fa47f41bcc783a5ab4949d7802d046395a1e403753ab1e0401825820bab68a75db49a93cff04d10dfbb978140c299c9dc27f474be042bdb09e26de4558404c193d3f8e8775a63e8cbba13f44b9381b92d878ce201bbca581ed4ac4a446d4ccd363df80df9982b99cc63b63095d2c44f93a3d02d5af76e0fbbe645f259f03f5f6",
+  "tip": {
+    "slot": 8188,
+    "hash": "9baa5589dcb79404ed4fb31b97f7fba6b6d949b7df269b5e8b66846d59607261"
+  },
+  "mempoolSlot": 8189,
+  "state": "states/97bef32b6a540eaad8ba199dea44db9b07c23dd5ebe3f5949956f8d943c4e2be.cbor",
+  "utxo": "utxo/e005a87c6a411872191271f2a4c4db97ad5ea5213637ddd39e8b7414ad797177.cbor",
+  "reason": "818206838202820182018206581cf92fa332dafc07b98f6a2692268a984fccf22fdc5df7df240fe4da84820382008182582011111111111111111111111111111111111111111111111111111111111111110082018202d9010281581cbd882f9cf0bd409482d081486ad0806ac532b20ed73be3710ec5152c",
+  "reasonSha256": "5d06121c2199d502d1df1aea40c241f5418d256478f12d07631a65912b3b78f2",
+  "rendered": "Error: Error while submitting tx: ShelleyTxValidationError ShelleyBasedEraConway (ConwayApplyTxError (ConwayCertsFailure (CertFailure (DelegFailure (DelegateeStakePoolNotRegisteredDELEG (KeyHash {unKeyHash = \"f92fa332dafc07b98f6a2692268a984fccf22fdc5df7df240fe4da84\"})))) :| [ConwayGovFailure (GovActionsDoNotExist (GovActionId {gaidTxId = TxId {unTxId = SafeHash \"1111111111111111111111111111111111111111111111111111111111111111\"}, gaidGovActionIx = GovActionIx {unGovActionIx = 0}} :| [])),ConwayUtxowFailure (MissingVKeyWitnessesUTXOW (NonEmptySet (fromList [KeyHash {unKeyHash = \"bd882f9cf0bd409482d081486ad0806ac532b20ed73be3710ec5152c\"}])))]))"
+}

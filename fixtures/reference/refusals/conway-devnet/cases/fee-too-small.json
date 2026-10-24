@@ -1,0 +1,21 @@
+{
+  "label": "fee-too-small",
+  "era": "conway",
+  "families": [
+    "UTXO"
+  ],
+  "expect": [
+    "FeeTooSmallUTxO"
+  ],
+  "item": "8206d81858c584a300d90102818258209c80ad47441d870b865fa9a77a2619159925ea84ba53435358c1f13c826b81c700018182581d604b41caf365a8888e5cec9bda4efcc41de135fb3627dd9d810678b9ee1b00000da475d9b6bf0201a100d9010281825820d2ccb494116b235662aee7b637973782127b62d2411dfdb80ba652e4b81e171f5840a70d8db8cece37b01e1fac49ec2384fe76a33109578b2c1621692839c7ae5e4ebbc3b8720e5fd9d1327850290e9ac0f7d9fbe405c6eb0a247e6035ad627d2101f5f6",
+  "tip": {
+    "slot": 8188,
+    "hash": "9baa5589dcb79404ed4fb31b97f7fba6b6d949b7df269b5e8b66846d59607261"
+  },
+  "mempoolSlot": 8189,
+  "state": "states/97bef32b6a540eaad8ba199dea44db9b07c23dd5ebe3f5949956f8d943c4e2be.cbor",
+  "utxo": "utxo/e005a87c6a411872191271f2a4c4db97ad5ea5213637ddd39e8b7414ad797177.cbor",
+  "reason": "8182068182018200830518c401",
+  "reasonSha256": "d76139624e4eed8a7d60a249cec905ec1dbbb2091ffb29b1d187f102da6bc1a6",
+  "rendered": "Error: Error while submitting tx: ShelleyTxValidationError ShelleyBasedEraConway (ConwayApplyTxError (ConwayUtxowFailure (UtxoFailure (FeeTooSmallUTxO Mismatch (RelGTEQ) {supplied: Coin 1, expected: Coin 196})) :| []))"
+}

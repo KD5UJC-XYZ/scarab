@@ -1,0 +1,21 @@
+{
+  "label": "withdrawal-more-than-balance",
+  "era": "babbage",
+  "families": [
+    "LEDGER"
+  ],
+  "expect": [
+    "Withdrawals"
+  ],
+  "item": "8205d81859016284a40081825820b7de7c4fbda46d74d6f9c5cd2f69dc988af0077ec4e5a0f8e1971390c7a7e1d7010181825839006370e6118011c920b2f8d6430e9fde12a246153b2781ea0c619a8826a9e74726fc9cc561e8c7cf25efb886279689eb67e8b2fc2b7ab008951ab2c2a261021a00061a8005a1581de0a9e74726fc9cc561e8c7cf25efb886279689eb67e8b2fc2b7ab0089501a1008282582048de711c36c7c27696e37ac1f8de8f0c5c2d10d83ceb85c07f60decf225b9a615840e4b9ba3a8f682c5985892445964d52976612ed85a8ed5e9bd0bd7ec40152ec0e3c991ae5250dae6bb144c4dce364d35ddd298e5d25a4a42239c313089f7707088258201d42c0bcbc1bedbdb3fdde989954fd8a4d63d58edb584067ce3b0131dbc39fb55840141744f16d242fc3d6b92b84e4533e96c991cde2404f03f525d82d7cf25102a572119b1bc0558508f16230d898e377cc2acbccf29921e4c0fb96e93da6987b03f5f6",
+  "tip": {
+    "slot": 5043,
+    "hash": "e8df5e29f0ff74f2021ac0b2c0363ccea88f0c3b28b93c79fd3417920b1f90d8"
+  },
+  "mempoolSlot": 5044,
+  "state": "states/dc6cda1610ec4d0258c07d687d1c0747655ccc76f03765d2bf35a89999ca7564.cbor",
+  "utxo": "utxo/9c9fa6debc889fbbabc83fb0d6f33591022438168331017d66fd0bdc714cbcbe.cbor",
+  "reason": "818205818203a1581de0a9e74726fc9cc561e8c7cf25efb886279689eb67e8b2fc2b7ab0089582011b000000118de3bf2f",
+  "reasonSha256": "ab551266fccd7adc6b31925423977db68c0578b6723bb00634c035f2f99a3fd1",
+  "rendered": "Error: Error while submitting tx: ShelleyTxValidationError ShelleyBasedEraBabbage (BabbageApplyTxError (ShelleyIncompleteWithdrawals (NonEmptyMap (fromList [(AccountAddress {aaNetworkId = Testnet, aaId = AccountId {unAccountId = KeyHashObj (KeyHash {unKeyHash = \"a9e74726fc9cc561e8c7cf25efb886279689eb67e8b2fc2b7ab00895\"})}},Mismatch (RelEQ) {supplied: Coin 1, expected: Coin 109493557287})])) :| []))"
+}
