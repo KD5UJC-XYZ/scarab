@@ -107,6 +107,7 @@
 {"event":"kesReloaded","at":"2026-10-16T12:00:00Z","opCertCounter":4,"kesStart":30,"kesEvolutions":62,"kesPeriod":33,"remainingKesPeriods":59}
 {"event":"kesReloadRefused","at":"2026-10-16T12:00:00Z","kind":"Counter","message":"opcert counter 3 below current 5"}
 {"event":"kesPersistFailed","at":"2026-10-16T12:00:00Z","kesPeriod":33,"kind":"KeyFile","message":"key file kes.skey: Io(java.io.IOException: disk full)"}
+{"event":"keyFileGroupAccess","at":"2026-10-16T12:00:00Z","file":"vrf.skey","mode":"640"}
 {"event":"forgeSkipped","at":"2026-10-16T12:00:00Z","slot":4201,"reason":"the forger was busy with an earlier slot"}
 {"event":"forgeFailed","at":"2026-10-16T12:00:00Z","slot":4202,"kind":"KeyPeriodOutOfRange","message":"KES period 33 outside the operational certificate window [0, 32)"}
 {"event":"forgeEpoch","at":"2026-10-16T12:00:00Z","epoch":3,"slotsChecked":100,"leaderSlots":5,"forged":5,"adopted":4,"lostSlotBattles":1,"failed":0,"skipped":3,"skippedByReason":{"busy":2,"tipTooOld":1},"forgeLatencyMs":{"count":4,"mean":12.5,"max":20}}
