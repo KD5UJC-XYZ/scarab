@@ -6,20 +6,22 @@ import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Node}
 import xyz.kd5ujc.scarab.ledger.CborRead
-import xyz.kd5ujc.scarab.crypto.witness.{StrictEd25519, VerificationResult}
+import xyz.kd5ujc.scarab.crypto.witness.{ByronEd25519, VerificationResult}
 
-/** Verifies a signature of an extended Byron key (64 bytes: the Ed25519 key then a chain code). */
+/** Verifies a signature of an extended Byron key (64 bytes: the Ed25519 key then a chain code),
+  * with the Byron verification semantics of the reference ([[ByronEd25519]]).
+  */
 object ByronSig:
   def verify(extendedKey: Bytes, signature: Bytes, message: Bytes): Boolean =
     extendedKey.size >= 32 && signature.size == 64 &&
-      (StrictEd25519.verify(extendedKey.take(32), signature, message) match
+      (ByronEd25519.verify(extendedKey.take(32), signature, message) match
         case Right(VerificationResult.SignatureVerified) => true
         case _                                           => false)
 
   /** A redeem signature: plain Ed25519 under a 32-byte key. */
   def verifyRedeem(key: Bytes, signature: Bytes, message: Bytes): Boolean =
     key.size == 32 && signature.size == 64 &&
-      (StrictEd25519.verify(key, signature, message) match
+      (ByronEd25519.verify(key, signature, message) match
         case Right(VerificationResult.SignatureVerified) => true
         case _                                           => false)
 

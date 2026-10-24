@@ -8,7 +8,7 @@ import xyz.kd5ujc.scarab.ledger.Header.ByronSignature
 import xyz.kd5ujc.scarab.ledger.byron.*
 import xyz.kd5ujc.scarab.consensus.state.{PBftSigner, PBftState}
 import xyz.kd5ujc.scarab.ledger.state.{Genesis, KeyHash, SlotNo}
-import xyz.kd5ujc.scarab.crypto.witness.{StrictEd25519, VerificationResult}
+import xyz.kd5ujc.scarab.crypto.witness.{ByronEd25519, VerificationResult}
 
 /** How a Byron block was established. Every main block is fully checked (there is no "unchecked"
   * outcome): signature, delegation, PBFT window, body proofs and the ledger rules.
@@ -208,7 +208,7 @@ object ByronRules:
       config.ledger.magic,
       main.signed
     )
-    for _ <- StrictEd25519.verify(d.delegate.take(32), d.signature, message) match
+    for _ <- ByronEd25519.verify(d.delegate.take(32), d.signature, message) match
         case Right(VerificationResult.SignatureVerified) => Right(())
         case Right(VerificationResult.SignatureRejected) => Left(ByronChainError.SignatureRejected)
         case Left(input: xyz.kd5ujc.scarab.crypto.witness.WitnessInputError) =>
