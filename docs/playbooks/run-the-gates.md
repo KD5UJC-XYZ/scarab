@@ -18,10 +18,10 @@ python3 scripts/render_codemap.py --check
 python3 scripts/check_onramp.py
 ```
 
-Level 1 and above: `check` in the JDK image ([build in Docker](build-in-docker-from-a-worktree.md)).
+Level 1 and above: `check`, through `sbtw`, the JDK-image wrapper of [build in Docker](build-in-docker-from-a-worktree.md).
 
 ```sh
-bash scripts/sbtw check
+sbtw check
 ```
 
 Level 2 and above: the one scenario for the area, with your own name.
@@ -40,6 +40,6 @@ python3 scripts/devnet.py --name mine e2e
 python3 scripts/devnet.py --name mine down
 ```
 
-Decoder change: also `bash scripts/sbtw "fuzz 100000 1 4"`. Script change: `python3 -m unittest discover -s scripts/tests`.
+Decoder change: also `sbtw "fuzz 100000 1 4"`. Script change: `python3 -m unittest discover -s scripts/tests`.
 
 Then: changelog fragment `changes/<issue>-<slug>.md` if a user could notice; level 3 adds the compatibility row and the design's "as built"; level 4 adds an evidence-log row with commit, date and command. Repeats and `soak` belong to nightly CI. Remove your containers and `down` your devnet when done.

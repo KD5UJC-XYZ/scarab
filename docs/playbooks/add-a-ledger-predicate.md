@@ -7,10 +7,10 @@ The reference decides order and content. A predicate is a typed failure case, a 
 3. Add the check in the rule file under `ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/`, at the reference's position in the for-comprehension, with the citation in a comment before it, for example `f649f975: Babbage/Rules/Utxo.hs:368-375`. Upstream line numbers are fine because the revision is pinned; Scarab line numbers never are.
 4. If the failure reaches a client, add its CBOR in `node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/PredicateFailureCbor.scala` with the reference's constructor tag.
 5. Write a test that fails without the change, in the area's suite under `ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/rules/` (`CollateralWitnessSuite` is a small model): one case that breaks the rule, one twin that keeps it, original bytes for anything hashed. Prefer a case taken from the reference or a real transaction.
-6. Gates (level 2, or 3 for consensus-critical rules; [run the gates](run-the-gates.md)):
+6. Gates (level 2, or 3 for consensus-critical rules; [run the gates](run-the-gates.md); `sbtw` is the Docker wrapper of [build in Docker](build-in-docker-from-a-worktree.md)):
 
 ```sh
-bash scripts/sbtw check
+sbtw check
 python3 scripts/devnet.py --name mine e2e
 python3 scripts/devnet.py --name mine down
 ```

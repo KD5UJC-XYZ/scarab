@@ -9,7 +9,9 @@ Every cell that points at the code must resolve, so these tables cannot drift fr
   docs/decisions.md         | Decision | Where recorded | Invariant it fixes | Reopen condition |
                             and one row per `docs/adr/NNNN-*.md`: linked from "Where recorded", titled as the ADR's
                             first heading
-  docs/playbooks/*.md       at most 60 lines; every repo path in a fenced command exists; the scenario after
+  docs/playbooks/*.md       at most 60 lines; no fenced command runs sbt, `scripts/sbtw` or java on the host (the
+                            `sbtw` Docker wrapper of build-in-docker-from-a-worktree.md); every repo path in a fenced
+                            command exists; the scenario after
                             `scripts/devnet.py --name <n>` is a registered sub-command; `README.md` indexes them all
   .github                   the default issue template has the audit shape; the pull request template asks for rows
   AGENTS.md                 a "**Five-minute start**" block of at most 12 lines that names the entry documents
@@ -59,6 +61,7 @@ ISSUE_LINK = re.compile(r"\[#(\d+)\]\(https://github\.com/KD5UJC-XYZ/scarab/issu
 MD_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 ADR_FILE = re.compile(r"^docs/adr/(\d{4})-[a-z0-9-]+\.md$")
 FENCE_OPEN = re.compile(r"^\s*(`{3,})")
+HOST_SBT = re.compile(r"^\s*(?:bash\s+|\./)?(?:scripts/sbtw|sbt|java)\b")
 SCENARIO = re.compile(r'sub\.add_parser\(\s*"([a-z0-9_-]+)"')
 
 
@@ -374,6 +377,8 @@ def check_playbooks(index: Index, directory: str = "docs/playbooks") -> list[Pro
         if count >= PLAYBOOK_MAX_LINES:
             problems.append(Problem(name, 0, f"{count} lines, the limit is under {PLAYBOOK_MAX_LINES}"))
         for number, raw in fenced_lines(text):
+            if HOST_SBT.match(raw):
+                problems.append(Problem(name, number, "runs sbt on the host; use the `sbtw` Docker wrapper"))
             for token in command_paths(raw):
                 if token.split("/")[0] in repo.top_level and ("/" in token or "." in token):
                     _files, error = resolve_path(index, token.rstrip(";,)"))

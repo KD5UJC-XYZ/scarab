@@ -170,6 +170,14 @@ class PlaybookTest(OnrampCase):
         text = f'# One\n{FENCE}sh\nscripts/real.py "ledger/testOnly x" --out /tmp/x $out/y <z>\n{FENCE}\n'
         self.assertEqual(self.run_playbook(text), [])
 
+    def test_sbt_on_the_host_is_refused_but_the_wrapper_is_fine(self):
+        for line in ("bash scripts/sbtw check", "scripts/sbtw check", "sbt compile", "java -jar x.jar"):
+            found = self.run_playbook(f"# One\n{FENCE}sh\n{line}\n{FENCE}\n")
+            self.assertTrue(any("on the host" in m for m in found), line)
+        self.assertEqual(self.run_playbook(f'# One\n{FENCE}sh\nsbtw check\nsbtw "fuzz 1 1 1"\n{FENCE}\n'), [])
+        wrapper = f"# One\n{FENCE}sh\n  docker run --rm x bash scripts/sbtw \"$@\"\n{FENCE}\n"
+        self.assertEqual(self.run_playbook(wrapper, {"scripts/sbtw": "x\n"}), [])
+
     def test_the_line_limit_and_the_index_are_enforced(self):
         long = "# One\n" + "line\n" * 60
         self.assertTrue(any("lines" in m for m in self.run_playbook(long)))

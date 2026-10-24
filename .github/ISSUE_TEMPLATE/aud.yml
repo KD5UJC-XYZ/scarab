@@ -21,6 +21,11 @@ body:
       description: The item in docs/roadmap.md and the series ID, if any.
       placeholder: e.g. B30, AUD3-05
   - type: textarea
+    id: assumptions
+    attributes:
+      label: Trusted assumptions and invariant
+      description: Optional. What the boundary relies on, and the property that must hold.
+  - type: textarea
     id: finding
     attributes:
       label: Finding

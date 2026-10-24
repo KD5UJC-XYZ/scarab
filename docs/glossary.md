@@ -32,6 +32,8 @@ Terms that recur in issues, commits and documents, with the place that defines e
 | AUD | The first independent audit of main; findings are issues titled `[AUD-nn]` | [process.md](process.md#findings-from-an-independent-audit) |
 | AUD2 | The second audit round; issues titled `[AUD2-nn]` | [process.md](process.md#findings-from-an-independent-audit) |
 | AUD3 | The reference-equivalence audit round (tracked in #294); issues titled `[AUD3-nn]` | [process.md](process.md#findings-from-an-independent-audit) |
+| Boundary, trusted assumptions, invariant | The fields of an audit ticket: what it concerns, what it relies on, what must hold | [process.md](process.md#findings-from-an-independent-audit) |
+| Confirmed from source, agent-read | Evidence markers in a finding: lines read on both sides, against lines a review pass cited that still need a confirming read | [write-an-audit-issue](playbooks/write-an-audit-issue.md) |
 | K2 follow-up | An issue titled `[K2 follow-up]` that closes a gap left by the upstream conformance work | [roadmap K](roadmap.md#k-verification-at-scale-p1) |
 | J1.x, J2.x, J3.x | Stage x of jump N of the ledger-mirror step 2 (J2.9 removed the old rules); not the roadmap items J1 to J3 | [design ledger-mirror-step2](design/ledger-mirror-step2.md) |
 | Jump | One of the three larger steps of mirror step 2: edges, rules, gaps | [ADR 0009](adr/0009-ledger-mirror-step-2.md) |
@@ -60,6 +62,7 @@ Terms that recur in issues, commits and documents, with the place that defines e
 | Oracle | A tool that runs unchanged upstream code to produce expected results for comparison | `scripts/oracle/` |
 | Devnet | A local cluster of reference and Scarab nodes run in Docker | [running.md](running.md#devnet-scenarios-scriptsdevnetpy) |
 | Scenario | One devnet run with its own checks: e2e, relay, pool, restart, ntc, kes-rotate | `scripts/devnet/scenarios/` |
+| relay300 | The network gate: the `relay` scenario run for 300 seconds | `relay.py` |
 | Soak | The long mixed scenario run nightly | `soak.py` |
 | Projection | The view of node state that is dumped and compared with the reference | `Projection` |
 | K1 oracle | The db-analyser comparison of ledger state at epoch boundaries | [roadmap K](roadmap.md#k-verification-at-scale-p1) |
@@ -87,6 +90,7 @@ Terms that recur in issues, commits and documents, with the place that defines e
 
 | Term | Meaning | Where defined |
 |---|---|---|
+| Ledger-lite | The part of the pre-Conway ledger that header validation needs, kept from block bodies without a UTxO in the bootstrap follow mode | `LiteLedger` |
 | Phase 1, phase 2 | Structural ledger validation, then Plutus script execution | `Phase2` |
 | STS | A state transition system: a rule over environment, state and signal, run by an interpreter | `Sts` |
 | HFC | The hard-fork combinator: carries the state across eras and ticks epoch boundaries | `Hfc` |
