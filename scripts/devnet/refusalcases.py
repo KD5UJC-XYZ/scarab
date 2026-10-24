@@ -204,3 +204,203 @@ def corpus(name, socket):
     add("utxow-spend-redeemer-without-datum-wrong-hash", ["MissingRequiredDatums", "PPViewHashesDontMatch"],
         **spend_locked(plutus={3: [ok]}, redeemers=spend_redeemer, script_data=bytes(32)))
     return cases
+
+
+# ---------------------------------------------------------------- Babbage
+
+# Plutus V2 scripts in the language version Babbage reads (1.0.0): `error`, and the script of `eraplutus`
+# (two lambdas) that succeeds for any arguments
+FAILS_V2 = eratx.enc(bytes.fromhex("0100002601"))
+
+
+class EraWallets:
+    """The delegators' base addresses of the era-walking cluster, which hold its funds."""
+
+    def __init__(self, name):
+        self.name = name
+
+    def sh(self, script):
+        from .util import in_ref
+        return in_ref(self.name, script).stdout.strip()
+
+    def wallet(self, number):
+        from .util import SOCKET
+        d = f"{ENV}/stake-delegators/delegator{number}"
+        pay, stake = read_key(self, f"{d}/payment.skey"), read_key(self, f"{d}/staking.skey")
+        address = eratx.base_address(pay.hash, stake.hash)
+        utxo = json.loads(self.sh(f"cardano-cli query utxo --address {self.sh_address(address)} {SOCKET} "
+                                  f"--output-json"))
+        plain = {k: v for k, v in utxo.items() if set(v["value"]) == {"lovelace"} and not v.get("datumhash")
+                 and not v.get("inlineDatum") and not v.get("referenceScript")}
+        txin = max(plain, key=lambda k: plain[k]["value"]["lovelace"])
+        return {"txin": txin, "lovelace": plain[txin]["value"]["lovelace"], "key": pay, "stake": stake,
+                "address": address}
+
+    @staticmethod
+    def sh_address(address):
+        return bech32("addr_test", address)
+
+
+def bech32(hrp, data):
+    """BIP-173 bech32 of `data` (the address form `cardano-cli` reads)."""
+    charset = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
+
+    def polymod(values):
+        gen = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3]
+        chk = 1
+        for v in values:
+            top = chk >> 25
+            chk = (chk & 0x1ffffff) << 5 ^ v
+            for i in range(5):
+                chk ^= gen[i] if ((top >> i) & 1) else 0
+        return chk
+
+    acc, bits, words = 0, 0, []
+    for byte in data:
+        acc = (acc << 8) | byte
+        bits += 8
+        while bits >= 5:
+            bits -= 5
+            words.append((acc >> bits) & 31)
+    if bits:
+        words.append((acc << (5 - bits)) & 31)
+    expanded = [ord(c) >> 5 for c in hrp] + [0] + [ord(c) & 31 for c in hrp]
+    check = polymod(expanded + words + [0] * 6) ^ 1
+    words += [(check >> 5 * (5 - i)) & 31 for i in range(6)]
+    return hrp + "1" + "".join(charset[w] for w in words)
+
+
+def babbage_corpus(name):
+    """The Babbage cases, on the era-walking cluster stopped in Babbage (`up-eras --final-era babbage`)."""
+    from .eraplutus import OK
+    from .util import SOCKET
+    b = EraWallets(name)
+    funder, wd, other = b.wallet(1), b.wallet(2), b.wallet(3)
+    k, k_other, kd = wd["key"], other["key"], wd["stake"]
+    fresh_stake, fresh_cold = seeded_key("babbage stake"), seeded_key("babbage cold")
+    params = json.loads(b.sh(f"cardano-cli query protocol-parameters {SOCKET}"))
+    v2 = params["costModels"]["PlutusV2"]
+    key_deposit = params["stakeAddressDeposit"]
+    epoch = json.loads(b.sh(f"cardano-cli query tip {SOCKET}"))["epoch"]
+    pool1 = read_key(b, f"{ENV}/pools-keys/pool1/cold.skey")
+    here = wd["address"]
+    unknown_pool = eratx.blake2b(b"scarab refusal corpus unknown pool", 28)
+    unknown_input = ("00" * 31 + "01", 0)
+    cases = []
+
+    def add(label, expect, **kw):
+        tx, _ = eratx.build_tx("babbage", **kw)
+        cases.append(Case(label, tx, tuple(expect)))
+
+    def spend(fee=FEE, delta=0, extra_inputs=(), outputs=None, signers=None, **kw):
+        outs = outputs if outputs is not None else [eratx.tx_out("babbage", here, wd["lovelace"] - fee + delta)]
+        return dict(inputs=[txin(wd), *extra_inputs], outputs=outs, fee=fee, signers=signers or [k], **kw)
+
+    # ---- UTXO and UTXOW, alone and together
+    add("fee-too-small", ["FeeTooSmallUTxO"], **spend(fee=1))
+    add("value-not-conserved", ["ValueNotConservedUTxO"], **spend(delta=-7))
+    add("expired", ["OutsideValidityIntervalUTxO"], **spend(ttl=1))
+    add("output-too-small", ["BabbageOutputTooSmallUTxO"],
+        **spend(outputs=[eratx.tx_out("babbage", here, 1), eratx.tx_out("babbage", here, wd["lovelace"] - FEE - 1)]))
+    add("missing-witness", ["MissingVKeyWitnessesUTXOW"], **spend(signers=[k_other]))
+    add("utxo-fee-interval-balance", ["FeeTooSmallUTxO", "OutsideValidityIntervalUTxO", "ValueNotConservedUTxO"],
+        **spend(fee=1, delta=-5, ttl=1))
+    add("utxo-small-and-wrong-network-outputs", ["BabbageOutputTooSmallUTxO", "WrongNetwork"],
+        **spend(outputs=[eratx.tx_out("babbage", here, 1),
+                         eratx.tx_out("babbage", eratx.enterprise_address(k.hash, network=1), 5_000_000),
+                         eratx.tx_out("babbage", here, wd["lovelace"] - FEE - 5_000_001)]))
+    add("utxo-bad-input-missing-witness", ["BadInputsUTxO", "MissingVKeyWitnessesUTXOW"],
+        **spend(extra_inputs=[unknown_input], signers=[k_other]))
+    # ---- DELEGS, DELEG and POOL
+    add("deleg-stake-key-registered", ["StakeKeyAlreadyRegisteredDELEG"],
+        **spend(delta=-key_deposit, certs=[eratx.stake_key_cert(0, kd.hash)]))
+    add("deleg-unregistered-delegation", ["StakeDelegationImpossibleDELEG"],
+        **spend(certs=[eratx.delegation_cert(fresh_stake.hash, eratx.blake2b(pool1.vkey, 28))],
+                signers=[k, fresh_stake]))
+    add("delegs-unknown-pool", ["DelegateeNotRegisteredDELEG"],
+        **spend(certs=[eratx.delegation_cert(kd.hash, unknown_pool)], signers=[k, kd]))
+    add("certs-two-failing", ["StakeKeyAlreadyRegisteredDELEG", "DelegateeNotRegisteredDELEG"],
+        **spend(delta=-key_deposit,
+                certs=[eratx.stake_key_cert(0, kd.hash), eratx.delegation_cert(kd.hash, unknown_pool)],
+                signers=[k, kd]))
+    add("withdrawal-more-than-balance", ["Withdrawals"],
+        **spend(delta=1, withdrawals={eratx.reward_address(kd.hash): 1}, signers=[k, kd]))
+    add("withdrawal-unregistered-account", ["Withdrawals"],
+        **spend(withdrawals={eratx.reward_address(fresh_stake.hash): 0}, signers=[k, fresh_stake]))
+    add("pool-retire-unregistered", ["StakePoolNotRegisteredOnKeyPOOL"],
+        **spend(certs=[eratx.pool_retirement_cert(fresh_cold.hash, epoch + 1)], signers=[k, fresh_cold]))
+    add("pool-retirement-wrong-epoch", ["StakePoolRetirementWrongEpochPOOL"],
+        **spend(certs=[eratx.pool_retirement_cert(eratx.blake2b(pool1.vkey, 28), epoch)], signers=[k, pool1]))
+
+    # ---- Plutus V2 minting: the validity flag, collateral
+    policy_ok = eratx.plutus_script_hash(OK, 2)
+    policy_fails = eratx.plutus_script_hash(FAILS_V2, 2)
+
+    def minting(script, policy, collateral=True, is_valid=True, total_collateral=None, units=UNITS):
+        token = {policy: {b"token": 1}}
+        redeemers = [(1, 0, 0, units)]
+        integrity = eratx.script_data_hash(eratx.enc(eratx.redeemers_cbor("babbage", redeemers)), b"", {2: v2})
+        outs = [eratx.tx_out("babbage", here, 3_000_000, token),
+                eratx.tx_out("babbage", here, wd["lovelace"] - PLUTUS_FEE - 3_000_000)]
+        extra = {}
+        if collateral:
+            extra["collateral"] = [txin(other)]
+        if total_collateral is not None:
+            extra["total_collateral"] = total_collateral
+            # the return leaves the collateral input's whole value less 3 ADA, not `total_collateral`
+            extra["collateral_return"] = eratx.tx_out("babbage", other["address"], other["lovelace"] - 3_000_000)
+        return spend(fee=PLUTUS_FEE, outputs=outs, mint=token, plutus={2: [script]}, redeemers=redeemers,
+                     script_data=integrity, signers=[k, k_other] if collateral else [k], is_valid=is_valid,
+                     **extra)
+
+    add("utxos-script-fails-flag-true", ["ValidationTagMismatch"], **minting(FAILS_V2, policy_fails))
+    add("utxos-script-passes-flag-false", ["ValidationTagMismatch"], **minting(OK, policy_ok, is_valid=False))
+    add("utxo-mint-no-collateral", ["NoCollateralInputs"], **minting(OK, policy_ok, collateral=False))
+    add("utxo-total-collateral-wrong", ["IncorrectTotalCollateralField"],
+        **minting(OK, policy_ok, total_collateral=2_250_000))
+
+    # ---- UTXOW: malformed scripts, and a script output spent without its datum, redeemer or script
+    malformed = eratx.enc(bytes.fromhex("00"))
+    add("utxow-malformed-witness-and-reference-script", ["MalformedScriptWitnesses", "MalformedReferenceScripts"],
+        **spend(outputs=[eratx.tx_out("babbage", here, 20_000_000, script_ref_plutus=(2, malformed)),
+                         eratx.tx_out("babbage", here, wd["lovelace"] - FEE - 20_000_000)],
+                plutus={2: [malformed]}))
+    script_address = eratx.enterprise_address(policy_ok, script=True)
+    datum_hash = eratx.blake2b(eratx.enc(DATUM))
+    setup = submit_setup(b, funder, "babbage", [
+        (eratx.tx_out("babbage", script_address, FUND, datum_hash=datum_hash), FUND)])
+    locked = (setup, 0)
+
+    def spend_locked(**kw):
+        outs = [eratx.tx_out("babbage", here, wd["lovelace"] + FUND - PLUTUS_FEE)]
+        return spend(fee=PLUTUS_FEE, extra_inputs=[locked], outputs=outs, collateral=[txin(other)],
+                     signers=[k, k_other], **kw)
+
+    sorted_inputs = sorted([txin(wd), locked])
+    spend_redeemer = [(0, sorted_inputs.index(locked), DATUM, UNITS)]
+    add("utxow-spend-without-datum-or-redeemer", ["MissingRequiredDatums", "MissingRedeemers"],
+        **spend_locked(plutus={2: [OK]}))
+    add("utxow-spend-without-script-with-extra-datum", ["MissingScriptWitnesses"],
+        **spend_locked(datums=[DATUM, 43], redeemers=spend_redeemer,
+                       script_data=eratx.script_data_hash(
+                           eratx.enc(eratx.redeemers_cbor("babbage", spend_redeemer)), eratx.enc([DATUM, 43]),
+                           {2: v2})))
+    add("utxow-spend-redeemer-without-datum-wrong-hash", ["MissingRequiredDatums", "PPViewHashesDontMatch"],
+        **spend_locked(plutus={2: [OK]}, redeemers=spend_redeemer, script_data=bytes(32)))
+    return cases
+
+
+def submit_setup(b, funder, era, outputs):
+    """An ordinary transaction of `era` creating `outputs` from `funder` (a wallet of `EraWallets`), waited
+    for until the reference holds them; its id."""
+    from .util import SOCKET
+    total = sum(coin for _, coin in outputs)
+    outs = [out for out, _ in outputs] + [eratx.tx_out(era, funder["address"], funder["lovelace"] - total - FEE)]
+    tx, body_hash = eratx.build_tx(era, [txin(funder)], outs, FEE, [funder["key"]])
+    b.sh(f"echo '{eratx.envelope(era, tx)}' > /work/setup.tx")
+    b.sh(f"cardano-cli conway transaction submit {SOCKET} --tx-file /work/setup.tx")
+    for _ in range(120):
+        if json.loads(b.sh(f"cardano-cli query utxo --tx-in {body_hash}#0 {SOCKET} --output-json")):
+            return body_hash
+        b.sh("sleep 1")
+    raise RuntimeError("the setup transaction of the script cases did not reach a block")

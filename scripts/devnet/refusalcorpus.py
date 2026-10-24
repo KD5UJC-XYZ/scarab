@@ -19,16 +19,20 @@ names in its `cardano-cli` rendering, which is kept only as a diagnostic (it com
 """
 import datetime
 import hashlib
+import importlib
 import json
 import pathlib
 import subprocess
 
 from . import ntclocal, ntcquery
 from .cbor import Raw, Tag, enc
-from .refusalcases import corpus
+from . import eratx
+from .refusalcases import babbage_corpus, corpus
 from .util import ENV, MAGIC, REFERENCE_IMAGE, REPO, data_root, docker, in_ref, ref
 
-CONWAY = 6
+# The hard-fork-combinator index of each era the corpus covers: the LocalTxSubmission item `[index, #6.24(tx)]`
+# and the era of the LocalStateQuery queries
+ERA_INDEX = {"babbage": 5, "conway": 6}
 BATCH = 4
 ATTEMPTS = 40
 DEFAULT_OUT = REPO / "fixtures" / "reference" / "refusals"
@@ -38,21 +42,27 @@ GENESIS = ("byron-genesis.json", "shelley-genesis.json", "alonzo-genesis.json", 
 # What the manifest requires per era. A family without a case is an incomplete gate in the Scala suite.
 COVERAGE = {
     "conway": ["UTXO", "UTXOW", "UTXOS", "LEDGER", "CERTS", "DELEG", "POOL", "GOVCERT", "GOV", "MEMPOOL"],
-    "babbage": ["UTXO", "UTXOW", "UTXOS", "DELEGS", "DELEG", "POOL"],
+    "babbage": ["UTXO", "UTXOW", "UTXOS", "LEDGER", "DELEG", "POOL"],
 }
+# (DELEGS of the pinned ledger has no failure of its own: it wraps DELPL's, and the withdrawal failures are
+# LEDGER's, `ShelleyWithdrawalsMissingAccounts` and `ShelleyIncompleteWithdrawals`.)
 
 # The constructor of each family as `cardano-cli` renders it (the check that `family` reads the tags right).
-RENDERED = {"UTXOW": "ConwayUtxowFailure", "UTXO": "UtxoFailure", "UTXOS": "UtxosFailure",
-            "CERTS": "ConwayCertsFailure", "DELEG": "DelegFailure", "POOL": "PoolFailure",
-            "GOVCERT": "GovCertFailure", "GOV": "ConwayGovFailure", "MEMPOOL": "ConwayMempoolFailure",
-            "LEDGER": "Conway"}
+RENDERED = {
+    "conway": {"UTXOW": "ConwayUtxowFailure", "UTXO": "UtxoFailure", "UTXOS": "UtxosFailure",
+               "CERTS": "ConwayCertsFailure", "DELEG": "DelegFailure", "POOL": "PoolFailure",
+               "GOVCERT": "GovCertFailure", "GOV": "ConwayGovFailure", "MEMPOOL": "ConwayMempoolFailure",
+               "LEDGER": "Conway"},
+    "babbage": {"UTXOW": "UtxowFailure", "UTXO": "UtxoFailure", "UTXOS": "UtxosFailure",
+                "DELEGS": "DelegsFailure", "DELEG": "DelegFailure", "POOL": "PoolFailure", "LEDGER": "Shelley"},
+}
 
 
 class Unexpected(Exception):
     """The reference answered something a refusal corpus cannot hold (an acceptance, another era)."""
 
 
-def family(failure):
+def conway_family(failure):
     """The rule of one `ConwayLedgerPredFailure` (`Conway/Rules/Ledger.hs`), from its constructor tags:
     1 UTXOW (its 0 is UTXO, whose 0 is UTXOS), 2 CERTS (its 1 is CERT: 1 DELEG, 2 POOL, 3 GOVCERT), 3 GOV,
     7 the mempool's text, the others LEDGER's own."""
@@ -70,38 +80,64 @@ def family(failure):
     return {3: "GOV", 7: "MEMPOOL"}.get(tag, "LEDGER")
 
 
-def families(reason):
-    """The family of each failure of a Conway `ApplyTxErr` `[[6, [failure, ...]]]`, in order."""
+def babbage_family(failure):
+    """The rule of one `ShelleyLedgerPredFailure` of Babbage (`Shelley/Rules/Ledger.hs`): 0 UTXOW (Babbage's
+    2 is UTXO, whose 1, Alonzo's UTXO, has UTXOS at 7), 1 DELEGS (its DELPL failure: 0 POOL, 1 DELEG), the others
+    LEDGER's own."""
+    tag = failure[0]
+    if tag == 0:
+        utxow = failure[1]
+        if utxow[0] == 2:
+            utxo = utxow[1]
+            return "UTXOS" if utxo[0] == 1 and utxo[1][0] == 7 else "UTXO"
+        return "UTXOW"
+    if tag == 1:
+        delegs = failure[1]
+        if delegs[0] == 1 and isinstance(delegs[1], list):
+            return {0: "POOL", 1: "DELEG"}.get(delegs[1][0], "DELEGS")
+        return "DELEGS"
+    return "LEDGER"
+
+
+FAMILY = {"conway": conway_family, "babbage": babbage_family}
+
+
+def families(era, reason):
+    """The family of each failure of an `ApplyTxErr` `[[era index, [failure, ...]]]` of `era`, in order."""
     value, end = ntcquery.decode(reason)
-    if end != len(reason) or not isinstance(value, list) or len(value) != 1 or value[0][0] != CONWAY:
-        raise Unexpected(f"not a Conway ApplyTxErr: {reason.hex()[:120]}")
-    return [family(f) for f in value[0][1]]
+    if end != len(reason) or not isinstance(value, list) or len(value) != 1 or value[0][0] != ERA_INDEX[era]:
+        raise Unexpected(f"not a {era} ApplyTxErr: {reason.hex()[:120]}")
+    return [FAMILY[era](f) for f in value[0][1]]
 
 
-def unnamed(fams, rendered):
+def unnamed(era, fams, rendered):
     """The families whose constructor the reference's rendering does not name."""
-    return sorted({f for f in fams if RENDERED[f] not in rendered})
+    return sorted({f for f in fams if RENDERED[era][f] not in rendered})
 
 
 def sha256(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def item(tx):
-    """What LocalTxSubmission carries for a Conway transaction: `[6, #6.24(tx)]`."""
-    return enc([CONWAY, Tag(24, bytes(tx))])
+def item(era, tx):
+    """What LocalTxSubmission carries for a transaction of `era`: `[index, #6.24(tx)]`."""
+    return enc([ERA_INDEX[era], Tag(24, bytes(tx))])
 
 
 class Session(ntclocal.Session):
-    def tip(self):
+    def point(self, era):
+        """The ledger tip (GetLedgerTip) of the acquired state."""
+        return self.query_raw([0, [0, [ERA_INDEX[era], [0]]]])
+
+    def tip(self, era):
         self.acquire()
-        point = self.query_raw([0, [0, [CONWAY, [0]]]])
+        point = self.point(era)
         self.release()
         return point
 
-    def cbor(self, query):
-        """`GetCBOR query` in Conway, at the acquired state: the bytes of the answer."""
-        answer = self.query_raw([0, [0, [CONWAY, [9, query]]]])
+    def cbor(self, era, query):
+        """`GetCBOR query` in `era`, at the acquired state: the bytes of the answer."""
+        answer = self.query_raw([0, [0, [ERA_INDEX[era], [9, query]]]])
         if not isinstance(answer, list) or len(answer) != 1 or not isinstance(answer[0], ntcquery.Tagged):
             raise Unexpected(f"era mismatch: {str(answer)[:200]}")
         return bytes(answer[0].value)
@@ -121,26 +157,26 @@ class Session(ntclocal.Session):
         return self._reason(self.last_raw)
 
 
-def judged(name, batch):
+def judged(name, era, batch):
     """The refusals of `batch` and the state they were judged against, or None when the tip moved."""
     with Session(ref(name), f"{ENV}/socket/node1/sock", MAGIC) as s:
         s.acquire()
-        point = s.query_raw([0, [0, [CONWAY, [0]]]])
-        state = s.cbor([12])
-        utxo = s.cbor([7])
+        point = s.point(era)
+        state = s.cbor(era, [12])
+        utxo = s.cbor(era, [7])
         s.release()
         slot, held = s.mempool()
         if held or slot != point[0][0] + 1:
             return None
-        reasons = [s.submit_item(item(case.tx)) for case in batch]
-        if s.tip() != point or s.mempool() != (slot, 0):
+        reasons = [s.submit_item(item(era, case.tx)) for case in batch]
+        if s.tip(era) != point or s.mempool() != (slot, 0):
             return None
     return {"point": point[0], "mempoolSlot": slot, "state": state, "utxo": utxo, "reasons": reasons}
 
 
-def rendering(name, tx):
+def rendering(name, era, tx):
     """What `cardano-cli transaction submit` prints for the transaction (a second submission)."""
-    envelope = json.dumps({"type": "Tx ConwayEra", "description": "", "cborHex": tx.hex()})
+    envelope = eratx.envelope(era, tx)
     subprocess.run(["docker", "exec", "-i", ref(name), "/bin/sh", "-c", "cat > /work/refusal.tx"],
                    input=envelope, text=True, check=True)
     r = docker("exec", ref(name), "/bin/sh", "-c",
@@ -167,12 +203,12 @@ def write(path, data):
     path.write_bytes(data)
 
 
-def capture(name, cases):
+def capture(name, era, cases):
     """Every case judged, in batches whose state held still."""
     out, pending, attempts = [], list(cases), 0
     while pending:
         batch = pending[:BATCH]
-        result = judged(name, batch)
+        result = judged(name, era, batch)
         if result is None:
             attempts += 1
             if attempts > ATTEMPTS:
@@ -190,17 +226,25 @@ def capture(name, cases):
 def refusal_corpus(args):
     root = data_root(args.name)
     if not (root / "genesis").is_dir():
-        raise SystemExit(f"no devnet `{args.name}`: run `devnet.py --name {args.name} up` first")
+        raise SystemExit(f"no devnet `{args.name}`: run `devnet.py --name {args.name} up` "
+                         f"(or `up-eras --final-era babbage`) first")
+    era = args.era
+    corpus_name = args.corpus or f"{era}-devnet"
     out = pathlib.Path(args.out)
-    directory = out / args.corpus
+    directory = out / corpus_name
     if directory.exists():
         raise SystemExit(f"{directory} exists: remove it to refresh the corpus")
-    command = f"python3 scripts/devnet.py --name <devnet> refusal-corpus --corpus {args.corpus}"
-    cases = corpus(args.name, f"{ENV}/socket/node1/sock")
+    command = f"python3 scripts/devnet.py --name <devnet> refusal-corpus --era {era} --corpus {corpus_name}"
+    if args.cases:
+        module, _, function = args.cases.partition(":")
+        cases = getattr(importlib.import_module(f".{module}", __package__), function)(args.name)
+        command += f" --cases {args.cases}"
+    else:
+        cases = corpus(args.name, f"{ENV}/socket/node1/sock") if era == "conway" else babbage_corpus(args.name)
     labels = [c.label for c in cases]
     if len(set(labels)) != len(labels):
         raise SystemExit("duplicate case labels")
-    judged_cases = capture(args.name, cases)
+    judged_cases = capture(args.name, era, cases)
     files, problems = [], []
     for name in GENESIS:
         write(directory / "genesis" / name, (root / "genesis" / name).read_bytes())
@@ -209,22 +253,23 @@ def refusal_corpus(args):
         utxo_file = f"utxo/{sha256(result['utxo'])}.cbor"
         write(directory / state_file, result["state"])
         write(directory / utxo_file, result["utxo"])
-        fams = families(reason)
-        rendered = rendering(args.name, case.tx)
+        fams = families(era, reason)
+        rendered = rendering(args.name, era, case.tx)
         missing = [e for e in case.expect if e not in rendered]
-        if missing or unnamed(fams, rendered):
-            problems.append({"case": case.label, "notRendered": missing, "familiesNotNamed": unnamed(fams, rendered),
-                             "rendered": rendered[:600]})
-        record = {"label": case.label, "era": "conway", "families": fams, "expect": list(case.expect),
-                  "item": item(case.tx).hex(), "tip": {"slot": result["point"][0], "hash": result["point"][1].hex()},
+        if missing or unnamed(era, fams, rendered):
+            problems.append({"case": case.label, "notRendered": missing,
+                             "familiesNotNamed": unnamed(era, fams, rendered), "rendered": rendered[:600]})
+        record = {"label": case.label, "era": era, "families": fams, "expect": list(case.expect),
+                  "item": item(era, case.tx).hex(),
+                  "tip": {"slot": result["point"][0], "hash": result["point"][1].hex()},
                   "mempoolSlot": result["mempoolSlot"], "state": state_file, "utxo": utxo_file,
                   "reason": reason.hex(), "reasonSha256": sha256(reason), "rendered": rendered}
         data = (json.dumps(record, indent=2) + "\n").encode()
         write(directory / "cases" / f"{case.label}.json", data)
         files.append({"file": f"cases/{case.label}.json", "sha256": sha256(data)})
-    pv = json.loads(in_ref(args.name, f"cardano-cli conway query protocol-parameters --testnet-magic {MAGIC} "
+    pv = json.loads(in_ref(args.name, f"cardano-cli query protocol-parameters --testnet-magic {MAGIC} "
                                       f"--socket-path {ENV}/socket/node1/sock").stdout)["protocolVersion"]
-    meta = {"format": 1, "era": "conway", "protocolVersion": [pv["major"], pv["minor"]],
+    meta = {"format": 1, "era": era, "protocolVersion": [pv["major"], pv["minor"]],
             "provenance": provenance(args.name, command),
             "genesis": {n: sha256((directory / "genesis" / n).read_bytes()) for n in GENESIS},
             "cases": files}
@@ -233,12 +278,13 @@ def refusal_corpus(args):
     manifest_path = out / "manifest.json"
     manifest = (json.loads(manifest_path.read_text()) if manifest_path.exists()
                 else {"format": 1, "coverage": COVERAGE, "corpora": []})
-    manifest["corpora"] = sorted([c for c in manifest["corpora"] if c["path"] != args.corpus] +
-                                 [{"path": args.corpus, "sha256": sha256(meta_bytes)}], key=lambda c: c["path"])
+    manifest["corpora"] = sorted([c for c in manifest["corpora"] if c["path"] != corpus_name] +
+                                 [{"path": corpus_name, "sha256": sha256(meta_bytes)}], key=lambda c: c["path"])
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
-    summary = {"corpus": str(directory.relative_to(REPO)) if directory.is_relative_to(REPO) else args.corpus,
-               "cases": len(files), "families": sorted({f for _, _, r in judged_cases for f in families(r)}),
-               "multiFailure": sum(len(families(r)) > 1 for _, _, r in judged_cases), "problems": problems}
+    all_families = [families(era, r) for _, _, r in judged_cases]
+    summary = {"corpus": corpus_name, "era": era, "cases": len(files),
+               "families": sorted({f for fs in all_families for f in fs}),
+               "multiFailure": sum(len(fs) > 1 for fs in all_families), "problems": problems}
     print(json.dumps(summary, indent=2))
     if problems:
         raise SystemExit("cases the reference refused for another reason than the one they were built for")
