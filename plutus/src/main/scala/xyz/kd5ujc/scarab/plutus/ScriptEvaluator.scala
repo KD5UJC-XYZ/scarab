@@ -48,7 +48,7 @@ enum ScriptProblem:
 
 /** Why this implementation supplies no verdict for a script: never the reference's verdict. */
 enum BackendFailure:
-  case NoResult, StackExhausted, BinaryDstUnavailable, NativeHashToGroupUnavailable
+  case NoResult, StackExhausted
   case BudgetOutOfRange(budget: ExUnits)
   case Defect(cause: Throwable)
   case BuiltinUnavailable(builtin: scalus.uplc.DefaultFun)
@@ -61,14 +61,11 @@ enum BackendFailure:
     case StackExhausted | BudgetOutOfRange(_) => BackendFailure.Reach.Input
     case Defect(cause)                        => BackendFailure.reachOf(cause)
   def message: String = this match
-    case BinaryDstUnavailable =>
-      "hashToGroup binary DST has no byte-array implementation on this platform"
-    case NativeHashToGroupUnavailable => "byte-array hashToGroup JNI entry point unavailable"
-    case NoResult                     => "backend did not return a result"
-    case StackExhausted               => "backend stack exhausted"
-    case BudgetOutOfRange(_)          => "execution budget exceeds 64 bits"
-    case Defect(cause)                => Option(cause.getMessage).getOrElse(cause.getClass.getName)
-    case BuiltinUnavailable(builtin)  => s"builtin $builtin unavailable"
+    case NoResult                    => "backend did not return a result"
+    case StackExhausted              => "backend stack exhausted"
+    case BudgetOutOfRange(_)         => "execution budget exceeds 64 bits"
+    case Defect(cause)               => Option(cause.getMessage).getOrElse(cause.getClass.getName)
+    case BuiltinUnavailable(builtin) => s"builtin $builtin unavailable"
 
 object BackendFailure:
   /** What a failure of the implementation says about the inputs it has no verdict for.

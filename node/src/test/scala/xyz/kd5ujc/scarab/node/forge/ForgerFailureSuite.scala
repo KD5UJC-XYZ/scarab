@@ -60,7 +60,10 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
       xyz.kd5ujc.scarab.codec.Bytes.empty,
       xyz.kd5ujc.scarab.ledger.ScriptLocation.Phase1(xyz.kd5ujc.scarab.codec.Bytes.empty),
       xyz.kd5ujc.scarab.plutus.EvalFailure
-        .Unsupported(xyz.kd5ujc.scarab.plutus.BackendFailure.BinaryDstUnavailable)
+        .Unsupported(
+          xyz.kd5ujc.scarab.plutus.BackendFailure
+            .BuiltinUnavailable(scalus.uplc.DefaultFun.VerifyEd25519Signature)
+        )
     )
     withHandle {
       for
