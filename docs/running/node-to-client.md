@@ -19,7 +19,7 @@ Answered, with CBOR equal to the reference node's at the same block (the `ntc` s
 `pool-params`, `pool-state`, `stake-snapshot`, `stake-address-info`, `gov-state`, `drep-state`,
 `drep-stake-distribution`, `committee-state`, `constitution`, `ratify-state`, `future-pparams`,
 `treasury`, `spo-stake-distribution`, `protocol-state`, `era-history`, `slot-number`, and the queries
-behind them (see [architecture.md](../architecture.md#node-to-client---local-socket)). `ledger-state`
+behind them (see [architecture.md](../architecture/node-to-client.md#node-to-client---local-socket)). `ledger-state`
 (`DebugNewEpochState` and `DebugEpochState`, also as `GetCBOR`) is answered from the mirror of the Haskell
 state, in every Shelley-based era, without the UTxO, which the reference leaves out too (`map(0)`).
 The `ntc` gate requires the complete answer bytes to match at the same acquired point. It does not
