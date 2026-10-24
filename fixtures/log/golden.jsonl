@@ -156,7 +156,7 @@
 {"event":"replayFinished","at":"2026-10-16T12:00:00Z","tip":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"replayed":1000,"millis":2500}
 {"event":"networkRecorded","at":"2026-10-16T12:00:00Z","magic":42,"shelleyGenesis":"abababababababababababababababababababababababababababababababab","byronGenesis":"abababababababababababababababababababababababababababababababab","alonzoGenesis":"file:abababababababababababababababababababababababababababababababab","conwayGenesis":"file:abababababababababababababababababababababababababababababababab","adoptedExisting":false}
 {"event":"networkRecorded","at":"2026-10-16T12:00:00Z","magic":1,"shelleyGenesis":"abababababababababababababababababababababababababababababababab","byronGenesis":null,"alonzoGenesis":"file:abababababababababababababababababababababababababababababababab","conwayGenesis":"file:abababababababababababababababababababababababababababababababab","adoptedExisting":true}
-{"event":"volatileOpened","at":"2026-10-16T12:00:00Z","blocks":10,"files":2,"truncatedBytes":0,"removedFiles":0}
+{"event":"volatileOpened","at":"2026-10-16T12:00:00Z","blocks":10,"files":2,"truncatedBytes":0}
 {"event":"volatileResumed","at":"2026-10-16T12:00:00Z","resumed":10,"dropped":1,"millis":300}
 {"event":"shutdownSnapshot","at":"2026-10-16T12:00:00Z","anchor":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"written":true}
 {"event":"finished","at":"2026-10-16T12:00:00Z","tip":{"origin":true},"retained":0}

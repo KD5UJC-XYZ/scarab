@@ -208,7 +208,7 @@ class VolatileStoreSuite extends CatsEffectSuite:
     }
   }
 
-  test("a damaged record in an older file ends the log there and removes the files after it") {
+  test("a damaged record in an older file is cut there and the later files are kept") {
     tempDir.use { dir =>
       ok {
         for
@@ -223,18 +223,29 @@ class VolatileStoreSuite extends CatsEffectSuite:
           flipAt = second(1)._2 + VolatileStore.HeaderSize + 1
           _ <- IO(bytes(flipAt) = (bytes(flipAt) ^ 0x55).toByte)
           _ <- IO(JFiles.write(files(1), bytes))
+          laterSizes = files.drop(2).map(f => JFiles.size(f))
           got <- open(dir).use((_, opened) => IO.pure(opened))
           _ <- IO {
-            // the first file (blocks 0-4) and the two blocks of the second before the damage survive
-            assertEquals(got.chain.map(_._1.blockNo.toInt), (0 to 6).toVector)
-            assertEquals(got.report.removedFiles, 2)
+            // blocks 0-4 (first file), 5 and 6 (second file before the damage), and the blocks of
+            // the later files, 10-16: only the damaged file loses its tail (blocks 7-9)
+            assertEquals(
+              got.chain.map(_._1.blockNo.toInt),
+              ((0 to 6) ++ (10 to 16)).toVector
+            )
             assert(got.report.truncatedBytes > 0)
-            assertEquals(logFiles(dir).size, 2)
+            assertEquals(logFiles(dir), files)
+            assertEquals(files.drop(2).map(f => JFiles.size(f)), laterSizes)
+            assertEquals(JFiles.size(files(1)).toInt, second(1)._2)
           }
           // the log keeps working after the repair
-          _ <- open(dir).use((store, _) => store.append(block(7)._1, block(7)._2))
+          _ <- open(dir).use((store, _) => store.append(block(17)._1, block(17)._2))
           again <- open(dir).use((_, opened) => IO.pure(opened))
-          _ <- IO(assertEquals(again.chain.map(_._1.blockNo.toInt), (0 to 7).toVector))
+          _ <- IO(
+            assertEquals(
+              again.chain.map(_._1.blockNo.toInt),
+              ((0 to 6) ++ (10 to 17)).toVector
+            )
+          )
         yield ()
       }
     }

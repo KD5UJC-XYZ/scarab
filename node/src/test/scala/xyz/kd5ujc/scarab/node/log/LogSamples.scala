@@ -461,7 +461,7 @@ object LogSamples:
       ),
       adopted = true
     ),
-    StorageEvent.VolatileOpened(VolatileStore.OpenReport(10, 2, 0L, 0)),
+    StorageEvent.VolatileOpened(VolatileStore.OpenReport(10, 2, 0L)),
     StorageEvent.VolatileResumed(10, 1, 300L),
     StorageEvent.ShutdownSnapshot(anchor, written = true)
   )
