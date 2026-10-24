@@ -550,8 +550,10 @@ covering everything after it. `kind` is a block (payload: the raw block) or a ro
 The store is a hint, not a source of truth, and is built so that it can only be wrong by missing
 blocks:
 
-- Opening validates the files in order and cuts the first damaged one at its last good record
-  (`volatileOpened` reports the bytes and the files removed); a record is never returned unless its
+- Opening validates every file and cuts each damaged one at its last good record, as the VolatileDB
+  does (`validateFile` and `truncateError`, `Impl/State.hs`); later files are kept, and the chain
+  the log then describes ends, where it has a gap, at the first block that does not connect when it
+  is resumed (`volatileOpened` reports the bytes cut); a record is never returned unless its
   checksum matches. Appends are not forced one by one: a crash loses at most the unforced tail, and
   those blocks are fetched again.
 - Collection never loses a block the immutable store lacks. Blocks reach the immutable store when

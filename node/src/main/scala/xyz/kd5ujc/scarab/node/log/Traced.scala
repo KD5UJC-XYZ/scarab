@@ -177,8 +177,7 @@ object Traced:
       EventKind.VolatileOpened.line(
         "blocks" -> r.blocks.asJson,
         "files" -> r.files.asJson,
-        "truncatedBytes" -> r.truncatedBytes.asJson,
-        "removedFiles" -> r.removedFiles.asJson
+        "truncatedBytes" -> r.truncatedBytes.asJson
       )
     case StorageEvent.VolatileResumed(resumed, dropped, millis) =>
       EventKind.VolatileResumed.line(
