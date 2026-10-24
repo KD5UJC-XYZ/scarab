@@ -11,6 +11,8 @@ import zipfile
 from reproducible_build import sha256
 
 PORTABLE = 'supranational/blst/Linux/amd64/libblst.so'
+# The Linux/amd64 library of the Plutus builtins, pinned and checked at start-up (ADR 0020).
+PLUTUS_CRYPTO = 'natives/linux_64/libscalus_crypto.so'
 NATIVE = ('.so', '.dll', '.dylib', '.jnilib')
 CONFIG = {'reference.conf', 'reference-overrides.conf', 'application.conf', 'rootdoc.txt', 'play.plugins'}
 
@@ -143,7 +145,7 @@ def reconcile(artifact, inventory):
     if remaining:
         raise ValueError(f'unattributed assembly entries: {sorted(remaining)[:20]}')
     native = [dict(path=name, sha256=digest(raw)) for name, raw in sorted(actual.items()) if name.endswith(NATIVE)]
-    if not native or PORTABLE not in {n['path'] for n in native} or not components:
+    if not native or not {PORTABLE, PLUTUS_CRYPTO} <= {n['path'] for n in native} or not components:
         raise ValueError('missing native or JVM component coverage')
     return dict(schemaVersion=1, artifactSha256=sha256(artifact), components=components,
                 nativeResources=native, entries=output, finalEntries=len(actual),
