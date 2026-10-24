@@ -1364,6 +1364,15 @@ object Main extends IOApp:
               1.0
             )
             _ <- logged(NodeEvent.started(options.peers, genesis, setup.config, topology))
+            // Praos mode with far to sync and no trusted roots says so once (ADR 0022)
+            advisory <- (IO.realTimeInstant, ref.get).mapN((now, chain) =>
+              SyncAdvisory.assess(
+                setup.config.settings.consensusMode,
+                topology,
+                SyncAdvisory.position(chain.tipRef.map(_.slot), now, genesis.geometry)
+              )
+            )
+            _ <- advisory.traverse_(logged)
             // a stall that lasts --stall-exit-after ends the run like a signal does: the stores
             // close and the shutdown snapshot is taken, then the process exits with its own code
             ended <- IO

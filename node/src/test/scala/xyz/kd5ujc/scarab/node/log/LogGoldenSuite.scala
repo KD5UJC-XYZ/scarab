@@ -19,7 +19,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.network.selection.{FetchMode, Gsm, Trace}
 import xyz.kd5ujc.scarab.ledger.{ChainError, StorageError}
-import xyz.kd5ujc.scarab.node.{Fatal, InboundEvent, LedgerPeersTrace}
+import xyz.kd5ujc.scarab.node.{Fatal, InboundEvent, LedgerPeersTrace, SyncAdvisory}
 import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeEvents}
 import xyz.kd5ujc.scarab.node.mempool.MempoolEvent
 import xyz.kd5ujc.scarab.storage.{StorageEvent, StorageEvents}
@@ -66,6 +66,8 @@ class LogGoldenSuite extends CatsEffectSuite:
         )
         _ <- node(NodeEvent.Memory(memory))
         _ <- node(NodeEvent.CpuStarvation(250.millis, 0.1, 1.second))
+        _ <- node(NodeEvent.PraosSyncUntrusted(SyncAdvisory.Position.FromOrigin))
+        _ <- node(NodeEvent.PraosSyncUntrusted(SyncAdvisory.Position.Behind(BigInt(432001))))
         _ <- node(NodeEvent.Listening("0.0.0.0:3001"))
         _ <- node(NodeEvent.HeadersChecked(50000L, 12L, 3L))
         _ <- node(NodeEvent.Inbound("/tmp/node.socket", InboundEvent.Accepted))

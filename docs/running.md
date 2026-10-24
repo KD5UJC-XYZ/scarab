@@ -294,6 +294,16 @@ original CLI roots and installs the new runtime/governor roots at an acknowledge
   judgement enters `TooOld`, the monitor waits cancelably for the exact immutable slot and checks both slot and hash;
   it emits `snapshotVerified` with the nonfatal match verdict. A storage failure remains fatal.
 
+### Choosing the consensus mode
+
+Without a `ConsensusMode` in the configuration the node runs in `PraosMode`, as cardano-node 11.1.3
+does; a `--config` that sets it is honoured as written ([ADR 0022](adr/0022-defaults-follow-the-reference-binary.md)).
+The configuration files published for mainnet, preprod and preview set `GenesisMode`. To sync from an
+empty database, use `GenesisMode` (`--config` with `"ConsensusMode": "GenesisMode"`, no bootstrap peers), or in
+Praos mode give the topology `bootstrapPeers` or a local root with `"trustable": true`. A node that
+starts in Praos mode with an empty or far-behind chain and neither logs the `praosSyncUntrusted`
+warning once (`consensusMode`, `start`, `slotsBehind`); it changes nothing else.
+
 ### Peer selection
 
 The outbound peers are chosen by the peer governor (roadmap G1.1, [design](design/peer-selection.md),
@@ -990,6 +1000,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 |---|---|---|---|
 | `started` | `Node.Started` | Notice | `build`, `peer`, `peers`, `networkMagic`, `systemStart`, `epochLength`, `securityParam`, `byronEpochs`, `byronEpochSlots`, `hardForkEpochs`, `genesisHashes`, `configUnsupported`, `topology` |
 | `blst` | `Node.Blst` | Info | `platform`, `cpu`, `library` |
+| `praosSyncUntrusted` | `Node.PraosSyncUntrusted` | Warning | `consensusMode`, `start` (`origin` or `behind`), `slotsBehind` |
 | `listening` | `Node.Listening` | Notice | `address` |
 | `memory` | `Node.Memory` | Info | `sample` |
 | `cpuStarvation` | `Node.CpuStarvation` | Warning | `clockDriftMs`, `threshold`, `intervalMs` |
