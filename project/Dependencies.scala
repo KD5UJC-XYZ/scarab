@@ -20,7 +20,7 @@ object Dependencies {
     val slf4j = "2.0.17"
     val dnsjava = "3.6.5"
 
-    val scalus = "1.3.0"
+    val scalus = "1.4.0"
     val bouncyCastle = "1.85.2"
     val curve25519 = "0.1.3"
     val blstJava = "0.3.2"
