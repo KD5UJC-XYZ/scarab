@@ -85,6 +85,12 @@ class MainArgsSuite extends munit.FunSuite:
     assert(Main.parse(base ++ List("--db", "/db", flag, flag)).isLeft)
   }
 
+  test("--key-lock defaults to on and refuses other values") {
+    assert(Main.parse(base).toOption.get.keyLock)
+    assert(!Main.parse(base ++ List("--key-lock", "off")).toOption.get.keyLock)
+    assert(Main.parse(base ++ List("--key-lock", "maybe")).isLeft)
+  }
+
   test("--header-first, --max-inbound and --inbound-sync have defaults and refuse bad values") {
     val defaults = Main.parse(base).toOption.get
     assert(defaults.headerFirst && defaults.inboundSync)

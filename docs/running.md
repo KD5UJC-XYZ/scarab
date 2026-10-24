@@ -108,6 +108,7 @@ value except `--forge` and `--dump-state-full`. An unknown flag, a repeated flag
 | `--forge` | off | produce blocks; requires `--vrf-skey`, `--kes-skey`, `--opcert` |
 | `--vrf-skey <file>` | with `--forge` | `cardano-cli` text envelope `VrfSigningKey_PraosVRF` |
 | `--kes-skey <file>` | with `--forge` | `KesSigningKey_ed25519_kes_2^6`: the period-0 key as `cardano-cli` writes it, or the key as the node last wrote it back; the node rewrites this file when the key moves to a new period, so it must be writable (see "Rotating the KES key") |
+| `--key-lock on\|off` | `on` | with `--forge`, an exclusive lock on `.<kes file name>.scarab-lock` beside the KES key for the node's lifetime; a second instance on the same key files is refused |
 | `--opcert <file>` | with `--forge` | `NodeOperationalCertificate` (it also carries the cold verification key; the cold signing key is never needed). SIGHUP reads this file and `--kes-skey` again |
 
 Caveats:
@@ -730,7 +731,16 @@ follow ... --listen 127.0.0.1:3001 --forge --vrf-skey vrf.skey --kes-skey kes.sk
 The pool must already be registered with stake in the ledger the node follows. Only Praos (Conway)
 blocks are forged. Keep key files outside the repository and readable only by the node's user. The KES
 key file must be writable by the node (mode 0600, in a directory it can write): the node writes the evolved
-key back (see below); the VRF key and the certificate can stay read-only. See
+key back (see below); the VRF key and the certificate can stay read-only.
+
+At start the node checks the VRF key file as `cardano-node` does ([IN-83](implementer-notes.md)): a file with any
+"other" permission bit (`0o007`, for example 0644) is refused with a typed `ConfigError`-style key-file error, a file with
+a "group" bit (for example 0640) starts with a `keyFileGroupAccess` warning, and 0600 or 0400 passes. Only the VRF
+key is checked, and nothing is checked on a file system without POSIX permissions. Unlike the reference the node also
+locks a hidden file beside the KES key (`--key-lock on`, the default), so a second Scarab instance on the same key
+files stops with an `InstanceLocked` error even with another `--db`; `--key-lock off` skips the lock (for a key
+directory the node cannot write to, which the KES write-back needs anyway). With a rotating `current` link the
+lock file sits in the directory the link points to. See
 [architecture.md](architecture.md) for the forging design and [compatibility.md](compatibility.md) for what
 is not covered (no KES agent, never run on a public network).
 
@@ -1061,6 +1071,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `kesReloaded` | `Forge.KesReloaded` | Notice | `opCertCounter`, `kesStart`, `kesEvolutions`, `kesPeriod`, `remainingKesPeriods` |
 | `kesReloadRefused` | `Forge.KesReloadRefused` | Error | `kind`, `message` |
 | `kesPersistFailed` | `Forge.KesPersistFailed` | Error | `kesPeriod`, `kind`, `message` |
+| `keyFileGroupAccess` | `Forge.KeyFileGroupAccess` | Warning | `file`, `mode` |
 | `forgeSkipped` | `Forge.ForgeSkipped` | Info | `slot`, `reason` |
 | `forgeFailed` | `Forge.ForgeFailed` | Error | `slot`, `kind`, `message` |
 | `forgeEpoch` | `Forge.ForgeEpoch` | Notice | `epoch`, `slotsChecked`, `leaderSlots`, `forged`, `adopted`, `lostSlotBattles`, `failed`, `skipped`, `skippedByReason`, `forgeLatencyMs` |

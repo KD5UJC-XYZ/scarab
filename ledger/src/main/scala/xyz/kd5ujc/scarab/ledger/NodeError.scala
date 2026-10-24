@@ -419,7 +419,7 @@ enum ForgeError extends NodeError:
   case SelfRejected(error: ValidationError)
 
   def message: String = this match
-    case KeyFile(f, r) => s"key file $f: $r"
+    case KeyFile(f, r) => s"key file $f: ${r.message}"
     case KesFileFailure(f, op, cause) =>
       s"KES key file $f during ${op.toString}: ${cause.message}"
     case KesKey(f, e) => s"key file $f: ${e.message}"
