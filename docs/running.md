@@ -990,6 +990,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 |---|---|---|---|
 | `started` | `Node.Started` | Notice | `build`, `peer`, `peers`, `networkMagic`, `systemStart`, `epochLength`, `securityParam`, `byronEpochs`, `byronEpochSlots`, `hardForkEpochs`, `genesisHashes`, `configUnsupported`, `topology` |
 | `blst` | `Node.Blst` | Info | `platform`, `cpu`, `library` |
+| `plutusCrypto` | `Node.PlutusCrypto` | Info | `platform`, `library` (`source`, `path`, `sha256`) |
 | `listening` | `Node.Listening` | Notice | `address` |
 | `memory` | `Node.Memory` | Info | `sample` |
 | `cpuStarvation` | `Node.CpuStarvation` | Warning | `clockDriftMs`, `threshold`, `intervalMs` |
