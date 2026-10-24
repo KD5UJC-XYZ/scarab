@@ -5,6 +5,8 @@ refusal: the hard-fork-combinator `ApplyTxErr` it sent over node-to-client Local
 every predicate failure it accumulated, in its order (#401). `ReferenceRefusalSuite` (node module, part
 of `check`) replays every case through Scarab and compares the bytes. Nothing in this directory is
 written by hand; every file comes from a run of `scripts/devnet.py refusal-corpus`.
+The data is from throwaway local devnets (their genesis and transactions signed with devnet keys);
+no signing key is kept, and it carries the repository's licence.
 
 ## Layout
 
