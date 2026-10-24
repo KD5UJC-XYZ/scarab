@@ -442,7 +442,7 @@ object ScalusEvaluator:
       )
     private val verifyEcdsa: BuiltinRuntime =
       cardano.VerifyEcdsaSecp256k1Signature.copy(f = (logger, args) =>
-        if !scalus.crypto.Secp256k1Context.isEnabled then
+        if !scalus.crypto.jni.CryptoJni.isEnabled then
           unavailable(
             logger,
             EvalFailure.Unsupported(
@@ -524,7 +524,7 @@ object ScalusEvaluator:
     }
     private val verifySchnorr = cardano.VerifySchnorrSecp256k1Signature.copy(f =
       (logger, args) =>
-        if !scalus.crypto.Secp256k1Context.isEnabled then
+        if !scalus.crypto.jni.CryptoJni.isEnabled then
           unavailable(
             logger,
             EvalFailure.Unsupported(

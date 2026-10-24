@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.plutus
 import munit.FunSuite
 import scalus.cardano.ledger.{CardanoInfo, CostModels, Language, MajorProtocolVersion}
 import scalus.cardano.onchain.plutus.prelude.{List as PList, Option as POption}
-import scalus.cardano.onchain.plutus.v3.GovernanceAction
+import scalus.cardano.onchain.plutus.v3.{Constitution, GovernanceAction}
 import scalus.uplc.builtin.{ByteString, Data}
 import scalus.uplc.builtin.Data.toData
 import scalus.uplc.eval.{MachineParams, ThreeArguments}
@@ -31,18 +31,16 @@ class ScalusReproducersSuite extends FunSuite:
       case other                       => fail(s"fixed upstream? now $other")
   }
 
-  test("a V3 NewConstitution is encoded with the Maybe in place of the Constitution constructor") {
+  test("a V3 NewConstitution is encoded with the Constitution constructor (fixed in Scalus 1.4.0)") {
     // plutus-ledger-api PlutusLedgerApi.V3.Contexts: `newtype Constitution = Constitution
     // {constitutionScript :: Maybe ScriptHash}` with `makeIsDataSchemaIndexed ''Constitution
     // [('Constitution, 0)]`, so `NewConstitution prev c` is `Constr 5 [prev, Constr 0 [maybe]]`.
     val hash = ByteString.fromArray(Array.fill[Byte](28)(7))
     val action: GovernanceAction =
-      GovernanceAction.NewConstitution(POption.None, POption.Some(hash))
+      GovernanceAction.NewConstitution(POption.None, Constitution(POption.Some(hash)))
     val data = action.toData
     val none = Data.Constr(1, PList.Nil)
     def just(d: Data) = Data.Constr(0, PList(d))
     val expected = Data.Constr(5, PList(none, just(just(Data.B(hash)))))
-    assertNotEquals(data, expected)
-    // what Scalus produces: the Maybe directly, without `Constr 0 [ ... ]` around it
-    assertEquals(data, Data.Constr(5, PList(none, just(Data.B(hash)))))
+    assertEquals(data, expected)
   }
