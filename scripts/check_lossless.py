@@ -11,7 +11,7 @@ verifies that the new set still holds
     file; the path of the old file itself is kept when it still exists),
   * every backticked span (symbols, commands, versions),
   * every URL,
-  * every commit-like hex id and every number (fenced code blocks are included: the commands live there),
+  * every commit-like hex id and every number (fenced code blocks are included, except for backticked spans, which are read from prose: the commands live there),
   * every table cell and every line of prose outside tables and headings (each verbatim, whitespace-normalised, `**`
     ignored).
 
@@ -142,9 +142,27 @@ def corpus_parts(root: Path, files: Sequence[Path]) -> list[str]:
     return parts
 
 
+def without_fences(text: str) -> str:
+    """`text` with the lines of every fenced code block (fences included) removed: spans are read from prose only."""
+    kept: list[str] = []
+    fence: str | None = None
+    for raw in text.split("\n"):
+        match = check_docs.FENCE.match(raw)
+        if fence is None:
+            if match:
+                fence = match.group(1)[0] * len(match.group(1))
+                continue
+            kept.append(raw)
+        elif match and match.group(1)[0] == fence[0] and len(match.group(1)) >= len(fence) \
+                and not raw.strip().strip(fence[0]):
+            fence = None
+    return "\n".join(kept)
+
+
 def tokens(text: str) -> dict[Category, Counter[str]]:
-    spans = Counter(m.group(1).strip() for m in SPAN.finditer(text))
-    paths = Counter(m.group(0) for m in PATHLIKE.finditer(SPAN.sub(" ", text)))
+    prose = without_fences(text)
+    spans = Counter(m.group(1).strip() for m in SPAN.finditer(prose))
+    paths = Counter(m.group(0) for m in PATHLIKE.finditer(SPAN.sub(" ", prose)))
     paths.update(s for s in spans.elements() if PATHLIKE.fullmatch(s))
     paths.update(m.group(1).partition("#")[0] for m in LINK.finditer(text)
                  if not SCHEME.match(m.group(1)) and m.group(1).partition("#")[0])

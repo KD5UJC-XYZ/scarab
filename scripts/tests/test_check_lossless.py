@@ -53,6 +53,11 @@ class CompareTest(unittest.TestCase):
         report = compare(OLD, OLD.replace("--flag", "--other"))
         self.assertIn("python3 scripts/run.py --flag", [f.text for f in report.losses if f.category is Category.LINE])
 
+    def test_spans_never_cross_a_fence(self):
+        old = f"a `x`\n{FENCE}\ncmd `y\n{FENCE}\nb `z`\n"
+        report = compare(old, f"a `x`\n\n<!-- m -->\n{FENCE}\ncmd `y\n{FENCE}\nb `z`\n")
+        self.assertEqual((), report.losses)
+
     def test_dropped_count_is_a_duplicate_not_a_loss(self):
         report = compare("`x` and `x`\n", "`x` and\n`x`\n")
         self.assertEqual((), report.losses)

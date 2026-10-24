@@ -283,7 +283,8 @@ A claim of compatibility needs evidence a reader can check:
   recorded.
 - A change in what is verified updates the matching row of the compatibility matrix, including the
   "explicitly unchecked" cell, and the roadmap item it closes (mark it done, never renumber).
-- Performance numbers go in [docs/performance.md](docs/performance.md) with the setup.
+- Performance numbers go in [docs/performance.md](docs/performance.md) with the setup: an entry in
+  `docs/data/performance-log.json`, then `python3 scripts/render_performance.py --write`.
 
 ## Commits and pull requests
 

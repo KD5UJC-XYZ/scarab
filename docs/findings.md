@@ -9,7 +9,7 @@ source, not authoritative statements. Roadmap IDs (B1, ...) point into [roadmap.
 
 | Finding | Where found | Pinned by |
 |---|---|---|
-| Declared budgets were a poor predictor of elapsed parallelism. Most script transactions in the captured preprod window were independent, but full validation gained less than evaluator-only execution because ordinary rules and context collection remain ordered. | Eight sealed preprod chunks, slots 136468829–136641596; authenticated post-snapshot replay of 5,683 blocks | `PlutusReplaySuite`: 68,196 feature-versus-serial complete state comparisons; [measurements and sample limits](performance.md#bounded-parallel-plutus-after-ordered-preparation-d2-2026-10-18), [design](design/parallel-plutus.md), D2 #21. Multi-script reference aggregation is separately tracked in [#195](https://github.com/KD5UJC-XYZ/scarab/issues/195). |
+| Declared budgets were a poor predictor of elapsed parallelism. Most script transactions in the captured preprod window were independent, but full validation gained less than evaluator-only execution because ordinary rules and context collection remain ordered. | Eight sealed preprod chunks, slots 136468829–136641596; authenticated post-snapshot replay of 5,683 blocks | `PlutusReplaySuite`: 68,196 feature-versus-serial complete state comparisons; [measurements and sample limits](performance/rewards-and-evaluation.md#bounded-parallel-plutus-after-ordered-preparation-d2-2026-10-18), [design](design/parallel-plutus.md), D2 #21. Multi-script reference aggregation is separately tracked in [#195](https://github.com/KD5UJC-XYZ/scarab/issues/195). |
 
 ## Networking
 

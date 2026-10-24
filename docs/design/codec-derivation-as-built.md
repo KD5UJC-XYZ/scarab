@@ -55,7 +55,7 @@ that same visibility-only measurement seam.
 
 ## Measurement and gates
 
-[Performance section 35](../performance.md#35-typed-snapshot-codec-derivation-205) records sources,
+[Performance section 35](../performance/cast-erasure-decode-and-diff.md#35-typed-snapshot-codec-derivation-205) records sources,
 input/config/runtime hashes, commands, all run medians/ranges/allocations and limitations.
 The primary current/legacy-derived roughly51 MB snapshot encode/decode operations pass the
 issue's +10% limit: even the slowest candidate run median is within +2.63% of the fastest old

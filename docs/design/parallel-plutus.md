@@ -187,7 +187,7 @@ and all 66 ledger comparisons equal through Conway epoch 17, with zero validatio
 reconnects or starvation warnings. The explicitly required `soak --seconds 480` passes 24/24
 comparisons, 258 block applications and both metrics endpoints' 230-series checks, with zero
 validation errors or reconnects. Both private clusters and the build container were removed.
-The [Preview measurement](../performance.md#33-preview-acceptance-evidence-reconciliation-21)
+The [Preview measurement](../performance/preview-acceptance.md#33-preview-acceptance-evidence-reconciliation-21)
 records its source/runtime binding and limits separately from the historical runs.
 
 The preserved preprod `PlutusReplaySuite` entry point also passes on frozen source `2ffad2d8`:
@@ -205,7 +205,7 @@ original bytes: 319 overlapping observations produce exactly the 242 pinned iden
 states and ordered typed requests/results, budgets, diagnostics and logs agree. All 68 selected
 Haskell boundary projections match with strict coverage, with zero unavailable/collection
 failures. The accepted execution manifest and scope are recorded in
-[performance section 33](../performance.md#33-preview-acceptance-evidence-reconciliation-21).
+[performance section 33](../performance/preview-acceptance.md#33-preview-acceptance-evidence-reconciliation-21).
 The continuous genesis-to-K1-endpoint run also passes: 4,758,521 original blocks through slot
 125,366,428/hash `956541c0937e9cdc279514c10fec9706865bb6004ddcfb487bf53c7bbdc97ad1`, all
 1,451 authentic Haskell projections equal under the existing projection contract, and the exact
