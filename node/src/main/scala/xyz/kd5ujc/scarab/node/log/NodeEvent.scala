@@ -6,6 +6,7 @@ import io.circe.syntax.*
 import scala.concurrent.duration.FiniteDuration
 import com.comcast.ip4s.{Host, SocketAddress}
 import xyz.kd5ujc.scarab.blst.{BlstReport, CpuSupport, LibraryBuild}
+import xyz.kd5ujc.scarab.plutus.{CryptoLibrary, NativeCryptoReport}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.{NodeError, Points, ShelleyGenesis, StorageError}
@@ -47,6 +48,9 @@ enum NodeEvent:
 
   /** The BLS12-381 library in use and the processor it runs on (checked at start-up, ADR 0012). */
   case Blst(report: BlstReport)
+
+  /** The start-up check of the native library of the Plutus builtins passed (ADR 0020). */
+  case PlutusCrypto(report: NativeCryptoReport)
 
   /** A listener is open (`--listen`, `--local-socket`). */
   case Listening(address: String)
@@ -338,6 +342,23 @@ object NodeEvent:
           case LibraryBuild.Other(sha256) =>
             Json.obj("build" -> "other".asJson, "sha256" -> sha256.asJson)
           case LibraryBuild.OnLibraryPath => Json.obj("build" -> "library-path".asJson))
+      )
+    case PlutusCrypto(report) =>
+      EventKind.PlutusCrypto.line(
+        "platform" -> report.platform.directory.asJson,
+        "library" -> (report.library match
+          case CryptoLibrary.Resource(name, sha256) =>
+            Json.obj(
+              "source" -> "resource".asJson,
+              "path" -> name.asJson,
+              "sha256" -> sha256.asJson
+            )
+          case CryptoLibrary.OnLibraryPath(file, sha256) =>
+            Json.obj(
+              "source" -> "library-path".asJson,
+              "path" -> file.toString.asJson,
+              "sha256" -> sha256.asJson
+            ))
       )
     case Listening(address) => EventKind.Listening.line("address" -> address.asJson)
     case Memory(sample)     => EventKind.Memory.line("sample" -> sample)

@@ -80,7 +80,7 @@ final case class BlstReport(platform: Platform, cpu: CpuSupport, build: LibraryB
 
 /** What blst has to compute right (a known answer) at start-up. */
 enum KnownAnswer:
-  case G1Uncompress, G2Uncompress, Pairing, G1RawDst, G2RawDst
+  case G1Uncompress, G2Uncompress, Pairing
 
 /** Why the node refuses to start with the BLS12-381 library it would use. */
 enum BlstProblem:
@@ -158,9 +158,9 @@ object Blst:
       Left(BlstProblem.LibraryNeedsMissingCpuFeatures(cpu.missing, build))
     case ok => Right(ok)
 
-  /** Known answers for G1/G2 decompression, pairing bilinearity and the raw-byte DST adapter.
-    * Computing them can cause SIGILL on a library the processor cannot run, so this runs after
-    * [[admissible]]; it also shows that blstJNI and the native library match.
+  /** Known answers for G1/G2 decompression and pairing bilinearity. Computing them can cause SIGILL
+    * on a library the processor cannot run, so this runs after [[admissible]]; it also shows that
+    * blstJNI and the native library match.
     */
   def knownAnswers[F[_]: Sync]: F[Option[(KnownAnswer, String)]] = Sync[F].blocking {
     def attempt(answer: KnownAnswer)(check: => Boolean): Option[(KnownAnswer, String)] =
@@ -174,24 +174,6 @@ object Blst:
     val g2 = hex(KnownAnswers.g2)
     attempt(KnownAnswer.G1Uncompress)(new P1(g1).compress().sameElements(g1))
       .orElse(attempt(KnownAnswer.G2Uncompress)(new P2(g2).compress().sameElements(g2)))
-      .orElse(
-        Option
-          .when(Platform.current == Platform.LinuxAmd64)(
-            attempt(KnownAnswer.G1RawDst)(
-              RawDst
-                .hashG1(Array(0x3f.toByte), Array(0x90.toByte))
-                .sameElements(hex(KnownAnswers.g1RawDst))
-            )
-              .orElse(
-                attempt(KnownAnswer.G2RawDst)(
-                  RawDst
-                    .hashG2(Array(0x3f.toByte), Array(0x90.toByte))
-                    .sameElements(hex(KnownAnswers.g2RawDst))
-                )
-              )
-          )
-          .flatten
-      )
       .orElse(attempt(KnownAnswer.Pairing) {
         // e(2 G1, G2) = e(G1, 2 G2)
         val a = new PT(new P2(g2).to_affine(), new P1(g1).dbl().to_affine())
@@ -226,8 +208,3 @@ object Blst:
       "97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb"
     val g2 =
       "93e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8"
-    // Actual pinned plutus-1.70.0.0/cardano-crypto-class outputs, hash-vectors.jsonl.
-    val g1RawDst =
-      "b35ffb9cff40045da92d89f5f0227351b62c8d37037e8469ad925ce5f9ae291fe205a106683e0fc6af59e72ad1caecb9"
-    val g2RawDst =
-      "ae595116abcb38c626713d756045cd7fb9e7a695b1d5fad4e023bbe12bd6ea3ab9d9e1fc0b06ecc7a6fc56cb1a5cfa1f1162e00ce1b462344cd6ac25dd6fa6bb515666bba7726eaf24cd4752691df3b56752f93d270e91635bd2e042cafa0ee5"

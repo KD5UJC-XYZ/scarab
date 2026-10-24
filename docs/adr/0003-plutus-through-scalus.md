@@ -22,3 +22,23 @@ and reported upstream with reproductions.
 - Plutus conformance is measured continuously (987 of 1,009 cases at the time of writing).
 - Scalus versions move only with evidence (the conformance suite and the Preview and preprod replays).
 - Owning the evaluator remains an open spike (#43).
+
+## Amendment (2026-10-23): the trusted base and the remaining corrections
+
+- **Trusted base.** From Scalus 1.4.0 the cryptographic builtins (Ed25519, secp256k1,
+  BLS12-381) run on native C code: libsodium, libsecp256k1 and blst, linked into
+  `libscalus_crypto` of scalus-crypto-jni. They are the reference node's native crypto:
+  cardano-node 11.1.3's `flake.lock` pins, through iohk-nix, libsodium at the IOG fork
+  `dbb48cce5429cb6585c9034f002568964f1ce567` and libsecp256k1 v0.3.2 (`acf5c55a`), the revisions
+  scalus-crypto-jni links. Its blst is v0.3.15 with `-D__BLST_PORTABLE__`, the build ADR 0012
+  cites for iohk-nix (the same lock's `blst` input names v0.3.14, `8c7db7fe`). They are part of
+  the trusted computing base, pinned by hash and checked at start-up, but not rebuilt by this
+  project ([ADR 0020](0020-plutus-native-crypto-through-scalus-crypto-jni.md)).
+- **Corrections removed with Scalus 1.4.0.** The variant-A Ed25519 costing, the ECDSA
+  replacement, the raw-DST `hashToGroup` adapter and the `NewConstitution` context deviation.
+- **Corrections that remain in the wrapper:**
+  - `DataSerialiser` (`serialiseData`);
+  - `WideIndices`;
+  - `ScarabProgramView`;
+  - `PlutusScriptBytes`;
+  - `FlatScan`.

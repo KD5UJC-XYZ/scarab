@@ -102,7 +102,7 @@ class ScriptContextOracleSuite extends FunSuite:
               )
         assertEquals(
           ours.map(hex),
-          Right(hex(ScalusDeviations.mend(theirs))),
+          Right(hex(theirs)),
           s"redeemer ${r.tag}.${r.index}"
         )
       }

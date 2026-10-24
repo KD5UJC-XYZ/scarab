@@ -26,7 +26,8 @@ class AssemblyInventoryTest(unittest.TestCase):
         self.source = {'x/Library.class': b'class-bytes', 'META-INF/services/test.Service': b'Library\n',
                        'META-INF/maven/g/a/pom.xml': b'<project/>', 'LICENSE': b'library license',
                        'META-INF/versions/11/x/Library.class': b'versioned',
-                       'native/Linux/a.so': b'other-native', 'module-info.class': b'module'}
+                       'native/Linux/a.so': b'other-native', inventory.PLUTUS_CRYPTO: b'plutus-crypto',
+                       'module-info.class': b'module'}
         self.write_zip(self.library, self.source)
         self.artifact = self.root / 'application.jar'
         self.result = {k: v for k, v in self.source.items() if k not in {'LICENSE', 'module-info.class', 'META-INF/maven/g/a/pom.xml'}}
@@ -51,7 +52,14 @@ class AssemblyInventoryTest(unittest.TestCase):
         self.assertEqual(policies['LICENSE'], 'rename-legal-or-readme')
         self.assertEqual(policies[inventory.PORTABLE], 'project-native-overlay')
         self.assertEqual(len(result['components']), 1)
-        self.assertEqual(len(result['nativeResources']), 2)
+        self.assertEqual(len(result['nativeResources']), 3)
+
+    def test_an_artifact_without_the_plutus_crypto_library_is_refused(self):
+        source = {k: v for k, v in self.source.items() if k != inventory.PLUTUS_CRYPTO}
+        self.write_zip(self.library, source)
+        self.write_zip(self.artifact, {k: v for k, v in self.result.items() if k != inventory.PLUTUS_CRYPTO})
+        with self.assertRaisesRegex(ValueError, 'missing native'):
+            inventory.reconcile(self.artifact, self.graph)
 
     def test_added_lost_modified_and_merged_service_bytes_are_rejected(self):
         for change in ['added', 'lost', 'modified', 'service', 'native', 'multi-release']:

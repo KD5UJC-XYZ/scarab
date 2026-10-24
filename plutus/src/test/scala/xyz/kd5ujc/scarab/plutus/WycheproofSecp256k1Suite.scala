@@ -13,15 +13,16 @@ import scala.util.{Try, Using}
 import java.nio.charset.StandardCharsets.UTF_8
 import xyz.kd5ujc.scarab.codec.Bytes
 
-/** The Google Wycheproof ECDSA secp256k1/SHA-256 corpus through the reference semantics of
-  * [[Secp256k1.verifyEcdsa]] (documented there): a 33-byte compressed key, the 32-byte message, a
-  * compact 64-byte `r || s`; a malformed argument fails the builtin, anything well-formed is a
-  * verdict, and a high `s` verifies to `False` (libsecp256k1 does not normalise, Plutus does not).
-  * Wycheproof keys are uncompressed `04 || X || Y`, its messages are pre-images signed over
-  * `SHA-256(msg)`, and its signatures are DER, so the suite converts each case to the builtin's
-  * input domain: the key to its compressed form, the message to its digest, and the signature to
-  * `r || s`. A malformed DER signature has no builtin input (the chain carries compact signatures
-  * only); those cases pin the harness's own strictness instead.
+/** The Google Wycheproof ECDSA secp256k1/SHA-256 corpus through the production builtin
+  * (`verifyEcdsaSecp256k1Signature` in a script run by [[ScalusEvaluator]]), with the reference
+  * semantics documented at [[Secp256k1.verifyEcdsa]] as the model it must agree with: a 33-byte
+  * compressed key, the 32-byte message, a compact 64-byte `r || s`; a malformed argument fails the
+  * builtin, anything well-formed is a verdict, and a high `s` verifies to `False` (libsecp256k1
+  * does not normalise, Plutus does not). Wycheproof keys are uncompressed `04 || X || Y`, its
+  * messages are pre-images signed over `SHA-256(msg)`, and its signatures are DER, so the suite
+  * converts each case to the builtin's input domain: the key to its compressed form, the message to
+  * its digest, and the signature to `r || s`. A malformed DER signature has no builtin input (the
+  * chain carries compact signatures only); those cases pin the harness's own strictness instead.
   *
   * The corpus marks 72 signatures valid that the reference refuses: exactly the high-`s`
   * signatures, the documented divergence from a normalising ECDSA verifier. DER is read strictly
@@ -226,17 +227,24 @@ class WycheproofSecp256k1Suite extends FunSuite:
   }
 
   test(
-    "242 representable compact inputs match verifyEcdsa; 234 DER-only cases stay outside its ABI"
+    "242 representable compact inputs give the builtin's answer through the production evaluator; " +
+      "234 DER-only cases stay outside its ABI"
   ) {
     val compact = cases.filterNot(_.outcome == Outcome.DerRejects)
     assertEquals(compact.size, 242)
     compact.foreach { c =>
       val clue = s"tcId=${c.tcId} ${c.comment}"
+      val answer = ProductionBuiltin.verifyEcdsa(c.key, c.message, c.signature)
+      val model = Secp256k1.verifyEcdsa(c.key, c.message, c.signature)
       c.outcome match
         case Outcome.DerRejects => fail(s"DER-only input entered compact replay: $clue")
         case Outcome.CompactFails =>
-          assert(Secp256k1.verifyEcdsa(c.key, c.message, c.signature).isLeft, clue)
+          answer match
+            case ProductionBuiltin.Answer.Fails(_: EvalFailure.Script) => ()
+            case other => fail(s"expected a script failure, got $other: $clue")
+          assert(model.isLeft, clue)
         case Outcome.Verdict(value) =>
-          assertEquals(Secp256k1.verifyEcdsa(c.key, c.message, c.signature), Right(value), clue)
+          assertEquals(answer, ProductionBuiltin.Answer.Verdict(value), clue)
+          assertEquals(model, Right(value), clue)
     }
   }

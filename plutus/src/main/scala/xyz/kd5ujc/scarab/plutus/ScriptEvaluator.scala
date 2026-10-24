@@ -49,19 +49,16 @@ enum ScriptProblem:
     case TrailingBytes(count)   => s"$count bytes remain after the script (RemainderError)"
 
 enum BackendFailure:
-  case NoResult, StackExhausted, BinaryDstUnavailable, NativeHashToGroupUnavailable
+  case NoResult, StackExhausted
   case BudgetOutOfRange(budget: ExUnits)
   case Defect(cause: Throwable)
   case BuiltinUnavailable(builtin: scalus.uplc.DefaultFun)
   def message: String = this match
-    case BinaryDstUnavailable =>
-      "hashToGroup binary DST has no byte-array implementation on this platform"
-    case NativeHashToGroupUnavailable => "byte-array hashToGroup JNI entry point unavailable"
-    case NoResult                     => "backend did not return a result"
-    case StackExhausted               => "backend stack exhausted"
-    case BudgetOutOfRange(_)          => "execution budget exceeds 64 bits"
-    case Defect(cause)                => Option(cause.getMessage).getOrElse(cause.getClass.getName)
-    case BuiltinUnavailable(builtin)  => s"builtin $builtin unavailable"
+    case NoResult                    => "backend did not return a result"
+    case StackExhausted              => "backend stack exhausted"
+    case BudgetOutOfRange(_)         => "execution budget exceeds 64 bits"
+    case Defect(cause)               => Option(cause.getMessage).getOrElse(cause.getClass.getName)
+    case BuiltinUnavailable(builtin) => s"builtin $builtin unavailable"
 
 final case class ScriptFailure(cause: Throwable | Secp256k1.Error, logs: Vector[String]):
   def message: String =

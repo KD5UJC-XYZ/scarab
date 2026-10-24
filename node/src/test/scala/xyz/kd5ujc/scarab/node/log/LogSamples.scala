@@ -9,6 +9,7 @@ import com.comcast.ip4s.{Host, Port, SocketAddress, host, port}
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.selection.*
 import xyz.kd5ujc.scarab.blst.{BlstReport, CpuFeature, CpuSupport, LibraryBuild, Platform}
+import xyz.kd5ujc.scarab.plutus.{CryptoLibrary, CryptoPlatform, NativeCryptoReport}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent, SchedulingReport}
 import xyz.kd5ujc.scarab.consensus.state.StateMirrorError
@@ -89,6 +90,20 @@ object LogSamples:
     ),
     BlstReport(Platform.Other, CpuSupport.Unknown, LibraryBuild.Other("00ff")),
     BlstReport(Platform.LinuxAmd64, CpuSupport.Known(Set.empty), LibraryBuild.OnLibraryPath)
+  )
+
+  val plutusCryptoReports: List[NativeCryptoReport] = List(
+    NativeCryptoReport(
+      CryptoPlatform.Linux64,
+      CryptoLibrary.Resource(CryptoPlatform.Linux64.resource, CryptoPlatform.Linux64.sha256)
+    ),
+    NativeCryptoReport(
+      CryptoPlatform.LinuxArm64,
+      CryptoLibrary.OnLibraryPath(
+        Path.of("/usr/lib/libscalus_crypto.so"),
+        CryptoPlatform.LinuxArm64.sha256
+      )
+    )
   )
 
   private val peerA: SocketAddress[Host] = SocketAddress(host"10.0.0.1", port"3001")

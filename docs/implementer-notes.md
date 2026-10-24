@@ -727,9 +727,9 @@ are the ones most in need of a second reading.
 
 - **Era:** Plutus, semantics variant A
 - **Specification or CDDL says:** The Plutus cost model for `verifyEd25519Signature` under variant A does not depend on the message length.
-- **Implementation does:** Scalus 1.2.0 costs it wrongly under variant A; the same code is in Scalus 1.3.0 and on its default branch (2eb9f3d, 2026-10-11). Our wrapper corrects it.
+- **Implementation does:** Scalus 1.2.0 costs it wrongly under variant A; the same code is in Scalus 1.3.0. Fixed in Scalus 1.4.0, which Scarab adopts; the wrapper's correction is removed ([ADR 0020](adr/0020-plutus-native-crypto-through-scalus-crypto-jni.md)).
 - **Evidence:** Preview Alonzo sync (commit f8209b4). Filed as [scalus3/scalus#387](https://github.com/scalus3/scalus/issues/387). Roadmap B11.
-- **Pinned by:** [`BuiltinCostingSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/BuiltinCostingSuite.scala) (cost independent of the message under variant A, linear under B to E), [`ScalusReproducersSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/ScalusReproducersSuite.scala) (fails when Scalus is fixed).
+- **Pinned by:** [`BuiltinCostingSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/BuiltinCostingSuite.scala) (cost independent of the message under variant A, linear under B to E), [`ScalusReproducersSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/ScalusReproducersSuite.scala) (now a regression test of the fix).
 - **Suggested upstream action:** Scalus: fix the costing (issue filed, #387).
 - **Status:** observed
 
@@ -737,9 +737,9 @@ are the ones most in need of a second reading.
 
 - **Era:** Conway
 - **Specification or CDDL says:** The V3 script context holds a new constitution as `[previous, Constr 0 [Maybe ScriptHash]]`; `Constitution` is a constructor of its own.
-- **Implementation does:** Scalus 1.2.0 builds it without the `Constitution` constructor, `[previous, Maybe ScriptHash]`. Unchanged in Scalus 1.3.0 and on its default branch.
+- **Implementation does:** Scalus 1.2.0 builds it without the `Constitution` constructor, `[previous, Maybe ScriptHash]`. Unchanged in Scalus 1.3.0; fixed in Scalus 1.4.0.
 - **Evidence:** Preview slot 116,688,298 (commit 5bc16a2). Filed as [scalus3/scalus#388](https://github.com/scalus3/scalus/issues/388). Roadmap B11.
-- **Pinned by:** `fixtures/preview/plutus/slot116688298-89d3a627.json`, `ScalusDeviations`, [`ScalusReproducersSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/ScalusReproducersSuite.scala).
+- **Pinned by:** `fixtures/preview/plutus/slot116688298-89d3a627.json`, [`ScalusReproducersSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/ScalusReproducersSuite.scala).
 - **Suggested upstream action:** Scalus: fix the context (issue filed, #388).
 - **Status:** observed
 
@@ -748,19 +748,19 @@ are the ones most in need of a second reading.
 - **Era:** Plutus, protocol 11 and 12
 - **Specification or CDDL says:** The Plutus conformance suite (plutus 1.70.0.0, 1009 evaluation cases) fixes the behaviour of the reference.
 - **Implementation does:** Scalus 1.2.0 and 1.3.0 pass the same 987. Differences: (1) the flat decoder accepts `value` constants that `buildValueWith` rejects (unsorted or repeated currency symbols or token names, an empty inner map, a zero quantity); (2) `case` on a `Data.Constr` is enabled from protocol 12 in 1.3.0, so `data-01` and `data-02` fail at protocol 11; (3) `bls12_381_G1/G2_hashToGroup` with a 255-byte DST, and with a 32-byte DST of arbitrary bytes, returns another point; (4) the flat encoder writes a BLS12-381 constant as an application of `uncompress`, and the units spent after an out-of-budget `dropList` with a huge count wrap negative.
-- **Evidence:** Roadmap I1. Item (1) is filed as scalus3/scalus#396. Triage (AUD-03, [plutus-conformance.md](plutus-conformance.md)): item (1) is reachable by a transaction and handled in the node (`FlatScan`); item (2) is not a divergence (the reference ledger refuses `case` on `Data` below protocol 12 too); item (3) is reachable for a domain separation tag with a byte of 0x80 or more, refused with a typed failure in the node, cause: the tag is handed to blst as a Latin-1 string; item (4) is not reachable (both flat refusal and out-of-budget agree).
+- **Evidence:** Roadmap I1. Item (1) is filed as scalus3/scalus#396. Triage (AUD-03, [plutus-conformance.md](plutus-conformance.md)): item (1) is reachable by a transaction and handled in the node (`FlatScan`); item (2) is not a divergence (the reference ledger refuses `case` on `Data` below protocol 12 too); item (3) is reachable for a domain separation tag with a byte of 0x80 or more, cause: the tag is handed to blst as a Latin-1 string; fixed in Scalus 1.4.0, which passes the tag as bytes; item (4) is not reachable (both flat refusal and out-of-budget agree).
 - **Pinned by:** [`ScalusConformanceReproducersSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/ScalusConformanceReproducersSuite.scala), `PlutusConformanceSuite`.
-- **Suggested upstream action:** Scalus: item (1) is reported as scalus3/scalus#396; item (3) is fixed on Scalus's default branch (unreleased): adopt the release, then remove the refusal and run the reproducer; (2) is fixed in 1.3.0; (4) needs no report. IN-75 to IN-77 are worked around in the node (`Secp256k1`, `PlutusScriptBytes`, `DataSerialiser`) and remain upstream candidates.
+- **Suggested upstream action:** Scalus: item (1) is reported as scalus3/scalus#396; item (3) is fixed in Scalus 1.4.0, adopted with the node's raw-DST path removed; (2) is fixed in 1.3.0; (4) needs no report. IN-75 is fixed in Scalus 1.4.0; IN-76 and IN-77 are worked around in the node (`PlutusScriptBytes`, `DataSerialiser`) and remain upstream candidates.
 - **Status:** observed
 
 ### IN-75 Scalus: `verifyEcdsaSecp256k1Signature` raises where the reference returns `False`
 
 - **Era:** Plutus V2 onwards
 - **Specification or CDDL says:** See the Part A entry on secp256k1: zero `r` or `s` and a high `s` give `False`.
-- **Implementation does:** Scalus 1.2.0 and 1.3.0 require `r > 0` and `s > 0` and raise an error.
+- **Implementation does:** Scalus 1.2.0 and 1.3.0 require `r > 0` and `s > 0` and raise an error. Fixed in Scalus 1.4.0 (verification through libsecp256k1 in scalus-crypto-jni); the node's replacement of the builtin is removed.
 - **Evidence:** Preprod tx 97b31e35 (slot 92,114,397, epoch 217). Roadmap B15. Not filed upstream yet.
 - **Pinned by:** [`PreprodSecp256k1RulesSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/PreprodSecp256k1RulesSuite.scala), [`Secp256k1Suite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/Secp256k1Suite.scala).
-- **Suggested upstream action:** Scalus: change the builtin to the libsecp256k1 semantics (not filed yet).
+- **Suggested upstream action:** None: fixed in Scalus 1.4.0.
 - **Status:** confirmed in source
 
 ### IN-76 Scalus: trailing bytes after a V1 or V2 script

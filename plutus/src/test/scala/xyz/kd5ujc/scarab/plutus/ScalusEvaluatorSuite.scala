@@ -13,8 +13,9 @@ import org.bouncycastle.crypto.digests.SHA256Digest
 import scalus.cardano.ledger.CardanoInfo
 import scalus.uplc.Program
 
-/** The evaluator's native dependencies (BLS12-381 through blst, secp256k1 through JNI) load and
-  * compute inside the JVM that runs the tests, and a script that spends more than its budget fails.
+/** The evaluator's native dependencies (libscalus_crypto: BLS12-381 through blst, secp256k1 and
+  * Ed25519, ADR 0020) load and compute inside the JVM that runs the tests, and a script that spends
+  * more than its budget fails.
   */
 class ScalusEvaluatorSuite extends FunSuite:
   private val evaluator = ScalusEvaluator.pure
@@ -62,14 +63,6 @@ class ScalusEvaluatorSuite extends FunSuite:
         budget
       )
     )
-
-  test("the evaluator's BLS12-381 library is the portable build (ADR 0012)") {
-    val build = xyz.kd5ujc.scarab.blst.Blst.build[cats.effect.IO]
-    import cats.effect.unsafe.implicits.global
-    val found = build.unsafeRunSync()
-    if xyz.kd5ujc.scarab.blst.Platform.current == xyz.kd5ujc.scarab.blst.Platform.LinuxAmd64 then
-      assertEquals(found, xyz.kd5ujc.scarab.blst.LibraryBuild.Portable)
-  }
 
   test("BLS12-381 G1 arithmetic evaluates through blst") {
     val g = s"[ (builtin bls12_381_G1_uncompress) (con bytestring #$G1) ]"

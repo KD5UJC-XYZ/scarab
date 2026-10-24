@@ -1,8 +1,16 @@
 # 0012. One portable libblst for every x86-64 CPU, shipped where blst-java loads it
 
-- **Status**: Accepted
+- **Status**: Accepted; the Plutus part is superseded by [0020](0020-plutus-native-crypto-through-scalus-crypto-jni.md)
 - **Date**: 2026-10-16
 - **Issue**: #93 (roadmap B25)
+
+> **Amended 2026-10-23.** Scalus 1.4.0 no longer uses blst-java: the Plutus builtins run on
+> `libscalus_crypto` of scalus-crypto-jni, pinned and checked at start-up under
+> [ADR 0020](0020-plutus-native-crypto-through-scalus-crypto-jni.md). This record still governs the
+> portable `libblst.so` of `blst-native`, its reproducible rebuild and its start-up check, which
+> now serve the Leios BLS keys (`MinSig`) only. The `RawDst` JNI class and its two known answers are
+> removed; the raw-DST entry points remain in the committed binary until its next rebuild. Where the
+> text below says Scalus or Plutus loads this library, it describes Scalus 1.3.0.
 
 ## Context
 

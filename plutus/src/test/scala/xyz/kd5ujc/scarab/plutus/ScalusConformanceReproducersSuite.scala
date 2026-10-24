@@ -25,67 +25,6 @@ class ScalusConformanceReproducersSuite extends FunSuite:
     case Term.Const(Constant.ByteString(b), _) => b.toHex
     case other                                 => fail(s"not a byte string: $other")
 
-  // plutus-core PlutusCore.Value `buildValueWith`: the flat decoder (and the text parser) fail
-  // unless currency symbols and token names are strictly ascending, there is no empty inner map and
-  // no zero quantity. Scalus decodes them all. The conformance cases `builtin/parser/value/...`.
-  test("flat decoding accepts a malformed value constant (reference: decode failure)") {
-    def accepted(constant: String): Boolean =
-      val program =
-        Program
-          .parseUplc(s"(program 1.0.0 (con value $constant))")
-          .fold(e => sys.error(e.toString), identity)
-      ScalusEvaluator.pureDecoder
-        .validate(PlutusLanguage.V3, 11, Bytes.fromArray(program.cborEncoded))
-        .isRight
-    assert(accepted("[(#aa, [(#bb, 1)])]"), "control: a well-formed value")
-    assert(accepted("[(#88, [(#aa, 1)]), (#12, [(#bb, 1)])]"), "currency symbols descending")
-    assert(accepted("[(#12, [(#bb, 1)]), (#12, [(#cc, 1)])]"), "currency symbol twice")
-    assert(accepted("[(#12, [(#bb, 1), (#aa, 1)])]"), "token names descending")
-    assert(accepted("[(#12, [(#aa, 1), (#aa, 2)])]"), "token name twice")
-    assert(accepted("[(#12, [])]"), "empty inner map")
-    assert(accepted("[(#12, [(#aa, 0)])]"), "zero quantity")
-  }
-
-  // The reference computes `hash_to_curve` with a DST of 255 bytes as RFC 9380 does (a DST is only
-  // reduced above 255 bytes); `hash-dst-len-255` expects the first value below. Scalus differs, and
-  // the second case, with a 32 byte DST of arbitrary bytes, differs too.
-  test("bls12_381 hashToGroup with a DST of 255 bytes differs from the reference") {
-    val dst = "1234567890" * 51 // 255 bytes
-    def hashed(g: String, compress: String) =
-      bytes(
-        evaluate(
-          s"(program 1.0.0 [ (builtin $compress) [ [ (builtin $g) (con bytestring #3f) ] (con bytestring #$dst) ] ])"
-        )
-      )
-    val g1 = hashed("bls12_381_G1_hashToGroup", "bls12_381_G1_compress")
-    val g2 = hashed("bls12_381_G2_hashToGroup", "bls12_381_G2_compress")
-    val referenceG1 =
-      "931bd1f65dd2d34a55c93d82c20dcacd3a91afa5932fdd7fed06119f8574520c9609d337d680060b4bd2c59f0b60bb54"
-    val referenceG2 =
-      "9028b507444b4283faf2f85e7f7d3890b67e9bcf84c7de2f75fe603996ab1b12a25b4637d68f310b7bd6d47ec11e3fa60d0f8f9d1dc880746105b4d7e9b5bba86abfdef96dfda303b1fb00b5d866b5d7f67883efb39efca301ae44a7f1322a33"
-    assertNotEquals(g1, referenceG1)
-    assertNotEquals(g2, referenceG2)
-    assertEquals(
-      g1,
-      "b842ac8cc7c022e4c59934611a452c38d49835af61b9e29bbefb3eb56ebbbb433ba675e836729a871e0c9e240520e1a4"
-    )
-    assertEquals(
-      g2,
-      "ab85034bbbffb6cc4af2ed9a1c717c4e98b2783547fb711c73fa747e12603d55f17aaef5a7e9d9846d17d8e8378ae45904793f155168d39087c400823ad443e256084b749749ba55cad01dd51e296403b38d9e486c90d6cf0eeeb1ec5438bdb9"
-    )
-  }
-
-  test("bls12_381 hashToGroup with the hash of an oversize DST differs from the reference") {
-    val in = getClass.getResourceAsStream(
-      s"/${PlutusConformanceSuite.Directory}/builtin/semantics/bls12_381-cardano-crypto-tests/signature/large-dst/large-dst.uplc"
-    )
-    val text =
-      try String(in.readAllBytes(), "UTF-8")
-      finally in.close()
-    // the reference answers true (the hash equals the expected, uncompressed point)
-    assertEquals(evaluate(text).get, Term.Const(Constant.Bool(false)))
-  }
-
   // plutus 1.70.0.0 (`term/constant-case/data`): `case` on a `Data.Constr` selects the branch by
   // the constructor tag and applies it to the list of fields, one argument. Scalus 1.3.0 fixed the
   // application (the fields only, 42) but enables it from protocol 12 (Dijkstra);
