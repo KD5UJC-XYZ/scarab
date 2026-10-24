@@ -83,7 +83,7 @@ def diff(ref_view, scala, path=""):
 
 
 def scala_state(name, tip):
-    url = f"http://127.0.0.1:{QUERY_PORT}/state?slot={tip['slot']}&hash={tip['hash']}"
+    url = f"http://127.0.0.1:{QUERY_PORT}/state?slot={tip['slot']}&hash={tip['hash']}&utxo=full"
     script = f"import urllib.request,sys;sys.stdout.write(urllib.request.urlopen('{url}',timeout=20).read().decode())"
     r = docker("exec", f"{name}-scala", "python3", "-c", script, check=False, timeout=60)
     return json.loads(r.stdout) if r.returncode == 0 and r.stdout else None
