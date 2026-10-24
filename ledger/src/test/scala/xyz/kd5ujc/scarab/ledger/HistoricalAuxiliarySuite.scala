@@ -90,7 +90,7 @@ class HistoricalAuxiliarySuite extends FunSuite:
             case Vector("MissingTxMetadata") =>
               assert(
                 checked.left.exists {
-                  case LedgerFailure.Rejected(
+                  case LedgerFailure.Rejected.Single(
                         _,
                         PredicateFailure.Utxow(_: UtxowFailure.MissingTxMetadata)
                       ) =>
@@ -102,7 +102,7 @@ class HistoricalAuxiliarySuite extends FunSuite:
             case Vector("MissingTxBodyMetadataHash") =>
               assert(
                 checked.left.exists {
-                  case LedgerFailure.Rejected(
+                  case LedgerFailure.Rejected.Single(
                         _,
                         PredicateFailure.Utxow(_: UtxowFailure.MissingTxBodyMetadataHash)
                       ) =>
@@ -114,7 +114,7 @@ class HistoricalAuxiliarySuite extends FunSuite:
             case Vector("ConflictingMetadataHash") =>
               assert(
                 checked.left.exists {
-                  case LedgerFailure.Rejected(
+                  case LedgerFailure.Rejected.Single(
                         _,
                         PredicateFailure.Utxow(_: UtxowFailure.ConflictingMetadataHash)
                       ) =>

@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.node.ntc
 
 import cats.Show
+import cats.data.NonEmptyChain
 import cats.syntax.all.*
 import io.circe.{Decoder, KeyDecoder, parser}
 import java.nio.file.{Files, Path}
@@ -12,6 +13,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.ledger.{
   ConfigError,
   LedgerDecodeError,
+  LedgerDefect,
   LedgerFailure,
   PlutusStats,
   PredicateFailure,
@@ -23,6 +25,7 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.rules.{
   Counted,
+  Judgment,
   ShelleyLedger,
   ShelleyLedgerEnv,
   Sts,
@@ -164,21 +167,23 @@ class ReferenceRefusalSuite extends FunSuite:
         evaluator = env.evaluator,
         decoder = env.decoder
       )
-      Sts(ShelleyLedger.sts[Babbage])(
-        env.rules,
-        ShelleyLedgerEnv(txEnv, ticked.es.chainAccount),
-        Counted(ticked.es.ls, PlutusStats.zero),
-        tx
-      ).fold(
-        {
-          case LedgerFailure.Rejected(_, f) =>
-            PreConwayFailureCbor
-              .applyTxError(Era.Babbage, Vector(f))
-              .fold(Judgement.Unencodable(f))(Judgement.Refused(_))
-          case other => Judgement.NotRefused(other)
-        },
-        _ => Judgement.Accepted
-      )
+      Judgment
+        .run(ShelleyLedger.sts[Babbage], Judgment.Policy.FirstFailure)(
+          env.rules,
+          ShelleyLedgerEnv(txEnv, ticked.es.chainAccount),
+          Counted(ticked.es.ls, PlutusStats.zero),
+          tx
+        )
+        .fold(
+          Judgement.NotRefused(_),
+          _.fold(
+            failures =>
+              PreConwayFailureCbor
+                .applyTxError(Era.Babbage, failures.toChain.toVector)
+                .fold(Judgement.Unencodable(failures))(Judgement.Refused(_)),
+            _ => Judgement.Accepted
+          )
+        )
 
   /** The transaction of a Babbage LocalTxSubmission item `[5, #6.24(tx)]`. */
   private def babbageTx(item: Bytes): Either[ReplayProblem, Tx] =
@@ -275,16 +280,16 @@ object ReferenceRefusalSuite:
     case Refused(reason: Bytes)
     case Accepted
     case Unavailable(failure: LedgerFailure.Unavailable)
-    case Unencodable(failure: PredicateFailure)
-    case NotRefused(failure: LedgerFailure)
+    case Unencodable(failures: NonEmptyChain[PredicateFailure])
+    case NotRefused(defect: LedgerDefect)
 
   object Judgement:
     given Show[Judgement] = Show.show {
       case Refused(r)     => s"refused it with ${r.hex}"
       case Accepted       => "accepted it"
       case Unavailable(f) => s"could not judge it: ${f.message}"
-      case Unencodable(f) =>
-        s"refused it with ${f.detail}, which the era's encoding has no form for"
+      case Unencodable(fs) =>
+        s"refused it with ${fs.iterator.map(_.detail).mkString("; ")}, which the era's encoding has no form for"
       case NotRefused(f) => s"did not judge it: ${f.message}"
     }
 

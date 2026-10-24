@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.ledger
 import cats.syntax.show.*
 import xyz.kd5ujc.scarab.codec.DomainError
 import cats.Id
+import cats.data.NonEmptyChain
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.state.VocabError
 import xyz.kd5ujc.scarab.plutus.{ScalusEvaluator, ScriptDecoder, ScriptEvaluator}
@@ -55,38 +56,64 @@ enum ScriptLocation:
   case Phase1(scriptHash: Bytes)
   case Phase2(redeemer: Redeemer)
 
-/** Why the ledger refused a transaction. */
-enum LedgerFailure extends DomainError:
-  /** A rule refused the transaction; `failure` is the ledger's predicate failure for it. */
-  case Rejected(txId: Bytes, failure: PredicateFailure)
+/** Why the ledger refused a transaction: the predicate failures of the rules
+  * ([[LedgerFailure.Rejected]]), or a defect ([[LedgerDefect]]) that leaves no verdict of the
+  * rules.
+  */
+sealed trait LedgerFailure extends DomainError:
+  def message: String = this match
+    case LedgerFailure.Rejected(id, fs) =>
+      s"tx ${id.hex.take(16)} violates ${fs.iterator.map(_.detail).mkString("; ")}"
+    case LedgerFailure.Undecodable(id, d) =>
+      s"tx ${id.hex.take(16)} cannot be decoded: ${d.message}"
+    case LedgerFailure.Unavailable(id, location, why) =>
+      val where = location match
+        case ScriptLocation.Phase1(hash) => s"phase 1 script ${hash.hex.take(16)}"
+        case ScriptLocation.Phase2(r)    => s"phase 2 redeemer ${r.tag}.${r.index}"
+      s"tx ${id.hex.take(16)} evaluation unavailable at $where: ${why.message}"
+    case LedgerFailure.Vocab(e) => s"transaction outside the state's vocabulary: $e"
+
+/** What ends a judgment of the rules without a verdict: the transaction cannot be what its era
+  * decodes, a script cannot be evaluated here, or a value is outside the state's vocabulary. The
+  * reference has no predicate failure for any of them, so none is part of a refusal's list.
+  */
+sealed trait LedgerDefect extends LedgerFailure
+
+object LedgerFailure:
+  /** The rules refused the transaction; `failures` are the ledger's predicate failures for it, in
+    * the order the reference reports them (`ApplyTxError (NonEmpty …)`).
+    */
+  final case class Rejected(txId: Bytes, failures: NonEmptyChain[PredicateFailure])
+      extends LedgerFailure
+
+  object Rejected:
+    /** A refusal for one predicate failure. */
+    def apply(txId: Bytes, failure: PredicateFailure): Rejected =
+      Rejected(txId, NonEmptyChain.one(failure))
+
+    /** A refusal whose list is exactly one predicate failure. */
+    object Single:
+      def unapply(rejected: Rejected): Option[(Bytes, PredicateFailure)] =
+        rejected.failures.uncons match
+          case (failure, rest) if rest.isEmpty => Some((rejected.txId, failure))
+          case _                               => None
 
   /** The transaction holds what its era's decoder would not have admitted (see [[TxDefect]]). */
-  case Undecodable(txId: Bytes, defect: TxDefect)
+  final case class Undecodable(txId: Bytes, defect: TxDefect) extends LedgerDefect
 
   /** This implementation could not evaluate a script; no consensus verdict exists. */
-  case Unavailable(
+  final case class Unavailable(
       txId: Bytes,
       location: ScriptLocation,
       reason: xyz.kd5ujc.scarab.plutus.EvalFailure.Unsupported
-  )
+  ) extends LedgerDefect
 
   /** A value of the transaction is not a member of the vocabulary type that the era-indexed state
     * holds it in (a credential of another length, a quantity outside its word). The decoder admits
     * none, so a decoded transaction does not reach it; it is the total form of a conversion the
     * rules of the era-indexed ledger need (design `ledger-mirror-step2.md` §4, J2.4).
     */
-  case Vocab(error: VocabError)
-
-  def message: String = this match
-    case Rejected(id, f) =>
-      s"tx ${id.hex.take(16)} violates ${f.detail}"
-    case Undecodable(id, d) => s"tx ${id.hex.take(16)} cannot be decoded: ${d.message}"
-    case Unavailable(id, location, why) =>
-      val where = location match
-        case ScriptLocation.Phase1(hash) => s"phase 1 script ${hash.hex.take(16)}"
-        case ScriptLocation.Phase2(r)    => s"phase 2 redeemer ${r.tag}.${r.index}"
-      s"tx ${id.hex.take(16)} evaluation unavailable at $where: ${why.message}"
-    case Vocab(e) => s"transaction outside the state's vocabulary: $e"
+  final case class Vocab(error: VocabError) extends LedgerDefect
 
 /** Block-level context of a transaction.
   *

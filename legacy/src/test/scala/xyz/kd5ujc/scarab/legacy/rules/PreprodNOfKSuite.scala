@@ -68,9 +68,9 @@ class PreprodNOfKSuite extends ScalaCheckSuite:
   private val conwayEnv = env.copy(slot = 133902219, epoch = 313)
 
   private def rule(t: Tx): String = rs.tx(world, t, conwayEnv) match
-    case Left(LedgerFailure.Rejected(_, f)) => f.ruleName
-    case Left(other)                        => other.message
-    case Right(_)                           => "accepted"
+    case Left(LedgerFailure.Rejected.Single(_, f)) => f.ruleName
+    case Left(other)                               => other.message
+    case Right(_)                                  => "accepted"
 
   test("the fixture is the recorded transaction: one native script, n = -1, no vkey witness") {
     assertEquals(

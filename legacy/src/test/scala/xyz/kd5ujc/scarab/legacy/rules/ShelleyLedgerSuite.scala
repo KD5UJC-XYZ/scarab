@@ -138,8 +138,8 @@ class ShelleyLedgerSuite extends FunSuite:
           case Right((_, counted)) => k.pre.gov.get(counted.state.utxo)
 
   private def name(f: LedgerFailure): String = f match
-    case LedgerFailure.Rejected(_, p) => p.ruleName
-    case other                        => other.message
+    case LedgerFailure.Rejected.Single(_, p) => p.ruleName
+    case other                               => other.message
 
   /** The rules on one transaction: the state after it, or the refusal. */
   private def agree(c: Case[?], s: flat.LedgerState, t: Tx, ctx: TxEnv): Out = newSide(c, s, t, ctx)
