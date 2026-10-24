@@ -105,11 +105,11 @@ Praos family, chain selection, hard fork, state mirror.
 
 ## legacy
 
-Frozen readers of older snapshot formats, upgrade path.
+Flat node state, its conversion to the mirror and the genesis start path.
 
 | Package | Responsibility | Entry points | Suites | Decisions |
 |---|---|---|---|---|
-| legacy | Frozen vocabulary of older snapshots and the upgrade to the current node state | `LedgerMirror`, `FlatNodeState`, `NodeState`, `Upgrade`, `StateMirror`, `LegacySeed` | `LedgerMirrorSuite`, `StateMirrorSuite`, `RulesMirrorSuite` | [ADR 0006](adr/0006-versioned-formats-migrate-on-open.md), [design ledger-mirror-step2](design/ledger-mirror-step2.md) |
+| legacy | The flat node state, its conversion to the mirror and the genesis start path used by NodeSetup; snapshots are readable from V5 only | `GenesisState`, `FlatNodeState`, `Mirroring`, `LedgerMirror`, `NodeState`, `Upgrade`, `StateMirror`, `LegacySeed` | `LedgerMirrorSuite`, `StateMirrorSuite`, `RulesMirrorSuite` | [ADR 0009](adr/0009-ledger-mirror-step-2.md), [ADR 0006](adr/0006-versioned-formats-migrate-on-open.md), [design ledger-mirror-step2](design/ledger-mirror-step2.md) |
 
 ## storage
 

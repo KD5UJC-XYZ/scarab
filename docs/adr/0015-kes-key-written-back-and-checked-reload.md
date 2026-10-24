@@ -73,4 +73,6 @@ loading; `ForgeError.KesEvolution` retains it when advancing the key. Messages a
 presentation. Key bytes, validation order, erasure and evolution are unchanged.
 
 The rest of the string-error migration is tracked by #82; infrastructure failures and defects of
-the forger remain the separate G7-F3 follow-up in [#180](https://github.com/KD5UJC-XYZ/scarab/issues/180).
+the forger were the G7-F3 follow-up in [#180](https://github.com/KD5UJC-XYZ/scarab/issues/180), which is closed: the
+forger stops on storage failures, evaluator unavailability and defects, and a KES persistence failure
+(`ForgeError.KesFileFailure`) prevents further signing (roadmap G7).

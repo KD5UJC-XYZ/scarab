@@ -9,7 +9,7 @@
   "plutus": "Plutus evaluation through Scalus",
   "ledger": "Blocks, transactions, rules, native ledger state",
   "consensus": "Praos family, chain selection, hard fork, state mirror",
-  "legacy": "Frozen readers of older snapshot formats, upgrade path",
+  "legacy": "Flat node state, its conversion to the mirror and the genesis start path",
   "storage": "Stores, snapshots, migrations, Haskell formats, SCLS, Mithril",
   "models-gen": "CDDL parser and Scala generator (build time)",
   "models": "Generated CDDL models runtime and equivalence tests",
@@ -196,10 +196,10 @@
   {
    "module": "legacy",
    "path": "legacy",
-   "responsibility": "Frozen vocabulary of older snapshots and the upgrade to the current node state",
-   "entryPoints": ["LedgerMirror", "FlatNodeState", "NodeState", "Upgrade", "StateMirror", "LegacySeed"],
+   "responsibility": "The flat node state, its conversion to the mirror and the genesis start path used by NodeSetup; snapshots are readable from V5 only",
+   "entryPoints": ["GenesisState", "FlatNodeState", "Mirroring", "LedgerMirror", "NodeState", "Upgrade", "StateMirror", "LegacySeed"],
    "suites": ["LedgerMirrorSuite", "StateMirrorSuite", "RulesMirrorSuite"],
-   "docs": ["docs/adr/0006-versioned-formats-migrate-on-open.md", "docs/design/ledger-mirror-step2.md"]
+   "docs": ["docs/adr/0009-ledger-mirror-step-2.md", "docs/adr/0006-versioned-formats-migrate-on-open.md", "docs/design/ledger-mirror-step2.md"]
   },
   {
    "module": "storage",

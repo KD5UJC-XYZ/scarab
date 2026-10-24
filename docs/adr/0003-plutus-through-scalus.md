@@ -19,6 +19,9 @@ and reported upstream with reproductions.
 
 ## Consequences
 
-- Plutus conformance is measured continuously (987 of 1,009 cases at the time of writing).
+- Plutus conformance is measured continuously: `PlutusConformanceSuite` passes 1,009 of 1,009 pinned cases with
+  no exclusions ([plutus-conformance.md](../plutus-conformance.md)). The wrapper is `ScalusEvaluator.CorrectedVm`: it
+  routes `hashToGroup` through blst-native (`rawDst`) and supplies its own corrected builtin runtimes (for example
+  `SerialiseData` and `verifyEcdsaSecp256k1Signature`).
 - Scalus versions move only with evidence (the conformance suite and the Preview and preprod replays).
 - Owning the evaluator remains an open spike (#43).
