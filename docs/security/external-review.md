@@ -20,7 +20,7 @@ Cover the runtime modules `blst-native`, `codec`, `crypto`, `protocol`, `network
 scripts. Inspect generated `models` runtime use and `models-gen` where it affects accepted bytes or
 build integrity; use `fuzz` and existing test/oracle tools as review inputs, not substitutes for review.
 Leios parsing/BLS primitives and developer import tools must be distinguished from supported full
-ledger validation. The [module graph](../architecture.md#modules) defines the dependency direction.
+ledger validation. The [module graph](../architecture/modules.md#modules) defines the dependency direction.
 
 Protocols include the negotiated node-to-node handshake/mux, ChainSync, BlockFetch, KeepAlive,
 TxSubmission2 and PeerSharing; node-to-client ChainSync, LocalStateQuery, LocalTxSubmission and

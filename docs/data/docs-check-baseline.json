@@ -2296,115 +2296,6 @@
    "count": 1
   },
   {
-   "kind": "file-size",
-   "path": "docs/design/peer-selection.md",
-   "key": "",
-   "count": 1,
-   "measure": 165667
-  },
-  {
-   "kind": "line-citation",
-   "path": "docs/design/peer-selection.md",
-   "key": "Handshake.scala:50",
-   "count": 1
-  },
-  {
-   "kind": "line-citation",
-   "path": "docs/design/peer-selection.md",
-   "key": "NodeToNode.scala:59",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/design/peer-selection.md",
-   "key": "Outbound.scala",
-   "count": 2
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/design/peer-selection.md",
-   "key": "docs/network-design/network-design.tex",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/design/peer-selection.md",
-   "key": "docs/network-spec",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/design/peer-selection.md",
-   "key": "docs/network-spec/",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/design/peer-selection.md",
-   "key": "network/PeerSharingClient/Server",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/design/peer-selection.md",
-   "key": "node/Topology.scala",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/design/peer-selection.md",
-   "key": "protocol/PeerSharing.scala",
-   "count": 2
-  },
-  {
-   "kind": "missing-symbol",
-   "path": "docs/design/peer-selection.md",
-   "key": "Decide.bigLedger",
-   "count": 1
-  },
-  {
-   "kind": "missing-symbol",
-   "path": "docs/design/peer-selection.md",
-   "key": "Decide.rootPeers",
-   "count": 1
-  },
-  {
-   "kind": "missing-symbol",
-   "path": "docs/design/peer-selection.md",
-   "key": "Job.RequestPublicRoots",
-   "count": 1
-  },
-  {
-   "kind": "missing-symbol",
-   "path": "docs/design/peer-selection.md",
-   "key": "KnownPeers.insert",
-   "count": 1
-  },
-  {
-   "kind": "missing-symbol",
-   "path": "docs/design/peer-selection.md",
-   "key": "Monitor.ledgerPeerSnapshotChange",
-   "count": 1
-  },
-  {
-   "kind": "missing-symbol",
-   "path": "docs/design/peer-selection.md",
-   "key": "PublicRootPeers.toSet",
-   "count": 1
-  },
-  {
-   "kind": "missing-symbol",
-   "path": "docs/design/peer-selection.md",
-   "key": "Source.BigLedger",
-   "count": 2
-  },
-  {
-   "kind": "missing-symbol",
-   "path": "docs/design/peer-selection.md",
-   "key": "Vocabulary.PublicRoots",
-   "count": 1
-  },
-  {
    "kind": "table-cell",
    "path": "docs/design/peer-selection.md",
    "key": "One `Map[A, PeerRecord]` whose status is an enum with the tr",
@@ -2412,22 +2303,154 @@
    "measure": 788
   },
   {
+   "kind": "missing-path",
+   "path": "docs/design/peer-selection/before-g1-and-module-map.md",
+   "key": "Outbound.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/peer-selection/before-g1-and-module-map.md",
+   "key": "network/PeerSharingClient/Server",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/peer-selection/before-g1-and-module-map.md",
+   "key": "protocol/PeerSharing.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/peer-selection/before-g1-and-module-map.md",
+   "key": "Decide.bigLedger",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/peer-selection/before-g1-and-module-map.md",
+   "key": "Decide.rootPeers",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/peer-selection/before-g1-and-module-map.md",
+   "key": "Job.RequestPublicRoots",
+   "count": 1
+  },
+  {
    "kind": "unregistered-pin",
-   "path": "docs/design/peer-selection.md",
+   "path": "docs/design/peer-selection/decisions-and-risks.md",
+   "key": "ouroboros-consensus 4.2.1.0",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/peer-selection/g1-1-as-built.md",
+   "key": "Outbound.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/peer-selection/g1-1-as-built.md",
+   "key": "Vocabulary.PublicRoots",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/design/peer-selection/g1-1-as-built.md",
+   "key": "ouroboros-network 1.2.0.0",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/peer-selection/g1-3-as-built.md",
+   "key": "node/Topology.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/peer-selection/g1-3-as-built.md",
+   "key": "PublicRootPeers.toSet",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/peer-selection/g1-3-as-built.md",
+   "key": "Source.BigLedger",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/design/peer-selection/g1-3-as-built.md",
    "key": "cardano-ledger@048b78d",
    "count": 1
   },
   {
    "kind": "unregistered-pin",
-   "path": "docs/design/peer-selection.md",
+   "path": "docs/design/peer-selection/g1-3-as-built.md",
    "key": "ouroboros-consensus 4.2.1.0",
-   "count": 2
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/peer-selection/g1-4-as-built.md",
+   "key": "KnownPeers.insert",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/peer-selection/reference-model.md",
+   "key": "Handshake.scala:50",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/peer-selection/reference-model.md",
+   "key": "NodeToNode.scala:59",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/peer-selection/reference-model.md",
+   "key": "docs/network-design/network-design.tex",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/peer-selection/reference-model.md",
+   "key": "docs/network-spec",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/peer-selection/reference-model.md",
+   "key": "docs/network-spec/",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/peer-selection/reference-model.md",
+   "key": "Monitor.ledgerPeerSnapshotChange",
+   "count": 1
   },
   {
    "kind": "unregistered-pin",
-   "path": "docs/design/peer-selection.md",
+   "path": "docs/design/peer-selection/reference-model.md",
    "key": "ouroboros-network 1.2.0.0",
-   "count": 2
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/peer-selection/stages.md",
+   "key": "protocol/PeerSharing.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/peer-selection/stages.md",
+   "key": "Source.BigLedger",
+   "count": 1
   },
   {
    "kind": "missing-path",
@@ -2476,7 +2499,7 @@
    "path": "docs/findings.md",
    "key": "",
    "count": 1,
-   "measure": 102392
+   "measure": 102408
   },
   {
    "kind": "missing-symbol",
