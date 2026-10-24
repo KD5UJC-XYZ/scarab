@@ -9,7 +9,7 @@ implemented: homogeneous kind/scope tables and typed cached-hash entries; weak a
 
 ## Evidence
 
-`InternsSuite` identity/kind/growth/concurrency/lifetime/compiler probes, unchanged full-state sharing and 256 MiB million-voter control; full Docker check 5,144 passed/16 optional skips; extended fuzz 77 targets/30.8 million cases pass; snapshot restart 30 applications/two V5 writes/one restore; complete old/new state/refusal fingerprints and retained counts match; [performance](../performance.md#34-typed-per-kind-decode-interning-204), [as-built ownership](../adr/0013-cbor-documents-are-an-index-over-the-input.md#addendum-typed-kind-ownership-204-2026-10-20)
+`InternsSuite` identity/kind/growth/concurrency/lifetime/compiler probes, unchanged full-state sharing and 256 MiB million-voter control; full Docker check 5,144 passed/16 optional skips; extended fuzz 77 targets/30.8 million cases pass; snapshot restart 30 applications/two V5 writes/one restore; complete old/new state/refusal fingerprints and retained counts match; [performance](../performance/cast-erasure-decode-and-diff.md#34-typed-per-kind-decode-interning-204), [as-built ownership](../adr/0013-cbor-documents-are-an-index-over-the-input.md#addendum-typed-kind-ownership-204-2026-10-20)
 
 ## Explicitly unchecked or unconfirmed
 

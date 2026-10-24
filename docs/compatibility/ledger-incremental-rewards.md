@@ -9,7 +9,7 @@ implemented: one typed immutable reference-sized pulser, normal start/pulse/comp
 
 ## Evidence
 
-`RewardPulserSuite`, native `NativeRewardSemanticsSuite` ports, `RewardOracleSuite`: fifteen unchanged Haskell API cases and 180 encoded-state comparisons; old opaque V5 writer/read/restart/rollback regression; positive pending V5 fuzz seed and malformed imported-state refusal regressions. [Design](../design/reward-pulser.md), [measurements](../performance.md#30-incremental-reward-implementation-135)
+`RewardPulserSuite`, native `NativeRewardSemanticsSuite` ports, `RewardOracleSuite`: fifteen unchanged Haskell API cases and 180 encoded-state comparisons; old opaque V5 writer/read/restart/rollback regression; positive pending V5 fuzz seed and malformed imported-state refusal regressions. [Design](../design/reward-pulser.md), [measurements](../performance/rewards-and-evaluation.md#30-incremental-reward-implementation-135)
 
 ## Explicitly unchecked or unconfirmed
 

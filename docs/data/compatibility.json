@@ -97,7 +97,7 @@
           "InternsSuite"
         ],
         "docs": [
-          "docs/performance.md#34-typed-per-kind-decode-interning-204",
+          "docs/performance/cast-erasure-decode-and-diff.md#34-typed-per-kind-decode-interning-204",
           "docs/adr/0013-cbor-documents-are-an-index-over-the-input.md#addendum-typed-kind-ownership-204-2026-10-20"
         ],
         "issues": [
@@ -208,7 +208,7 @@
       "summary": "Pinned Praos fetch rankings, preferred-peer handover, global targets and per-peer windows",
       "evidence": {
         "docs": [
-          "docs/performance.md#37-coordinated-blockfetch-service-model-148"
+          "docs/performance/peers-and-network.md#37-coordinated-blockfetch-service-model-148"
         ],
         "issues": [
           148
@@ -593,7 +593,7 @@
           "StsSuite"
         ],
         "docs": [
-          "docs/performance.md#typed-rule-interpreter-202",
+          "docs/performance/cast-erasure-interpreter.md#typed-rule-interpreter-202",
           "docs/design/rule-interpreter-as-built.md"
         ],
         "issues": [
@@ -615,7 +615,7 @@
         ],
         "docs": [
           "docs/design/reward-pulser.md",
-          "docs/performance.md#30-incremental-reward-implementation-135"
+          "docs/performance/rewards-and-evaluation.md#30-incremental-reward-implementation-135"
         ],
         "issues": [
           135
@@ -855,7 +855,7 @@
       "evidence": {
         "docs": [
           "docs/design/codec-derivation-as-built.md",
-          "docs/performance.md#35-typed-snapshot-codec-derivation-205"
+          "docs/performance/cast-erasure-decode-and-diff.md#35-typed-snapshot-codec-derivation-205"
         ],
         "issues": [
           205
@@ -1086,7 +1086,7 @@
       "summary": "Field and case comparisons use their declared types; instances retained lazily per derivation",
       "evidence": {
         "docs": [
-          "docs/performance.md#typed-diff-instance-retention-206"
+          "docs/performance/cast-erasure-decode-and-diff.md#typed-diff-instance-retention-206"
         ],
         "issues": [
           206

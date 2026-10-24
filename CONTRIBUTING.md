@@ -290,7 +290,8 @@ A claim of compatibility needs evidence a reader can check:
   unchecked" section, then regenerates the matrix with `python3 scripts/render_compatibility.py`
   (`docs/compatibility.md` is generated; CI runs the script with `--check`), and updates the roadmap item it
   closes (mark it done, never renumber).
-- Performance numbers go in [docs/performance.md](docs/performance.md) with the setup.
+- Performance numbers go in [docs/performance.md](docs/performance.md) with the setup: an entry in
+  `docs/data/performance-log.json`, then `python3 scripts/render_performance.py --write`.
 
 ## Commits and pull requests
 

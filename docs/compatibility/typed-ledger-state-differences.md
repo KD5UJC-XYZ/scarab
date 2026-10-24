@@ -9,7 +9,7 @@ implemented: field and case comparisons use their declared types; instances are 
 
 ## Evidence
 
-Conditional-given construction regressions (including identity/short-circuit/per-derivation checks), recursive-enum paths and existing generated era-state properties; original/typed/candidate model fingerprints match, with setup and measured costs in [performance.md](../performance.md#typed-diff-instance-retention-206); final source and area-gate evidence below
+Conditional-given construction regressions (including identity/short-circuit/per-derivation checks), recursive-enum paths and existing generated era-state properties; original/typed/candidate model fingerprints match, with setup and measured costs in [performance.md](../performance/cast-erasure-decode-and-diff.md#typed-diff-instance-retention-206); final source and area-gate evidence below
 
 ## Explicitly unchecked or unconfirmed
 

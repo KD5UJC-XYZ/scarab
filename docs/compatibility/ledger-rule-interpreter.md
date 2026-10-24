@@ -9,7 +9,7 @@ implemented: type-aligned `Frames` preserve intermediate, state, failure and sco
 
 ## Evidence
 
-`StsSuite` laws, nested scope/rollback and 300,000-step cases; Conway/Shelley 10,000-transaction 256 KiB cases; reference-stack Tick/BBODY success and failure comparisons; Docker check; e2e 1,654 applications and 66 matching projected comparisons; [representative measurements](../performance.md#typed-rule-interpreter-202), [as built](../design/rule-interpreter-as-built.md)
+`StsSuite` laws, nested scope/rollback and 300,000-step cases; Conway/Shelley 10,000-transaction 256 KiB cases; reference-stack Tick/BBODY success and failure comparisons; Docker check; e2e 1,654 applications and 66 matching projected comparisons; [representative measurements](../performance/cast-erasure-interpreter.md#typed-rule-interpreter-202), [as built](../design/rule-interpreter-as-built.md)
 
 ## Explicitly unchecked or unconfirmed
 
