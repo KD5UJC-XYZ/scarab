@@ -170,11 +170,11 @@ object VolatileStore:
   private def nameOf(seq: Int) = f"$seq%08d$Suffix"
 
   /** Open (or create) the log in `dir`. Files are `<seq>.log`; a new file starts after
-    * `blocksPerFile` blocks. Opening validates every file and cuts each damaged one at its last good
-    * record, as the VolatileDB of ouroboros-consensus does (`validateFile` and `truncateError` in
-    * `Ouroboros.Consensus.Storage.VolatileDB.Impl.State`): the files after a damaged one are kept.
-    * The blocks they hold are still only a hint: the chain a log describes may then have a gap, and
-    * the caller that applies it ends the chain at the first block that does not connect.
+    * `blocksPerFile` blocks. Opening validates every file and cuts each damaged one at its last
+    * good record, as the VolatileDB of ouroboros-consensus does (`validateFile` and `truncateError`
+    * in `Ouroboros.Consensus.Storage.VolatileDB.Impl.State`): the files after a damaged one are
+    * kept. The blocks they hold are still only a hint: the chain a log describes may then have a
+    * gap, and the caller that applies it ends the chain at the first block that does not connect.
     */
   def open[F[_]: Async](dir: Path, blocksPerFile: Int = 512)(using
       Raise[F, StorageError]
