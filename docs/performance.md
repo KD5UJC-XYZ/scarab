@@ -2913,3 +2913,50 @@ Batching only covers SDUs that are already queued. When the queue runs dry after
 each, so a decoder that rescans its prefix still does quadratic work overall; the buffer removes the copying, not
 that cost. An SDU that would overflow the buffer while batching is held until the complete message already buffered
 has been decoded (`Mux.Config.receiveBufferLimit` lets a test use a small limit).
+
+## 40. The judgment in the rule interpreter (#412, foundation)
+
+**2026-10-24, level 2.** `RuleT` gained the recorded-failure trace, the failing flag and the nest
+frame ([rule interpreter](design/rule-interpreter-as-built.md#the-judgment-412)). No rule records
+or nests yet, so the measured cost is that of the larger machine on unchanged rules: two more
+loop arguments, two more fields in a handler frame and one more frame case. Old is
+`feat/refusal-oracle` `d14d42cadff60dfe44584059b538eee76d97b2a3` (`RuleT.scala` SHA-256
+`05ab67a4…737b`), new is this change (`RuleT.scala` SHA-256 `1d7210e0…c351`). Both builds are
+complete (`node/Test/compile` of each tree), not a class overlay, because `LedgerFailure` and its
+users change too. Results are identical: every Preview block and epoch digest and the synthetic
+BBODY digest `159017f549d74b4d4cb6a520` agree between the builds. The four `missing-input-*`
+digests differ by representation only: they hash `toString` of the refusal, which now holds a
+one-element `NonEmptyChain`.
+
+**Synthetic BBODY, quiet host (primary timing).** `CastErasureBench rules 10000` (source SHA-256
+`d2409a39…6dd`, unchanged) on a 24-core host whose load stayed near 1.0, Docker `scarab-jdk:local`
+(Temurin 21.0.11), `--cpuset-cpus 16-19 --memory 12g --network none`, `-Xms3g -Xmx9g
+-XX:ActiveProcessorCount=4 -XX:+UseG1GC`, twelve JVMs in the order old, new, new, old, old, new,
+new, old, old, new, old, new (three warm-ups and five measured runs each):
+
+| build | JVM medians, ms | median of medians | allocated per run, B |
+|---|---|---:|---|
+| old | 4071.8, 4081.9, 4083.0, 4073.0, 4140.5, 4097.8 | 4082.4 | 5,237,058,240–5,242,529,120 |
+| new | 4141.4, 4148.5, 4056.2, 4118.3, 4161.7, 4152.3 | 4145.0 | 5,241,329,144–5,260,689,176 |
+
+The new machine is **+1.5%** slower at the median of JVM medians (+1.5% at the median of the JVM
+minima, 4048 → 4108 ms) and allocates up to 0.4% more, inside the 2% budget of the change.
+
+**Preview blocks and epoch (representative inputs, shared host).** `PreviewRuleBench` (source
+SHA-256 `92970372…d944`, unchanged) on the inputs of the [typed rule interpreter](#typed-rule-interpreter-202)
+section (native V5 snapshot `1323741149d8…f536`, records `ea8b4a7a…685ebf`); the genesis
+directory is the maintained `fixtures/preview/genesis` (the same four genesis files, plus the
+`checkpoints.json` the current `NodeSetup` requires). Same image digest as that section,
+`--cpuset-cpus 20-23`, ten JVMs alternating old/new in pairs. Other workloads used about four
+unpinned cores of the host during the runs, and the spread between JVMs of one build is ±15%
+for the block sum and +25% for the epoch:
+
+| build | sum of 16 block medians, ms (5 JVMs) | epoch median, ms (5 JVMs) |
+|---|---|---|
+| old | 10.341, 11.849, 11.197, 9.651, 12.777 | 168.95, 148.06, 136.52, 135.28, 135.20 |
+| new | 13.090, 11.947, 9.637, 10.587, 11.394 | 148.18, 130.37, 139.68, 140.83, 147.43 |
+
+Medians of the JVM medians: blocks +1.8%, epoch +3.2%, both well inside the noise of this host;
+block allocation changes by −0.03% and the epoch's by +0.01% at the median. These runs establish
+identical results and no allocation cost on real inputs; the timing verdict is the quiet-host
+synthetic run above. Raw samples, driver scripts and command lines are kept outside Git.
