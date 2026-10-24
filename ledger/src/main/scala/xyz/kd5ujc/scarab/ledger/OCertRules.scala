@@ -38,6 +38,31 @@ object OCertRules:
       slotsPerKesPeriod: BigInt,
       maxKesEvolutions: BigInt
   ): Either[OCertError, Unit] =
+    verifySignaturesWith(
+      header,
+      slotsPerKesPeriod,
+      maxKesEvolutions,
+      Sum6Kes.verify,
+      OperationalCertificate.verify
+    )
+
+  /** [[verifySignatures]] over the given verifiers, so a test can inject a failing provider. Throws
+    * [[ProviderDefectException]] when a verifier reports a provider defect (never a rejection of
+    * the header).
+    */
+  private[ledger] def verifySignaturesWith(
+      header: Header.Shelley,
+      slotsPerKesPeriod: BigInt,
+      maxKesEvolutions: BigInt,
+      kesVerifier: (Bytes, Int, Bytes, Bytes) => Either[Sum6Kes.Failure, Sum6Kes.Result],
+      certVerifier: (
+          Bytes,
+          Bytes,
+          BigInt,
+          BigInt,
+          Bytes
+      ) => Either[OperationalCertificate.Failure, OperationalCertificate.Result]
+  ): Either[OCertError, Unit] =
     val kesPeriod = header.slot / slotsPerKesPeriod
     val start = header.opCert.kesPeriod
     for
@@ -46,12 +71,14 @@ object OCertRules:
         (),
         OCertError.KesPeriodOutsideWindow(kesPeriod, start, maxKesEvolutions)
       )
-      kes <- Sum6Kes
-        .verify(
-          header.opCert.hotVkey,
-          (kesPeriod - start).toInt,
-          header.bodyRaw,
-          header.kesSignature
+      kes <- ProviderDefect
+        .kes(
+          kesVerifier(
+            header.opCert.hotVkey,
+            (kesPeriod - start).toInt,
+            header.bodyRaw,
+            header.kesSignature
+          )
         )
         .left
         .map(OCertError.KesFailure(_))
@@ -60,13 +87,15 @@ object OCertRules:
         (),
         OCertError.KesSignatureRejected
       )
-      oc <- OperationalCertificate
-        .verify(
-          header.issuerVkey,
-          header.opCert.hotVkey,
-          header.opCert.sequence,
-          start,
-          header.opCert.sigma
+      oc <- ProviderDefect
+        .opCert(
+          certVerifier(
+            header.issuerVkey,
+            header.opCert.hotVkey,
+            header.opCert.sequence,
+            start,
+            header.opCert.sigma
+          )
         )
         .left
         .map(OCertError.OpCertFailure(_))

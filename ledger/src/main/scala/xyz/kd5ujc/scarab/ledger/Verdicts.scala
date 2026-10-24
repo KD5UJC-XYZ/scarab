@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.ledger
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{OCertError, OCertRules}
 import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate as Vrf
-import xyz.kd5ujc.scarab.crypto.witness.{StrictEd25519, VerificationResult}
+import xyz.kd5ujc.scarab.crypto.witness.StrictEd25519
 
 /** The pure read side of signature verification: what the rules ask for. Every method is a function
   * of its arguments; an implementation may remember verdicts ([[VerificationCache]]) but must
@@ -41,9 +41,7 @@ object Verdicts:
     */
   object Direct extends Verdicts:
     def witness(vkey: Bytes, signature: Bytes, message: Bytes): Boolean =
-      StrictEd25519.verify(vkey, signature, message) match
-        case Right(VerificationResult.SignatureVerified) => true
-        case _                                           => false
+      ProviderDefect.witness(StrictEd25519.verify(vkey, signature, message))
 
     def opCert(
         header: Header.Shelley,

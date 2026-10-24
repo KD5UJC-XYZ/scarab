@@ -39,7 +39,14 @@ closed or semantically useful. Service APIs still expose their own closed famili
 Pure rules compose `Either`; effectful interpreters raise their declared errors through
 cats-mtl and handle them in the owning scope. External I/O and backend defects retain their
 original `Throwable` where applicable. A backend defect must not become an invalid script or
-peer merely because both can be rendered as text. Fiber ownership and recovery policy remain
+peer merely because both can be rendered as text. A crypto provider
+defect (an Ed25519, VRF, KES or certificate-signature verifier that threw or broke its contract) is
+`ProviderDefect`. A pure rule has no capability to raise through, so it throws
+`ProviderDefectException`, as the reference raises an exception for a library failure and never a
+predicate failure. The session boundary ends the session with `SessionEnd.Defect`, whose policy is
+`Fatal.Defect` (exit 7): the failure is an exception from a library, not a missing implementation
+(`Fatal.Unavailable`, exit 8), and not a broken node invariant (`Fatal.Internal`, exit 6). Invalid
+inputs and rejected signatures stay ordinary rejections. Fiber ownership and recovery policy remain
 [separate G7 work](../adr/0017-fibers-end-with-values.md) under
 [#180](https://github.com/KD5UJC-XYZ/scarab/issues/180).
 

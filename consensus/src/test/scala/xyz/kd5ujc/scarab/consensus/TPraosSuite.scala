@@ -118,6 +118,28 @@ class TPraosSuite extends FunSuite:
     assert(firstError(bad).exists(_.isInstanceOf[TPraosError.OCert]), firstError(bad).toString)
   }
 
+  test("a VRF provider defect is thrown, not a typed VRF rejection (issue 393)") {
+    val boom = new IllegalStateException("provider broke")
+    val failing = new xyz.kd5ujc.scarab.ledger.Verdicts:
+      export xyz.kd5ujc.scarab.ledger.Verdicts.Direct.{
+        keyHash,
+        opCert,
+        praosVrf,
+        takePrepared,
+        witness
+      }
+      def tpraosVrf(alpha: Bytes, vkey: Bytes, proof: Bytes, output: Bytes): Vrf.Result =
+        Vrf.Result.InternalFailure(boom)
+    val thrown = intercept[xyz.kd5ujc.scarab.ledger.ProviderDefectException] {
+      TPraos.update(initial, headers.head, lite.view, config.copy(verdicts = failing))
+    }
+    assertEquals(
+      thrown.defect,
+      xyz.kd5ujc.scarab.ledger.ProviderDefect.VrfVerifier(Vrf.Result.InternalFailure(boom))
+    )
+    assertEquals(thrown.getCause, boom)
+  }
+
   test("a non-overlay slot of an unregistered issuer is rejected before any crypto") {
     val view = lite.view.copy(d = Rational(0))
     assert(
