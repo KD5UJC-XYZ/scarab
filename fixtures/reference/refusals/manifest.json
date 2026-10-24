@@ -1,0 +1,35 @@
+{
+  "format": 1,
+  "coverage": {
+    "conway": [
+      "UTXO",
+      "UTXOW",
+      "UTXOS",
+      "LEDGER",
+      "CERTS",
+      "DELEG",
+      "POOL",
+      "GOVCERT",
+      "GOV",
+      "MEMPOOL"
+    ],
+    "babbage": [
+      "UTXO",
+      "UTXOW",
+      "UTXOS",
+      "LEDGER",
+      "DELEG",
+      "POOL"
+    ]
+  },
+  "corpora": [
+    {
+      "path": "babbage-devnet",
+      "sha256": "484259b49df4fe465103f14f553b55cfc1385591656865911e512810783276fa"
+    },
+    {
+      "path": "conway-devnet",
+      "sha256": "772ebeac2de74da0f8f575f4d3535faab51911820ae64b59c491780369635bbb"
+    }
+  ]
+}

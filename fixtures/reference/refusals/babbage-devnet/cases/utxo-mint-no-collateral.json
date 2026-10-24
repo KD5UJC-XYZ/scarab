@@ -1,0 +1,22 @@
+{
+  "label": "utxo-mint-no-collateral",
+  "era": "babbage",
+  "families": [
+    "UTXO",
+    "UTXO"
+  ],
+  "expect": [
+    "NoCollateralInputs"
+  ],
+  "item": "8205d8185901aa84a50081825820b7de7c4fbda46d74d6f9c5cd2f69dc988af0077ec4e5a0f8e1971390c7a7e1d7010182825839006370e6118011c920b2f8d6430e9fde12a246153b2781ea0c619a8826a9e74726fc9cc561e8c7cf25efb886279689eb67e8b2fc2b7ab00895821a002dc6c0a1581c52c6af0c9b744b4eecce838538a52ceb155038b3de68e2bb2fa8fc37a145746f6b656e01825839006370e6118011c920b2f8d6430e9fde12a246153b2781ea0c619a8826a9e74726fc9cc561e8c7cf25efb886279689eb67e8b2fc2b7ab008951ab28412c0021a0016e36009a1581c52c6af0c9b744b4eecce838538a52ceb155038b3de68e2bb2fa8fc37a145746f6b656e010b5820afa6a7bf8c352678ed2e750d3bcc6f3ae8e81ef2d0816b313bee67f689d209d6a3008182582048de711c36c7c27696e37ac1f8de8f0c5c2d10d83ceb85c07f60decf225b9a61584020e1c8a85b4dbbd188ad9d7fe1c950d08daf71aa54fed558dcf8ad4673d1299e218ba161ff6e2e2ca86e733b701e2a60a33ef1b6a11bbd17f989b6a02f260b08058184010000821a000f42401a1dcd650006814746010000222499f5f6",
+  "tip": {
+    "slot": 5047,
+    "hash": "ebfc4a75c999a55264c055729d7eee306b474b1947e237ad6eeee1cfd3f12e62"
+  },
+  "mempoolSlot": 5048,
+  "state": "states/c327509322a8afd5237bded2832c6561b0935d4c08a18798a54cd1e5cbef1e8f.cbor",
+  "utxo": "utxo/9c9fa6debc889fbbabc83fb0d6f33591022438168331017d66fd0bdc714cbcbe.cbor",
+  "reason": "818205828200820282018114820082028201830d001a00225510",
+  "reasonSha256": "06d27ae53c4522b85708aa652486a5fc107a64474af1874d12d2876990d4a4e5",
+  "rendered": "Error: Error while submitting tx: ShelleyTxValidationError ShelleyBasedEraBabbage (BabbageApplyTxError (UtxowFailure (UtxoFailure (AlonzoInBabbageUtxoPredFailure NoCollateralInputs)) :| [UtxowFailure (UtxoFailure (AlonzoInBabbageUtxoPredFailure (InsufficientCollateral (DeltaCoin 0) (Coin 2250000))))]))"
+}

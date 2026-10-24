@@ -1,0 +1,25 @@
+{
+  "label": "utxow-spend-without-datum-or-redeemer",
+  "era": "conway",
+  "families": [
+    "UTXOS",
+    "UTXOW",
+    "UTXOW",
+    "UTXOW"
+  ],
+  "expect": [
+    "MissingRequiredDatums",
+    "MissingRedeemers"
+  ],
+  "item": "8206d81859017b84a400828258209c80ad47441d870b865fa9a77a2619159925ea84ba53435358c1f13c826b81c700825820502f2766ba8cefff50ffd4d1d415db0e330c00546127b39e65141b16b8362f0c00018182581d604b41caf365a8888e5cec9bda4efcc41de135fb3627dd9d810678b9ee1b00000da4765b69e0021a0016e3600d81825820e4d0c523d4af6da101becb9dc0072fbe001aa476534c23818082ada248ba1ee400a20082825820d2ccb494116b235662aee7b637973782127b62d2411dfdb80ba652e4b81e171f584092f1ca793e04a273421a6e2dac9058faa2e2ca35ca65c91b6644b2fa2ded71cc5dc8f3751c11849847ea9b2022bfc75772fb5a62cb3e843c25d407098ee9eb0d8258201fe038428a41b300be86ac814c42ad0dcf9cc19860a1b4c186cd1fa8d3b794b15840fc71d696be9f60dc257a543676a269f0c640643931386cd5ca0d678c5a65204bde7a40e10ed240f11e4364287305d8c02530b3a33ed7a3d36b958a877fdc2e02078146450101002499f5f6",
+  "tip": {
+    "slot": 8188,
+    "hash": "9baa5589dcb79404ed4fb31b97f7fba6b6d949b7df269b5e8b66846d59607261"
+  },
+  "mempoolSlot": 8189,
+  "state": "states/97bef32b6a540eaad8ba199dea44db9b07c23dd5ebe3f5949956f8d943c4e2be.cbor",
+  "utxo": "utxo/e005a87c6a411872191271f2a4c4db97ad5ea5213637ddd39e8b7414ad797177.cbor",
+  "reason": "8182068482018200820082018182008200825820502f2766ba8cefff50ffd4d1d415db0e330c00546127b39e65141b16b8362f0c008201830d80815820d0c7e2a26900857d0ad24873df41e6534bdcf7c23c4111b0dcdc0e33296410018201820a81828200825820502f2766ba8cefff50ffd4d1d415db0e330c00546127b39e65141b16b8362f0c00581c186e32faa80a26810392fda6d559c7ed4721a65ce1c9d4ef3e1c87b48201830bd901028158209e1199a988ba72ffd6e9c269cadb3b53b5f360ff99f112d9b2ee30c4d74ad88bd9010280",
+  "reasonSha256": "7bb956c45983af2230d06526448782ea0b0588dc10f3d073876adcc379e557bd",
+  "rendered": "Error: Error while submitting tx: ShelleyTxValidationError ShelleyBasedEraConway (ConwayApplyTxError (ConwayUtxowFailure (UtxoFailure (UtxosFailure (CollectErrors (NoRedeemer (ConwaySpending (AsItem {unAsItem = TxIn (TxId {unTxId = SafeHash \"502f2766ba8cefff50ffd4d1d415db0e330c00546127b39e65141b16b8362f0c\"}) (TxIx {unTxIx = 0})})) :| [])))) :| [ConwayUtxowFailure (PPViewHashesDontMatch Mismatch (RelEQ) {supplied: SNothing, expected: SJust (SafeHash \"d0c7e2a26900857d0ad24873df41e6534bdcf7c23c4111b0dcdc0e3329641001\")}),ConwayUtxowFailure (MissingRedeemers ((ConwaySpending (AsItem {unAsItem = TxIn (TxId {unTxId = SafeHash \"502f2766ba8cefff50ffd4d1d415db0e330c00546127b39e65141b16b8362f0c\"}) (TxIx {unTxIx = 0})}),ScriptHash \"186e32faa80a26810392fda6d559c7ed4721a65ce1c9d4ef3e1c87b4\") :| [])),ConwayUtxowFailure (MissingRequiredDatums (NonEmptySet (fromList [SafeHash \"9e1199a988ba72ffd6e9c269cadb3b53b5f360ff99f112d9b2ee30c4d74ad88b\"])) (fromList []))]))"
+}

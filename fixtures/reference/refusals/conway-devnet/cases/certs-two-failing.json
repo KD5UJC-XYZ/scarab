@@ -1,0 +1,23 @@
+{
+  "label": "certs-two-failing",
+  "era": "conway",
+  "families": [
+    "GOVCERT",
+    "DELEG"
+  ],
+  "expect": [
+    "StakeKeyRegisteredDELEG",
+    "ConwayDRepNotRegistered"
+  ],
+  "item": "8206d8185901dd84a400818258209c80ad47441d870b865fa9a77a2619159925ea84ba53435358c1f13c826b81c700018182581d604b41caf365a8888e5cec9bda4efcc41de135fb3627dd9d810678b9ee1b00000da475dcc400021a00061a80048283078200581cbd882f9cf0bd409482d081486ad0806ac532b20ed73be3710ec5152c1a00061a8083118200581c788974be78ee4ad03cb0e3d6bd3d4edfc64eee213986ad6b893300111a000f4240a10083825820d2ccb494116b235662aee7b637973782127b62d2411dfdb80ba652e4b81e171f58407b63db69cdc2de282ee739b5eba5bb7b19464e68547f6973f3bf6249ba62740c755450b372553cd7415478657e48b3bd44df04a61e97ab8c6c0e4fbd63e1d1018258207f2e19c37069ab02c8a56de3e6e23e61c1ac962551efa3af8bd25f5a3609efa55840fa86fe7ce2c5903d8d3ceadd9f6c0ec9784767c667ec5db7767d0364e6844d206669d7f01c50dad359be0763e9918348e1fc0c9f43bd952d43e71d0962788c01825820df77211ac8d34c134cfd1078ffc76b308a0009db615dfe39e5cc373adef0e6175840ac4697db10dd1ab240f3e6d440d761ead2ad34905b6ae1635607f7e8607430e8fb075ebb6f4dcb36f5c3e835a6dbfbc5a70bc338d2a5e35989296dd83bb0f704f5f6",
+  "tip": {
+    "slot": 8188,
+    "hash": "9baa5589dcb79404ed4fb31b97f7fba6b6d949b7df269b5e8b66846d59607261"
+  },
+  "mempoolSlot": 8189,
+  "state": "states/97bef32b6a540eaad8ba199dea44db9b07c23dd5ebe3f5949956f8d943c4e2be.cbor",
+  "utxo": "utxo/e005a87c6a411872191271f2a4c4db97ad5ea5213637ddd39e8b7414ad797177.cbor",
+  "reason": "8182068282028201820382018200581c788974be78ee4ad03cb0e3d6bd3d4edfc64eee213986ad6b8933001182028201820182028200581cbd882f9cf0bd409482d081486ad0806ac532b20ed73be3710ec5152c",
+  "reasonSha256": "dfebc3e54990f9156c73503e4a3fbb482b89e419cc801decaa6c38d94c66696d",
+  "rendered": "Error: Error while submitting tx: ShelleyTxValidationError ShelleyBasedEraConway (ConwayApplyTxError (ConwayCertsFailure (CertFailure (GovCertFailure (ConwayDRepNotRegistered (KeyHashObj (KeyHash {unKeyHash = \"788974be78ee4ad03cb0e3d6bd3d4edfc64eee213986ad6b89330011\"}))))) :| [ConwayCertsFailure (CertFailure (DelegFailure (StakeKeyRegisteredDELEG (KeyHashObj (KeyHash {unKeyHash = \"bd882f9cf0bd409482d081486ad0806ac532b20ed73be3710ec5152c\"})))))]))"
+}

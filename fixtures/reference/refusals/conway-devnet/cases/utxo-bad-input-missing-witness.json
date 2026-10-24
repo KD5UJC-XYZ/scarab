@@ -1,0 +1,23 @@
+{
+  "label": "utxo-bad-input-missing-witness",
+  "era": "conway",
+  "families": [
+    "UTXO",
+    "UTXOW"
+  ],
+  "expect": [
+    "BadInputsUTxO",
+    "MissingVKeyWitnessesUTXOW"
+  ],
+  "item": "8206d81858e784a300828258209c80ad47441d870b865fa9a77a2619159925ea84ba53435358c1f13c826b81c700825820000000000000000000000000000000000000000000000000000000000000000100018182581d604b41caf365a8888e5cec9bda4efcc41de135fb3627dd9d810678b9ee1b00000da475d39c40021a00061a80a100818258201fe038428a41b300be86ac814c42ad0dcf9cc19860a1b4c186cd1fa8d3b794b158409ae3853517d54f6b3c12217cd629762b777dcca6ef6e9ed5a5345557d3e6851024769ed86d648791723f4d76e77e16efbeda36b9e4e59ba69a121f92fb8b7e01f5f6",
+  "tip": {
+    "slot": 8188,
+    "hash": "9baa5589dcb79404ed4fb31b97f7fba6b6d949b7df269b5e8b66846d59607261"
+  },
+  "mempoolSlot": 8189,
+  "state": "states/97bef32b6a540eaad8ba199dea44db9b07c23dd5ebe3f5949956f8d943c4e2be.cbor",
+  "utxo": "utxo/e005a87c6a411872191271f2a4c4db97ad5ea5213637ddd39e8b7414ad797177.cbor",
+  "reason": "81820682820182008201d901028182582000000000000000000000000000000000000000000000000000000000000000010082018202d9010281581c4b41caf365a8888e5cec9bda4efcc41de135fb3627dd9d810678b9ee",
+  "reasonSha256": "7d673b94a909c97b68db3c5e7d55d4271b708b1f07a3a811e4fcf4ef8b528628",
+  "rendered": "Error: Error while submitting tx: ShelleyTxValidationError ShelleyBasedEraConway (ConwayApplyTxError (ConwayUtxowFailure (UtxoFailure (BadInputsUTxO (NonEmptySet (fromList [TxIn (TxId {unTxId = SafeHash \"0000000000000000000000000000000000000000000000000000000000000001\"}) (TxIx {unTxIx = 0})])))) :| [ConwayUtxowFailure (MissingVKeyWitnessesUTXOW (NonEmptySet (fromList [KeyHash {unKeyHash = \"4b41caf365a8888e5cec9bda4efcc41de135fb3627dd9d810678b9ee\"}])))]))"
+}
