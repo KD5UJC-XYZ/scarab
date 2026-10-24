@@ -47,7 +47,7 @@ and informs only; it changes no behaviour.
 ## Consequences
 
 - A user who copies a published configuration gets `GenesisMode`; one who runs the quick start gets
-  `PraosMode` and, from an empty database, the warning. `docs/running.md` ("Choosing the consensus
+  `PraosMode` and, from an empty database, the warning. `docs/running/configuration.md` ("Choosing the consensus
   mode") says how to pick.
 - The README quick start keeps its current form until the published configuration can be used there.
   Related work: [#383](https://github.com/KD5UJC-XYZ/scarab/issues/383) (the Genesis runtime replay

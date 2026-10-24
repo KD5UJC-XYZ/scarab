@@ -2,7 +2,7 @@
 # Add a fuzz target
 
 **Status: Current.** The harness, its properties and its commands are described in
-[running.md](../running.md#fuzzing-the-decoders-roadmap-k3); this is the order of work.
+[running.md](../running/fuzzing.md#fuzzing-the-decoders-roadmap-k3); this is the order of work.
 
 1. Seeds: committed fixtures (`fixtures/`) or valid items sampled from the pinned CDDL
    (`Corpus.sampled` in `fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/Corpus.scala`). Seeds must be
@@ -20,6 +20,6 @@
    ```
 
    A failure prints the input and the seed; the same command repeats it.
-4. List the entry point in running.md if that section enumerates it, and pick the level and gates
+4. List the entry point in running/fuzzing.md if that page enumerates it, and pick the level and gates
    from [CONTRIBUTING](../../CONTRIBUTING.md#gates-and-ceremony-by-level-of-change) (the "A decoder"
    row).

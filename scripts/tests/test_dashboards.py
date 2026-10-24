@@ -138,7 +138,7 @@ class DashboardTest(unittest.TestCase):
             self.assertTrue(any(p.get("collapsed") and p.get("panels") for p in self.dashboards[name]["panels"]), name)
 
 class RulesTest(unittest.TestCase):
-    """promtool checks the rule file's syntax and behaviour (docs/running.md, "Pool monitoring"); here the names."""
+    """promtool checks the rule file's syntax and behaviour (docs/running/monitoring.md); here the names."""
 
     text = RULES.read_text()
     code = "\n".join(l for l in text.splitlines() if not l.lstrip().startswith("#"))

@@ -4,7 +4,7 @@ global:
   scrape_interval: 30s
   evaluation_interval: 30s
 
-# Alert rules for a block producer (docs/running.md, "Pool monitoring"). No alertmanager is configured here:
+# Alert rules for a block producer (docs/running/monitoring.md). No alertmanager is configured here:
 # the owner wires notifications privately.
 rule_files:
   - /etc/prometheus/rules/*.yml

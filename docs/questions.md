@@ -27,8 +27,8 @@ that record are authoritative. Modules and packages are in [codemap.md](codemap.
 | How does the forger end on a failure? | `Forger.scoped`, `BlockBuilder.select`, `HotKeys` in [forge](../node/src/main/scala/xyz/kd5ujc/scarab/node/forge) | [ADR 0015](adr/0015-kes-key-written-back-and-checked-reload.md) (amendment) |
 | How is deeply nested CBOR walked without recursion? | [TreeFold.scala](../codec/src/main/scala/xyz/kd5ujc/scarab/codec/TreeFold.scala) | [ADR 0011](adr/0011-stack-safety.md) |
 | Where is a decode failure located in the input? | [DecodeSite.scala](../ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/DecodeSite.scala) | [design/domain-errors.md](design/domain-errors.md) |
-| Where are the fuzz targets registered? | `Targets.all` in [Targets.scala](../fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/Targets.scala) | [running.md](running.md#fuzzing-the-decoders-roadmap-k3) |
-| Where are devnet scenarios registered? | [scripts/devnet/cli.py](../scripts/devnet/cli.py), [scripts/devnet/scenarios](../scripts/devnet/scenarios) | [running.md](running.md#devnet-scenarios-scriptsdevnetpy) |
+| Where are the fuzz targets registered? | `Targets.all` in [Targets.scala](../fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/Targets.scala) | [running.md](running/fuzzing.md#fuzzing-the-decoders-roadmap-k3) |
+| Where are devnet scenarios registered? | [scripts/devnet/cli.py](../scripts/devnet/cli.py), [scripts/devnet/scenarios](../scripts/devnet/scenarios) | [running.md](running/devnet.md#devnet-scenarios-scriptsdevnetpy) |
 
 ## Decisions recorded outside an ADR
 
@@ -38,6 +38,6 @@ authoritative, including what would reopen the decision.
 | Decision | Record |
 |---|---|
 | Accounts, pools, DReps and stake snapshots stay in memory; only the UTxO set is behind a store | [roadmap D1](roadmap.md#d-scale-p1) |
-| The one-CPU scheduling limitation is accepted; no hard real-time guarantee is claimed | [roadmap D8](roadmap.md#d-scale-p1), [performance.md](performance.md#scheduling-d8) |
+| The one-CPU scheduling limitation is accepted; no hard real-time guarantee is claimed | [roadmap D8](roadmap.md#d-scale-p1), [performance.md](performance/sync-and-scheduling.md#scheduling-d8) |
 | Stored UTxO values stay CBOR; MemPack is the import and export format | [roadmap D16](roadmap.md#d-scale-p1), [design/haskell-snapshots.md](design/haskell-snapshots.md) |
 | No Byron (PBFT) block production; reopened only if a live network again requires it | [roadmap H7](roadmap.md#h-block-production-p1p2) |

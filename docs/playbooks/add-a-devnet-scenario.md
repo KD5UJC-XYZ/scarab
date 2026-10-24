@@ -2,7 +2,7 @@
 # Add a devnet scenario
 
 **Status: Current.** Scenarios are described in
-[running.md](../running.md#devnet-scenarios-scriptsdevnetpy). A scenario starts a reference
+[running.md](../running/devnet.md#devnet-scenarios-scriptsdevnetpy). A scenario starts a reference
 cluster, runs the Scarab node or a client against it, compares, and exits non-zero on any mismatch
 or error.
 
@@ -22,5 +22,5 @@ or error.
    python3 scripts/devnet.py --name <yours> down
    ```
 
-5. Document it in running.md. A scenario that runs nightly is an entry of the matrix in
+5. Document it in running/devnet.md. A scenario that runs nightly is an entry of the matrix in
    `.github/workflows/e2e.yml` (`{scenario: <name>, args: '<name>'}`).

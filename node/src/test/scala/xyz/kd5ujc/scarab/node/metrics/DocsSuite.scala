@@ -5,15 +5,15 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 
 /** The documentation names every metric of the catalogue, with its type and its labels, and no
-  * metric that is not there (`docs/running.md`, "Metrics").
+  * metric that is not there (`docs/running/metrics.md`).
   */
 class DocsSuite extends FunSuite:
   private def repositoryRoot: Path =
     Iterator
       .iterate(Path.of(sys.props("user.dir")).toAbsolutePath)(_.getParent)
       .takeWhile(_ != null)
-      .find(p => Files.exists(p.resolve("docs/running.md")))
-      .getOrElse(fail("docs/running.md not found above the working directory"))
+      .find(p => Files.exists(p.resolve("docs/running/metrics.md")))
+      .getOrElse(fail("docs/running/metrics.md not found above the working directory"))
 
   private def kind(d: MetricDef): String = d match
     case _: CounterDef[?]   => "counter"
@@ -24,11 +24,10 @@ class DocsSuite extends FunSuite:
     * name in backticks.
     */
   private lazy val documented: Map[String, (String, String)] =
-    val text = Files.readString(repositoryRoot.resolve("docs/running.md"))
+    val text = Files.readString(repositoryRoot.resolve("docs/running/metrics.md"))
     val section = text.linesIterator
-      .dropWhile(_ != "### Metrics")
+      .dropWhile(_ != "## Metrics")
       .drop(1)
-      .takeWhile(l => !l.startsWith("## ") && !l.startsWith("### "))
       .toList
     section
       .filter(_.startsWith("| `"))
@@ -50,7 +49,7 @@ class DocsSuite extends FunSuite:
     assertEquals(documented.keySet.diff(Catalogue.all.map(_.name.value).toSet), Set.empty[String])
   }
 
-/** Writes the rows of the metrics tables for `docs/running.md`:
+/** Writes the rows of the metrics tables for `docs/running/metrics.md`:
   * `sbt "node/Test/runMain xyz.kd5ujc.scarab.node.metrics.CatalogueTable"`.
   */
 object CatalogueTable:

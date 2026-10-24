@@ -389,7 +389,7 @@ lazy val models = scarab("models")
     }.taskValue
   )
 
-// Structured fuzzing of every decoder entry point (roadmap K3; docs/running.md "Fuzzing"). Test-only. The
+// Structured fuzzing of every decoder entry point (roadmap K3; docs/running/fuzzing.md). Test-only. The
 // tests run in a forked JVM (a hang or an out-of-memory kills the fork, not the build server) from the
 // repository root; the defaults below are the budget of `check` (about a minute), the `fuzz`
 // command below turns them up.

@@ -74,6 +74,13 @@ class CompareTest(unittest.TestCase):
         report = compare(old, "[a](../../adr/0001.md)\n", old_path="docs/design/x.md", new_base="docs/design/x")
         self.assertEqual([], [f for f in report.losses if f.category is Category.PATH])
 
+    def test_code_that_looks_like_a_link_is_not_resolved(self):
+        text = f"`[t](Severity)` and [real](x.md)\n{FENCE}\n[t](Warning)\n{FENCE}\n"
+        resolved = check_lossless.resolve_links(text, "docs/running")
+        self.assertIn("`[t](Severity)`", resolved)
+        self.assertIn("[real](docs/running/x.md)", resolved)
+        self.assertIn("\n[t](Warning)\n", resolved)
+
     def test_kept_old_path_is_not_a_loss(self):
         report = check_lossless.compare("[me](x.md#a)\n", "docs/x.md", ["nothing\n"], frozenset({"docs/x.md"}))
         self.assertEqual([], [f for f in report.losses if f.category is Category.PATH])
