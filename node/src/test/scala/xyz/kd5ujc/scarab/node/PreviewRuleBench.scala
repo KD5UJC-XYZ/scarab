@@ -84,7 +84,7 @@ object PreviewRuleBench extends IOApp.Simple with Assertions:
           _ <- IO.println(s"INPUT native sha256=${hash(raw)}")
           snapshot <- SnapshotV7
             .format[IO](SnapshotCheck.Full)
-            .decode(checked(FileLedgerSnapshots.verified(raw)))
+            .decode(checked(FileLedgerSnapshots.verified(raw).flatMap(NativeSnapshots.current)))
             .map(checked(_))
           initial <- IO(MirrorStep.nesOf(snapshot.state).getOrElse(fail("Shelley input required")))
           _ <- IO.println(s"INPUT nes ${fingerprint(initial)} epoch=${initial.epoch}")

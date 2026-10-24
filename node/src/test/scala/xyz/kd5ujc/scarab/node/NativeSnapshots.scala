@@ -45,10 +45,13 @@ object NativeSnapshots:
     FileLedgerSnapshots.verified(bytes) match
       case Left(error) => Sync[F].pure(Left(error))
       case Right(content) =>
-        val current =
-          if content.startsWith(SnapshotV5.Magic) then SnapshotV7.fromV5(content)
-          else Right(content)
-        current.fold(
+        current(content).fold(
           error => Sync[F].pure(Left(error)),
           SnapshotV7.format[F](SnapshotCheck.Full).decode(_)
         )
+
+  /** Current-format content of a verified file's content: a V5 content through the registered
+    * conversion, anything else unchanged (the V7 reader then judges it).
+    */
+  def current(content: Array[Byte]): Either[StorageError, Array[Byte]] =
+    if content.startsWith(SnapshotV5.Magic) then SnapshotV7.fromV5(content) else Right(content)

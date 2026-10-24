@@ -53,7 +53,9 @@ object InternDecodeBench extends Assertions:
   def main(args: Array[String]): Unit =
     assert(args.length == 4, "mode, label, snapshot, configs")
     val raw = Files.readAllBytes(Path.of(args(2)))
-    val content = checked(FileLedgerSnapshots.verified(raw))
+    val content = checked(
+      FileLedgerSnapshots.verified(raw).flatMap(xyz.kd5ujc.scarab.node.NativeSnapshots.current)
+    )
     val env = checked(NodeSetup.fromDirectory(Path.of(args(3)))).mirrorEnv()
     println(s"INPUT ${args(1)} bytes=${raw.length} sha256=${sha(raw)}")
     if args(0) == "memory" then

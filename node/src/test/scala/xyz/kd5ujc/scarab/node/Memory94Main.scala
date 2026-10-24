@@ -331,7 +331,7 @@ object Memory94Main:
           given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
           SnapshotV7
             .format[IO](SnapshotCheck.Full)
-            .decode(content)
+            .decode(NativeSnapshots.current(content).fold(e => sys.error(e.toString), identity))
             .unsafeRunSync()
             .fold(e => sys.error(e.toString), identity)
         case "written" =>
@@ -342,7 +342,10 @@ object Memory94Main:
           given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
           val format = SnapshotV7.format[IO](SnapshotCheck.Full)
           val snapshot =
-            format.decode(content).unsafeRunSync().fold(e => sys.error(e.toString), identity)
+            format
+              .decode(NativeSnapshots.current(content).fold(e => sys.error(e.toString), identity))
+              .unsafeRunSync()
+              .fold(e => sys.error(e.toString), identity)
           System.gc()
           postGcPeakBytes = 0L
           val before = usedMb()
