@@ -57,7 +57,10 @@ class AuxiliaryScriptsSuite extends FunSuite:
     )
 
   private def invalidMetadata(result: Either[LedgerFailure, Unit]): Unit = result match
-    case Left(LedgerFailure.Rejected(_, PredicateFailure.Utxow(UtxowFailure.InvalidMetadata))) => ()
+    case Left(
+          LedgerFailure.Rejected.Single(_, PredicateFailure.Utxow(UtxowFailure.InvalidMetadata))
+        ) =>
+      ()
     case other => fail(s"not InvalidMetadata: $other")
 
   rows.foreach { row =>
@@ -114,7 +117,7 @@ class AuxiliaryScriptsSuite extends FunSuite:
         TestLedger.env.copy(decoder = decoder)
       ) match
         case Left(
-              LedgerFailure.Rejected(
+              LedgerFailure.Rejected.Single(
                 _,
                 PredicateFailure.Utxow(_: UtxowFailure.ConflictingMetadataHash)
               )
@@ -187,7 +190,8 @@ class AuxiliaryScriptsSuite extends FunSuite:
       serial match
         case EraBlock.Outcome.Refused(
               BlockFailure.Tx(
-                LedgerFailure.Rejected(_, PredicateFailure.Utxow(UtxowFailure.InvalidMetadata))
+                LedgerFailure.Rejected
+                  .Single(_, PredicateFailure.Utxow(UtxowFailure.InvalidMetadata))
               )
             ) =>
           ()

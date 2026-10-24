@@ -19,8 +19,15 @@ import monocle.Lens
   *     (`BaseTypes.hs:796`), read with [[Sts.globals]];
   *   - `Stateful[F, S]`: the state the transition changes (`TRC (env, st, sig)` becomes `st` in the
   *     state and the environment and signal as arguments, as D4 says);
-  *   - `Raise[F, Fail]`: `PredicateFailure` s (`?!`, [[Sts.check]]). Collecting several failures,
-  *     as `runTest` does, is out of scope (D6): the first failure ends the transition.
+  *   - `Raise[F, Fail]`: `PredicateFailure` s (`?!`, [[Sts.check]]); the first failure ends the
+  *     transition.
+  *
+  * The reference records predicate failures and continues (`Extended.hs:668-730`, cardano-ledger
+  * `f649f975`). The capability for that is [[Judge]], interpreted by [[RuleT]] and run by
+  * [[Judgment]] under a [[RuleT.Policy]] (accumulate, or end at the first failure); the combinators
+  * [[Sts.whenFailureFree]], [[Sts.whenFailureFreeDefault]] and [[Sts.ifFailureFree]] read its
+  * failing flag. A rule raises until it records: [[Sts.apply]] and [[Judgment.run]] report the
+  * first failure of such a rule under either policy.
   *
   * Leaf predicates stay pure `Either` /`Boolean` and enter through [[Sts.check]] and
   * [[Sts.require]]. A rule that is made of another (`trans`, `Extended.hs:475`) runs it on the part
@@ -65,6 +72,27 @@ object Sts:
       raise: Raise[F, Fail]
   ): F[Unit] =
     Monad[F].flatMap(state.get)(s => Monad[F].flatMap(lift[F, Fail, S](f(s)))(state.set))
+
+  /** `ifFailureFree yes no` (`Extended.hs:479-481`): `yes` if nothing was recorded so far anywhere
+    * in the judgment, `no` otherwise. With `whenFailureFree`, the only clause of the reference that
+    * skips a step.
+    */
+  def ifFailureFree[F[_]: Monad, Fail, A](yes: => F[A], no: => F[A])(using
+      judge: Judge[F, Fail]
+  ): F[A] =
+    Monad[F].flatMap(judge.failing)(failing => if failing then no else yes)
+
+  /** `whenFailureFree` (`Extended.hs:483-484`): runs `fa` only if nothing was recorded so far. */
+  def whenFailureFree[F[_]: Monad, Fail](fa: => F[Unit])(using Judge[F, Fail]): F[Unit] =
+    ifFailureFree[F, Fail, Unit](fa, Monad[F].unit)
+
+  /** `whenFailureFreeDefault` (`Extended.hs:486-487`): `fa` if nothing was recorded so far, the
+    * default otherwise.
+    */
+  def whenFailureFreeDefault[F[_]: Monad, Fail, A](default: => A)(fa: => F[A])(using
+      Judge[F, Fail]
+  ): F[A] =
+    ifFailureFree[F, Fail, A](fa, Monad[F].pure(default))
 
   /** `trans @sub` (`Extended.hs:475`): runs `sub` on the part of the state `S0` that [[Embed]]
     * names, with its failures wrapped into `Fail0` (`wrapFailed`).

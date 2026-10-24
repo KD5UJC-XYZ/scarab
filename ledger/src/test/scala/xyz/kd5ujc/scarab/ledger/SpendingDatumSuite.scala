@@ -82,7 +82,7 @@ class SpendingDatumSuite extends FunSuite:
       assertEquals(actual, LedgerFailure.Rejected(r.c.tx.body.id, PredicateFailure.utxow(expected)))
     case None =>
       actual match
-        case LedgerFailure.Rejected(
+        case LedgerFailure.Rejected.Single(
               _,
               PredicateFailure.Utxow(
                 UtxowFailure.Utxo(

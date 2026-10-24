@@ -61,8 +61,8 @@ object LocalSubmission:
           Era.fromIndex(BigInt(era)).fold("Unknown")(_.toString)
         )
       )
-    case Rejection.Ledger(LedgerFailure.Rejected(_, failure)) =>
-      Right(PredicateFailureCbor.applyTxError(Vector(failure)))
+    case Rejection.Ledger(LedgerFailure.Rejected(_, failures)) =>
+      Right(PredicateFailureCbor.applyTxError(failures.toChain.toVector))
     case Rejection.Ledger(error) => Right(text(MempoolProblem.Ledger(error)))
     case Rejection.AlreadyHeld(_) =>
       Right(text(MempoolProblem.AllInputsSpent))

@@ -152,7 +152,7 @@ class V1ContextSuite extends FunSuite:
       case None =>
         assert(r.mismatch, r.text)
         failure match
-          case LedgerFailure.Rejected(
+          case LedgerFailure.Rejected.Single(
                 `id`,
                 PredicateFailure.Utxow(
                   UtxowFailure.Utxo(UtxoFailure.Utxos(UtxosFailure.ValidationTagMismatch(flag, _)))

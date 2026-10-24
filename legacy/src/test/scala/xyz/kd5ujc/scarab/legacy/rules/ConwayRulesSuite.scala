@@ -33,9 +33,9 @@ class ConwayRulesSuite extends FunSuite:
     s.copy(utxo = utxo, reserves = Supply - utxo.valuesIterator.map(_.value.coin).sum)
 
   private def rule(r: Either[LedgerFailure, LedgerState]): String = r match
-    case Left(LedgerFailure.Rejected(_, f)) => f.ruleName
-    case Left(other)                        => other.message
-    case Right(_)                           => "accepted"
+    case Left(LedgerFailure.Rejected.Single(_, f)) => f.ruleName
+    case Left(other)                               => other.message
+    case Right(_)                                  => "accepted"
 
   // minimal CBOR writers for hand-made outputs
   private def head(major: Int, n: Int): Vector[Byte] =
@@ -278,8 +278,8 @@ class ConwayRulesSuite extends FunSuite:
     assert(preimage.isDefined)
     assertEquals(
       run(succeeds = true, isValid = true, bodyWith(Some(wrong)), at11).left.map {
-        case LedgerFailure.Rejected(_, f) => f
-        case other                        => fail(other.message)
+        case LedgerFailure.Rejected.Single(_, f) => f
+        case other                               => fail(other.message)
       },
       Left(
         PredicateFailure.utxow(
