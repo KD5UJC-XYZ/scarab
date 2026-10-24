@@ -375,7 +375,7 @@ class ScriptContextGoldenSuite extends FunSuite:
           )
       assertEquals(
         hexOf(ScalusEvaluator.toData(args.last)),
-        hexOf(ScalusDeviations.mend(theirs)),
+        hexOf(theirs),
         s"$language redeemer ${r.tag}.${r.index}"
       )
     }
