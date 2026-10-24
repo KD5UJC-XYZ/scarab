@@ -6,6 +6,7 @@ import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 import scala.util.Try
 import scala.util.control.NonFatal
+import scalus.serialization.flat.FlatDecodingError
 import scalus.uplc.{DeBruijnedProgram, Program, ScarabProgramView}
 import xyz.kd5ujc.scarab.codec.Bytes
 
@@ -99,6 +100,10 @@ class FlatDecodeParitySuite extends FunSuite:
           Outcome.Differs(Difference.ScalusNarrowsVersion)
         else Outcome.Unexplained("different programs")
       case (Left(_), Left(_)) => Outcome.BothRefuse
+      // Scalus 1.4.0 refuses a malformed `value` constant while decoding, as the reference's
+      // `buildValueWith` does; the walk builds it and records the fault for admission to refuse.
+      case (Right(ours), Left(_: FlatDecodingError)) if ours.scan.malformedValue.isDefined =>
+        Outcome.BothRefuse
       case (Right(_), Left(_)) =>
         Outcome.Differs(Difference.ScalusRefusesData)
       case (Left(FlatScan.Failure.InvalidUtf8), Right(_)) =>
@@ -202,7 +207,8 @@ class FlatDecodeParitySuite extends FunSuite:
     )
     val equal = outcomes.count(_._2 == Outcome.Equal)
     // The corpus is large and nearly all of it decodes; a shrinking count is a lost fixture.
-    assert(equal > 2900, s"only $equal programs compared")
+    // With Scalus 1.4.0 the 26 malformed `value` constants are refused by both (2900 equal).
+    assert(equal >= 2900, s"only $equal programs compared")
   }
 
   test("the flat decoding probes differ from Scalus exactly where the reference decides") {
