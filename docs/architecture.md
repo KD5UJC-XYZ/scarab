@@ -431,7 +431,7 @@ composition and `Follower` the consumer, both in `node`):
 | Part | Where | Role |
 |---|---|---|
 | `ImmutableStore[F]` | `ImmutableStore.scala` (`FileImmutableStore`) | Append-only raw blocks older than `k`: `append`, `sync`, `tip`, `get(point)`, `byBlockNo`, `stream(after)` |
-| `LedgerSnapshots[F, S]` | `LedgerSnapshots.scala` (`FileLedgerSnapshots`) | Atomic, checksummed snapshots of the full `MirrorState` at an immutable point; newest valid wins. The file's content is a `SnapshotFormat[F, S]` (`SnapshotV5`: Haskell ledger state and a `SnapshotSidecar`); a write refusal is a value (`SnapshotRefusal`), while retired/unknown reads refuse restoration |
+| `LedgerSnapshots[F, S]` | `LedgerSnapshots.scala` (`FileLedgerSnapshots`) | Atomic, checksummed snapshots of the full `MirrorState` at an immutable point; newest valid wins. The file's content is a `SnapshotFormat[F, S]` (`SnapshotV7`: a `CheckpointBinding`, then the Haskell ledger state and a `SnapshotSidecar`); a write refusal is a value (`SnapshotRefusal`), while retired/unknown reads refuse restoration |
 | `SnapshotMigration[F]` | `SnapshotMigration.scala` | Registered migration structure and read-only version admission; historical V1–V4 payloads are retired, V5 is current |
 | `VolatileStore[F]` | `VolatileStore.scala` | Append-only log of the volatile chain's updates (blocks, rollback markers); lets a restart continue at the previous tip |
 | `NetworkIdentityFile` | `NetworkIdentityFile.scala`, `NetworkIdentity.scala` | The network the database was created for (`<db>/network-identity`), checked on every open |
@@ -489,12 +489,20 @@ built from the upstream encoding rules (`fixtures/eras`); no Byron Haskell datab
 **Snapshot format** (`<db>/snapshots/snapshot-<slot>-<blockNo>.bin`, the newest `--keep-snapshots`,
 default 2, are kept). A file is the content of a `SnapshotFormat` and the SHA-256 of that content;
 the store (`FileLedgerSnapshots`) does the framing, the atomic write and the pruning, and the format
-decides what the content is. Format version 5 (`SnapshotV5`, J2.9; versions 3 and 4, `SCRBSNP3` and `SCRBSNP4`, had the same layout and sidecars that held the node's chain-dependent state in its former shape and, in version 4, the old rules' flat state):
+decides what the content is. Format version 7 (`SnapshotV7`, #395) is the body of format version 5
+(`SnapshotV5`, J2.9; versions 3 and 4, `SCRBSNP3` and `SCRBSNP4`, had the same layout and sidecars that held the node's chain-dependent state in its former shape and, in version 4, the old rules' flat state) behind the binding of the UTxO checkpoint the snapshot was written with:
 
 ```
-"SCRBSNP5" | sidecar length u32 | sidecar | Haskell state bytes | SHA-256 of all before
+"SCRBSNP7" | binding length u32 | binding | sidecar length u32 | sidecar | Haskell state bytes | SHA-256 of all before
+binding = schema fingerprint[8] | Codec of CheckpointBinding
 sidecar = schema fingerprint[8] | Codec of SnapshotSidecar
 ```
+
+A V5 file is the same from `sidecar length` on, under the magic `SCRBSNP5`. The binding
+(`CheckpointBinding.Bound`) holds the key layout of the checkpoint and the digest of its directory,
+and a restore admits the checkpoint only when both still hold (`StateBacking.admit`,
+[ADR 0021](adr/0021-ledger-state-residency-and-utxo-checkpoints.md)); a V5 file migrates to V7 with
+the `Legacy` binding and is restored with a `snapshotUnbound` warning.
 
 The Haskell state bytes are a `state` file of a Haskell node (`[1, [ledger state telescope, header
 state]]`, `HaskellLedgerFile`) of the chain's state `MirrorState.ext`, byte-proven against real files;
@@ -585,17 +593,18 @@ identity, the immutable store's `format` file, every chunk `.index` and every le
 identifiers, per version (`FileKind.identifier`, `ledger/.../PersistedFormat.scala`); a kind has a
 new identifier only at a version at which its layout changed, and `FileKind.current` is the newest:
 
-| file | format 1 (until the rename) | format 2 | format 3 | format 4 | format 5 | format 6 |
-|---|---|---|---|---|---|---|
-| `network-identity`, first line | `cardano-scala-lab network identity v1` | `scarab network identity v2` | (as 2) | (as 2) | (as 2) | `scarab network identity v6` |
-| `immutable/format`, before ` chunkSlots=<n>` | `cardano-scala-lab immutable store v1` | `scarab immutable store v2` | (as 2) | (as 2) | (as 2) | (as 2) |
-| `immutable/<c>.index`, 8-byte magic | `CSLIDX01` | `SCRBIDX2` | (as 2) | (as 2) | (as 2) | (as 2) |
-| `snapshots/snapshot-*.bin`, 8-byte magic | `CSLSNAP1`, number 1 | `CSLSNAP1`, number 2 | `SCRBSNP3` | `SCRBSNP4` | `SCRBSNP5` | (as 5) |
+| file | format 1 (until the rename) | format 2 | format 3 | format 4 | format 5 | format 6 | format 7 |
+|---|---|---|---|---|---|---|---|
+| `network-identity`, first line | `cardano-scala-lab network identity v1` | `scarab network identity v2` | (as 2) | (as 2) | (as 2) | `scarab network identity v6` | (as 6) |
+| `immutable/format`, before ` chunkSlots=<n>` | `cardano-scala-lab immutable store v1` | `scarab immutable store v2` | (as 2) | (as 2) | (as 2) | (as 2) | (as 2) |
+| `immutable/<c>.index`, 8-byte magic | `CSLIDX01` | `SCRBIDX2` | (as 2) | (as 2) | (as 2) | (as 2) | (as 2) |
+| `snapshots/snapshot-*.bin`, 8-byte magic | `CSLSNAP1`, number 1 | `CSLSNAP1`, number 2 | `SCRBSNP3` | `SCRBSNP4` | `SCRBSNP5` | (as 5) | `SCRBSNP7` |
 
 The immutable format and index layouts are unchanged after the V2 rename. V6 extends the identity
 record with Alonzo/Conway bindings and adoption provenance. Formats 3 to 5 are the snapshot as the
 Haskell ledger state plus a sidecar (see
-"Snapshot format"; 4 and 5 changed the sidecar). The versions are a closed `enum FormatVersion` (a version this build does not
+"Snapshot format"; 4 and 5 changed the sidecar), and format 7 puts the checkpoint binding in front
+of the V5 body. The versions are a closed `enum FormatVersion` (a version this build does not
 know cannot be represented) and each kind of file is a `FileKind` with its history of identifiers.
 On open, `Migrate` (storage) runs a `Migration[F]` over the files of a kind: it reads the version of
 every file first (so an unknown version raises `StorageError.UnknownVersion` and nothing has been
@@ -613,8 +622,9 @@ supported, while snapshot V1–V4 identifiers are recognized as retired. The per
 never looks at the magic. The migration is one way: an older build does not
 know the newer formats (keep a copy of a database to run an older build on it).
 
-`SnapshotMigration` retains the generic `Migration` / `Migrate` registration for future versioned
-conversions. Currently only V5 snapshot payloads are supported. A read-only identity verification
+`SnapshotMigration` retains the generic `Migration` / `Migrate` registration for versioned
+conversions. V5 and V7 snapshot payloads are supported: V5 files are migrated to V7 on open
+(`SnapshotV7.fromV5`, the body copied unchanged behind a `Legacy` binding). A read-only identity verification
 precedes snapshot version preflight; `Main` holds database ownership and performs this before opening
 RocksDB, and `ChainStorage.open` repeats it before identity migration or immutable/volatile recovery.
 A mismatch of network identity takes precedence. Retired and unknown formats refuse admission without
@@ -626,7 +636,7 @@ restore propagates typed incompatible-version errors rather than skipping them. 
 checkpoint-key conversion remains independent. `scripts/oracle/export.py` still reads both index
 magics.
 
-**Snapshot reader retirement (D10).** Current data uses V5; historical V1–V4 identifiers stay in
+**Snapshot reader retirement (D10).** Current data uses V7 (V5 migrates to it); historical V1–V4 identifiers stay in
 `FileKind` so startup can distinguish a known retired format from an unknown one. Retirement requires
 verified current-format replacements for every active local and repository input and transition of
 local old writers. Originals and pinned historical conversion evidence remain recoverable outside

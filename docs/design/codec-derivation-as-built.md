@@ -49,8 +49,8 @@ longer requires a ClassTag for A.
   truncated-input failures under the old and new implementations. This is bounded fixture evidence,
   not a claim about every possible snapshot or operational database.
 
-`SnapshotV5.encoded` is package-visible for the test-side benchmark so it can measure the real
-pure encoder on one thread; its body and format are unchanged. Both comparison conditions use
+`SnapshotV7.encoded` (formerly `SnapshotV5.encoded`) is package-visible for the test-side
+benchmark so it can measure the real pure encoder on one thread; its body and format are unchanged. Both comparison conditions use
 that same visibility-only measurement seam.
 
 ## Measurement and gates
