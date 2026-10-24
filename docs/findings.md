@@ -150,7 +150,7 @@ transaction recorded with `follow --plutus-cases`.
 
 ## Decoders under hostile input (K3)
 
-Found by the `fuzz` project ([running.md](running.md#fuzzing-the-decoders-roadmap-k3)): mutated fixtures and
+Found by the `fuzz` project ([running.md](running/fuzzing.md#fuzzing-the-decoders-roadmap-k3)): mutated fixtures and
 CDDL-sampled items against 53 decoder entry points, about 6.4 million cases in the longest run (4 seeds of
 30,000 per target), 20,000 per target in every `check`. The decoders were already bounded by design (item,
 string and depth limits, lengths checked before allocation, typed errors); the fuzzer found two kinds of gap

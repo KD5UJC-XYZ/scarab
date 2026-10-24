@@ -56,7 +56,7 @@ per namespace a severity filter, backends and a frequency limit, looked up from 
 ## Consequences
 
 - An event's name, namespace and severity are checked by the compiler; the documentation's catalogue
-  (`docs/running.md`, "Log events") is checked against the enum by `LogDocsSuite`.
+  (`docs/running/logging.md`, "Log events") is checked against the enum by `LogDocsSuite`.
 - Three lines differ from `JsonLog`'s, on purpose: the `kind` of an `error` whose error is a case without fields is
   its name (it was the empty string, `getSimpleName` of an anonymous class); `stateDump` has an `at` like every other
   line; and there are new lines (`verificationCache`, which was a text line on stderr, and `slf4j`). The http4s

@@ -17,7 +17,7 @@ worker (worker-a, worker-b, ...)                 server (monitor-host)
   container excepted), labelled `host`, `container` and `event` (the node's JSON event name; `text`
   for lines that are not JSON, such as a JVM stack trace). A long run writes every event except the
   per-block `extended` line, plus one `extended` line in 1000 (the run script in
-  [docs/running.md](../../docs/running.md)), so the streams stay small and the run panels can still
+  [docs/running/logging.md](../../docs/running/logging.md)), so the streams stay small and the run panels can still
   plot progress from them.
 - **Host and container metrics**: node exporter (`node_*`) and cAdvisor (`container_*`), labelled
   `host`.
@@ -121,7 +121,7 @@ Prometheus loads them (`rule_files`) and `server/prometheus/tests/pool.test.yml`
 (`promtool test rules`). The stack has no Alertmanager and the rules name no receiver: route on the `severity` label
 with your own Alertmanager, or build Grafana alerts on the same expressions. The rotation driver's metrics reach
 Prometheus through the agent's textfile directory (`TEXTFILE_DIR`). The alert table, the thresholds and their reasons
-are in "Pool monitoring" in [docs/running.md](../../docs/running.md).
+are in [docs/running/monitoring.md](../../docs/running/monitoring.md).
 
 ## Deploy
 
@@ -148,7 +148,7 @@ To try the server locally: copy `server/.env.example` to `server/.env`, set a pa
 
 Name run containers `scarab-<something>`; nothing else is needed for their logs. For the node's
 metrics, give the container the label and the node the listener (only `/metrics` is served there;
-see "Metrics" in [docs/running.md](../../docs/running.md)):
+see [docs/running/metrics.md](../../docs/running/metrics.md)):
 
 ```bash
 docker run --name scarab-<run> --label scarab.metrics.port=12798 ... \

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Alerts for a Scarab block producer (docs/running.md, "Pool monitoring"). Labels are Alertmanager-neutral:
+# Alerts for a Scarab block producer (docs/running/monitoring.md). Labels are Alertmanager-neutral:
 # `severity` is info, warning or critical, and nothing here names a receiver; wire notifications privately
 # (an Alertmanager route on `severity`, or Grafana alerting on the same expressions).
 #
@@ -25,7 +25,7 @@ groups:
         annotations:
           summary: "{{ $labels.container }}: {{ $value }} KES periods left"
           description: >-
-            Fewer than 3 KES periods remain: rotate the key by hand now (docs/running.md, "Rotating the KES key").
+            Fewer than 3 KES periods remain: rotate the key by hand now (docs/running/forging.md, "Rotating the KES key").
       - alert: PoolKesRotationStale
         expr: time() - scarab_kes_rotation_last_success_timestamp_seconds > 3 * 3600
         for: 5m

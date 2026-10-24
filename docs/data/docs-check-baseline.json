@@ -2476,7 +2476,7 @@
    "path": "docs/findings.md",
    "key": "",
    "count": 1,
-   "measure": 102384
+   "measure": 102392
   },
   {
    "kind": "missing-symbol",
@@ -3599,7 +3599,7 @@
    "path": "docs/roadmap.md",
    "key": "",
    "count": 1,
-   "measure": 103121
+   "measure": 103129
   },
   {
    "kind": "missing-path",
@@ -3662,19 +3662,6 @@
    "count": 1
   },
   {
-   "kind": "file-size",
-   "path": "docs/running.md",
-   "key": "",
-   "count": 1,
-   "measure": 182407
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/running.md",
-   "key": "./textfile",
-   "count": 1
-  },
-  {
    "kind": "missing-path",
    "path": "docs/running.md",
    "key": "node/runtimeClasspathFile",
@@ -3688,76 +3675,82 @@
   },
   {
    "kind": "table-cell",
-   "path": "docs/running.md",
-   "key": "`sessions` (per session: `session`, `busy`, `pendingOffers`,",
+   "path": "docs/running/configuration.md",
+   "key": "the highest node-to-node version the node offers and accepts",
    "count": 1,
-   "measure": 835
+   "measure": 666
   },
   {
    "kind": "table-cell",
-   "path": "docs/running.md",
+   "path": "docs/running/devnet.md",
    "key": "a fresh cluster, the Scala node following pool 1 with `--loc",
    "count": 1,
    "measure": 1615
   },
   {
    "kind": "table-cell",
-   "path": "docs/running.md",
+   "path": "docs/running/devnet.md",
    "key": "blocks forged, adopted and on the final chain; the Haskell l",
    "count": 1,
    "measure": 1428
   },
   {
    "kind": "table-cell",
-   "path": "docs/running.md",
+   "path": "docs/running/devnet.md",
    "key": "every query that is implemented gives equal bytes in every r",
    "count": 1,
    "measure": 891
   },
   {
    "kind": "table-cell",
-   "path": "docs/running.md",
+   "path": "docs/running/devnet.md",
    "key": "everything `pool` asserts, and: at least `--min-rotations` `",
    "count": 1,
    "measure": 763
   },
   {
    "kind": "table-cell",
-   "path": "docs/running.md",
+   "path": "docs/running/devnet.md",
    "key": "exit status fails on any mismatched comparison or follower e",
    "count": 1,
    "measure": 985
   },
   {
    "kind": "table-cell",
-   "path": "docs/running.md",
+   "path": "docs/running/devnet.md",
    "key": "the Haskell relay syncs the whole chain from the Scala node ",
    "count": 1,
    "measure": 1159
   },
   {
    "kind": "table-cell",
-   "path": "docs/running.md",
+   "path": "docs/running/devnet.md",
    "key": "the `eraTransition` lines are exactly the seven eras at the ",
    "count": 1,
    "measure": 715
   },
   {
    "kind": "table-cell",
-   "path": "docs/running.md",
-   "key": "the highest node-to-node version the node offers and accepts",
+   "path": "docs/running/logging.md",
+   "key": "`sessions` (per session: `session`, `busy`, `pendingOffers`,",
    "count": 1,
-   "measure": 666
+   "measure": 835
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/running/monitoring.md",
+   "key": "./textfile",
+   "count": 1
   },
   {
    "kind": "unregistered-pin",
-   "path": "docs/running.md",
+   "path": "docs/running/snapshots.md",
    "key": "ouroboros-consensus 4.2.0.0",
    "count": 1
   },
   {
    "kind": "unregistered-pin",
-   "path": "docs/running.md",
+   "path": "docs/running/troubleshooting.md",
    "key": "ouroboros-network 1.2.0.0",
    "count": 1
   }

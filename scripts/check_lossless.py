@@ -85,17 +85,40 @@ class Report:
 
 
 def resolve_links(text: str, base: str) -> str:
-    """`text` with every relative link target replaced by its repository-rooted path (anchors kept)."""
-    def fix(match: re.Match[str]) -> str:
-        target = match.group(1)
-        if SCHEME.match(target):
-            return match.group(0)
-        file_part, hash_, fragment = target.partition("#")
-        if not file_part:
-            return match.group(0)
-        resolved = posixpath.normpath(posixpath.join(base, file_part))
-        return f"]({resolved}{hash_}{fragment})"
-    return LINK.sub(fix, text)
+    """`text` with every relative link target replaced by its repository-rooted path (anchors kept).
+
+    Only real links change: fenced code and code spans that merely look like `[a](b)` are left alone.
+    """
+    out: list[str] = []
+    fence: str | None = None
+    for raw in text.split("\n"):
+        match = check_docs.FENCE.match(raw)
+        if fence is None and match:
+            fence = match.group(1)[0] * len(match.group(1))
+            out.append(raw)
+            continue
+        if fence is not None:
+            if match and match.group(1)[0] == fence[0] and len(match.group(1)) >= len(fence) \
+                    and not raw.strip().strip(fence[0]):
+                fence = None
+            out.append(raw)
+            continue
+        masked = check_docs.mask_code(raw)
+        pieces: list[str] = []
+        last = 0
+        for link in check_docs.INLINE_LINK.finditer(masked):
+            target = link.group(1)
+            if target.startswith("<") or SCHEME.match(target) or target.startswith("//"):
+                continue
+            file_part, hash_, fragment = target.partition("#")
+            if not file_part:
+                continue
+            start, end = link.span(1)
+            pieces += [raw[last:start], f"{posixpath.normpath(posixpath.join(base, file_part))}{hash_}{fragment}"]
+            last = end
+        pieces.append(raw[last:])
+        out.append("".join(pieces))
+    return "\n".join(out)
 
 
 def squash(text: str) -> str:
