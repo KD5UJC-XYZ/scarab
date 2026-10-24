@@ -174,6 +174,7 @@ Alongside: `fixtures/` (test vectors and captured chain data, each with its prov
 | | |
 |---|---|
 | [Architecture](docs/architecture.md) | Layers, algebras, error model, data flow, on-disk formats |
+| [Code map](docs/codemap.md) | Generated: module dependencies, and per package the entry points, test suites and owning decisions |
 | [Running](docs/running.md) | Every `follow` flag, devnet scenarios, data directories, fuzzing |
 | [Compatibility](docs/compatibility.md) | The matrix: what is checked against what, and what is not |
 | [Findings](docs/findings.md) | What real chain data taught us, with the tests that pin it |
