@@ -8,7 +8,6 @@ import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 import scalus.cardano.onchain.plutus.prelude.List as PList
 import scalus.uplc.builtin.Data
-import xyz.kd5ujc.scarab.blst.Blst
 
 /** `equalsData` against the executed reference (plutus 1.70.0.0, `PlutusCore/Data.hs`, derived
   * `Eq`: the entries of a `Map` are an ordered list; recipe in `scripts/oracle/plutus/README.md`):
@@ -128,8 +127,8 @@ class DataEqualityReferenceSuite extends FunSuite:
     val model = PlutusBoundaryCorpus.costModel(language, protocol)
     val modelBytes = Json.arr(model.map(Json.fromLong)*).noSpaces.getBytes(StandardCharsets.UTF_8)
     val script = probe.script
-    assertEquals(Blst.sha256Hex(script.toArray), field[String](row, "scriptSha256"))
-    assertEquals(Blst.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
+    assertEquals(NativeCrypto.sha256Hex(script.toArray), field[String](row, "scriptSha256"))
+    assertEquals(NativeCrypto.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
     evaluator.evaluate(
       EvalRequest(language, protocol, script, Vector.empty, model, PlutusBoundaryCorpus.budget)
     ) match

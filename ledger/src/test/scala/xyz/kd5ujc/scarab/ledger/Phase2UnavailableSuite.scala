@@ -151,7 +151,9 @@ class Phase2UnavailableSuite extends FunSuite:
       val witnessed = tx.copy(witnesses = tx.witnesses.copy(scripts = Vector(script)))
       for (reason, expected) <- Vector(
           BackendFailure.StackExhausted -> BackendFailure.Reach.Input,
-          BackendFailure.BinaryDstUnavailable -> BackendFailure.Reach.Implementation
+          BackendFailure.BuiltinUnavailable(
+            scalus.uplc.DefaultFun.Bls12_381_G1_hashToGroup
+          ) -> BackendFailure.Reach.Implementation
         )
       do
         val decoder: ScriptDecoder[Id] = (_, _, _) => Left(ScriptDecodeFailure.Unavailable(reason))

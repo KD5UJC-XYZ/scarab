@@ -436,7 +436,8 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     )
     val tx = xyz.kd5ujc.scarab.node.mempool.MempoolState.parse(raw).fold(e => fail(e.message), _._2)
     val entry = xyz.kd5ujc.scarab.node.mempool.Entry(id, raw, tx, 0)
-    val stopped = xyz.kd5ujc.scarab.plutus.BackendFailure.BinaryDstUnavailable
+    val stopped = xyz.kd5ujc.scarab.plutus.BackendFailure
+      .BuiltinUnavailable(scalus.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
     def failing(
         reason: xyz.kd5ujc.scarab.plutus.BackendFailure
     ): xyz.kd5ujc.scarab.plutus.ScriptDecoder[cats.Id] =

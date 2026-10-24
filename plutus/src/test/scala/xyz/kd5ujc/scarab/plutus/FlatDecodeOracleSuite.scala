@@ -6,7 +6,6 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.blst.Blst
 
 /** Executed plutus-1.70.0.0 verdicts for the flat decoder's reach ([[FlatDecodeCorpus]]):
   * admission, stage and the exact budget of every success.
@@ -49,8 +48,11 @@ class FlatDecodeOracleSuite extends FunSuite:
         val model = FlatDecodeCorpus.costModel(language, protocol)
         val modelBytes =
           Json.arr(model.map(Json.fromLong)*).noSpaces.getBytes(StandardCharsets.UTF_8)
-        assertEquals(Blst.sha256Hex(probe.script.toArray), field[String](row, "scriptSha256"))
-        assertEquals(Blst.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
+        assertEquals(
+          NativeCrypto.sha256Hex(probe.script.toArray),
+          field[String](row, "scriptSha256")
+        )
+        assertEquals(NativeCrypto.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
         val where = s"$language/$protocol"
         val admitted = decoder.validate(language, protocol, probe.script).isRight
         assertEquals(admitted, field[Boolean](row, "admitted"), where)

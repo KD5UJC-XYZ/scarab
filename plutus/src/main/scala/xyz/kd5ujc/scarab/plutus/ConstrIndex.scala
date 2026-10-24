@@ -11,15 +11,16 @@ import scalus.uplc.builtin.Data
   * variants D and E (lines 2788-2793), which the ledger selects from protocol 11 (`vanRossemPV`,
   * V1/V2/V3 `EvaluationContext.hs`).
   *
-  * Scalus 1.3.0's `Data.Constr` asserts a non-negative index in its constructor (`Data.scala:142`),
-  * so a negative index is built as [[ConstrIndex.Negative]]: a `Data.Constr` whose `constr`
-  * accessor returns the index. Every reader of a `Data.Constr` in the pinned Scalus goes through
-  * that accessor: the extractor (`unapply` returns the value, `_1` calls `constr`), the synthesised
-  * `equals` and `hashCode` (through `productElement`), and the type tests of `chooseData` and the
-  * memory usage, which ignore the index as the reference's `ExMemoryUsage Data` does. Only `copy`
-  * and `Data.Constr.apply` would run the assertion again, and no builtin calls them on an existing
-  * value. A value is a [[Negative]] exactly when its index is negative, so equality between the two
-  * classes never has to compare a negative index with a non-negative one.
+  * Scalus 1.4.0's (as 1.3.0's) `Data.Constr` asserts a non-negative index in its constructor
+  * (`Data.scala:142`), so a negative index is built as [[ConstrIndex.Negative]]: a `Data.Constr`
+  * whose `constr` accessor returns the index. Every reader of a `Data.Constr` in the pinned Scalus
+  * goes through that accessor: the extractor (`unapply` returns the value, `_1` calls `constr`),
+  * the synthesised `equals` and `hashCode` (through `productElement`), and the type tests of
+  * `chooseData` and the memory usage, which ignore the index as the reference's
+  * `ExMemoryUsage Data` does. Only `copy` and `Data.Constr.apply` would run the assertion again,
+  * and no builtin calls them on an existing value. A value is a [[Negative]] exactly when its index
+  * is negative, so equality between the two classes never has to compare a negative index with a
+  * non-negative one.
   *
   * Negative indices arise only from `constrData`: the reference decodes the tag-102 index with
   * `decodeWord64` (`PlutusCore/Data.hs:300`), as does this node's `PlutusData` and Scalus's own
@@ -40,7 +41,7 @@ private[plutus] object ConstrIndex:
     *
     * Two compiler diagnostics are silenced here, both about overriding the parameter val `constr`:
     * Scala 3.3 deprecates it, and the initialisation checker reads the assertion in the body of
-    * `Data.Constr` as a use of the overridden, not yet initialised, val. The compiled Scalus 1.3.0
+    * `Data.Constr` as a use of the overridden, not yet initialised, val. The compiled Scalus 1.4.0
     * constructor tests its parameter, not the accessor (`javap` of `Data$Constr.<init>`: `aload_1`
     * before `BigInt.$greater$eq`), so the assertion sees zero. `ConstrIndexReferenceSuite` builds
     * these values and fails if a Scalus release reads the accessor there (the assertion would then

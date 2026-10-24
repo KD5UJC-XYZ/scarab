@@ -55,9 +55,7 @@ enum BackendFailure:
 
   /** Whether the failure is the implementation's or this input's ([[BackendFailure.Reach]]). */
   def reach: BackendFailure.Reach = this match
-    case NoResult | BinaryDstUnavailable | NativeHashToGroupUnavailable =>
-      BackendFailure.Reach.Implementation
-    case BuiltinUnavailable(_)                => BackendFailure.Reach.Implementation
+    case NoResult | BuiltinUnavailable(_)     => BackendFailure.Reach.Implementation
     case StackExhausted | BudgetOutOfRange(_) => BackendFailure.Reach.Input
     case Defect(cause)                        => BackendFailure.reachOf(cause)
   def message: String = this match

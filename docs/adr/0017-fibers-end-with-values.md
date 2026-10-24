@@ -165,9 +165,10 @@ and recording the block as invalid is a verdict the implementation does not have
 - **Implementation** — a linkage error (a native or a class that is missing, an initialiser that
   failed), an unknown builtin, a virtual machine error other than a stack overflow, wherever it is
   in the chain of causes (Scalus keeps a builtin's exception in `BuiltinError.cause`), and the
-  builtins and natives this platform lacks (`BuiltinUnavailable`, `BinaryDstUnavailable`,
-  `NativeHashToGroupUnavailable`, `NoResult`). Nothing can be trusted to get a verdict: the node
-  stops with exit 8, as before.
+  builtins and natives this platform lacks (`BuiltinUnavailable`, `NoResult`; before Scalus 1.4.0
+  also `BinaryDstUnavailable` and `NativeHashToGroupUnavailable`, removed with the raw-DST paths by
+  [ADR 0020](0020-plutus-native-crypto-through-scalus-crypto-jni.md)). Nothing can be trusted to get
+  a verdict: the node stops with exit 8, as before.
 - **Input** — any other exception the evaluator or decoder throws, a stack overflow, a budget beyond
   64 bits. Only the block or transaction that carries the input lacks a verdict.
 
