@@ -233,7 +233,7 @@ them is 11.7.
 A proposal, mostly not built: of the rows below only the BLS keys (N2) and the pure codecs and clients of protocols 18 and
 19 exist. The file names are those of the codebase before the module split (#82; see
 [architecture.md](architecture.md#modules)): `Handshake.scala` is now in `protocol/`, `Header.scala` and `Block.scala` in
-`ledger/`. `blst-java` is declared directly by `crypto` (N2), no longer only through Scalus (now 1.3.0).
+`ledger/`. `blst-java` is declared directly by `crypto` (N2); Scalus no longer depends on it from 1.4.0.
 
 | Leios change | Where it lands | Notes and reuse |
 |---|---|---|

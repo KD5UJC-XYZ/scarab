@@ -14,6 +14,13 @@ As of 2026-10-18, Maven Central's latest Scalus is 1.3.0 (tag
 The backport avoids adopting an unpublished dependency. Remove it when a released Scalus with this
 fix and equivalent portable native support passes the retained oracle vectors.
 
+That condition is met: Scalus 1.4.0 passes the tag as bytes through scalus-crypto-jni's portable
+blst, and the retained vectors pass through the production evaluator
+([ADR 0020](../../docs/adr/0020-plutus-native-crypto-through-scalus-crypto-jni.md)). The Java class
+`RawDst` and its start-up known answers are removed. `raw-dst.c` and the two exports stay in the
+committed, byte-verified library until its next rebuild, because removing them changes this
+recipe's inputs and output; no class declares those native methods, so they are unreachable.
+
 Rebuild from the repository root:
 
 ```sh
@@ -25,10 +32,6 @@ The export golden contains the original exports plus `Java_xyz_kd5ujc_scarab_bls
 and `Java_xyz_kd5ujc_scarab_blst_RawDst_hashG2`. The Dockerfile-specific ignore file sends only the
 adapter source as build context. G1/G2 vectors come from the real pinned Haskell crypto backend,
 not the no-crypto build: `fixtures/reference/plutus-boundaries/hash-vectors.jsonl`.
-
-Other platforms retain explicit `EvalFailure.Unsupported` for tags that the old String API cannot
-represent. Ledger validation propagates that as unavailable, never as a script failure or a
-consensus predicate failure. The evaluator preserves the upstream 255-byte DST limit and costing.
 
 The final artifact passed the separate 2026-10-18 offline no-ADX/BMI2 smoke: the CPU feature set
 was empty, portable library selected, all five startup known answers and the three public builtin

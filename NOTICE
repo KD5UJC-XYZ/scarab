@@ -93,26 +93,32 @@ The reference Cardano node binaries used by scripts/prepare_reference_image.py a
 the official IntersectMBO 11.1.3 release (Apache-2.0); they are downloaded by the
 user and never redistributed in this repository.
 
-Plutus evaluation: the node depends at runtime on Scalus (org.scalus:scalus_3 1.2.0,
+Plutus evaluation: the node depends at runtime on Scalus (org.scalus:scalus_3 1.4.0,
 https://github.com/scalus3/scalus, Apache-2.0) for the UPLC machine and its builtins only; the
 script context, cost-model selection and phase-2 rules are original code written against the
-Cardano ledger's published behaviour. Scalus brings two native libraries as separate artifacts, bundled
-for several Linux and macOS platforms and extracted at run time: blst (BLS12-381, supranational/blst through
-foundation.icon:blst-java 0.3.2, Apache-2.0) and the secp256k1 JNI library
-(org.scalus:scalus-secp256k1-jni 0.6.0, Apache-2.0, wrapping bitcoin-core/secp256k1, MIT). They are
-retrieved from Maven Central at build time and never redistributed in this repository. Scalus's
-own ledger-to-script-context translation is consulted only as a test oracle.
+Cardano ledger's published behaviour. Scalus brings org.scalus:scalus-crypto-jni 0.1.0 (Apache-2.0),
+whose jar bundles one native library per platform (Linux x86_64/arm64, macOS x86_64/arm64,
+Windows x64), extracted at run time by org.scijava:native-lib-loader 2.5.0 (BSD-2-Clause). Each
+library statically links libsodium (ISC; the IOG fork, commit dbb48cce), libsecp256k1 v0.3.2
+(bitcoin-core, MIT) and blst v0.3.15 (supranational, Apache-2.0). Their licence texts, taken from
+the pinned upstream sources because the jars carry none, are plutus/licenses/LICENSE-libsodium,
+plutus/licenses/LICENSE-libsecp256k1, plutus/licenses/LICENSE-native-lib-loader and
+blst-native/LICENSE-blst. The jars are retrieved from Maven Central at build time and never
+redistributed in this repository. Scalus's own ledger-to-script-context translation is consulted
+only as a test oracle.
 
 Third-party runtime dependencies. None is redistributed in this repository: they are retrieved
 from Maven Central at build time and keep their own licenses (as declared in their POMs at the
 versions pinned in build.sbt).
 
-  Scalus (org.scalus:scalus_3 1.2.0)                       Apache-2.0   UPLC machine and builtins
-  blst-java (foundation.icon:blst-java 0.3.2)              Apache-2.0   bundles supranational/blst
-  scalus-secp256k1-jni (org.scalus 0.6.0)                  Apache-2.0   wraps bitcoin-core/secp256k1 (MIT)
+  Scalus (org.scalus:scalus_3 1.4.0)                       Apache-2.0   UPLC machine and builtins
+  blst-java (foundation.icon:blst-java 0.3.2)              Apache-2.0   bundles supranational/blst (Leios BLS)
+  scalus-crypto-jni (org.scalus 0.1.0)                     Apache-2.0   bundles libsodium (ISC), libsecp256k1
+                                                           (MIT) and blst (Apache-2.0)
+  native-lib-loader (org.scijava 2.5.0)                    BSD-2-Clause
   RocksDB JNI (org.rocksdb:rocksdbjni 10.2.1)              Apache-2.0 OR GPL-2.0-only; the Apache-2.0
                                                            option is elected here. Bundles the native library.
-  Bouncy Castle (org.bouncycastle:bcprov-jdk18on 1.85.2)   Bouncy Castle Licence (MIT-style)
+  Bouncy Castle (org.bouncycastle:bcprov-jdk18on 1.86)     Bouncy Castle Licence (MIT-style)
   curve25519-elisabeth (com.weavechain 0.1.3)              MIT (its distribution carries further MIT, CC0
                                                            and BSD-3-Clause notices for adapted components)
   cats-core, cats-kernel 2.13.0                            MIT (Typelevel)

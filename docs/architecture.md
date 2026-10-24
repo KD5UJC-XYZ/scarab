@@ -17,12 +17,12 @@ a cycle does not load.
 
 | Module | Contents | Effect style |
 |---|---|---|
-| `blst-native` | The portable libblst (ADR 0012) at the resource path blst-java loads, and `Blst`, the start-up check of the library and the CPU (sbt project `blstNative`) | `F[_]` with `Sync`/`Raise` |
+| `blst-native` | The portable libblst (ADR 0012) at the resource path blst-java loads for the Leios BLS keys (`MinSig`), and `Blst`, the start-up check of the library and the CPU (sbt project `blstNative`) | `F[_]` with `Sync`/`Raise` |
 | `codec` | CBOR with original-bytes preservation (`Cbor`, `Node`, `Value`), `Bytes`, `Rational` | Pure |
 | `crypto` | Blake2b, Ed25519 (strict profile), VRF draft-03 verify and prove, Sum6 KES verify, sign and evolve, BLS12-381 (Leios), operational certificates | Pure |
 | `protocol` | Ouroboros mini-protocol codecs and state machines: handshake, mux framing, ChainSync, BlockFetch, KeepAlive, TxSubmission2, LocalTxSubmission, LocalStateQuery, LocalTxMonitor, Leios, era and header tags (`Era`, `NtNHeader`), pure network error vocabulary | Pure |
 | `network` | fs2 bearer, multiplexer (duplex), handshake, client and server roles of every mini-protocol over one connection | `F[_]` with `Async`/`Raise` |
-| `plutus` | `ScriptEvaluator[F]` algebra, the Scalus adapter, `PlutusData`, `ExUnits` | `F[_]` at the evaluator, pure otherwise |
+| `plutus` | `ScriptEvaluator[F]` algebra, the Scalus adapter, `NativeCrypto` (the start-up check of the Plutus native library), `PlutusData`, `ExUnits` | `F[_]` at the evaluator, pure otherwise |
 | `ledger` | Blocks, headers, genesis files, transactions, scripts, the Shelley to Conway rules, the Byron ledger, `Verdicts`, `OCertRules`, the node error hierarchy, `Nonce`, `LedgerView` | Pure |
 | `consensus` | Praos, TPraos and PBFT, chain selection, the hard-fork combinator, header rules, `VolatileChain`, `MirrorState` and the mirror's types, `BlockRules`, `Scheduling` | Pure, `Compute[F]` in `Scheduling` |
 | `legacy` | Flat genesis/domain vocabulary and its one-way conversion to the mirror (`Mirroring`, `LegacySeed`), retained for genesis conversion (#134); retired V1–V4 binary snapshot codecs are recovered from pinned history, not shipped runtime readers | Pure |
@@ -377,11 +377,13 @@ forger.
   `Failure(reason, spent, logs)` with a closed `EvalFailure` (`Decode`, `Unsupported`,
   `OutOfBudget`, `Script`).
 - **Interpreter** (`plutus/ScalusEvaluator.scala`): the UPLC machine and builtins of Scalus (Apache-2.0,
-  `org.scalus:scalus_3:1.3.0`); nothing else of Scalus is used by the node. BLS12-381 runs on blst
-  (`foundation.icon:blst-java`, with the portable `libblst` of `blst-native` loaded in place of the one
-  in its jar, so that no CPU needs ADX/BMI2: ADR 0012) and secp256k1 on `scalus-secp256k1-jni`; both bundle linux x86_64
-  libraries that the JVM extracts to its temporary directory, and `ScalusEvaluatorSuite` evaluates a
-  BLS pairing and an ECDSA verification (also run inside the Temurin 21 Docker image).
+  `org.scalus:scalus_3:1.4.0`); nothing else of Scalus is used by the node. Ed25519, secp256k1 and
+  BLS12-381 run on `libscalus_crypto` of `org.scalus:scalus-crypto-jni:0.1.0` (libsodium,
+  libsecp256k1 and portable blst linked into one library per platform), which the JVM extracts to
+  its temporary directory. `NativeCrypto` pins its sha-256 and checks known answers at start-up, and
+  every builtin it backs is a typed `BuiltinUnavailable` when it did not load
+  ([ADR 0020](adr/0020-plutus-native-crypto-through-scalus-crypto-jni.md)). `ScalusEvaluatorSuite`
+  evaluates a BLS pairing and an ECDSA verification (also run inside the Temurin 21 Docker image).
 - **Pure or effectful**: evaluation is a deterministic function of the request, so the ledger rules,
   which are pure functions, take a `ScriptEvaluator[Id]` (`TxEnv.evaluator`, default
   `ScalusEvaluator.default`). The interpreter only memoises decoded scripts and machines per cost
