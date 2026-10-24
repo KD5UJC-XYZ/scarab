@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.plutus
 
-import scalus.crypto.jni.{CryptoJni, Secp256k1 as NativeSecp256k1}
+import scalus.crypto.jni.Secp256k1 as NativeSecp256k1
 
 /** The meaning of the Plutus builtin `verifyEcdsaSecp256k1Signature` as the reference defines it
   * (`PlutusCore.Crypto.Secp256k1` over `Cardano.Crypto.DSIGN.EcdsaSecp256k1` and libsecp256k1):
@@ -59,7 +59,7 @@ object Secp256k1:
       catch case _: IllegalArgumentException => Left(Error.InvalidPublicKey)
     try
       for
-        _ <- Either.cond(CryptoJni.isEnabled, (), Error.NativeUnavailable)
+        _ <- Either.cond(NativeCrypto.available, (), Error.NativeUnavailable)
         _ <- length(pk, Operand.PublicKey, 33)
         _ <- length(sig, Operand.Signature, 64)
         r = BigInt(1, sig.slice(0, 32))
