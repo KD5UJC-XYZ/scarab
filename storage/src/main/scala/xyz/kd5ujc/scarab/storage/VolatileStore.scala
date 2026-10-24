@@ -36,8 +36,18 @@ enum VolatileRecord:
   * durable).
   */
 trait VolatileStore[F[_]]:
-  /** Log an adopted block. */
-  def append(ref: BlockRef, raw: Bytes)(using cats.mtl.Raise[F, StorageError]): F[Unit]
+  /** Log an adopted block; where its record is. */
+  def append(ref: BlockRef, raw: Bytes)(using
+      cats.mtl.Raise[F, StorageError]
+  ): F[VolatileStore.Location]
+
+  /** The block whose record is at `at`, none when the bytes there are not one whole block record
+    * (they do not pass the checksum). A location of a file that [[gc]] has deleted is an
+    * [[StorageError.Io]]: callers drop their locations below the slot they collect first.
+    */
+  def read(at: VolatileStore.Location)(using
+      cats.mtl.Raise[F, StorageError]
+  ): F[Option[(BlockRef, Bytes)]]
 
   /** Log a rollback of the chain to `to` (`Origin` or a block). */
   def rollback(to: ChainSync.Point)(using cats.mtl.Raise[F, StorageError]): F[Unit]
@@ -51,6 +61,15 @@ trait VolatileStore[F[_]]:
   def sync(using cats.mtl.Raise[F, StorageError]): F[Unit]
 
 object VolatileStore:
+  /** Where a block record is: the log file, the offset of the record in it and its length (header
+    * and payload), as the reference's VolatileDB keeps the file, offset and size of each block in
+    * its in-memory index (`InternalBlockInfo`,
+    * Ouroboros/Consensus/Storage/VolatileDB/Impl/Types.hs: 127-133 at
+    * `release-ouroboros-consensus-4.2.1.0`) and reads the block from there
+    * (`getBlockComponentImpl`, VolatileDB/Impl.hs:259-306).
+    */
+  final case class Location(seq: Int, offset: Long, length: Int)
+
   /** What opening found.
     *
     * @param blocks
@@ -162,8 +181,14 @@ object VolatileStore:
             case None => ok = false
     out.result()
 
-  /** What [[open]] hands back besides the store: the chain the log describes. */
-  final case class Opened(chain: Vector[(BlockRef, Bytes)], report: OpenReport)
+  /** What [[open]] hands back besides the store: the chain the log describes, and where every block
+    * record of the log is, in log order (a block logged twice appears twice).
+    */
+  final case class Opened(
+      chain: Vector[(BlockRef, Bytes)],
+      report: OpenReport,
+      located: Vector[(BlockRef, Location)]
+  )
 
   private final case class FileInfo(seq: Int, blocks: Int, maxSlot: BigInt)
 
@@ -194,58 +219,68 @@ object VolatileStore:
     final class Current(val seq: Int, val channel: FileChannel)
 
     /** Read the existing files; returns the infos, the logged records, and what was repaired. */
-    val scan: F[(Vector[FileInfo], Vector[VolatileRecord], Long, Int)] = guard(root.toString) {
-      Files.createDirectories(root)
-      val names = {
-        val s = Files.list(root)
-        try
-          s.iterator.asScala
-            .map(_.getFileName.toString)
-            .filter(_.endsWith(Suffix))
-            .flatMap(n => n.stripSuffix(Suffix).toIntOption.map(_ -> n))
-            .toVector
-            .sortBy(_._1)
-        finally s.close()
+    val scan
+        : F[(Vector[FileInfo], Vector[VolatileRecord], Long, Int, Vector[(BlockRef, Location)])] =
+      guard(root.toString) {
+        Files.createDirectories(root)
+        val names = {
+          val s = Files.list(root)
+          try
+            s.iterator.asScala
+              .map(_.getFileName.toString)
+              .filter(_.endsWith(Suffix))
+              .flatMap(n => n.stripSuffix(Suffix).toIntOption.map(_ -> n))
+              .toVector
+              .sortBy(_._1)
+          finally s.close()
+        }
+        var infos = Vector.empty[FileInfo]
+        var records = Vector.empty[VolatileRecord]
+        var located = Vector.empty[(BlockRef, Location)]
+        var cut = 0L
+        var removed = 0
+        var damaged = false
+        names.foreach { (seq, name) =>
+          val path = root.resolve(name)
+          if damaged then
+            Files.delete(path)
+            removed += 1
+          else
+            val bytes = Files.readAllBytes(path)
+            val parsed = decodeAll(bytes)
+            val good = parsed.lastOption.fold(0)(_._2)
+            if good < bytes.length then
+              val ch = FileChannel.open(path, StandardOpenOption.WRITE)
+              try
+                ch.truncate(good.toLong)
+                ch.force(true)
+              finally ch.close()
+              cut += bytes.length - good
+              damaged = true
+            val rs = parsed.map(_._1)
+            records = records ++ rs
+            parsed.zip(0 +: parsed.map(_._2)).foreach {
+              case ((VolatileRecord.Block(ref, _), end), start) =>
+                located = located :+ (ref -> Location(seq, start.toLong, end - start))
+              case ((VolatileRecord.Rollback(_), _), _) => ()
+            }
+            infos = infos :+ FileInfo(
+              seq,
+              rs.count(_.isInstanceOf[VolatileRecord.Block]),
+              rs.collect { case VolatileRecord.Block(r, _) => r.slot }
+                .maxOption
+                .getOrElse(BigInt(-1))
+            )
+        }
+        if cut > 0 || removed > 0 then syncDir()
+        (infos, records, cut, removed, located)
       }
-      var infos = Vector.empty[FileInfo]
-      var records = Vector.empty[VolatileRecord]
-      var cut = 0L
-      var removed = 0
-      var damaged = false
-      names.foreach { (seq, name) =>
-        val path = root.resolve(name)
-        if damaged then
-          Files.delete(path)
-          removed += 1
-        else
-          val bytes = Files.readAllBytes(path)
-          val parsed = decodeAll(bytes)
-          val good = parsed.lastOption.fold(0)(_._2)
-          if good < bytes.length then
-            val ch = FileChannel.open(path, StandardOpenOption.WRITE)
-            try
-              ch.truncate(good.toLong)
-              ch.force(true)
-            finally ch.close()
-            cut += bytes.length - good
-            damaged = true
-          val rs = parsed.map(_._1)
-          records = records ++ rs
-          infos = infos :+ FileInfo(
-            seq,
-            rs.count(_.isInstanceOf[VolatileRecord.Block]),
-            rs.collect { case VolatileRecord.Block(r, _) => r.slot }.maxOption.getOrElse(BigInt(-1))
-          )
-      }
-      if cut > 0 || removed > 0 then syncDir()
-      (infos, records, cut, removed)
-    }
 
     Resource
       .make(
         for
           scanned <- scan
-          (infos, records, cut, removed) = scanned
+          (infos, records, cut, removed, located) = scanned
           mutex <- Mutex[F]
           chain = chainOf(records)
           startNew = infos.lastOption.forall(_.blocks >= blocksPerFile)
@@ -269,7 +304,7 @@ object VolatileStore:
           mutex,
           files,
           current,
-          Opened(chain, OpenReport(chain.size, infos.size, cut, removed))
+          Opened(chain, OpenReport(chain.size, infos.size, cut, removed), located)
         )
       ) { (_, _, current, _) =>
         current.get.flatMap(c =>
@@ -310,12 +345,19 @@ object VolatileStore:
                 }
             }
 
-          private def log(record: VolatileRecord)(using cats.mtl.Raise[F, StorageError]): F[Unit] =
+          private def log(record: VolatileRecord)(using
+              cats.mtl.Raise[F, StorageError]
+          ): F[Location] =
             mutex.lock.surround {
               for
                 _ <- roll
                 c <- current.get
-                _ <- guard(root.toString)(write(c.channel, encode(record)))
+                bytes = encode(record)
+                at <- guard(root.toString) {
+                  val offset = c.channel.position()
+                  write(c.channel, bytes)
+                  Location(c.seq, offset, bytes.length)
+                }
                 _ <- record match
                   case VolatileRecord.Block(ref, _) =>
                     files.update(fs =>
@@ -325,14 +367,36 @@ object VolatileStore:
                       )
                     )
                   case _ => F.unit
-              yield ()
+              yield at
             }
 
-          def append(ref: BlockRef, raw: Bytes)(using cats.mtl.Raise[F, StorageError]): F[Unit] =
+          def append(ref: BlockRef, raw: Bytes)(using
+              cats.mtl.Raise[F, StorageError]
+          ): F[Location] =
             log(VolatileRecord.Block(ref, raw))
 
+          def read(at: Location)(using
+              cats.mtl.Raise[F, StorageError]
+          ): F[Option[(BlockRef, Bytes)]] =
+            mutex.lock.surround {
+              val path = root.resolve(nameOf(at.seq))
+              guard(path.toString) {
+                val ch = FileChannel.open(path, StandardOpenOption.READ)
+                try
+                  val buf = ByteBuffer.allocate(at.length)
+                  while buf.hasRemaining && ch.read(buf, at.offset + buf.position()) >= 0 do ()
+                  buf.array()
+                finally ch.close()
+              }.map { bytes =>
+                decodeAll(bytes) match
+                  case Vector((VolatileRecord.Block(ref, raw), end)) if end == bytes.length =>
+                    Some(ref -> raw)
+                  case _ => None
+              }
+            }
+
           def rollback(to: ChainSync.Point)(using cats.mtl.Raise[F, StorageError]): F[Unit] =
-            log(VolatileRecord.Rollback(to))
+            log(VolatileRecord.Rollback(to)).void
 
           def sync(using cats.mtl.Raise[F, StorageError]): F[Unit] =
             mutex.lock.surround(

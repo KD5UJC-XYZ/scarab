@@ -81,7 +81,7 @@ class PreprodSnapshotImportSuite extends CatsEffectSuite:
           original <- IO.blocking(
             JFiles.readAllBytes((source / "ledger" / "136511997" / "state").toNioPath)
           )
-          back <- SnapshotV5.format[IO](SnapshotCheck.Full).decode(content.dropRight(32))
+          back <- SnapshotV7.format[IO](SnapshotCheck.Full).decode(content.dropRight(32))
           _ <- StorageTestKit.ok {
             RocksUtxoStore.resource[IO](temp / "readback").use { store =>
               for
@@ -104,7 +104,7 @@ class PreprodSnapshotImportSuite extends CatsEffectSuite:
           assert(content.dropRight(32).takeRight(original.length).sameElements(original))
           assert(back.isRight, back.left.map(_.message).toString)
           val sidecar =
-            SnapshotV5.sidecarOf(content.dropRight(32)).fold(e => fail(e.message), identity)
+            SnapshotV7.sidecarOf(content.dropRight(32)).fold(e => fail(e.message), identity)
           assertEquals(sidecar.gaps, Set.empty)
           println(
             s"PREPROD_IMPORT slot=${report.anchor.slot} outputs=${report.count} coin=${report.coin} authenticated=true originalState=true elapsed=$elapsed"

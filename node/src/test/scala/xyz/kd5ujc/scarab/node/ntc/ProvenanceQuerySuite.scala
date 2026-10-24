@@ -9,14 +9,14 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorProvenance, MirrorState}
 import xyz.kd5ujc.scarab.node.{NativeSnapshots, NodeSetup}
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.storage.{SnapshotCheck, SnapshotV5, StateSnapshot}
+import xyz.kd5ujc.scarab.storage.{SnapshotCheck, SnapshotV7, StateSnapshot}
 
 class ProvenanceQuerySuite extends CatsEffectSuite:
   private val setup = NodeSetup
     .fromDirectory(Path.of("fixtures/eras/genesis"))
     .fold(e => fail(e.message), identity)
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-  private val format = SnapshotV5.format[IO](SnapshotCheck.Full)
+  private val format = SnapshotV7.format[IO](SnapshotCheck.Full)
 
   private def queryEnv(observed: Map[Era, BigInt]): QueryEnv = QueryEnv(
     setup.geometry.systemStart,

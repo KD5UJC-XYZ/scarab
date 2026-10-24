@@ -24,7 +24,7 @@ class SnapshotPreflightSuite extends CatsEffectSuite:
     .fromDirectory(java.nio.file.Path.of("fixtures/eras/genesis"))
     .fold(e => fail(e.message), identity)
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-  private given SnapshotFormat[IO, MirrorState] = SnapshotV5.format[IO](SnapshotCheck.Full)
+  private given SnapshotFormat[IO, MirrorState] = SnapshotV7.format[IO](SnapshotCheck.Full)
   private val snapshotName = "snapshot-99999999999999999999-1.bin"
 
   private val versions =
@@ -81,8 +81,11 @@ class SnapshotPreflightSuite extends CatsEffectSuite:
           backing = new StateBacking[IO, MirrorState]:
             def advance(state: MirrorState)(using Raise[IO, StorageError]) = IO.unit
             def settled(state: MirrorState)(using Raise[IO, StorageError]) = IO.pure(state)
-            def checkpoint(anchor: BlockRef)(using Raise[IO, StorageError]) = IO.unit
-            def available(anchor: Option[BlockRef])(using Raise[IO, StorageError]) = IO.pure(true)
+            def checkpoint(anchor: BlockRef)(using Raise[IO, StorageError]) =
+              IO.pure(CheckpointBinding.Unbacked)
+            def admit(anchor: Option[BlockRef], binding: CheckpointBinding)(using
+                Raise[IO, StorageError]
+            ) = IO.pure(Right(()))
             def restore(anchor: Option[BlockRef])(using Raise[IO, StorageError]) = IO.pure(true)
             def reset(using Raise[IO, StorageError]) = resets.update(_ + 1)
             def retain(stems: Set[String])(using Raise[IO, StorageError]) = IO.unit
@@ -247,7 +250,7 @@ class SnapshotPreflightSuite extends CatsEffectSuite:
           result <- attemptNode {
             FileLedgerSnapshots
               .open[IO, MirrorState](dir / "snapshots")
-              .flatMap(_.restore(_ => usableCalls.update(_ + 1).as(true)))
+              .flatMap(_.restore(_ => usableCalls.update(_ + 1).as(Right(()))))
           }
           _ <- retained(original :+ (olderFile -> older.toVector))
           calls <- usableCalls.get

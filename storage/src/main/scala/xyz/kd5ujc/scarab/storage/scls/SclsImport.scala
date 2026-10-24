@@ -17,7 +17,7 @@ import xyz.kd5ujc.scarab.consensus.state.{
   Telescope,
   TelescopeError
 }
-import xyz.kd5ujc.scarab.ledger.{StorageError, TxIn, TxOut, Utxo}
+import xyz.kd5ujc.scarab.ledger.{StorageError, TxIn, TxOut, Utxo, UtxoKeyLayout}
 import xyz.kd5ujc.scarab.ledger.rules.ConwayEpoch
 import xyz.kd5ujc.scarab.ledger.state.{
   Coin,
@@ -30,13 +30,15 @@ import xyz.kd5ujc.scarab.ledger.state.{
 import xyz.kd5ujc.scarab.models.runtime.DecodeError
 import xyz.kd5ujc.scarab.storage.{
   AtomicFile,
+  CheckpointBinding,
+  CheckpointDigest,
   FileLedgerSnapshots,
   NetworkIdentityFile,
   LedgerSnapshotImport,
   RocksUtxoStore,
   SnapshotCheck,
   SnapshotSidecar,
-  SnapshotV5,
+  SnapshotV7,
   StateBacking,
   StateSnapshot,
   UtxoStore
@@ -234,9 +236,10 @@ object SclsImport:
             )
             _ <- guard(checkpoint)(Files.createDirectories(checkpoint.toNioPath.getParent))
             _ <- store.checkpoint(checkpoint)
-          yield (snapshot, utxo, admitted)
+            digest <- guard(checkpoint)(CheckpointDigest.of(checkpoint.toNioPath))
+          yield (snapshot, utxo, admitted, CheckpointBinding.Bound(UtxoKeyLayout.current, digest))
         }
-        (snapshot, utxo, admitted) = prepared
+        (snapshot, utxo, admitted, binding) = prepared
         file <- lift(HaskellLedgerFile.of(snapshot.state.ext).leftMap(Error.Telescope(_)))
         haskell <- lift(HaskellLedgerFile.encode(file).leftMap(Error.NotWritable(_)))
         sidecar <- base.sidecar.chain match
@@ -247,8 +250,8 @@ object SclsImport:
               )
             )
           case _ => Error.UnsupportedBase.raise[F, SnapshotSidecar]
-        content = SnapshotV5.framed(sidecar, haskell)
-        readback <- SnapshotV5.format[F](SnapshotCheck.Full).decode(content)
+        content = SnapshotV7.framed(binding, sidecar, haskell)
+        readback <- SnapshotV7.format[F](SnapshotCheck.Full).decode(content)
         back <- lift(readback.leftMap(Error.Storage(_)))
         backFile <- lift(HaskellLedgerFile.of(back.state.ext).leftMap(Error.Telescope(_)))
         backBytes <- lift(HaskellLedgerFile.encode(backFile).leftMap(Error.NotWritable(_)))

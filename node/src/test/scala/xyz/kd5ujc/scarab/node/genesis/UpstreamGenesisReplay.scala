@@ -290,12 +290,18 @@ object UpstreamGenesisReplay extends munit.Assertions:
                                 opened.received.invalidate
                               )
                             )
-                            _ <- opened.received.entries
-                              .flatMap(_.traverse { (ref, raw) =>
-                                ReceivedBlockRecovery
-                                  .checked(ref, raw, geometry.byron.epochSlots)
-                                  .fold(_.raise[IO, BlockPool.Delivered], IO.pure)
+                            _ <- opened.received.refs
+                              .flatMap(_.traverse { ref =>
+                                opened.received
+                                  .get(ref.hash)
+                                  .map(_.toVector)
+                                  .flatMap(_.traverse { (stored, raw) =>
+                                    ReceivedBlockRecovery
+                                      .checked(stored, raw, geometry.byron.epochSlots)
+                                      .fold(_.raise[IO, BlockPool.Delivered], IO.pure)
+                                  })
                               })
+                              .map(_.flatten)
                               .flatMap(pool.seedRecoveredHeaders)
                             _ <- follower.installInvalidBlocks(pool.invalidBlocks)
                             _ <- follower.installFetchCoordinator(pool.fetchCoordinator)

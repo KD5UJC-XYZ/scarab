@@ -1083,6 +1083,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `networkRecorded` | `Storage.NetworkRecorded` | Info | `magic`, `shelleyGenesis`, `byronGenesis`, `alonzoGenesis`, `conwayGenesis`, `adoptedExisting` |
 | `snapshotSkipped` | `Storage.SnapshotSkipped` | Warning | `file`, `reason` |
 | `snapshotRestored` | `Storage.SnapshotRestored` | Info | `file`, `anchor` |
+| `snapshotUnbound` | `Storage.SnapshotUnbound` | Warning | `file`, `anchor`: the restored snapshot predates checkpoint binding (V5 migrated to V7) and its checkpoint was admitted by directory name. |
 | `snapshotWritten` | `Storage.SnapshotWritten` | Info | `file`, `anchor`, `bytes`, `millis` |
 | `snapshotFailed` | `Storage.SnapshotFailed` | Error | `reason` |
 | `snapshotRefused` | `Storage.SnapshotRefused` | Error | `file`, `anchor`, `reason` |
@@ -1385,9 +1386,16 @@ section and the catalogue differ.
 | `scarab_snapshots_written_total` | counter |  | Ledger snapshots written. | none |
 | `scarab_snapshots_restored_total` | counter |  | Ledger snapshots the node started from. | none |
 | `scarab_snapshots_migrated_total` | counter |  | Files rewritten from an older storage format when the database was opened. | none |
-| `scarab_snapshot_problems_total` | counter | `kind` | Snapshots skipped, not written or refused by the format, by kind. | none |
+| `scarab_snapshot_problems_total` | counter | `kind` | Snapshots skipped, not written, refused by the format or restored without a checkpoint binding, by kind. | none |
 | `scarab_snapshot_last_write_seconds` | gauge |  | Duration of the last snapshot written. | none |
 | `scarab_snapshot_last_bytes` | gauge |  | Size of the last snapshot written, in bytes. | none |
+| `scarab_received_blocks` | gauge |  | Received blocks in the index of the received-block log (bodies on disk). | none |
+| `scarab_received_cache_blocks` | gauge |  | Received bodies held in memory in front of the received-block log. | none |
+| `scarab_received_cache_bytes` | gauge |  | Bytes of the received bodies held in memory, never more than the bound. | none |
+| `scarab_received_cache_limit_bytes` | gauge |  | The bound of the received-body cache, in bytes. | none |
+| `scarab_received_cache_evictions_total` | counter |  | Received bodies that left the cache for its bound (they stay readable from the log). | none |
+| `scarab_received_reads_total` | counter |  | Received bodies read back from the received-block log. | none |
+| `scarab_received_unreadable_total` | counter |  | Received-block records that failed their checksum when read back, and were dropped. | none |
 | `scarab_replay_blocks` | gauge |  | Stored blocks applied again at the start (so far, then in total). | none |
 | `scarab_replay_seconds` | gauge |  | Time spent applying the stored blocks again at the start. | none |
 | `scarab_node_phase` | gauge | `phase` | 1 for the phase the start has reached (Restoring, Replaying, Following), 0 for the others. | none |

@@ -185,7 +185,14 @@ object RecordedReplay extends munit.Assertions:
       recordInput <- readBound(config.capture.resolve("records.jsonl"))(ReplayInputs.records)
       (entries, recordsSha) = recordInput
       snapshotBytes <- IO.blocking(Files.readAllBytes(config.snapshot))
-      _ <- IO(assert(snapshotBytes.take(8).sameElements("SCRBSNP5".getBytes("US-ASCII"))))
+      // the archived recorded corpora are V5; NativeSnapshots brings them to V7 in memory
+      _ <- IO(
+        assert(
+          Vector("SCRBSNP5", "SCRBSNP7").exists(m =>
+            snapshotBytes.take(8).sameElements(m.getBytes("US-ASCII"))
+          )
+        )
+      )
       loaded <- NativeSnapshots.decode[IO](snapshotBytes, setup.mirrorEnv())
       initial <- IO(loaded.fold(e => fail(e.message), identity))
       anchor <- IO(initial.anchor.getOrElse(fail("recorded replay requires a snapshot anchor")))

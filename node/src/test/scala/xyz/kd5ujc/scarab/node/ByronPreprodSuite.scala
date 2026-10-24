@@ -215,13 +215,20 @@ class ByronPreprodSuite extends CatsEffectSuite:
   ) {
     given cats.mtl.Ask[IO, xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv] =
       setup.mirrorAsk(IO.pure(Map.empty))
-    val format = xyz.kd5ujc.scarab.storage.SnapshotV5.format[IO](
+    val format = xyz.kd5ujc.scarab.storage.SnapshotV7.format[IO](
       xyz.kd5ujc.scarab.storage.SnapshotCheck.Full
     )
     Vector(1, 20, byronCount, byronCount + 5).traverse_ { i =>
       val state = states(i)
       for
-        written <- format.encode(xyz.kd5ujc.scarab.storage.StateSnapshot(Some(ref(i - 1)), state))
+        written <- format.encode(
+          xyz.kd5ujc.scarab.storage
+            .StateSnapshot(
+              Some(ref(i - 1)),
+              state,
+              xyz.kd5ujc.scarab.storage.CheckpointBinding.Unbacked
+            )
+        )
         content = written.fold(r => fail(r.toString), identity)
         read <- format.decode(content)
         back = read.fold(e => fail(e.message), identity)

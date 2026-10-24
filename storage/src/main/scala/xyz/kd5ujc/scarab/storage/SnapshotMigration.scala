@@ -43,8 +43,9 @@ object SnapshotMigration:
   object Report:
     val empty: Report = Report(Nil, Nil)
 
-  /** The native snapshot migration registration. V5 is currently the only supported payload format.
-    * A future format adds its frozen previous reader and atomic conversion here; retired V1–V4
+  /** The native snapshot migration registration: V5 files are brought to V7 ([[SnapshotV7.fromV5]]:
+    * the V5 body unchanged behind a [[CheckpointBinding.Legacy]] binding), each atomically. A
+    * future format adds its frozen previous reader and atomic conversion here; retired V1–V4
     * identifiers remain recognized and refuse admission before any mutable store opens.
     */
   def toCurrent[F[_]: Sync]: NodeSnapshotMigration[F] =
@@ -107,7 +108,30 @@ object SnapshotMigration:
       */
     def step(file: Path, from: FormatVersion, to: FormatVersion)(using
         Raise[F, StorageError]
-    ): F[Unit] = validateStep(file, from, to)
+    ): F[Unit] =
+      validateStep(file, from, to) *> ((from, to) match
+        case (FormatVersion.V5, FormatVersion.V7) =>
+          AtomicFile
+            .guard[F, Array[Byte]](file.toString)(JFiles.readAllBytes(file.toNioPath))
+            .flatMap(raw =>
+              FileLedgerSnapshots
+                .verified(raw)
+                .flatMap(SnapshotV7.fromV5)
+                .fold(
+                  _.raise[F, Unit],
+                  content =>
+                    AtomicFile
+                      .replaceAll[F](file, Seq(content, FileLedgerSnapshots.digest(content)))
+                )
+            )
+        case _ =>
+          StorageError
+            .VersionMismatch(
+              file.toString,
+              s"${kind.identifier(from)} -> ${kind.identifier(to)}",
+              "a registered snapshot conversion"
+            )
+            .raise[F, Unit])
 
     def run(dir: Path)(using Raise[F, StorageError]): F[Report] =
       for

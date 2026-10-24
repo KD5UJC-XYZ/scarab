@@ -35,7 +35,8 @@ class LedgerSnapshotsSuite extends CatsEffectSuite:
       Vector(None, Some(hash(i)))
     )
 
-  private def snap(i: Int): StateSnapshot[Toy] = StateSnapshot(Some(block(i)._1), toy(i))
+  private def snap(i: Int): StateSnapshot[Toy] =
+    StateSnapshot(Some(block(i)._1), toy(i), CheckpointBinding.Unbacked)
 
   private given SnapshotFormat[IO, Toy] = ToyFormat.format[IO, Toy]
   private given SnapshotFormat[IO, ToyV2] = ToyFormat.format[IO, ToyV2]
@@ -43,7 +44,13 @@ class LedgerSnapshotsSuite extends CatsEffectSuite:
   private def open(dir: Path, keep: Int = 3)(using Raise[IO, StorageError]) =
     FileLedgerSnapshots.open[IO, Toy](dir, keep)
 
-  private val anyAnchor: Option[BlockRef] => IO[Boolean] = _ => IO.pure(true)
+  private def admitting[S](
+      admits: Option[BlockRef] => Boolean
+  ): StateSnapshot[S] => IO[Either[StorageError, Unit]] =
+    s => IO.pure(Either.cond(admits(s.anchor), (), StorageError.Missing("test anchor")))
+
+  private def anyAnchor[S]: StateSnapshot[S] => IO[Either[StorageError, Unit]] =
+    admitting(_ => true)
 
   private def newest(dir: Path)(using Raise[IO, StorageError]): IO[String] =
     open(dir).flatMap(_.list).map(_.head)
@@ -84,7 +91,7 @@ class LedgerSnapshotsSuite extends CatsEffectSuite:
         for
           s <- open(dir)
           _ <- (1 to 3).toList.traverse_(i => s.write(snap(i)))
-          restored <- s.restore(anchor => IO.pure(anchor.exists(_.blockNo < 3)))
+          restored <- s.restore(admitting(_.exists(_.blockNo < 3)))
           _ <- IO(assertEquals(restored.snapshot.map(_._2.state.counter), Some(BigInt(2000))))
           _ <- IO(assertEquals(restored.skipped.size, 1))
         yield ()
@@ -96,7 +103,9 @@ class LedgerSnapshotsSuite extends CatsEffectSuite:
     tempDir.use { dir =>
       for
         empty <- ok(open(dir).flatMap(_.restore(anyAnchor)))
-        genesis <- attempt(open(dir).flatMap(_.write(StateSnapshot(None, toy(0)))))
+        genesis <- attempt(
+          open(dir).flatMap(_.write(StateSnapshot(None, toy(0), CheckpointBinding.Unbacked)))
+        )
       yield
         assertEquals(empty.snapshot, None)
         assert(genesis.isLeft)
@@ -289,7 +298,7 @@ class LedgerSnapshotsSuite extends CatsEffectSuite:
         )
         for
           s <- open(dir)
-          _ <- s.write(StateSnapshot(Some(block(1)._1), big))
+          _ <- s.write(StateSnapshot(Some(block(1)._1), big, CheckpointBinding.Unbacked))
           restored <- s.restore(anyAnchor)
           _ <- IO(assertEquals(restored.snapshot.map(_._2.state), Some(big)))
         yield ()
