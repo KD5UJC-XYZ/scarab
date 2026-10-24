@@ -1,0 +1,333 @@
+{
+ "_comment": "Source of the generated docs/codemap.md. Entry points are names, never line numbers; suites are class names under src/test. Checked by scripts/render_codemap.py --check.",
+ "modules": {
+  "blst-native": "Portable libblst and its start-up check",
+  "codec": "CBOR with original bytes, exact rationals",
+  "crypto": "Hashes, signatures, VRF, KES, BLS, operational certificates",
+  "protocol": "Pure Ouroboros mini-protocol codecs and state machines",
+  "network": "Effectful bearer, multiplexer, connections, peer selection",
+  "plutus": "Plutus evaluation through Scalus",
+  "ledger": "Blocks, transactions, rules, native ledger state",
+  "consensus": "Praos family, chain selection, hard fork, state mirror",
+  "legacy": "Frozen readers of older snapshot formats, upgrade path",
+  "storage": "Stores, snapshots, migrations, Haskell formats, SCLS, Mithril",
+  "models-gen": "CDDL parser and Scala generator (build time)",
+  "models": "Generated CDDL models runtime and equivalence tests",
+  "node": "The node: wiring, mempool, forging, relay, node-to-client, tools",
+  "fuzz": "Structured fuzzing of decoder entry points (test only)"
+ },
+ "packages": [
+  {
+   "module": "blst-native",
+   "path": "blst",
+   "responsibility": "Loads the portable libblst and checks library and CPU at start-up",
+   "entryPoints": ["Blst", "BlstReport", "BlstProblem", "CpuSupport"],
+   "suites": ["BlstSuite"],
+   "docs": ["docs/adr/0012-portable-blst.md"]
+  },
+  {
+   "module": "codec",
+   "path": "codec",
+   "responsibility": "CBOR with original-bytes preservation, document index, exact rationals, base domain error",
+   "entryPoints": ["Cbor", "Value", "Document", "Tree", "TreeFold", "Interns", "Rational"],
+   "suites": ["CborSuite", "IndexedNodeSuite", "InternsSuite", "RationalSuite", "DomainErrorContractSuite"],
+   "docs": ["docs/adr/0005-cbor-codec-and-scodec.md", "docs/adr/0013-cbor-documents-are-an-index-over-the-input.md", "docs/adr/0011-stack-safety.md"]
+  },
+  {
+   "module": "crypto",
+   "path": "crypto",
+   "responsibility": "Blake2b hashing and transaction ids",
+   "entryPoints": ["Hasher", "Blake2b", "TransactionId"],
+   "suites": ["HashingSuite"],
+   "docs": ["docs/adr/0001-haskell-node-as-reference.md"]
+  },
+  {
+   "module": "crypto",
+   "path": "crypto/bls",
+   "responsibility": "BLS12-381 min-sig keys, signatures and the Leios committee certificate",
+   "entryPoints": ["MinSig", "Committee", "Certificate", "Vote", "Seat", "BlsError"],
+   "suites": ["MinSigVectorSuite", "LeiosCertificateSuite"],
+   "docs": ["docs/leios.md"]
+  },
+  {
+   "module": "crypto",
+   "path": "crypto/kes",
+   "responsibility": "Sum6 KES verify, sign and evolve",
+   "entryPoints": ["Sum6Kes", "Sum6KesSigning"],
+   "suites": ["Sum6KesSuite", "Sum6KesSigningSuite"],
+   "docs": ["docs/adr/0015-kes-key-written-back-and-checked-reload.md"]
+  },
+  {
+   "module": "crypto",
+   "path": "crypto/opcert",
+   "responsibility": "Operational certificate decoding and checks",
+   "entryPoints": ["OperationalCertificate"],
+   "suites": ["OperationalCertificateSuite"],
+   "docs": ["docs/adr/0015-kes-key-written-back-and-checked-reload.md"]
+  },
+  {
+   "module": "crypto",
+   "path": "crypto/vrf",
+   "responsibility": "VRF draft-03 verify and prove, Praos leader threshold",
+   "entryPoints": ["Draft03Prover", "StrictDraft03", "PraosVrfCertificate", "PraosLeaderThreshold"],
+   "suites": ["Draft03ProverSuite", "StrictDraft03Suite", "PraosVrfCertificateSuite", "PraosLeaderThresholdSuite"],
+   "docs": ["docs/adr/0001-haskell-node-as-reference.md"]
+  },
+  {
+   "module": "crypto",
+   "path": "crypto/witness",
+   "responsibility": "Strict Ed25519 witness verification",
+   "entryPoints": ["StrictEd25519", "VerificationResult", "VerificationError"],
+   "suites": ["StrictEd25519Suite", "StrictEd25519DifferentialSuite", "WitnessGoldenSuite"],
+   "docs": ["docs/adr/0001-haskell-node-as-reference.md"]
+  },
+  {
+   "module": "protocol",
+   "path": "protocol",
+   "responsibility": "Pure mini-protocol codecs and state machines, versions, era and header tags",
+   "entryPoints": ["ChainSync", "BlockFetch", "Handshake", "TxSubmission2", "LocalStateQuery", "Mux", "KeepAlive", "PeerSharing"],
+   "suites": ["ChainSyncSuite", "BlockFetchSuite", "HandshakeSuite", "TxSubmission2Suite", "LocalStateQuerySuite", "MuxSuite", "KeepAliveSuite"],
+   "docs": ["docs/adr/0008-networking-as-implemented.md", "docs/design/domain-errors.md"]
+  },
+  {
+   "module": "network",
+   "path": "network",
+   "responsibility": "fs2 bearer, multiplexer, connection manager, client and server roles of each mini-protocol",
+   "entryPoints": ["Mux", "Bearer", "ConnectionManager", "NodeToNode", "HandshakeClient", "ChainSyncClient", "BlockFetchClient", "NodeToNodeServer"],
+   "suites": ["MuxSuite", "ConnectionManagerSuite", "NodeToNodeSuite", "HandshakeSuite", "ChainSyncRuntimeSuite", "BlockFetchPipelineSuite"],
+   "docs": ["docs/adr/0008-networking-as-implemented.md", "docs/adr/0017-fibers-end-with-values.md", "docs/design/chainsync-pipeline.md", "docs/design/network-limits.md"]
+  },
+  {
+   "module": "network",
+   "path": "network/genesis",
+   "responsibility": "Genesis rate limiting primitives: leaky bucket, limit on patience, picosecond clock",
+   "entryPoints": ["LeakyBucket", "LimitOnPatience", "PicosClock"],
+   "suites": ["LeakyBucketSuite", "LimitOnPatienceSuite"],
+   "docs": ["docs/design/genesis.md"]
+  },
+  {
+   "module": "network",
+   "path": "network/selection",
+   "responsibility": "Pure peer selection: governor state, churn, ledger peers, local roots, GSM, CSJ, fetch policy",
+   "entryPoints": ["PeerSelection", "GovernorState", "Churn", "LedgerPool", "LocalRoots", "Gsm", "ChainSyncJumping", "BlockFetchPolicy"],
+   "suites": ["PeerSelectionSuite", "ChurnSuite", "LedgerPeersSuite", "GsmSuite", "BlockFetchPolicySuite", "PeerShareSuite"],
+   "docs": ["docs/adr/0016-peer-states-and-the-governor.md", "docs/design/peer-selection.md", "docs/design/block-fetch-coordination.md"]
+  },
+  {
+   "module": "plutus",
+   "path": "plutus",
+   "responsibility": "Script evaluator algebra, Scalus adapter, Plutus data, execution units, builtin availability",
+   "entryPoints": ["ScriptEvaluator", "ScalusEvaluator", "PlutusData", "ExUnits", "PlutusAvailability", "RetryingMemo"],
+   "suites": ["ScalusEvaluatorSuite", "PlutusDataSuite", "PlutusAvailabilitySuite", "BuiltinCostingSuite", "ScalusReproducersSuite"],
+   "docs": ["docs/adr/0003-plutus-through-scalus.md", "docs/adr/0018-parallel-plutus-after-ordered-preparation.md", "docs/design/parallel-plutus.md", "docs/design/script-results.md"]
+  },
+  {
+   "module": "plutus",
+   "path": "scalus/uplc",
+   "responsibility": "Scarab view over Scalus programs, in Scalus' own package",
+   "entryPoints": ["ScarabProgramView"],
+   "suites": ["ScalusEvaluatorSuite"],
+   "docs": ["docs/adr/0003-plutus-through-scalus.md"]
+  },
+  {
+   "module": "ledger",
+   "path": "ledger",
+   "responsibility": "Blocks, headers, transactions, governance, parameters, scripts, ledger view and the closed error vocabulary",
+   "entryPoints": ["Block", "Header", "Tx", "GovAction", "ProtocolParams", "LedgerView", "ScriptContexts", "Prepared"],
+   "suites": ["TxDecodingSuite", "ProtocolParamsSuite", "PreparedBlockSuite", "RatifySuite", "ScriptContextOracleSuite", "VotingProceduresSuite"],
+   "docs": ["docs/adr/0007-era-indexed-state.md", "docs/adr/0009-ledger-mirror-step-2.md", "docs/design/domain-errors.md"]
+  },
+  {
+   "module": "ledger",
+   "path": "ledger/byron",
+   "responsibility": "Byron ledger: transactions, delegation, update, parameters, transport",
+   "entryPoints": ["ByronLedger", "ByronTx", "ByronUpdate", "DelegationState", "ByronParams", "ByronTransport"],
+   "suites": ["ByronLedgerSuite", "ByronUpdateSuite", "ByronMainnetSuite", "ByronTransportSuite"],
+   "docs": ["docs/adr/0001-haskell-node-as-reference.md", "docs/architecture.md"]
+  },
+  {
+   "module": "ledger",
+   "path": "ledger/mempack",
+   "responsibility": "MemPack TxOut codec and canonical CBOR used by the Haskell snapshot layout",
+   "entryPoints": ["MemPack", "TxOutMemPack", "CanonicalCbor", "MultiAssetRep"],
+   "suites": ["TxOutMemPackSuite"],
+   "docs": ["docs/design/haskell-snapshots.md"]
+  },
+  {
+   "module": "ledger",
+   "path": "ledger/rules",
+   "responsibility": "Shelley to Conway rule interpreter: LEDGER, UTXO, BBODY, epoch, tick, rewards, governance",
+   "entryPoints": ["Ledger", "Utxo", "Bbody", "NewEpoch", "Tick", "RuleT", "Sts", "Gov", "Rewards"],
+   "suites": ["BbodySuite", "StsSuite", "TickRulesSuite", "EpochBoundarySuite", "RewardPulserSuite", "TxDependenciesSuite"],
+   "docs": ["docs/design/rule-interpreter-as-built.md", "docs/adr/0009-ledger-mirror-step-2.md", "docs/adr/0019-incremental-reward-calculation.md", "docs/adr/0011-stack-safety.md", "docs/design/reward-pulser.md"]
+  },
+  {
+   "module": "ledger",
+   "path": "ledger/state",
+   "responsibility": "Era-indexed native ledger state: UTxO, accounts, certificates, snapshots, vocabulary, diffs",
+   "entryPoints": ["LedgerState", "EpochState", "CertState", "SnapShots", "ShelleyBasedEra", "KeyRole", "Diff", "MirrorEnv"],
+   "suites": ["LedgerStateSuite", "EpochStateSuite", "ErasSuite", "VocabularySuite", "DiffSuite", "EmptySuite"],
+   "docs": ["docs/adr/0007-era-indexed-state.md", "docs/adr/0009-ledger-mirror-step-2.md"]
+  },
+  {
+   "module": "consensus",
+   "path": "consensus",
+   "responsibility": "Praos, TPraos and PBFT, chain selection, hard-fork triggers, header rules, volatile chain",
+   "entryPoints": ["Praos", "TPraos", "ChainSelection", "ForkTrigger", "HeaderRules", "VolatileChain", "BlockRules", "Scheduling"],
+   "suites": ["ChainSelectionSuite", "TPraosSuite", "HardForkSuite", "VolatileChainSuite", "SchedulingSuite", "HeaderChainErrorSuite"],
+   "docs": ["docs/adr/0001-haskell-node-as-reference.md", "docs/adr/0007-era-indexed-state.md"]
+  },
+  {
+   "module": "consensus",
+   "path": "consensus/genesis",
+   "responsibility": "Genesis density and diffusion punishment",
+   "entryPoints": ["DiffusionPunishment", "GenesisDensity"],
+   "suites": ["DiffusionPunishmentSuite", "GenesisDensitySuite", "UpstreamGenesisDensitySuite"],
+   "docs": ["docs/design/genesis.md"]
+  },
+  {
+   "module": "consensus",
+   "path": "consensus/state",
+   "responsibility": "Extended ledger state, chain-dependent state, era history, telescope, state mirror",
+   "entryPoints": ["ExtLedgerState", "ChainDepState", "HeaderState", "Telescope", "EraHistory", "StateMirror", "MirrorStep"],
+   "suites": ["TelescopeSuite", "StateLawsSuite", "MirrorStepSuite", "MirrorProvenanceSuite", "DiffSuite"],
+   "docs": ["docs/adr/0007-era-indexed-state.md", "docs/adr/0009-ledger-mirror-step-2.md", "docs/design/ledger-mirror-step2.md"]
+  },
+  {
+   "module": "legacy",
+   "path": "legacy",
+   "responsibility": "Frozen vocabulary of older snapshots and the upgrade to the current node state",
+   "entryPoints": ["LedgerMirror", "FlatNodeState", "NodeState", "Upgrade", "StateMirror", "LegacySeed"],
+   "suites": ["LedgerMirrorSuite", "StateMirrorSuite", "RulesMirrorSuite"],
+   "docs": ["docs/adr/0006-versioned-formats-migrate-on-open.md", "docs/design/ledger-mirror-step2.md"]
+  },
+  {
+   "module": "storage",
+   "path": "storage",
+   "responsibility": "Immutable, volatile, UTxO and ledger snapshot stores, derived codecs, format migration",
+   "entryPoints": ["ChainStorage", "ImmutableStore", "VolatileStore", "LedgerSnapshots", "UtxoStore", "RocksUtxoStore", "SnapshotV5", "Migrate"],
+   "suites": ["ChainStorageSuite", "ImmutableStoreSuite", "VolatileStoreSuite", "UtxoStoreSuite", "LedgerSnapshotsSuite", "FormatMigrationSuite", "SnapshotV5Suite"],
+   "docs": ["docs/adr/0006-versioned-formats-migrate-on-open.md", "docs/storage-migrations.md", "docs/design/codec-derivation-as-built.md"]
+  },
+  {
+   "module": "storage",
+   "path": "storage/haskell",
+   "responsibility": "Reader and importer for the Haskell ImmutableDB layout",
+   "entryPoints": ["ChunkNo", "HaskellImmutableReader", "HaskellImport"],
+   "suites": ["HaskellIndexSuite", "HaskellRealFilesSuite", "HaskellImportSuite"],
+   "docs": ["docs/design/haskell-snapshots.md"]
+  },
+  {
+   "module": "storage",
+   "path": "storage/haskell/state",
+   "responsibility": "Codecs for the Haskell ledger-state file, tables and metadata",
+   "entryPoints": ["HaskellLedgerFile", "HaskellState", "HaskellStateCodecs", "SnapshotMeta", "SnapshotTables", "UtxoCodecs"],
+   "suites": ["LedgerFileSuite", "HaskellStateCodecSuite", "SnapshotMetaSuite", "SnapshotTablesSuite", "UtxoCodecsSuite"],
+   "docs": ["docs/design/haskell-snapshots.md"]
+  },
+  {
+   "module": "storage",
+   "path": "storage/mithril",
+   "responsibility": "Certified Mithril snapshot client and bootstrap",
+   "entryPoints": ["MithrilBootstrap", "MithrilClient"],
+   "suites": ["MithrilBootstrapSuite", "MithrilClientSuite"],
+   "docs": ["docs/design/mithril-bootstrap.md"]
+  },
+  {
+   "module": "storage",
+   "path": "storage/scls",
+   "responsibility": "SCLS binary import and export of the ledger state",
+   "entryPoints": ["SclsExport", "SclsImport", "SclsInterchange", "SclsRecord", "SclsKey", "SclsValidation"],
+   "suites": ["SclsRecordSuite", "SclsKeySuite", "SclsValidationSuite", "SclsStreamingSuite"],
+   "docs": ["docs/design/scls-interchange.md"]
+  },
+  {
+   "module": "models",
+   "path": "models/runtime",
+   "responsibility": "Runtime for CDDL generated models: codecs, writer, decode errors",
+   "entryPoints": ["Codec", "DecodeError", "Writer"],
+   "suites": ["WriterSuite", "RuntimeCauseSuite", "SampledSuite", "MapBoundsSuite"],
+   "docs": ["docs/models.md"]
+  },
+  {
+   "module": "models-gen",
+   "path": "models/gen",
+   "responsibility": "CDDL parser, schema and Scala emitter run at build time",
+   "entryPoints": ["Generator", "CddlParser", "CddlSampler", "Emitter", "Schema", "GenError"],
+   "suites": ["CddlParserSuite", "GeneratorSuite", "GenErrorSuite", "SamplerTerminationSuite"],
+   "docs": ["docs/models.md"]
+  },
+  {
+   "module": "node",
+   "path": "node",
+   "responsibility": "Node wiring: config, setup, follower, block pool, fetch coordination, governors, header gate, Main",
+   "entryPoints": ["Main", "NodeConfig", "NodeSetup", "Follower", "BlockPool", "FetchCoordinator", "InboundGovernor", "HeaderGate"],
+   "suites": ["FollowerSuite", "BlockPoolSuite", "FetchCoordinatorSuite", "ConfigSuite", "InboundGovernorSuite", "HeaderGateSuite"],
+   "docs": ["docs/design/block-fetch-coordination.md", "docs/adr/0017-fibers-end-with-values.md", "docs/adr/0018-parallel-plutus-after-ordered-preparation.md"]
+  },
+  {
+   "module": "node",
+   "path": "node/forge",
+   "responsibility": "Block production: leadership, hot keys, KES files, block builder, forger",
+   "entryPoints": ["Forger", "BlockBuilder", "HotKeys", "KesFiles", "KeyFiles", "Leadership"],
+   "suites": ["ForgeSuite", "KesRotationSuite", "KeyFilesSuite", "ForgerFailureSuite"],
+   "docs": ["docs/adr/0015-kes-key-written-back-and-checked-reload.md"]
+  },
+  {
+   "module": "node",
+   "path": "node/log",
+   "responsibility": "Typed node log events, rendering, routing and severity",
+   "entryPoints": ["Log", "LogRouter", "NodeEvent", "Render", "EventKind", "Severity"],
+   "suites": ["LogRouterSuite", "LogGoldenSuite", "LogDocsSuite"],
+   "docs": ["docs/adr/0014-typed-log.md"]
+  },
+  {
+   "module": "node",
+   "path": "node/mempool",
+   "responsibility": "Mempool state, capacity, local submission and monitor",
+   "entryPoints": ["Mempool", "MempoolState", "LocalSubmission", "LocalMonitor", "Capacity"],
+   "suites": ["MempoolSuite", "LocalSubmissionSuite", "LocalMonitorSuite", "MempoolBackpressureSuite"],
+   "docs": ["docs/architecture.md"]
+  },
+  {
+   "module": "node",
+   "path": "node/metrics",
+   "responsibility": "Prometheus metrics: catalogue, collectors, exposition, event metrics",
+   "entryPoints": ["Metrics", "Collectors", "Exposition", "EventMetrics", "MeteredRules", "Catalogue"],
+   "suites": ["MetricsSuite", "CollectorsSuite", "CatalogueSuite", "MetricsServerSuite"],
+   "docs": ["docs/adr/0014-typed-log.md", "docs/architecture.md"]
+  },
+  {
+   "module": "node",
+   "path": "node/ntc",
+   "responsibility": "Node-to-client queries: query decoding, answers, versions, failure CBOR",
+   "entryPoints": ["NtcQuery", "QueryAnswers", "QueryVersion", "RewardQueries", "PredicateFailureCbor", "GenesisConfig"],
+   "suites": ["NtcQuerySuite", "QueryVersionSuite", "WalletQuerySuite", "PredicateFailureCborSuite", "QueryGoldenSuite"],
+   "docs": ["docs/architecture.md", "docs/design/script-results.md"]
+  },
+  {
+   "module": "node",
+   "path": "node/read",
+   "responsibility": "Read-only projections of ledger state by era for queries",
+   "entryPoints": ["ChainRead", "EraRead", "EraViews", "ConwayView", "LeaderPools"],
+   "suites": ["ProjectionSuite", "RewardsDueSuite"],
+   "docs": ["docs/adr/0007-era-indexed-state.md"]
+  },
+  {
+   "module": "node",
+   "path": "node/relay",
+   "responsibility": "Serving the chain to downstream peers",
+   "entryPoints": ["ChainServer", "ServedChain", "Persistence"],
+   "suites": ["ChainServerSuite", "SourceScopeSuite"],
+   "docs": ["docs/architecture.md"]
+  },
+  {
+   "module": "node",
+   "path": "node/tools",
+   "responsibility": "Command-line tools: SCLS, Mithril, Haskell import, snapshot export and import, captures",
+   "entryPoints": ["SclsCommand", "MithrilBootstrapCommand", "HaskellImportCommand", "CaptureMain", "BlstCheckMain", "LedgerSnapshotExportCommand"],
+   "suites": ["SclsCommandSuite", "MithrilBootstrapCommandSuite", "LedgerSnapshotExportCommandSuite", "LedgerSnapshotImportCommandSuite"],
+   "docs": ["docs/design/scls-interchange.md", "docs/design/mithril-bootstrap.md"]
+  }
+ ]
+}

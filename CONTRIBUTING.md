@@ -103,6 +103,10 @@ with a pattern that matches your own shell command line.
 - **sbt-tpolecat** is on the classpath but disabled per project: its option set would replace
   the one in `build.sbt`. `show node/scalacOptions` before and after a build change shows whether
   the effective options moved (`-Xsemanticdb` and its target are added for scalafix).
+- **Orientation**: [docs/codemap.md](docs/codemap.md) is generated from `docs/data/codemap.json` by
+  `python3 scripts/render_codemap.py`; a package, entry point or suite that moves needs the entry updated.
+  `python3 scripts/status.py [--area A] [--priority P1]` prints a one-line digest of the open issues
+  (needs `gh`; `--from file.json` works offline); its output is never committed.
 
 ## Style rules
 
