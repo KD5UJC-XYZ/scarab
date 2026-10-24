@@ -35,7 +35,7 @@ tests:
             exp_annotations:
               summary: "n: 2 KES periods left"
               description: >-
-                Fewer than 3 KES periods remain: rotate the key by hand now (docs/running.md, "Rotating the KES key").
+                Fewer than 3 KES periods remain: rotate the key by hand now (docs/running/forging.md, "Rotating the KES key").
       - eval_time: 25m
         alertname: PoolKesPeriodsLow
         exp_alerts: []

@@ -4,8 +4,8 @@ package xyz.kd5ujc.scarab.node
 import xyz.kd5ujc.scarab.ledger.PeerError
 import xyz.kd5ujc.scarab.network.selection.FailureClass
 
-/** How the governor treats each way a peer can fail (owner decision 8, docs/design/
-  * peer-selection.md section 8a): a peer that broke the protocol, sent an invalid header or an
+/** How the governor treats each way a peer can fail (owner decision 8, docs/design/peer-selection/
+  * decisions-and-risks.md section 8a): a peer that broke the protocol, sent an invalid header or an
   * oversize message is forgotten; a network failure is retried after a backoff.
   *
   * This is the one place the policy lives. The reference classifies exceptions in the caller's

@@ -61,7 +61,7 @@ Terms that recur in issues, commits and documents, with the place that defines e
 | Era-indexed | State typed by a phantom era with a closed witness, so another era's data is unreachable | [ADR 0007](adr/0007-era-indexed-state.md) |
 | Flat state | The node's older own state shape, kept in `legacy` for the genesis start path | `FlatNodeState` |
 | Oracle | A tool that runs unchanged upstream code to produce expected results for comparison | `scripts/oracle/` |
-| Devnet | A local cluster of reference and Scarab nodes run in Docker | [running.md](running.md#devnet-scenarios-scriptsdevnetpy) |
+| Devnet | A local cluster of reference and Scarab nodes run in Docker | [running.md](running/devnet.md#devnet-scenarios-scriptsdevnetpy) |
 | Scenario | One devnet run with its own checks: e2e, relay, pool, restart, ntc, kes-rotate | `scripts/devnet/scenarios/` |
 | relay300 | The network gate: the `relay` scenario run for 300 seconds | `relay.py` |
 | Soak | The long mixed scenario run nightly | `soak.py` |

@@ -253,7 +253,7 @@ GOOD_ONE = [{"color": "red", "value": None}, {"color": "green", "value": 1}]
 
 def pool_dashboard():
     """Panels for a block producer: forging, KES and the certificate, the rotation driver, sync and peers.
-    The alerts that go with them are in prometheus/rules/pool.yml (docs/running.md, "Pool monitoring")."""
+    The alerts that go with them are in prometheus/rules/pool.yml (docs/running/monitoring.md)."""
     p = Layout()
     M = 'host=~"$host", container=~"$container"'
     H = 'host=~"$host"'  # the driver's textfile metrics come from the host's node exporter: no container label

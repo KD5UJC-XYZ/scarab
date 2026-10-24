@@ -45,7 +45,7 @@ enum Area:
 /** Every kind of line the node logs, with its namespace and its usual severity: the node's
   * `MetaTrace` (hermod-tracing `trace-dispatcher/src/Cardano/Logging/Types.hs` 170-179, which gives
   * each message a namespace and a severity and lists `allNamespaces`). The closed list is what the
-  * log configuration names, what `docs/running.md` tabulates (`LogDocsSuite`), and what the golden
+  * log configuration names, what `docs/running/logging.md` tabulates (`LogDocsSuite`), and what the golden
   * renders once each.
   *
   * The name of the case is the last part of the namespace (`Chain.Extended`), and the `event` field

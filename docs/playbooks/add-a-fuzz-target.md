@@ -16,6 +16,6 @@ sbtw "fuzz 100000 1 4"
 The arguments are `fuzz <cases per target and seed> <first seed> <number of seeds> [target-name-part]`. A failure prints the input and the seed; the same command repeats it.
 
 5. `sbtw check` runs the suite at its default budget (20,000 cases, seed 1). A pull request that touches a decoder or the fuzz project also runs `fuzz 100000 1 4` in `.github/workflows/fuzz-gate.yml`; run it locally first.
-6. List the entry point in `docs/running.md` ("Fuzzing the decoders") and add a changelog fragment if a user could notice. A new persisted file format gets its target in the same change as its reader.
+6. List the entry point in `docs/running/fuzzing.md` and add a changelog fragment if a user could notice. A new persisted file format gets its target in the same change as its reader.
 
 Level: a new target alone is level 1; a decoder change is level 2 or 3 ([run the gates](run-the-gates.md)).

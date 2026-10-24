@@ -5,22 +5,22 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 
 /** The documentation lists every kind of event with its namespace and severity, and nothing else
-  * (`docs/running.md`, "Log events").
+  * (`docs/running/logging.md`, "Log events").
   */
 class LogDocsSuite extends FunSuite:
   private def repositoryRoot: Path =
     Iterator
       .iterate(Path.of(sys.props("user.dir")).toAbsolutePath)(_.getParent)
       .takeWhile(_ != null)
-      .find(p => Files.exists(p.resolve("docs/running.md")))
-      .getOrElse(fail("docs/running.md not found above the working directory"))
+      .find(p => Files.exists(p.resolve("docs/running/logging.md")))
+      .getOrElse(fail("docs/running/logging.md not found above the working directory"))
 
   /** The rows of the table: event, namespace, and the first word of the severity cell. */
   private lazy val documented: List[(String, String, String)] =
     Files
-      .readString(repositoryRoot.resolve("docs/running.md"))
+      .readString(repositoryRoot.resolve("docs/running/logging.md"))
       .linesIterator
-      .dropWhile(_ != "#### Log events")
+      .dropWhile(_ != "### Log events")
       .drop(1)
       .takeWhile(l => !l.startsWith("#"))
       .filter(_.startsWith("| `"))

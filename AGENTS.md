@@ -65,7 +65,8 @@ scala code … I love the use of type parameters when I can use them"*.
   [the roadmap](docs/roadmap.md) under [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82).
 - Functional code is the default. Imperative, side-effecting implementations are allowed only in
   performance-critical code, with profiling or benchmark evidence and a written reason for the
-  specific path (record measurements in [performance.md](docs/performance.md)). Keep mutation local
+  specific path (record measurements in [performance.md](docs/performance.md): an entry in `docs/data/performance-log.json`, then
+  `scripts/render_performance.py --write`). Keep mutation local
   behind a pure interface or an effect interpreter. This exception changes implementation style
   only: typed errors, capability scope and original-byte guarantees still apply.
 - A fiber never raises through a capability it did not create ([ADR 0017](docs/adr/0017-fibers-end-with-values.md)).
