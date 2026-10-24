@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import secrets
 import subprocess
 import tempfile
 
@@ -12,6 +13,11 @@ ROOT = Path(__file__).resolve().parents[1]
 IMAGE = "zricethezav/gitleaks:v8.24.3@sha256:e1b35e12a8c6fa8901f060459cfb6b2fc4c484d3afbe3b029733a3bbfab07055"
 TARGET = "scripts/oracle/byron/full/cabal.project"
 INVENTORY = "docs/data/fixture-inventory.json"
+
+
+def text_envelope(kind, cbor_hex):
+    """A cardano-cli TextEnvelope: the "type" line precedes "cborHex", as cardano-cli writes it."""
+    return json.dumps({"type": kind, "description": "Scanner control", "cborHex": cbor_hex}, indent=4) + "\n"
 
 
 def scan(source, expected, target_path=TARGET, git_history=False):
@@ -77,8 +83,17 @@ def main():
     ]
     for content in malformed:
         scan(content, {("generic-api-key", 1)}, INVENTORY)
+    # The signing key is random per run and exists only in memory and in the scanner's temporary directory.
+    signing_envelope = text_envelope("PaymentSigningKeyShelley_ed25519", "5820" + secrets.token_hex(32))
+    type_line = next(number for number, line in enumerate(signing_envelope.splitlines(), 1) if '"type"' in line)
+    scan(signing_envelope, {("cardano-text-envelope-signing-key", type_line)}, "keys/payment-control.json")
+    scan(signing_envelope, {("cardano-text-envelope-signing-key", type_line), ("cardano-signing-key-file", 1)},
+         "keys/payment-control.skey")
+    verification_envelope = text_envelope("PaymentVerificationKeyShelley_ed25519", "5820" + secrets.token_hex(32))
+    scan(verification_envelope, set(), "keys/payment-verification.json")
     print("Secret scan controls passed: public CHaP root and verified inventory digests allowed; "
-          "same-file API/private-key, malformed entries and other-path controls detected")
+          "same-file API/private-key, malformed entries and other-path controls detected; "
+          "synthetic TextEnvelope signing keys and .skey paths detected; verification keys allowed")
 
 
 if __name__ == "__main__":
