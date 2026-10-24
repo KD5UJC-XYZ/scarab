@@ -3,6 +3,8 @@
 {"event":"blst","at":"2026-10-16T12:00:00Z","platform":"LinuxAmd64","cpu":{"features":["adx","bmi2"]},"library":{"build":"portable"}}
 {"event":"blst","at":"2026-10-16T12:00:00Z","platform":"Other","cpu":{"features":null},"library":{"build":"other","sha256":"00ff"}}
 {"event":"blst","at":"2026-10-16T12:00:00Z","platform":"LinuxAmd64","cpu":{"features":[]},"library":{"build":"library-path"}}
+{"event":"plutusCrypto","at":"2026-10-16T12:00:00Z","platform":"linux_64","library":{"source":"resource","path":"natives/linux_64/libscalus_crypto.so","sha256":"ca17484cefcd8e6ecf5c706d1fa1144a874283516eb78e52a535daa02894934a"}}
+{"event":"plutusCrypto","at":"2026-10-16T12:00:00Z","platform":"linux_arm64","library":{"source":"library-path","path":"/usr/lib/libscalus_crypto.so","sha256":"8473caf6b844af4a40e502ffb8d6e210c3ff43867558ef3aeff17359198f293d"}}
 {"event":"error","at":"2026-10-16T12:00:00Z","kind":"NoIntersection","message":"the peer's chain shares no point with ours"}
 {"event":"error","at":"2026-10-16T12:00:00Z","kind":"Decode","message":"decode block: Syntax(UnexpectedEnd)"}
 {"event":"error","at":"2026-10-16T12:00:00Z","kind":"Missing","message":"missing immutable/format"}

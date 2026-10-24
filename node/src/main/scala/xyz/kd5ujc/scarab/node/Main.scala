@@ -13,11 +13,13 @@ import xyz.kd5ujc.scarab.consensus.{
 }
 import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.blst.{Blst, BlstProblem, BlstReport}
+import xyz.kd5ujc.scarab.plutus.{NativeCrypto, NativeCryptoProblem, NativeCryptoReport}
 import xyz.kd5ujc.scarab.ledger.{
   Block,
   ConfigError,
   ConfigProblem,
   NativeLibraryError,
+  NativeLibraryProblem,
   NodeError,
   ChainError,
   StorageError
@@ -572,17 +574,28 @@ object Main extends IOApp:
       _ <- Either.cond(roots.hasPeers, (), ConfigError(ConfigProblem.NoPeers))
     yield (topology, roots)
 
-  /** The BLS12-381 library the JVM is going to load, checked before anything evaluates a script: a
-    * library built for processor features this one lacks kills the JVM with SIGILL, with no event
-    * (ADR 0012). The report is logged; a refusal is a [[NativeLibraryError]].
+  /** The native libraries the JVM is going to load, checked before anything evaluates a script. The
+    * BLS12-381 library of Leios certificates: one built for processor features this one lacks kills
+    * the JVM with SIGILL, with no event (ADR 0012). The library of the Plutus builtins: without the
+    * pinned build no signature builtin can be evaluated (ADR 0020). Each report is logged; a
+    * refusal is a [[NativeLibraryError]].
     */
   private def nativeLibrary(using Handle[IO, NodeError], Log[IO]): IO[Unit] =
     Handle
       .allow[BlstProblem](Blst.verify[IO])
       .rescue(problem =>
-        Handle[IO, NodeError].raise[NodeError, BlstReport](NativeLibraryError(problem))
+        Handle[IO, NodeError]
+          .raise[NodeError, BlstReport](NativeLibraryError(NativeLibraryProblem.Bls(problem)))
       )
-      .flatMap(report => Log[IO].emit[NodeEvent](NodeEvent.Blst(report)))
+      .flatMap(report => Log[IO].emit[NodeEvent](NodeEvent.Blst(report))) *>
+      Handle
+        .allow[NativeCryptoProblem](NativeCrypto.verify[IO])
+        .rescue(problem =>
+          Handle[IO, NodeError].raise[NodeError, NativeCryptoReport](
+            NativeLibraryError(NativeLibraryProblem.PlutusCrypto(problem))
+          )
+        )
+        .flatMap(report => Log[IO].emit[NodeEvent](NodeEvent.PlutusCrypto(report)))
 
   private def follow(requested: Options)(using
       Handle[IO, NodeError],

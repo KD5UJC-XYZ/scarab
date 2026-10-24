@@ -63,6 +63,7 @@ enum EventKind(val area: Area, val severity: Severity):
   case Started extends EventKind(Area.Node, Severity.Notice)
   case Blst extends EventKind(Area.Node, Severity.Info)
   case PraosSyncUntrusted extends EventKind(Area.Node, Severity.Warning)
+  case PlutusCrypto extends EventKind(Area.Node, Severity.Info)
   case Listening extends EventKind(Area.Node, Severity.Notice)
   case Memory extends EventKind(Area.Node, Severity.Info)
   case CpuStarvation extends EventKind(Area.Node, Severity.Warning)
