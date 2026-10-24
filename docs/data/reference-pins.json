@@ -1,0 +1,201 @@
+{
+ "schemaVersion": 1,
+ "pins": [
+  {
+   "name": "cardano-node",
+   "repository": "IntersectMBO/cardano-node",
+   "version": "11.1.3",
+   "urlPattern": "https://github.com/IntersectMBO/cardano-node/releases/tag/{version}",
+   "role": "Reference node: checksum-pinned release archive behind the reference image (db-analyser, oracles, devnet comparison).",
+   "dependents": [
+    "scripts/prepare_reference_image.py",
+    "scripts/oracle_compare.py",
+    "docs/conformance-source-review.md"
+   ]
+  },
+  {
+   "name": "cardano-ledger",
+   "repository": "IntersectMBO/cardano-ledger",
+   "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+   "urlPattern": "https://github.com/IntersectMBO/cardano-ledger/commit/{revision}",
+   "role": "Conway governance/certificate conformance corpus and wallet-query encoders.",
+   "dependents": [
+    "node/src/test/resources/upstream/conway-govcert/manifest.json",
+    "fixtures/reference/wallet-queries/manifest.json"
+   ]
+  },
+  {
+   "name": "cardano-ledger",
+   "repository": "IntersectMBO/cardano-ledger",
+   "revision": "4c81e909df7555b6a58a000db8f8f4f89c7acdc4",
+   "urlPattern": "https://github.com/IntersectMBO/cardano-ledger/commit/{revision}",
+   "role": "Shelley reward source revision of the released reward API oracle.",
+   "dependents": [
+    "scripts/oracle/rewards/README.md"
+   ]
+  },
+  {
+   "name": "cardano-ledger",
+   "repository": "IntersectMBO/cardano-ledger",
+   "revision": "a51efc776146e696744a6c030826c542ee0e448c",
+   "urlPattern": "https://github.com/IntersectMBO/cardano-ledger/commit/{revision}",
+   "role": "Vendored per-era CDDL files read by the models generator.",
+   "dependents": [
+    "models/src/main/cddl/upstream/SOURCES"
+   ]
+  },
+  {
+   "name": "formal-ledger-specifications",
+   "repository": "IntersectMBO/formal-ledger-specifications",
+   "revision": "b3a4fd47a1144ff1fb994f89b1045e78159e07ae",
+   "urlPattern": "https://github.com/IntersectMBO/formal-ledger-specifications/commit/{revision}",
+   "role": "Formal-spec artifacts the Conway conformance corpus was exported against.",
+   "dependents": [
+    "node/src/test/resources/upstream/conway-govcert/manifest.json"
+   ]
+  },
+  {
+   "name": "constrained-generators",
+   "repository": "input-output-hk/constrained-generators",
+   "revision": "966f65f3c28cb22fc45220dbd1408baea93b53d8",
+   "urlPattern": "https://github.com/input-output-hk/constrained-generators/commit/{revision}",
+   "role": "Generator library of the Conway conformance corpus.",
+   "dependents": [
+    "node/src/test/resources/upstream/conway-govcert/manifest.json"
+   ]
+  },
+  {
+   "name": "cardano-cls",
+   "repository": "IntersectMBO/cardano-cls",
+   "revision": "8e2bba9442cb388089f53d708cc4aedcb47726ea",
+   "urlPattern": "https://github.com/IntersectMBO/cardano-cls/commit/{revision}",
+   "role": "Canonical ledger state (SCLS) dependency recorded by the Conway conformance corpus.",
+   "dependents": [
+    "node/src/test/resources/upstream/conway-govcert/manifest.json"
+   ]
+  },
+  {
+   "name": "ouroboros-network",
+   "repository": "IntersectMBO/ouroboros-network",
+   "revision": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+   "urlPattern": "https://github.com/IntersectMBO/ouroboros-network/commit/{revision}",
+   "role": "Protocol codec/behaviour test corpora and vendored network CDDL.",
+   "dependents": [
+    "fixtures/reference/ouroboros-network-protocol-codecs/keepalive.tsv.manifest.json",
+    "models/src/main/cddl/upstream/SOURCES"
+   ]
+  },
+  {
+   "name": "ouroboros-network",
+   "repository": "IntersectMBO/ouroboros-network",
+   "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+   "urlPattern": "https://github.com/IntersectMBO/ouroboros-network/commit/{revision}",
+   "role": "Released peer-snapshot query encoders.",
+   "dependents": [
+    "fixtures/reference/wallet-queries/manifest.json"
+   ]
+  },
+  {
+   "name": "ouroboros-consensus",
+   "repository": "IntersectMBO/ouroboros-consensus",
+   "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+   "urlPattern": "https://github.com/IntersectMBO/ouroboros-consensus/commit/{revision}",
+   "role": "Genesis-density test sources the native genesis fixtures mirror.",
+   "dependents": [
+    "fixtures/reference/genesis-density/manifest.json"
+   ]
+  },
+  {
+   "name": "ouroboros-consensus",
+   "repository": "IntersectMBO/ouroboros-consensus",
+   "revision": "8f56bc899b48423316155aef64096cd56e32bfd7",
+   "urlPattern": "https://github.com/IntersectMBO/ouroboros-consensus/commit/{revision}",
+   "role": "Vendored consensus CDDL (base, chainsync header, leiosnotify).",
+   "dependents": [
+    "models/src/main/cddl/upstream/SOURCES"
+   ]
+  },
+  {
+   "name": "cardano-blueprint",
+   "repository": "cardano-scaling/cardano-blueprint",
+   "revision": "fe4cceb94622d4205b23eb11ccf9e8b43a3af5d5",
+   "urlPattern": "https://github.com/cardano-scaling/cardano-blueprint/commit/{revision}",
+   "role": "Vendored LeiosFetch CDDL.",
+   "dependents": [
+    "models/src/main/cddl/upstream/SOURCES"
+   ]
+  },
+  {
+   "name": "plutus",
+   "aliases": [
+    "plutus-core"
+   ],
+   "repository": "IntersectMBO/plutus",
+   "version": "1.70.0.0",
+   "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+   "urlPattern": "https://github.com/IntersectMBO/plutus/commit/{revision}",
+   "role": "Plutus conformance reference (tag 1.70.0.0) behind the reference node's package pin.",
+   "dependents": [
+    "docs/plutus-conformance.md"
+   ]
+  },
+  {
+   "name": "Scalus",
+   "aliases": [
+    "scalus"
+   ],
+   "repository": "scalus3/scalus",
+   "version": "1.3.0",
+   "urlPattern": "https://central.sonatype.com/artifact/org.scalus/scalus_3/{version}",
+   "role": "UPLC machine and builtins used by the plutus module.",
+   "dependents": [
+    "project/Dependencies.scala"
+   ]
+  },
+  {
+   "name": "blst-java",
+   "repository": "icon-project/blst-java",
+   "version": "0.3.2",
+   "urlPattern": "https://central.sonatype.com/artifact/foundation.icon/blst-java/{version}",
+   "role": "JNI BLS12-381 bindings (MinSig voting keys).",
+   "dependents": [
+    "project/Dependencies.scala",
+    "docs/adr/0012-portable-blst.md"
+   ]
+  },
+  {
+   "name": "blst",
+   "repository": "supranational/blst",
+   "version": "0.3.15",
+   "urlPattern": "https://github.com/supranational/blst/releases/tag/v{version}",
+   "role": "Portable libblst built into blst-native.",
+   "dependents": [
+    "docker/blst.Dockerfile",
+    "docs/adr/0012-portable-blst.md"
+   ]
+  },
+  {
+   "name": "Mithril",
+   "repository": "input-output-hk/mithril",
+   "revision": "769d862dc2d7941192dac9088d1d86df967bf5cc",
+   "urlPattern": "https://github.com/input-output-hk/mithril/commit/{revision}",
+   "role": "Reviewed Mithril client source for import-mithril (library 0.14.33, CLI 0.13.28).",
+   "dependents": [
+    "scripts/prepare_mithril_client.py",
+    "docs/design/mithril-bootstrap.md"
+   ]
+  },
+  {
+   "name": "cuddle",
+   "repository": "input-output-hk/cuddle",
+   "version": "1.8.1.0",
+   "urlPattern": "https://hackage.haskell.org/package/cuddle-{version}",
+   "role": "Independent CDDL oracle of the models cross-check.",
+   "dependents": [
+    "docker/cuddle.Dockerfile",
+    "scripts/cddl_crosscheck.py",
+    "docs/models.md"
+   ]
+  }
+ ]
+}
