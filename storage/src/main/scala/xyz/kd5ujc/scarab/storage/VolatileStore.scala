@@ -56,13 +56,12 @@ object VolatileStore:
     * @param blocks
     *   Blocks on the logged chain (after applying the rollbacks).
     * @param truncatedBytes
-    *   Bytes of a torn or damaged tail that were cut off, and files after it that were removed.
+    *   Bytes of torn or damaged tails that were cut off, in any file.
     */
   final case class OpenReport(
       blocks: Int,
       files: Int,
-      truncatedBytes: Long,
-      removedFiles: Int
+      truncatedBytes: Long
   )
 
   /** The chain a log describes: its blocks in order, rollbacks applied. A rollback to a block the
@@ -171,8 +170,11 @@ object VolatileStore:
   private def nameOf(seq: Int) = f"$seq%08d$Suffix"
 
   /** Open (or create) the log in `dir`. Files are `<seq>.log`; a new file starts after
-    * `blocksPerFile` blocks. Opening validates every file in order, cuts the first damaged one at
-    * its last good record and removes the files after it.
+    * `blocksPerFile` blocks. Opening validates every file and cuts each damaged one at its last
+    * good record, as the VolatileDB of ouroboros-consensus does (`validateFile` and `truncateError`
+    * in `Ouroboros.Consensus.Storage.VolatileDB.Impl.State`): the files after a damaged one are
+    * kept. The blocks they hold are still only a hint: the chain a log describes may then have a
+    * gap, and the caller that applies it ends the chain at the first block that does not connect.
     */
   def open[F[_]: Async](dir: Path, blocksPerFile: Int = 512)(using
       Raise[F, StorageError]
@@ -193,8 +195,8 @@ object VolatileStore:
 
     final class Current(val seq: Int, val channel: FileChannel)
 
-    /** Read the existing files; returns the infos, the logged records, and what was repaired. */
-    val scan: F[(Vector[FileInfo], Vector[VolatileRecord], Long, Int)] = guard(root.toString) {
+    /** Read the existing files; returns the infos, the logged records, and the bytes cut off. */
+    val scan: F[(Vector[FileInfo], Vector[VolatileRecord], Long)] = guard(root.toString) {
       Files.createDirectories(root)
       val names = {
         val s = Files.list(root)
@@ -210,42 +212,35 @@ object VolatileStore:
       var infos = Vector.empty[FileInfo]
       var records = Vector.empty[VolatileRecord]
       var cut = 0L
-      var removed = 0
-      var damaged = false
       names.foreach { (seq, name) =>
         val path = root.resolve(name)
-        if damaged then
-          Files.delete(path)
-          removed += 1
-        else
-          val bytes = Files.readAllBytes(path)
-          val parsed = decodeAll(bytes)
-          val good = parsed.lastOption.fold(0)(_._2)
-          if good < bytes.length then
-            val ch = FileChannel.open(path, StandardOpenOption.WRITE)
-            try
-              ch.truncate(good.toLong)
-              ch.force(true)
-            finally ch.close()
-            cut += bytes.length - good
-            damaged = true
-          val rs = parsed.map(_._1)
-          records = records ++ rs
-          infos = infos :+ FileInfo(
-            seq,
-            rs.count(_.isInstanceOf[VolatileRecord.Block]),
-            rs.collect { case VolatileRecord.Block(r, _) => r.slot }.maxOption.getOrElse(BigInt(-1))
-          )
+        val bytes = Files.readAllBytes(path)
+        val parsed = decodeAll(bytes)
+        val good = parsed.lastOption.fold(0)(_._2)
+        if good < bytes.length then
+          val ch = FileChannel.open(path, StandardOpenOption.WRITE)
+          try
+            ch.truncate(good.toLong)
+            ch.force(true)
+          finally ch.close()
+          cut += bytes.length - good
+        val rs = parsed.map(_._1)
+        records = records ++ rs
+        infos = infos :+ FileInfo(
+          seq,
+          rs.count(_.isInstanceOf[VolatileRecord.Block]),
+          rs.collect { case VolatileRecord.Block(r, _) => r.slot }.maxOption.getOrElse(BigInt(-1))
+        )
       }
-      if cut > 0 || removed > 0 then syncDir()
-      (infos, records, cut, removed)
+      if cut > 0 then syncDir()
+      (infos, records, cut)
     }
 
     Resource
       .make(
         for
           scanned <- scan
-          (infos, records, cut, removed) = scanned
+          (infos, records, cut) = scanned
           mutex <- Mutex[F]
           chain = chainOf(records)
           startNew = infos.lastOption.forall(_.blocks >= blocksPerFile)
@@ -269,7 +264,7 @@ object VolatileStore:
           mutex,
           files,
           current,
-          Opened(chain, OpenReport(chain.size, infos.size, cut, removed))
+          Opened(chain, OpenReport(chain.size, infos.size, cut))
         )
       ) { (_, _, current, _) =>
         current.get.flatMap(c =>

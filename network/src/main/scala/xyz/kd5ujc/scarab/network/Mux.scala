@@ -97,6 +97,9 @@ object Mux:
     * bearer: SDUs carry the mode bit of the sending side, so a client and a server instance of the
     * same protocol number never see each other's traffic.
     *
+    * @param maxSduPayload
+    *   The largest SDU payload accepted from the peer; what is sent is split at the smaller of this
+    *   and [[Config.ReferenceSduPayload]] ([[Config.egressSduPayload]]).
     * @param ingressLimit
     *   The most unread bytes a mini-protocol may have queued, by protocol number (the node-to-node
     *   limits of the reference by default, [[IngressLimits]]).
@@ -114,9 +117,18 @@ object Mux:
       sduTimeout: FiniteDuration = 30.seconds,
       handshakeSduTimeout: FiniteDuration = 10.seconds,
       receiveBufferLimit: Long = ReceiveBuffer.MaxArray
-  )
+  ):
+    /** The payload size SDUs are sent in. */
+    def egressSduPayload: Int = maxSduPayload.min(Config.ReferenceSduPayload)
 
   object Config:
+    /** The payload the reference splits what it sends into, on node-to-node and node-to-client
+      * sockets alike (`makeSocketBearer'` and `makeLocalBearer` give `socketAsBearer` an `SDUSize`
+      * of 12,288: `Network.Mux.Bearer`, `Ouroboros.Network.Snocket`). What it reads is bounded only
+      * by the 16-bit length of the header, which is [[Config.maxSduPayload]] here.
+      */
+    val ReferenceSduPayload: Int = 12288
+
     /** The responder of a node-to-client connection. The reference gives every node-to-client
       * mini-protocol `maximumMiniProtocolLimits` and runs its codecs without byte limits, so a
       * message is bounded only by what a byte array can hold: a LocalStateQuery answer may be tens
@@ -375,7 +387,7 @@ object Mux:
           .map(_.toMap)
       )
       outbound <- Resource.eval(
-        MuxEgress.create[F](config.egressQueueMessages, config.maxSduPayload)
+        MuxEgress.create[F](config.egressQueueMessages, config.egressSduPayload)
       )
       _ <- Resource.eval(
         WireMux.Decoder
@@ -538,7 +550,7 @@ object Mux:
                       payload,
                       now.toMicros & 0xffffffffL,
                       sending(lane.role),
-                      config.maxSduPayload,
+                      config.egressSduPayload,
                       lane.protocol,
                       config.maxMessageBytes
                     )

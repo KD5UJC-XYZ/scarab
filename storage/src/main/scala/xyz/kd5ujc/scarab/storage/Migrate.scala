@@ -120,6 +120,16 @@ object AtomicFile:
   def replaceAll[F[_]: Sync](file: Path, parts: Seq[Array[Byte]])(using
       Raise[F, StorageError]
   ): F[Unit] =
+    replaceStreaming[F](file) { out =>
+      parts.foreach(bytes => out.write(bytes))
+    }
+
+  /** As [[replace]] for a file that `write` produces onto a stream: the content never has to exist
+    * in memory as one array. The stream is flushed before the data is forced to disk.
+    */
+  def replaceStreaming[F[_]: Sync](file: Path)(write: java.io.OutputStream => Unit)(using
+      Raise[F, StorageError]
+  ): F[Unit] =
     val target = file.toNioPath
     val tmp = target.resolveSibling(target.getFileName.toString + ".tmp")
     guard[F, Unit](file.toString) {
@@ -130,10 +140,9 @@ object AtomicFile:
         StandardOpenOption.WRITE
       )
       try
-        parts.foreach { bytes =>
-          val buffer = java.nio.ByteBuffer.wrap(bytes)
-          while buffer.hasRemaining do ch.write(buffer)
-        }
+        val out = new java.io.BufferedOutputStream(java.nio.channels.Channels.newOutputStream(ch))
+        write(out)
+        out.flush()
         ch.force(true)
       finally ch.close()
       Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)

@@ -3,7 +3,8 @@ package xyz.kd5ujc.scarab.network
 
 import cats.effect.{Async, Resource}
 import cats.effect.syntax.all.*
-import cats.mtl.Handle
+import cats.mtl.{Handle, Raise}
+import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
 import fs2.Stream
@@ -56,17 +57,86 @@ object BearerServer:
           .as(server.address.asIpUnsafe)
       }
 
-  /** The same on a Unix domain socket at `path` (an existing file there is replaced), for
-    * node-to-client clients such as `cardano-cli`.
+  /** Why the local socket path cannot be used. */
+  enum SocketPathError extends DomainError:
+    /** Something other than a socket (a file, a directory, a link) is at the path; it is left
+      * alone.
+      */
+    case NotASocket(path: String)
+    case Inspect(path: String, cause: java.io.IOException)
+    case Remove(path: String, cause: java.io.IOException)
+    case Restrict(path: String, cause: java.io.IOException)
+
+    def message: String = this match
+      case NotASocket(p)  => s"$p exists and is not a socket; refusing to remove it"
+      case Inspect(p, e)  => s"cannot inspect $p: ${e.getMessage}"
+      case Remove(p, e)   => s"cannot remove the stale socket $p: ${e.getMessage}"
+      case Restrict(p, e) => s"cannot restrict the permissions of $p: ${e.getMessage}"
+
+  /** Owner and group may read and write the socket, others nothing. The reference node leaves the
+    * mode to the umask and traces a warning when others can read or write the socket
+    * (`checkLocalSocket` in `Ouroboros.Network.Diffusion`).
+    */
+  val SocketPermissions: java.util.Set[java.nio.file.attribute.PosixFilePermission] =
+    java.nio.file.attribute.PosixFilePermissions.fromString("rw-rw----")
+
+  /** The file-type bits of `st_mode` (`S_IFMT`) and the value of a socket (`S_IFSOCK`). */
+  private val FileTypeMask = 0xf000
+  private val SocketType = 0xc000
+
+  /** Remove a stale socket left at `path` by an earlier run, as the reference node's
+    * `removeStaleLocalSocket` does (`Cardano.Node.Configuration.Socket`), but only a socket: a path
+    * that is anything else (a link is inspected, not followed) is refused and left alone. A missing
+    * path is fine.
+    */
+  private[network] def removeStale(path: java.nio.file.Path): Either[SocketPathError, Unit] =
+    import java.io.IOException
+    import java.nio.file.{Files, LinkOption, NoSuchFileException}
+    val shown = path.toString
+    Either
+      .catchOnly[IOException](
+        Files.getAttribute(path, "unix:mode", LinkOption.NOFOLLOW_LINKS).asInstanceOf[Integer].toInt
+      )
+      .fold(
+        {
+          case _: NoSuchFileException => Right(())
+          case e                      => Left(SocketPathError.Inspect(shown, e))
+        },
+        mode =>
+          if (mode & FileTypeMask) != SocketType then Left(SocketPathError.NotASocket(shown))
+          else
+            Either
+              .catchOnly[IOException](Files.deleteIfExists(path))
+              .void
+              .leftMap(SocketPathError.Remove(shown, _))
+      )
+
+  /** Restrict the bound socket at `path` to [[SocketPermissions]]. */
+  private[network] def restrict(path: java.nio.file.Path): Either[SocketPathError, Unit] =
+    Either
+      .catchOnly[java.io.IOException](
+        java.nio.file.Files.setPosixFilePermissions(path, SocketPermissions)
+      )
+      .void
+      .leftMap(SocketPathError.Restrict(path.toString, _))
+
+  /** The same on a Unix domain socket at `path`, for node-to-client clients such as `cardano-cli`.
+    * A stale socket there is replaced (see [[removeStale]]); anything else at the path is a
+    * [[SocketPathError.NotASocket]]. Once bound, the socket's mode is restricted to
+    * [[SocketPermissions]]. Between the bind and the restriction the socket has the mode the
+    * process umask gives it: a directory that only the intended users can enter, or a restrictive
+    * umask, is what keeps others out for certain.
     */
   def listenUnix[F[_]: Async, E <: DomainError](path: java.nio.file.Path, maxConnections: Int = 16)(
       onFailure: HandlerFailure[E] => F[Unit]
   )(
       handle: Handle[F, E] ?=> Bearer[F] => F[Unit]
-  ): Resource[F, Unit] =
+  )(using Raise[F, SocketPathError]): Resource[F, Unit] =
     import com.comcast.ip4s.UnixSocketAddress
     import fs2.io.net.Network
-    Resource.eval(Async[F].blocking(java.nio.file.Files.deleteIfExists(path))) *>
+    def lift[A](body: => Either[SocketPathError, A]): F[A] =
+      Async[F].blocking(body).flatMap(_.fold(_.raise[F, A], Async[F].pure))
+    Resource.eval(lift(removeStale(path))) *>
       Network
         .forAsync[F]
         .bindAndAccept(UnixSocketAddress(path.toString))
@@ -84,9 +154,10 @@ object BearerServer:
       // the socket file appears once the server has bound it
       Resource.eval(
         Async[F]
-          .blocking(java.nio.file.Files.exists(path))
+          .blocking(java.nio.file.Files.exists(path, java.nio.file.LinkOption.NOFOLLOW_LINKS))
           .flatMap(found => Async[F].sleep(5.millis).unlessA(found).as(found))
           .iterateUntil(identity)
           .timeout(5.seconds)
           .void
-      )
+      ) *>
+      Resource.eval(lift(restrict(path)))

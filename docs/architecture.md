@@ -550,8 +550,10 @@ covering everything after it. `kind` is a block (payload: the raw block) or a ro
 The store is a hint, not a source of truth, and is built so that it can only be wrong by missing
 blocks:
 
-- Opening validates the files in order and cuts the first damaged one at its last good record
-  (`volatileOpened` reports the bytes and the files removed); a record is never returned unless its
+- Opening validates every file and cuts each damaged one at its last good record, as the VolatileDB
+  does (`validateFile` and `truncateError`, `Impl/State.hs`); later files are kept, and the chain
+  the log then describes ends, where it has a gap, at the first block that does not connect when it
+  is resumed (`volatileOpened` reports the bytes cut); a record is never returned unless its
   checksum matches. Appends are not forced one by one: a crash loses at most the unforced tail, and
   those blocks are fetched again.
 - Collection never loses a block the immutable store lacks. Blocks reach the immutable store when
@@ -1161,9 +1163,10 @@ then runs its slots a whole number of seconds away from the network's (roadmap H
 
 Counters (`ForgeStats`, per epoch; roadmap H5): slots checked for leadership, leader slots, forged, adopted,
 lost (slot battles lost at adoption, and blocks replaced later), failed, slots not checked by reason
-(`busy`: the loop was still on an earlier slot; `tipTooOld`; `slotOccupied`: a block already held the slot or
-a later one; `notConnected`), and the forge latency (slot start to adoption: count, mean, max). The first two
-reasons are also logged one by one as `forgeSkipped`. A `forgeEpoch` line carries an epoch's counters when
+(`busy`: the loop was still on an earlier slot; `tipTooOld`; `slotOccupied`: a later slot is held, or the block in the slot is
+immutable; `notConnected`), and the forge latency (slot start to adoption: count, mean, max). The first two
+reasons are also logged one by one as `forgeSkipped`. When the tip's own slot is the one the pool leads, it forges an alternative to that block (same height, on its
+predecessor) as `forkBlockForging` does (`mkCurrentBlockContext`), and chain selection decides between the two. A `forgeEpoch` line carries an epoch's counters when
 the next epoch begins, an `adopted` line carries its `latencyMs`, and `GET /forging` on the query port
 serves the counters per epoch and in total (the `pool` scenario reads it and asserts it against the log:
 forged and adopted counts equal, no block took more than five slots from its slot's start to adoption).

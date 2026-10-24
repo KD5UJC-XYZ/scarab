@@ -44,6 +44,7 @@ enum ConfigProblem:
   case PeerAddress[E <: DomainError](cause: E)
   case PeerSnapshot[E <: DomainError](cause: E)
   case StateMirror[E <: DomainError](cause: E)
+  case LocalSocket[E <: DomainError](cause: E)
   case Ancillary[E <: DomainError](cause: E)
   case FileRead(file: String, cause: Throwable)
   case InvalidPath(value: String, cause: Throwable)
