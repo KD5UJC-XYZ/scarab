@@ -142,6 +142,7 @@
 {"event":"snapshotSkipped","at":"2026-10-16T12:00:00Z","file":"4200-abab","reason":"corrupt snapshot: UnexpectedEnd(0)"}
 {"event":"snapshotRestored","at":"2026-10-16T12:00:00Z","file":"4200-abab","anchor":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
 {"event":"snapshotRestored","at":"2026-10-16T12:00:00Z","file":"genesis","anchor":null}
+{"event":"snapshotUnbound","at":"2026-10-16T12:00:00Z","file":"4200-abab","anchor":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
 {"event":"snapshotWritten","at":"2026-10-16T12:00:00Z","file":"4200-abab","anchor":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"bytes":2048,"millis":15}
 {"event":"snapshotFailed","at":"2026-10-16T12:00:00Z","reason":"java.io.IOException: disk full"}
 {"event":"snapshotRefused","at":"2026-10-16T12:00:00Z","file":"4200-abab","anchor":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"reason":"the mirror refused the state: MissingEra(era = Conway)"}

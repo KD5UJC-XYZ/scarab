@@ -45,7 +45,9 @@ object SnapshotCodecBench extends Assertions:
     assert(args.length == 3, "expected label, snapshot path, config directory")
     val label = args(0)
     val raw = Files.readAllBytes(Path.of(args(1)))
-    val content = checked(FileLedgerSnapshots.verified(raw))
+    val content = checked(
+      FileLedgerSnapshots.verified(raw).flatMap(xyz.kd5ujc.scarab.node.NativeSnapshots.current)
+    )
     val env = checked(NodeSetup.fromDirectory(Path.of(args(2)))).mirrorEnv()
     println(s"INPUT $label bytes=${raw.length} sha256=${sha(raw)}")
     val initial = checked(SnapshotV7.decode(env, content))

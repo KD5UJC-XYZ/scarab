@@ -223,7 +223,7 @@
     "fixtures/licenses/ouroboros-network-LICENSE": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
     "fixtures/licenses/ouroboros-network-NOTICE": "671fc969e0e6a4059bf756154e4dad04e91b7972068998c7e6336e5513df8699",
     "fixtures/licenses/scalus-node-LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
-    "fixtures/log/golden.jsonl": "9935ada83eb23bd6a34eed3b9f73bed50256e5611bebdef7a30ad9f6f48c4f29",
+    "fixtures/log/golden.jsonl": "90ebba1f520794c0c90bb7644672ef1c87af9dbe17f82e18d4fb1d17b54fb54a",
     "fixtures/mainnet/byron-ebb-header.hex": "9d47e6f8269696b92021bedb21310ec9f437284b3ea7f37b36b15ea2a2c28706",
     "fixtures/mainnet/byron-genesis-trimmed.json": "af180efa8676ff48d768ca407a2dff9b1fb30d2726dee61cb03aa11999252a89",
     "fixtures/mainnet/byron-large-address-block.hex": "96a8428062ca8d1a97964522e07934d66a4a138facefb5904e662a9f2fe5b807",
