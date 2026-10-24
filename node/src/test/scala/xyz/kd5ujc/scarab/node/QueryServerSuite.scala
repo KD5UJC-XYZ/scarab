@@ -5,7 +5,8 @@ import cats.effect.{IO, Ref}
 import cats.syntax.all.*
 import java.nio.file.Path
 import munit.CatsEffectSuite
-import org.http4s.{Method, Request, Status, Uri}
+import org.http4s.circe.jsonOf
+import org.http4s.{EntityDecoder, Method, Request, Status, Uri}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
@@ -15,6 +16,7 @@ class QueryServerSuite extends CatsEffectSuite:
   private val setup = NodeSetup
     .fromDirectory(Path.of("fixtures/devnet/lsq/genesis"))
     .fold(e => fail(e.message), identity)
+  private given EntityDecoder[IO, io.circe.Json] = jsonOf[IO, io.circe.Json]
   private val hash = "ab" * 32
   private val bytes = Bytes.fromHex(hash).fold(e => fail(e.message), identity)
   private val retained = Point.Block(UInt64.saturating(17), bytes)
@@ -61,6 +63,26 @@ class QueryServerSuite extends CatsEffectSuite:
       }
       observed <- reads.get
     yield assertEquals(observed, Reads(0, Vector.empty))
+  }
+
+  test("state without the utxo parameter is a summary; unknown or repeated values return 400") {
+    for
+      reads <- Ref.of[IO, Reads](Reads(0, Vector.empty))
+      app = QueryServer
+        .routes(view(reads))(failure => IO(fail(s"unexpected fatal: $failure")))
+        .orNotFound
+      summary <- app.run(request("/state?utxo=summary")).flatMap(_.as[io.circe.Json])
+      bare <- app.run(request("/state")).flatMap(_.as[io.circe.Json])
+      full <- app.run(request("/state?utxo=full")).flatMap(_.as[io.circe.Json])
+      bad <- List("/state?utxo=all", "/state?utxo=", "/state?utxo=full&utxo=full").traverse(p =>
+        app.run(request(p)).map(_.status)
+      )
+    yield
+      assertEquals(summary, bare)
+      assert(summary.hcursor.downField("utxo").failed)
+      assert(summary.hcursor.downField("utxoSummary").downField("entries").succeeded)
+      assert(full.hcursor.downField("utxo").succeeded)
+      assertEquals(bad, List.fill(3)(Status.BadRequest))
   }
 
   test("bare state reads the tip and a retained explicit point reads that point") {

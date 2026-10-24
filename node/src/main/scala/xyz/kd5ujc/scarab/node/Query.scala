@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.node
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import cats.effect.{Async, Ref, Resource}
 import cats.syntax.all.*
-import com.comcast.ip4s.{Host, Port, SocketAddress}
+import com.comcast.ip4s.{ipv4, port, Host, Port, SocketAddress}
 import fs2.io.net.Network
 import io.circe.Json
 import io.circe.syntax.*
@@ -464,10 +464,44 @@ object Projection:
         )
       )
 
-/** Loopback HTTP query service: `GET /tip`, `GET /state?slot=S&hash=H`, `GET /metrics` and the
-  * others below.
+/** Whether the loopback HTTP query service runs, and where (`--query-listen`, `--query-port`).
+  * Every route of the service sits behind this one switch.
+  */
+enum QueryListen:
+  case Off
+  case Loopback(port: Port)
+
+object QueryListen:
+  /** The port `--query-port` has when no flag says otherwise. */
+  val DefaultPort: Port = port"7071"
+
+  /** `off`, or a port number. */
+  def parse(text: String): Option[QueryListen] =
+    if text == "off" then Some(Off) else Port.fromString(text).map(Loopback(_))
+
+/** How much of the UTxO set `GET /state` carries (`utxo=summary|full`). */
+enum UtxoView:
+  /** The entry count and total lovelace under `utxoSummary`; no entries. */
+  case Summary
+
+  /** Every entry under `utxo`, refused beyond [[QueryServer.MaxFullUtxo]] entries. */
+  case Full
+
+object UtxoView:
+  def parse(text: String): Option[UtxoView] = text match
+    case "summary" => Some(Summary)
+    case "full"    => Some(Full)
+    case _         => None
+
+/** Loopback HTTP query service: `GET /tip`, `GET /state?slot=S&hash=H[&utxo=summary|full]`,
+  * `GET /metrics` and the others below.
   */
 object QueryServer:
+  /** The most entries `GET /state?utxo=full` serialises: the answer is built in memory, so a larger
+    * set is refused (HTTP 413).
+    */
+  val MaxFullUtxo: Long = 100000L
+
   /** @param scheduling
     *   The whole-run scheduling measurements, served at `/scheduling`.
     * @param connections
@@ -476,24 +510,30 @@ object QueryServer:
     *   The forger's counters per epoch, served at `/forging` (only on a node that forges).
     * @param metrics
     *   The metrics in the Prometheus text format, served at `/metrics` (see [[MetricsServer]]).
+    * @param listen
+    *   Where the server listens; with [[QueryListen.Off]] nothing is bound and no route exists.
     */
   def resource[F[_]: Async: Network, S](
       view: ChainView[F, S],
-      port: Int,
+      listen: QueryListen,
       utxoStore: Option[xyz.kd5ujc.scarab.storage.UtxoStore[F]] = None,
       scheduling: Option[F[Json]] = None,
       connections: Option[F[Json]] = None,
       forging: Option[F[Json]] = None,
       metrics: Option[F[String]] = None
-  )(fatal: Fatal => F[Unit])(using read: ChainRead[S]): Resource[F, Server] =
-    EmberServerBuilder
-      .default[F]
-      .withHost(Host.fromString("127.0.0.1").get)
-      .withPort(Port.fromInt(port).get)
-      .withHttpApp(
-        routes(view, utxoStore, scheduling, connections, forging, metrics)(fatal).orNotFound
-      )
-      .build
+  )(fatal: Fatal => F[Unit])(using read: ChainRead[S]): Resource[F, Option[Server]] =
+    listen match
+      case QueryListen.Off => Resource.pure(None)
+      case QueryListen.Loopback(port) =>
+        EmberServerBuilder
+          .default[F]
+          .withHost(ipv4"127.0.0.1")
+          .withPort(port)
+          .withHttpApp(
+            routes(view, utxoStore, scheduling, connections, forging, metrics)(fatal).orNotFound
+          )
+          .build
+          .map(Some(_))
 
   private enum StateTarget:
     case Tip
@@ -510,6 +550,13 @@ object QueryServer:
           ChainSync.UInt64.from(slot.value * 10 + (digit - '0')).leftMap(_ => PointError.Slot)
         else Left(PointError.Slot)
       }
+
+  /** The `utxo` parameter: absent is the summary, one value of [[UtxoView]] otherwise. */
+  private def utxoView(query: Query): Either[PointError, UtxoView] =
+    query.multiParams.get("utxo") match
+      case None             => Right(UtxoView.Summary)
+      case Some(Seq(value)) => UtxoView.parse(value).toRight(PointError.Parameters)
+      case Some(_)          => Left(PointError.Parameters)
 
   private def stateTarget(query: Query): Either[PointError, StateTarget] =
     val params = query.multiParams
@@ -545,12 +592,29 @@ object QueryServer:
             .map(xyz.kd5ujc.scarab.ledger.Utxo.fromMap)
         }
       }
-    def projected(p: ChainSync.Point, s: S): F[Response[F]] =
-      complete(s).flatMap { utxo =>
-        Projection.node(p, s, utxo) match
-          case Right(json)   => Ok(json)
-          case Left(refused) => InternalServerError(s"the state cannot be projected: $refused")
-      }
+    def projected(view: UtxoView, p: ChainSync.Point, s: S): F[Response[F]] =
+      view match
+        case UtxoView.Summary =>
+          // no entry is read: the counts are the state's own totals, so memory stays bounded
+          Projection.node(p, s, xyz.kd5ujc.scarab.ledger.Utxo.empty) match
+            case Right(json) =>
+              Ok(
+                json.mapObject(
+                  _.remove("utxo").add(
+                    "utxoSummary",
+                    Json.obj("entries" -> s.utxo.count.asJson, "lovelace" -> s.utxo.coin.asJson)
+                  )
+                )
+              )
+            case Left(refused) => InternalServerError(s"the state cannot be projected: $refused")
+        case UtxoView.Full if s.utxo.count > MaxFullUtxo =>
+          PayloadTooLarge(s"the UTxO set has more than $MaxFullUtxo entries")
+        case UtxoView.Full =>
+          complete(s).flatMap { utxo =>
+            Projection.node(p, s, utxo) match
+              case Right(json)   => Ok(json)
+              case Left(refused) => InternalServerError(s"the state cannot be projected: $refused")
+          }
     HttpRoutes.of[F] {
       case GET -> Root / "tip" =>
         view.tip.flatMap { case (p, s) =>
@@ -567,13 +631,16 @@ object QueryServer:
       case GET -> Root / "scheduling" =>
         scheduling.fold(Async[F].pure(Response[F](Status.NotFound)))(_.flatMap(j => Ok(j)))
       case request @ GET -> Root / "state" =>
-        stateTarget(request.uri.query) match
-          case Left(_) => BadRequest("slot and 32-byte hex hash required")
-          case Right(StateTarget.Tip) =>
-            view.tip.flatMap { case (p, s) => projected(p, s) }
-          case Right(StateTarget.At(p)) =>
+        (stateTarget(request.uri.query), utxoView(request.uri.query)).tupled match
+          case Left(_) =>
+            BadRequest(
+              "slot and 32-byte hex hash, and utxo=summary or utxo=full, are the parameters"
+            )
+          case Right((StateTarget.Tip, utxos)) =>
+            view.tip.flatMap { case (p, s) => projected(utxos, p, s) }
+          case Right((StateTarget.At(p), utxos)) =>
             view.at(p).flatMap {
-              case Some(s) => projected(p, s)
+              case Some(s) => projected(utxos, p, s)
               case None    => Async[F].pure(Response[F](Status.NotFound))
             }
     }

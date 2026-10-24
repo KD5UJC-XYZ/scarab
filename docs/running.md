@@ -80,7 +80,7 @@ value except `--forge` and `--dump-state-full`. An unknown flag, a repeated flag
 | `--header-first on\|off` | `on` | validate every era's announced headers before fetching their bodies (G6, #318): Byron PBFT, first-Shelley handover, envelope including epoch-boundary parameters, VRF, leader threshold, KES, opcert and nonces. Missing ledger forecasts wait for progress; `off` retains block-only validation in Praos mode. Genesis always uses canonical header validation. Throughput comparison in [performance.md](performance.md) |
 | `--local-socket <path>` | off (`SocketPath` with `--config`) | Unix socket for the node-to-client protocols LocalStateQuery, LocalTxSubmission, LocalTxMonitor and ChainSync of whole blocks (versions 16 to 23); `cardano-cli conway query ...`, `transaction submit` and `query tx-mempool` work against it, see "Node-to-client" below |
 | `--seconds N` | run until stopped | stop after N seconds |
-| `--query-port P` | `7071` | loopback port of the HTTP query server (`GET /tip`, `GET /state?slot=&hash=`, `GET /scheduling`, `GET /connections`: the connection table and the inbound sessions, `GET /metrics`: the Prometheus text format, see "Metrics") |
+| `--query-listen off\|P` | `--query-port P`, else `7071` | `off` runs no HTTP query server (every route below, `/connections` and `/metrics` included, is then absent; `--metrics-listen` still serves `/metrics`); a port number is the loopback port. `--query-port P` is the same as `--query-listen P`; giving both is refused. Routes: (`GET /tip`, `GET /state?slot=&hash=[&utxo=summary\|full]`, `GET /scheduling`, `GET /connections`: the connection table and the inbound sessions, `GET /metrics`: the Prometheus text format, see "Metrics") |
 | `--metrics-listen <host>:<port>` | off | a listener that serves `GET /metrics` and nothing else, for a scraper that is not on loopback (`0.0.0.0:12798` in a container); see "Metrics" |
 | `--db <dir>` | off (in-memory; replay from genesis on every start; `DatabasePath` with `--config`) | persistent chain: `network-identity`, `immutable/`, `volatile/`, `received/`, `snapshots/`, `utxo/` |
 | `--snapshot-every <N\|Nslots\|Nepochs>` | the reference node's policy (below) | snapshot once the immutable tip is this far past the previous snapshot; a bare number is slots. Given, it replaces the default policy |
@@ -909,6 +909,12 @@ logged as a `forgeEpoch` line when the next epoch begins. `GET /metrics` serves 
 `GET /state` without point parameters reads the tip. An explicit point requires one unsigned 64-bit
 `slot` and one 32-byte hex `hash`: missing, duplicate or malformed point parameters return HTTP 400.
 A well-formed point outside the retained chain returns HTTP 404.
+
+`GET /state` carries no UTxO entries by default: `utxoSummary` has the entry count and total lovelace, read from the
+state's own totals without touching the store. `utxo=full` (the one explicit opt-in, as `utxo=summary` is the default)
+adds every entry under `utxo` for a set of at most 100,000 entries; a larger set returns HTTP 413 rather than being
+built in memory. Any other or repeated `utxo` value returns HTTP 400. The devnet comparator asks for `utxo=full`.
+`--query-listen off` leaves the server off.
 
 The slot clock starts at the Byron genesis' `startTime` when `byron-genesis.json` has one (as the
 reference's does), else at the Shelley `systemStart`; the `started` line logs it as `systemStart`.

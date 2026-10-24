@@ -143,7 +143,7 @@ class ServiceStorageScopeSuite extends FailsOnUncaught:
         QueryServer
           .routes(ChainView.fromRef(chain), Some(broken(store, enabled)))(report)
           .orNotFound
-          .run(Request[IO](Method.GET, Uri.unsafeFromString("/state")))
+          .run(Request[IO](Method.GET, Uri.unsafeFromString("/state?utxo=full")))
       )
     yield ()
   }
