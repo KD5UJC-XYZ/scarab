@@ -2930,7 +2930,8 @@ one-element `NonEmptyChain`.
 
 **Synthetic BBODY, quiet host (primary timing).** `CastErasureBench rules 10000` (source SHA-256
 `d2409a39…6dd`, unchanged) on a 24-core host whose load stayed near 1.0, Docker `scarab-jdk:local`
-(Temurin 21.0.11), `--cpuset-cpus 16-19 --memory 12g --network none`, `-Xms3g -Xmx9g
+`sha256:bc8169dd6a4ec253de2ae1c94dc177fd1082e7807ef9636fa0cbfc1fd8ba368f` (Temurin 21.0.11+10),
+old and new built from clean clones at `d14d42ca` and `e753b2a3` (the measured sources), `--cpuset-cpus 16-19 --memory 12g --network none`, `-Xms3g -Xmx9g
 -XX:ActiveProcessorCount=4 -XX:+UseG1GC`, twelve JVMs in the order old, new, new, old, old, new,
 new, old, old, new, old, new (three warm-ups and five measured runs each):
 
@@ -2959,4 +2960,8 @@ for the block sum and +25% for the epoch:
 Medians of the JVM medians: blocks +1.8%, epoch +3.2%, both well inside the noise of this host;
 block allocation changes by −0.03% and the epoch's by +0.01% at the median. These runs establish
 identical results and no allocation cost on real inputs; the timing verdict is the quiet-host
-synthetic run above. Raw samples, driver scripts and command lines are kept outside Git.
+synthetic run above. A first Preview series on an earlier candidate, which flattened the empty
+trace at the end of every run, was discarded; the measured candidate returns at once when nothing
+was recorded. The tables above and the per-case medians, per-JVM lines and exact argument vectors
+in the [PR #420 benchmark record](https://github.com/KD5UJC-XYZ/scarab/pull/420#issuecomment-6380265355)
+are the retained record; the raw sample logs were discarded after summarising.
