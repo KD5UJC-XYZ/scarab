@@ -14,9 +14,9 @@
 
 - [ ] New behaviour has tests or properties; bugs found on real data have a regression fixture
 - [ ] Changelog fragment in `changes/` (if a user could notice)
-- [ ] Level 3: compatibility matrix row updated (docs/compatibility.md), including "explicitly unchecked"; which row: 
+- [ ] Level 3: compatibility register entry and its page updated (docs/data/compatibility.json, docs/compatibility/<id>.md), including "explicitly unchecked", and docs/compatibility.md regenerated with `python3 scripts/render_compatibility.py`; which component: 
 - [ ] Level 3: the design document's "as built" section updated, if the change belongs to a design
-- [ ] Level 4: evidence-log row in docs/compatibility.md with commit, date and command
+- [ ] Level 4: evidence-log entry in docs/compatibility/evidence-log-N.md with commit, date and command
 - [ ] Roadmap item marked done or updated (docs/roadmap.md); IDs not renumbered
 - [ ] Findings added if something was learned against real data (docs/findings.md)
 - [ ] Relative links in changed docs resolve
