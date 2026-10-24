@@ -15,7 +15,7 @@ import xyz.kd5ujc.scarab.protocol.Era
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{EpochGeometry, Header, HeaderVrf}
+import xyz.kd5ujc.scarab.ledger.{EpochGeometry, Header, HeaderVrf, ProviderDefect}
 import xyz.kd5ujc.scarab.crypto.vrf.{PraosLeaderThreshold as Leader, PraosVrfCertificate as Vrf}
 
 /** @param verdicts
@@ -164,7 +164,9 @@ object Praos:
             )
           yield None
       input <- vrfInput(state.epochNonce, header.slot).leftMap(PraosError.VrfInput(_))
-      output <- config.verdicts.praosVrf(input, header.vrfVkey, vrf.proof, vrf.output) match
+      output <- ProviderDefect.checkVrf(
+        config.verdicts.praosVrf(input, header.vrfVkey, vrf.proof, vrf.output)
+      ) match
         case Vrf.Result.VerifiedCertificate(o) => Right(o)
         case other                             => Left(PraosError.VrfRejected(other))
       leader <- registered match

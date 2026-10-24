@@ -6,7 +6,7 @@ import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, ProtocolState, TPraosSt
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf, Verdicts, VrfCert}
+import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf, ProviderDefect, Verdicts, VrfCert}
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.crypto.vrf.{PraosLeaderThreshold as Leader, PraosVrfCertificate as Vrf}
 
@@ -66,7 +66,7 @@ object TPraos:
       vkey: Bytes,
       cert: VrfCert
   ): Either[Vrf.Result, Unit] =
-    verdicts.tpraosVrf(alpha, vkey, cert.proof, cert.output) match
+    ProviderDefect.checkVrf(verdicts.tpraosVrf(alpha, vkey, cert.proof, cert.output)) match
       case Vrf.Result.VerifiedCertificate(_) => Right(())
       case other                             => Left(other)
 
