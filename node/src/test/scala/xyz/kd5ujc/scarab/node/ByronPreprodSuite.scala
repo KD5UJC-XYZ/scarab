@@ -11,7 +11,7 @@ import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.consensus.ByronRules
-import xyz.kd5ujc.scarab.ledger.byron.{ByronLedger, ByronVersion}
+import xyz.kd5ujc.scarab.ledger.byron.{ByronLedger, ByronSignatureCensus, ByronVersion}
 import cats.effect.IO
 import munit.CatsEffectSuite
 import scala.jdk.CollectionConverters.*
@@ -88,6 +88,24 @@ class ByronPreprodSuite extends CatsEffectSuite:
     assert(blocks.drop(46).forall(_.era == Era.Shelley))
     assert(blocks.head.header.isBoundary)
     assertEquals(blocks.head.header.prevHash, setup.origin)
+  }
+
+  test("every signature of preprod's Byron era is accepted, by both verification profiles") {
+    val ledger = setup.byronRules.fold(fail("no Byron rules"))(_.ledger)
+    val byronBlocks = blocks.collect { case b: Block.Byron => b }
+    val signed = ByronSignatureCensus.genesis(ledger.magic, ledger.genesis.delegations) ++
+      ByronSignatureCensus.all(ledger.magic, byronBlocks).fold(e => fail(e.toString), identity)
+    val counts = signed.groupMapReduce(_.kind)(_ => 1)(_ + _)
+    signed.foreach(s => assert(s.byron && s.strict, s.kind.toString))
+    assertEquals(
+      counts,
+      Map(
+        ByronSignatureCensus.Kind.GenesisCertificate -> 7,
+        ByronSignatureCensus.Kind.Header -> 45,
+        ByronSignatureCensus.Kind.Proposal -> 2,
+        ByronSignatureCensus.Kind.Vote -> 14
+      )
+    )
   }
 
   test("every Byron block is accepted: signatures, delegation, PBFT window, body proofs, ledger") {
