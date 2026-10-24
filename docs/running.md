@@ -913,6 +913,16 @@ docker run --rm -v <socket dir>:/sock --entrypoint /opt/reference/bin/cardano-cl
   conway query tip --testnet-magic <magic> --socket-path /sock/node.socket
 ```
 
+The socket path, as in the reference node (`removeStaleLocalSocket`, `Cardano.Node.Configuration.Socket`):
+at start-up a socket left at the path by an earlier run is removed and bound again. Anything else at the
+path (a file, a directory, a symbolic link) is refused with a configuration error and not touched; the
+reference node removes any file there. Once bound, the socket's mode is set to `rw-rw----`: owner and group
+only, where the reference node leaves the mode to the umask and warns when others can read or write it
+(`checkLocalSocket`, `Ouroboros.Network.Diffusion`, which also warns about a socket directory that is group or
+world writable). A client must therefore run as the node's user or in its group. The mode is set after the
+bind, so for the instant in between the umask applies: keep the socket in a directory that only the
+intended users can enter (mode 0750 or stricter) rather than a shared directory such as `/tmp`.
+
 Answered, with CBOR equal to the reference node's at the same block (the `ntc` scenario below):
 `tip`, `protocol-parameters`, `utxo` (whole, by address, by input), `stake-distribution`, `stake-pools`,
 `pool-params`, `pool-state`, `stake-snapshot`, `stake-address-info`, `gov-state`, `drep-state`,

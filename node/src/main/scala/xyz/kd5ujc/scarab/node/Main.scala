@@ -11,6 +11,7 @@ import xyz.kd5ujc.scarab.consensus.{
   Scheduling,
   VolatileChain
 }
+import xyz.kd5ujc.scarab.ledger.rules.contramap
 import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.blst.{Blst, BlstProblem, BlstReport}
 import xyz.kd5ujc.scarab.plutus.{NativeCrypto, NativeCryptoProblem, NativeCryptoReport}
@@ -1285,6 +1286,8 @@ object Main extends IOApp:
               )
             )
             local = options.localSocket.fold(Resource.unit[IO])(path =>
+              given Raise[IO, BearerServer.SocketPathError] =
+                handle.contramap(e => ConfigError(ConfigProblem.LocalSocket(e)))
               BearerServer
                 .listenUnix[IO, NetworkError](path)(failure =>
                   ListenerFailures.report(path.toString, failure, logged, fatalSink)

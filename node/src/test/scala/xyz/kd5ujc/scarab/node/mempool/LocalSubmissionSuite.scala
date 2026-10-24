@@ -2,7 +2,8 @@
 package xyz.kd5ujc.scarab.node.mempool
 
 import cats.effect.{Deferred, IO, Ref, Resource}
-import cats.mtl.Handle
+import cats.Functor
+import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
 import com.comcast.ip4s.UnixSocketAddress
 import fs2.io.net.Network
@@ -19,6 +20,13 @@ import TxKit.*
   * over a Unix socket into a real mempool.
   */
 class LocalSubmissionSuite extends FailsOnUncaught:
+  /** The socket paths of these tests are fresh; a refusal would be a test failure. */
+  private given Raise[IO, BearerServer.SocketPathError] =
+    new Raise[IO, BearerServer.SocketPathError]:
+      val functor: Functor[IO] = Functor[IO]
+      def raise[E <: BearerServer.SocketPathError, A](e: E): IO[A] =
+        IO.raiseError(new IllegalStateException(e.message))
+
   private val magic = 42L
 
   private def wrap(tx: Bytes): Bytes =
