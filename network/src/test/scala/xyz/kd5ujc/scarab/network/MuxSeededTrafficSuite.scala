@@ -166,8 +166,10 @@ class MuxSeededTrafficSuite extends FailsOnUncaught:
       }
       observed <- (leftGroups.get, rightGroups.get).tupled
       _ <- IO {
+        // what is sent is split at the reference's size when the accepted payload is larger
+        val sent = value.sdu.min(Mux.Config.ReferenceSduPayload)
         val framesPerLane =
-          messages(value, 0, lanes.head).map(b => (b.size + value.sdu - 1) / value.sdu).sum
+          messages(value, 0, lanes.head).map(b => (b.size + sent - 1) / sent).sum
         val expected = Vector.fill(lanes.size * framesPerLane / 2)(2)
         assertEquals(observed, (expected, expected), "every transport group coalesced two writes")
       }

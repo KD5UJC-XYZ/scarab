@@ -94,6 +94,39 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
       }
     }.map(r => assertEquals(r, Right((payload(6), 0x80))))
 
+  test("a default multiplexer sends SDUs of the reference's 12,288 bytes and accepts a 65,535 one"):
+    typed {
+      Bearer.inMemory[IO]().flatMap { (ours, peer) =>
+        Mux.resource(ours, Set(3), Mux.Config()).use { mux =>
+          val size = 30000
+          // the peer's own 65,535-byte SDU, the largest the 16-bit header holds
+          val big = WireMux
+            .encode(WireMux.Sdu(0, 3, WireMux.Direction.Responder, payload(65535, 4)))
+            .toOption
+            .get
+          for
+            c <- mux.channel(3)
+            _ <- c.send(payload(size, 1))
+            wire <- peer.reads
+              .take(size + 3 * WireMux.HeaderBytes)
+              .compile
+              .to(Array)
+            lengths = Iterator
+              .iterate((0, Vector.empty[Int])) { (at, seen) =>
+                val header = Bytes(wire.slice(at, at + WireMux.HeaderBytes).toVector)
+                val length = WireMux.decodeHeader(header, WireMux.WireMaxPayloadBytes).toOption.get
+                (at + WireMux.HeaderBytes + length.payloadLength, seen :+ length.payloadLength)
+              }
+              .dropWhile(_._1 < wire.length)
+              .next()
+              ._2
+            _ <- peer.write(Chunk.array(big.toArray))
+            got <- c.recv(70000)(exactly(65535))
+          yield (lengths, got)
+        }
+      }
+    }.map(r => assertEquals(r, Right((Vector(12288, 12288, 5424), payload(65535, 4)))))
+
   property("any payload segmented at any SDU size reassembles exactly"):
     forAll(Gen.choose(1, 4000), Gen.choose(1, 500), Gen.choose(0, 255)) { (size, sdu, seed) =>
       val message = payload(size, seed)
