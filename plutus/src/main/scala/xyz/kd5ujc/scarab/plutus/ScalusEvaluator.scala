@@ -401,14 +401,16 @@ object ScalusEvaluator:
       )
 
     /** Scalus 1.4.0 runs these builtins on the native library of scalus-crypto-jni and throws
-      * `IllegalStateException` when it did not load. Refuse them with a typed unavailability before
-      * that, so a missing library is never mistaken for a script failure or an untyped defect.
+      * `IllegalStateException` when it did not load, or a `LinkageError` when the loader itself
+      * failed to initialise. Refuse them with a typed unavailability before that
+      * ([[NativeCrypto.available]]), so a missing library is never mistaken for a script failure or
+      * an untyped defect.
       */
     private def nativeGuarded(fun: DefaultFun): BuiltinRuntime =
       val base = cardano.getBuiltinRuntime(fun)
       base.copy(f =
         (logger, args) =>
-          if !scalus.crypto.jni.CryptoJni.isEnabled then
+          if !NativeCrypto.available then
             unavailable(logger, EvalFailure.Unsupported(BackendFailure.BuiltinUnavailable(fun)))
           else base.f(logger, args)
       )
