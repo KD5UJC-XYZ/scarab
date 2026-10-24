@@ -16,7 +16,7 @@ import scalus.uplc.eval.{MachineParams, ThreeArguments}
   */
 class ScalusReproducersSuite extends FunSuite:
   test(
-    "verifyEd25519Signature is priced by the message (Y) in semantics variant A, not the signature (Z)"
+    "verifyEd25519Signature is priced by the signature (Z) in semantics variant A (fixed in Scalus 1.4.0)"
   ) {
     // plutus-core/cost-model/data/builtinCostModelA.json: "type": "linear_in_z". Variant A is
     // PlutusV1/V2 below protocol 9.
@@ -27,11 +27,13 @@ class ScalusReproducersSuite extends FunSuite:
       MajorProtocolVersion(8)
     )
     params.builtinCostModel.verifyEd25519Signature.cpu match
-      case ThreeArguments.LinearInY(_) => () // deviation: the reference has LinearInZ
-      case other                       => fail(s"fixed upstream? now $other")
+      case ThreeArguments.LinearInZ(_) => ()
+      case other                       => fail(s"regressed upstream? now $other")
   }
 
-  test("a V3 NewConstitution is encoded with the Constitution constructor (fixed in Scalus 1.4.0)") {
+  test(
+    "a V3 NewConstitution is encoded with the Constitution constructor (fixed in Scalus 1.4.0)"
+  ) {
     // plutus-ledger-api PlutusLedgerApi.V3.Contexts: `newtype Constitution = Constitution
     // {constitutionScript :: Maybe ScriptHash}` with `makeIsDataSchemaIndexed ''Constitution
     // [('Constitution, 0)]`, so `NewConstitution prev c` is `Constr 5 [prev, Constr 0 [maybe]]`.

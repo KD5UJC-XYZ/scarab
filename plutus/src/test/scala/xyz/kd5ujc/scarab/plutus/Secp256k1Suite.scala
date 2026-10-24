@@ -108,7 +108,7 @@ class Secp256k1Suite extends FunSuite:
   }
 
   test(
-    "reproducer: Scalus 1.2.0 and 1.3.0 fail on r = 0 or s = 0 where the reference answers False"
+    "Scalus 1.4.0 answers False on r = 0 or s = 0, as the reference does"
   ) {
     def scalus(sig: Array[Byte]) =
       Builtins.verifyEcdsaSecp256k1Signature(
@@ -117,10 +117,9 @@ class Secp256k1Suite extends FunSuite:
         ByteString.fromArray(sig)
       )
     assert(scalus(sig(r, s)))
-    // when this stops failing, remove the override of verifyEcdsaSecp256k1Signature
-    intercept[Exception](scalus(Array.fill(64)(0.toByte)))
-    intercept[Exception](scalus(sig(0, s)))
-    intercept[Exception](scalus(sig(r, 0)))
+    assert(!scalus(Array.fill(64)(0.toByte)))
+    assert(!scalus(sig(0, s)))
+    assert(!scalus(sig(r, 0)))
     assert(!scalus(sig(r, n - s)))
   }
 
