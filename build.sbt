@@ -133,7 +133,19 @@ lazy val plutus = scarab("plutus")
       Libraries.catsEffect,
       Libraries.scalus,
       Libraries.circeParserTest
-    )
+    ),
+    Test / testGrouping := {
+      // NativeCryptoAbsentSuite needs a JVM in which libscalus_crypto cannot load (ADR 0020): its
+      // java.io.tmpdir does not exist, so native-lib-loader cannot extract the library.
+      val (absent, others) =
+        (Test / definedTests).value.partition(_.name.endsWith(".NativeCryptoAbsentSuite"))
+      val fork = (Test / forkOptions).value
+        .withRunJVMOptions(Vector("-Djava.io.tmpdir=/nonexistent/scarab-no-tmpdir"))
+      Seq(
+        Tests.Group("plutus", others, Tests.InProcess),
+        Tests.Group("native-crypto-absent", absent, Tests.SubProcess(fork))
+      )
+    }
   )
 
 // The pure ledger rules and types: blocks, headers, genesis, transactions, scripts, governance,
