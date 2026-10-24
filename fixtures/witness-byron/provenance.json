@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "issue": 392,
+  "generatedAt": "2026-10-23",
+  "reference": {
+    "node": "cardano-node 11.1.3 (the release binary links cardano-crypto-1.3.0, cardano-crypto-wrapper-1.7.0.0 and crypton-1.0.6, read from its embedded package IDs)",
+    "indexStates": {"hackage.haskell.org": "2026-08-14T13:38:07Z", "cardano-haskell-packages": "2026-09-23T18:57:23Z"},
+    "packages": {
+      "cardano-crypto-wrapper-1.7.0.0.tar.gz": "0bfa4475f7fa6e456c8c9e879b66a42f3ffaefd767b411f9bdb7cccdf2b2b4fd",
+      "cardano-crypto-1.3.0.tar.gz": "737961a48f7412d152e2a4f8e34d505c58791f20c3a3f3c5976e90fd78915294",
+      "crypton-1.0.6.tar.gz": "9c6523e7f46df0bda731e5007a1f6b43b1ee1f0dcd159bed870abbff752b82e6",
+      "cardano-ledger-byron-1.3.0.0.tar.gz": "2cbe1f43998c79c0f5a1fb5d8ad24ca6084a12515c9806edcf50177ae6e21487"
+    },
+    "path": [
+      "cardano-crypto-wrapper Cardano/Crypto/Signing/Signature.hs:228-234 verifySignatureRaw -> Cardano.Crypto.Wallet.verify",
+      "cardano-crypto Cardano/Crypto/Wallet.hs:198-202 verify -> Crypto.PubKey.Ed25519.verify (crypton; cardano-crypto has no module of that name)",
+      "cardano-crypto-wrapper Cardano/Crypto/Signing/Redeem/Signature.hs:98-104 verifyRedeemSigRaw -> Crypto.PubKey.Ed25519.verify",
+      "crypton Crypto/PubKey/Ed25519.hs:135-143 verify -> crypton_ed25519_sign_open",
+      "crypton cbits/ed25519/ed25519.c:87-110 ed25519_sign_open"
+    ],
+    "compiler": "GHC 9.10.3 (the release uses GHC 9.6; the C verifier is compiled by the package's own build either way)"
+  },
+  "harness": {
+    "image": "scarab-392-byron-donna-reference:local",
+    "imageId": "sha256:3bd4a952d8818ea37715f3b82a638e76f7b0831f24f65e11e13321bbaa7e54be",
+    "baseImage": "scarab-byron171-full-reference:local",
+    "baseImageId": "sha256:6c8c750fa99054fd5daf4cb01d31c46087988aee5baaa357e647b5cf9af71141",
+    "storeUnits": [
+      "cardano-crypto-wrapper-1.7.0.0-3accada6131a1c579f3d297f959e6d51599d13a483e137fc8c13d5dba4b14d49",
+      "cardano-crypto-1.3.0-cadcc105bfb93cf70db9169e33ad20dd68a5b6e3468807ae3796704b32337158",
+      "crypton-1.0.6-6730fa56e38cc87693758a08b2681fb5a1a52a87bcf8562e8c457e7534b63999"
+    ],
+    "executableSha256": "c201d0db6c387ca738330d2282463417c17181db0b7a26d5c735dd7e50666ac8",
+    "sources": {
+      "scripts/oracle/byron-donna/Main.hs": "0e654c4840c6010c1ed8107fa6c8e28150989dd3a60e2c785981b781504fbdaf",
+      "scripts/oracle/byron-donna/scarab-byron-donna.cabal": "e22dd026ea1b7d4988fc6eee3d7a5623b0203b1a27619ceb98e061ca4d3516f3",
+      "scripts/oracle/byron-donna/Dockerfile": "48004cd6029374c72c486826299f7b73e50bb3ce40ed41e6f9d110de75ce9ed1",
+      "scripts/oracle/byron-donna/generate.py": "5744d34d54df5649f24131a4e7d3f56356488db5c6d8c688cf6d433c97f48bfa"
+    },
+    "run": "docker run --rm -i --network none --read-only scarab-392-byron-donna-reference:local < <inputs>"
+  },
+  "inputs": {
+    "generated.tsv": "1e1e71a2b4c70eef4dbfd23cd548310528dbc42ea56cee311a8145651e2980a4",
+    "../witness/vectors.tsv": "f79f0a87efbd99ebe159c18211497f6b0d282e7946f1839216dc31bbf99ef918"
+  },
+  "verdicts": {
+    "reference-generated.tsv": "6431807f6321fae5d86a4590623e6adf1a24bed3ca15899bc4bfb5e8f81837b6",
+    "reference-witness-vectors.tsv": "3a44a7e45986e5b7e22e60f02c3ceef010941b338ce1395be2d3033653404048"
+  },
+  "priorArt": "blinklabs-io/gouroboros 055fb39a1a321cabe4846b67f1978584dfb8c793 internal/ed25519byron/verify.go"
+}
