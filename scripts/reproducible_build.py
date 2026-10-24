@@ -183,7 +183,7 @@ class ArtifactResourcesCheck {
   public static void main(String[] args) throws Exception {
     final ClassLoader loader = ClassLoader.getSystemClassLoader();
     for (final String directory : new String[] {
-        "xyz/kd5ujc/scarab/node/", "supranational/blst/Linux/amd64/"}) {
+        "xyz/kd5ujc/scarab/node/", "supranational/blst/Linux/amd64/", "natives/linux_64/"}) {
       if (loader.getResource(directory) == null)
         throw new IllegalStateException("missing directory resource: " + directory);
     }
