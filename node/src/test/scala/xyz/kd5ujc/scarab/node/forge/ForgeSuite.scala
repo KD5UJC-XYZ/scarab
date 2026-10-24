@@ -284,6 +284,61 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
     }
   }
 
+  test("a slot already holding a block is forged again on the predecessor, as the reference does") {
+    val p = pool(kesStart = 50, seed = 8)
+    val (t1, _) = TxKit.pay(1)
+    val (t2, id2) = TxKit.pay(2)
+    withHandle {
+      for
+        h <- harness(p, ledgerWith(p, 3))
+        _ <- h.mempool.add(t1, Source.Local)
+        _ <- (5000 until 5040).toList.traverse_(s => h.forger.step(s))
+        first <- forgedIn(h)
+        before <- h.chain
+        // the tip is the block of the slot we lead (and so occupied), and its predecessor is the
+        // block before it
+        tip = before.tipRef.get
+        base = before.blocks.dropRight(1).lastOption.map(_._1)
+        _ <- h.mempool.add(t2, Source.Local)
+        _ <- h.forger.step(tip.slot)
+        all <- forgedIn(h)
+        after <- h.chain
+      yield
+        assert(first.nonEmpty && first.last.slot == tip.slot)
+        // one more block was forged, in the occupied slot, at the occupied block's height and on
+        // its predecessor, carrying the transaction that arrived since
+        assertEquals(all.size, first.size + 1)
+        val alternative = all.last
+        assertEquals(alternative.slot, tip.slot)
+        assertEquals(alternative.blockNo, tip.blockNo)
+        assertEquals(alternative.prev, base.map(_.hash))
+        assertEquals(alternative.txs, Vector(id2))
+        assertNotEquals(alternative.hash, tip.hash)
+        // the same issuer's second block of the height is not preferred: chain selection keeps ours
+        assertEquals(after.tipRef.map(_.hash), Some(tip.hash))
+    }
+  }
+
+  test("a slot held by a later block, or by the immutable anchor, is not forged") {
+    val p = pool(kesStart = 50, seed = 8)
+    withHandle {
+      for
+        h <- harness(p, ledgerWith(p, 1))
+        _ <- (5000 until 5040).toList.traverse_(s => h.forger.step(s))
+        first <- forgedIn(h)
+        tip = first.last.slot
+        _ <- h.forger.step(tip - 1)
+        all <- forgedIn(h)
+        // an empty chain (anchor only) with the slot at the anchor: nothing to be an alternative to
+        g <- harness(p, ledgerWith(p, 1))
+        _ <- g.forger.step(0)
+        none <- forgedIn(g)
+      yield
+        assertEquals(all.size, first.size)
+        assertEquals(none, Vector.empty)
+    }
+  }
+
   test("a block built on a tip that has since moved is lost, not adopted") {
     val p = pool(kesStart = 50, seed = 8)
     withHandle {
