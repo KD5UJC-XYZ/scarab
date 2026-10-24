@@ -9,10 +9,11 @@ import org.bouncycastle.crypto.signers.{ECDSASigner, HMacDSAKCalculator}
 import scalus.uplc.builtin.{Builtins, ByteString}
 
 /** The two secp256k1 builtins against the reference (`PlutusCore.Crypto.Secp256k1`): a malformed
-  * argument fails the builtin, anything well-formed is a verdict. The ECDSA cases that Scalus 1.2.0
-  * and 1.3.0 gets wrong are pinned both ways: the reproducer shows the Scalus behaviour (drop the
-  * workaround when it fails), the rest runs [[Secp256k1.verifyEcdsa]]. Preprod transaction 97b31e35
-  * (`PreprodSecp256k1RulesSuite`) passes an all-zero signature and expects `False`.
+  * argument fails the builtin, anything well-formed is a verdict. The ECDSA cases run the
+  * production builtin through [[ScalusEvaluator]] and check the model [[Secp256k1.verifyEcdsa]]
+  * against it; Scalus 1.2.0 and 1.3.0 failed on `r = 0` or `s = 0`, fixed in 1.4.0. Preprod
+  * transaction 97b31e35 (`PreprodSecp256k1RulesSuite`) passes an all-zero signature and expects
+  * `False`.
   */
 class Secp256k1Suite extends FunSuite:
   private val n = Secp256k1.Order
@@ -42,13 +43,28 @@ class Secp256k1Suite extends FunSuite:
     (BigInt(r0), BigInt(s1))
 
   private def sig(r: BigInt, s: BigInt): Array[Byte] = be32(r) ++ be32(s)
-  private def ecdsa(pk: Array[Byte] = pk, msg: Array[Byte] = msg, sig: Array[Byte] = sig(r, s)) =
-    Secp256k1.verifyEcdsa(pk, msg, sig)
 
-  private def fails(body: => Either[Secp256k1.Error, Boolean], label: String)(using
+  /** The production builtin's answer, as `Right(verdict)` or `Left(failure)`; the model
+    * [[Secp256k1.verifyEcdsa]] must agree on which of the two it is.
+    */
+  private def ecdsa(
+      pk: Array[Byte] = pk,
+      msg: Array[Byte] = msg,
+      sig: Array[Byte] = sig(r, s)
+  )(using munit.Location): Either[EvalFailure, Boolean] =
+    val answer = ProductionBuiltin.verifyEcdsa(pk, msg, sig) match
+      case ProductionBuiltin.Answer.Verdict(value) => Right(value)
+      case ProductionBuiltin.Answer.Fails(reason)  => Left(reason)
+    assertEquals(Secp256k1.verifyEcdsa(pk, msg, sig).toOption, answer.toOption, "model")
+    answer
+
+  /** A malformed argument fails the builtin as a script failure, never as unavailability. */
+  private def fails(body: => Either[EvalFailure, Boolean], label: String)(using
       munit.Location
   ): Unit =
-    assert(body.isLeft, label)
+    body match
+      case Left(_: EvalFailure.Script) => ()
+      case other                       => fail(s"$label: expected a script failure, got $other")
 
   test("a valid signature verifies, a signature on another message does not") {
     assertEquals(ecdsa(), Right(true))
