@@ -22,6 +22,26 @@ enum ForgeKeyProblem:
   case UnsignedInteger(actual: KeyShape)
   case Io(cause: Throwable)
 
+  /** The file gives its "other" class some access (`mode & 0o007 != 0`): refused, as
+    * `checkVRFFilePermissions` refuses it for the VRF key (cardano-node 11.1.3, `Cardano.Node.Run`,
+    * `OtherPermissionsExist`).
+    */
+  case OtherPermissions(mode: Int)
+
+  /** Another running node holds the single-instance lock beside the KES key file. */
+  case InstanceLocked(lock: String)
+
+  def message: String = this match
+    case OtherPermissions(mode) =>
+      s"has \"other\" file permissions (mode ${ForgeKeyProblem.octal(mode)}); remove all \"other\" file permissions"
+    case InstanceLocked(lock) =>
+      s"another instance holds the key lock $lock; stop it, or start this node with --key-lock off"
+    case other => other.toString
+
+object ForgeKeyProblem:
+  /** The permission bits of a mode as three octal digits. */
+  def octal(mode: Int): String = "%03o".format(mode & 0x1ff)
+
 enum ForgeAssemblyProblem:
   case Cbor(cause: BinaryCbor.Error)
   case TransactionArity(id: Bytes)

@@ -79,6 +79,11 @@ enum ForgeEvent:
     */
   case KesPersistFailed(kesPeriod: BigInt, error: ForgeError)
 
+  /** The VRF key file gives its group some access (`mode`): allowed, as in the reference, which
+    * warns (`GroupPermissionsExist`).
+    */
+  case KeyFileGroupAccess(file: String, mode: Int)
+
   /** A slot we cannot forge on (the tip is too old to forge from). */
   case Skipped(slot: BigInt, reason: ForgeSkip)
 

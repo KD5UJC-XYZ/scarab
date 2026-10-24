@@ -60,7 +60,14 @@ import xyz.kd5ujc.scarab.network.{
   NetworkError,
   ServerHandlers
 }
-import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeEvents, Forger, HotKeySource, KeyFiles}
+import xyz.kd5ujc.scarab.node.forge.{
+  ForgeEvent,
+  ForgeEvents,
+  Forger,
+  HotKeySource,
+  KeyFiles,
+  KeyGuard
+}
 import xyz.kd5ujc.scarab.node.log.{LibraryLogs, Log, LogRouter, LogSettings, NodeEvent, Severity}
 import xyz.kd5ujc.scarab.node.metrics.EventSink.alongside
 import xyz.kd5ujc.scarab.node.metrics.{
@@ -313,6 +320,9 @@ object Main extends IOApp:
     *   write a ledger-state digest ([[StateDump]]) at those points, for the db-analyser comparison.
     * @param dumpStateFull
     *   `--dump-state-full`: also write the whole projection (UTxO included) next to each digest.
+    * @param keyLock
+    *   `--key-lock on|off`: with `--forge`, hold an exclusive lock beside the KES key file (see
+    *   [[forge.KeyGuard]]).
     * @param headerFirst
     *   Validate the headers a peer announces before the blocks are fetched (G6).
     * @param maxInbound
@@ -366,7 +376,8 @@ object Main extends IOApp:
       plutusWorkers: ParallelPlutus.Workers = ParallelPlutus.Workers.default,
       chainSyncWindow: xyz.kd5ujc.scarab.network.ChainSyncPipelineDecision.Window =
         xyz.kd5ujc.scarab.network.ChainSyncPipelineDecision.Window.Default,
-      stallDump: Option[Path] = None
+      stallDump: Option[Path] = None,
+      keyLock: Boolean = true
   )
 
   /** What the chain database (or its absence) hands the node at start. */
@@ -596,7 +607,15 @@ object Main extends IOApp:
               )
           )
         )
-        (ownership *> compatible *> (
+        val keys = options.forge.fold(Resource.unit[IO])(f =>
+          KeyGuard.resource[IO](
+            f.vrfSkey,
+            f.kesSkey,
+            options.keyLock,
+            Log.sink[ForgeEvents, ForgeEvent, IO]
+          )
+        )
+        (ownership *> keys *> compatible *> (
           utxoBacking(options),
           VerificationCache.resource[IO](),
           Scheduling.resource[IO](options.cpuThreads),
@@ -1456,7 +1475,7 @@ object Main extends IOApp:
       values.find(r => argument == s"--${r.flag}")
 
   private val Usage =
-    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--stall-dump <dir>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>] " + LogSettings.Usage
+    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--stall-dump <dir>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file> [--key-lock on|off]] " + LogSettings.Usage
 
   /** Flags that take a value and may repeat. */
   private val RepeatedFlags = Set("peer") ++ LogSettings.RepeatedFlags
@@ -1496,7 +1515,8 @@ object Main extends IOApp:
     "local-socket",
     "vrf-skey",
     "kes-skey",
-    "opcert"
+    "opcert",
+    "key-lock"
   )
 
   private[node] def parse(args: List[String]): Either[ConfigError, Options] =
@@ -1652,6 +1672,11 @@ object Main extends IOApp:
             .fold(Right(true))(v =>
               Map("on" -> true, "off" -> false).get(v).toRight(invalid("header-first"))
             )
+          keyLock <- flags
+            .get("key-lock")
+            .fold(Right(true))(v =>
+              Map("on" -> true, "off" -> false).get(v).toRight(invalid("key-lock"))
+            )
           maxInbound <- flags
             .get("max-inbound")
             .fold(Right(64))(_.toIntOption.filter(_ > 0).toRight(invalid("max-inbound")))
@@ -1723,6 +1748,7 @@ object Main extends IOApp:
           stallDump = flags.get("stall-dump").map(Path.of(_)),
           plutusWorkers = plutusWorkers,
           chainSyncWindow = chainSyncWindow,
-          adoptLegacyNetworkIdentity = flags.contains("adopt-legacy-network-identity")
+          adoptLegacyNetworkIdentity = flags.contains("adopt-legacy-network-identity"),
+          keyLock = keyLock
         )
       case _ => Left(usage)
