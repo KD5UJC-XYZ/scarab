@@ -21,7 +21,8 @@ object Dependencies {
     val dnsjava = "3.6.5"
 
     val scalus = "1.4.0"
-    val bouncyCastle = "1.85.2"
+    // Scalus 1.4.0 is built against 1.86 and would evict an older pin; declared equals resolved.
+    val bouncyCastle = "1.86"
     val curve25519 = "0.1.3"
     val blstJava = "0.3.2"
     val rocksdb = "10.2.1"
