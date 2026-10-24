@@ -18,7 +18,7 @@ enum ForgeSkip:
     case Busy => "the forger was busy with an earlier slot"
     case TipTooOld(tip) =>
       s"the tip (${tip.fold("genesis")(t => s"slot $t")}) is too old to forge from"
-    case SlotOccupied => "a block already occupies this slot or a later one"
+    case SlotOccupied => "a later slot is occupied, or the block in this slot is immutable"
     case NotConnected => "the node is not connected"
 
 object ForgeSkip:

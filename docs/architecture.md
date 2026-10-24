@@ -1163,9 +1163,10 @@ then runs its slots a whole number of seconds away from the network's (roadmap H
 
 Counters (`ForgeStats`, per epoch; roadmap H5): slots checked for leadership, leader slots, forged, adopted,
 lost (slot battles lost at adoption, and blocks replaced later), failed, slots not checked by reason
-(`busy`: the loop was still on an earlier slot; `tipTooOld`; `slotOccupied`: a block already held the slot or
-a later one; `notConnected`), and the forge latency (slot start to adoption: count, mean, max). The first two
-reasons are also logged one by one as `forgeSkipped`. A `forgeEpoch` line carries an epoch's counters when
+(`busy`: the loop was still on an earlier slot; `tipTooOld`; `slotOccupied`: a later slot is held, or the block in the slot is
+immutable; `notConnected`), and the forge latency (slot start to adoption: count, mean, max). The first two
+reasons are also logged one by one as `forgeSkipped`. When the tip's own slot is the one the pool leads, it forges an alternative to that block (same height, on its
+predecessor) as `forkBlockForging` does (`mkCurrentBlockContext`), and chain selection decides between the two. A `forgeEpoch` line carries an epoch's counters when
 the next epoch begins, an `adopted` line carries its `latencyMs`, and `GET /forging` on the query port
 serves the counters per epoch and in total (the `pool` scenario reads it and asserts it against the log:
 forged and adopted counts equal, no block took more than five slots from its slot's start to adoption).

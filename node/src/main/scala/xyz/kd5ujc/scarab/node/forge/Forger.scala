@@ -236,13 +236,34 @@ final class Forger[F[_]: Async, S](
       tipSlot = current.tipRef.map(_.slot)
       _ <-
         if !connected then stats.skipped(geometry.epochOf(slot), ForgeSkip.Kind.NotConnected)
-        else if tipSlot.exists(_ >= slot) then
-          // a block already occupies this slot or a later one
+        else if tipSlot.contains(slot) then
+          alternativeBase(current).fold(
+            // the block in the slot is the newest immutable one, or a boundary block
+            stats.skipped(geometry.epochOf(slot), ForgeSkip.Kind.SlotOccupied)
+          )(forge(_, slot))
+        else if tipSlot.exists(_ > slot) then
+          // a later slot is occupied: the reference gives up (`TraceBlockFromFuture`)
           stats.skipped(geometry.epochOf(slot), ForgeSkip.Kind.SlotOccupied)
         else if slot - tipSlot.getOrElse(BigInt(0)) > maxTipAge then
           skipped(slot, ForgeSkip.TipTooOld(tipSlot))
         else forge(current, slot)
     yield ()
+
+  /** The chain to forge on when a block already occupies the slot: the tip's predecessor, so the
+    * block is an alternative to the one in the slot, with its height. `forkBlockForging` of
+    * ouroboros-consensus does this in `mkCurrentBlockContext`
+    * (`Ouroboros.Consensus.NodeKernel.Forge`: the `EQ` case, "forge an alternative to `hdr`: same
+    * block no and same predecessor"); chain selection then decides between the two as it does for
+    * any pair of blocks of one height ([[Follower.adoptForged]]). `None` when the block in the slot
+    * is the chain's anchor (it is immutable) or a boundary block, which the reference extends in
+    * the same slot (Byron only).
+    */
+  private def alternativeBase(current: VolatileChain[S]): Option[VolatileChain[S]] =
+    current.blocks.lastOption.filterNot(_._1.boundary).flatMap { _ =>
+      val predecessor =
+        current.blocks.dropRight(1).lastOption.fold(current.anchor.point)(_._1.point)
+      current.rollback(predecessor).toOption
+    }
 
   private def lift[A](e: Either[ForgeError, A])(using Handle[F, NodeError]): F[A] =
     e.fold(_.raise[F, A], F.pure)
