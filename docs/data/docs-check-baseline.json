@@ -90,274 +90,297 @@
    "count": 1
   },
   {
-   "kind": "file-size",
-   "path": "docs/architecture.md",
-   "key": "",
-   "count": 1,
-   "measure": 113071
+   "kind": "missing-path",
+   "path": "docs/architecture/block-production.md",
+   "key": "node/forge",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/architecture/header-validation.md",
+   "key": "ouroboros-consensus 4.2.1.0",
+   "count": 1
   },
   {
    "kind": "missing-path",
-   "path": "docs/architecture.md",
+   "path": "docs/architecture/ledger.md",
    "key": "consensus/ByronRules.scala",
    "count": 1
   },
   {
    "kind": "missing-path",
-   "path": "docs/architecture.md",
-   "key": "consensus/ChainSelection.scala",
-   "count": 2
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/architecture.md",
+   "path": "docs/architecture/ledger.md",
    "key": "consensus/HardFork.scala",
    "count": 1
   },
   {
    "kind": "missing-path",
-   "path": "docs/architecture.md",
-   "key": "consensus/HeaderRules.scala",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/architecture.md",
-   "key": "consensus/Praos.scala",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/architecture.md",
+   "path": "docs/architecture/ledger.md",
    "key": "ledger/Phase2.scala",
-   "count": 2
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/architecture.md",
-   "key": "ledger/PredicateFailure.scala",
    "count": 1
   },
   {
    "kind": "missing-path",
-   "path": "docs/architecture.md",
+   "path": "docs/architecture/ledger.md",
    "key": "ledger/Purpose.scala",
    "count": 1
   },
   {
    "kind": "missing-path",
-   "path": "docs/architecture.md",
+   "path": "docs/architecture/ledger.md",
    "key": "ledger/ScriptContexts.scala",
    "count": 1
   },
   {
    "kind": "missing-path",
-   "path": "docs/architecture.md",
+   "path": "docs/architecture/ledger.md",
    "key": "ledger/ScriptIntegrity.scala",
    "count": 2
   },
   {
    "kind": "missing-path",
-   "path": "docs/architecture.md",
+   "path": "docs/architecture/ledger.md",
    "key": "ledger/Tx.scala",
    "count": 1
   },
   {
    "kind": "missing-path",
-   "path": "docs/architecture.md",
+   "path": "docs/architecture/ledger.md",
    "key": "ledger/TxChecks.scala",
    "count": 1
   },
   {
    "kind": "missing-path",
-   "path": "docs/architecture.md",
+   "path": "docs/architecture/ledger.md",
    "key": "ledger/UpdateChecks.scala",
    "count": 1
   },
   {
    "kind": "missing-path",
-   "path": "docs/architecture.md",
-   "key": "ledger/Utxo.scala",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/architecture.md",
+   "path": "docs/architecture/ledger.md",
    "key": "ledger/byron",
    "count": 1
   },
   {
    "kind": "missing-path",
-   "path": "docs/architecture.md",
-   "key": "ledger/byron/",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/architecture.md",
+   "path": "docs/architecture/ledger.md",
    "key": "ledger/rules/",
    "count": 1
   },
   {
    "kind": "missing-path",
-   "path": "docs/architecture.md",
+   "path": "docs/architecture/ledger.md",
    "key": "ledger/rules/Epoch.scala",
    "count": 1
   },
   {
    "kind": "missing-path",
-   "path": "docs/architecture.md",
+   "path": "docs/architecture/ledger.md",
    "key": "ledger/rules/EraBlock.scala",
    "count": 1
   },
   {
    "kind": "missing-path",
-   "path": "docs/architecture.md",
+   "path": "docs/architecture/ledger.md",
    "key": "ledger/rules/Ledger.scala",
-   "count": 2
+   "count": 1
   },
   {
    "kind": "missing-path",
-   "path": "docs/architecture.md",
+   "path": "docs/architecture/ledger.md",
    "key": "ledger/rules/ShelleyUtxo.scala",
    "count": 1
   },
   {
    "kind": "missing-path",
-   "path": "docs/architecture.md",
-   "key": "network/ConnectionManager.scala",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/architecture.md",
-   "key": "network/LocalStateQueryServer.scala",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/architecture.md",
-   "key": "network/LocalTxMonitorServer.scala",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/architecture.md",
-   "key": "network/Mux.scala",
-   "count": 2
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/architecture.md",
+   "path": "docs/architecture/ledger.md",
    "key": "node/ParallelPlutus.scala",
    "count": 1
   },
   {
    "kind": "missing-path",
-   "path": "docs/architecture.md",
-   "key": "node/forge",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/architecture.md",
-   "key": "node/mempool/LocalMonitor.scala",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/architecture.md",
-   "key": "node/ntc/",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/architecture.md",
-   "key": "node/read/",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/architecture.md",
+   "path": "docs/architecture/ledger.md",
    "key": "plutus/PlutusAvailability.scala",
    "count": 1
   },
   {
    "kind": "missing-path",
-   "path": "docs/architecture.md",
+   "path": "docs/architecture/ledger.md",
    "key": "plutus/ScalusEvaluator.scala",
    "count": 1
   },
   {
    "kind": "missing-path",
-   "path": "docs/architecture.md",
+   "path": "docs/architecture/ledger.md",
    "key": "plutus/ScriptEvaluator.scala",
    "count": 1
   },
   {
+   "kind": "missing-symbol",
+   "path": "docs/architecture/ledger.md",
+   "key": "Translate.toConway",
+   "count": 1
+  },
+  {
    "kind": "missing-path",
-   "path": "docs/architecture.md",
+   "path": "docs/architecture/modules.md",
+   "key": "consensus/ChainSelection.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture/modules.md",
+   "key": "consensus/HeaderRules.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture/modules.md",
+   "key": "consensus/Praos.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture/modules.md",
+   "key": "ledger/Phase2.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture/modules.md",
+   "key": "ledger/Utxo.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture/modules.md",
+   "key": "ledger/byron/",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture/modules.md",
+   "key": "network/ConnectionManager.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture/modules.md",
+   "key": "network/Mux.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture/modules.md",
    "key": "protocol/ConnectionState.scala",
    "count": 1
   },
   {
    "kind": "missing-path",
-   "path": "docs/architecture.md",
-   "key": "protocol/LocalStateQuery.scala",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/architecture.md",
-   "key": "protocol/LocalTxMonitor.scala",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/architecture.md",
+   "path": "docs/architecture/modules.md",
    "key": "protocol/Mux.scala",
    "count": 1
   },
   {
    "kind": "missing-path",
-   "path": "docs/architecture.md",
+   "path": "docs/architecture/modules.md",
    "key": "storage/UtxoStore.scala",
    "count": 1
   },
   {
    "kind": "missing-path",
-   "path": "docs/architecture.md",
-   "key": "storage/haskell/",
+   "path": "docs/architecture/node-to-client.md",
+   "key": "ledger/PredicateFailure.scala",
    "count": 1
   },
   {
    "kind": "missing-path",
-   "path": "docs/architecture.md",
+   "path": "docs/architecture/node-to-client.md",
+   "key": "network/LocalStateQueryServer.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture/node-to-client.md",
+   "key": "network/LocalTxMonitorServer.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture/node-to-client.md",
+   "key": "node/mempool/LocalMonitor.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture/node-to-client.md",
+   "key": "node/ntc/",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture/node-to-client.md",
+   "key": "node/read/",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture/node-to-client.md",
+   "key": "protocol/LocalStateQuery.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture/node-to-client.md",
+   "key": "protocol/LocalTxMonitor.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture/node-to-client.md",
    "key": "storage/haskell/state",
    "count": 1
   },
   {
-   "kind": "missing-symbol",
-   "path": "docs/architecture.md",
-   "key": "Translate.toConway",
+   "kind": "missing-path",
+   "path": "docs/architecture/persistence.md",
+   "key": "storage/haskell/",
    "count": 1
   },
   {
    "kind": "missing-symbol",
-   "path": "docs/architecture.md",
+   "path": "docs/architecture/persistence.md",
    "key": "Verification.warm",
-   "count": 2
+   "count": 1
   },
   {
-   "kind": "unregistered-pin",
-   "path": "docs/architecture.md",
-   "key": "ouroboros-consensus 4.2.1.0",
+   "kind": "missing-path",
+   "path": "docs/architecture/relay.md",
+   "key": "consensus/ChainSelection.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture/relay.md",
+   "key": "ledger/rules/Ledger.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture/relay.md",
+   "key": "network/Mux.scala",
    "count": 1
   },
   {
    "kind": "unregistered-pin",
-   "path": "docs/architecture.md",
+   "path": "docs/architecture/relay.md",
    "key": "ouroboros-network 1.2.0.0",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/architecture/scale-and-scheduling.md",
+   "key": "Verification.warm",
    "count": 1
   },
   {
@@ -1551,7 +1574,7 @@
    "path": "docs/design/haskell-snapshots.md",
    "key": "",
    "count": 1,
-   "measure": 64808
+   "measure": 64816
   },
   {
    "kind": "line-citation",
@@ -3149,7 +3172,7 @@
    "path": "docs/leios.md",
    "key": "",
    "count": 1,
-   "measure": 70210
+   "measure": 70218
   },
   {
    "kind": "missing-path",
