@@ -163,8 +163,18 @@ class RatchetTest(unittest.TestCase):
         base = {self.A: Entry(2, None), self.B: Entry(1, 100)}
         result = check_docs.ratchet({self.A: Entry(1, None), self.B: Entry(1, 90)}, base)
         self.assertEqual(result.new, ())
-        self.assertEqual(len(result.stale), 2)
+        self.assertEqual(len(result.stale), 1)
         self.assertEqual(len(check_docs.ratchet({}, base).stale), 2)
+
+    def test_shrinking_measure_does_not_fail(self):
+        base = {self.B: Entry(1, 100)}
+        self.assertTrue(check_docs.ratchet({self.B: Entry(1, 10)}, base).ok)
+        self.assertFalse(check_docs.ratchet({self.B: Entry(1, 101)}, base).ok)
+
+    def test_branch_names_are_not_paths(self):
+        tmp, repo = build({"release/x.json": "", "README.md": "`release/alpha` `release/gone`\n"})
+        self.addCleanup(tmp.cleanup)
+        self.assertEqual([v.key for v in check_docs.collect(repo, Budgets())], ["release/gone"])
 
     def test_baseline_round_trips(self):
         baseline = check_docs.Baseline(Budgets(5, 6), {self.A: Entry(2, None), self.B: Entry(1, 100)})
