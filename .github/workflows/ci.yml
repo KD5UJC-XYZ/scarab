@@ -81,6 +81,8 @@ jobs:
         run: python3 scripts/check_error_channels.py
       - name: No absolute home paths in tracked files
         run: python3 scripts/check_local_paths.py
+      - name: Licence records (NOTICE, docs/licenses.md) cover every declared library
+        run: python3 scripts/check_notice.py
       - name: Install pinned changelog tool in an isolated environment
         run: |
           python3 -m venv "$RUNNER_TEMP/scarab-python-tests"

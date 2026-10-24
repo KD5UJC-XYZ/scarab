@@ -17,6 +17,11 @@ none, the parent POM chain was followed. 59 third-party jars resolve, 15 of them
 Jar contents were listed for licence files and native libraries. The licence names below are the POM
 names, normalised to SPDX identifiers where they are unambiguous.
 
+The rows for dnsjava, kittens, scodec-core, cats-parse, monocle, and slf4j-api were added when
+`NOTICE` and this file were reconciled with `project/Dependencies.scala` (checked by `scripts/check_notice.py`).
+Their licences were read from the POMs of the declared versions on Maven Central. The resolved classpath and
+the jar count above were not regenerated for that change; the re-run below does that.
+
 ## Result
 
 - No dependency is GPL-only, LGPL, AGPL, proprietary or without a declared licence. Every artifact is
@@ -48,8 +53,8 @@ and `NOTICE` now says so.
 
 Every row is on the Runtime classpath (Compile dependencies are a subset). Test-only libraries (munit,
 munit-scalacheck, munit-cats-effect, discipline-munit, cats-laws, cats-mtl-laws, cats-kernel-laws,
-cats-effect-testkit) are not shipped; their licences in `NOTICE` come from earlier POM reads and were not
-regenerated here.
+cats-effect-testkit, monocle-law) are not shipped; their licences in `NOTICE` come from earlier POM reads and
+were not regenerated here.
 
 | Artifact | Version | Licence | Kind | Note |
 |---|---|---|---|---|
@@ -58,6 +63,13 @@ regenerated here.
 | org.typelevel:cats-effect_3 | 3.7.1 | Apache-2.0 | direct |  |
 | org.typelevel:cats-mtl_3 | 1.7.0 | Apache-2.0 | direct |  |
 | org.scalus:scalus_3 | 1.3.0 | Apache-2.0 | direct |  |
+| dnsjava:dnsjava | 3.6.5 | BSD-3-Clause | direct | Relay-root DNS resolver. POM read from Maven Central. |
+| org.typelevel:kittens_3 | 3.5.0 | Apache-2.0 | direct | POM read from Maven Central. |
+| org.scodec:scodec-core_3 | 2.3.3 | BSD-3-Clause | direct | POM read from Maven Central. |
+| org.typelevel:cats-parse_3 | 1.1.0 | MIT | direct | Also transitive via Scalus; the build tool `models-gen` declares it directly. |
+| dev.optics:monocle-core_3 | 3.3.0 | MIT | direct | Also transitive via Scalus. |
+| dev.optics:monocle-macro_3 | 3.3.0 | MIT | direct | Also transitive via Scalus. |
+| org.slf4j:slf4j-api | 2.0.17 | MIT | direct | Declared at 2.0.17 in `Dependencies.scala`; POM parent states MIT. |
 | org.rocksdb:rocksdbjni | 10.2.1 | Apache-2.0 OR GPL-2.0-only | direct | Dual licence; Apache-2.0 elected. The jar bundles native libraries (see below). |
 | io.circe:circe-parser_3 | 0.14.16 | Apache-2.0 | direct |  |
 | org.http4s:http4s-ember-server_3 | 0.23.37 | Apache-2.0 | direct |  |
@@ -71,15 +83,12 @@ regenerated here.
 | org.scala-lang:scala-library | 2.13.18 | Apache-2.0 | transitive |  |
 | org.typelevel:cats-effect-kernel_3 | 3.7.1 | Apache-2.0 | transitive |  |
 | org.typelevel:cats-effect-std_3 | 3.7.1 | Apache-2.0 | transitive |  |
-| org.typelevel:cats-parse_3 | 1.1.0 | MIT | transitive |  |
 | org.typelevel:paiges-core_3 | 0.4.4 | Apache-2.0 | transitive |  |
 | com.lihaoyi:upickle_3 | 4.4.3 | MIT | transitive |  |
 | com.github.plokhotnyuk.jsoniter-scala:jsoniter-scala-core_3 | 2.40.1 | MIT | transitive |  |
 | com.github.plokhotnyuk.jsoniter-scala:jsoniter-scala-macros_3 | 2.40.1 | MIT | transitive |  |
 | io.bullet:borer-core_3 | 1.18.0 | MPL-2.0 | transitive | MPL-2.0 is file-level copyleft: compatible when used unmodified as a separate jar (via Scalus); duties arise only if its files are modified. |
 | io.bullet:borer-derivation_3 | 1.18.0 | MPL-2.0 | transitive | As borer-core_3. |
-| dev.optics:monocle-core_3 | 3.3.0 | MIT | transitive |  |
-| dev.optics:monocle-macro_3 | 3.3.0 | MIT | transitive |  |
 | foundation.icon:blst-java | 0.3.2 | Apache-2.0 | direct (crypto, Leios BLS); also transitive via Scalus | Bundles native libblst (supranational/blst, Apache-2.0) for Linux amd64/aarch64 and macOS. |
 | org.scalus:scalus-secp256k1-jni | 0.6.0 | Apache-2.0 | transitive | Bundles native secp256k1 (bitcoin-core, MIT) for Linux and macOS; the POM states Apache-2.0 for the wrapper. |
 | io.circe:circe-jawn_3 | 0.14.16 | Apache-2.0 | transitive |  |
@@ -100,7 +109,6 @@ regenerated here.
 | io.circe:circe-numbers_3 | 0.14.16 | Apache-2.0 | transitive |  |
 | org.typelevel:log4cats-core_3 | 2.8.0 | Apache-2.0 | transitive |  |
 | com.twitter:hpack | 1.0.2 | Apache-2.0 | transitive |  |
-| org.slf4j:slf4j-api | 1.7.36 | MIT | transitive |  |
 | org.typelevel:case-insensitive_3 | 1.5.0 | Apache-2.0 | transitive |  |
 | org.http4s:http4s-crypto_3 | 0.2.5 | Apache-2.0 | transitive |  |
 | org.typelevel:literally_3 | 1.2.0 | Apache-2.0 | transitive |  |
