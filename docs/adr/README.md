@@ -25,3 +25,4 @@ one says so. New records copy [the template](template.md) and take the next numb
 | [0017](0017-fibers-end-with-values.md) | A fiber ends with a value; a typed error does not cross a fiber as an exception | Accepted | 2026-10-17 |
 | [0018](0018-parallel-plutus-after-ordered-preparation.md) | Bounded Plutus workers after ordered ledger preparation | Accepted | 2026-10-18 |
 | [0019](0019-incremental-reward-calculation.md) | Rewards advance through the reference's resumable pure machine | Accepted | 2026-10-19 |
+| [0022](0022-defaults-follow-the-reference-binary.md) | Defaults follow the reference binary | Accepted | 2026-10-23 |
