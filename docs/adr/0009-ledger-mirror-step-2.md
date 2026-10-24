@@ -21,7 +21,7 @@ differential harness that names the block, stage and field of any disagreement, 
 after agreement on the eras fixture, every Preview epoch and a preprod replay; (3) the remaining gaps,
 to byte-equal answers. Small commits with cheap checks inside a jump; the expensive replays once per
 jump. The decisions D1 to D10 of the design document were accepted as recommended, among them: old
-formats kept readable by a frozen `legacy` module (D3); per-era transaction types deferred to #85 (D5);
+formats kept readable by a frozen `legacy` module (D3, which no longer holds: see the amendment below); per-era transaction types deferred to #85 (D5);
 the pool-ranking likelihoods (floats, read only by the wallet API) matched bit for bit if feasible,
 otherwise a documented gap (D9); Haskell's VRF-registry rule adopted, a verdict change confined to
 jump 3 (D10).
@@ -30,3 +30,12 @@ jump 3 (D10).
 
 - During jump 2 the node can run either rule set, or both.
 - Performance budgets per jump: replay within +15%, epoch boundary within +25%, peak heap within +20%.
+
+## Amendment (2026-10-23): what `legacy` is now
+
+D3's "old formats kept readable by a frozen `legacy` module" no longer holds. Snapshots are readable from V5
+only (`FileKind.SnapshotFile.readableFrom`); a known retired version raises `StorageError.RetiredVersion` and an
+unknown identifier `UnknownVersion`, each before mutable stores are acquired
+([ADR 0006](0006-versioned-formats-migrate-on-open.md), [storage-migrations.md](../storage-migrations.md)).
+The `legacy` module stays because the runtime genesis start path uses it: `NodeSetup` builds the first state
+with `legacy.GenesisState.initial`, holds it as `legacy.FlatNodeState` and converts it with `legacy.Mirroring`.

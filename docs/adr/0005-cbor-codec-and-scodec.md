@@ -14,7 +14,8 @@ are a separate concern.
 
 CBOR is decoded into our own tree that keeps each item's original bytes, without recursion on the call
 stack, with typed, located errors; the CDDL generator (`models-gen`) targets the same runtime. scodec is
-used only for fixed layouts read once per file or chunk (the Haskell ImmutableDB indices). Per-block and
+used only for fixed layouts read once per file or chunk: the Haskell ImmutableDB indices and the SCLS framing
+and records (`SclsRecord`, `SclsOutput`), with the shared pieces and the typed `Failure` in `Binary.scala`. Per-block and
 per-frame paths stay hand-written: measured, scodec was 2 to 24 times slower there (numbers in
 CONTRIBUTING, "Build tooling").
 

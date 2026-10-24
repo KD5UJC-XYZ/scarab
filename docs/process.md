@@ -17,6 +17,7 @@ work can be parked and resumed, and nothing goes stale silently.
 | What is verified, against what? | [compatibility.md](compatibility.md) (matrix and evidence log) | the change that adds evidence |
 | What changed? | [CHANGELOG.md](../CHANGELOG.md), and the fragments in [changes/](../changes/README.md) until a release folds them in | every change a user could notice, as a fragment |
 | Where is the code, and what covers it? | [codemap.md](codemap.md), generated from `docs/data/codemap.json` and `build.sbt` (CI checks it) | the change that moves a package, entry point or suite |
+| Where is X, what does a term mean, why was it decided? | [questions.md](questions.md), [glossary.md](glossary.md), [decisions.md](decisions.md); recurring tasks are [playbooks](playbooks/README.md) | the change that moves a symbol, adds a term or makes a decision (CI checks the pointers) |
 | How fast and how large? | [performance.md](performance.md) | runs that measure |
 
 Working notes, run logs and scratch analysis stay out of the repository (contributors keep them
