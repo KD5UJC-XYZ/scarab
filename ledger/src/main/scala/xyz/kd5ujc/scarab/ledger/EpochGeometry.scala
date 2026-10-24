@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import java.time.Instant
+import xyz.kd5ujc.scarab.codec.Rational
 
 /** The Byron prefix of the era history: `epochs` Byron epochs of `epochSlots` slots, each slot
   * `slotLengthMillis` long, before the Shelley-based eras begin. A chain that starts in Shelley
@@ -80,15 +81,19 @@ final case class EpochGeometry(
     else if BigInt(elapsed) < byronMillis then BigInt(elapsed) / byron.slotLengthMillis
     else byron.slots + (BigInt(elapsed) - byronMillis) / slotLengthMillis
 
-  /** 3k/f: slots after which the chain is stable (Shelley stability window). */
+  /** 3k/f: slots after which the chain is stable (Shelley stability window). Exact rational
+    * arithmetic rounded up, as `computeStabilityWindow` of cardano-ledger
+    * (`Cardano.Ledger.Shelley.StabilityWindow`, pinned in `docs/data/reference-pins.json`).
+    */
   lazy val stabilityWindow: BigInt = ceilDiv(3 * securityParam)
 
-  /** 4k/f: randomness stabilisation window used by Praos nonce freezing. */
+  /** 4k/f: randomness stabilisation window used by Praos nonce freezing
+    * (`computeRandomnessStabilisationWindow`, same module).
+    */
   lazy val randomnessStabilisationWindow: BigInt = ceilDiv(4 * securityParam)
 
   private def ceilDiv(numerator: Int): BigInt =
-    val exact = BigDecimal(numerator) / activeSlotsCoeff
-    exact.setScale(0, BigDecimal.RoundingMode.CEILING).toBigInt
+    (Rational(numerator) / Rational.fromDecimal(activeSlotsCoeff)).ceil
 
 object EpochGeometry:
   def checked(

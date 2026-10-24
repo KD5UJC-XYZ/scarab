@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import java.nio.file.{Files, Path}
 import java.time.Instant
 import munit.ScalaCheckSuite
 import org.scalacheck.Prop.forAll
@@ -136,4 +137,29 @@ class EpochGeometrySuite extends ScalaCheckSuite:
       earlier.slotAt(start.plusMillis(1350)) - g.slotAt(start.plusMillis(1350)),
       BigInt(10)
     )
+  }
+
+  private def fixtureWindows(network: String): Either[ConfigError, (BigInt, BigInt)] =
+    Genesis
+      .shelley(Files.readString(Path.of(s"fixtures/$network/genesis/shelley-genesis.json")))
+      .map(g => (g.geometry.stabilityWindow, g.geometry.randomnessStabilisationWindow))
+
+  test("3k/f and 4k/f of the real network configurations keep their values (exact 3k/f, 4k/f)") {
+    // mainnet and preprod: k 2160, f 1/20; preview: k 432, f 1/20 (the Shelley genesis fixtures)
+    assertEquals(fixtureWindows("mainnet"), Right((BigInt(129600), BigInt(172800))))
+    assertEquals(fixtureWindows("preprod"), Right((BigInt(129600), BigInt(172800))))
+    assertEquals(fixtureWindows("preview"), Right((BigInt(25920), BigInt(34560))))
+  }
+
+  property("the windows are the exact ceilings of 3k/f and 4k/f") {
+    forAll(Gen.choose(1, 5000), Gen.choose(1, 999)) { (k, thousandths) =>
+      val g = geometry(0, 1, 1000000).copy(
+        securityParam = k,
+        activeSlotsCoeff = BigDecimal(thousandths) / 1000
+      )
+      // ceil(a / b) for positive integers, in integer arithmetic only
+      def ceilDiv(a: BigInt, b: BigInt): BigInt = (a + b - 1) / b
+      g.stabilityWindow == ceilDiv(BigInt(3 * k) * 1000, BigInt(thousandths)) &&
+      g.randomnessStabilisationWindow == ceilDiv(BigInt(4 * k) * 1000, BigInt(thousandths))
+    }
   }
