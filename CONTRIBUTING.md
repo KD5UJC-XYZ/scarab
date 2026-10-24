@@ -107,6 +107,9 @@ with a pattern that matches your own shell command line.
   `python3 scripts/render_codemap.py`; a package, entry point or suite that moves needs the entry updated.
   `python3 scripts/status.py [--area A] [--priority P1]` prints a one-line digest of the open issues
   (needs `gh`; `--from file.json` works offline); its output is never committed.
+  [docs/questions.md](docs/questions.md), [docs/glossary.md](docs/glossary.md), [docs/decisions.md](docs/decisions.md)
+  and [docs/playbooks/](docs/playbooks/README.md) answer where, what and why; `python3 scripts/check_onramp.py`
+  (CI) checks that everything they cite exists.
 
 ## Style rules
 

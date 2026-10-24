@@ -2,6 +2,12 @@
 
 <!-- Reference roadmap IDs (e.g. B2, F1) and issues. -->
 
+## Docs rows touched
+
+- Codemap rows (`docs/codemap.md`, from `docs/data/codemap.json`): 
+- Compatibility rows (`docs/compatibility.md`): 
+- Decisions or questions rows (`docs/decisions.md`, `docs/questions.md`) if a decision or an answer changed: 
+
 ## Level and gates (see CONTRIBUTING.md, "Gates and ceremony by level of change")
 
 - Level: 0 docs / 1 small code / 2 behaviour in one area / 3 consensus-critical / 4 stage boundary

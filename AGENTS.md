@@ -1,5 +1,14 @@
 # Instructions for agent sessions
 
+**Five-minute start**
+
+1. Read [docs/codemap.md](docs/codemap.md): modules, packages, entry points, covering suites.
+2. Run `python3 scripts/status.py` (needs `gh`): open issues by area and roadmap ID.
+3. Find the issue's roadmap ID in [docs/roadmap.md](docs/roadmap.md); terms are in [docs/glossary.md](docs/glossary.md).
+4. Open its design or ADR through [docs/decisions.md](docs/decisions.md); "where is X?" is in [docs/questions.md](docs/questions.md).
+5. Pick the recipe in [docs/playbooks/](docs/playbooks/README.md).
+6. Name the change level and run its gates ([docs/playbooks/run-the-gates.md](docs/playbooks/run-the-gates.md)).
+
 Scarab is a Cardano-compatible node in Scala 3.3 (LTS), written as tagless-final cats-effect code
 with cats-mtl, and checked against the Haskell `cardano-node` as the reference. These instructions
 apply to every automated session working in this repository; human contributors follow the same

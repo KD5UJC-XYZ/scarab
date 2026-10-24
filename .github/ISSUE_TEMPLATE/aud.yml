@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Issue (boundary, finding, evidence, acceptance)
+description: The default shape for any issue; see docs/playbooks/write-an-audit-issue.md
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security-sensitive problems: do not file here, see SECURITY.md. State what property is missing and what the reference does, never how to trigger it. Terms: docs/glossary.md. State lives in labels (`status:`, `priority:`, area), not in the text.
+  - type: input
+    id: boundary
+    attributes:
+      label: Boundary
+      description: The module, symbol or interface the issue concerns (see docs/codemap.md).
+      placeholder: e.g. ledger/rules/Utxo, NodeConfig.consensusMode
+    validations:
+      required: true
+  - type: input
+    id: roadmap
+    attributes:
+      label: Roadmap ID and audit ID
+      description: The item in docs/roadmap.md and the series ID, if any.
+      placeholder: e.g. B30, AUD3-05
+  - type: textarea
+    id: finding
+    attributes:
+      label: Finding
+      description: What is wrong or missing, in one paragraph. Mark each claim as confirmed from source, from an earlier reproduction, or still to verify.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Source symbol and pinned upstream file, commit, fixture, captured block or log excerpt (no key material).
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance
+      description: Checkable criteria, the change level (docs/playbooks/run-the-gates.md) and the gates that close it.
+    validations:
+      required: true
+  - type: textarea
+    id: removal
+    attributes:
+      label: Removal condition
+      description: For a deferral, exclusion or accepted limitation, the condition that removes it. Write "none" if the issue is a plain defect.
+    validations:
+      required: true
