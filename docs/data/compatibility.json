@@ -1,0 +1,1130 @@
+{
+  "schemaVersion": 1,
+  "intro": "Status of each component against the Haskell reference (`cardano-node` 11.1.3, see\n[reference-image.md](reference-image.md)), the evidence behind it, and what is explicitly **not**\nchecked. Unofficial, research software, not audited. \"Verified\" always means \"agrees with the\nevidence named in the row\"; it is not a proof of equivalence. Roadmap IDs (A1, B3, ...) point into\n[roadmap.md](roadmap.md).",
+  "sections": [
+    {
+      "id": "release-support",
+      "heading": "Release support",
+      "summary": "Scarab uses its own SemVer; version numbers do not encode a cardano-node major or era. No release support row is declared yet, and the component matrix below describes source-level evidence, not blanket support for every release.",
+      "pages": [
+        "release-support"
+      ]
+    },
+    {
+      "id": "evidence-kinds",
+      "heading": "Evidence kinds",
+      "summary": "Unit and property suites, golden and oracle fixtures, devnet scenarios, Preview sync and the ledger oracle (K1), the comparison and coverage register, and external candidate acceptance (#294).",
+      "pages": [
+        "evidence-kinds"
+      ]
+    },
+    {
+      "id": "matrix",
+      "heading": "Matrix",
+      "matrix": true
+    },
+    {
+      "id": "evidence-log",
+      "heading": "Evidence log",
+      "summary": "Numbers from recorded runs, each naming the commit, date and command it was obtained with. Runs are listed in the order of the former table.",
+      "pages": [
+        "evidence-log-1",
+        "evidence-log-2",
+        "evidence-log-3",
+        "evidence-log-4",
+        "evidence-log-5"
+      ]
+    },
+    {
+      "id": "not-checked",
+      "heading": "Not checked at all",
+      "summary": "What no row above claims: collected from the matrix for quick scanning.",
+      "pages": [
+        "not-checked"
+      ]
+    }
+  ],
+  "components": [
+    {
+      "id": "k2-upstream-conformance",
+      "component": "Observable upstream conformance (K2, #49)",
+      "status": "implemented",
+      "summary": "Bounded v0.2 upstream conformance: production adapters for governance, ledger batches, rewards and Mux closure",
+      "evidence": {
+        "docs": [
+          "docs/design/upstream-conformance.md#observable-functional-equivalence"
+        ],
+        "issues": [
+          49
+        ]
+      },
+      "limitations": {
+        "issues": [
+          268,
+          129,
+          270
+        ]
+      },
+      "page": "docs/compatibility/k2-upstream-conformance.md"
+    },
+    {
+      "id": "conformance-source-refresh",
+      "component": "Conformance source refresh (#273)",
+      "status": "implemented",
+      "summary": "Source-watch roots, literal and cached DNS roots, and standalone Conway UTXO input checks",
+      "evidence": {
+        "docs": [
+          "docs/design/upstream-conformance.md#source-refresh-implementation"
+        ],
+        "issues": [
+          273
+        ]
+      },
+      "limitations": {
+        "issues": [
+          129
+        ]
+      },
+      "page": "docs/compatibility/conformance-source-refresh.md"
+    },
+    {
+      "id": "typed-decode-sharing",
+      "component": "Typed per-kind decode sharing (#204)",
+      "status": "implemented",
+      "summary": "Homogeneous kind and scope tables with typed cached-hash entries for decoded values",
+      "evidence": {
+        "suites": [
+          "InternsSuite"
+        ],
+        "docs": [
+          "docs/performance.md#34-typed-per-kind-decode-interning-204",
+          "docs/adr/0013-cbor-documents-are-an-index-over-the-input.md#addendum-typed-kind-ownership-204-2026-10-20"
+        ],
+        "issues": [
+          204
+        ]
+      },
+      "page": "docs/compatibility/typed-decode-sharing.md"
+    },
+    {
+      "id": "scls-interchange",
+      "component": "SCLS binary interchange (K8, #77)",
+      "status": "implemented",
+      "summary": "Pinned SCLS binary import and export, all twelve namespaces, exact identity admission, durable publication",
+      "evidence": {
+        "paths": [
+          "fixtures/scls/README.md"
+        ],
+        "issues": [
+          77
+        ]
+      },
+      "page": "docs/compatibility/scls-interchange.md"
+    },
+    {
+      "id": "multi-script-plutus-results",
+      "component": "Multi-script Plutus results (I4)",
+      "status": "implemented",
+      "summary": "Aggregation and reconstruction of every typed script result, trace and declared context bytes",
+      "evidence": {
+        "suites": [
+          "ScriptResultOracleSuite",
+          "ScriptResultBlockSuite",
+          "ScriptResultWireSuite"
+        ],
+        "docs": [
+          "docs/design/script-results.md"
+        ]
+      },
+      "limitations": {
+        "issues": [
+          208
+        ]
+      },
+      "page": "docs/compatibility/multi-script-plutus-results.md"
+    },
+    {
+      "id": "bounded-parallel-plutus",
+      "component": "Bounded parallel Plutus (D2)",
+      "status": "implemented",
+      "summary": "Ordered preparation, dependency batches, a shared bound and ordered verdict landing; serial reference kept",
+      "evidence": {
+        "suites": [
+          "PreparedBlockSuite",
+          "TxDependenciesSuite",
+          "ParallelPlutusSuite"
+        ],
+        "docs": [
+          "docs/design/parallel-plutus.md",
+          "docs/performance.md"
+        ]
+      },
+      "limitations": {
+        "issues": [
+          21,
+          209,
+          208
+        ]
+      },
+      "page": "docs/compatibility/bounded-parallel-plutus.md"
+    },
+    {
+      "id": "ntc-backlog-harness",
+      "component": "NtC backlog verification harness",
+      "status": "implemented",
+      "summary": "Canonical common intersection candidates and one older-point retry for the node-to-client backlog harness",
+      "evidence": {
+        "issues": [
+          192
+        ]
+      },
+      "page": "docs/compatibility/ntc-backlog-harness.md"
+    },
+    {
+      "id": "ouroboros-genesis",
+      "component": "Ouroboros Genesis (G3, #33)",
+      "status": "implemented",
+      "summary": "Shared GSM, LoE/GDD, LoP, CSJ, historicity and devoted fetching; canonical headers and fork restart retention",
+      "evidence": {
+        "docs": [
+          "docs/design/genesis.md"
+        ],
+        "issues": [
+          33
+        ]
+      },
+      "limitations": {
+        "issues": [
+          310,
+          311
+        ]
+      },
+      "page": "docs/compatibility/ouroboros-genesis.md"
+    },
+    {
+      "id": "blockfetch-coordination",
+      "component": "BlockFetch peer coordination (#148)",
+      "status": "implemented",
+      "summary": "Pinned Praos fetch rankings, preferred-peer handover, global targets and per-peer windows",
+      "evidence": {
+        "docs": [
+          "docs/performance.md#37-coordinated-blockfetch-service-model-148"
+        ],
+        "issues": [
+          148
+        ]
+      },
+      "limitations": {
+        "issues": [
+          292
+        ]
+      },
+      "page": "docs/compatibility/blockfetch-coordination.md"
+    },
+    {
+      "id": "network-handshake-mux-client",
+      "component": "Network: handshake, mux, KeepAlive, ChainSync, BlockFetch (client)",
+      "status": "implemented",
+      "summary": "Node-to-node handshake, Mux, KeepAlive, ChainSync and BlockFetch client with typed version negotiation",
+      "evidence": {
+        "suites": [
+          "HeaderRulesSuite",
+          "HeaderGateSuite",
+          "ConnectionManagerSuite",
+          "ConnectionStateSuite",
+          "PraosHeaderValidationSuite"
+        ],
+        "paths": [
+          "fixtures/network"
+        ],
+        "issues": [
+          318
+        ]
+      },
+      "limitations": {
+        "issues": [
+          318
+        ]
+      },
+      "page": "docs/compatibility/network-handshake-mux-client.md"
+    },
+    {
+      "id": "network-error-ownership",
+      "component": "Network and session error ownership",
+      "status": "implemented",
+      "summary": "Background fibers return typed values to their owner; caller-scoped channels; storage precedes tip publication",
+      "evidence": {
+        "suites": [
+          "MuxSuite",
+          "BackgroundFibersSuite",
+          "SessionFailureSuite",
+          "FollowerStallSuite",
+          "FatalReporterSuite",
+          "LocalSubmissionSuite",
+          "MempoolSuite"
+        ],
+        "issues": [
+          132,
+          154
+        ]
+      },
+      "limitations": {
+        "issues": [
+          180,
+          152
+        ]
+      },
+      "page": "docs/compatibility/network-error-ownership.md"
+    },
+    {
+      "id": "snapshot-listener-failures",
+      "component": "Snapshot and listener failure ownership (G7-F2/G7-F4)",
+      "status": "implemented",
+      "summary": "Periodic and shutdown snapshots and TCP/Unix handlers own their error scopes and report typed causes",
+      "evidence": {
+        "suites": [
+          "SnapshotFailureSuite",
+          "BearerServerSuite",
+          "ListenerFailuresSuite",
+          "LocalSubmissionSuite"
+        ]
+      },
+      "page": "docs/compatibility/snapshot-listener-failures.md"
+    },
+    {
+      "id": "peer-selection-governor",
+      "component": "Peer selection (governor)",
+      "status": "implemented",
+      "summary": "Governor stages G1.1 to G1.5 and network follow-ups: roots, ledger peers, targets, churn, metrics, bootstrap",
+      "evidence": {
+        "issues": [
+          142
+        ]
+      },
+      "limitations": {
+        "issues": [
+          148,
+          289,
+          150,
+          311
+        ]
+      },
+      "page": "docs/compatibility/peer-selection-governor.md"
+    },
+    {
+      "id": "network-resource-limits",
+      "component": "Network resource limits (G5)",
+      "status": "implemented",
+      "summary": "Per-state byte and time bounds, byte-counted ingress, finite egress queue and absolute deadlines",
+      "evidence": {
+        "suites": [
+          "MuxDeadlinesSuite",
+          "TxSubmissionLimitsSuite",
+          "MuxSuite",
+          "ClientSuite",
+          "ServerSuite",
+          "PeerSuite"
+        ],
+        "issues": [
+          82
+        ]
+      },
+      "limitations": {
+        "issues": [
+          180
+        ]
+      },
+      "page": "docs/compatibility/network-resource-limits.md"
+    },
+    {
+      "id": "rolling-chainsync",
+      "component": "Rolling ChainSync (#310)",
+      "status": "implemented",
+      "summary": "Native low/high decisions, one owned receiver, request-scoped Genesis context and bounded publication",
+      "evidence": {
+        "docs": [
+          "docs/design/chainsync-pipeline.md"
+        ],
+        "issues": [
+          310
+        ]
+      },
+      "limitations": {
+        "issues": [
+          309,
+          150,
+          311
+        ]
+      },
+      "page": "docs/compatibility/rolling-chainsync.md"
+    },
+    {
+      "id": "network-servers-duplex",
+      "component": "Network: servers (ChainSync, BlockFetch, KeepAlive, TxSubmission2, PeerSharing) and duplex",
+      "status": "implemented",
+      "summary": "ChainSync, BlockFetch, KeepAlive, TxSubmission2 and PeerSharing servers over duplex bearers",
+      "page": "docs/compatibility/network-servers-duplex.md"
+    },
+    {
+      "id": "network-fair-mux-egress",
+      "component": "Network: fair Mux egress (#258)",
+      "status": "implemented",
+      "summary": "One complete SDU turn per admitted protocol and role lane, bounded work, duplex FIFO and flush fences",
+      "evidence": {
+        "paths": [
+          "network/src/test/resources/upstream/mux-starvation/README.md"
+        ],
+        "docs": [
+          "docs/design/network-limits.md#fair-egress-as-built-258"
+        ],
+        "issues": [
+          258
+        ]
+      },
+      "page": "docs/compatibility/network-fair-mux-egress.md"
+    },
+    {
+      "id": "network-peersharing",
+      "component": "Network: PeerSharing (mini-protocol 10, client and server)",
+      "status": "implemented",
+      "summary": "PeerSharing mini-protocol 10, client and server: reference codec, wire limits, publication policy, governor use",
+      "page": "docs/compatibility/network-peersharing.md"
+    },
+    {
+      "id": "runtime-error-contracts",
+      "component": "Runtime error contracts (M11-E/#82)",
+      "status": "implemented",
+      "summary": "Closed domain and service error cases, associated encoder error families and retained nested causes",
+      "evidence": {
+        "suites": [
+          "DomainErrorContractSuite",
+          "DomainDecodeContractSuite",
+          "DomainProtocolContractSuite",
+          "DomainBoundaryContractSuite",
+          "DomainNetworkContractSuite"
+        ]
+      },
+      "limitations": {
+        "issues": [
+          180
+        ]
+      },
+      "page": "docs/compatibility/runtime-error-contracts.md"
+    },
+    {
+      "id": "semantic-error-contracts",
+      "component": "Semantic error contracts (M11-E/#189)",
+      "status": "implemented",
+      "summary": "Typed causes survive from script evaluation, Byron selectors, sessions and generators to their encoders",
+      "limitations": {
+        "issues": [
+          180,
+          87
+        ]
+      },
+      "page": "docs/compatibility/semantic-error-contracts.md"
+    },
+    {
+      "id": "decoders-hostile-input",
+      "component": "Decoders under hostile input (CBOR, blocks and headers of every era, transaction bodies, witnesses and submitted transactions, addresses, Plutus data, node-to-client queries)",
+      "status": "implemented",
+      "summary": "Every decoder returns a value or a typed error in bounded time and memory, including deep nesting",
+      "evidence": {
+        "docs": [
+          "docs/findings.md"
+        ]
+      },
+      "page": "docs/compatibility/decoders-hostile-input.md"
+    },
+    {
+      "id": "consensus-praos-headers",
+      "component": "Consensus: Praos headers (Babbage, Conway)",
+      "status": "implemented",
+      "summary": "Praos header checks for Babbage and Conway: VRF, KES, opcert counters, nonce evolution, leader threshold",
+      "page": "docs/compatibility/consensus-praos-headers.md"
+    },
+    {
+      "id": "consensus-tpraos-headers",
+      "component": "Consensus: TPraos headers (Shelley to Alonzo)",
+      "status": "implemented",
+      "summary": "TPraos header checks for Shelley to Alonzo: overlay schedule, two VRF certificates, 512-bit leader value",
+      "page": "docs/compatibility/consensus-tpraos-headers.md"
+    },
+    {
+      "id": "consensus-byron-pbft",
+      "component": "Consensus: Byron (PBFT)",
+      "status": "implemented",
+      "summary": "Byron PBFT: delegate signature, delegation, signature window and threshold, body proofs; every block checked",
+      "evidence": {
+        "suites": [
+          "ByronPreprodSuite",
+          "EraTransitionSuite"
+        ]
+      },
+      "limitations": {
+        "issues": [
+          223
+        ]
+      },
+      "page": "docs/compatibility/consensus-byron-pbft.md"
+    },
+    {
+      "id": "ledger-byron",
+      "component": "Ledger: Byron",
+      "status": "implemented",
+      "summary": "Byron ledger: witnessed UTxO, fees, genesis UTxO, delegation, update proposals, votes and adoption",
+      "page": "docs/compatibility/ledger-byron.md"
+    },
+    {
+      "id": "byron-version-widths",
+      "component": "Byron protocol-version widths (REF-07, #171)",
+      "status": "implemented",
+      "summary": "Bounded major, minor and alt protocol-version widths with exact succession arithmetic",
+      "evidence": {
+        "suites": [
+          "ByronVersionSuite",
+          "ByronProposalFixtureSuite",
+          "ByronHeaderFixtureSuite",
+          "CodecSuite"
+        ],
+        "paths": [
+          "fixtures/byron-version/README.md",
+          "scripts/oracle/byron/README.md"
+        ],
+        "issues": [
+          171
+        ]
+      },
+      "page": "docs/compatibility/byron-version-widths.md"
+    },
+    {
+      "id": "header-arrival-time",
+      "component": "Header arrival time (wall-clock eligibility)",
+      "status": "implemented",
+      "summary": "A header within the clock skew of its arrival is held until its slot begins; a later one is refused",
+      "evidence": {
+        "suites": [
+          "HeaderClockSuite",
+          "InboundGovernorSuite"
+        ],
+        "issues": [
+          153
+        ]
+      },
+      "page": "docs/compatibility/header-arrival-time.md"
+    },
+    {
+      "id": "chain-selection",
+      "component": "Chain selection",
+      "status": "implemented",
+      "summary": "Longer chain, opcert issue number, VRF tie-break, maximum rollback and several peers",
+      "page": "docs/compatibility/chain-selection.md"
+    },
+    {
+      "id": "strict-ed25519",
+      "component": "Strict Ed25519 witness verification (D7, #26)",
+      "status": "implemented",
+      "summary": "Strict Ed25519 witness verification for Shelley and later eras: canonical encoding, small-order and scalar bounds retained",
+      "evidence": {
+        "suites": [
+          "StrictEd25519Suite",
+          "StrictEd25519DifferentialSuite"
+        ],
+        "paths": [
+          "fixtures/witness/README.md"
+        ],
+        "docs": [
+          "docs/performance.md"
+        ],
+        "issues": [
+          26,
+          147
+        ]
+      },
+      "page": "docs/compatibility/strict-ed25519.md"
+    },
+    {
+      "id": "byron-ed25519",
+      "component": "Byron Ed25519 verification (#392)",
+      "status": "implemented",
+      "summary": "Byron signatures verify with the reference's Byron semantics (ed25519-donna), apart from the strict Shelley-and-later profile",
+      "evidence": {
+        "suites": [
+          "ByronEd25519ReferenceSuite",
+          "ByronSignatureProfileSuite",
+          "ByronPreprodSuite",
+          "ByronMainnetSignatureSuite"
+        ],
+        "paths": [
+          "fixtures/witness-byron",
+          "scripts/oracle/byron-donna"
+        ],
+        "issues": [
+          392
+        ]
+      },
+      "limitations": {
+        "issues": [
+          415
+        ]
+      },
+      "page": "docs/compatibility/byron-ed25519.md"
+    },
+    {
+      "id": "ledger-shelley-to-mary",
+      "component": "Ledger: Shelley to Mary",
+      "status": "implemented",
+      "summary": "Shelley to Mary ledger rules: UTXOW, UTXO, DELEGS, PPUP, MIR, rewards and epoch boundary",
+      "evidence": {
+        "suites": [
+          "RewardsSuite",
+          "PreConwayRulesSuite"
+        ]
+      },
+      "page": "docs/compatibility/ledger-shelley-to-mary.md"
+    },
+    {
+      "id": "ledger-rule-interpreter",
+      "component": "Ledger: typed rule interpreter (#202)",
+      "status": "implemented",
+      "summary": "Typed rule interpreter with type-aligned frames; no casts or erased value channel",
+      "evidence": {
+        "suites": [
+          "StsSuite"
+        ],
+        "docs": [
+          "docs/performance.md#typed-rule-interpreter-202",
+          "docs/design/rule-interpreter-as-built.md"
+        ],
+        "issues": [
+          202
+        ]
+      },
+      "page": "docs/compatibility/ledger-rule-interpreter.md"
+    },
+    {
+      "id": "ledger-incremental-rewards",
+      "component": "Ledger: incremental rewards (D15, #135)",
+      "status": "implemented",
+      "summary": "One typed immutable reference-sized reward pulser with forced completion and V5 restart",
+      "evidence": {
+        "suites": [
+          "RewardPulserSuite",
+          "NativeRewardSemanticsSuite",
+          "RewardOracleSuite"
+        ],
+        "docs": [
+          "docs/design/reward-pulser.md",
+          "docs/performance.md#30-incremental-reward-implementation-135"
+        ],
+        "issues": [
+          135
+        ]
+      },
+      "limitations": {
+        "issues": [
+          268,
+          129
+        ]
+      },
+      "page": "docs/compatibility/ledger-incremental-rewards.md"
+    },
+    {
+      "id": "ledger-alonzo-babbage",
+      "component": "Ledger: Alonzo and Babbage",
+      "status": "implemented",
+      "summary": "Alonzo and Babbage ledger rules including collateral, inline datums, reference inputs and scripts",
+      "evidence": {
+        "suites": [
+          "CollateralWitnessSuite",
+          "PreConwayUtxoPredicatesSuite",
+          "ShelleyLedgerSuite",
+          "ShelleyInstantStakeReferenceSuite",
+          "PreviewEmptyRedeemersSuite"
+        ],
+        "paths": [
+          "fixtures/reference/instant-stake/README.md",
+          "fixtures/reference/pre-conway-utxo/README.md"
+        ],
+        "issues": [
+          178,
+          331,
+          299
+        ]
+      },
+      "page": "docs/compatibility/ledger-alonzo-babbage.md"
+    },
+    {
+      "id": "ledger-conway",
+      "component": "Ledger: Conway",
+      "status": "implemented",
+      "summary": "Conway ledger rules including scripts, all certificates, treasury donation and the protocol-11 pool rule",
+      "evidence": {
+        "suites": [
+          "DevnetRefusedTxSuite"
+        ]
+      },
+      "limitations": {
+        "issues": [
+          129
+        ]
+      },
+      "page": "docs/compatibility/ledger-conway.md"
+    },
+    {
+      "id": "ledger-conway-utxo-babbage-validation",
+      "component": "Ledger: Conway UTXO against `babbageUtxoValidation` (audit, #163)",
+      "status": "implemented",
+      "summary": "Conway UTXO makes every predicate of the reference Babbage validation, whatever the validity tag",
+      "evidence": {
+        "suites": [
+          "ConwayLedgerSuite",
+          "PredicateFailureCborSuite"
+        ],
+        "issues": [
+          163
+        ]
+      },
+      "limitations": {
+        "issues": [
+          178,
+          141,
+          327
+        ]
+      },
+      "page": "docs/compatibility/ledger-conway-utxo-babbage-validation.md"
+    },
+    {
+      "id": "ledger-conway-body-decoding-v9",
+      "component": "Ledger: Conway transaction body and witness-set decoding at decoder version 9 (audit, AUD3-01/#327)",
+      "status": "implemented",
+      "summary": "Conway transaction body and witness set decoded at decoder version 9, era-indexed",
+      "evidence": {
+        "suites": [
+          "ConwayDecodingReferenceSuite"
+        ],
+        "paths": [
+          "fixtures/reference/conway-decoding",
+          "scripts/oracle/conway-decoding"
+        ]
+      },
+      "limitations": {
+        "issues": [
+          374,
+          328
+        ]
+      },
+      "page": "docs/compatibility/ledger-conway-body-decoding-v9.md"
+    },
+    {
+      "id": "ledger-pre-conway-set-decoding",
+      "component": "Ledger: pre-Conway set decoding, decoder versions 2 to 8 (audit, AUD3-03/#329)",
+      "status": "implemented",
+      "summary": "Pre-Conway sets keep one element for elements equal once decoded, whatever their encodings",
+      "evidence": {
+        "suites": [
+          "PreConwaySetsReferenceSuite"
+        ],
+        "paths": [
+          "fixtures/reference/pre-conway-sets"
+        ]
+      },
+      "page": "docs/compatibility/ledger-pre-conway-set-decoding.md"
+    },
+    {
+      "id": "ledger-definite-byte-strings",
+      "component": "Ledger: definite byte strings, decoder versions 2 to 9 (#373)",
+      "status": "implemented",
+      "summary": "Transaction bodies, witness sets and auxiliary data refuse a chunked byte string where the reference reads a definite one (decoder versions below 12)",
+      "evidence": {
+        "suites": [
+          "DefiniteBytesReferenceSuite",
+          "StoredChunkedOutputSuite"
+        ],
+        "paths": [
+          "fixtures/reference/definite-bytes/cases.jsonl",
+          "scripts/oracle/conway-decoding/definite_bytes_cases.py"
+        ]
+      },
+      "limitations": {
+        "issues": [
+          437,
+          435,
+          436
+        ]
+      },
+      "page": "docs/compatibility/ledger-definite-byte-strings.md"
+    },
+    {
+      "id": "ledger-conway-governance",
+      "component": "Ledger: Conway governance",
+      "status": "implemented",
+      "summary": "Conway governance: proposals, votes, ratification, enactment, DRep pulser, guardrails, committee",
+      "page": "docs/compatibility/ledger-conway-governance.md"
+    },
+    {
+      "id": "ledger-cost-models-in-updates",
+      "component": "Ledger: cost models in parameter updates (AUD3-06, #332)",
+      "status": "implemented",
+      "summary": "Cost models in pre-Conway update proposals and Conway parameter changes: language and length checks",
+      "evidence": {
+        "suites": [
+          "CostModelDecodeSuite"
+        ],
+        "issues": [
+          332
+        ]
+      },
+      "page": "docs/compatibility/ledger-cost-models-in-updates.md"
+    },
+    {
+      "id": "plutus-phase-2",
+      "component": "Plutus phase 2 (V1, V2, V3)",
+      "status": "implemented",
+      "summary": "Plutus V1, V2 and V3 phase 2 behind the script evaluator, with native era-specific contexts",
+      "evidence": {
+        "docs": [
+          "docs/plutus-conformance.md#independent-costing-and-context-matrix-2026-10-20"
+        ]
+      },
+      "limitations": {
+        "issues": [
+          208,
+          44,
+          286
+        ]
+      },
+      "page": "docs/compatibility/plutus-phase-2.md"
+    },
+    {
+      "id": "auxiliary-plutus-admission",
+      "component": "Auxiliary Plutus admission (#286)",
+      "status": "implemented",
+      "summary": "Auxiliary Plutus scripts and metadata are decoded and hash-checked before validity-tag execution",
+      "evidence": {
+        "paths": [
+          "fixtures/reference/auxiliary-scripts/README.md"
+        ],
+        "docs": [
+          "docs/plutus-conformance.md#auxiliary-data-admission-286"
+        ],
+        "issues": [
+          286
+        ]
+      },
+      "limitations": {
+        "issues": [
+          290
+        ]
+      },
+      "page": "docs/compatibility/auxiliary-plutus-admission.md"
+    },
+    {
+      "id": "plutus-data-chunk-bounds",
+      "component": "Plutus Data CBOR chunk bounds",
+      "status": "implemented",
+      "summary": "Original definite byte-string chunks are at most 64 bytes; longer joined strings remain supported",
+      "evidence": {
+        "paths": [
+          "fixtures/reference/plutus-data-chunks/README.md"
+        ]
+      },
+      "page": "docs/compatibility/plutus-data-chunk-bounds.md"
+    },
+    {
+      "id": "persistence",
+      "component": "Persistence (UTxO-HD style)",
+      "status": "implemented",
+      "summary": "Immutable and volatile stores, ledger snapshots, RocksDB UTxO store, identity record and restart recovery",
+      "evidence": {
+        "suites": [
+          "VolatileStoreSuite",
+          "UtxoStoreSuite"
+        ],
+        "issues": [
+          159
+        ]
+      },
+      "page": "docs/compatibility/persistence.md"
+    },
+    {
+      "id": "persistence-codec-derivation",
+      "component": "Persistence: typed codec derivation (#205)",
+      "status": "implemented",
+      "summary": "Compiler-generated typed field accessors and subtype-checked cases for persistence codecs",
+      "evidence": {
+        "docs": [
+          "docs/design/codec-derivation-as-built.md",
+          "docs/performance.md#35-typed-snapshot-codec-derivation-205"
+        ],
+        "issues": [
+          205
+        ]
+      },
+      "limitations": {
+        "issues": [
+          257,
+          204
+        ]
+      },
+      "page": "docs/compatibility/persistence-codec-derivation.md"
+    },
+    {
+      "id": "persistence-snapshot-v7",
+      "component": "Persistence: ledger snapshot format (V7)",
+      "status": "implemented",
+      "summary": "Native snapshot format V7: the V5 body behind a checkpoint binding; V5 files migrate on open; older payload readers retired behind identity and version preflight",
+      "evidence": {
+        "suites": [
+          "ChainStorageSuite"
+        ],
+        "issues": [
+          395
+        ]
+      },
+      "limitations": {
+        "issues": [
+          129,
+          37
+        ]
+      },
+      "page": "docs/compatibility/persistence-snapshot-v7.md"
+    },
+    {
+      "id": "persistence-haskell-immutabledb",
+      "component": "Persistence: Haskell ImmutableDB format",
+      "status": "partial",
+      "summary": "Reader only: a Haskell node's immutable database is read and imported, never written",
+      "evidence": {
+        "suites": [
+          "HaskellIndexSuite",
+          "HaskellImportSuite"
+        ]
+      },
+      "page": "docs/compatibility/persistence-haskell-immutabledb.md"
+    },
+    {
+      "id": "relay-and-mempool",
+      "component": "Relay and mempool",
+      "status": "implemented",
+      "summary": "Pure mempool state, TxSubmission2 in both roles and typed rejections",
+      "page": "docs/compatibility/relay-and-mempool.md"
+    },
+    {
+      "id": "block-forging",
+      "component": "Block forging",
+      "status": "implemented",
+      "summary": "Praos (Conway) forging only, with typed terminal outcomes and no signing after a key-update failure",
+      "evidence": {
+        "suites": [
+          "Sum6KesSigningSuite",
+          "KeyFilesSuite",
+          "KesRotationSuite",
+          "ForgerFailureSuite",
+          "ForgeSuite",
+          "SystemStartSuite"
+        ],
+        "issues": [
+          82
+        ]
+      },
+      "page": "docs/compatibility/block-forging.md"
+    },
+    {
+      "id": "node-to-client",
+      "component": "Node-to-client",
+      "status": "partial",
+      "summary": "LocalTxSubmission, LocalStateQuery, LocalTxMonitor and whole-block ChainSync over a Unix socket; query coverage partial",
+      "evidence": {
+        "suites": [
+          "DeepQuerySuite"
+        ]
+      },
+      "limitations": {
+        "issues": [
+          283,
+          176,
+          123,
+          330,
+          353,
+          356
+        ]
+      },
+      "page": "docs/compatibility/node-to-client.md"
+    },
+    {
+      "id": "haskell-ledger-state-file",
+      "component": "Haskell ledger-state file (`ledger/<slot>/{state,tables,meta}`)",
+      "status": "implemented",
+      "summary": "The Haskell ledger-state file format is read and written, including tables and metadata",
+      "evidence": {
+        "suites": [
+          "SnapshotTablesSuite",
+          "SnapshotTableStreamSuite"
+        ],
+        "paths": [
+          "fixtures/haskell-state"
+        ]
+      },
+      "page": "docs/compatibility/haskell-ledger-state-file.md"
+    },
+    {
+      "id": "fast-start-mithril",
+      "component": "Fast start (Mithril, snapshot import)",
+      "status": "implemented",
+      "summary": "Pinned Mithril certificate-chain verification, isolated download and atomic fresh-directory publication",
+      "evidence": {
+        "suites": [
+          "MithrilClientSuite",
+          "MithrilBootstrapSuite",
+          "MithrilBootstrapAcceptanceSuite"
+        ],
+        "docs": [
+          "docs/design/mithril-bootstrap.md#acceptance"
+        ],
+        "issues": [
+          27
+        ]
+      },
+      "page": "docs/compatibility/fast-start-mithril.md"
+    },
+    {
+      "id": "cpu-limit-scheduling",
+      "component": "Scheduling under a CPU limit",
+      "status": "implemented",
+      "summary": "The follower runs on its own work-stealing pool; timer lateness and longest step measured per epoch",
+      "evidence": {
+        "suites": [
+          "SchedulingSuite",
+          "FollowerSuite"
+        ]
+      },
+      "page": "docs/compatibility/cpu-limit-scheduling.md"
+    },
+    {
+      "id": "platforms-and-cpus",
+      "component": "Platforms and CPUs",
+      "status": "implemented",
+      "summary": "Linux x86-64 on any CPU; the BLS12-381 library is built portable, as the reference node's",
+      "evidence": {
+        "suites": [
+          "BlstSuite",
+          "LeiosCertificateSuite"
+        ]
+      },
+      "page": "docs/compatibility/platforms-and-cpus.md"
+    },
+    {
+      "id": "prometheus-metrics",
+      "component": "Prometheus metrics (J3, #47)",
+      "status": "implemented",
+      "summary": "Prometheus endpoint, algebra and names for tip, peers, mempool and forging, as the reference node",
+      "evidence": {
+        "suites": [
+          "MetricsSuite",
+          "CatalogueSuite",
+          "CollectorsSuite",
+          "EventMetricsSuite",
+          "MetricsServerSuite",
+          "DocsSuite"
+        ],
+        "issues": [
+          47
+        ]
+      },
+      "page": "docs/compatibility/prometheus-metrics.md"
+    },
+    {
+      "id": "operational-parity",
+      "component": "Operational parity (config/topology files, CLI, metrics)",
+      "status": "partial",
+      "summary": "Haskell config and topology files read, CLI and metrics partly matched; parity is partial",
+      "evidence": {
+        "suites": [
+          "ConfigSuite",
+          "MainArgsSuite",
+          "MetricsSuite",
+          "CatalogueSuite",
+          "EventMetricsSuite",
+          "CollectorsSuite",
+          "MetricsServerSuite",
+          "DocsSuite",
+          "LogGoldenSuite",
+          "LogRouterSuite",
+          "LogDocsSuite"
+        ]
+      },
+      "limitations": {
+        "issues": [
+          142
+        ]
+      },
+      "page": "docs/compatibility/operational-parity.md"
+    },
+    {
+      "id": "dijkstra",
+      "component": "Dijkstra (next era)",
+      "status": "not implemented",
+      "summary": "The next era is not implemented",
+      "limitations": {
+        "roadmap": [
+          "L1"
+        ]
+      }
+    },
+    {
+      "id": "ouroboros-leios",
+      "component": "Ouroboros Leios (CIP-164)",
+      "status": "not implemented",
+      "summary": "Not implemented in the node; read-only decoders and header rules for the public Leios testnet chain",
+      "page": "docs/compatibility/ouroboros-leios.md"
+    },
+    {
+      "id": "typed-ledger-state-differences",
+      "component": "Typed ledger-state differences (#206)",
+      "status": "implemented",
+      "summary": "Field and case comparisons use their declared types; instances retained lazily per derivation",
+      "evidence": {
+        "docs": [
+          "docs/performance.md#typed-diff-instance-retention-206"
+        ],
+        "issues": [
+          206
+        ]
+      },
+      "page": "docs/compatibility/typed-ledger-state-differences.md"
+    },
+    {
+      "id": "pool-and-early-era-predicates",
+      "component": "Remaining POOL and early-era output predicates (#141)",
+      "status": "implemented",
+      "summary": "Metadata hash length and early-era bootstrap output predicates in native order",
+      "evidence": {
+        "paths": [
+          "fixtures/reference/remaining-predicates/README.md"
+        ],
+        "issues": [
+          141
+        ]
+      },
+      "page": "docs/compatibility/pool-and-early-era-predicates.md"
+    },
+    {
+      "id": "per-state-provenance",
+      "component": "Per-state provenance (#129)",
+      "status": "implemented",
+      "summary": "Provenance in live state and the V5 gap and observed fields, through rollback and restore",
+      "evidence": {
+        "issues": [
+          129
+        ]
+      },
+      "limitations": {
+        "issues": [
+          129
+        ]
+      },
+      "page": "docs/compatibility/per-state-provenance.md"
+    }
+  ]
+}
