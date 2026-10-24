@@ -4,7 +4,6 @@ package xyz.kd5ujc.scarab.plutus
 import io.circe.{Decoder, Json, parser}
 import java.nio.file.{Files, Path}
 import munit.FunSuite
-import xyz.kd5ujc.scarab.blst.Blst
 import xyz.kd5ujc.scarab.codec.Bytes
 
 /** Exact ledger-API budgets produced by executing unchanged Plutus 1.70 with real crypto. */
@@ -39,7 +38,7 @@ class BuiltinCostingOracleSuite extends FunSuite:
       parser.parse(Files.readString(directory.resolve("manifest.json"))).fold(throw _, identity)
     val hashes = field[Map[String, String]](manifest, "sha256")
     hashes.foreach { (name, hash) =>
-      assertEquals(Blst.sha256Hex(Files.readAllBytes(directory.resolve(name))), hash, name)
+      assertEquals(NativeCrypto.sha256Hex(Files.readAllBytes(directory.resolve(name))), hash, name)
     }
     assertEquals(field[Int](manifest, "scripts"), scripts.size)
     assertEquals(field[Int](manifest, "upstreamScripts"), 797)

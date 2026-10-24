@@ -54,7 +54,7 @@ val testDependencies = Seq(
 // Modules use `<id>` for the project and directory, with explicit overrides for blst-native and
 // models-gen below. Artifact names start with `scarab-`; sbt enforces an acyclic dependency graph:
 //
-//   blstNative <- crypto, plutus
+//   blstNative <- crypto
 //   codec <- crypto <- protocol <- network
 //   codec <- plutus
 //   protocol, plutus <- ledger <- consensus <- legacy, storage
@@ -126,7 +126,7 @@ lazy val network = scarab("network")
 
 // The Plutus (UPLC) machine and builtins through Scalus; the script context and the rules are ours.
 lazy val plutus = scarab("plutus")
-  .dependsOn(codec % "compile->compile;test->test", blstNative)
+  .dependsOn(codec % "compile->compile;test->test")
   .settings(
     libraryDependencies ++= Seq(
       Libraries.cats,
